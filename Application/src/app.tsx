@@ -1,28 +1,7 @@
-import {signal, batch} from '@preact/signals';
 import {Preview} from './components/Preview';
 import {projectStore} from './stores/projectStore';
 
-const ipcResult = signal<string | null>(null);
-const ipcLoading = signal(false);
-
 export function App() {
-  const testIpc = async () => {
-    ipcLoading.value = true;
-    try {
-      const {invoke} = await import('@tauri-apps/api/core');
-      const result = await invoke('project_get_default');
-      batch(() => {
-        ipcResult.value = JSON.stringify(result, null, 2);
-        ipcLoading.value = false;
-      });
-    } catch (err) {
-      batch(() => {
-        ipcResult.value = `Error: ${String(err)}`;
-        ipcLoading.value = false;
-      });
-    }
-  };
-
   const handleChangeName = () => {
     projectStore.setName(
       projectStore.name.value === 'My Project'
@@ -33,6 +12,27 @@ export function App() {
 
   const handleToggleFps = () => {
     projectStore.setFps(projectStore.fps.value === 24 ? 15 : 24);
+  };
+
+  const testIpc = () => {
+    // Use direct DOM manipulation to avoid any signal/state cycle issues
+    const output = document.getElementById('ipc-output')!;
+    const btn = document.getElementById('ipc-btn') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = 'Calling...';
+
+    import('@tauri-apps/api/core')
+      .then(({invoke}) => invoke('project_get_default'))
+      .then((result) => {
+        output.textContent = JSON.stringify(result, null, 2);
+      })
+      .catch((err) => {
+        output.textContent = `Error: ${String(err)}`;
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Test IPC: project_get_default';
+      });
   };
 
   return (
@@ -74,17 +74,16 @@ export function App() {
       {/* IPC test */}
       <div class="flex flex-col items-center gap-4">
         <button
+          id="ipc-btn"
           onClick={testIpc}
-          disabled={ipcLoading.value}
           class="px-6 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-[var(--color-text-white)] rounded-md font-medium transition-colors disabled:opacity-50"
         >
-          {ipcLoading.value ? 'Calling...' : 'Test IPC: project_get_default'}
+          Test IPC: project_get_default
         </button>
-        {ipcResult.value && (
-          <pre class="bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] p-4 rounded-md text-sm max-w-lg overflow-auto">
-            {ipcResult}
-          </pre>
-        )}
+        <pre
+          id="ipc-output"
+          class="bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] p-4 rounded-md text-sm max-w-lg overflow-auto min-h-[2rem]"
+        />
       </div>
     </div>
   );
