@@ -1,4 +1,5 @@
 import {Preview} from './components/Preview';
+import {AssetProtocolTest} from './components/AssetProtocolTest';
 import {projectStore} from './stores/projectStore';
 
 export function App() {
@@ -47,6 +48,11 @@ export function App() {
       {/* Motion Canvas Player Preview */}
       <div class="w-full max-w-3xl">
         <Preview />
+      </div>
+
+      {/* Asset Protocol Test */}
+      <div class="w-full max-w-3xl">
+        <AssetProtocolTest />
       </div>
 
       {/* Signal Store Reactivity Demo */}
