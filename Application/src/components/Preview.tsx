@@ -13,6 +13,8 @@ export function Preview() {
     player.setAttribute('auto', '');
     player.setAttribute('responsive', '');
     player.setAttribute('background', '#000000');
+    player.style.width = '100%';
+    player.style.height = '100%';
     container.prepend(player);
 
     // Monitor player state changes via MutationObserver on class/attribute

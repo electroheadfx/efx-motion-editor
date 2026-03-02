@@ -22,7 +22,10 @@ export function App() {
     btn.textContent = 'Calling...';
 
     import('@tauri-apps/api/core')
-      .then(({invoke}) => invoke('project_get_default'))
+      .then(({invoke}) => {
+        if (!invoke) throw new Error('Not running inside Tauri');
+        return invoke('project_get_default');
+      })
       .then((result) => {
         output.textContent = JSON.stringify(result, null, 2);
       })
