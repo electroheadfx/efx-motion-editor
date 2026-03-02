@@ -1,21 +1,21 @@
-import {useState} from 'preact/hooks';
+import {signal} from '@preact/signals';
 import {Preview} from './components/Preview';
 import {projectStore} from './stores/projectStore';
 
-export function App() {
-  const [ipcResult, setIpcResult] = useState<string | null>(null);
-  const [ipcLoading, setIpcLoading] = useState(false);
+const ipcResult = signal<string | null>(null);
+const ipcLoading = signal(false);
 
+export function App() {
   const testIpc = async () => {
-    setIpcLoading(true);
+    ipcLoading.value = true;
     try {
       const {invoke} = await import('@tauri-apps/api/core');
       const result = await invoke('project_get_default');
-      setIpcResult(JSON.stringify(result, null, 2));
+      ipcResult.value = JSON.stringify(result, null, 2);
     } catch (err) {
-      setIpcResult(`Error: ${String(err)}`);
+      ipcResult.value = `Error: ${String(err)}`;
     } finally {
-      setIpcLoading(false);
+      ipcLoading.value = false;
     }
   };
 
@@ -71,12 +71,12 @@ export function App() {
       <div class="flex flex-col items-center gap-4">
         <button
           onClick={testIpc}
-          disabled={ipcLoading}
+          disabled={ipcLoading.value}
           class="px-6 py-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-[var(--color-text-white)] rounded-md font-medium transition-colors disabled:opacity-50"
         >
-          {ipcLoading ? 'Calling...' : 'Test IPC: project_get_default'}
+          {ipcLoading.value ? 'Calling...' : 'Test IPC: project_get_default'}
         </button>
-        {ipcResult && (
+        {ipcResult.value && (
           <pre class="bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] p-4 rounded-md text-sm max-w-lg overflow-auto">
             {ipcResult}
           </pre>
