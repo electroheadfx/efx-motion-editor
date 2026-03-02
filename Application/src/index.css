@@ -18,6 +18,17 @@
   --color-text-dimmer: #444444;
   --color-text-white: #FFFFFF;
   --color-text-link: #AAAAAA;
+  --color-thumb-blue: #2D4A8A;
+  --color-thumb-purple: #3A2D8A;
+  --color-thumb-green: #2D5A3A;
+  --color-dot-blue: #5588FF;
+  --color-dot-purple: #9966FF;
+  --color-dot-green: #22CC77;
+  --color-dot-orange: #FF6633;
+  --color-badge-bg: #2D5BE380;
+  --color-badge-text: #AACCFF;
+  --color-icon-placeholder: #FFFFFF30;
+  --color-open-icon: #44444420;
 }
 
 @layer base {
@@ -27,5 +38,9 @@
     margin: 0;
     background: var(--color-bg-root);
     color: var(--color-text-primary);
+  }
+
+  .font-primary {
+    font-family: "Inter", sans-serif;
   }
 }

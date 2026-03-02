@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { ProjectData } from '../types/project';
-import type { ImageInfo } from '../types/image';
+import type { ImageInfo, ImportResult } from '../types/image';
 
 // Result type mirroring Rust's Result pattern (locked decision)
 export type Result<T, E = string> =
@@ -23,11 +23,16 @@ export function assetUrl(filePath: string): string {
   return convertFileSrc(filePath);
 }
 
-// Typed command wrappers
+// --- Project commands ---
 export async function projectGetDefault(): Promise<Result<ProjectData>> {
   return safeInvoke<ProjectData>('project_get_default');
 }
 
+// --- Image commands ---
 export async function imageGetInfo(path: string): Promise<Result<ImageInfo>> {
   return safeInvoke<ImageInfo>('image_get_info', { path });
+}
+
+export async function importImages(paths: string[], projectDir: string): Promise<Result<ImportResult>> {
+  return safeInvoke<ImportResult>('import_images', { paths, projectDir });
 }
