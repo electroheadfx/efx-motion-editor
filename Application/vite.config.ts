@@ -14,10 +14,12 @@ export default defineConfig({
     // Preact preset MUST come first to set default JSX runtime to Preact
     preact(),
     tailwindcss(),
-    // Motion Canvas plugin returns array of Vite plugins
-    ...motionCanvas({
+    // Motion Canvas plugin returns array of Vite plugins.
+    // Filter out the editor plugin — it hijacks '/' and serves MC's editor HTML
+    // instead of our index.html. We only need scene/project/asset transforms.
+    ...(motionCanvas({
       project: './src/project.ts',
-    }),
+    }) as any[]).filter((p: any) => p.name !== 'motion-canvas:editor'),
     // Fix: Motion Canvas excludes preact from optimizeDeps, but @preact/preset-vite
     // includes it. esbuild can't have an entry point marked as external.
     {
