@@ -18,6 +18,30 @@ export default defineConfig({
     ...motionCanvas({
       project: './src/project.ts',
     }),
+    // Fix: Motion Canvas excludes preact from optimizeDeps, but @preact/preset-vite
+    // includes it. esbuild can't have an entry point marked as external.
+    {
+      name: 'fix-preact-optimize-conflict',
+      enforce: 'post' as const,
+      config() {
+        return {
+          optimizeDeps: {
+            exclude: [],
+          },
+        };
+      },
+      configResolved(config) {
+        const exclude = config.optimizeDeps.exclude;
+        const preactEntries = ['preact', 'preact/jsx-runtime', 'preact/jsx-dev-runtime'];
+        for (const entry of preactEntries) {
+          const idx = exclude.indexOf(entry);
+          if (idx !== -1) exclude.splice(idx, 1);
+        }
+        // Also remove wildcard 'preact/*' that matches sub-paths
+        const wildcardIdx = exclude.indexOf('preact/*');
+        if (wildcardIdx !== -1) exclude.splice(wildcardIdx, 1);
+      },
+    },
   ],
   // Tauri-specific config
   clearScreen: false,
