@@ -1,4 +1,4 @@
-import {signal} from '@preact/signals';
+import {signal, batch} from '@preact/signals';
 import {Preview} from './components/Preview';
 import {projectStore} from './stores/projectStore';
 
@@ -11,11 +11,15 @@ export function App() {
     try {
       const {invoke} = await import('@tauri-apps/api/core');
       const result = await invoke('project_get_default');
-      ipcResult.value = JSON.stringify(result, null, 2);
+      batch(() => {
+        ipcResult.value = JSON.stringify(result, null, 2);
+        ipcLoading.value = false;
+      });
     } catch (err) {
-      ipcResult.value = `Error: ${String(err)}`;
-    } finally {
-      ipcLoading.value = false;
+      batch(() => {
+        ipcResult.value = `Error: ${String(err)}`;
+        ipcLoading.value = false;
+      });
     }
   };
 

@@ -42,6 +42,11 @@ export default defineConfig({
         // Also remove wildcard 'preact/*' that matches sub-paths
         const wildcardIdx = exclude.indexOf('preact/*');
         if (wildcardIdx !== -1) exclude.splice(wildcardIdx, 1);
+        // Restore Preact as default JSX runtime (MC projects plugin overrides to MC's runtime)
+        // Scene files use per-file @jsxImportSource pragma for MC's JSX
+        if (config.esbuild) {
+          (config.esbuild as any).jsxImportSource = 'preact';
+        }
       },
     },
   ],
