@@ -12,7 +12,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline in
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation & Scaffolding** - Tauri + Preact + Motion Canvas scaffold with validated integrations and signal stores
+- [x] **Phase 1: Foundation & Scaffolding** - Tauri + Preact + Motion Canvas scaffold with validated integrations and signal stores (completed 2026-03-02)
 - [ ] **Phase 2: UI Shell & Image Pipeline** - Convert React prototype to Preact and establish the image import pipeline
 - [ ] **Phase 3: Project & Sequence Management** - Create, save, open projects and manage sequences with key photos
 - [ ] **Phase 4: Timeline & Preview** - Canvas-based timeline with playback and real-time preview
@@ -37,7 +37,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — Scaffold Tauri + Preact + Vite + Tailwind app with asset protocol, Rust models/commands, TypeScript types, and typed IPC wrappers
-- [ ] 01-02-PLAN.md — Embed Motion Canvas player with test scene, create all 6 signal stores, and verify foundation end-to-end on macOS
+- [x] 01-02-PLAN.md — Embed Motion Canvas player with test scene, create all 6 signal stores, and verify foundation end-to-end on macOS
 
 ### Phase 2: UI Shell & Image Pipeline
 **Goal**: The full editor layout (all panels from the React prototype) running in Preact with Signals, and a working image import pipeline through Rust with thumbnail generation and memory-safe loading
@@ -157,7 +157,7 @@ Phases execute in numeric order: 1 > 2 > 3 > 4 > 5 > 6 > 7 > 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Scaffolding | 1/2 | In progress | - |
+| 1. Foundation & Scaffolding | 2/2 | Complete   | 2026-03-02 |
 | 2. UI Shell & Image Pipeline | 0/0 | Not started | - |
 | 3. Project & Sequence Management | 0/0 | Not started | - |
 | 4. Timeline & Preview | 0/0 | Not started | - |
