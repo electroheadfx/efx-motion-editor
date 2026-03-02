@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Scaffold Tauri + Preact + Vite + Tailwind app with asset protocol, Rust models/commands, TypeScript types, and typed IPC wrappers
+- [x] 01-01-PLAN.md — Scaffold Tauri + Preact + Vite + Tailwind app with asset protocol, Rust models/commands, TypeScript types, and typed IPC wrappers
 - [ ] 01-02-PLAN.md — Embed Motion Canvas player with test scene, create all 6 signal stores, and verify foundation end-to-end on macOS
 
 ### Phase 2: UI Shell & Image Pipeline
@@ -157,7 +157,7 @@ Phases execute in numeric order: 1 > 2 > 3 > 4 > 5 > 6 > 7 > 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Scaffolding | 0/2 | Planned | - |
+| 1. Foundation & Scaffolding | 1/2 | In progress | - |
 | 2. UI Shell & Image Pipeline | 0/0 | Not started | - |
 | 3. Project & Sequence Management | 0/0 | Not started | - |
 | 4. Timeline & Preview | 0/0 | Not started | - |
