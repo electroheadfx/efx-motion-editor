@@ -28,7 +28,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Image Import
 
 - [ ] **IMPT-01**: User can import images via drag-and-drop onto the app
-- [ ] **IMPT-02**: User can import images via file dialog (JPEG, PNG, TIFF, HEIC)
+- [ ] **IMPT-02**: User can import images via file dialog (JPEG, PNG, TIFF fully supported; HEIC/HEIF accepted in dialog but shows graceful "not yet supported" message -- full HEIC decoding deferred to a later phase)
 - [ ] **IMPT-03**: Imported images are copied to project directory with thumbnails generated in Rust
 - [ ] **IMPT-04**: Image pool with LRU eviction prevents WebKit memory leaks (max 50 full-res)
 
