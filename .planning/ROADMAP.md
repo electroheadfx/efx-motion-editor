@@ -160,7 +160,7 @@ Phases execute in numeric order: 1 > 2 > 3 > 4 > 5 > 6 > 7 > 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Scaffolding | 3/3 | Complete   | 2026-03-02 |
-| 2. UI Shell & Image Pipeline | 0/0 | Not started | - |
+| 2. UI Shell & Image Pipeline | 1/3 | In Progress|  |
 | 3. Project & Sequence Management | 0/0 | Not started | - |
 | 4. Timeline & Preview | 0/0 | Not started | - |
 | 5. Layer System & Transforms | 0/0 | Not started | - |

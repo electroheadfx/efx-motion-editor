@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-02T19:57:56.194Z"
+last_updated: "2026-03-02T21:25:43Z"
 progress:
-  total_phases: 1
+  total_phases: 2
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
 ---
 
 # Project State
@@ -18,33 +18,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 1 complete (including gap closure). Next: Phase 2: UI Shell & Image Pipeline
+**Current focus:** Phase 2 in progress: UI Shell & Image Pipeline
 
 ## Current Position
 
-Phase: 1 of 8 (Foundation & Scaffolding) -- COMPLETE
-Plan: 3 of 3 in current phase (phase complete)
-Status: Phase 1 complete, ready for Phase 2
-Last activity: 2026-03-02 -- Completed 01-03-PLAN.md (asset protocol gap closure)
+Phase: 2 of 8 (UI Shell & Image Pipeline)
+Plan: 2 of 5 in current phase (02-02 complete)
+Status: Executing Phase 2
+Last activity: 2026-03-02 -- Completed 02-02-PLAN.md (image import pipeline)
 
-Progress: [▓▓░░░░░░░░] 13%
+Progress: [▓▓▓░░░░░░░] 17%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 20min
-- Total execution time: 1.0 hours
+- Total plans completed: 4
+- Average duration: 16min
+- Total execution time: 1.1 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1. Foundation | 3 | 60min | 20min |
+| 2. UI Shell & Image Pipeline | 1 | 4min | 4min |
 
 **Recent Trend:**
-- Last 5 plans: 7min, 45min, 8min
-- Trend: stabilizing (plan 3 was gap closure, fast execution)
+- Last 5 plans: 7min, 45min, 8min, 4min
+- Trend: accelerating (image pipeline plan executed quickly -- well-specified with minimal unknowns)
 
 *Updated after each plan completion*
 
@@ -55,6 +56,7 @@ Progress: [▓▓░░░░░░░░] 13%
 | Phase 01 P01 | 7min | 1 task | 12 files |
 | Phase 01 P02 | 45min | 2 tasks | 16 files |
 | Phase 01 P03 | 8min | 2 tasks | 5 files |
+| Phase 02 P02 | 4min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -74,6 +76,10 @@ Recent decisions affecting current work:
 - [01-02]: Signal updates in IPC handlers must use batch() to prevent computed dependency cycles
 - [01-03]: Test images for asset protocol go in src-tauri/resources/ (not src/assets/) to avoid Vite hashing; resolveResource() returns the absolute path at runtime
 - [01-03]: Asset loading pattern: resolveResource(relative) -> assetUrl(absolutePath) -> https://asset.localhost/ URL for img src
+- [02-02]: Tests included inline with service code (image_pool.rs) -- Rust convention
+- [02-02]: HEIC files accepted in dialog filter but return clear error -- graceful deferral to future phase
+- [02-02]: spawn_blocking pattern for CPU-intensive image work off Tauri main thread
+- [02-02]: Project directory structure: images/ for originals, images/.thumbs/ for thumbnails
 
 ### Pending Todos
 
@@ -87,5 +93,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 01-03-PLAN.md -- Phase 1 fully complete (including gap closure)
+Stopped at: Completed 02-02-PLAN.md -- image import pipeline with thumbnail generation
 Resume file: None
