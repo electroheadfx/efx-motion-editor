@@ -1,21 +1,16 @@
 /** @jsxImportSource @efxlab/motion-canvas-2d/lib */
-import {makeScene2D, Rect, Txt} from '@efxlab/motion-canvas-2d';
-import {waitFor} from '@efxlab/motion-canvas-core';
+import {makeScene2D, Img} from '@efxlab/motion-canvas-2d';
+import {createRef, waitFor} from '@efxlab/motion-canvas-core';
 
 export default makeScene2D(function* (view) {
+  const imageRef = createRef<Img>();
   view.add(
-    <Rect
+    <Img
+      ref={imageRef}
+      src="https://picsum.photos/600/400?random=1"
       width={1920}
       height={1080}
-      fill="#1a1a2e"
-    >
-      <Txt
-        text="EFX Motion Canvas"
-        fontSize={72}
-        fontFamily="Arial"
-        fill="#e0e0e0"
-      />
-    </Rect>,
+    />,
   );
   yield* waitFor(5);
 });
