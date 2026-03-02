@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.*
+
+# Caches
+.cache/
+*.tsbuildinfo
+
+# Tauri
+Application/src-tauri/target/
+Application/src-tauri/gen/
+
+# OS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
