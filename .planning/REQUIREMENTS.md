@@ -196,13 +196,91 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (Populated by roadmapper) | | |
+| FOUN-01 | Phase 1 | Pending |
+| FOUN-02 | Phase 1 | Pending |
+| FOUN-03 | Phase 1 | Pending |
+| FOUN-04 | Phase 1 | Pending |
+| FOUN-05 | Phase 1 | Pending |
+| FOUN-06 | Phase 1 | Pending |
+| UICV-01 | Phase 2 | Pending |
+| UICV-02 | Phase 2 | Pending |
+| UICV-03 | Phase 2 | Pending |
+| IMPT-01 | Phase 2 | Pending |
+| IMPT-02 | Phase 2 | Pending |
+| IMPT-03 | Phase 2 | Pending |
+| IMPT-04 | Phase 2 | Pending |
+| PROJ-01 | Phase 3 | Pending |
+| PROJ-02 | Phase 3 | Pending |
+| PROJ-03 | Phase 3 | Pending |
+| PROJ-04 | Phase 3 | Pending |
+| PROJ-05 | Phase 3 | Pending |
+| PROJ-06 | Phase 3 | Pending |
+| SEQN-01 | Phase 3 | Pending |
+| SEQN-02 | Phase 3 | Pending |
+| SEQN-03 | Phase 3 | Pending |
+| SEQN-04 | Phase 3 | Pending |
+| SEQN-05 | Phase 3 | Pending |
+| TIME-01 | Phase 4 | Pending |
+| TIME-02 | Phase 4 | Pending |
+| TIME-03 | Phase 4 | Pending |
+| TIME-04 | Phase 4 | Pending |
+| TIME-05 | Phase 4 | Pending |
+| TIME-06 | Phase 4 | Pending |
+| PREV-01 | Phase 4 | Pending |
+| PREV-02 | Phase 4 | Pending |
+| PREV-03 | Phase 4 | Pending |
+| PREV-04 | Phase 4 | Pending |
+| PREV-05 | Phase 4 | Pending |
+| LAYR-01 | Phase 5 | Pending |
+| LAYR-02 | Phase 5 | Pending |
+| LAYR-03 | Phase 5 | Pending |
+| LAYR-04 | Phase 5 | Pending |
+| LAYR-05 | Phase 5 | Pending |
+| LAYR-06 | Phase 5 | Pending |
+| LAYR-07 | Phase 5 | Pending |
+| LAYR-08 | Phase 5 | Pending |
+| TRAN-01 | Phase 5 | Pending |
+| TRAN-02 | Phase 5 | Pending |
+| TRAN-03 | Phase 5 | Pending |
+| TRAN-04 | Phase 5 | Pending |
+| PROP-01 | Phase 5 | Pending |
+| PROP-02 | Phase 5 | Pending |
+| PROP-03 | Phase 5 | Pending |
+| PROP-04 | Phase 5 | Pending |
+| EFXS-01 | Phase 6 | Pending |
+| EFXS-02 | Phase 6 | Pending |
+| EFXS-03 | Phase 6 | Pending |
+| EFXS-04 | Phase 6 | Pending |
+| EFXS-05 | Phase 6 | Pending |
+| EFXS-06 | Phase 6 | Pending |
+| AUDI-01 | Phase 7 | Pending |
+| AUDI-02 | Phase 7 | Pending |
+| AUDI-03 | Phase 7 | Pending |
+| AUDI-04 | Phase 7 | Pending |
+| AUDI-05 | Phase 7 | Pending |
+| BEAT-01 | Phase 7 | Pending |
+| BEAT-02 | Phase 7 | Pending |
+| BEAT-03 | Phase 7 | Pending |
+| BEAT-04 | Phase 7 | Pending |
+| EXPT-01 | Phase 8 | Pending |
+| EXPT-02 | Phase 8 | Pending |
+| EXPT-03 | Phase 8 | Pending |
+| EXPT-04 | Phase 8 | Pending |
+| EXPT-05 | Phase 8 | Pending |
+| UNDO-01 | Phase 8 | Pending |
+| UNDO-02 | Phase 8 | Pending |
+| UNDO-03 | Phase 8 | Pending |
+| KEYS-01 | Phase 8 | Pending |
+| KEYS-02 | Phase 8 | Pending |
+| KEYS-03 | Phase 8 | Pending |
+| KEYS-04 | Phase 8 | Pending |
+| KEYS-05 | Phase 8 | Pending |
 
 **Coverage:**
-- v1 requirements: 64 total
-- Mapped to phases: 0
-- Unmapped: 64
+- v1 requirements: 79 total
+- Mapped to phases: 79
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-02*
-*Last updated: 2026-03-02 after initial definition*
+*Last updated: 2026-03-02 after roadmap creation*
