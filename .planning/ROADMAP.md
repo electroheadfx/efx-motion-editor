@@ -33,11 +33,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Motion Canvas player renders a test scene (one image composited) inside the Preact app
   4. Signal stores (project, sequences, layers, timeline, ui, history) exist and UI reactively updates when store values change
   5. TypeScript types and Rust data models are defined and IPC invoke wrappers successfully call Rust commands and return typed responses
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Scaffold Tauri + Preact + Vite + Tailwind app with asset protocol, Rust models/commands, TypeScript types, and typed IPC wrappers
+- [ ] 01-02-PLAN.md — Embed Motion Canvas player with test scene, create all 6 signal stores, and verify foundation end-to-end on macOS
 
 ### Phase 2: UI Shell & Image Pipeline
 **Goal**: The full editor layout (all panels from the React prototype) running in Preact with Signals, and a working image import pipeline through Rust with thumbnail generation and memory-safe loading
@@ -157,7 +157,7 @@ Phases execute in numeric order: 1 > 2 > 3 > 4 > 5 > 6 > 7 > 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Scaffolding | 0/0 | Not started | - |
+| 1. Foundation & Scaffolding | 0/2 | Planned | - |
 | 2. UI Shell & Image Pipeline | 0/0 | Not started | - |
 | 3. Project & Sequence Management | 0/0 | Not started | - |
 | 4. Timeline & Preview | 0/0 | Not started | - |
