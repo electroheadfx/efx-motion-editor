@@ -9,6 +9,9 @@
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },
+  "bundle": {
+    "resources": ["resources/*"]
+  },
   "app": {
     "windows": [
       {

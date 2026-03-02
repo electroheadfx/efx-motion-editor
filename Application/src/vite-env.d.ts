@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+interface Window {
+  __TAURI_INTERNALS__?: Record<string, unknown>;
+}
+
 declare module '*.jpg' {
   const src: string;
   export default src;
