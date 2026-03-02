@@ -1,14 +1,6 @@
-import { useState } from 'preact/hooks';
-import testImageSrc from './assets/test-image.jpg';
-
-let assetUrl: ((path: string) => string) | null = null;
-try {
-  // convertFileSrc only works inside the Tauri runtime
-  const { convertFileSrc } = await import('@tauri-apps/api/core');
-  assetUrl = convertFileSrc;
-} catch {
-  // Running outside Tauri (e.g. plain browser dev) -- fall back to static imports
-}
+import {useState} from 'preact/hooks';
+import {Preview} from './components/Preview';
+import {projectStore} from './stores/projectStore';
 
 export function App() {
   const [ipcResult, setIpcResult] = useState<string | null>(null);
@@ -17,7 +9,7 @@ export function App() {
   const testIpc = async () => {
     setIpcLoading(true);
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
+      const {invoke} = await import('@tauri-apps/api/core');
       const result = await invoke('project_get_default');
       setIpcResult(JSON.stringify(result, null, 2));
     } catch (err) {
@@ -27,8 +19,17 @@ export function App() {
     }
   };
 
-  // Use asset protocol URL if available, otherwise fall back to bundled import
-  const imageSrc = assetUrl ? assetUrl(testImageSrc) : testImageSrc;
+  const handleChangeName = () => {
+    projectStore.setName(
+      projectStore.name.value === 'My Project'
+        ? 'Untitled Project'
+        : 'My Project',
+    );
+  };
+
+  const handleToggleFps = () => {
+    projectStore.setFps(projectStore.fps.value === 24 ? 15 : 24);
+  };
 
   return (
     <div class="min-h-screen bg-[var(--color-bg-root)] text-[var(--color-text-primary)] flex flex-col items-center justify-center gap-8 p-8">
@@ -36,14 +37,33 @@ export function App() {
         EFX Motion Editor
       </h1>
 
-      {/* Preview area placeholder */}
-      <div class="w-full max-w-3xl bg-black rounded-lg overflow-hidden">
-        <div class="aspect-video flex items-center justify-center">
-          <img
-            src={imageSrc}
-            alt="Test image via asset protocol"
-            class="max-w-full max-h-full object-contain"
-          />
+      {/* Motion Canvas Player Preview */}
+      <div class="w-full max-w-3xl">
+        <Preview />
+      </div>
+
+      {/* Signal Store Reactivity Demo */}
+      <div class="flex flex-col items-center gap-3">
+        <div class="text-[var(--color-text-secondary)] text-sm">
+          Project: <span class="text-[var(--color-text-white)] font-medium">{projectStore.name}</span>
+          {' | '}
+          FPS: <span class="text-[var(--color-text-white)] font-medium">{projectStore.fps}</span>
+          {' | '}
+          Resolution: <span class="text-[var(--color-text-white)] font-medium">{projectStore.width}x{projectStore.height}</span>
+        </div>
+        <div class="flex gap-3">
+          <button
+            onClick={handleChangeName}
+            class="px-4 py-2 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] text-[var(--color-text-primary)] rounded-md text-sm font-medium transition-colors"
+          >
+            Change Name
+          </button>
+          <button
+            onClick={handleToggleFps}
+            class="px-4 py-2 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] text-[var(--color-text-primary)] rounded-md text-sm font-medium transition-colors"
+          >
+            Toggle FPS
+          </button>
         </div>
       </div>
 
