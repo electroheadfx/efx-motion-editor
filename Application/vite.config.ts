@@ -1,14 +1,20 @@
 import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 import tailwindcss from '@tailwindcss/vite';
-import motionCanvas from '@efxlab/motion-canvas-vite-plugin';
+import motionCanvasModule from '@efxlab/motion-canvas-vite-plugin';
+
+// CJS interop: handle both { default: fn } namespace and direct fn
+const motionCanvas =
+  typeof motionCanvasModule === 'function'
+    ? motionCanvasModule
+    : (motionCanvasModule as any).default;
 
 export default defineConfig({
   plugins: [
     // Preact preset MUST come first to set default JSX runtime to Preact
     preact(),
     tailwindcss(),
-    // Motion Canvas plugin adds scene/project transforms; spread because it returns array
+    // Motion Canvas plugin returns array of Vite plugins
     ...motionCanvas({
       project: './src/project.ts',
     }),
