@@ -12,8 +12,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **FOUN-01**: Tauri 2.0 + Preact + Vite + Tailwind v4 scaffold builds and runs on macOS
 - [x] **FOUN-02**: Rust backend IPC bridge with type-safe invoke wrappers
 - [x] **FOUN-03**: Asset protocol configured for image loading (no binary IPC)
-- [ ] **FOUN-04**: Motion Canvas player embeds in Preact app and renders a test scene
-- [ ] **FOUN-05**: Signal stores established (project, sequences, layers, timeline, ui, history)
+- [x] **FOUN-04**: Motion Canvas player embeds in Preact app and renders a test scene
+- [x] **FOUN-05**: Signal stores established (project, sequences, layers, timeline, ui, history)
 - [x] **FOUN-06**: TypeScript types mirror Rust data models
 
 ### Project Management
@@ -199,8 +199,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FOUN-01 | Phase 1 | Complete |
 | FOUN-02 | Phase 1 | Complete |
 | FOUN-03 | Phase 1 | Complete |
-| FOUN-04 | Phase 1 | Pending |
-| FOUN-05 | Phase 1 | Pending |
+| FOUN-04 | Phase 1 | Complete |
+| FOUN-05 | Phase 1 | Complete |
 | FOUN-06 | Phase 1 | Complete |
 | UICV-01 | Phase 2 | Pending |
 | UICV-02 | Phase 2 | Pending |
