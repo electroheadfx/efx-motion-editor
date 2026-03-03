@@ -1,5 +1,20 @@
 # Milestones
 
+## v2.0 Production Tool (In Progress)
+
+**Phases:** 6 (Phases 5-10) | **Requirements:** 59
+**Goal:** Transform EFX-Motion from an editing foundation into a complete production tool with compositing, audio-to-motion pipeline, and export.
+
+**Planned phases:**
+1. Phase 5: Editing Infrastructure (undo/redo, shortcuts, store bug fixes)
+2. Phase 6: Layer System & Properties Panel (compositing foundation)
+3. Phase 7: Cinematic FX Effects (grain, vignette, color grade, dirt, light leaks)
+4. Phase 8: Audio Import & Waveform (Web Audio API, timeline waveform)
+5. Phase 9: Beat Sync (BPM detection, beat markers, auto-arrange)
+6. Phase 10: PNG Export (composited frame export, progress, metadata)
+
+---
+
 ## v1.0 MVP (Shipped: 2026-03-03)
 
 **Phases:** 5 (Phases 1-4, 3.1) | **Plans:** 13 | **Tasks:** 25
@@ -26,4 +41,3 @@
 **Archives:** `milestones/v1.0-ROADMAP.md`, `milestones/v1.0-REQUIREMENTS.md`, `milestones/v1.0-MILESTONE-AUDIT.md`
 
 ---
-

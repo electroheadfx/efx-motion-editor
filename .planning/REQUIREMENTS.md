@@ -133,13 +133,71 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmapper) | | |
+| INFRA-01 | Phase 5 | Pending |
+| INFRA-02 | Phase 5 | Pending |
+| INFRA-03 | Phase 5 | Pending |
+| INFRA-04 | Phase 5 | Pending |
+| INFRA-05 | Phase 5 | Pending |
+| KEY-01 | Phase 5 | Pending |
+| KEY-02 | Phase 5 | Pending |
+| KEY-03 | Phase 5 | Pending |
+| KEY-04 | Phase 5 | Pending |
+| KEY-05 | Phase 5 | Pending |
+| KEY-06 | Phase 5 | Pending |
+| KEY-07 | Phase 5 | Pending |
+| KEY-08 | Phase 5 | Pending |
+| LAYER-01 | Phase 6 | Pending |
+| LAYER-02 | Phase 6 | Pending |
+| LAYER-03 | Phase 6 | Pending |
+| LAYER-04 | Phase 6 | Pending |
+| LAYER-05 | Phase 6 | Pending |
+| LAYER-06 | Phase 6 | Pending |
+| LAYER-07 | Phase 6 | Pending |
+| LAYER-08 | Phase 6 | Pending |
+| LAYER-09 | Phase 6 | Pending |
+| LAYER-10 | Phase 6 | Pending |
+| LAYER-11 | Phase 6 | Pending |
+| LAYER-12 | Phase 6 | Pending |
+| LAYER-13 | Phase 6 | Pending |
+| LAYER-14 | Phase 6 | Pending |
+| PROP-01 | Phase 6 | Pending |
+| PROP-02 | Phase 6 | Pending |
+| PROP-03 | Phase 6 | Pending |
+| PROP-04 | Phase 6 | Pending |
+| FX-01 | Phase 7 | Pending |
+| FX-02 | Phase 7 | Pending |
+| FX-03 | Phase 7 | Pending |
+| FX-04 | Phase 7 | Pending |
+| FX-05 | Phase 7 | Pending |
+| FX-06 | Phase 7 | Pending |
+| FX-07 | Phase 7 | Pending |
+| FX-08 | Phase 7 | Pending |
+| FX-09 | Phase 7 | Pending |
+| FX-10 | Phase 7 | Pending |
+| AUDIO-01 | Phase 8 | Pending |
+| AUDIO-02 | Phase 8 | Pending |
+| AUDIO-03 | Phase 8 | Pending |
+| AUDIO-04 | Phase 8 | Pending |
+| AUDIO-05 | Phase 8 | Pending |
+| AUDIO-06 | Phase 8 | Pending |
+| AUDIO-07 | Phase 8 | Pending |
+| BEAT-01 | Phase 9 | Pending |
+| BEAT-02 | Phase 9 | Pending |
+| BEAT-03 | Phase 9 | Pending |
+| BEAT-04 | Phase 9 | Pending |
+| BEAT-05 | Phase 9 | Pending |
+| EXPORT-01 | Phase 10 | Pending |
+| EXPORT-02 | Phase 10 | Pending |
+| EXPORT-03 | Phase 10 | Pending |
+| EXPORT-04 | Phase 10 | Pending |
+| EXPORT-05 | Phase 10 | Pending |
+| EXPORT-06 | Phase 10 | Pending |
 
 **Coverage:**
-- v2.0 requirements: 44 total
-- Mapped to phases: 0
-- Unmapped: 44
+- v2.0 requirements: 59 total
+- Mapped to phases: 59
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-03*
-*Last updated: 2026-03-03 after initial definition*
+*Last updated: 2026-03-03 after roadmap creation*
