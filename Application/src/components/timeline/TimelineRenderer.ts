@@ -18,6 +18,13 @@ const TRACK_NAME_COLOR = '#999999';
 const PLACEHOLDER_BG_A = '#1A1A2A';
 const PLACEHOLDER_BG_B = '#1A2A1A';
 const PLAYHEAD_TRIANGLE_SIZE = 6;
+const DROP_INDICATOR_COLOR = '#4488FF';
+
+export interface DragState {
+  fromIndex: number;
+  toIndex: number;
+  currentY: number;
+}
 
 export interface DrawState {
   frame: number;
@@ -42,6 +49,7 @@ export class TimelineRenderer {
   private dpr = 1;
   private thumbnailCache: ThumbnailCache;
   private lastState: DrawState | null = null;
+  private dragState: DragState | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -180,6 +188,40 @@ export class TimelineRenderer {
       trackY += TRACK_HEIGHT;
     }
 
+    // 2b. Draw drag visual feedback (drop indicator line)
+    if (this.dragState) {
+      const {fromIndex, toIndex, currentY} = this.dragState;
+      const canvasRect = this.canvas.getBoundingClientRect();
+
+      // Draw drop indicator line between tracks
+      const dropY = RULER_HEIGHT + toIndex * TRACK_HEIGHT;
+      ctx.fillStyle = DROP_INDICATOR_COLOR;
+      ctx.fillRect(0, dropY - 1, w, 2);
+
+      // Draw ghost of the dragged track at current mouse Y position
+      const ghostY = currentY - canvasRect.top - TRACK_HEIGHT / 2;
+      ctx.globalAlpha = 0.4;
+
+      // Ghost track header
+      ctx.fillStyle = TRACK_HEADER_BG;
+      ctx.fillRect(0, ghostY, TRACK_HEADER_WIDTH, TRACK_HEIGHT);
+      if (fromIndex < tracks.length) {
+        const ghostTrack = tracks[fromIndex];
+        ctx.fillStyle = TRACK_NAME_COLOR;
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textBaseline = 'middle';
+        const ghostName = ghostTrack.sequenceName || `Seq ${fromIndex + 1}`;
+        const truncGhost = this.truncateText(ctx, ghostName, TRACK_HEADER_WIDTH - 12);
+        ctx.fillText(truncGhost, 6, ghostY + TRACK_HEIGHT / 2);
+      }
+
+      // Ghost track background
+      ctx.fillStyle = TRACK_BG;
+      ctx.fillRect(TRACK_HEADER_WIDTH, ghostY, w - TRACK_HEADER_WIDTH, TRACK_HEIGHT);
+
+      ctx.globalAlpha = 1.0;
+    }
+
     // 3. Draw playhead line (spans full height)
     const playheadX = frame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
     if (playheadX >= TRACK_HEADER_WIDTH && playheadX <= w) {
@@ -259,6 +301,14 @@ export class TimelineRenderer {
   /** Get the display width (CSS pixels) */
   getDisplayWidth(): number {
     return this.displayWidth;
+  }
+
+  /** Set drag state for track reorder visual feedback */
+  setDragState(state: DragState | null) {
+    this.dragState = state;
+    if (this.lastState) {
+      this.draw(this.lastState);
+    }
   }
 
   /** Clean up resources */

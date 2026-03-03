@@ -1,6 +1,8 @@
 import {timelineStore} from '../../stores/timelineStore';
 import {playbackEngine} from '../../lib/playbackEngine';
-import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH} from './TimelineRenderer';
+import {sequenceStore} from '../../stores/sequenceStore';
+import {trackLayouts} from '../../lib/frameMap';
+import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
 
 /**
@@ -12,11 +14,16 @@ import type {TimelineRenderer} from './TimelineRenderer';
  * - Wheel zoom with cursor anchoring (TIME-04)
  * - Horizontal scroll
  * - macOS pinch-to-zoom
+ * - Track header drag-and-drop for sequence reorder (TIME-06)
  */
 export class TimelineInteraction {
   private canvas: HTMLCanvasElement | null = null;
   private renderer: TimelineRenderer | null = null;
   private isDragging = false;
+
+  // Track header drag state (TIME-06)
+  private isDraggingTrack = false;
+  private dragTrackIndex = -1;
 
   // Bound handlers for cleanup
   private handleMouseDown = this.onMouseDown.bind(this);
@@ -76,13 +83,55 @@ export class TimelineInteraction {
     return Math.abs(clientX - playheadX) <= 5;
   }
 
-  // --- Click-to-seek (TIME-02) and playhead drag start ---
+  /** Compute track index from clientY position */
+  private trackIndexFromY(clientY: number): number {
+    if (!this.canvas) return -1;
+    const rect = this.canvas.getBoundingClientRect();
+    const y = clientY - rect.top - RULER_HEIGHT;
+    if (y < 0) return -1;
+    return Math.floor(y / TRACK_HEIGHT);
+  }
+
+  /** Compute drop index for track reorder (insertion point between tracks) */
+  private dropIndexFromY(clientY: number): number {
+    if (!this.canvas) return 0;
+    const rect = this.canvas.getBoundingClientRect();
+    const y = clientY - rect.top - RULER_HEIGHT;
+    const trackCount = trackLayouts.peek().length;
+    const idx = Math.round(y / TRACK_HEIGHT);
+    return Math.max(0, Math.min(idx, trackCount));
+  }
+
+  // --- Click-to-seek (TIME-02), playhead drag start, and track header drag ---
   private onMouseDown(e: MouseEvent) {
     if (!this.canvas) return;
 
-    // Check if the click is in the header area -- ignore
     const rect = this.canvas.getBoundingClientRect();
-    if (e.clientX - rect.left < TRACK_HEADER_WIDTH) return;
+    const localX = e.clientX - rect.left;
+
+    // Check if the click is in the track header area (TIME-06: sequence reorder)
+    if (localX < TRACK_HEADER_WIDTH) {
+      const trackIndex = this.trackIndexFromY(e.clientY);
+      const tracks = trackLayouts.peek();
+
+      // Only start drag if valid track and more than one sequence
+      if (trackIndex >= 0 && trackIndex < tracks.length && tracks.length > 1) {
+        this.isDraggingTrack = true;
+        this.dragTrackIndex = trackIndex;
+        this.canvas.style.cursor = 'grabbing';
+        this.canvas.setPointerCapture((e as unknown as PointerEvent).pointerId ?? 0);
+
+        // Set initial drag visual state
+        if (this.renderer) {
+          this.renderer.setDragState({
+            fromIndex: trackIndex,
+            toIndex: trackIndex,
+            currentY: e.clientY,
+          });
+        }
+      }
+      return;
+    }
 
     if (this.isOnPlayhead(e.clientX)) {
       // Start playhead drag (TIME-03)
@@ -95,14 +144,75 @@ export class TimelineInteraction {
     }
   }
 
-  // --- Playhead scrubbing (TIME-03) ---
+  // --- Playhead scrubbing (TIME-03) and track header drag (TIME-06) ---
   private onMouseMove(e: MouseEvent) {
-    if (!this.isDragging) return;
-    const frame = this.getFrame(e.clientX);
-    playbackEngine.seekToFrame(frame);
+    // Track header dragging
+    if (this.isDraggingTrack) {
+      const dropIndex = this.dropIndexFromY(e.clientY);
+      if (this.renderer) {
+        this.renderer.setDragState({
+          fromIndex: this.dragTrackIndex,
+          toIndex: dropIndex,
+          currentY: e.clientY,
+        });
+      }
+      return;
+    }
+
+    // Playhead scrubbing
+    if (this.isDragging) {
+      const frame = this.getFrame(e.clientX);
+      playbackEngine.seekToFrame(frame);
+      return;
+    }
+
+    // Cursor hint: show grab cursor when hovering over track headers
+    if (this.canvas) {
+      const rect = this.canvas.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
+      const trackIndex = this.trackIndexFromY(e.clientY);
+      const tracks = trackLayouts.peek();
+      if (localX < TRACK_HEADER_WIDTH && trackIndex >= 0 && trackIndex < tracks.length && tracks.length > 1) {
+        this.canvas.style.cursor = 'grab';
+      } else {
+        this.canvas.style.cursor = 'default';
+      }
+    }
   }
 
   private onMouseUp(_e: MouseEvent) {
+    // Track header drop (TIME-06)
+    if (this.isDraggingTrack) {
+      const dropIndex = this.dropIndexFromY(_e.clientY);
+      // Compute effective target index for reorderSequences
+      // dropIndex is the insertion point; if dropping below the dragged track, adjust
+      const fromIndex = this.dragTrackIndex;
+      let toIndex = dropIndex;
+      if (toIndex > fromIndex) {
+        toIndex -= 1; // Account for the removed item shifting indices down
+      }
+
+      if (toIndex !== fromIndex) {
+        sequenceStore.reorderSequences(fromIndex, toIndex);
+      }
+
+      this.isDraggingTrack = false;
+      this.dragTrackIndex = -1;
+      if (this.renderer) {
+        this.renderer.setDragState(null);
+      }
+      if (this.canvas) {
+        this.canvas.style.cursor = 'default';
+        try {
+          this.canvas.releasePointerCapture((_e as unknown as PointerEvent).pointerId ?? 0);
+        } catch {
+          // Pointer capture may not be active
+        }
+      }
+      return;
+    }
+
+    // Playhead drag end
     if (this.isDragging) {
       this.isDragging = false;
       if (this.canvas && (_e as unknown as PointerEvent).pointerId !== undefined) {
