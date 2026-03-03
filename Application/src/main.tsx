@@ -5,11 +5,13 @@ import {App} from './app';
 import {initTempProjectDir} from './lib/projectDir';
 import {startAutoSave} from './lib/autoSave';
 import {guardUnsavedChanges} from './lib/unsavedGuard';
+import {mountShortcuts} from './lib/shortcuts';
 
 // Resolve temp project dir from Tauri's app data path before rendering
 initTempProjectDir().then(() => {
   render(<App />, document.getElementById('app')!);
   startAutoSave();
+  mountShortcuts(); // Mount keyboard shortcuts globally
 
   // Guard window close: show unsaved-changes dialog and prevent close on Cancel
   getCurrentWindow().onCloseRequested(async (event) => {

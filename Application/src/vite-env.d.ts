@@ -23,3 +23,12 @@ declare module '*?scene' {
   const scene: any;
   export default scene;
 }
+
+// tinykeys v3 exports field doesn't include a "types" condition
+declare module 'tinykeys' {
+  export function tinykeys(
+    target: Window | HTMLElement,
+    keyBindingMap: Record<string, (event: KeyboardEvent) => void>,
+    options?: {event?: string; timeout?: number},
+  ): () => void;
+}

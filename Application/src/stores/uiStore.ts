@@ -6,6 +6,8 @@ const selectedLayerId = signal<string | null>(null);
 const selectedPanel = signal<PanelId | null>(null);
 const sidebarWidth = signal(240);
 const propertiesPanelWidth = signal(280);
+const shortcutsOverlayOpen = signal(false);
+const showNewProjectDialog = signal(false);
 
 export const uiStore = {
   selectedSequenceId,
@@ -13,6 +15,8 @@ export const uiStore = {
   selectedPanel,
   sidebarWidth,
   propertiesPanelWidth,
+  shortcutsOverlayOpen,
+  showNewProjectDialog,
 
   selectSequence(id: string | null) {
     selectedSequenceId.value = id;
@@ -29,11 +33,21 @@ export const uiStore = {
   setPropertiesPanelWidth(w: number) {
     propertiesPanelWidth.value = w;
   },
+
+  toggleShortcutsOverlay() {
+    shortcutsOverlayOpen.value = !shortcutsOverlayOpen.value;
+  },
+  closeShortcutsOverlay() {
+    shortcutsOverlayOpen.value = false;
+  },
+
   reset() {
     selectedSequenceId.value = null;
     selectedLayerId.value = null;
     selectedPanel.value = null;
     sidebarWidth.value = 240;
     propertiesPanelWidth.value = 280;
+    shortcutsOverlayOpen.value = false;
+    showNewProjectDialog.value = false;
   },
 };

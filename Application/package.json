@@ -19,7 +19,8 @@
     "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-store": "^2.4.2",
     "preact": "^10.28.4",
-    "sortablejs": "^1.15.7"
+    "sortablejs": "^1.15.7",
+    "tinykeys": "^3.0.0"
   },
   "devDependencies": {
     "@efxlab/motion-canvas-ui": "4.0.0",
