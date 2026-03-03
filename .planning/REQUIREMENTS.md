@@ -21,8 +21,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **PROJ-01**: User can create a new project with name and frame rate (15/24 fps)
 - [x] **PROJ-02**: User can save project to .mce file (JSON-based)
 - [x] **PROJ-03**: User can open existing .mce project files
-- [ ] **PROJ-04**: Project auto-saves on interval and significant actions
-- [ ] **PROJ-05**: User can access recent projects list on launch
+- [x] **PROJ-04**: Project auto-saves on interval and significant actions
+- [x] **PROJ-05**: User can access recent projects list on launch
 - [x] **PROJ-06**: Global app config persists between sessions (window size, last project, preferences)
 
 ### Image Import
@@ -212,8 +212,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROJ-01 | Phase 3 | Complete |
 | PROJ-02 | Phase 3 | Complete |
 | PROJ-03 | Phase 3 | Complete |
-| PROJ-04 | Phase 3 | Pending |
-| PROJ-05 | Phase 3 | Pending |
+| PROJ-04 | Phase 3 | Complete |
+| PROJ-05 | Phase 3 | Complete |
 | PROJ-06 | Phase 3 | Complete |
 | SEQN-01 | Phase 3 | Complete |
 | SEQN-02 | Phase 3 | Complete |

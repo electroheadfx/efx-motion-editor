@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-03T10:39:01Z"
+last_updated: "2026-03-03T10:44:27Z"
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -22,19 +22,19 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 
 ## Current Position
 
-Phase: 3 of 8 (Project & Sequence Management) -- IN PROGRESS
-Plan: 2 of 3 complete (03-01, 03-03). Next: 03-02.
-Status: 03-03 complete. Sequence management UI with drag-drop, CRUD, per-sequence settings.
-Last activity: 2026-03-03 -- Completed 03-03 (sequence management UI)
+Phase: 3 of 8 (Project & Sequence Management) -- COMPLETE
+Plan: 3 of 3 complete (03-01, 03-02, 03-03). Next phase: 04.
+Status: Phase 3 complete. Full project management UI, auto-save, sequence CRUD with drag-drop.
+Last activity: 2026-03-03 -- Completed 03-02 (project management UI, auto-save, routing)
 
-Progress: [▓▓▓▓▓▓▓░░░] 35%
+Progress: [▓▓▓▓▓▓▓▓░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 16min
-- Total execution time: 2.2 hours
+- Total plans completed: 9
+- Average duration: 15min
+- Total execution time: 2.3 hours
 
 **By Phase:**
 
@@ -42,10 +42,10 @@ Progress: [▓▓▓▓▓▓▓░░░] 35%
 |-------|-------|-------|----------|
 | 1. Foundation | 3 | 60min | 20min |
 | 2. UI Shell & Image Pipeline | 3 | 55min | 18min |
-| 3. Project & Sequence Mgmt | 2/3 | 11min | 6min |
+| 3. Project & Sequence Mgmt | 3/3 | 19min | 6min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 8min, 4min, 6min, 45min
+- Last 5 plans: 8min, 3min, 8min, 4min, 6min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -61,6 +61,7 @@ Progress: [▓▓▓▓▓▓▓░░░] 35%
 | Phase 02 P02 | 4min | 2 tasks | 12 files |
 | Phase 02 P03 | 45min | 3 tasks | 10 files |
 | Phase 03 P01 | 8min | 2 tasks | 16 files |
+| Phase 03 P02 | 8min | 2 tasks | 14 files |
 | Phase 03 P03 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
@@ -97,6 +98,10 @@ Recent decisions affecting current work:
 - [03-03]: SortableJS onEnd updates store signal; Preact re-renders with correct order from new array reference
 - [03-03]: Layer mock data kept in LeftPanel with Phase 5 TODO for visual completeness
 - [03-03]: Per-sequence resolution uses dropdown with common presets (1920x1080, 1280x720, 3840x2160)
+- [03-02]: Auto-save only fires when filePath is set; unsaved projects use temp dir as recovery
+- [03-02]: App routing uses computed on projectStore.dirPath to determine project-open state
+- [03-02]: Temp image migration handled Rust-side with rename-first, copy+delete fallback
+- [03-02]: Asset protocol scope expanded Rust-side on project_create and project_open
 
 ### Pending Todos
 
@@ -110,5 +115,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 03-03-PLAN.md -- sequence management UI with full CRUD, drag-drop, per-sequence settings. Ready for 03-02.
+Stopped at: Completed 03-02-PLAN.md -- project management UI, auto-save, signal-based routing. Phase 3 fully complete. Ready for Phase 4.
 Resume file: None
