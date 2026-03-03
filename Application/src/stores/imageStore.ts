@@ -1,5 +1,6 @@
 import {signal, computed, batch} from '@preact/signals';
 import type {ImportedImage} from '../types/image';
+import type {MceImageRef} from '../types/project';
 import {importImages as ipcImportImages, assetUrl} from '../lib/ipc';
 
 const POOL_MAX = 50;
@@ -109,6 +110,53 @@ export const imageStore = {
   /** Get an image by ID */
   getById(id: string): ImportedImage | undefined {
     return images.value.find((img) => img.id === id);
+  },
+
+  /** Load images from MceImageRef array (for project open hydration).
+   *  Converts relative paths to absolute using the project root. */
+  loadFromMceImages(mceImages: MceImageRef[], projectRoot: string) {
+    const root = projectRoot.endsWith('/') ? projectRoot.slice(0, -1) : projectRoot;
+    const imported: ImportedImage[] = mceImages.map((ref) => ({
+      id: ref.id,
+      original_path: ref.original_filename,
+      project_path: `${root}/${ref.relative_path}`,
+      thumbnail_path: `${root}/${ref.thumbnail_relative_path}`,
+      width: ref.width,
+      height: ref.height,
+      format: ref.format,
+    }));
+    batch(() => {
+      images.value = imported;
+      fullResLoaded.value = new Map();
+    });
+  },
+
+  /** Convert current images to MceImageRef array (for project save).
+   *  Makes paths relative by stripping the project root prefix. */
+  toMceImages(projectRoot: string): MceImageRef[] {
+    const root = projectRoot.endsWith('/') ? projectRoot : `${projectRoot}/`;
+    return images.value.map((img) => ({
+      id: img.id,
+      original_filename: img.original_path.split('/').pop() ?? img.original_path,
+      relative_path: img.project_path.startsWith(root)
+        ? img.project_path.slice(root.length)
+        : img.project_path,
+      thumbnail_relative_path: img.thumbnail_path.startsWith(root)
+        ? img.thumbnail_path.slice(root.length)
+        : img.thumbnail_path,
+      width: img.width,
+      height: img.height,
+      format: img.format,
+    }));
+  },
+
+  /** Update image paths after project dir migration (temp -> real project) */
+  updateProjectPaths(oldRoot: string, newRoot: string) {
+    images.value = images.value.map((img) => ({
+      ...img,
+      project_path: img.project_path.replace(oldRoot, newRoot),
+      thumbnail_path: img.thumbnail_path.replace(oldRoot, newRoot),
+    }));
   },
 
   /** Reset store */

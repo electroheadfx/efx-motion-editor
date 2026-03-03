@@ -17,6 +17,7 @@ pub fn run() {
             project::project_create,
             project::project_save,
             project::project_open,
+            project::project_migrate_temp_images,
             image::image_get_info,
             image::import_images,
         ])

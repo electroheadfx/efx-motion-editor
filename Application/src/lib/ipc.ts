@@ -40,6 +40,10 @@ export async function projectOpen(filePath: string): Promise<Result<MceProject>>
   return safeInvoke<MceProject>('project_open', { filePath });
 }
 
+export async function projectMigrateTempImages(tempDir: string, projectDir: string): Promise<Result<string[]>> {
+  return safeInvoke<string[]>('project_migrate_temp_images', { tempDir, projectDir });
+}
+
 // --- Image commands ---
 export async function imageGetInfo(path: string): Promise<Result<ImageInfo>> {
   return safeInvoke<ImageInfo>('image_get_info', { path });
