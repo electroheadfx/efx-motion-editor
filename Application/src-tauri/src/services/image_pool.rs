@@ -101,11 +101,22 @@ pub fn process_image(source_path: &str, project_dir: &str) -> Result<ImportedIma
         .save(&thumb_path)
         .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
 
+    // Canonicalize paths to resolve symlinks (e.g. /tmp -> /private/tmp on macOS)
+    // so the Tauri asset protocol can match them against its scope
+    let canonical_dest = fs::canonicalize(&dest)
+        .unwrap_or(dest)
+        .to_string_lossy()
+        .into_owned();
+    let canonical_thumb = fs::canonicalize(&thumb_path)
+        .unwrap_or(thumb_path)
+        .to_string_lossy()
+        .into_owned();
+
     Ok(ImportedImage {
         id,
         original_path: source_path.to_string(),
-        project_path: dest.to_string_lossy().into_owned(),
-        thumbnail_path: thumb_path.to_string_lossy().into_owned(),
+        project_path: canonical_dest,
+        thumbnail_path: canonical_thumb,
         width,
         height,
         format: ext.to_lowercase(),
