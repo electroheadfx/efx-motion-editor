@@ -14,7 +14,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Scaffolding** - Tauri + Preact + Motion Canvas scaffold with validated integrations and signal stores
 - [x] **Phase 2: UI Shell & Image Pipeline** - Convert React prototype to Preact and establish the image import pipeline
-- [ ] **Phase 3: Project & Sequence Management** - Create, save, open projects and manage sequences with key photos
+- [x] **Phase 3: Project & Sequence Management** - Create, save, open projects and manage sequences with key photos
+- [ ] **Phase 3.1: Fix Cross-Phase Integration Wiring** - INSERTED: Close audit gaps (thumbnail dir mismatch, auto-save signal wiring, uiStore sync)
 - [ ] **Phase 4: Timeline & Preview** - Canvas-based timeline with playback and real-time preview
 - [ ] **Phase 5: Layer System & Transforms** - Multi-layer compositing with blend modes, transforms, and properties panel
 - [ ] **Phase 6: Built-in FX Effects** - Cinematic effects (grain, dirt, light leaks, vignette, color grade) via Motion Canvas
@@ -73,6 +74,20 @@ Plans:
 - [ ] 03-01-PLAN.md -- Rust backend for project persistence (.mce format), Tauri plugin setup (store, fs), TypeScript types/IPC, AppConfig module (PROJ-01, PROJ-02, PROJ-03, PROJ-06)
 - [ ] 03-02-PLAN.md -- Frontend project management UI: WelcomeScreen, NewProjectDialog, toolbar wiring, auto-save, app routing (PROJ-04, PROJ-05)
 - [ ] 03-03-PLAN.md -- Sequence management: full CRUD, SortableJS drag reorder, key photo strip, per-sequence settings (SEQN-01, SEQN-02, SEQN-03, SEQN-04, SEQN-05)
+
+### Phase 3.1: Fix Cross-Phase Integration Wiring
+**Goal**: Close all integration gaps found by v1.0 milestone audit — thumbnail directory mismatch, auto-save signal wiring, and uiStore selection sync
+**Depends on**: Phase 3
+**Requirements**: IMPT-03, PROJ-02, PROJ-03, PROJ-04, SEQN-01
+**Gap Closure:** Closes gaps from v1.0-MILESTONE-AUDIT.md
+**Success Criteria** (what must be TRUE):
+  1. Thumbnails survive temp-to-real project migration (image_pool.rs and project_io.rs agree on `.thumbs` directory)
+  2. Importing images triggers auto-save (imageStore.images in effect subscription)
+  3. Opening a project syncs uiStore.selectedSequenceId with sequenceStore.activeSequenceId
+**Plans**: TBD
+
+Plans:
+- [ ] 03.1-01-PLAN.md — Fix thumbnail dir, auto-save wiring, and uiStore sync (IMPT-03, PROJ-02, PROJ-03, PROJ-04, SEQN-01)
 
 ### Phase 4: Timeline & Preview
 **Goal**: Users can see their sequences on a visual timeline with frame thumbnails, scrub through with a playhead, and watch real-time playback in the preview canvas at the project frame rate
@@ -156,13 +171,14 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 > 2 > 3 > 4 > 5 > 6 > 7 > 8
+Phases execute in numeric order: 1 > 2 > 3 > 3.1 > 4 > 5 > 6 > 7 > 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Scaffolding | 3/3 | Complete   | 2026-03-02 |
 | 2. UI Shell & Image Pipeline | 3/3 | Complete | 2026-03-03 |
-| 3. Project & Sequence Management | 0/0 | Not started | - |
+| 3. Project & Sequence Management | 3/3 | Complete | 2026-03-03 |
+| 3.1. Fix Cross-Phase Integration Wiring | 0/1 | Not started | - |
 | 4. Timeline & Preview | 0/0 | Not started | - |
 | 5. Layer System & Transforms | 0/0 | Not started | - |
 | 6. Built-in FX Effects | 0/0 | Not started | - |
