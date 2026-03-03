@@ -66,6 +66,61 @@ pub fn make_absolute(rel_path: &str, project_root: &str) -> String {
     format!("{}/{}", root, rel_path)
 }
 
+/// Move images/ and images/.thumbs/ from temp_dir to project_dir.
+/// Returns a list of migrated file names (for path updating).
+/// Uses fs::rename for same-volume (fast), falls back to copy+delete for cross-volume.
+pub fn migrate_temp_images(temp_dir: &str, project_dir: &str) -> Result<Vec<String>, String> {
+    let src_images = Path::new(temp_dir).join("images");
+    let dst_images = Path::new(project_dir).join("images");
+
+    if !src_images.exists() {
+        return Ok(vec![]); // Nothing to migrate
+    }
+
+    // Ensure destination dirs exist
+    fs::create_dir_all(dst_images.join(".thumbs"))
+        .map_err(|e| format!("Failed to create images dir: {e}"))?;
+
+    let mut migrated = vec![];
+
+    // Move each file from src_images to dst_images (skip .thumbs dir itself)
+    for entry in fs::read_dir(&src_images).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() && path.file_name().map_or(false, |n| n == ".thumbs") {
+            // Handle .thumbs subdirectory
+            for thumb_entry in fs::read_dir(&path).map_err(|e| e.to_string())? {
+                let thumb_entry = thumb_entry.map_err(|e| e.to_string())?;
+                let thumb_src = thumb_entry.path();
+                if thumb_src.is_file() {
+                    let fname = thumb_src.file_name().unwrap().to_string_lossy().to_string();
+                    let thumb_dst = dst_images.join(".thumbs").join(&fname);
+                    move_file(&thumb_src, &thumb_dst)?;
+                }
+            }
+        } else if path.is_file() {
+            let fname = path.file_name().unwrap().to_string_lossy().to_string();
+            let dst = dst_images.join(&fname);
+            move_file(&path, &dst)?;
+            migrated.push(fname);
+        }
+    }
+
+    Ok(migrated)
+}
+
+/// Move a file: try rename first (fast, same volume), fall back to copy+delete (cross-volume).
+fn move_file(src: &Path, dst: &Path) -> Result<(), String> {
+    match fs::rename(src, dst) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            fs::copy(src, dst).map_err(|e| format!("Copy failed: {e}"))?;
+            fs::remove_file(src).map_err(|e| format!("Remove after copy failed: {e}"))?;
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
