@@ -34,10 +34,10 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 
 ### Properties Panel
 
-- [ ] **PROP-01**: Properties panel shows controls for the currently selected layer
-- [ ] **PROP-02**: Properties panel shows blend mode dropdown, opacity slider, and visibility toggle for any layer
-- [ ] **PROP-03**: Properties panel shows transform controls (position, scale, rotation, crop) for the selected layer
-- [ ] **PROP-04**: Properties panel shows effect-specific parameters when an FX layer is selected
+- [x] **PROP-01**: Properties panel shows controls for the currently selected layer
+- [x] **PROP-02**: Properties panel shows blend mode dropdown, opacity slider, and visibility toggle for any layer
+- [x] **PROP-03**: Properties panel shows transform controls (position, scale, rotation, crop) for the selected layer
+- [x] **PROP-04**: Properties panel shows effect-specific parameters when an FX layer is selected
 
 ### FX Effects
 
@@ -160,10 +160,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LAYER-12 | Phase 6 | Complete |
 | LAYER-13 | Phase 6 | Complete |
 | LAYER-14 | Phase 6 | Complete |
-| PROP-01 | Phase 6 | Pending |
-| PROP-02 | Phase 6 | Pending |
-| PROP-03 | Phase 6 | Pending |
-| PROP-04 | Phase 6 | Pending |
+| PROP-01 | Phase 6 | Complete |
+| PROP-02 | Phase 6 | Complete |
+| PROP-03 | Phase 6 | Complete |
+| PROP-04 | Phase 6 | Complete |
 | FX-01 | Phase 7 | Pending |
 | FX-02 | Phase 7 | Pending |
 | FX-03 | Phase 7 | Pending |
