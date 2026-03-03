@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-02T21:25:43Z"
+status: in-progress
+last_updated: "2026-03-03T10:00:00Z"
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 2
+  total_plans: 6
+  completed_plans: 6
 ---
 
 # Project State
@@ -18,34 +18,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 2 in progress: UI Shell & Image Pipeline
+**Current focus:** Phase 2 complete. Ready for Phase 3: Project & Sequence Management
 
 ## Current Position
 
-Phase: 2 of 8 (UI Shell & Image Pipeline)
-Plan: Wave 1 complete (02-01, 02-02). Executing Wave 2 (02-03).
-Status: Executing Phase 2
-Last activity: 2026-03-03 -- Completed 02-01 (editor shell) and 02-02 (image pipeline) in Wave 1
+Phase: 2 of 8 (UI Shell & Image Pipeline) -- COMPLETE
+Plan: All 3 plans complete (02-01, 02-02, 02-03).
+Status: Phase 2 complete. Ready for Phase 3.
+Last activity: 2026-03-03 -- Completed 02-03 (frontend import UI with drag-drop, file dialog, thumbnails)
 
-Progress: [▓▓▓▓░░░░░░] 21%
+Progress: [▓▓▓▓▓░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 16min
-- Total execution time: 1.1 hours
+- Total plans completed: 6
+- Average duration: 18min
+- Total execution time: 2.0 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1. Foundation | 3 | 60min | 20min |
-| 2. UI Shell & Image Pipeline | 2 | 10min | 5min |
+| 2. UI Shell & Image Pipeline | 3 | 55min | 18min |
 
 **Recent Trend:**
-- Last 5 plans: 7min, 45min, 8min, 4min, 6min
-- Trend: accelerating (both Wave 1 plans completed in parallel)
+- Last 5 plans: 45min, 8min, 4min, 6min, 45min
+- Trend: stable (02-03 took longer due to macOS asset protocol debugging)
 
 *Updated after each plan completion*
 
@@ -58,6 +58,7 @@ Progress: [▓▓▓▓░░░░░░] 21%
 | Phase 01 P03 | 8min | 2 tasks | 5 files |
 | Phase 02 P01 | 6min | 2 tasks | 9 files |
 | Phase 02 P02 | 4min | 2 tasks | 12 files |
+| Phase 02 P03 | 45min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,10 @@ Recent decisions affecting current work:
 - [02-02]: HEIC files accepted in dialog filter but return clear error -- graceful deferral to future phase
 - [02-02]: spawn_blocking pattern for CPU-intensive image work off Tauri main thread
 - [02-02]: Project directory structure: images/ for originals, images/.thumbs/ for thumbnails
+- [02-03]: Tauri onDragDropEvent used for drag-drop (browser ondrop doesn't provide file paths in Tauri)
+- [02-03]: Temp project dir uses appDataDir instead of /tmp to avoid macOS symlink and sandboxing issues
+- [02-03]: Asset protocol scope set to $APPDATA/** and $RESOURCE/** (wildcard ** alone doesn't cover user data dirs)
+- [02-03]: Canonical paths required for Tauri asset protocol on macOS (symlink resolution before scope check)
 
 ### Pending Todos
 
@@ -93,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: Completed 02-02-PLAN.md -- image import pipeline with thumbnail generation
+Last session: 2026-03-03
+Stopped at: Completed 02-03-PLAN.md -- frontend import UI with drag-drop, file dialog, and thumbnails. Phase 2 fully complete.
 Resume file: None

@@ -13,7 +13,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline in
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Scaffolding** - Tauri + Preact + Motion Canvas scaffold with validated integrations and signal stores
-- [ ] **Phase 2: UI Shell & Image Pipeline** - Convert React prototype to Preact and establish the image import pipeline
+- [x] **Phase 2: UI Shell & Image Pipeline** - Convert React prototype to Preact and establish the image import pipeline
 - [ ] **Phase 3: Project & Sequence Management** - Create, save, open projects and manage sequences with key photos
 - [ ] **Phase 4: Timeline & Preview** - Canvas-based timeline with playback and real-time preview
 - [ ] **Phase 5: Layer System & Transforms** - Multi-layer compositing with blend modes, transforms, and properties panel
@@ -53,9 +53,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Convert React MainScreen to Preact layout components with dark theme CSS and signal store wiring (UICV-01, UICV-02, UICV-03)
-- [ ] 02-02-PLAN.md — Build Rust image import pipeline: commands, models, services, thumbnail generation, dialog plugin (IMPT-02, IMPT-03)
-- [ ] 02-03-PLAN.md — Wire frontend import UI: drag-drop, file dialog, imageStore with LRU pool, thumbnail grid (IMPT-01, IMPT-02, IMPT-04)
+- [x] 02-01-PLAN.md — Convert React MainScreen to Preact layout components with dark theme CSS and signal store wiring (UICV-01, UICV-02, UICV-03)
+- [x] 02-02-PLAN.md — Build Rust image import pipeline: commands, models, services, thumbnail generation, dialog plugin (IMPT-02, IMPT-03)
+- [x] 02-03-PLAN.md — Wire frontend import UI: drag-drop, file dialog, imageStore with LRU pool, thumbnail grid (IMPT-01, IMPT-02, IMPT-04)
 
 ### Phase 3: Project & Sequence Management
 **Goal**: Users can create, save, open, and auto-save projects in .mce format, manage sequences with key photos, and pick up recent projects on launch
@@ -160,7 +160,7 @@ Phases execute in numeric order: 1 > 2 > 3 > 4 > 5 > 6 > 7 > 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Scaffolding | 3/3 | Complete   | 2026-03-02 |
-| 2. UI Shell & Image Pipeline | 1/3 | In Progress|  |
+| 2. UI Shell & Image Pipeline | 3/3 | Complete | 2026-03-03 |
 | 3. Project & Sequence Management | 0/0 | Not started | - |
 | 4. Timeline & Preview | 0/0 | Not started | - |
 | 5. Layer System & Transforms | 0/0 | Not started | - |
