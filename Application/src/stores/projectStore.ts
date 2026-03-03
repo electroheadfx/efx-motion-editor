@@ -2,8 +2,9 @@ import {signal, computed, batch} from '@preact/signals';
 import type {ProjectData, MceProject, MceSequence, MceKeyPhoto} from '../types/project';
 import type {Sequence, KeyPhoto} from '../types/sequence';
 import {projectCreate, projectSave as ipcProjectSave, projectOpen as ipcProjectOpen, projectMigrateTempImages} from '../lib/ipc';
-import {imageStore} from './imageStore';
+import {imageStore, _setImageMarkDirtyCallback} from './imageStore';
 import {sequenceStore, _setMarkDirtyCallback} from './sequenceStore';
+import {uiStore} from './uiStore';
 import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 
@@ -104,6 +105,7 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
     // Set first sequence as active if any exist
     if (sortedSeqs.length > 0) {
       sequenceStore.setActive(sortedSeqs[0].id);
+      uiStore.selectSequence(sortedSeqs[0].id);
     }
 
     // 4. Clear dirty flag (just loaded)
@@ -269,6 +271,7 @@ export const projectStore = {
     });
     sequenceStore.reset();
     imageStore.reset();
+    uiStore.reset();
   },
 
   reset() {
@@ -282,3 +285,7 @@ export const projectStore = {
 // Wire sequenceStore's markDirty callback to projectStore
 // This avoids circular imports (sequenceStore -> projectStore)
 _setMarkDirtyCallback(() => projectStore.markDirty());
+
+// Wire imageStore's markDirty callback to projectStore
+// This avoids circular imports (imageStore -> projectStore)
+_setImageMarkDirtyCallback(() => projectStore.markDirty());
