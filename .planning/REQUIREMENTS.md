@@ -27,10 +27,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Image Import
 
-- [ ] **IMPT-01**: User can import images via drag-and-drop onto the app
+- [x] **IMPT-01**: User can import images via drag-and-drop onto the app
 - [x] **IMPT-02**: User can import images via file dialog (JPEG, PNG, TIFF fully supported; HEIC/HEIF accepted in dialog but shows graceful "not yet supported" message -- full HEIC decoding deferred to a later phase)
 - [x] **IMPT-03**: Imported images are copied to project directory with thumbnails generated in Rust
-- [ ] **IMPT-04**: Image pool with LRU eviction prevents WebKit memory leaks (max 50 full-res)
+- [x] **IMPT-04**: Image pool with LRU eviction prevents WebKit memory leaks (max 50 full-res)
 
 ### Sequences
 
@@ -130,9 +130,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### UI Conversion
 
-- [ ] **UICV-01**: React UI prototype (Mockup/react-ui/) converted to Preact + Preact Signals
-- [ ] **UICV-02**: All panels functional (timeline, layers, properties, preview, toolbar)
-- [ ] **UICV-03**: Dark theme matching mockup design
+- [x] **UICV-01**: React UI prototype (Mockup/react-ui/) converted to Preact + Preact Signals
+- [x] **UICV-02**: All panels functional (timeline, layers, properties, preview, toolbar)
+- [x] **UICV-03**: Dark theme matching mockup design
 
 ## v2 Requirements
 
@@ -202,13 +202,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FOUN-04 | Phase 1 | Complete |
 | FOUN-05 | Phase 1 | Complete |
 | FOUN-06 | Phase 1 | Complete |
-| UICV-01 | Phase 2 | Pending |
-| UICV-02 | Phase 2 | Pending |
-| UICV-03 | Phase 2 | Pending |
-| IMPT-01 | Phase 2 | Pending |
+| UICV-01 | Phase 2 | Complete |
+| UICV-02 | Phase 2 | Complete |
+| UICV-03 | Phase 2 | Complete |
+| IMPT-01 | Phase 2 | Complete |
 | IMPT-02 | Phase 2 | Complete |
 | IMPT-03 | Phase 2 | Complete |
-| IMPT-04 | Phase 2 | Pending |
+| IMPT-04 | Phase 2 | Complete |
 | PROJ-01 | Phase 3 | Pending |
 | PROJ-02 | Phase 3 | Pending |
 | PROJ-03 | Phase 3 | Pending |
