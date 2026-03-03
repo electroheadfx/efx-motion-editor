@@ -5,44 +5,14 @@ import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
 import {imageStore} from '../../stores/imageStore';
 import {ImportGrid} from '../import/ImportGrid';
+import {SequenceList} from '../sequence/SequenceList';
+import {KeyPhotoStrip} from '../sequence/KeyPhotoStrip';
 import {tempProjectDir} from '../../lib/projectDir';
 
-// Seed mock data for visual verification (removed in Phase 3 when real data flows)
-function useSeedMockData() {
+// TODO(Phase 5): Replace layer mock data with real layer operations from layerStore.
+// Layers are Phase 5 scope -- this mock seeding exists only for visual completeness.
+function useSeedLayerMockData() {
   useEffect(() => {
-    if (sequenceStore.sequences.value.length === 0) {
-      sequenceStore.add({
-        id: 'seq-1',
-        name: 'Sequence 01',
-        fps: 24,
-        width: 1920,
-        height: 1080,
-        keyPhotos: Array(8)
-          .fill(null)
-          .map((_, i) => ({id: `kp-${i}`, imageId: '', holdFrames: 4})),
-      });
-      sequenceStore.add({
-        id: 'seq-2',
-        name: 'Sequence 02',
-        fps: 24,
-        width: 1920,
-        height: 1080,
-        keyPhotos: Array(5)
-          .fill(null)
-          .map((_, i) => ({id: `kp-2-${i}`, imageId: '', holdFrames: 5})),
-      });
-      sequenceStore.add({
-        id: 'seq-3',
-        name: 'Sequence 03',
-        fps: 24,
-        width: 1920,
-        height: 1080,
-        keyPhotos: Array(12)
-          .fill(null)
-          .map((_, i) => ({id: `kp-3-${i}`, imageId: '', holdFrames: 4})),
-      });
-      uiStore.selectSequence('seq-1');
-    }
     if (layerStore.layers.value.length === 0) {
       layerStore.add({
         id: 'layer-fx1',
@@ -103,11 +73,11 @@ function useSeedMockData() {
 }
 
 export function LeftPanel() {
-  useSeedMockData();
+  useSeedLayerMockData();
 
   const sequences = sequenceStore.sequences.value;
-  const activeId = uiStore.selectedSequenceId.value;
   const allLayers = layerStore.layers.value;
+  const activeSeq = sequenceStore.getActiveSequence();
 
   return (
     <div class="flex flex-col w-[268px] h-full bg-[var(--color-bg-card-alt)] shrink-0">
@@ -116,51 +86,41 @@ export function LeftPanel() {
         <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">
           SEQUENCES
         </span>
-        <button class="rounded px-2 py-1 bg-[var(--color-bg-settings)]">
+        <button
+          class="rounded px-2 py-1 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] transition-colors"
+          onClick={() =>
+            sequenceStore.createSequence(
+              `Sequence ${sequences.length + 1}`,
+            )
+          }
+        >
           <span class="text-[10px] text-[var(--color-text-secondary)]">
             + Add
           </span>
         </button>
       </div>
-      {/* Sequence List */}
-      <div class="flex flex-col gap-px flex-1 min-h-0 overflow-y-auto">
-        {sequences.map((seq) => {
-          const isActive = seq.id === activeId;
-          const keyCount = seq.keyPhotos.length;
-          const duration = (
-            (keyCount * (seq.keyPhotos[0]?.holdFrames ?? 4)) /
-            seq.fps
-          ).toFixed(1);
-          return (
-            <div
-              key={seq.id}
-              class={`flex items-center gap-2 h-10 w-full px-3 cursor-pointer ${isActive ? 'bg-[#2D5BE320]' : 'bg-transparent hover:bg-[#ffffff08]'}`}
-              onClick={() => uiStore.selectSequence(seq.id)}
-            >
-              {isActive && (
-                <div class="w-[3px] h-6 rounded-sm bg-[var(--color-accent)]" />
-              )}
-              <div
-                class={`w-7 h-5 rounded-[3px] ${isActive ? 'bg-[#3D3D3D]' : 'bg-[#2A2A2A]'}`}
-              />
-              <div class="flex flex-col gap-0.5">
-                <span
-                  class={`text-xs ${isActive ? 'font-medium text-[#E0E0E0]' : 'text-[var(--color-text-secondary)]'}`}
-                >
-                  {seq.name}
-                </span>
-                <span
-                  class={`text-[10px] ${isActive ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-dim)]'}`}
-                >
-                  {keyCount} keys &middot; {duration}s
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+
+      {/* Sequence List (sortable with context actions) */}
+      <SequenceList />
+
+      {/* Key Photo Strip (for active sequence) */}
+      {activeSeq && (
+        <>
+          <div class="w-full h-px bg-[#2A2A2A]" />
+          <div class="flex items-center justify-between h-7 px-3 bg-[#131313]">
+            <span class="text-[9px] font-semibold text-[var(--color-text-dim)]">
+              KEY PHOTOS
+            </span>
+          </div>
+          <KeyPhotoStrip />
+          {/* Per-sequence settings */}
+          <SequenceSettings />
+        </>
+      )}
+
       {/* Panel Divider */}
       <div class="w-full h-px bg-[#2A2A2A]" />
+
       {/* Layers Header */}
       <div class="flex items-center justify-between h-9 px-3 bg-[#111111]">
         <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">
@@ -172,7 +132,8 @@ export function LeftPanel() {
           </span>
         </button>
       </div>
-      {/* Layers List */}
+
+      {/* Layers List -- TODO(Phase 5): Replace with LayerList component */}
       <div class="flex flex-col gap-0.5 p-2">
         {allLayers.map((layer) => {
           const isBase = layer.blendMode === 'normal';
@@ -185,7 +146,9 @@ export function LeftPanel() {
           return (
             <div
               key={layer.id}
-              class={`flex items-center gap-2 rounded-md px-2.5 h-11 cursor-pointer ${isBase ? 'bg-[#1E1E1E]' : 'bg-[#252525]'}`}
+              class={`flex items-center gap-2 rounded-md px-2.5 h-11 cursor-pointer ${
+                isBase ? 'bg-[#1E1E1E]' : 'bg-[#252525]'
+              }`}
               onClick={() => uiStore.selectLayer(layer.id)}
             >
               <div
@@ -200,7 +163,11 @@ export function LeftPanel() {
               />
               <div class="flex flex-col gap-0.5 flex-1 min-w-0">
                 <span
-                  class={`text-[11px] truncate ${isBase ? 'text-[#E0E0E0] font-medium' : 'text-[#AAAAAA]'}`}
+                  class={`text-[11px] truncate ${
+                    isBase
+                      ? 'text-[#E0E0E0] font-medium'
+                      : 'text-[#AAAAAA]'
+                  }`}
                 >
                   {layer.name}
                 </span>
@@ -220,8 +187,10 @@ export function LeftPanel() {
           );
         })}
       </div>
+
       {/* Divider */}
       <div class="w-full h-px bg-[#2A2A2A]" />
+
       {/* Import Section Header */}
       <div class="flex items-center justify-between h-9 px-3 bg-[#111111]">
         <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">
@@ -260,6 +229,7 @@ export function LeftPanel() {
           </span>
         </button>
       </div>
+
       {/* Import Status */}
       {imageStore.isImporting.value && (
         <div class="flex items-center gap-2 px-3 py-1.5 bg-[#1A1A2A]">
@@ -269,6 +239,7 @@ export function LeftPanel() {
           </span>
         </div>
       )}
+
       {/* Import Errors */}
       {imageStore.importErrors.value.length > 0 && (
         <div class="px-3 py-1.5 bg-[#2A1A1A]">
@@ -279,8 +250,80 @@ export function LeftPanel() {
           ))}
         </div>
       )}
+
       {/* Thumbnail Grid */}
       <ImportGrid />
+    </div>
+  );
+}
+
+/** Per-sequence settings: fps toggle and resolution display */
+function SequenceSettings() {
+  const activeSeq = sequenceStore.getActiveSequence();
+  if (!activeSeq) return null;
+
+  const commonResolutions: Array<{label: string; w: number; h: number}> = [
+    {label: '1920x1080', w: 1920, h: 1080},
+    {label: '1280x720', w: 1280, h: 720},
+    {label: '3840x2160', w: 3840, h: 2160},
+  ];
+
+  const currentResLabel = `${activeSeq.width}x${activeSeq.height}`;
+
+  return (
+    <div class="flex items-center gap-3 px-3 py-1.5 bg-[#131313]">
+      {/* FPS toggle */}
+      <div class="flex items-center gap-1">
+        <span class="text-[9px] text-[var(--color-text-dim)]">FPS:</span>
+        <div class="flex rounded overflow-hidden border border-[#333]">
+          {[15, 24].map((rate) => (
+            <button
+              key={rate}
+              class={`px-1.5 py-0.5 text-[9px] ${
+                activeSeq.fps === rate
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : 'bg-[#1A1A1A] text-[var(--color-text-dim)] hover:bg-[#252525]'
+              }`}
+              onClick={() =>
+                sequenceStore.setSequenceFps(activeSeq.id, rate)
+              }
+            >
+              {rate}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Resolution dropdown */}
+      <div class="flex items-center gap-1">
+        <span class="text-[9px] text-[var(--color-text-dim)]">Res:</span>
+        <select
+          class="text-[9px] bg-[#1A1A1A] text-[var(--color-text-secondary)] border border-[#333] rounded px-1 py-0.5 outline-none cursor-pointer"
+          value={currentResLabel}
+          onChange={(e) => {
+            const selected = commonResolutions.find(
+              (r) => r.label === (e.target as HTMLSelectElement).value,
+            );
+            if (selected) {
+              sequenceStore.setSequenceResolution(
+                activeSeq.id,
+                selected.w,
+                selected.h,
+              );
+            }
+          }}
+        >
+          {commonResolutions.map((r) => (
+            <option key={r.label} value={r.label}>
+              {r.label}
+            </option>
+          ))}
+          {/* Show current if not in common list */}
+          {!commonResolutions.find((r) => r.label === currentResLabel) && (
+            <option value={currentResLabel}>{currentResLabel}</option>
+          )}
+        </select>
+      </div>
     </div>
   );
 }
