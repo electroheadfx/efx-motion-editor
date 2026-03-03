@@ -7,8 +7,8 @@ last_updated: "2026-03-03T11:39:56.869Z"
 progress:
   total_phases: 4
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 13
+  completed_plans: 11
 ---
 
 # Project State
@@ -22,18 +22,18 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 
 ## Current Position
 
-Phase: 3.1 of 8 (Gap Closure: Cross-Phase Integration Wiring) -- COMPLETE
-Plan: 1 of 1 complete (03.1-01). Next phase: 04.
-Status: Phase 3.1 gap closure complete. Three integration bugs fixed: thumbnail dir, auto-save on import, uiStore sync.
-Last activity: 2026-03-03 -- Completed 03.1-01 (cross-phase integration wiring fixes)
+Phase: 4 of 8 (Timeline & Preview)
+Plan: 1 of 3 complete (04-01). Next: 04-02.
+Status: Frame map, PlaybackEngine, and preview image display implemented.
+Last activity: 2026-03-03 -- Completed 04-01 (timeline data layer & preview engine)
 
-Progress: [▓▓▓▓▓▓▓▓░░] 40%
+Progress: [▓▓▓▓▓▓▓▓▓░] 45%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 14min
+- Total plans completed: 11
+- Average duration: 13min
 - Total execution time: 2.3 hours
 
 **By Phase:**
@@ -44,9 +44,10 @@ Progress: [▓▓▓▓▓▓▓▓░░] 40%
 | 2. UI Shell & Image Pipeline | 3 | 55min | 18min |
 | 3. Project & Sequence Mgmt | 3/3 | 19min | 6min |
 | 3.1 Gap Closure | 1/1 | 2min | 2min |
+| 4. Timeline & Preview | 1/3 | 2min | 2min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 8min, 4min, 6min, 2min
+- Last 5 plans: 8min, 4min, 6min, 2min, 2min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -65,6 +66,7 @@ Progress: [▓▓▓▓▓▓▓▓░░] 40%
 | Phase 03 P02 | 8min | 2 tasks | 14 files |
 | Phase 03 P03 | 3min | 2 tasks | 4 files |
 | Phase 03.1 P01 | 2min | 2 tasks | 4 files |
+| Phase 04 P01 | 2min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -106,6 +108,10 @@ Recent decisions affecting current work:
 - [03-02]: Asset protocol scope expanded Rust-side on project_create and project_open
 - [03.1-01]: markDirty callback pattern reused for imageStore (same as sequenceStore) to avoid circular imports
 - [03.1-01]: Both effect subscription AND isDirty flag needed for auto-save: effect triggers scheduleSave, isDirty passes the guard
+- [04-01]: PlaybackEngine uses performance.now() delta accumulation (not setInterval) for PREV-05 audio sync readiness
+- [04-01]: Preview uses img overlay for image display; Motion Canvas player hidden for Phase 5 compositing
+- [04-01]: .peek() in rAF tick to avoid Preact signal subscription tracking outside effects
+- [04-01]: timelineStore.seek() and stepForward() clamp to [0, totalFrames-1]
 
 ### Pending Todos
 
@@ -119,5 +125,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 03.1-01-PLAN.md -- cross-phase integration wiring fixes. Phase 3.1 gap closure complete. Ready for Phase 4.
+Stopped at: Completed 04-01-PLAN.md -- timeline data layer & preview engine. Next: 04-02 (timeline canvas).
 Resume file: None

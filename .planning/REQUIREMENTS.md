@@ -51,11 +51,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Preview and Playback
 
-- [ ] **PREV-01**: Preview canvas renders composited frame via Motion Canvas player
-- [ ] **PREV-02**: User can play/pause at project frame rate (15 or 24 fps)
-- [ ] **PREV-03**: User can step forward/backward one frame at a time
+- [x] **PREV-01**: Preview canvas renders composited frame via Motion Canvas player
+- [x] **PREV-02**: User can play/pause at project frame rate (15 or 24 fps)
+- [x] **PREV-03**: User can step forward/backward one frame at a time
 - [ ] **PREV-04**: User can zoom and pan the preview canvas
-- [ ] **PREV-05**: Playback engine uses correct clock architecture for audio sync readiness
+- [x] **PREV-05**: Playback engine uses correct clock architecture for audio sync readiness
 
 ### Layer System
 
@@ -226,11 +226,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TIME-04 | Phase 4 | Pending |
 | TIME-05 | Phase 4 | Pending |
 | TIME-06 | Phase 4 | Pending |
-| PREV-01 | Phase 4 | Pending |
-| PREV-02 | Phase 4 | Pending |
-| PREV-03 | Phase 4 | Pending |
+| PREV-01 | Phase 4 | Complete |
+| PREV-02 | Phase 4 | Complete |
+| PREV-03 | Phase 4 | Complete |
 | PREV-04 | Phase 4 | Pending |
-| PREV-05 | Phase 4 | Pending |
+| PREV-05 | Phase 4 | Complete |
 | LAYR-01 | Phase 5 | Pending |
 | LAYR-02 | Phase 5 | Pending |
 | LAYR-03 | Phase 5 | Pending |
