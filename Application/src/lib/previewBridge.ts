@@ -1,4 +1,4 @@
 import {signal} from '@preact/signals';
 
-/** Current preview image URL, updated by Preview component effect on frame change */
+/** @deprecated Preview now uses canvas rendering via PreviewRenderer. Kept for potential external consumers. */
 export const currentPreviewUrl = signal<string>('');
