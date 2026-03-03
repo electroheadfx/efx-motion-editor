@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: in-progress
-last_updated: "2026-03-03T18:15:55.000Z"
+last_updated: "2026-03-03T18:19:39.000Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 6 of 10 (Layer System & Properties Panel)
-Plan: 2 of 4 in current phase -- COMPLETE
+Plan: 3 of 4 in current phase -- COMPLETE
 Status: In Progress
-Last activity: 2026-03-03 — Completed 06-02 (Preview Compositor / Canvas Renderer)
+Last activity: 2026-03-03 — Completed 06-03 (Layer Management UI)
 
-Progress: [=================.............] 58% (v1.0 complete, v2.0 Phase 6 plan 2/4)
+Progress: [==================............] 61% (v1.0 complete, v2.0 Phase 6 plan 3/4)
 
 ## Performance Metrics
 
@@ -47,7 +47,7 @@ Progress: [=================.............] 58% (v1.0 complete, v2.0 Phase 6 plan
 | 4. Timeline | 3 | v1.0 | v1.0 |
 
 | 5. Editing Infra | 3 | v2.0 | v2.0 |
-| 6. Layers & Props | 2/4 | 6min | 3min |
+| 6. Layers & Props | 3/4 | 11min | 3.7min |
 
 *v2.0 metrics will populate as plans execute*
 
@@ -79,6 +79,9 @@ Recent decisions affecting current work:
 - 06-02: Canvas DPI scaling matches TimelineRenderer pattern (devicePixelRatio)
 - 06-02: Motion Canvas player removed from Preview.tsx (canvas compositing replaces it)
 - 06-02: Async image loading with cache prevents main-thread blocking
+- 06-03: Tauri FS plugin (copyFile/mkdir/readDir) for video import instead of new Rust IPC command
+- 06-03: Natural sort (localeCompare numeric) for image sequence frame ordering
+- 06-03: Reversed-index SortableJS mapping (arrayIndex = totalLayers - 1 - visualIndex)
 
 ### Pending Todos
 
@@ -96,5 +99,5 @@ No active blockers.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 06-02-PLAN.md (Preview Compositor / Canvas Renderer)
+Stopped at: Completed 06-03-PLAN.md (Layer Management UI)
 Resume file: None

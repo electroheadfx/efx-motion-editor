@@ -17,13 +17,13 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 
 ### Layer System
 
-- [ ] **LAYER-01**: User can add a static image layer to a sequence (overlay on all frames)
-- [ ] **LAYER-02**: User can add an image sequence layer (frame-synced overlay)
-- [ ] **LAYER-03**: User can add a video layer (plays in sync with sequence playhead)
+- [x] **LAYER-01**: User can add a static image layer to a sequence (overlay on all frames)
+- [x] **LAYER-02**: User can add an image sequence layer (frame-synced overlay)
+- [x] **LAYER-03**: User can add a video layer (plays in sync with sequence playhead)
 - [x] **LAYER-04**: User can set blend mode per layer (normal, screen, multiply, overlay, add)
 - [x] **LAYER-05**: User can adjust layer opacity from 0% to 100%
 - [x] **LAYER-06**: User can toggle layer visibility on/off
-- [ ] **LAYER-07**: User can reorder layers via drag-and-drop in the layer panel
+- [x] **LAYER-07**: User can reorder layers via drag-and-drop in the layer panel
 - [x] **LAYER-08**: User can delete a layer from a sequence
 - [x] **LAYER-09**: User can set layer position (x, y offset)
 - [x] **LAYER-10**: User can set layer scale
@@ -146,13 +146,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | KEY-06 | Phase 5 | Complete |
 | KEY-07 | Phase 5 | Complete |
 | KEY-08 | Phase 5 | Complete |
-| LAYER-01 | Phase 6 | Pending |
-| LAYER-02 | Phase 6 | Pending |
-| LAYER-03 | Phase 6 | Pending |
+| LAYER-01 | Phase 6 | Complete |
+| LAYER-02 | Phase 6 | Complete |
+| LAYER-03 | Phase 6 | Complete |
 | LAYER-04 | Phase 6 | Complete |
 | LAYER-05 | Phase 6 | Complete |
 | LAYER-06 | Phase 6 | Complete |
-| LAYER-07 | Phase 6 | Pending |
+| LAYER-07 | Phase 6 | Complete |
 | LAYER-08 | Phase 6 | Complete |
 | LAYER-09 | Phase 6 | Complete |
 | LAYER-10 | Phase 6 | Complete |
