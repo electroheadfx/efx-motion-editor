@@ -18,12 +18,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Project Management
 
-- [ ] **PROJ-01**: User can create a new project with name and frame rate (15/24 fps)
-- [ ] **PROJ-02**: User can save project to .mce file (JSON-based)
-- [ ] **PROJ-03**: User can open existing .mce project files
+- [x] **PROJ-01**: User can create a new project with name and frame rate (15/24 fps)
+- [x] **PROJ-02**: User can save project to .mce file (JSON-based)
+- [x] **PROJ-03**: User can open existing .mce project files
 - [ ] **PROJ-04**: Project auto-saves on interval and significant actions
 - [ ] **PROJ-05**: User can access recent projects list on launch
-- [ ] **PROJ-06**: Global app config persists between sessions (window size, last project, preferences)
+- [x] **PROJ-06**: Global app config persists between sessions (window size, last project, preferences)
 
 ### Image Import
 
@@ -209,12 +209,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | IMPT-02 | Phase 2 | Complete |
 | IMPT-03 | Phase 2 | Complete |
 | IMPT-04 | Phase 2 | Complete |
-| PROJ-01 | Phase 3 | Pending |
-| PROJ-02 | Phase 3 | Pending |
-| PROJ-03 | Phase 3 | Pending |
+| PROJ-01 | Phase 3 | Complete |
+| PROJ-02 | Phase 3 | Complete |
+| PROJ-03 | Phase 3 | Complete |
 | PROJ-04 | Phase 3 | Pending |
 | PROJ-05 | Phase 3 | Pending |
-| PROJ-06 | Phase 3 | Pending |
+| PROJ-06 | Phase 3 | Complete |
 | SEQN-01 | Phase 3 | Pending |
 | SEQN-02 | Phase 3 | Pending |
 | SEQN-03 | Phase 3 | Pending |
