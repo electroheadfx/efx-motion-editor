@@ -84,10 +84,10 @@ Plans:
   1. Thumbnails survive temp-to-real project migration (image_pool.rs and project_io.rs agree on `.thumbs` directory)
   2. Importing images triggers auto-save (imageStore.images in effect subscription)
   3. Opening a project syncs uiStore.selectedSequenceId with sequenceStore.activeSequenceId
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 03.1-01-PLAN.md — Fix thumbnail dir, auto-save wiring, and uiStore sync (IMPT-03, PROJ-02, PROJ-03, PROJ-04, SEQN-01)
+- [ ] 03.1-01-PLAN.md — Fix thumbnail dir mismatch, auto-save image subscription + markDirty wiring, uiStore sync on hydrate/close (IMPT-03, PROJ-02, PROJ-03, PROJ-04, SEQN-01)
 
 ### Phase 4: Timeline & Preview
 **Goal**: Users can see their sequences on a visual timeline with frame thumbnails, scrub through with a playhead, and watch real-time playback in the preview canvas at the project frame rate
