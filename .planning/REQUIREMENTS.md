@@ -19,9 +19,9 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Project Management
 
 - [x] **PROJ-01**: User can create a new project with name and frame rate (15/24 fps)
-- [ ] **PROJ-02**: User can save project to .mce file (JSON-based)
-- [ ] **PROJ-03**: User can open existing .mce project files
-- [ ] **PROJ-04**: Project auto-saves on interval and significant actions
+- [x] **PROJ-02**: User can save project to .mce file (JSON-based)
+- [x] **PROJ-03**: User can open existing .mce project files
+- [x] **PROJ-04**: Project auto-saves on interval and significant actions
 - [x] **PROJ-05**: User can access recent projects list on launch
 - [x] **PROJ-06**: Global app config persists between sessions (window size, last project, preferences)
 
@@ -29,12 +29,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **IMPT-01**: User can import images via drag-and-drop onto the app
 - [x] **IMPT-02**: User can import images via file dialog (JPEG, PNG, TIFF fully supported; HEIC/HEIF accepted in dialog but shows graceful "not yet supported" message -- full HEIC decoding deferred to a later phase)
-- [ ] **IMPT-03**: Imported images are copied to project directory with thumbnails generated in Rust
+- [x] **IMPT-03**: Imported images are copied to project directory with thumbnails generated in Rust
 - [x] **IMPT-04**: Image pool with LRU eviction prevents WebKit memory leaks (max 50 full-res)
 
 ### Sequences
 
-- [ ] **SEQN-01**: User can create named sequences
+- [x] **SEQN-01**: User can create named sequences
 - [x] **SEQN-02**: User can duplicate, delete, and reorder sequences
 - [x] **SEQN-03**: User can add key photos to a sequence with configurable hold duration
 - [x] **SEQN-04**: User can reorder key photos within a sequence via drag
@@ -207,15 +207,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UICV-03 | Phase 2 | Complete |
 | IMPT-01 | Phase 2 | Complete |
 | IMPT-02 | Phase 2 | Complete |
-| IMPT-03 | Phase 3.1 | Pending |
+| IMPT-03 | Phase 3.1 | Complete |
 | IMPT-04 | Phase 2 | Complete |
 | PROJ-01 | Phase 3 | Complete |
-| PROJ-02 | Phase 3.1 | Pending |
-| PROJ-03 | Phase 3.1 | Pending |
-| PROJ-04 | Phase 3.1 | Pending |
+| PROJ-02 | Phase 3.1 | Complete |
+| PROJ-03 | Phase 3.1 | Complete |
+| PROJ-04 | Phase 3.1 | Complete |
 | PROJ-05 | Phase 3 | Complete |
 | PROJ-06 | Phase 3 | Complete |
-| SEQN-01 | Phase 3.1 | Pending |
+| SEQN-01 | Phase 3.1 | Complete |
 | SEQN-02 | Phase 3 | Complete |
 | SEQN-03 | Phase 3 | Complete |
 | SEQN-04 | Phase 3 | Complete |
