@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import type { ProjectData } from '../types/project';
+import type { ProjectData, MceProject } from '../types/project';
 import type { ImageInfo, ImportResult } from '../types/image';
 
 // Result type mirroring Rust's Result pattern (locked decision)
@@ -26,6 +26,18 @@ export function assetUrl(filePath: string): string {
 // --- Project commands ---
 export async function projectGetDefault(): Promise<Result<ProjectData>> {
   return safeInvoke<ProjectData>('project_get_default');
+}
+
+export async function projectCreate(name: string, fps: number, dirPath: string): Promise<Result<MceProject>> {
+  return safeInvoke<MceProject>('project_create', { name, fps, dirPath });
+}
+
+export async function projectSave(project: MceProject, filePath: string): Promise<Result<null>> {
+  return safeInvoke<null>('project_save', { project, filePath });
+}
+
+export async function projectOpen(filePath: string): Promise<Result<MceProject>> {
+  return safeInvoke<MceProject>('project_open', { filePath });
 }
 
 // --- Image commands ---
