@@ -4,19 +4,27 @@
 
 EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline in 8 phases. The build order is dependency-driven: foundation and scaffolding first (validating the riskiest integrations), then the UI shell and image pipeline, then project/sequence data management, then the timeline and preview workspace, then the layer system that makes this product unique, then cinematic FX effects on top of layers, then audio and beat sync, and finally export with undo/redo and keyboard workflow polish. Each phase delivers a coherent, testable capability -- by Phase 4 you can preview a stop-motion sequence; by Phase 6 it looks cinematic; by Phase 8 it exports production-ready PNG sequences.
 
+## Milestones
+
+- ✅ **v1.0 MVP** — Phases 1-4 (shipped 2026-03-03)
+
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+<details>
+<summary>✅ v1.0 MVP (Phases 1-4) — SHIPPED 2026-03-03</summary>
 
-Decimal phases appear between their surrounding integers in numeric order.
+- [x] Phase 1: Foundation & Scaffolding (3/3 plans) — completed 2026-03-02
+- [x] Phase 2: UI Shell & Image Pipeline (3/3 plans) — completed 2026-03-03
+- [x] Phase 3: Project & Sequence Management (3/3 plans) — completed 2026-03-03
+- [x] Phase 3.1: Fix Cross-Phase Integration Wiring (1/1 plan) — completed 2026-03-03
+- [x] Phase 4: Timeline & Preview (3/3 plans) — completed 2026-03-03
 
-- [x] **Phase 1: Foundation & Scaffolding** - Tauri + Preact + Motion Canvas scaffold with validated integrations and signal stores
-- [x] **Phase 2: UI Shell & Image Pipeline** - Convert React prototype to Preact and establish the image import pipeline
-- [x] **Phase 3: Project & Sequence Management** - Create, save, open projects and manage sequences with key photos
-- [ ] **Phase 3.1: Fix Cross-Phase Integration Wiring** - INSERTED: Close audit gaps (thumbnail dir mismatch, auto-save signal wiring, uiStore sync)
-- [ ] **Phase 4: Timeline & Preview** - Canvas-based timeline with playback and real-time preview
+See: `milestones/v1.0-ROADMAP.md` for full details.
+
+</details>
+
+### Unplanned Phases (Pending Next Milestone)
+
 - [ ] **Phase 5: Layer System & Transforms** - Multi-layer compositing with blend modes, transforms, and properties panel
 - [ ] **Phase 6: Built-in FX Effects** - Cinematic effects (grain, dirt, light leaks, vignette, color grade) via Motion Canvas
 - [ ] **Phase 7: Audio & Beat Sync** - Audio import, waveform visualization, BPM detection, and beat-synced arrangement
@@ -24,87 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ## Phase Details
 
-### Phase 1: Foundation & Scaffolding
-**Goal**: A running Tauri 2.0 + Preact + Vite + Tailwind v4 application on macOS with validated Motion Canvas embedding, IPC bridge, asset protocol, and signal store architecture -- proving all critical integrations work before feature development begins
-**Depends on**: Nothing (first phase)
-**Requirements**: FOUN-01, FOUN-02, FOUN-03, FOUN-04, FOUN-05, FOUN-06
-**Success Criteria** (what must be TRUE):
-  1. Application launches on macOS as a Tauri window with Preact rendering UI and Tailwind styling applied
-  2. A test image loads in the preview area via the asset protocol (not binary IPC) confirming the image pipeline works
-  3. Motion Canvas player renders a test scene (one image composited) inside the Preact app
-  4. Signal stores (project, sequences, layers, timeline, ui, history) exist and UI reactively updates when store values change
-  5. TypeScript types and Rust data models are defined and IPC invoke wrappers successfully call Rust commands and return typed responses
-**Plans**: 3 plans
-
-Plans:
-- [x] 01-01-PLAN.md — Scaffold Tauri + Preact + Vite + Tailwind app with asset protocol, Rust models/commands, TypeScript types, and typed IPC wrappers
-- [x] 01-02-PLAN.md — Embed Motion Canvas player with test scene, create all 6 signal stores, and verify foundation end-to-end on macOS
-- [x] 01-03-PLAN.md — Gap closure: exercise asset protocol pipeline by loading test image via convertFileSrc/assetUrl
-
-### Phase 2: UI Shell & Image Pipeline
-**Goal**: The full editor layout (all panels from the React prototype) running in Preact with Signals, and a working image import pipeline through Rust with thumbnail generation and memory-safe loading
-**Depends on**: Phase 1
-**Requirements**: UICV-01, UICV-02, UICV-03, IMPT-01, IMPT-02, IMPT-03, IMPT-04
-**Success Criteria** (what must be TRUE):
-  1. All editor panels (timeline, layers, properties, preview, toolbar) render in the correct layout matching the mockup dark theme
-  2. User can drag-and-drop images onto the app and see them appear as thumbnails in the import area
-  3. User can import images via file dialog supporting JPEG, PNG, TIFF formats fully; HEIC/HEIF files accepted in dialog but show graceful "not yet supported" message (full HEIC decoding deferred to a later phase)
-  4. Imported images are copied to the project directory with thumbnails generated by Rust (not loaded full-res into WebKit)
-  5. Image pool with LRU eviction prevents memory leaks when importing many images (max 50 full-res in memory)
-**Plans**: 3 plans
-
-Plans:
-- [x] 02-01-PLAN.md — Convert React MainScreen to Preact layout components with dark theme CSS and signal store wiring (UICV-01, UICV-02, UICV-03)
-- [x] 02-02-PLAN.md — Build Rust image import pipeline: commands, models, services, thumbnail generation, dialog plugin (IMPT-02, IMPT-03)
-- [x] 02-03-PLAN.md — Wire frontend import UI: drag-drop, file dialog, imageStore with LRU pool, thumbnail grid (IMPT-01, IMPT-02, IMPT-04)
-
-### Phase 3: Project & Sequence Management
-**Goal**: Users can create, save, open, and auto-save projects in .mce format, manage sequences with key photos, and pick up recent projects on launch
-**Depends on**: Phase 2
-**Requirements**: PROJ-01, PROJ-02, PROJ-03, PROJ-04, PROJ-05, PROJ-06, SEQN-01, SEQN-02, SEQN-03, SEQN-04, SEQN-05
-**Success Criteria** (what must be TRUE):
-  1. User can create a new project with a name and frame rate (15 or 24 fps) and see it reflected in the UI
-  2. User can save the project to a .mce file and re-open it with all data intact (sequences, images, settings)
-  3. Project auto-saves periodically and on significant actions without user intervention
-  4. User sees a recent projects list on launch and can open any previous project from it
-  5. User can create named sequences, add key photos with configurable hold duration, and reorder both sequences and photos via drag
-**Plans**: 3 plans
-
-Plans:
-- [ ] 03-01-PLAN.md -- Rust backend for project persistence (.mce format), Tauri plugin setup (store, fs), TypeScript types/IPC, AppConfig module (PROJ-01, PROJ-02, PROJ-03, PROJ-06)
-- [ ] 03-02-PLAN.md -- Frontend project management UI: WelcomeScreen, NewProjectDialog, toolbar wiring, auto-save, app routing (PROJ-04, PROJ-05)
-- [ ] 03-03-PLAN.md -- Sequence management: full CRUD, SortableJS drag reorder, key photo strip, per-sequence settings (SEQN-01, SEQN-02, SEQN-03, SEQN-04, SEQN-05)
-
-### Phase 3.1: Fix Cross-Phase Integration Wiring
-**Goal**: Close all integration gaps found by v1.0 milestone audit — thumbnail directory mismatch, auto-save signal wiring, and uiStore selection sync
-**Depends on**: Phase 3
-**Requirements**: IMPT-03, PROJ-02, PROJ-03, PROJ-04, SEQN-01
-**Gap Closure:** Closes gaps from v1.0-MILESTONE-AUDIT.md
-**Success Criteria** (what must be TRUE):
-  1. Thumbnails survive temp-to-real project migration (image_pool.rs and project_io.rs agree on `.thumbs` directory)
-  2. Importing images triggers auto-save (imageStore.images in effect subscription)
-  3. Opening a project syncs uiStore.selectedSequenceId with sequenceStore.activeSequenceId
-**Plans**: 1 plan
-
-Plans:
-- [ ] 03.1-01-PLAN.md — Fix thumbnail dir mismatch, auto-save image subscription + markDirty wiring, uiStore sync on hydrate/close (IMPT-03, PROJ-02, PROJ-03, PROJ-04, SEQN-01)
-
-### Phase 4: Timeline & Preview
-**Goal**: Users can see their sequences on a visual timeline with frame thumbnails, scrub through with a playhead, and watch real-time playback in the preview canvas at the project frame rate
-**Depends on**: Phase 3
-**Requirements**: TIME-01, TIME-02, TIME-03, TIME-04, TIME-05, TIME-06, PREV-01, PREV-02, PREV-03, PREV-04, PREV-05
-**Success Criteria** (what must be TRUE):
-  1. Canvas-based timeline displays frame thumbnails with smooth performance even at 100+ frames (virtualized rendering)
-  2. User can click the timeline to seek, drag the playhead to scrub, and zoom in/out with scroll or pinch
-  3. Timeline shows layer tracks per sequence and allows reordering sequences by dragging
-  4. Preview canvas renders the composited frame via Motion Canvas and plays back at the correct project fps (15 or 24)
-  5. User can play/pause, step forward/backward one frame, and zoom/pan the preview canvas
-**Plans**: 3 plans
-
-Plans:
-- [ ] 04-01-PLAN.md -- Data layer + playback engine: frame map, extended timeline types, PlaybackEngine with rAF, preview scene, Preview component wiring (PREV-01, PREV-02, PREV-03, PREV-05)
-- [ ] 04-02-PLAN.md -- Canvas-based timeline: TimelineRenderer, ThumbnailCache, TimelineInteraction, TimelineCanvas component, updated TimelinePanel (TIME-01, TIME-02, TIME-03, TIME-04, TIME-05)
-- [ ] 04-03-PLAN.md -- Preview zoom/pan + sequence reorder: CanvasArea with zoom/pan controls, timeline track header drag-and-drop (TIME-06, PREV-04)
+Phases 1-4 archived to `milestones/v1.0-ROADMAP.md`.
 
 ### Phase 5: Layer System & Transforms
 **Goal**: Users can add multiple layers (static image, image sequence, video) to sequences, control blend modes and opacity, transform layers (position, scale, rotation, crop), and edit all properties through the properties panel
@@ -118,10 +46,6 @@ Plans:
   5. Properties panel shows context-sensitive controls for the selected item and edits update the preview in real-time
 **Plans**: TBD
 
-Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
-
 ### Phase 6: Built-in FX Effects
 **Goal**: Users can add cinematic FX effects (grain, dirt/scratches, light leaks, vignette, color grade) that render in real-time on the preview canvas through Motion Canvas
 **Depends on**: Phase 5
@@ -132,10 +56,6 @@ Plans:
   3. User can add a color grade effect adjusting exposure, contrast, saturation, and temperature
   4. All FX effects render in real-time at playback frame rate without dropping frames on the preview canvas
 **Plans**: TBD
-
-Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
 
 ### Phase 7: Audio & Beat Sync
 **Goal**: Users can import audio, see waveforms on the timeline, hear audio in sync with visual playback, and auto-arrange key photos to detected beats
@@ -149,10 +69,6 @@ Plans:
   5. User can snap frame boundaries to beats and auto-arrange key photos to fill beats with calculated hold durations
 **Plans**: TBD
 
-Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
-
 ### Phase 8: Export, Undo & Keyboard Workflow
 **Goal**: Users can export their complete project as a PNG image sequence, undo/redo any operation across the entire app, and operate efficiently with keyboard shortcuts
 **Depends on**: Phase 5, Phase 6, Phase 7
@@ -165,23 +81,19 @@ Plans:
   5. Keyboard shortcuts work throughout the app: space for play/pause, arrows for frame stepping, JKL for playback control, Cmd+S/N/O/Z for standard editing, with a discoverable help overlay
 **Plans**: TBD
 
-Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
-
 ## Progress
 
 **Execution Order:**
 Phases execute in numeric order: 1 > 2 > 3 > 3.1 > 4 > 5 > 6 > 7 > 8
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Foundation & Scaffolding | 3/3 | Complete   | 2026-03-02 |
-| 2. UI Shell & Image Pipeline | 3/3 | Complete | 2026-03-03 |
-| 3. Project & Sequence Management | 3/3 | Complete | 2026-03-03 |
-| 3.1. Fix Cross-Phase Integration Wiring | 0/1 | Not started | - |
-| 4. Timeline & Preview | 0/0 | Not started | - |
-| 5. Layer System & Transforms | 0/0 | Not started | - |
-| 6. Built-in FX Effects | 0/0 | Not started | - |
-| 7. Audio & Beat Sync | 0/0 | Not started | - |
-| 8. Export, Undo & Keyboard Workflow | 0/0 | Not started | - |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Foundation & Scaffolding | v1.0 | 3/3 | Complete | 2026-03-02 |
+| 2. UI Shell & Image Pipeline | v1.0 | 3/3 | Complete | 2026-03-03 |
+| 3. Project & Sequence Management | v1.0 | 3/3 | Complete | 2026-03-03 |
+| 3.1. Fix Cross-Phase Integration Wiring | v1.0 | 1/1 | Complete | 2026-03-03 |
+| 4. Timeline & Preview | v1.0 | 3/3 | Complete | 2026-03-03 |
+| 5. Layer System & Transforms | - | 0/0 | Not started | - |
+| 6. Built-in FX Effects | - | 0/0 | Not started | - |
+| 7. Audio & Beat Sync | - | 0/0 | Not started | - |
+| 8. Export, Undo & Keyboard Workflow | - | 0/0 | Not started | - |

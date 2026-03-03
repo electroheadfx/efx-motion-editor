@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A macOS desktop application for creating cinematic stop-motion films from photography keyframes — Wallace & Gromit style animation. Users import key photographs, arrange them into sequences at 15/24 fps, add FX layers (video, image, procedural effects), sync to audio beats, and export PNG image sequences for final editing in DaVinci Resolve or Premiere Pro. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4.
+A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, preview in real-time on a canvas-based timeline, and manage projects with auto-save. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v1.0 delivers the complete editing foundation — from image import through timeline playback.
 
 ## Core Value
 
@@ -12,52 +12,60 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Tauri 2.0 + Preact + Vite + Tailwind v4 scaffold with IPC bridge and asset protocol — v1.0
+- ✓ Motion Canvas player embedding with signal store architecture (6 stores) — v1.0
+- ✓ React UI prototype converted to Preact with dark theme and all panels — v1.0
+- ✓ Image import via drag-and-drop and file dialog with Rust thumbnail generation — v1.0
+- ✓ Image pool with LRU eviction for memory safety — v1.0
+- ✓ Project management (create, save, open, auto-save, recent projects, .mce format) — v1.0
+- ✓ Global app config persists between sessions — v1.0
+- ✓ Sequence management (create, duplicate, delete, reorder, key photos with hold duration) — v1.0
+- ✓ Per-sequence frame rate and resolution settings — v1.0
+- ✓ Canvas-based timeline with virtualized frame rendering, playhead, scrubbing, zoom — v1.0
+- ✓ Real-time preview playback at project fps with step forward/backward — v1.0
+- ✓ Preview zoom/pan and sequence reorder on timeline — v1.0
+- ✓ Audio-sync-ready clock architecture (performance.now() delta accumulation) — v1.0
 
 ### Active
 
-- [ ] Project management (create, open, save, auto-save, recent projects, .mce format)
-- [ ] Global project & storage management (config, global assets, first-launch setup)
-- [ ] Image import via drag & drop and file dialog
-- [ ] Sequence management (create, duplicate, delete, reorder, nested sequences)
-- [ ] Key photo handling (frame duplication at 15/24 fps, duration 1-3s, thumbnail generation)
-- [ ] Cinematic rate controls (min/max keys per second, auto-break, auto-merge)
-- [ ] Layer system (static image, image sequence, video layers with all blend modes)
+- [ ] Layer system (static image, image sequence, video layers with blend modes, opacity, visibility)
 - [ ] Layer transforms (position, scale, rotation, crop)
-- [ ] Layer repeat/loop modes (none, loop, mirror, ping-pong, stretch, tile)
-- [ ] Composition templates (create, apply, nest, unpack, import/export, template library)
-- [ ] Built-in FX effects (grain, dirt/scratches, light leaks, particles, flash, vignette, color grade)
-- [ ] Blur system (Dual Kawase for preview, Gaussian for export)
-- [ ] Preview mode vs render mode toggle (Full FX ON/OFF)
-- [ ] Audio management (import, waveform visualization, trimming, positioning, per-sequence & global)
-- [ ] Beat sync (auto-detect BPM, beat markers, snap modes, auto-arrange, frame fill calculation)
-- [ ] Timeline (frame visualization, playhead, scrubbing, zoom, horizontal scroll, image thumbnails, sequence reordering)
-- [ ] Preview canvas (real-time playback via @efxlab/motion-canvas-player, zoom controls)
+- [ ] Properties panel (context-sensitive controls for selected item)
+- [ ] Built-in FX effects (grain, dirt/scratches, light leaks, vignette, color grade via Motion Canvas)
+- [ ] Audio import, waveform visualization, trimming, positioning
+- [ ] Beat sync (auto-detect BPM, beat markers, snap modes, auto-arrange)
 - [ ] Export as PNG image sequence (resolution options, naming pattern, progress indicator, audio metadata)
-- [ ] Keyboard shortcuts (full set per spec)
-- [ ] Properties panel (transform, blend, crop, opacity controls)
-- [ ] Convert existing React UI prototype (Mockup/react-ui/) to Preact + Preact Signals
+- [ ] Undo/redo (100+ levels, covering all state changes)
+- [ ] Keyboard shortcuts (space, arrows, JKL, Cmd+Z/S/N/O, help overlay)
 
 ### Out of Scope
 
-- AI-powered features (Magic Edit, Smart Beat Sync, etc.) — v2.0
-- Cloud & storage features — v2.0
-- ProRes/MP4 video export — v2.0
-- Real-time collaboration — v2.0
-- Keyframe animation for layer properties — v2.0
-- Plugin system — v2.0
-- Mobile support — v2.0
-- Windows/Linux builds — macOS only for v1
+- ProRes/MP4 video export — PNG sequence is the professional workflow; video encoding adds massive complexity
+- Live camera tethering — different product category (Dragonframe owns this)
+- Keyframe animation for layer properties — transforms product toward motion graphics/After Effects territory
+- Plugin/extension system — requires stable internal APIs; premature for v1
+- AI-powered features — distraction from core value; proven DSP for beat detection instead
+- Real-time collaboration — desktop app with local files; stop-motion is typically solo/small-team
+- Windows/Linux builds — macOS only for v1; native title bar, file dialogs, macOS conventions
+- Node-based compositing — layer-based approach is more intuitive for target users
+- Cinematic rate controls (auto-break/auto-merge) — v2 feature
+- Composition templates — v2 feature
+- Layer loop modes — v2 feature
+- Sequence nesting — v2 feature
+- Onion skinning — v2 feature
+- Procedural FX (particles, flash, animated grain) — v2 feature
+- Dual-quality rendering (Dual Kawase vs Gaussian blur toggle) — v2 feature
 
 ## Context
 
-- **Existing assets:** Detailed specification (SPECS.md), Pencil mockup (Mockup/efx-motion-editor.pen), React UI prototype with full layout + panels (Mockup/react-ui/)
-- **React → Preact conversion:** The React UI prototype has all major panels built (timeline, layers, properties, preview) but lacks click actions and interactivity. Must be converted to Preact with Preact Signals for state management.
-- **Motion Canvas packages:** @efxlab/motion-canvas-core, -2d, -responsive, -player, -ffmpeg, -ui, -vite-plugin — all v4.0.0, published on npm under @efxlab scope
-- **Package manager:** pnpm (mandatory)
-- **Rendering approach:** Motion Canvas handles WebGL/Canvas rendering for preview and export; Tailwind CSS v4 for UI chrome; custom components (no heavy UI library)
-- **Export pipeline:** PNG sequence export via @efxlab/motion-canvas-ffmpeg, with audio metadata text file for downstream video editors
-- **File format:** .mce (JSON-based project files)
+Shipped v1.0 with 5,055 LOC (4,316 TypeScript + 739 Rust) across 118 files.
+Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm.
+Architecture: 6 reactive signal stores, Rust image pipeline with thumbnail generation, canvas-based timeline renderer, PlaybackEngine with rAF delta accumulation.
+
+Known integration issues from v1.0 audit:
+- Data bleed on "New Project" while editing (stores not reset)
+- timelineStore/playbackEngine not reset on project close
+- stopAutoSave() never called
 
 ## Constraints
 
@@ -74,12 +82,21 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Preact over React | 3KB bundle, fastest rendering, Signals built-in | — Pending |
-| Tailwind v4 + Custom over UI library | No heavy overhead (~500KB saved), full control over editor UI | — Pending |
-| pnpm as package manager | User preference, fast installs, strict dependency resolution | — Pending |
-| Dual Kawase blur for preview | Real-time 60fps at 1080p, switch to Gaussian for export quality | — Pending |
-| PNG sequence export (not video) | Downstream editing in DaVinci Resolve/Premiere Pro is the workflow | — Pending |
-| Convert React prototype to Preact | Existing UI work preserved, architecture shift to Signals | — Pending |
+| Preact over React | 3KB bundle, fastest rendering, Signals built-in | ✓ Good — reactive stores clean, zero perf issues |
+| Tailwind v4 + Custom over UI library | No heavy overhead (~500KB saved), full control over editor UI | ✓ Good — dark theme with 28+ CSS variables |
+| pnpm as package manager | User preference, fast installs, strict dependency resolution | ✓ Good — overrides fixed Motion Canvas workspace:* bug |
+| PNG sequence export (not video) | Downstream editing in DaVinci Resolve/Premiere Pro is the workflow | — Pending (Phase 8) |
+| Convert React prototype to Preact | Existing UI work preserved, architecture shift to Signals | ✓ Good — all panels converted, mockup layout preserved |
+| Motion Canvas for compositing | WebGL rendering for preview and export, plugin ecosystem | ⚠️ Revisit — using img overlay in v1.0, Motion Canvas Img node deferred to Phase 5 |
+| Programmatic DOM mount for MC player | Preact/custom-element lifecycle conflicts with JSX ref | ✓ Good — stable pattern, no timing issues |
+| Asset protocol for images | No binary IPC overhead, native file:// equivalent | ✓ Good — requires canonical paths on macOS |
+| Signal stores (6 stores) | Per-concern state with reactive computed values | ✓ Good — cross-store computed (frameMap) works well |
+| snake_case TypeScript types | Match Rust serde default serialization across IPC | ✓ Good — zero manual mapping needed |
+| markDirty callback pattern | Avoid circular imports between stores | ✓ Good — used by sequenceStore and imageStore |
+| SortableJS for drag-and-drop | Proven library, minimal bundle, works with Preact | ✓ Good — sequences and key photos both use it |
+| Canvas 2D for timeline | Full control over rendering, virtualization, pointer events | ✓ Good — smooth at 100+ frames |
+| performance.now() PlaybackEngine | Delta accumulation ready for AudioContext master clock | ✓ Good — PREV-05 audio sync readiness proven |
+| Cursor-anchored zoom | Frame under cursor stays stable during zoom operations | ✓ Good — works for both timeline and preview |
 
 ---
-*Last updated: 2026-03-02 after initialization*
+*Last updated: 2026-03-03 after v1.0 milestone*
