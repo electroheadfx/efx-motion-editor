@@ -1,0 +1,179 @@
+import {useRef, useEffect} from 'preact/hooks';
+import Sortable from 'sortablejs';
+import {layerStore} from '../../stores/layerStore';
+import {uiStore} from '../../stores/uiStore';
+import type {Layer} from '../../types/layer';
+
+/** SortableJS-powered layer list with drag-and-drop reorder, visibility toggle, delete, and selection */
+export function LayerList() {
+  const listRef = useRef<HTMLDivElement>(null);
+  const layers = layerStore.layers.value;
+  const selectedId = layerStore.selectedLayerId.value;
+
+  // Reverse for display: topmost layer visually at top, base at bottom
+  const displayLayers = [...layers].reverse();
+  const totalLayers = layers.length;
+
+  // SortableJS integration
+  useEffect(() => {
+    if (!listRef.current) return;
+    const instance = Sortable.create(listRef.current, {
+      animation: 150,
+      ghostClass: 'opacity-30',
+      handle: '.layer-drag-handle',
+      filter: '.layer-base',
+      onMove(evt) {
+        // Prevent dropping anything onto the base layer position
+        if (evt.related.classList.contains('layer-base')) {
+          return false;
+        }
+        return true;
+      },
+      onEnd(evt) {
+        if (evt.oldIndex != null && evt.newIndex != null && evt.oldIndex !== evt.newIndex) {
+          // Convert visual indices (reversed) back to array indices
+          const from = totalLayers - 1 - evt.oldIndex;
+          const to = totalLayers - 1 - evt.newIndex;
+          layerStore.reorder(from, to);
+        }
+      },
+    });
+    return () => instance.destroy();
+  }, [totalLayers]);
+
+  if (layers.length === 0) {
+    return (
+      <div class="flex items-center justify-center py-4">
+        <span class="text-[10px] text-[var(--color-text-dim)]">No active sequence</span>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={listRef} class="flex flex-col gap-0.5 p-2 flex-1 min-h-0 overflow-y-auto">
+      {displayLayers.map((layer) => (
+        <LayerRow
+          key={layer.id}
+          layer={layer}
+          isSelected={selectedId === layer.id}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface LayerRowProps {
+  layer: Layer;
+  isSelected: boolean;
+}
+
+function LayerRow({layer, isSelected}: LayerRowProps) {
+  const isBase = layer.isBase ?? false;
+
+  // Color-coded type indicator
+  const typeColor =
+    layer.type === 'image-sequence'
+      ? '#3B82F6' // blue
+      : layer.type === 'static-image'
+        ? '#14B8A6' // teal
+        : '#8B5CF6'; // purple for video
+
+  // Type label
+  const typeLabel =
+    layer.type === 'video'
+      ? 'Video'
+      : layer.type === 'image-sequence'
+        ? 'Sequence'
+        : 'Image';
+
+  const blendLabel =
+    layer.blendMode.charAt(0).toUpperCase() + layer.blendMode.slice(1);
+
+  const handleSelect = () => {
+    layerStore.setSelected(layer.id);
+    uiStore.selectLayer(layer.id);
+  };
+
+  const handleToggleVisibility = (e: MouseEvent) => {
+    e.stopPropagation();
+    layerStore.updateLayer(layer.id, {visible: !layer.visible});
+  };
+
+  const handleDelete = (e: MouseEvent) => {
+    e.stopPropagation();
+    layerStore.remove(layer.id);
+  };
+
+  return (
+    <div
+      class={`${isBase ? 'layer-base' : ''} flex items-center gap-2 rounded-md px-2.5 h-11 cursor-pointer select-none ${
+        isSelected
+          ? 'bg-[#2A2A3A] border-l-2 border-[var(--color-accent)]'
+          : isBase
+            ? 'bg-[#1E1E1E]'
+            : 'bg-[#252525] hover:bg-[#2A2A2A]'
+      }`}
+      onClick={handleSelect}
+    >
+      {/* Drag handle -- hidden for base layer */}
+      {!isBase ? (
+        <div class="layer-drag-handle w-2 h-4 flex flex-col justify-center gap-[2px] cursor-grab shrink-0 opacity-40 hover:opacity-70">
+          <div class="w-full h-[1px] bg-[#888]" />
+          <div class="w-full h-[1px] bg-[#888]" />
+          <div class="w-full h-[1px] bg-[#888]" />
+        </div>
+      ) : (
+        <div class="w-2 shrink-0" />
+      )}
+
+      {/* Visibility toggle */}
+      <button
+        class="w-4 h-4 flex items-center justify-center shrink-0 rounded hover:bg-[#ffffff15]"
+        onClick={handleToggleVisibility}
+        title={layer.visible ? 'Hide layer' : 'Show layer'}
+      >
+        <span class="text-[10px] leading-none" style={{color: layer.visible ? '#CCCCCC' : '#555555'}}>
+          {layer.visible ? '\u25CF' : '\u25CB'}
+        </span>
+      </button>
+
+      {/* Color-coded type indicator */}
+      <div
+        class="w-2.5 h-2.5 rounded-sm shrink-0"
+        style={{backgroundColor: typeColor}}
+      />
+
+      {/* Name and metadata */}
+      <div class="flex flex-col gap-0.5 flex-1 min-w-0">
+        <span
+          class={`text-[11px] truncate ${
+            isBase ? 'text-[#E0E0E0] font-medium' : 'text-[#AAAAAA]'
+          }`}
+        >
+          {layer.name}
+        </span>
+        <span class="text-[9px] text-[var(--color-text-dim)] truncate">
+          {typeLabel} &middot; {blendLabel}
+          {isBase && ' \u00B7 Locked'}
+        </span>
+      </div>
+
+      {/* Delete button -- only for non-base layers */}
+      {!isBase ? (
+        <button
+          class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#ffffff15] text-[var(--color-text-dim)] hover:text-[#FF6666] shrink-0"
+          onClick={handleDelete}
+          title="Delete layer"
+        >
+          <span class="text-[10px] leading-none">&times;</span>
+        </button>
+      ) : (
+        <div class="w-5 shrink-0 flex items-center justify-center">
+          <span class="text-[9px] text-[var(--color-text-dim)]" title="Base layer (locked)">
+            &#x1F512;
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
