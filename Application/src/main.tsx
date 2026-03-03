@@ -1,5 +1,9 @@
 import './index.css';
 import { render } from 'preact';
 import { App } from './app';
+import { initTempProjectDir } from './lib/projectDir';
 
-render(<App />, document.getElementById('app')!);
+// Resolve temp project dir from Tauri's app data path before rendering
+initTempProjectDir().then(() => {
+  render(<App />, document.getElementById('app')!);
+});
