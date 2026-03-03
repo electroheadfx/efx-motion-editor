@@ -16,13 +16,21 @@ const IMAGE_EXTENSIONS = [
 /** Whether a drag operation is currently over the window */
 export const isDraggingOver = signal(false);
 
+function isImagePath(p: string): boolean {
+  return IMAGE_EXTENSIONS.some((ext) => p.toLowerCase().endsWith(ext));
+}
+
 /**
  * Hook that listens to Tauri's native drag-drop events.
  * Uses onDragDropEvent (NOT browser ondrop -- that doesn't work in Tauri).
  *
  * @param onDrop Callback receiving filtered image file paths
+ * @param onReject Optional callback when non-image files are dropped
  */
-export function useFileDrop(onDrop: (paths: string[]) => void) {
+export function useFileDrop(
+  onDrop: (paths: string[]) => void,
+  onReject?: (rejected: string[]) => void,
+) {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
@@ -35,12 +43,14 @@ export function useFileDrop(onDrop: (paths: string[]) => void) {
         } else if (type === 'drop') {
           isDraggingOver.value = false;
           const paths = event.payload.paths;
-          // Filter to supported image extensions only
-          const imagePaths = paths.filter((p: string) =>
-            IMAGE_EXTENSIONS.some((ext) => p.toLowerCase().endsWith(ext)),
-          );
+          const imagePaths = paths.filter((p: string) => isImagePath(p));
+          const rejectedPaths = paths.filter((p: string) => !isImagePath(p));
+
           if (imagePaths.length > 0) {
             onDrop(imagePaths);
+          }
+          if (rejectedPaths.length > 0 && onReject) {
+            onReject(rejectedPaths);
           }
         } else {
           // 'leave' event
@@ -52,5 +62,5 @@ export function useFileDrop(onDrop: (paths: string[]) => void) {
       });
 
     return () => unlisten?.();
-  }, [onDrop]);
+  }, [onDrop, onReject]);
 }
