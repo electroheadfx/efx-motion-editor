@@ -2,7 +2,19 @@
 
 ## What This Is
 
-A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, preview in real-time on a canvas-based timeline, and manage projects with auto-save. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v1.0 delivers the complete editing foundation — from image import through timeline playback.
+A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, preview in real-time on a canvas-based timeline, and manage projects with auto-save. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v1.0 delivered the editing foundation; v2.0 adds compositing layers, FX effects, audio with beat sync, export, and full editing workflow (undo/redo, shortcuts).
+
+## Current Milestone: v2.0 Production Tool
+
+**Goal:** Transform EFX-Motion from an editing foundation into a complete production tool with compositing, audio-to-motion pipeline, and export.
+
+**Target features:**
+- Layer system with compositing (blend modes, opacity, transforms)
+- Built-in cinematic FX (grain, scratches, light leaks, vignette, color grade)
+- Audio import with waveform visualization and beat sync
+- PNG image sequence export
+- Undo/redo and keyboard shortcuts
+- Fix v1.0 integration bugs (data bleed, store reset, auto-save cleanup)
 
 ## Core Value
 
@@ -99,4 +111,4 @@ Known integration issues from v1.0 audit:
 | Cursor-anchored zoom | Frame under cursor stays stable during zoom operations | ✓ Good — works for both timeline and preview |
 
 ---
-*Last updated: 2026-03-03 after v1.0 milestone*
+*Last updated: 2026-03-03 after v2.0 milestone start*
