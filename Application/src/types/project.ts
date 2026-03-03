@@ -28,6 +28,39 @@ export interface MceSequence {
   height: number;
   order: number;
   key_photos: MceKeyPhoto[];
+  layers?: MceLayer[];  // Optional for backward compat with v1 files
+}
+
+/** Layer definition within a sequence in the .mce file */
+export interface MceLayer {
+  id: string;
+  name: string;
+  type: string;  // 'static-image' | 'image-sequence' | 'video'
+  visible: boolean;
+  opacity: number;
+  blend_mode: string;
+  transform: MceLayerTransform;
+  source: MceLayerSource;
+  is_base: boolean;
+  order: number;
+}
+
+export interface MceLayerTransform {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  crop_top: number;
+  crop_right: number;
+  crop_bottom: number;
+  crop_left: number;
+}
+
+export interface MceLayerSource {
+  type: string;
+  image_id?: string;
+  image_ids?: string[];
+  video_path?: string;
 }
 
 /** Key photo within a sequence -- references an image by ID */

@@ -1,3 +1,5 @@
+import type { Layer } from './layer';
+
 /** Runtime sequence type used by sequenceStore (frontend state) */
 export interface Sequence {
   id: string;
@@ -6,6 +8,7 @@ export interface Sequence {
   width: number;
   height: number;
   keyPhotos: KeyPhoto[];
+  layers: Layer[];  // Ordered bottom-to-top; layers[0] is always the base layer
 }
 
 /** Runtime key photo type (frontend state) */

@@ -1,4 +1,3 @@
-import {useEffect} from 'preact/hooks';
 import {open} from '@tauri-apps/plugin-dialog';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
@@ -10,72 +9,12 @@ import {SequenceList} from '../sequence/SequenceList';
 import {KeyPhotoStrip} from '../sequence/KeyPhotoStrip';
 import {tempProjectDir} from '../../lib/projectDir';
 
-// TODO(Phase 5): Replace layer mock data with real layer operations from layerStore.
-// Layers are Phase 5 scope -- this mock seeding exists only for visual completeness.
-function useSeedLayerMockData() {
-  useEffect(() => {
-    if (layerStore.layers.value.length === 0) {
-      layerStore.add({
-        id: 'layer-fx1',
-        name: 'Light Leaks',
-        type: 'video',
-        visible: true,
-        opacity: 0.8,
-        blendMode: 'screen',
-        transform: {
-          x: 0,
-          y: 0,
-          scale: 1,
-          rotation: 0,
-          cropTop: 0,
-          cropRight: 0,
-          cropBottom: 0,
-          cropLeft: 0,
-        },
-      });
-      layerStore.add({
-        id: 'layer-fx2',
-        name: 'Film Grain',
-        type: 'video',
-        visible: true,
-        opacity: 1,
-        blendMode: 'overlay',
-        transform: {
-          x: 0,
-          y: 0,
-          scale: 1,
-          rotation: 0,
-          cropTop: 0,
-          cropRight: 0,
-          cropBottom: 0,
-          cropLeft: 0,
-        },
-      });
-      layerStore.add({
-        id: 'layer-base',
-        name: 'Base Layer (Photos)',
-        type: 'image-sequence',
-        visible: true,
-        opacity: 1,
-        blendMode: 'normal',
-        transform: {
-          x: 0,
-          y: 0,
-          scale: 1,
-          rotation: 0,
-          cropTop: 0,
-          cropRight: 0,
-          cropBottom: 0,
-          cropLeft: 0,
-        },
-      });
-    }
-  }, []);
-}
+// TODO(Phase 6): Replace layer mock data with real layer operations from layerStore.
+// Layers are Phase 6 scope -- this mock seeding exists only for visual completeness.
+// NOTE: With layerStore now derived from sequenceStore, mock data will only appear
+// when an active sequence exists. The base layer is auto-generated per sequence.
 
 export function LeftPanel() {
-  useSeedLayerMockData();
-
   const sequences = sequenceStore.sequences.value;
   const allLayers = layerStore.layers.value;
   const activeSeq = sequenceStore.getActiveSequence();
@@ -137,7 +76,7 @@ export function LeftPanel() {
       {/* Layers List -- TODO(Phase 5): Replace with LayerList component */}
       <div class="flex flex-col gap-0.5 p-2">
         {allLayers.map((layer) => {
-          const isBase = layer.blendMode === 'normal';
+          const isBase = layer.isBase ?? false;
           const thumbColor =
             layer.blendMode === 'screen'
               ? '#5B3A8F'
