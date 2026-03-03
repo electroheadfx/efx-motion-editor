@@ -4,6 +4,7 @@ import {sequenceStore} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
 import {imageStore} from '../../stores/imageStore';
+import {projectStore} from '../../stores/projectStore';
 import {ImportGrid} from '../import/ImportGrid';
 import {SequenceList} from '../sequence/SequenceList';
 import {KeyPhotoStrip} from '../sequence/KeyPhotoStrip';
@@ -217,7 +218,7 @@ export function LeftPanel() {
               ],
             });
             if (selected) {
-              const dir = tempProjectDir.value;
+              const dir = projectStore.dirPath.value ?? tempProjectDir.value;
               if (!dir) return;
               const paths = Array.isArray(selected) ? selected : [selected];
               imageStore.importFiles(paths, dir);
