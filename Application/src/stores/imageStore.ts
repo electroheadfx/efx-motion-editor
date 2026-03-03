@@ -20,6 +20,12 @@ const importErrors = signal<string[]>([]);
 const imageCount = computed(() => images.value.length);
 const poolSize = computed(() => fullResLoaded.value.size);
 
+// markDirty callback set by projectStore to avoid circular imports
+let _markDirty: (() => void) | null = null;
+export function _setImageMarkDirtyCallback(fn: () => void) {
+  _markDirty = fn;
+}
+
 export const imageStore = {
   images,
   fullResLoaded,
@@ -53,6 +59,8 @@ export const imageStore = {
           );
         }
       });
+      // Mark project dirty so auto-save interval also triggers
+      _markDirty?.();
     } finally {
       isImporting.value = false;
     }
