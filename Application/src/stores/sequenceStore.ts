@@ -1,5 +1,6 @@
 import {signal, batch} from '@preact/signals';
 import type {Sequence, KeyPhoto} from '../types/sequence';
+import {pushAction} from '../lib/history';
 
 const sequences = signal<Sequence[]>([]);
 const activeSequenceId = signal<string | null>(null);
@@ -22,6 +23,23 @@ function markDirty() {
   _markDirty?.();
 }
 
+/** Capture a snapshot of current state for undo/redo closures. */
+function snapshot() {
+  return {
+    seqs: structuredClone(sequences.peek()),
+    active: activeSequenceId.peek(),
+  };
+}
+
+/** Restore a previously captured snapshot. Also marks project dirty. */
+function restore(snap: {seqs: Sequence[]; active: string | null}) {
+  batch(() => {
+    sequences.value = snap.seqs;
+    activeSequenceId.value = snap.active;
+  });
+  markDirty();
+}
+
 export const sequenceStore = {
   sequences,
   activeSequenceId,
@@ -30,6 +48,8 @@ export const sequenceStore = {
 
   /** Create a new sequence with default settings */
   createSequence(name: string): Sequence {
+    const before = snapshot();
+
     const seq: Sequence = {
       id: genId(),
       name,
@@ -41,27 +61,50 @@ export const sequenceStore = {
     sequences.value = [...sequences.value, seq];
     activeSequenceId.value = seq.id;
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Create sequence "${name}"`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+
     return seq;
   },
 
-  /** Add a pre-built sequence (used by hydration from .mce) */
+  /** Add a pre-built sequence (used by hydration from .mce) — NOT undoable */
   add(seq: Sequence) {
     sequences.value = [...sequences.value, seq];
   },
 
   /** Remove a sequence by ID */
   remove(id: string) {
+    const before = snapshot();
+
     sequences.value = sequences.value.filter((s) => s.id !== id);
     if (activeSequenceId.value === id) {
       activeSequenceId.value = sequences.value[0]?.id ?? null;
     }
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Delete sequence',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
   },
 
   /** Duplicate a sequence */
   duplicate(id: string): Sequence | null {
     const original = sequences.value.find((s) => s.id === id);
     if (!original) return null;
+
+    const before = snapshot();
 
     const copy: Sequence = {
       ...original,
@@ -74,46 +117,102 @@ export const sequenceStore = {
     };
     sequences.value = [...sequences.value, copy];
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Duplicate sequence',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+
     return copy;
   },
 
   /** Reorder sequences by moving item from oldIndex to newIndex */
   reorderSequences(oldIndex: number, newIndex: number) {
+    const before = snapshot();
+
     const arr = [...sequences.value];
     const [moved] = arr.splice(oldIndex, 1);
     arr.splice(newIndex, 0, moved);
     sequences.value = arr;
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Reorder sequences',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
   },
 
   /** Update sequence name */
   rename(id: string, name: string) {
+    const before = snapshot();
+
     sequences.value = sequences.value.map((s) =>
       s.id === id ? {...s, name} : s,
     );
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Rename sequence',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
   },
 
   /** Set per-sequence fps */
   setSequenceFps(id: string, fps: number) {
+    const before = snapshot();
+
     sequences.value = sequences.value.map((s) =>
       s.id === id ? {...s, fps} : s,
     );
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Change sequence FPS',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
   },
 
   /** Set per-sequence resolution */
   setSequenceResolution(id: string, width: number, height: number) {
+    const before = snapshot();
+
     sequences.value = sequences.value.map((s) =>
       s.id === id ? {...s, width, height} : s,
     );
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Change sequence resolution',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
   },
 
   // --- Key Photo CRUD ---
 
   /** Add a key photo to a sequence */
   addKeyPhoto(sequenceId: string, imageId: string, holdFrames: number = 4) {
+    const before = snapshot();
+
     const kp: KeyPhoto = {
       id: genId(),
       imageId,
@@ -123,16 +222,36 @@ export const sequenceStore = {
       s.id === sequenceId ? {...s, keyPhotos: [...s.keyPhotos, kp]} : s,
     );
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Add key photo',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
   },
 
   /** Remove a key photo from a sequence */
   removeKeyPhoto(sequenceId: string, keyPhotoId: string) {
+    const before = snapshot();
+
     sequences.value = sequences.value.map((s) =>
       s.id === sequenceId
         ? {...s, keyPhotos: s.keyPhotos.filter((kp) => kp.id !== keyPhotoId)}
         : s,
     );
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Remove key photo',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
   },
 
   /** Reorder key photos within a sequence */
@@ -141,6 +260,8 @@ export const sequenceStore = {
     oldIndex: number,
     newIndex: number,
   ) {
+    const before = snapshot();
+
     sequences.value = sequences.value.map((s) => {
       if (s.id !== sequenceId) return s;
       const arr = [...s.keyPhotos];
@@ -149,6 +270,15 @@ export const sequenceStore = {
       return {...s, keyPhotos: arr};
     });
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Reorder key photos',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
   },
 
   /** Update hold frames for a key photo */
@@ -157,6 +287,8 @@ export const sequenceStore = {
     keyPhotoId: string,
     holdFrames: number,
   ) {
+    const before = snapshot();
+
     sequences.value = sequences.value.map((s) =>
       s.id === sequenceId
         ? {
@@ -168,9 +300,18 @@ export const sequenceStore = {
         : s,
     );
     markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Update hold frames',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
   },
 
-  // --- Accessors ---
+  // --- Accessors (NOT undoable) ---
 
   setActive(id: string | null) {
     activeSequenceId.value = id;
