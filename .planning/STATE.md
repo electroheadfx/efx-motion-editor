@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-03T10:52:08.556Z"
+last_updated: "2026-03-03T11:33:33Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 9
-  completed_plans: 9
+  total_phases: 3.1
+  completed_phases: 3.1
+  total_plans: 10
+  completed_plans: 10
 ---
 
 # Project State
@@ -18,22 +18,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 3 in progress: Project & Sequence Management
+**Current focus:** Phase 3.1 gap closure complete. Ready for Phase 4.
 
 ## Current Position
 
-Phase: 3 of 8 (Project & Sequence Management) -- COMPLETE
-Plan: 3 of 3 complete (03-01, 03-02, 03-03). Next phase: 04.
-Status: Phase 3 complete. Full project management UI, auto-save, sequence CRUD with drag-drop.
-Last activity: 2026-03-03 -- Completed 03-02 (project management UI, auto-save, routing)
+Phase: 3.1 of 8 (Gap Closure: Cross-Phase Integration Wiring) -- COMPLETE
+Plan: 1 of 1 complete (03.1-01). Next phase: 04.
+Status: Phase 3.1 gap closure complete. Three integration bugs fixed: thumbnail dir, auto-save on import, uiStore sync.
+Last activity: 2026-03-03 -- Completed 03.1-01 (cross-phase integration wiring fixes)
 
 Progress: [▓▓▓▓▓▓▓▓░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 15min
+- Total plans completed: 10
+- Average duration: 14min
 - Total execution time: 2.3 hours
 
 **By Phase:**
@@ -43,9 +43,10 @@ Progress: [▓▓▓▓▓▓▓▓░░] 40%
 | 1. Foundation | 3 | 60min | 20min |
 | 2. UI Shell & Image Pipeline | 3 | 55min | 18min |
 | 3. Project & Sequence Mgmt | 3/3 | 19min | 6min |
+| 3.1 Gap Closure | 1/1 | 2min | 2min |
 
 **Recent Trend:**
-- Last 5 plans: 8min, 3min, 8min, 4min, 6min
+- Last 5 plans: 3min, 8min, 4min, 6min, 2min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -63,6 +64,7 @@ Progress: [▓▓▓▓▓▓▓▓░░] 40%
 | Phase 03 P01 | 8min | 2 tasks | 16 files |
 | Phase 03 P02 | 8min | 2 tasks | 14 files |
 | Phase 03 P03 | 3min | 2 tasks | 4 files |
+| Phase 03.1 P01 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -102,6 +104,8 @@ Recent decisions affecting current work:
 - [03-02]: App routing uses computed on projectStore.dirPath to determine project-open state
 - [03-02]: Temp image migration handled Rust-side with rename-first, copy+delete fallback
 - [03-02]: Asset protocol scope expanded Rust-side on project_create and project_open
+- [03.1-01]: markDirty callback pattern reused for imageStore (same as sequenceStore) to avoid circular imports
+- [03.1-01]: Both effect subscription AND isDirty flag needed for auto-save: effect triggers scheduleSave, isDirty passes the guard
 
 ### Pending Todos
 
@@ -115,5 +119,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 03-02-PLAN.md -- project management UI, auto-save, signal-based routing. Phase 3 fully complete. Ready for Phase 4.
+Stopped at: Completed 03.1-01-PLAN.md -- cross-phase integration wiring fixes. Phase 3.1 gap closure complete. Ready for Phase 4.
 Resume file: None
