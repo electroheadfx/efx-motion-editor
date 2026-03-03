@@ -7,5 +7,7 @@ export const tempProjectDir = signal<string | null>(null);
 /** Initialize the temp project directory from Tauri's app data path */
 export async function initTempProjectDir(): Promise<void> {
   const base = await appDataDir();
-  tempProjectDir.value = `${base}temp-project`;
+  // appDataDir() may or may not include trailing slash
+  const sep = base.endsWith('/') ? '' : '/';
+  tempProjectDir.value = `${base}${sep}temp-project`;
 }
