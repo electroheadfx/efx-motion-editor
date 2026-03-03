@@ -19,7 +19,7 @@ function useSeedMockData() {
         height: 1080,
         keyPhotos: Array(8)
           .fill(null)
-          .map((_, i) => ({id: `kp-${i}`, imagePath: '', holdFrames: 4})),
+          .map((_, i) => ({id: `kp-${i}`, imageId: '', holdFrames: 4})),
       });
       sequenceStore.add({
         id: 'seq-2',
@@ -29,7 +29,7 @@ function useSeedMockData() {
         height: 1080,
         keyPhotos: Array(5)
           .fill(null)
-          .map((_, i) => ({id: `kp-2-${i}`, imagePath: '', holdFrames: 5})),
+          .map((_, i) => ({id: `kp-2-${i}`, imageId: '', holdFrames: 5})),
       });
       sequenceStore.add({
         id: 'seq-3',
@@ -39,7 +39,7 @@ function useSeedMockData() {
         height: 1080,
         keyPhotos: Array(12)
           .fill(null)
-          .map((_, i) => ({id: `kp-3-${i}`, imagePath: '', holdFrames: 4})),
+          .map((_, i) => ({id: `kp-3-${i}`, imageId: '', holdFrames: 4})),
       });
       uiStore.selectSequence('seq-1');
     }

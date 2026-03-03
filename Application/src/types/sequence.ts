@@ -1,3 +1,4 @@
+/** Runtime sequence type used by sequenceStore (frontend state) */
 export interface Sequence {
   id: string;
   name: string;
@@ -7,8 +8,11 @@ export interface Sequence {
   keyPhotos: KeyPhoto[];
 }
 
+/** Runtime key photo type (frontend state) */
 export interface KeyPhoto {
   id: string;
-  imagePath: string;
+  imageId: string;
   holdFrames: number;
 }
+
+// For .mce file format types, see types/project.ts (MceSequence, MceKeyPhoto)
