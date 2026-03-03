@@ -16,7 +16,14 @@ export function EditorShell() {
     imageStore.importFiles(paths, TEMP_PROJECT_DIR);
   }, []);
 
-  useFileDrop(handleDrop);
+  const handleReject = useCallback((rejected: string[]) => {
+    const names = rejected.map((p) => p.split('/').pop()).join(', ');
+    imageStore.importErrors.value = [
+      `Unsupported file(s) skipped: ${names}. Only JPEG, PNG, TIFF, and HEIC are accepted.`,
+    ];
+  }, []);
+
+  useFileDrop(handleDrop, handleReject);
 
   return (
     <div class="flex flex-col w-full h-full bg-[#151515] font-primary">
