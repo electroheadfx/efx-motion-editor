@@ -5,9 +5,7 @@ import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
 import {imageStore} from '../../stores/imageStore';
 import {ImportGrid} from '../import/ImportGrid';
-
-// Temporary project directory for Phase 2
-const TEMP_PROJECT_DIR = '/tmp/efx-motion-project';
+import {tempProjectDir} from '../../lib/projectDir';
 
 // Seed mock data for visual verification (removed in Phase 3 when real data flows)
 function useSeedMockData() {
@@ -250,8 +248,10 @@ export function LeftPanel() {
               ],
             });
             if (selected) {
+              const dir = tempProjectDir.value;
+              if (!dir) return;
               const paths = Array.isArray(selected) ? selected : [selected];
-              imageStore.importFiles(paths, TEMP_PROJECT_DIR);
+              imageStore.importFiles(paths, dir);
             }
           }}
         >

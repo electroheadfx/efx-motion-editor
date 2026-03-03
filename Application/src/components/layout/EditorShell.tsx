@@ -7,13 +7,12 @@ import {PropertiesPanel} from './PropertiesPanel';
 import {DropZone} from '../import/DropZone';
 import {useFileDrop} from '../../lib/dragDrop';
 import {imageStore} from '../../stores/imageStore';
-
-// Temporary project directory for Phase 2 -- will use actual project path in Phase 3
-const TEMP_PROJECT_DIR = '/tmp/efx-motion-project';
+import {tempProjectDir} from '../../lib/projectDir';
 
 export function EditorShell() {
   const handleDrop = useCallback((paths: string[]) => {
-    imageStore.importFiles(paths, TEMP_PROJECT_DIR);
+    const dir = tempProjectDir.value;
+    if (dir) imageStore.importFiles(paths, dir);
   }, []);
 
   const handleReject = useCallback((rejected: string[]) => {
