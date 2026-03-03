@@ -1,22 +1,16 @@
 import {open} from '@tauri-apps/plugin-dialog';
 import {sequenceStore} from '../../stores/sequenceStore';
-import {layerStore} from '../../stores/layerStore';
-import {uiStore} from '../../stores/uiStore';
 import {imageStore} from '../../stores/imageStore';
 import {projectStore} from '../../stores/projectStore';
 import {ImportGrid} from '../import/ImportGrid';
 import {SequenceList} from '../sequence/SequenceList';
 import {KeyPhotoStrip} from '../sequence/KeyPhotoStrip';
+import {LayerList} from '../layer/LayerList';
+import {AddLayerMenu} from '../layer/AddLayerMenu';
 import {tempProjectDir} from '../../lib/projectDir';
-
-// TODO(Phase 6): Replace layer mock data with real layer operations from layerStore.
-// Layers are Phase 6 scope -- this mock seeding exists only for visual completeness.
-// NOTE: With layerStore now derived from sequenceStore, mock data will only appear
-// when an active sequence exists. The base layer is auto-generated per sequence.
 
 export function LeftPanel() {
   const sequences = sequenceStore.sequences.value;
-  const allLayers = layerStore.layers.value;
   const activeSeq = sequenceStore.getActiveSequence();
 
   return (
@@ -66,67 +60,11 @@ export function LeftPanel() {
         <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">
           LAYERS
         </span>
-        <button class="rounded px-2 py-1 bg-[var(--color-bg-settings)]">
-          <span class="text-[10px] text-[var(--color-text-secondary)]">
-            + Add FX
-          </span>
-        </button>
+        <AddLayerMenu />
       </div>
 
-      {/* Layers List -- TODO(Phase 5): Replace with LayerList component */}
-      <div class="flex flex-col gap-0.5 p-2">
-        {allLayers.map((layer) => {
-          const isBase = layer.isBase ?? false;
-          const thumbColor =
-            layer.blendMode === 'screen'
-              ? '#5B3A8F'
-              : layer.blendMode === 'overlay'
-                ? '#3A5F3A'
-                : '#2E4A8F';
-          return (
-            <div
-              key={layer.id}
-              class={`flex items-center gap-2 rounded-md px-2.5 h-11 cursor-pointer ${
-                isBase ? 'bg-[#1E1E1E]' : 'bg-[#252525]'
-              }`}
-              onClick={() => uiStore.selectLayer(layer.id)}
-            >
-              <div
-                class="w-3.5 h-3.5 rounded-full shrink-0"
-                style={{
-                  backgroundColor: layer.visible ? '#555555' : '#333333',
-                }}
-              />
-              <div
-                class="w-8 h-6 rounded-[3px] shrink-0"
-                style={{backgroundColor: thumbColor}}
-              />
-              <div class="flex flex-col gap-0.5 flex-1 min-w-0">
-                <span
-                  class={`text-[11px] truncate ${
-                    isBase
-                      ? 'text-[#E0E0E0] font-medium'
-                      : 'text-[#AAAAAA]'
-                  }`}
-                >
-                  {layer.name}
-                </span>
-                <span class="text-[9px] text-[var(--color-text-dim)] truncate">
-                  {layer.type === 'video'
-                    ? 'FX Video'
-                    : layer.type === 'image-sequence'
-                      ? 'Keyframes'
-                      : 'Static'}{' '}
-                  &middot;{' '}
-                  {layer.blendMode.charAt(0).toUpperCase() +
-                    layer.blendMode.slice(1)}
-                </span>
-              </div>
-              <div class="w-1.5 h-5 rounded-sm bg-[#333333] shrink-0" />
-            </div>
-          );
-        })}
-      </div>
+      {/* Layer List */}
+      <LayerList />
 
       {/* Divider */}
       <div class="w-full h-px bg-[#2A2A2A]" />

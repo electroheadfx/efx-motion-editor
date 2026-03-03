@@ -1,15 +1,19 @@
-use crate::models::project::{MceImageRef, MceProject};
+use crate::models::project::MceProject;
 use std::fs;
 use std::path::Path;
 
-/// Create the project directory with images/ and images/.thumbs/ subdirectories.
+/// Create the project directory with images/, images/.thumbs/, and videos/ subdirectories.
 pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     let base = Path::new(dir_path);
     let images_dir = base.join("images");
     let thumbs_dir = images_dir.join(".thumbs");
+    let videos_dir = base.join("videos");
 
     fs::create_dir_all(&thumbs_dir)
         .map_err(|e| format!("Failed to create project directories: {}", e))?;
+
+    fs::create_dir_all(&videos_dir)
+        .map_err(|e| format!("Failed to create videos directory: {}", e))?;
 
     Ok(())
 }
@@ -45,7 +49,8 @@ pub fn open_project(file_path: &str) -> Result<MceProject, String> {
 }
 
 /// Convert an absolute path to a relative path by stripping the project root prefix.
-pub fn make_relative(abs_path: &str, project_root: &str) -> String {
+#[cfg(test)]
+fn make_relative(abs_path: &str, project_root: &str) -> String {
     let root = if project_root.ends_with('/') {
         project_root.to_string()
     } else {
@@ -61,7 +66,8 @@ pub fn make_relative(abs_path: &str, project_root: &str) -> String {
 }
 
 /// Convert a relative path to an absolute path by joining with the project root.
-pub fn make_absolute(rel_path: &str, project_root: &str) -> String {
+#[cfg(test)]
+fn make_absolute(rel_path: &str, project_root: &str) -> String {
     let root = project_root.trim_end_matches('/');
     format!("{}/{}", root, rel_path)
 }
@@ -124,6 +130,7 @@ fn move_file(src: &Path, dst: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::project::MceImageRef;
 
     #[test]
     fn test_create_project_dir_creates_subdirectories() {
