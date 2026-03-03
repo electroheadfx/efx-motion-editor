@@ -20,17 +20,17 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 - [ ] **LAYER-01**: User can add a static image layer to a sequence (overlay on all frames)
 - [ ] **LAYER-02**: User can add an image sequence layer (frame-synced overlay)
 - [ ] **LAYER-03**: User can add a video layer (plays in sync with sequence playhead)
-- [ ] **LAYER-04**: User can set blend mode per layer (normal, screen, multiply, overlay, add)
-- [ ] **LAYER-05**: User can adjust layer opacity from 0% to 100%
-- [ ] **LAYER-06**: User can toggle layer visibility on/off
+- [x] **LAYER-04**: User can set blend mode per layer (normal, screen, multiply, overlay, add)
+- [x] **LAYER-05**: User can adjust layer opacity from 0% to 100%
+- [x] **LAYER-06**: User can toggle layer visibility on/off
 - [ ] **LAYER-07**: User can reorder layers via drag-and-drop in the layer panel
-- [ ] **LAYER-08**: User can delete a layer from a sequence
-- [ ] **LAYER-09**: User can set layer position (x, y offset)
-- [ ] **LAYER-10**: User can set layer scale
-- [ ] **LAYER-11**: User can set layer rotation
-- [ ] **LAYER-12**: User can crop a layer
+- [x] **LAYER-08**: User can delete a layer from a sequence
+- [x] **LAYER-09**: User can set layer position (x, y offset)
+- [x] **LAYER-10**: User can set layer scale
+- [x] **LAYER-11**: User can set layer rotation
+- [x] **LAYER-12**: User can crop a layer
 - [ ] **LAYER-13**: Preview canvas renders all visible layers composited with correct blend modes and opacity in real-time
-- [ ] **LAYER-14**: Base key photo sequence is always the bottom layer (auto-generated, not deletable)
+- [x] **LAYER-14**: Base key photo sequence is always the bottom layer (auto-generated, not deletable)
 
 ### Properties Panel
 
@@ -149,17 +149,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LAYER-01 | Phase 6 | Pending |
 | LAYER-02 | Phase 6 | Pending |
 | LAYER-03 | Phase 6 | Pending |
-| LAYER-04 | Phase 6 | Pending |
-| LAYER-05 | Phase 6 | Pending |
-| LAYER-06 | Phase 6 | Pending |
+| LAYER-04 | Phase 6 | Complete |
+| LAYER-05 | Phase 6 | Complete |
+| LAYER-06 | Phase 6 | Complete |
 | LAYER-07 | Phase 6 | Pending |
-| LAYER-08 | Phase 6 | Pending |
-| LAYER-09 | Phase 6 | Pending |
-| LAYER-10 | Phase 6 | Pending |
-| LAYER-11 | Phase 6 | Pending |
-| LAYER-12 | Phase 6 | Pending |
+| LAYER-08 | Phase 6 | Complete |
+| LAYER-09 | Phase 6 | Complete |
+| LAYER-10 | Phase 6 | Complete |
+| LAYER-11 | Phase 6 | Complete |
+| LAYER-12 | Phase 6 | Complete |
 | LAYER-13 | Phase 6 | Pending |
-| LAYER-14 | Phase 6 | Pending |
+| LAYER-14 | Phase 6 | Complete |
 | PROP-01 | Phase 6 | Pending |
 | PROP-02 | Phase 6 | Pending |
 | PROP-03 | Phase 6 | Pending |

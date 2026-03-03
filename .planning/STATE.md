@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
-status: unknown
-last_updated: "2026-03-03T17:25:19.409Z"
+status: in-progress
+last_updated: "2026-03-03T18:10:51.000Z"
 progress:
-  total_phases: 1
+  total_phases: 6
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 4
+  completed_plans: 1
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 5 — Editing Infrastructure (undo/redo, keyboard shortcuts, store reset fixes)
+**Current focus:** Phase 6 — Layer System & Properties Panel (multi-layer compositing data model, UI, persistence)
 
 ## Current Position
 
-Phase: 5 of 10 (Editing Infrastructure) -- COMPLETE
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-03-03 — Completed 05-03 (Keyboard Shortcuts & JKL Shuttle)
+Phase: 6 of 10 (Layer System & Properties Panel)
+Plan: 1 of 4 in current phase -- COMPLETE
+Status: In Progress
+Last activity: 2026-03-03 — Completed 06-01 (Layer Data Model & Store)
 
-Progress: [===============...............] 50% (v1.0 complete, v2.0 Phase 5 complete)
+Progress: [================..............] 55% (v1.0 complete, v2.0 Phase 6 plan 1/4)
 
 ## Performance Metrics
 
@@ -45,6 +45,9 @@ Progress: [===============...............] 50% (v1.0 complete, v2.0 Phase 5 comp
 | 3. Project Mgmt | 3 | v1.0 | v1.0 |
 | 3.1 Integration Fix | 1 | v1.0 | v1.0 |
 | 4. Timeline | 3 | v1.0 | v1.0 |
+
+| 5. Editing Infra | 3 | v2.0 | v2.0 |
+| 6. Layers & Props | 1/4 | 4min | 4min |
 
 *v2.0 metrics will populate as plans execute*
 
@@ -68,6 +71,10 @@ Recent decisions affecting current work:
 - 05-03: tinykeys module declaration in vite-env.d.ts to work around v3.0.0 missing types export
 - 05-03: Toolbar refactored to use uiStore.showNewProjectDialog signal for Cmd+N parity
 - 05-03: JKL shuttle uses own rAF loop separate from PlaybackEngine for variable-rate stepping
+- 06-01: layerStore.layers computed from sequenceStore active sequence (not independent signal)
+- 06-01: All layer mutations route through sequenceStore for unified snapshot/restore undo
+- 06-01: Base layer ID always 'base' with isBase=true for deletion protection
+- 06-01: Project version bumped to 2; v1 files auto-generate base layer on load
 
 ### Pending Todos
 
@@ -85,5 +92,5 @@ No active blockers.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 05-03-PLAN.md (Keyboard Shortcuts & JKL Shuttle) -- Phase 5 complete
+Stopped at: Completed 06-01-PLAN.md (Layer Data Model & Store)
 Resume file: None
