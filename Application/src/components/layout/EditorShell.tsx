@@ -1,4 +1,3 @@
-import {TitleBar} from './TitleBar';
 import {Toolbar} from './Toolbar';
 import {LeftPanel} from './LeftPanel';
 import {CanvasArea} from './CanvasArea';
@@ -8,7 +7,6 @@ import {PropertiesPanel} from './PropertiesPanel';
 export function EditorShell() {
   return (
     <div class="flex flex-col w-full h-full bg-[#151515] font-primary">
-      <TitleBar />
       <Toolbar />
       {/* Body Area */}
       <div class="flex flex-1 min-h-0">
