@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 5 of 10 (Editing Infrastructure)
-Plan: 0 of 0 in current phase
-Status: Ready to plan
-Last activity: 2026-03-03 — Roadmap created for v2.0
+Plan: 2 of 3 in current phase
+Status: Executing
+Last activity: 2026-03-03 — Completed 05-02 (Undo/Redo System)
 
-Progress: [=============.................] 43% (v1.0 complete, v2.0 starting)
+Progress: [==============................] 47% (v1.0 complete, v2.0 Phase 5 in progress)
 
 ## Performance Metrics
 
@@ -46,6 +46,12 @@ Recent decisions affecting current work:
 - v2.0: Custom command-pattern undo over @kvndy/undo-manager (operation-level granularity needed)
 - v2.0: tinykeys over hotkeys-js for keyboard shortcuts (650B, TypeScript-native)
 - v2.0: Web Audio API directly over wavesurfer.js (avoid widget/DOM conflicts with canvas timeline)
+- 05-01: guardUnsavedChanges() returns GuardResult union type for clean caller control flow
+- 05-01: closeProject() stops engines/timers before store resets (prevents orphaned operations)
+- 05-01: createProject() and openProject() call closeProject() first for guaranteed clean state
+- 05-02: Standalone lib/history.ts engine with snapshot/restore helpers in sequenceStore
+- 05-02: structuredClone for all undo snapshots (correctness over micro-optimization)
+- 05-02: resetHistory clears coalescing state to prevent stale anchors across projects
 
 ### Pending Todos
 
@@ -61,5 +67,5 @@ Carried forward from v1.0 audit (to fix in Phase 5):
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: v2.0 roadmap created — ready to plan Phase 5
+Stopped at: Completed 05-02-PLAN.md (Undo/Redo System)
 Resume file: None
