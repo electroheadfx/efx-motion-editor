@@ -19,8 +19,12 @@ function scheduleSave() {
 
 let disposeEffect: (() => void) | null = null;
 
-/** Start auto-save watchers. Call once after app initializes. */
+/** Start auto-save watchers. Idempotent: stops existing watchers before starting new ones. */
 export function startAutoSave(): void {
+  // Guard: stop existing watchers to prevent duplicate timer accumulation
+  if (disposeEffect) {
+    stopAutoSave();
+  }
   disposed = false;
 
   // Watch for meaningful store changes (effect auto-subscribes to accessed signals)

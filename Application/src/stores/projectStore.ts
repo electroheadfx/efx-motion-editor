@@ -5,6 +5,11 @@ import {projectCreate, projectSave as ipcProjectSave, projectOpen as ipcProjectO
 import {imageStore, _setImageMarkDirtyCallback} from './imageStore';
 import {sequenceStore, _setMarkDirtyCallback} from './sequenceStore';
 import {uiStore} from './uiStore';
+import {timelineStore} from './timelineStore';
+import {layerStore} from './layerStore';
+import {historyStore} from './historyStore';
+import {playbackEngine} from '../lib/playbackEngine';
+import {startAutoSave, stopAutoSave} from '../lib/autoSave';
 import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 
@@ -156,6 +161,9 @@ export const projectStore = {
 
   /** Create a new project. Migrates temp images if any exist. */
   async createProject(projectName: string, projectFps: number, projectDirPath: string) {
+    // Close any existing project first (resets all stores, stops engines/timers)
+    projectStore.closeProject();
+
     const result = await projectCreate(projectName, projectFps, projectDirPath);
     if (!result.ok) {
       throw new Error(result.error);
@@ -180,6 +188,9 @@ export const projectStore = {
       filePath.value = null; // Not yet saved to .mce
       isDirty.value = true;
     });
+
+    // Restart auto-save for the new project
+    startAutoSave();
   },
 
   /** Save the project to its .mce file. If filePath is null, caller should use saveProjectAs. */
@@ -233,6 +244,9 @@ export const projectStore = {
 
   /** Open a project from an .mce file */
   async openProject(openFilePath: string) {
+    // Close any existing project first (resets all stores, stops engines/timers)
+    projectStore.closeProject();
+
     const result = await ipcProjectOpen(openFilePath);
     if (!result.ok) {
       throw new Error(result.error);
@@ -255,10 +269,18 @@ export const projectStore = {
       lastOpened: new Date().toISOString(),
     });
     await setLastProjectPath(openFilePath);
+
+    // Restart auto-save for the opened project
+    startAutoSave();
   },
 
   /** Close the current project and reset all stores */
   closeProject() {
+    // 1. Stop engines and timers FIRST (prevents orphaned operations)
+    stopAutoSave();
+    playbackEngine.stop();
+
+    // 2. Reset all stores
     batch(() => {
       name.value = 'Untitled Project';
       fps.value = 24;
@@ -272,6 +294,10 @@ export const projectStore = {
     sequenceStore.reset();
     imageStore.reset();
     uiStore.reset();
+    timelineStore.reset();
+    layerStore.reset();
+    historyStore.stack.value = [];
+    historyStore.pointer.value = -1;
   },
 
   reset() {
