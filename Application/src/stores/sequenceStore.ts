@@ -1,5 +1,7 @@
 import {signal, batch} from '@preact/signals';
 import type {Sequence, KeyPhoto} from '../types/sequence';
+import type {Layer} from '../types/layer';
+import {createBaseLayer} from '../types/layer';
 import {pushAction} from '../lib/history';
 
 const sequences = signal<Sequence[]>([]);
@@ -57,6 +59,7 @@ export const sequenceStore = {
       width: 1920,
       height: 1080,
       keyPhotos: [],
+      layers: [createBaseLayer()],
     };
     sequences.value = [...sequences.value, seq];
     activeSequenceId.value = seq.id;
@@ -114,6 +117,7 @@ export const sequenceStore = {
         ...kp,
         id: genId(),
       })),
+      layers: structuredClone(original.layers),
     };
     sequences.value = [...sequences.value, copy];
     markDirty();
@@ -305,6 +309,109 @@ export const sequenceStore = {
     pushAction({
       id: crypto.randomUUID(),
       description: 'Update hold frames',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  // --- Layer CRUD (per active sequence) ---
+
+  /** Add a layer to the active sequence */
+  addLayer(layer: Layer) {
+    const activeId = activeSequenceId.peek();
+    if (!activeId) return;
+
+    const before = snapshot();
+
+    sequences.value = sequences.value.map((s) =>
+      s.id === activeId ? {...s, layers: [...s.layers, layer]} : s,
+    );
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Add layer "${layer.name}"`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Remove a layer by ID from the active sequence */
+  removeLayer(layerId: string) {
+    const activeId = activeSequenceId.peek();
+    if (!activeId) return;
+
+    const before = snapshot();
+
+    sequences.value = sequences.value.map((s) =>
+      s.id === activeId
+        ? {...s, layers: s.layers.filter((l) => l.id !== layerId)}
+        : s,
+    );
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Remove layer',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Update layer properties in the active sequence */
+  updateLayer(layerId: string, updates: Partial<Layer>) {
+    const activeId = activeSequenceId.peek();
+    if (!activeId) return;
+
+    const before = snapshot();
+
+    sequences.value = sequences.value.map((s) =>
+      s.id === activeId
+        ? {
+            ...s,
+            layers: s.layers.map((l) =>
+              l.id === layerId ? {...l, ...updates} : l,
+            ),
+          }
+        : s,
+    );
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Update layer',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Reorder layers in the active sequence */
+  reorderLayers(fromIndex: number, toIndex: number) {
+    const activeId = activeSequenceId.peek();
+    if (!activeId) return;
+
+    const before = snapshot();
+
+    sequences.value = sequences.value.map((s) => {
+      if (s.id !== activeId) return s;
+      const arr = [...s.layers];
+      const [moved] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, moved);
+      return {...s, layers: arr};
+    });
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Reorder layers',
       timestamp: Date.now(),
       undo: () => restore(before),
       redo: () => restore(after),

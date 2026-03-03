@@ -1,6 +1,8 @@
 import {signal, computed, batch} from '@preact/signals';
-import type {ProjectData, MceProject, MceSequence, MceKeyPhoto} from '../types/project';
+import type {ProjectData, MceProject, MceSequence, MceKeyPhoto, MceLayer} from '../types/project';
 import type {Sequence, KeyPhoto} from '../types/sequence';
+import type {Layer, LayerType, BlendMode, LayerSourceData} from '../types/layer';
+import {createBaseLayer} from '../types/layer';
 import {projectCreate, projectSave as ipcProjectSave, projectOpen as ipcProjectOpen, projectMigrateTempImages} from '../lib/ipc';
 import {imageStore, _setImageMarkDirtyCallback} from './imageStore';
 import {sequenceStore, _setMarkDirtyCallback} from './sequenceStore';
@@ -57,11 +59,37 @@ function buildMceProject(): MceProject {
           order: kpIndex,
         }),
       ),
+      layers: seq.layers.map((layer, layerIndex): MceLayer => ({
+        id: layer.id,
+        name: layer.name,
+        type: layer.type,
+        visible: layer.visible,
+        opacity: layer.opacity,
+        blend_mode: layer.blendMode,
+        transform: {
+          x: layer.transform.x,
+          y: layer.transform.y,
+          scale: layer.transform.scale,
+          rotation: layer.transform.rotation,
+          crop_top: layer.transform.cropTop,
+          crop_right: layer.transform.cropRight,
+          crop_bottom: layer.transform.cropBottom,
+          crop_left: layer.transform.cropLeft,
+        },
+        source: {
+          type: layer.source.type,
+          ...(layer.source.type === 'static-image' ? {image_id: layer.source.imageId} : {}),
+          ...(layer.source.type === 'image-sequence' ? {image_ids: layer.source.imageIds} : {}),
+          ...(layer.source.type === 'video' ? {video_path: layer.source.videoPath} : {}),
+        },
+        is_base: layer.isBase ?? false,
+        order: layerIndex,
+      })),
     }),
   );
 
   return {
-    version: 1,
+    version: 2,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -90,6 +118,43 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
     const sortedSeqs = [...project.sequences].sort((a, b) => a.order - b.order);
     for (const mceSeq of sortedSeqs) {
       const sortedKps = [...mceSeq.key_photos].sort((a, b) => a.order - b.order);
+
+      // Deserialize layers; auto-generate base layer for v1 files without layers
+      const layers: Layer[] =
+        mceSeq.layers && mceSeq.layers.length > 0
+          ? mceSeq.layers
+              .sort((a, b) => a.order - b.order)
+              .map(
+                (ml): Layer => ({
+                  id: ml.id,
+                  name: ml.name,
+                  type: ml.type as LayerType,
+                  visible: ml.visible,
+                  opacity: ml.opacity,
+                  blendMode: ml.blend_mode as BlendMode,
+                  transform: {
+                    x: ml.transform.x,
+                    y: ml.transform.y,
+                    scale: ml.transform.scale,
+                    rotation: ml.transform.rotation,
+                    cropTop: ml.transform.crop_top,
+                    cropRight: ml.transform.crop_right,
+                    cropBottom: ml.transform.crop_bottom,
+                    cropLeft: ml.transform.crop_left,
+                  },
+                  source: {
+                    type: ml.source.type as LayerType,
+                    ...(ml.source.image_id ? {imageId: ml.source.image_id} : {}),
+                    ...(ml.source.type === 'image-sequence'
+                      ? {imageIds: ml.source.image_ids ?? []}
+                      : {}),
+                    ...(ml.source.video_path ? {videoPath: ml.source.video_path} : {}),
+                  } as LayerSourceData,
+                  isBase: ml.is_base,
+                }),
+              )
+          : [createBaseLayer()];
+
       const seq: Sequence = {
         id: mceSeq.id,
         name: mceSeq.name,
@@ -103,6 +168,7 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
             holdFrames: kp.hold_frames,
           }),
         ),
+        layers,
       };
       sequenceStore.add(seq);
     }
