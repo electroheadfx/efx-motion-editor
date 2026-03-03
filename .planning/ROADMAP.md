@@ -99,11 +99,12 @@ Plans:
   3. Timeline shows layer tracks per sequence and allows reordering sequences by dragging
   4. Preview canvas renders the composited frame via Motion Canvas and plays back at the correct project fps (15 or 24)
   5. User can play/pause, step forward/backward one frame, and zoom/pan the preview canvas
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md -- Data layer + playback engine: frame map, extended timeline types, PlaybackEngine with rAF, preview scene, Preview component wiring (PREV-01, PREV-02, PREV-03, PREV-05)
+- [ ] 04-02-PLAN.md -- Canvas-based timeline: TimelineRenderer, ThumbnailCache, TimelineInteraction, TimelineCanvas component, updated TimelinePanel (TIME-01, TIME-02, TIME-03, TIME-04, TIME-05)
+- [ ] 04-03-PLAN.md -- Preview zoom/pan + sequence reorder: CanvasArea with zoom/pan controls, timeline track header drag-and-drop (TIME-06, PREV-04)
 
 ### Phase 5: Layer System & Transforms
 **Goal**: Users can add multiple layers (static image, image sequence, video) to sequences, control blend modes and opacity, transform layers (position, scale, rotation, crop), and edit all properties through the properties panel
