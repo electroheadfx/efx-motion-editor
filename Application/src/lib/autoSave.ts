@@ -1,6 +1,7 @@
 import {effect} from '@preact/signals';
 import {projectStore} from '../stores/projectStore';
 import {sequenceStore} from '../stores/sequenceStore';
+import {imageStore} from '../stores/imageStore';
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -30,6 +31,7 @@ export function startAutoSave(): void {
     projectStore.width.value;
     projectStore.height.value;
     sequenceStore.sequences.value;
+    imageStore.images.value;
     // Trigger debounced save
     scheduleSave();
   });
