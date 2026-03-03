@@ -1,16 +1,16 @@
-import {useState} from 'preact/hooks';
 import {open, save} from '@tauri-apps/plugin-dialog';
 import {projectStore} from '../../stores/projectStore';
+import {uiStore} from '../../stores/uiStore';
 import {guardUnsavedChanges} from '../../lib/unsavedGuard';
 import {NewProjectDialog} from '../project/NewProjectDialog';
 
 export function Toolbar() {
-  const [showNewDialog, setShowNewDialog] = useState(false);
+  const showNewDialog = uiStore.showNewProjectDialog.value;
 
   const handleNew = async () => {
     const guard = await guardUnsavedChanges();
     if (guard === 'cancelled') return;
-    setShowNewDialog(true);
+    uiStore.showNewProjectDialog.value = true;
   };
 
   const handleOpen = async () => {
@@ -116,7 +116,7 @@ export function Toolbar() {
 
       {/* New Project Dialog */}
       {showNewDialog && (
-        <NewProjectDialog onClose={() => setShowNewDialog(false)} />
+        <NewProjectDialog onClose={() => { uiStore.showNewProjectDialog.value = false; }} />
       )}
     </div>
   );

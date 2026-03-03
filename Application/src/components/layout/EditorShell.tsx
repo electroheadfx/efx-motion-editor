@@ -5,9 +5,11 @@ import {CanvasArea} from './CanvasArea';
 import {TimelinePanel} from './TimelinePanel';
 import {PropertiesPanel} from './PropertiesPanel';
 import {DropZone} from '../import/DropZone';
+import {ShortcutsOverlay} from '../overlay/ShortcutsOverlay';
 import {useFileDrop} from '../../lib/dragDrop';
 import {imageStore} from '../../stores/imageStore';
 import {projectStore} from '../../stores/projectStore';
+import {uiStore} from '../../stores/uiStore';
 import {tempProjectDir} from '../../lib/projectDir';
 
 export function EditorShell() {
@@ -43,6 +45,8 @@ export function EditorShell() {
       <PropertiesPanel />
       {/* Drop overlay -- renders on top of everything when dragging files */}
       <DropZone />
+      {/* Shortcuts help overlay */}
+      {uiStore.shortcutsOverlayOpen.value && <ShortcutsOverlay />}
     </div>
   );
 }

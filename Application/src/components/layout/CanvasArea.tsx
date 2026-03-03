@@ -1,6 +1,7 @@
 import {signal} from '@preact/signals';
 import {useRef, useCallback} from 'preact/hooks';
 import {Preview} from '../Preview';
+import {SpeedBadge} from '../overlay/SpeedBadge';
 import {timelineStore} from '../../stores/timelineStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 
@@ -83,7 +84,7 @@ export function CanvasArea() {
   }, []);
 
   return (
-    <div class="flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-card)]">
+    <div class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-card)]">
       {/* Preview Frame with zoom/pan */}
       <div
         class="flex items-center justify-center flex-1 w-full min-h-0 p-4 overflow-hidden"
@@ -103,6 +104,8 @@ export function CanvasArea() {
           <Preview />
         </div>
       </div>
+      {/* JKL speed badge -- positioned above playback controls */}
+      <SpeedBadge />
       {/* Preview Controls */}
       <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0">
         {/* Step backward */}
