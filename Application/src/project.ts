@@ -1,6 +1,6 @@
 import {makeProject} from '@efxlab/motion-canvas-core';
-import testScene from './scenes/testScene?scene';
+import previewScene from './scenes/previewScene?scene';
 
 export default makeProject({
-  scenes: [testScene],
+  scenes: [previewScene],
 });
