@@ -1,7 +1,13 @@
 import {useEffect} from 'preact/hooks';
+import {open} from '@tauri-apps/plugin-dialog';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
+import {imageStore} from '../../stores/imageStore';
+import {ImportGrid} from '../import/ImportGrid';
+
+// Temporary project directory for Phase 2
+const TEMP_PROJECT_DIR = '/tmp/efx-motion-project';
 
 // Seed mock data for visual verification (removed in Phase 3 when real data flows)
 function useSeedMockData() {
@@ -216,6 +222,65 @@ export function LeftPanel() {
           );
         })}
       </div>
+      {/* Divider */}
+      <div class="w-full h-px bg-[#2A2A2A]" />
+      {/* Import Section Header */}
+      <div class="flex items-center justify-between h-9 px-3 bg-[#111111]">
+        <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">
+          IMPORTED
+        </span>
+        <button
+          class="rounded px-2 py-1 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] transition-colors"
+          onClick={async () => {
+            const selected = await open({
+              multiple: true,
+              filters: [
+                {
+                  name: 'Images',
+                  extensions: [
+                    'jpg',
+                    'jpeg',
+                    'png',
+                    'tiff',
+                    'tif',
+                    'heic',
+                    'heif',
+                  ],
+                },
+              ],
+            });
+            if (selected) {
+              const paths = Array.isArray(selected) ? selected : [selected];
+              imageStore.importFiles(paths, TEMP_PROJECT_DIR);
+            }
+          }}
+        >
+          <span class="text-[10px] text-[var(--color-text-secondary)]">
+            + Import
+          </span>
+        </button>
+      </div>
+      {/* Import Status */}
+      {imageStore.isImporting.value && (
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-[#1A1A2A]">
+          <div class="w-3 h-3 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+          <span class="text-[10px] text-[var(--color-text-secondary)]">
+            Importing...
+          </span>
+        </div>
+      )}
+      {/* Import Errors */}
+      {imageStore.importErrors.value.length > 0 && (
+        <div class="px-3 py-1.5 bg-[#2A1A1A]">
+          {imageStore.importErrors.value.map((err, i) => (
+            <span key={i} class="text-[9px] text-[#FF6666] block truncate">
+              {err}
+            </span>
+          ))}
+        </div>
+      )}
+      {/* Thumbnail Grid */}
+      <ImportGrid />
     </div>
   );
 }
