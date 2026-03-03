@@ -1,12 +1,22 @@
 import {useState} from 'preact/hooks';
 import {open, save} from '@tauri-apps/plugin-dialog';
 import {projectStore} from '../../stores/projectStore';
+import {guardUnsavedChanges} from '../../lib/unsavedGuard';
 import {NewProjectDialog} from '../project/NewProjectDialog';
 
 export function Toolbar() {
   const [showNewDialog, setShowNewDialog] = useState(false);
 
+  const handleNew = async () => {
+    const guard = await guardUnsavedChanges();
+    if (guard === 'cancelled') return;
+    setShowNewDialog(true);
+  };
+
   const handleOpen = async () => {
+    const guard = await guardUnsavedChanges();
+    if (guard === 'cancelled') return;
+
     const selected = await open({
       multiple: false,
       filters: [{name: 'EFX Motion Project', extensions: ['mce']}],
@@ -50,7 +60,7 @@ export function Toolbar() {
       {/* New button */}
       <button
         class="flex items-center gap-1.5 rounded-[5px] bg-[var(--color-accent)] px-3 py-1.5 hover:bg-[var(--color-accent-hover)] transition-colors"
-        onClick={() => setShowNewDialog(true)}
+        onClick={handleNew}
       >
         <span class="text-xs text-white">New</span>
       </button>
