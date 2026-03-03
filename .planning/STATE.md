@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-03T11:39:56.869Z"
+last_updated: "2026-03-03T13:05:53Z"
 progress:
   total_phases: 4
   completed_phases: 4
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 3.1 gap closure complete. Ready for Phase 4.
+**Current focus:** Phase 4 timeline canvas rendering complete. Next: playback controls (04-03).
 
 ## Current Position
 
 Phase: 4 of 8 (Timeline & Preview)
-Plan: 1 of 3 complete (04-01). Next: 04-02.
-Status: Frame map, PlaybackEngine, and preview image display implemented.
-Last activity: 2026-03-03 -- Completed 04-01 (timeline data layer & preview engine)
+Plan: 2 of 3 complete (04-02). Next: 04-03.
+Status: Canvas-based timeline with virtualized rendering, playhead scrubbing, zoom, and real controls.
+Last activity: 2026-03-03 -- Completed 04-02 (timeline canvas rendering)
 
-Progress: [▓▓▓▓▓▓▓▓▓░] 45%
+Progress: [▓▓▓▓▓▓▓▓▓░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 13min
-- Total execution time: 2.3 hours
+- Total plans completed: 12
+- Average duration: 12min
+- Total execution time: 2.4 hours
 
 **By Phase:**
 
@@ -44,10 +44,10 @@ Progress: [▓▓▓▓▓▓▓▓▓░] 45%
 | 2. UI Shell & Image Pipeline | 3 | 55min | 18min |
 | 3. Project & Sequence Mgmt | 3/3 | 19min | 6min |
 | 3.1 Gap Closure | 1/1 | 2min | 2min |
-| 4. Timeline & Preview | 1/3 | 2min | 2min |
+| 4. Timeline & Preview | 2/3 | 5min | 2.5min |
 
 **Recent Trend:**
-- Last 5 plans: 8min, 4min, 6min, 2min, 2min
+- Last 5 plans: 4min, 6min, 2min, 2min, 3min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -67,6 +67,7 @@ Progress: [▓▓▓▓▓▓▓▓▓░] 45%
 | Phase 03 P03 | 3min | 2 tasks | 4 files |
 | Phase 03.1 P01 | 2min | 2 tasks | 4 files |
 | Phase 04 P01 | 2min | 2 tasks | 8 files |
+| Phase 04 P02 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,10 @@ Recent decisions affecting current work:
 - [04-01]: Preview uses img overlay for image display; Motion Canvas player hidden for Phase 5 compositing
 - [04-01]: .peek() in rAF tick to avoid Preact signal subscription tracking outside effects
 - [04-01]: timelineStore.seek() and stepForward() clamp to [0, totalFrames-1]
+- [04-02]: TimelineRenderer is pure class -- all state passed via draw() params (no signal deps)
+- [04-02]: ThumbnailCache returns null for unloaded images (caller draws placeholder), fires onLoad for redraw
+- [04-02]: Pointer capture used for playhead scrubbing to maintain drag outside canvas bounds
+- [04-02]: Cursor-anchored zoom keeps frame under cursor stable during zoom operations
 
 ### Pending Todos
 
@@ -125,5 +130,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 04-01-PLAN.md -- timeline data layer & preview engine. Next: 04-02 (timeline canvas).
+Stopped at: Completed 04-02-PLAN.md -- canvas-based timeline rendering. Next: 04-03 (playback controls).
 Resume file: None
