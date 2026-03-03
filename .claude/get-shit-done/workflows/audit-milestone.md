@@ -12,6 +12,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 
 ```bash
 INIT=$(node "./.claude/get-shit-done/bin/gsd-tools.cjs" init milestone-op)
+if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
 
 Extract from init JSON: `milestone_version`, `milestone_name`, `phase_count`, `completed_phases`, `commit_docs`.

@@ -381,6 +381,7 @@ If FAIL: return to planner with specific fixes. Same revision loop as other dime
 Load phase operation context:
 ```bash
 INIT=$(node "./.claude/get-shit-done/bin/gsd-tools.cjs" init phase-op "${PHASE_ARG}")
+if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
 
 Extract from init JSON: `phase_dir`, `phase_number`, `has_plans`, `plan_count`.
