@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 5 of 10 (Editing Infrastructure)
-Plan: 2 of 3 in current phase
-Status: Executing
-Last activity: 2026-03-03 — Completed 05-02 (Undo/Redo System)
+Phase: 5 of 10 (Editing Infrastructure) -- COMPLETE
+Plan: 3 of 3 in current phase
+Status: Phase Complete
+Last activity: 2026-03-03 — Completed 05-03 (Keyboard Shortcuts & JKL Shuttle)
 
-Progress: [==============................] 47% (v1.0 complete, v2.0 Phase 5 in progress)
+Progress: [===============...............] 50% (v1.0 complete, v2.0 Phase 5 complete)
 
 ## Performance Metrics
 
@@ -52,6 +52,9 @@ Recent decisions affecting current work:
 - 05-02: Standalone lib/history.ts engine with snapshot/restore helpers in sequenceStore
 - 05-02: structuredClone for all undo snapshots (correctness over micro-optimization)
 - 05-02: resetHistory clears coalescing state to prevent stale anchors across projects
+- 05-03: tinykeys module declaration in vite-env.d.ts to work around v3.0.0 missing types export
+- 05-03: Toolbar refactored to use uiStore.showNewProjectDialog signal for Cmd+N parity
+- 05-03: JKL shuttle uses own rAF loop separate from PlaybackEngine for variable-rate stepping
 
 ### Pending Todos
 
@@ -69,5 +72,5 @@ No active blockers.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 05-01-PLAN.md (Store Lifecycle Fix + Unsaved Guard)
+Stopped at: Completed 05-03-PLAN.md (Keyboard Shortcuts & JKL Shuttle) -- Phase 5 complete
 Resume file: None

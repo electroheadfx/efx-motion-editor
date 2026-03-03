@@ -81,14 +81,14 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 
 ### Keyboard Shortcuts
 
-- [ ] **KEY-01**: Space bar toggles play/pause
-- [ ] **KEY-02**: Arrow keys step one frame forward/backward
-- [ ] **KEY-03**: JKL keys provide variable-speed scrubbing (J=reverse, K=stop, L=forward, repeated press accelerates)
+- [x] **KEY-01**: Space bar toggles play/pause
+- [x] **KEY-02**: Arrow keys step one frame forward/backward
+- [x] **KEY-03**: JKL keys provide variable-speed scrubbing (J=reverse, K=stop, L=forward, repeated press accelerates)
 - [x] **KEY-04**: Cmd+Z/Cmd+Shift+Z trigger undo/redo
 - [x] **KEY-05**: Cmd+S saves project, Cmd+N creates new project, Cmd+O opens project
-- [ ] **KEY-06**: Delete/Backspace deletes selected item (layer, key photo)
-- [ ] **KEY-07**: Shortcuts do not fire when user is typing in an input field
-- [ ] **KEY-08**: ? key shows keyboard shortcuts help overlay
+- [x] **KEY-06**: Delete/Backspace deletes selected item (layer, key photo)
+- [x] **KEY-07**: Shortcuts do not fire when user is typing in an input field
+- [x] **KEY-08**: ? key shows keyboard shortcuts help overlay
 
 ## Future Requirements
 
@@ -138,14 +138,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-03 | Phase 5 | Complete |
 | INFRA-04 | Phase 5 | Complete |
 | INFRA-05 | Phase 5 | Complete |
-| KEY-01 | Phase 5 | Pending |
-| KEY-02 | Phase 5 | Pending |
-| KEY-03 | Phase 5 | Pending |
+| KEY-01 | Phase 5 | Complete |
+| KEY-02 | Phase 5 | Complete |
+| KEY-03 | Phase 5 | Complete |
 | KEY-04 | Phase 5 | Complete |
 | KEY-05 | Phase 5 | Complete |
-| KEY-06 | Phase 5 | Pending |
-| KEY-07 | Phase 5 | Pending |
-| KEY-08 | Phase 5 | Pending |
+| KEY-06 | Phase 5 | Complete |
+| KEY-07 | Phase 5 | Complete |
+| KEY-08 | Phase 5 | Complete |
 | LAYER-01 | Phase 6 | Pending |
 | LAYER-02 | Phase 6 | Pending |
 | LAYER-03 | Phase 6 | Pending |
