@@ -1,600 +1,1624 @@
-# Architecture Research
+# Architecture Research: v2.0 Feature Integration
 
-**Domain:** Desktop stop-motion cinematic video editor (Tauri 2.0 + Preact + Motion Canvas)
-**Researched:** 2026-03-02
-**Confidence:** MEDIUM-HIGH
+**Domain:** Layer compositing, FX effects, audio/beat sync, PNG export, undo/redo, keyboard shortcuts
+**Researched:** 2026-03-03
+**Confidence:** HIGH (based on direct codebase analysis + verified Motion Canvas API inspection)
 
-## System Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        PREACT FRONTEND (WebView)                     │
-│  ┌───────────┐  ┌──────────┐  ┌───────────┐  ┌──────────────────┐  │
-│  │ Sequences │  │ Layers   │  │ Properties│  │ Toolbar/Dialogs  │  │
-│  │ Panel     │  │ Panel    │  │ Panel     │  │                  │  │
-│  └─────┬─────┘  └────┬─────┘  └─────┬─────┘  └────────┬─────────┘  │
-│        │              │              │                  │            │
-│  ┌─────┴──────────────┴──────────────┴──────────────────┴─────────┐  │
-│  │                   SIGNAL STORE LAYER                            │  │
-│  │  projectSignal  timelineSignal  layerSignal  uiSignal          │  │
-│  └────────────────────────┬───────────────────────────────────────┘  │
-│                           │                                          │
-│  ┌────────────────────────┴───────────────────────────────────────┐  │
-│  │                   CANVAS / PREVIEW AREA                         │  │
-│  │  ┌──────────────────────┐  ┌────────────────────────────────┐  │  │
-│  │  │ Timeline Canvas      │  │ Preview Canvas                 │  │  │
-│  │  │ (Custom <canvas>)    │  │ (@efxlab/motion-canvas-player) │  │  │
-│  │  └──────────────────────┘  └────────────────────────────────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                           │                                          │
-│  ┌────────────────────────┴───────────────────────────────────────┐  │
-│  │                   IPC BRIDGE (invoke / events)                  │  │
-│  └────────────────────────┬───────────────────────────────────────┘  │
-├───────────────────────────┼──────────────────────────────────────────┤
-│                    TAURI RUST BACKEND (Core Process)                  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐│
-│  │ Project  │  │ File     │  │ Export   │  │ Audio                ││
-│  │ Manager  │  │ System   │  │ Pipeline │  │ Analysis             ││
-│  └──────────┘  └──────────┘  └──────────┘  └──────────────────────┘│
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────────────────────┐  │
-│  │ Config   │  │ Thumbnail│  │ Template Manager                 │  │
-│  │ Store    │  │ Generator│  │                                  │  │
-│  └──────────┘  └──────────┘  └──────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### Component Responsibilities
-
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| **Preact UI Shell** | All visual panels (sequences, layers, properties, toolbar), user interaction, keyboard shortcuts | Preact components + Tailwind v4, custom components |
-| **Signal Store Layer** | Centralized reactive state for project, timeline, layers, UI state; drives all panel updates | Preact Signals (`signal()`, `computed()`, `effect()`) in module-scoped stores |
-| **Preview Canvas** | Real-time composited preview of current frame with all layers and FX applied | `@efxlab/motion-canvas-player` web component embedded in Preact |
-| **Timeline Canvas** | Frame-by-frame visualization, scrubbing, zoom, thumbnails, waveform, beat markers | Custom `<canvas>` element with imperative drawing |
-| **IPC Bridge** | Type-safe communication between frontend and Rust backend | `@tauri-apps/api/core` invoke + events |
-| **Project Manager (Rust)** | Create/open/save/auto-save .mce project files, manage working folder structure | Rust commands, serde JSON serialization |
-| **File System (Rust)** | Image import, video copy to public/, asset management, drag-and-drop handling | Tauri fs plugin + custom commands for asset organization |
-| **Export Pipeline (Rust)** | Coordinate PNG sequence export, manage output directory, write audio metadata | Rust orchestration calling Motion Canvas exporter via IPC Channel |
-| **Audio Analysis (Rust)** | BPM detection, beat marker extraction, waveform data generation | Rust audio crate (e.g., `symphonia` for decoding, custom BPM analysis) |
-| **Config Store (Rust)** | Global app config (~/.config/efx-mocap/), recent projects, first-launch state | Rust file I/O with serde, Tauri path resolver |
-| **Thumbnail Generator (Rust)** | Generate 60x45px thumbnails on image import, cache in .thumbs/ | Rust `image` crate for fast resizing |
-| **Template Manager (Rust)** | Save/load/import/export .mce-template files, manage global vs local templates | Rust file I/O, JSON serialization |
-
-## Recommended Project Structure
+## Existing Architecture Snapshot
 
 ```
-efx-motion-editor/
-├── src-tauri/                    # Rust backend
-│   ├── src/
-│   │   ├── lib.rs               # Tauri app setup, command registration
-│   │   ├── commands/            # IPC command handlers
-│   │   │   ├── mod.rs
-│   │   │   ├── project.rs       # create, open, save, auto-save
-│   │   │   ├── files.rs         # import images, copy videos, thumbnails
-│   │   │   ├── export.rs        # PNG sequence export coordination
-│   │   │   ├── audio.rs         # BPM detection, waveform data
-│   │   │   ├── config.rs        # global config, recent projects
-│   │   │   └── templates.rs     # template CRUD, import/export
-│   │   ├── models/              # Shared Rust data types
-│   │   │   ├── mod.rs
-│   │   │   ├── project.rs       # Project, Sequence, KeyPhoto structs
-│   │   │   ├── layer.rs         # Layer, BlendMode, RepeatMode
-│   │   │   └── template.rs      # CompositionTemplate
-│   │   ├── services/            # Business logic (non-IPC)
-│   │   │   ├── thumbnail.rs     # Image resizing
-│   │   │   ├── beat_detect.rs   # BPM analysis algorithm
-│   │   │   └── folder.rs        # Working folder structure creation
-│   │   └── error.rs             # Unified error types with thiserror
-│   ├── Cargo.toml
-│   └── tauri.conf.json
-├── src/                          # Preact frontend
-│   ├── main.tsx                  # App entry, router (Welcome vs Main)
-│   ├── App.tsx                   # Screen router
-│   ├── screens/                  # Top-level screens
-│   │   ├── WelcomeScreen.tsx     # First launch / project picker
-│   │   ├── MainScreen.tsx        # Editor layout shell
-│   │   ├── TemplateLibrary.tsx   # Template browser
-│   │   └── ExportDialog.tsx      # Export configuration
-│   ├── components/               # Reusable UI components
-│   │   ├── ui/                   # Generic (Button, Slider, Modal, Select)
-│   │   ├── panels/               # Editor panels
-│   │   │   ├── SequencePanel.tsx
-│   │   │   ├── LayerPanel.tsx
-│   │   │   ├── PropertiesPanel.tsx
-│   │   │   └── Toolbar.tsx
-│   │   ├── timeline/             # Timeline-specific components
-│   │   │   ├── Timeline.tsx      # Timeline container
-│   │   │   ├── TimelineCanvas.tsx # <canvas> rendering
-│   │   │   ├── TimeRuler.tsx
-│   │   │   ├── TrackRow.tsx
-│   │   │   └── Playhead.tsx
-│   │   └── preview/              # Preview area
-│   │       ├── PreviewCanvas.tsx  # Motion Canvas player wrapper
-│   │       └── PreviewControls.tsx
-│   ├── stores/                   # Preact Signal stores
-│   │   ├── project.ts            # Project-level state (name, fps, path)
-│   │   ├── sequences.ts          # Sequence list, active sequence
-│   │   ├── layers.ts             # Layer stack, selected layer
-│   │   ├── timeline.ts           # Playhead position, zoom, scroll
-│   │   ├── ui.ts                 # Panel sizes, modals, selection state
-│   │   └── history.ts            # Undo/redo stack
-│   ├── ipc/                      # Tauri IPC wrappers
-│   │   ├── project.ts            # invoke wrappers for project commands
-│   │   ├── files.ts              # invoke wrappers for file operations
-│   │   ├── export.ts             # invoke wrappers for export
-│   │   ├── audio.ts              # invoke wrappers for audio analysis
-│   │   └── config.ts             # invoke wrappers for config
-│   ├── hooks/                    # Custom Preact hooks
-│   │   ├── useKeyboard.ts        # Global keyboard shortcut handler
-│   │   ├── useDragDrop.ts        # Drag-and-drop logic
-│   │   ├── usePlayback.ts        # Play/pause/scrub logic
-│   │   └── useAutoSave.ts        # Auto-save timer
-│   ├── types/                    # TypeScript types (mirror Rust models)
-│   │   ├── project.ts
-│   │   ├── layer.ts
-│   │   └── template.ts
-│   ├── utils/                    # Pure utility functions
-│   │   ├── frame-math.ts         # FPS/duration/frame calculations
-│   │   ├── blend-modes.ts        # Blend mode definitions
-│   │   └── color.ts
-│   └── index.css                 # Tailwind v4 entry + CSS variables
-├── public/                       # Static assets for Motion Canvas runtime
-│   └── videos/                   # Video files (symlinked/copied from assets)
-├── package.json
-├── pnpm-lock.yaml
-├── vite.config.ts
-├── tailwind.config.ts
-└── tsconfig.json
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        PREACT FRONTEND (WebView)                        │
+│                                                                         │
+│  ┌─────────────┐  ┌──────────────────────────────────────────────────┐  │
+│  │  EditorShell │  │            SIGNAL STORES (7 existing)           │  │
+│  │  ├ Toolbar   │  │  projectStore  sequenceStore  imageStore       │  │
+│  │  ├ LeftPanel │  │  timelineStore layerStore(stub) uiStore        │  │
+│  │  ├ CanvasArea│  │  historyStore(stub)                            │  │
+│  │  ├ Timeline  │  │                                                │  │
+│  │  └ Properties│  │  + Libs: frameMap, previewBridge, playbackEngine│  │
+│  └─────────────┘  └──────────────────────────────────────────────────┘  │
+│                                                                         │
+│  ┌─────────────────────────┐  ┌──────────────────────────────────────┐  │
+│  │ Timeline Canvas (2D)    │  │ Preview: <img> overlay + hidden MC   │  │
+│  │ TimelineRenderer class  │  │ player (Motion Canvas ready but      │  │
+│  │ + ThumbnailCache        │  │ currently img-only rendering)        │  │
+│  └─────────────────────────┘  └──────────────────────────────────────┘  │
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │                IPC: safeInvoke() wrapper over Tauri invoke()     │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────────────┤
+│                    TAURI RUST BACKEND                                    │
+│  Commands: project_create/save/open, import_images, image_get_info     │
+│  Services: image_pool (process, thumbnail), project_io (CRUD, migrate) │
+│  Models: MceProject, MceSequence, MceKeyPhoto, MceImageRef             │
+│  Plugins: dialog, store, fs, shell                                     │
+│  Deps: image 0.25, uuid, chrono, serde/serde_json                     │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Structure Rationale
+### Critical Existing Patterns That v2.0 Must Respect
 
-- **src-tauri/commands/:** One file per domain keeps Rust IPC handlers organized and testable. Each module registers its own commands.
-- **src-tauri/models/:** Shared data types with `#[derive(Serialize, Deserialize)]` ensure type parity between Rust structs and TypeScript interfaces.
-- **src/stores/:** Module-scoped Preact Signals (not context-based) for maximum performance. Each store is a self-contained module with exported signals and actions.
-- **src/ipc/:** Thin wrappers around `invoke()` calls that handle serialization and error mapping. Keeps Tauri API usage isolated from UI components.
-- **src/components/panels/ vs timeline/ vs preview/:** Separates the three distinct rendering paradigms: DOM panels (Preact), canvas-based timeline (imperative), and Motion Canvas player (web component).
+1. **markDirty callback chain** -- sequenceStore and imageStore use `_setMarkDirtyCallback()` to notify projectStore of changes, avoiding circular imports. New stores that dirty the project must follow this exact pattern.
 
-## Architectural Patterns
+2. **snake_case types matching Rust serde** -- All TypeScript types use snake_case for fields that cross the IPC boundary. New types (layers, audio, export) must follow this convention.
 
-### Pattern 1: Module-Scoped Signal Stores
+3. **PlaybackEngine with rAF delta accumulation** -- The clock at `playbackEngine.ts` uses `performance.now()` deltas. The comment says "audio-sync-ready." This is where AudioContext master clock will integrate.
 
-**What:** Define Preact Signals at module scope (not in components or context). Export signals directly for reads, export action functions for writes.
-**When to use:** All application state. This is the primary state management pattern.
-**Trade-offs:** Extremely fast (no context re-renders, fine-grained updates), but signals are singletons -- fine for a desktop app with one project open, not suitable if multiple instances needed.
+4. **Preview is currently img overlay, NOT Motion Canvas rendering** -- The MC player is hidden (`opacity: 0`), and an `<img>` tag shows the current frame. v2.0 must transition to MC rendering for compositing to work.
 
-**Example:**
+5. **frameMap computed signal** -- Flattens all sequences + keyPhotos into a single `FrameEntry[]`. This is the backbone of timeline rendering and playback. Layers do NOT change frameMap -- they are per-sequence compositing state.
+
+6. **Stores are module-scoped singletons** -- Not context-based. Each store exports signals and action functions. New stores follow this pattern.
+
+7. **projectStore.hydrateFromMce / buildMceProject** -- The serialization gateway. New data (layers, audio references) must be added to both MceProject and the hydration/build cycle.
+
+---
+
+## Feature Integration Architecture
+
+### 1. Layer System
+
+#### Store Changes
+
+**New store: Expand `layerStore.ts`** (currently a 35-line stub)
+
+The existing `layerStore` has `layers`, `selectedLayerId`, and basic CRUD. It needs:
+
 ```typescript
-// stores/sequences.ts
+// types/layer.ts -- EXPAND existing type
+export type LayerType = 'static-image' | 'image-sequence' | 'video' | 'fx';
+export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add';
+
+export interface Layer {
+  id: string;
+  name: string;
+  type: LayerType;
+  visible: boolean;
+  locked: boolean;        // NEW: prevent accidental edits
+  opacity: number;
+  blendMode: BlendMode;
+  transform: LayerTransform;
+  source: LayerSource;    // NEW: what content this layer shows
+  fx_preset: string | null; // NEW: for FX layers, which preset to apply
+}
+
+export interface LayerSource {
+  image_id: string | null;       // for static-image layers
+  sequence_id: string | null;    // for image-sequence layers (references a sequence)
+  video_path: string | null;     // for video layers (relative to project dir)
+}
+
+// LayerTransform stays as-is (x, y, scale, rotation, crop*)
+```
+
+**Key design decision: Layers are per-sequence, not global.**
+
+Each sequence has its own layer stack. This matches the conceptual model: a sequence is a composition (like a timeline track in After Effects), and layers are the visual elements within it.
+
+```typescript
+// types/sequence.ts -- MODIFY
+export interface Sequence {
+  id: string;
+  name: string;
+  fps: number;
+  width: number;
+  height: number;
+  keyPhotos: KeyPhoto[];
+  layers: Layer[];  // NEW: ordered bottom-to-top
+}
+```
+
+**layerStore becomes a view into the active sequence's layers:**
+
+```typescript
+// stores/layerStore.ts -- REWRITE
 import { signal, computed } from '@preact/signals';
-import type { Sequence } from '../types/project';
+import { sequenceStore } from './sequenceStore';
+import type { Layer } from '../types/layer';
 
-// State
-export const sequences = signal<Sequence[]>([]);
-export const activeSequenceId = signal<string | null>(null);
+const selectedLayerId = signal<string | null>(null);
 
-// Derived
-export const activeSequence = computed(() =>
-  sequences.value.find(s => s.id === activeSequenceId.value) ?? null
-);
+// Derived: layers for the currently active sequence
+const layers = computed<Layer[]>(() => {
+  const seq = sequenceStore.getActiveSequence();
+  return seq?.layers ?? [];
+});
 
-export const totalDuration = computed(() =>
-  sequences.value.reduce((sum, s) => sum + s.duration, 0)
-);
+export const layerStore = {
+  layers,           // computed, not writable directly
+  selectedLayerId,
 
-// Actions (mutate signals, push to history)
-export function addSequence(seq: Sequence) {
-  pushHistory(); // capture before mutation
-  sequences.value = [...sequences.value, seq];
-}
+  add(layer: Layer) {
+    const seqId = sequenceStore.activeSequenceId.value;
+    if (!seqId) return;
+    sequenceStore.updateSequence(seqId, (seq) => ({
+      ...seq,
+      layers: [...seq.layers, layer],
+    }));
+  },
 
-export function reorderSequences(fromIndex: number, toIndex: number) {
-  pushHistory();
-  const arr = [...sequences.value];
-  const [moved] = arr.splice(fromIndex, 1);
-  arr.splice(toIndex, 0, moved);
-  sequences.value = arr;
-}
+  remove(layerId: string) { /* update active sequence's layers */ },
+  reorder(fromIndex: number, toIndex: number) { /* ... */ },
+  updateLayer(layerId: string, updates: Partial<Layer>) { /* ... */ },
+  setSelected(id: string | null) { selectedLayerId.value = id; },
+  reset() { selectedLayerId.value = null; },
+};
 ```
 
-### Pattern 2: Command-Based IPC with Typed Wrappers
+This means `sequenceStore` needs a generic `updateSequence(id, updater)` method (it currently only has specific setters). Add:
 
-**What:** Every Rust backend operation is a Tauri command. The frontend never touches the file system directly -- all file I/O goes through Rust commands. TypeScript wrapper functions in `src/ipc/` provide type safety.
-**When to use:** Any operation involving file system, heavy computation, or native APIs.
-**Trade-offs:** Adds a serialization boundary (JSON round-trip), but provides security, type safety, and keeps heavy work off the UI thread. Use Tauri Channels for large data (thumbnails, waveforms).
-
-**Example:**
 ```typescript
-// ipc/project.ts
-import { invoke } from '@tauri-apps/api/core';
-import type { ProjectData } from '../types/project';
-
-export async function saveProject(data: ProjectData): Promise<void> {
-  await invoke('save_project', { data });
-}
-
-export async function openProject(path: string): Promise<ProjectData> {
-  return invoke<ProjectData>('open_project', { path });
+// sequenceStore -- ADD
+updateSequence(id: string, updater: (seq: Sequence) => Sequence) {
+  sequences.value = sequences.value.map(s =>
+    s.id === id ? updater(s) : s
+  );
+  markDirty();
 }
 ```
+
+#### Preview Integration: Transition from img to Motion Canvas
+
+The Preview component currently renders a flat `<img>` with `currentPreviewUrl`. For compositing, the Motion Canvas player must become the actual renderer.
+
+**previewScene.tsx must be rewritten to build a dynamic scene graph:**
+
+```typescript
+// scenes/previewScene.tsx -- REWRITE
+/** @jsxImportSource @efxlab/motion-canvas-2d/lib */
+import { makeScene2D, Img, Rect, Node } from '@efxlab/motion-canvas-2d';
+import { createRef, waitFor } from '@efxlab/motion-canvas-core';
+
+// External signal bridge -- set from Preview component
+// Motion Canvas scenes run in their own scope; use a global bridge
+import { sceneConfig } from '../lib/sceneBridge';
+
+export default makeScene2D(function* (view) {
+  // Scene waits forever; external code drives updates via node refs
+  const rootRef = createRef<Node>();
+  view.add(<Node ref={rootRef} />);
+  yield* waitFor(Infinity);
+});
+```
+
+**New lib: `sceneBridge.ts`** -- bridges Preact signal state to Motion Canvas scene graph:
+
+```typescript
+// lib/sceneBridge.ts
+import { signal } from '@preact/signals';
+import type { Layer } from '../types/layer';
+
+export interface SceneConfig {
+  layers: Layer[];
+  currentImageUrl: string;
+  sequenceWidth: number;
+  sequenceHeight: number;
+}
+
+export const sceneConfig = signal<SceneConfig>({
+  layers: [],
+  currentImageUrl: '',
+  sequenceWidth: 1920,
+  sequenceHeight: 1080,
+});
+```
+
+**Preview component update strategy:**
+
+Instead of fighting Motion Canvas's generator-based scene model, use a hybrid approach:
+
+1. Keep the Motion Canvas player hidden for now (use it only for export rendering later)
+2. Use an **OffscreenCanvas** or a regular `<canvas>` element with Canvas 2D API for real-time preview compositing
+3. The canvas composites layers using `globalCompositeOperation` for blend modes
+
+**Rationale:** Motion Canvas scenes use generator functions (`function*`) which don't easily bridge to reactive Preact signal updates. The preview compositing is actually simpler than Motion Canvas's animation model -- we just need to draw N layers with blend modes at the current frame. Canvas 2D's `globalCompositeOperation` supports all needed blend modes natively:
+
+- `normal` -> `source-over` (default)
+- `screen` -> `screen`
+- `multiply` -> `multiply`
+- `overlay` -> `overlay`
+- `add` -> `lighter`
+
+This is confirmed by the [MDN Canvas globalCompositeOperation docs](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation).
+
+```typescript
+// lib/previewRenderer.ts -- NEW
+export class PreviewRenderer {
+  private ctx: CanvasRenderingContext2D;
+  private imageCache: Map<string, HTMLImageElement> = new Map();
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.ctx = canvas.getContext('2d')!;
+  }
+
+  render(layers: Layer[], currentImageUrl: string, width: number, height: number) {
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, width, height);
+
+    for (const layer of layers) {
+      if (!layer.visible || layer.opacity === 0) continue;
+
+      ctx.save();
+      ctx.globalAlpha = layer.opacity;
+      ctx.globalCompositeOperation = blendModeToComposite(layer.blendMode);
+
+      // Apply transform
+      const t = layer.transform;
+      ctx.translate(t.x + width / 2, t.y + height / 2);
+      ctx.rotate(t.rotation * Math.PI / 180);
+      ctx.scale(t.scale, t.scale);
+
+      // Draw layer content based on type
+      this.drawLayerContent(layer, width, height);
+
+      ctx.restore();
+    }
+  }
+}
+
+function blendModeToComposite(mode: BlendMode): GlobalCompositeOperation {
+  const map: Record<BlendMode, GlobalCompositeOperation> = {
+    normal: 'source-over',
+    screen: 'screen',
+    multiply: 'multiply',
+    overlay: 'overlay',
+    add: 'lighter',
+  };
+  return map[mode];
+}
+```
+
+**Confidence: HIGH** -- Canvas 2D globalCompositeOperation is a stable web standard. All five blend modes map directly. No library needed.
+
+#### MceProject Serialization
+
+The `.mce` file format needs layer data. Add to `MceSequence`:
+
+```typescript
+// types/project.ts -- MODIFY MceSequence
+export interface MceSequence {
+  id: string;
+  name: string;
+  fps: number;
+  width: number;
+  height: number;
+  order: number;
+  key_photos: MceKeyPhoto[];
+  layers: MceLayer[];  // NEW
+}
+
+export interface MceLayer {
+  id: string;
+  name: string;
+  type: string;  // 'static-image' | 'image-sequence' | 'video' | 'fx'
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  blend_mode: string;
+  transform: MceLayerTransform;
+  source_image_id: string | null;
+  source_sequence_id: string | null;
+  source_video_path: string | null;  // relative to project root
+  fx_preset: string | null;
+  order: number;
+}
+```
+
+**Rust side:** Add matching `MceLayer` struct to `models/project.rs` and update `MceSequence`. Bump `version` to 2 in MceProject. Add migration logic to handle v1 files (no layers field = empty layers array).
+
+#### File Structure Changes
+
+```
+src/
+  types/layer.ts          -- MODIFY (add LayerSource, fx_preset, locked)
+  types/sequence.ts       -- MODIFY (add layers field)
+  types/project.ts        -- MODIFY (add MceLayer, MceLayerTransform)
+  stores/layerStore.ts    -- REWRITE (computed from active sequence)
+  stores/sequenceStore.ts -- MODIFY (add updateSequence, layer-aware methods)
+  stores/projectStore.ts  -- MODIFY (hydrate/build handle layers)
+  lib/previewRenderer.ts  -- NEW (Canvas 2D compositing engine)
+  lib/sceneBridge.ts      -- NEW (bridge state to preview renderer)
+  components/Preview.tsx   -- REWRITE (canvas compositing instead of img tag)
+  components/layout/PropertiesPanel.tsx -- REWRITE (context-sensitive layer properties)
+
+src-tauri/src/
+  models/project.rs       -- MODIFY (add MceLayer struct)
+```
+
+---
+
+### 2. FX Effects
+
+#### Architecture
+
+FX effects (grain, scratches, light leaks, vignette, color grade) are implemented as **FX layers** -- special layers with `type: 'fx'` and an `fx_preset` identifier.
+
+**Why FX-as-layers (not post-process):** The user can reorder FX relative to image layers, adjust opacity/blend mode per-FX, and toggle visibility. This is the Photoshop/After Effects model users expect.
+
+#### Rendering Approach: Canvas 2D Filters + Custom Drawing
+
+Motion Canvas supports CSS filters (`brightness`, `contrast`, `saturate`, `sepia`, `grayscale`, `hue`, `blur`, `invert`) on any node via the `filters` property (confirmed in `@efxlab/motion-canvas-2d/lib/partials/Filter.d.ts`). It also supports **custom WebGL shaders** via the experimental `shaders` property on nodes.
+
+For the preview renderer (Canvas 2D approach), FX effects render as:
+
+| FX | Implementation | Confidence |
+|----|----------------|------------|
+| **Grain** | Draw noise texture (pre-generated ImageData) composited with `overlay` blend | HIGH |
+| **Dirt/Scratches** | Draw pre-made scratch texture images composited with `screen` | HIGH |
+| **Light Leaks** | Draw gradient/texture images composited with `screen` or `add` | HIGH |
+| **Vignette** | Draw radial gradient (black edges) composited with `multiply` | HIGH |
+| **Color Grade** | Apply `ctx.filter` with CSS filter string (brightness, contrast, saturate, sepia, hue-rotate) | HIGH |
+
+```typescript
+// lib/fx/grain.ts -- NEW
+export function renderGrain(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  intensity: number,
+  seed: number
+) {
+  const imageData = ctx.createImageData(width, height);
+  const data = imageData.data;
+  // Simple PRNG seeded by frame number for consistent grain per frame
+  let rng = seed;
+  for (let i = 0; i < data.length; i += 4) {
+    rng = (rng * 1664525 + 1013904223) & 0xFFFFFFFF;
+    const noise = ((rng >>> 16) & 0xFF) - 128;
+    const v = Math.round(noise * intensity);
+    data[i] = 128 + v;     // R
+    data[i + 1] = 128 + v; // G
+    data[i + 2] = 128 + v; // B
+    data[i + 3] = 255;     // A
+  }
+  // Draw noise to temp canvas, then composite
+  const tempCanvas = new OffscreenCanvas(width, height);
+  const tempCtx = tempCanvas.getContext('2d')!;
+  tempCtx.putImageData(imageData, 0, 0);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.globalAlpha = intensity;
+  ctx.drawImage(tempCanvas, 0, 0);
+  ctx.restore();
+}
+```
+
+**FX presets are defined in code, not user-configurable:** Each preset has named parameters (intensity, color, etc.) that the user adjusts via the Properties panel. No plugin system needed.
+
+```typescript
+// lib/fx/presets.ts -- NEW
+export interface FxPreset {
+  id: string;
+  name: string;
+  category: 'texture' | 'color' | 'light';
+  render: (ctx: CanvasRenderingContext2D, w: number, h: number, params: Record<string, number>, frame: number) => void;
+  defaultParams: Record<string, number>;
+  paramRanges: Record<string, { min: number; max: number; step: number; label: string }>;
+}
+
+export const FX_PRESETS: FxPreset[] = [
+  { id: 'grain', name: 'Film Grain', category: 'texture', render: renderGrain, defaultParams: { intensity: 0.3 }, ... },
+  { id: 'scratches', name: 'Dirt & Scratches', category: 'texture', render: renderScratches, defaultParams: { density: 0.5, length: 0.7 }, ... },
+  { id: 'light-leak', name: 'Light Leak', category: 'light', render: renderLightLeak, defaultParams: { intensity: 0.4, position: 0.5, hue: 30 }, ... },
+  { id: 'vignette', name: 'Vignette', category: 'light', render: renderVignette, defaultParams: { intensity: 0.6, softness: 0.5 }, ... },
+  { id: 'color-grade', name: 'Color Grade', category: 'color', render: renderColorGrade, defaultParams: { brightness: 1, contrast: 1, saturate: 1, sepia: 0, hue: 0 }, ... },
+];
+```
+
+#### FX Layer Data in Sequence
+
+```typescript
+// An FX layer in the layer stack:
+const grainLayer: Layer = {
+  id: crypto.randomUUID(),
+  name: 'Film Grain',
+  type: 'fx',
+  visible: true,
+  locked: false,
+  opacity: 0.4,
+  blendMode: 'overlay',
+  transform: { x: 0, y: 0, scale: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 },
+  source: { image_id: null, sequence_id: null, video_path: null },
+  fx_preset: 'grain',
+};
+```
+
+#### FX Parameters Storage
+
+FX parameters (intensity, density, etc.) need to be stored per-layer. Add to the Layer type:
+
+```typescript
+export interface Layer {
+  // ... existing fields
+  fx_params: Record<string, number>;  // NEW: e.g., { intensity: 0.3, density: 0.5 }
+}
+```
+
+#### File Structure Changes
+
+```
+src/
+  lib/fx/                    -- NEW directory
+    presets.ts               -- FX preset definitions
+    grain.ts                 -- Grain renderer
+    scratches.ts             -- Scratch renderer
+    lightLeak.ts             -- Light leak renderer
+    vignette.ts              -- Vignette renderer
+    colorGrade.ts            -- Color grade (CSS filter-based) renderer
+    index.ts                 -- Re-exports
+  types/layer.ts             -- MODIFY (add fx_params)
+```
+
+---
+
+### 3. Audio Import, Waveform, and Beat Sync
+
+#### Architecture Overview
+
+Audio has three distinct subsystems:
+
+1. **Audio File Management** -- Import, store reference, copy to project dir (Rust)
+2. **Waveform Visualization** -- Decode audio, extract waveform peaks, draw on timeline canvas (Rust decode + Frontend render)
+3. **Beat Detection** -- Analyze audio for BPM and beat positions (Frontend Web Audio API)
+4. **Audio Playback** -- Sync with PlaybackEngine clock (Frontend Web Audio API)
+
+#### Audio File Import (Rust)
+
+Audio files are imported similar to images: copied to `project_dir/audio/` and referenced by ID.
 
 ```rust
-// src-tauri/src/commands/project.rs
-use serde::{Deserialize, Serialize};
-use crate::models::project::ProjectData;
+// src-tauri/src/models/audio.rs -- NEW
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioRef {
+    pub id: String,
+    pub original_filename: String,
+    pub relative_path: String,  // audio/filename_uuid.wav
+    pub duration_secs: f64,
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+```
 
+```typescript
+// types/audio.ts -- NEW
+export interface AudioRef {
+  id: string;
+  original_filename: string;
+  relative_path: string;
+  duration_secs: number;
+  sample_rate: number;
+  channels: number;
+}
+
+export interface WaveformData {
+  peaks: Float32Array;    // normalized -1..1 peaks at ~200 samples/sec
+  sample_rate: number;    // sample rate of the original audio
+  duration_secs: number;
+}
+
+export interface BeatMarker {
+  time_secs: number;
+  strength: number;  // 0..1 confidence
+}
+
+export interface AudioState {
+  audio_ref: AudioRef | null;
+  waveform: WaveformData | null;
+  beats: BeatMarker[];
+  bpm: number | null;
+  offset_secs: number;  // trim start position
+  volume: number;        // 0..1
+}
+```
+
+#### Waveform Generation
+
+**Option A: Rust-side with Symphonia** -- Decode audio in Rust, downsample to ~200 peaks/sec, send as `Vec<f32>` via IPC.
+**Option B: Frontend with Web Audio API** -- Decode via `AudioContext.decodeAudioData()`, downsample in JS.
+
+**Decision: Frontend (Web Audio API)** because:
+- AudioContext.decodeAudioData handles all formats the browser supports (MP3, WAV, AAC, OGG, FLAC)
+- No need for Symphonia dependency in Rust
+- Waveform peaks are generated once per audio import, cached in memory
+- Keeps Rust backend focused on file I/O, not audio processing
+
+```typescript
+// lib/audioEngine.ts -- NEW
+export class AudioEngine {
+  private audioContext: AudioContext;
+  private audioBuffer: AudioBuffer | null = null;
+  private sourceNode: AudioBufferSourceNode | null = null;
+  private gainNode: GainNode;
+  private startTime: number = 0;
+  private startOffset: number = 0;
+
+  constructor() {
+    this.audioContext = new AudioContext();
+    this.gainNode = this.audioContext.createGain();
+    this.gainNode.connect(this.audioContext.destination);
+  }
+
+  async loadAudio(url: string): Promise<AudioBuffer> {
+    const response = await fetch(url);
+    const arrayBuffer = await response.arrayBuffer();
+    this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+    return this.audioBuffer;
+  }
+
+  extractWaveformPeaks(buffer: AudioBuffer, samplesPerSecond: number = 200): Float32Array {
+    const channelData = buffer.getChannelData(0); // mono or left channel
+    const blockSize = Math.floor(buffer.sampleRate / samplesPerSecond);
+    const peakCount = Math.ceil(channelData.length / blockSize);
+    const peaks = new Float32Array(peakCount);
+
+    for (let i = 0; i < peakCount; i++) {
+      const start = i * blockSize;
+      const end = Math.min(start + blockSize, channelData.length);
+      let max = 0;
+      for (let j = start; j < end; j++) {
+        const abs = Math.abs(channelData[j]);
+        if (abs > max) max = abs;
+      }
+      peaks[i] = max;
+    }
+    return peaks;
+  }
+
+  // Sync playback with PlaybackEngine
+  playFromFrame(frame: number, fps: number) {
+    this.stop();
+    const time = frame / fps;
+    this.sourceNode = this.audioContext.createBufferSource();
+    this.sourceNode.buffer = this.audioBuffer;
+    this.sourceNode.connect(this.gainNode);
+    this.sourceNode.start(0, time);
+    this.startTime = this.audioContext.currentTime;
+    this.startOffset = time;
+  }
+
+  stop() {
+    this.sourceNode?.stop();
+    this.sourceNode = null;
+  }
+
+  setVolume(volume: number) {
+    this.gainNode.gain.value = volume;
+  }
+}
+```
+
+#### Beat Detection
+
+**Decision: Frontend with `web-audio-beat-detector` npm package** because:
+- Pure JS/TS, works with AudioBuffer directly
+- Returns BPM and beat offset
+- No Rust dependency needed
+- Verified on npm: [web-audio-beat-detector](https://www.npmjs.com/package/web-audio-beat-detector)
+
+```typescript
+// lib/beatDetector.ts -- NEW
+import { analyze, guess } from 'web-audio-beat-detector';
+
+export async function detectBeats(audioBuffer: AudioBuffer): Promise<{
+  bpm: number;
+  offset: number;
+  beats: Array<{ time_secs: number; strength: number }>;
+}> {
+  const { bpm, offset } = await guess(audioBuffer);
+  const beatInterval = 60 / bpm;
+
+  // Generate beat marker positions from offset through duration
+  const beats: Array<{ time_secs: number; strength: number }> = [];
+  let time = offset;
+  while (time < audioBuffer.duration) {
+    beats.push({ time_secs: time, strength: 1.0 });
+    time += beatInterval;
+  }
+
+  return { bpm, offset, beats };
+}
+```
+
+**Confidence: MEDIUM** -- web-audio-beat-detector works well for electronic/rhythmic music. Results degrade for complex acoustic music. The user can manually adjust BPM and offset to correct inaccuracies.
+
+#### Audio Store
+
+```typescript
+// stores/audioStore.ts -- NEW
+import { signal } from '@preact/signals';
+import type { AudioRef, WaveformData, BeatMarker } from '../types/audio';
+
+const audioRef = signal<AudioRef | null>(null);
+const waveform = signal<WaveformData | null>(null);
+const beats = signal<BeatMarker[]>([]);
+const bpm = signal<number | null>(null);
+const beatOffset = signal<number>(0);
+const volume = signal<number>(0.8);
+const isAnalyzing = signal<boolean>(false);
+
+// markDirty callback for projectStore
+let _markDirty: (() => void) | null = null;
+export function _setAudioMarkDirtyCallback(fn: () => void) {
+  _markDirty = fn;
+}
+
+export const audioStore = {
+  audioRef, waveform, beats, bpm, beatOffset, volume, isAnalyzing,
+
+  setAudio(ref: AudioRef, waveformData: WaveformData) {
+    audioRef.value = ref;
+    waveform.value = waveformData;
+    _markDirty?.();
+  },
+
+  setBeats(detectedBpm: number, offset: number, markers: BeatMarker[]) {
+    bpm.value = detectedBpm;
+    beatOffset.value = offset;
+    beats.value = markers;
+    _markDirty?.();
+  },
+
+  removeAudio() {
+    audioRef.value = null;
+    waveform.value = null;
+    beats.value = [];
+    bpm.value = null;
+    beatOffset.value = 0;
+    _markDirty?.();
+  },
+
+  setVolume(v: number) { volume.value = Math.max(0, Math.min(1, v)); },
+
+  reset() {
+    audioRef.value = null;
+    waveform.value = null;
+    beats.value = [];
+    bpm.value = null;
+    beatOffset.value = 0;
+    volume.value = 0.8;
+    isAnalyzing.value = false;
+  },
+};
+```
+
+#### PlaybackEngine Audio Integration
+
+The existing `PlaybackEngine.tick` uses `performance.now()`. For audio sync:
+
+```typescript
+// playbackEngine.ts -- MODIFY start/stop methods
+
+start() {
+  if (this.rafId !== null) return;
+  this.lastTime = performance.now();
+  this.accumulator = 0;
+  timelineStore.setPlaying(true);
+  // Start audio playback synced to current frame
+  audioEngine.playFromFrame(
+    timelineStore.currentFrame.peek(),
+    projectStore.fps.peek()
+  );
+  this.rafId = requestAnimationFrame(this.tick);
+}
+
+stop() {
+  if (this.rafId !== null) {
+    cancelAnimationFrame(this.rafId);
+    this.rafId = null;
+  }
+  timelineStore.setPlaying(false);
+  audioEngine.stop();
+}
+```
+
+The existing delta accumulation clock remains the master -- audio playback is started from the matching position and runs in parallel. For short stop-motion sequences (typically 30-300 frames at 15-24fps = 1-20 seconds), drift between rAF clock and AudioContext clock is negligible.
+
+#### Waveform in Timeline Canvas
+
+The `TimelineRenderer` needs a new row or overlay for the audio waveform:
+
+```typescript
+// TimelineRenderer.ts -- ADD method
+drawWaveform(
+  ctx: CanvasRenderingContext2D,
+  waveform: WaveformData,
+  beats: BeatMarker[],
+  y: number,
+  height: number,
+  frameWidth: number,
+  scrollX: number,
+  canvasWidth: number,
+  fps: number
+) {
+  const peaksPerFrame = waveform.sample_rate_peaks / fps;
+  // ... draw waveform peaks as vertical bars
+  // ... draw beat markers as vertical lines
+}
+```
+
+#### MceProject Audio Data
+
+```typescript
+// types/project.ts -- ADD to MceProject
+export interface MceProject {
+  // ... existing fields
+  audio: MceAudioRef | null;  // NEW
+}
+
+export interface MceAudioRef {
+  id: string;
+  original_filename: string;
+  relative_path: string;
+  duration_secs: number;
+  sample_rate: number;
+  channels: number;
+  bpm: number | null;
+  beat_offset: number;
+  volume: number;
+}
+```
+
+#### Rust Audio Import Command
+
+```rust
+// commands/audio.rs -- NEW
 #[tauri::command]
-pub async fn save_project(data: ProjectData) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(&data)
-        .map_err(|e| e.to_string())?;
-    std::fs::write(&data.path, json)
-        .map_err(|e| e.to_string())?;
+pub async fn import_audio(
+    app: tauri::AppHandle,
+    path: String,
+    project_dir: String,
+) -> Result<AudioRef, String> {
+    // 1. Validate file exists and has audio extension
+    // 2. Create project_dir/audio/ if needed
+    // 3. Copy file to project_dir/audio/filename_uuid.ext
+    // 4. Return AudioRef with basic metadata
+    // NOTE: Duration/sample_rate extracted on frontend via Web Audio API
+}
+```
+
+#### File Structure Changes
+
+```
+src/
+  types/audio.ts              -- NEW
+  types/project.ts            -- MODIFY (add MceAudioRef)
+  stores/audioStore.ts        -- NEW
+  stores/projectStore.ts      -- MODIFY (hydrate/build audio, wire markDirty)
+  lib/audioEngine.ts          -- NEW (Web Audio playback + waveform extraction)
+  lib/beatDetector.ts         -- NEW (BPM detection wrapper)
+  lib/ipc.ts                  -- MODIFY (add importAudio wrapper)
+  lib/playbackEngine.ts       -- MODIFY (audio sync on start/stop)
+  lib/autoSave.ts             -- MODIFY (watch audioStore signals)
+  components/timeline/
+    TimelineRenderer.ts       -- MODIFY (add waveform + beat marker drawing)
+
+src-tauri/src/
+  commands/audio.rs           -- NEW
+  commands/mod.rs             -- MODIFY (register audio commands)
+  models/audio.rs             -- NEW (AudioRef struct)
+  models/mod.rs               -- MODIFY
+  models/project.rs           -- MODIFY (add MceAudioRef to MceProject)
+  lib.rs                      -- MODIFY (register audio commands)
+
+New dependency: web-audio-beat-detector (npm)
+```
+
+---
+
+### 4. PNG Image Sequence Export
+
+#### Architecture
+
+Export renders each frame of the composition to a PNG file. The rendering happens in the frontend (Canvas 2D), and the file writing happens in Rust.
+
+**Flow:**
+
+```
+User clicks Export -> Configure dialog -> Start export
+    |
+    v
+Frontend: for each frame 0..totalFrames:
+    1. Set playhead to frame N
+    2. PreviewRenderer.render() composites all layers to canvas
+    3. canvas.toBlob('image/png') -> Blob
+    4. Blob -> ArrayBuffer -> Uint8Array
+    5. IPC: invoke('export_write_frame', { data: [...bytes], index: N, outputDir })
+    |
+    v
+Rust: write bytes to outputDir/frame_NNNNNN.png
+    |
+    v
+Rust: emit progress event -> Frontend updates progress bar
+    |
+    v
+After all frames: write audio metadata text file (if audio present)
+```
+
+**Why Canvas 2D (not Motion Canvas) for export:** The preview renderer already composites all layers with blend modes and FX. Reusing it for export means what you see is what you get. No need to build a parallel Motion Canvas scene graph for export.
+
+**Why not OffscreenCanvas in a Worker:** Tauri's IPC (`invoke`) is only available from the main thread. The frame bytes must cross the IPC boundary to Rust. A worker would need `postMessage` back to main before `invoke`, adding complexity with no clear benefit for stop-motion frame counts (typically < 5000 frames).
+
+#### Export Store
+
+```typescript
+// stores/exportStore.ts -- NEW
+import { signal, computed } from '@preact/signals';
+
+export interface ExportConfig {
+  output_dir: string;
+  width: number;
+  height: number;
+  naming_pattern: string;  // e.g., 'frame_{N}' where {N} is zero-padded
+  padding: number;         // zero-padding digits (default 6)
+  include_audio_metadata: boolean;
+}
+
+const isExporting = signal(false);
+const progress = signal(0);       // 0..1
+const currentFrame = signal(0);
+const totalExportFrames = signal(0);
+const exportError = signal<string | null>(null);
+
+export const exportStore = {
+  isExporting, progress, currentFrame, totalExportFrames, exportError,
+
+  startExport(total: number) {
+    isExporting.value = true;
+    progress.value = 0;
+    currentFrame.value = 0;
+    totalExportFrames.value = total;
+    exportError.value = null;
+  },
+
+  updateProgress(frame: number) {
+    currentFrame.value = frame;
+    progress.value = totalExportFrames.value > 0 ? frame / totalExportFrames.value : 0;
+  },
+
+  completeExport() {
+    isExporting.value = false;
+    progress.value = 1;
+  },
+
+  failExport(error: string) {
+    isExporting.value = false;
+    exportError.value = error;
+  },
+
+  reset() {
+    isExporting.value = false;
+    progress.value = 0;
+    currentFrame.value = 0;
+    totalExportFrames.value = 0;
+    exportError.value = null;
+  },
+};
+```
+
+#### Export Engine
+
+```typescript
+// lib/exportEngine.ts -- NEW
+import { PreviewRenderer } from './previewRenderer';
+import { safeInvoke } from './ipc';
+import { exportStore } from '../stores/exportStore';
+import type { ExportConfig } from '../stores/exportStore';
+import { frameMap, totalFrames } from './frameMap';
+import { layerStore } from '../stores/layerStore';
+import { sequenceStore } from '../stores/sequenceStore';
+import { imageStore } from '../stores/imageStore';
+
+export async function runExport(config: ExportConfig): Promise<void> {
+  const total = totalFrames.peek();
+  exportStore.startExport(total);
+
+  // Create a dedicated offscreen canvas for export at target resolution
+  const canvas = new OffscreenCanvas(config.width, config.height);
+  const renderer = new PreviewRenderer(canvas as any); // PreviewRenderer accepts canvas
+
+  try {
+    for (let frame = 0; frame < total; frame++) {
+      if (!exportStore.isExporting.peek()) break; // cancelled
+
+      // Get the sequence for this frame to know which layers to render
+      const entry = frameMap.peek()[frame];
+      const seq = sequenceStore.getById(entry.sequenceId);
+      const layers = seq?.layers ?? [];
+
+      // Render frame
+      renderer.render(layers, getImageUrlForFrame(frame), config.width, config.height);
+
+      // Extract PNG bytes
+      const blob = await canvas.convertToBlob({ type: 'image/png' });
+      const arrayBuffer = await blob.arrayBuffer();
+      const bytes = Array.from(new Uint8Array(arrayBuffer));
+
+      // Write via Rust
+      const frameNum = String(frame).padStart(config.padding, '0');
+      const filename = config.naming_pattern.replace('{N}', frameNum) + '.png';
+
+      const result = await safeInvoke('export_write_frame', {
+        data: bytes,
+        filename,
+        outputDir: config.output_dir,
+      });
+
+      if (!result.ok) {
+        exportStore.failExport(result.error);
+        return;
+      }
+
+      exportStore.updateProgress(frame + 1);
+    }
+
+    exportStore.completeExport();
+  } catch (err) {
+    exportStore.failExport(String(err));
+  }
+}
+```
+
+#### Rust Export Command
+
+```rust
+// commands/export.rs -- NEW
+#[tauri::command]
+pub async fn export_write_frame(
+    data: Vec<u8>,
+    filename: String,
+    output_dir: String,
+) -> Result<(), String> {
+    let dir = std::path::Path::new(&output_dir);
+    std::fs::create_dir_all(dir)
+        .map_err(|e| format!("Failed to create export dir: {}", e))?;
+
+    let path = dir.join(&filename);
+    std::fs::write(&path, &data)
+        .map_err(|e| format!("Failed to write frame: {}", e))?;
+
     Ok(())
 }
 
 #[tauri::command]
-pub async fn open_project(path: String) -> Result<ProjectData, String> {
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| e.to_string())?;
-    serde_json::from_str(&content)
-        .map_err(|e| e.to_string())
+pub fn export_write_metadata(
+    output_dir: String,
+    metadata: String,
+) -> Result<(), String> {
+    let path = std::path::Path::new(&output_dir).join("audio_metadata.txt");
+    std::fs::write(&path, &metadata)
+        .map_err(|e| format!("Failed to write metadata: {}", e))?;
+    Ok(())
 }
 ```
 
-### Pattern 3: Snapshot-Based Undo/Redo
+**Performance note:** For a 1920x1080 PNG, each frame is ~2-6MB. At 24fps, a 10-second sequence = 240 frames = ~500MB-1.4GB of disk writes. This is I/O bound, not CPU bound. The bottleneck is `canvas.convertToBlob()` (PNG compression). For stop-motion projects this is acceptable -- a 5-minute sequence at 24fps = 7200 frames, which at ~3 seconds/frame export would take ~6 hours. But typical stop-motion sequences are 30-300 frames.
 
-**What:** Before each mutation, snapshot the affected signal's value onto an undo stack. Undo restores the previous snapshot. Redo replays the forward stack.
-**When to use:** All user-visible mutations (add/remove/reorder sequences, layer changes, property edits).
-**Trade-offs:** Simple to implement and reason about. Memory cost is proportional to edit history depth -- cap at ~100 entries and serialize to JSON for compact storage. For a stop-motion editor with small project state, this is efficient.
+#### File Structure Changes
 
-**Example:**
+```
+src/
+  stores/exportStore.ts       -- NEW
+  lib/exportEngine.ts         -- NEW
+  lib/ipc.ts                  -- MODIFY (add export_write_frame, export_write_metadata)
+  components/export/          -- NEW directory
+    ExportDialog.tsx          -- NEW (config UI)
+    ExportProgress.tsx        -- NEW (progress bar overlay)
+
+src-tauri/src/
+  commands/export.rs          -- NEW
+  commands/mod.rs             -- MODIFY
+  lib.rs                      -- MODIFY (register export commands)
+```
+
+---
+
+### 5. Undo/Redo
+
+#### Architecture
+
+The existing `historyStore.ts` is a stub with `stack` and `pointer` signals, plus an existing `HistoryEntry` type with `undo()` and `redo()` functions.
+
+**Decision: Command pattern (closures capturing before/after state)**
+
+The existing `HistoryEntry` type already defines this:
+
 ```typescript
-// stores/history.ts
-import { signal } from '@preact/signals';
-
-interface Snapshot {
-  sequences: string;  // JSON-serialized
-  layers: string;
-  label: string;
+// types/history.ts (EXISTING -- keep as-is)
+export interface HistoryEntry {
+  id: string;
+  description: string;
+  timestamp: number;
+  undo: () => void;
+  redo: () => void;
 }
+```
 
-const undoStack = signal<Snapshot[]>([]);
-const redoStack = signal<Snapshot[]>([]);
+**Why command pattern over snapshot pattern:** The project state includes images, audio references, and layer stacks across multiple sequences. Full snapshots would be expensive to serialize for every keystroke. Command pattern captures only the delta (before/after values for the specific fields changed).
+
+#### historyStore Implementation
+
+```typescript
+// stores/historyStore.ts -- REWRITE
+import { signal, computed } from '@preact/signals';
+import type { HistoryEntry } from '../types/history';
+
 const MAX_HISTORY = 100;
+const stack = signal<HistoryEntry[]>([]);
+const pointer = signal(-1); // points to current position; -1 = nothing to undo
 
-export function pushHistory(label: string = 'edit') {
-  const snap: Snapshot = {
-    sequences: JSON.stringify(sequences.value),
-    layers: JSON.stringify(layers.value),
-    label,
-  };
-  undoStack.value = [...undoStack.value.slice(-MAX_HISTORY), snap];
-  redoStack.value = []; // clear forward history
-}
+const canUndo = computed(() => pointer.value >= 0);
+const canRedo = computed(() => pointer.value < stack.value.length - 1);
+const currentDescription = computed(() =>
+  pointer.value >= 0 ? stack.value[pointer.value].description : null
+);
 
-export function undo() {
-  if (undoStack.value.length === 0) return;
-  // Push current state to redo
-  redoStack.value = [...redoStack.value, captureCurrentSnapshot()];
-  // Restore previous
-  const prev = undoStack.value[undoStack.value.length - 1];
-  undoStack.value = undoStack.value.slice(0, -1);
-  restoreSnapshot(prev);
-}
+export const historyStore = {
+  stack, pointer, canUndo, canRedo, currentDescription,
+
+  push(entry: HistoryEntry) {
+    // Truncate any redo entries ahead of pointer
+    const truncated = stack.value.slice(0, pointer.value + 1);
+    // Add new entry
+    const updated = [...truncated, entry];
+    // Cap at MAX_HISTORY (remove from front)
+    if (updated.length > MAX_HISTORY) {
+      stack.value = updated.slice(updated.length - MAX_HISTORY);
+      pointer.value = stack.value.length - 1;
+    } else {
+      stack.value = updated;
+      pointer.value = updated.length - 1;
+    }
+  },
+
+  undo() {
+    if (pointer.value < 0) return;
+    const entry = stack.value[pointer.value];
+    entry.undo();
+    pointer.value -= 1;
+  },
+
+  redo() {
+    if (pointer.value >= stack.value.length - 1) return;
+    pointer.value += 1;
+    const entry = stack.value[pointer.value];
+    entry.redo();
+  },
+
+  reset() {
+    stack.value = [];
+    pointer.value = -1;
+  },
+};
 ```
 
-### Pattern 4: Motion Canvas Player as Managed Web Component
+#### Wrapping Store Actions with History
 
-**What:** Embed `@efxlab/motion-canvas-player` as a web component in the preview area. The Preact wrapper feeds it a scene description derived from current signal state. The player handles all WebGL/Canvas rendering internally.
-**When to use:** Preview playback and frame composition.
-**Trade-offs:** The player owns its own rendering loop -- Preact does not control individual frame draws. Communication is one-directional: Preact pushes scene configuration, player renders. This clean boundary avoids mixing DOM and canvas rendering concerns.
+Every user-visible mutation needs a history wrapper. Create a helper:
 
-**Example:**
 ```typescript
-// components/preview/PreviewCanvas.tsx
-import { useEffect, useRef } from 'preact/hooks';
-import { useSignalEffect } from '@preact/signals';
-import { activeSequence } from '../../stores/sequences';
-import { layers } from '../../stores/layers';
-import { playheadFrame } from '../../stores/timeline';
+// lib/historyHelper.ts -- NEW
+import { historyStore } from '../stores/historyStore';
+import type { HistoryEntry } from '../types/history';
 
-export function PreviewCanvas() {
-  const playerRef = useRef<HTMLElement>(null);
+export function withHistory<T>(
+  description: string,
+  getValue: () => T,
+  setValue: (v: T) => void,
+  action: () => void
+): void {
+  const before = getValue();
+  action();
+  const after = getValue();
 
-  // Rebuild scene when data changes
-  useSignalEffect(() => {
-    const seq = activeSequence.value;
-    const layerStack = layers.value;
-    const frame = playheadFrame.value;
-    if (!playerRef.current || !seq) return;
+  const entry: HistoryEntry = {
+    id: crypto.randomUUID(),
+    description,
+    timestamp: Date.now(),
+    undo: () => setValue(before),
+    redo: () => setValue(after),
+  };
 
-    // Update Motion Canvas player with current composition
-    updatePlayerScene(playerRef.current, seq, layerStack, frame);
-  });
+  historyStore.push(entry);
+}
 
-  return (
-    <div class="flex-1 bg-black flex items-center justify-center">
-      <motion-canvas-player
-        ref={playerRef}
-        width={1920}
-        height={1080}
-      />
-    </div>
-  );
+// Usage example:
+// withHistory(
+//   'Add layer',
+//   () => sequenceStore.getActiveSequence()?.layers ?? [],
+//   (layers) => sequenceStore.updateSequence(seqId, s => ({...s, layers})),
+//   () => layerStore.add(newLayer)
+// );
+```
+
+**Which operations get undo:** All user-initiated mutations to project data. NOT: timeline scrubbing, zoom, scroll, panel resizes, selection changes. These are UI state, not document state.
+
+| Undoable | Not Undoable |
+|----------|-------------|
+| Add/remove/reorder sequence | Scrub timeline |
+| Add/remove/reorder layer | Zoom/scroll |
+| Change layer opacity/blend/transform | Select layer/sequence |
+| Change hold frames | Panel resize |
+| Add/remove key photo | Play/pause |
+| Import images | Change volume |
+| Change sequence FPS/resolution | |
+| Add/remove audio | |
+| Change FX parameters | |
+
+#### File Structure Changes
+
+```
+src/
+  stores/historyStore.ts     -- REWRITE
+  lib/historyHelper.ts       -- NEW
+  stores/sequenceStore.ts    -- MODIFY (wrap mutations with history)
+  stores/layerStore.ts       -- MODIFY (wrap mutations with history)
+  stores/imageStore.ts       -- MODIFY (wrap import with history)
+```
+
+---
+
+### 6. Keyboard Shortcuts
+
+#### Architecture
+
+**Decision: Single global keydown listener, registered once in EditorShell.**
+
+Not a hook -- a module-scoped handler that maps key combos to store actions. Using a hook (`useKeyboard`) would create/destroy listeners on every mount/unmount and risks duplicate bindings.
+
+```typescript
+// lib/shortcuts.ts -- NEW
+import { playbackEngine } from './playbackEngine';
+import { historyStore } from '../stores/historyStore';
+import { projectStore } from '../stores/projectStore';
+import { timelineStore } from '../stores/timelineStore';
+import { uiStore } from '../stores/uiStore';
+
+export interface Shortcut {
+  key: string;
+  meta?: boolean;   // Cmd on macOS
+  shift?: boolean;
+  alt?: boolean;
+  description: string;
+  action: () => void;
+  when?: () => boolean;  // conditional availability
+}
+
+const shortcuts: Shortcut[] = [
+  // Playback
+  { key: ' ', description: 'Play/Pause', action: () => playbackEngine.toggle() },
+  { key: 'ArrowLeft', description: 'Step backward', action: () => playbackEngine.stepBackward() },
+  { key: 'ArrowRight', description: 'Step forward', action: () => playbackEngine.stepForward() },
+  { key: 'j', description: 'Play backward', action: () => { /* reverse playback */ } },
+  { key: 'k', description: 'Pause', action: () => playbackEngine.stop() },
+  { key: 'l', description: 'Play forward', action: () => playbackEngine.start() },
+  { key: 'Home', description: 'Go to start', action: () => playbackEngine.seekToFrame(0) },
+
+  // Edit
+  { key: 'z', meta: true, description: 'Undo', action: () => historyStore.undo() },
+  { key: 'z', meta: true, shift: true, description: 'Redo', action: () => historyStore.redo() },
+
+  // Project
+  { key: 's', meta: true, description: 'Save', action: () => projectStore.saveProject() },
+  { key: 'n', meta: true, description: 'New project', action: () => { /* open new project dialog */ } },
+  { key: 'o', meta: true, description: 'Open project', action: () => { /* open file dialog */ } },
+
+  // View
+  { key: '0', meta: true, description: 'Fit to screen', action: () => { /* reset preview zoom */ } },
+  { key: '=', meta: true, description: 'Zoom in', action: () => { /* zoom preview */ } },
+  { key: '-', meta: true, description: 'Zoom out', action: () => { /* zoom preview */ } },
+
+  // Help
+  { key: '/', meta: true, description: 'Show shortcuts', action: () => { /* toggle help overlay */ } },
+];
+
+let isRegistered = false;
+
+function handleKeyDown(e: KeyboardEvent) {
+  // Skip if user is typing in an input
+  const target = e.target as HTMLElement;
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
+    return;
+  }
+
+  for (const shortcut of shortcuts) {
+    const metaMatch = shortcut.meta ? e.metaKey : !e.metaKey;
+    const shiftMatch = shortcut.shift ? e.shiftKey : !e.shiftKey;
+    const altMatch = shortcut.alt ? e.altKey : !e.altKey;
+
+    if (e.key === shortcut.key && metaMatch && shiftMatch && altMatch) {
+      if (shortcut.when && !shortcut.when()) continue;
+      e.preventDefault();
+      shortcut.action();
+      return;
+    }
+  }
+}
+
+export function registerShortcuts() {
+  if (isRegistered) return;
+  document.addEventListener('keydown', handleKeyDown);
+  isRegistered = true;
+}
+
+export function unregisterShortcuts() {
+  document.removeEventListener('keydown', handleKeyDown);
+  isRegistered = false;
+}
+
+export function getShortcutList(): Shortcut[] {
+  return [...shortcuts];
 }
 ```
 
-## Data Flow
+#### Preventing Tauri Default Shortcuts
 
-### Primary Data Flow: User Edit
+Tauri 2.0 on macOS may intercept Cmd+Q, Cmd+H, etc. The shortcuts module should let these through by not calling `preventDefault()` for system-reserved combos.
 
-```
-[User Action] (click, drag, keyboard)
-    |
-    v
-[Preact Component] captures event
-    |
-    v
-[Store Action] (e.g., addSequence, updateLayerOpacity)
-    |
-    +--> [pushHistory()] saves snapshot to undo stack
-    |
-    v
-[Signal Mutation] (sequences.value = [...])
-    |
-    +-------> [Computed Signals] auto-update (totalDuration, activeSequence)
-    |              |
-    |              v
-    |         [UI Panels] re-render (only affected DOM nodes)
-    |
-    +-------> [Preview Canvas] scene rebuilt via useSignalEffect
-    |              |
-    |              v
-    |         [Motion Canvas Player] re-renders frame
-    |
-    +-------> [Timeline Canvas] redraws via useSignalEffect
-                   |
-                   v
-              [requestAnimationFrame] imperative canvas draw
-```
-
-### File Operation Flow: Import Images
+#### Help Overlay Component
 
 ```
-[User drops images / clicks Import]
-    |
-    v
-[Preact: onDrop handler]
-    |
-    v
-[IPC: invoke('import_images', { paths, sequenceId })]
-    |
-    v
-[Rust: import_images command]
-    |
-    +--> Copy images to project assets/images/sequence-N/
-    +--> Generate thumbnails (60x45px) to assets/.thumbs/
-    +--> Return ImportResult { keyPhotos, thumbnailPaths }
-    |
-    v
-[Frontend: update stores]
-    |
-    +--> sequences.value updated with new KeyPhoto entries
-    +--> Timeline and preview auto-update via signals
+src/
+  components/help/
+    ShortcutOverlay.tsx    -- NEW (modal listing all shortcuts)
 ```
 
-### Export Flow: PNG Sequence
+#### File Structure Changes
 
 ```
-[User clicks Export, configures settings]
-    |
-    v
-[IPC: invoke('start_export', { config })]
-    |
-    v
-[Rust: start_export command]
-    |
-    +--> Create output directory (output/export-YYYY-MM-DD/)
-    +--> Send 'export-started' event to frontend
-    |
-    v
-[Frontend: receives event, shows progress UI]
-    |
-    v
-[Motion Canvas Rendering Loop (frontend)]
-    |
-    +--> For each frame:
-    |      1. Set playhead to frame N
-    |      2. Motion Canvas renders composited frame to canvas
-    |      3. Canvas.toBlob() or toDataURL() -> raw PNG bytes
-    |      4. IPC Channel: send bytes to Rust
-    |      5. Rust: write frame_NNNN.png to disk
-    |
-    +--> Rust emits 'export-progress' event (frame N of total)
-    +--> Frontend updates progress bar via event listener
-    |
-    v
-[Rust: write audio metadata text file]
-    |
-    v
-[Rust: emit 'export-complete' event]
-    |
-    v
-[Frontend: show completion dialog, reveal in Finder option]
+src/
+  lib/shortcuts.ts           -- NEW
+  components/help/
+    ShortcutOverlay.tsx      -- NEW
+  components/layout/
+    EditorShell.tsx           -- MODIFY (call registerShortcuts on mount)
 ```
 
-### Playback Flow
+---
+
+## Complete Data Flow: v2.0
+
+### User Edit with Undo
+
+```
+[User Action] (e.g., change layer opacity)
+    |
+    v
+[Component] calls layerStore.updateLayer(id, {opacity: 0.5})
+    |
+    +--> [historyHelper.withHistory()] captures before/after
+    |        |
+    |        v
+    |    [historyStore.push(entry)] adds to undo stack
+    |
+    v
+[sequenceStore.updateSequence()] mutates layers within sequence
+    |
+    +--> [markDirty()] -> projectStore.isDirty = true -> autoSave triggers
+    |
+    +--> [layerStore.layers computed] auto-updates
+    |         |
+    |         v
+    |    [Preview canvas] re-renders with new opacity
+    |    [Properties panel] re-renders slider position
+    |    [Layer list] re-renders opacity display
+    |
+    v
+[Cmd+Z] -> historyStore.undo() -> entry.undo() -> restores previous opacity
+```
+
+### Export Flow (Detailed)
+
+```
+[User: Export menu -> Configure -> Start]
+    |
+    v
+[ExportDialog] collects: outputDir, width, height, naming
+    |
+    v
+[exportEngine.runExport(config)]
+    |
+    v
+[Loop: frame 0 to totalFrames]
+    |
+    +--> frameMap[frame] -> sequenceId, imageId
+    |
+    +--> Get sequence layers
+    |
+    +--> PreviewRenderer.render(layers, imageUrl, w, h)
+    |         |
+    |         +--> For each visible layer:
+    |         |      ctx.globalAlpha = opacity
+    |         |      ctx.globalCompositeOperation = blendMode
+    |         |      draw layer content (image / FX)
+    |         |
+    |         v
+    |    canvas.convertToBlob('image/png')
+    |         |
+    |         v
+    |    Blob -> ArrayBuffer -> Uint8Array -> Array<number>
+    |
+    +--> IPC: invoke('export_write_frame', {data, filename, outputDir})
+    |         |
+    |         v
+    |    Rust: fs::write(path, bytes)
+    |
+    +--> exportStore.updateProgress(frame + 1)
+    |         |
+    |         v
+    |    [ExportProgress component] re-renders progress bar
+    |
+    v
+[All frames done] -> exportStore.completeExport()
+    |
+    v
+[Optional: write audio_metadata.txt via Rust]
+```
+
+### Audio Playback Sync
 
 ```
 [User clicks Play]
     |
     v
-[usePlayback hook: start interval/rAF at target FPS]
+[PlaybackEngine.start()]
     |
-    +--> Each tick:
-    |      playheadFrame.value += 1
-    |          |
-    |          +--> Preview Canvas: renders frame via Motion Canvas
-    |          +--> Timeline Canvas: moves playhead indicator
-    |          +--> Properties Panel: updates timecode display
+    +--> audioEngine.playFromFrame(currentFrame, fps)
+    |         |
+    |         v
+    |    AudioBufferSourceNode.start(0, timeOffset)
     |
-    +--> Audio: Web Audio API plays synced audio track
+    +--> timelineStore.setPlaying(true)
+    |
+    v
+[rAF tick loop]
+    |
+    +--> delta accumulation advances frame
+    |
+    +--> Preview canvas re-renders
+    |
+    +--> Timeline canvas redraws playhead
+    |
+    +--> Audio plays in parallel (AudioContext clock)
     |
     v
 [User clicks Pause / reaches end]
     |
     v
-[Stop interval, hold playhead position]
+[PlaybackEngine.stop()]
+    |
+    +--> audioEngine.stop()
+    +--> timelineStore.setPlaying(false)
 ```
 
-### Key Data Flows Summary
+---
 
-1. **User edit -> Signal mutation -> Multi-panel reactive update:** The core loop. Signals ensure only affected DOM/canvas updates.
-2. **File I/O -> Rust command -> Signal update:** All disk operations go through Rust for security and performance.
-3. **Export -> Frame-by-frame render -> IPC Channel -> Rust disk write:** Heavy rendering stays in WebView, heavy I/O stays in Rust.
-4. **Playback -> Frame tick -> Signal update -> Player + Timeline sync:** Playback is frontend-driven via requestAnimationFrame or setInterval at target FPS.
+## New Store Inventory
 
-## Rust Backend vs Frontend: Responsibility Split
+After v2.0, the store count goes from 7 to 9:
 
-| Responsibility | Owner | Rationale |
-|----------------|-------|-----------|
-| UI rendering (panels, dialogs) | Frontend | DOM + Tailwind, reactive via Signals |
-| Canvas preview rendering | Frontend | Motion Canvas runs in WebView (WebGL/Canvas2D) |
-| Timeline rendering | Frontend | Custom `<canvas>` with imperative drawing |
-| Audio playback | Frontend | Web Audio API, synced with playhead signal |
-| Waveform rendering | Frontend | Canvas drawing from pre-computed data |
-| Project file read/write | Rust | File I/O, JSON serialization, auto-save timer |
-| Image import + organization | Rust | Copy files, create folder structure, validate |
-| Thumbnail generation | Rust | Fast image resizing via `image` crate |
-| BPM / beat detection | Rust | CPU-intensive audio analysis |
-| Export frame writing | Rust | Sequential PNG writes, progress tracking |
-| Global config management | Rust | ~/.config/efx-mocap/ read/write |
-| Template file management | Rust | .mce-template read/write/import/export |
-| Native dialogs (open/save) | Rust | Tauri dialog plugin for macOS native pickers |
-| Keyboard shortcut registration | Frontend | Preact event handlers + useKeyboard hook |
-| Drag and drop handling | Frontend | HTML5 drag events, invoke Rust for file copy |
+| Store | Status | Purpose |
+|-------|--------|---------|
+| `projectStore` | MODIFY | Add audio field to MceProject serialization |
+| `sequenceStore` | MODIFY | Add layers field, updateSequence() method |
+| `imageStore` | EXISTING | No changes needed |
+| `timelineStore` | EXISTING | No changes needed |
+| `layerStore` | REWRITE | Computed from active sequence's layers |
+| `uiStore` | MODIFY | Add export dialog state, help overlay state |
+| `historyStore` | REWRITE | Full undo/redo implementation |
+| `audioStore` | NEW | Audio reference, waveform, beats, BPM |
+| `exportStore` | NEW | Export progress, config, state |
 
-**Guiding principle:** The frontend owns everything visible and interactive. Rust owns everything that touches disk, performs heavy computation, or requires native platform APIs. The IPC boundary is the file system and CPU-intensive operations.
+---
 
-## Anti-Patterns
+## New Files Inventory
 
-### Anti-Pattern 1: Storing File Paths in Signal State Without Rust Validation
+### Frontend (TypeScript)
 
-**What people do:** Accept drag-and-drop file paths directly into signal stores and reference them for rendering.
-**Why it's wrong:** Tauri's security model requires file access to go through scoped permissions. Direct path usage can break on special characters, permissions, or when files move. Thumbnails become stale references.
-**Do this instead:** Always import through a Rust command that copies files into the project's asset directory and returns the normalized project-relative path. Store only project-relative paths in state.
+| File | Type | Purpose |
+|------|------|---------|
+| `types/audio.ts` | NEW | AudioRef, WaveformData, BeatMarker types |
+| `stores/audioStore.ts` | NEW | Audio state management |
+| `stores/exportStore.ts` | NEW | Export progress state |
+| `lib/previewRenderer.ts` | NEW | Canvas 2D layer compositing engine |
+| `lib/audioEngine.ts` | NEW | Web Audio playback + waveform extraction |
+| `lib/beatDetector.ts` | NEW | BPM detection wrapper |
+| `lib/exportEngine.ts` | NEW | Frame-by-frame export orchestrator |
+| `lib/shortcuts.ts` | NEW | Global keyboard shortcut registry |
+| `lib/historyHelper.ts` | NEW | withHistory() wrapper for undoable actions |
+| `lib/fx/presets.ts` | NEW | FX preset definitions |
+| `lib/fx/grain.ts` | NEW | Film grain renderer |
+| `lib/fx/scratches.ts` | NEW | Dirt/scratches renderer |
+| `lib/fx/lightLeak.ts` | NEW | Light leak renderer |
+| `lib/fx/vignette.ts` | NEW | Vignette renderer |
+| `lib/fx/colorGrade.ts` | NEW | Color grade renderer |
+| `components/export/ExportDialog.tsx` | NEW | Export config UI |
+| `components/export/ExportProgress.tsx` | NEW | Export progress overlay |
+| `components/help/ShortcutOverlay.tsx` | NEW | Keyboard shortcuts help |
 
-### Anti-Pattern 2: Putting Rendering Logic in Signals/Stores
+### Frontend (Modified)
 
-**What people do:** Put Motion Canvas scene building or canvas drawing code inside `computed()` or `effect()` calls in store files.
-**Why it's wrong:** Stores should be pure data. Rendering is a side effect that belongs in components. Mixing them makes testing impossible and creates circular dependencies between stores and rendering libraries.
-**Do this instead:** Stores export data signals. Components use `useSignalEffect()` to bridge data into rendering APIs (Motion Canvas player, canvas draw calls).
+| File | Change |
+|------|--------|
+| `types/layer.ts` | Add LayerSource, fx_params, locked, fx LayerType |
+| `types/sequence.ts` | Add layers field to Sequence |
+| `types/project.ts` | Add MceLayer, MceAudioRef to project format |
+| `stores/layerStore.ts` | Rewrite as computed from active sequence |
+| `stores/historyStore.ts` | Rewrite with full undo/redo |
+| `stores/sequenceStore.ts` | Add updateSequence(), layers in createSequence() |
+| `stores/projectStore.ts` | Hydrate/build audio + layers, wire audioStore markDirty |
+| `stores/uiStore.ts` | Add export/help overlay state |
+| `lib/ipc.ts` | Add importAudio, exportWriteFrame, exportWriteMetadata |
+| `lib/playbackEngine.ts` | Audio sync on start/stop |
+| `lib/autoSave.ts` | Watch audioStore signals |
+| `lib/frameMap.ts` | No changes (layers don't affect frame count) |
+| `components/Preview.tsx` | Rewrite to use PreviewRenderer canvas |
+| `components/layout/EditorShell.tsx` | Register shortcuts, add export/help overlays |
+| `components/layout/PropertiesPanel.tsx` | Context-sensitive layer/FX property controls |
+| `components/timeline/TimelineRenderer.ts` | Add waveform + beat marker drawing |
 
-### Anti-Pattern 3: Using Tauri Events for Request-Response Communication
+### Rust Backend (New)
 
-**What people do:** Emit an event from frontend, listen for a response event from Rust, correlating them with IDs.
-**Why it's wrong:** Tauri events are fire-and-forget by design. Using them for request-response creates fragile correlation logic, no type safety on responses, and race conditions.
-**Do this instead:** Use `invoke()` (commands) for request-response. Use events only for backend-initiated notifications (export progress, auto-save status, file watcher changes).
+| File | Purpose |
+|------|---------|
+| `commands/audio.rs` | import_audio command |
+| `commands/export.rs` | export_write_frame, export_write_metadata commands |
+| `models/audio.rs` | AudioRef struct |
 
-### Anti-Pattern 4: Single Monolithic Signal for All State
+### Rust Backend (Modified)
 
-**What people do:** Create one giant `appState` signal containing project, sequences, layers, timeline, and UI state.
-**Why it's wrong:** Any mutation triggers every subscriber. Preact Signals' performance advantage comes from fine-grained reactivity -- coarse signals defeat this entirely. A timeline scrub would re-render the properties panel, layer list, and toolbar.
-**Do this instead:** Separate signals per domain (project, sequences, layers, timeline, ui). Use `computed()` to derive cross-domain values. Components subscribe only to the signals they display.
+| File | Change |
+|------|--------|
+| `models/project.rs` | Add MceLayer, MceAudioRef structs; update MceSequence, MceProject |
+| `commands/mod.rs` | Register audio + export command modules |
+| `lib.rs` | Register new commands in invoke_handler |
+| `services/project_io.rs` | Handle v1 -> v2 migration (add empty layers/audio) |
 
-### Anti-Pattern 5: Running Export Entirely in Rust
+### New npm Dependencies
 
-**What people do:** Try to render frames in Rust using a headless browser or canvas library.
-**Why it's wrong:** Motion Canvas is a JavaScript/TypeScript framework that renders via WebGL/Canvas2D in the browser. There is no Rust equivalent. You cannot replicate its rendering outside the WebView.
-**Do this instead:** Render each frame in the WebView using Motion Canvas, capture the canvas output as PNG bytes, and stream those bytes to Rust via IPC Channel for disk writing. The rendering happens in the frontend; the I/O happens in the backend.
+| Package | Purpose | Confidence |
+|---------|---------|------------|
+| `web-audio-beat-detector` | BPM detection from AudioBuffer | MEDIUM (verified on npm, 2024 release) |
 
-## Scaling Considerations
+---
 
-This is a single-user desktop application, so scaling is about project complexity, not user count.
+## Suggested Build Order
 
-| Concern | Small project (50 frames) | Medium project (500 frames) | Large project (5000+ frames) |
-|---------|--------------------------|----------------------------|------------------------------|
-| Signal updates | No concern | No concern | Batch mutations, avoid per-frame signal updates during playback |
-| Thumbnail loading | Load all | Load all | Lazy load visible thumbnails in timeline viewport |
-| Timeline rendering | Simple canvas draw | Virtualize visible region | Must virtualize; only draw visible frames + buffer |
-| Export time | ~5 seconds | ~1 minute | ~10+ minutes; progress UI and cancellation essential |
-| Project file size | <100KB JSON | ~500KB JSON | 2-5MB JSON; consider splitting sequences into separate files |
-| Memory (images) | <50MB | ~200MB | Thumbnail-only in memory; load full images on demand for preview |
+Based on dependency analysis:
 
-### Scaling Priorities
+### Phase 1: Bug Fixes + Layer Foundation
+**Rationale:** Fix v1.0 data bleed bugs first (store reset, auto-save cleanup). Then build layer types and layerStore rewrite since everything else depends on layers.
 
-1. **First bottleneck: Timeline rendering at high frame counts.** A 5000-frame timeline drawn naively on canvas will stutter during scroll/zoom. Virtualize early -- only render frames visible in the viewport plus a small buffer. This should be built into the timeline from the start, not retrofitted.
-2. **Second bottleneck: Export duration for large projects.** Export is inherently sequential (frame-by-frame render + write). Provide cancellation, accurate progress, and consider allowing the user to export frame ranges rather than the entire project.
+1. Fix store reset bugs (projectStore.closeProject not resetting timeline/playback)
+2. Fix stopAutoSave() never called
+3. Expand Layer type with source, fx_params, locked
+4. Add layers field to Sequence type
+5. Rewrite layerStore as computed from active sequence
+6. Add updateSequence() to sequenceStore
+7. Update MceProject format (version 2) with MceLayer
+8. Update hydration/build in projectStore
 
-## Integration Points
+### Phase 2: Preview Compositing
+**Rationale:** Users need to see layers composited. This is the visual proof that the layer system works.
 
-### Motion Canvas Integration
+1. Build PreviewRenderer (Canvas 2D compositing engine)
+2. Rewrite Preview component to use canvas instead of img tag
+3. Wire PreviewRenderer to layerStore.layers computed signal
+4. Add basic layer UI (add/remove/reorder in LeftPanel, visibility toggle)
 
-| Aspect | Pattern | Notes |
-|--------|---------|-------|
-| Player embedding | `<motion-canvas-player>` custom element in Preact JSX | Set width/height/src attributes; player manages its own render loop |
-| Scene description | Build scene graph programmatically from signal state | Translate layer stack + sequence data into Motion Canvas nodes |
-| Frame-by-frame export | Drive player to specific frame, capture canvas output | Use player API to seek to frame, then read canvas pixels |
-| Vite plugin | `@efxlab/motion-canvas-vite-plugin` in vite.config.ts | Handles HMR and scene resolution during development |
-| FX rendering | Motion Canvas nodes for blend modes, transforms, video playback | Layer properties (opacity, blend, transform) map to Motion Canvas node properties |
+### Phase 3: FX Effects
+**Rationale:** FX are special layers -- they require the layer system from Phase 1 and the preview renderer from Phase 2.
 
-### Tauri Plugin Usage
+1. Build FX preset system (presets.ts)
+2. Implement grain, vignette, color grade renderers
+3. Implement scratches, light leak renderers
+4. Add FX layer creation UI
+5. Properties panel: FX parameter sliders
 
-| Plugin | Purpose | Notes |
-|--------|---------|-------|
-| `@tauri-apps/plugin-dialog` | Native macOS file/folder pickers | Open project, import images, select export folder |
-| `@tauri-apps/plugin-fs` | File system access from frontend (limited use) | Prefer Rust commands for file I/O; use plugin only for scope expansion via dialog |
-| `@tauri-apps/plugin-shell` | Open exported folder in Finder | `open` command to reveal export directory |
-| `@tauri-apps/plugin-process` | App lifecycle (quit confirmation) | Prompt save on close if unsaved changes |
+### Phase 4: Properties Panel + Transforms
+**Rationale:** Now that layers and FX exist, users need to control them.
 
-### Internal Boundaries
+1. Context-sensitive Properties panel (layer type detection)
+2. Layer transform controls (position, scale, rotation, crop)
+3. Opacity slider + blend mode dropdown
+4. FX parameter controls
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Preact panels <-> Signal stores | Direct signal read/write | Components import signals directly from store modules |
-| Signal stores <-> IPC layer | Actions call async IPC functions, update signals on response | Keep await/error handling in store actions, not components |
-| Frontend <-> Rust backend | `invoke()` for commands, Tauri events for notifications, Channels for streaming | JSON serialization for small payloads, raw bytes via Channel for images/frames |
-| Timeline canvas <-> Signal stores | `useSignalEffect` bridges signals to imperative canvas draws | Canvas redraws on signal change, not on Preact re-render |
-| Motion Canvas player <-> Signal stores | `useSignalEffect` updates player scene configuration | Player re-renders internally when its scene input changes |
+### Phase 5: Undo/Redo
+**Rationale:** By this point there are many mutation points. Undo/redo wraps them all.
 
-## Build Order Implications
+1. Implement historyStore with push/undo/redo
+2. Build withHistory() helper
+3. Wrap all store mutations (sequence, layer, image, audio)
+4. Verify undo/redo across all operations
 
-Based on dependency analysis, the recommended build order is:
+### Phase 6: Audio + Beat Sync
+**Rationale:** Audio is independent of layers/FX. Can be built in parallel with Phases 3-5 but listed here because it's lower priority.
 
-1. **Tauri + Preact scaffold with IPC bridge** -- Everything depends on this foundation. Set up the Tauri 2.0 project with Preact, Vite, Tailwind v4. Verify basic `invoke()` works. Build the `ipc/` wrapper layer and Rust command skeleton.
+1. Build audioStore
+2. Implement audio import (Rust copy + frontend decode)
+3. Build AudioEngine (playback + waveform extraction)
+4. Wire audio playback to PlaybackEngine start/stop
+5. Draw waveform in TimelineRenderer
+6. Implement beat detection (web-audio-beat-detector)
+7. Draw beat markers on timeline
+8. Beat snap mode for key photo arrangement
 
-2. **Signal stores + Project management** -- The data model must exist before any UI can be functional. Define TypeScript types mirroring Rust models. Build project signal stores. Implement Rust project create/open/save commands. Prove the round-trip: create project in Rust -> load into signals -> display in UI.
+### Phase 7: Export
+**Rationale:** Export requires all rendering to work (layers, FX, compositing). It's the final step before the app is production-ready.
 
-3. **UI Shell (panels layout)** -- Convert the existing React prototype to Preact. This is primarily a visual shell with panels wired to signal stores. Does not need working preview or timeline yet -- placeholder areas are fine.
+1. Build exportStore
+2. Implement export_write_frame Rust command
+3. Build exportEngine (frame loop + canvas-to-PNG + IPC)
+4. Build ExportDialog and ExportProgress UI
+5. Audio metadata export
 
-4. **Image import + Sequence management** -- First real functionality. Import images through Rust, update sequence signals, display in sequence panel. Thumbnail generation in Rust.
+### Phase 8: Keyboard Shortcuts + Polish
+**Rationale:** Shortcuts are a UX refinement layer. The app must be functionally complete first.
 
-5. **Timeline (canvas-based)** -- Depends on sequences and layers existing in signal stores. Build with viewport virtualization from the start. Frame visualization, scrubbing, playhead.
+1. Build shortcuts.ts module
+2. Register shortcuts in EditorShell
+3. Build ShortcutOverlay help component
+4. JKL transport controls
+5. Final integration testing
 
-6. **Motion Canvas preview integration** -- Embed the player, connect it to the current sequence + layer state. This is where the app becomes visually useful -- you can see composited frames.
+---
 
-7. **Layer system** -- Add FX layers (static image, image sequence, video). Properties panel for transforms, blend modes, opacity. Layers render in the Motion Canvas preview.
+## Anti-Patterns to Avoid
 
-8. **Audio + Beat sync** -- Import audio, waveform visualization in timeline, BPM detection in Rust, beat markers, snap-to-beat.
+### Anti-Pattern 1: Building Motion Canvas Scene Graph for Preview
 
-9. **Export pipeline** -- Frame-by-frame render via Motion Canvas, stream to Rust via IPC Channel, write PNGs. Progress UI.
+**What people do:** Try to programmatically construct a Motion Canvas scene with Img/Rect/Video nodes for each layer, updating the scene on every signal change.
+**Why it's wrong:** Motion Canvas scenes use generator functions (`function*`) designed for animation timelines, not for reactive state-driven rendering. Bridging Preact Signals to generator yields is architecturally mismatched and fragile. The MC player also has its own internal render loop that conflicts with frame-by-frame control.
+**Do this instead:** Use a plain Canvas 2D rendering approach for the preview. Canvas 2D's `globalCompositeOperation` supports all needed blend modes natively. Reserve Motion Canvas only if custom WebGL shaders are needed later (v3.0+).
 
-10. **Templates + Polish** -- Composition templates, undo/redo refinement, keyboard shortcuts, auto-save, edge cases.
+### Anti-Pattern 2: Full State Snapshots for Undo
 
-**Critical path:** Steps 1-3 are pure infrastructure. Step 4 is the first user-visible feature. Step 6 is where the product becomes demonstrable. Steps 7-9 complete the core workflow.
+**What people do:** `JSON.stringify()` the entire project state on every edit, push to undo stack.
+**Why it's wrong:** A project with 50 imported images, 5 sequences, and 20 layers produces a ~50KB+ JSON string per snapshot. At 100 undo levels, that's 5MB of memory just for undo. Worse, restoring a snapshot requires re-hydrating all stores, which triggers cascading re-renders.
+**Do this instead:** Command pattern with before/after closures. Each HistoryEntry captures only the delta. Undo/redo replay the specific mutation, not the entire state.
+
+### Anti-Pattern 3: Audio Decode in Rust with Symphonia
+
+**What people do:** Add symphonia to Cargo.toml, decode audio in Rust, send waveform data over IPC.
+**Why it's wrong:** Adds a heavy dependency to the Rust binary (~2MB). The Web Audio API already decodes all major formats natively. Sending large Float32Array waveform data over JSON IPC is inefficient. And you still need Web Audio on the frontend for playback.
+**Do this instead:** Use Rust only for file copy (import_audio). Do all decoding, waveform extraction, and beat detection in the frontend via Web Audio API. This keeps the Rust backend lean.
+
+### Anti-Pattern 4: Global Layer Stack (Not Per-Sequence)
+
+**What people do:** Store layers in a flat global array, like the current stub layerStore.
+**Why it's wrong:** Each sequence is an independent composition with its own resolution, FPS, and visual content. A "Film Grain" layer on Sequence A should not appear on Sequence B. Global layers force awkward "this layer applies to all sequences" semantics that don't match any professional editing tool.
+**Do this instead:** Layers are per-sequence. layerStore becomes a computed view into the active sequence's layers. Switching sequences automatically shows that sequence's layer stack.
+
+### Anti-Pattern 5: Export Via Tauri Events Instead of Invoke
+
+**What people do:** Use Tauri events for streaming frame data to Rust during export.
+**Why it's wrong:** Events are fire-and-forget with no backpressure. If Rust's disk I/O is slower than the frontend's rendering, frames pile up in memory. There's no error propagation path either.
+**Do this instead:** Use `invoke()` for each frame write. This naturally provides backpressure (the next frame isn't rendered until Rust confirms the previous was written) and error propagation. Export is not time-critical -- it runs at I/O speed, not real-time.
+
+---
 
 ## Sources
 
-- [Tauri 2.0 Inter-Process Communication](https://v2.tauri.app/concept/inter-process-communication/) -- HIGH confidence
-- [Tauri 2.0 Calling Rust from Frontend](https://v2.tauri.app/develop/calling-rust/) -- HIGH confidence
-- [Tauri 2.0 Architecture Concepts](https://v2.tauri.app/concept/architecture/) -- HIGH confidence
-- [Tauri 2.0 File System Plugin](https://v2.tauri.app/plugin/file-system/) -- HIGH confidence
-- [Preact Signals Guide](https://preactjs.com/guide/v10/signals/) -- HIGH confidence
-- [Motion Canvas Architecture (DeepWiki)](https://deepwiki.com/motion-canvas/motion-canvas) -- MEDIUM confidence
-- [Motion Canvas Rendering Docs](https://motioncanvas.io/docs/rendering/) -- HIGH confidence
-- [TauRPC Type-Safe IPC](https://github.com/MatsDK/TauRPC) -- MEDIUM confidence (considered but not recommended for v1 -- adds dependency complexity)
-- [Tauri 2.0 Stable Release](https://v2.tauri.app/blog/tauri-20/) -- HIGH confidence (raw request / Channel support)
+- Motion Canvas Node API (`@efxlab/motion-canvas-2d/lib/components/Node.d.ts`) -- HIGH confidence (direct type definition inspection)
+  - Confirmed: `compositeOperation`, `opacity`, `filters`, `cache`, `shaders` properties on Node
+  - Confirmed: filters support `invert`, `sepia`, `grayscale`, `brightness`, `contrast`, `saturate`, `hue`, `blur`
+  - Confirmed: experimental shader support with custom GLSL fragment shaders
+- Motion Canvas Img API (`@efxlab/motion-canvas-2d/lib/components/Img.d.ts`) -- HIGH confidence
+  - Confirmed: `src`, `alpha`, `smoothing` properties; extends Rect
+- [MDN: CanvasRenderingContext2D globalCompositeOperation](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation) -- HIGH confidence
+  - Confirmed: `screen`, `multiply`, `overlay`, `lighter` (= add) blend modes supported
+- [web-audio-beat-detector on npm](https://www.npmjs.com/package/web-audio-beat-detector) -- MEDIUM confidence
+  - `analyze()` and `guess()` functions, returns BPM and beat offset
+  - Works with AudioBuffer from Web Audio API
+- [MDN: Web Audio API Visualizations](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API) -- HIGH confidence
+  - AnalyserNode for waveform extraction, AudioContext.decodeAudioData for decoding
+- [Symphonia Rust audio library](https://github.com/pdeljanov/Symphonia) -- MEDIUM confidence (researched but NOT recommended)
+- [Motion Canvas Filters & Effects docs](https://motioncanvas.io/docs/filters-and-effects/) -- MEDIUM confidence (site unreachable during research; info from cached type definitions)
+- [Motion Canvas Shaders docs](https://motioncanvas.io/docs/shaders/) -- MEDIUM confidence (same caveat; ShaderConfig.d.ts confirms API shape)
+- Existing codebase analysis -- HIGH confidence (direct file reading of all stores, types, components, Rust backend)
 
 ---
-*Architecture research for: EFX-Motion Editor (stop-motion cinematic video editor)*
-*Researched: 2026-03-02*
+*Architecture research for: EFX-Motion Editor v2.0 feature integration*
+*Researched: 2026-03-03*

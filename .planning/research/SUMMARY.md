@@ -1,198 +1,225 @@
 # Project Research Summary
 
-**Project:** EFX Motion Editor
-**Domain:** Desktop stop-motion cinematic video editor (macOS)
-**Researched:** 2026-03-02
-**Confidence:** MEDIUM-HIGH
+**Project:** EFX Motion Editor — v2.0 Production Tool
+**Domain:** Desktop stop-motion cinematic editor (macOS) — layer compositing, FX, audio/beat sync, PNG export, editing workflow
+**Researched:** 2026-03-03
+**Confidence:** HIGH
 
 ## Executive Summary
 
-EFX Motion Editor is a desktop macOS application that occupies a clear gap in the market: it starts where Dragonframe ends (captured frames) and adds what After Effects offers (cinematic FX compositing) in a stop-motion-native workflow. The product is built on Tauri 2.0 (Rust backend + WKWebView frontend), Preact with Signals for reactive UI, and a custom fork of Motion Canvas (@efxlab/motion-canvas-*) for WebGL/Canvas rendering and PNG sequence export. The stack is pre-decided and well-suited to the domain -- Tauri provides a lightweight ~3MB binary with native macOS integration, Preact Signals deliver fine-grained reactivity critical for a real-time editor, and Motion Canvas handles the compositing pipeline.
+EFX Motion Editor v2.0 transforms the shipped v1.0 MVP (import, timeline, playback, project management) into a professional production tool. The defining product differentiation is built-in cinematic effects (grain, scratches, light leaks, vignette, color grade) and audio-driven beat sync — features no stop-motion tool currently offers. Research across stack, features, architecture, and pitfalls consistently confirms a single core insight: the existing v1.0 codebase is well-positioned for v2.0. The stack is already capable. What is needed is completing skeleton structures (layerStore, historyStore), transitioning the preview from an `<img>` tag to a Canvas 2D compositor, and wiring 3 new npm packages (web-audio-beat-detector, tinykeys, and optionally wavesurfer.js — though the recommendation is to handle waveform extraction directly via Web Audio API to avoid widget/DOM conflicts with the existing canvas timeline).
 
-The recommended approach is a dependency-driven build order: foundation first (Tauri + Preact scaffold, IPC bridge, asset protocol), then data model and project management, then the visual pipeline (timeline, preview canvas, layer system), then audio and export, and finally polish features like templates and beat sync. This order is dictated by hard dependencies -- the layer system requires the timeline, beat sync requires audio import, export requires the layer system, and everything requires the IPC and signal store foundation. The existing React prototype provides a UI shell that can be converted to Preact, accelerating the visual scaffold phase.
+The recommended build order is determined by strict dependency chains: undo/redo and keyboard shortcuts must ship as infrastructure first (every later feature benefits), followed by the layer system (which unblocks FX and export), then audio/waveform (independent, can partially parallel), then beat sync (requires audio), and finally PNG export (requires a complete layer rendering pipeline). The biggest architectural decision is a deliberate departure from Motion Canvas's generator model for real-time compositing — instead, a custom `PreviewRenderer` class using Canvas 2D `globalCompositeOperation` will drive both preview and export, making the pipeline simpler and eliminating the mismatch between Preact Signals reactivity and Motion Canvas's generator-function scene model. This is confirmed by direct inspection of the installed packages and the existing codebase.
 
-The five critical risks are: (1) WebKit canvas memory leaks from loading hundreds of high-resolution images -- this requires an image pool with LRU eviction designed from day one; (2) Tauri IPC bottleneck when transferring image data -- solved by using the asset protocol instead of serializing binary data through IPC; (3) Motion Canvas integration as an embedded renderer rather than its standalone editor mode -- needs early proof-of-concept validation; (4) Preact/compat compatibility with Motion Canvas packages -- a go/no-go gate during scaffolding; (5) audio-visual sync drift during beat-synced playback -- requires AudioContext as master clock from the start. All five risks are addressable but must be confronted in the foundation phase, not discovered later.
+The top risks are cross-store undo atomicity (multiple stores must update inside a Preact `batch()` on every undo/redo call), layer/scene-graph order divergence (the layerStore array order must always match render order), FX parameter resolution-dependency (all effect parameters must be stored as normalized 0–1 values, not pixels), and an existing v1.0 bug where `closeProject()` does not reset all stores. This last item is the first task before any v2.0 work begins. None of these risks are novel; all have clear prevention strategies documented in PITFALLS.md.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The stack centers on Tauri 2.4.x with official plugins (fs, dialog, store, shell) for native macOS integration, Preact 10.28.x with @preact/signals 2.8.x for reactive state management, and @efxlab/motion-canvas-* 4.0.0 for rendering. The Rust backend uses image-rs for thumbnail generation, symphonia for audio decoding, serde for project serialization, and tokio for async operations. The frontend adds wavesurfer.js 7.12.x for waveform visualization and realtime-bpm-analyzer for beat detection. Vite 7.3.x with Tailwind CSS 4.2.x handles the build pipeline.
+The v1.0 stack (Tauri 2.0 + Preact 10.28 + @preact/signals + @efxlab/motion-canvas-* v4.0.0 + Vite 5.4.21 + Tailwind CSS v4 + pnpm 10.27) requires only three new frontend npm dependencies. No new Rust crates are required for core features.
 
-**Core technologies:**
-- **Tauri 2.4.x:** Desktop app framework -- lightweight binary, native macOS APIs, Rust performance for file I/O and audio processing
-- **Preact + Signals:** UI rendering and state -- 3KB bundle, fine-grained reactivity without re-renders, ideal for real-time editor state
-- **@efxlab/motion-canvas-* 4.0.0:** WebGL/Canvas rendering engine -- scene compositing, blend modes, PNG sequence export
-- **Rust crates (image, symphonia, serde):** Backend processing -- thumbnail generation, audio decoding, project serialization
-- **wavesurfer.js 7.12.x:** Audio waveform visualization -- timeline display, scrubbing, zoom
-- **Tailwind CSS 4.2.x + Vite 7.3.x:** Styling and build -- CSS-native config, fast builds, HMR
-
-**Highest-risk dependency:** The @efxlab/motion-canvas-* packages are a custom fork and the most likely source of version conflicts, particularly with Vite 7.x. Validate compatibility first during project setup.
+**Core technologies — new additions only:**
+- `web-audio-beat-detector ^8.2.35`: BPM detection via `guess(audioBuffer)`. TypeScript-native, Web Audio API-based, actively maintained (Feb 2026 release). Best for offline analysis of imported files.
+- `tinykeys ^3.0.0`: Keyboard shortcut binding. 650B gzipped, TypeScript-native, `$mod` macOS support, object-map API cleaner than hotkeys-js. Chosen over hotkeys-js (4x larger, no additional features needed).
+- **Web Audio API (browser-native):** Replaces the previously considered Rust `symphonia`/`rodio` approach. Audio decoding, playback, waveform extraction, and beat detection all happen in the browser where audio needs to play. `wavesurfer.js` was evaluated but rejected — it is a full widget library that fights with the existing `TimelineRenderer` canvas compositor.
+- **Custom Canvas 2D compositing (no new dependency):** `@efxlab/motion-canvas-2d` v4.0.0 already has a verified `ShaderConfig` interface for GLSL shaders. However, architecture research recommends a custom `PreviewRenderer` using Canvas 2D `globalCompositeOperation` for both preview and export — simpler, no WebGL context conflicts, full blend mode support, WYSIWYG export behavior.
+- **Custom command pattern (no new dependency):** The existing `historyStore` skeleton and `HistoryEntry` type are the correct foundation. `@kvndy/undo-manager` was evaluated and rejected: it wraps individual signals, but undo granularity must be operations (batching multi-store changes atomically).
 
 ### Expected Features
 
-**Must have (table stakes):**
-- Project management (create, open, save, autosave)
-- Image import (drag-and-drop + file dialog, JPEG/PNG/TIFF/HEIC)
-- Frame-by-frame timeline with thumbnails
-- Frame duration / hold controls ("shooting on twos")
-- Playback preview at project fps (15/24)
-- Preview canvas with zoom/pan
-- Sequence management
-- Layer system with blend modes (static image, image sequence, video)
-- Properties panel (transform, opacity, crop, blend mode)
-- Built-in FX effects (grain, vignette, color grade minimum)
-- Audio import with waveform display
-- Export as PNG image sequence
-- Keyboard shortcuts (space=play, arrows=step, JKL scrub)
-- Undo/Redo (100+ levels)
+**Must have (table stakes for v2.0):**
+- Layer system with blend modes (normal, screen, multiply, overlay, add), opacity, and transforms — the compositing foundation without which the product is a slideshow player
+- Properties panel (context-sensitive, currently an empty shell) — required for editing layer parameters
+- Undo/redo covering 100+ levels across all state changes — non-negotiable for any creative tool
+- PNG image sequence export — this IS the output pipeline; without it, work cannot leave the app
+- Audio import with waveform display on timeline — core workflow for music-driven stop-motion
+- Core keyboard shortcuts (Space, arrows, Cmd+Z/S, Delete) — professional tools are keyboard-driven
+- At least 3 cinematic FX presets (grain, vignette, color grade) to prove the product's differentiating value
 
 **Should have (differentiators):**
-- Beat sync with BPM detection and auto-arrange frames to music
-- Composition templates (saveable FX presets like "Super 8", "16mm", "VHS")
-- Onion skinning
-- Cinematic rate controls (auto-break/auto-merge when changing fps)
-- Layer repeat/loop modes (loop, mirror, ping-pong)
-- Sequence nesting
-- Dual-quality rendering (fast GPU preview vs high-quality export)
+- Beat sync with BPM detection, beat markers, and auto-arrange — no stop-motion tool has this; turns music video creation from manual frame-counting into an assisted workflow
+- Light leak and scratch FX presets (requires video layer support, more complex than static image layers)
+- Full JKL scrubbing with variable speed playback
 
-**Defer (v2+):**
-- ProRes/MP4 video export (PNG sequence workflow is the professional standard)
-- Keyframe animation for layer properties (transforms product toward motion graphics)
-- Plugin/extension system (requires stable internal APIs)
-- AI-powered features (distraction from core value)
-- Live camera tethering (different product category)
-- Windows/Linux builds
+**Defer to v2.1:**
+- Beat sync auto-arrange (full BPM detection + auto-arrange complexity; manual frame timing works in v2.0)
+- Keyboard shortcuts overlay (? help screen)
+- Layer loop modes (loop, mirror, ping-pong for video layers)
+- Composition templates (serialize after layer format stabilizes with users)
+- Onion skinning, sequence nesting, node-based compositing, keyframe animation — all explicitly anti-features for v2.0
 
 ### Architecture Approach
 
-The architecture follows a clear frontend/backend split. The Preact frontend owns everything visible and interactive: UI panels (Preact components + Tailwind), the preview canvas (@efxlab/motion-canvas-player web component), the timeline (custom canvas with imperative drawing), and audio playback (Web Audio API). The Rust backend owns everything that touches disk or performs heavy computation: project file I/O, image import and thumbnail generation, audio decoding and BPM detection, export frame writing, and global configuration. Communication flows through Tauri's IPC: invoke() for request-response commands, events for backend-initiated notifications, and Channels for streaming large data. State is managed through module-scoped Preact Signals organized into domain-specific stores (project, sequences, layers, timeline, ui, history).
+The key architectural insight from combining all research: v2.0 does not need Motion Canvas's generator-based scene graph for real-time preview or export compositing. A new `PreviewRenderer` class using Canvas 2D `globalCompositeOperation` handles both preview and export with full blend mode support, clean Preact Signals integration, and correct WYSIWYG export behavior. Motion Canvas remains in the project but its role is unused in the compositing pipeline; the export pipeline uses `OffscreenCanvas` + `canvas.convertToBlob()` + Tauri fs write.
 
 **Major components:**
-1. **Signal Store Layer** -- Centralized reactive state (project, sequences, layers, timeline, UI) driving all panel updates via fine-grained subscriptions
-2. **Preview Canvas** -- Motion Canvas player web component rendering composited frames with all layers and FX
-3. **Timeline Canvas** -- Custom canvas element with virtualized rendering for frame thumbnails, waveform, and beat markers
-4. **IPC Bridge** -- Type-safe wrappers around Tauri invoke() isolating all backend communication
-5. **Rust Command Handlers** -- Domain-organized modules (project, files, export, audio, config, templates) handling all file system and CPU-intensive operations
-6. **Undo/Redo System** -- Snapshot-based history with JSON-serialized state snapshots, capped at 100 entries
+1. `PreviewRenderer` (new `lib/previewRenderer.ts`) — Canvas 2D compositor handling all layers, blend modes, opacity, transforms, and FX rendering per frame; drives both live preview and PNG export
+2. `AudioEngine` (new `lib/audioEngine.ts`) — Web Audio API wrapper managing `AudioContext` lifecycle (singleton, lazy creation), `AudioBuffer` decoding, waveform peak extraction, and synchronized playback from a given frame
+3. `ExportEngine` (new `lib/exportEngine.ts`) — Frame-by-frame orchestrator that drives `PreviewRenderer` at export resolution, captures PNG blobs via `OffscreenCanvas.convertToBlob()`, sends bytes to Rust for disk write, and manages progress/cancellation with event-loop yielding
+4. `historyStore` (rewrite from stub) — Command-pattern undo stack with 100-entry cap, all executions wrapped in `batch()` for atomic cross-store updates
+5. `audioStore` (new) and `exportStore` (new) — Signal stores following the existing module-scoped singleton pattern with `markDirty` callback registration
+6. `layerStore` (rewrite from stub to computed view) — Derived from the active sequence's `layers` array inside `sequenceStore`; layers are per-sequence, not global
+7. `lib/fx/` directory (new) — Five FX renderers (grain, scratches, light leak, vignette, color grade) as pure Canvas 2D functions with normalized parameters; presets are code-defined with named parameter ranges
+
+**Existing patterns that all new code must follow:**
+- `markDirty` callback chain (new stores wire to projectStore via `_setMarkDirtyCallback`)
+- `snake_case` TypeScript types for all fields crossing the IPC boundary
+- Module-scoped signal store singletons (not React context)
+- `hydrateFromMce` / `buildMceProject` serialization gateway (layers and audio must extend this)
 
 ### Critical Pitfalls
 
-1. **WebKit canvas memory leaks** -- Implement an explicit image pool with LRU eviction (max 50 full-res images). Generate thumbnails at 256px in Rust. Never load full-res photos into the webview for thumbnails. Use URL.revokeObjectURL() aggressively.
-2. **Tauri IPC bottleneck for image data** -- Never send raw image bytes through IPC. Use the asset protocol (asset:// URLs) for image loading. Configure CSP with `img-src 'self' asset: http://asset.localhost` from day one.
-3. **Motion Canvas as embedded renderer** -- Build a proof-of-concept early: load one image into a Motion Canvas scene, play it in the embedded player, export 10 PNG frames programmatically. This is a go/no-go gate.
-4. **Audio-visual sync drift** -- Use AudioContext.currentTime as the master clock. Derive visual frame position from audio time, never the reverse. Do BPM detection in Rust, not Web Audio API.
-5. **Preact/compat breaks with Motion Canvas** -- Validate all @efxlab/motion-canvas-* imports against Preact during scaffolding. Motion Canvas likely renders to its own canvas element and may not need React/Preact at all. Configure Vite aliases for react -> preact/compat.
+1. **Cross-store undo atomicity** — Every undo/redo execution must be wrapped in `batch(() => { entry.undo(); })`. No `async` operations inside undo closures; all async work completes before the command is pushed. Preact Signals fire subscribers immediately on `.value =` assignment — naive sequential writes produce intermediate render states. Use `.peek()` inside closures, not `.value`.
+
+2. **Layer/scene-graph order divergence** — The `layerStore` array and the actual render order must stay in sync at all times. Use a Preact `effect()` subscribed to `layerStore.layers` to drive synchronous render updates. Maintain stable `Layer.id → Node` mapping; move existing nodes rather than rebuilding on reorder.
+
+3. **FX resolution-dependent parameters** — Preview renders at ~830px wide; export targets 1920x1080 or 4K. All FX parameters must be stored as normalized 0–1 values from day one. A `getEffectiveParams(width, height)` function converts to pixel values at render time. Establishing this convention before the first FX implementation avoids a HIGH-cost refactor later.
+
+4. **AudioContext lifecycle in Tauri WKWebView** — AudioContext must be created lazily on the first user-initiated play action (autoplay policy). Check `audioContext.state` and call `resume()` on every play. Use `OfflineAudioContext` for BPM analysis. Handle Tauri window focus/blur events to resume the context.
+
+5. **Data bleed on New Project (existing v1.0 bug)** — `projectStore.closeProject()` does not reset `timelineStore`, `layerStore`, or `historyStore`. This is the first task before any v2.0 work. Create a `resetAllStores()` function; every new store added in v2.0 must register with it immediately.
+
+6. **PNG export blocking the main thread** — Never use `toDataURL()` (synchronous, base64 overhead). Always `canvas.convertToBlob()`. Yield to the event loop between frames via `requestAnimationFrame` or `setTimeout(0)`. The export loop must allow the progress bar to update and the cancel button to remain responsive.
+
+7. **Keyboard shortcut conflicts** — Tauri native menus, browser defaults, and JS handlers all fire for the same keystrokes. Centralize all shortcuts in a `ShortcutManager`; skip firing when focus is on an `<input>` or `<textarea>`; call `e.preventDefault()` for handled keys; do NOT register Cmd+Z or Cmd+S as Tauri native menu accelerators.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on combined research, the suggested phase structure matches the dependency chains identified in FEATURES.md and the critical path from PITFALLS.md.
 
-### Phase 1: Foundation and Scaffolding
-**Rationale:** Everything depends on this. All five critical pitfalls require foundation-level decisions. The IPC bridge, asset protocol, Preact + Motion Canvas compatibility, and signal store architecture must be validated before any feature work begins.
-**Delivers:** Working Tauri + Preact + Vite + Tailwind scaffold. Verified Motion Canvas player embedding (proof-of-concept). Asset protocol configured. IPC wrappers and Rust command skeleton. TypeScript types mirroring Rust models. Signal stores (project, sequences, layers, timeline, ui, history).
-**Addresses:** Project management (create/save/load), basic signal store infrastructure
-**Avoids:** Pitfalls 2 (IPC bottleneck), 3 (Motion Canvas integration), 5 (Preact compat)
+### Phase 1: Foundation Fixes + Infrastructure (Undo/Redo + Keyboard Shortcuts)
 
-### Phase 2: UI Shell and Image Pipeline
-**Rationale:** The existing React prototype can be converted to Preact. Image import through Rust with thumbnail generation establishes the asset pipeline that everything else builds on. Memory-safe image loading must be proven here.
-**Delivers:** Converted UI shell (panels layout from React prototype). Image import via Rust (copy to project dir, generate thumbnails). Sequence management (create, reorder, delete). Properties panel wired to signal stores.
-**Addresses:** Image import, sequence management, properties panel
-**Avoids:** Pitfall 1 (WebKit memory leaks -- image pool + thumbnail cache established here)
+**Rationale:** The existing v1.0 `closeProject()` data-bleed bug must be fixed before adding any new stores. Undo/redo and keyboard shortcuts are infrastructure that every subsequent feature depends on — shipping them first means all later features automatically have coverage and keyboard access from day one.
 
-### Phase 3: Timeline and Playback
-**Rationale:** The timeline is the primary workspace and depends on sequences/images existing in signal stores. Must be built with viewport virtualization from the start (pitfall: rendering all thumbnails at once kills performance above 100 frames). Playback engine must use the right clock architecture to avoid audio sync drift later.
-**Delivers:** Canvas-based timeline with frame thumbnails, scrubbing, zoom. Playhead with playback at project fps. Frame duration/hold controls. Onion skinning overlay on preview canvas.
-**Addresses:** Timeline, playback preview, frame duration controls, onion skinning, zoom/pan on preview
-**Avoids:** Performance trap (timeline virtualization), Pitfall 4 foundation (master clock architecture)
+**Delivers:** `resetAllStores()` function, completed `historyStore` with command-pattern implementation (`batch()`-wrapped executions, 100-entry cap, branch-on-new-action), `tinykeys`-based `ShortcutManager` with core shortcuts (Space, arrows, Cmd+Z/Shift+Z, Cmd+S/N/O, Delete)
 
-### Phase 4: Layer System and FX
-**Rationale:** This is the product's core differentiator. The layer system depends on the timeline and preview canvas existing. FX rendering through Motion Canvas is where the product diverges from all competitors. This phase proves the product's unique value proposition.
-**Delivers:** Layer stack (static image, image sequence, video overlays). Blend modes (screen, multiply, overlay, etc.). Layer transforms (position, scale, rotation, opacity, crop). Built-in FX effects (grain, vignette, color grade). Layer rendering in Motion Canvas preview.
-**Addresses:** Layer system, blend modes, built-in FX effects, properties panel for layers
-**Avoids:** Anti-pattern of putting rendering logic in signal stores
+**Addresses:** Table-stakes undo/redo and keyboard shortcuts; v1.0 data-bleed bug fix
+**Avoids:** Pitfalls 1 (cross-store undo atomicity), 5 (data bleed), 7 (keyboard shortcut conflicts)
+**Research flag:** Standard patterns. No deeper research needed.
 
-### Phase 5: Audio and Beat Sync
-**Rationale:** Audio depends on the timeline existing. Beat sync depends on audio import. BPM detection runs in Rust (symphonia for decoding, custom analysis). Waveform visualization uses wavesurfer.js with pre-computed peak data from Rust.
-**Delivers:** Audio import (WAV/MP3/AAC). Waveform visualization on timeline. BPM detection and beat markers. Snap-to-beat mode. Auto-arrange frames to beats.
-**Addresses:** Audio import, waveform display, beat sync, auto-arrange
-**Avoids:** Pitfall 4 (audio sync drift -- AudioContext as master clock, Rust-side BPM detection)
+### Phase 2: Layer System + Properties Panel
 
-### Phase 6: Export Pipeline
-**Rationale:** Export depends on the layer system being complete (must flatten all layers). The rendering happens in the WebView via Motion Canvas; Rust handles disk I/O. This is where dual-quality rendering (preview vs export) becomes relevant.
-**Delivers:** PNG sequence export with configurable resolution. Frame-by-frame progress UI with cancellation. Audio metadata sidecar file. Reveal-in-Finder on completion.
-**Addresses:** PNG sequence export, dual-quality rendering
-**Avoids:** Anti-pattern of running export entirely in Rust (Motion Canvas renders in WebView)
+**Rationale:** The layer system is the foundation for both FX effects and PNG export. Neither can be built without a working compositing renderer. The `PreviewRenderer` (Canvas 2D) must replace the current `<img>` tag approach in this phase so that subsequent phases build on a working compositor.
 
-### Phase 7: Templates, Undo Polish, and Keyboard Workflow
-**Rationale:** Templates require a stable layer system. Undo/redo refinement requires all mutation types to exist. Keyboard shortcuts require all features to be addressable. This is polish and power-user features.
-**Delivers:** Composition templates (save/apply/library with built-in presets). Full undo/redo coverage for all operations. Complete keyboard shortcut set. Cinematic rate controls. Layer loop modes. Autosave refinement.
-**Addresses:** Composition templates, undo/redo, keyboard shortcuts, rate controls, layer loop modes, autosave
-**Avoids:** UX pitfalls (undo coverage gaps, no progress feedback, zoom anchor)
+**Delivers:** Rewritten `layerStore` (computed from active sequence), `PreviewRenderer` (Canvas 2D `globalCompositeOperation`), layer panel UI with drag-and-drop reorder (SortableJS already a dependency), context-sensitive `PropertiesPanel`, blend mode support, opacity and transform controls, layer serialization in `.mce` format (MceLayer, version bump to 2 with v1 migration handling)
+
+**Uses:** Canvas 2D `globalCompositeOperation` (MDN-documented standard), SortableJS (already installed), Preact Signals `effect()` for store-to-renderer synchronization
+**Addresses:** All layer system table-stakes features; properties panel
+**Avoids:** Pitfall 2 (layer/scene-graph order divergence — addressed by design from the start)
+**Research flag:** Standard patterns for Canvas 2D compositing. No deeper research needed.
+
+### Phase 3: FX Effects
+
+**Rationale:** FX are specialized layers (type: 'fx') built on top of the Phase 2 layer system. They are the product's core differentiator and should ship as soon as the layer system is stable. All five effect types use the same `PreviewRenderer` pipeline.
+
+**Delivers:** `lib/fx/` directory with grain, vignette, and color grade renderers (v2.0 MVP set), `FxPreset` registry with normalized parameter ranges, FX parameter controls in PropertiesPanel, normalized parameter convention enforced from day one, FX layer presets accessible from layer panel
+
+**Addresses:** Built-in cinematic FX differentiator (grain, vignette, color grade at minimum)
+**Avoids:** Pitfall 3 (resolution-dependent FX parameters — normalized from the start)
+**Research flag:** Grain, vignette, and color grade are well-understood Canvas 2D operations. Light leaks (video layers) need additional research if targeting v2.0 scope.
+
+### Phase 4: Audio Import + Waveform
+
+**Rationale:** Audio is independent of the layer system. The PlaybackEngine clock refactor (switching to `AudioContext.currentTime` as master when audio is loaded) must be part of this phase — not deferred. The waveform is rendered as a dedicated track row in `TimelineRenderer`, not via a widget library.
+
+**Delivers:** New `audioStore` and `AudioEngine` (Web Audio API), Tauri `import_audio` Rust command (file copy to `project/audio/`), waveform peak extraction via `AudioBuffer.getChannelData()`, waveform rendering track in `TimelineRenderer.drawWaveform()`, audio playback synced to `PlaybackEngine.start()/stop()`, volume/mute controls, `MceAudioRef` in project serialization
+
+**Uses:** Web Audio API (browser-native), `AudioBufferSourceNode` for playback, `OfflineAudioContext` for analysis
+**Addresses:** Audio import with waveform display (table stakes)
+**Avoids:** Pitfall 4 (AudioContext lifecycle — singleton + lazy creation + `resume()` on every play)
+**Research flag:** Standard Web Audio API patterns. `OfflineAudioContext` memory with large files should be benchmarked (analyze only first 30-60 seconds for BPM). Medium confidence on beat-detection accuracy for non-rhythmic music.
+
+### Phase 5: Beat Sync
+
+**Rationale:** Requires completed audio (Phase 4). The BPM detection, beat marker rendering on timeline, and auto-arrange calculation are a discrete feature set that ships as its own phase.
+
+**Delivers:** `web-audio-beat-detector` integration via `lib/beatDetector.ts`, beat markers rendered on timeline canvas at computed frame positions, manual BPM/offset adjustment UI, snap mode selector (every beat / every 2 beats / every bar), auto-arrange distribution of key photos across beat positions (`framesPerBeat = fps * 60 / bpm`)
+
+**Addresses:** Beat sync differentiator (alongside FX, the product's reason to exist)
+**Avoids:** BPM halving/doubling errors — test with known-BPM reference tracks during QA
+**Research flag:** BPM detection accuracy is MEDIUM confidence. Genre bias (poor results on acoustic/jazz) is a known limitation. Manual correction UI is essential, not optional. Consider whether auto-arrange belongs in v2.0 or v2.1.
+
+### Phase 6: PNG Export
+
+**Rationale:** Export must be last because it requires a complete, stable layer rendering pipeline. By this phase, all layer types, FX effects, and audio metadata are in place. The `PreviewRenderer` built in Phase 2 is reused — what you see is what you get.
+
+**Delivers:** `ExportEngine` (frame-by-frame orchestrator using `OffscreenCanvas` + `PreviewRenderer`), `ExportDialog` (resolution, naming, output directory via Tauri dialog), `ExportProgress` overlay with cancel button, Rust `export_write_frame` and `export_write_metadata` commands, audio metadata sidecar JSON for DaVinci Resolve handoff, zero-padded sequential filename convention (`frame_000001.png`)
+
+**Addresses:** PNG image sequence export (table stakes)
+**Avoids:** Pitfall 6 (main thread blocking — `convertToBlob()` with event-loop yielding between frames; never `toDataURL()`)
+**Research flag:** IPC binary transfer performance should be benchmarked during phase planning. The `toBlob()` → `ArrayBuffer` → IPC flow may need optimization for large frame counts (alternative: write via Tauri `plugin-fs` directly, avoiding invoke serialization overhead).
 
 ### Phase Ordering Rationale
 
-- **Dependency-driven:** Each phase produces outputs required by the next. The layer system cannot exist without the timeline; beat sync cannot exist without audio; export cannot exist without the layer system.
-- **Risk-front-loaded:** The three highest-risk integrations (Motion Canvas embedding, Preact compat, asset protocol) are all validated in Phase 1. If any fails, recovery is cheapest at this stage.
-- **Value-incremental:** Phase 2 produces a usable image organizer. Phase 3 adds playback. Phase 4 adds the core differentiator (FX). Phase 5 adds music workflow. Phase 6 completes the pipeline. Each phase delivers demonstrable value.
-- **Pitfall-aware:** Memory management (Phase 2), timeline virtualization (Phase 3), audio clock architecture (Phase 3/5), and export architecture (Phase 6) are all addressed at the correct build stage.
+- **Undo before everything:** The command pattern must be established before any feature adds mutable state. Retrofitting undo onto completed features is expensive and error-prone.
+- **Layers before FX and export:** FX are layer presets; export flattens layers. Neither works without the compositor.
+- **Audio before beat sync:** Beat detection requires an `AudioBuffer` from the decoded audio file.
+- **Export last:** Requires a complete, stable compositor — all layer types, all FX, correct resolution handling proven.
+- **Keyboard shortcuts in Phase 1:** `tinykeys` global registration is trivial; shipping shortcuts incrementally as features land means users always have keyboard access.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 1 (Foundation):** Motion Canvas embedded player API and programmatic scene control are not well-documented for non-standard use. Needs hands-on prototyping.
-- **Phase 4 (Layer System):** Mapping layer properties (blend modes, transforms) to Motion Canvas scene graph nodes requires understanding internal MC APIs. The @efxlab fork may have custom APIs.
-- **Phase 5 (Audio/Beat Sync):** The IPC pattern for streaming waveform peaks from Rust to frontend needs prototyping. BPM detection algorithm selection (aubio bindings vs custom) needs evaluation.
-- **Phase 6 (Export):** Frame-by-frame capture from Motion Canvas player (canvas.toBlob -> IPC Channel -> Rust disk write) is an undocumented workflow that needs validation.
+Phases likely needing `/gsd:research-phase` during planning:
+- **Phase 5 (Beat Sync):** BPM detection accuracy is MEDIUM confidence. Genre bias, BPM halving/doubling errors, and user expectation management need deeper investigation before committing to auto-arrange UX. Consider splitting beat markers (Phase 5a) from auto-arrange (Phase 5b / v2.1).
+- **Phase 6 (PNG Export):** Tauri IPC binary transfer performance at scale. The `convertToBlob()` + `invoke('export_write_frame', { data: bytes })` path may be too slow for large sequences. Benchmark before architecture is locked; temp file alternative may be significantly faster.
 
-Phases with standard patterns (skip research-phase):
-- **Phase 2 (UI Shell):** React-to-Preact conversion is well-documented. Tauri file dialog and image crate thumbnail generation are standard patterns.
-- **Phase 3 (Timeline):** Canvas-based timeline with virtualization is a well-established pattern in video editors. wavesurfer.js integration is documented.
-- **Phase 7 (Polish):** Templates, undo/redo, and keyboard shortcuts are standard application patterns.
+Phases with standard, well-documented patterns (skip research-phase):
+- **Phase 1 (Foundation):** Command pattern undo/redo with `batch()` and `tinykeys` are well-established patterns.
+- **Phase 2 (Layer System):** Canvas 2D `globalCompositeOperation` is a web standard. All five blend modes are documented on MDN. No unknown APIs.
+- **Phase 3 (FX Effects):** Grain, vignette, and color grade are well-understood Canvas 2D operations with clear implementation paths confirmed in ARCHITECTURE.md.
+- **Phase 4 (Audio):** Web Audio API decode + peak extraction + playback sync are standard browser patterns. Tauri audio import (file copy) is standard Rust I/O.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | MEDIUM-HIGH | Core technologies are pre-decided and well-documented. Risk is in @efxlab/motion-canvas-* compatibility with Vite 7 and Preact (custom fork, less documentation). |
-| Features | HIGH | Clear competitive analysis against Dragonframe, Stop Motion Studio, After Effects. Feature set is well-defined with explicit MVP scope and deferral list. |
-| Architecture | MEDIUM-HIGH | Tauri 2.0 patterns are well-documented. Signal store pattern is sound. Motion Canvas integration as embedded renderer (not standalone) is the area of lowest confidence. |
-| Pitfalls | MEDIUM-HIGH | Sourced from Tauri GitHub issues, community blog posts, and WebKit behavior analysis. WebKit memory behavior and IPC benchmarks are documented. Audio sync patterns are well-understood in the Web Audio community. |
+| Stack | HIGH | All new dependencies verified against installed packages and GitHub. Only 3 new npm packages needed. Zero new Rust crates for core features. `web-audio-beat-detector` v8.2.35 released Feb 2026 — actively maintained. |
+| Features | HIGH | Feature set grounded in competitive analysis (Dragonframe, Stop Motion Studio) and direct codebase analysis of existing stubs. Anti-features are clearly reasoned with explicit scope-out justifications. |
+| Architecture | HIGH | Based on direct codebase analysis plus verified Motion Canvas API inspection against installed node_modules. Canvas 2D `globalCompositeOperation` approach is confirmed against MDN and avoids all Motion Canvas generator-model compatibility issues. |
+| Pitfalls | MEDIUM-HIGH | Most pitfalls are derived from direct code inspection (data bleed bug is verified, store coupling is verified, `closeProject()` omissions are verified). BPM detection accuracy is MEDIUM — genre-dependent. Export IPC performance is MEDIUM — needs benchmarking. |
 
-**Overall confidence:** MEDIUM-HIGH
+**Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **@efxlab/motion-canvas-* Vite 7 compatibility:** Custom fork packages may pin specific Vite plugin API versions. Must validate on first install. If incompatible, pin Vite to 6.x.
-- **Motion Canvas programmatic export:** The documented export path assumes MC's own UI. Programmatic frame-by-frame capture and PNG write through IPC Channel is an undocumented workflow. Needs proof-of-concept in Phase 1.
-- **Waveform data IPC pattern:** The exact mechanism for streaming pre-computed audio peaks from Rust to the frontend (Tauri Channel vs chunked invoke responses) needs prototyping.
-- **WebKit WKWebView rendering throttling:** WKWebView may throttle requestAnimationFrame when the app loses focus. Impact on export (which renders frame-by-frame) is unknown. May need to keep the window focused during export or use an alternative rendering approach.
-- **macOS code signing and notarization:** Not a code architecture concern, but WKWebView requires specific entitlements (JIT, unsigned executable memory). Must test notarized build before distribution phase, not on release day.
-- **Color space consistency:** Exported PNGs must match preview colors. sRGB vs Display P3 on macOS can cause subtle color shifts. Needs validation during export phase.
+- **BPM detection accuracy for non-rhythmic music:** `web-audio-beat-detector` works well for EDM/pop/rock. Results for jazz, classical, and acoustic genres are unreliable. The manual BPM adjustment UI is mandatory, not optional. During Phase 5 planning, define the minimum viable auto-detection UX and ensure manual override is the primary workflow path.
+
+- **IPC binary transfer performance at export scale:** The `Vec<u8>` IPC path for frame data may be slow for large sequences. During Phase 6 planning, benchmark `convertToBlob()` + IPC vs. writing a temp file + invoking with a path. The temp file approach may be significantly faster and avoids the base64/serialization overhead.
+
+- **Video layer support scope decision:** Light leaks and scratch FX using video layers (`type: 'video'`) are more complex than static image layers (require video element or OffscreenCanvas frame extraction). Confirm whether video layers are in v2.0 scope or deferred to v2.1 before Phase 3 planning.
+
+- **`@kvndy/undo-manager` evaluation status:** Research conclusion is to reject it (operation-level vs. signal-level undo granularity mismatch). This was not fully validated against all stores. The custom command pattern recommendation should be treated as decided unless a compelling case emerges during Phase 1 implementation.
+
+- **Motion Canvas `Img` node + Tauri `asset://` URL compatibility:** If any path uses Motion Canvas nodes for layer rendering (as opposed to the recommended `PreviewRenderer` approach), early validation is needed. `asset://` URLs may not resolve correctly inside MC `Img` nodes. If `PreviewRenderer` is fully adopted (recommended), this is not an issue.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Tauri 2.0 Official Docs](https://v2.tauri.app/) -- IPC, plugins (fs, dialog, store, shell), architecture, code signing
-- [Preact Signals Guide](https://preactjs.com/guide/v10/signals/) -- reactive state management patterns
-- [Motion Canvas Rendering Docs](https://motioncanvas.io/docs/rendering/) -- export pipeline, image sequence
-- [Rust image crate](https://crates.io/crates/image) -- v0.25, thumbnail generation
-- [Symphonia](https://github.com/pdeljanov/Symphonia) -- pure Rust audio decoding
-- [Tailwind CSS v4](https://tailwindcss.com/blog/tailwindcss-v4) -- CSS-native config, Vite plugin
-- [Dragonframe Software Features](https://www.dragonframe.com/dragonframe-software/) -- competitor baseline
+- `@efxlab/motion-canvas-2d/lib/partials/ShaderConfig.d.ts` — verified ShaderConfig interface in installed node_modules
+- [Motion Canvas Node API](https://motioncanvas.io/api/2d/components/Node/) — `compositeOperation`, `opacity`, `cache`, `filters` properties
+- [MDN: globalCompositeOperation](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation) — blend mode mapping (source-over, screen, multiply, overlay, lighter)
+- [web-audio-beat-detector GitHub](https://github.com/chrisguttandin/web-audio-beat-detector) — v8.2.35, Feb 2026
+- [tinykeys GitHub](https://github.com/jamiebuilds/tinykeys) — v3.0.0, 650B, TypeScript
+- [Canvas toBlob MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob) — async PNG export
+- [Tauri 2 File System Plugin](https://v2.tauri.app/plugin/file-system/) — file write API
+- [Dragonframe Software](https://www.dragonframe.com/dragonframe-software/) — competitive feature reference
+- [Preact Signals Guide](https://preactjs.com/guide/v10/signals/) — `batch()`, `peek()`, `effect()` behavior
+- Direct codebase analysis of v1.0 source (stores, types, playbackEngine, TimelineRenderer, previewScene.tsx)
 
 ### Secondary (MEDIUM confidence)
-- [wavesurfer.js](https://github.com/katspaugh/wavesurfer.js) -- v7.12.x waveform visualization
-- [realtime-bpm-analyzer](https://www.realtime-bpm-analyzer.com/) -- Web Audio API BPM detection
-- [Tauri IPC performance](https://github.com/tauri-apps/tauri/discussions/7146) -- binary IPC benchmarks
-- [Tauri asset protocol issues](https://github.com/tauri-apps/tauri/issues/2952) -- memory leak documentation
-- [Audio/Video sync with Web Audio API](https://blog.paul.cx/post/audio-video-synchronization-with-the-web-audio-api/) -- master clock pattern
+- [web-audio-beat-detector npm](https://www.npmjs.com/package/web-audio-beat-detector) — API surface: `analyze()`, `guess()`
+- [Tauri IPC Performance Discussion](https://github.com/tauri-apps/tauri/discussions/5690) — binary data transfer benchmarks
+- [Building BPM Finder: Technical Challenges](https://dev.to/_ab56e9bbfaff3a478352a/building-bpm-finder-technical-challenges-in-client-side-audio-analysis-4n3) — memory and accuracy challenges
+- [Filmora Auto Beat Markers](https://filmora.wondershare.com/ai-efficiency/auto-beat-marker.html) — beat marker UX pattern
+- [Tauri Menu System & Keyboard Shortcuts](https://deepwiki.com/dannysmith/tauri-template/4.3-menu-system-and-keyboard-shortcuts) — native menu vs JS handler conflicts
+- [WebGL Blending: Premultiplied Alpha](https://limnu.com/webgl-blending-youre-probably-wrong/) — blend mode correctness
+- [Stop Motion Studio Pro](https://apps.apple.com/us/app/stop-motion-studio-pro/id641564761) — competitive feature reference
 
 ### Tertiary (LOW confidence)
-- [Motion Canvas DeepWiki](https://deepwiki.com/motion-canvas/motion-canvas) -- architecture overview (community-generated)
-- @efxlab/motion-canvas-* package internals -- custom fork, limited public documentation
-- Vite 7.x compatibility with Motion Canvas Vite plugin -- unverified, needs runtime validation
+- [@kvndy/undo-manager npm](https://www.npmjs.com/package/@kvndy/undo-manager) — evaluated and rejected; not validated against all 7 stores
+- [VideoProc Vlogger Beat Editing](https://www.videoproc.com/video-editing-software/guide-free-win/edit-to-the-beat.htm) — auto-beat workflow UX reference
 
 ---
-*Research completed: 2026-03-02*
+*Research completed: 2026-03-03*
 *Ready for roadmap: yes*

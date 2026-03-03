@@ -1,140 +1,195 @@
 # Pitfalls Research
 
-**Domain:** Desktop stop-motion cinematic video editor (Tauri 2.0 + Preact + Motion Canvas)
-**Researched:** 2026-03-02
+**Domain:** v2.0 feature additions to desktop stop-motion cinematic editor (Tauri 2.0 + Preact Signals + Motion Canvas)
+**Researched:** 2026-03-03
 **Confidence:** MEDIUM-HIGH
+**Focus:** Common mistakes when adding layer compositing, FX effects, audio/beat sync, PNG export, undo/redo, and keyboard shortcuts to the existing v1.0 codebase
 
 ## Critical Pitfalls
 
-### Pitfall 1: WebKit Canvas Memory Leaks from Image Sequence Loading
+### Pitfall 1: Undo/Redo Across 7+ Reactive Stores With Cross-Store Computed Values
 
 **What goes wrong:**
-Loading hundreds of high-resolution photos into WebGL/Canvas textures for timeline thumbnails and preview playback causes unbounded memory growth. WebGL textures are not reliably garbage collected in WKWebView — GPU textures are created on every drawImage call for every layer on every frame. A 200-frame sequence of 24MP photos at even scaled-down thumbnails can consume gigabytes of VRAM/RAM, eventually crashing the app or freezing macOS.
+The existing architecture has 7 stores (projectStore, sequenceStore, imageStore, layerStore, timelineStore, uiStore, historyStore) with cross-store computed signals like `frameMap` (computed from `sequenceStore.sequences`) and `totalFrames` (derived from frameMap). The command pattern undo/redo must restore consistent state across multiple stores atomically. If an undo operation restores sequenceStore but not layerStore, the computed `frameMap` updates mid-batch, triggering derived effects with inconsistent intermediate state. Preact Signals' fine-grained reactivity means each `.value` assignment can trigger subscribers immediately -- unlike React's batched setState, a naive command.undo() that writes to three stores in sequence fires three rounds of re-renders with partially-restored state.
 
 **Why it happens:**
-Tauri on macOS uses WKWebView (WebKit/Safari engine). WebKit's GPU Process canvas rendering creates new GPU textures per drawImage call. Unlike Chromium, WebKit does not aggressively reclaim GPU texture memory. Developers assume the browser handles image lifecycle like DOM elements — it does not. Image objects constructed in rapid succession cause memory to rise even with forced GC. The asset protocol (`convertFileSrc`) has documented memory leaks where converted files are not released when removed from DOM.
+The existing `markDirty` callback pattern (sequenceStore -> projectStore via function reference) proves stores are already tightly coupled through indirect channels. Developers implement undo by storing "before" and "after" snapshots per store, then replaying them. But the `batch()` from `@preact/signals` only batches synchronous writes within a single callback -- if undo logic awaits anything (like IPC to restore an image path), the batch breaks and intermediate states leak to the UI. The existing `HistoryEntry` type stores `undo: () => void` and `redo: () => void` closures, which is correct, but closures can capture stale signal references if the undo function reads `.value` at definition time instead of execution time.
 
 **How to avoid:**
-- Implement an explicit texture/image pool with a hard cap (e.g., max 50 full-res images in memory). Use LRU eviction.
-- Generate thumbnails on the Rust side at reduced resolution (256px wide) for timeline display. Never load full-res photos into the webview for thumbnails.
-- For preview playback, pre-scale images to output resolution (1080p/720p) via Rust before sending to the canvas renderer.
-- Use `URL.revokeObjectURL()` aggressively. Set image `src` to empty string before nulling references.
-- Pool and reuse Image/HTMLImageElement objects instead of creating new ones.
-- Monitor `performance.memory` (if available) or implement Rust-side memory tracking with periodic reporting.
+- Wrap every undo/redo execution in `batch(() => { entry.undo(); })` to ensure all store writes are atomic from Preact's perspective.
+- Never use `async` inside undo/redo closures. All state restoration must be synchronous. If a command involves async operations (like file I/O), the async work must happen before the command is pushed to the history stack, and the undo closure must only contain synchronous signal writes.
+- Use `.peek()` inside undo/redo closures to read current state without creating signal subscriptions. Use `.value =` only for writes.
+- For compound operations (e.g., "add FX layer" which touches layerStore + sequenceStore + marks dirty), create a `CompoundCommand` that bundles multiple sub-commands and undoes them all in a single `batch()`.
+- Test undo specifically at the frameMap boundary: undo a key photo deletion and verify `totalFrames` reflects the restored state before any UI re-render.
 
 **Warning signs:**
-- Activity Monitor shows WebKit process memory climbing during timeline scrubbing
-- Preview playback gets progressively slower over a session
-- App becomes unresponsive after loading a second or third project without restart
-- macOS memory pressure warnings appear
+- Timeline flickers or shows wrong frame count briefly after undo
+- Preview shows stale image after undoing a key photo reorder
+- `isDirty` flag does not correctly reflect undo-to-clean-state (undoing all changes should clear dirty)
+- autoSave triggers during an undo operation because `isDirty` toggles mid-batch
 
 **Phase to address:**
-Foundation/Core Architecture phase — the image loading pipeline must be designed with pooling from day one. Retrofitting memory management into an existing image pipeline requires rewriting the entire rendering data flow.
+Undo/Redo phase -- but the `batch()` wrapping pattern and the "no async in undo closures" rule must be established as a hard constraint from the first command implementation.
 
 ---
 
-### Pitfall 2: Tauri IPC Bottleneck for Frame Data Transfer
+### Pitfall 2: Layer Compositing Order Diverges Between Data Model and Motion Canvas Scene Graph
 
 **What goes wrong:**
-Sending image data or large payloads between Rust backend and the Preact frontend through Tauri's IPC serializes everything as JSON. A single 1080p PNG frame is ~6MB. At 24fps preview, that is 144MB/s of JSON serialization overhead through IPC — completely unworkable. Even thumbnails at scale cause visible lag.
+The existing `layerStore` maintains layers as a flat array with implicit z-ordering (index 0 = bottom). Motion Canvas uses a scene graph where the last child added renders on top. If the layer reorder operation updates `layerStore.layers` but does not synchronously update the Motion Canvas scene graph node order, the preview shows layers in the wrong compositing order. Worse, blend modes like `screen` and `multiply` are order-dependent -- `A screen B` produces different results than `B screen A`. Users see correct layer order in the panel but wrong compositing in preview.
 
 **Why it happens:**
-Tauri IPC uses a JSON-RPC-like protocol. All arguments and return data must be serializable to JSON. Binary data gets base64-encoded, adding 33% overhead plus serialization/deserialization time. Developers build a working prototype with small test data, then discover IPC is the bottleneck when real project sizes hit. Binary IPC benchmarks show ~5ms per 10MB on macOS — acceptable for single transfers but not for streaming frame data.
+The current `layerStore.reorder()` does a simple array splice. There is no mechanism to propagate layer order changes to the Motion Canvas rendering scene. The `Preview.tsx` component currently renders a single `<img>` overlay -- it does not yet use Motion Canvas for compositing. When the transition to actual Motion Canvas compositing happens, developers must bridge the reactive store (Preact Signals) with the imperative scene graph (Motion Canvas nodes). The temptation is to rebuild the entire scene graph on every layer change, which is both slow and breaks any in-flight animations.
 
 **How to avoid:**
-- Never send raw image data through IPC. Use the asset protocol (`convertFileSrc`) to let the webview load images directly from disk via `asset://` URLs.
-- For thumbnail generation, have Rust write thumbnails to a cache directory, then reference them via asset protocol URLs.
-- For export progress, send only status messages (frame number, percentage) through IPC, not frame data.
-- Batch IPC calls — instead of one call per frame, send arrays of file paths.
-- For real-time data (playhead position, waveform data), use Tauri events (push from Rust) rather than polling commands.
+- Maintain a stable mapping between `Layer.id` and its corresponding Motion Canvas `Node` reference. When layers reorder, move existing nodes rather than destroying and recreating them.
+- Use a synchronization function that diffs the current layer order against the scene graph child order and applies minimal moves. This is the same algorithm as virtual DOM list reconciliation.
+- For blend modes, apply them via Motion Canvas's `compositeOperation` property on the `Rect` or `Img` node wrapping each layer. Validate that Motion Canvas's compositeOperation maps correctly to Canvas 2D's `globalCompositeOperation` values.
+- Ensure the preview scene graph update happens in the same synchronous tick as the store update. Use a Preact `effect()` that subscribes to `layerStore.layers` and updates the scene graph.
+- Write a visual regression test: create 3 layers with distinct colors and `multiply` blend mode, reorder them, verify the composite output pixel values match expected results.
 
 **Warning signs:**
-- Timeline scrolling feels sluggish despite low CPU usage
-- Adding `console.time` around IPC calls shows >10ms per call
-- Preview playback stutters even with pre-cached frames
-- Rust backend CPU spikes on serialization during playback
+- Layer panel shows order A-B-C but preview shows C-B-A compositing
+- Blend mode changes visually apply to the wrong layer
+- Layer reorder causes preview to flash black briefly (scene graph rebuild)
+- Adding a new layer sometimes renders it behind existing layers
 
 **Phase to address:**
-Foundation phase — asset protocol configuration and the image-loading architecture must be established before any UI work begins. The CSP configuration (`img-src 'self' asset: http://asset.localhost`) and asset protocol scope must be in `tauri.conf.json` from the start.
+Layer compositing phase -- the store-to-scene-graph synchronization architecture must be the first thing built, before any blend mode or opacity work.
 
 ---
 
-### Pitfall 3: Motion Canvas Integration as Embedded Renderer (Not Standalone App)
+### Pitfall 3: FX Shader Effects Cause Export/Preview Mismatch Due to Resolution-Dependent Parameters
 
 **What goes wrong:**
-Motion Canvas is designed as a standalone animation authoring tool with its own UI, editor, timeline, and dev server. Attempting to use it as an embedded rendering library requires stripping away the editor shell and programmatically controlling scene/animation playback — a use case that is not the primary documented path. Developers either fight the built-in UI or end up reimplementing core rendering logic.
+Film grain, light leaks, vignette, and blur effects use parameters that depend on pixel dimensions. A grain effect tuned for 830px preview width (the current `max-w-[830px]` in CanvasArea) looks completely different when exported at 1920x1080 or 4K. Grain particles are either invisible (too small) or blocky (too large). Vignette falloff radius becomes wrong. Light leak positions shift. Users carefully tune FX in preview, then export produces different-looking results.
 
 **Why it happens:**
-The `@efxlab/motion-canvas-player` package provides an embeddable player, but the rendering pipeline (scene graphs, animation timing, frame export) is tightly coupled with Motion Canvas's internal architecture. The documented export path assumes Motion Canvas's own UI with a "RENDER" button. Programmatic rendering for PNG export requires understanding the internal exporter architecture (ImageExporter, FFmpegExporter) and driving it from custom code.
+The current preview renders at whatever the browser scales the container to (max 830px wide per CSS). Export will render at the project's native resolution (1920x1080 default). If FX parameters are stored as pixel values, they break at different resolutions. Even if stored as percentages/ratios, the visual appearance of noise patterns changes at different resolutions because the frequency content is resolution-dependent. Additionally, Motion Canvas separates preview and render resolution configurations -- the preview can run at 0.5x scale while render runs at 1x, and shader effects need to account for this.
 
 **How to avoid:**
-- Study the `@efxlab/motion-canvas-core` and `@efxlab/motion-canvas-2d` APIs thoroughly before building any rendering code. These are the headless rendering primitives.
-- Use `@efxlab/motion-canvas-player` strictly for preview display. Build a separate headless rendering pipeline for export that drives the scene graph frame-by-frame.
-- For PNG export, invoke rendering from Rust (or via a headless browser context) rather than trying to export from the visible webview — the webview may throttle background rendering.
-- Keep Motion Canvas version pinned at v4.0.0. Do not update without testing the full rendering pipeline.
-- Build a thin adapter layer between your project's data model and Motion Canvas scene descriptions. Do not let Motion Canvas types leak into your state management.
+- Store all FX parameters as resolution-independent values (0.0-1.0 normalized, or relative to the shorter dimension).
+- For procedural effects (grain, scratches), scale the noise frequency inversely with resolution so the visual density matches between preview and export.
+- Implement a `getEffectiveParams(width, height)` method on each FX that converts normalized parameters to pixel values at render time.
+- Test every FX effect by comparing a preview screenshot against a rendered export at the same frame. They must be visually identical (allowing for resolution differences in detail, not in composition).
+- For vignette and light leaks, use aspect-ratio-aware UV coordinates, not absolute pixel positions.
 
 **Warning signs:**
-- Fighting to hide/override Motion Canvas UI elements
-- Export produces different results than preview
-- Frame timing inconsistencies between preview and export
-- Difficulty controlling animation playback programmatically
+- Grain looks fine in preview but disappears or becomes chunky in export
+- Vignette is centered in preview but off-center in export
+- Light leak positions shift between preview and export
+- Blur radius appears different between preview and export resolutions
 
 **Phase to address:**
-Early prototype phase — build a minimal proof-of-concept that loads one image into a Motion Canvas scene, plays it in the embedded player, and exports a PNG sequence programmatically. Validate this works before building any other features.
+FX Effects phase -- establish the resolution-independent parameter convention before implementing the first effect. Every subsequent effect must follow this convention.
 
 ---
 
-### Pitfall 4: Audio-Visual Sync Drift in Beat-Synced Animation
+### Pitfall 4: AudioContext Lifecycle Conflicts with Tauri Window Management
 
 **What goes wrong:**
-The beat sync feature requires frame-accurate alignment between audio beats and visual keyframes. Web Audio API timing and requestAnimationFrame timing operate on different clocks. Over a 3-minute sequence, drift accumulates — audio beats no longer align with visual transitions. At 24fps, one frame is ~42ms. Perceptible audio-visual desync starts at ~20ms.
+Creating an `AudioContext` in WKWebView requires a user gesture (tap/click) due to autoplay policy. In Tauri, window focus/blur events can suspend the AudioContext. If the user clicks a native Tauri menu item (File > Save), focus transfers to the native layer, WKWebView may suspend the AudioContext, and audio playback cuts out. Resuming does not happen automatically when focus returns. Additionally, creating multiple AudioContext instances (one for playback, one for analysis) consumes limited system audio resources and can cause crackling or silence on one of them.
 
 **Why it happens:**
-The Web Audio API uses a hardware crystal clock (AudioContext.currentTime) with sub-millisecond precision. Visual rendering uses requestAnimationFrame which is tied to the display refresh rate (typically 60Hz = 16.67ms intervals) and is not frame-accurate to audio. JavaScript timers (setTimeout/setInterval) are even worse. Safari/WebKit has historically had less precise audio timing than Chromium. Additionally, WKWebView may throttle requestAnimationFrame when the app is not focused.
+WebKit enforces autoplay policy even in desktop webview contexts. The existing `PlaybackEngine` uses `performance.now()` with rAF -- it has no AudioContext at all yet. Adding audio playback means introducing an AudioContext that must be created on user gesture, survive window focus changes, and coordinate timing with the existing rAF-based frame advance. Developers often create the AudioContext at app startup (fails due to autoplay policy) or create a new one each time audio is needed (resource leak).
 
 **How to avoid:**
-- Use AudioContext.currentTime as the master clock for all timing. Derive visual frame position from audio time, never the reverse.
-- Account for `AudioContext.outputLatency` (the delay between scheduling and hearing) when aligning visuals.
-- For beat detection / BPM analysis, do this in Rust (use an audio analysis crate like `aubio` bindings or `beat_detector`), not in the Web Audio API. Send beat timestamps to the frontend as a pre-computed array.
-- During preview playback, snap visual frames to the nearest audio-clock-derived frame boundary rather than relying on rAF timing.
-- For export (PNG sequence), timing is deterministic — render frame N at time N/fps. Audio sync is only a preview concern.
-- Test with click tracks and metronome audio to catch drift early.
+- Create exactly one `AudioContext` instance, lazily, on the first user-initiated play action. Store it as a singleton.
+- On every play action, check `audioContext.state` and call `audioContext.resume()` if suspended. This handles both the initial autoplay gate and post-focus-loss suspension.
+- Transition the `PlaybackEngine` to use `AudioContext.currentTime` as the master clock instead of `performance.now()`. The rAF loop should read from `audioContext.currentTime` to determine which frame to display, not accumulate its own delta time.
+- For offline audio analysis (BPM detection, waveform generation), use `OfflineAudioContext` which runs without autoplay restrictions and does not conflict with the playback AudioContext.
+- Handle Tauri's `window.onFocusChanged` event to call `audioContext.resume()` when focus returns.
 
 **Warning signs:**
-- Beat markers visually shift from audio beats during long playback
-- Sync looks correct at the start but drifts by the end of a sequence
-- Sync behavior differs between 15fps and 24fps projects
-- Preview playback timing varies between runs
+- Audio plays once but stops working after switching to another app and back
+- "AudioContext was not allowed to start" console warning
+- Audio analysis (waveform/BPM) fails silently when no user gesture has occurred
+- Two audio sources play simultaneously with crackling
 
 **Phase to address:**
-Audio & Beat Sync phase — but the master clock architecture decision must be made during the preview/playback phase. The playback engine must be designed around audio-as-master-clock from the start.
+Audio & Beat Sync phase -- but the `PlaybackEngine` clock refactor (switching from `performance.now()` to `AudioContext.currentTime`) must be designed before audio features are built, since it changes the fundamental timing architecture.
 
 ---
 
-### Pitfall 5: Preact/compat Breaks with Motion Canvas or React-Authored Dependencies
+### Pitfall 5: PNG Export Pipeline Blocks the Main Thread and Causes "App Not Responding"
 
 **What goes wrong:**
-Using Preact (not React) means any dependency that internally imports from `react` or `react-dom` needs aliasing through `preact/compat`. If Motion Canvas packages or other dependencies use React internals not covered by the compat layer (Suspense edge cases, certain lifecycle methods, synthetic event assumptions), they silently break or produce cryptic errors. TypeScript types from React libraries may not compile without `skipLibCheck`.
+Exporting a 500-frame sequence as PNG requires: (1) rendering each frame through Motion Canvas scene graph with all layers composited, (2) calling `canvas.toBlob()` or `canvas.toDataURL()` to encode PNG, (3) sending the binary data to Rust via IPC or writing via Tauri's fs plugin. If any step is synchronous or if frames are processed in a tight loop without yielding to the event loop, the entire UI freezes. macOS shows the spinning beach ball and "App Not Responding" after ~10 seconds of main thread blocking. Even with async operations, processing 500 frames sequentially via IPC at ~5ms per 6MB PNG = 2.5 seconds of pure IPC overhead, plus rendering time.
 
 **Why it happens:**
-Preact's compat layer covers ~95% of React API surface, but edge cases exist. Preact does not implement synthetic events — it uses native browser events. `onChange` behaves differently (Preact uses `onInput` natively). Some React libraries depend on `react-dom/server`, concurrent features, or internal React scheduling that compat does not replicate. The `@efxlab/motion-canvas-*` packages are a fork and may have React assumptions baked in.
+The natural implementation is a `for` loop: render frame, export PNG, write file, next frame. Even with `await`, if the rendering and encoding happen on the main thread (which Canvas operations do), the event loop is starved. `canvas.toBlob()` is async but the actual PNG encoding still happens on the main thread in most browsers. `canvas.toDataURL()` is synchronous and blocks completely. Additionally, Tauri's binary IPC for 6MB PNGs at 200ms per transfer (documented Windows performance, ~5ms macOS) creates a significant bottleneck.
 
 **How to avoid:**
-- Test every `@efxlab/motion-canvas-*` package import against Preact early. If Motion Canvas renders to its own canvas element (likely), it may not need React/Preact at all — it just needs a DOM mount point.
-- Configure Vite aliases: `{ 'react': 'preact/compat', 'react-dom': 'preact/compat', 'react/jsx-runtime': 'preact/jsx-runtime' }`.
-- Set `skipLibCheck: true` in tsconfig.json to avoid type conflicts.
-- Avoid importing any React UI component libraries. Build all UI with native Preact + Tailwind.
-- If Motion Canvas packages do require React, isolate them in a separate rendering context (iframe or web worker) rather than aliasing.
+- Use `canvas.toBlob()` (never `toDataURL()`) for PNG encoding. It is 2-5x faster and avoids base64 overhead.
+- Yield to the event loop between frames using `requestAnimationFrame` or `setTimeout(0)` to keep the UI responsive. Process at most 1-3 frames per rAF cycle.
+- Send PNG data to Rust in chunks. Better yet, render to an OffscreenCanvas in a Web Worker if the Motion Canvas scene graph supports it (needs investigation -- Motion Canvas may require DOM access).
+- If OffscreenCanvas is not viable, have Rust drive the export: Rust iterates frame numbers, sends each frame number to the frontend via Tauri event, frontend renders and returns the blob, Rust writes to disk. This inverts the control flow and lets Rust manage pacing.
+- Show per-frame progress: update a progress bar after each frame. Allow cancellation via a shared abort signal.
+- Alternative approach: render the Motion Canvas scene to a canvas, then use `canvas.toBlob()` and `URL.createObjectURL()` to create a temporary URL, then use Tauri's download/upload plugin to write the blob to disk without passing through IPC serialization.
 
 **Warning signs:**
-- `Cannot read property of undefined` errors on component mount
-- Event handlers fire twice or not at all
-- TypeScript errors mentioning React types during build
-- Motion Canvas player renders but interactions (click, hover) behave unexpectedly
+- Export starts but UI becomes completely unresponsive
+- Progress bar does not update during export
+- macOS "Force Quit" dialog appears during export
+- Export completes but some PNG files are 0 bytes or corrupted
+- Memory usage climbs continuously during export (blobs not freed)
 
 **Phase to address:**
-Project scaffolding / foundation phase — validate Preact + Motion Canvas compatibility before writing any application code. This is a go/no-go gate.
+Export phase -- the frame-by-frame rendering pipeline must yield to the event loop. The IPC strategy (asset protocol write vs binary IPC vs Tauri fs plugin) must be benchmarked before committing to an approach.
+
+---
+
+### Pitfall 6: Data Bleed on "New Project" -- Existing v1.0 Bug Amplified by New Stores
+
+**What goes wrong:**
+The v1.0 audit identified that `closeProject()` does not reset all stores -- specifically `timelineStore` and `playbackEngine` are not reset, and `stopAutoSave()` is never called. v2.0 adds `layerStore`, `historyStore`, and will add audio state. If "New Project" is clicked while editing, layers from the old project appear in the new project, undo history from the old project is accessible, audio from the old project continues playing, and the beat sync markers from the old project's audio are still visible on the timeline.
+
+**Why it happens:**
+The current `projectStore.closeProject()` calls `sequenceStore.reset()`, `imageStore.reset()`, and `uiStore.reset()`, but does NOT call `timelineStore.reset()` or `layerStore.reset()` or `historyStore.reset()`. As new stores are added for v2.0 features, each store's `reset()` must be added to the close/new project flow. This is easy to forget because the failure mode (stale data from previous project) only manifests when switching projects -- a scenario developers rarely test during feature development.
+
+**How to avoid:**
+- Fix the existing bug FIRST, before adding any v2.0 features. Add `timelineStore.reset()`, `playbackEngine.stop()`, `layerStore.reset()`, and `stopAutoSave()` to `projectStore.closeProject()`.
+- Create a `resetAllStores()` function that lives in a central module and calls `.reset()` on every store. All stores must register themselves with this function. When a new store is added, adding it to `resetAllStores()` is a mandatory checklist item.
+- Write an integration test: create project A with data, create new project B, verify every store signal is at its default value.
+- Consider adding a "store registry" pattern where stores register on creation and can be iterated for bulk operations like reset.
+- Call `stopAutoSave()` in `closeProject()` and `startAutoSave()` after the new project is loaded. The autoSave effect currently subscribes to all store signals -- if stores are reset while autoSave is active, it may trigger a save of the half-reset state.
+
+**Warning signs:**
+- Layers panel shows layers after creating a new project
+- Undo works immediately in a new project (undoing operations from the previous project)
+- Audio waveform is visible on timeline of a new project
+- Timeline shows frames from the previous project momentarily
+- autoSave fires during project switch, saving a corrupt hybrid state
+
+**Phase to address:**
+Phase 1 / Bug fixes -- this must be the very first task before any v2.0 feature work. Every subsequent feature phase that adds a store must update `resetAllStores()`.
+
+---
+
+### Pitfall 7: Keyboard Shortcut Conflicts Between Tauri Native Menus, Browser Defaults, and App Shortcuts
+
+**What goes wrong:**
+Cmd+Z is the undo shortcut, but it is also handled by the native macOS text editing system (for text inputs), by Tauri's menu system (if a native menu has an Undo item), and by the browser's built-in undo for contenteditable/input elements. Pressing Cmd+Z while focused on a text input undoes the text change AND triggers the app's undo, causing a double-undo or undo of the wrong thing. Similarly, Cmd+S triggers both the browser's "Save Page" (which Tauri may or may not suppress) and the app's save command. Space bar triggers play/pause but also scrolls the page or activates focused buttons.
+
+**Why it happens:**
+Tauri's WKWebView is a real browser view. Native keyboard shortcuts (Cmd+C, Cmd+V, Cmd+Z, Cmd+S) are handled at multiple levels: (1) macOS system level, (2) Tauri native menu accelerators, (3) WKWebView browser defaults, (4) JavaScript event listeners. If a Tauri native menu item has `Cmd+Z` as its accelerator AND a JavaScript `keydown` listener also handles `Cmd+Z`, both fire. The order depends on whether the native menu captures the event before it reaches the webview.
+
+**How to avoid:**
+- Register all keyboard shortcuts ONLY in JavaScript via `keydown` on `document`. Do NOT set accelerator keys on Tauri native menu items for shortcuts that have JavaScript-side handlers (Cmd+Z, Cmd+S, Space, arrows).
+- Use Tauri native menu accelerators only for shortcuts that must work even when the webview does not have focus (rare in a single-window app).
+- In the `keydown` handler, check `e.target` -- if it is an `<input>`, `<textarea>`, or `contenteditable` element, let Cmd+Z/Cmd+C/Cmd+V fall through to native text handling. Only intercept these shortcuts when focus is on the canvas or a non-text element.
+- Call `e.preventDefault()` and `e.stopPropagation()` for handled shortcuts to prevent browser defaults (Cmd+S opening save dialog, Space scrolling).
+- Build a centralized `ShortcutManager` rather than scattered `addEventListener` calls. Each shortcut registers with a context (e.g., "timeline", "canvas", "global") and only fires when the appropriate panel has focus.
+
+**Warning signs:**
+- Cmd+Z undoes text in an input AND undoes a project operation simultaneously
+- Cmd+S opens the browser's "Save webpage" dialog in addition to saving the project
+- Space bar scrolls the page instead of toggling playback
+- Arrow keys scroll the timeline AND step frames simultaneously
+- Shortcuts stop working after clicking on certain UI areas
+
+**Phase to address:**
+Keyboard shortcuts phase -- but the event handling architecture (centralized ShortcutManager, focus-context awareness) should be designed before individual shortcuts are implemented.
 
 ---
 
@@ -142,113 +197,122 @@ Project scaffolding / foundation phase — validate Preact + Motion Canvas compa
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Loading full-res images directly in webview | Quick to implement, images look sharp | Memory leaks, crashes with large projects | Never — always generate scaled previews |
-| Storing project state in a single Preact signal | Simple state management | Re-renders entire app on any change, performance cliff with complex projects | Only during early prototyping; refactor to granular signals before timeline phase |
-| Using `setTimeout` for animation timing | Works for simple playback | Drift, inconsistent frame timing, breaks beat sync | Never for playback — use rAF or audio clock |
-| Putting all Rust commands in one file | Fast development | Unmanageable command file, hard to test | Early prototyping only; split by domain (file, project, audio, export) before Phase 2 |
-| Skipping thumbnail cache | Fewer files to manage | Regenerates thumbnails on every project open, slow startup | Never — implement cache from the start |
-| Inline CSS instead of Tailwind | Faster for one-off styles | Inconsistent styling, harder to maintain dark mode | Only for truly dynamic values (canvas positioning) |
+| Rebuilding MC scene graph on every layer change | Simpler code, no diffing logic | Preview flickers on every edit, O(n) rebuild per change, breaks any in-progress animations | Only during initial layer system prototype; refactor to incremental updates before adding FX |
+| Storing undo closures that capture signal `.value` | Quick to implement per command | Closures capture snapshot values that may reference deleted entities (stale layer IDs, removed images) | Never -- always use `.peek()` at execution time and validate entity existence |
+| Using `toDataURL()` for PNG export | Synchronous, simple API | Blocks main thread, 33% memory overhead from base64, breaks at high resolutions | Never -- use `toBlob()` from day one |
+| Single-file shortcut handler with if/else chain | Fast to add first 5 shortcuts | Unmaintainable at 20+ shortcuts, no context awareness, no conflict detection | Only in initial prototype; extract to ShortcutManager before Phase 2 |
+| Skipping the AudioContext master clock refactor | Keeps existing PlaybackEngine simpler | Audio sync drifts, two timing systems to maintain, beat sync never works reliably | Never -- refactor PlaybackEngine before adding any audio features |
+| Storing FX parameters as pixel values | Matches canvas API directly | Breaks at different resolutions, export/preview mismatch | Never -- normalize from the start |
+| Adding stores without updating resetAllStores() | Faster feature development | Data bleed between projects, corrupted saves | Never -- make it a CI-enforced checklist item |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Tauri asset protocol | Forgetting to configure CSP and asset scope in tauri.conf.json, resulting in blank images | Add `asset:` and `http://asset.localhost` to CSP `img-src` directive. Define scope array to include project directories. |
-| Motion Canvas + Vite | Using Motion Canvas's Vite plugin alongside Tauri's Vite config, causing double-build or port conflicts | Tauri's `beforeDevCommand` runs Vite dev server. Motion Canvas Vite plugin must be integrated into the same Vite config, not run separately. Test that HMR works for both UI and scene code. |
-| pnpm + Tauri CLI | `pnpm run tauri` fails because Tauri CLI is not found or pnpm hoisting prevents binary resolution | Install `@tauri-apps/cli` as a devDependency. Use `pnpm tauri` (not `npx tauri`). Commit `pnpm-lock.yaml` AND `src-tauri/Cargo.lock`. |
-| Preact Signals + Tailwind v4 | Class names computed from signals cause Tailwind v4 to miss classes during build (no JIT scanning of dynamic values) | Use complete class names in signal-driven conditional rendering (`isActive.value ? 'bg-blue-500' : 'bg-gray-500'`), never string concatenation (`\`bg-${color}-500\``). Safelist dynamic classes if unavoidable. |
-| Tailwind v4 + Vite | Using `tailwindcss` as PostCSS plugin (v3 pattern) instead of `@tailwindcss/postcss` (v4 pattern) | Install `@tailwindcss/postcss` and `@tailwindcss/vite`. Use CSS-first `@import "tailwindcss"` instead of `@tailwind` directives. Remove `autoprefixer` (v4 handles it). |
-| macOS code signing | App works in development but crashes after notarization due to missing entitlements | WKWebView requires JIT and unsigned executable memory entitlements. Set `hardenedRuntime: true` in tauri.conf.json. Test notarized build early — do not leave this for release day. |
+| Preact Signals + Command Pattern | Capturing `.value` in undo closures at creation time; the closure stores a stale snapshot | Closures should call `.peek()` at execution time. Store entity IDs, not entity objects. Validate existence before applying undo. |
+| Motion Canvas Img node + Tauri asset protocol | Passing `asset://` URLs directly to MC `Img` node `src` property; MC may not resolve this protocol | Test MC Img node with asset:// URLs early. May need to convert to base64 data URLs or use `http://asset.localhost` format. If neither works, proxy through a local HTTP server or use canvas drawImage directly. |
+| AudioContext + PlaybackEngine rAF loop | Running two independent clocks (rAF accumulator AND AudioContext.currentTime), comparing them to detect drift | Use ONE clock. AudioContext.currentTime becomes the source of truth. rAF loop reads audio time and derives frame number. When no audio is loaded, fall back to performance.now() accumulator (existing behavior). |
+| Web Audio OfflineAudioContext + large files | Calling `startRendering()` on a 10-minute audio file; creates a multi-GB AudioBuffer in memory | Decode audio in chunks. For waveform visualization, downsample in Rust (read raw PCM, compute RMS per N samples, send float array). For BPM detection, analyze only the first 30-60 seconds. |
+| Motion Canvas compositeOperation + Preact Signals | Setting blend mode via signal subscription inside the MC generator scene; signals and generators have incompatible execution models | Bridge data from Preact Signals to MC scene via a shared plain-object "render state" that the MC generator reads each frame. Do not subscribe to signals inside generator functions. |
+| Tauri native menus + JS keyboard handlers | Registering Cmd+Z as both a Tauri menu accelerator AND a JavaScript keydown handler; both fire causing double-undo | Choose one layer per shortcut. For app-specific shortcuts (undo, play, step), use JS only. For OS-integration shortcuts (Quit, Minimize), use Tauri menus only. |
+| canvas.toBlob() + Tauri IPC | Sending blob data through standard invoke() which JSON-serializes it, base64-encoding the binary | Convert blob to ArrayBuffer, then use Tauri's binary-aware IPC or write directly via the fs plugin. Better: have Rust read from a temp file path instead of receiving binary data through IPC. |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Rendering all timeline thumbnails at once | UI freezes when opening a project with 500+ frames | Virtualize timeline — only render visible frame thumbnails. Use IntersectionObserver or virtual scrolling. | >100 frames in timeline |
-| Full-resolution preview at all zoom levels | Preview canvas consumes excessive GPU memory and drops frames | Scale preview render resolution to match canvas display size. Only render at full resolution for export. | Sequences with >10 layers or >1080p source images |
-| Synchronous file I/O on the Rust side blocking IPC | Frontend freezes during file operations (save, export, import) | All Rust file operations must be async (tokio). Use Tauri's async command pattern. Send progress events for long operations. | Projects with >50 images or saving to slow storage |
-| Re-rendering entire canvas when one layer property changes | Preview becomes unusable when adjusting opacity/blend/position | Implement dirty-region tracking or layer-level caching. Only re-composite changed layers. Motion Canvas scene graph should handle this if used correctly. | >5 layers in a composition |
-| Storing undo history as full project snapshots | Memory grows linearly with each edit, app slows down | Use command pattern (store operations, not states). Implement structural sharing for undo snapshots. Cap undo stack size. | >50 undo operations |
-| Audio waveform computed on every timeline zoom/scroll | Waveform visualization causes jank during timeline interaction | Pre-compute waveform data at multiple zoom levels in Rust. Cache as typed arrays. Only transfer the visible portion. | Audio tracks >30 seconds |
+| Recompositing all layers on single-layer property change | Preview drops to <10fps when adjusting opacity slider on one layer | Implement layer-level dirty tracking. Only recomposite from the changed layer upward. Cache composited results of unchanged lower layers. | >3 layers with any interactive property adjustment |
+| Audio waveform recomputed on every timeline scroll | Timeline scrolling becomes janky when audio is loaded | Pre-compute waveform overview at multiple zoom levels (full, 1/4, 1/16 resolution). Cache as Float32Array. Only transfer visible portion to canvas. | Any audio file >10 seconds |
+| OfflineAudioContext for full-song BPM analysis | Browser tab becomes unresponsive for 5-10 seconds during analysis | Analyze only the first 30 seconds for BPM. Use Rust-side DSP library instead of Web Audio for heavy analysis. Decode progressively. | Audio files >2 minutes |
+| frameMap recomputation on every layer visibility toggle | Toggling layer visibility causes full frameMap rebuild, freezing UI with many frames | Separate layer visibility from frame-level data. frameMap should only recompute when sequences/keyPhotos change, not when layer display properties change. | >200 frames with >3 layers |
+| Undo history storing deep clones of entire store state | Memory grows 10-50MB per undo step for projects with many images | Store only deltas (command + inverse command). Never clone the images array or fullResLoaded map. Store only the minimal data needed to reverse each operation. | >20 undo operations on a project with >50 images |
+| PNG export rendering to visible canvas | Export speed limited by display refresh rate (60fps max = 60 frames/sec export speed) | Render to an offscreen canvas (or OffscreenCanvas if MC supports it). Decouple from rAF. Export can theoretically run faster than real-time if rendering is fast. | Any export >100 frames |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Overly broad asset protocol scope (e.g., `/`) | Any file on the filesystem readable by the webview, including sensitive user data | Scope asset protocol to project directory and a global assets directory only. Never use root or home directory as scope. |
-| Not validating .mce project file contents before loading | Malicious project files could inject scripts or reference arbitrary file paths | Validate/sanitize all paths in project files. Ensure referenced files are within allowed directories. Parse JSON with schema validation. |
-| Storing absolute file paths in project files | Projects break when moved. Path traversal risk if paths reference outside project dir. | Store relative paths in .mce files. Resolve to absolute only at runtime against the project root. |
-| Allowing arbitrary file types through drag-and-drop import | User drops executable or script file, app tries to process it | Whitelist allowed extensions (PNG, JPG, TIFF, WAV, MP3, MP4). Validate file magic bytes, not just extension. |
+| Audio file import without format validation | User imports a malicious file disguised as .wav/.mp3; Web Audio API decode may trigger browser vulnerabilities | Validate audio file magic bytes in Rust before passing to frontend. Whitelist: WAV (RIFF header), MP3 (ID3/sync bytes), AAC, OGG. Reject everything else. |
+| PNG export writing to arbitrary path via user-provided string | Path traversal in export directory selection could write outside intended location | Use Tauri's native save dialog for directory selection. Validate the resolved path is within an allowed scope. Never concatenate user strings into file paths without sanitization. |
+| Undo history closures retaining references to file paths | Undoing a "delete layer" restores a reference to a file that may have been deleted from disk | Validate file existence before executing undo. Show user-friendly error if referenced file is missing. Never silently fail. |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| No progress indication during PNG export | User thinks app froze during a 500-frame export that takes minutes | Show frame-by-frame progress bar with ETA. Allow cancellation. Show currently-rendering frame thumbnail. |
-| Blocking UI during image import | Importing 100 photos freezes the app for 10+ seconds | Import asynchronously with progress. Generate thumbnails in background. Allow user to continue editing while import completes. |
-| Auto-save without visual feedback | User loses trust — did it save? Is my work safe? | Show subtle save indicator (checkmark, timestamp). Never auto-save during export or playback. |
-| Timeline zoom with no visible anchor point | User zooms and loses their position in the timeline | Zoom toward cursor position or playhead, not toward the start of the timeline. |
-| Undo doesn't cover all operations | User deletes a sequence, undo does nothing | Every state mutation must be undoable. Test undo for: reorder, delete, import, property change, layer add/remove. |
-| Preview resolution mismatch with export | Preview looks great but export has different framing/cropping | Use identical rendering parameters for preview and export. Only resolution should differ. Show safe-area guides if aspect ratios can differ. |
+| Beat detection runs without progress feedback | User clicks "Detect Beats" and nothing happens for 5 seconds -- they click again, starting a second analysis | Show immediate feedback ("Analyzing audio..."), disable the button during analysis, show progress if possible. |
+| Undo does not group rapid slider changes | User drags opacity from 100 to 50, generating 50 individual undo entries -- Cmd+Z steps back one pixel at a time | Debounce continuous property changes. Group all changes during a single mouse drag into one undo entry. Use mousedown/mouseup to define command boundaries. |
+| FX preview not real-time | User adjusts grain intensity slider but preview only updates on mouse release | FX preview must update on every slider change (throttled to 30fps). Use signal-driven reactivity to bridge slider -> FX parameter -> MC scene rerender. |
+| Keyboard shortcuts have no discoverability | Users do not know Space plays, or that JKL shuttles, because there is no visual hint | Show shortcut hints in tooltips on all buttons. Add a Cmd+/ help overlay showing all shortcuts. Include shortcuts in native menu items (even if JS handles them). |
+| Layer opacity affects all frames including export | User expects opacity to be "preview only" but it bakes into exported PNGs | Make it explicit in UI that layer properties affect final output. Show a "preview-only effects" section separately if any exist. |
+| Audio waveform covers timeline track content | Waveform visualization obscures key photo thumbnails on the timeline | Render waveform in a dedicated track row below the sequence tracks. Or render as a semi-transparent overlay that does not obscure the key photo boundaries. |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Image import:** Often missing EXIF orientation handling — photos appear rotated 90 degrees. Verify EXIF rotation is applied during thumbnail generation.
-- [ ] **Timeline:** Often missing keyboard accessibility — verify arrow keys, Home/End, Space for play/pause all work without mouse.
-- [ ] **PNG export:** Often missing color space consistency — verify exported PNGs match preview colors. sRGB vs Display P3 on macOS causes subtle color shifts.
-- [ ] **Project save:** Often missing dirty-state tracking — verify the app prompts to save on close only when changes exist, and that "revert to saved" works.
-- [ ] **Audio sync:** Often missing offset handling — verify audio that starts mid-sequence or has a lead-in silence still syncs correctly.
-- [ ] **Layer blending:** Often missing alpha premultiplication — verify blend modes produce correct results with semi-transparent layers. Unmultiplied alpha + blend modes = visual artifacts.
-- [ ] **Drag and drop:** Often missing multi-file ordering — verify that dropping 20 files imports them in filename-sorted order, not random browser event order.
-- [ ] **macOS integration:** Often missing native file dialogs — verify open/save dialogs use NSOpenPanel/NSSavePanel (Tauri provides this), not custom HTML dialogs.
-- [ ] **Playback:** Often missing proper stop behavior — verify that stopping playback returns playhead to the start position (or the position where play was pressed), not leaving it at the current frame.
+- [ ] **Undo/Redo:** Often missing undo for layer reorder, FX parameter changes, and audio trim -- verify ALL state-mutating operations push to history stack, not just the obvious ones (add/delete)
+- [ ] **Undo/Redo:** Often missing "undo to clean state" -- verify that if user makes 3 changes then undoes all 3, `isDirty` returns to `false` and autoSave does not trigger
+- [ ] **Layer compositing:** Often missing premultiplied alpha handling -- verify that a semi-transparent layer with `multiply` blend mode composites correctly against both black and white backgrounds. Non-premultiplied alpha + blend modes = dark fringing artifacts.
+- [ ] **FX grain effect:** Often missing temporal consistency -- verify grain pattern changes per frame (not static), but is deterministic per frame (same grain on frame 50 every time, for export consistency)
+- [ ] **Beat detection:** Often missing BPM halving/doubling correction -- verify that a 140 BPM track is not detected as 70 BPM or 280 BPM. Test with known-BPM reference tracks.
+- [ ] **PNG export:** Often missing color profile embedding -- verify exported PNGs include sRGB ICC profile. macOS Preview.app and DaVinci Resolve interpret untagged PNGs differently.
+- [ ] **PNG export:** Often missing sequential numbering with zero-padding -- verify frame_0001.png through frame_0500.png, not frame_1.png through frame_500.png. DaVinci Resolve requires consistent padding to import as image sequence.
+- [ ] **Keyboard shortcuts:** Often missing modifier key release handling -- verify that holding Cmd then pressing Z multiple times fires multiple undos (keydown repeat), and that releasing Cmd does not trigger an unwanted action
+- [ ] **Audio import:** Often missing sample rate mismatch handling -- verify that a 48kHz audio file works correctly when AudioContext defaults to 44.1kHz (or vice versa). Waveform timing will be wrong if sample rates are mismatched.
+- [ ] **Layer transforms:** Often missing transform origin awareness -- verify that rotating a layer rotates around its center, not around the canvas origin (0,0). This is the default in CSS but NOT in Canvas 2D transforms.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Memory leaks from image loading | MEDIUM | Implement image pool + LRU cache. Requires changing all image loading call sites to go through the pool. ~2-3 days of refactoring. |
-| IPC bottleneck discovered late | HIGH | Migrate from IPC-based image transfer to asset protocol. Requires changing how all images are referenced (URLs vs binary data), rebuilding thumbnail pipeline. ~1 week. |
-| Motion Canvas integration fails | HIGH | If compat layer doesn't work, must either: (a) fork Motion Canvas packages to remove React deps, (b) isolate in iframe, or (c) replace with custom Canvas2D/WebGL renderer. Any option is 1-2 weeks minimum. |
-| Audio sync drift | MEDIUM | Refactor playback engine to use AudioContext as master clock. Requires rewriting frame scheduling logic. ~3-4 days. |
-| Preact compat issues | MEDIUM-HIGH | If isolated to specific packages, add shims. If widespread, evaluate switching to Preact with full compat layer or (worst case) switching to React. ~3-5 days. |
-| Full-res thumbnails causing slowness | LOW | Add Rust-side thumbnail generator + cache directory. ~1 day for the Rust code, 1 day to update all references. |
+| Undo/redo with non-atomic cross-store updates | MEDIUM | Wrap all undo/redo executions in `batch()`. Add validation that checks store consistency after each undo. ~2-3 days to audit and fix all existing commands. |
+| Layer order divergence (store vs scene graph) | MEDIUM | Implement a reconciliation pass that runs after every layer mutation. Compare store order to MC node order, fix discrepancies. ~2 days. |
+| FX resolution-dependent parameters | HIGH | Must change the FX parameter model from pixels to normalized values. Requires updating every FX implementation, the FX UI controls, the serialization format, and all existing project files. ~1 week. |
+| AudioContext lifecycle issues | LOW | Add `resume()` calls at play() entry point. Create singleton AudioContext. ~1 day. But if PlaybackEngine was not refactored to use audio clock, MEDIUM cost (~3 days). |
+| PNG export blocking main thread | MEDIUM | Restructure export loop to yield between frames. Switch from toDataURL to toBlob. ~2-3 days. |
+| Data bleed on project switch | LOW-MEDIUM | Add missing reset() calls to closeProject(). Create resetAllStores(). ~1 day for existing stores, ongoing discipline for new stores. |
+| Keyboard shortcut conflicts | LOW | Centralize all handlers into ShortcutManager. Remove Tauri menu accelerators that conflict. ~1-2 days. |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| WebKit memory leaks | Foundation — image pipeline architecture | Load 200+ images, scrub timeline for 5 minutes, check memory stays bounded |
-| IPC bottleneck | Foundation — asset protocol + CSP setup | Measure IPC round-trip time. Verify images load via `asset://` not base64 |
-| Motion Canvas integration | Early prototype / proof-of-concept | Render one scene with an image, export 10 PNG frames programmatically |
-| Audio sync drift | Preview playback phase, validated in beat sync phase | Play a click track with beat markers for 3+ minutes, verify alignment at end |
-| Preact compat | Project scaffolding | Import every @efxlab/motion-canvas-* package, verify no React-specific errors |
-| Tailwind v4 config | Project scaffolding | Verify CSS-first imports, @tailwindcss/vite plugin, and dynamic class rendering all work |
-| macOS code signing | Distribution phase, but test in CI early | Build, sign, notarize, then launch the notarized .app. Must not crash on first launch. |
-| Timeline virtualization | Timeline UI phase | Open project with 500 frames, verify smooth scrolling at 60fps in Activity Monitor |
-| Export progress UX | Export phase | Export 200+ frames, verify progress updates every frame, cancellation works mid-export |
-| Project file security | Project management phase | Attempt to load a .mce file with path traversal strings, verify they are rejected |
+| Cross-store undo atomicity | Undo/Redo phase (first task) | Undo a compound operation (add layer + add FX). Verify all stores revert atomically. Verify no intermediate UI flicker. |
+| Layer/scene graph order divergence | Layer compositing phase (first task) | Create 5 layers, reorder via drag-and-drop 10 times. Verify preview matches panel order at each step. |
+| FX resolution-dependent parameters | FX Effects phase (before first effect) | Apply grain effect, compare preview screenshot vs rendered export at same frame. Grain density must match visually. |
+| AudioContext lifecycle in Tauri | Audio phase (first task) | Load audio, play, switch to Finder, switch back. Audio must resume without user action. |
+| PNG export main thread blocking | Export phase (architecture decision) | Export 200 frames. UI must remain responsive (timeline scrollable, cancel button clickable) throughout. |
+| Data bleed on New Project | Phase 1 / Bug fixes (before ALL other work) | Open project A (with layers, audio, FX, undo history), create new project B. Verify every store at default values. |
+| Keyboard shortcut conflicts | Keyboard shortcuts phase | Focus a text input, press Cmd+Z. Verify text undo occurs but project undo does NOT. Press Space in timeline area. Verify play toggles, page does not scroll. |
+| Stale closures in undo history | Undo/Redo phase | Add a layer, undo (layer removed), redo (layer restored). Delete the layer. Undo the delete. Verify restored layer has correct properties, not stale captured values. |
+| Beat detection BPM halving | Audio/Beat Sync phase | Run detection on 5 reference tracks with known BPMs (80, 120, 140, 160, 175). Verify all detected within +/-2 BPM. |
+| Waveform memory with long audio | Audio phase | Load a 10-minute WAV file. Monitor memory. Verify waveform computation does not allocate >200MB. |
 
 ## Sources
 
-- [Tauri asset protocol memory issue](https://github.com/tauri-apps/tauri/issues/2952) — documented memory leak with asset:// protocol
-- [Tauri file reading memory leak](https://github.com/tauri-apps/tauri/issues/9190) — 140MB+ files cause memory exhaustion
-- [Tauri IPC performance discussion](https://github.com/tauri-apps/tauri/discussions/7146) — binary IPC benchmarks (~5ms/10MB macOS)
-- [Tauri IPC overhead analysis](https://medium.com/@srish5945/tauri-rust-speed-but-heres-where-it-breaks-under-pressure-fef3e8e2dcb3) — JSON-RPC serialization bottleneck
-- [Things I Wish I Knew Before Building My First Tauri App](https://dev.to/dev_owls/things-i-wish-i-knew-before-building-my-first-tauri-app-48k6) — state management, plugin ecosystem
-- [Preact Differences from React](https://preactjs.com/guide/v10/differences-to-react/) — synthetic events, onChange behavior
-- [When to use preact/compat](https://marvinh.dev/blog/preact-vs-compat/) — compat layer guidance
-- [Tailwind CSS v4 Upgrade Guide](https://tailwindcss.com/docs/upgrade-guide) — breaking changes, migration path
-- [Audio/Video sync with Web Audio API](https://blog.paul.cx/post/audio-video-synchronization-with-the-web-audio-api/) — master clock pattern
-- [Web.dev audio output latency](https://web.dev/articles/audio-output-latency) — outputLatency property
-- [W3C frame-accurate sync](https://www.w3.org/2019/Talks/TPAC/frame-accurate-sync/) — timing precision challenges
-- [Motion Canvas rendering docs](https://motioncanvas.io/docs/rendering/) — export pipeline architecture
-- [Motion Canvas image sequence](https://motioncanvas.io/docs/rendering/image-sequence/) — PNG sequence exporter
-- [WebGL memory leak patterns](https://github.com/mrdoob/three.js/issues/11378) — texture cleanup requirements
-- [Tauri macOS code signing](https://v2.tauri.app/distribute/sign/macos/) — entitlements, notarization
-- [Shipping Tauri macOS app](https://dev.to/0xmassi/shipping-a-production-macos-app-with-tauri-20-code-signing-notarization-and-homebrew-mc3) — production signing walkthrough
-- [Tauri v2 displaying images via asset protocol](https://github.com/tauri-apps/tauri/discussions/11498) — CSP configuration
+- [Undo/Redo and the Command Pattern](https://www.esveo.com/en/blog/undo-redo-and-the-command-pattern/) -- challenges with reactive state and undo
+- [Designing a lightweight undo history with TypeScript](https://www.jitblox.com/blog/designing-a-lightweight-undo-history-with-typescript) -- command vs memento trade-offs
+- [Implementing undo/redo with the Command Pattern](https://gernotklingler.com/blog/implementing-undoredo-with-the-command-pattern/) -- multi-object state consistency
+- [WebGL Blending: You're Probably Doing it Wrong](https://limnu.com/webgl-blending-youre-probably-wrong/) -- premultiplied alpha pitfalls
+- [MDN: globalCompositeOperation](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation) -- Canvas 2D blend modes reference
+- [WebGL Best Practices (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices) -- texture format performance, batch flushing
+- [web-audio-beat-detector](https://github.com/chrisguttandin/web-audio-beat-detector) -- BPM detection library with tempo range constraints
+- [Building BPM Finder: Technical Challenges](https://dev.to/_ab56e9bbfaff3a478352a/building-bpm-finder-technical-challenges-in-client-side-audio-analysis-4n3) -- memory and accuracy challenges
+- [Beat Detection Using JavaScript and Web Audio API](http://joesul.li/van/beat-detection-using-web-audio/) -- algorithm limitations, genre bias
+- [MDN: Web Audio API Best Practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices) -- AudioContext lifecycle, autoplay policy
+- [MDN: AudioContext.resume()](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/resume) -- suspended state handling
+- [MDN: Autoplay guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay) -- user gesture requirements
+- [HTMLCanvasElement.toBlob() (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob) -- async PNG encoding, performance vs toDataURL
+- [OfflineAudioContext memory concerns](https://github.com/WebAudio/web-audio-api/issues/2445) -- gargantuan AudioBuffer allocation
+- [Tauri IPC Performance Discussion](https://github.com/tauri-apps/tauri/discussions/5690) -- binary data transfer benchmarks
+- [Tauri File System Plugin](https://v2.tauri.app/plugin/file-system/) -- binary file writing API
+- [Tauri Global Shortcut Plugin](https://v2.tauri.app/plugin/global-shortcut/) -- keyboard shortcut registration
+- [Tauri Webview Keyboard Focus Bug](https://github.com/tauri-apps/tauri/issues/5464) -- webview not receiving events until interaction
+- [Tauri Menu System & Keyboard Shortcuts](https://deepwiki.com/dannysmith/tauri-template/4.3-menu-system-and-keyboard-shortcuts) -- native menu vs JS handler conflicts
+- [Motion Canvas Rendering Docs](https://motioncanvas.io/docs/rendering/) -- export pipeline, image sequence output
+- [Motion Canvas Image Sequence](https://motioncanvas.io/docs/rendering/image-sequence/) -- PNG/JPEG/WebP format options
+- [Preact Signals Guide](https://preactjs.com/guide/v10/signals/) -- batch(), peek(), effect() behavior
+- [Preact Signals Blog Post](https://preactjs.com/blog/introducing-signals/) -- fine-grained reactivity model
 
 ---
-*Pitfalls research for: EFX-Motion Editor — Desktop stop-motion cinematic video editor*
-*Researched: 2026-03-02*
+*Pitfalls research for: EFX-Motion Editor v2.0 -- Layer compositing, FX effects, audio/beat sync, PNG export, undo/redo, keyboard shortcuts*
+*Researched: 2026-03-03*
