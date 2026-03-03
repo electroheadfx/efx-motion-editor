@@ -67,11 +67,12 @@ Plans:
   3. Project auto-saves periodically and on significant actions without user intervention
   4. User sees a recent projects list on launch and can open any previous project from it
   5. User can create named sequences, add key photos with configurable hold duration, and reorder both sequences and photos via drag
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md -- Rust backend for project persistence (.mce format), Tauri plugin setup (store, fs), TypeScript types/IPC, AppConfig module (PROJ-01, PROJ-02, PROJ-03, PROJ-06)
+- [ ] 03-02-PLAN.md -- Frontend project management UI: WelcomeScreen, NewProjectDialog, toolbar wiring, auto-save, app routing (PROJ-04, PROJ-05)
+- [ ] 03-03-PLAN.md -- Sequence management: full CRUD, SortableJS drag reorder, key photo strip, per-sequence settings (SEQN-01, SEQN-02, SEQN-03, SEQN-04, SEQN-05)
 
 ### Phase 4: Timeline & Preview
 **Goal**: Users can see their sequences on a visual timeline with frame thumbnails, scrub through with a playhead, and watch real-time playback in the preview canvas at the project frame rate

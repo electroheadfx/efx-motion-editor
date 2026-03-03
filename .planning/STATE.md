@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-03T09:44:22.344Z"
+status: in-progress
+last_updated: "2026-03-03T10:32:33Z"
 progress:
-  total_phases: 2
+  total_phases: 8
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 9
+  completed_plans: 7
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 2 complete. Ready for Phase 3: Project & Sequence Management
+**Current focus:** Phase 3 in progress: Project & Sequence Management
 
 ## Current Position
 
-Phase: 2 of 8 (UI Shell & Image Pipeline) -- COMPLETE
-Plan: All 3 plans complete (02-01, 02-02, 02-03).
-Status: Phase 2 complete. Ready for Phase 3.
-Last activity: 2026-03-03 -- Completed 02-03 (frontend import UI with drag-drop, file dialog, thumbnails)
+Phase: 3 of 8 (Project & Sequence Management) -- IN PROGRESS
+Plan: 1 of 3 complete (03-01). Next: 03-02.
+Status: 03-01 complete. Rust project CRUD, TypeScript types, AppConfig ready.
+Last activity: 2026-03-03 -- Completed 03-01 (project backend & persistence infrastructure)
 
-Progress: [▓▓▓▓▓░░░░░] 25%
+Progress: [▓▓▓▓▓▓░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 18min
-- Total execution time: 2.0 hours
+- Total plans completed: 7
+- Average duration: 17min
+- Total execution time: 2.1 hours
 
 **By Phase:**
 
@@ -42,10 +42,11 @@ Progress: [▓▓▓▓▓░░░░░] 25%
 |-------|-------|-------|----------|
 | 1. Foundation | 3 | 60min | 20min |
 | 2. UI Shell & Image Pipeline | 3 | 55min | 18min |
+| 3. Project & Sequence Mgmt | 1/3 | 8min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 45min, 8min, 4min, 6min, 45min
-- Trend: stable (02-03 took longer due to macOS asset protocol debugging)
+- Last 5 plans: 8min, 4min, 6min, 45min, 8min
+- Trend: stable
 
 *Updated after each plan completion*
 
@@ -59,6 +60,7 @@ Progress: [▓▓▓▓▓░░░░░] 25%
 | Phase 02 P01 | 6min | 2 tasks | 9 files |
 | Phase 02 P02 | 4min | 2 tasks | 12 files |
 | Phase 02 P03 | 45min | 3 tasks | 10 files |
+| Phase 03 P01 | 8min | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -86,6 +88,10 @@ Recent decisions affecting current work:
 - [02-03]: Temp project dir uses appDataDir instead of /tmp to avoid macOS symlink and sandboxing issues
 - [02-03]: Asset protocol scope set to $APPDATA/** and $RESOURCE/** (wildcard ** alone doesn't cover user data dirs)
 - [02-03]: Canonical paths required for Tauri asset protocol on macOS (symlink resolution before scope check)
+- [03-01]: Relative paths stored in .mce files for project portability; frontend resolves to absolute
+- [03-01]: TypeScript types use snake_case to match Rust serde default serialization across IPC
+- [03-01]: KeyPhoto.imagePath renamed to imageId to align with .mce reference-by-ID pattern
+- [03-01]: AppConfig uses LazyStore singleton for persistent recent projects and window prefs
 
 ### Pending Todos
 
@@ -99,5 +105,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 02-03-PLAN.md -- frontend import UI with drag-drop, file dialog, and thumbnails. Phase 2 fully complete.
+Stopped at: Completed 03-01-PLAN.md -- project backend, persistence, TypeScript types, AppConfig. Ready for 03-02.
 Resume file: None
