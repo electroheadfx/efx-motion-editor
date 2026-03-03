@@ -7,5 +7,5 @@ const pointer = signal(-1);
 export const historyStore = {
   stack,
   pointer,
-  // Undo/redo logic deferred to Phase 8 (UNDO-01, UNDO-02, UNDO-03)
+  // Undo/redo logic lives in lib/history.ts (pushAction, undo, redo, resetHistory, etc.)
 };
