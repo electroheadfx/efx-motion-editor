@@ -42,11 +42,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Timeline
 
-- [ ] **TIME-01**: Canvas-based timeline displays frame thumbnails with virtualized rendering
-- [ ] **TIME-02**: Playhead shows current position with click-to-seek
-- [ ] **TIME-03**: User can scrub through timeline by dragging playhead
-- [ ] **TIME-04**: User can zoom timeline in/out with scroll/pinch
-- [ ] **TIME-05**: Timeline shows layer tracks for each sequence
+- [x] **TIME-01**: Canvas-based timeline displays frame thumbnails with virtualized rendering
+- [x] **TIME-02**: Playhead shows current position with click-to-seek
+- [x] **TIME-03**: User can scrub through timeline by dragging playhead
+- [x] **TIME-04**: User can zoom timeline in/out with scroll/pinch
+- [x] **TIME-05**: Timeline shows layer tracks for each sequence
 - [ ] **TIME-06**: User can reorder sequences on the timeline
 
 ### Preview and Playback
@@ -220,11 +220,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SEQN-03 | Phase 3 | Complete |
 | SEQN-04 | Phase 3 | Complete |
 | SEQN-05 | Phase 3 | Complete |
-| TIME-01 | Phase 4 | Pending |
-| TIME-02 | Phase 4 | Pending |
-| TIME-03 | Phase 4 | Pending |
-| TIME-04 | Phase 4 | Pending |
-| TIME-05 | Phase 4 | Pending |
+| TIME-01 | Phase 4 | Complete |
+| TIME-02 | Phase 4 | Complete |
+| TIME-03 | Phase 4 | Complete |
+| TIME-04 | Phase 4 | Complete |
+| TIME-05 | Phase 4 | Complete |
 | TIME-06 | Phase 4 | Pending |
 | PREV-01 | Phase 4 | Complete |
 | PREV-02 | Phase 4 | Complete |
