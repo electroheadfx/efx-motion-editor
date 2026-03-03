@@ -34,11 +34,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Sequences
 
-- [ ] **SEQN-01**: User can create named sequences
-- [ ] **SEQN-02**: User can duplicate, delete, and reorder sequences
-- [ ] **SEQN-03**: User can add key photos to a sequence with configurable hold duration
-- [ ] **SEQN-04**: User can reorder key photos within a sequence via drag
-- [ ] **SEQN-05**: User can set per-sequence frame rate and resolution
+- [x] **SEQN-01**: User can create named sequences
+- [x] **SEQN-02**: User can duplicate, delete, and reorder sequences
+- [x] **SEQN-03**: User can add key photos to a sequence with configurable hold duration
+- [x] **SEQN-04**: User can reorder key photos within a sequence via drag
+- [x] **SEQN-05**: User can set per-sequence frame rate and resolution
 
 ### Timeline
 
@@ -215,11 +215,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROJ-04 | Phase 3 | Pending |
 | PROJ-05 | Phase 3 | Pending |
 | PROJ-06 | Phase 3 | Complete |
-| SEQN-01 | Phase 3 | Pending |
-| SEQN-02 | Phase 3 | Pending |
-| SEQN-03 | Phase 3 | Pending |
-| SEQN-04 | Phase 3 | Pending |
-| SEQN-05 | Phase 3 | Pending |
+| SEQN-01 | Phase 3 | Complete |
+| SEQN-02 | Phase 3 | Complete |
+| SEQN-03 | Phase 3 | Complete |
+| SEQN-04 | Phase 3 | Complete |
+| SEQN-05 | Phase 3 | Complete |
 | TIME-01 | Phase 4 | Pending |
 | TIME-02 | Phase 4 | Pending |
 | TIME-03 | Phase 4 | Pending |
