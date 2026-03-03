@@ -22,3 +22,7 @@ Application/src-tauri/gen/
 # Editor
 *.swp
 *.swo
+
+.opencode
+.Mockup
+SPECS
