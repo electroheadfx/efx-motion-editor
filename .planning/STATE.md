@@ -59,13 +59,15 @@ None.
 
 ### Blockers/Concerns
 
-Carried forward from v1.0 audit (to fix in Phase 5):
-- INT-01: Data bleed on "New Project" from Toolbar (stores not reset)
-- INT-02: timelineStore/playbackEngine not reset on project close
-- INT-03: stopAutoSave() never called
+~~Carried forward from v1.0 audit (fixed in 05-01):~~
+- ~~INT-01: Data bleed on "New Project" from Toolbar (stores not reset)~~ -- FIXED in 3285b6d
+- ~~INT-02: timelineStore/playbackEngine not reset on project close~~ -- FIXED in 3285b6d
+- ~~INT-03: stopAutoSave() never called~~ -- FIXED in 3285b6d
+
+No active blockers.
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 05-02-PLAN.md (Undo/Redo System)
+Stopped at: Completed 05-01-PLAN.md (Store Lifecycle Fix + Unsaved Guard)
 Resume file: None

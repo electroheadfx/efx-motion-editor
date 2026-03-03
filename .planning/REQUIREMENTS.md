@@ -9,8 +9,8 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 
 ### Infrastructure & Bug Fixes
 
-- [ ] **INFRA-01**: App resets all stores (including timeline, playback, layers, audio) when user creates a new project or closes a project
-- [ ] **INFRA-02**: App calls stopAutoSave() on project close to prevent orphaned save timers
+- [x] **INFRA-01**: App resets all stores (including timeline, playback, layers, audio) when user creates a new project or closes a project
+- [x] **INFRA-02**: App calls stopAutoSave() on project close to prevent orphaned save timers
 - [x] **INFRA-03**: User can undo any editing action with Cmd+Z (100+ levels, command pattern)
 - [x] **INFRA-04**: User can redo undone actions with Cmd+Shift+Z
 - [x] **INFRA-05**: Rapid slider/drag changes coalesce into a single undo entry (mousedown to mouseup)
@@ -85,7 +85,7 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 - [ ] **KEY-02**: Arrow keys step one frame forward/backward
 - [ ] **KEY-03**: JKL keys provide variable-speed scrubbing (J=reverse, K=stop, L=forward, repeated press accelerates)
 - [x] **KEY-04**: Cmd+Z/Cmd+Shift+Z trigger undo/redo
-- [ ] **KEY-05**: Cmd+S saves project, Cmd+N creates new project, Cmd+O opens project
+- [x] **KEY-05**: Cmd+S saves project, Cmd+N creates new project, Cmd+O opens project
 - [ ] **KEY-06**: Delete/Backspace deletes selected item (layer, key photo)
 - [ ] **KEY-07**: Shortcuts do not fire when user is typing in an input field
 - [ ] **KEY-08**: ? key shows keyboard shortcuts help overlay
@@ -133,8 +133,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 5 | Pending |
-| INFRA-02 | Phase 5 | Pending |
+| INFRA-01 | Phase 5 | Complete |
+| INFRA-02 | Phase 5 | Complete |
 | INFRA-03 | Phase 5 | Complete |
 | INFRA-04 | Phase 5 | Complete |
 | INFRA-05 | Phase 5 | Complete |
@@ -142,7 +142,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | KEY-02 | Phase 5 | Pending |
 | KEY-03 | Phase 5 | Pending |
 | KEY-04 | Phase 5 | Complete |
-| KEY-05 | Phase 5 | Pending |
+| KEY-05 | Phase 5 | Complete |
 | KEY-06 | Phase 5 | Pending |
 | KEY-07 | Phase 5 | Pending |
 | KEY-08 | Phase 5 | Pending |
