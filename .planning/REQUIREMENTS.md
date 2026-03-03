@@ -47,14 +47,14 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **TIME-03**: User can scrub through timeline by dragging playhead
 - [x] **TIME-04**: User can zoom timeline in/out with scroll/pinch
 - [x] **TIME-05**: Timeline shows layer tracks for each sequence
-- [ ] **TIME-06**: User can reorder sequences on the timeline
+- [x] **TIME-06**: User can reorder sequences on the timeline
 
 ### Preview and Playback
 
 - [x] **PREV-01**: Preview canvas renders composited frame via Motion Canvas player
 - [x] **PREV-02**: User can play/pause at project frame rate (15 or 24 fps)
 - [x] **PREV-03**: User can step forward/backward one frame at a time
-- [ ] **PREV-04**: User can zoom and pan the preview canvas
+- [x] **PREV-04**: User can zoom and pan the preview canvas
 - [x] **PREV-05**: Playback engine uses correct clock architecture for audio sync readiness
 
 ### Layer System
@@ -225,11 +225,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TIME-03 | Phase 4 | Complete |
 | TIME-04 | Phase 4 | Complete |
 | TIME-05 | Phase 4 | Complete |
-| TIME-06 | Phase 4 | Pending |
+| TIME-06 | Phase 4 | Complete |
 | PREV-01 | Phase 4 | Complete |
 | PREV-02 | Phase 4 | Complete |
 | PREV-03 | Phase 4 | Complete |
-| PREV-04 | Phase 4 | Pending |
+| PREV-04 | Phase 4 | Complete |
 | PREV-05 | Phase 4 | Complete |
 | LAYR-01 | Phase 5 | Pending |
 | LAYR-02 | Phase 5 | Pending |

@@ -8,7 +8,7 @@ progress:
   total_phases: 4
   completed_phases: 4
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 4 timeline canvas rendering complete. Next: playback controls (04-03).
+**Current focus:** Phase 4 complete. Timeline, preview, zoom/pan, sequence reorder all delivered. Ready for Phase 5.
 
 ## Current Position
 
-Phase: 4 of 8 (Timeline & Preview)
-Plan: 2 of 3 complete (04-02). Next: 04-03.
-Status: Canvas-based timeline with virtualized rendering, playhead scrubbing, zoom, and real controls.
-Last activity: 2026-03-03 -- Completed 04-02 (timeline canvas rendering)
+Phase: 4 of 8 (Timeline & Preview) -- COMPLETE
+Plan: 3 of 3 complete (04-03).
+Status: Phase 4 complete. Timeline canvas, preview engine, zoom/pan, and sequence reorder all wired.
+Last activity: 2026-03-03 -- Completed 04-03 (preview zoom/pan and sequence reorder)
 
-Progress: [▓▓▓▓▓▓▓▓▓░] 50%
+Progress: [▓▓▓▓▓▓▓▓▓▓] 54%
 
 ## Performance Metrics
 
@@ -44,10 +44,10 @@ Progress: [▓▓▓▓▓▓▓▓▓░] 50%
 | 2. UI Shell & Image Pipeline | 3 | 55min | 18min |
 | 3. Project & Sequence Mgmt | 3/3 | 19min | 6min |
 | 3.1 Gap Closure | 1/1 | 2min | 2min |
-| 4. Timeline & Preview | 2/3 | 5min | 2.5min |
+| 4. Timeline & Preview | 3/3 | 7min | 2.3min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 6min, 2min, 2min, 3min
+- Last 5 plans: 6min, 2min, 2min, 3min, 2min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -68,6 +68,7 @@ Progress: [▓▓▓▓▓▓▓▓▓░] 50%
 | Phase 03.1 P01 | 2min | 2 tasks | 4 files |
 | Phase 04 P01 | 2min | 2 tasks | 8 files |
 | Phase 04 P02 | 3min | 2 tasks | 5 files |
+| Phase 04 P03 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,9 @@ Recent decisions affecting current work:
 - [04-02]: ThumbnailCache returns null for unloaded images (caller draws placeholder), fires onLoad for redraw
 - [04-02]: Pointer capture used for playhead scrubbing to maintain drag outside canvas bounds
 - [04-02]: Cursor-anchored zoom keeps frame under cursor stable during zoom operations
+- [04-03]: Preview zoom uses Cmd/Ctrl+scroll with cursor-anchored pan adjustment; middle-click for panning
+- [04-03]: Track header drag uses canvas hit testing (x < TRACK_HEADER_WIDTH) and manual drag state
+- [04-03]: Drop index computed as insertion point with adjustment when dropping below source position
 
 ### Pending Todos
 
@@ -130,5 +134,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 04-02-PLAN.md -- canvas-based timeline rendering. Next: 04-03 (playback controls).
+Stopped at: Completed 04-03-PLAN.md -- Phase 4 complete. All timeline and preview requirements satisfied.
 Resume file: None
