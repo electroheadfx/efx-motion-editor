@@ -29,7 +29,7 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 - [x] **LAYER-10**: User can set layer scale
 - [x] **LAYER-11**: User can set layer rotation
 - [x] **LAYER-12**: User can crop a layer
-- [ ] **LAYER-13**: Preview canvas renders all visible layers composited with correct blend modes and opacity in real-time
+- [x] **LAYER-13**: Preview canvas renders all visible layers composited with correct blend modes and opacity in real-time
 - [x] **LAYER-14**: Base key photo sequence is always the bottom layer (auto-generated, not deletable)
 
 ### Properties Panel
@@ -158,7 +158,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LAYER-10 | Phase 6 | Complete |
 | LAYER-11 | Phase 6 | Complete |
 | LAYER-12 | Phase 6 | Complete |
-| LAYER-13 | Phase 6 | Pending |
+| LAYER-13 | Phase 6 | Complete |
 | LAYER-14 | Phase 6 | Complete |
 | PROP-01 | Phase 6 | Pending |
 | PROP-02 | Phase 6 | Pending |
