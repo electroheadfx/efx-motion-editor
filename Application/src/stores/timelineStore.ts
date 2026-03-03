@@ -1,5 +1,6 @@
 import {signal, computed} from '@preact/signals';
 import {projectStore} from './projectStore';
+import {totalFrames as totalFramesSignal} from '../lib/frameMap';
 
 const currentFrame = signal(0);
 const isPlaying = signal(false);
@@ -7,6 +8,7 @@ const zoom = signal(1);
 const scrollX = signal(0);
 
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);
+const totalDuration = computed(() => totalFramesSignal.value / projectStore.fps.value);
 
 export const timelineStore = {
   currentFrame,
@@ -14,9 +16,13 @@ export const timelineStore = {
   zoom,
   scrollX,
   currentTime,
+  totalFrames: totalFramesSignal,
+  totalDuration,
 
   seek(frame: number) {
-    currentFrame.value = Math.max(0, frame);
+    const max = totalFramesSignal.value;
+    const upper = max > 0 ? max - 1 : 0;
+    currentFrame.value = Math.max(0, Math.min(frame, upper));
   },
   setPlaying(v: boolean) {
     isPlaying.value = v;
@@ -25,7 +31,11 @@ export const timelineStore = {
     isPlaying.value = !isPlaying.value;
   },
   stepForward() {
-    currentFrame.value += 1;
+    const max = totalFramesSignal.value;
+    const upper = max > 0 ? max - 1 : 0;
+    if (currentFrame.value < upper) {
+      currentFrame.value += 1;
+    }
   },
   stepBackward() {
     currentFrame.value = Math.max(0, currentFrame.value - 1);
