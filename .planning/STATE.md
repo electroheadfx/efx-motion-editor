@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 03-04-PLAN.md (Gap Closure - drag-drop fix and popover UX)
-last_updated: "2026-03-09T11:09:43.791Z"
+stopped_at: Completed 03-06-PLAN.md (SortableJS bug fixes - DOM revert and deps)
+last_updated: "2026-03-09T12:11:54.611Z"
 last_activity: 2026-03-03 — Completed 06-04 (Properties Panel)
 progress:
   total_phases: 6
@@ -54,6 +54,7 @@ Progress: [====================..........] 65% (v1.0 complete, v2.0 Phase 6 plan
 
 *v2.0 metrics will populate as plans execute*
 | Phase 03 P04 | 2min | 2 tasks | 2 files |
+| Phase 03 P06 | 1min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,9 @@ Recent decisions affecting current work:
 - 06-04: Crop values clamped to 0-1 range in onChange handler
 - [Phase 03]: Check DragDropEvent paths.length > 0 on enter to distinguish external file drags from SortableJS internal drags
 - [Phase 03]: Image picker popover opens upward (bottom-14) since key photo strip is near bottom of left panel
+- [Phase 03]: SortableJS DOM revert pattern: removeChild+insertBefore before signal update for correct Preact re-render
+- [Phase 03]: SortableJS useEffect deps on collection.length to recreate instance on add/remove without unnecessary recreation on edits
+- [Phase 03]: AddKeyPhotoButton moved outside overflow-x-auto sortable container to prevent popover clipping and click interception
 
 ### Pending Todos
 
@@ -107,6 +111,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-09T11:01:32.451Z
-Stopped at: Completed 03-04-PLAN.md (Gap Closure - drag-drop fix and popover UX)
+Last session: 2026-03-09T12:11:54.609Z
+Stopped at: Completed 03-06-PLAN.md (SortableJS bug fixes - DOM revert and deps)
 Resume file: None
