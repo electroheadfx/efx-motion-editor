@@ -2,13 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
-status: in-progress
-last_updated: "2026-03-03T18:24:23.000Z"
+status: executing
+stopped_at: Completed 03-04-PLAN.md (Gap Closure - drag-drop fix and popover UX)
+last_updated: "2026-03-09T11:01:32.452Z"
+last_activity: 2026-03-03 — Completed 06-04 (Properties Panel)
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 2
+  total_plans: 7
+  completed_plans: 7
+  percent: 65
 ---
 
 # Project State
@@ -50,6 +53,7 @@ Progress: [====================..........] 65% (v1.0 complete, v2.0 Phase 6 plan
 | 6. Layers & Props | 4/4 | 12min | 3min |
 
 *v2.0 metrics will populate as plans execute*
+| Phase 03 P04 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -85,6 +89,8 @@ Recent decisions affecting current work:
 - 06-04: Inline sub-components (BlendSection, TransformSection, CropSection) in same file for panel cohesion
 - 06-04: Shared NumericInput with coalescing support for all numeric inputs
 - 06-04: Crop values clamped to 0-1 range in onChange handler
+- [Phase 03]: Check DragDropEvent paths.length > 0 on enter to distinguish external file drags from SortableJS internal drags
+- [Phase 03]: Image picker popover opens upward (bottom-14) since key photo strip is near bottom of left panel
 
 ### Pending Todos
 
@@ -101,6 +107,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-03
-Stopped at: Completed 06-04-PLAN.md (Properties Panel) — awaiting human verification checkpoint
+Last session: 2026-03-09T11:01:32.451Z
+Stopped at: Completed 03-04-PLAN.md (Gap Closure - drag-drop fix and popover UX)
 Resume file: None
