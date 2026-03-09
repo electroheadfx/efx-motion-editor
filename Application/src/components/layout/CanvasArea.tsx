@@ -44,7 +44,7 @@ export function CanvasArea() {
   }, []);
 
   // --- Pan handlers: middle-click drag ---
-  const handleMouseDown = useCallback((e: MouseEvent) => {
+  const handlePointerDown = useCallback((e: PointerEvent) => {
     // Middle mouse button (button === 1) starts pan drag
     if (e.button !== 1) return;
     e.preventDefault();
@@ -54,10 +54,10 @@ export function CanvasArea() {
     drag.startY = e.clientY;
     drag.startPanX = previewPanX.value;
     drag.startPanY = previewPanY.value;
-    (e.currentTarget as HTMLElement).setPointerCapture((e as unknown as PointerEvent).pointerId ?? 0);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
+  const handlePointerMove = useCallback((e: PointerEvent) => {
     const drag = dragRef.current;
     if (!drag.isDragging) return;
     const z = previewZoom.value;
@@ -65,12 +65,12 @@ export function CanvasArea() {
     previewPanY.value = drag.startPanY + (e.clientY - drag.startY) / z;
   }, []);
 
-  const handleMouseUp = useCallback((e: MouseEvent) => {
+  const handlePointerUp = useCallback((e: PointerEvent) => {
     const drag = dragRef.current;
     if (!drag.isDragging) return;
     drag.isDragging = false;
     try {
-      (e.currentTarget as HTMLElement).releasePointerCapture((e as unknown as PointerEvent).pointerId ?? 0);
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
       // Pointer capture may not be active
     }
@@ -89,9 +89,9 @@ export function CanvasArea() {
       <div
         class="flex items-center justify-center flex-1 w-full min-h-0 p-4 overflow-hidden"
         onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
         style={{cursor: dragRef.current.isDragging ? 'grabbing' : 'default'}}
       >
         <div
