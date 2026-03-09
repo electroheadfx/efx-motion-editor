@@ -208,18 +208,18 @@ function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
       {popoverOpen && (
         <div
           ref={popRef}
-          class="absolute left-0 top-14 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl p-2 min-w-[160px] max-w-[220px] max-h-[200px] overflow-y-auto"
+          class="absolute left-0 bottom-14 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
         >
           {importedImages.length === 0 ? (
             <span class="text-[10px] text-[var(--color-text-dim)] block p-2">
               No imported images. Import images first.
             </span>
           ) : (
-            <div class="grid grid-cols-3 gap-1">
+            <div class="grid grid-cols-4 gap-1">
               {importedImages.map((img) => (
                 <button
                   key={img.id}
-                  class="w-12 h-9 rounded bg-[#2A2A2A] bg-cover bg-center hover:ring-1 hover:ring-[var(--color-accent)] cursor-pointer"
+                  class="w-11 h-8 rounded bg-[#2A2A2A] bg-cover bg-center hover:ring-1 hover:ring-[var(--color-accent)] cursor-pointer"
                   style={{
                     backgroundImage: `url(${assetUrl(img.thumbnail_path)})`,
                   }}
