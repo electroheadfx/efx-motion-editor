@@ -1,9 +1,10 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
+import Sortable from 'sortablejs';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 
-/** Key photo strip with thumbnails, hold duration editing, click-select + arrow reorder */
+/** Key photo strip with thumbnails, hold duration editing, move buttons + SortableJS drag reorder */
 export function KeyPhotoStrip() {
   const activeSeq = sequenceStore.getActiveSequence();
 
@@ -41,12 +42,6 @@ function KeyPhotoStripInner({sequenceId}: {sequenceId: string}) {
   const stripRef = useRef<HTMLDivElement>(null);
   const activeSeq = sequenceStore.getById(sequenceId);
   const keyPhotos = activeSeq?.keyPhotos ?? [];
-  const [selectedKpId, setSelectedKpId] = useState<string | null>(null);
-
-  // Clear selection when sequence changes
-  useEffect(() => {
-    setSelectedKpId(null);
-  }, [sequenceId]);
 
   // Convert vertical wheel to horizontal scroll
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -57,53 +52,47 @@ function KeyPhotoStripInner({sequenceId}: {sequenceId: string}) {
     }
   }, []);
 
-  // Arrow key reorder for selected key photo
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (!selectedKpId) return;
-    const idx = keyPhotos.findIndex(kp => kp.id === selectedKpId);
-    if (idx === -1) return;
-    if (e.key === 'ArrowLeft' && idx > 0) {
-      e.preventDefault();
-      sequenceStore.reorderKeyPhotos(sequenceId, idx, idx - 1);
-      // Scroll moved card into view
-      requestAnimationFrame(() => {
-        const children = stripRef.current?.children;
-        if (children && children[idx - 1]) {
-          (children[idx - 1] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  // SortableJS drag-and-drop reorder
+  useEffect(() => {
+    if (!stripRef.current) return;
+    const instance = Sortable.create(stripRef.current, {
+      animation: 150,
+      ghostClass: 'opacity-30',
+      forceFallback: true,
+      fallbackClass: 'opacity-30',
+      direction: 'horizontal',
+      onEnd(evt) {
+        const { oldIndex, newIndex, item, from } = evt;
+        if (oldIndex != null && newIndex != null && oldIndex !== newIndex) {
+          // Revert SortableJS DOM mutation so Preact can re-render correctly
+          from.removeChild(item);
+          from.insertBefore(item, from.children[oldIndex] ?? null);
+          sequenceStore.reorderKeyPhotos(sequenceId, oldIndex, newIndex);
         }
-      });
-    } else if (e.key === 'ArrowRight' && idx < keyPhotos.length - 1) {
-      e.preventDefault();
-      sequenceStore.reorderKeyPhotos(sequenceId, idx, idx + 1);
-      // Scroll moved card into view
-      requestAnimationFrame(() => {
-        const children = stripRef.current?.children;
-        if (children && children[idx + 1]) {
-          (children[idx + 1] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-        }
-      });
-    }
-  }, [selectedKpId, keyPhotos, sequenceId]);
+      },
+    });
+    return () => instance.destroy();
+  }, [keyPhotos.length, sequenceId]);
 
   return (
     <div class="flex gap-1 items-start">
       <AddKeyPhotoButton sequenceId={sequenceId} />
       <div
         ref={stripRef}
-        class="flex gap-1 overflow-x-auto scrollbar-hidden pb-1 flex-1 min-w-0 outline-none"
-        tabIndex={0}
+        class="flex gap-1 overflow-x-auto scrollbar-hidden pb-1 flex-1 min-w-0"
         onWheel={handleWheel}
-        onKeyDown={handleKeyDown}
       >
-        {keyPhotos.map((kp) => (
+        {keyPhotos.map((kp, i) => (
           <KeyPhotoCard
             key={kp.id}
             sequenceId={sequenceId}
             keyPhotoId={kp.id}
             imageId={kp.imageId}
             holdFrames={kp.holdFrames}
-            isSelected={kp.id === selectedKpId}
-            onSelect={() => setSelectedKpId(kp.id)}
+            canMoveLeft={i > 0}
+            canMoveRight={i < keyPhotos.length - 1}
+            onMoveLeft={() => sequenceStore.reorderKeyPhotos(sequenceId, i, i - 1)}
+            onMoveRight={() => sequenceStore.reorderKeyPhotos(sequenceId, i, i + 1)}
           />
         ))}
       </div>
@@ -116,8 +105,10 @@ interface KeyPhotoCardProps {
   keyPhotoId: string;
   imageId: string;
   holdFrames: number;
-  isSelected: boolean;
-  onSelect: () => void;
+  canMoveLeft: boolean;
+  canMoveRight: boolean;
+  onMoveLeft: () => void;
+  onMoveRight: () => void;
 }
 
 function KeyPhotoCard({
@@ -125,8 +116,10 @@ function KeyPhotoCard({
   keyPhotoId,
   imageId,
   holdFrames,
-  isSelected,
-  onSelect,
+  canMoveLeft,
+  canMoveRight,
+  onMoveLeft,
+  onMoveRight,
 }: KeyPhotoCardProps) {
   const [editingFrames, setEditingFrames] = useState(false);
   const [frameValue, setFrameValue] = useState(String(holdFrames));
@@ -157,21 +150,10 @@ function KeyPhotoCard({
     [sequenceId, keyPhotoId],
   );
 
-  const handleCardClick = useCallback(
-    (e: MouseEvent) => {
-      // Don't select if clicking a child button or input
-      const target = e.target as HTMLElement;
-      if (target.closest('button') || target.closest('input')) return;
-      onSelect();
-    },
-    [onSelect],
-  );
-
   return (
     <div
-      class={`group w-[72px] h-14 rounded-md relative shrink-0 bg-[#2A2A2A] bg-cover bg-center overflow-hidden cursor-pointer ${isSelected ? 'ring-2 ring-[var(--color-accent)]' : ''}`}
+      class="group w-[72px] h-14 rounded-md relative shrink-0 bg-[#2A2A2A] bg-cover bg-center overflow-hidden"
       style={thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : undefined}
-      onClick={handleCardClick}
     >
       {/* Placeholder icon when no image */}
       {!thumbUrl && (
@@ -180,7 +162,7 @@ function KeyPhotoCard({
         </div>
       )}
 
-      {/* Remove button -- visible on hover */}
+      {/* Remove button -- visible on hover, top-right corner */}
       <button
         class="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-[#FF444480] text-white text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#FF4444CC]"
         onClick={handleRemove}
@@ -188,6 +170,28 @@ function KeyPhotoCard({
       >
         x
       </button>
+
+      {/* Move left button -- visible on hover */}
+      {canMoveLeft && (
+        <button
+          class="absolute left-0.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#00000080] text-white text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#000000CC]"
+          onClick={(e: MouseEvent) => { e.stopPropagation(); onMoveLeft(); }}
+          title="Move left"
+        >
+          &lt;
+        </button>
+      )}
+
+      {/* Move right button -- visible on hover */}
+      {canMoveRight && (
+        <button
+          class="absolute right-0.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#00000080] text-white text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#000000CC]"
+          onClick={(e: MouseEvent) => { e.stopPropagation(); onMoveRight(); }}
+          title="Move right"
+        >
+          &gt;
+        </button>
+      )}
 
       {/* Hold frames badge */}
       {editingFrames ? (
