@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 03-project-sequence-management
 source: 03-01-SUMMARY.md, 03-02-SUMMARY.md, 03-03-SUMMARY.md, 03-04-SUMMARY.md, 03-05-SUMMARY.md, 03-06-SUMMARY.md, 03-07-SUMMARY.md, 03-08-SUMMARY.md, 03-09-SUMMARY.md
 started: 2026-03-09T14:00:00Z
@@ -50,9 +50,15 @@ skipped: 0
   reason: "User reported: plus button is in the wrong place, it takes place for photos. Want the '+' on the title bar 'KEY PHOTOS' at RIGHT TOP on the thumbnails horizontal list bar, not inside the strip."
   severity: minor
   test: 1
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "AddKeyPhotoButton rendered inside KeyPhotoStripInner (line 79) and empty state (line 25), taking up thumbnail space. Should be in LeftPanel.tsx KEY PHOTOS header bar (lines 44-48) which already has justify-between but nothing on the right side."
+  artifacts:
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "Line 25 and 79: AddKeyPhotoButton inside strip body instead of header"
+    - path: "Application/src/components/layout/LeftPanel.tsx"
+      issue: "Lines 44-48: KEY PHOTOS header has justify-between but no right-side content"
+  missing:
+    - "Remove AddKeyPhotoButton from KeyPhotoStrip.tsx (lines 25, 79)"
+    - "Add '+' button to right side of KEY PHOTOS header in LeftPanel.tsx"
   debug_session: ""
 
 - truth: "Move/delete buttons appear in the KEY PHOTOS title bar when a key photo is selected, not overlaid on the thumbnail cards"
@@ -60,7 +66,17 @@ skipped: 0
   reason: "User reported: move left/right and delete buttons should be in the 'KEY PHOTOS' title bar (shown on selection), not on the thumb cards. Bring back click-to-select on key photos. Layout: KEY PHOTOS < X >"
   severity: cosmetic
   test: 2
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "Move-left (lines 174-183), move-right (185-193), and delete (165-172) buttons are absolutely positioned inside KeyPhotoCard with hover visibility. No selectedKeyPhotoId state exists in sequenceStore — was removed in plan 08."
+  artifacts:
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "Lines 165-193: overlay buttons on cards instead of header bar"
+    - path: "Application/src/stores/sequenceStore.ts"
+      issue: "No selectedKeyPhotoId signal — needs to be added"
+    - path: "Application/src/components/layout/LeftPanel.tsx"
+      issue: "Header bar needs < X > buttons conditional on selected key photo"
+  missing:
+    - "Add selectedKeyPhotoId signal to sequenceStore.ts"
+    - "Add click-to-select on KeyPhotoCard with visual ring"
+    - "Remove overlay buttons from KeyPhotoCard (lines 165-193)"
+    - "Add < X > buttons to KEY PHOTOS header bar, visible when key photo selected"
   debug_session: ""
