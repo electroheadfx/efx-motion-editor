@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 05-editing-infrastructure
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md]
 started: 2026-03-09T00:00:00Z
-updated: 2026-03-09T00:30:00Z
+updated: 2026-03-09T01:00:00Z
 ---
 
 ## Current Test
@@ -83,29 +83,45 @@ skipped: 0
   reason: "User reported: Cmd+Z or ctrl+Z (on mac) no work, I have no state reverts on any action"
   severity: major
   test: 5
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "Tauri 2 on macOS auto-creates default native menu with Edit > Undo (Cmd+Z) accelerator that intercepts keydown at Cocoa/AppKit layer before it reaches WKWebView. JS tinykeys listener never fires."
+  artifacts:
+    - path: "Application/src-tauri/src/lib.rs"
+      issue: "No .menu() call on tauri::Builder — default macOS menu steals Cmd+Z/Cmd+Shift+Z"
+  missing:
+    - "Set custom menu in lib.rs that either removes Edit > Undo/Redo items or wires them to emit events to frontend"
+  debug_session: ".planning/debug/undo-redo-cmd-z-broken.md"
 
 - truth: "Cmd+Shift+Z redoes the last undone change"
   status: failed
   reason: "User reported: redo and undo no work"
   severity: major
   test: 6
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "Same as Test 5 — Tauri 2 default macOS menu Edit > Redo (Cmd+Shift+Z) accelerator intercepts before webview"
+  artifacts:
+    - path: "Application/src-tauri/src/lib.rs"
+      issue: "No .menu() call on tauri::Builder — default macOS menu steals Cmd+Z/Cmd+Shift+Z"
+  missing:
+    - "Set custom menu in lib.rs that either removes Edit > Undo/Redo items or wires them to emit events to frontend"
+  debug_session: ".planning/debug/undo-redo-cmd-z-broken.md"
 
 - truth: "JKL shuttle provides intuitive speed/direction control separate from play/pause"
   status: failed
   reason: "User reported: L and J make multiplier and play at same time. Not intuitive. Space should control play/stop, L/J set direction and speed, K resets. Needs auto-loop."
   severity: major
   test: 9
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "JKL implements DaVinci Resolve model where J/L toggle play AND speed. User wants split-responsibility: Space owns play/stop, J/L only set direction/speed, K resets. Also needs auto-loop at boundaries."
+  artifacts:
+    - path: "Application/src/lib/jklShuttle.ts"
+      issue: "J/L start their own rAF loop — should only modify direction/speed state"
+    - path: "Application/src/lib/playbackEngine.ts"
+      issue: "Needs to read shuttle speed/direction and implement boundary looping"
+    - path: "Application/src/lib/shortcuts.ts"
+      issue: "Space handler needs shuttle-aware unified toggle"
+  missing:
+    - "Remove rAF loop from jklShuttle — J/L only set direction+speed signals"
+    - "Unify into single playback loop in PlaybackEngine that reads shuttle state"
+    - "K resets speed/direction to 1x forward but does NOT stop playback"
+    - "Add auto-loop at boundaries (forward wraps to frame 0, reverse wraps to last frame)"
   debug_session: ""
 
 - truth: "Pressing ? opens the shortcuts overlay"
@@ -113,7 +129,10 @@ skipped: 0
   reason: "User reported: No help shortcuts keyboard appear when I press '?'. On mac I need to press with shift+','"
   severity: major
   test: 11
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "tinykeys binding uses 'Shift+Slash' which matches physical key code (event.code). On non-US keyboard layouts where ? is at Shift+Comma, event.code is 'Comma' not 'Slash' so binding never matches."
+  artifacts:
+    - path: "Application/src/lib/shortcuts.ts"
+      issue: "Line 171 uses layout-dependent 'Shift+Slash' instead of layout-independent 'Shift+?'"
+  missing:
+    - "Change binding from 'Shift+Slash' to 'Shift+?' to match by character (event.key) instead of physical key"
+  debug_session: ".planning/debug/shortcuts-overlay-question-mark.md"
