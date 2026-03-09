@@ -38,8 +38,12 @@ export function useFileDrop(
       .onDragDropEvent((event) => {
         const type = event.payload.type;
 
-        if (type === 'enter' || type === 'over') {
-          isDraggingOver.value = true;
+        if (type === 'enter') {
+          // Only show drop overlay for external file drags (paths > 0),
+          // not for SortableJS internal element reorder drags
+          if (event.payload.paths.length > 0) {
+            isDraggingOver.value = true;
+          }
         } else if (type === 'drop') {
           isDraggingOver.value = false;
           const paths = event.payload.paths;
@@ -52,10 +56,10 @@ export function useFileDrop(
           if (rejectedPaths.length > 0 && onReject) {
             onReject(rejectedPaths);
           }
-        } else {
-          // 'leave' event
+        } else if (type === 'leave') {
           isDraggingOver.value = false;
         }
+        // 'over' events are ignored -- no paths available, and enter already activated
       })
       .then((fn) => {
         unlisten = fn;
