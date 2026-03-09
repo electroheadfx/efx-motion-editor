@@ -1,6 +1,6 @@
 import {useState, useEffect} from 'preact/hooks';
 import {open} from '@tauri-apps/plugin-dialog';
-import {exists} from '@tauri-apps/plugin-fs';
+import {pathExists} from '../../lib/ipc';
 import {getRecentProjects, type RecentProject} from '../../lib/appConfig';
 import {projectStore} from '../../stores/projectStore';
 import {NewProjectDialog} from './NewProjectDialog';
@@ -49,11 +49,11 @@ function RecentProjectItem({
 
   return (
     <div
-      class={`flex items-center gap-3 rounded-lg px-4 h-[60px] w-[340px] cursor-pointer transition-colors ${
+      class={`flex items-center gap-3 rounded-lg px-4 h-[60px] w-[340px] transition-colors ${
         highlighted
           ? 'bg-[var(--color-bg-card)]'
           : 'bg-[var(--color-bg-card-alt)] hover:bg-[var(--color-bg-card)]'
-      } ${!project.available ? 'opacity-50' : ''}`}
+      } ${project.available ? 'cursor-pointer' : 'cursor-default'}`}
       onClick={onClick}
     >
       <div
@@ -65,7 +65,7 @@ function RecentProjectItem({
           class={`text-[13px] truncate ${
             highlighted
               ? 'font-medium text-[#E0E0E0]'
-              : 'text-[var(--color-text-secondary)]'
+              : 'text-[#CCCCCC]'
           }`}
         >
           {project.name}
@@ -74,7 +74,7 @@ function RecentProjectItem({
           class={`text-[11px] truncate ${
             highlighted
               ? 'text-[var(--color-text-dim)]'
-              : 'text-[var(--color-text-dimmer)]'
+              : 'text-[#999999]'
           }`}
         >
           {project.available
@@ -119,7 +119,8 @@ export function WelcomeScreen() {
         projects.map(async (p) => {
           let available = false;
           try {
-            available = await exists(p.path);
+            const result = await pathExists(p.path);
+            available = result.ok ? result.data : false;
           } catch {
             available = false;
           }
