@@ -1,6 +1,7 @@
 import type {Layer, BlendMode} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
 import {imageStore} from '../stores/imageStore';
+import {readFile} from '@tauri-apps/plugin-fs';
 import {assetUrl} from './ipc';
 
 /**
@@ -174,6 +175,9 @@ export class PreviewRenderer {
   /**
    * Get or load an image by imageId from imageStore.
    * Returns HTMLImageElement if cached, null if loading.
+   *
+   * Uses Tauri's readFile + blob URLs to bypass WebKit WKWebView's
+   * aggressive caching of custom protocol (efxasset://) responses.
    */
   private getImageSource(imageId: string): HTMLImageElement | null {
     // Check cache first
@@ -188,18 +192,32 @@ export class PreviewRenderer {
     if (!image) return null;
 
     this.loadingImages.add(imageId);
-    const img = new Image();
-    img.onload = () => {
-      this.loadingImages.delete(imageId);
-      this.imageCache.set(imageId, img);
-      // Trigger re-render so the loaded image appears
-      this.onImageLoaded?.();
-    };
-    img.onerror = () => {
-      this.loadingImages.delete(imageId);
-      // Silently fail — layer will show nothing for this image
-    };
-    img.src = assetUrl(image.project_path, imageId);
+
+    // Read file bytes via Tauri IPC (bypasses WebView URL caching entirely)
+    const mime = image.format === 'png' ? 'image/png'
+      : image.format === 'tiff' || image.format === 'tif' ? 'image/tiff'
+      : 'image/jpeg';
+
+    readFile(image.project_path)
+      .then((bytes) => {
+        const blob = new Blob([bytes], {type: mime});
+        const objectUrl = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          this.loadingImages.delete(imageId);
+          this.imageCache.set(imageId, img);
+          this.onImageLoaded?.();
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          this.loadingImages.delete(imageId);
+        };
+        img.src = objectUrl;
+      })
+      .catch(() => {
+        this.loadingImages.delete(imageId);
+      });
 
     return null;
   }

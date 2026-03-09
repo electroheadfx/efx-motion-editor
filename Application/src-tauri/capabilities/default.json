@@ -16,7 +16,12 @@
     "fs:allow-copy-file",
     "fs:allow-mkdir",
     "fs:allow-read-dir",
+    "fs:allow-read-file",
     "fs:allow-exists",
-    "fs:scope-appdata-recursive"
+    "fs:scope-appdata-recursive",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "**" }]
+    }
   ]
 }

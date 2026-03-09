@@ -1,6 +1,8 @@
 import {timelineStore} from '../stores/timelineStore';
+import {sequenceStore} from '../stores/sequenceStore';
+import {uiStore} from '../stores/uiStore';
 import {projectStore} from '../stores/projectStore';
-import {totalFrames} from './frameMap';
+import {totalFrames, frameMap} from './frameMap';
 
 /**
  * PlaybackEngine: rAF-based frame-rate-limited playback tick loop.
@@ -48,17 +50,33 @@ export class PlaybackEngine {
 
   seekToFrame(frame: number) {
     timelineStore.seek(frame);
+    this.syncActiveSequence();
     this.syncPlayer();
   }
 
   stepForward() {
     timelineStore.stepForward();
+    this.syncActiveSequence();
     this.syncPlayer();
   }
 
   stepBackward() {
     timelineStore.stepBackward();
+    this.syncActiveSequence();
     this.syncPlayer();
+  }
+
+  /** Switch active sequence when playhead crosses into a different sequence */
+  private syncActiveSequence() {
+    const cf = timelineStore.currentFrame.peek();
+    const entry = frameMap.peek()[cf];
+    if (entry) {
+      const activeId = sequenceStore.activeSequenceId.peek();
+      if (entry.sequenceId !== activeId) {
+        sequenceStore.setActive(entry.sequenceId);
+        uiStore.selectSequence(entry.sequenceId);
+      }
+    }
   }
 
   private syncPlayer() {
@@ -86,6 +104,8 @@ export class PlaybackEngine {
       }
       timelineStore.stepForward();
     }
+
+    this.syncActiveSequence();
 
     this.syncPlayer();
 

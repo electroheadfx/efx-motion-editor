@@ -102,9 +102,19 @@ export class TimelineInteraction {
     return Math.max(0, Math.min(idx, trackCount));
   }
 
+  /** Check if the click is in the ruler area (above tracks) */
+  private isInRuler(clientY: number): boolean {
+    if (!this.canvas) return false;
+    const rect = this.canvas.getBoundingClientRect();
+    return (clientY - rect.top) < RULER_HEIGHT;
+  }
+
   // --- Click-to-seek (TIME-02), playhead drag start, and track header drag ---
   private onPointerDown(e: PointerEvent) {
     if (!this.canvas) return;
+
+    // Only handle primary button (left click); ignore middle/right
+    if (e.button !== 0) return;
 
     const rect = this.canvas.getBoundingClientRect();
     const localX = e.clientX - rect.left;
@@ -133,12 +143,15 @@ export class TimelineInteraction {
       return;
     }
 
-    if (this.isOnPlayhead(e.clientX)) {
-      // Start playhead drag (TIME-03)
+    // Click in ruler area or on playhead → start drag-to-scrub immediately
+    if (this.isInRuler(e.clientY) || this.isOnPlayhead(e.clientX)) {
       this.isDragging = true;
       this.canvas.setPointerCapture(e.pointerId);
+      // Seek to clicked position immediately
+      const frame = this.getFrame(e.clientX);
+      playbackEngine.seekToFrame(frame);
     } else {
-      // Click-to-seek
+      // Click-to-seek on track area
       const frame = this.getFrame(e.clientX);
       playbackEngine.seekToFrame(frame);
     }
