@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 03-06-PLAN.md (SortableJS bug fixes - DOM revert and deps)
-last_updated: "2026-03-09T12:11:54.611Z"
+stopped_at: Completed 03-05-PLAN.md (Welcome Screen gap closure)
+last_updated: "2026-03-09T12:13:13.887Z"
 last_activity: 2026-03-03 — Completed 06-04 (Properties Panel)
 progress:
   total_phases: 6
@@ -55,6 +55,7 @@ Progress: [====================..........] 65% (v1.0 complete, v2.0 Phase 6 plan
 *v2.0 metrics will populate as plans execute*
 | Phase 03 P04 | 2min | 2 tasks | 2 files |
 | Phase 03 P06 | 1min | 2 tasks | 2 files |
+| Phase 03 P05 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Recent decisions affecting current work:
 - [Phase 03]: SortableJS DOM revert pattern: removeChild+insertBefore before signal update for correct Preact re-render
 - [Phase 03]: SortableJS useEffect deps on collection.length to recreate instance on add/remove without unnecessary recreation on edits
 - [Phase 03]: AddKeyPhotoButton moved outside overflow-x-auto sortable container to prevent popover clipping and click interception
+- [Phase 03]: Use std::path::Path::exists() for scope-free file validation in WelcomeScreen
+- [Phase 03]: Hard-coded hex colors (#CCCCCC, #999999) for non-highlighted recent project items to guarantee contrast
 
 ### Pending Todos
 
@@ -111,6 +114,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-09T12:11:54.609Z
-Stopped at: Completed 03-06-PLAN.md (SortableJS bug fixes - DOM revert and deps)
+Last session: 2026-03-09T12:13:13.885Z
+Stopped at: Completed 03-05-PLAN.md (Welcome Screen gap closure)
 Resume file: None
