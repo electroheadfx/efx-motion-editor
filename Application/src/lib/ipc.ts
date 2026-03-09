@@ -19,11 +19,12 @@ export async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>)
 
 // Custom protocol URL conversion — bypasses Tauri asset scope restrictions
 // that fail on macOS paths with accented characters (NFC/NFD mismatch).
-export function assetUrl(filePath: string): string {
+export function assetUrl(filePath: string, bustKey?: string): string {
   const encoded = encodeURIComponent(filePath)
     .replace(/%2F/g, '/')
     .replace(/%3A/g, ':');
-  return `efxasset://localhost${encoded}`;
+  const bust = bustKey ? `?v=${bustKey}` : '';
+  return `efxasset://localhost${encoded}${bust}`;
 }
 
 // --- Project commands ---

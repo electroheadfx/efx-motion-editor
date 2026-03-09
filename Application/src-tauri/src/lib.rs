@@ -37,6 +37,8 @@ pub fn run() {
                     tauri::http::Response::builder()
                         .header("Content-Type", mime)
                         .header("Access-Control-Allow-Origin", "*")
+                        .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                        .header("Pragma", "no-cache")
                         .status(200)
                         .body(data)
                         .unwrap()
