@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 05-05-PLAN.md (JKL Shuttle Rewrite)
-last_updated: "2026-03-09T21:15:15.740Z"
-last_activity: 2026-03-09 — Completed 05-05 (JKL Shuttle Rewrite)
+stopped_at: Completed 05-04-PLAN.md (Undo/Redo & Shortcuts Overlay Fix)
+last_updated: "2026-03-09T21:16:33Z"
+last_activity: 2026-03-09 — Completed 05-04 (Undo/Redo & Shortcuts Overlay Fix)
 progress:
   total_phases: 6
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 5 — Editing Infrastructure (gap closure: JKL shuttle rewrite)
+**Current focus:** Phase 5 — Editing Infrastructure (gap closure: undo/redo & shortcuts fix)
 
 ## Current Position
 
 Phase: 5 of 10 (Editing Infrastructure)
 Plan: 5 of 5 in current phase -- COMPLETE
 Status: In Progress
-Last activity: 2026-03-09 — Completed 05-05 (JKL Shuttle Rewrite)
+Last activity: 2026-03-09 — Completed 05-04 (Undo/Redo & Shortcuts Overlay Fix)
 
 Progress: [█████████░] 89% (v1.0 complete, v2.0 Phase 5 plan 5/5)
 
@@ -63,6 +63,7 @@ Progress: [█████████░] 89% (v1.0 complete, v2.0 Phase 5 plan
 | Phase 04 P04 | 2 | 2 tasks | 4 files |
 | Phase 04 P05 | 2min | 2 tasks | 2 files |
 | Phase 05 P05 | 2min | 2 tasks | 3 files |
+| Phase 05 P04 | 5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,9 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-05: JKL shuttle is purely state-only (no rAF loop); PlaybackEngine reads shuttle signals in its tick
 - [Phase 05]: 05-05: Space is sole play/stop; J/L set direction+speed; K resets to 1x forward without stopping
 - [Phase 05]: 05-05: Playback auto-loops at boundaries instead of stopping
+- 05-04: MenuItem::with_id for Undo/Redo instead of PredefinedMenuItem to emit events to frontend
+- 05-04: PredefinedMenuItem kept for Cut/Copy/Paste/Select All (native handling works in webview)
+- 05-04: Shift+? character matching over Shift+Slash physical key code for layout independence
 
 ### Pending Todos
 
@@ -137,6 +141,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-09T21:15:15.738Z
-Stopped at: Completed 05-05-PLAN.md (JKL Shuttle Rewrite)
+Last session: 2026-03-09T21:16:33Z
+Stopped at: Completed 05-04-PLAN.md (Undo/Redo & Shortcuts Overlay Fix)
 Resume file: None
