@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 03-project-sequence-management
 source: 03-01-SUMMARY.md, 03-02-SUMMARY.md, 03-03-SUMMARY.md, 03-04-SUMMARY.md, 03-05-SUMMARY.md, 03-06-SUMMARY.md, 03-07-SUMMARY.md, 03-08-SUMMARY.md
 started: 2026-03-09T14:00:00Z
@@ -74,8 +74,13 @@ skipped: 0
   reason: "User reported: plus button takes the place of a key image slot (dashed border placeholder). Want '+' at top/start of horizontal list, and want visible window to fit 3 thumbnails instead of 2."
   severity: minor
   test: 6
-  artifacts: []
-  missing: []
+  root_cause: "AddKeyPhotoButton rendered AFTER scroll container in flex layout (line 109). Strip only fits 2 cards due to gap-1.5 spacing in 268px panel width."
+  artifacts:
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "Line 109: '+' button at end of flex. Lines 89-92: gap-1.5 too wide for 3 cards in available space."
+  missing:
+    - "Move AddKeyPhotoButton BEFORE the scroll container (left side of strip)"
+    - "Reduce gap from gap-1.5 to gap-1 to fit 3 thumbnails"
   debug_session: ""
 
 - truth: "Key photos can be reordered via left/right buttons and drag-and-drop without interfering with timeline"
@@ -83,6 +88,12 @@ skipped: 0
   reason: "User reported: ArrowLeft/ArrowRight also move timeline cursor simultaneously. Remove arrow key shortcuts. Add left/right buttons on the image instead. Re-add drag-and-drop reorder (should work with wider 3-thumb strip)."
   severity: minor
   test: 7
-  artifacts: []
-  missing: []
+  root_cause: "handleKeyDown (lines 61-86) calls preventDefault but event still propagates to timeline. No visible move buttons exist on cards. SortableJS drag was removed in plan 08."
+  artifacts:
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "Lines 61-86: arrow key handler conflicts with timeline. No move buttons on cards. SortableJS removed."
+  missing:
+    - "Remove handleKeyDown and onKeyDown from strip container"
+    - "Add left/right hover buttons on KeyPhotoCard (like existing remove button)"
+    - "Re-add SortableJS with forceFallback:true and DOM revert pattern from SequenceList"
   debug_session: ""
