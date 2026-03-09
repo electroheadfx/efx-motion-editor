@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 phase: 03-project-sequence-management
 source: 03-04-SUMMARY.md, 03-05-SUMMARY.md, 03-06-SUMMARY.md
 started: 2026-03-09T13:00:00Z
-updated: 2026-03-09T13:50:00Z
+updated: 2026-03-09T18:00:00Z
 ---
 
 ## Current Test
@@ -55,7 +55,7 @@ skipped: 0
 ## Gaps
 
 - truth: "Context menu renders without causing scrollbar in the sequence list"
-  status: failed
+  status: resolved
   reason: "User reported: context menu opens a scrollbar in the sequence list container — z-index/overflow problem"
   severity: minor
   test: 2
@@ -68,7 +68,7 @@ skipped: 0
   debug_session: ".planning/debug/sequencelist-context-menu-scrollbar.md"
 
 - truth: "Sequences can be dragged to reorder in the left sidebar"
-  status: failed
+  status: resolved
   reason: "User reported: drag-and-drop reorder doesn't work in the sidebar sequences list, only works from timeline in main window"
   severity: major
   test: 3
@@ -83,7 +83,7 @@ skipped: 0
   debug_session: ".planning/debug/sequence-list-dnd-reorder.md"
 
 - truth: "Key photo strip has usable UX with adequate space and smooth scrolling"
-  status: failed
+  status: resolved
   reason: "User reported: key photo strip area is too compact, scrollbar is awkward. Suggests horizontal mouse-wheel scroll and more space"
   severity: minor
   test: 4
@@ -100,7 +100,7 @@ skipped: 0
   debug_session: ".planning/debug/keyphotostrip-ux-issues.md"
 
 - truth: "Key photos can be reordered in the sidebar strip"
-  status: failed
+  status: resolved
   reason: "User reported: drag-and-drop reorder doesn't work in sidebar. Suggests click-to-select + arrow keys instead of drag-and-drop in small space"
   severity: major
   test: 5
