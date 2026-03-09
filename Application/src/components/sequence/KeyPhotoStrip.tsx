@@ -1,10 +1,9 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
-import Sortable from 'sortablejs';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 
-/** Sortable key photo strip with thumbnails, hold duration editing, and add/remove */
+/** Key photo strip with thumbnails, hold duration editing, click-select + arrow reorder */
 export function KeyPhotoStrip() {
   const activeSeq = sequenceStore.getActiveSequence();
 
@@ -42,33 +41,69 @@ function KeyPhotoStripInner({sequenceId}: {sequenceId: string}) {
   const stripRef = useRef<HTMLDivElement>(null);
   const activeSeq = sequenceStore.getById(sequenceId);
   const keyPhotos = activeSeq?.keyPhotos ?? [];
+  const [selectedKpId, setSelectedKpId] = useState<string | null>(null);
 
-  // SortableJS integration — recreate when sequence or key photo count changes
+  // Clear selection when sequence changes
   useEffect(() => {
+    setSelectedKpId(null);
+  }, [sequenceId]);
+
+  // Convert vertical wheel to horizontal scroll
+  const handleWheel = useCallback((e: WheelEvent) => {
     if (!stripRef.current) return;
-    const instance = Sortable.create(stripRef.current, {
-      animation: 150,
-      ghostClass: 'opacity-30',
-      direction: 'horizontal',
-      draggable: '.kp-card',
-      onEnd(evt) {
-        const { oldIndex, newIndex, item, from } = evt;
-        if (oldIndex != null && newIndex != null && oldIndex !== newIndex) {
-          // Revert SortableJS DOM mutation so Preact can re-render correctly
-          from.removeChild(item);
-          from.insertBefore(item, from.children[oldIndex] ?? null);
-          sequenceStore.reorderKeyPhotos(sequenceId, oldIndex, newIndex);
+    if (e.deltaY !== 0) {
+      e.preventDefault();
+      stripRef.current.scrollLeft += e.deltaY;
+    }
+  }, []);
+
+  // Arrow key reorder for selected key photo
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (!selectedKpId) return;
+    const idx = keyPhotos.findIndex(kp => kp.id === selectedKpId);
+    if (idx === -1) return;
+    if (e.key === 'ArrowLeft' && idx > 0) {
+      e.preventDefault();
+      sequenceStore.reorderKeyPhotos(sequenceId, idx, idx - 1);
+      // Scroll moved card into view
+      requestAnimationFrame(() => {
+        const children = stripRef.current?.children;
+        if (children && children[idx - 1]) {
+          (children[idx - 1] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
         }
-      },
-    });
-    return () => instance.destroy();
-  }, [sequenceId, keyPhotos.length]);
+      });
+    } else if (e.key === 'ArrowRight' && idx < keyPhotos.length - 1) {
+      e.preventDefault();
+      sequenceStore.reorderKeyPhotos(sequenceId, idx, idx + 1);
+      // Scroll moved card into view
+      requestAnimationFrame(() => {
+        const children = stripRef.current?.children;
+        if (children && children[idx + 1]) {
+          (children[idx + 1] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        }
+      });
+    }
+  }, [selectedKpId, keyPhotos, sequenceId]);
 
   return (
     <div class="flex gap-1.5 items-start">
-      <div ref={stripRef} class="flex gap-1.5 overflow-x-auto pb-1 flex-1 min-w-0">
+      <div
+        ref={stripRef}
+        class="flex gap-1.5 overflow-x-auto scrollbar-hidden pb-1 flex-1 min-w-0 outline-none"
+        tabIndex={0}
+        onWheel={handleWheel}
+        onKeyDown={handleKeyDown}
+      >
         {keyPhotos.map((kp) => (
-          <KeyPhotoCard key={kp.id} sequenceId={sequenceId} keyPhotoId={kp.id} imageId={kp.imageId} holdFrames={kp.holdFrames} />
+          <KeyPhotoCard
+            key={kp.id}
+            sequenceId={sequenceId}
+            keyPhotoId={kp.id}
+            imageId={kp.imageId}
+            holdFrames={kp.holdFrames}
+            isSelected={kp.id === selectedKpId}
+            onSelect={() => setSelectedKpId(kp.id)}
+          />
         ))}
       </div>
       <AddKeyPhotoButton sequenceId={sequenceId} />
@@ -81,6 +116,8 @@ interface KeyPhotoCardProps {
   keyPhotoId: string;
   imageId: string;
   holdFrames: number;
+  isSelected: boolean;
+  onSelect: () => void;
 }
 
 function KeyPhotoCard({
@@ -88,6 +125,8 @@ function KeyPhotoCard({
   keyPhotoId,
   imageId,
   holdFrames,
+  isSelected,
+  onSelect,
 }: KeyPhotoCardProps) {
   const [editingFrames, setEditingFrames] = useState(false);
   const [frameValue, setFrameValue] = useState(String(holdFrames));
@@ -118,10 +157,21 @@ function KeyPhotoCard({
     [sequenceId, keyPhotoId],
   );
 
+  const handleCardClick = useCallback(
+    (e: MouseEvent) => {
+      // Don't select if clicking a child button or input
+      const target = e.target as HTMLElement;
+      if (target.closest('button') || target.closest('input')) return;
+      onSelect();
+    },
+    [onSelect],
+  );
+
   return (
     <div
-      class="kp-card group w-16 h-12 rounded-md relative shrink-0 cursor-grab bg-[#2A2A2A] bg-cover bg-center overflow-hidden"
+      class={`group w-20 h-14 rounded-md relative shrink-0 bg-[#2A2A2A] bg-cover bg-center overflow-hidden cursor-pointer ${isSelected ? 'ring-2 ring-[var(--color-accent)]' : ''}`}
       style={thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : undefined}
+      onClick={handleCardClick}
     >
       {/* Placeholder icon when no image */}
       {!thumbUrl && (
@@ -203,7 +253,7 @@ function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
   return (
     <div class="relative shrink-0">
       <button
-        class="w-16 h-12 rounded-md border border-dashed border-[#444] flex items-center justify-center hover:border-[#666] hover:bg-[#ffffff08] transition-colors"
+        class="w-20 h-14 rounded-md border border-dashed border-[#444] flex items-center justify-center hover:border-[#666] hover:bg-[#ffffff08] transition-colors"
         onClick={() => setPopoverOpen(!popoverOpen)}
         title="Add key photo from imported images"
       >
