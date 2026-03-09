@@ -75,27 +75,33 @@ export class PreviewRenderer {
       this.canvas.height = displayH;
     }
 
+    // Pre-resolve all layer sources before clearing canvas.
+    // If no layer has a drawable source, keep the previous frame visible
+    // (avoids black flashes while images load asynchronously).
+    const resolved: { layer: Layer; source: CanvasImageSource }[] = [];
+    const logicalW = rect.width;
+    const logicalH = rect.height;
+
+    for (const layer of layers) {
+      if (!layer.visible) continue;
+      const source = this.resolveLayerSource(layer, frame, frames, fps);
+      if (source !== null) {
+        resolved.push({layer, source});
+      }
+    }
+
+    if (resolved.length === 0) return; // Keep previous frame
+
     const ctx = this.ctx;
 
-    // Clear canvas
+    // Clear canvas only when we have something to draw
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     // Apply DPI scaling — all drawing uses logical pixels (rect.width x rect.height)
     ctx.save();
     ctx.scale(dpr, dpr);
 
-    const logicalW = rect.width;
-    const logicalH = rect.height;
-
-    // Iterate layers bottom-to-top (index 0 is bottom)
-    for (const layer of layers) {
-      // Skip invisible layers
-      if (!layer.visible) continue;
-
-      // Resolve drawable source for this layer at the given frame
-      const source = this.resolveLayerSource(layer, frame, frames, fps);
-      if (source === null) continue; // still loading, skip
-
+    for (const {layer, source} of resolved) {
       this.drawLayer(source, layer, logicalW, logicalH);
     }
 
@@ -147,6 +153,24 @@ export class PreviewRenderer {
     }
   }
 
+  /** Check if an image is already cached (for debug logging) */
+  isImageCached(imageId: string | undefined): boolean {
+    if (!imageId) return false;
+    return this.imageCache.has(imageId);
+  }
+
+  /**
+   * Pre-load images into cache so they're available immediately during playback.
+   * Call with all unique imageIds from the active sequence frames.
+   */
+  preloadImages(imageIds: string[]): void {
+    for (const imageId of imageIds) {
+      // Skip if already cached or loading
+      if (this.imageCache.has(imageId) || this.loadingImages.has(imageId)) continue;
+      this.getImageSource(imageId); // triggers async load
+    }
+  }
+
   /**
    * Get or load an image by imageId from imageStore.
    * Returns HTMLImageElement if cached, null if loading.
@@ -175,7 +199,7 @@ export class PreviewRenderer {
       this.loadingImages.delete(imageId);
       // Silently fail — layer will show nothing for this image
     };
-    img.src = assetUrl(image.project_path);
+    img.src = assetUrl(image.project_path, imageId);
 
     return null;
   }
