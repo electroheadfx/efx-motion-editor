@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 04-04-PLAN.md (Preview cache fix)
-last_updated: "2026-03-09T17:38:41.503Z"
+stopped_at: Completed 04-05-PLAN.md (Pointer events fix for playhead drag and preview pan)
+last_updated: "2026-03-09T17:38:51.467Z"
 last_activity: 2026-03-03 — Completed 06-04 (Properties Panel)
 progress:
   total_phases: 6
@@ -61,6 +61,7 @@ Progress: [====================..........] 65% (v1.0 complete, v2.0 Phase 6 plan
 | Phase 03 P09 | 3min | 2 tasks | 1 files |
 | Phase 03 P10 | 2min | 2 tasks | 3 files |
 | Phase 04 P04 | 2 | 2 tasks | 4 files |
+| Phase 04 P05 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,8 @@ Recent decisions affecting current work:
 - [Phase 03]: Selection cleared on setActive/removeKeyPhoto/reset for clean state management
 - [Phase 04]: Belt-and-suspenders cache busting: both Cache-Control headers and URL query param for efxasset protocol
 - [Phase 04]: imageId used as bustKey since each distinct image already has a unique imageId in store
+- [Phase 04]: Switched MouseEvent to PointerEvent for timeline/preview drag interactions to fix setPointerCapture(0) DOMException
+- [Phase 04]: Widened playhead hit area from 5px to 10px for easier drag targeting
 
 ### Pending Todos
 
@@ -130,6 +133,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-09T17:38:21.039Z
-Stopped at: Completed 04-04-PLAN.md (Preview cache fix)
+Last session: 2026-03-09T17:38:51.465Z
+Stopped at: Completed 04-05-PLAN.md (Pointer events fix for playhead drag and preview pan)
 Resume file: None
