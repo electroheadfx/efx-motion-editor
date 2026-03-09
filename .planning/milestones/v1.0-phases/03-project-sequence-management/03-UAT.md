@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 phase: 03-project-sequence-management
 source: [03-01-SUMMARY.md, 03-02-SUMMARY.md, 03-03-SUMMARY.md]
 started: 2026-03-09T00:00:00Z
-updated: 2026-03-09T00:01:00Z
+updated: 2026-03-09T12:00:00Z
 ---
 
 ## Current Test
@@ -51,7 +51,7 @@ skipped: 0
 ## Gaps
 
 - truth: "Key photo image picker popover is usable when adding multiple photos"
-  status: failed
+  status: resolved
   reason: "User reported: Image picker popover requires scrolling to access photos list when adding second key photo, poor UX"
   severity: minor
   test: 4
@@ -64,7 +64,7 @@ skipped: 0
     - "Responsive max-height based on viewport instead of fixed 200px"
 
 - truth: "Key photos can be dragged horizontally to reorder them"
-  status: failed
+  status: resolved
   reason: "User reported: Drag reorder triggers the drag-and-drop import overlay instead of reordering key photos"
   severity: major
   test: 4
@@ -76,7 +76,7 @@ skipped: 0
     - "Check event.payload.paths.length > 0 before setting isDraggingOver=true"
 
 - truth: "Sequences can be dragged by their handle to reorder them"
-  status: failed
+  status: resolved
   reason: "User reported: Drag-and-drop import overlay appears and blocks sequence reorder. Same root cause as key photo drag issue."
   severity: major
   test: 5
