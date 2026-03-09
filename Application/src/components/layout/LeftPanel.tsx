@@ -4,7 +4,7 @@ import {imageStore} from '../../stores/imageStore';
 import {projectStore} from '../../stores/projectStore';
 import {ImportGrid} from '../import/ImportGrid';
 import {SequenceList} from '../sequence/SequenceList';
-import {KeyPhotoStrip} from '../sequence/KeyPhotoStrip';
+import {KeyPhotoStrip, AddKeyPhotoButton} from '../sequence/KeyPhotoStrip';
 import {LayerList} from '../layer/LayerList';
 import {AddLayerMenu} from '../layer/AddLayerMenu';
 import {tempProjectDir} from '../../lib/projectDir';
@@ -45,6 +45,12 @@ export function LeftPanel() {
             <span class="text-[9px] font-semibold text-[var(--color-text-dim)]">
               KEY PHOTOS
             </span>
+            <div class="flex items-center gap-1">
+              {/* Move/delete buttons -- only visible when a key photo is selected */}
+              <KeyPhotoHeaderActions sequenceId={activeSeq.id} />
+              {/* Add button -- always visible */}
+              <AddKeyPhotoButton sequenceId={activeSeq.id} />
+            </div>
           </div>
           <KeyPhotoStrip />
           {/* Per-sequence settings */}
@@ -131,6 +137,56 @@ export function LeftPanel() {
 
       {/* Thumbnail Grid */}
       <ImportGrid />
+    </div>
+  );
+}
+
+/** Header actions for key photos: move left, delete, move right (only when selected) */
+function KeyPhotoHeaderActions({sequenceId}: {sequenceId: string}) {
+  const selectedId = sequenceStore.selectedKeyPhotoId.value;
+  if (!selectedId) return null;
+
+  const seq = sequenceStore.getById(sequenceId);
+  if (!seq) return null;
+
+  const idx = seq.keyPhotos.findIndex(kp => kp.id === selectedId);
+  if (idx === -1) return null;
+
+  const canMoveLeft = idx > 0;
+  const canMoveRight = idx < seq.keyPhotos.length - 1;
+
+  const btnClass = "w-5 h-5 rounded flex items-center justify-center text-[10px] transition-colors";
+  const enabledClass = "bg-[#2A2A2A] text-[var(--color-text-secondary)] hover:bg-[#333] hover:text-white";
+  const disabledClass = "bg-[#1A1A1A] text-[#444] cursor-default";
+
+  return (
+    <div class="flex items-center gap-0.5">
+      {/* Move left */}
+      <button
+        class={`${btnClass} ${canMoveLeft ? enabledClass : disabledClass}`}
+        onClick={() => canMoveLeft && sequenceStore.reorderKeyPhotos(sequenceId, idx, idx - 1)}
+        disabled={!canMoveLeft}
+        title="Move left"
+      >
+        &lt;
+      </button>
+      {/* Delete */}
+      <button
+        class={`${btnClass} bg-[#2A2A2A] text-[#FF666680] hover:bg-[#3A2020] hover:text-[#FF6666] transition-colors`}
+        onClick={() => sequenceStore.removeKeyPhoto(sequenceId, selectedId)}
+        title="Delete selected key photo"
+      >
+        x
+      </button>
+      {/* Move right */}
+      <button
+        class={`${btnClass} ${canMoveRight ? enabledClass : disabledClass}`}
+        onClick={() => canMoveRight && sequenceStore.reorderKeyPhotos(sequenceId, idx, idx + 1)}
+        disabled={!canMoveRight}
+        title="Move right"
+      >
+        &gt;
+      </button>
     </div>
   );
 }
