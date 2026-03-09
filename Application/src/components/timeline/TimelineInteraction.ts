@@ -6,7 +6,7 @@ import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, TRACK_HEIGHT} from '
 import type {TimelineRenderer} from './TimelineRenderer';
 
 /**
- * TimelineInteraction: Mouse/wheel/touch event handling for the timeline canvas.
+ * TimelineInteraction: Pointer/wheel/touch event handling for the timeline canvas.
  *
  * Translates user interactions into timelineStore/playbackEngine actions:
  * - Click-to-seek (TIME-02)
@@ -26,9 +26,9 @@ export class TimelineInteraction {
   private dragTrackIndex = -1;
 
   // Bound handlers for cleanup
-  private handleMouseDown = this.onMouseDown.bind(this);
-  private handleMouseMove = this.onMouseMove.bind(this);
-  private handleMouseUp = this.onMouseUp.bind(this);
+  private handlePointerDown = this.onPointerDown.bind(this);
+  private handlePointerMove = this.onPointerMove.bind(this);
+  private handlePointerUp = this.onPointerUp.bind(this);
   private handleWheel = this.onWheel.bind(this);
   private handleGestureChange = this.onGestureChange.bind(this);
   private handleGestureStart = this.onGestureStart.bind(this);
@@ -37,9 +37,9 @@ export class TimelineInteraction {
     this.canvas = canvas;
     this.renderer = renderer;
 
-    canvas.addEventListener('mousedown', this.handleMouseDown);
-    canvas.addEventListener('mousemove', this.handleMouseMove);
-    canvas.addEventListener('mouseup', this.handleMouseUp);
+    canvas.addEventListener('pointerdown', this.handlePointerDown);
+    canvas.addEventListener('pointermove', this.handlePointerMove);
+    canvas.addEventListener('pointerup', this.handlePointerUp);
     canvas.addEventListener('wheel', this.handleWheel, {passive: false});
     // macOS pinch-to-zoom via gesture events
     canvas.addEventListener('gesturestart', this.handleGestureStart as EventListener);
@@ -50,9 +50,9 @@ export class TimelineInteraction {
     if (!this.canvas) return;
     const canvas = this.canvas;
 
-    canvas.removeEventListener('mousedown', this.handleMouseDown);
-    canvas.removeEventListener('mousemove', this.handleMouseMove);
-    canvas.removeEventListener('mouseup', this.handleMouseUp);
+    canvas.removeEventListener('pointerdown', this.handlePointerDown);
+    canvas.removeEventListener('pointermove', this.handlePointerMove);
+    canvas.removeEventListener('pointerup', this.handlePointerUp);
     canvas.removeEventListener('wheel', this.handleWheel);
     canvas.removeEventListener('gesturestart', this.handleGestureStart as EventListener);
     canvas.removeEventListener('gesturechange', this.handleGestureChange as EventListener);
@@ -80,7 +80,7 @@ export class TimelineInteraction {
     const currentFrame = timelineStore.currentFrame.peek();
     const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
     const playheadX = currentFrame * frameWidth - timelineStore.scrollX.peek() + TRACK_HEADER_WIDTH + rect.left;
-    return Math.abs(clientX - playheadX) <= 5;
+    return Math.abs(clientX - playheadX) <= 10;
   }
 
   /** Compute track index from clientY position */
@@ -103,7 +103,7 @@ export class TimelineInteraction {
   }
 
   // --- Click-to-seek (TIME-02), playhead drag start, and track header drag ---
-  private onMouseDown(e: MouseEvent) {
+  private onPointerDown(e: PointerEvent) {
     if (!this.canvas) return;
 
     const rect = this.canvas.getBoundingClientRect();
@@ -119,7 +119,7 @@ export class TimelineInteraction {
         this.isDraggingTrack = true;
         this.dragTrackIndex = trackIndex;
         this.canvas.style.cursor = 'grabbing';
-        this.canvas.setPointerCapture((e as unknown as PointerEvent).pointerId ?? 0);
+        this.canvas.setPointerCapture(e.pointerId);
 
         // Set initial drag visual state
         if (this.renderer) {
@@ -136,7 +136,7 @@ export class TimelineInteraction {
     if (this.isOnPlayhead(e.clientX)) {
       // Start playhead drag (TIME-03)
       this.isDragging = true;
-      this.canvas.setPointerCapture((e as unknown as PointerEvent).pointerId ?? 0);
+      this.canvas.setPointerCapture(e.pointerId);
     } else {
       // Click-to-seek
       const frame = this.getFrame(e.clientX);
@@ -145,7 +145,7 @@ export class TimelineInteraction {
   }
 
   // --- Playhead scrubbing (TIME-03) and track header drag (TIME-06) ---
-  private onMouseMove(e: MouseEvent) {
+  private onPointerMove(e: PointerEvent) {
     // Track header dragging
     if (this.isDraggingTrack) {
       const dropIndex = this.dropIndexFromY(e.clientY);
@@ -180,10 +180,10 @@ export class TimelineInteraction {
     }
   }
 
-  private onMouseUp(_e: MouseEvent) {
+  private onPointerUp(e: PointerEvent) {
     // Track header drop (TIME-06)
     if (this.isDraggingTrack) {
-      const dropIndex = this.dropIndexFromY(_e.clientY);
+      const dropIndex = this.dropIndexFromY(e.clientY);
       // Compute effective target index for reorderSequences
       // dropIndex is the insertion point; if dropping below the dragged track, adjust
       const fromIndex = this.dragTrackIndex;
@@ -204,9 +204,9 @@ export class TimelineInteraction {
       if (this.canvas) {
         this.canvas.style.cursor = 'default';
         try {
-          this.canvas.releasePointerCapture((_e as unknown as PointerEvent).pointerId ?? 0);
+          this.canvas.releasePointerCapture(e.pointerId);
         } catch {
-          // Pointer capture may not be active
+          // Pointer capture may have been released by browser
         }
       }
       return;
@@ -215,11 +215,11 @@ export class TimelineInteraction {
     // Playhead drag end
     if (this.isDragging) {
       this.isDragging = false;
-      if (this.canvas && (_e as unknown as PointerEvent).pointerId !== undefined) {
+      if (this.canvas) {
         try {
-          this.canvas.releasePointerCapture((_e as unknown as PointerEvent).pointerId);
+          this.canvas.releasePointerCapture(e.pointerId);
         } catch {
-          // Pointer capture may not be active
+          // Pointer capture may have been released by browser
         }
       }
     }
