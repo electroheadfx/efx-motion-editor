@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 03-project-sequence-management
 source: [03-01-SUMMARY.md, 03-02-SUMMARY.md, 03-03-SUMMARY.md]
 started: 2026-03-09T00:00:00Z
@@ -55,21 +55,34 @@ skipped: 0
   reason: "User reported: Image picker popover requires scrolling to access photos list when adding second key photo, poor UX"
   severity: minor
   test: 4
-  artifacts: []
-  missing: []
+  root_cause: "Popover has fixed max-h-[200px], static top-14 positioning, and overflow-y-auto. Doesn't adapt to available space in LeftPanel."
+  artifacts:
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "Lines 207-232: popover CSS has fixed max-height and static positioning"
+  missing:
+    - "Dynamic popover positioning that detects available space and flips direction"
+    - "Responsive max-height based on viewport instead of fixed 200px"
 
 - truth: "Key photos can be dragged horizontally to reorder them"
   status: failed
   reason: "User reported: Drag reorder triggers the drag-and-drop import overlay instead of reordering key photos"
   severity: major
   test: 4
-  artifacts: []
-  missing: []
+  root_cause: "Tauri onDragDropEvent in dragDrop.ts catches ALL drag events including SortableJS internal drags. No check for event.payload.paths to distinguish external file drops from internal reorder drags."
+  artifacts:
+    - path: "Application/src/lib/dragDrop.ts"
+      issue: "Lines 38-59: onDragDropEvent sets isDraggingOver=true without checking if paths exist"
+  missing:
+    - "Check event.payload.paths.length > 0 before setting isDraggingOver=true"
 
 - truth: "Sequences can be dragged by their handle to reorder them"
   status: failed
   reason: "User reported: Drag-and-drop import overlay appears and blocks sequence reorder. Same root cause as key photo drag issue."
   severity: major
   test: 5
-  artifacts: []
-  missing: []
+  root_cause: "Same as test 4 drag issue — Tauri onDragDropEvent in dragDrop.ts catches SortableJS internal drags."
+  artifacts:
+    - path: "Application/src/lib/dragDrop.ts"
+      issue: "Lines 38-59: onDragDropEvent sets isDraggingOver=true without checking if paths exist"
+  missing:
+    - "Check event.payload.paths.length > 0 before setting isDraggingOver=true"
