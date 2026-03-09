@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 04-05-PLAN.md (Pointer events fix for playhead drag and preview pan)
-last_updated: "2026-03-09T17:38:51.467Z"
-last_activity: 2026-03-03 — Completed 06-04 (Properties Panel)
+stopped_at: Completed 05-05-PLAN.md (JKL Shuttle Rewrite)
+last_updated: "2026-03-09T21:15:15.740Z"
+last_activity: 2026-03-09 — Completed 05-05 (JKL Shuttle Rewrite)
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
-  percent: 65
+  completed_phases: 1
+  total_plans: 9
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 6 — Layer System & Properties Panel (multi-layer compositing data model, UI, persistence)
+**Current focus:** Phase 5 — Editing Infrastructure (gap closure: JKL shuttle rewrite)
 
 ## Current Position
 
-Phase: 6 of 10 (Layer System & Properties Panel)
-Plan: 4 of 4 in current phase -- COMPLETE (pending human verification)
+Phase: 5 of 10 (Editing Infrastructure)
+Plan: 5 of 5 in current phase -- COMPLETE
 Status: In Progress
-Last activity: 2026-03-03 — Completed 06-04 (Properties Panel)
+Last activity: 2026-03-09 — Completed 05-05 (JKL Shuttle Rewrite)
 
-Progress: [====================..........] 65% (v1.0 complete, v2.0 Phase 6 plan 4/4)
+Progress: [█████████░] 89% (v1.0 complete, v2.0 Phase 5 plan 5/5)
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [====================..........] 65% (v1.0 complete, v2.0 Phase 6 plan
 | Phase 03 P10 | 2min | 2 tasks | 3 files |
 | Phase 04 P04 | 2 | 2 tasks | 4 files |
 | Phase 04 P05 | 2min | 2 tasks | 2 files |
+| Phase 05 P05 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -82,7 +83,7 @@ Recent decisions affecting current work:
 - 05-02: resetHistory clears coalescing state to prevent stale anchors across projects
 - 05-03: tinykeys module declaration in vite-env.d.ts to work around v3.0.0 missing types export
 - 05-03: Toolbar refactored to use uiStore.showNewProjectDialog signal for Cmd+N parity
-- 05-03: JKL shuttle uses own rAF loop separate from PlaybackEngine for variable-rate stepping
+- ~~05-03: JKL shuttle uses own rAF loop separate from PlaybackEngine for variable-rate stepping~~ (superseded by 05-05: shuttle is state-only, PlaybackEngine reads shuttle signals)
 - 06-01: layerStore.layers computed from sequenceStore active sequence (not independent signal)
 - 06-01: All layer mutations route through sequenceStore for unified snapshot/restore undo
 - 06-01: Base layer ID always 'base' with isBase=true for deletion protection
@@ -117,6 +118,9 @@ Recent decisions affecting current work:
 - [Phase 04]: imageId used as bustKey since each distinct image already has a unique imageId in store
 - [Phase 04]: Switched MouseEvent to PointerEvent for timeline/preview drag interactions to fix setPointerCapture(0) DOMException
 - [Phase 04]: Widened playhead hit area from 5px to 10px for easier drag targeting
+- [Phase 05]: 05-05: JKL shuttle is purely state-only (no rAF loop); PlaybackEngine reads shuttle signals in its tick
+- [Phase 05]: 05-05: Space is sole play/stop; J/L set direction+speed; K resets to 1x forward without stopping
+- [Phase 05]: 05-05: Playback auto-loops at boundaries instead of stopping
 
 ### Pending Todos
 
@@ -133,6 +137,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-09T17:38:51.465Z
-Stopped at: Completed 04-05-PLAN.md (Pointer events fix for playhead drag and preview pan)
+Last session: 2026-03-09T21:15:15.738Z
+Stopped at: Completed 05-05-PLAN.md (JKL Shuttle Rewrite)
 Resume file: None
