@@ -4,7 +4,7 @@ import {sequenceStore} from '../../stores/sequenceStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 
-/** Key photo strip with thumbnails, hold duration editing, move buttons + SortableJS drag reorder */
+/** Key photo strip with thumbnails, hold duration editing, click-to-select + SortableJS drag reorder */
 export function KeyPhotoStrip() {
   const activeSeq = sequenceStore.getActiveSequence();
 
@@ -20,13 +20,10 @@ export function KeyPhotoStrip() {
 
   if (activeSeq.keyPhotos.length === 0) {
     return (
-      <div class="px-3 py-3">
-        <div class="flex items-center gap-2">
-          <AddKeyPhotoButton sequenceId={activeSeq.id} />
-          <span class="text-[10px] text-[var(--color-text-dim)]">
-            No key photos yet
-          </span>
-        </div>
+      <div class="px-3 py-3 text-center">
+        <span class="text-[10px] text-[var(--color-text-dim)]">
+          No key photos yet
+        </span>
       </div>
     );
   }
@@ -75,27 +72,20 @@ function KeyPhotoStripInner({sequenceId}: {sequenceId: string}) {
   }, [keyPhotos.length, sequenceId]);
 
   return (
-    <div class="flex gap-1 items-start">
-      <AddKeyPhotoButton sequenceId={sequenceId} />
-      <div
-        ref={stripRef}
-        class="flex gap-1 overflow-x-auto scrollbar-hidden pb-1 flex-1 min-w-0"
-        onWheel={handleWheel}
-      >
-        {keyPhotos.map((kp, i) => (
-          <KeyPhotoCard
-            key={kp.id}
-            sequenceId={sequenceId}
-            keyPhotoId={kp.id}
-            imageId={kp.imageId}
-            holdFrames={kp.holdFrames}
-            canMoveLeft={i > 0}
-            canMoveRight={i < keyPhotos.length - 1}
-            onMoveLeft={() => sequenceStore.reorderKeyPhotos(sequenceId, i, i - 1)}
-            onMoveRight={() => sequenceStore.reorderKeyPhotos(sequenceId, i, i + 1)}
-          />
-        ))}
-      </div>
+    <div
+      ref={stripRef}
+      class="flex gap-1 overflow-x-auto scrollbar-hidden pb-1"
+      onWheel={handleWheel}
+    >
+      {keyPhotos.map((kp) => (
+        <KeyPhotoCard
+          key={kp.id}
+          sequenceId={sequenceId}
+          keyPhotoId={kp.id}
+          imageId={kp.imageId}
+          holdFrames={kp.holdFrames}
+        />
+      ))}
     </div>
   );
 }
@@ -105,10 +95,6 @@ interface KeyPhotoCardProps {
   keyPhotoId: string;
   imageId: string;
   holdFrames: number;
-  canMoveLeft: boolean;
-  canMoveRight: boolean;
-  onMoveLeft: () => void;
-  onMoveRight: () => void;
 }
 
 function KeyPhotoCard({
@@ -116,16 +102,13 @@ function KeyPhotoCard({
   keyPhotoId,
   imageId,
   holdFrames,
-  canMoveLeft,
-  canMoveRight,
-  onMoveLeft,
-  onMoveRight,
 }: KeyPhotoCardProps) {
   const [editingFrames, setEditingFrames] = useState(false);
   const [frameValue, setFrameValue] = useState(String(holdFrames));
   const inputRef = useRef<HTMLInputElement>(null);
   const image = imageStore.getById(imageId);
   const thumbUrl = image ? assetUrl(image.thumbnail_path) : null;
+  const isSelected = sequenceStore.selectedKeyPhotoId.value === keyPhotoId;
 
   useEffect(() => {
     if (editingFrames && inputRef.current) {
@@ -142,55 +125,17 @@ function KeyPhotoCard({
     setEditingFrames(false);
   }, [frameValue, holdFrames, sequenceId, keyPhotoId]);
 
-  const handleRemove = useCallback(
-    (e: MouseEvent) => {
-      e.stopPropagation();
-      sequenceStore.removeKeyPhoto(sequenceId, keyPhotoId);
-    },
-    [sequenceId, keyPhotoId],
-  );
-
   return (
     <div
-      class="group w-[72px] h-14 rounded-md relative shrink-0 bg-[#2A2A2A] bg-cover bg-center overflow-hidden"
+      class={`w-[72px] h-14 rounded-md relative shrink-0 bg-[#2A2A2A] bg-cover bg-center overflow-hidden cursor-pointer${isSelected ? ' ring-1 ring-[var(--color-accent)]' : ''}`}
       style={thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : undefined}
+      onClick={() => sequenceStore.selectKeyPhoto(keyPhotoId)}
     >
       {/* Placeholder icon when no image */}
       {!thumbUrl && (
         <div class="absolute inset-0 flex items-center justify-center">
           <span class="text-[10px] text-[#555]">?</span>
         </div>
-      )}
-
-      {/* Remove button -- visible on hover, top-right corner */}
-      <button
-        class="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-[#FF444480] text-white text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#FF4444CC]"
-        onClick={handleRemove}
-        title="Remove key photo"
-      >
-        x
-      </button>
-
-      {/* Move left button -- visible on hover */}
-      {canMoveLeft && (
-        <button
-          class="absolute left-0.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#00000080] text-white text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#000000CC]"
-          onClick={(e: MouseEvent) => { e.stopPropagation(); onMoveLeft(); }}
-          title="Move left"
-        >
-          &lt;
-        </button>
-      )}
-
-      {/* Move right button -- visible on hover */}
-      {canMoveRight && (
-        <button
-          class="absolute right-0.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#00000080] text-white text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#000000CC]"
-          onClick={(e: MouseEvent) => { e.stopPropagation(); onMoveRight(); }}
-          title="Move right"
-        >
-          &gt;
-        </button>
       )}
 
       {/* Hold frames badge */}
@@ -229,7 +174,7 @@ function KeyPhotoCard({
   );
 }
 
-function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
+export function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
   const importedImages = imageStore.images.value;
@@ -257,18 +202,18 @@ function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
   return (
     <div class="relative shrink-0">
       <button
-        class="w-6 h-14 rounded-md bg-[#2A2A2A] flex items-center justify-center hover:bg-[#333] transition-colors"
+        class="w-5 h-5 rounded flex items-center justify-center bg-[#2A2A2A] text-[10px] text-[var(--color-text-secondary)] hover:bg-[#333] hover:text-white transition-colors"
         onClick={() => setPopoverOpen(!popoverOpen)}
         title="Add key photo from imported images"
       >
-        <span class="text-sm text-[#777] leading-none">+</span>
+        +
       </button>
 
       {/* Image picker popover */}
       {popoverOpen && (
         <div
           ref={popRef}
-          class="absolute left-0 bottom-14 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
+          class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
         >
           {importedImages.length === 0 ? (
             <span class="text-[10px] text-[var(--color-text-dim)] block p-2">

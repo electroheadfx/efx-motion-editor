@@ -6,6 +6,7 @@ import {pushAction} from '../lib/history';
 
 const sequences = signal<Sequence[]>([]);
 const activeSequenceId = signal<string | null>(null);
+const selectedKeyPhotoId = signal<string | null>(null);
 
 /** Generate a unique ID */
 function genId(): string {
@@ -45,6 +46,7 @@ function restore(snap: {seqs: Sequence[]; active: string | null}) {
 export const sequenceStore = {
   sequences,
   activeSequenceId,
+  selectedKeyPhotoId,
 
   // --- Sequence CRUD ---
 
@@ -246,6 +248,9 @@ export const sequenceStore = {
         ? {...s, keyPhotos: s.keyPhotos.filter((kp) => kp.id !== keyPhotoId)}
         : s,
     );
+    if (selectedKeyPhotoId.peek() === keyPhotoId) {
+      selectedKeyPhotoId.value = null;
+    }
     markDirty();
 
     const after = snapshot();
@@ -422,6 +427,15 @@ export const sequenceStore = {
 
   setActive(id: string | null) {
     activeSequenceId.value = id;
+    selectedKeyPhotoId.value = null;
+  },
+
+  selectKeyPhoto(id: string | null) {
+    selectedKeyPhotoId.value = id;
+  },
+
+  clearKeyPhotoSelection() {
+    selectedKeyPhotoId.value = null;
   },
 
   getById(id: string) {
@@ -439,6 +453,7 @@ export const sequenceStore = {
     batch(() => {
       sequences.value = [];
       activeSequenceId.value = null;
+      selectedKeyPhotoId.value = null;
     });
   },
 };
