@@ -3,13 +3,15 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {uiStore} from '../stores/uiStore';
 import {projectStore} from '../stores/projectStore';
 import {totalFrames, frameMap} from './frameMap';
+import {shuttleDirection, shuttleSpeed, resetShuttle} from './jklShuttle';
 
 /**
  * PlaybackEngine: rAF-based frame-rate-limited playback tick loop.
  *
  * Uses performance.now() delta accumulation for accurate frame timing.
- * This pattern prevents drift at both 15fps and 24fps and is essential
- * for PREV-05 audio sync readiness.
+ * Reads shuttle speed/direction signals in the tick loop for variable-rate
+ * playback. Auto-loops at frame boundaries (forward wraps to start,
+ * reverse wraps to end).
  *
  * CRITICAL: Uses .peek() (not .value) inside the rAF tick to avoid
  * Preact signal subscription tracking outside of effects.
@@ -38,6 +40,7 @@ export class PlaybackEngine {
       this.rafId = null;
     }
     timelineStore.setPlaying(false);
+    resetShuttle();
   }
 
   toggle() {
@@ -88,7 +91,9 @@ export class PlaybackEngine {
 
   private tick = (now: number) => {
     const fps = projectStore.fps.peek();
-    const frameDuration = 1000 / fps;
+    const speed = shuttleSpeed.peek();
+    const direction = shuttleDirection.peek();
+    const frameDuration = 1000 / (fps * speed);
     const delta = now - this.lastTime;
     this.lastTime = now;
     this.accumulator += delta;
@@ -98,11 +103,22 @@ export class PlaybackEngine {
     while (this.accumulator >= frameDuration) {
       this.accumulator -= frameDuration;
       const currentFrame = timelineStore.currentFrame.peek();
-      if (currentFrame >= maxFrames - 1) {
-        this.stop();
-        return;
+
+      if (direction > 0) {
+        // Forward playback
+        if (currentFrame >= maxFrames - 1) {
+          timelineStore.seek(0); // auto-loop to start
+        } else {
+          timelineStore.stepForward();
+        }
+      } else {
+        // Reverse playback
+        if (currentFrame <= 0) {
+          timelineStore.seek(maxFrames - 1); // auto-loop to end
+        } else {
+          timelineStore.stepBackward();
+        }
       }
-      timelineStore.stepForward();
     }
 
     this.syncActiveSequence();
