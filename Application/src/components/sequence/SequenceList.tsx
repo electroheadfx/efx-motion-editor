@@ -3,6 +3,8 @@ import Sortable from 'sortablejs';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {imageStore} from '../../stores/imageStore';
+import {timelineStore} from '../../stores/timelineStore';
+import {trackLayouts} from '../../lib/frameMap';
 import {assetUrl} from '../../lib/ipc';
 import type {Sequence} from '../../types/sequence';
 
@@ -12,7 +14,7 @@ export function SequenceList() {
   const sequences = sequenceStore.sequences.value;
   const activeId = uiStore.selectedSequenceId.value;
 
-  // SortableJS integration
+  // SortableJS integration — recreate when items added/removed to keep DOM refs fresh
   useEffect(() => {
     if (!listRef.current) return;
     const instance = Sortable.create(listRef.current, {
@@ -20,13 +22,17 @@ export function SequenceList() {
       ghostClass: 'opacity-30',
       handle: '.seq-drag-handle',
       onEnd(evt) {
-        if (evt.oldIndex != null && evt.newIndex != null) {
-          sequenceStore.reorderSequences(evt.oldIndex, evt.newIndex);
+        const { oldIndex, newIndex, item, from } = evt;
+        if (oldIndex != null && newIndex != null && oldIndex !== newIndex) {
+          // Revert SortableJS DOM mutation so Preact can re-render correctly
+          from.removeChild(item);
+          from.insertBefore(item, from.children[oldIndex] ?? null);
+          sequenceStore.reorderSequences(oldIndex, newIndex);
         }
       },
     });
     return () => instance.destroy();
-  }, []);
+  }, [sequences.length]);
 
   return (
     <div ref={listRef} class="flex flex-col gap-px flex-1 min-h-0 overflow-y-auto">
@@ -91,6 +97,11 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
     if (!editing) {
       uiStore.selectSequence(seq.id);
       sequenceStore.setActive(seq.id);
+      // Seek playhead to this sequence's start frame so preview shows the right content
+      const track = trackLayouts.peek().find((t) => t.sequenceId === seq.id);
+      if (track) {
+        timelineStore.seek(track.startFrame);
+      }
     }
   }, [seq.id, editing]);
 
