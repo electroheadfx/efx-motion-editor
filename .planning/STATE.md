@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 03-10-PLAN.md (Key photo header bar controls with selection state)
-last_updated: "2026-03-09T15:46:54.659Z"
+stopped_at: Completed 04-04-PLAN.md (Preview cache fix)
+last_updated: "2026-03-09T17:38:41.503Z"
 last_activity: 2026-03-03 — Completed 06-04 (Properties Panel)
 progress:
   total_phases: 6
@@ -60,6 +60,7 @@ Progress: [====================..........] 65% (v1.0 complete, v2.0 Phase 6 plan
 | Phase 03 P07 | 2min | 1 tasks | 1 files |
 | Phase 03 P09 | 3min | 2 tasks | 1 files |
 | Phase 03 P10 | 2min | 2 tasks | 3 files |
+| Phase 04 P04 | 2 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,8 @@ Recent decisions affecting current work:
 - [Phase 03]: Header bar layout: KEY PHOTOS [< X >] [+] with move/delete only when selected
 - [Phase 03]: AddKeyPhotoButton popover opens downward and right-aligned for header bar context
 - [Phase 03]: Selection cleared on setActive/removeKeyPhoto/reset for clean state management
+- [Phase 04]: Belt-and-suspenders cache busting: both Cache-Control headers and URL query param for efxasset protocol
+- [Phase 04]: imageId used as bustKey since each distinct image already has a unique imageId in store
 
 ### Pending Todos
 
@@ -127,6 +130,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-09T15:38:32.607Z
-Stopped at: Completed 03-10-PLAN.md (Key photo header bar controls with selection state)
+Last session: 2026-03-09T17:38:21.039Z
+Stopped at: Completed 04-04-PLAN.md (Preview cache fix)
 Resume file: None
