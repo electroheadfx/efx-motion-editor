@@ -43,7 +43,7 @@ function KeyPhotoStripInner({sequenceId}: {sequenceId: string}) {
   const activeSeq = sequenceStore.getById(sequenceId);
   const keyPhotos = activeSeq?.keyPhotos ?? [];
 
-  // SortableJS integration -- recreate when active sequence changes
+  // SortableJS integration — recreate when sequence or key photo count changes
   useEffect(() => {
     if (!stripRef.current) return;
     const instance = Sortable.create(stripRef.current, {
@@ -52,19 +52,25 @@ function KeyPhotoStripInner({sequenceId}: {sequenceId: string}) {
       direction: 'horizontal',
       draggable: '.kp-card',
       onEnd(evt) {
-        if (evt.oldIndex != null && evt.newIndex != null) {
-          sequenceStore.reorderKeyPhotos(sequenceId, evt.oldIndex, evt.newIndex);
+        const { oldIndex, newIndex, item, from } = evt;
+        if (oldIndex != null && newIndex != null && oldIndex !== newIndex) {
+          // Revert SortableJS DOM mutation so Preact can re-render correctly
+          from.removeChild(item);
+          from.insertBefore(item, from.children[oldIndex] ?? null);
+          sequenceStore.reorderKeyPhotos(sequenceId, oldIndex, newIndex);
         }
       },
     });
     return () => instance.destroy();
-  }, [sequenceId]);
+  }, [sequenceId, keyPhotos.length]);
 
   return (
-    <div ref={stripRef} class="flex gap-1.5 overflow-x-auto pb-1">
-      {keyPhotos.map((kp) => (
-        <KeyPhotoCard key={kp.id} sequenceId={sequenceId} keyPhotoId={kp.id} imageId={kp.imageId} holdFrames={kp.holdFrames} />
-      ))}
+    <div class="flex gap-1.5 items-start">
+      <div ref={stripRef} class="flex gap-1.5 overflow-x-auto pb-1 flex-1 min-w-0">
+        {keyPhotos.map((kp) => (
+          <KeyPhotoCard key={kp.id} sequenceId={sequenceId} keyPhotoId={kp.id} imageId={kp.imageId} holdFrames={kp.holdFrames} />
+        ))}
+      </div>
       <AddKeyPhotoButton sequenceId={sequenceId} />
     </div>
   );

@@ -24,14 +24,18 @@ pub fn project_create(
     fps: u32,
     dir_path: String,
 ) -> Result<MceProject, String> {
-    // Register project dir with asset protocol scope
+    // Create project directory structure FIRST so we can canonicalize
+    project_io::create_project_dir(&dir_path)?;
+
+    // Canonicalize then register with asset protocol scope.
+    // This resolves macOS Unicode normalization differences (NFC vs NFD)
+    // that cause 403 errors on paths with accented characters (e.g. "Téléchargements").
+    let canonical = std::fs::canonicalize(&dir_path)
+        .unwrap_or_else(|_| std::path::PathBuf::from(&dir_path));
     let scope = app.asset_protocol_scope();
     scope
-        .allow_directory(std::path::Path::new(&dir_path), true)
+        .allow_directory(&canonical, true)
         .map_err(|e| format!("Failed to register asset scope: {e}"))?;
-
-    // Create project directory structure
-    project_io::create_project_dir(&dir_path)?;
 
     let now = chrono::Utc::now().to_rfc3339();
     Ok(MceProject {
@@ -67,13 +71,24 @@ pub fn project_open(app: tauri::AppHandle, file_path: String) -> Result<MceProje
         .parent()
         .ok_or_else(|| "Invalid file path".to_string())?;
 
-    // Register project dir with asset protocol scope
+    // Canonicalize then register with asset protocol scope.
+    // This resolves macOS Unicode normalization differences (NFC vs NFD)
+    // that cause 403 errors on paths with accented characters.
+    let canonical = std::fs::canonicalize(project_root)
+        .unwrap_or_else(|_| project_root.to_path_buf());
     let scope = app.asset_protocol_scope();
     scope
-        .allow_directory(project_root, true)
+        .allow_directory(&canonical, true)
         .map_err(|e| format!("Failed to register asset scope: {e}"))?;
 
     project_io::open_project(&file_path)
+}
+
+/// Check if a file path exists on disk.
+/// Uses std::path::Path directly -- not restricted by Tauri FS scope.
+#[command]
+pub fn path_exists(file_path: String) -> bool {
+    std::path::Path::new(&file_path).exists()
 }
 
 /// Move images and .thumbs from temp dir to real project dir

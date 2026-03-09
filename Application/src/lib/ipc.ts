@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import type { ProjectData, MceProject } from '../types/project';
 import type { ImageInfo, ImportResult } from '../types/image';
 
@@ -18,9 +17,13 @@ export async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>)
   }
 }
 
-// Asset protocol URL conversion
+// Custom protocol URL conversion — bypasses Tauri asset scope restrictions
+// that fail on macOS paths with accented characters (NFC/NFD mismatch).
 export function assetUrl(filePath: string): string {
-  return convertFileSrc(filePath);
+  const encoded = encodeURIComponent(filePath)
+    .replace(/%2F/g, '/')
+    .replace(/%3A/g, ':');
+  return `efxasset://localhost${encoded}`;
 }
 
 // --- Project commands ---
@@ -42,6 +45,11 @@ export async function projectOpen(filePath: string): Promise<Result<MceProject>>
 
 export async function projectMigrateTempImages(tempDir: string, projectDir: string): Promise<Result<string[]>> {
   return safeInvoke<string[]>('project_migrate_temp_images', { tempDir, projectDir });
+}
+
+// --- Path utilities ---
+export async function pathExists(filePath: string): Promise<Result<boolean>> {
+  return safeInvoke<boolean>('path_exists', { filePath });
 }
 
 // --- Image commands ---
