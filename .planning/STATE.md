@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 03-08-PLAN.md (Key Photo Strip UX gap closure)
-last_updated: "2026-03-09T13:45:46.276Z"
+stopped_at: Completed 03-07-PLAN.md (Portal context menu and forceFallback SortableJS)
+last_updated: "2026-03-09T13:46:29.081Z"
 last_activity: 2026-03-03 — Completed 06-04 (Properties Panel)
 progress:
   total_phases: 6
@@ -57,6 +57,7 @@ Progress: [====================..........] 65% (v1.0 complete, v2.0 Phase 6 plan
 | Phase 03 P06 | 1min | 2 tasks | 2 files |
 | Phase 03 P05 | 2min | 2 tasks | 4 files |
 | Phase 03 P08 | 2min | 2 tasks | 2 files |
+| Phase 03 P07 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,8 @@ Recent decisions affecting current work:
 - [Phase 03]: Hard-coded hex colors (#CCCCCC, #999999) for non-highlighted recent project items to guarantee contrast
 - [Phase 03]: Removed SortableJS from KeyPhotoStrip in favor of click-select + arrow key reorder per UAT user feedback
 - [Phase 03]: scrollbar-hidden CSS utility for cross-browser hidden scrollbar with wheel-to-horizontal-scroll
+- [Phase 03]: createPortal from preact/compat renders context menu in document.body, escaping overflow-y-auto container
+- [Phase 03]: SortableJS forceFallback:true uses CSS transforms + pointer events, bypassing Tauri native HTML5 DnD interception
 
 ### Pending Todos
 
@@ -117,6 +120,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-09T13:45:46.275Z
-Stopped at: Completed 03-08-PLAN.md (Key Photo Strip UX gap closure)
+Last session: 2026-03-09T13:46:29.079Z
+Stopped at: Completed 03-07-PLAN.md (Portal context menu and forceFallback SortableJS)
 Resume file: None
