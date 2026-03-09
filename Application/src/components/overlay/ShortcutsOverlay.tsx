@@ -18,9 +18,9 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     entries: [
       {keys: '\u2423 Space', description: 'Play / Pause'},
       {keys: '\u2190 \u2192', description: 'Step frame'},
-      {keys: 'J', description: 'Shuttle reverse'},
-      {keys: 'K', description: 'Stop'},
-      {keys: 'L', description: 'Shuttle forward'},
+      {keys: 'J', description: 'Set reverse / increase speed'},
+      {keys: 'K', description: 'Reset speed to 1x forward'},
+      {keys: 'L', description: 'Set forward / increase speed'},
     ],
   },
   {
