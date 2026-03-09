@@ -21,10 +21,10 @@ export function KeyPhotoStrip() {
     return (
       <div class="px-3 py-3">
         <div class="flex items-center gap-2">
+          <AddKeyPhotoButton sequenceId={activeSeq.id} />
           <span class="text-[10px] text-[var(--color-text-dim)]">
             No key photos yet
           </span>
-          <AddKeyPhotoButton sequenceId={activeSeq.id} />
         </div>
       </div>
     );
@@ -86,10 +86,11 @@ function KeyPhotoStripInner({sequenceId}: {sequenceId: string}) {
   }, [selectedKpId, keyPhotos, sequenceId]);
 
   return (
-    <div class="flex gap-1.5 items-start">
+    <div class="flex gap-1 items-start">
+      <AddKeyPhotoButton sequenceId={sequenceId} />
       <div
         ref={stripRef}
-        class="flex gap-1.5 overflow-x-auto scrollbar-hidden pb-1 flex-1 min-w-0 outline-none"
+        class="flex gap-1 overflow-x-auto scrollbar-hidden pb-1 flex-1 min-w-0 outline-none"
         tabIndex={0}
         onWheel={handleWheel}
         onKeyDown={handleKeyDown}
@@ -106,7 +107,6 @@ function KeyPhotoStripInner({sequenceId}: {sequenceId: string}) {
           />
         ))}
       </div>
-      <AddKeyPhotoButton sequenceId={sequenceId} />
     </div>
   );
 }
@@ -169,7 +169,7 @@ function KeyPhotoCard({
 
   return (
     <div
-      class={`group w-20 h-14 rounded-md relative shrink-0 bg-[#2A2A2A] bg-cover bg-center overflow-hidden cursor-pointer ${isSelected ? 'ring-2 ring-[var(--color-accent)]' : ''}`}
+      class={`group w-[72px] h-14 rounded-md relative shrink-0 bg-[#2A2A2A] bg-cover bg-center overflow-hidden cursor-pointer ${isSelected ? 'ring-2 ring-[var(--color-accent)]' : ''}`}
       style={thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : undefined}
       onClick={handleCardClick}
     >
@@ -253,11 +253,11 @@ function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
   return (
     <div class="relative shrink-0">
       <button
-        class="w-20 h-14 rounded-md border border-dashed border-[#444] flex items-center justify-center hover:border-[#666] hover:bg-[#ffffff08] transition-colors"
+        class="w-6 h-14 rounded-md bg-[#2A2A2A] flex items-center justify-center hover:bg-[#333] transition-colors"
         onClick={() => setPopoverOpen(!popoverOpen)}
         title="Add key photo from imported images"
       >
-        <span class="text-lg text-[#555] leading-none">+</span>
+        <span class="text-sm text-[#777] leading-none">+</span>
       </button>
 
       {/* Image picker popover */}
