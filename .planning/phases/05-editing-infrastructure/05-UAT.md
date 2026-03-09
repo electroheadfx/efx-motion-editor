@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 phase: 05-editing-infrastructure
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md]
 started: 2026-03-09T00:00:00Z
-updated: 2026-03-09T01:00:00Z
+updated: 2026-03-09T02:00:00Z
 ---
 
 ## Current Test
@@ -79,7 +79,7 @@ skipped: 0
 ## Gaps
 
 - truth: "Cmd+Z undoes the last sequence mutation"
-  status: failed
+  status: resolved
   reason: "User reported: Cmd+Z or ctrl+Z (on mac) no work, I have no state reverts on any action"
   severity: major
   test: 5
@@ -92,7 +92,7 @@ skipped: 0
   debug_session: ".planning/debug/undo-redo-cmd-z-broken.md"
 
 - truth: "Cmd+Shift+Z redoes the last undone change"
-  status: failed
+  status: resolved
   reason: "User reported: redo and undo no work"
   severity: major
   test: 6
@@ -105,7 +105,7 @@ skipped: 0
   debug_session: ".planning/debug/undo-redo-cmd-z-broken.md"
 
 - truth: "JKL shuttle provides intuitive speed/direction control separate from play/pause"
-  status: failed
+  status: resolved
   reason: "User reported: L and J make multiplier and play at same time. Not intuitive. Space should control play/stop, L/J set direction and speed, K resets. Needs auto-loop."
   severity: major
   test: 9
@@ -125,7 +125,7 @@ skipped: 0
   debug_session: ""
 
 - truth: "Pressing ? opens the shortcuts overlay"
-  status: failed
+  status: resolved
   reason: "User reported: No help shortcuts keyboard appear when I press '?'. On mac I need to press with shift+','"
   severity: major
   test: 11
