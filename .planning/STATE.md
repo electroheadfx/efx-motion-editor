@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 03-09-PLAN.md (Key photo strip gap closure - add button position, move buttons, SortableJS drag)
-last_updated: "2026-03-09T14:42:17.811Z"
+stopped_at: Completed 03-10-PLAN.md (Key photo header bar controls with selection state)
+last_updated: "2026-03-09T15:38:32.609Z"
 last_activity: 2026-03-03 — Completed 06-04 (Properties Panel)
 progress:
   total_phases: 6
@@ -59,6 +59,7 @@ Progress: [====================..........] 65% (v1.0 complete, v2.0 Phase 6 plan
 | Phase 03 P08 | 2min | 2 tasks | 2 files |
 | Phase 03 P07 | 2min | 1 tasks | 1 files |
 | Phase 03 P09 | 3min | 2 tasks | 1 files |
+| Phase 03 P10 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,9 @@ Recent decisions affecting current work:
 - [Phase 03]: SortableJS forceFallback:true uses CSS transforms + pointer events, bypassing Tauri native HTML5 DnD interception
 - [Phase 03]: Re-added SortableJS with forceFallback:true to KeyPhotoStrip alongside hover move buttons for dual reorder UX
 - [Phase 03]: Cards resized from 80px to 72px with compact 24px add button for 3-thumbnail visible window in 268px panel
+- [Phase 03]: Header bar layout: KEY PHOTOS [< X >] [+] with move/delete only when selected
+- [Phase 03]: AddKeyPhotoButton popover opens downward and right-aligned for header bar context
+- [Phase 03]: Selection cleared on setActive/removeKeyPhoto/reset for clean state management
 
 ### Pending Todos
 
@@ -123,6 +127,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-09T14:42:17.809Z
-Stopped at: Completed 03-09-PLAN.md (Key photo strip gap closure - add button position, move buttons, SortableJS drag)
+Last session: 2026-03-09T15:38:32.607Z
+Stopped at: Completed 03-10-PLAN.md (Key photo header bar controls with selection state)
 Resume file: None
