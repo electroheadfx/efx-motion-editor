@@ -1,4 +1,5 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
+import {createPortal} from 'preact/compat';
 import Sortable from 'sortablejs';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
@@ -21,6 +22,8 @@ export function SequenceList() {
       animation: 150,
       ghostClass: 'opacity-30',
       handle: '.seq-drag-handle',
+      forceFallback: true,
+      fallbackClass: 'opacity-30',
       onEnd(evt) {
         const { oldIndex, newIndex, item, from } = evt;
         if (oldIndex != null && newIndex != null && oldIndex !== newIndex) {
@@ -54,9 +57,11 @@ interface SequenceItemProps {
 
 function SequenceItem({seq, isActive}: SequenceItemProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({top: 0, left: 0});
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(seq.name);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const keyCount = seq.keyPhotos.length;
@@ -137,17 +142,32 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
     sequenceStore.remove(seq.id);
   }, [seq.id, seq.name, seq.keyPhotos.length]);
 
+  /** Compute menu position from the action button (or fallback to event coords) */
+  const openMenu = useCallback((fallbackX?: number, fallbackY?: number) => {
+    if (menuBtnRef.current) {
+      const rect = menuBtnRef.current.getBoundingClientRect();
+      setMenuPos({top: rect.bottom + 2, left: rect.right - 120});
+    } else if (fallbackX != null && fallbackY != null) {
+      setMenuPos({top: fallbackY, left: fallbackX});
+    }
+    setMenuOpen(true);
+  }, []);
+
   const handleContextMenu = useCallback(
     (e: MouseEvent) => {
       e.preventDefault();
-      setMenuOpen(!menuOpen);
+      if (menuOpen) {
+        setMenuOpen(false);
+      } else {
+        openMenu(e.clientX, e.clientY);
+      }
     },
-    [menuOpen],
+    [menuOpen, openMenu],
   );
 
   return (
     <div
-      class={`relative flex items-center gap-2 h-10 w-full px-3 cursor-pointer select-none ${
+      class={`flex items-center gap-2 h-10 w-full px-3 cursor-pointer select-none ${
         isActive ? 'bg-[#2D5BE320]' : 'bg-transparent hover:bg-[#ffffff08]'
       }`}
       onClick={handleSelect}
@@ -219,20 +239,26 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
 
       {/* Action button */}
       <button
+        ref={menuBtnRef}
         class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#ffffff15] text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] shrink-0"
         onClick={(e) => {
           e.stopPropagation();
-          setMenuOpen(!menuOpen);
+          if (menuOpen) {
+            setMenuOpen(false);
+          } else {
+            openMenu();
+          }
         }}
       >
         <span class="text-xs leading-none">...</span>
       </button>
 
-      {/* Context Menu */}
-      {menuOpen && (
+      {/* Context Menu — rendered via portal to avoid scrollbar from overflow container */}
+      {menuOpen && createPortal(
         <div
           ref={menuRef}
-          class="absolute right-2 top-9 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl py-1 min-w-[120px]"
+          class="fixed z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl py-1 min-w-[120px]"
+          style={{top: menuPos.top, left: menuPos.left}}
         >
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10]"
@@ -262,7 +288,8 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
           >
             Delete
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
