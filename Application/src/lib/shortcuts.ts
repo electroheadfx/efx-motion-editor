@@ -168,8 +168,8 @@ export function mountShortcuts(): () => void {
     },
 
     // Shortcuts overlay (KEY-08)
-    'Shift+Slash': (e: KeyboardEvent) => {
-      // ? key
+    'Shift+?': (e: KeyboardEvent) => {
+      // ? key -- uses event.key matching for layout-independent binding
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       uiStore.toggleShortcutsOverlay();
