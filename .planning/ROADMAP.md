@@ -46,10 +46,13 @@ Phases 1-4 archived to `milestones/v1.0-ROADMAP.md`.
   2. User can undo any editing action with Cmd+Z and redo with Cmd+Shift+Z, with rapid slider changes coalescing into a single undo entry
   3. User can play/pause with Space, step frames with arrows, scrub with JKL, and save/open/create projects with standard Cmd shortcuts
   4. Keyboard shortcuts do not fire when typing in input fields, and pressing ? shows a shortcuts help overlay
-**Plans**: 3 plans
+**Plans**: 5 plans
+Plans:
   - [ ] 05-01-PLAN.md — Store lifecycle fixes + unsaved-changes guard
   - [ ] 05-02-PLAN.md — Undo/redo command pattern engine
   - [ ] 05-03-PLAN.md — Keyboard shortcuts, JKL shuttle, shortcuts overlay
+  - [ ] 05-04-PLAN.md — Fix Cmd+Z/Shift+Z native menu interception + ? keyboard layout fix
+  - [ ] 05-05-PLAN.md — Rewrite JKL shuttle to split-responsibility model with auto-loop
 
 ### Phase 6: Layer System & Properties Panel
 **Goal**: Users can add multiple layer types to sequences, composite them in real-time with blend modes and transforms, and edit all layer properties through a context-sensitive panel
@@ -117,7 +120,7 @@ Phases execute in numeric order: 5 > 6 > 7 > 8 > 9 > 10
 | 3. Project & Sequence Management | v1.0 | 3/3 | Complete | 2026-03-03 |
 | 3.1. Fix Cross-Phase Integration Wiring | v1.0 | 1/1 | Complete | 2026-03-03 |
 | 4. Timeline & Preview | v1.0 | 3/3 | Complete | 2026-03-03 |
-| 5. Editing Infrastructure | v2.0 | 0/3 | Planned | - |
+| 5. Editing Infrastructure | v2.0 | 0/5 | Planned | - |
 | 6. Layer System & Properties Panel | v2.0 | 0/0 | Not started | - |
 | 7. Cinematic FX Effects | v2.0 | 0/0 | Not started | - |
 | 8. Audio Import & Waveform | v2.0 | 0/0 | Not started | - |
