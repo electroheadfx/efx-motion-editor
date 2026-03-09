@@ -1,88 +1,138 @@
 ---
 status: resolved
 phase: 03-project-sequence-management
-source: [03-01-SUMMARY.md, 03-02-SUMMARY.md, 03-03-SUMMARY.md]
-started: 2026-03-09T00:00:00Z
-updated: 2026-03-09T12:00:00Z
+source: [03-01-SUMMARY.md, 03-02-SUMMARY.md, 03-03-SUMMARY.md, 03-04-SUMMARY.md]
+started: 2026-03-09T11:30:00Z
+updated: 2026-03-09T13:15:00Z
 ---
 
 ## Current Test
+<!-- OVERWRITE each test - shows where we are -->
 
 [testing complete]
 
 ## Tests
 
-### 1. Cold Start Smoke Test
-expected: Kill any running dev server. Start the application fresh. The app boots without errors in the terminal, the window opens, and the WelcomeScreen is displayed.
-result: pass
-
-### 2. Welcome Screen & New Project
-expected: WelcomeScreen shows New and Open buttons (plus any recent projects if they exist). Click New — a dialog appears with project name input, FPS toggle (15/24), and a folder picker. Fill in a name, pick a folder, click Create. The editor opens immediately with the new project (no more WelcomeScreen).
-result: pass
-
-### 3. Sequence CRUD
-expected: In the left panel, you can create a new sequence (it appears in the list). Double-click a sequence name to rename it inline (Enter confirms, Escape cancels). Right-click a sequence to see a context menu with Rename, Duplicate, and Delete. Duplicate creates a copy. Delete asks for confirmation before removing.
-result: pass
-
-### 4. Key Photo Management
-expected: Select a sequence. The KeyPhotoStrip shows below it. You can add key photos from imported images (an image picker popover appears). Added photos show thumbnails. Hover a key photo to see a remove button. You can edit the hold frame count inline on each key photo. Drag key photos horizontally to reorder them.
+### 1. Welcome Screen
+expected: On app launch, you see a Welcome Screen (not the editor). It shows "New" and "Open" buttons. If you've previously created projects, a recent projects list appears.
 result: issue
-reported: "1) Image picker popover UX: when adding a second key photo, the popover requires scrolling to access the photos list, not very usable. 2) Drag reorder broken: when trying to drag key photos to reorder them, the drag-and-drop import overlay appears instead, blocking reorder functionality entirely."
+reported: "1) Recent projects list is greyed out (transparent dark gray), not easily readable - should be fully legible. 2) Projects in the list can't be opened by clicking them."
 severity: major
 
-### 5. Sequence Drag Reorder & Settings
-expected: Drag sequences by their handle to reorder them in the list — the order persists after dropping. Each sequence has a FPS toggle (15/24) and a resolution dropdown (1920x1080, 1280x720, 3840x2160). Changing these settings updates the sequence.
+### 2. Create New Project
+expected: Click "New" → a dialog appears with project name input, FPS toggle (15/24), and a folder picker. Fill in details and confirm → the app transitions to the editor with an empty project.
+result: pass
+
+### 3. Create and Rename Sequence
+expected: In the left panel, create a new sequence (it appears in the list). Double-click the sequence name → it becomes editable. Type a new name, press Enter → name updates. Escape cancels the edit.
+result: pass
+
+### 4. Sequence Context Menu (Duplicate & Delete)
+expected: Right-click a sequence → context menu with Rename, Duplicate, Delete. Duplicate creates a copy of the sequence. Delete removes it (with confirmation if applicable).
 result: issue
-reported: "Can't reorder sequences because the drag-and-drop import overlay appears and blocks the reorder. FPS and resolution settings work correctly — changes trigger save and timeline updates."
+reported: "Rename, duplicate and delete work fine until the 2nd sequence. When a third sequence is created or duplicated, it can't be deleted."
 severity: major
 
-### 6. Project Save, Reopen & Auto-Save
-expected: Click Save in the toolbar — if the project was never saved, a Save As dialog appears to pick a location. The project saves to a .mce file. Close the project (or restart the app). Open the .mce file — all sequences, key photos, hold frames, and settings are restored exactly as saved. While editing, a dirty indicator dot appears on the toolbar after changes, and auto-save fires after ~2 seconds of inactivity (the dot clears).
+### 5. Reorder Sequences via Drag
+expected: Drag a sequence by its handle to a new position. The order updates correctly. The file import overlay does NOT appear during the drag.
+result: issue
+reported: "The drag works but when I release nothing happens, and during the drag nothing happens either. The drag doesn't work yet. The import image overlay doesn't trigger during drag (that fix works), but the sequence order does not update."
+severity: major
+
+### 6. Add Key Photo via Image Picker
+expected: On the key photo strip, click the add button → a popover opens upward with imported images in a 4-column grid (max 300px height). Click an image → it's added as a key photo with a thumbnail.
+result: issue
+reported: "On an empty sequence, can add 1 key image but can't add a second — Add button does nothing. On a sequence with 2 keys, trying to add a third shows a scroll bar portion and can't add. After deleting the second key, can't add a second key anymore (Add button stops working). Likely a z-index issue with the popover inside the key photo strip layout."
+severity: major
+
+### 7. Reorder Key Photos via Drag
+expected: Drag a key photo to a new position in the horizontal strip. The order updates. The file import overlay does NOT appear during the drag.
+result: issue
+reported: "Drag and drop reorder doesn't work — nothing happens on drop. Image import overlay no longer appears during drag (that fix works)."
+severity: major
+
+### 8. Edit Hold Frames & Remove Key Photo
+expected: Click the hold frame count on a key photo → it becomes editable. Change the value and press Enter → it updates. Hover over a key photo → a remove/X button appears. Click it → the key photo is removed.
+result: pass
+
+### 9. Per-Sequence Settings
+expected: Select a sequence. FPS toggle shows 15 or 24 — clicking switches between them. Resolution dropdown offers presets (1920x1080, 1280x720, etc.) — changing updates the sequence.
+result: pass
+
+### 10. Save, Reopen & Auto-Save
+expected: Click Save → .mce file saves (Save As dialog if never saved). Close and reopen the .mce file → all sequences, key photos, settings restored. After making changes, a dirty indicator dot appears; auto-save fires after ~2s and clears it.
 result: pass
 
 ## Summary
 
-total: 6
-passed: 4
-issues: 2
+total: 10
+passed: 5
+issues: 5
 pending: 0
 skipped: 0
 
 ## Gaps
 
-- truth: "Key photo image picker popover is usable when adding multiple photos"
+- truth: "Welcome Screen shows a readable recent projects list that can be opened by clicking"
   status: resolved
-  reason: "User reported: Image picker popover requires scrolling to access photos list when adding second key photo, poor UX"
-  severity: minor
-  test: 4
-  root_cause: "Popover has fixed max-h-[200px], static top-14 positioning, and overflow-y-auto. Doesn't adapt to available space in LeftPanel."
+  reason: "User reported: 1) Recent projects list is greyed out (transparent dark gray), not easily readable. 2) Projects in the list can't be opened by clicking them."
+  severity: major
+  test: 1
+  root_cause: "Two issues: (A) Non-highlighted items use #888888/#444444 text on #161616 bg — insufficient contrast. opacity-50 applied when !available. (B) exists() check uses fs:scope-appdata-recursive which blocks paths outside $APPDATA, marking all user-directory projects as unavailable. Click handler returns early on !available."
   artifacts:
-    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
-      issue: "Lines 207-232: popover CSS has fixed max-height and static positioning"
+    - path: "Application/src/components/project/WelcomeScreen.tsx"
+      issue: "Lines 65-77: non-highlighted items use low-contrast text colors. Line 56: opacity-50 on !available. Line 151: click guard on !available."
+    - path: "Application/src-tauri/capabilities/default.json"
+      issue: "Line 20: fs:scope-appdata-recursive too restrictive for exists() check on user-chosen paths"
   missing:
-    - "Dynamic popover positioning that detects available space and flips direction"
-    - "Responsive max-height based on viewport instead of fixed 200px"
+    - "Broaden FS scope or use Rust-side path exists check to allow validation of user-directory project paths"
+    - "Improve text contrast for non-highlighted recent project items"
 
-- truth: "Key photos can be dragged horizontally to reorder them"
+- truth: "Sequences can be deleted regardless of how many exist in the list"
   status: resolved
-  reason: "User reported: Drag reorder triggers the drag-and-drop import overlay instead of reordering key photos"
+  reason: "User reported: Rename, duplicate and delete work fine until the 2nd sequence. When a third sequence is created or duplicated, it can't be deleted."
   severity: major
   test: 4
-  root_cause: "Tauri onDragDropEvent in dragDrop.ts catches ALL drag events including SortableJS internal drags. No check for event.payload.paths to distinguish external file drops from internal reorder drags."
+  root_cause: "SortableJS useEffect in SequenceList uses [] deps — instance is never recreated when sequences change. SortableJS holds stale DOM references and intercepts click events on dynamically-added children (3rd+ sequence), preventing context menu delete from executing."
   artifacts:
-    - path: "Application/src/lib/dragDrop.ts"
-      issue: "Lines 38-59: onDragDropEvent sets isDraggingOver=true without checking if paths exist"
+    - path: "Application/src/components/sequence/SequenceList.tsx"
+      issue: "Lines 18-31: SortableJS useEffect with [] deps — never destroyed/recreated when sequence list changes"
   missing:
-    - "Check event.payload.paths.length > 0 before setting isDraggingOver=true"
+    - "Add sequences.length to useEffect dependency array so SortableJS instance is recreated on add/remove"
 
-- truth: "Sequences can be dragged by their handle to reorder them"
+- truth: "Sequences can be dragged to reorder and the new order persists"
   status: resolved
-  reason: "User reported: Drag-and-drop import overlay appears and blocks sequence reorder. Same root cause as key photo drag issue."
+  reason: "User reported: Drag works visually but nothing happens on release — sequence order does not update. File import overlay fix confirmed working."
   severity: major
   test: 5
-  root_cause: "Same as test 4 drag issue — Tauri onDragDropEvent in dragDrop.ts catches SortableJS internal drags."
+  root_cause: "SortableJS physically moves DOM elements during drag. onEnd callback updates Preact signal, but Preact re-renders against already-mutated DOM, seeing no diff — reorder silently fails/snaps back."
   artifacts:
-    - path: "Application/src/lib/dragDrop.ts"
-      issue: "Lines 38-59: onDragDropEvent sets isDraggingOver=true without checking if paths exist"
+    - path: "Application/src/components/sequence/SequenceList.tsx"
+      issue: "Lines 18-31: onEnd updates signal without reverting SortableJS DOM mutation first"
   missing:
-    - "Check event.payload.paths.length > 0 before setting isDraggingOver=true"
+    - "Revert SortableJS DOM mutation in onEnd before calling store reorder method, so Preact handles the re-render"
+
+- truth: "Key photos can be added from the image picker popover at any time, including adding 2nd, 3rd, etc."
+  status: resolved
+  reason: "User reported: Can add 1 key image on empty sequence but Add button stops working for subsequent adds. With 2 keys, adding 3rd shows scroll bar and fails. After deleting second key, can't add second again. Likely z-index issue with popover inside key strip layout."
+  severity: major
+  test: 6
+  root_cause: "Two issues: (A) Popover renders inside overflow-x-auto strip container — gets clipped when strip has enough content to scroll. (B) SortableJS on strip container intercepts click events on AddKeyPhotoButton. Also, component switches render branches (0 vs 1+ keys), remounting AddKeyPhotoButton in a different DOM context."
+  artifacts:
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "Line 64: overflow-x-auto clips absolutely-positioned popover. Lines 49-60: SortableJS on same container intercepts add button clicks. Lines 208-233: popover inside overflow-clipped parent."
+  missing:
+    - "Move AddKeyPhotoButton outside the overflow-x-auto strip div (as sibling, not child)"
+    - "Add SortableJS filter option to exclude add button from event handling"
+
+- truth: "Key photos can be dragged to reorder in the horizontal strip"
+  status: resolved
+  reason: "User reported: Drag and drop reorder doesn't work — nothing happens on drop. Image import overlay fix confirmed working."
+  severity: major
+  test: 7
+  root_cause: "Same as sequence drag: SortableJS physically moves DOM elements, onEnd updates Preact signal, but Preact re-renders against already-mutated DOM — reorder silently fails."
+  artifacts:
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "Lines 47-61: onEnd updates signal without reverting SortableJS DOM mutation first"
+  missing:
+    - "Revert SortableJS DOM mutation in onEnd before calling store reorder method"
