@@ -2,7 +2,7 @@ import {computed} from '@preact/signals';
 import {sequenceStore} from '../stores/sequenceStore';
 import type {FrameEntry, TrackLayout, KeyPhotoRange} from '../types/timeline';
 
-/** Flattened frame array: every frame maps to a sequence, key photo, and image */
+/** Flattened frame array: every frame maps to a sequence, key photo, and image (GLOBAL) */
 export const frameMap = computed<FrameEntry[]>(() => {
   const entries: FrameEntry[] = [];
   let globalFrame = 0;
@@ -25,6 +25,22 @@ export const frameMap = computed<FrameEntry[]>(() => {
 
 /** Total number of frames across all sequences */
 export const totalFrames = computed(() => frameMap.value.length);
+
+/** Frame entries for only the active sequence (used by preview renderer) */
+export const activeSequenceFrames = computed<FrameEntry[]>(() => {
+  const activeId = sequenceStore.activeSequenceId.value;
+  if (!activeId) return [];
+  return frameMap.value.filter((e) => e.sequenceId === activeId);
+});
+
+/** Global start frame of the active sequence (for converting global ↔ local) */
+export const activeSequenceStartFrame = computed<number>(() => {
+  const activeId = sequenceStore.activeSequenceId.value;
+  if (!activeId) return 0;
+  const tracks = trackLayouts.value;
+  const track = tracks.find((t) => t.sequenceId === activeId);
+  return track?.startFrame ?? 0;
+});
 
 /** Track layout data for timeline rendering (one track per sequence) */
 export const trackLayouts = computed<TrackLayout[]>(() => {

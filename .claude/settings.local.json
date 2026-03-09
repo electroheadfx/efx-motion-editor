@@ -1,4 +1,9 @@
 {
+  "outputStyle": "default",
   "prefersReducedMotion": true,
-  "outputStyle": "default"
+  "permissions": {
+    "allow": [
+      "Bash(node:*)"
+    ]
+  }
 }

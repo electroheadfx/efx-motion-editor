@@ -24,10 +24,10 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost https://*; media-src 'self' asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://*; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'",
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost efxasset: blob: https://*; media-src 'self' asset: http://asset.localhost efxasset:; connect-src 'self' ipc: http://ipc.localhost https://*; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**", "$RESOURCE/**"]
+        "scope": ["$APPDATA/**", "$RESOURCE/**", "/Volumes/**", "$HOME/**", "/tmp/**", "/private/**"]
       }
     }
   }

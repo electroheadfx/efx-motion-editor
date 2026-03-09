@@ -790,6 +790,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "image",
+ "percent-encoding",
  "serde",
  "serde_json",
  "tauri",

@@ -1,4 +1,5 @@
 use tauri::command;
+use tauri::Manager;
 
 use crate::models::image::{ImageInfo, ImportError, ImportResult};
 use crate::services::image_pool;
@@ -35,11 +36,20 @@ pub fn image_get_info(path: String) -> Result<ImageInfo, String> {
 
 /// Import multiple images: copy to project dir, generate thumbnails.
 /// Runs image processing in a blocking task to avoid freezing the UI.
+/// Also ensures the project directory is registered with the asset protocol scope
+/// (using the canonical path to handle macOS Unicode normalization).
 #[command]
 pub async fn import_images(
+    app: tauri::AppHandle,
     paths: Vec<String>,
     project_dir: String,
 ) -> Result<ImportResult, String> {
+    // Ensure project dir is in asset scope (canonicalized for Unicode normalization)
+    let canonical = std::fs::canonicalize(&project_dir)
+        .unwrap_or_else(|_| std::path::PathBuf::from(&project_dir));
+    let scope = app.asset_protocol_scope();
+    let _ = scope.allow_directory(&canonical, true);
+
     // Run CPU-intensive work off the main thread
     let result = tauri::async_runtime::spawn_blocking(move || {
         let mut imported = Vec::new();
