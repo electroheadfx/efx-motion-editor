@@ -2,6 +2,7 @@ import {useRef, useEffect} from 'preact/hooks';
 import Sortable from 'sortablejs';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
+import {isFxLayer, isGeneratorLayer} from '../../types/layer';
 import type {Layer} from '../../types/layer';
 
 /** SortableJS-powered layer list with drag-and-drop reorder, visibility toggle, delete, and selection */
@@ -76,21 +77,27 @@ interface LayerRowProps {
 function LayerRow({layer, isSelected}: LayerRowProps) {
   const isBase = layer.isBase ?? false;
 
-  // Color-coded type indicator
+  // Color-coded type indicator (pink for generators, orange for adjustments)
+  const isFx = isFxLayer(layer);
   const typeColor =
-    layer.type === 'image-sequence'
-      ? '#3B82F6' // blue
-      : layer.type === 'static-image'
-        ? '#14B8A6' // teal
-        : '#8B5CF6'; // purple for video
+    layer.type === 'image-sequence' ? '#3B82F6'          // blue
+    : layer.type === 'static-image' ? '#14B8A6'          // teal
+    : layer.type === 'video' ? '#8B5CF6'                 // purple
+    : isGeneratorLayer(layer) ? '#EC4899'                // pink for all generators
+    : '#F97316';                                          // orange for adjustments
 
-  // Type label
+  // Type label with FX-specific names
   const typeLabel =
-    layer.type === 'video'
-      ? 'Video'
-      : layer.type === 'image-sequence'
-        ? 'Sequence'
-        : 'Image';
+    layer.type === 'video' ? 'Video'
+    : layer.type === 'image-sequence' ? 'Sequence'
+    : layer.type === 'static-image' ? 'Image'
+    : layer.type === 'generator-grain' ? 'Grain'
+    : layer.type === 'generator-particles' ? 'Particles'
+    : layer.type === 'generator-lines' ? 'Lines'
+    : layer.type === 'generator-dots' ? 'Dots'
+    : layer.type === 'generator-vignette' ? 'Vignette'
+    : layer.type === 'adjustment-color-grade' ? 'Color Grade'
+    : 'FX';
 
   const blendLabel =
     layer.blendMode.charAt(0).toUpperCase() + layer.blendMode.slice(1);
@@ -117,7 +124,9 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
           ? 'bg-[#2A2A3A] border-l-2 border-[var(--color-accent)]'
           : isBase
             ? 'bg-[#1E1E1E]'
-            : 'bg-[#252525] hover:bg-[#2A2A2A]'
+            : isFx
+              ? 'bg-[#25202A] hover:bg-[#2A252F]'
+              : 'bg-[#252525] hover:bg-[#2A2A2A]'
       }`}
       onClick={handleSelect}
     >
@@ -161,6 +170,7 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
         <span class="text-[9px] text-[var(--color-text-dim)] truncate">
           {typeLabel} &middot; {blendLabel}
           {isBase && ' \u00B7 Locked'}
+          {(layer.inFrame != null || layer.outFrame != null) && ` \u00B7 ${layer.inFrame ?? 0}-${layer.outFrame ?? '...'}`}
         </span>
       </div>
 
