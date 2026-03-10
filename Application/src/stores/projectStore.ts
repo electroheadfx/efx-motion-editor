@@ -78,18 +78,58 @@ function buildMceProject(): MceProject {
         },
         source: {
           type: layer.source.type,
+          // Content layer fields (existing)
           ...(layer.source.type === 'static-image' ? {image_id: layer.source.imageId} : {}),
           ...(layer.source.type === 'image-sequence' ? {image_ids: layer.source.imageIds} : {}),
           ...(layer.source.type === 'video' ? {video_path: layer.source.videoPath} : {}),
+          // Generator-grain
+          ...(layer.source.type === 'generator-grain' ? {
+            density: layer.source.density, size: layer.source.size,
+            intensity: layer.source.intensity, lock_seed: layer.source.lockSeed,
+            seed: layer.source.seed,
+          } : {}),
+          // Generator-particles
+          ...(layer.source.type === 'generator-particles' ? {
+            count: layer.source.count, speed: layer.source.speed,
+            size_min: layer.source.sizeMin, size_max: layer.source.sizeMax,
+            lock_seed: layer.source.lockSeed, seed: layer.source.seed,
+          } : {}),
+          // Generator-lines
+          ...(layer.source.type === 'generator-lines' ? {
+            count: layer.source.count, thickness: layer.source.thickness,
+            length_min: layer.source.lengthMin, length_max: layer.source.lengthMax,
+            lock_seed: layer.source.lockSeed, seed: layer.source.seed,
+          } : {}),
+          // Generator-dots
+          ...(layer.source.type === 'generator-dots' ? {
+            count: layer.source.count, size_min: layer.source.sizeMin,
+            size_max: layer.source.sizeMax, speed: layer.source.speed,
+            lock_seed: layer.source.lockSeed, seed: layer.source.seed,
+          } : {}),
+          // Generator-vignette
+          ...(layer.source.type === 'generator-vignette' ? {
+            size: layer.source.size, softness: layer.source.softness,
+            intensity: layer.source.intensity,
+          } : {}),
+          // Adjustment-color-grade
+          ...(layer.source.type === 'adjustment-color-grade' ? {
+            brightness: layer.source.brightness, contrast: layer.source.contrast,
+            saturation: layer.source.saturation, hue: layer.source.hue,
+            fade: layer.source.fade, tint_color: layer.source.tintColor,
+            preset: layer.source.preset,
+          } : {}),
         },
         is_base: layer.isBase ?? false,
         order: layerIndex,
+        // In/out points
+        ...(layer.inFrame != null ? {in_frame: layer.inFrame} : {}),
+        ...(layer.outFrame != null ? {out_frame: layer.outFrame} : {}),
       })),
     }),
   );
 
   return {
-    version: 2,
+    version: 3,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -142,15 +182,24 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
                     cropBottom: ml.transform.crop_bottom,
                     cropLeft: ml.transform.crop_left,
                   },
-                  source: {
-                    type: ml.source.type as LayerType,
-                    ...(ml.source.image_id ? {imageId: ml.source.image_id} : {}),
-                    ...(ml.source.type === 'image-sequence'
-                      ? {imageIds: ml.source.image_ids ?? []}
-                      : {}),
-                    ...(ml.source.video_path ? {videoPath: ml.source.video_path} : {}),
-                  } as LayerSourceData,
+                  source: (() => {
+                    const t = ml.source.type;
+                    if (t === 'static-image') return {type: t, imageId: ml.source.image_id!} as LayerSourceData;
+                    if (t === 'image-sequence') return {type: t, imageIds: ml.source.image_ids ?? []} as LayerSourceData;
+                    if (t === 'video') return {type: t, videoPath: ml.source.video_path!} as LayerSourceData;
+                    if (t === 'generator-grain') return {type: t, density: ml.source.density ?? 0.3, size: ml.source.size ?? 1, intensity: ml.source.intensity ?? 0.5, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
+                    if (t === 'generator-particles') return {type: t, count: ml.source.count ?? 50, speed: ml.source.speed ?? 1, sizeMin: ml.source.size_min ?? 1, sizeMax: ml.source.size_max ?? 4, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
+                    if (t === 'generator-lines') return {type: t, count: ml.source.count ?? 15, thickness: ml.source.thickness ?? 1, lengthMin: ml.source.length_min ?? 0.1, lengthMax: ml.source.length_max ?? 0.4, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
+                    if (t === 'generator-dots') return {type: t, count: ml.source.count ?? 30, sizeMin: ml.source.size_min ?? 2, sizeMax: ml.source.size_max ?? 8, speed: ml.source.speed ?? 0.5, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
+                    if (t === 'generator-vignette') return {type: t, size: ml.source.size ?? 0.6, softness: ml.source.softness ?? 0.5, intensity: ml.source.intensity ?? 0.7} as LayerSourceData;
+                    if (t === 'adjustment-color-grade') return {type: t, brightness: ml.source.brightness ?? 0, contrast: ml.source.contrast ?? 0, saturation: ml.source.saturation ?? 1, hue: ml.source.hue ?? 0, fade: ml.source.fade ?? 0, tintColor: ml.source.tint_color ?? '#D4A574', preset: ml.source.preset ?? 'none'} as LayerSourceData;
+                    // Fallback for unknown types
+                    return ml.source as unknown as LayerSourceData;
+                  })(),
                   isBase: ml.is_base,
+                  // In/out points
+                  ...(ml.in_frame != null ? {inFrame: ml.in_frame} : {}),
+                  ...(ml.out_frame != null ? {outFrame: ml.out_frame} : {}),
                 }),
               )
           : [createBaseLayer()];

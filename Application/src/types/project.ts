@@ -43,6 +43,8 @@ export interface MceLayer {
   source: MceLayerSource;
   is_base: boolean;
   order: number;
+  in_frame?: number;
+  out_frame?: number;
 }
 
 export interface MceLayerTransform {
@@ -58,9 +60,36 @@ export interface MceLayerTransform {
 
 export interface MceLayerSource {
   type: string;
+  // Content layer fields (existing)
   image_id?: string;
   image_ids?: string[];
   video_path?: string;
+  // Generator common fields
+  lock_seed?: boolean;
+  seed?: number;
+  // Generator-grain
+  density?: number;
+  size?: number;
+  intensity?: number;
+  // Generator-particles (count, speed, size_min, size_max)
+  count?: number;
+  speed?: number;
+  size_min?: number;
+  size_max?: number;
+  // Generator-lines (count, thickness, length_min, length_max)
+  thickness?: number;
+  length_min?: number;
+  length_max?: number;
+  // Generator-vignette (size, softness, intensity shared above)
+  softness?: number;
+  // Adjustment-color-grade
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
+  hue?: number;
+  fade?: number;
+  tint_color?: string;
+  preset?: string;
 }
 
 /** Key photo within a sequence -- references an image by ID */
