@@ -75,7 +75,7 @@ Plans:
   - [ ] 06-08-PLAN.md — Video re-render callbacks for blend mode fix (gap closure)
 
 ### Phase 7: Cinematic FX Effects
-**Goal**: Users can add cinematic post-processing effects to sequences that render identically in preview and export
+**Goal**: Users can add cinematic post-processing effects as timeline-level sequences that render identically in preview and export
 **Depends on**: Phase 6
 **Requirements**: FX-01, FX-02, FX-03, FX-04, FX-05, FX-06, FX-07, FX-08, FX-09, FX-10
 **Success Criteria** (what must be TRUE):
@@ -83,12 +83,16 @@ Plans:
   2. User can add vignette and light leaks effects with configurable parameters (intensity, size, softness)
   3. User can add a color grade effect and individually adjust brightness, contrast, saturation, hue, and fade
   4. All FX parameters are resolution-independent — preview at 830px and export at 1080p/4K produce visually identical results
-**Plans**: 4 plans
+  5. FX effects are timeline-level sequences that apply globally across all content, with draggable range bars on the timeline
+**Plans**: 7 plans
 Plans:
-  - [ ] 07-01-PLAN.md — FX type system, generator drawing functions, color grade pipeline
-  - [ ] 07-02-PLAN.md — PreviewRenderer FX integration, categorized AddLayerMenu
-  - [ ] 07-03-PLAN.md — FX properties panel controls, LayerList FX styling
-  - [ ] 07-04-PLAN.md — Project serialization v3, end-to-end verification
+  - [x] 07-01-PLAN.md — FX type system, generator drawing functions, color grade pipeline
+  - [x] 07-02-PLAN.md — PreviewRenderer FX integration, categorized AddLayerMenu
+  - [x] 07-03-PLAN.md — FX properties panel controls, LayerList FX styling
+  - [x] 07-04-PLAN.md — Project serialization v3, end-to-end verification
+  - [ ] 07-05-PLAN.md — FX sequence data model, store CRUD, serialization v4 (gap closure)
+  - [ ] 07-06-PLAN.md — FX sequence compositing in Preview, AddLayerMenu routing, PropertiesPanel cleanup (gap closure)
+  - [ ] 07-07-PLAN.md — Timeline FX range bars with draggable in/out handles (gap closure)
 
 ### Phase 8: Audio Import & Waveform
 **Goal**: Users can import audio files, see waveforms on the timeline, and hear audio playing in sync with the visual preview
@@ -136,7 +140,7 @@ Phases execute in numeric order: 5 > 6 > 7 > 8 > 9 > 10
 | 4. Timeline & Preview | v1.0 | 3/3 | Complete | 2026-03-03 |
 | 5. Editing Infrastructure | v2.0 | 0/5 | Planned | - |
 | 6. Layer System & Properties Panel | v2.0 | 6/8 | In Progress | - |
-| 7. Cinematic FX Effects | v2.0 | 0/4 | Planned | - |
+| 7. Cinematic FX Effects | v2.0 | 4/7 | In Progress | - |
 | 8. Audio Import & Waveform | v2.0 | 0/0 | Not started | - |
 | 9. Beat Sync | v2.0 | 0/0 | Not started | - |
 | 10. PNG Export | v2.0 | 0/0 | Not started | - |
