@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 07-08-PLAN.md
-last_updated: "2026-03-10T13:24:00Z"
-last_activity: 2026-03-10 — Completed 07-08 (FX Gap Closure)
+stopped_at: Completed 07-09-PLAN.md
+last_updated: "2026-03-10T13:30:08.306Z"
+last_activity: 2026-03-10 — Completed 07-09 (FX Visibility Toggle and Reorder)
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 23
-  completed_plans: 20
-  percent: 87
+  completed_plans: 21
+  percent: 91
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 7 of 10 (Cinematic FX Effects)
-Plan: 8 of 10 in current phase
+Plan: 9 of 10 in current phase
 Status: In Progress
-Last activity: 2026-03-10 — Completed 07-08 (FX Gap Closure)
+Last activity: 2026-03-10 — Completed 07-09 (FX Visibility Toggle and Reorder)
 
-Progress: [█████████░] 87% (v1.0 complete, v2.0 Phase 7 plan 8/10)
+Progress: [█████████░] 91% (v1.0 complete, v2.0 Phase 7 plan 9/10)
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Progress: [█████████░] 87% (v1.0 complete, v2.0 Phase 7 plan
 | Phase 07 P05 | 3min | 2 tasks | 9 files |
 | Phase 07 P06 | 5min | 2 tasks | 7 files |
 | Phase 07 P08 | 2min | 2 tasks | 4 files |
+| Phase 07 P09 | 3min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -162,6 +163,8 @@ Recent decisions affecting current work:
 - [Phase 07]: 07-08: Sequence-aware CRUD methods added alongside active-sequence-scoped methods (no breaking changes)
 - [Phase 07]: 07-08: FX layers rendered in LayerList outside SortableJS container (reorder deferred to timeline)
 - [Phase 07]: 07-08: Empty FX sequences auto-removed when sole layer deleted
+- [Phase 07]: visible?: boolean uses undefined=true, false=hidden to avoid adding visible:true to all existing sequences
+- [Phase 07]: FX header click vs drag resolved on pointerUp: same-track release = toggle visibility, different-track = reorder
 
 ### Pending Todos
 
@@ -178,6 +181,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-10T13:24:00Z
-Stopped at: Completed 07-08-PLAN.md
+Last session: 2026-03-10T13:30:08.304Z
+Stopped at: Completed 07-09-PLAN.md
 Resume file: None
