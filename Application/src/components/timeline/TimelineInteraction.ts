@@ -209,8 +209,16 @@ export class TimelineInteraction {
         this.selectFxSequenceLayer(fxTracks[fxIdx].sequenceId);
       }
 
-      // Header: initiate FX reorder drag (click vs drag resolved on pointer up)
+      // Header: check for bullet click or initiate FX reorder drag
       if (localX < TRACK_HEADER_WIDTH && fxIdx >= 0 && fxIdx < fxTracks.length) {
+        const fxSeqId = fxTracks[fxIdx].sequenceId;
+
+        // Click on bullet/dot area (x < 18px) toggles visibility
+        if (localX < 18) {
+          sequenceStore.toggleFxSequenceVisibility(fxSeqId);
+          return;
+        }
+
         this.isDraggingFxReorder = true;
         this.fxReorderFromIndex = fxIdx;
         this.fxReorderMoved = false;
