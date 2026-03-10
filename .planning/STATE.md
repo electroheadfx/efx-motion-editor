@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 Phase: 7 of 10 (Cinematic FX Effects)
 Plan: 10 of 10 in current phase
 Status: Phase Complete
-Last activity: 2026-03-10 - Completed quick task 7: Remove blend mode from FX bottom bar, opacity from base layer sidebar
+Last activity: 2026-03-10 - Completed quick task 8: Fix sequence selection rendering/cursor
 
 Progress: [██████████] 100% (v1.0 complete, v2.0 Phase 7 complete)
 
@@ -178,6 +178,8 @@ Recent decisions affecting current work:
 - [Quick-06]: FX layers retain blend+opacity in bottom bar; content layers show Transform+Crop only
 - [Quick-07]: FX bottom bar: inline opacity+visibility only, no blend mode dropdown; BlendSection removed as dead code
 - [Quick-07]: Base layer sidebar row: locked Normal text only, no opacity slider
+- [Quick-08]: Preview disposeRender effect mirrors renderFromFrameMap pattern (.value vs .peek) for consistent frameMap-based rendering
+- [Quick-08]: Preload all frameMap images instead of just active sequence, since cursor can be in any sequence
 
 ### Pending Todos
 
@@ -203,9 +205,10 @@ No active blockers.
 | 5 | Select content sequence on timeline + Delete key removal without confirmation | 2026-03-10 | 9282eae | [5-select-a-key-sequence-like-with-fx-layer](./quick/5-select-a-key-sequence-like-with-fx-layer/) |
 | 6 | Move blend mode + opacity from bottom bar to LAYERS sidebar for content layers | 2026-03-10 | 473d9f2 | [6-move-blend-transfer-mode-from-bottom-bar](./quick/6-move-blend-transfer-mode-from-bottom-bar/) |
 | 7 | Remove blend mode from FX bottom bar, remove opacity from base layer sidebar | 2026-03-10 | ed54e20 | [7-remove-blend-mode-from-bottom-bar-for-fx](./quick/7-remove-blend-mode-from-bottom-bar-for-fx/) |
+| 8 | Fix sequence selection rendering: cursor stays, preview renders from frameMap | 2026-03-10 | 5b24e6e | [8-fix-sequence-selection-rendering-cursor-](./quick/8-fix-sequence-selection-rendering-cursor-/) |
 
 ## Session Continuity
 
-Last session: 2026-03-10T21:25:38Z
-Stopped at: Completed quick task 7
+Last session: 2026-03-10T21:39:39Z
+Stopped at: Completed quick task 8
 Resume file: None
