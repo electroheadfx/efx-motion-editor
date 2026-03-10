@@ -83,7 +83,12 @@ Plans:
   2. User can add vignette and light leaks effects with configurable parameters (intensity, size, softness)
   3. User can add a color grade effect and individually adjust brightness, contrast, saturation, hue, and fade
   4. All FX parameters are resolution-independent — preview at 830px and export at 1080p/4K produce visually identical results
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+  - [ ] 07-01-PLAN.md — FX type system, generator drawing functions, color grade pipeline
+  - [ ] 07-02-PLAN.md — PreviewRenderer FX integration, categorized AddLayerMenu
+  - [ ] 07-03-PLAN.md — FX properties panel controls, LayerList FX styling
+  - [ ] 07-04-PLAN.md — Project serialization v3, end-to-end verification
 
 ### Phase 8: Audio Import & Waveform
 **Goal**: Users can import audio files, see waveforms on the timeline, and hear audio playing in sync with the visual preview
@@ -131,7 +136,7 @@ Phases execute in numeric order: 5 > 6 > 7 > 8 > 9 > 10
 | 4. Timeline & Preview | v1.0 | 3/3 | Complete | 2026-03-03 |
 | 5. Editing Infrastructure | v2.0 | 0/5 | Planned | - |
 | 6. Layer System & Properties Panel | v2.0 | 6/8 | In Progress | - |
-| 7. Cinematic FX Effects | v2.0 | 0/0 | Not started | - |
+| 7. Cinematic FX Effects | v2.0 | 0/4 | Planned | - |
 | 8. Audio Import & Waveform | v2.0 | 0/0 | Not started | - |
 | 9. Beat Sync | v2.0 | 0/0 | Not started | - |
 | 10. PNG Export | v2.0 | 0/0 | Not started | - |
