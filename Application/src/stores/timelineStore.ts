@@ -6,6 +6,7 @@ const currentFrame = signal(0);
 const isPlaying = signal(false);
 const zoom = signal(1);
 const scrollX = signal(0);
+const scrollY = signal(0);
 
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);
 const totalDuration = computed(() => totalFramesSignal.value / projectStore.fps.value);
@@ -15,6 +16,7 @@ export const timelineStore = {
   isPlaying,
   zoom,
   scrollX,
+  scrollY,
   currentTime,
   totalFrames: totalFramesSignal,
   totalDuration,
@@ -46,10 +48,14 @@ export const timelineStore = {
   setScrollX(v: number) {
     scrollX.value = v;
   },
+  setScrollY(v: number) {
+    scrollY.value = Math.max(0, v);
+  },
   reset() {
     currentFrame.value = 0;
     isPlaying.value = false;
     zoom.value = 1;
     scrollX.value = 0;
+    scrollY.value = 0;
   },
 };

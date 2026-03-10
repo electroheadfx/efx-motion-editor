@@ -33,6 +33,7 @@ export interface DrawState {
   frame: number;
   zoom: number;
   scrollX: number;
+  scrollY: number;
   tracks: TrackLayout[];
   fxTracks: FxTrackLayout[];
   imageStore: typeof ImageStoreType;
@@ -56,6 +57,8 @@ export class TimelineRenderer {
   private dragState: DragState | null = null;
   /** Number of FX tracks (used by TimelineInteraction for layout calculations) */
   fxTrackCount = 0;
+  /** Last scrollY value (used by TimelineInteraction for hit-testing) */
+  private lastScrollY = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -96,8 +99,9 @@ export class TimelineRenderer {
   draw(state: DrawState) {
     this.lastState = state;
 
-    const {frame, zoom, scrollX, tracks, fxTracks, imageStore, totalFrames} = state;
+    const {frame, zoom, scrollX, scrollY, tracks, fxTracks, imageStore, totalFrames} = state;
     this.fxTrackCount = fxTracks.length;
+    this.lastScrollY = scrollY;
     const ctx = this.ctx;
     const frameWidth = BASE_FRAME_WIDTH * zoom;
     const w = this.displayWidth;
@@ -109,14 +113,21 @@ export class TimelineRenderer {
     // 1. Draw time ruler
     this.drawRuler(ctx, frameWidth, scrollX, w, totalFrames);
 
-    // 1.5. Draw FX track rows (above content tracks)
+    // 1.5. Clip below ruler and apply scrollY for FX + content tracks
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, RULER_HEIGHT, w, h - RULER_HEIGHT);
+    ctx.clip();
+    ctx.translate(0, -scrollY);
+
+    // Draw FX track rows (above content tracks, scrolled)
     let fxTrackY = RULER_HEIGHT;
     for (let fi = 0; fi < fxTracks.length; fi++) {
       this.drawFxTrack(ctx, fxTracks[fi], fxTrackY, frameWidth, scrollX, w);
       fxTrackY += FX_TRACK_HEIGHT;
     }
 
-    // 2. Draw content track rows (below FX tracks)
+    // 2. Draw content track rows (below FX tracks, scrolled)
     const fxOffset = fxTracks.length * FX_TRACK_HEIGHT;
     let trackY = RULER_HEIGHT + fxOffset;
     for (let ti = 0; ti < tracks.length; ti++) {
@@ -203,7 +214,7 @@ export class TimelineRenderer {
       trackY += TRACK_HEIGHT;
     }
 
-    // 2b. Draw drag visual feedback (drop indicator line)
+    // 2b. Draw drag visual feedback (drop indicator line) in scrolled space
     if (this.dragState) {
       const {fromIndex, toIndex, currentY} = this.dragState;
       const canvasRect = this.canvas.getBoundingClientRect();
@@ -213,8 +224,8 @@ export class TimelineRenderer {
       ctx.fillStyle = DROP_INDICATOR_COLOR;
       ctx.fillRect(0, dropY - 1, w, 2);
 
-      // Draw ghost of the dragged track at current mouse Y position
-      const ghostY = currentY - canvasRect.top - TRACK_HEIGHT / 2;
+      // Draw ghost of the dragged track at current mouse Y position (in scrolled space)
+      const ghostY = currentY - canvasRect.top - TRACK_HEIGHT / 2 + scrollY;
       ctx.globalAlpha = 0.4;
 
       // Ghost track header
@@ -237,13 +248,16 @@ export class TimelineRenderer {
       ctx.globalAlpha = 1.0;
     }
 
-    // 3. Draw playhead line (spans full height)
+    // End scrolled region
+    ctx.restore();
+
+    // 3. Draw playhead line in screen space (spans full height, not affected by scroll)
     const playheadX = frame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
     if (playheadX >= TRACK_HEADER_WIDTH && playheadX <= w) {
       ctx.strokeStyle = PLAYHEAD_COLOR;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(playheadX, 0);
+      ctx.moveTo(playheadX, RULER_HEIGHT);
       ctx.lineTo(playheadX, h);
       ctx.stroke();
 
@@ -388,6 +402,11 @@ export class TimelineRenderer {
   /** Get the number of FX tracks currently rendered */
   getFxTrackCount(): number {
     return this.fxTrackCount;
+  }
+
+  /** Get the last scrollY value (used by TimelineInteraction for hit-testing) */
+  getScrollY(): number {
+    return this.lastScrollY;
   }
 
   /** Set drag state for track reorder visual feedback */

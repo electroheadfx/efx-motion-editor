@@ -41,6 +41,7 @@ export function TimelineCanvas() {
       const frame = timelineStore.currentFrame.value;
       const zoom = timelineStore.zoom.value;
       const scrollX = timelineStore.scrollX.value;
+      const scrollY = timelineStore.scrollY.value;
       const tracks = trackLayouts.value;
       const totalFrames = timelineStore.totalFrames.value;
 
@@ -48,6 +49,7 @@ export function TimelineCanvas() {
         frame,
         zoom,
         scrollX,
+        scrollY,
         tracks,
         fxTracks: fxTrackLayouts.value,
         imageStore,
