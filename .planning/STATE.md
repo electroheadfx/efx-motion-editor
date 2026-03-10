@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 07-06-PLAN.md
-last_updated: "2026-03-10T12:28:00Z"
-last_activity: 2026-03-10 — Completed 07-06 (FX UI Wiring)
+stopped_at: Completed 07-08-PLAN.md
+last_updated: "2026-03-10T13:24:00Z"
+last_activity: 2026-03-10 — Completed 07-08 (FX Gap Closure)
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 20
-  completed_plans: 19
-  percent: 97
+  total_plans: 23
+  completed_plans: 20
+  percent: 87
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 7 of 10 (Cinematic FX Effects)
-Plan: 6 of 7 in current phase
+Plan: 8 of 10 in current phase
 Status: In Progress
-Last activity: 2026-03-10 — Completed 07-06 (FX UI Wiring)
+Last activity: 2026-03-10 — Completed 07-08 (FX Gap Closure)
 
-Progress: [█████████░] 97% (v1.0 complete, v2.0 Phase 7 plan 6/7)
+Progress: [█████████░] 87% (v1.0 complete, v2.0 Phase 7 plan 8/10)
 
 ## Performance Metrics
 
@@ -73,6 +73,7 @@ Progress: [█████████░] 97% (v1.0 complete, v2.0 Phase 7 plan
 | Phase 07 P03 | 3min | 2 tasks | 2 files |
 | Phase 07 P05 | 3min | 2 tasks | 9 files |
 | Phase 07 P06 | 5min | 2 tasks | 7 files |
+| Phase 07 P08 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -157,6 +158,10 @@ Recent decisions affecting current work:
 - [Phase 07]: 07-06: FX overlay compositing uses clearCanvas=false parameter rather than separate render method
 - [Phase 07]: 07-06: PropertiesPanel searches all sequences (not just active) to find FX layers for property editing
 - [Phase 07]: 07-06: FX sequences filtered from content frameMap/trackLayouts; fxTrackLayouts provides FX-specific layout
+- [Phase 07]: 07-08: clearCanvas=false overlay passes treat any visible layer as drawable (adjustment layers modify existing pixels)
+- [Phase 07]: 07-08: Sequence-aware CRUD methods added alongside active-sequence-scoped methods (no breaking changes)
+- [Phase 07]: 07-08: FX layers rendered in LayerList outside SortableJS container (reorder deferred to timeline)
+- [Phase 07]: 07-08: Empty FX sequences auto-removed when sole layer deleted
 
 ### Pending Todos
 
@@ -173,6 +178,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-10T12:28:00Z
-Stopped at: Completed 07-06-PLAN.md
+Last session: 2026-03-10T13:24:00Z
+Stopped at: Completed 07-08-PLAN.md
 Resume file: None
