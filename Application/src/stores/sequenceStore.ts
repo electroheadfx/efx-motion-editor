@@ -460,6 +460,72 @@ export const sequenceStore = {
     });
   },
 
+  /** Update a layer by ID across ALL sequences (finds owning sequence automatically) */
+  updateLayerInSequence(layerId: string, updates: Partial<Layer>) {
+    // Find which sequence owns this layer
+    const ownerSeq = sequences.peek().find(s => s.layers.some(l => l.id === layerId));
+    if (!ownerSeq) return;
+
+    const before = snapshot();
+
+    sequences.value = sequences.value.map((s) =>
+      s.id === ownerSeq.id
+        ? {
+            ...s,
+            layers: s.layers.map((l) =>
+              l.id === layerId ? {...l, ...updates} : l,
+            ),
+          }
+        : s,
+    );
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Update layer',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Remove a layer by ID across ALL sequences (finds owning sequence automatically) */
+  removeLayerFromSequence(layerId: string) {
+    // Find which sequence owns this layer
+    const ownerSeq = sequences.peek().find(s => s.layers.some(l => l.id === layerId));
+    if (!ownerSeq) return;
+
+    // Protect base layers
+    const targetLayer = ownerSeq.layers.find(l => l.id === layerId);
+    if (targetLayer?.isBase) return;
+
+    const before = snapshot();
+
+    const remainingLayers = ownerSeq.layers.filter(l => l.id !== layerId);
+
+    // If this was the only layer in an FX sequence, remove the entire sequence
+    if (ownerSeq.kind === 'fx' && remainingLayers.length === 0) {
+      sequences.value = sequences.value.filter(s => s.id !== ownerSeq.id);
+    } else {
+      sequences.value = sequences.value.map((s) =>
+        s.id === ownerSeq.id
+          ? {...s, layers: remainingLayers}
+          : s,
+      );
+    }
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Remove layer',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
   /** Reorder layers in the active sequence */
   reorderLayers(fromIndex: number, toIndex: number) {
     const activeId = activeSequenceId.peek();

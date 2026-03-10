@@ -90,20 +90,26 @@ export class PreviewRenderer {
     const logicalH = rect.height;
 
     let hasDrawable = false;
-    for (const layer of layers) {
-      if (!layer.visible) continue;
+    if (!clearCanvas) {
+      // In overlay mode, the canvas already has content from a prior pass.
+      // Adjustment layers modify existing pixels — any visible layer is drawable.
+      hasDrawable = layers.some(l => l.visible);
+    } else {
+      for (const layer of layers) {
+        if (!layer.visible) continue;
 
-      if (isGeneratorLayer(layer)) {
-        hasDrawable = true;
-        break;
-      } else if (isAdjustmentLayer(layer)) {
-        // Adjustments only matter if there's content below; continue checking
-        continue;
-      } else {
-        const source = this.resolveLayerSource(layer, frame, frames, fps);
-        if (source !== null || layer.source.type === 'video') {
+        if (isGeneratorLayer(layer)) {
           hasDrawable = true;
           break;
+        } else if (isAdjustmentLayer(layer)) {
+          // Adjustments only matter if there's content below; continue checking
+          continue;
+        } else {
+          const source = this.resolveLayerSource(layer, frame, frames, fps);
+          if (source !== null || layer.source.type === 'video') {
+            hasDrawable = true;
+            break;
+          }
         }
       }
     }
