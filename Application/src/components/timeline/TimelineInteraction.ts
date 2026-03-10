@@ -264,6 +264,16 @@ export class TimelineInteraction {
       const trackIndex = this.trackIndexFromY(e.clientY);
       const tracks = trackLayouts.peek();
 
+      // Select the content sequence on header click
+      if (trackIndex >= 0 && trackIndex < tracks.length) {
+        const track = tracks[trackIndex];
+        sequenceStore.setActive(track.sequenceId);
+        uiStore.selectSequence(track.sequenceId);
+        // Clear any selected FX layer so Delete targets the sequence
+        layerStore.setSelected(null);
+        uiStore.selectLayer(null);
+      }
+
       // Only start drag if valid track and more than one sequence
       if (trackIndex >= 0 && trackIndex < tracks.length && tracks.length > 1) {
         this.isDraggingTrack = true;
@@ -291,7 +301,17 @@ export class TimelineInteraction {
       const frame = this.getFrame(e.clientX);
       playbackEngine.seekToFrame(frame);
     } else {
-      // Click-to-seek on track area
+      // Click-to-seek on track area + select content sequence
+      const trackIndex = this.trackIndexFromY(e.clientY);
+      const tracks = trackLayouts.peek();
+      if (trackIndex >= 0 && trackIndex < tracks.length) {
+        const track = tracks[trackIndex];
+        sequenceStore.setActive(track.sequenceId);
+        uiStore.selectSequence(track.sequenceId);
+        // Clear any selected FX layer so Delete targets the sequence
+        layerStore.setSelected(null);
+        uiStore.selectLayer(null);
+      }
       const frame = this.getFrame(e.clientX);
       playbackEngine.seekToFrame(frame);
     }

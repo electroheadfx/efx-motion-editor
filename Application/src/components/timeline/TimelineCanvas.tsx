@@ -60,6 +60,9 @@ export function TimelineCanvas() {
         }
       }
 
+      // Read active sequence ID for content track highlight
+      const selectedContentSequenceId = sequenceStore.activeSequenceId.value;
+
       renderer.draw({
         frame,
         zoom,
@@ -70,6 +73,7 @@ export function TimelineCanvas() {
         imageStore,
         totalFrames,
         selectedFxSequenceId,
+        selectedContentSequenceId,
       });
     });
 

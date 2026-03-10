@@ -45,6 +45,7 @@ export interface DrawState {
   imageStore: typeof ImageStoreType;
   totalFrames: number;
   selectedFxSequenceId?: string | null;
+  selectedContentSequenceId?: string | null;
 }
 
 /**
@@ -64,6 +65,7 @@ export class TimelineRenderer {
   private dragState: DragState | null = null;
   private fxDragState: FxDragState | null = null;
   private selectedFxSequenceId: string | null = null;
+  private selectedContentSequenceId: string | null = null;
   /** Number of FX tracks (used by TimelineInteraction for layout calculations) */
   fxTrackCount = 0;
   /** Last scrollY value (used by TimelineInteraction for hit-testing) */
@@ -113,6 +115,9 @@ export class TimelineRenderer {
     this.lastScrollY = scrollY;
     if (state.selectedFxSequenceId !== undefined) {
       this.selectedFxSequenceId = state.selectedFxSequenceId;
+    }
+    if (state.selectedContentSequenceId !== undefined) {
+      this.selectedContentSequenceId = state.selectedContentSequenceId;
     }
     const ctx = this.ctx;
     const frameWidth = BASE_FRAME_WIDTH * zoom;
@@ -177,14 +182,21 @@ export class TimelineRenderer {
     let trackY = RULER_HEIGHT + fxOffset;
     for (let ti = 0; ti < tracks.length; ti++) {
       const track = tracks[ti];
+      const isSelected = track.sequenceId === this.selectedContentSequenceId;
 
-      // Track background
-      ctx.fillStyle = TRACK_BG;
+      // Track background (highlight when selected)
+      ctx.fillStyle = isSelected ? '#151A20' : TRACK_BG;
       ctx.fillRect(0, trackY, w, TRACK_HEIGHT);
 
-      // Track header
-      ctx.fillStyle = TRACK_HEADER_BG;
-      ctx.fillRect(0, trackY, TRACK_HEADER_WIDTH, TRACK_HEIGHT);
+      // Selection indicator: left accent border
+      if (isSelected) {
+        ctx.fillStyle = '#4488FF';
+        ctx.fillRect(0, trackY, 2, TRACK_HEIGHT);
+      }
+
+      // Track header (highlight when selected)
+      ctx.fillStyle = isSelected ? '#101520' : TRACK_HEADER_BG;
+      ctx.fillRect(isSelected ? 2 : 0, trackY, TRACK_HEADER_WIDTH - (isSelected ? 2 : 0), TRACK_HEIGHT);
       ctx.fillStyle = TRACK_NAME_COLOR;
       ctx.font = '10px system-ui, sans-serif';
       ctx.textBaseline = 'middle';
