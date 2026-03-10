@@ -84,7 +84,7 @@ Plans:
   3. User can add a color grade effect and individually adjust brightness, contrast, saturation, hue, and fade
   4. All FX parameters are resolution-independent — preview at 830px and export at 1080p/4K produce visually identical results
   5. FX effects are timeline-level sequences that apply globally across all content, with draggable range bars on the timeline
-**Plans**: 10 plans
+**Plans**: 11 plans
 Plans:
   - [x] 07-01-PLAN.md — FX type system, generator drawing functions, color grade pipeline
   - [x] 07-02-PLAN.md — PreviewRenderer FX integration, categorized AddLayerMenu
@@ -93,9 +93,10 @@ Plans:
   - [x] 07-05-PLAN.md — FX sequence data model, store CRUD, serialization v4 (gap closure)
   - [x] 07-06-PLAN.md — FX sequence compositing in Preview, AddLayerMenu routing, PropertiesPanel cleanup (gap closure)
   - [x] 07-07-PLAN.md — Timeline FX range bars with draggable in/out handles (gap closure)
-  - [ ] 07-08-PLAN.md — Fix color grade render, sequence-aware layer CRUD, FX LayerList display (gap closure)
-  - [ ] 07-09-PLAN.md — FX visibility toggle and FX reorder drag (gap closure)
-  - [ ] 07-10-PLAN.md — Timeline vertical scroll (gap closure)
+  - [x] 07-08-PLAN.md — Fix color grade render, sequence-aware layer CRUD, FX LayerList display (gap closure)
+  - [x] 07-09-PLAN.md — FX visibility toggle and FX reorder drag (gap closure)
+  - [x] 07-10-PLAN.md — Timeline vertical scroll (gap closure)
+  - [ ] 07-11-PLAN.md — Add FX button to timeline area (gap closure)
 
 ### Phase 8: Audio Import & Waveform
 **Goal**: Users can import audio files, see waveforms on the timeline, and hear audio playing in sync with the visual preview
@@ -143,7 +144,7 @@ Phases execute in numeric order: 5 > 6 > 7 > 8 > 9 > 10
 | 4. Timeline & Preview | v1.0 | 3/3 | Complete | 2026-03-03 |
 | 5. Editing Infrastructure | v2.0 | 0/5 | Planned | - |
 | 6. Layer System & Properties Panel | v2.0 | 6/8 | In Progress | - |
-| 7. Cinematic FX Effects | v2.0 | 7/10 | In Progress | - |
+| 7. Cinematic FX Effects | v2.0 | 10/11 | In Progress | - |
 | 8. Audio Import & Waveform | v2.0 | 0/0 | Not started | - |
 | 9. Beat Sync | v2.0 | 0/0 | Not started | - |
 | 10. PNG Export | v2.0 | 0/0 | Not started | - |
