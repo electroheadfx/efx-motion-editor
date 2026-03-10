@@ -190,12 +190,18 @@ export const sequenceStore = {
     return seq;
   },
 
-  /** Toggle FX sequence visibility (visible ↔ hidden) */
+  /** Toggle FX sequence visibility (visible ↔ hidden) — syncs both sequence.visible and layer.visible */
   toggleFxSequenceVisibility(id: string) {
     const before = snapshot();
-    sequences.value = sequences.value.map((s) =>
-      s.id === id ? {...s, visible: s.visible === false ? undefined : false} : s,
-    );
+    sequences.value = sequences.value.map((s) => {
+      if (s.id !== id) return s;
+      const newVisible = s.visible === false ? undefined : false;
+      return {
+        ...s,
+        visible: newVisible,
+        layers: s.layers.map((l) => ({...l, visible: newVisible !== false})),
+      };
+    });
     markDirty();
     const after = snapshot();
     pushAction({

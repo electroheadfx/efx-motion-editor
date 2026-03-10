@@ -371,8 +371,13 @@ function FxSection({ layer }: { layer: Layer }) {
 }
 
 /** Blend mode dropdown, opacity slider, and visibility toggle */
-function BlendSection({ layer }: { layer: Layer }) {
+function BlendSection({ layer, fxSequenceId }: { layer: Layer; fxSequenceId?: string | null }) {
   const opacityPercent = Math.round(layer.opacity * 100);
+
+  // For FX layers, read visibility from the sequence (single source of truth)
+  const isVisible = fxSequenceId
+    ? sequenceStore.sequences.value.find((s) => s.id === fxSequenceId)?.visible !== false
+    : layer.visible;
 
   return (
     <div class="flex items-center gap-3 shrink-0">
@@ -417,12 +422,16 @@ function BlendSection({ layer }: { layer: Layer }) {
       {/* Visibility toggle */}
       <button
         class="text-[var(--color-text-muted)] hover:text-[#CCCCCC] transition-colors p-0.5"
-        title={layer.visible ? 'Hide layer' : 'Show layer'}
+        title={isVisible ? 'Hide layer' : 'Show layer'}
         onClick={() => {
-          layerStore.updateLayer(layer.id, { visible: !layer.visible });
+          if (fxSequenceId) {
+            sequenceStore.toggleFxSequenceVisibility(fxSequenceId);
+          } else {
+            layerStore.updateLayer(layer.id, { visible: !layer.visible });
+          }
         }}
       >
-        {layer.visible ? (
+        {isVisible ? (
           // Filled eye icon (visible)
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
@@ -534,11 +543,13 @@ export function PropertiesPanel() {
   const selectedId = layerStore.selectedLayerId.value;
   // Search all sequences for the selected layer (FX layers live in FX sequences, not the active content sequence)
   let selectedLayer: Layer | null = null;
+  let fxSequenceId: string | null = null;
   if (selectedId) {
     for (const seq of sequenceStore.sequences.value) {
       const found = seq.layers.find((l) => l.id === selectedId);
       if (found) {
         selectedLayer = found;
+        if (seq.kind === 'fx') fxSequenceId = seq.id;
         break;
       }
     }
@@ -558,7 +569,7 @@ export function PropertiesPanel() {
   if (isFxLayer(selectedLayer)) {
     return (
       <div class="flex items-center gap-5 h-14 w-full bg-[#0F0F0F] px-4 shrink-0 overflow-x-auto">
-        <BlendSection layer={selectedLayer} />
+        <BlendSection layer={selectedLayer} fxSequenceId={fxSequenceId} />
         <div class="w-px h-8 bg-[#2A2A2A]" />
         <FxSection layer={selectedLayer} />
       </div>
