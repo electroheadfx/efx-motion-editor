@@ -559,7 +559,7 @@ export function PropertiesPanel() {
     return (
       <div class="flex items-center justify-center h-14 w-full bg-[#0F0F0F] px-4 shrink-0">
         <span class="text-[10px] text-[var(--color-text-dim)]">
-          Select a layer to edit properties
+          Select a layer to edit transform
         </span>
       </div>
     );
@@ -576,12 +576,9 @@ export function PropertiesPanel() {
     );
   }
 
-  // Non-FX layers: existing layout (Blend, Transform, Crop, source info)
+  // Non-FX layers: Transform + Crop only (blend/opacity moved to LAYERS sidebar)
   return (
     <div class="flex items-center gap-5 h-14 w-full bg-[#0F0F0F] px-4 shrink-0 overflow-x-auto">
-      {/* BLEND section */}
-      <BlendSection layer={selectedLayer} />
-      <div class="w-px h-8 bg-[#2A2A2A]" />
       {/* TRANSFORM section */}
       <TransformSection layer={selectedLayer} />
       <div class="w-px h-8 bg-[#2A2A2A]" />
