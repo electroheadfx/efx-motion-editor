@@ -27,8 +27,10 @@ function naturalCompare(a: string, b: string): number {
 export function AddLayerMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [videoPickerOpen, setVideoPickerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const imagePickerRef = useRef<HTMLDivElement>(null);
+  const videoPickerRef = useRef<HTMLDivElement>(null);
 
   // Close menu on click outside
   useEffect(() => {
@@ -53,6 +55,18 @@ export function AddLayerMenu() {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [imagePickerOpen]);
+
+  // Close video picker on click outside
+  useEffect(() => {
+    if (!videoPickerOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (videoPickerRef.current && !videoPickerRef.current.contains(e.target as Node)) {
+        setVideoPickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [videoPickerOpen]);
 
   const getProjectDir = (): string | null => {
     return projectStore.dirPath.value ?? tempProjectDir.value;
@@ -187,9 +201,33 @@ export function AddLayerMenu() {
     uiStore.selectLayer(layerId);
   };
 
-  /** Add a video layer */
-  const handleAddVideo = async () => {
-    setMenuOpen(false);
+  /** Add a video layer from an already-imported asset */
+  const handleAddVideoFromAsset = (videoId: string) => {
+    const video = imageStore.videoAssets.value.find((v) => v.id === videoId);
+    if (!video) return;
+
+    const layerId = crypto.randomUUID();
+
+    layerStore.add({
+      id: layerId,
+      name: video.name,
+      type: 'video',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: {type: 'video', videoPath: video.path},
+      isBase: false,
+    });
+
+    layerStore.setSelected(layerId);
+    uiStore.selectLayer(layerId);
+    setVideoPickerOpen(false);
+  };
+
+  /** Import a new video via file dialog (fallback from video picker) */
+  const handleImportNewVideo = async () => {
+    setVideoPickerOpen(false);
     const selected = await open({
       multiple: false,
       filters: [
@@ -274,7 +312,7 @@ export function AddLayerMenu() {
           </button>
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
-            onClick={handleAddVideo}
+            onClick={() => { setMenuOpen(false); setVideoPickerOpen(true); }}
           >
             <span class="w-2 h-2 rounded-sm bg-[#8B5CF6] shrink-0" />
             Video
@@ -307,6 +345,38 @@ export function AddLayerMenu() {
           <button
             class="w-full mt-2 py-1 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border-t border-[#333] cursor-pointer"
             onClick={handleImportNewStaticImage}
+          >
+            Import new...
+          </button>
+        </div>
+      )}
+
+      {videoPickerOpen && (
+        <div
+          ref={videoPickerRef}
+          class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
+        >
+          {imageStore.videoAssets.value.length === 0 ? (
+            <div class="text-center py-3">
+              <span class="text-[10px] text-[var(--color-text-dim)]">No imported videos yet.</span>
+            </div>
+          ) : (
+            <div class="flex flex-col gap-1">
+              {imageStore.videoAssets.value.map((video) => (
+                <button
+                  key={video.id}
+                  class="w-full text-left px-2 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] rounded flex items-center gap-2 cursor-pointer"
+                  onClick={() => handleAddVideoFromAsset(video.id)}
+                >
+                  <span class="w-2 h-2 rounded-full bg-[#8B5CF6] shrink-0" />
+                  <span class="truncate">{video.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            class="w-full mt-2 py-1 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border-t border-[#333] cursor-pointer"
+            onClick={handleImportNewVideo}
           >
             Import new...
           </button>
