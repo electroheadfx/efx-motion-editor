@@ -166,8 +166,17 @@ export class TimelineInteraction {
 
     // Check FX track area first
     if (this.isInFxArea(e.clientY)) {
+      const rect = this.canvas.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
       const fxIdx = this.fxTrackIndexFromY(e.clientY);
       const fxTracks = fxTrackLayouts.peek();
+
+      // Header click: toggle visibility
+      if (localX < TRACK_HEADER_WIDTH && fxIdx >= 0 && fxIdx < fxTracks.length) {
+        sequenceStore.toggleFxSequenceVisibility(fxTracks[fxIdx].sequenceId);
+        return;
+      }
+
       if (fxIdx >= 0 && fxIdx < fxTracks.length) {
         const fxTrack = fxTracks[fxIdx];
         const mode = this.fxDragModeFromX(e.clientX, fxTrack);

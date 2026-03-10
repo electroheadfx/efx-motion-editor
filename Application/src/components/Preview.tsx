@@ -29,6 +29,7 @@ export function Preview() {
       // Composite FX sequences on top of content (without clearing the canvas)
       const fxSequences = sequenceStore.getFxSequences();
       for (const fxSeq of fxSequences) {
+        if (fxSeq.visible === false) continue;
         if (fxSeq.inFrame != null && globalFrame < fxSeq.inFrame) continue;
         if (fxSeq.outFrame != null && globalFrame >= fxSeq.outFrame) continue;
         const fxLayers = fxSeq.layers.filter((l) => l.visible);
@@ -62,6 +63,7 @@ export function Preview() {
       // Accessing sequences.value here subscribes the effect to FX seq changes
       const fxSequences = sequenceStore.sequences.value.filter((s) => s.kind === 'fx');
       for (const fxSeq of fxSequences) {
+        if (fxSeq.visible === false) continue;
         if (fxSeq.inFrame != null && globalFrame < fxSeq.inFrame) continue;
         if (fxSeq.outFrame != null && globalFrame >= fxSeq.outFrame) continue;
         const fxLayers = fxSeq.layers.filter((l) => l.visible);

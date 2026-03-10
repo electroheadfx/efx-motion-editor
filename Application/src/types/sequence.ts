@@ -12,6 +12,7 @@ export interface Sequence {
   layers: Layer[];  // Ordered bottom-to-top; layers[0] is always the base layer
   inFrame?: number;   // inclusive start frame (global timeline, FX sequences only)
   outFrame?: number;  // exclusive end frame (global timeline, FX sequences only)
+  visible?: boolean;  // FX sequences: undefined/true = visible, false = hidden
 }
 
 /** Runtime key photo type (frontend state) */

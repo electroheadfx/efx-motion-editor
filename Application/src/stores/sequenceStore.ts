@@ -190,6 +190,52 @@ export const sequenceStore = {
     return seq;
   },
 
+  /** Toggle FX sequence visibility (visible ↔ hidden) */
+  toggleFxSequenceVisibility(id: string) {
+    const before = snapshot();
+    sequences.value = sequences.value.map((s) =>
+      s.id === id ? {...s, visible: s.visible === false ? undefined : false} : s,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Toggle FX visibility',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Reorder FX sequences within the full sequences array */
+  reorderFxSequences(fromIndex: number, toIndex: number) {
+    const before = snapshot();
+    const all = [...sequences.value];
+    // Extract FX-only indices
+    const fxIndices = all.reduce<number[]>((acc, s, i) => {
+      if (s.kind === 'fx') acc.push(i);
+      return acc;
+    }, []);
+    if (fromIndex < 0 || fromIndex >= fxIndices.length || toIndex < 0 || toIndex >= fxIndices.length) return;
+    // Swap the actual positions in the full array
+    const actualFrom = fxIndices[fromIndex];
+    const actualTo = fxIndices[toIndex];
+    const [moved] = all.splice(actualFrom, 1);
+    // After removal, adjust target index if needed
+    const adjustedTo = actualTo > actualFrom ? actualTo - 1 : actualTo;
+    all.splice(adjustedTo, 0, moved);
+    sequences.value = all;
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Reorder FX sequences',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
   /** Update inFrame/outFrame on an FX sequence (for timeline drag) */
   updateFxSequenceRange(id: string, inFrame: number, outFrame: number) {
     const before = snapshot();

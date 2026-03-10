@@ -102,6 +102,7 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       inFrame: seq.inFrame ?? 0,
       outFrame: seq.outFrame ?? 100,
       color,
+      visible: seq.visible !== false,
     });
   }
   return layouts;

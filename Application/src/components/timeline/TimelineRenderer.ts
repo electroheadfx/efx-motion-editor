@@ -272,9 +272,10 @@ export class TimelineRenderer {
     ctx.fillRect(0, y, canvasWidth, FX_TRACK_HEIGHT);
 
     // Track header
+    const isVisible = fxTrack.visible;
     ctx.fillStyle = FX_TRACK_HEADER_BG;
     ctx.fillRect(0, y, TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
-    ctx.fillStyle = fxTrack.color;
+    ctx.fillStyle = isVisible ? fxTrack.color : fxTrack.color + '4D'; // 30% opacity when hidden
     ctx.font = '9px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
     const name = this.truncateText(ctx, fxTrack.sequenceName, TRACK_HEADER_WIDTH - 16);
@@ -284,7 +285,7 @@ export class TimelineRenderer {
     ctx.beginPath();
     ctx.arc(dotX + 3, dotY, 3, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#999999';
+    ctx.fillStyle = isVisible ? '#999999' : '#555555';
     ctx.fillText(name, dotX + 10, dotY);
 
     // Range bar
@@ -293,19 +294,19 @@ export class TimelineRenderer {
     const barY = y + 4;
     const barH = FX_TRACK_HEIGHT - 8;
 
-    // Only draw if visible
+    // Only draw if in viewport
     if (barX + barW >= TRACK_HEADER_WIDTH && barX <= canvasWidth) {
       const clippedLeft = Math.max(barX, TRACK_HEADER_WIDTH);
       const clippedW = Math.min(barW, canvasWidth - clippedLeft);
 
       // Bar fill (semi-transparent FX color)
-      ctx.fillStyle = fxTrack.color + '40'; // 25% opacity
+      ctx.fillStyle = fxTrack.color + (isVisible ? '40' : '26'); // 25% or 15% opacity
       ctx.beginPath();
       ctx.roundRect(clippedLeft, barY, clippedW, barH, 3);
       ctx.fill();
 
       // Bar border
-      ctx.strokeStyle = fxTrack.color + '80'; // 50% opacity
+      ctx.strokeStyle = fxTrack.color + (isVisible ? '80' : '40'); // 50% or 25% opacity
       ctx.lineWidth = 1;
       ctx.stroke();
 

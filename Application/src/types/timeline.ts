@@ -31,6 +31,7 @@ export interface FxTrackLayout {
   inFrame: number;
   outFrame: number;  // exclusive
   color: string;     // accent color for the range bar
+  visible: boolean;  // false when FX sequence is hidden (toggled off)
 }
 
 /** Frame range for a single key photo within a track */
