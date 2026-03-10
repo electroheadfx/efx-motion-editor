@@ -35,6 +35,18 @@ pub struct MceSequence {
     pub key_photos: Vec<MceKeyPhoto>,
     #[serde(default)]
     pub layers: Vec<MceLayer>,
+    /// "content" or "fx" (None defaults to "content" on frontend)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// FX sequence start frame
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_frame: Option<u32>,
+    /// FX sequence end frame
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub out_frame: Option<u32>,
+    /// FX sequence visibility (None = visible)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible: Option<bool>,
 }
 
 /// Layer definition within a sequence
@@ -71,12 +83,61 @@ pub struct MceLayerTransform {
 pub struct MceLayerSource {
     #[serde(rename = "type")]
     pub source_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // Content layer fields (existing)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub image_ids: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_path: Option<String>,
+    // Generator common fields
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_seed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u32>,
+    // Generator-grain fields (density, size, intensity)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub density: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intensity: Option<f64>,
+    // Generator-particles fields (count, speed, size_min, size_max)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_max: Option<f64>,
+    // Generator-lines fields (thickness, length_min, length_max)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thickness: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_max: Option<f64>,
+    // Generator-vignette fields (softness; size and intensity shared above)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub softness: Option<f64>,
+    // Adjustment-color-grade fields
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brightness: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contrast: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saturation: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hue: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tint_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade_blend: Option<String>,
 }
 
 /// Key photo within a sequence -- references an image by ID
