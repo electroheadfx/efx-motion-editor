@@ -33,8 +33,6 @@ export interface Layer {
   transform: LayerTransform;
   source: LayerSourceData;
   isBase?: boolean;  // true for auto-generated base layer (non-deletable)
-  inFrame?: number;   // inclusive start frame (local to sequence)
-  outFrame?: number;  // exclusive end frame; undefined = end of sequence
 }
 
 export interface LayerTransform {

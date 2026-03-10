@@ -91,9 +91,6 @@ export class PreviewRenderer {
     let hasDrawable = false;
     for (const layer of layers) {
       if (!layer.visible) continue;
-      // In/out point filtering
-      if (layer.inFrame != null && frame < layer.inFrame) continue;
-      if (layer.outFrame != null && frame >= layer.outFrame) continue;
 
       if (isGeneratorLayer(layer)) {
         hasDrawable = true;
@@ -126,10 +123,6 @@ export class PreviewRenderer {
     // Single-pass draw loop: handle content, generator, and adjustment layers in order
     for (const layer of layers) {
       if (!layer.visible) continue;
-
-      // In/out point filtering (Phase 7)
-      if (layer.inFrame != null && frame < layer.inFrame) continue;
-      if (layer.outFrame != null && frame >= layer.outFrame) continue;
 
       if (isGeneratorLayer(layer)) {
         this.drawGeneratorLayer(layer, logicalW, logicalH, frame);

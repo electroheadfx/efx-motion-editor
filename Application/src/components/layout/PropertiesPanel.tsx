@@ -284,32 +284,8 @@ function ColorGradeSection({ layer }: { layer: Layer }) {
   );
 }
 
-/** In/Out frame controls for FX layers */
-function InOutSection({ layer }: { layer: Layer }) {
-  return (
-    <div class="flex items-center gap-3 shrink-0">
-      <SectionLabel text="RANGE" />
-      <NumericInput
-        label="In"
-        value={layer.inFrame ?? 0}
-        step={1}
-        min={0}
-        onChange={(val) => {
-          layerStore.updateLayer(layer.id, { inFrame: val || undefined });
-        }}
-      />
-      <NumericInput
-        label="Out"
-        value={layer.outFrame ?? 0}
-        step={1}
-        min={0}
-        onChange={(val) => {
-          layerStore.updateLayer(layer.id, { outFrame: val || undefined });
-        }}
-      />
-    </div>
-  );
-}
+// In/Out range controls removed from layer level — FX sequences now own in/out frames (Plan 07-05).
+// Sequence-level in/out controls will be added by a future plan.
 
 // ---- Dispatch: select the right FX section based on source type ----
 
@@ -514,8 +490,6 @@ export function PropertiesPanel() {
         <BlendSection layer={selectedLayer} />
         <div class="w-px h-8 bg-[#2A2A2A]" />
         <FxSection layer={selectedLayer} />
-        <div class="w-px h-8 bg-[#2A2A2A]" />
-        <InOutSection layer={selectedLayer} />
       </div>
     );
   }

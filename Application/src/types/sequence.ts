@@ -3,12 +3,15 @@ import type { Layer } from './layer';
 /** Runtime sequence type used by sequenceStore (frontend state) */
 export interface Sequence {
   id: string;
+  kind: 'content' | 'fx';  // Discriminator: content sequences hold key photos, FX sequences hold effects
   name: string;
   fps: number;
   width: number;
   height: number;
   keyPhotos: KeyPhoto[];
   layers: Layer[];  // Ordered bottom-to-top; layers[0] is always the base layer
+  inFrame?: number;   // inclusive start frame (global timeline, FX sequences only)
+  outFrame?: number;  // exclusive end frame (global timeline, FX sequences only)
 }
 
 /** Runtime key photo type (frontend state) */

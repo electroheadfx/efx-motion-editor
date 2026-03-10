@@ -170,7 +170,6 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
         <span class="text-[9px] text-[var(--color-text-dim)] truncate">
           {typeLabel} &middot; {blendLabel}
           {isBase && ' \u00B7 Locked'}
-          {(layer.inFrame != null || layer.outFrame != null) && ` \u00B7 ${layer.inFrame ?? 0}-${layer.outFrame ?? '...'}`}
         </span>
       </div>
 

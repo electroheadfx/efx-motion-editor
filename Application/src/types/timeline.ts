@@ -23,6 +23,16 @@ export interface TrackLayout {
   keyPhotoRanges: KeyPhotoRange[];
 }
 
+/** Layout info for an FX sequence range bar in the timeline */
+export interface FxTrackLayout {
+  sequenceId: string;
+  sequenceName: string;
+  kind: 'fx';
+  inFrame: number;
+  outFrame: number;  // exclusive
+  color: string;     // accent color for the range bar
+}
+
 /** Frame range for a single key photo within a track */
 export interface KeyPhotoRange {
   keyPhotoId: string;
