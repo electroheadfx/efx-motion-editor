@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-10T11:01:24.487Z"
-last_activity: 2026-03-10 — Completed 07-01 (FX Types, Generators & Color Grade)
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-03-10T11:07:41.275Z"
+last_activity: 2026-03-10 — Completed 07-02 (FX Rendering Integration & AddLayerMenu)
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 17
-  completed_plans: 14
-  percent: 82
+  completed_plans: 16
+  percent: 88
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 7 — Cinematic FX Effects (FX types, generators, color grade)
+**Current focus:** Phase 7 — Cinematic FX Effects (FX rendering integration, AddLayerMenu)
 
 ## Current Position
 
 Phase: 7 of 10 (Cinematic FX Effects)
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: In Progress
-Last activity: 2026-03-10 — Completed 07-01 (FX Types, Generators & Color Grade)
+Last activity: 2026-03-10 — Completed 07-02 (FX Rendering Integration & AddLayerMenu)
 
-Progress: [████████░░] 82% (v1.0 complete, v2.0 Phase 7 plan 1/4)
+Progress: [█████████░] 88% (v1.0 complete, v2.0 Phase 7 plan 2/4)
 
 ## Performance Metrics
 
@@ -69,6 +69,8 @@ Progress: [████████░░] 82% (v1.0 complete, v2.0 Phase 7 plan
 | Phase 06 P08 | 2min | 1 tasks | 1 files |
 | Phase 06 P07 | 2min | 2 tasks | 2 files |
 | Phase 07 P01 | 2min | 2 tasks | 4 files |
+| Phase 07 P02 | 3min | 2 tasks | 2 files |
+| Phase 07 P03 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -142,6 +144,12 @@ Recent decisions affecting current work:
 - [Phase 07]: 07-01: MC Random used standalone (no MC scene graph) for seeded PRNG in generators
 - [Phase 07]: 07-01: Color grade uses save/resetTransform/restore to handle DPI-scaled canvas pixel access
 - [Phase 07]: 07-01: All generators use normalized coordinates (0-1) scaled to canvas for resolution independence
+- [Phase 07]: 07-02: Single-pass draw loop replacing two-pass resolve+draw for FX layer support
+- [Phase 07]: 07-02: Opacity-scaled color grade parameters instead of pixel-level blending (approximation, visually identical)
+- [Phase 07]: 07-02: Generators default to screen blend mode in AddLayerMenu for natural FX compositing
+- [Phase 07]: 07-03: FX sections dispatch via switch on source.type for precise control routing
+- [Phase 07]: 07-03: Preset change overwrites all color grade params; individual param change resets preset to none
+- [Phase 07]: 07-03: SeedControls extracted as shared sub-component for grain/particles/lines/dots reuse
 
 ### Pending Todos
 
@@ -158,6 +166,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-10T11:01:24.485Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-10T11:07:29.451Z
+Stopped at: Completed 07-03-PLAN.md
 Resume file: None

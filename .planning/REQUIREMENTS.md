@@ -49,7 +49,7 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 - [x] **FX-06**: User can adjust color grade parameters individually
 - [x] **FX-07**: User can add a dirt/scratches effect (image sequence overlay with screen blend)
 - [x] **FX-08**: User can add a light leaks effect (video overlay with screen blend)
-- [ ] **FX-09**: User can adjust intensity for all FX effects
+- [x] **FX-09**: User can adjust intensity for all FX effects
 - [x] **FX-10**: FX parameters are resolution-independent (preview and export look identical)
 
 ### Audio
@@ -172,7 +172,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FX-06 | Phase 7 | Complete |
 | FX-07 | Phase 7 | Complete |
 | FX-08 | Phase 7 | Complete |
-| FX-09 | Phase 7 | Pending |
+| FX-09 | Phase 7 | Complete |
 | FX-10 | Phase 7 | Complete |
 | AUDIO-01 | Phase 8 | Pending |
 | AUDIO-02 | Phase 8 | Pending |
