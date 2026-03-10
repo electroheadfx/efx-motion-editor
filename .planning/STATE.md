@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 05-04-PLAN.md (Undo/Redo & Shortcuts Overlay Fix)
-last_updated: "2026-03-09T21:22:19.800Z"
-last_activity: 2026-03-09 — Completed 05-04 (Undo/Redo & Shortcuts Overlay Fix)
+stopped_at: Completed 06-06-PLAN.md (Asset Management Gap Closure)
+last_updated: "2026-03-10T07:47:24Z"
+last_activity: 2026-03-10 — Completed 06-06 (Asset Management Gap Closure)
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
+  completed_phases: 1
+  total_plans: 11
+  completed_plans: 10
   percent: 89
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 5 — Editing Infrastructure (gap closure: undo/redo & shortcuts fix)
+**Current focus:** Phase 6 — Layer System & Properties Panel (gap closure: asset management fixes)
 
 ## Current Position
 
-Phase: 5 of 10 (Editing Infrastructure)
-Plan: 5 of 5 in current phase -- COMPLETE
+Phase: 6 of 10 (Layer System & Properties Panel)
+Plan: 6 of 6 in current phase
 Status: In Progress
-Last activity: 2026-03-09 — Completed 05-04 (Undo/Redo & Shortcuts Overlay Fix)
+Last activity: 2026-03-10 — Completed 06-06 (Asset Management Gap Closure)
 
-Progress: [█████████░] 89% (v1.0 complete, v2.0 Phase 5 plan 5/5)
+Progress: [█████████░] 91% (v1.0 complete, v2.0 Phase 6 plan 6/6)
 
 ## Performance Metrics
 
@@ -50,7 +50,7 @@ Progress: [█████████░] 89% (v1.0 complete, v2.0 Phase 5 plan
 | 4. Timeline | 3 | v1.0 | v1.0 |
 
 | 5. Editing Infra | 3 | v2.0 | v2.0 |
-| 6. Layers & Props | 4/4 | 12min | 3min |
+| 6. Layers & Props | 6/6 | 18min | 3min |
 
 *v2.0 metrics will populate as plans execute*
 | Phase 03 P04 | 2min | 2 tasks | 2 files |
@@ -64,6 +64,7 @@ Progress: [█████████░] 89% (v1.0 complete, v2.0 Phase 5 plan
 | Phase 04 P05 | 2min | 2 tasks | 2 files |
 | Phase 05 P05 | 2min | 2 tasks | 3 files |
 | Phase 05 P04 | 5min | 2 tasks | 3 files |
+| Phase 06 P06 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,9 @@ Recent decisions affecting current work:
 - 05-04: MenuItem::with_id for Undo/Redo instead of PredefinedMenuItem to emit events to frontend
 - 05-04: PredefinedMenuItem kept for Cut/Copy/Paste/Select All (native handling works in webview)
 - 05-04: Shift+? character matching over Shift+Slash physical key code for layout independence
+- 06-06: Replicated AddKeyPhotoButton popover pattern for static image asset picker (consistency over custom UI)
+- 06-06: VideoAsset interface kept in imageStore.ts (not separate types file) for simplicity since only two consumers
+- 06-06: Video assets tracked in-memory only (no .mce persistence); layer source paths sufficient for reconstruction
 
 ### Pending Todos
 
@@ -141,6 +145,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-09T21:16:33Z
-Stopped at: Completed 05-04-PLAN.md (Undo/Redo & Shortcuts Overlay Fix)
+Last session: 2026-03-10T07:47:24Z
+Stopped at: Completed 06-06-PLAN.md (Asset Management Gap Closure)
 Resume file: None
