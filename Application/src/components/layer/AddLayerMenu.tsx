@@ -5,7 +5,8 @@ import {layerStore} from '../../stores/layerStore';
 import {imageStore} from '../../stores/imageStore';
 import {projectStore} from '../../stores/projectStore';
 import {uiStore} from '../../stores/uiStore';
-import {defaultTransform} from '../../types/layer';
+import {defaultTransform, createDefaultFxSource} from '../../types/layer';
+import type {LayerType, BlendMode} from '../../types/layer';
 import {tempProjectDir} from '../../lib/projectDir';
 import {assetUrl} from '../../lib/ipc';
 
@@ -285,6 +286,88 @@ export function AddLayerMenu() {
     uiStore.selectLayer(layerId);
   };
 
+  /** Add a procedural FX layer (generator or adjustment) with default parameters */
+  const handleAddFxLayer = (type: LayerType, name: string, defaultBlend: BlendMode = 'normal') => {
+    setMenuOpen(false);
+    const layerId = crypto.randomUUID();
+    const source = createDefaultFxSource(type);
+
+    layerStore.add({
+      id: layerId,
+      name,
+      type,
+      visible: true,
+      opacity: 1,
+      blendMode: defaultBlend,
+      transform: defaultTransform(),
+      source,
+      isBase: false,
+    });
+
+    layerStore.setSelected(layerId);
+    uiStore.selectLayer(layerId);
+  };
+
+  /** Import a video overlay FX (e.g., grain/scratches, light leaks) with screen blend mode */
+  const handleImportOverlayVideo = async (defaultName: string) => {
+    setMenuOpen(false);
+    const selected = await open({
+      multiple: false,
+      filters: [
+        {name: 'Video', extensions: VIDEO_EXTENSIONS},
+      ],
+    });
+    if (!selected) return;
+
+    const dir = getProjectDir();
+    if (!dir) return;
+
+    const filePath = typeof selected === 'string' ? selected : selected;
+    const filename = basename(filePath);
+
+    // Ensure videos/ subdirectory exists
+    const sep = dir.endsWith('/') ? '' : '/';
+    const videosDir = `${dir}${sep}videos`;
+    try {
+      await mkdir(videosDir, {recursive: true});
+    } catch {
+      // Directory may already exist
+    }
+
+    // Copy video file to project videos/ directory
+    const destPath = `${videosDir}/${filename}`;
+    try {
+      await copyFile(filePath, destPath);
+    } catch (err) {
+      console.error('Failed to copy video file:', err);
+      return;
+    }
+
+    const layerId = crypto.randomUUID();
+
+    // Register video as imported asset
+    imageStore.addVideoAsset({
+      id: layerId,
+      name: filename,
+      path: destPath,
+    });
+
+    layerStore.add({
+      id: layerId,
+      name: `${defaultName} - ${filename}`,
+      type: 'video',
+      visible: true,
+      opacity: 1,
+      blendMode: 'screen',
+      transform: defaultTransform(),
+      source: {type: 'video', videoPath: destPath},
+      isBase: false,
+    });
+
+    layerStore.setSelected(layerId);
+    uiStore.selectLayer(layerId);
+  };
+
   return (
     <div class="relative" ref={menuRef}>
       <button
@@ -295,7 +378,9 @@ export function AddLayerMenu() {
       </button>
 
       {menuOpen && (
-        <div class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl py-1 min-w-[150px]">
+        <div class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl py-1 min-w-[160px]">
+          {/* Content section (existing layer types) */}
+          <div class="px-3 py-1 text-[9px] text-[var(--color-text-dim)] font-semibold">CONTENT</div>
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
             onClick={() => { setMenuOpen(false); setImagePickerOpen(true); }}
@@ -316,6 +401,74 @@ export function AddLayerMenu() {
           >
             <span class="w-2 h-2 rounded-sm bg-[#8B5CF6] shrink-0" />
             Video
+          </button>
+
+          {/* Overlays section (video-based FX) */}
+          <div class="border-t border-[#333] my-1" />
+          <div class="px-3 py-1 text-[9px] text-[var(--color-text-dim)] font-semibold">OVERLAYS</div>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            onClick={() => handleImportOverlayVideo('Grain/Scratches')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#F59E0B] shrink-0" />
+            Grain / Scratches
+          </button>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            onClick={() => handleImportOverlayVideo('Light Leaks')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#F59E0B] shrink-0" />
+            Light Leaks
+          </button>
+
+          {/* Generators section (procedural FX) */}
+          <div class="border-t border-[#333] my-1" />
+          <div class="px-3 py-1 text-[9px] text-[var(--color-text-dim)] font-semibold">GENERATORS</div>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            onClick={() => handleAddFxLayer('generator-grain', 'Film Grain', 'screen')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
+            Film Grain
+          </button>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            onClick={() => handleAddFxLayer('generator-particles', 'Particles', 'screen')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
+            Particles
+          </button>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            onClick={() => handleAddFxLayer('generator-lines', 'Lines', 'screen')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
+            Lines
+          </button>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            onClick={() => handleAddFxLayer('generator-dots', 'Dots', 'screen')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
+            Dots
+          </button>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            onClick={() => handleAddFxLayer('generator-vignette', 'Vignette')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
+            Vignette
+          </button>
+
+          {/* Adjustments section */}
+          <div class="border-t border-[#333] my-1" />
+          <div class="px-3 py-1 text-[9px] text-[var(--color-text-dim)] font-semibold">ADJUSTMENTS</div>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            onClick={() => handleAddFxLayer('adjustment-color-grade', 'Color Grade')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#F97316] shrink-0" />
+            Color Grade
           </button>
         </div>
       )}
