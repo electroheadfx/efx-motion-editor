@@ -1,14 +1,13 @@
 import {useRef, useEffect} from 'preact/hooks';
 import {effect} from '@preact/signals';
 import {timelineStore} from '../stores/timelineStore';
-import {layerStore} from '../stores/layerStore';
 import {sequenceStore} from '../stores/sequenceStore';
-import {frameMap, activeSequenceFrames, activeSequenceStartFrame} from '../lib/frameMap';
+import {frameMap} from '../lib/frameMap';
 import {PreviewRenderer} from '../lib/previewRenderer';
 
 export function Preview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const hasLayers = layerStore.layers.value.length > 0 || sequenceStore.getFxSequences().length > 0;
+  const hasContent = sequenceStore.sequences.value.some(s => s.kind === 'content' && s.keyPhotos.length > 0) || sequenceStore.getFxSequences().length > 0;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -56,9 +55,9 @@ export function Preview() {
     // When an image finishes loading, re-render with current values
     renderer.onImageLoaded = () => renderFromFrameMap(timelineStore.currentFrame.peek());
 
-    // Pre-load effect: when active sequence frames change, pre-load all images
+    // Pre-load effect: preload all content frames from frameMap since cursor can be in any sequence
     const disposePreload = effect(() => {
-      const frames = activeSequenceFrames.value;
+      const frames = frameMap.value;
       const imageIds = [...new Set(frames.map((f) => f.imageId))];
       renderer.preloadImages(imageIds);
     });
@@ -66,25 +65,39 @@ export function Preview() {
     // Render effect: redraw on scrub/seek/step and property changes.
     // Uses displayFrame (not currentFrame) so it does NOT fire during playback —
     // the rAF tick loop below handles playback rendering.
+    // Uses frameMap to determine which sequence owns the cursor frame, so selecting
+    // a different sequence in the sidebar does not change what is rendered.
     const disposeRender = effect(() => {
       const globalFrame = timelineStore.displayFrame.value;
-      const startFrame = activeSequenceStartFrame.value;
-      const localFrame = globalFrame - startFrame;
-      const layers = layerStore.layers.value;
-      const frames = activeSequenceFrames.value;
-      const fps = sequenceStore.getActiveSequence()?.fps ?? 24;
-      renderer.renderFrame(layers, localFrame, frames, fps);
+      const fm = frameMap.value;
+      // Subscribe to all sequence data so we re-render on layer property changes
+      const allSeqs = sequenceStore.sequences.value;
+
+      if (globalFrame < 0 || globalFrame >= fm.length) return;
+
+      const entry = fm[globalFrame];
+      if (!entry) return;
+
+      const seq = allSeqs.find((s) => s.id === entry.sequenceId);
+      if (!seq || seq.kind === 'fx') return;
+
+      // Compute sequence start frame and local frame from frameMap
+      let seqStart = globalFrame;
+      while (seqStart > 0 && fm[seqStart - 1]?.sequenceId === entry.sequenceId) seqStart--;
+      const seqFrames = fm.filter((e) => e.sequenceId === entry.sequenceId);
+      const localFrame = globalFrame - seqStart;
+
+      renderer.renderFrame(seq.layers, localFrame, seqFrames, seq.fps);
 
       // Composite FX sequences on top of content (without clearing the canvas)
-      // Accessing sequences.value here subscribes the effect to FX seq changes
-      const fxSequences = sequenceStore.sequences.value.filter((s) => s.kind === 'fx');
-      for (const fxSeq of fxSequences) {
+      for (const fxSeq of allSeqs) {
+        if (fxSeq.kind !== 'fx') continue;
         if (fxSeq.visible === false) continue;
         if (fxSeq.inFrame != null && globalFrame < fxSeq.inFrame) continue;
         if (fxSeq.outFrame != null && globalFrame >= fxSeq.outFrame) continue;
         const fxLayers = fxSeq.layers.filter((l) => l.visible);
         if (fxLayers.length > 0) {
-          renderer.renderFrame(fxLayers, localFrame, frames, fps, false);
+          renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false);
         }
       }
     });
@@ -121,7 +134,7 @@ export function Preview() {
           class="absolute inset-0 w-full h-full"
           style={{objectFit: 'contain'}}
         />
-        {!hasLayers && (
+        {!hasContent && (
           <div class="absolute inset-0 flex items-center justify-center">
             <span class="text-[var(--color-text-secondary)] text-sm">
               No frames to preview
