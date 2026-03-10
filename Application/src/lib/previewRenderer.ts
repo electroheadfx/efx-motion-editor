@@ -82,15 +82,20 @@ export class PreviewRenderer {
     const logicalW = rect.width;
     const logicalH = rect.height;
 
+    // Track visible video layers that are still loading (readyState < 2)
+    const loadingVideoLayers: Layer[] = [];
+
     for (const layer of layers) {
       if (!layer.visible) continue;
       const source = this.resolveLayerSource(layer, frame, frames, fps);
       if (source !== null) {
         resolved.push({layer, source});
+      } else if (layer.source.type === 'video') {
+        loadingVideoLayers.push(layer);
       }
     }
 
-    if (resolved.length === 0) {
+    if (resolved.length === 0 && loadingVideoLayers.length === 0) {
       return; // Keep previous frame
     }
 
@@ -105,6 +110,23 @@ export class PreviewRenderer {
 
     for (const {layer, source} of resolved) {
       this.drawLayer(source, layer, logicalW, logicalH);
+    }
+
+    // Draw loading placeholders for video layers that aren't ready yet
+    for (const layer of loadingVideoLayers) {
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#333333';
+      const pw = logicalW * 0.4;
+      const ph = logicalH * 0.2;
+      ctx.fillRect((logicalW - pw) / 2, (logicalH - ph) / 2, pw, ph);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`Loading ${layer.name}...`, logicalW / 2, logicalH / 2);
+      ctx.restore();
     }
 
     ctx.restore();

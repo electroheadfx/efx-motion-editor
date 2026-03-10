@@ -5,8 +5,18 @@ import {importImages as ipcImportImages, assetUrl} from '../lib/ipc';
 
 const POOL_MAX = 50;
 
+/** Metadata for an imported video asset */
+export interface VideoAsset {
+  id: string;
+  name: string;
+  path: string; // absolute path in project videos/ directory
+}
+
 /** All imported images (metadata only -- does not mean full-res is loaded) */
 const images = signal<ImportedImage[]>([]);
+
+/** All imported video assets */
+const videoAssets = signal<VideoAsset[]>([]);
 
 /** IDs of images currently loaded at full resolution in the DOM */
 const fullResLoaded = signal<Map<string, number>>(new Map()); // id -> lastAccessed timestamp
@@ -19,6 +29,7 @@ const importErrors = signal<string[]>([]);
 
 const imageCount = computed(() => images.value.length);
 const poolSize = computed(() => fullResLoaded.value.size);
+const videoAssetCount = computed(() => videoAssets.value.length);
 
 // markDirty callback set by projectStore to avoid circular imports
 let _markDirty: (() => void) | null = null;
@@ -33,6 +44,8 @@ export const imageStore = {
   importErrors,
   imageCount,
   poolSize,
+  videoAssets,
+  videoAssetCount,
 
   /** Import images from file paths via Rust backend */
   async importFiles(paths: string[], projectDir: string) {
@@ -64,6 +77,12 @@ export const imageStore = {
     } finally {
       isImporting.value = false;
     }
+  },
+
+  /** Register a video file as an imported asset */
+  addVideoAsset(asset: VideoAsset) {
+    videoAssets.value = [...videoAssets.value, asset];
+    _markDirty?.();
   },
 
   /** Get the display URL for an image -- thumbnail (always) or full-res (if in pool) */
@@ -171,6 +190,7 @@ export const imageStore = {
   reset() {
     batch(() => {
       images.value = [];
+      videoAssets.value = [];
       fullResLoaded.value = new Map();
       isImporting.value = false;
       importErrors.value = [];

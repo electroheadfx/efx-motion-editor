@@ -224,13 +224,20 @@ export function AddLayerMenu() {
 
     const layerId = crypto.randomUUID();
 
+    // Register video as imported asset so it appears in IMPORTED panel
+    imageStore.addVideoAsset({
+      id: layerId,
+      name: filename,
+      path: destPath,
+    });
+
     layerStore.add({
       id: layerId,
       name: filename,
       type: 'video',
       visible: true,
       opacity: 1,
-      blendMode: 'screen',
+      blendMode: 'normal',
       transform: defaultTransform(),
       source: {type: 'video', videoPath: destPath},
       isBase: false,
