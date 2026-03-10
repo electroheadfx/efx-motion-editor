@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 06-layer-system-properties-panel
 source: 06-01-SUMMARY.md, 06-02-SUMMARY.md, 06-03-SUMMARY.md, 06-04-SUMMARY.md, 06-05-SUMMARY.md, 06-06-SUMMARY.md
 started: 2026-03-10T13:00:00Z
-updated: 2026-03-10T13:12:00Z
+updated: 2026-03-10T13:20:00Z
 ---
 
 ## Current Test
@@ -89,27 +89,53 @@ skipped: 0
   reason: "User reported: I want the same mechanical from the image import: it show a popover grid appears showing already-imported video, with An 'Import new...' button at the bottom opens a file dialog as fallback."
   severity: major
   test: 3
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
-
-- truth: "Blend mode and opacity controls work on video layers the same as image layers"
-  status: failed
-  reason: "User reported: Blend mode with Video layer DO NOT WORK"
-  severity: major
-  test: 10
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "Video 'Add Layer' flow was never updated to use asset picker popover. Plan 06-06 only added the popover for static images. handleAddVideo directly calls open() file dialog with no intermediate picker. The data infrastructure exists (imageStore.videoAssets) but the UI (popover, select-from-existing handler) was never built."
+  artifacts:
+    - path: "Application/src/components/layer/AddLayerMenu.tsx"
+      issue: "Missing videoPickerOpen state, videoPickerRef, video picker popover JSX, handleAddVideoFromAsset function. Video button calls handleAddVideo directly instead of opening picker."
+  missing:
+    - "Add videoPickerOpen state and videoPickerRef mirroring imagePickerOpen/imagePickerRef"
+    - "Add click-outside effect for video picker popover"
+    - "Change Video button onClick to open picker instead of calling handleAddVideo"
+    - "Add handleAddVideoFromAsset(videoId) function that looks up video in imageStore.videoAssets"
+    - "Rename handleAddVideo to handleImportNewVideo as fallback"
+    - "Add video picker popover JSX with name+icon list and 'Import new...' button"
+  debug_session: ".planning/debug/video-layer-no-asset-picker.md"
 
 - truth: "Imported video should appear in the IMPORTED assets window alongside images"
   status: failed
   reason: "User reported: No, no video in IMPORTED assets window alongside images. The video still in project."
   severity: major
   test: 4
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "Video assets are never persisted to .mce project file and never re-discovered from videos/ directory on project load. imageStore.reset() clears videoAssets to [], hydrateFromMce only restores images. addVideoAsset IS called during handleAddVideo but videos are lost on any project reload/reopen."
+  artifacts:
+    - path: "Application/src/stores/imageStore.ts"
+      issue: "Has videoAssets signal and addVideoAsset but no loadVideoAssets or persistence methods"
+    - path: "Application/src/stores/projectStore.ts"
+      issue: "hydrateFromMce only calls imageStore.loadFromMceImages, no video restoration; closeProject calls reset() which wipes videoAssets"
+    - path: "Application/src/types/project.ts"
+      issue: "MceProject has no video_assets field"
+    - path: "Application/src/components/import/ImportGrid.tsx"
+      issue: "Render code is correct — will display videos when signal has data"
+  missing:
+    - "Implement video asset re-discovery in hydrateFromMce by scanning videos/ dir or deriving from loaded video layers"
+    - "Alternatively add video_assets to MceProject schema and serialize/deserialize"
+    - "Add videoAssets restoration to loadFromMceImages or create parallel loadVideoAssets method"
+  debug_session: ".planning/debug/videos-not-in-imported-panel.md"
+
+- truth: "Blend mode and opacity controls work on video layers the same as image layers"
+  status: failed
+  reason: "User reported: Blend mode with Video layer DO NOT WORK"
+  severity: major
+  test: 10
+  root_cause: "Video layers lack a re-render callback when video.readyState transitions to >= 2. resolveVideoSource() creates video elements with zero event listeners. When readyState < 2, returns null and draws a gray placeholder that ignores blend mode. Nothing triggers a re-render when video finishes loading, so blend mode (applied in drawLayer for resolved sources) never takes effect while paused."
+  artifacts:
+    - path: "Application/src/lib/previewRenderer.ts"
+      issue: "resolveVideoSource() (lines 247-252) creates video with no event listeners for readyState changes. readyState < 2 guard returns null with no retry mechanism."
+    - path: "Application/src/components/Preview.tsx"
+      issue: "onImageLoaded callback exists for images but no equivalent onVideoReady for videos"
+  missing:
+    - "Add loadeddata/canplay event listeners to video elements in resolveVideoSource() that call onImageLoaded to trigger re-render"
+    - "Add seeked event listener for frame sync re-render after seeking"
+    - "Loading placeholder should respect layer blendMode and opacity instead of hardcoding"
+  debug_session: ".planning/debug/video-blend-mode-broken.md"
