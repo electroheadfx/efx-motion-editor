@@ -51,6 +51,9 @@ function buildMceProject(): MceProject {
       width: seq.width,
       height: seq.height,
       order: index,
+      kind: seq.kind,
+      ...(seq.inFrame != null ? { in_frame: seq.inFrame } : {}),
+      ...(seq.outFrame != null ? { out_frame: seq.outFrame } : {}),
       key_photos: seq.keyPhotos.map(
         (kp: KeyPhoto, kpIndex: number): MceKeyPhoto => ({
           id: kp.id,
@@ -121,15 +124,12 @@ function buildMceProject(): MceProject {
         },
         is_base: layer.isBase ?? false,
         order: layerIndex,
-        // In/out points
-        ...(layer.inFrame != null ? {in_frame: layer.inFrame} : {}),
-        ...(layer.outFrame != null ? {out_frame: layer.outFrame} : {}),
       })),
     }),
   );
 
   return {
-    version: 3,
+    version: 4,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -197,15 +197,13 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
                     return ml.source as unknown as LayerSourceData;
                   })(),
                   isBase: ml.is_base,
-                  // In/out points
-                  ...(ml.in_frame != null ? {inFrame: ml.in_frame} : {}),
-                  ...(ml.out_frame != null ? {outFrame: ml.out_frame} : {}),
                 }),
               )
           : [createBaseLayer()];
 
       const seq: Sequence = {
         id: mceSeq.id,
+        kind: (mceSeq.kind as 'content' | 'fx') ?? 'content',
         name: mceSeq.name,
         fps: mceSeq.fps,
         width: mceSeq.width,
@@ -218,6 +216,8 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
           }),
         ),
         layers,
+        ...(mceSeq.in_frame != null ? { inFrame: mceSeq.in_frame } : {}),
+        ...(mceSeq.out_frame != null ? { outFrame: mceSeq.out_frame } : {}),
       };
       sequenceStore.add(seq);
     }

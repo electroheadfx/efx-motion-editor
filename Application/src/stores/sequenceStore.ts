@@ -56,6 +56,7 @@ export const sequenceStore = {
 
     const seq: Sequence = {
       id: genId(),
+      kind: 'content',
       name,
       fps: 24,
       width: 1920,
@@ -154,6 +155,68 @@ export const sequenceStore = {
       undo: () => restore(before),
       redo: () => restore(after),
     });
+  },
+
+  // --- FX Sequence CRUD ---
+
+  /** Create an FX sequence with a single FX layer, positioned globally on the timeline */
+  createFxSequence(name: string, layer: Layer, totalFrames: number): Sequence {
+    const before = snapshot();
+
+    const seq: Sequence = {
+      id: genId(),
+      kind: 'fx',
+      name,
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: totalFrames > 0 ? totalFrames : 100,
+    };
+    sequences.value = [...sequences.value, seq];
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Add FX "${name}"`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+
+    return seq;
+  },
+
+  /** Update inFrame/outFrame on an FX sequence (for timeline drag) */
+  updateFxSequenceRange(id: string, inFrame: number, outFrame: number) {
+    const before = snapshot();
+
+    sequences.value = sequences.value.map((s) =>
+      s.id === id ? {...s, inFrame, outFrame} : s,
+    );
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Update FX range',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Get all content sequences (kind === 'content') */
+  getContentSequences(): Sequence[] {
+    return sequences.value.filter((s) => s.kind === 'content');
+  },
+
+  /** Get all FX sequences (kind === 'fx') */
+  getFxSequences(): Sequence[] {
+    return sequences.value.filter((s) => s.kind === 'fx');
   },
 
   /** Update sequence name */

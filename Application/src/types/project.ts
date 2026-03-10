@@ -29,6 +29,9 @@ export interface MceSequence {
   order: number;
   key_photos: MceKeyPhoto[];
   layers?: MceLayer[];  // Optional for backward compat with v1 files
+  kind?: string;       // 'content' | 'fx' (optional for v2/v3 compat, defaults to 'content')
+  in_frame?: number;   // FX sequence start frame
+  out_frame?: number;  // FX sequence end frame
 }
 
 /** Layer definition within a sequence in the .mce file */
@@ -43,8 +46,6 @@ export interface MceLayer {
   source: MceLayerSource;
   is_base: boolean;
   order: number;
-  in_frame?: number;
-  out_frame?: number;
 }
 
 export interface MceLayerTransform {
