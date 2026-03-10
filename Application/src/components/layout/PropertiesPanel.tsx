@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'preact/hooks';
 import { layerStore } from '../../stores/layerStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import type { Layer, BlendMode } from '../../types/layer';
@@ -17,7 +18,7 @@ function SectionLabel({ text }: { text: string }) {
   );
 }
 
-/** Small numeric input with consistent styling */
+/** Small numeric input with local editing state -- commits on Enter/blur, reverts on Escape */
 function NumericInput({
   label,
   value,
@@ -33,6 +34,33 @@ function NumericInput({
   max?: number;
   onChange: (val: number) => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [localValue, setLocalValue] = useState('');
+
+  const formatDisplay = useCallback(
+    (v: number) => (step < 1 ? v.toFixed(2) : String(v)),
+    [step],
+  );
+
+  const commitValue = useCallback(() => {
+    const parsed = parseFloat(localValue);
+    if (!isNaN(parsed)) {
+      let clamped = parsed;
+      if (min != null) clamped = Math.max(min, clamped);
+      if (max != null) clamped = Math.min(max, clamped);
+      if (clamped !== value) {
+        onChange(clamped);
+      }
+    }
+    setIsEditing(false);
+    stopCoalescing();
+  }, [localValue, min, max, value, onChange]);
+
+  const revertValue = useCallback(() => {
+    setIsEditing(false);
+    stopCoalescing();
+  }, []);
+
   return (
     <div class="flex items-center gap-1">
       <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">{label}</span>
@@ -41,14 +69,26 @@ function NumericInput({
         step={step}
         min={min}
         max={max}
-        value={step < 1 ? value.toFixed(2) : String(value)}
+        value={isEditing ? localValue : formatDisplay(value)}
         class="w-16 text-[11px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-2 py-[5px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        onPointerDown={() => startCoalescing()}
-        onPointerUp={() => stopCoalescing()}
-        onInput={(e) => {
-          const val = parseFloat((e.target as HTMLInputElement).value);
-          if (!isNaN(val)) onChange(val);
+        onFocus={() => {
+          setIsEditing(true);
+          setLocalValue(formatDisplay(value));
+          startCoalescing();
         }}
+        onInput={(e) => {
+          setLocalValue((e.target as HTMLInputElement).value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commitValue();
+            (e.target as HTMLInputElement).blur();
+          } else if (e.key === 'Escape') {
+            revertValue();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        onBlur={commitValue}
       />
     </div>
   );
@@ -153,22 +193,13 @@ function TransformSection({ layer }: { layer: Layer }) {
         min={0.01}
         onChange={(val) => updateTransform('scale', val)}
       />
-      <div class="flex items-center gap-1">
-        <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Rot</span>
-        <input
-          type="number"
-          step={1}
-          value={String(layer.transform.rotation)}
-          class="w-16 text-[11px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-2 py-[5px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          onPointerDown={() => startCoalescing()}
-          onPointerUp={() => stopCoalescing()}
-          onInput={(e) => {
-            const val = parseFloat((e.target as HTMLInputElement).value);
-            if (!isNaN(val)) updateTransform('rotation', val);
-          }}
-        />
-        <span class="text-[10px] text-[var(--color-text-muted)]">&deg;</span>
-      </div>
+      <NumericInput
+        label="Rot"
+        value={layer.transform.rotation}
+        step={1}
+        onChange={(val) => updateTransform('rotation', val)}
+      />
+      <span class="text-[10px] text-[var(--color-text-muted)]">&deg;</span>
     </div>
   );
 }

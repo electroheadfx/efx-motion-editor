@@ -22,6 +22,8 @@ export function LayerList() {
       ghostClass: 'opacity-30',
       handle: '.layer-drag-handle',
       filter: '.layer-base',
+      forceFallback: true,
+      fallbackClass: 'opacity-30',
       onMove(evt) {
         // Prevent dropping anything onto the base layer position
         if (evt.related.classList.contains('layer-base')) {
@@ -30,11 +32,15 @@ export function LayerList() {
         return true;
       },
       onEnd(evt) {
-        if (evt.oldIndex != null && evt.newIndex != null && evt.oldIndex !== evt.newIndex) {
+        const { oldIndex, newIndex, item, from } = evt;
+        if (oldIndex != null && newIndex != null && oldIndex !== newIndex) {
+          // Revert SortableJS DOM mutation so Preact can re-render correctly
+          from.removeChild(item);
+          from.insertBefore(item, from.children[oldIndex] ?? null);
           // Convert visual indices (reversed) back to array indices
-          const from = totalLayers - 1 - evt.oldIndex;
-          const to = totalLayers - 1 - evt.newIndex;
-          layerStore.reorder(from, to);
+          const fromIdx = totalLayers - 1 - oldIndex;
+          const toIdx = totalLayers - 1 - newIndex;
+          layerStore.reorder(fromIdx, toIdx);
         }
       },
     });
