@@ -40,6 +40,7 @@ export class PlaybackEngine {
       this.rafId = null;
     }
     timelineStore.setPlaying(false);
+    timelineStore.syncDisplayFrame();
     resetShuttle();
   }
 
@@ -53,18 +54,21 @@ export class PlaybackEngine {
 
   seekToFrame(frame: number) {
     timelineStore.seek(frame);
+    timelineStore.syncDisplayFrame();
     this.syncActiveSequence();
     this.syncPlayer();
   }
 
   stepForward() {
     timelineStore.stepForward();
+    timelineStore.syncDisplayFrame();
     this.syncActiveSequence();
     this.syncPlayer();
   }
 
   stepBackward() {
     timelineStore.stepBackward();
+    timelineStore.syncDisplayFrame();
     this.syncActiveSequence();
     this.syncPlayer();
   }

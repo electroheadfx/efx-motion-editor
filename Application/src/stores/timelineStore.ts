@@ -3,21 +3,25 @@ import {projectStore} from './projectStore';
 import {totalFrames as totalFramesSignal} from '../lib/frameMap';
 
 const currentFrame = signal(0);
+const displayFrame = signal(0);
 const isPlaying = signal(false);
 const zoom = signal(1);
 const scrollX = signal(0);
 const scrollY = signal(0);
 
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);
+const displayTime = computed(() => displayFrame.value / projectStore.fps.value);
 const totalDuration = computed(() => totalFramesSignal.value / projectStore.fps.value);
 
 export const timelineStore = {
   currentFrame,
+  displayFrame,
   isPlaying,
   zoom,
   scrollX,
   scrollY,
   currentTime,
+  displayTime,
   totalFrames: totalFramesSignal,
   totalDuration,
 
@@ -51,8 +55,12 @@ export const timelineStore = {
   setScrollY(v: number) {
     scrollY.value = Math.max(0, v);
   },
+  syncDisplayFrame() {
+    displayFrame.value = currentFrame.value;
+  },
   reset() {
     currentFrame.value = 0;
+    displayFrame.value = 0;
     isPlaying.value = false;
     zoom.value = 1;
     scrollX.value = 0;
