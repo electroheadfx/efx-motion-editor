@@ -12,7 +12,8 @@ import type {Sequence} from '../../types/sequence';
 /** Sortable sequence list with drag reorder, context actions, inline rename */
 export function SequenceList() {
   const listRef = useRef<HTMLDivElement>(null);
-  const sequences = sequenceStore.sequences.value;
+  const allSequences = sequenceStore.sequences.value;
+  const sequences = allSequences.filter(s => s.kind !== 'fx');
   const activeId = uiStore.selectedSequenceId.value;
 
   // SortableJS integration — recreate when items added/removed to keep DOM refs fresh
@@ -30,7 +31,18 @@ export function SequenceList() {
           // Revert SortableJS DOM mutation so Preact can re-render correctly
           from.removeChild(item);
           from.insertBefore(item, from.children[oldIndex] ?? null);
-          sequenceStore.reorderSequences(oldIndex, newIndex);
+          // Map filtered (content-only) indices back to full sequences array
+          const contentSeqs = sequenceStore.sequences.peek().filter(s => s.kind !== 'fx');
+          const movedSeq = contentSeqs[oldIndex];
+          const targetSeq = contentSeqs[newIndex];
+          if (movedSeq && targetSeq) {
+            const allSeqs = sequenceStore.sequences.peek();
+            const actualOld = allSeqs.findIndex(s => s.id === movedSeq.id);
+            const actualNew = allSeqs.findIndex(s => s.id === targetSeq.id);
+            if (actualOld !== -1 && actualNew !== -1) {
+              sequenceStore.reorderSequences(actualOld, actualNew);
+            }
+          }
         }
       },
     });

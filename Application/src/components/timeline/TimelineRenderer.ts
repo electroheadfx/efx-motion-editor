@@ -348,9 +348,11 @@ export class TimelineRenderer {
     // Color dot + name
     const dotX = 6;
     const dotY = y + FX_TRACK_HEIGHT / 2;
-    ctx.beginPath();
-    ctx.arc(dotX + 3, dotY, 3, 0, Math.PI * 2);
-    ctx.fill();
+    if (isVisible) {
+      ctx.beginPath();
+      ctx.arc(dotX + 3, dotY, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.fillStyle = isVisible ? '#999999' : '#555555';
     ctx.fillText(name, dotX + 10, dotY);
 
