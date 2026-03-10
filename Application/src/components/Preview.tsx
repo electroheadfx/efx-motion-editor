@@ -8,7 +8,7 @@ import {PreviewRenderer} from '../lib/previewRenderer';
 
 export function Preview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const hasLayers = layerStore.layers.value.length > 0;
+  const hasLayers = layerStore.layers.value.length > 0 || sequenceStore.getFxSequences().length > 0;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -25,6 +25,17 @@ export function Preview() {
       const frames = activeSequenceFrames.peek();
       const fps = sequenceStore.getActiveSequence()?.fps ?? 24;
       renderer.renderFrame(layers, localFrame, frames, fps);
+
+      // Composite FX sequences on top of content (without clearing the canvas)
+      const fxSequences = sequenceStore.getFxSequences();
+      for (const fxSeq of fxSequences) {
+        if (fxSeq.inFrame != null && globalFrame < fxSeq.inFrame) continue;
+        if (fxSeq.outFrame != null && globalFrame >= fxSeq.outFrame) continue;
+        const fxLayers = fxSeq.layers.filter((l) => l.visible);
+        if (fxLayers.length > 0) {
+          renderer.renderFrame(fxLayers, localFrame, frames, fps, false);
+        }
+      }
     }
 
     // When an image finishes loading, re-render with current values
@@ -46,6 +57,18 @@ export function Preview() {
       const frames = activeSequenceFrames.value;
       const fps = sequenceStore.getActiveSequence()?.fps ?? 24;
       renderer.renderFrame(layers, localFrame, frames, fps);
+
+      // Composite FX sequences on top of content (without clearing the canvas)
+      // Accessing sequences.value here subscribes the effect to FX seq changes
+      const fxSequences = sequenceStore.sequences.value.filter((s) => s.kind === 'fx');
+      for (const fxSeq of fxSequences) {
+        if (fxSeq.inFrame != null && globalFrame < fxSeq.inFrame) continue;
+        if (fxSeq.outFrame != null && globalFrame >= fxSeq.outFrame) continue;
+        const fxLayers = fxSeq.layers.filter((l) => l.visible);
+        if (fxLayers.length > 0) {
+          renderer.renderFrame(fxLayers, localFrame, frames, fps, false);
+        }
+      }
     });
 
     // rAF render loop: ensures preview stays in sync during playback

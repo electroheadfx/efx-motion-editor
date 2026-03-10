@@ -71,6 +71,7 @@ export class PreviewRenderer {
     frame: number,
     frames: FrameEntry[],
     fps: number,
+    clearCanvas = true,
   ): void {
     // Sync canvas internal resolution to display size (Retina DPI)
     const rect = this.canvas.getBoundingClientRect();
@@ -113,8 +114,10 @@ export class PreviewRenderer {
 
     const ctx = this.ctx;
 
-    // Clear canvas only when we have something to draw
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    // Clear canvas only when we have something to draw (skip for FX overlay passes)
+    if (clearCanvas) {
+      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
 
     // Apply DPI scaling — all drawing uses logical pixels (rect.width x rect.height)
     ctx.save();
