@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 Phase: 7 of 10 (Cinematic FX Effects)
 Plan: 10 of 10 in current phase
 Status: Phase Complete
-Last activity: 2026-03-10 - Completed quick task 2: Freeze UI updates during playback
+Last activity: 2026-03-10 - Completed quick task 3: Fix playback black flash regression
 
 Progress: [██████████] 100% (v1.0 complete, v2.0 Phase 7 complete)
 
@@ -188,6 +188,7 @@ No active blockers.
 |---|-------------|------|--------|-----------|
 | 1 | Project save doesn't save FX layers created in the project, when I re-open the project my FX has gone | 2026-03-10 | 6d3dfce | [1-project-save-doesn-t-save-fx-layers-crea](./quick/1-project-save-doesn-t-save-fx-layers-crea/) |
 | 2 | Freeze UI updates during playback (displayFrame/displayTime dual-signal pattern) | 2026-03-10 | 5e2773f | [2-freeze-ui-updates-during-playback-only-u](./quick/2-freeze-ui-updates-during-playback-only-u/) |
+| 3 | Fix playback black flash regression from quick-2 UI freeze changes | 2026-03-10 | 230b0a2 | [3-fix-playback-black-flash-regression-from](./quick/3-fix-playback-black-flash-regression-from/) |
 
 ## Session Continuity
 
