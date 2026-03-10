@@ -36,6 +36,7 @@ export class PreviewRenderer {
   private loadingImages: Set<string>; // imageIds currently loading
   private videoElements: Map<string, HTMLVideoElement>; // layerId -> video element
   private videoReadyHandlers: Map<string, () => void>; // layerId -> shared loadeddata/seeked handler
+  private offscreenCanvas: HTMLCanvasElement | null = null; // reusable offscreen canvas for video rasterization
 
   /** Callback invoked after an image finishes loading (triggers re-render) */
   onImageLoaded: (() => void) | null = null;
@@ -285,6 +286,29 @@ export class PreviewRenderer {
   ): void {
     const ctx = this.ctx;
 
+    // WebKit/Safari hardware-accelerated video elements ignore
+    // globalCompositeOperation when drawn directly via drawImage.
+    // Rasterize to an offscreen canvas first so the frame participates
+    // in normal Canvas 2D compositing.
+    let drawSource: CanvasImageSource = source;
+    if (source instanceof HTMLVideoElement && layer.blendMode !== 'normal') {
+      const vw = source.videoWidth;
+      const vh = source.videoHeight;
+      if (vw > 0 && vh > 0) {
+        if (!this.offscreenCanvas) {
+          this.offscreenCanvas = document.createElement('canvas');
+        }
+        if (this.offscreenCanvas.width !== vw) this.offscreenCanvas.width = vw;
+        if (this.offscreenCanvas.height !== vh) this.offscreenCanvas.height = vh;
+        const offCtx = this.offscreenCanvas.getContext('2d');
+        if (offCtx) {
+          offCtx.clearRect(0, 0, vw, vh);
+          offCtx.drawImage(source, 0, 0);
+          drawSource = this.offscreenCanvas;
+        }
+      }
+    }
+
     ctx.save();
 
     // Set blend mode BEFORE drawing
@@ -299,7 +323,7 @@ export class PreviewRenderer {
     ctx.rotate((layer.transform.rotation * Math.PI) / 180);
     ctx.scale(layer.transform.scale, layer.transform.scale);
 
-    // Get source dimensions
+    // Get source dimensions (use original source for video to get videoWidth/Height)
     const srcW = this.getSourceWidth(source);
     const srcH = this.getSourceHeight(source);
 
@@ -345,7 +369,7 @@ export class PreviewRenderer {
           drawW = canvasH * croppedAspect;
         }
         ctx.drawImage(
-          source,
+          drawSource,
           sx,
           sy,
           sw,
@@ -358,7 +382,7 @@ export class PreviewRenderer {
       }
     } else {
       // No crop — use 5-arg drawImage for performance
-      ctx.drawImage(source, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.drawImage(drawSource, -drawW / 2, -drawH / 2, drawW, drawH);
     }
 
     ctx.restore();
@@ -403,6 +427,7 @@ export class PreviewRenderer {
     this.videoReadyHandlers.clear();
     this.imageCache.clear();
     this.loadingImages.clear();
+    this.offscreenCanvas = null;
     this.onImageLoaded = null;
   }
 }
