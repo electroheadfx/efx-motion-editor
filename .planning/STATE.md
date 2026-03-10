@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 Phase: 7 of 10 (Cinematic FX Effects)
 Plan: 10 of 10 in current phase
 Status: Phase Complete
-Last activity: 2026-03-10 - Completed quick task 1: Project save doesn't save FX layers created in the project, when I re-open the project my FX has gone
+Last activity: 2026-03-10 - Completed quick task 2: Freeze UI updates during playback
 
 Progress: [██████████] 100% (v1.0 complete, v2.0 Phase 7 complete)
 
@@ -167,6 +167,7 @@ Recent decisions affecting current work:
 - [Phase 07]: visible?: boolean uses undefined=true, false=hidden to avoid adding visible:true to all existing sequences
 - [Phase 07]: FX header click vs drag resolved on pointerUp: same-track release = toggle visibility, different-track = reorder
 - [Phase 07]: 07-10: Ruler fixed at top via clip region; playhead in screen space; deltaY=vertical, shift+deltaY=horizontal scroll
+- [Quick-02]: Dual-signal pattern: displayFrame for UI panels, currentFrame for render loop; syncDisplayFrame on stop/seek/step only
 
 ### Pending Todos
 
@@ -186,9 +187,10 @@ No active blockers.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Project save doesn't save FX layers created in the project, when I re-open the project my FX has gone | 2026-03-10 | 6d3dfce | [1-project-save-doesn-t-save-fx-layers-crea](./quick/1-project-save-doesn-t-save-fx-layers-crea/) |
+| 2 | Freeze UI updates during playback (displayFrame/displayTime dual-signal pattern) | 2026-03-10 | 5e2773f | [2-freeze-ui-updates-during-playback-only-u](./quick/2-freeze-ui-updates-during-playback-only-u/) |
 
 ## Session Continuity
 
-Last session: 2026-03-10T13:36:03.429Z
-Stopped at: Completed 07-10-PLAN.md
+Last session: 2026-03-10T18:23:32Z
+Stopped at: Completed quick task 2
 Resume file: None
