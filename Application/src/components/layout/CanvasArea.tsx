@@ -137,7 +137,7 @@ export function CanvasArea() {
         {/* Timecode display */}
         <div class="rounded bg-[var(--color-bg-input)] px-3 py-1.5">
           <span class="text-[13px] font-semibold text-[#E0E0E0]">
-            {formatTime(timelineStore.currentTime.value)}
+            {formatTime(timelineStore.displayTime.value)}
           </span>
         </div>
         <span class="text-xs text-[var(--color-text-dim)]">

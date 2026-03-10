@@ -67,7 +67,7 @@ export function TimelinePanel() {
 
         {/* Timecode display */}
         <span class="text-[11px] text-[var(--color-text-secondary)]">
-          {formatTime(timelineStore.currentTime.value)} / {formatTime(timelineStore.totalDuration.value)}
+          {formatTime(timelineStore.displayTime.value)} / {formatTime(timelineStore.totalDuration.value)}
         </span>
 
         <div class="flex-1" />
