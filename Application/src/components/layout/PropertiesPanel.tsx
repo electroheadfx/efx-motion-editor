@@ -7,6 +7,7 @@ import { COLOR_GRADE_PRESETS, PRESET_NAMES } from '../../lib/fxPresets';
 import type { Layer, BlendMode, LayerSourceData } from '../../types/layer';
 
 const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
+const FADE_BLEND_MODES = ['source-over', 'screen', 'multiply', 'overlay', 'color', 'soft-light', 'hard-light'];
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -21,7 +22,8 @@ function SectionLabel({ text }: { text: string }) {
   );
 }
 
-/** Small numeric input with local editing state -- commits on Enter/blur, reverts on Escape */
+/** Small numeric input with local editing state -- commits on Enter/blur, reverts on Escape.
+ *  Label is draggable: click-drag left/right on the label to scrub the value by step increments. */
 function NumericInput({
   label,
   value,
@@ -39,6 +41,7 @@ function NumericInput({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [localValue, setLocalValue] = useState('');
+  const [isDraggingLabel, setIsDraggingLabel] = useState(false);
 
   const formatDisplay = useCallback(
     (v: number) => (step < 1 ? v.toFixed(2) : String(v)),
@@ -64,9 +67,51 @@ function NumericInput({
     stopCoalescing();
   }, []);
 
+  // Label drag-to-scrub: drag left/right on label to change value
+  const handleLabelPointerDown = useCallback((e: PointerEvent) => {
+    e.preventDefault();
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+    setIsDraggingLabel(true);
+    startCoalescing();
+    let startX = e.clientX;
+    let currentVal = value;
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      // Every 4px of movement = 1 step
+      const steps = Math.trunc(dx / 4);
+      if (steps !== 0) {
+        startX += steps * 4;
+        let newVal = currentVal + steps * step;
+        // Round to avoid floating-point drift
+        newVal = Math.round(newVal / step) * step;
+        if (min != null) newVal = Math.max(min, newVal);
+        if (max != null) newVal = Math.min(max, newVal);
+        currentVal = newVal;
+        onChange(newVal);
+      }
+    };
+
+    const onUp = () => {
+      setIsDraggingLabel(false);
+      stopCoalescing();
+      target.removeEventListener('pointermove', onMove);
+      target.removeEventListener('pointerup', onUp);
+    };
+
+    target.addEventListener('pointermove', onMove);
+    target.addEventListener('pointerup', onUp);
+  }, [value, step, min, max, onChange]);
+
   return (
     <div class="flex items-center gap-1">
-      <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">{label}</span>
+      <span
+        class={`text-[10px] text-[var(--color-text-muted)] whitespace-nowrap select-none ${isDraggingLabel ? 'cursor-ew-resize' : 'cursor-ew-resize'}`}
+        onPointerDown={handleLabelPointerDown}
+      >
+        {label}
+      </span>
       <input
         type="number"
         step={step}
@@ -260,15 +305,15 @@ function ColorGradeSection({ layer }: { layer: Layer }) {
         ))}
       </select>
 
-      <NumericInput label="Bright" value={source.brightness} step={0.01} min={-0.5} max={0.5}
+      <NumericInput label="Bright" value={source.brightness} step={0.1} min={-1} max={1}
         onChange={(val) => handleParamChange('brightness', val)} />
-      <NumericInput label="Contrast" value={source.contrast} step={0.01} min={-1} max={1}
+      <NumericInput label="Contrast" value={source.contrast} step={0.1} min={-1} max={1}
         onChange={(val) => handleParamChange('contrast', val)} />
-      <NumericInput label="Sat" value={source.saturation} step={0.01} min={0} max={2}
+      <NumericInput label="Sat" value={source.saturation} step={0.1} min={-1} max={1}
         onChange={(val) => handleParamChange('saturation', val)} />
       <NumericInput label="Hue" value={source.hue} step={1} min={-180} max={180}
         onChange={(val) => handleParamChange('hue', val)} />
-      <NumericInput label="Fade" value={source.fade} step={0.01} min={0} max={1}
+      <NumericInput label="Fade" value={source.fade} step={0.1} min={0} max={1}
         onChange={(val) => handleParamChange('fade', val)} />
 
       {/* Tint color picker */}
@@ -280,6 +325,22 @@ function ColorGradeSection({ layer }: { layer: Layer }) {
           class="w-6 h-6 rounded cursor-pointer border-none bg-transparent"
           onInput={(e) => handleParamChange('tintColor', (e.target as HTMLInputElement).value)}
         />
+      </div>
+
+      {/* Fade blend mode dropdown */}
+      <div class="flex items-center gap-1">
+        <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Fade Blend</span>
+        <select
+          class="text-[10px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-1 py-[3px] outline-none cursor-pointer"
+          value={source.fadeBlend ?? 'source-over'}
+          onChange={(e) => handleParamChange('fadeBlend', (e.target as HTMLSelectElement).value)}
+        >
+          {FADE_BLEND_MODES.map((mode) => (
+            <option key={mode} value={mode}>
+              {capitalize(mode.replace('-', ' '))}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );

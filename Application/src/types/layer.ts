@@ -21,7 +21,7 @@ export type LayerSourceData =
   | { type: 'generator-lines'; count: number; thickness: number; lengthMin: number; lengthMax: number; lockSeed: boolean; seed: number }
   | { type: 'generator-dots'; count: number; sizeMin: number; sizeMax: number; speed: number; lockSeed: boolean; seed: number }
   | { type: 'generator-vignette'; size: number; softness: number; intensity: number }
-  | { type: 'adjustment-color-grade'; brightness: number; contrast: number; saturation: number; hue: number; fade: number; tintColor: string; preset: string };
+  | { type: 'adjustment-color-grade'; brightness: number; contrast: number; saturation: number; hue: number; fade: number; tintColor: string; preset: string; fadeBlend?: string };
 
 export interface Layer {
   id: string;
@@ -95,7 +95,7 @@ export function createDefaultFxSource(type: LayerType): LayerSourceData {
     case 'generator-vignette':
       return { type: 'generator-vignette', size: 0.6, softness: 0.5, intensity: 0.7 };
     case 'adjustment-color-grade':
-      return { type: 'adjustment-color-grade', brightness: 0, contrast: 0, saturation: 1, hue: 0, fade: 0, tintColor: '#D4A574', preset: 'none' };
+      return { type: 'adjustment-color-grade', brightness: 0, contrast: 0, saturation: 0, hue: 0, fade: 0, tintColor: '#D4A574', preset: 'none' };
     default:
       throw new Error(`Not an FX layer type: ${type}`);
   }

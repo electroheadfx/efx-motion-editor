@@ -5,6 +5,8 @@ import {TimelineInteraction} from './TimelineInteraction';
 import {timelineStore} from '../../stores/timelineStore';
 import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {imageStore} from '../../stores/imageStore';
+import {layerStore} from '../../stores/layerStore';
+import {sequenceStore} from '../../stores/sequenceStore';
 
 /**
  * TimelineCanvas: Preact component wrapping a canvas element with signal subscriptions.
@@ -44,6 +46,19 @@ export function TimelineCanvas() {
       const scrollY = timelineStore.scrollY.value;
       const tracks = trackLayouts.value;
       const totalFrames = timelineStore.totalFrames.value;
+      const fxTracks = fxTrackLayouts.value;
+
+      // Map selected layer ID to FX sequence ID for timeline highlight
+      const selectedLayerId = layerStore.selectedLayerId.value;
+      let selectedFxSequenceId: string | null = null;
+      if (selectedLayerId) {
+        for (const seq of sequenceStore.sequences.value) {
+          if (seq.kind === 'fx' && seq.layers.some(l => l.id === selectedLayerId)) {
+            selectedFxSequenceId = seq.id;
+            break;
+          }
+        }
+      }
 
       renderer.draw({
         frame,
@@ -51,9 +66,10 @@ export function TimelineCanvas() {
         scrollX,
         scrollY,
         tracks,
-        fxTracks: fxTrackLayouts.value,
+        fxTracks,
         imageStore,
         totalFrames,
+        selectedFxSequenceId,
       });
     });
 

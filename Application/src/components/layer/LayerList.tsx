@@ -2,14 +2,12 @@ import {useRef, useEffect} from 'preact/hooks';
 import Sortable from 'sortablejs';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
-import {isFxLayer, isGeneratorLayer} from '../../types/layer';
 import type {Layer} from '../../types/layer';
 
 /** SortableJS-powered layer list with drag-and-drop reorder, visibility toggle, delete, and selection */
 export function LayerList() {
   const listRef = useRef<HTMLDivElement>(null);
   const layers = layerStore.layers.value;
-  const fxLayers = layerStore.fxLayers.value;
   const selectedId = layerStore.selectedLayerId.value;
 
   // Reverse for display: topmost layer visually at top, base at bottom
@@ -49,7 +47,7 @@ export function LayerList() {
     return () => instance.destroy();
   }, [totalLayers]);
 
-  if (layers.length === 0 && fxLayers.length === 0) {
+  if (layers.length === 0) {
     return (
       <div class="flex items-center justify-center py-4">
         <span class="text-[10px] text-[var(--color-text-dim)]">No active sequence</span>
@@ -70,22 +68,6 @@ export function LayerList() {
         ))}
       </div>
 
-      {/* FX layers section (outside SortableJS -- no drag reorder) */}
-      {fxLayers.length > 0 && (
-        <>
-          <div class="h-px bg-[#2A2A2A] mx-2 my-1" />
-          <div class="text-[9px] text-[#666] px-2 py-0.5">FX</div>
-          <div class="flex flex-col gap-0.5">
-            {fxLayers.map((layer) => (
-              <LayerRow
-                key={layer.id}
-                layer={layer}
-                isSelected={selectedId === layer.id}
-              />
-            ))}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -98,27 +80,19 @@ interface LayerRowProps {
 function LayerRow({layer, isSelected}: LayerRowProps) {
   const isBase = layer.isBase ?? false;
 
-  // Color-coded type indicator (pink for generators, orange for adjustments)
-  const isFx = isFxLayer(layer);
+  // Color-coded type indicator
   const typeColor =
     layer.type === 'image-sequence' ? '#3B82F6'          // blue
     : layer.type === 'static-image' ? '#14B8A6'          // teal
     : layer.type === 'video' ? '#8B5CF6'                 // purple
-    : isGeneratorLayer(layer) ? '#EC4899'                // pink for all generators
-    : '#F97316';                                          // orange for adjustments
+    : '#888888';
 
-  // Type label with FX-specific names
+  // Type label
   const typeLabel =
     layer.type === 'video' ? 'Video'
     : layer.type === 'image-sequence' ? 'Sequence'
     : layer.type === 'static-image' ? 'Image'
-    : layer.type === 'generator-grain' ? 'Grain'
-    : layer.type === 'generator-particles' ? 'Particles'
-    : layer.type === 'generator-lines' ? 'Lines'
-    : layer.type === 'generator-dots' ? 'Dots'
-    : layer.type === 'generator-vignette' ? 'Vignette'
-    : layer.type === 'adjustment-color-grade' ? 'Color Grade'
-    : 'FX';
+    : 'Layer';
 
   const blendLabel =
     layer.blendMode.charAt(0).toUpperCase() + layer.blendMode.slice(1);
@@ -145,9 +119,7 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
           ? 'bg-[#2A2A3A] border-l-2 border-[var(--color-accent)]'
           : isBase
             ? 'bg-[#1E1E1E]'
-            : isFx
-              ? 'bg-[#25202A] hover:bg-[#2A252F]'
-              : 'bg-[#252525] hover:bg-[#2A2A2A]'
+            : 'bg-[#252525] hover:bg-[#2A2A2A]'
       }`}
       onClick={handleSelect}
     >

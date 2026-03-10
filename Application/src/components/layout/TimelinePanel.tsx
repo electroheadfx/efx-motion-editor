@@ -2,6 +2,7 @@ import {useRef, useCallback} from 'preact/hooks';
 import {timelineStore} from '../../stores/timelineStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {TimelineCanvas} from '../timeline/TimelineCanvas';
+import {AddFxMenu} from '../timeline/AddFxMenu';
 import {BASE_FRAME_WIDTH} from '../timeline/TimelineRenderer';
 
 export function TimelinePanel() {
@@ -97,6 +98,11 @@ export function TimelinePanel() {
             Fit All
           </span>
         </button>
+
+        <div class="w-px h-5 bg-[#333333]" />
+
+        {/* Add FX */}
+        <AddFxMenu />
       </div>
 
       {/* Canvas Timeline (replaces time ruler, mock tracks) */}

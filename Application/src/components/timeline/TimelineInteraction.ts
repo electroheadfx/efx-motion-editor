@@ -1,6 +1,8 @@
 import {timelineStore} from '../../stores/timelineStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {layerStore} from '../../stores/layerStore';
+import {uiStore} from '../../stores/uiStore';
 import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, TRACK_HEIGHT, FX_TRACK_HEIGHT} from './TimelineRenderer';
@@ -38,6 +40,7 @@ export class TimelineInteraction {
   // FX header reorder drag state (FX-10)
   private isDraggingFxReorder = false;
   private fxReorderFromIndex = -1;
+  private fxReorderMoved = false;
 
   // Bound handlers for cleanup
   private handlePointerDown = this.onPointerDown.bind(this);
@@ -147,6 +150,28 @@ export class TimelineInteraction {
     return Math.floor(y / FX_TRACK_HEIGHT);
   }
 
+  /** Compute drop index for FX reorder (uses Math.round for insertion-point semantics) */
+  private fxDropIndexFromY(clientY: number): number {
+    if (!this.canvas || !this.renderer) return 0;
+    const rect = this.canvas.getBoundingClientRect();
+    const scrollY = this.renderer.getScrollY();
+    const y = clientY - rect.top - RULER_HEIGHT + scrollY;
+    const fxCount = this.renderer.getFxTrackCount();
+    const idx = Math.round(y / FX_TRACK_HEIGHT);
+    return Math.max(0, Math.min(idx, fxCount));
+  }
+
+  /** Select the first layer in an FX sequence for property editing */
+  private selectFxSequenceLayer(sequenceId: string): void {
+    const fxSeqs = sequenceStore.getFxSequences();
+    const seq = fxSeqs.find(s => s.id === sequenceId);
+    if (seq && seq.layers.length > 0) {
+      const layerId = seq.layers[0].id;
+      layerStore.setSelected(layerId);
+      uiStore.selectLayer(layerId);
+    }
+  }
+
   /** Determine FX drag mode based on click position relative to range bar edges */
   private fxDragModeFromX(clientX: number, fxTrack: {inFrame: number; outFrame: number}): 'move' | 'resize-left' | 'resize-right' | null {
     if (!this.canvas) return null;
@@ -179,12 +204,25 @@ export class TimelineInteraction {
       const fxIdx = this.fxTrackIndexFromY(e.clientY);
       const fxTracks = fxTrackLayouts.peek();
 
+      // Always select the FX layer when clicking anywhere in its track
+      if (fxIdx >= 0 && fxIdx < fxTracks.length) {
+        this.selectFxSequenceLayer(fxTracks[fxIdx].sequenceId);
+      }
+
       // Header: initiate FX reorder drag (click vs drag resolved on pointer up)
       if (localX < TRACK_HEADER_WIDTH && fxIdx >= 0 && fxIdx < fxTracks.length) {
         this.isDraggingFxReorder = true;
         this.fxReorderFromIndex = fxIdx;
+        this.fxReorderMoved = false;
         this.canvas.setPointerCapture(e.pointerId);
         this.canvas.style.cursor = 'grabbing';
+        if (this.renderer) {
+          this.renderer.setFxDragState({
+            fromIndex: fxIdx,
+            toIndex: fxIdx,
+            currentY: e.clientY,
+          });
+        }
         return;
       }
 
@@ -253,8 +291,17 @@ export class TimelineInteraction {
 
   // --- Playhead scrubbing (TIME-03), track header drag (TIME-06), and FX drag (FX-09) ---
   private onPointerMove(e: PointerEvent) {
-    // FX header reorder dragging (visual feedback via cursor only)
+    // FX header reorder dragging with visual feedback
     if (this.isDraggingFxReorder) {
+      this.fxReorderMoved = true;
+      const dropIndex = this.fxDropIndexFromY(e.clientY);
+      if (this.renderer) {
+        this.renderer.setFxDragState({
+          fromIndex: this.fxReorderFromIndex,
+          toIndex: dropIndex,
+          currentY: e.clientY,
+        });
+      }
       return;
     }
 
@@ -353,20 +400,27 @@ export class TimelineInteraction {
   private onPointerUp(e: PointerEvent) {
     // FX header reorder drag end
     if (this.isDraggingFxReorder) {
-      const dropFxIdx = this.fxTrackIndexFromY(e.clientY);
-      const fxTracks = fxTrackLayouts.peek();
-      const clampedDrop = Math.max(0, Math.min(dropFxIdx, fxTracks.length - 1));
-      if (clampedDrop !== this.fxReorderFromIndex) {
-        sequenceStore.reorderFxSequences(this.fxReorderFromIndex, clampedDrop);
-      } else {
-        // No movement -- treat as a click: toggle visibility
-        const fxTrack = fxTracks[this.fxReorderFromIndex];
-        if (fxTrack) {
-          sequenceStore.toggleFxSequenceVisibility(fxTrack.sequenceId);
+      if (this.fxReorderMoved) {
+        // Actual drag: reorder FX sequences
+        const dropFxIdx = this.fxDropIndexFromY(e.clientY);
+        const fxTracks = fxTrackLayouts.peek();
+        const clampedDrop = Math.max(0, Math.min(dropFxIdx, fxTracks.length - 1));
+        const fromIndex = this.fxReorderFromIndex;
+        let toIndex = clampedDrop;
+        if (toIndex > fromIndex) {
+          toIndex -= 1; // Account for removed item shifting indices
+        }
+        if (toIndex !== fromIndex) {
+          sequenceStore.reorderFxSequences(fromIndex, toIndex);
         }
       }
+      // Selection already happened on pointerDown (no toggle here)
       this.isDraggingFxReorder = false;
       this.fxReorderFromIndex = -1;
+      this.fxReorderMoved = false;
+      if (this.renderer) {
+        this.renderer.setFxDragState(null);
+      }
       if (this.canvas) {
         this.canvas.style.cursor = 'default';
         try {

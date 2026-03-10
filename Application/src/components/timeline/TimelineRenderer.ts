@@ -29,6 +29,12 @@ export interface DragState {
   currentY: number;
 }
 
+export interface FxDragState {
+  fromIndex: number;
+  toIndex: number;
+  currentY: number;
+}
+
 export interface DrawState {
   frame: number;
   zoom: number;
@@ -38,6 +44,7 @@ export interface DrawState {
   fxTracks: FxTrackLayout[];
   imageStore: typeof ImageStoreType;
   totalFrames: number;
+  selectedFxSequenceId?: string | null;
 }
 
 /**
@@ -55,6 +62,8 @@ export class TimelineRenderer {
   private thumbnailCache: ThumbnailCache;
   private lastState: DrawState | null = null;
   private dragState: DragState | null = null;
+  private fxDragState: FxDragState | null = null;
+  private selectedFxSequenceId: string | null = null;
   /** Number of FX tracks (used by TimelineInteraction for layout calculations) */
   fxTrackCount = 0;
   /** Last scrollY value (used by TimelineInteraction for hit-testing) */
@@ -102,6 +111,9 @@ export class TimelineRenderer {
     const {frame, zoom, scrollX, scrollY, tracks, fxTracks, imageStore, totalFrames} = state;
     this.fxTrackCount = fxTracks.length;
     this.lastScrollY = scrollY;
+    if (state.selectedFxSequenceId !== undefined) {
+      this.selectedFxSequenceId = state.selectedFxSequenceId;
+    }
     const ctx = this.ctx;
     const frameWidth = BASE_FRAME_WIDTH * zoom;
     const w = this.displayWidth;
@@ -123,8 +135,41 @@ export class TimelineRenderer {
     // Draw FX track rows (above content tracks, scrolled)
     let fxTrackY = RULER_HEIGHT;
     for (let fi = 0; fi < fxTracks.length; fi++) {
-      this.drawFxTrack(ctx, fxTracks[fi], fxTrackY, frameWidth, scrollX, w);
+      const isSelected = fxTracks[fi].sequenceId === this.selectedFxSequenceId;
+      this.drawFxTrack(ctx, fxTracks[fi], fxTrackY, frameWidth, scrollX, w, isSelected);
       fxTrackY += FX_TRACK_HEIGHT;
+    }
+
+    // FX reorder visual feedback (drop indicator + ghost)
+    if (this.fxDragState) {
+      const {fromIndex, toIndex, currentY} = this.fxDragState;
+      const canvasRect = this.canvas.getBoundingClientRect();
+
+      // Drop indicator line between FX tracks
+      const dropY = RULER_HEIGHT + toIndex * FX_TRACK_HEIGHT;
+      ctx.fillStyle = DROP_INDICATOR_COLOR;
+      ctx.fillRect(0, dropY - 1, w, 2);
+
+      // Ghost FX track at mouse Y
+      const ghostY = currentY - canvasRect.top - FX_TRACK_HEIGHT / 2 + scrollY;
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = FX_TRACK_HEADER_BG;
+      ctx.fillRect(0, ghostY, TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
+      if (fromIndex < fxTracks.length) {
+        const ghostTrack = fxTracks[fromIndex];
+        ctx.fillStyle = ghostTrack.color;
+        ctx.beginPath();
+        ctx.arc(9, ghostY + FX_TRACK_HEIGHT / 2, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#999999';
+        ctx.font = '9px system-ui, sans-serif';
+        ctx.textBaseline = 'middle';
+        const ghostName = this.truncateText(ctx, ghostTrack.sequenceName, TRACK_HEADER_WIDTH - 16);
+        ctx.fillText(ghostName, 16, ghostY + FX_TRACK_HEIGHT / 2);
+      }
+      ctx.fillStyle = FX_TRACK_BG;
+      ctx.fillRect(TRACK_HEADER_WIDTH, ghostY, w - TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
+      ctx.globalAlpha = 1.0;
     }
 
     // 2. Draw content track rows (below FX tracks, scrolled)
@@ -280,15 +325,22 @@ export class TimelineRenderer {
     frameWidth: number,
     scrollX: number,
     canvasWidth: number,
+    isSelected = false,
   ): void {
-    // Track background (darker than content tracks)
-    ctx.fillStyle = FX_TRACK_BG;
+    // Track background (highlight when selected)
+    ctx.fillStyle = isSelected ? '#1A1520' : FX_TRACK_BG;
     ctx.fillRect(0, y, canvasWidth, FX_TRACK_HEIGHT);
+
+    // Selection indicator: left accent border
+    if (isSelected) {
+      ctx.fillStyle = fxTrack.color;
+      ctx.fillRect(0, y, 2, FX_TRACK_HEIGHT);
+    }
 
     // Track header
     const isVisible = fxTrack.visible;
-    ctx.fillStyle = FX_TRACK_HEADER_BG;
-    ctx.fillRect(0, y, TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
+    ctx.fillStyle = isSelected ? '#151015' : FX_TRACK_HEADER_BG;
+    ctx.fillRect(isSelected ? 2 : 0, y, TRACK_HEADER_WIDTH - (isSelected ? 2 : 0), FX_TRACK_HEIGHT);
     ctx.fillStyle = isVisible ? fxTrack.color : fxTrack.color + '4D'; // 30% opacity when hidden
     ctx.font = '9px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
@@ -412,6 +464,22 @@ export class TimelineRenderer {
   /** Set drag state for track reorder visual feedback */
   setDragState(state: DragState | null) {
     this.dragState = state;
+    if (this.lastState) {
+      this.draw(this.lastState);
+    }
+  }
+
+  /** Set FX drag state for FX reorder visual feedback */
+  setFxDragState(state: FxDragState | null) {
+    this.fxDragState = state;
+    if (this.lastState) {
+      this.draw(this.lastState);
+    }
+  }
+
+  /** Set selected FX sequence for highlight rendering */
+  setSelectedFxSequenceId(id: string | null) {
+    this.selectedFxSequenceId = id;
     if (this.lastState) {
       this.draw(this.lastState);
     }

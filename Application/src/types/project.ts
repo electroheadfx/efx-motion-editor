@@ -91,6 +91,7 @@ export interface MceLayerSource {
   fade?: number;
   tint_color?: string;
   preset?: string;
+  fade_blend?: string;
 }
 
 /** Key photo within a sequence -- references an image by ID */

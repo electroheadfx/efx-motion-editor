@@ -17,7 +17,6 @@ const fxLayers = computed<Layer[]>(() => {
 
 export const layerStore = {
   layers,
-  fxLayers,
   selectedLayerId,
 
   /** Add a layer to the active sequence (pushes undo action via sequenceStore) */

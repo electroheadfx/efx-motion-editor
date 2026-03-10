@@ -119,7 +119,7 @@ function buildMceProject(): MceProject {
             brightness: layer.source.brightness, contrast: layer.source.contrast,
             saturation: layer.source.saturation, hue: layer.source.hue,
             fade: layer.source.fade, tint_color: layer.source.tintColor,
-            preset: layer.source.preset,
+            preset: layer.source.preset, fade_blend: layer.source.fadeBlend,
           } : {}),
         },
         is_base: layer.isBase ?? false,
@@ -192,7 +192,7 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
                     if (t === 'generator-lines') return {type: t, count: ml.source.count ?? 15, thickness: ml.source.thickness ?? 1, lengthMin: ml.source.length_min ?? 0.1, lengthMax: ml.source.length_max ?? 0.4, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
                     if (t === 'generator-dots') return {type: t, count: ml.source.count ?? 30, sizeMin: ml.source.size_min ?? 2, sizeMax: ml.source.size_max ?? 8, speed: ml.source.speed ?? 0.5, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
                     if (t === 'generator-vignette') return {type: t, size: ml.source.size ?? 0.6, softness: ml.source.softness ?? 0.5, intensity: ml.source.intensity ?? 0.7} as LayerSourceData;
-                    if (t === 'adjustment-color-grade') return {type: t, brightness: ml.source.brightness ?? 0, contrast: ml.source.contrast ?? 0, saturation: ml.source.saturation ?? 1, hue: ml.source.hue ?? 0, fade: ml.source.fade ?? 0, tintColor: ml.source.tint_color ?? '#D4A574', preset: ml.source.preset ?? 'none'} as LayerSourceData;
+                    if (t === 'adjustment-color-grade') return {type: t, brightness: ml.source.brightness ?? 0, contrast: ml.source.contrast ?? 0, saturation: ml.source.saturation ?? 0, hue: ml.source.hue ?? 0, fade: ml.source.fade ?? 0, tintColor: ml.source.tint_color ?? '#D4A574', preset: ml.source.preset ?? 'none', fadeBlend: ml.source.fade_blend} as LayerSourceData;
                     // Fallback for unknown types
                     return ml.source as unknown as LayerSourceData;
                   })(),

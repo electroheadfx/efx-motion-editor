@@ -362,10 +362,11 @@ export class PreviewRenderer {
     const scaledParams: ColorGradeParams = {
       brightness: source.brightness * opacity,
       contrast: source.contrast * opacity,
-      saturation: 1 + (source.saturation - 1) * opacity,
+      saturation: source.saturation * opacity,
       hue: source.hue * opacity,
       fade: source.fade * opacity,
       tintColor: source.tintColor,
+      fadeBlend: source.fadeBlend,
     };
 
     applyColorGrade(ctx, this.canvas.width, this.canvas.height, scaledParams);
