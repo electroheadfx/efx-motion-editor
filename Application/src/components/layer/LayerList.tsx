@@ -9,13 +9,14 @@ import type {Layer} from '../../types/layer';
 export function LayerList() {
   const listRef = useRef<HTMLDivElement>(null);
   const layers = layerStore.layers.value;
+  const fxLayers = layerStore.fxLayers.value;
   const selectedId = layerStore.selectedLayerId.value;
 
   // Reverse for display: topmost layer visually at top, base at bottom
   const displayLayers = [...layers].reverse();
   const totalLayers = layers.length;
 
-  // SortableJS integration
+  // SortableJS integration (content layers only)
   useEffect(() => {
     if (!listRef.current) return;
     const instance = Sortable.create(listRef.current, {
@@ -48,7 +49,7 @@ export function LayerList() {
     return () => instance.destroy();
   }, [totalLayers]);
 
-  if (layers.length === 0) {
+  if (layers.length === 0 && fxLayers.length === 0) {
     return (
       <div class="flex items-center justify-center py-4">
         <span class="text-[10px] text-[var(--color-text-dim)]">No active sequence</span>
@@ -57,14 +58,34 @@ export function LayerList() {
   }
 
   return (
-    <div ref={listRef} class="flex flex-col gap-0.5 p-2 flex-1 min-h-0 overflow-y-auto">
-      {displayLayers.map((layer) => (
-        <LayerRow
-          key={layer.id}
-          layer={layer}
-          isSelected={selectedId === layer.id}
-        />
-      ))}
+    <div class="flex flex-col flex-1 min-h-0 overflow-y-auto p-2">
+      {/* Content layers (SortableJS container) */}
+      <div ref={listRef} class="flex flex-col gap-0.5">
+        {displayLayers.map((layer) => (
+          <LayerRow
+            key={layer.id}
+            layer={layer}
+            isSelected={selectedId === layer.id}
+          />
+        ))}
+      </div>
+
+      {/* FX layers section (outside SortableJS -- no drag reorder) */}
+      {fxLayers.length > 0 && (
+        <>
+          <div class="h-px bg-[#2A2A2A] mx-2 my-1" />
+          <div class="text-[9px] text-[#666] px-2 py-0.5">FX</div>
+          <div class="flex flex-col gap-0.5">
+            {fxLayers.map((layer) => (
+              <LayerRow
+                key={layer.id}
+                layer={layer}
+                isSelected={selectedId === layer.id}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
