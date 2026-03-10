@@ -35,6 +35,10 @@ export class TimelineInteraction {
   private fxDragOrigIn = 0;
   private fxDragOrigOut = 0;
 
+  // FX header reorder drag state (FX-10)
+  private isDraggingFxReorder = false;
+  private fxReorderFromIndex = -1;
+
   // Bound handlers for cleanup
   private handlePointerDown = this.onPointerDown.bind(this);
   private handlePointerMove = this.onPointerMove.bind(this);
@@ -171,9 +175,12 @@ export class TimelineInteraction {
       const fxIdx = this.fxTrackIndexFromY(e.clientY);
       const fxTracks = fxTrackLayouts.peek();
 
-      // Header click: toggle visibility
+      // Header: initiate FX reorder drag (click vs drag resolved on pointer up)
       if (localX < TRACK_HEADER_WIDTH && fxIdx >= 0 && fxIdx < fxTracks.length) {
-        sequenceStore.toggleFxSequenceVisibility(fxTracks[fxIdx].sequenceId);
+        this.isDraggingFxReorder = true;
+        this.fxReorderFromIndex = fxIdx;
+        this.canvas.setPointerCapture(e.pointerId);
+        this.canvas.style.cursor = 'grabbing';
         return;
       }
 
@@ -242,6 +249,11 @@ export class TimelineInteraction {
 
   // --- Playhead scrubbing (TIME-03), track header drag (TIME-06), and FX drag (FX-09) ---
   private onPointerMove(e: PointerEvent) {
+    // FX header reorder dragging (visual feedback via cursor only)
+    if (this.isDraggingFxReorder) {
+      return;
+    }
+
     // FX range bar dragging
     if (this.isDraggingFx) {
       const currentFrame = this.getFrame(e.clientX);
@@ -294,8 +306,17 @@ export class TimelineInteraction {
     if (this.canvas) {
       // Cursor hint: FX area
       if (this.isInFxArea(e.clientY)) {
+        const rect = this.canvas.getBoundingClientRect();
+        const localX = e.clientX - rect.left;
         const fxIdx = this.fxTrackIndexFromY(e.clientY);
         const fxTracks = fxTrackLayouts.peek();
+
+        // FX header area: show grab cursor for reorder/toggle
+        if (localX < TRACK_HEADER_WIDTH && fxIdx >= 0 && fxIdx < fxTracks.length) {
+          this.canvas.style.cursor = 'pointer';
+          return;
+        }
+
         if (fxIdx >= 0 && fxIdx < fxTracks.length) {
           const fxTrack = fxTracks[fxIdx];
           const mode = this.fxDragModeFromX(e.clientX, fxTrack);
@@ -326,6 +347,33 @@ export class TimelineInteraction {
   }
 
   private onPointerUp(e: PointerEvent) {
+    // FX header reorder drag end
+    if (this.isDraggingFxReorder) {
+      const dropFxIdx = this.fxTrackIndexFromY(e.clientY);
+      const fxTracks = fxTrackLayouts.peek();
+      const clampedDrop = Math.max(0, Math.min(dropFxIdx, fxTracks.length - 1));
+      if (clampedDrop !== this.fxReorderFromIndex) {
+        sequenceStore.reorderFxSequences(this.fxReorderFromIndex, clampedDrop);
+      } else {
+        // No movement -- treat as a click: toggle visibility
+        const fxTrack = fxTracks[this.fxReorderFromIndex];
+        if (fxTrack) {
+          sequenceStore.toggleFxSequenceVisibility(fxTrack.sequenceId);
+        }
+      }
+      this.isDraggingFxReorder = false;
+      this.fxReorderFromIndex = -1;
+      if (this.canvas) {
+        this.canvas.style.cursor = 'default';
+        try {
+          this.canvas.releasePointerCapture(e.pointerId);
+        } catch {
+          // Pointer capture may have been released
+        }
+      }
+      return;
+    }
+
     // FX range bar drag end
     if (this.isDraggingFx) {
       this.isDraggingFx = false;
