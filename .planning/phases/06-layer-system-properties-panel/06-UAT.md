@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 phase: 06-layer-system-properties-panel
 source: 06-01-SUMMARY.md, 06-02-SUMMARY.md, 06-03-SUMMARY.md, 06-04-SUMMARY.md
 started: 2026-03-10T12:00:00Z
@@ -87,7 +87,7 @@ skipped: 0
 ## Gaps
 
 - truth: "Add static image layer should show grid of already imported assets (like KEY PHOTOS manager) instead of opening a file dialog, with optional file dialog fallback for new imports"
-  status: failed
+  status: resolved
   reason: "User reported: It works fine, but it should not open a file dialog but use the source of imported assets, because it make double import if I want any image I already imported. Maybe add an option for import from file dialog too if needed. But First show a grid of already imported image exactely like 'KEY PHOTOS' manager."
   severity: major
   test: 2
@@ -103,7 +103,7 @@ skipped: 0
   debug_session: ".planning/debug/static-image-layer-file-dialog.md"
 
 - truth: "Imported video should appear in the IMPORTED assets window after being added as a layer"
-  status: failed
+  status: resolved
   reason: "User reported: work but the video do not show in IMPORTED window, its fine copied in project's videos/ directory"
   severity: major
   test: 3
@@ -121,7 +121,7 @@ skipped: 0
   debug_session: ".planning/debug/video-not-in-imported-assets.md"
 
 - truth: "Drag-and-drop layer reorder updates layer list order and preview compositing order"
-  status: failed
+  status: resolved
   reason: "User reported: the drag and drop re-order DO NOT WORK, please use the reorder fix used in KEYS PHOTOS manager"
   severity: blocker
   test: 4
@@ -137,7 +137,7 @@ skipped: 0
   debug_session: ".planning/debug/layerlist-dnd-reorder-broken.md"
 
 - truth: "Blend mode and opacity controls work on all layer types including video layers"
-  status: failed
+  status: resolved
   reason: "User reported: blend mode and opacity work only on Image, not on video layer"
   severity: minor
   test: 9
@@ -153,7 +153,7 @@ skipped: 0
   debug_session: ".planning/debug/blend-opacity-video-layers.md"
 
 - truth: "Numeric inputs in properties panel allow typing multi-digit values (e.g. 10, 1.2, 200) without resetting, and commit on Enter while keeping old value on escape/blur"
-  status: failed
+  status: resolved
   reason: "User reported: all seem work but the inputs has a problem, I can't type severals time, the input is reset all time (focus and rerender issues). I can type One number but not two or more, e.g. 10, 1.2, 200. I can't delete the value and enter mine. I think it should add a Enter event for create the new value, else not the old value is kept."
   severity: blocker
   test: 10
@@ -171,7 +171,7 @@ skipped: 0
   debug_session: ".planning/debug/numeric-input-resets-on-keystroke.md"
 
 - truth: "Crop numeric inputs allow typing multi-digit/decimal values and commit on Enter, keeping old value otherwise"
-  status: failed
+  status: resolved
   reason: "User reported: seem work, but the inputs has any issue I can't enter severals numbers and a comma, e.g. 10, 1.2, 200, it need to add a ENTER event for create the new value, else not it keep the old value"
   severity: blocker
   test: 11
