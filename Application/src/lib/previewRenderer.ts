@@ -35,6 +35,7 @@ export class PreviewRenderer {
   private imageCache: Map<string, HTMLImageElement>; // imageId -> loaded HTMLImageElement
   private loadingImages: Set<string>; // imageIds currently loading
   private videoElements: Map<string, HTMLVideoElement>; // layerId -> video element
+  private videoReadyHandlers: Map<string, () => void>; // layerId -> shared loadeddata/seeked handler
 
   /** Callback invoked after an image finishes loading (triggers re-render) */
   onImageLoaded: (() => void) | null = null;
@@ -49,6 +50,7 @@ export class PreviewRenderer {
     this.imageCache = new Map();
     this.loadingImages = new Set();
     this.videoElements = new Map();
+    this.videoReadyHandlers = new Map();
   }
 
   /**
@@ -115,12 +117,13 @@ export class PreviewRenderer {
     // Draw loading placeholders for video layers that aren't ready yet
     for (const layer of loadingVideoLayers) {
       ctx.save();
-      ctx.globalAlpha = 0.5;
+      ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+      ctx.globalAlpha = layer.opacity * 0.5;
       ctx.fillStyle = '#333333';
       const pw = logicalW * 0.4;
       const ph = logicalH * 0.2;
       ctx.fillRect((logicalW - pw) / 2, (logicalH - ph) / 2, pw, ph);
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = layer.opacity;
       ctx.fillStyle = '#FFFFFF';
       ctx.font = '12px sans-serif';
       ctx.textAlign = 'center';
@@ -250,6 +253,13 @@ export class PreviewRenderer {
       video.playsInline = true;
       video.src = assetUrl(layer.source.videoPath);
       this.videoElements.set(layer.id, video);
+
+      // Trigger re-render when video has enough data to display
+      const readyHandler = () => { this.onImageLoaded?.(); };
+      video.addEventListener('loadeddata', readyHandler);
+      // Trigger re-render after seeking to a new frame (for scrubbing while paused)
+      video.addEventListener('seeked', readyHandler);
+      this.videoReadyHandlers.set(layer.id, readyHandler);
     }
 
     // Sync time to current frame
@@ -378,13 +388,19 @@ export class PreviewRenderer {
 
   /** Clean up video elements and caches */
   dispose(): void {
-    // Pause and remove video elements
-    for (const video of this.videoElements.values()) {
+    // Remove event listeners and release video elements
+    for (const [layerId, video] of this.videoElements.entries()) {
+      const handler = this.videoReadyHandlers.get(layerId);
+      if (handler) {
+        video.removeEventListener('loadeddata', handler);
+        video.removeEventListener('seeked', handler);
+      }
       video.pause();
       video.removeAttribute('src');
       video.load(); // release resources
     }
     this.videoElements.clear();
+    this.videoReadyHandlers.clear();
     this.imageCache.clear();
     this.loadingImages.clear();
     this.onImageLoaded = null;
