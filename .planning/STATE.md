@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 Phase: 7 of 10 (Cinematic FX Effects)
 Plan: 10 of 10 in current phase
 Status: Phase Complete
-Last activity: 2026-03-10 - Completed quick task 5: Select content sequence on timeline + Delete key
+Last activity: 2026-03-10 - Completed quick task 6: Move blend/opacity from bottom bar to LAYERS sidebar
 
 Progress: [██████████] 100% (v1.0 complete, v2.0 Phase 7 complete)
 
@@ -173,6 +173,9 @@ Recent decisions affecting current work:
 - [Quick-05]: Delete key priority: selected FX layer first, then selected content sequence, no confirmation dialog
 - [Quick-05]: Blue accent (#4488FF) for content track selection, distinguishing from FX track colors
 - [Quick-05]: Clear FX layer selection on content track click to ensure Delete targets the correct item
+- [Quick-06]: Blend mode + opacity moved from bottom PropertiesPanel to inline LAYERS sidebar rows for content layers
+- [Quick-06]: Base layer shows locked Normal text with opacity slider (no blend dropdown)
+- [Quick-06]: FX layers retain blend+opacity in bottom bar; content layers show Transform+Crop only
 
 ### Pending Todos
 
@@ -196,9 +199,10 @@ No active blockers.
 | 3 | Fix playback black flash regression from quick-2 UI freeze changes | 2026-03-10 | 230b0a2 | [3-fix-playback-black-flash-regression-from](./quick/3-fix-playback-black-flash-regression-from/) |
 | 4 | Fix FX layers hide from sidebar, bullet visibility toggle, click-to-toggle | 2026-03-10 | bc1ce46 | [4-fix-fx-layers-hide-from-sidebar-sequence](./quick/4-fix-fx-layers-hide-from-sidebar-sequence/) |
 | 5 | Select content sequence on timeline + Delete key removal without confirmation | 2026-03-10 | 9282eae | [5-select-a-key-sequence-like-with-fx-layer](./quick/5-select-a-key-sequence-like-with-fx-layer/) |
+| 6 | Move blend mode + opacity from bottom bar to LAYERS sidebar for content layers | 2026-03-10 | 473d9f2 | [6-move-blend-transfer-mode-from-bottom-bar](./quick/6-move-blend-transfer-mode-from-bottom-bar/) |
 
 ## Session Continuity
 
-Last session: 2026-03-10T19:28:34Z
-Stopped at: Completed quick task 5
+Last session: 2026-03-10T21:12:12Z
+Stopped at: Completed quick task 6
 Resume file: None
