@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 Phase: 7 of 10 (Cinematic FX Effects)
 Plan: 10 of 10 in current phase
 Status: Phase Complete
-Last activity: 2026-03-10 - Completed quick task 4: Fix FX layers hide from sidebar sequence
+Last activity: 2026-03-10 - Completed quick task 5: Select content sequence on timeline + Delete key
 
 Progress: [██████████] 100% (v1.0 complete, v2.0 Phase 7 complete)
 
@@ -170,6 +170,9 @@ Recent decisions affecting current work:
 - [Quick-02]: Dual-signal pattern: displayFrame for UI panels, currentFrame for render loop; syncDisplayFrame on stop/seek/step only
 - [Quick-04]: Filter FX sequences at render time (not store level) to keep SortableJS reorder index mapping explicit
 - [Quick-04]: 18px hit zone for 6px bullet provides generous click target without overlapping name text
+- [Quick-05]: Delete key priority: selected FX layer first, then selected content sequence, no confirmation dialog
+- [Quick-05]: Blue accent (#4488FF) for content track selection, distinguishing from FX track colors
+- [Quick-05]: Clear FX layer selection on content track click to ensure Delete targets the correct item
 
 ### Pending Todos
 
@@ -192,9 +195,10 @@ No active blockers.
 | 2 | Freeze UI updates during playback (displayFrame/displayTime dual-signal pattern) | 2026-03-10 | 5e2773f | [2-freeze-ui-updates-during-playback-only-u](./quick/2-freeze-ui-updates-during-playback-only-u/) |
 | 3 | Fix playback black flash regression from quick-2 UI freeze changes | 2026-03-10 | 230b0a2 | [3-fix-playback-black-flash-regression-from](./quick/3-fix-playback-black-flash-regression-from/) |
 | 4 | Fix FX layers hide from sidebar, bullet visibility toggle, click-to-toggle | 2026-03-10 | bc1ce46 | [4-fix-fx-layers-hide-from-sidebar-sequence](./quick/4-fix-fx-layers-hide-from-sidebar-sequence/) |
+| 5 | Select content sequence on timeline + Delete key removal without confirmation | 2026-03-10 | 9282eae | [5-select-a-key-sequence-like-with-fx-layer](./quick/5-select-a-key-sequence-like-with-fx-layer/) |
 
 ## Session Continuity
 
-Last session: 2026-03-10T18:57:16Z
-Stopped at: Completed quick task 4
+Last session: 2026-03-10T19:28:34Z
+Stopped at: Completed quick task 5
 Resume file: None
