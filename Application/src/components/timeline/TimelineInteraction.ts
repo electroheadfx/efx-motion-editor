@@ -97,22 +97,24 @@ export class TimelineInteraction {
     return Math.abs(clientX - playheadX) <= 10;
   }
 
-  /** Compute content track index from clientY (accounts for FX track offset) */
+  /** Compute content track index from clientY (accounts for FX track offset and scrollY) */
   private trackIndexFromY(clientY: number): number {
     if (!this.canvas || !this.renderer) return -1;
     const rect = this.canvas.getBoundingClientRect();
+    const scrollY = this.renderer.getScrollY();
     const fxOffset = this.renderer.getFxTrackCount() * FX_TRACK_HEIGHT;
-    const y = clientY - rect.top - RULER_HEIGHT - fxOffset;
+    const y = clientY - rect.top - RULER_HEIGHT - fxOffset + scrollY;
     if (y < 0) return -1;
     return Math.floor(y / TRACK_HEIGHT);
   }
 
-  /** Compute drop index for track reorder (accounts for FX track offset) */
+  /** Compute drop index for track reorder (accounts for FX track offset and scrollY) */
   private dropIndexFromY(clientY: number): number {
     if (!this.canvas || !this.renderer) return 0;
     const rect = this.canvas.getBoundingClientRect();
+    const scrollY = this.renderer.getScrollY();
     const fxOffset = this.renderer.getFxTrackCount() * FX_TRACK_HEIGHT;
-    const y = clientY - rect.top - RULER_HEIGHT - fxOffset;
+    const y = clientY - rect.top - RULER_HEIGHT - fxOffset + scrollY;
     const trackCount = trackLayouts.peek().length;
     const idx = Math.round(y / TRACK_HEIGHT);
     return Math.max(0, Math.min(idx, trackCount));
@@ -125,20 +127,22 @@ export class TimelineInteraction {
     return (clientY - rect.top) < RULER_HEIGHT;
   }
 
-  /** Check if clientY is in the FX tracks area */
+  /** Check if clientY is in the FX tracks area (accounts for scrollY) */
   private isInFxArea(clientY: number): boolean {
     if (!this.canvas || !this.renderer) return false;
     const rect = this.canvas.getBoundingClientRect();
-    const y = clientY - rect.top - RULER_HEIGHT;
+    const scrollY = this.renderer.getScrollY();
+    const y = clientY - rect.top - RULER_HEIGHT + scrollY;
     const fxCount = this.renderer.getFxTrackCount();
     return y >= 0 && y < fxCount * FX_TRACK_HEIGHT;
   }
 
-  /** Get FX track index from clientY */
+  /** Get FX track index from clientY (accounts for scrollY) */
   private fxTrackIndexFromY(clientY: number): number {
-    if (!this.canvas) return -1;
+    if (!this.canvas || !this.renderer) return -1;
     const rect = this.canvas.getBoundingClientRect();
-    const y = clientY - rect.top - RULER_HEIGHT;
+    const scrollY = this.renderer.getScrollY();
+    const y = clientY - rect.top - RULER_HEIGHT + scrollY;
     if (y < 0) return -1;
     return Math.floor(y / FX_TRACK_HEIGHT);
   }
@@ -455,9 +459,26 @@ export class TimelineInteraction {
       timelineStore.setZoom(newZoom);
       timelineStore.setScrollX(Math.max(0, newScrollX));
     } else {
-      // Horizontal scroll
-      const newScrollX = timelineStore.scrollX.peek() + e.deltaX + e.deltaY;
-      timelineStore.setScrollX(Math.max(0, newScrollX));
+      // Horizontal scroll (deltaX)
+      if (e.deltaX !== 0) {
+        const newScrollX = timelineStore.scrollX.peek() + e.deltaX;
+        timelineStore.setScrollX(Math.max(0, newScrollX));
+      }
+      // Vertical scroll (deltaY without modifier)
+      if (e.deltaY !== 0 && !e.shiftKey) {
+        const newScrollY = timelineStore.scrollY.peek() + e.deltaY;
+        // Compute max scrollY: total content height - visible canvas height
+        const fxCount = this.renderer?.getFxTrackCount() ?? 0;
+        const contentCount = trackLayouts.peek().length;
+        const totalContentH = RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + contentCount * TRACK_HEIGHT;
+        const canvasH = this.canvas?.getBoundingClientRect().height ?? totalContentH;
+        const maxScrollY = Math.max(0, totalContentH - canvasH);
+        timelineStore.setScrollY(Math.min(maxScrollY, Math.max(0, newScrollY)));
+      } else if (e.deltaY !== 0 && e.shiftKey) {
+        // Shift+scroll = horizontal scroll (standard macOS pattern)
+        const newScrollX = timelineStore.scrollX.peek() + e.deltaY;
+        timelineStore.setScrollX(Math.max(0, newScrollX));
+      }
     }
   }
 
