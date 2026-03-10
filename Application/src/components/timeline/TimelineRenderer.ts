@@ -20,6 +20,8 @@ const PLACEHOLDER_BG_A = '#1A1A2A';
 const PLACEHOLDER_BG_B = '#1A2A1A';
 const PLAYHEAD_TRIANGLE_SIZE = 6;
 const DROP_INDICATOR_COLOR = '#4488FF';
+const FX_TRACK_BG = '#0D0D0D';
+const FX_TRACK_HEADER_BG = '#0A0A0A';
 
 export interface DragState {
   fromIndex: number;
@@ -107,8 +109,16 @@ export class TimelineRenderer {
     // 1. Draw time ruler
     this.drawRuler(ctx, frameWidth, scrollX, w, totalFrames);
 
-    // 2. Draw track rows
-    let trackY = RULER_HEIGHT;
+    // 1.5. Draw FX track rows (above content tracks)
+    let fxTrackY = RULER_HEIGHT;
+    for (let fi = 0; fi < fxTracks.length; fi++) {
+      this.drawFxTrack(ctx, fxTracks[fi], fxTrackY, frameWidth, scrollX, w);
+      fxTrackY += FX_TRACK_HEIGHT;
+    }
+
+    // 2. Draw content track rows (below FX tracks)
+    const fxOffset = fxTracks.length * FX_TRACK_HEIGHT;
+    let trackY = RULER_HEIGHT + fxOffset;
     for (let ti = 0; ti < tracks.length; ti++) {
       const track = tracks[ti];
 
@@ -198,8 +208,8 @@ export class TimelineRenderer {
       const {fromIndex, toIndex, currentY} = this.dragState;
       const canvasRect = this.canvas.getBoundingClientRect();
 
-      // Draw drop indicator line between tracks
-      const dropY = RULER_HEIGHT + toIndex * TRACK_HEIGHT;
+      // Draw drop indicator line between tracks (offset by FX tracks)
+      const dropY = RULER_HEIGHT + fxOffset + toIndex * TRACK_HEIGHT;
       ctx.fillStyle = DROP_INDICATOR_COLOR;
       ctx.fillRect(0, dropY - 1, w, 2);
 
@@ -245,6 +255,72 @@ export class TimelineRenderer {
       ctx.lineTo(playheadX, PLAYHEAD_TRIANGLE_SIZE * 1.5);
       ctx.closePath();
       ctx.fill();
+    }
+  }
+
+  /** Draw a single FX sequence as a colored range bar */
+  private drawFxTrack(
+    ctx: CanvasRenderingContext2D,
+    fxTrack: FxTrackLayout,
+    y: number,
+    frameWidth: number,
+    scrollX: number,
+    canvasWidth: number,
+  ): void {
+    // Track background (darker than content tracks)
+    ctx.fillStyle = FX_TRACK_BG;
+    ctx.fillRect(0, y, canvasWidth, FX_TRACK_HEIGHT);
+
+    // Track header
+    ctx.fillStyle = FX_TRACK_HEADER_BG;
+    ctx.fillRect(0, y, TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
+    ctx.fillStyle = fxTrack.color;
+    ctx.font = '9px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    const name = this.truncateText(ctx, fxTrack.sequenceName, TRACK_HEADER_WIDTH - 16);
+    // Color dot + name
+    const dotX = 6;
+    const dotY = y + FX_TRACK_HEIGHT / 2;
+    ctx.beginPath();
+    ctx.arc(dotX + 3, dotY, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#999999';
+    ctx.fillText(name, dotX + 10, dotY);
+
+    // Range bar
+    const barX = fxTrack.inFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+    const barW = (fxTrack.outFrame - fxTrack.inFrame) * frameWidth;
+    const barY = y + 4;
+    const barH = FX_TRACK_HEIGHT - 8;
+
+    // Only draw if visible
+    if (barX + barW >= TRACK_HEADER_WIDTH && barX <= canvasWidth) {
+      const clippedLeft = Math.max(barX, TRACK_HEADER_WIDTH);
+      const clippedW = Math.min(barW, canvasWidth - clippedLeft);
+
+      // Bar fill (semi-transparent FX color)
+      ctx.fillStyle = fxTrack.color + '40'; // 25% opacity
+      ctx.beginPath();
+      ctx.roundRect(clippedLeft, barY, clippedW, barH, 3);
+      ctx.fill();
+
+      // Bar border
+      ctx.strokeStyle = fxTrack.color + '80'; // 50% opacity
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Left edge handle (drag to resize inFrame)
+      if (barX >= TRACK_HEADER_WIDTH) {
+        ctx.fillStyle = fxTrack.color;
+        ctx.fillRect(barX, barY + 2, 3, barH - 4);
+      }
+
+      // Right edge handle (drag to resize outFrame)
+      const rightEdge = barX + barW;
+      if (rightEdge >= TRACK_HEADER_WIDTH && rightEdge <= canvasWidth) {
+        ctx.fillStyle = fxTrack.color;
+        ctx.fillRect(rightEdge - 3, barY + 2, 3, barH - 4);
+      }
     }
   }
 
@@ -306,6 +382,11 @@ export class TimelineRenderer {
   /** Get the display width (CSS pixels) */
   getDisplayWidth(): number {
     return this.displayWidth;
+  }
+
+  /** Get the number of FX tracks currently rendered */
+  getFxTrackCount(): number {
+    return this.fxTrackCount;
   }
 
   /** Set drag state for track reorder visual feedback */
