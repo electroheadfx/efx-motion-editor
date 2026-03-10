@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Completed 06-06-PLAN.md (Asset Management Gap Closure)
-last_updated: "2026-03-10T07:47:24Z"
+stopped_at: "Completed 06-05-PLAN.md (UAT Gap Closure: NumericInput, DnD, Video Defaults)"
+last_updated: "2026-03-10T07:49:39.950Z"
 last_activity: 2026-03-10 — Completed 06-06 (Asset Management Gap Closure)
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 11
-  completed_plans: 10
-  percent: 89
+  completed_plans: 11
+  percent: 91
 ---
 
 # Project State
@@ -65,6 +65,7 @@ Progress: [█████████░] 91% (v1.0 complete, v2.0 Phase 6 plan
 | Phase 05 P05 | 2min | 2 tasks | 3 files |
 | Phase 05 P04 | 5min | 2 tasks | 3 files |
 | Phase 06 P06 | 3min | 2 tasks | 3 files |
+| Phase 06 P05 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,9 @@ Recent decisions affecting current work:
 - 06-06: Replicated AddKeyPhotoButton popover pattern for static image asset picker (consistency over custom UI)
 - 06-06: VideoAsset interface kept in imageStore.ts (not separate types file) for simplicity since only two consumers
 - 06-06: Video assets tracked in-memory only (no .mce persistence); layer source paths sufficient for reconstruction
+- [Phase 06]: 06-05: NumericInput uses focus/blur lifecycle for coalescing instead of pointer events
+- [Phase 06]: 06-05: Inline rotation input replaced with shared NumericInput component for consistency
+- [Phase 06]: 06-05: Video loading placeholder shows layer name for identification
 
 ### Pending Todos
 
@@ -145,6 +149,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-10T07:47:24Z
-Stopped at: Completed 06-06-PLAN.md (Asset Management Gap Closure)
+Last session: 2026-03-10T07:49:39.949Z
+Stopped at: Completed 06-05-PLAN.md (UAT Gap Closure: NumericInput, DnD, Video Defaults)
 Resume file: None
