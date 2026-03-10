@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: "Completed 06-05-PLAN.md (UAT Gap Closure: NumericInput, DnD, Video Defaults)"
-last_updated: "2026-03-10T07:57:20.603Z"
-last_activity: 2026-03-10 — Completed 06-06 (Asset Management Gap Closure)
+stopped_at: Completed 06-08-PLAN.md (Video Layer Re-render Callbacks)
+last_updated: "2026-03-10T08:35:46.209Z"
+last_activity: 2026-03-10 — Completed 06-08 (Video Layer Re-render Callbacks)
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 11
-  completed_plans: 11
-  percent: 91
+  total_plans: 13
+  completed_plans: 13
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 6 — Layer System & Properties Panel (gap closure: asset management fixes)
+**Current focus:** Phase 6 — Layer System & Properties Panel (gap closure: video re-render callbacks)
 
 ## Current Position
 
 Phase: 6 of 10 (Layer System & Properties Panel)
-Plan: 6 of 6 in current phase
+Plan: 8 of 8 in current phase
 Status: In Progress
-Last activity: 2026-03-10 — Completed 06-06 (Asset Management Gap Closure)
+Last activity: 2026-03-10 — Completed 06-08 (Video Layer Re-render Callbacks)
 
-Progress: [█████████░] 91% (v1.0 complete, v2.0 Phase 6 plan 6/6)
+Progress: [██████████] 100% (v1.0 complete, v2.0 Phase 6 plan 8/8)
 
 ## Performance Metrics
 
@@ -50,7 +50,7 @@ Progress: [█████████░] 91% (v1.0 complete, v2.0 Phase 6 plan
 | 4. Timeline | 3 | v1.0 | v1.0 |
 
 | 5. Editing Infra | 3 | v2.0 | v2.0 |
-| 6. Layers & Props | 6/6 | 18min | 3min |
+| 6. Layers & Props | 8/8 | 20min | 2.5min |
 
 *v2.0 metrics will populate as plans execute*
 | Phase 03 P04 | 2min | 2 tasks | 2 files |
@@ -66,6 +66,8 @@ Progress: [█████████░] 91% (v1.0 complete, v2.0 Phase 6 plan
 | Phase 05 P04 | 5min | 2 tasks | 3 files |
 | Phase 06 P06 | 3min | 2 tasks | 3 files |
 | Phase 06 P05 | 3min | 2 tasks | 4 files |
+| Phase 06 P08 | 2min | 1 tasks | 1 files |
+| Phase 06 P07 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -133,6 +135,9 @@ Recent decisions affecting current work:
 - [Phase 06]: 06-05: NumericInput uses focus/blur lifecycle for coalescing instead of pointer events
 - [Phase 06]: 06-05: Inline rotation input replaced with shared NumericInput component for consistency
 - [Phase 06]: 06-05: Video loading placeholder shows layer name for identification
+- [Phase 06]: 06-08: Shared readyHandler stored per layer ID in videoReadyHandlers map for loadeddata/seeked event cleanup
+- [Phase 06]: 06-07: Video picker uses name+icon list (not thumbnail grid) since videos have no thumbnails per design
+- [Phase 06]: 06-07: Video assets re-discovered from layer source data during hydration (no .mce persistence needed)
 
 ### Pending Todos
 
@@ -149,6 +154,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-10T07:49:39.949Z
-Stopped at: Completed 06-05-PLAN.md (UAT Gap Closure: NumericInput, DnD, Video Defaults)
+Last session: 2026-03-10T08:35:31.095Z
+Stopped at: Completed 06-08-PLAN.md (Video Layer Re-render Callbacks)
 Resume file: None
