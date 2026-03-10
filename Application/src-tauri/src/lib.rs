@@ -77,36 +77,132 @@ pub fn run() {
             // Custom protocol to serve local files without asset scope restrictions.
             // Fixes 403 errors caused by macOS Unicode normalization (NFC/NFD)
             // on paths with accented characters (e.g. "Téléchargements").
+            //
+            // Supports Range requests (HTTP 206) required by <video> elements
+            // for seeking via AVFoundation on macOS.
             let uri = request.uri();
             let raw_path = uri.path();
             let path = percent_decode_str(raw_path)
                 .decode_utf8_lossy()
                 .to_string();
 
-            match std::fs::read(&path) {
-                Ok(data) => {
-                    let mime = if path.ends_with(".jpg") || path.ends_with(".jpeg") {
-                        "image/jpeg"
-                    } else if path.ends_with(".png") {
-                        "image/png"
-                    } else if path.ends_with(".tiff") || path.ends_with(".tif") {
-                        "image/tiff"
-                    } else {
-                        "application/octet-stream"
-                    };
-                    tauri::http::Response::builder()
+            let lower = path.to_lowercase();
+            let mime = if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+                "image/jpeg"
+            } else if lower.ends_with(".png") {
+                "image/png"
+            } else if lower.ends_with(".tiff") || lower.ends_with(".tif") {
+                "image/tiff"
+            } else if lower.ends_with(".heic") || lower.ends_with(".heif") {
+                "image/heic"
+            } else if lower.ends_with(".mp4") || lower.ends_with(".m4v") {
+                "video/mp4"
+            } else if lower.ends_with(".mov") {
+                "video/quicktime"
+            } else if lower.ends_with(".webm") {
+                "video/webm"
+            } else if lower.ends_with(".avi") {
+                "video/x-msvideo"
+            } else {
+                "application/octet-stream"
+            };
+
+            let is_video = mime.starts_with("video/");
+
+            // Get file metadata for Content-Length and Range support
+            let metadata = match std::fs::metadata(&path) {
+                Ok(m) => m,
+                Err(_) => {
+                    return tauri::http::Response::builder()
+                        .status(404)
+                        .body(Vec::new())
+                        .unwrap();
+                }
+            };
+            let file_size = metadata.len();
+
+            // Parse Range header for video seeking support
+            let range_header = request
+                .headers()
+                .get("Range")
+                .or_else(|| request.headers().get("range"))
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            if is_video {
+                if let Some(range) = range_header {
+                    // Parse "bytes=START-END" or "bytes=START-"
+                    if let Some(range_spec) = range.strip_prefix("bytes=") {
+                        let parts: Vec<&str> = range_spec.split('-').collect();
+                        let start: u64 = parts[0].parse().unwrap_or(0);
+                        let end: u64 = if parts.len() > 1 && !parts[1].is_empty() {
+                            parts[1].parse().unwrap_or(file_size - 1)
+                        } else {
+                            file_size - 1
+                        };
+                        let end = end.min(file_size - 1);
+                        let length = end - start + 1;
+
+                        use std::io::{Read, Seek, SeekFrom};
+                        let mut file = match std::fs::File::open(&path) {
+                            Ok(f) => f,
+                            Err(_) => {
+                                return tauri::http::Response::builder()
+                                    .status(404)
+                                    .body(Vec::new())
+                                    .unwrap();
+                            }
+                        };
+                        file.seek(SeekFrom::Start(start)).ok();
+                        let mut buf = vec![0u8; length as usize];
+                        let _ = file.read_exact(&mut buf);
+
+                        return tauri::http::Response::builder()
+                            .header("Content-Type", mime)
+                            .header("Accept-Ranges", "bytes")
+                            .header(
+                                "Content-Range",
+                                format!("bytes {}-{}/{}", start, end, file_size),
+                            )
+                            .header("Content-Length", length.to_string())
+                            .header("Access-Control-Allow-Origin", "*")
+                            .status(206)
+                            .body(buf)
+                            .unwrap();
+                    }
+                }
+
+                // No Range header — return full video with Accept-Ranges
+                match std::fs::read(&path) {
+                    Ok(data) => tauri::http::Response::builder()
+                        .header("Content-Type", mime)
+                        .header("Accept-Ranges", "bytes")
+                        .header("Content-Length", file_size.to_string())
+                        .header("Access-Control-Allow-Origin", "*")
+                        .status(200)
+                        .body(data)
+                        .unwrap(),
+                    Err(_) => tauri::http::Response::builder()
+                        .status(404)
+                        .body(Vec::new())
+                        .unwrap(),
+                }
+            } else {
+                // Image / other files — full read, no-cache
+                match std::fs::read(&path) {
+                    Ok(data) => tauri::http::Response::builder()
                         .header("Content-Type", mime)
                         .header("Access-Control-Allow-Origin", "*")
                         .header("Cache-Control", "no-cache, no-store, must-revalidate")
                         .header("Pragma", "no-cache")
                         .status(200)
                         .body(data)
-                        .unwrap()
+                        .unwrap(),
+                    Err(_) => tauri::http::Response::builder()
+                        .status(404)
+                        .body(Vec::new())
+                        .unwrap(),
                 }
-                Err(_) => tauri::http::Response::builder()
-                    .status(404)
-                    .body(Vec::new())
-                    .unwrap(),
             }
         })
         .invoke_handler(tauri::generate_handler![
