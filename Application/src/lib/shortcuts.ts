@@ -6,6 +6,7 @@ import {guardUnsavedChanges} from './unsavedGuard';
 import {projectStore} from '../stores/projectStore';
 import {uiStore} from '../stores/uiStore';
 import {layerStore} from '../stores/layerStore';
+import {sequenceStore} from '../stores/sequenceStore';
 import {save, open} from '@tauri-apps/plugin-dialog';
 
 /**
@@ -74,15 +75,24 @@ async function handleOpenProject(): Promise<void> {
 }
 
 function handleDelete(): void {
-  // Delete selected layer if any
+  // Delete selected layer if any (FX layers delete via this path)
   const selectedLayer = uiStore.selectedLayerId.value;
   if (selectedLayer) {
     layerStore.remove(selectedLayer);
     uiStore.selectLayer(null);
     return;
   }
-  // Key photo deletion from keyboard will be refined when key photo
-  // selection state is added in Phase 6. For now, no-op if nothing selected.
+
+  // Delete selected content sequence (no confirmation — undo via Cmd+Z)
+  const selectedSeqId = uiStore.selectedSequenceId.value;
+  if (selectedSeqId) {
+    const seq = sequenceStore.getById(selectedSeqId);
+    if (seq && seq.kind === 'content') {
+      sequenceStore.remove(seq.id);
+      uiStore.selectSequence(null);
+      return;
+    }
+  }
 }
 
 // --- Mount shortcuts ---
