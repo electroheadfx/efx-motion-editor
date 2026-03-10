@@ -179,6 +179,20 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
       uiStore.selectSequence(sortedSeqs[0].id);
     }
 
+    // Re-discover video assets from loaded video layers
+    for (const seq of sequenceStore.sequences.value) {
+      for (const layer of seq.layers) {
+        if (layer.source.type === 'video' && layer.source.videoPath) {
+          const filename = layer.source.videoPath.split('/').pop() ?? 'video';
+          imageStore.addVideoAsset({
+            id: layer.id,
+            name: filename,
+            path: layer.source.videoPath,
+          });
+        }
+      }
+    }
+
     // 4. Clear dirty flag (just loaded)
     isDirty.value = false;
   });
