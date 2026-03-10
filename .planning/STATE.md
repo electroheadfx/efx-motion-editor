@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Production Tool
 status: executing
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-10T09:57:10.501Z"
-last_activity: 2026-03-10 — Completed 06-08 (Video Layer Re-render Callbacks)
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-10T11:01:24.487Z"
+last_activity: 2026-03-10 — Completed 07-01 (FX Types, Generators & Color Grade)
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  total_plans: 17
+  completed_plans: 14
+  percent: 82
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 6 — Layer System & Properties Panel (gap closure: video re-render callbacks)
+**Current focus:** Phase 7 — Cinematic FX Effects (FX types, generators, color grade)
 
 ## Current Position
 
-Phase: 6 of 10 (Layer System & Properties Panel)
-Plan: 8 of 8 in current phase
+Phase: 7 of 10 (Cinematic FX Effects)
+Plan: 1 of 4 in current phase
 Status: In Progress
-Last activity: 2026-03-10 — Completed 06-08 (Video Layer Re-render Callbacks)
+Last activity: 2026-03-10 — Completed 07-01 (FX Types, Generators & Color Grade)
 
-Progress: [██████████] 100% (v1.0 complete, v2.0 Phase 6 plan 8/8)
+Progress: [████████░░] 82% (v1.0 complete, v2.0 Phase 7 plan 1/4)
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Progress: [██████████] 100% (v1.0 complete, v2.0 Phase 6 pla
 | Phase 06 P05 | 3min | 2 tasks | 4 files |
 | Phase 06 P08 | 2min | 1 tasks | 1 files |
 | Phase 06 P07 | 2min | 2 tasks | 2 files |
+| Phase 07 P01 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,9 @@ Recent decisions affecting current work:
 - [Phase 06]: 06-08: Shared readyHandler stored per layer ID in videoReadyHandlers map for loadeddata/seeked event cleanup
 - [Phase 06]: 06-07: Video picker uses name+icon list (not thumbnail grid) since videos have no thumbnails per design
 - [Phase 06]: 06-07: Video assets re-discovered from layer source data during hydration (no .mce persistence needed)
+- [Phase 07]: 07-01: MC Random used standalone (no MC scene graph) for seeded PRNG in generators
+- [Phase 07]: 07-01: Color grade uses save/resetTransform/restore to handle DPI-scaled canvas pixel access
+- [Phase 07]: 07-01: All generators use normalized coordinates (0-1) scaled to canvas for resolution independence
 
 ### Pending Todos
 
@@ -154,6 +158,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-10T09:57:10.499Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-cinematic-fx-effects/07-CONTEXT.md
+Last session: 2026-03-10T11:01:24.485Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None

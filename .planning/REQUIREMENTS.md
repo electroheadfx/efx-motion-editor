@@ -41,16 +41,16 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 
 ### FX Effects
 
-- [ ] **FX-01**: User can add a film grain effect to a sequence (grain texture overlay with multiply blend)
-- [ ] **FX-02**: User can adjust grain intensity
-- [ ] **FX-03**: User can add a vignette effect (radial gradient with multiply blend)
-- [ ] **FX-04**: User can adjust vignette intensity, size, and softness
-- [ ] **FX-05**: User can add a color grade effect (brightness, contrast, saturation, hue, fade)
-- [ ] **FX-06**: User can adjust color grade parameters individually
-- [ ] **FX-07**: User can add a dirt/scratches effect (image sequence overlay with screen blend)
-- [ ] **FX-08**: User can add a light leaks effect (video overlay with screen blend)
+- [x] **FX-01**: User can add a film grain effect to a sequence (grain texture overlay with multiply blend)
+- [x] **FX-02**: User can adjust grain intensity
+- [x] **FX-03**: User can add a vignette effect (radial gradient with multiply blend)
+- [x] **FX-04**: User can adjust vignette intensity, size, and softness
+- [x] **FX-05**: User can add a color grade effect (brightness, contrast, saturation, hue, fade)
+- [x] **FX-06**: User can adjust color grade parameters individually
+- [x] **FX-07**: User can add a dirt/scratches effect (image sequence overlay with screen blend)
+- [x] **FX-08**: User can add a light leaks effect (video overlay with screen blend)
 - [ ] **FX-09**: User can adjust intensity for all FX effects
-- [ ] **FX-10**: FX parameters are resolution-independent (preview and export look identical)
+- [x] **FX-10**: FX parameters are resolution-independent (preview and export look identical)
 
 ### Audio
 
@@ -164,16 +164,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROP-02 | Phase 6 | Complete |
 | PROP-03 | Phase 6 | Complete |
 | PROP-04 | Phase 6 | Complete |
-| FX-01 | Phase 7 | Pending |
-| FX-02 | Phase 7 | Pending |
-| FX-03 | Phase 7 | Pending |
-| FX-04 | Phase 7 | Pending |
-| FX-05 | Phase 7 | Pending |
-| FX-06 | Phase 7 | Pending |
-| FX-07 | Phase 7 | Pending |
-| FX-08 | Phase 7 | Pending |
+| FX-01 | Phase 7 | Complete |
+| FX-02 | Phase 7 | Complete |
+| FX-03 | Phase 7 | Complete |
+| FX-04 | Phase 7 | Complete |
+| FX-05 | Phase 7 | Complete |
+| FX-06 | Phase 7 | Complete |
+| FX-07 | Phase 7 | Complete |
+| FX-08 | Phase 7 | Complete |
 | FX-09 | Phase 7 | Pending |
-| FX-10 | Phase 7 | Pending |
+| FX-10 | Phase 7 | Complete |
 | AUDIO-01 | Phase 8 | Pending |
 | AUDIO-02 | Phase 8 | Pending |
 | AUDIO-03 | Phase 8 | Pending |
