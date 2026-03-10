@@ -1,4 +1,4 @@
-import type {TrackLayout} from '../../types/timeline';
+import type {TrackLayout, FxTrackLayout} from '../../types/timeline';
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
 import {ThumbnailCache} from './ThumbnailCache';
 
@@ -7,6 +7,7 @@ export const BASE_FRAME_WIDTH = 60;
 export const TRACK_HEIGHT = 52;
 export const TRACK_HEADER_WIDTH = 80;
 export const RULER_HEIGHT = 24;
+export const FX_TRACK_HEIGHT = 28;
 
 const PLAYHEAD_COLOR = '#E55A2B';
 const TRACK_BG = '#111111';
@@ -31,6 +32,7 @@ export interface DrawState {
   zoom: number;
   scrollX: number;
   tracks: TrackLayout[];
+  fxTracks: FxTrackLayout[];
   imageStore: typeof ImageStoreType;
   totalFrames: number;
 }
@@ -50,6 +52,8 @@ export class TimelineRenderer {
   private thumbnailCache: ThumbnailCache;
   private lastState: DrawState | null = null;
   private dragState: DragState | null = null;
+  /** Number of FX tracks (used by TimelineInteraction for layout calculations) */
+  fxTrackCount = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -90,7 +94,8 @@ export class TimelineRenderer {
   draw(state: DrawState) {
     this.lastState = state;
 
-    const {frame, zoom, scrollX, tracks, imageStore, totalFrames} = state;
+    const {frame, zoom, scrollX, tracks, fxTracks, imageStore, totalFrames} = state;
+    this.fxTrackCount = fxTracks.length;
     const ctx = this.ctx;
     const frameWidth = BASE_FRAME_WIDTH * zoom;
     const w = this.displayWidth;

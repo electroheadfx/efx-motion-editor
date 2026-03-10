@@ -3,7 +3,7 @@ import {effect} from '@preact/signals';
 import {TimelineRenderer} from './TimelineRenderer';
 import {TimelineInteraction} from './TimelineInteraction';
 import {timelineStore} from '../../stores/timelineStore';
-import {trackLayouts} from '../../lib/frameMap';
+import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {imageStore} from '../../stores/imageStore';
 
 /**
@@ -49,6 +49,7 @@ export function TimelineCanvas() {
         zoom,
         scrollX,
         tracks,
+        fxTracks: fxTrackLayouts.value,
         imageStore,
         totalFrames,
       });

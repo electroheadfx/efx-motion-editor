@@ -4,10 +4,12 @@ import {copyFile, mkdir, readDir} from '@tauri-apps/plugin-fs';
 import {layerStore} from '../../stores/layerStore';
 import {imageStore} from '../../stores/imageStore';
 import {projectStore} from '../../stores/projectStore';
+import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {defaultTransform, createDefaultFxSource} from '../../types/layer';
-import type {LayerType, BlendMode} from '../../types/layer';
+import type {LayerType, BlendMode, Layer} from '../../types/layer';
 import {tempProjectDir} from '../../lib/projectDir';
+import {totalFrames} from '../../lib/frameMap';
 import {assetUrl} from '../../lib/ipc';
 
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'heic', 'heif'];
@@ -286,13 +288,13 @@ export function AddLayerMenu() {
     uiStore.selectLayer(layerId);
   };
 
-  /** Add a procedural FX layer (generator or adjustment) with default parameters */
+  /** Add a procedural FX layer (generator or adjustment) as a timeline-level FX sequence */
   const handleAddFxLayer = (type: LayerType, name: string, defaultBlend: BlendMode = 'normal') => {
     setMenuOpen(false);
     const layerId = crypto.randomUUID();
     const source = createDefaultFxSource(type);
 
-    layerStore.add({
+    const fxLayer: Layer = {
       id: layerId,
       name,
       type,
@@ -302,8 +304,12 @@ export function AddLayerMenu() {
       transform: defaultTransform(),
       source,
       isBase: false,
-    });
+    };
 
+    // Create a timeline-level FX sequence (not a per-sequence layer)
+    sequenceStore.createFxSequence(name, fxLayer, totalFrames.peek());
+
+    // Select the FX layer within the new FX sequence for property editing
     layerStore.setSelected(layerId);
     uiStore.selectLayer(layerId);
   };

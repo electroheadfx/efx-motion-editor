@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'preact/hooks';
 import { layerStore } from '../../stores/layerStore';
+import { sequenceStore } from '../../stores/sequenceStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { isFxLayer } from '../../types/layer';
 import { COLOR_GRADE_PRESETS, PRESET_NAMES } from '../../lib/fxPresets';
@@ -470,8 +471,17 @@ function CropSection({ layer }: { layer: Layer }) {
 
 export function PropertiesPanel() {
   const selectedId = layerStore.selectedLayerId.value;
-  const layers = layerStore.layers.value;
-  const selectedLayer = selectedId ? layers.find((l) => l.id === selectedId) : null;
+  // Search all sequences for the selected layer (FX layers live in FX sequences, not the active content sequence)
+  let selectedLayer: Layer | null = null;
+  if (selectedId) {
+    for (const seq of sequenceStore.sequences.value) {
+      const found = seq.layers.find((l) => l.id === selectedId);
+      if (found) {
+        selectedLayer = found;
+        break;
+      }
+    }
+  }
 
   if (!selectedLayer) {
     return (
