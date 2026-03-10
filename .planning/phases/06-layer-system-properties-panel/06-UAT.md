@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 06-layer-system-properties-panel
 source: 06-01-SUMMARY.md, 06-02-SUMMARY.md, 06-03-SUMMARY.md, 06-04-SUMMARY.md
 started: 2026-03-10T12:00:00Z
@@ -91,46 +91,92 @@ skipped: 0
   reason: "User reported: It works fine, but it should not open a file dialog but use the source of imported assets, because it make double import if I want any image I already imported. Maybe add an option for import from file dialog too if needed. But First show a grid of already imported image exactely like 'KEY PHOTOS' manager."
   severity: major
   test: 2
-  artifacts: []
-  missing: []
+  root_cause: "handleAddStaticImage in AddLayerMenu.tsx directly calls Tauri open() file dialog. Never consults imageStore.images to present already-imported assets."
+  artifacts:
+    - path: "Application/src/components/layer/AddLayerMenu.tsx"
+      issue: "handleAddStaticImage opens file dialog instead of asset grid"
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "AddKeyPhotoButton (lines 177-241) has the working asset grid pattern to replicate"
+  missing:
+    - "Replace file dialog with asset grid popover reading imageStore.images (replicate AddKeyPhotoButton pattern)"
+    - "Add 'Import new...' button at bottom of popover as fallback to file dialog"
+  debug_session: ".planning/debug/static-image-layer-file-dialog.md"
 
 - truth: "Imported video should appear in the IMPORTED assets window after being added as a layer"
   status: failed
   reason: "User reported: work but the video do not show in IMPORTED window, its fine copied in project's videos/ directory"
   severity: major
   test: 3
-  artifacts: []
-  missing: []
+  root_cause: "handleAddVideo in AddLayerMenu.tsx performs copyFile but never registers the video as an imported asset. No video asset store exists. imageStore is image-only."
+  artifacts:
+    - path: "Application/src/components/layer/AddLayerMenu.tsx"
+      issue: "handleAddVideo skips asset registration after copyFile"
+    - path: "Application/src/stores/imageStore.ts"
+      issue: "Image-only store, no video asset tracking"
+    - path: "Application/src/components/import/ImportGrid.tsx"
+      issue: "Only renders imageStore.images, no video support"
+  missing:
+    - "Register video as imported asset after copyFile (extend imageStore or create unified assetStore)"
+    - "Update ImportGrid to render video assets"
+  debug_session: ".planning/debug/video-not-in-imported-assets.md"
 
 - truth: "Drag-and-drop layer reorder updates layer list order and preview compositing order"
   status: failed
   reason: "User reported: the drag and drop re-order DO NOT WORK, please use the reorder fix used in KEYS PHOTOS manager"
   severity: blocker
   test: 4
-  artifacts: []
-  missing: []
+  root_cause: "SortableJS + Preact VDOM/DOM ownership conflict. onEnd handler calls layerStore.reorder() without first reverting the DOM mutation SortableJS already made. KeyPhotoStrip.tsx has the working fix: revert DOM before store update."
+  artifacts:
+    - path: "Application/src/components/layer/LayerList.tsx"
+      issue: "onEnd handler missing DOM revert before store update (lines 33-37)"
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "Working pattern: from.removeChild(item) + from.insertBefore(item, from.children[oldIndex]) before store call (lines 62-67)"
+  missing:
+    - "Revert SortableJS DOM mutation in onEnd before calling layerStore.reorder()"
+    - "Add forceFallback: true to SortableJS options"
+  debug_session: ".planning/debug/layerlist-dnd-reorder-broken.md"
 
 - truth: "Blend mode and opacity controls work on all layer types including video layers"
   status: failed
   reason: "User reported: blend mode and opacity work only on Image, not on video layer"
-  severity: major
+  severity: minor
   test: 9
-  artifacts: []
-  missing: []
+  root_cause: "No actual code bug. Rendering pipeline treats all layer types identically. Likely caused by video readyState < 2 making the layer not render at all (looks like controls don't work). Also video defaults to 'screen' blend mode which may confuse expectations."
+  artifacts:
+    - path: "Application/src/lib/previewRenderer.ts"
+      issue: "resolveVideoSource() returns null if video.readyState < 2, skipping entire layer"
+    - path: "Application/src/components/layer/AddLayerMenu.tsx"
+      issue: "Video defaults to blendMode 'screen' instead of 'normal'"
+  missing:
+    - "Add loading placeholder for video layers with readyState < 2"
+    - "Change default video blendMode from 'screen' to 'normal'"
+  debug_session: ".planning/debug/blend-opacity-video-layers.md"
 
 - truth: "Numeric inputs in properties panel allow typing multi-digit values (e.g. 10, 1.2, 200) without resetting, and commit on Enter while keeping old value on escape/blur"
   status: failed
   reason: "User reported: all seem work but the inputs has a problem, I can't type severals time, the input is reset all time (focus and rerender issues). I can type One number but not two or more, e.g. 10, 1.2, 200. I can't delete the value and enter mine. I think it should add a Enter event for create the new value, else not the old value is kept."
   severity: blocker
   test: 10
-  artifacts: []
-  missing: []
+  root_cause: "NumericInput binds value directly to signal-derived layer property and commits to store on every onInput. Creates re-render loop: keystroke -> parseFloat -> store update -> re-render -> value overwritten. KeyPhotoStrip.tsx has working pattern: local useState for editing, commit on Enter/blur."
+  artifacts:
+    - path: "Application/src/components/layout/PropertiesPanel.tsx"
+      issue: "NumericInput (lines 21-55) has no local state, direct signal binding causes re-render loop"
+    - path: "Application/src/components/layout/PropertiesPanel.tsx"
+      issue: "Inline rotation input (lines 156-171) has same bug"
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "Working pattern at lines 106-126: local useState, commitFrames() on Enter/blur"
+  missing:
+    - "Rewrite NumericInput with local editing state (useState), commit on Enter/blur, revert on Escape"
+    - "Convert inline rotation input to use NumericInput"
+  debug_session: ".planning/debug/numeric-input-resets-on-keystroke.md"
 
 - truth: "Crop numeric inputs allow typing multi-digit/decimal values and commit on Enter, keeping old value otherwise"
   status: failed
   reason: "User reported: seem work, but the inputs has any issue I can't enter severals numbers and a comma, e.g. 10, 1.2, 200, it need to add a ENTER event for create the new value, else not it keep the old value"
   severity: blocker
   test: 11
-  note: "Same root cause as test 10 - shared NumericInput component"
+  note: "Same root cause as test 10 - shared NumericInput component. Single fix resolves both."
+  root_cause: "Same as test 10 - NumericInput direct signal binding re-render loop"
   artifacts: []
   missing: []
+  debug_session: ".planning/debug/numeric-input-resets-on-keystroke.md"
