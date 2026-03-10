@@ -63,7 +63,14 @@ Plans:
   2. User can reorder layers via drag-and-drop, toggle visibility, and delete layers — the base key photo sequence is always the non-deletable bottom layer
   3. User can set position, scale, rotation, and crop for any layer via the properties panel, with changes reflected immediately in the preview
   4. Properties panel shows context-sensitive controls (blend mode dropdown, opacity slider, visibility toggle, transform controls) for whichever layer is selected
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+  - [x] 06-01-PLAN.md — Layer data model & store
+  - [x] 06-02-PLAN.md — Preview compositor (Canvas renderer)
+  - [x] 06-03-PLAN.md — Layer management UI
+  - [x] 06-04-PLAN.md — Properties panel
+  - [ ] 06-05-PLAN.md — Fix NumericInput re-render loop, DnD reorder, and video blend defaults (gap closure)
+  - [ ] 06-06-PLAN.md — Static image asset picker and video asset tracking (gap closure)
 
 ### Phase 7: Cinematic FX Effects
 **Goal**: Users can add cinematic post-processing effects to sequences that render identically in preview and export
@@ -121,7 +128,7 @@ Phases execute in numeric order: 5 > 6 > 7 > 8 > 9 > 10
 | 3.1. Fix Cross-Phase Integration Wiring | v1.0 | 1/1 | Complete | 2026-03-03 |
 | 4. Timeline & Preview | v1.0 | 3/3 | Complete | 2026-03-03 |
 | 5. Editing Infrastructure | v2.0 | 0/5 | Planned | - |
-| 6. Layer System & Properties Panel | v2.0 | 0/0 | Not started | - |
+| 6. Layer System & Properties Panel | v2.0 | 4/6 | In Progress | - |
 | 7. Cinematic FX Effects | v2.0 | 0/0 | Not started | - |
 | 8. Audio Import & Waveform | v2.0 | 0/0 | Not started | - |
 | 9. Beat Sync | v2.0 | 0/0 | Not started | - |
