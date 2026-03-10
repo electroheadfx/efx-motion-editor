@@ -41,6 +41,7 @@ export class PlaybackEngine {
     }
     timelineStore.setPlaying(false);
     timelineStore.syncDisplayFrame();
+    this.syncActiveSequence();
     resetShuttle();
   }
 
@@ -124,8 +125,6 @@ export class PlaybackEngine {
         }
       }
     }
-
-    this.syncActiveSequence();
 
     this.syncPlayer();
 
