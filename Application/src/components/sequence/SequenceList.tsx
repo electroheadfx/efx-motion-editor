@@ -4,8 +4,6 @@ import Sortable from 'sortablejs';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {imageStore} from '../../stores/imageStore';
-import {timelineStore} from '../../stores/timelineStore';
-import {trackLayouts} from '../../lib/frameMap';
 import {assetUrl} from '../../lib/ipc';
 import type {Sequence} from '../../types/sequence';
 
@@ -114,11 +112,6 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
     if (!editing) {
       uiStore.selectSequence(seq.id);
       sequenceStore.setActive(seq.id);
-      // Seek playhead to this sequence's start frame so preview shows the right content
-      const track = trackLayouts.peek().find((t) => t.sequenceId === seq.id);
-      if (track) {
-        timelineStore.seek(track.startFrame);
-      }
     }
   }, [seq.id, editing]);
 
