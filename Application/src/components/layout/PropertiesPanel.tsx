@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'preact/hooks';
 import { layerStore } from '../../stores/layerStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
-import type { Layer, BlendMode } from '../../types/layer';
+import { isFxLayer } from '../../types/layer';
+import { COLOR_GRADE_PRESETS, PRESET_NAMES } from '../../lib/fxPresets';
+import type { Layer, BlendMode, LayerSourceData } from '../../types/layer';
 
 const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
 
@@ -92,6 +94,242 @@ function NumericInput({
       />
     </div>
   );
+}
+
+// ---- Helper: update source data preserving other fields ----
+
+function updateSource(layerId: string, layer: Layer, updates: Record<string, unknown>) {
+  layerStore.updateLayer(layerId, {
+    source: { ...layer.source, ...updates } as LayerSourceData,
+  });
+}
+
+// ---- Seed toggle + seed value shared across generator sections ----
+
+function SeedControls({ layer }: { layer: Layer }) {
+  const source = layer.source as { lockSeed: boolean; seed: number };
+  return (
+    <>
+      <button
+        class={`text-[10px] px-1.5 py-[3px] rounded ${
+          source.lockSeed
+            ? 'bg-[var(--color-accent)] text-white'
+            : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)]'
+        }`}
+        title={source.lockSeed ? 'Seed locked (reproducible)' : 'Seed unlocked (random each render)'}
+        onClick={() => updateSource(layer.id, layer, { lockSeed: !source.lockSeed })}
+      >
+        {source.lockSeed ? '\u{1F512}' : '\u{1F513}'}
+      </button>
+      {source.lockSeed && (
+        <NumericInput
+          label="Seed"
+          value={source.seed}
+          step={1}
+          min={0}
+          onChange={(val) => updateSource(layer.id, layer, { seed: Math.round(val) })}
+        />
+      )}
+    </>
+  );
+}
+
+// ---- FX Section Sub-Components ----
+
+/** Grain generator controls: Density, Size, Intensity, Seed */
+function GrainSection({ layer }: { layer: Layer }) {
+  const source = layer.source as Extract<LayerSourceData, { type: 'generator-grain' }>;
+  return (
+    <div class="flex items-center gap-3 shrink-0">
+      <SectionLabel text="GRAIN" />
+      <NumericInput label="Density" value={source.density} step={0.01} min={0} max={1}
+        onChange={(val) => updateSource(layer.id, layer, { density: val })} />
+      <NumericInput label="Size" value={source.size} step={1} min={1} max={4}
+        onChange={(val) => updateSource(layer.id, layer, { size: val })} />
+      <NumericInput label="Intensity" value={source.intensity} step={0.01} min={0} max={1}
+        onChange={(val) => updateSource(layer.id, layer, { intensity: val })} />
+      <SeedControls layer={layer} />
+    </div>
+  );
+}
+
+/** Particles generator controls: Count, Speed, Min/Max Size, Seed */
+function ParticlesSection({ layer }: { layer: Layer }) {
+  const source = layer.source as Extract<LayerSourceData, { type: 'generator-particles' }>;
+  return (
+    <div class="flex items-center gap-3 shrink-0">
+      <SectionLabel text="PARTICLES" />
+      <NumericInput label="Count" value={source.count} step={1} min={1} max={500}
+        onChange={(val) => updateSource(layer.id, layer, { count: Math.round(val) })} />
+      <NumericInput label="Speed" value={source.speed} step={0.1} min={0} max={5}
+        onChange={(val) => updateSource(layer.id, layer, { speed: val })} />
+      <NumericInput label="Min" value={source.sizeMin} step={0.5} min={0.5} max={20}
+        onChange={(val) => updateSource(layer.id, layer, { sizeMin: val })} />
+      <NumericInput label="Max" value={source.sizeMax} step={0.5} min={0.5} max={20}
+        onChange={(val) => updateSource(layer.id, layer, { sizeMax: val })} />
+      <SeedControls layer={layer} />
+    </div>
+  );
+}
+
+/** Lines generator controls: Count, Thickness, Min/Max Length, Seed */
+function LinesSection({ layer }: { layer: Layer }) {
+  const source = layer.source as Extract<LayerSourceData, { type: 'generator-lines' }>;
+  return (
+    <div class="flex items-center gap-3 shrink-0">
+      <SectionLabel text="LINES" />
+      <NumericInput label="Count" value={source.count} step={1} min={1} max={100}
+        onChange={(val) => updateSource(layer.id, layer, { count: Math.round(val) })} />
+      <NumericInput label="Thick" value={source.thickness} step={0.5} min={0.5} max={5}
+        onChange={(val) => updateSource(layer.id, layer, { thickness: val })} />
+      <NumericInput label="Min" value={source.lengthMin} step={0.01} min={0} max={1}
+        onChange={(val) => updateSource(layer.id, layer, { lengthMin: val })} />
+      <NumericInput label="Max" value={source.lengthMax} step={0.01} min={0} max={1}
+        onChange={(val) => updateSource(layer.id, layer, { lengthMax: val })} />
+      <SeedControls layer={layer} />
+    </div>
+  );
+}
+
+/** Dots generator controls: Count, Min/Max Size, Speed, Seed */
+function DotsSection({ layer }: { layer: Layer }) {
+  const source = layer.source as Extract<LayerSourceData, { type: 'generator-dots' }>;
+  return (
+    <div class="flex items-center gap-3 shrink-0">
+      <SectionLabel text="DOTS" />
+      <NumericInput label="Count" value={source.count} step={1} min={1} max={200}
+        onChange={(val) => updateSource(layer.id, layer, { count: Math.round(val) })} />
+      <NumericInput label="Min" value={source.sizeMin} step={0.5} min={1} max={20}
+        onChange={(val) => updateSource(layer.id, layer, { sizeMin: val })} />
+      <NumericInput label="Max" value={source.sizeMax} step={0.5} min={1} max={20}
+        onChange={(val) => updateSource(layer.id, layer, { sizeMax: val })} />
+      <NumericInput label="Speed" value={source.speed} step={0.1} min={0} max={5}
+        onChange={(val) => updateSource(layer.id, layer, { speed: val })} />
+      <SeedControls layer={layer} />
+    </div>
+  );
+}
+
+/** Vignette generator controls: Size, Softness, Intensity (no seed - deterministic) */
+function VignetteSection({ layer }: { layer: Layer }) {
+  const source = layer.source as Extract<LayerSourceData, { type: 'generator-vignette' }>;
+  return (
+    <div class="flex items-center gap-3 shrink-0">
+      <SectionLabel text="VIGNETTE" />
+      <NumericInput label="Size" value={source.size} step={0.01} min={0} max={1}
+        onChange={(val) => updateSource(layer.id, layer, { size: val })} />
+      <NumericInput label="Softness" value={source.softness} step={0.01} min={0} max={1}
+        onChange={(val) => updateSource(layer.id, layer, { softness: val })} />
+      <NumericInput label="Intensity" value={source.intensity} step={0.01} min={0} max={1}
+        onChange={(val) => updateSource(layer.id, layer, { intensity: val })} />
+    </div>
+  );
+}
+
+/** Color grade adjustment controls: Preset, Brightness, Contrast, Saturation, Hue, Fade, Tint */
+function ColorGradeSection({ layer }: { layer: Layer }) {
+  const source = layer.source as Extract<LayerSourceData, { type: 'adjustment-color-grade' }>;
+
+  const handlePresetChange = (presetName: string) => {
+    const preset = COLOR_GRADE_PRESETS[presetName];
+    if (preset) {
+      updateSource(layer.id, layer, { ...preset, preset: presetName });
+    }
+  };
+
+  const handleParamChange = (field: string, value: number | string) => {
+    // When user manually adjusts a parameter, set preset to 'none'
+    updateSource(layer.id, layer, { [field]: value, preset: 'none' });
+  };
+
+  return (
+    <div class="flex items-center gap-3 shrink-0">
+      <SectionLabel text="COLOR GRADE" />
+
+      {/* Preset dropdown */}
+      <select
+        class="text-[11px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-2 py-[5px] outline-none cursor-pointer"
+        value={source.preset}
+        onChange={(e) => handlePresetChange((e.target as HTMLSelectElement).value)}
+      >
+        {PRESET_NAMES.map((name) => (
+          <option key={name} value={name}>
+            {capitalize(name)}
+          </option>
+        ))}
+      </select>
+
+      <NumericInput label="Bright" value={source.brightness} step={0.01} min={-0.5} max={0.5}
+        onChange={(val) => handleParamChange('brightness', val)} />
+      <NumericInput label="Contrast" value={source.contrast} step={0.01} min={-1} max={1}
+        onChange={(val) => handleParamChange('contrast', val)} />
+      <NumericInput label="Sat" value={source.saturation} step={0.01} min={0} max={2}
+        onChange={(val) => handleParamChange('saturation', val)} />
+      <NumericInput label="Hue" value={source.hue} step={1} min={-180} max={180}
+        onChange={(val) => handleParamChange('hue', val)} />
+      <NumericInput label="Fade" value={source.fade} step={0.01} min={0} max={1}
+        onChange={(val) => handleParamChange('fade', val)} />
+
+      {/* Tint color picker */}
+      <div class="flex items-center gap-1">
+        <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Tint</span>
+        <input
+          type="color"
+          value={source.tintColor}
+          class="w-6 h-6 rounded cursor-pointer border-none bg-transparent"
+          onInput={(e) => handleParamChange('tintColor', (e.target as HTMLInputElement).value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** In/Out frame controls for FX layers */
+function InOutSection({ layer }: { layer: Layer }) {
+  return (
+    <div class="flex items-center gap-3 shrink-0">
+      <SectionLabel text="RANGE" />
+      <NumericInput
+        label="In"
+        value={layer.inFrame ?? 0}
+        step={1}
+        min={0}
+        onChange={(val) => {
+          layerStore.updateLayer(layer.id, { inFrame: val || undefined });
+        }}
+      />
+      <NumericInput
+        label="Out"
+        value={layer.outFrame ?? 0}
+        step={1}
+        min={0}
+        onChange={(val) => {
+          layerStore.updateLayer(layer.id, { outFrame: val || undefined });
+        }}
+      />
+    </div>
+  );
+}
+
+// ---- Dispatch: select the right FX section based on source type ----
+
+function FxSection({ layer }: { layer: Layer }) {
+  switch (layer.source.type) {
+    case 'generator-grain':
+      return <GrainSection layer={layer} />;
+    case 'generator-particles':
+      return <ParticlesSection layer={layer} />;
+    case 'generator-lines':
+      return <LinesSection layer={layer} />;
+    case 'generator-dots':
+      return <DotsSection layer={layer} />;
+    case 'generator-vignette':
+      return <VignetteSection layer={layer} />;
+    case 'adjustment-color-grade':
+      return <ColorGradeSection layer={layer} />;
+    default:
+      return null;
+  }
 }
 
 /** Blend mode dropdown, opacity slider, and visibility toggle */
@@ -269,6 +507,20 @@ export function PropertiesPanel() {
     );
   }
 
+  // FX layers: show Blend + FX-specific section + In/Out range (no Transform or Crop)
+  if (isFxLayer(selectedLayer)) {
+    return (
+      <div class="flex items-center gap-5 h-14 w-full bg-[#0F0F0F] px-4 shrink-0 overflow-x-auto">
+        <BlendSection layer={selectedLayer} />
+        <div class="w-px h-8 bg-[#2A2A2A]" />
+        <FxSection layer={selectedLayer} />
+        <div class="w-px h-8 bg-[#2A2A2A]" />
+        <InOutSection layer={selectedLayer} />
+      </div>
+    );
+  }
+
+  // Non-FX layers: existing layout (Blend, Transform, Crop, source info)
   return (
     <div class="flex items-center gap-5 h-14 w-full bg-[#0F0F0F] px-4 shrink-0 overflow-x-auto">
       {/* BLEND section */}
@@ -279,16 +531,6 @@ export function PropertiesPanel() {
       <div class="w-px h-8 bg-[#2A2A2A]" />
       {/* CROP section */}
       <CropSection layer={selectedLayer} />
-
-      {/* FX stub for Phase 7 — video layers */}
-      {selectedLayer.type === 'video' && !selectedLayer.isBase && (
-        <>
-          <div class="w-px h-8 bg-[#2A2A2A]" />
-          <span class="text-[9px] text-[var(--color-text-dim)] italic whitespace-nowrap">
-            FX parameters — Phase 7
-          </span>
-        </>
-      )}
 
       {/* Source info for image layers */}
       {(selectedLayer.type === 'static-image' || selectedLayer.type === 'image-sequence') &&
