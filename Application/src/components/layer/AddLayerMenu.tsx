@@ -7,6 +7,7 @@ import {projectStore} from '../../stores/projectStore';
 import {uiStore} from '../../stores/uiStore';
 import {defaultTransform} from '../../types/layer';
 import {tempProjectDir} from '../../lib/projectDir';
+import {assetUrl} from '../../lib/ipc';
 
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'heic', 'heif'];
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'avi'];
@@ -25,7 +26,9 @@ function naturalCompare(a: string, b: string): number {
 /** Popover menu for adding static-image, image-sequence, and video layers */
 export function AddLayerMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const imagePickerRef = useRef<HTMLDivElement>(null);
 
   // Close menu on click outside
   useEffect(() => {
@@ -39,13 +42,50 @@ export function AddLayerMenu() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
 
+  // Close image picker on click outside
+  useEffect(() => {
+    if (!imagePickerOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (imagePickerRef.current && !imagePickerRef.current.contains(e.target as Node)) {
+        setImagePickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [imagePickerOpen]);
+
   const getProjectDir = (): string | null => {
     return projectStore.dirPath.value ?? tempProjectDir.value;
   };
 
-  /** Add a static image layer */
-  const handleAddStaticImage = async () => {
-    setMenuOpen(false);
+  /** Add a static image layer from an already-imported asset */
+  const handleAddStaticImageFromAsset = (imageId: string) => {
+    const img = imageStore.getById(imageId);
+    if (!img) return;
+
+    const layerId = crypto.randomUUID();
+    const filename = img.original_path.split('/').pop() ?? 'image';
+
+    layerStore.add({
+      id: layerId,
+      name: filename,
+      type: 'static-image',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: {type: 'static-image', imageId: img.id},
+      isBase: false,
+    });
+
+    layerStore.setSelected(layerId);
+    uiStore.selectLayer(layerId);
+    setImagePickerOpen(false);
+  };
+
+  /** Import a new static image via file dialog (fallback from asset picker) */
+  const handleImportNewStaticImage = async () => {
+    setImagePickerOpen(false);
     const selected = await open({
       multiple: false,
       filters: [
@@ -213,7 +253,7 @@ export function AddLayerMenu() {
         <div class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl py-1 min-w-[150px]">
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
-            onClick={handleAddStaticImage}
+            onClick={() => { setMenuOpen(false); setImagePickerOpen(true); }}
           >
             <span class="w-2 h-2 rounded-sm bg-[#14B8A6] shrink-0" />
             Static Image
@@ -231,6 +271,37 @@ export function AddLayerMenu() {
           >
             <span class="w-2 h-2 rounded-sm bg-[#8B5CF6] shrink-0" />
             Video
+          </button>
+        </div>
+      )}
+
+      {imagePickerOpen && (
+        <div
+          ref={imagePickerRef}
+          class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
+        >
+          {imageStore.images.value.length === 0 ? (
+            <div class="text-center py-3">
+              <span class="text-[10px] text-[var(--color-text-dim)]">No imported images yet.</span>
+            </div>
+          ) : (
+            <div class="grid grid-cols-4 gap-1">
+              {imageStore.images.value.map((img) => (
+                <button
+                  key={img.id}
+                  class="aspect-square rounded overflow-hidden bg-[#2A2A2A] hover:ring-1 hover:ring-[#14B8A6] cursor-pointer"
+                  style={{backgroundImage: `url(${assetUrl(img.thumbnail_path)})`, backgroundSize: 'cover', backgroundPosition: 'center'}}
+                  title={img.original_path.split('/').pop() ?? 'image'}
+                  onClick={() => handleAddStaticImageFromAsset(img.id)}
+                />
+              ))}
+            </div>
+          )}
+          <button
+            class="w-full mt-2 py-1 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border-t border-[#333] cursor-pointer"
+            onClick={handleImportNewStaticImage}
+          >
+            Import new...
           </button>
         </div>
       )}
