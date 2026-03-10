@@ -4,9 +4,8 @@ import { sequenceStore } from '../../stores/sequenceStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { isFxLayer } from '../../types/layer';
 import { COLOR_GRADE_PRESETS, PRESET_NAMES } from '../../lib/fxPresets';
-import type { Layer, BlendMode, LayerSourceData } from '../../types/layer';
+import type { Layer, LayerSourceData } from '../../types/layer';
 
-const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
 const FADE_BLEND_MODES = ['source-over', 'screen', 'multiply', 'overlay', 'color', 'soft-light', 'hard-light'];
 
 function capitalize(s: string): string {
@@ -370,82 +369,8 @@ function FxSection({ layer }: { layer: Layer }) {
   }
 }
 
-/** Blend mode dropdown, opacity slider, and visibility toggle */
-function BlendSection({ layer, fxSequenceId }: { layer: Layer; fxSequenceId?: string | null }) {
-  const opacityPercent = Math.round(layer.opacity * 100);
-
-  // For FX layers, read visibility from the sequence (single source of truth)
-  const isVisible = fxSequenceId
-    ? sequenceStore.sequences.value.find((s) => s.id === fxSequenceId)?.visible !== false
-    : layer.visible;
-
-  return (
-    <div class="flex items-center gap-3 shrink-0">
-      <SectionLabel text="BLEND" />
-
-      {/* Blend mode dropdown */}
-      <select
-        class="text-[11px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-2 py-[5px] outline-none cursor-pointer"
-        value={layer.blendMode}
-        onChange={(e) => {
-          layerStore.updateLayer(layer.id, {
-            blendMode: (e.target as HTMLSelectElement).value as BlendMode,
-          });
-        }}
-      >
-        {BLEND_MODES.map((mode) => (
-          <option key={mode} value={mode}>
-            {capitalize(mode)}
-          </option>
-        ))}
-      </select>
-
-      {/* Opacity slider */}
-      <div class="flex items-center gap-1.5">
-        <span class="text-[10px] text-[var(--color-text-muted)]">Opacity</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={opacityPercent}
-          class="w-20 h-1 accent-[var(--color-accent)] cursor-pointer"
-          onPointerDown={() => startCoalescing()}
-          onPointerUp={() => stopCoalescing()}
-          onInput={(e) => {
-            const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
-            layerStore.updateLayer(layer.id, { opacity: val });
-          }}
-        />
-        <span class="text-[11px] text-[#CCCCCC] w-8 text-right">{opacityPercent}%</span>
-      </div>
-
-      {/* Visibility toggle */}
-      <button
-        class="text-[var(--color-text-muted)] hover:text-[#CCCCCC] transition-colors p-0.5"
-        title={isVisible ? 'Hide layer' : 'Show layer'}
-        onClick={() => {
-          if (fxSequenceId) {
-            sequenceStore.toggleFxSequenceVisibility(fxSequenceId);
-          } else {
-            layerStore.updateLayer(layer.id, { visible: !layer.visible });
-          }
-        }}
-      >
-        {isVisible ? (
-          // Filled eye icon (visible)
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
-          </svg>
-        ) : (
-          // Outline eye-off icon (hidden)
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z" />
-          </svg>
-        )}
-      </button>
-    </div>
-  );
-}
+// BlendSection removed -- FX layers now use inline opacity+visibility in PropertiesPanel,
+// and content layers use inline blend+opacity in LayerList sidebar rows.
 
 /** Position X/Y, scale, rotation controls */
 function TransformSection({ layer }: { layer: Layer }) {
@@ -565,11 +490,61 @@ export function PropertiesPanel() {
     );
   }
 
-  // FX layers: show Blend + FX-specific section + In/Out range (no Transform or Crop)
+  // FX layers: show opacity+visibility + FX-specific section (no blend mode dropdown, no Transform or Crop)
   if (isFxLayer(selectedLayer)) {
+    const fxOpacityPercent = Math.round(selectedLayer.opacity * 100);
+    // For FX layers, read visibility from the sequence (single source of truth)
+    const fxIsVisible = fxSequenceId
+      ? sequenceStore.sequences.value.find((s) => s.id === fxSequenceId)?.visible !== false
+      : selectedLayer.visible;
+
     return (
       <div class="flex items-center gap-5 h-14 w-full bg-[#0F0F0F] px-4 shrink-0 overflow-x-auto">
-        <BlendSection layer={selectedLayer} fxSequenceId={fxSequenceId} />
+        {/* Opacity + Visibility (no blend mode dropdown) */}
+        <div class="flex items-center gap-3 shrink-0">
+          <SectionLabel text="OPACITY" />
+
+          {/* Opacity slider */}
+          <div class="flex items-center gap-1.5">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={fxOpacityPercent}
+              class="w-20 h-1 accent-[var(--color-accent)] cursor-pointer"
+              onPointerDown={() => startCoalescing()}
+              onPointerUp={() => stopCoalescing()}
+              onInput={(e) => {
+                const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
+                layerStore.updateLayer(selectedLayer.id, { opacity: val });
+              }}
+            />
+            <span class="text-[11px] text-[#CCCCCC] w-8 text-right">{fxOpacityPercent}%</span>
+          </div>
+
+          {/* Visibility toggle */}
+          <button
+            class="text-[var(--color-text-muted)] hover:text-[#CCCCCC] transition-colors p-0.5"
+            title={fxIsVisible ? 'Hide layer' : 'Show layer'}
+            onClick={() => {
+              if (fxSequenceId) {
+                sequenceStore.toggleFxSequenceVisibility(fxSequenceId);
+              } else {
+                layerStore.updateLayer(selectedLayer.id, { visible: !selectedLayer.visible });
+              }
+            }}
+          >
+            {fxIsVisible ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z" />
+              </svg>
+            )}
+          </button>
+        </div>
         <div class="w-px h-8 bg-[#2A2A2A]" />
         <FxSection layer={selectedLayer} />
       </div>

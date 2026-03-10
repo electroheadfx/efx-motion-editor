@@ -206,42 +206,45 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
         )}
       </div>
 
-      {/* Row 2: Blend mode dropdown + Opacity slider */}
+      {/* Row 2: Blend mode dropdown + Opacity slider (base layer: locked Normal only) */}
       <div class="flex items-center gap-2 pl-[18px]" onClick={(e: MouseEvent) => e.stopPropagation()}>
-        {/* Blend mode dropdown (hidden/locked for base layer) */}
-        {!isBase ? (
-          <select
-            class="text-[9px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-1 py-[1px] outline-none cursor-pointer max-w-[72px]"
-            value={layer.blendMode}
-            onChange={handleBlendChange}
-            title="Blend mode"
-          >
-            {BLEND_MODES.map((mode) => (
-              <option key={mode} value={mode}>
-                {capitalize(mode)}
-              </option>
-            ))}
-          </select>
-        ) : (
+        {isBase ? (
+          /* Base layer: just locked "Normal" text, no blend dropdown, no opacity slider */
           <span class="text-[9px] text-[var(--color-text-dim)] px-1">Normal</span>
-        )}
+        ) : (
+          <>
+            {/* Blend mode dropdown */}
+            <select
+              class="text-[9px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-1 py-[1px] outline-none cursor-pointer max-w-[72px]"
+              value={layer.blendMode}
+              onChange={handleBlendChange}
+              title="Blend mode"
+            >
+              {BLEND_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {capitalize(mode)}
+                </option>
+              ))}
+            </select>
 
-        {/* Opacity slider */}
-        <div class="flex items-center gap-1 flex-1 min-w-0">
-          <span class="text-[9px] text-[var(--color-text-dim)] shrink-0">Op</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={opacityPercent}
-            class="flex-1 min-w-0 h-1 accent-[var(--color-accent)] cursor-pointer"
-            onPointerDown={() => startCoalescing()}
-            onPointerUp={() => stopCoalescing()}
-            onInput={handleOpacityInput}
-            title="Opacity"
-          />
-          <span class="text-[9px] text-[#CCCCCC] w-7 text-right shrink-0">{opacityPercent}%</span>
-        </div>
+            {/* Opacity slider */}
+            <div class="flex items-center gap-1 flex-1 min-w-0">
+              <span class="text-[9px] text-[var(--color-text-dim)] shrink-0">Op</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={opacityPercent}
+                class="flex-1 min-w-0 h-1 accent-[var(--color-accent)] cursor-pointer"
+                onPointerDown={() => startCoalescing()}
+                onPointerUp={() => stopCoalescing()}
+                onInput={handleOpacityInput}
+                title="Opacity"
+              />
+              <span class="text-[9px] text-[#CCCCCC] w-7 text-right shrink-0">{opacityPercent}%</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
