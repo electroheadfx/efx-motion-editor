@@ -1,7 +1,11 @@
 import type {Layer, BlendMode} from '../types/layer';
+import {isGeneratorLayer, isAdjustmentLayer} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
 import {imageStore} from '../stores/imageStore';
 import {assetUrl} from './ipc';
+import {drawGrain, drawParticles, drawLines, drawDots, drawVignette} from './fxGenerators';
+import {applyColorGrade} from './fxColorGrade';
+import type {ColorGradeParams} from './fxColorGrade';
 
 /**
  * Map our BlendMode enum to Canvas 2D globalCompositeOperation values.
@@ -78,27 +82,35 @@ export class PreviewRenderer {
       this.canvas.height = displayH;
     }
 
-    // Pre-resolve all layer sources before clearing canvas.
-    // If no layer has a drawable source, keep the previous frame visible
+    // Pre-check: determine if ANY visible layer will draw something.
+    // If nothing will draw, keep the previous frame visible
     // (avoids black flashes while images load asynchronously).
-    const resolved: { layer: Layer; source: CanvasImageSource }[] = [];
     const logicalW = rect.width;
     const logicalH = rect.height;
 
-    // Track visible video layers that are still loading (readyState < 2)
-    const loadingVideoLayers: Layer[] = [];
-
+    let hasDrawable = false;
     for (const layer of layers) {
       if (!layer.visible) continue;
-      const source = this.resolveLayerSource(layer, frame, frames, fps);
-      if (source !== null) {
-        resolved.push({layer, source});
-      } else if (layer.source.type === 'video') {
-        loadingVideoLayers.push(layer);
+      // In/out point filtering
+      if (layer.inFrame != null && frame < layer.inFrame) continue;
+      if (layer.outFrame != null && frame >= layer.outFrame) continue;
+
+      if (isGeneratorLayer(layer)) {
+        hasDrawable = true;
+        break;
+      } else if (isAdjustmentLayer(layer)) {
+        // Adjustments only matter if there's content below; continue checking
+        continue;
+      } else {
+        const source = this.resolveLayerSource(layer, frame, frames, fps);
+        if (source !== null || layer.source.type === 'video') {
+          hasDrawable = true;
+          break;
+        }
       }
     }
 
-    if (resolved.length === 0 && loadingVideoLayers.length === 0) {
+    if (!hasDrawable) {
       return; // Keep previous frame
     }
 
@@ -111,26 +123,41 @@ export class PreviewRenderer {
     ctx.save();
     ctx.scale(dpr, dpr);
 
-    for (const {layer, source} of resolved) {
-      this.drawLayer(source, layer, logicalW, logicalH);
-    }
+    // Single-pass draw loop: handle content, generator, and adjustment layers in order
+    for (const layer of layers) {
+      if (!layer.visible) continue;
 
-    // Draw loading placeholders for video layers that aren't ready yet
-    for (const layer of loadingVideoLayers) {
-      ctx.save();
-      ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-      ctx.globalAlpha = layer.opacity * 0.5;
-      ctx.fillStyle = '#333333';
-      const pw = logicalW * 0.4;
-      const ph = logicalH * 0.2;
-      ctx.fillRect((logicalW - pw) / 2, (logicalH - ph) / 2, pw, ph);
-      ctx.globalAlpha = layer.opacity;
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`Loading ${layer.name}...`, logicalW / 2, logicalH / 2);
-      ctx.restore();
+      // In/out point filtering (Phase 7)
+      if (layer.inFrame != null && frame < layer.inFrame) continue;
+      if (layer.outFrame != null && frame >= layer.outFrame) continue;
+
+      if (isGeneratorLayer(layer)) {
+        this.drawGeneratorLayer(layer, logicalW, logicalH, frame);
+      } else if (isAdjustmentLayer(layer)) {
+        this.drawAdjustmentLayer(layer, logicalW, logicalH);
+      } else {
+        // Content layer: resolve source inline
+        const source = this.resolveLayerSource(layer, frame, frames, fps);
+        if (source !== null) {
+          this.drawLayer(source, layer, logicalW, logicalH);
+        } else if (layer.source.type === 'video') {
+          // Draw loading placeholder for video layers not ready yet
+          ctx.save();
+          ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+          ctx.globalAlpha = layer.opacity * 0.5;
+          ctx.fillStyle = '#333333';
+          const pw = logicalW * 0.4;
+          const ph = logicalH * 0.2;
+          ctx.fillRect((logicalW - pw) / 2, (logicalH - ph) / 2, pw, ph);
+          ctx.globalAlpha = layer.opacity;
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = '12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`Loading ${layer.name}...`, logicalW / 2, logicalH / 2);
+          ctx.restore();
+        }
+      }
     }
 
     ctx.restore();
@@ -273,6 +300,75 @@ export class PreviewRenderer {
     if (video.readyState < 2) return null;
 
     return video;
+  }
+
+  /**
+   * Draw a generator FX layer (grain, particles, lines, dots, vignette).
+   * Generator layers produce pixels procedurally — no source image needed.
+   */
+  private drawGeneratorLayer(
+    layer: Layer,
+    logicalW: number,
+    logicalH: number,
+    frame: number,
+  ): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+    ctx.globalAlpha = layer.opacity;
+
+    switch (layer.source.type) {
+      case 'generator-grain':
+        drawGrain(ctx, logicalW, logicalH, layer.source, frame);
+        break;
+      case 'generator-particles':
+        drawParticles(ctx, logicalW, logicalH, layer.source, frame);
+        break;
+      case 'generator-lines':
+        drawLines(ctx, logicalW, logicalH, layer.source, frame);
+        break;
+      case 'generator-dots':
+        drawDots(ctx, logicalW, logicalH, layer.source, frame);
+        break;
+      case 'generator-vignette':
+        drawVignette(ctx, logicalW, logicalH, layer.source);
+        break;
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Draw an adjustment FX layer that modifies existing canvas pixels.
+   * Adjustment layers read the composited image below and transform it.
+   */
+  private drawAdjustmentLayer(
+    layer: Layer,
+    _logicalW: number,
+    _logicalH: number,
+  ): void {
+    if (layer.source.type !== 'adjustment-color-grade') return;
+
+    const ctx = this.ctx;
+    ctx.save();
+    // Reset transform to identity so we can work in physical pixel coords for ImageData
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Scale color grade parameters by layer opacity for partial application
+    const source = layer.source;
+    const opacity = layer.opacity;
+    const scaledParams: ColorGradeParams = {
+      brightness: source.brightness * opacity,
+      contrast: source.contrast * opacity,
+      saturation: 1 + (source.saturation - 1) * opacity,
+      hue: source.hue * opacity,
+      fade: source.fade * opacity,
+      tintColor: source.tintColor,
+    };
+
+    applyColorGrade(ctx, this.canvas.width, this.canvas.height, scaledParams);
+
+    ctx.restore();
   }
 
   /**
