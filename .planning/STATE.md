@@ -5,7 +5,7 @@ milestone_name: Production Tool
 status: completed
 stopped_at: Completed 07-10-PLAN.md
 last_updated: "2026-03-10T13:36:03.431Z"
-last_activity: 2026-03-11 — Completed quick task 9 (Video thumbnail in import grid)
+last_activity: 2026-03-11 — Completed quick task 10 (Move blend/opacity to bottom bar)
 progress:
   total_phases: 6
   completed_phases: 3
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 Phase: 7 of 10 (Cinematic FX Effects)
 Plan: 10 of 10 in current phase
 Status: Phase Complete
-Last activity: 2026-03-11 - Completed quick task 9: Add normal video thumbnail image in import grid
+Last activity: 2026-03-11 - Completed quick task 10: Move blend/opacity from sidebar to bottom bar
 
 Progress: [██████████] 100% (v1.0 complete, v2.0 Phase 7 complete)
 
@@ -180,6 +180,8 @@ Recent decisions affecting current work:
 - [Quick-07]: Base layer sidebar row: locked Normal text only, no opacity slider
 - [Quick-08]: Preview disposeRender effect mirrors renderFromFrameMap pattern (.value vs .peek) for consistent frameMap-based rendering
 - [Quick-08]: Preload all frameMap images instead of just active sequence, since cursor can be in any sequence
+- [Quick-10]: Blend mode + opacity moved from sidebar rows back to bottom bar for content layers (reverses quick-06)
+- [Quick-10]: Compact 36px single-line sidebar rows replace 60px two-line rows
 
 ### Pending Todos
 
@@ -207,9 +209,10 @@ No active blockers.
 | 7 | Remove blend mode from FX bottom bar, remove opacity from base layer sidebar | 2026-03-10 | ed54e20 | [7-remove-blend-mode-from-bottom-bar-for-fx](./quick/7-remove-blend-mode-from-bottom-bar-for-fx/) |
 | 8 | Fix sequence selection rendering: cursor stays, preview renders from frameMap | 2026-03-10 | 5b24e6e | [8-fix-sequence-selection-rendering-cursor-](./quick/8-fix-sequence-selection-rendering-cursor-/) |
 | 9 | Add normal video thumbnail image in import grid | 2026-03-11 | 6b9aad6 | [9-add-normal-video-thumbnail-image-in-impo](./quick/9-add-normal-video-thumbnail-image-in-impo/) |
+| 10 | Move blend mode + opacity from sidebar rows to bottom bar for content layers | 2026-03-11 | 3f17c34 | [10-from-sidebar-layers-move-transfer-mode-a](./quick/10-from-sidebar-layers-move-transfer-mode-a/) |
 
 ## Session Continuity
 
-Last session: 2026-03-11T13:57:48Z
-Stopped at: Completed quick task 9
+Last session: 2026-03-11T14:46:31Z
+Stopped at: Completed quick task 10
 Resume file: None
