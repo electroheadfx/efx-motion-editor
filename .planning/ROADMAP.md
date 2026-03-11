@@ -2,107 +2,57 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline in 10 phases across three milestones. v0.1.0 (Phases 1-4) shipped the editing foundation: Tauri scaffold, UI shell, image pipeline, project management, timeline, and preview. v0.2.0 (Phases 5-7) adds the production editing core: infrastructure fixes and undo/redo, the layer compositing system, and cinematic FX effects. Phases 8-10 (audio, beat sync, PNG export) are deferred to the next milestone.
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience: Tauri scaffold, UI shell, image pipeline, project management, timeline, preview, undo/redo, keyboard shortcuts, multi-layer compositing, and cinematic FX effects. v0.2.0 (Phases 8-17) extends the editor with new features and completes the pipeline with audio, beat sync, and PNG export.
 
 ## Milestones
 
-- ✅ **v0.1.0 MVP** — Phases 1-4 (shipped 2026-03-03)
-- 🚧 **v0.2.0 Production Tool** — Phases 5-7 (in progress)
-- 📋 **Next Milestone (Planned)** — Phases 8-10 (audio, beat sync, export)
+- ✅ **v0.1.0** — Phases 1-7 (shipped 2026-03-11)
+- 📋 **v0.2.0** — Phases 8-17 (planned)
 
 ## Phases
 
 <details>
-<summary>v0.1.0 MVP (Phases 1-4) — SHIPPED 2026-03-03</summary>
+<summary>✅ v0.1.0 (Phases 1-7) — SHIPPED 2026-03-11</summary>
 
 - [x] Phase 1: Foundation & Scaffolding (3/3 plans) — completed 2026-03-02
 - [x] Phase 2: UI Shell & Image Pipeline (3/3 plans) — completed 2026-03-03
-- [x] Phase 3: Project & Sequence Management (3/3 plans) — completed 2026-03-03
+- [x] Phase 3: Project & Sequence Management (10/10 plans) — completed 2026-03-03
 - [x] Phase 3.1: Fix Cross-Phase Integration Wiring (1/1 plan) — completed 2026-03-03
-- [x] Phase 4: Timeline & Preview (3/3 plans) — completed 2026-03-03
+- [x] Phase 4: Timeline & Preview (5/5 plans) — completed 2026-03-03
+- [x] Phase 5: Editing Infrastructure (5/5 plans) — completed 2026-03-06
+- [x] Phase 6: Layer System & Properties Panel (8/8 plans) — completed 2026-03-08
+- [x] Phase 7: Cinematic FX Effects (10/10 plans) — completed 2026-03-10
 
-See: `milestones/v1.0-ROADMAP.md` for full details.
+See: `milestones/v0.1.0-ROADMAP.md` for full details.
 
 </details>
 
-### v0.2.0 Production Tool
+### v0.2.0 (Planned)
 
-- [ ] **Phase 5: Editing Infrastructure** - Fix v1.0 store bugs, implement undo/redo with command pattern, and wire all keyboard shortcuts
-- [ ] **Phase 6: Layer System & Properties Panel** - Multi-layer compositing with Canvas 2D renderer, blend modes, transforms, and context-sensitive properties panel
-- [ ] **Phase 7: Cinematic FX Effects** - Film grain, vignette, color grade, dirt/scratches, and light leaks as FX layers with normalized parameters
+- [ ] **Phase 8: TBD**
+- [ ] **Phase 9: TBD**
+- [ ] **Phase 10: TBD**
+- [ ] **Phase 11: TBD**
+- [ ] **Phase 12: TBD**
+- [ ] **Phase 13: TBD**
+- [ ] **Phase 14: TBD**
+- [ ] **Phase 15: Audio Import & Waveform** - Import audio files, waveform on timeline, synchronized playback
+- [ ] **Phase 16: Beat Sync** - BPM detection, beat markers, snap modes, auto-arrange key photos
+- [ ] **Phase 17: PNG Export** - Composited frame export with resolution options, progress, metadata sidecar
 
 ## Phase Details
 
-Phases 1-4 archived to `milestones/v1.0-ROADMAP.md`.
+Phases 1-7 archived to `milestones/v0.1.0-ROADMAP.md`.
 
-### Phase 5: Editing Infrastructure
-**Goal**: Users can undo/redo any editing action, operate the app with keyboard shortcuts, and switch between projects without data corruption
-**Depends on**: Phase 4
-**Requirements**: INFRA-01, INFRA-02, INFRA-03, INFRA-04, INFRA-05, KEY-01, KEY-02, KEY-03, KEY-04, KEY-05, KEY-06, KEY-07, KEY-08
-**Success Criteria** (what must be TRUE):
-  1. User can create a new project while editing and all stores reset cleanly — no data from the previous project appears
-  2. User can undo any editing action with Cmd+Z and redo with Cmd+Shift+Z, with rapid slider changes coalescing into a single undo entry
-  3. User can play/pause with Space, step frames with arrows, scrub with JKL, and save/open/create projects with standard Cmd shortcuts
-  4. Keyboard shortcuts do not fire when typing in input fields, and pressing ? shows a shortcuts help overlay
-**Plans**: 5 plans
-Plans:
-  - [ ] 05-01-PLAN.md — Store lifecycle fixes + unsaved-changes guard
-  - [ ] 05-02-PLAN.md — Undo/redo command pattern engine
-  - [ ] 05-03-PLAN.md — Keyboard shortcuts, JKL shuttle, shortcuts overlay
-  - [ ] 05-04-PLAN.md — Fix Cmd+Z/Shift+Z native menu interception + ? keyboard layout fix
-  - [ ] 05-05-PLAN.md — Rewrite JKL shuttle to split-responsibility model with auto-loop
+### Phase 8: TBD
+### Phase 9: TBD
+### Phase 10: TBD
+### Phase 11: TBD
+### Phase 12: TBD
+### Phase 13: TBD
+### Phase 14: TBD
 
-### Phase 6: Layer System & Properties Panel
-**Goal**: Users can add multiple layer types to sequences, composite them in real-time with blend modes and transforms, and edit all layer properties through a context-sensitive panel
-**Depends on**: Phase 5
-**Requirements**: LAYER-01, LAYER-02, LAYER-03, LAYER-04, LAYER-05, LAYER-06, LAYER-07, LAYER-08, LAYER-09, LAYER-10, LAYER-11, LAYER-12, LAYER-13, LAYER-14, PROP-01, PROP-02, PROP-03, PROP-04
-**Success Criteria** (what must be TRUE):
-  1. User can add static image, image sequence, and video layers to a sequence, and the preview canvas renders all visible layers composited with correct blend modes and opacity in real-time
-  2. User can reorder layers via drag-and-drop, toggle visibility, and delete layers — the base key photo sequence is always the non-deletable bottom layer
-  3. User can set position, scale, rotation, and crop for any layer via the properties panel, with changes reflected immediately in the preview
-  4. Properties panel shows context-sensitive controls (blend mode dropdown, opacity slider, visibility toggle, transform controls) for whichever layer is selected
-**Plans**: 8 plans
-Plans:
-  - [x] 06-01-PLAN.md — Layer data model & store
-  - [x] 06-02-PLAN.md — Preview compositor (Canvas renderer)
-  - [x] 06-03-PLAN.md — Layer management UI
-  - [x] 06-04-PLAN.md — Properties panel
-  - [x] 06-05-PLAN.md — Fix NumericInput re-render loop, DnD reorder, and video blend defaults (gap closure)
-  - [x] 06-06-PLAN.md — Static image asset picker and video asset tracking (gap closure)
-  - [ ] 06-07-PLAN.md — Video asset picker popover and video re-discovery on project load (gap closure)
-  - [ ] 06-08-PLAN.md — Video re-render callbacks for blend mode fix (gap closure)
-
-### Phase 7: Cinematic FX Effects
-**Goal**: Users can add cinematic post-processing effects as timeline-level sequences that render identically in preview and export
-**Depends on**: Phase 6
-**Requirements**: FX-01, FX-02, FX-03, FX-04, FX-05, FX-06, FX-07, FX-08, FX-09, FX-10
-**Success Criteria** (what must be TRUE):
-  1. User can add film grain and dirt/scratches effects with adjustable intensity and see them composited on the preview canvas
-  2. User can add vignette and light leaks effects with configurable parameters (intensity, size, softness)
-  3. User can add a color grade effect and individually adjust brightness, contrast, saturation, hue, and fade
-  4. All FX parameters are resolution-independent — preview at 830px and export at 1080p/4K produce visually identical results
-  5. FX effects are timeline-level sequences that apply globally across all content, with draggable range bars on the timeline
-**Plans**: 11 plans
-Plans:
-  - [x] 07-01-PLAN.md — FX type system, generator drawing functions, color grade pipeline
-  - [x] 07-02-PLAN.md — PreviewRenderer FX integration, categorized AddLayerMenu
-  - [x] 07-03-PLAN.md — FX properties panel controls, LayerList FX styling
-  - [x] 07-04-PLAN.md — Project serialization v3, end-to-end verification
-  - [x] 07-05-PLAN.md — FX sequence data model, store CRUD, serialization v4 (gap closure)
-  - [x] 07-06-PLAN.md — FX sequence compositing in Preview, AddLayerMenu routing, PropertiesPanel cleanup (gap closure)
-  - [x] 07-07-PLAN.md — Timeline FX range bars with draggable in/out handles (gap closure)
-  - [x] 07-08-PLAN.md — Fix color grade render, sequence-aware layer CRUD, FX LayerList display (gap closure)
-  - [x] 07-09-PLAN.md — FX visibility toggle and FX reorder drag (gap closure)
-  - [x] 07-10-PLAN.md — Timeline vertical scroll (gap closure)
-  - [ ] 07-11-PLAN.md — Add FX button to timeline area (gap closure)
-
----
-
-### Next Milestone (Planned) — Phases 8-10
-
-These phases are deferred from v0.2.0. All goals, requirements, and success criteria are preserved here for the next milestone.
-
-### Phase 8: Audio Import & Waveform
+### Phase 15: Audio Import & Waveform
 **Goal**: Users can import audio files, see waveforms on the timeline, and hear audio playing in sync with the visual preview
 **Depends on**: Phase 5
 **Requirements**: AUDIO-01, AUDIO-02, AUDIO-03, AUDIO-04, AUDIO-05, AUDIO-06, AUDIO-07
@@ -112,9 +62,9 @@ These phases are deferred from v0.2.0. All goals, requirements, and success crit
   3. User can adjust volume, mute/unmute, set audio offset relative to frame 0, and trim audio in/out points
 **Plans**: TBD
 
-### Phase 9: Beat Sync
+### Phase 16: Beat Sync
 **Goal**: Users can detect BPM from audio, see beat markers on the timeline, and auto-arrange key photos to beat positions
-**Depends on**: Phase 8
+**Depends on**: Phase 15
 **Requirements**: BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05
 **Success Criteria** (what must be TRUE):
   1. App detects BPM from imported audio and displays beat markers on the timeline at the detected positions
@@ -122,7 +72,7 @@ These phases are deferred from v0.2.0. All goals, requirements, and success crit
   3. User can select a snap mode (every beat, every 2 beats, every bar, every half-beat) and auto-arrange key photos to those positions
 **Plans**: TBD
 
-### Phase 10: PNG Export
+### Phase 17: PNG Export
 **Goal**: Users can export their composited sequences as PNG image sequences ready for downstream editing in DaVinci Resolve or Premiere Pro
 **Depends on**: Phase 6, Phase 7
 **Requirements**: EXPORT-01, EXPORT-02, EXPORT-03, EXPORT-04, EXPORT-05, EXPORT-06
@@ -136,19 +86,25 @@ These phases are deferred from v0.2.0. All goals, requirements, and success crit
 ## Progress
 
 **Execution Order:**
-v0.2.0: 5 > 6 > 7
-Next milestone: 8 > 9 > 10
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1. Foundation & Scaffolding | v0.1.0 | 3/3 | Complete | 2026-03-02 |
 | 2. UI Shell & Image Pipeline | v0.1.0 | 3/3 | Complete | 2026-03-03 |
-| 3. Project & Sequence Management | v0.1.0 | 3/3 | Complete | 2026-03-03 |
+| 3. Project & Sequence Management | v0.1.0 | 10/10 | Complete | 2026-03-03 |
 | 3.1. Fix Cross-Phase Integration Wiring | v0.1.0 | 1/1 | Complete | 2026-03-03 |
-| 4. Timeline & Preview | v0.1.0 | 3/3 | Complete | 2026-03-03 |
-| 5. Editing Infrastructure | v0.2.0 | 0/5 | Planned | - |
-| 6. Layer System & Properties Panel | v0.2.0 | 6/8 | In Progress | - |
-| 7. Cinematic FX Effects | v0.2.0 | 10/11 | In Progress | - |
-| 8. Audio Import & Waveform | Next | 0/0 | Deferred | - |
-| 9. Beat Sync | Next | 0/0 | Deferred | - |
-| 10. PNG Export | Next | 0/0 | Deferred | - |
+| 4. Timeline & Preview | v0.1.0 | 5/5 | Complete | 2026-03-03 |
+| 5. Editing Infrastructure | v0.1.0 | 5/5 | Complete | 2026-03-06 |
+| 6. Layer System & Properties Panel | v0.1.0 | 8/8 | Complete | 2026-03-08 |
+| 7. Cinematic FX Effects | v0.1.0 | 10/10 | Complete | 2026-03-10 |
+| 8. TBD | v0.2.0 | 0/0 | Planned | - |
+| 9. TBD | v0.2.0 | 0/0 | Planned | - |
+| 10. TBD | v0.2.0 | 0/0 | Planned | - |
+| 11. TBD | v0.2.0 | 0/0 | Planned | - |
+| 12. TBD | v0.2.0 | 0/0 | Planned | - |
+| 13. TBD | v0.2.0 | 0/0 | Planned | - |
+| 14. TBD | v0.2.0 | 0/0 | Planned | - |
+| 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
+| 16. Beat Sync | v0.2.0 | 0/0 | Planned | - |
+| 17. PNG Export | v0.2.0 | 0/0 | Planned | - |
