@@ -4,7 +4,9 @@ import { sequenceStore } from '../../stores/sequenceStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { isFxLayer } from '../../types/layer';
 import { COLOR_GRADE_PRESETS, PRESET_NAMES } from '../../lib/fxPresets';
-import type { Layer, LayerSourceData } from '../../types/layer';
+import type { Layer, LayerSourceData, BlendMode } from '../../types/layer';
+
+const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
 
 const FADE_BLEND_MODES = ['source-over', 'screen', 'multiply', 'overlay', 'color', 'soft-light', 'hard-light'];
 
@@ -551,9 +553,53 @@ export function PropertiesPanel() {
     );
   }
 
-  // Non-FX layers: Transform + Crop only (blend/opacity moved to LAYERS sidebar)
+  // Non-FX layers: Blend + Opacity + Transform + Crop
+  const contentOpacityPercent = Math.round(selectedLayer.opacity * 100);
+
   return (
     <div class="flex items-center gap-5 h-14 w-full bg-[#0F0F0F] px-4 shrink-0 overflow-x-auto">
+      {/* BLEND + OPACITY section */}
+      <div class="flex items-center gap-3 shrink-0">
+        <SectionLabel text="BLEND" />
+        {selectedLayer.isBase ? (
+          <span class="text-[11px] text-[var(--color-text-dim)]">Normal</span>
+        ) : (
+          <select
+            class="text-[11px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-2 py-[3px] outline-none cursor-pointer"
+            value={selectedLayer.blendMode}
+            onChange={(e) => {
+              layerStore.updateLayer(selectedLayer.id, {
+                blendMode: (e.target as HTMLSelectElement).value as BlendMode,
+              });
+            }}
+          >
+            {BLEND_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {capitalize(mode)}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <SectionLabel text="OPACITY" />
+        <div class="flex items-center gap-1.5">
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={contentOpacityPercent}
+            class="w-20 h-1 accent-[var(--color-accent)] cursor-pointer"
+            onPointerDown={() => startCoalescing()}
+            onPointerUp={() => stopCoalescing()}
+            onInput={(e) => {
+              const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
+              layerStore.updateLayer(selectedLayer.id, { opacity: val });
+            }}
+          />
+          <span class="text-[11px] text-[#CCCCCC] w-8 text-right">{contentOpacityPercent}%</span>
+        </div>
+      </div>
+      <div class="w-px h-8 bg-[#2A2A2A]" />
       {/* TRANSFORM section */}
       <TransformSection layer={selectedLayer} />
       <div class="w-px h-8 bg-[#2A2A2A]" />
