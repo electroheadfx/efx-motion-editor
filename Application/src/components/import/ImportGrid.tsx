@@ -57,13 +57,21 @@ export function ImportGrid() {
             {videos.map((video) => (
               <div
                 key={video.id}
-                class="relative rounded overflow-hidden bg-[#2A2A2A] p-2 flex flex-col items-center justify-center gap-1"
+                class="relative aspect-[4/3] rounded overflow-hidden bg-[#1E1E1E] cursor-pointer group"
                 title={video.name}
               >
-                <span class="w-2 h-2 rounded-full bg-[#8B5CF6] shrink-0" />
-                <span class="text-[9px] text-[var(--color-text-secondary)] truncate w-full text-center">
-                  {video.name}
-                </span>
+                <video
+                  src={assetUrl(video.path)}
+                  preload="metadata"
+                  muted
+                  class="w-full h-full object-cover pointer-events-none"
+                />
+                {/* Hover overlay with filename */}
+                <div class="absolute inset-0 bg-[#00000080] opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
+                  <span class="text-[8px] text-white truncate w-full">
+                    {video.name}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
