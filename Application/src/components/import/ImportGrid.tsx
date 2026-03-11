@@ -1,4 +1,5 @@
-import {imageStore} from '../../stores/imageStore';
+import {useRef, useEffect} from 'preact/hooks';
+import {imageStore, type VideoAsset} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 
 /**
@@ -55,28 +56,48 @@ export function ImportGrid() {
           </span>
           <div class="grid grid-cols-3 gap-1">
             {videos.map((video) => (
-              <div
-                key={video.id}
-                class="relative aspect-[4/3] rounded overflow-hidden bg-[#1E1E1E] cursor-pointer group"
-                title={video.name}
-              >
-                <video
-                  src={assetUrl(video.path)}
-                  preload="metadata"
-                  muted
-                  class="w-full h-full object-cover pointer-events-none"
-                />
-                {/* Hover overlay with filename */}
-                <div class="absolute inset-0 bg-[#00000080] opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
-                  <span class="text-[8px] text-white truncate w-full">
-                    {video.name}
-                  </span>
-                </div>
-              </div>
+              <VideoThumb key={video.id} video={video} />
             ))}
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Video thumbnail that seeks to middle frame for a meaningful preview */
+function VideoThumb({video}: {video: VideoAsset}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const onMeta = () => {
+      if (el.duration && isFinite(el.duration)) {
+        el.currentTime = el.duration / 2;
+      }
+    };
+    el.addEventListener('loadedmetadata', onMeta);
+    return () => el.removeEventListener('loadedmetadata', onMeta);
+  }, [video.path]);
+
+  return (
+    <div
+      class="relative aspect-[4/3] rounded overflow-hidden bg-[#1E1E1E] cursor-pointer group"
+      title={video.name}
+    >
+      <video
+        ref={videoRef}
+        src={assetUrl(video.path)}
+        preload="metadata"
+        muted
+        class="w-full h-full object-cover pointer-events-none"
+      />
+      <div class="absolute inset-0 bg-[#00000080] opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
+        <span class="text-[8px] text-white truncate w-full">
+          {video.name}
+        </span>
+      </div>
     </div>
   );
 }
