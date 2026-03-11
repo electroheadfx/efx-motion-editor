@@ -2,17 +2,18 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline in 10 phases across two milestones. v1.0 (Phases 1-4) shipped the editing foundation: Tauri scaffold, UI shell, image pipeline, project management, timeline, and preview. v2.0 (Phases 5-10) transforms the editor into a production tool: infrastructure fixes and undo/redo first (so every later feature has keyboard access and history from day one), then the layer compositing system (which unblocks FX and export), then cinematic FX effects (the product differentiator), then audio import with waveform visualization, then beat sync (requires audio), and finally PNG export (requires the complete compositor pipeline).
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline in 10 phases across three milestones. v0.1.0 (Phases 1-4) shipped the editing foundation: Tauri scaffold, UI shell, image pipeline, project management, timeline, and preview. v0.2.0 (Phases 5-7) adds the production editing core: infrastructure fixes and undo/redo, the layer compositing system, and cinematic FX effects. Phases 8-10 (audio, beat sync, PNG export) are deferred to the next milestone.
 
 ## Milestones
 
-- ✅ **v1.0 MVP** — Phases 1-4 (shipped 2026-03-03)
-- 🚧 **v2.0 Production Tool** — Phases 5-10 (in progress)
+- ✅ **v0.1.0 MVP** — Phases 1-4 (shipped 2026-03-03)
+- 🚧 **v0.2.0 Production Tool** — Phases 5-7 (in progress)
+- 📋 **Next Milestone (Planned)** — Phases 8-10 (audio, beat sync, export)
 
 ## Phases
 
 <details>
-<summary>v1.0 MVP (Phases 1-4) — SHIPPED 2026-03-03</summary>
+<summary>v0.1.0 MVP (Phases 1-4) — SHIPPED 2026-03-03</summary>
 
 - [x] Phase 1: Foundation & Scaffolding (3/3 plans) — completed 2026-03-02
 - [x] Phase 2: UI Shell & Image Pipeline (3/3 plans) — completed 2026-03-03
@@ -24,14 +25,11 @@ See: `milestones/v1.0-ROADMAP.md` for full details.
 
 </details>
 
-### v2.0 Production Tool
+### v0.2.0 Production Tool
 
 - [ ] **Phase 5: Editing Infrastructure** - Fix v1.0 store bugs, implement undo/redo with command pattern, and wire all keyboard shortcuts
 - [ ] **Phase 6: Layer System & Properties Panel** - Multi-layer compositing with Canvas 2D renderer, blend modes, transforms, and context-sensitive properties panel
 - [ ] **Phase 7: Cinematic FX Effects** - Film grain, vignette, color grade, dirt/scratches, and light leaks as FX layers with normalized parameters
-- [ ] **Phase 8: Audio Import & Waveform** - Audio file import, Web Audio API playback synced to preview, waveform rendering on timeline
-- [ ] **Phase 9: Beat Sync** - BPM detection, beat markers on timeline, snap modes, and auto-arrange key photos to beats
-- [ ] **Phase 10: PNG Export** - Frame-by-frame composited export with resolution options, progress indicator, and audio metadata sidecar
 
 ## Phase Details
 
@@ -98,6 +96,12 @@ Plans:
   - [x] 07-10-PLAN.md — Timeline vertical scroll (gap closure)
   - [ ] 07-11-PLAN.md — Add FX button to timeline area (gap closure)
 
+---
+
+### Next Milestone (Planned) — Phases 8-10
+
+These phases are deferred from v0.2.0. All goals, requirements, and success criteria are preserved here for the next milestone.
+
 ### Phase 8: Audio Import & Waveform
 **Goal**: Users can import audio files, see waveforms on the timeline, and hear audio playing in sync with the visual preview
 **Depends on**: Phase 5
@@ -132,19 +136,19 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 5 > 6 > 7 > 8 > 9 > 10
-(Note: Phase 8 depends on Phase 5, not Phase 7 — audio and FX are independent tracks that converge at Phase 10)
+v0.2.0: 5 > 6 > 7
+Next milestone: 8 > 9 > 10
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 1. Foundation & Scaffolding | v1.0 | 3/3 | Complete | 2026-03-02 |
-| 2. UI Shell & Image Pipeline | v1.0 | 3/3 | Complete | 2026-03-03 |
-| 3. Project & Sequence Management | v1.0 | 3/3 | Complete | 2026-03-03 |
-| 3.1. Fix Cross-Phase Integration Wiring | v1.0 | 1/1 | Complete | 2026-03-03 |
-| 4. Timeline & Preview | v1.0 | 3/3 | Complete | 2026-03-03 |
-| 5. Editing Infrastructure | v2.0 | 0/5 | Planned | - |
-| 6. Layer System & Properties Panel | v2.0 | 6/8 | In Progress | - |
-| 7. Cinematic FX Effects | v2.0 | 10/11 | In Progress | - |
-| 8. Audio Import & Waveform | v2.0 | 0/0 | Not started | - |
-| 9. Beat Sync | v2.0 | 0/0 | Not started | - |
-| 10. PNG Export | v2.0 | 0/0 | Not started | - |
+| 1. Foundation & Scaffolding | v0.1.0 | 3/3 | Complete | 2026-03-02 |
+| 2. UI Shell & Image Pipeline | v0.1.0 | 3/3 | Complete | 2026-03-03 |
+| 3. Project & Sequence Management | v0.1.0 | 3/3 | Complete | 2026-03-03 |
+| 3.1. Fix Cross-Phase Integration Wiring | v0.1.0 | 1/1 | Complete | 2026-03-03 |
+| 4. Timeline & Preview | v0.1.0 | 3/3 | Complete | 2026-03-03 |
+| 5. Editing Infrastructure | v0.2.0 | 0/5 | Planned | - |
+| 6. Layer System & Properties Panel | v0.2.0 | 6/8 | In Progress | - |
+| 7. Cinematic FX Effects | v0.2.0 | 10/11 | In Progress | - |
+| 8. Audio Import & Waveform | Next | 0/0 | Deferred | - |
+| 9. Beat Sync | Next | 0/0 | Deferred | - |
+| 10. PNG Export | Next | 0/0 | Deferred | - |

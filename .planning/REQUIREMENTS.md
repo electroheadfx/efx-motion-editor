@@ -3,9 +3,9 @@
 **Defined:** 2026-03-03
 **Core Value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
 
-## v2.0 Requirements
+## v0.2.0 Requirements
 
-Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
+Requirements for v0.2.0 Production Tool milestone (Phases 5-7). Each maps to roadmap phases.
 
 ### Infrastructure & Bug Fixes
 
@@ -52,6 +52,21 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 - [x] **FX-09**: User can adjust intensity for all FX effects
 - [x] **FX-10**: FX parameters are resolution-independent (preview and export look identical)
 
+### Keyboard Shortcuts
+
+- [x] **KEY-01**: Space bar toggles play/pause
+- [x] **KEY-02**: Arrow keys step one frame forward/backward
+- [x] **KEY-03**: JKL keys provide variable-speed scrubbing (J=reverse, K=stop, L=forward, repeated press accelerates)
+- [x] **KEY-04**: Cmd+Z/Cmd+Shift+Z trigger undo/redo
+- [x] **KEY-05**: Cmd+S saves project, Cmd+N creates new project, Cmd+O opens project
+- [x] **KEY-06**: Delete/Backspace deletes selected item (layer, key photo)
+- [x] **KEY-07**: Shortcuts do not fire when user is typing in an input field
+- [x] **KEY-08**: ? key shows keyboard shortcuts help overlay
+
+## Deferred to Next Milestone
+
+Requirements moved from v0.2.0 to the next milestone (Phases 8-10). All details preserved.
+
 ### Audio
 
 - [ ] **AUDIO-01**: User can import an audio file (WAV, MP3, AAC, OGG) into a sequence
@@ -79,20 +94,9 @@ Requirements for v2.0 Production Tool milestone. Each maps to roadmap phases.
 - [ ] **EXPORT-05**: Export writes audio metadata sidecar JSON alongside PNG sequence
 - [ ] **EXPORT-06**: Exported files follow naming pattern frame_NNNN.png with auto-padded numbering
 
-### Keyboard Shortcuts
-
-- [x] **KEY-01**: Space bar toggles play/pause
-- [x] **KEY-02**: Arrow keys step one frame forward/backward
-- [x] **KEY-03**: JKL keys provide variable-speed scrubbing (J=reverse, K=stop, L=forward, repeated press accelerates)
-- [x] **KEY-04**: Cmd+Z/Cmd+Shift+Z trigger undo/redo
-- [x] **KEY-05**: Cmd+S saves project, Cmd+N creates new project, Cmd+O opens project
-- [x] **KEY-06**: Delete/Backspace deletes selected item (layer, key photo)
-- [x] **KEY-07**: Shortcuts do not fire when user is typing in an input field
-- [x] **KEY-08**: ? key shows keyboard shortcuts help overlay
-
 ## Future Requirements
 
-Deferred beyond v2.0. Tracked for future milestones.
+Deferred beyond current milestones. Tracked for future milestones.
 
 ### Polish & Workflow
 
@@ -123,7 +127,7 @@ Deferred beyond v2.0. Tracked for future milestones.
 | Live camera tethering | Different product category (Dragonframe owns this) |
 | Plugin/extension system | Requires stable internal APIs; premature |
 | Node-based compositing | Layer-based approach is more intuitive for target users |
-| Windows/Linux builds | macOS only for v2.0 |
+| Windows/Linux builds | macOS only for now |
 | Real-time collaboration | Desktop app with local files |
 | AI-powered features | Proven DSP for beat detection instead |
 
@@ -174,28 +178,28 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FX-08 | Phase 7 | Complete |
 | FX-09 | Phase 7 | Complete |
 | FX-10 | Phase 7 | Complete |
-| AUDIO-01 | Phase 8 | Pending |
-| AUDIO-02 | Phase 8 | Pending |
-| AUDIO-03 | Phase 8 | Pending |
-| AUDIO-04 | Phase 8 | Pending |
-| AUDIO-05 | Phase 8 | Pending |
-| AUDIO-06 | Phase 8 | Pending |
-| AUDIO-07 | Phase 8 | Pending |
-| BEAT-01 | Phase 9 | Pending |
-| BEAT-02 | Phase 9 | Pending |
-| BEAT-03 | Phase 9 | Pending |
-| BEAT-04 | Phase 9 | Pending |
-| BEAT-05 | Phase 9 | Pending |
-| EXPORT-01 | Phase 10 | Pending |
-| EXPORT-02 | Phase 10 | Pending |
-| EXPORT-03 | Phase 10 | Pending |
-| EXPORT-04 | Phase 10 | Pending |
-| EXPORT-05 | Phase 10 | Pending |
-| EXPORT-06 | Phase 10 | Pending |
+| AUDIO-01 | Phase 8 | Deferred |
+| AUDIO-02 | Phase 8 | Deferred |
+| AUDIO-03 | Phase 8 | Deferred |
+| AUDIO-04 | Phase 8 | Deferred |
+| AUDIO-05 | Phase 8 | Deferred |
+| AUDIO-06 | Phase 8 | Deferred |
+| AUDIO-07 | Phase 8 | Deferred |
+| BEAT-01 | Phase 9 | Deferred |
+| BEAT-02 | Phase 9 | Deferred |
+| BEAT-03 | Phase 9 | Deferred |
+| BEAT-04 | Phase 9 | Deferred |
+| BEAT-05 | Phase 9 | Deferred |
+| EXPORT-01 | Phase 10 | Deferred |
+| EXPORT-02 | Phase 10 | Deferred |
+| EXPORT-03 | Phase 10 | Deferred |
+| EXPORT-04 | Phase 10 | Deferred |
+| EXPORT-05 | Phase 10 | Deferred |
+| EXPORT-06 | Phase 10 | Deferred |
 
 **Coverage:**
-- v2.0 requirements: 59 total
-- Mapped to phases: 59
+- v0.2.0 requirements: 41 total (all complete)
+- Deferred to next milestone: 18 (Phases 8-10)
 - Unmapped: 0
 
 ---

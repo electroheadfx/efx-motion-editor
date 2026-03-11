@@ -1,26 +1,35 @@
 # Milestones
 
-## v2.0 Production Tool (In Progress)
+## v0.2.0 Production Tool (In Progress)
 
-**Phases:** 6 (Phases 5-10) | **Requirements:** 59
-**Goal:** Transform EFX-Motion from an editing foundation into a complete production tool with compositing, audio-to-motion pipeline, and export.
+**Phases:** 3 (Phases 5-7) | **Requirements:** 41
+**Goal:** Add production editing core to EFX-Motion: infrastructure fixes, layer compositing system, and cinematic FX effects.
 
 **Planned phases:**
 1. Phase 5: Editing Infrastructure (undo/redo, shortcuts, store bug fixes)
 2. Phase 6: Layer System & Properties Panel (compositing foundation)
 3. Phase 7: Cinematic FX Effects (grain, vignette, color grade, dirt, light leaks)
-4. Phase 8: Audio Import & Waveform (Web Audio API, timeline waveform)
-5. Phase 9: Beat Sync (BPM detection, beat markers, auto-arrange)
-6. Phase 10: PNG Export (composited frame export, progress, metadata)
 
 ---
 
-## v1.0 MVP (Shipped: 2026-03-03)
+## Next Milestone (Planned)
+
+**Phases:** 3 (Phases 8-10) | **Requirements:** 18
+**Goal:** Complete the stop-motion-to-cinema pipeline with audio, beat sync, and PNG export.
+
+**Planned phases:**
+1. Phase 8: Audio Import & Waveform (Web Audio API, timeline waveform)
+2. Phase 9: Beat Sync (BPM detection, beat markers, auto-arrange)
+3. Phase 10: PNG Export (composited frame export, progress, metadata)
+
+---
+
+## v0.1.0 MVP (Shipped: 2026-03-03)
 
 **Phases:** 5 (Phases 1-4, 3.1) | **Plans:** 13 | **Tasks:** 25
 **Lines of code:** 5,055 (4,316 TypeScript + 739 Rust) | **Files:** 118
 **Timeline:** 2 days (2026-03-02 → 2026-03-03)
-**Git range:** `feat(01-01)` → `feat(04-03)` | **Tag:** v1.0
+**Git range:** `feat(01-01)` → `feat(04-03)` | **Tag:** v0.1.0
 
 **Delivered:** Complete stop-motion editor foundation — from Tauri scaffold through timeline playback with real-time preview.
 
