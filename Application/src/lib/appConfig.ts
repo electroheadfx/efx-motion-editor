@@ -38,6 +38,14 @@ export async function removeRecentProject(path: string): Promise<void> {
   await store.set('recentProjects', updated);
 }
 
+export async function updateRecentProjectPath(oldPath: string, newPath: string): Promise<void> {
+  const recent = await getRecentProjects();
+  const updated = recent.map(r =>
+    r.path === oldPath ? { ...r, path: newPath } : r,
+  );
+  await store.set('recentProjects', updated);
+}
+
 // --- App Config ---
 
 export async function getAppConfig(): Promise<AppConfig> {

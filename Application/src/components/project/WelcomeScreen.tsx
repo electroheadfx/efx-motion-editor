@@ -1,7 +1,7 @@
 import {useState, useEffect} from 'preact/hooks';
 import {open} from '@tauri-apps/plugin-dialog';
 import {pathExists} from '../../lib/ipc';
-import {getRecentProjects, type RecentProject} from '../../lib/appConfig';
+import {getRecentProjects, removeRecentProject, updateRecentProjectPath, type RecentProject} from '../../lib/appConfig';
 import {projectStore} from '../../stores/projectStore';
 import {NewProjectDialog} from './NewProjectDialog';
 
@@ -32,10 +32,14 @@ function RecentProjectItem({
   project,
   highlighted,
   onClick,
+  onRemove,
+  onLocate,
 }: {
   project: RecentProjectEntry;
   highlighted: boolean;
   onClick: () => void;
+  onRemove: () => void;
+  onLocate: () => void;
 }) {
   const thumbColors = [
     'var(--color-thumb-blue)',
@@ -58,7 +62,10 @@ function RecentProjectItem({
     >
       <div
         class="w-10 h-10 rounded-md shrink-0"
-        style={{backgroundColor: thumbColors[colorIndex]}}
+        style={{
+          backgroundColor: thumbColors[colorIndex],
+          opacity: project.available ? 1 : 0.4,
+        }}
       />
       <div class="flex flex-col gap-1 flex-1 min-w-0">
         <span
@@ -70,17 +77,33 @@ function RecentProjectItem({
         >
           {project.name}
         </span>
-        <span
-          class={`text-[11px] truncate ${
-            highlighted
-              ? 'text-[var(--color-text-dim)]'
-              : 'text-[#999999]'
-          }`}
-        >
-          {project.available
-            ? formatLastOpened(project.lastOpened)
-            : 'Not found'}
-        </span>
+        {project.available ? (
+          <span
+            class={`text-[11px] truncate ${
+              highlighted
+                ? 'text-[var(--color-text-dim)]'
+                : 'text-[#999999]'
+            }`}
+          >
+            {formatLastOpened(project.lastOpened)}
+          </span>
+        ) : (
+          <span class="flex items-center gap-1.5 text-[11px]">
+            <button
+              class="text-[#CC6666] hover:text-[#DD7777] cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            >
+              Remove
+            </button>
+            <span class="text-[#666666]">&middot;</span>
+            <button
+              class="text-[var(--color-text-link)] hover:brightness-125 cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); onLocate(); }}
+            >
+              Locate...
+            </button>
+          </span>
+        )}
       </div>
     </div>
   );
@@ -157,6 +180,32 @@ export function WelcomeScreen() {
       console.error('Failed to open recent project:', err);
     } finally {
       setIsOpening(false);
+    }
+  };
+
+  const handleRemove = async (project: RecentProjectEntry) => {
+    await removeRecentProject(project.path);
+    setRecentProjects((prev) => prev.filter((p) => p.path !== project.path));
+  };
+
+  const handleLocate = async (project: RecentProjectEntry) => {
+    const selected = await open({
+      multiple: false,
+      filters: [{name: 'EFX Motion Project', extensions: ['mce']}],
+    });
+    if (selected && typeof selected === 'string') {
+      const result = await pathExists(selected);
+      const valid = result.ok ? result.data : false;
+      if (valid) {
+        await updateRecentProjectPath(project.path, selected);
+        setRecentProjects((prev) =>
+          prev.map((p) =>
+            p.path === project.path
+              ? { ...p, path: selected, available: true }
+              : p,
+          ),
+        );
+      }
     }
   };
 
@@ -267,6 +316,8 @@ export function WelcomeScreen() {
                 project={project}
                 highlighted={index === 0 && project.available}
                 onClick={() => handleRecentClick(project)}
+                onRemove={() => handleRemove(project)}
+                onLocate={() => handleLocate(project)}
               />
             ))
           ) : (
