@@ -29,13 +29,13 @@ See: `milestones/v0.1.0-ROADMAP.md` for full details.
 
 ### v0.2.0 (Planned)
 
-- [ ] **Phase 8: TBD**
-- [ ] **Phase 9: TBD**
-- [ ] **Phase 10: TBD**
-- [ ] **Phase 11: TBD**
-- [ ] **Phase 12: TBD**
-- [ ] **Phase 13: TBD**
-- [ ] **Phase 14: TBD**
+- [ ] **Phase 8: UI Theme System** - Add theme with 3 gray levels (light, medium, dark) to fix overly dark UI
+- [ ] **Phase 9: Canvas Zoom** - Wire up canvas zoom functionality to existing UI +/- percent controls
+- [ ] **Phase 10: FX Blur Effect** - Dual-quality blur: Dual Kawase for fast playback preview, Gaussian for high-quality rendering
+- [ ] **Phase 11: Live Canvas Transform** - Direct transform manipulation on canvas preview (move, scale, rotate) in addition to existing parameter controls
+- [ ] **Phase 12: Layer Keyframe Animation** - Per-layer keyframe motion (opacity, transform) with interpolation curves (cubic, linear) visible on timeline
+- [ ] **Phase 13: Sequence Fade In/Out** - Fade with opacity (PNG+alpha transparency) or fade to solid color (default black)
+- [ ] **Phase 14: Cross-Sequence Transitions** - Fade between sequences (seq 1 out → seq 2 in) with cubic/linear interpolation
 - [ ] **Phase 15: Audio Import & Waveform** - Import audio files, waveform on timeline, synchronized playback
 - [ ] **Phase 16: Beat Sync** - BPM detection, beat markers, snap modes, auto-arrange key photos
 - [ ] **Phase 17: PNG Export** - Composited frame export with resolution options, progress, metadata sidecar
@@ -44,13 +44,77 @@ See: `milestones/v0.1.0-ROADMAP.md` for full details.
 
 Phases 1-7 archived to `milestones/v0.1.0-ROADMAP.md`.
 
-### Phase 8: TBD
-### Phase 9: TBD
-### Phase 10: TBD
-### Phase 11: TBD
-### Phase 12: TBD
-### Phase 13: TBD
-### Phase 14: TBD
+### Phase 8: UI Theme System
+**Goal**: UI is too dark — add a theme system with different grays (light gray to dark gray) on 3 levels so users get better visual contrast and readability
+**Depends on**: Phase 2
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. Editor UI supports 3 gray theme levels: light, medium, and dark
+  2. User can switch between theme levels and the change persists across sessions
+  3. All UI panels, controls, and text remain readable and visually consistent at each level
+**Plans**: TBD
+
+### Phase 9: Canvas Zoom
+**Goal**: Wire up the canvas zoom functionality — the UI +/- percent controls exist at the top-left of the window but are not yet functional
+**Depends on**: Phase 4
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. Canvas zoom +/- buttons and percent display at top-left actually zoom the preview canvas in and out
+  2. Zoom level persists while navigating frames and during playback
+  3. User can reset zoom to fit-to-window
+**Plans**: TBD
+
+### Phase 10: FX Blur Effect
+**Goal**: Add blur as a new FX generator option with dual-quality rendering — Dual Kawase blur for fast playback preview and Gaussian blur for high-quality rendering/export
+**Depends on**: Phase 7
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. Blur appears as a new FX effect option in the FX generator alongside existing effects (grain, vignette, etc.)
+  2. During playback preview, blur uses Dual Kawase algorithm for fast real-time performance
+  3. During rendering/export, blur switches to Gaussian algorithm for higher quality output
+  4. User can adjust blur intensity/radius and see the preview update in real-time
+**Plans**: TBD
+
+### Phase 11: Live Canvas Transform
+**Goal**: Users can manipulate layer transforms directly on the canvas preview window (move, scale, rotate) with handles, in addition to the existing parameter panel controls
+**Depends on**: Phase 6, Phase 9
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. Selecting a layer shows transform handles (bounding box, rotation, scale corners) on the canvas preview
+  2. User can drag to move, corner-drag to scale, and rotate layers directly on the canvas
+  3. Canvas transform changes sync bidirectionally with the parameter panel values in real-time
+**Plans**: TBD
+
+### Phase 12: Layer Keyframe Animation
+**Goal**: Add per-layer keyframe animation for properties (opacity, transform, etc.) — user selects a layer, positions the playhead on the timeline, adjusts parameters, and adds a keyframe. Keyframes are visible on the timeline when a layer is selected, with configurable interpolation.
+**Depends on**: Phase 6, Phase 11
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. User can select a layer, position the playhead, change property values (opacity, position, scale, rotation), and add a keyframe at that frame
+  2. User can choose animation interpolation between keyframes (linear, cubic, ease-in, ease-out)
+  3. When a layer is selected, its keyframes are displayed on the timeline as markers that can be selected, moved, and deleted
+  4. Preview playback animates properties smoothly between keyframes using the chosen interpolation
+**Plans**: TBD
+
+### Phase 13: Sequence Fade In/Out
+**Goal**: Add fade in/out transitions on sequences — fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
+**Depends on**: Phase 12
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. User can set fade-in and fade-out duration (in frames) on a sequence
+  2. Fade supports two modes: opacity fade (for transparent PNG+alpha export) and solid color fade (configurable color, default black)
+  3. Fade is visible in real-time preview playback and correctly rendered in PNG export
+**Plans**: TBD
+
+### Phase 14: Cross-Sequence Transitions
+**Goal**: Add fade transitions between sequences — sequence 1 fades out while sequence 2 fades in, with configurable interpolation curves
+**Depends on**: Phase 13
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. User can set a crossfade transition between two adjacent sequences with configurable duration (in frames)
+  2. User can choose interpolation curve for the transition (linear, cubic, ease-in, ease-out)
+  3. Crossfade is visible in real-time preview and correctly composited in PNG export
+**Plans**: TBD
 
 ### Phase 15: Audio Import & Waveform
 **Goal**: Users can import audio files, see waveforms on the timeline, and hear audio playing in sync with the visual preview
@@ -98,13 +162,13 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 5. Editing Infrastructure | v0.1.0 | 5/5 | Complete | 2026-03-06 |
 | 6. Layer System & Properties Panel | v0.1.0 | 8/8 | Complete | 2026-03-08 |
 | 7. Cinematic FX Effects | v0.1.0 | 10/10 | Complete | 2026-03-10 |
-| 8. TBD | v0.2.0 | 0/0 | Planned | - |
-| 9. TBD | v0.2.0 | 0/0 | Planned | - |
-| 10. TBD | v0.2.0 | 0/0 | Planned | - |
-| 11. TBD | v0.2.0 | 0/0 | Planned | - |
-| 12. TBD | v0.2.0 | 0/0 | Planned | - |
-| 13. TBD | v0.2.0 | 0/0 | Planned | - |
-| 14. TBD | v0.2.0 | 0/0 | Planned | - |
+| 8. UI Theme System | v0.2.0 | 0/0 | Planned | - |
+| 9. Canvas Zoom | v0.2.0 | 0/0 | Planned | - |
+| 10. FX Blur Effect | v0.2.0 | 0/0 | Planned | - |
+| 11. Live Canvas Transform | v0.2.0 | 0/0 | Planned | - |
+| 12. Layer Keyframe Animation | v0.2.0 | 0/0 | Planned | - |
+| 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
+| 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
 | 16. Beat Sync | v0.2.0 | 0/0 | Planned | - |
 | 17. PNG Export | v0.2.0 | 0/0 | Planned | - |
