@@ -1,6 +1,7 @@
 import {open, save} from '@tauri-apps/plugin-dialog';
 import {projectStore} from '../../stores/projectStore';
 import {uiStore} from '../../stores/uiStore';
+import {canvasStore} from '../../stores/canvasStore';
 import {guardUnsavedChanges} from '../../lib/unsavedGuard';
 import {NewProjectDialog} from '../project/NewProjectDialog';
 import {ThemeSwitcher} from './ThemeSwitcher';
@@ -105,11 +106,29 @@ export function Toolbar() {
       <ThemeSwitcher />
       {/* Spacer */}
       <div class="flex-1" />
-      <span class="text-[11px] text-[var(--color-text-secondary)]">100%</span>
-      <button class="rounded-[5px] bg-[var(--color-bg-settings)] px-2.5 py-1">
+      <span class="text-[11px] text-[var(--color-text-secondary)]">
+        {canvasStore.zoomPercent.value}%
+      </span>
+      <button
+        class={`rounded-[5px] px-2.5 py-1 ${
+          canvasStore.isAtMinZoom.value
+            ? 'bg-[var(--color-bg-settings)] opacity-40 cursor-default'
+            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
+        }`}
+        onClick={() => canvasStore.zoomOut()}
+        title="Zoom out"
+      >
         <span class="text-sm text-[var(--color-text-button)]">-</span>
       </button>
-      <button class="rounded-[5px] bg-[var(--color-bg-settings)] px-2.5 py-1">
+      <button
+        class={`rounded-[5px] px-2.5 py-1 ${
+          canvasStore.isAtMaxZoom.value
+            ? 'bg-[var(--color-bg-settings)] opacity-40 cursor-default'
+            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
+        }`}
+        onClick={() => canvasStore.zoomIn()}
+        title="Zoom in"
+      >
         <span class="text-sm text-[var(--color-text-button)]">+</span>
       </button>
       <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
