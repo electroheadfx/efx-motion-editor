@@ -39,7 +39,7 @@ Progress: [##########] 100%
 
 Archived to PROJECT.md Key Decisions table.
 Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
-- [Phase 08]: data-theme attribute on html for CSS variable switching; theme persistence via shared LazyStore singleton in appConfig.ts
+- [Phase 08]: data-theme attribute on html for CSS variable switching; theme persistence moved from LazyStore to ~/.config/efx-motion/builder-config.yaml (quick-12)
 - [Phase 08-02]: Semi-transparent black overlays on thumbnails stay hardcoded; layer/FX identity colors exempt from theme conversion
 - [Phase 08-03]: Canvas 2D colors cached at module level with invalidation on theme signal; functional colors (playhead, drop indicator) stay hardcoded
 
@@ -66,9 +66,10 @@ No active blockers.
 | 9 | Add video thumbnail image in import grid | 2026-03-11 | 6b9aad6 |
 | 10 | Move blend mode + opacity back to bottom bar for content layers | 2026-03-11 | 3f17c34 |
 | 11 | Add Remove/Locate actions for unavailable recent projects | 2026-03-11 | 37c4f77 |
+| 12 | Save theme preference to ~/.config/efx-motion/builder-config.yaml | 2026-03-12 | a8e0cf3 |
 
 ## Session Continuity
 
-Last session: 2026-03-12T13:03:38.369Z
-Stopped at: Completed 08-03-PLAN.md
+Last session: 2026-03-12T13:18:52Z
+Stopped at: Completed quick-1-PLAN.md
 Resume file: None
