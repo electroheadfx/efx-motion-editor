@@ -41,7 +41,10 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
   {
     title: 'Navigation',
-    entries: [{keys: '?', description: 'Toggle this help'}],
+    entries: [
+      {keys: '\u21E7\u2318T', description: 'Cycle theme'},
+      {keys: '?', description: 'Toggle this help'},
+    ],
   },
 ];
 
