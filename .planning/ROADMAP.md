@@ -66,10 +66,12 @@ Plans:
   1. Canvas zoom +/- buttons and percent display at top-right actually zoom the preview canvas in and out
   2. Zoom level persists while navigating frames and during playback
   3. User can reset zoom to fit-to-window
-**Plans**: 2 plans
+**Plans**: 4 plans
 Plans:
-- [ ] 09-01-PLAN.md — Create canvasStore, refactor CanvasArea (gestures, ResizeObserver, fit-to-window)
-- [ ] 09-02-PLAN.md — Wire toolbar +/- buttons, keyboard shortcuts (Cmd+=/Cmd+-/Cmd+0), ShortcutsOverlay
+- [x] 09-01-PLAN.md — Create canvasStore, refactor CanvasArea (gestures, ResizeObserver, fit-to-window)
+- [x] 09-02-PLAN.md — Wire toolbar +/- buttons, keyboard shortcuts (Cmd+=/Cmd+-/Cmd+0), ShortcutsOverlay
+- [ ] 09-03-PLAN.md — [gap closure] Fix zoom/pan math, fitToWindow cap, pan bounds, left-click drag panning
+- [ ] 09-04-PLAN.md — [gap closure] Add Tauri View menu to fix Cmd+=/Cmd+-/Cmd+0 native interception
 
 ### Phase 10: FX Blur Effect
 **Goal**: Add blur as a new FX generator option with dual-quality rendering — Dual Kawase blur for fast playback preview and Gaussian blur for high-quality rendering/export
@@ -170,7 +172,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 6. Layer System & Properties Panel | v0.1.0 | 8/8 | Complete | 2026-03-08 |
 | 7. Cinematic FX Effects | v0.1.0 | 10/10 | Complete | 2026-03-10 |
 | 8. UI Theme System | 3/3 | Complete   | 2026-03-12 | - |
-| 9. Canvas Zoom | v0.2.0 | 0/2 | Planned | - |
+| 9. Canvas Zoom | v0.2.0 | 2/4 | In Progress | - |
 | 10. FX Blur Effect | v0.2.0 | 0/0 | Planned | - |
 | 11. Live Canvas Transform | v0.2.0 | 0/0 | Planned | - |
 | 12. Layer Keyframe Animation | v0.2.0 | 0/0 | Planned | - |
