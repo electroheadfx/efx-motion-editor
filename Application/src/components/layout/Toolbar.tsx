@@ -3,6 +3,7 @@ import {projectStore} from '../../stores/projectStore';
 import {uiStore} from '../../stores/uiStore';
 import {guardUnsavedChanges} from '../../lib/unsavedGuard';
 import {NewProjectDialog} from '../project/NewProjectDialog';
+import {ThemeSwitcher} from './ThemeSwitcher';
 
 export function Toolbar() {
   const showNewDialog = uiStore.showNewProjectDialog.value;
@@ -100,6 +101,8 @@ export function Toolbar() {
           <span class={`text-[11px] ${projectStore.fps.value === 24 ? 'text-white' : 'text-[var(--color-text-secondary)]'}`}>24fps</span>
         </div>
       </div>
+      <div class="w-px h-6 bg-[#333333]" />
+      <ThemeSwitcher />
       {/* Spacer */}
       <div class="flex-1" />
       <span class="text-[11px] text-[var(--color-text-secondary)]">100%</span>

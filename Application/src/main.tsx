@@ -10,7 +10,9 @@ import {mountShortcuts} from './lib/shortcuts';
 import {undo, redo} from './lib/history';
 
 // Resolve temp project dir from Tauri's app data path before rendering
-initTempProjectDir().then(() => {
+initTempProjectDir().then(async () => {
+  const { initTheme } = await import('./lib/themeManager');
+  await initTheme();
   render(<App />, document.getElementById('app')!);
   startAutoSave();
   mountShortcuts(); // Mount keyboard shortcuts globally

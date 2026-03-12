@@ -3,6 +3,7 @@ import {playbackEngine} from './playbackEngine';
 import {pressJ, pressK, pressL} from './jklShuttle';
 import {undo, redo} from './history';
 import {guardUnsavedChanges} from './unsavedGuard';
+import {cycleTheme} from './themeManager';
 import {projectStore} from '../stores/projectStore';
 import {uiStore} from '../stores/uiStore';
 import {layerStore} from '../stores/layerStore';
@@ -183,6 +184,13 @@ export function mountShortcuts(): () => void {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       uiStore.toggleShortcutsOverlay();
+    },
+
+    // Theme cycle (KEY-09)
+    '$mod+Shift+KeyT': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      cycleTheme();
     },
   });
 }
