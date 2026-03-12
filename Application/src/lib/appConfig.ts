@@ -64,3 +64,13 @@ export async function setWindowSize(width: number, height: number): Promise<void
   await store.set('windowWidth', width);
   await store.set('windowHeight', height);
 }
+
+// --- Theme ---
+
+export async function getTheme(): Promise<string | null> {
+  return (await store.get<string>('theme')) ?? null;
+}
+
+export async function setThemePreference(theme: string): Promise<void> {
+  await store.set('theme', theme);
+}
