@@ -29,7 +29,7 @@ See: `milestones/v0.1.0-ROADMAP.md` for full details.
 
 ### v0.2.0 (Planned)
 
-- [ ] **Phase 8: UI Theme System** - Add theme with 3 gray levels (light, medium, dark) to fix overly dark UI
+- [x] **Phase 8: UI Theme System** - Add theme with 3 gray levels (light, medium, dark) to fix overly dark UI (completed 2026-03-12)
 - [ ] **Phase 9: Canvas Zoom** - Wire up canvas zoom functionality to existing UI +/- percent controls
 - [ ] **Phase 10: FX Blur Effect** - Dual-quality blur: Dual Kawase for fast playback preview, Gaussian for high-quality rendering
 - [ ] **Phase 11: Live Canvas Transform** - Direct transform manipulation on canvas preview (move, scale, rotate) in addition to existing parameter controls
@@ -166,7 +166,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 5. Editing Infrastructure | v0.1.0 | 5/5 | Complete | 2026-03-06 |
 | 6. Layer System & Properties Panel | v0.1.0 | 8/8 | Complete | 2026-03-08 |
 | 7. Cinematic FX Effects | v0.1.0 | 10/10 | Complete | 2026-03-10 |
-| 8. UI Theme System | v0.2.0 | 0/3 | Planned | - |
+| 8. UI Theme System | 3/3 | Complete   | 2026-03-12 | - |
 | 9. Canvas Zoom | v0.2.0 | 0/0 | Planned | - |
 | 10. FX Blur Effect | v0.2.0 | 0/0 | Planned | - |
 | 11. Live Canvas Transform | v0.2.0 | 0/0 | Planned | - |
