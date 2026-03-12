@@ -1,8 +1,10 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
+import {useSignal} from '@preact/signals';
 import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
 import {timelineStore} from '../../stores/timelineStore';
 import {canvasStore} from '../../stores/canvasStore';
+import {projectStore} from '../../stores/projectStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 
 /** Safari macOS gesture event interface */
@@ -16,10 +18,10 @@ interface GestureEvent extends UIEvent {
 export function CanvasArea() {
   const isPlaying = timelineStore.isPlaying.value;
   const containerRef = useRef<HTMLDivElement>(null);
+  const isDragging = useSignal(false);
 
-  // Drag state for middle-click panning
+  // Drag state for panning (start coordinates, not reactive)
   const dragRef = useRef({
-    isDragging: false,
     startX: 0,
     startY: 0,
     startPanX: 0,
@@ -42,13 +44,15 @@ export function CanvasArea() {
     canvasStore.setSmoothZoom(newZoom, cursorX, cursorY);
   }, []);
 
-  // --- Pan handlers: middle-click drag ---
+  // --- Pan handlers: middle-click or left-click (when zoomed) drag ---
   const handlePointerDown = useCallback((e: PointerEvent) => {
-    // Middle mouse button (button === 1) starts pan drag
-    if (e.button !== 1) return;
+    // Middle mouse button always starts pan, left-click only when zoomed in
+    const isMiddle = e.button === 1;
+    const isLeftAndZoomed = e.button === 0 && canvasStore.zoom.peek() > canvasStore.fitZoom.peek() + 0.001;
+    if (!isMiddle && !isLeftAndZoomed) return;
     e.preventDefault();
     const drag = dragRef.current;
-    drag.isDragging = true;
+    isDragging.value = true;
     drag.startX = e.clientX;
     drag.startY = e.clientY;
     drag.startPanX = canvasStore.panX.value;
@@ -57,8 +61,8 @@ export function CanvasArea() {
   }, []);
 
   const handlePointerMove = useCallback((e: PointerEvent) => {
+    if (!isDragging.value) return;
     const drag = dragRef.current;
-    if (!drag.isDragging) return;
     const z = canvasStore.zoom.value;
     canvasStore.setPan(
       drag.startPanX + (e.clientX - drag.startX) / z,
@@ -67,9 +71,8 @@ export function CanvasArea() {
   }, []);
 
   const handlePointerUp = useCallback((e: PointerEvent) => {
-    const drag = dragRef.current;
-    if (!drag.isDragging) return;
-    drag.isDragging = false;
+    if (!isDragging.value) return;
+    isDragging.value = false;
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -127,6 +130,13 @@ export function CanvasArea() {
     };
   }, []);
 
+  // Cursor: grabbing while dragging, grab when zoomed beyond fit, default otherwise
+  const cursorStyle = isDragging.value
+    ? 'grabbing'
+    : canvasStore.zoom.value > canvasStore.fitZoom.value + 0.001
+      ? 'grab'
+      : 'default';
+
   return (
     <div class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-right)]">
       {/* Preview Frame with zoom/pan */}
@@ -137,14 +147,16 @@ export function CanvasArea() {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        style={{cursor: dragRef.current.isDragging ? 'grabbing' : 'default'}}
+        style={{cursor: cursorStyle}}
       >
         <div
-          class="w-full max-w-[830px] aspect-video rounded bg-black overflow-hidden"
           style={{
+            width: `${projectStore.width.value}px`,
+            height: `${projectStore.height.value}px`,
             transform: `scale(${canvasStore.zoom.value}) translate(${canvasStore.panX.value}px, ${canvasStore.panY.value}px)`,
             transformOrigin: 'center center',
           }}
+          class="rounded bg-black overflow-hidden shrink-0"
         >
           <Preview />
         </div>
