@@ -47,12 +47,16 @@ Phases 1-7 archived to `milestones/v0.1.0-ROADMAP.md`.
 ### Phase 8: UI Theme System
 **Goal**: UI is too dark — add a theme system with different grays (light gray to dark gray) on 3 levels so users get better visual contrast and readability
 **Depends on**: Phase 2
-**Requirements**: TBD
+**Requirements**: THEME-01, THEME-02, THEME-03
 **Success Criteria** (what must be TRUE):
   1. Editor UI supports 3 gray theme levels: light, medium, and dark
   2. User can switch between theme levels and the change persists across sessions
   3. All UI panels, controls, and text remain readable and visually consistent at each level
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 08-01-PLAN.md — Theme infrastructure: CSS palettes, themeManager, ThemeSwitcher, keyboard shortcut
+- [ ] 08-02-PLAN.md — Hardcoded color conversion: 9 high-impact component files
+- [ ] 08-03-PLAN.md — Remaining color conversion, TimelineRenderer canvas, visual verification
 
 ### Phase 9: Canvas Zoom
 **Goal**: Wire up the canvas zoom functionality — the UI +/- percent controls exist at the top-left of the window but are not yet functional
@@ -162,7 +166,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 5. Editing Infrastructure | v0.1.0 | 5/5 | Complete | 2026-03-06 |
 | 6. Layer System & Properties Panel | v0.1.0 | 8/8 | Complete | 2026-03-08 |
 | 7. Cinematic FX Effects | v0.1.0 | 10/10 | Complete | 2026-03-10 |
-| 8. UI Theme System | v0.2.0 | 0/0 | Planned | - |
+| 8. UI Theme System | v0.2.0 | 0/3 | Planned | - |
 | 9. Canvas Zoom | v0.2.0 | 0/0 | Planned | - |
 | 10. FX Blur Effect | v0.2.0 | 0/0 | Planned | - |
 | 11. Live Canvas Transform | v0.2.0 | 0/0 | Planned | - |
