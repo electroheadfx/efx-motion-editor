@@ -200,15 +200,37 @@ export function CanvasArea() {
         <span class="text-xs text-[var(--color-text-dim)]">
           / {formatTime(timelineStore.totalDuration.value)}
         </span>
-        {/* Zoom display */}
+        {/* Zoom controls cluster: [ - ] percentage [ + ] [ Fit ] */}
+        <button
+          class={`rounded-[5px] px-2.5 py-1 ${
+            canvasStore.isAtMinZoom.value
+              ? 'bg-[var(--color-bg-settings)] opacity-40 cursor-default'
+              : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
+          }`}
+          onClick={() => canvasStore.zoomOut()}
+          title="Zoom out (Cmd+-)"
+        >
+          <span class="text-sm text-[var(--color-text-button)]">-</span>
+        </button>
         <span class="text-[11px] text-[var(--color-text-dim)]">
           {canvasStore.zoomPercent.value}%
         </span>
+        <button
+          class={`rounded-[5px] px-2.5 py-1 ${
+            canvasStore.isAtMaxZoom.value
+              ? 'bg-[var(--color-bg-settings)] opacity-40 cursor-default'
+              : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
+          }`}
+          onClick={() => canvasStore.zoomIn()}
+          title="Zoom in (Cmd+=)"
+        >
+          <span class="text-sm text-[var(--color-text-button)]">+</span>
+        </button>
         {/* Fit button */}
         <button
           class="rounded bg-[var(--color-bg-settings)] px-2.5 py-1.5 cursor-pointer"
           onClick={() => canvasStore.fitToWindow()}
-          title="Fit to window"
+          title="Fit to window (F)"
         >
           <span class="text-[11px] text-[var(--color-text-secondary)]">
             Fit
