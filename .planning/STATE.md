@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-03-12T15:38:51.670Z"
-last_activity: 2026-03-12 - Phase 9 Plan 01 complete (canvas zoom store + CanvasArea refactor)
+stopped_at: Completed 09-03-PLAN.md
+last_updated: "2026-03-12T17:31:32.302Z"
+last_activity: 2026-03-12 - Phase 9 Plan 04 complete (Cmd+=/Cmd+-/Cmd+0 zoom shortcuts via Tauri View menu)
 progress:
   total_phases: 10
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 4
-  percent: 80
+  total_plans: 7
+  completed_plans: 6
+  percent: 71
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 9 in progress -- canvas zoom store and infrastructure shipped
+**Current focus:** v0.2.0 Phase 9 in progress -- zoom shortcuts via Tauri View menu complete
 
 ## Current Position
 
 Milestone: v0.2.0
 Phase: 9 (canvas-zoom)
-Plan: 1 of 2
+Plan: 4 of 4
 Status: In Progress
-Last activity: 2026-03-12 - Phase 9 Plan 01 complete (canvas zoom store + CanvasArea refactor)
+Last activity: 2026-03-12 - Phase 9 Plan 04 complete (Cmd+=/Cmd+-/Cmd+0 zoom shortcuts via Tauri View menu)
 
-Progress: [########░░] 80%
+Progress: [███████░░░] 71%
 
 ## Accumulated Context
 
@@ -43,6 +43,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 08-02]: Semi-transparent black overlays on thumbnails stay hardcoded; layer/FX identity colors exempt from theme conversion
 - [Phase 08-03]: Canvas 2D colors cached at module level with invalidation on theme signal; functional colors (playhead, drop indicator) stay hardcoded
 - [Phase 09-01]: canvasStore as single source of truth for zoom/pan; circular import with projectStore safe via runtime-only calls; fit-to-window capped at 1.0
+- [Phase 09-04]: Same MenuItem::with_id + on_menu_event + listen pattern as Edit menu Undo/Redo for View menu zoom items
+- [Phase 09-03]: Center-anchored zoom instead of cursor-anchored per user request; canvas wrapper sized to project resolution instead of hardcoded 830px
 
 ### Pending Todos
 
@@ -71,6 +73,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-12T15:38:51.668Z
-Stopped at: Completed 09-01-PLAN.md
+Last session: 2026-03-12T17:31:32.299Z
+Stopped at: Completed 09-03-PLAN.md
 Resume file: None
