@@ -2,6 +2,7 @@ mod commands;
 mod models;
 mod services;
 
+use commands::config;
 use commands::image;
 use commands::project;
 use percent_encoding::percent_decode_str;
@@ -214,6 +215,8 @@ pub fn run() {
             project::path_exists,
             image::image_get_info,
             image::import_images,
+            config::config_get_theme,
+            config::config_set_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
