@@ -296,23 +296,23 @@ export function AddLayerMenu() {
       </button>
 
       {menuOpen && (
-        <div class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl py-1 min-w-[160px]">
+        <div class="absolute right-0 top-7 z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl py-1 min-w-[160px]">
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
             onClick={() => { setMenuOpen(false); setImagePickerOpen(true); }}
           >
             <span class="w-2 h-2 rounded-sm bg-[#14B8A6] shrink-0" />
             Static Image
           </button>
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
             onClick={handleAddImageSequence}
           >
             <span class="w-2 h-2 rounded-sm bg-[#3B82F6] shrink-0" />
             Image Sequence
           </button>
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] flex items-center gap-2"
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
             onClick={() => { setMenuOpen(false); setVideoPickerOpen(true); }}
           >
             <span class="w-2 h-2 rounded-sm bg-[#8B5CF6] shrink-0" />
@@ -325,7 +325,7 @@ export function AddLayerMenu() {
       {imagePickerOpen && (
         <div
           ref={imagePickerRef}
-          class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
+          class="absolute right-0 top-7 z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
         >
           {imageStore.images.value.length === 0 ? (
             <div class="text-center py-3">
@@ -336,7 +336,7 @@ export function AddLayerMenu() {
               {imageStore.images.value.map((img) => (
                 <button
                   key={img.id}
-                  class="aspect-square rounded overflow-hidden bg-[#2A2A2A] hover:ring-1 hover:ring-[#14B8A6] cursor-pointer"
+                  class="aspect-square rounded overflow-hidden bg-[var(--color-bg-hover-item)] hover:ring-1 hover:ring-[#14B8A6] cursor-pointer"
                   style={{backgroundImage: `url(${assetUrl(img.thumbnail_path)})`, backgroundSize: 'cover', backgroundPosition: 'center'}}
                   title={img.original_path.split('/').pop() ?? 'image'}
                   onClick={() => handleAddStaticImageFromAsset(img.id)}
@@ -345,7 +345,7 @@ export function AddLayerMenu() {
             </div>
           )}
           <button
-            class="w-full mt-2 py-1 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border-t border-[#333] cursor-pointer"
+            class="w-full mt-2 py-1 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border-t border-[var(--color-border-subtle)] cursor-pointer"
             onClick={handleImportNewStaticImage}
           >
             Import new...
@@ -356,7 +356,7 @@ export function AddLayerMenu() {
       {videoPickerOpen && (
         <div
           ref={videoPickerRef}
-          class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
+          class="absolute right-0 top-7 z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
         >
           {imageStore.videoAssets.value.length === 0 ? (
             <div class="text-center py-3">
@@ -367,7 +367,7 @@ export function AddLayerMenu() {
               {imageStore.videoAssets.value.map((video) => (
                 <button
                   key={video.id}
-                  class="w-full text-left px-2 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10] rounded flex items-center gap-2 cursor-pointer"
+                  class="w-full text-left px-2 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] rounded flex items-center gap-2 cursor-pointer"
                   onClick={() => handleAddVideoFromAsset(video.id)}
                 >
                   <span class="w-2 h-2 rounded-full bg-[#8B5CF6] shrink-0" />
@@ -377,7 +377,7 @@ export function AddLayerMenu() {
             </div>
           )}
           <button
-            class="w-full mt-2 py-1 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border-t border-[#333] cursor-pointer"
+            class="w-full mt-2 py-1 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border-t border-[var(--color-border-subtle)] cursor-pointer"
             onClick={handleImportNewVideo}
           >
             Import new...

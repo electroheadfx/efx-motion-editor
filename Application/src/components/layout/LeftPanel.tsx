@@ -16,7 +16,7 @@ export function LeftPanel() {
   return (
     <div class="flex flex-col w-[268px] h-full bg-[var(--color-bg-card-alt)] shrink-0">
       {/* Sequences Header */}
-      <div class="flex items-center justify-between h-9 px-3 bg-[#111111]">
+      <div class="flex items-center justify-between h-9 px-3 bg-[var(--color-bg-section-header)]">
         <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">
           SEQUENCES
         </span>
@@ -40,8 +40,8 @@ export function LeftPanel() {
       {/* Key Photo Strip (for active sequence) */}
       {activeSeq && (
         <>
-          <div class="w-full h-px bg-[#2A2A2A]" />
-          <div class="flex items-center justify-between h-7 px-3 bg-[#131313]">
+          <div class="w-full h-px bg-[var(--color-bg-divider)]" />
+          <div class="flex items-center justify-between h-7 px-3 bg-[var(--color-bg-subsection)]">
             <span class="text-[9px] font-semibold text-[var(--color-text-dim)]">
               KEY PHOTOS
             </span>
@@ -59,10 +59,10 @@ export function LeftPanel() {
       )}
 
       {/* Panel Divider */}
-      <div class="w-full h-px bg-[#2A2A2A]" />
+      <div class="w-full h-px bg-[var(--color-bg-divider)]" />
 
       {/* Layers Header */}
-      <div class="flex items-center justify-between h-9 px-3 bg-[#111111]">
+      <div class="flex items-center justify-between h-9 px-3 bg-[var(--color-bg-section-header)]">
         <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">
           LAYERS
         </span>
@@ -73,10 +73,10 @@ export function LeftPanel() {
       <LayerList />
 
       {/* Divider */}
-      <div class="w-full h-px bg-[#2A2A2A]" />
+      <div class="w-full h-px bg-[var(--color-bg-divider)]" />
 
       {/* Import Section Header */}
-      <div class="flex items-center justify-between h-9 px-3 bg-[#111111]">
+      <div class="flex items-center justify-between h-9 px-3 bg-[var(--color-bg-section-header)]">
         <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">
           IMPORTED
         </span>
@@ -116,7 +116,7 @@ export function LeftPanel() {
 
       {/* Import Status */}
       {imageStore.isImporting.value && (
-        <div class="flex items-center gap-2 px-3 py-1.5 bg-[#1A1A2A]">
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-[var(--color-bg-selected)]">
           <div class="w-3 h-3 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
           <span class="text-[10px] text-[var(--color-text-secondary)]">
             Importing...
@@ -126,9 +126,9 @@ export function LeftPanel() {
 
       {/* Import Errors */}
       {imageStore.importErrors.value.length > 0 && (
-        <div class="px-3 py-1.5 bg-[#2A1A1A]">
+        <div class="px-3 py-1.5 bg-[var(--color-error-bg)]">
           {imageStore.importErrors.value.map((err, i) => (
-            <span key={i} class="text-[9px] text-[#FF6666] block truncate">
+            <span key={i} class="text-[9px] text-[var(--color-error-text)] block truncate">
               {err}
             </span>
           ))}
@@ -156,8 +156,8 @@ function KeyPhotoHeaderActions({sequenceId}: {sequenceId: string}) {
   const canMoveRight = idx < seq.keyPhotos.length - 1;
 
   const btnClass = "w-5 h-5 rounded flex items-center justify-center text-[10px] transition-colors";
-  const enabledClass = "bg-[#2A2A2A] text-[var(--color-text-secondary)] hover:bg-[#333] hover:text-white";
-  const disabledClass = "bg-[#1A1A1A] text-[#444] cursor-default";
+  const enabledClass = "bg-[var(--color-bg-divider)] text-[var(--color-text-secondary)] hover:bg-[var(--color-border-subtle)] hover:text-white";
+  const disabledClass = "bg-[var(--color-bg-card)] text-[var(--color-text-dimmer)] cursor-default";
 
   return (
     <div class="flex items-center gap-0.5">
@@ -172,7 +172,7 @@ function KeyPhotoHeaderActions({sequenceId}: {sequenceId: string}) {
       </button>
       {/* Delete */}
       <button
-        class={`${btnClass} bg-[#2A2A2A] text-[#FF666680] hover:bg-[#3A2020] hover:text-[#FF6666] transition-colors`}
+        class={`${btnClass} bg-[var(--color-bg-divider)] text-[var(--color-error-text-faded)] hover:bg-[var(--color-error-bg)] hover:text-[var(--color-error-text)] transition-colors`}
         onClick={() => sequenceStore.removeKeyPhoto(sequenceId, selectedId)}
         title="Delete selected key photo"
       >
@@ -205,18 +205,18 @@ function SequenceSettings() {
   const currentResLabel = `${activeSeq.width}x${activeSeq.height}`;
 
   return (
-    <div class="flex items-center gap-3 px-3 py-1.5 bg-[#131313]">
+    <div class="flex items-center gap-3 px-3 py-1.5 bg-[var(--color-bg-subsection)]">
       {/* FPS toggle */}
       <div class="flex items-center gap-1">
         <span class="text-[9px] text-[var(--color-text-dim)]">FPS:</span>
-        <div class="flex rounded overflow-hidden border border-[#333]">
+        <div class="flex rounded overflow-hidden border border-[var(--color-border-subtle)]">
           {[15, 24].map((rate) => (
             <button
               key={rate}
               class={`px-1.5 py-0.5 text-[9px] ${
                 activeSeq.fps === rate
                   ? 'bg-[var(--color-accent)] text-white'
-                  : 'bg-[#1A1A1A] text-[var(--color-text-dim)] hover:bg-[#252525]'
+                  : 'bg-[var(--color-bg-card)] text-[var(--color-text-dim)] hover:bg-[var(--color-bg-settings)]'
               }`}
               onClick={() =>
                 sequenceStore.setSequenceFps(activeSeq.id, rate)
@@ -232,7 +232,7 @@ function SequenceSettings() {
       <div class="flex items-center gap-1">
         <span class="text-[9px] text-[var(--color-text-dim)]">Res:</span>
         <select
-          class="text-[9px] bg-[#1A1A1A] text-[var(--color-text-secondary)] border border-[#333] rounded px-1 py-0.5 outline-none cursor-pointer"
+          class="text-[9px] bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] border border-[var(--color-border-subtle)] rounded px-1 py-0.5 outline-none cursor-pointer"
           value={currentResLabel}
           onChange={(e) => {
             const selected = commonResolutions.find(

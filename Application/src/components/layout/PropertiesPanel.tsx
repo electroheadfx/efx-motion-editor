@@ -119,7 +119,7 @@ function NumericInput({
         min={min}
         max={max}
         value={isEditing ? localValue : formatDisplay(value)}
-        class="w-16 text-[11px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-2 py-[5px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        class="w-16 text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[5px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         onFocus={() => {
           setIsEditing(true);
           setLocalValue(formatDisplay(value));
@@ -295,7 +295,7 @@ function ColorGradeSection({ layer }: { layer: Layer }) {
 
       {/* Preset dropdown */}
       <select
-        class="text-[11px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-2 py-[5px] outline-none cursor-pointer"
+        class="text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[5px] outline-none cursor-pointer"
         value={source.preset}
         onChange={(e) => handlePresetChange((e.target as HTMLSelectElement).value)}
       >
@@ -332,7 +332,7 @@ function ColorGradeSection({ layer }: { layer: Layer }) {
       <div class="flex items-center gap-1">
         <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Fade Blend</span>
         <select
-          class="text-[10px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-1 py-[3px] outline-none cursor-pointer"
+          class="text-[10px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-1 py-[3px] outline-none cursor-pointer"
           value={source.fadeBlend ?? 'source-over'}
           onChange={(e) => handleParamChange('fadeBlend', (e.target as HTMLSelectElement).value)}
         >
@@ -484,7 +484,7 @@ export function PropertiesPanel() {
 
   if (!selectedLayer) {
     return (
-      <div class="flex items-center justify-center h-14 w-full bg-[#0F0F0F] px-4 shrink-0">
+      <div class="flex items-center justify-center h-14 w-full bg-[var(--color-bg-root)] px-4 shrink-0">
         <span class="text-[10px] text-[var(--color-text-dim)]">
           Select a layer to edit transform
         </span>
@@ -501,7 +501,7 @@ export function PropertiesPanel() {
       : selectedLayer.visible;
 
     return (
-      <div class="flex items-center gap-5 h-14 w-full bg-[#0F0F0F] px-4 shrink-0 overflow-x-auto">
+      <div class="flex items-center gap-5 h-14 w-full bg-[var(--color-bg-root)] px-4 shrink-0 overflow-x-auto">
         {/* Opacity + Visibility (no blend mode dropdown) */}
         <div class="flex items-center gap-3 shrink-0">
           <SectionLabel text="OPACITY" />
@@ -521,12 +521,12 @@ export function PropertiesPanel() {
                 layerStore.updateLayer(selectedLayer.id, { opacity: val });
               }}
             />
-            <span class="text-[11px] text-[#CCCCCC] w-8 text-right">{fxOpacityPercent}%</span>
+            <span class="text-[11px] text-[var(--color-text-button)] w-8 text-right">{fxOpacityPercent}%</span>
           </div>
 
           {/* Visibility toggle */}
           <button
-            class="text-[var(--color-text-muted)] hover:text-[#CCCCCC] transition-colors p-0.5"
+            class="text-[var(--color-text-muted)] hover:text-[var(--color-text-button)] transition-colors p-0.5"
             title={fxIsVisible ? 'Hide layer' : 'Show layer'}
             onClick={() => {
               if (fxSequenceId) {
@@ -547,7 +547,7 @@ export function PropertiesPanel() {
             )}
           </button>
         </div>
-        <div class="w-px h-8 bg-[#2A2A2A]" />
+        <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
         <FxSection layer={selectedLayer} />
       </div>
     );
@@ -557,7 +557,7 @@ export function PropertiesPanel() {
   const contentOpacityPercent = Math.round(selectedLayer.opacity * 100);
 
   return (
-    <div class="flex items-center gap-5 h-14 w-full bg-[#0F0F0F] px-4 shrink-0 overflow-x-auto">
+    <div class="flex items-center gap-5 h-14 w-full bg-[var(--color-bg-root)] px-4 shrink-0 overflow-x-auto">
       {/* BLEND + OPACITY section */}
       <div class="flex items-center gap-3 shrink-0">
         <SectionLabel text="BLEND" />
@@ -565,7 +565,7 @@ export function PropertiesPanel() {
           <span class="text-[11px] text-[var(--color-text-dim)]">Normal</span>
         ) : (
           <select
-            class="text-[11px] bg-[var(--color-bg-input)] text-[#CCCCCC] rounded px-2 py-[3px] outline-none cursor-pointer"
+            class="text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[3px] outline-none cursor-pointer"
             value={selectedLayer.blendMode}
             onChange={(e) => {
               layerStore.updateLayer(selectedLayer.id, {
@@ -596,13 +596,13 @@ export function PropertiesPanel() {
               layerStore.updateLayer(selectedLayer.id, { opacity: val });
             }}
           />
-          <span class="text-[11px] text-[#CCCCCC] w-8 text-right">{contentOpacityPercent}%</span>
+          <span class="text-[11px] text-[var(--color-text-button)] w-8 text-right">{contentOpacityPercent}%</span>
         </div>
       </div>
-      <div class="w-px h-8 bg-[#2A2A2A]" />
+      <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
       {/* TRANSFORM section */}
       <TransformSection layer={selectedLayer} />
-      <div class="w-px h-8 bg-[#2A2A2A]" />
+      <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
       {/* CROP section */}
       <CropSection layer={selectedLayer} />
 
@@ -610,7 +610,7 @@ export function PropertiesPanel() {
       {(selectedLayer.type === 'static-image' || selectedLayer.type === 'image-sequence') &&
         !selectedLayer.isBase && (
           <>
-            <div class="w-px h-8 bg-[#2A2A2A]" />
+            <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
             <span class="text-[9px] text-[var(--color-text-dim)] italic whitespace-nowrap">
               Source: {selectedLayer.source.type}
             </span>

@@ -173,16 +173,16 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
   return (
     <div
       class={`flex items-center gap-2 h-10 w-full px-3 cursor-pointer select-none ${
-        isActive ? 'bg-[#2D5BE320]' : 'bg-transparent hover:bg-[#ffffff08]'
+        isActive ? 'bg-[var(--color-bg-selected)]' : 'bg-transparent hover:bg-[var(--color-hover-overlay)]'
       }`}
       onClick={handleSelect}
       onContextMenu={handleContextMenu}
     >
       {/* Drag handle */}
       <div class="seq-drag-handle w-2 h-4 flex flex-col justify-center gap-[2px] cursor-grab shrink-0 opacity-40 hover:opacity-70">
-        <div class="w-full h-[1px] bg-[#888]" />
-        <div class="w-full h-[1px] bg-[#888]" />
-        <div class="w-full h-[1px] bg-[#888]" />
+        <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
+        <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
+        <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
       </div>
 
       {/* Active indicator */}
@@ -193,7 +193,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       {/* Thumbnail */}
       <div
         class={`w-7 h-5 rounded-[3px] shrink-0 bg-cover bg-center ${
-          isActive ? 'bg-[#3D3D3D]' : 'bg-[#2A2A2A]'
+          isActive ? 'bg-[var(--color-bg-settings)]' : 'bg-[var(--color-bg-hover-item)]'
         }`}
         style={thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : undefined}
       />
@@ -204,7 +204,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
           <input
             ref={inputRef}
             type="text"
-            class="text-xs bg-[#1A1A1A] border border-[var(--color-accent)] rounded px-1 py-0 text-[#E0E0E0] outline-none w-full"
+            class="text-xs bg-[var(--color-bg-card)] border border-[var(--color-accent)] rounded px-1 py-0 text-[var(--color-text-heading)] outline-none w-full"
             value={editName}
             onInput={(e) =>
               setEditName((e.target as HTMLInputElement).value)
@@ -220,7 +220,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
           <span
             class={`text-xs truncate ${
               isActive
-                ? 'font-medium text-[#E0E0E0]'
+                ? 'font-medium text-[var(--color-text-heading)]'
                 : 'text-[var(--color-text-secondary)]'
             }`}
             onDblClick={(e) => {
@@ -245,7 +245,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       {/* Action button */}
       <button
         ref={menuBtnRef}
-        class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#ffffff15] text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] shrink-0"
+        class="w-5 h-5 flex items-center justify-center rounded hover:bg-[var(--color-hover-overlay-strong)] text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] shrink-0"
         onClick={(e) => {
           e.stopPropagation();
           if (menuOpen) {
@@ -262,11 +262,11 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       {menuOpen && createPortal(
         <div
           ref={menuRef}
-          class="fixed z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl py-1 min-w-[120px]"
+          class="fixed z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl py-1 min-w-[120px]"
           style={{top: menuPos.top, left: menuPos.left}}
         >
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10]"
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)]"
             onClick={(e) => {
               e.stopPropagation();
               startRename();
@@ -275,7 +275,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
             Rename
           </button>
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[#CCCCCC] hover:bg-[#ffffff10]"
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)]"
             onClick={(e) => {
               e.stopPropagation();
               handleDuplicate();
@@ -283,9 +283,9 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
           >
             Duplicate
           </button>
-          <div class="w-full h-px bg-[#333] my-1" />
+          <div class="w-full h-px bg-[var(--color-border-subtle)] my-1" />
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[#FF6666] hover:bg-[#ffffff10]"
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-error-text)] hover:bg-[var(--color-hover-overlay)]"
             onClick={(e) => {
               e.stopPropagation();
               handleDelete();
