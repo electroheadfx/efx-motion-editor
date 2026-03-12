@@ -59,14 +59,17 @@ Plans:
 - [ ] 08-03-PLAN.md — Remaining color conversion, TimelineRenderer canvas, visual verification
 
 ### Phase 9: Canvas Zoom
-**Goal**: Wire up the canvas zoom functionality — the UI +/- percent controls exist at the top-left of the window but are not yet functional
+**Goal**: Wire up the canvas zoom functionality — the UI +/- percent controls exist at the top-right of the toolbar but are not yet functional. Add keyboard shortcuts, pinch-to-zoom, and true fit-to-window calculation.
 **Depends on**: Phase 4
-**Requirements**: TBD
+**Requirements**: ZOOM-01, ZOOM-02, ZOOM-03
 **Success Criteria** (what must be TRUE):
-  1. Canvas zoom +/- buttons and percent display at top-left actually zoom the preview canvas in and out
+  1. Canvas zoom +/- buttons and percent display at top-right actually zoom the preview canvas in and out
   2. Zoom level persists while navigating frames and during playback
   3. User can reset zoom to fit-to-window
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 09-01-PLAN.md — Create canvasStore, refactor CanvasArea (gestures, ResizeObserver, fit-to-window)
+- [ ] 09-02-PLAN.md — Wire toolbar +/- buttons, keyboard shortcuts (Cmd+=/Cmd+-/Cmd+0), ShortcutsOverlay
 
 ### Phase 10: FX Blur Effect
 **Goal**: Add blur as a new FX generator option with dual-quality rendering — Dual Kawase blur for fast playback preview and Gaussian blur for high-quality rendering/export
@@ -167,7 +170,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 6. Layer System & Properties Panel | v0.1.0 | 8/8 | Complete | 2026-03-08 |
 | 7. Cinematic FX Effects | v0.1.0 | 10/10 | Complete | 2026-03-10 |
 | 8. UI Theme System | 3/3 | Complete   | 2026-03-12 | - |
-| 9. Canvas Zoom | v0.2.0 | 0/0 | Planned | - |
+| 9. Canvas Zoom | v0.2.0 | 0/2 | Planned | - |
 | 10. FX Blur Effect | v0.2.0 | 0/0 | Planned | - |
 | 11. Live Canvas Transform | v0.2.0 | 0/0 | Planned | - |
 | 12. Layer Keyframe Animation | v0.2.0 | 0/0 | Planned | - |
