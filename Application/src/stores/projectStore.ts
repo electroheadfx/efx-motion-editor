@@ -14,6 +14,7 @@ import {playbackEngine} from '../lib/playbackEngine';
 import {startAutoSave, stopAutoSave} from '../lib/autoSave';
 import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
+import {canvasStore} from './canvasStore';
 
 // --- Signals ---
 
@@ -320,6 +321,10 @@ export const projectStore = {
 
     // Restart auto-save for the new project
     startAutoSave();
+
+    // Fit canvas to window on project create (per ZOOM-03)
+    // Use setTimeout(0) to ensure DOM has rendered with new project dimensions
+    setTimeout(() => canvasStore.fitToWindow(), 0);
   },
 
   /** Save the project to its .mce file. If filePath is null, caller should use saveProjectAs. */
@@ -401,6 +406,10 @@ export const projectStore = {
 
     // Restart auto-save for the opened project
     startAutoSave();
+
+    // Fit canvas to window on project open (per ZOOM-03)
+    // Use setTimeout(0) to ensure DOM has rendered with new project dimensions
+    setTimeout(() => canvasStore.fitToWindow(), 0);
   },
 
   /** Close the current project and reset all stores */
@@ -425,6 +434,7 @@ export const projectStore = {
     uiStore.reset();
     timelineStore.reset();
     layerStore.reset();
+    canvasStore.reset();
     historyStore.stack.value = [];
     historyStore.pointer.value = -1;
   },

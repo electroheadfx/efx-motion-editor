@@ -1,17 +1,21 @@
-import {signal} from '@preact/signals';
-import {useRef, useCallback} from 'preact/hooks';
+import {useRef, useCallback, useEffect} from 'preact/hooks';
 import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
 import {timelineStore} from '../../stores/timelineStore';
+import {canvasStore} from '../../stores/canvasStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 
-// --- Preview zoom/pan state (PREV-04) ---
-const previewZoom = signal(1);
-const previewPanX = signal(0);
-const previewPanY = signal(0);
+/** Safari macOS gesture event interface */
+interface GestureEvent extends UIEvent {
+  scale: number;
+  rotation: number;
+  clientX: number;
+  clientY: number;
+}
 
 export function CanvasArea() {
   const isPlaying = timelineStore.isPlaying.value;
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Drag state for middle-click panning
   const dragRef = useRef({
@@ -32,15 +36,10 @@ export function CanvasArea() {
     const cursorX = e.clientX - rect.left - rect.width / 2;
     const cursorY = e.clientY - rect.top - rect.height / 2;
 
-    const oldZoom = previewZoom.value;
+    const oldZoom = canvasStore.zoom.peek();
     const factor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(0.1, Math.min(4, oldZoom * factor));
-
-    // Adjust pan to keep point under cursor stable
-    const scale = newZoom / oldZoom;
-    previewPanX.value = previewPanX.value * scale + cursorX * (1 - scale) / newZoom;
-    previewPanY.value = previewPanY.value * scale + cursorY * (1 - scale) / newZoom;
-    previewZoom.value = newZoom;
+    const newZoom = oldZoom * factor;
+    canvasStore.setSmoothZoom(newZoom, cursorX, cursorY);
   }, []);
 
   // --- Pan handlers: middle-click drag ---
@@ -52,17 +51,19 @@ export function CanvasArea() {
     drag.isDragging = true;
     drag.startX = e.clientX;
     drag.startY = e.clientY;
-    drag.startPanX = previewPanX.value;
-    drag.startPanY = previewPanY.value;
+    drag.startPanX = canvasStore.panX.value;
+    drag.startPanY = canvasStore.panY.value;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
 
   const handlePointerMove = useCallback((e: PointerEvent) => {
     const drag = dragRef.current;
     if (!drag.isDragging) return;
-    const z = previewZoom.value;
-    previewPanX.value = drag.startPanX + (e.clientX - drag.startX) / z;
-    previewPanY.value = drag.startPanY + (e.clientY - drag.startY) / z;
+    const z = canvasStore.zoom.value;
+    canvasStore.setPan(
+      drag.startPanX + (e.clientX - drag.startX) / z,
+      drag.startPanY + (e.clientY - drag.startY) / z,
+    );
   }, []);
 
   const handlePointerUp = useCallback((e: PointerEvent) => {
@@ -76,17 +77,61 @@ export function CanvasArea() {
     }
   }, []);
 
-  // --- Fit button: reset zoom/pan ---
-  const handleFit = useCallback(() => {
-    previewZoom.value = 1;
-    previewPanX.value = 0;
-    previewPanY.value = 0;
+  // --- ResizeObserver: track container dimensions ---
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const padding = 32; // p-4 = 16px * 2
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const {width, height} = entry.contentRect;
+        canvasStore.updateContainerSize(width - padding, height - padding);
+      }
+    });
+    observer.observe(el);
+
+    // Initial measurement and fit
+    const rect = el.getBoundingClientRect();
+    canvasStore.updateContainerSize(rect.width - padding, rect.height - padding);
+    canvasStore.fitToWindow();
+
+    return () => observer.disconnect();
+  }, []);
+
+  // --- Pinch-to-zoom: macOS GestureEvent ---
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+    };
+
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      const ge = e as unknown as GestureEvent;
+      const rect = el.getBoundingClientRect();
+      const cursorX = (ge.clientX ?? rect.left + rect.width / 2) - rect.left - rect.width / 2;
+      const cursorY = (ge.clientY ?? rect.top + rect.height / 2) - rect.top - rect.height / 2;
+      const newZoom = canvasStore.zoom.peek() * ge.scale;
+      canvasStore.setSmoothZoom(newZoom, cursorX, cursorY);
+    };
+
+    el.addEventListener('gesturestart', onGestureStart, {passive: false});
+    el.addEventListener('gesturechange', onGestureChange, {passive: false});
+
+    return () => {
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+    };
   }, []);
 
   return (
     <div class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-right)]">
       {/* Preview Frame with zoom/pan */}
       <div
+        ref={containerRef}
         class="flex items-center justify-center flex-1 w-full min-h-0 p-4 overflow-hidden"
         onWheel={handleWheel}
         onPointerDown={handlePointerDown}
@@ -97,7 +142,7 @@ export function CanvasArea() {
         <div
           class="w-full max-w-[830px] aspect-video rounded bg-black overflow-hidden"
           style={{
-            transform: `scale(${previewZoom.value}) translate(${previewPanX.value}px, ${previewPanY.value}px)`,
+            transform: `scale(${canvasStore.zoom.value}) translate(${canvasStore.panX.value}px, ${canvasStore.panY.value}px)`,
             transformOrigin: 'center center',
           }}
         >
@@ -145,13 +190,13 @@ export function CanvasArea() {
         </span>
         {/* Zoom display */}
         <span class="text-[11px] text-[var(--color-text-dim)]">
-          {Math.round(previewZoom.value * 100)}%
+          {canvasStore.zoomPercent.value}%
         </span>
         {/* Fit button */}
         <button
           class="rounded bg-[var(--color-bg-settings)] px-2.5 py-1.5 cursor-pointer"
-          onClick={handleFit}
-          title="Reset zoom and pan"
+          onClick={() => canvasStore.fitToWindow()}
+          title="Fit to window"
         >
           <span class="text-[11px] text-[var(--color-text-secondary)]">
             Fit
