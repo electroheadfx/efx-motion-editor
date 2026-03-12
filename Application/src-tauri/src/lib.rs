@@ -55,9 +55,31 @@ pub fn run() {
                 .select_all()
                 .build()?;
 
+            // View submenu with custom zoom items to override WKWebView native
+            // zoom accelerators that intercept Cmd+=/Cmd+-/Cmd+0 before JS.
+            let zoom_in_item =
+                MenuItem::with_id(app, "zoom-in", "Zoom In", true, Some("CmdOrCtrl+="))?;
+            let zoom_out_item =
+                MenuItem::with_id(app, "zoom-out", "Zoom Out", true, Some("CmdOrCtrl+-"))?;
+            let fit_to_window_item = MenuItem::with_id(
+                app,
+                "fit-to-window",
+                "Fit to Window",
+                true,
+                Some("CmdOrCtrl+0"),
+            )?;
+
+            let view_submenu = SubmenuBuilder::new(app, "View")
+                .item(&zoom_in_item)
+                .item(&zoom_out_item)
+                .separator()
+                .item(&fit_to_window_item)
+                .build()?;
+
             let menu = MenuBuilder::new(app)
                 .item(&app_submenu)
                 .item(&edit_submenu)
+                .item(&view_submenu)
                 .build()?;
 
             app.set_menu(menu)?;
@@ -69,6 +91,12 @@ pub fn run() {
                     handle.emit("menu:undo", ()).ok();
                 } else if event.id() == "redo" {
                     handle.emit("menu:redo", ()).ok();
+                } else if event.id() == "zoom-in" {
+                    handle.emit("menu:zoom-in", ()).ok();
+                } else if event.id() == "zoom-out" {
+                    handle.emit("menu:zoom-out", ()).ok();
+                } else if event.id() == "fit-to-window" {
+                    handle.emit("menu:fit-to-window", ()).ok();
                 }
             });
 
