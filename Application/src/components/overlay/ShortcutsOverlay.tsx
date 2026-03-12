@@ -46,6 +46,14 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: '?', description: 'Toggle this help'},
     ],
   },
+  {
+    title: 'Canvas',
+    entries: [
+      {keys: '\u2318=', description: 'Zoom in'},
+      {keys: '\u2318\u2212', description: 'Zoom out'},
+      {keys: '\u23180', description: 'Fit to window'},
+    ],
+  },
 ];
 
 export function ShortcutsOverlay() {

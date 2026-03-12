@@ -8,6 +8,7 @@ import {projectStore} from '../stores/projectStore';
 import {uiStore} from '../stores/uiStore';
 import {layerStore} from '../stores/layerStore';
 import {sequenceStore} from '../stores/sequenceStore';
+import {canvasStore} from '../stores/canvasStore';
 import {save, open} from '@tauri-apps/plugin-dialog';
 
 /**
@@ -191,6 +192,23 @@ export function mountShortcuts(): () => void {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       cycleTheme();
+    },
+
+    // Canvas zoom (ZOOM-01, ZOOM-03)
+    '$mod+Equal': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      canvasStore.zoomIn();
+    },
+    '$mod+Minus': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      canvasStore.zoomOut();
+    },
+    '$mod+Digit0': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      canvasStore.fitToWindow();
     },
   });
 }
