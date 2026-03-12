@@ -1,12 +1,13 @@
 import {useRef, useEffect} from 'preact/hooks';
 import {effect} from '@preact/signals';
-import {TimelineRenderer} from './TimelineRenderer';
+import {TimelineRenderer, invalidateColorCache} from './TimelineRenderer';
 import {TimelineInteraction} from './TimelineInteraction';
 import {timelineStore} from '../../stores/timelineStore';
 import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {imageStore} from '../../stores/imageStore';
 import {layerStore} from '../../stores/layerStore';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {currentTheme} from '../../lib/themeManager';
 
 /**
  * TimelineCanvas: Preact component wrapping a canvas element with signal subscriptions.
@@ -37,6 +38,20 @@ export function TimelineCanvas() {
       renderer.resize();
     });
     resizeObserver.observe(canvas.parentElement ?? canvas);
+
+    // Effect: invalidate cached colors when theme changes, trigger redraw
+    const disposeTheme = effect(() => {
+      currentTheme.value; // subscribe to theme signal
+      invalidateColorCache();
+      if (rendererRef.current && rendererRef.current === renderer) {
+        // Force redraw with new colors on next animation frame
+        requestAnimationFrame(() => {
+          if (rendererRef.current) {
+            rendererRef.current.resize();
+          }
+        });
+      }
+    });
 
     // Effect: subscribe to all timeline signals and redraw on changes
     const dispose = effect(() => {
@@ -78,6 +93,7 @@ export function TimelineCanvas() {
     });
 
     return () => {
+      disposeTheme();
       dispose();
       interaction.detach();
       renderer.destroy();

@@ -71,8 +71,8 @@ function RecentProjectItem({
         <span
           class={`text-[13px] truncate ${
             highlighted
-              ? 'font-medium text-[#E0E0E0]'
-              : 'text-[#CCCCCC]'
+              ? 'font-medium text-[var(--color-text-heading)]'
+              : 'text-[var(--color-text-button)]'
           }`}
         >
           {project.name}
@@ -82,7 +82,7 @@ function RecentProjectItem({
             class={`text-[11px] truncate ${
               highlighted
                 ? 'text-[var(--color-text-dim)]'
-                : 'text-[#999999]'
+                : 'text-[var(--color-text-secondary)]'
             }`}
           >
             {formatLastOpened(project.lastOpened)}
@@ -90,12 +90,12 @@ function RecentProjectItem({
         ) : (
           <span class="flex items-center gap-1.5 text-[11px]">
             <button
-              class="text-[#CC6666] hover:text-[#DD7777] cursor-pointer"
+              class="text-[var(--color-error-text)] hover:brightness-125 cursor-pointer"
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
             >
               Remove
             </button>
-            <span class="text-[#666666]">&middot;</span>
+            <span class="text-[var(--color-text-muted)]">&middot;</span>
             <button
               class="text-[var(--color-text-link)] hover:brightness-125 cursor-pointer"
               onClick={(e) => { e.stopPropagation(); onLocate(); }}
@@ -289,7 +289,7 @@ export function WelcomeScreen() {
           >
             <path
               d="M2 6V14C2 15.1 2.9 16 4 16H14C15.1 16 16 15.1 16 14V8C16 6.9 15.1 6 14 6H9L7 4H4C2.9 4 2 4.9 2 6Z"
-              stroke="#AAAAAA"
+              stroke="var(--color-text-link)"
               stroke-width="1.5"
               stroke-linejoin="round"
             />

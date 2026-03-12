@@ -84,7 +84,7 @@ export function CanvasArea() {
   }, []);
 
   return (
-    <div class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-card)]">
+    <div class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-right)]">
       {/* Preview Frame with zoom/pan */}
       <div
         class="flex items-center justify-center flex-1 w-full min-h-0 p-4 overflow-hidden"
@@ -136,7 +136,7 @@ export function CanvasArea() {
         </button>
         {/* Timecode display */}
         <div class="rounded bg-[var(--color-bg-input)] px-3 py-1.5">
-          <span class="text-[13px] font-semibold text-[#E0E0E0]">
+          <span class="text-[13px] font-semibold text-[var(--color-text-heading)]">
             {formatTime(timelineStore.displayTime.value)}
           </span>
         </div>

@@ -20,9 +20,9 @@ export function TimelinePanel() {
   }, []);
 
   return (
-    <div class="flex flex-col w-full h-[280px] bg-[#111111]">
+    <div class="flex flex-col w-full h-[280px] bg-[var(--color-bg-section-header)]">
       {/* Timeline Controls */}
-      <div class="flex items-center gap-2 h-9 px-3 bg-[#0F0F0F] shrink-0">
+      <div class="flex items-center gap-2 h-9 px-3 bg-[var(--color-bg-root)] shrink-0">
         {/* Seek to start */}
         <button
           class="rounded bg-[var(--color-bg-input)] px-2 py-[5px]"
@@ -63,7 +63,7 @@ export function TimelinePanel() {
           </span>
         </button>
 
-        <div class="w-px h-5 bg-[#333333]" />
+        <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
 
         {/* Timecode display */}
         <span class="text-[11px] text-[var(--color-text-secondary)]">
@@ -99,7 +99,7 @@ export function TimelinePanel() {
           </span>
         </button>
 
-        <div class="w-px h-5 bg-[#333333]" />
+        <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
 
         {/* Add FX */}
         <AddFxMenu />

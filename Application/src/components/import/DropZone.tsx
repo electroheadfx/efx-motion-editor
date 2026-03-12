@@ -9,8 +9,8 @@ export function DropZone() {
   if (!isDraggingOver.value) return null;
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-[#000000CC] pointer-events-none">
-      <div class="flex flex-col items-center gap-4 p-8 rounded-xl border-2 border-dashed border-[var(--color-accent)] bg-[#1A1A1ACC]">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 pointer-events-none">
+      <div class="flex flex-col items-center gap-4 p-8 rounded-xl border-2 border-dashed border-[var(--color-accent)] bg-[var(--color-bg-card)]">
         <div class="text-4xl">&#128247;</div>
         <span class="text-lg font-medium text-[var(--color-text-primary)]">
           Drop images to import

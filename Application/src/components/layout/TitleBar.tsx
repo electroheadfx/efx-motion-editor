@@ -2,7 +2,7 @@ import {projectStore} from '../../stores/projectStore';
 
 export function TitleBar() {
   return (
-    <div class="flex items-center h-7 w-full bg-[#111111] px-1.5 shrink-0">
+    <div class="flex items-center h-7 w-full bg-[var(--color-bg-section-header)] px-1.5 shrink-0">
       <div class="flex items-center gap-2">
         <div class="w-3 h-3 rounded-full bg-[#FF5F57]" />
         <div class="w-3 h-3 rounded-full bg-[#FFBD2E]" />

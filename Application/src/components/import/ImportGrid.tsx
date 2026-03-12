@@ -28,7 +28,7 @@ export function ImportGrid() {
           {images.map((img) => (
             <div
               key={img.id}
-              class="relative aspect-[4/3] rounded overflow-hidden bg-[#1E1E1E] cursor-pointer group"
+              class="relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] cursor-pointer group"
               title={`${img.width}x${img.height} ${img.format.toUpperCase()}`}
             >
               <img
@@ -83,7 +83,7 @@ function VideoThumb({video}: {video: VideoAsset}) {
 
   return (
     <div
-      class="relative aspect-[4/3] rounded overflow-hidden bg-[#1E1E1E] cursor-pointer group"
+      class="relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] cursor-pointer group"
       title={video.name}
     >
       <video

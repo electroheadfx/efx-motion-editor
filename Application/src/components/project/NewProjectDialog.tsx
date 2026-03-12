@@ -158,8 +158,8 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
 
         {/* Error */}
         {error && (
-          <div class="rounded-lg bg-[#2A1A1A] px-3 py-2">
-            <span class="text-xs text-[#FF6666]">{error}</span>
+          <div class="rounded-lg bg-[var(--color-error-bg)] px-3 py-2">
+            <span class="text-xs text-[var(--color-error-text)]">{error}</span>
           </div>
         )}
 

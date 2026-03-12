@@ -57,7 +57,7 @@ export function Toolbar() {
   };
 
   return (
-    <div class="flex items-center gap-1 h-11 w-full bg-[#1C1C1C] px-3 shrink-0">
+    <div class="flex items-center gap-1 h-11 w-full bg-[var(--color-bg-toolbar)] px-3 shrink-0">
       {/* New button */}
       <button
         class="flex items-center gap-1.5 rounded-[5px] bg-[var(--color-accent)] px-3 py-1.5 hover:bg-[var(--color-accent-hover)] transition-colors"
@@ -70,14 +70,14 @@ export function Toolbar() {
         class="flex items-center gap-1.5 rounded-[5px] bg-[var(--color-bg-settings)] px-3 py-1.5 hover:bg-[var(--color-bg-input)] transition-colors"
         onClick={handleOpen}
       >
-        <span class="text-xs text-[#CCCCCC]">Open</span>
+        <span class="text-xs text-[var(--color-text-button)]">Open</span>
       </button>
       {/* Save button */}
       <button
         class="flex items-center gap-1.5 rounded-[5px] bg-[var(--color-bg-settings)] px-3 py-1.5 hover:bg-[var(--color-bg-input)] transition-colors"
         onClick={handleSave}
       >
-        <span class="text-xs text-[#CCCCCC]">
+        <span class="text-xs text-[var(--color-text-button)]">
           {projectStore.isSaving.value ? 'Saving...' : 'Save'}
         </span>
       </button>
@@ -85,7 +85,7 @@ export function Toolbar() {
       {projectStore.isDirty.value && (
         <div class="w-2 h-2 rounded-full bg-[var(--color-dot-orange)] shrink-0" title="Unsaved changes" />
       )}
-      <div class="w-px h-6 bg-[#333333]" />
+      <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
       {/* FPS Toggle -- wired to projectStore */}
       <div class="flex items-center gap-0.5 rounded-[5px] bg-[var(--color-bg-settings)] p-1">
         <div
@@ -101,18 +101,18 @@ export function Toolbar() {
           <span class={`text-[11px] ${projectStore.fps.value === 24 ? 'text-white' : 'text-[var(--color-text-secondary)]'}`}>24fps</span>
         </div>
       </div>
-      <div class="w-px h-6 bg-[#333333]" />
+      <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
       <ThemeSwitcher />
       {/* Spacer */}
       <div class="flex-1" />
       <span class="text-[11px] text-[var(--color-text-secondary)]">100%</span>
       <button class="rounded-[5px] bg-[var(--color-bg-settings)] px-2.5 py-1">
-        <span class="text-sm text-[#CCCCCC]">-</span>
+        <span class="text-sm text-[var(--color-text-button)]">-</span>
       </button>
       <button class="rounded-[5px] bg-[var(--color-bg-settings)] px-2.5 py-1">
-        <span class="text-sm text-[#CCCCCC]">+</span>
+        <span class="text-sm text-[var(--color-text-button)]">+</span>
       </button>
-      <div class="w-px h-6 bg-[#333333]" />
+      <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
       <button class="flex items-center gap-1.5 rounded-[5px] bg-[#F97316] px-4 py-1.5">
         <span class="text-xs font-semibold text-white">Export</span>
       </button>

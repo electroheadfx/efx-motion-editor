@@ -9,19 +9,37 @@ export const TRACK_HEADER_WIDTH = 80;
 export const RULER_HEIGHT = 24;
 export const FX_TRACK_HEIGHT = 28;
 
+// Functional colors -- stay hardcoded (high-visibility, theme-independent)
 const PLAYHEAD_COLOR = '#E55A2B';
-const TRACK_BG = '#111111';
-const TRACK_HEADER_BG = '#0D0D0D';
-const FRAME_BORDER_COLOR = '#222222';
-const RULER_BG = '#0A0A0A';
-const RULER_TEXT_COLOR = '#666666';
-const TRACK_NAME_COLOR = '#999999';
-const PLACEHOLDER_BG_A = '#1A1A2A';
-const PLACEHOLDER_BG_B = '#1A2A1A';
 const PLAYHEAD_TRIANGLE_SIZE = 6;
 const DROP_INDICATOR_COLOR = '#4488FF';
-const FX_TRACK_BG = '#0D0D0D';
-const FX_TRACK_HEADER_BG = '#0A0A0A';
+const PLACEHOLDER_BG_A = '#1A1A2A';
+const PLACEHOLDER_BG_B = '#1A2A1A';
+
+// --- Theme-aware color cache ---
+// Colors are read from CSS variables once per theme change, not every frame.
+let cachedColors: Record<string, string> | null = null;
+
+function getThemeColors(): Record<string, string> {
+  if (cachedColors) return cachedColors;
+  const style = getComputedStyle(document.documentElement);
+  cachedColors = {
+    trackBg: style.getPropertyValue('--color-timeline-track-bg').trim() || '#111111',
+    headerBg: style.getPropertyValue('--color-timeline-header-bg').trim() || '#0D0D0D',
+    frameBorder: style.getPropertyValue('--color-timeline-frame-border').trim() || '#222222',
+    rulerBg: style.getPropertyValue('--color-timeline-ruler-bg').trim() || '#0A0A0A',
+    rulerText: style.getPropertyValue('--color-timeline-ruler-text').trim() || '#666666',
+    trackName: style.getPropertyValue('--color-timeline-track-name').trim() || '#999999',
+    fxTrackBg: style.getPropertyValue('--color-timeline-fx-track-bg').trim() || '#0D0D0D',
+    fxHeaderBg: style.getPropertyValue('--color-timeline-fx-header-bg').trim() || '#0A0A0A',
+  };
+  return cachedColors;
+}
+
+/** Invalidate the cached theme colors. Call when theme changes. */
+export function invalidateColorCache(): void {
+  cachedColors = null;
+}
 
 export interface DragState {
   fromIndex: number;
@@ -111,6 +129,7 @@ export class TimelineRenderer {
     this.lastState = state;
 
     const {frame, zoom, scrollX, scrollY, tracks, fxTracks, imageStore, totalFrames} = state;
+    const colors = getThemeColors();
     this.fxTrackCount = fxTracks.length;
     this.lastScrollY = scrollY;
     if (state.selectedFxSequenceId !== undefined) {
@@ -158,7 +177,7 @@ export class TimelineRenderer {
       // Ghost FX track at mouse Y
       const ghostY = currentY - canvasRect.top - FX_TRACK_HEIGHT / 2 + scrollY;
       ctx.globalAlpha = 0.4;
-      ctx.fillStyle = FX_TRACK_HEADER_BG;
+      ctx.fillStyle = colors.fxHeaderBg;
       ctx.fillRect(0, ghostY, TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
       if (fromIndex < fxTracks.length) {
         const ghostTrack = fxTracks[fromIndex];
@@ -166,13 +185,13 @@ export class TimelineRenderer {
         ctx.beginPath();
         ctx.arc(9, ghostY + FX_TRACK_HEIGHT / 2, 3, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#999999';
+        ctx.fillStyle = colors.trackName;
         ctx.font = '9px system-ui, sans-serif';
         ctx.textBaseline = 'middle';
         const ghostName = this.truncateText(ctx, ghostTrack.sequenceName, TRACK_HEADER_WIDTH - 16);
         ctx.fillText(ghostName, 16, ghostY + FX_TRACK_HEIGHT / 2);
       }
-      ctx.fillStyle = FX_TRACK_BG;
+      ctx.fillStyle = colors.fxTrackBg;
       ctx.fillRect(TRACK_HEADER_WIDTH, ghostY, w - TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
       ctx.globalAlpha = 1.0;
     }
@@ -185,7 +204,7 @@ export class TimelineRenderer {
       const isSelected = track.sequenceId === this.selectedContentSequenceId;
 
       // Track background (highlight when selected)
-      ctx.fillStyle = isSelected ? '#151A20' : TRACK_BG;
+      ctx.fillStyle = isSelected ? '#151A20' : colors.trackBg;
       ctx.fillRect(0, trackY, w, TRACK_HEIGHT);
 
       // Selection indicator: left accent border
@@ -195,9 +214,9 @@ export class TimelineRenderer {
       }
 
       // Track header (highlight when selected)
-      ctx.fillStyle = isSelected ? '#101520' : TRACK_HEADER_BG;
+      ctx.fillStyle = isSelected ? '#101520' : colors.headerBg;
       ctx.fillRect(isSelected ? 2 : 0, trackY, TRACK_HEADER_WIDTH - (isSelected ? 2 : 0), TRACK_HEIGHT);
-      ctx.fillStyle = TRACK_NAME_COLOR;
+      ctx.fillStyle = colors.trackName;
       ctx.font = '10px system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       const name = track.sequenceName || `Seq ${ti + 1}`;
@@ -249,7 +268,7 @@ export class TimelineRenderer {
           }
 
           // Frame border
-          ctx.strokeStyle = FRAME_BORDER_COLOR;
+          ctx.strokeStyle = colors.frameBorder;
           ctx.lineWidth = 0.5;
           ctx.strokeRect(fx, fy, fw, fh);
         }
@@ -286,11 +305,11 @@ export class TimelineRenderer {
       ctx.globalAlpha = 0.4;
 
       // Ghost track header
-      ctx.fillStyle = TRACK_HEADER_BG;
+      ctx.fillStyle = colors.headerBg;
       ctx.fillRect(0, ghostY, TRACK_HEADER_WIDTH, TRACK_HEIGHT);
       if (fromIndex < tracks.length) {
         const ghostTrack = tracks[fromIndex];
-        ctx.fillStyle = TRACK_NAME_COLOR;
+        ctx.fillStyle = colors.trackName;
         ctx.font = '10px system-ui, sans-serif';
         ctx.textBaseline = 'middle';
         const ghostName = ghostTrack.sequenceName || `Seq ${fromIndex + 1}`;
@@ -299,7 +318,7 @@ export class TimelineRenderer {
       }
 
       // Ghost track background
-      ctx.fillStyle = TRACK_BG;
+      ctx.fillStyle = colors.trackBg;
       ctx.fillRect(TRACK_HEADER_WIDTH, ghostY, w - TRACK_HEADER_WIDTH, TRACK_HEIGHT);
 
       ctx.globalAlpha = 1.0;
@@ -339,8 +358,10 @@ export class TimelineRenderer {
     canvasWidth: number,
     isSelected = false,
   ): void {
+    const colors = getThemeColors();
+
     // Track background (highlight when selected)
-    ctx.fillStyle = isSelected ? '#1A1520' : FX_TRACK_BG;
+    ctx.fillStyle = isSelected ? '#1A1520' : colors.fxTrackBg;
     ctx.fillRect(0, y, canvasWidth, FX_TRACK_HEIGHT);
 
     // Selection indicator: left accent border
@@ -351,7 +372,7 @@ export class TimelineRenderer {
 
     // Track header
     const isVisible = fxTrack.visible;
-    ctx.fillStyle = isSelected ? '#151015' : FX_TRACK_HEADER_BG;
+    ctx.fillStyle = isSelected ? '#151015' : colors.fxHeaderBg;
     ctx.fillRect(isSelected ? 2 : 0, y, TRACK_HEADER_WIDTH - (isSelected ? 2 : 0), FX_TRACK_HEIGHT);
     ctx.fillStyle = isVisible ? fxTrack.color : fxTrack.color + '4D'; // 30% opacity when hidden
     ctx.font = '9px system-ui, sans-serif';
@@ -365,7 +386,7 @@ export class TimelineRenderer {
       ctx.arc(dotX + 3, dotY, 3, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = isVisible ? '#999999' : '#555555';
+    ctx.fillStyle = isVisible ? colors.trackName : colors.rulerText;
     ctx.fillText(name, dotX + 10, dotY);
 
     // Range bar
@@ -413,12 +434,14 @@ export class TimelineRenderer {
     width: number,
     totalFrames: number,
   ) {
+    const colors = getThemeColors();
+
     // Ruler background
-    ctx.fillStyle = RULER_BG;
+    ctx.fillStyle = colors.rulerBg;
     ctx.fillRect(0, 0, width, RULER_HEIGHT);
 
     // Frame number labels at regular intervals
-    ctx.fillStyle = RULER_TEXT_COLOR;
+    ctx.fillStyle = colors.rulerText;
     ctx.font = '9px system-ui, sans-serif';
     ctx.textBaseline = 'bottom';
     ctx.textAlign = 'center';
@@ -438,7 +461,7 @@ export class TimelineRenderer {
       if (x < TRACK_HEADER_WIDTH || x > width) continue;
 
       // Tick mark
-      ctx.strokeStyle = RULER_TEXT_COLOR;
+      ctx.strokeStyle = colors.rulerText;
       ctx.lineWidth = 0.5;
       ctx.beginPath();
       ctx.moveTo(x, RULER_HEIGHT - 6);

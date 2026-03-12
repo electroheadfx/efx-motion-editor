@@ -28,7 +28,7 @@ export function EditorShell() {
   useFileDrop(handleDrop, handleReject);
 
   return (
-    <div class="flex flex-col w-full h-full bg-[#151515] font-primary">
+    <div class="flex flex-col w-full h-full bg-[var(--color-bg-shell)] font-primary">
       <Toolbar />
       {/* Body Area */}
       <div class="flex flex-1 min-h-0">
