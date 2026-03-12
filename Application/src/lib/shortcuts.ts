@@ -210,5 +210,10 @@ export function mountShortcuts(): () => void {
       e.preventDefault();
       canvasStore.fitToWindow();
     },
+    'KeyF': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      canvasStore.fitToWindow();
+    },
   });
 }
