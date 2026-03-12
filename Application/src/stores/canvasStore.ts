@@ -22,6 +22,41 @@ const zoomPercent = computed(() => Math.round(zoom.value * 100));
 const isAtMinZoom = computed(() => zoom.value <= ZOOM_PRESETS[0] + EPSILON);
 const isAtMaxZoom = computed(() => zoom.value >= ZOOM_PRESETS[ZOOM_PRESETS.length - 1] - EPSILON);
 
+/** The zoom level that makes the project exactly fit the container */
+const fitZoom = computed(() => {
+  const cW = containerWidth.value;
+  const cH = containerHeight.value;
+  const pW = projectStore.width.value;
+  const pH = projectStore.height.value;
+  if (cW <= 0 || cH <= 0 || pW <= 0 || pH <= 0) return 1;
+  return Math.min(cW / pW, cH / pH);
+});
+
+// --- Helpers ---
+
+/**
+ * Clamp pan so the canvas cannot be dragged fully off-screen.
+ *
+ * With transform `scale(z) translate(px, py)`, the actual pixel offset is `z * px`.
+ * The canvas rendered size is `z * pW`. The overflow is `z * pW - cW`.
+ * Maximum translate that keeps canvas visible = half the overflow in translate-space
+ * (divide by z): `(z * pW - cW) / (2 * z) = (pW - cW/z) / 2`.
+ */
+function clampPan() {
+  const z = zoom.peek();
+  const cW = containerWidth.peek();
+  const cH = containerHeight.peek();
+  const pW = projectStore.width.peek();
+  const pH = projectStore.height.peek();
+  if (cW <= 0 || cH <= 0 || pW <= 0 || pH <= 0) return;
+
+  const maxPanX = Math.max(0, (pW - cW / z) / 2);
+  const maxPanY = Math.max(0, (pH - cH / z) / 2);
+
+  panX.value = Math.max(-maxPanX, Math.min(maxPanX, panX.peek()));
+  panY.value = Math.max(-maxPanY, Math.min(maxPanY, panY.peek()));
+}
+
 // --- Store ---
 
 export const canvasStore = {
@@ -33,6 +68,7 @@ export const canvasStore = {
   zoomPercent,
   isAtMinZoom,
   isAtMaxZoom,
+  fitZoom,
 
   MIN_ZOOM,
   MAX_ZOOM,
@@ -49,11 +85,8 @@ export const canvasStore = {
       }
     }
     if (next === null) return; // Already at max
-
-    const scale = next / current;
-    panX.value = panX.value * scale;
-    panY.value = panY.value * scale;
     zoom.value = next;
+    clampPan();
   },
 
   /** Snap to next preset below current zoom (center-anchored) */
@@ -67,28 +100,23 @@ export const canvasStore = {
       }
     }
     if (next === null) return; // Already at min
-
-    const scale = next / current;
-    panX.value = panX.value * scale;
-    panY.value = panY.value * scale;
     zoom.value = next;
+    clampPan();
   },
 
-  /** Smooth zoom for wheel/pinch (cursor-anchored, no snapping) */
-  setSmoothZoom(newZoom: number, cursorX: number, cursorY: number) {
+  /** Smooth zoom for wheel/pinch — center-anchored, no cursor tracking */
+  setSmoothZoom(newZoom: number, _cursorX?: number, _cursorY?: number) {
     const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-    const oldZoom = zoom.peek();
-    const scale = clamped / oldZoom;
-
-    panX.value = panX.value * scale + cursorX * (1 - scale) / clamped;
-    panY.value = panY.value * scale + cursorY * (1 - scale) / clamped;
+    if (Math.abs(clamped - zoom.peek()) < EPSILON) return;
     zoom.value = clamped;
+    clampPan();
   },
 
-  /** Direct pan setter */
+  /** Direct pan setter (clamped to bounds) */
   setPan(x: number, y: number) {
     panX.value = x;
     panY.value = y;
+    clampPan();
   },
 
   /** Calculate and apply fit-to-window zoom, reset pan to centered */
@@ -97,21 +125,14 @@ export const canvasStore = {
     const containerH = containerHeight.peek();
     if (containerW <= 0 || containerH <= 0) return;
 
-    const aspectRatio = projectStore.width.peek() / projectStore.height.peek();
-    const natW = Math.min(containerW, 830);
-    const natH = natW / aspectRatio;
+    const projW = projectStore.width.peek();
+    const projH = projectStore.height.peek();
+    if (projW <= 0 || projH <= 0) return;
 
-    let fitScale: number;
-    if (natH > containerH) {
-      // Height-constrained: recalculate from height
-      const adjustedH = containerH;
-      const adjustedW = adjustedH * aspectRatio;
-      fitScale = Math.min(containerW / adjustedW, containerH / adjustedH, MAX_ZOOM);
-    } else {
-      fitScale = Math.min(containerW / natW, containerH / natH, MAX_ZOOM);
-    }
-
-    zoom.value = Math.max(MIN_ZOOM, Math.min(fitScale, 1.0));
+    // Scale that fits the full project resolution inside the container
+    const fitScale = Math.min(containerW / projW, containerH / projH);
+    // Clamp to valid zoom range (allow above 1.0 -- no artificial cap)
+    zoom.value = Math.max(MIN_ZOOM, Math.min(fitScale, MAX_ZOOM));
     panX.value = 0;
     panY.value = 0;
   },
