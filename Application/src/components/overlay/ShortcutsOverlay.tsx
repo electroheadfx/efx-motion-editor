@@ -73,20 +73,20 @@ export function ShortcutsOverlay() {
 
       {/* Modal */}
       <div
-        class="relative bg-[#1C1C1C] border border-[#333333] rounded-lg shadow-xl max-w-[600px] w-full mx-4 p-6"
+        class="relative bg-[var(--color-bg-toolbar)] border border-[var(--color-border-subtle)] rounded-lg shadow-xl max-w-[600px] w-full mx-4 p-6"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div class="flex items-center justify-between mb-5">
-          <h2 class="text-base font-semibold text-[#E0E0E0]">
+          <h2 class="text-base font-semibold text-[var(--color-text-heading)]">
             Keyboard Shortcuts
           </h2>
           <button
-            class="flex items-center justify-center w-7 h-7 rounded hover:bg-[#333333] transition-colors cursor-pointer"
+            class="flex items-center justify-center w-7 h-7 rounded hover:bg-[var(--color-border-subtle)] transition-colors cursor-pointer"
             onClick={() => uiStore.closeShortcutsOverlay()}
             title="Close"
           >
-            <span class="text-sm text-[#999999]">{'\u2715'}</span>
+            <span class="text-sm text-[var(--color-text-muted)]">{'\u2715'}</span>
           </button>
         </div>
 
@@ -94,7 +94,7 @@ export function ShortcutsOverlay() {
         <div class="grid grid-cols-2 gap-x-8 gap-y-5">
           {SHORTCUT_GROUPS.map((group) => (
             <div key={group.title}>
-              <h3 class="text-[11px] font-semibold text-[#888888] tracking-wider uppercase mb-2.5">
+              <h3 class="text-[11px] font-semibold text-[var(--color-text-secondary)] tracking-wider uppercase mb-2.5">
                 {group.title}
               </h3>
               <div class="flex flex-col gap-1.5">
@@ -103,10 +103,10 @@ export function ShortcutsOverlay() {
                     key={entry.keys}
                     class="flex items-center justify-between gap-3 py-1"
                   >
-                    <span class="text-sm text-[#CCCCCC]">
+                    <span class="text-sm text-[var(--color-text-button)]">
                       {entry.description}
                     </span>
-                    <kbd class="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded bg-[#2A2A2A] border border-[#444444] text-xs font-mono text-[#AAAAAA]">
+                    <kbd class="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded bg-[var(--color-bg-hover-item)] border border-[var(--color-border-kbd)] text-xs font-mono text-[var(--color-text-link)]">
                       {entry.keys}
                     </kbd>
                   </div>

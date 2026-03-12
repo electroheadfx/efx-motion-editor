@@ -127,14 +127,14 @@ function KeyPhotoCard({
 
   return (
     <div
-      class={`w-[72px] h-14 rounded-md relative shrink-0 bg-[#2A2A2A] bg-cover bg-center overflow-hidden cursor-pointer${isSelected ? ' ring-1 ring-[var(--color-accent)]' : ''}`}
+      class={`w-[72px] h-14 rounded-md relative shrink-0 bg-[var(--color-bg-hover-item)] bg-cover bg-center overflow-hidden cursor-pointer${isSelected ? ' ring-1 ring-[var(--color-accent)]' : ''}`}
       style={thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : undefined}
       onClick={() => sequenceStore.selectKeyPhoto(keyPhotoId)}
     >
       {/* Placeholder icon when no image */}
       {!thumbUrl && (
         <div class="absolute inset-0 flex items-center justify-center">
-          <span class="text-[10px] text-[#555]">?</span>
+          <span class="text-[10px] text-[var(--color-text-dim)]">?</span>
         </div>
       )}
 
@@ -202,7 +202,7 @@ export function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
   return (
     <div class="relative shrink-0">
       <button
-        class="w-5 h-5 rounded flex items-center justify-center bg-[#2A2A2A] text-[10px] text-[var(--color-text-secondary)] hover:bg-[#333] hover:text-white transition-colors"
+        class="w-5 h-5 rounded flex items-center justify-center bg-[var(--color-bg-hover-item)] text-[10px] text-[var(--color-text-secondary)] hover:bg-[var(--color-border-subtle)] hover:text-white transition-colors"
         onClick={() => setPopoverOpen(!popoverOpen)}
         title="Add key photo from imported images"
       >
@@ -213,7 +213,7 @@ export function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
       {popoverOpen && (
         <div
           ref={popRef}
-          class="absolute right-0 top-7 z-50 bg-[#1E1E1E] border border-[#333] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
+          class="absolute right-0 top-7 z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
         >
           {importedImages.length === 0 ? (
             <span class="text-[10px] text-[var(--color-text-dim)] block p-2">
@@ -224,7 +224,7 @@ export function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
               {importedImages.map((img) => (
                 <button
                   key={img.id}
-                  class="w-11 h-8 rounded bg-[#2A2A2A] bg-cover bg-center hover:ring-1 hover:ring-[var(--color-accent)] cursor-pointer"
+                  class="w-11 h-8 rounded bg-[var(--color-bg-hover-item)] bg-cover bg-center hover:ring-1 hover:ring-[var(--color-accent)] cursor-pointer"
                   style={{
                     backgroundImage: `url(${assetUrl(img.thumbnail_path)})`,
                   }}

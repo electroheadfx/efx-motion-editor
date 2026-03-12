@@ -85,7 +85,7 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
     layer.type === 'image-sequence' ? '#3B82F6'          // blue
     : layer.type === 'static-image' ? '#14B8A6'          // teal
     : layer.type === 'video' ? '#8B5CF6'                 // purple
-    : '#888888';
+    : 'var(--color-text-secondary)';
 
   // Type label
   const typeLabel =
@@ -113,19 +113,19 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
     <div
       class={`${isBase ? 'layer-base' : ''} flex items-center gap-2 rounded-md px-2.5 py-1.5 h-[36px] cursor-pointer select-none ${
         isSelected
-          ? 'bg-[#2A2A3A] border-l-2 border-[var(--color-accent)]'
+          ? 'bg-[var(--color-bg-selected)] border-l-2 border-[var(--color-accent)]'
           : isBase
-            ? 'bg-[#1E1E1E]'
-            : 'bg-[#252525] hover:bg-[#2A2A2A]'
+            ? 'bg-[var(--color-bg-input)]'
+            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-hover-item)]'
       }`}
       onClick={handleSelect}
     >
       {/* Drag handle -- hidden for base layer */}
       {!isBase ? (
         <div class="layer-drag-handle w-2 h-4 flex flex-col justify-center gap-[2px] cursor-grab shrink-0 opacity-40 hover:opacity-70">
-          <div class="w-full h-[1px] bg-[#888]" />
-          <div class="w-full h-[1px] bg-[#888]" />
-          <div class="w-full h-[1px] bg-[#888]" />
+          <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
+          <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
+          <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
         </div>
       ) : (
         <div class="w-2 shrink-0" />
@@ -133,11 +133,11 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
 
       {/* Visibility toggle */}
       <button
-        class="w-4 h-4 flex items-center justify-center shrink-0 rounded hover:bg-[#ffffff15]"
+        class="w-4 h-4 flex items-center justify-center shrink-0 rounded hover:bg-[var(--color-hover-overlay-strong)]"
         onClick={handleToggleVisibility}
         title={layer.visible ? 'Hide layer' : 'Show layer'}
       >
-        <span class="text-[10px] leading-none" style={{color: layer.visible ? '#CCCCCC' : '#555555'}}>
+        <span class="text-[10px] leading-none" style={{color: layer.visible ? 'var(--color-text-button)' : 'var(--color-text-dim)'}}>
           {layer.visible ? '\u25CF' : '\u25CB'}
         </span>
       </button>
@@ -152,7 +152,7 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
       <div class="flex flex-col gap-0 flex-1 min-w-0">
         <span
           class={`text-[11px] truncate leading-tight ${
-            isBase ? 'text-[#E0E0E0] font-medium' : 'text-[#AAAAAA]'
+            isBase ? 'text-[var(--color-text-heading)] font-medium' : 'text-[var(--color-text-link)]'
           }`}
         >
           {layer.name}
@@ -166,7 +166,7 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
       {/* Delete button -- only for non-base layers */}
       {!isBase ? (
         <button
-          class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#ffffff15] text-[var(--color-text-dim)] hover:text-[#FF6666] shrink-0"
+          class="w-5 h-5 flex items-center justify-center rounded hover:bg-[var(--color-hover-overlay-strong)] text-[var(--color-text-dim)] hover:text-[var(--color-error-text)] shrink-0"
           onClick={handleDelete}
           title="Delete layer"
         >
