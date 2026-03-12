@@ -61,3 +61,13 @@ export async function imageGetInfo(path: string): Promise<Result<ImageInfo>> {
 export async function importImages(paths: string[], projectDir: string): Promise<Result<ImportResult>> {
   return safeInvoke<ImportResult>('import_images', { paths, projectDir });
 }
+
+// --- Config commands ---
+
+export async function configGetTheme(): Promise<Result<string | null>> {
+  return safeInvoke<string | null>('config_get_theme');
+}
+
+export async function configSetTheme(theme: string): Promise<Result<null>> {
+  return safeInvoke<null>('config_set_theme', { theme });
+}

@@ -1,4 +1,5 @@
 import { LazyStore } from '@tauri-apps/plugin-store';
+import { configGetTheme, configSetTheme } from './ipc';
 
 /** Singleton app config store -- persists as JSON in Tauri app data dir */
 const store = new LazyStore('app-config.json');
@@ -65,12 +66,13 @@ export async function setWindowSize(width: number, height: number): Promise<void
   await store.set('windowHeight', height);
 }
 
-// --- Theme ---
+// --- Theme (persisted to ~/.config/efx-motion/builder-config.yaml via Rust) ---
 
 export async function getTheme(): Promise<string | null> {
-  return (await store.get<string>('theme')) ?? null;
+  const result = await configGetTheme();
+  return result.ok ? result.data : null;
 }
 
 export async function setThemePreference(theme: string): Promise<void> {
-  await store.set('theme', theme);
+  await configSetTheme(theme);
 }
