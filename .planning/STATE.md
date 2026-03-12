@@ -71,9 +71,10 @@ No active blockers.
 | 10 | Move blend mode + opacity back to bottom bar for content layers | 2026-03-11 | 3f17c34 |
 | 11 | Add Remove/Locate actions for unavailable recent projects | 2026-03-11 | 37c4f77 |
 | 12 | Save theme preference to ~/.config/efx-motion/builder-config.yaml | 2026-03-12 | a8e0cf3 |
+| 13 | Move zoom controls from toolbar to bottom canvas bar, add F key shortcut | 2026-03-12 | 58b3593 |
 
 ## Session Continuity
 
-Last session: 2026-03-12T17:35:27.087Z
-Stopped at: Completed 09-02-PLAN.md
+Last session: 2026-03-12T17:54:07Z
+Stopped at: Completed quick-2 (move zoom controls to bottom bar)
 Resume file: None
