@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-03-13T17:01:32.498Z"
-last_activity: "2026-03-13 - Completed 11-02: canvas coordinate mapping, handle geometry, hit testing"
+stopped_at: Completed 11-03-PLAN.md
+last_updated: "2026-03-13T17:14:03.471Z"
+last_activity: "2026-03-13 - Completed 11-03: TransformOverlay with drag state machine, revised pan model"
 progress:
   total_phases: 10
   completed_phases: 3
   total_plans: 15
-  completed_plans: 13
-  percent: 87
+  completed_plans: 14
+  percent: 93
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 Milestone: v0.2.0
 Phase: 11 (live-canvas-transform)
-Plan: 3 of 4
+Plan: 4 of 4
 Status: In Progress
-Last activity: 2026-03-13 - Completed 11-02: canvas coordinate mapping, handle geometry, hit testing
+Last activity: 2026-03-13 - Completed 11-03: TransformOverlay with drag state machine, revised pan model
 
-Progress: [█████████░] 87%
+Progress: [█████████░] 93%
 
 ## Accumulated Context
 
@@ -52,6 +52,9 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 11-01]: Rust serde uses default_scale() -> 1.0 for v4 backward compat
 - [Phase 11-02]: All canvas utility functions are pure (no signal reads) -- params in, results out
 - [Phase 11-02]: Bounding-box-only hit testing (no pixel sampling) for initial implementation
+- [Phase 11-03]: TransformOverlay inside CSS-transformed div (project-space coordinates, not client-space)
+- [Phase 11-03]: Pan model: left-click selects/transforms, middle-click and Space+drag pan only
+- [Phase 11-03]: Source dimensions from imageStore metadata rather than renderer image cache
 
 ### Pending Todos
 
@@ -85,6 +88,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-13T17:01:32.496Z
-Stopped at: Completed 11-02-PLAN.md
+Last session: 2026-03-13T17:14:03.471Z
+Stopped at: Completed 11-03-PLAN.md
 Resume file: None
