@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Phase 11 context gathered
-last_updated: "2026-03-13T16:22:41.790Z"
-last_activity: "2026-03-13 - Completed quick task 6: Add blend mode to FX blur on timeline"
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-03-13T16:55:42.393Z"
+last_activity: "2026-03-13 - Completed 11-01: split scale into scaleX/scaleY"
 progress:
   total_phases: 10
   completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
-  percent: 89
+  total_plans: 15
+  completed_plans: 12
+  percent: 80
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 10 -- FX blur effect rendering foundation shipped
+**Current focus:** v0.2.0 Phase 11 -- Live canvas transform with non-uniform scaling
 
 ## Current Position
 
 Milestone: v0.2.0
-Phase: 10 (fx-blur-effect)
-Plan: 1 of 2
+Phase: 11 (live-canvas-transform)
+Plan: 2 of 4
 Status: In Progress
-Last activity: 2026-03-13 - Completed quick task 6: Add blend mode to FX blur on timeline
+Last activity: 2026-03-13 - Completed 11-01: split scale into scaleX/scaleY
 
-Progress: [████████░░] 89%
+Progress: [████████░░] 80%
 
 ## Accumulated Context
 
@@ -48,6 +48,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 09-02]: Toolbar percent display is read-only; disabled buttons use opacity-40 CSS rather than HTML disabled
 - [Phase 10]: stackblur-canvas ts-expect-error import due to package.json exports missing types entry
 - [Phase 10]: Quadratic normalizedToPixelRadius mapping for perceptually linear blur; generator blur uses RGB-only StackBlur to avoid alpha halos
+- [Phase 11-01]: v4-to-v5 migration uses nullish coalescing: scaleX = scale_x ?? scale ?? 1
+- [Phase 11-01]: Rust serde uses default_scale() -> 1.0 for v4 backward compat
 
 ### Pending Todos
 
@@ -81,6 +83,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-13T16:22:41.787Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-live-canvas-transform/11-CONTEXT.md
+Last session: 2026-03-13T16:55:42.391Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: None
