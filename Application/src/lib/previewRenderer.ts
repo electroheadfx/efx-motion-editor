@@ -6,6 +6,8 @@ import {assetUrl} from './ipc';
 import {drawGrain, drawParticles, drawLines, drawDots, drawVignette} from './fxGenerators';
 import {applyColorGrade} from './fxColorGrade';
 import type {ColorGradeParams} from './fxColorGrade';
+import {applyFastBlur, applyHQBlur} from './fxBlur';
+import {blurStore} from '../stores/blurStore';
 
 /**
  * Map our BlendMode enum to Canvas 2D globalCompositeOperation values.
@@ -41,6 +43,7 @@ export class PreviewRenderer {
   private videoElements: Map<string, HTMLVideoElement>; // layerId -> video element
   private videoReadyHandlers: Map<string, () => void>; // layerId -> shared loadeddata/seeked handler
   private offscreenCanvas: HTMLCanvasElement | null = null; // reusable offscreen canvas for video rasterization
+  private blurOffscreen: HTMLCanvasElement | null = null; // reusable offscreen canvas for per-layer/generator blur
 
   /** Callback invoked after an image finishes loading (triggers re-render) */
   onImageLoaded: (() => void) | null = null;
@@ -134,14 +137,72 @@ export class PreviewRenderer {
       if (!layer.visible) continue;
 
       if (isGeneratorLayer(layer)) {
-        this.drawGeneratorLayer(layer, logicalW, logicalH, frame);
+        const blurRadius = layer.blur ?? 0;
+        if (blurRadius > 0 && !blurStore.isBypassed()) {
+          // Generator with blur: render to offscreen, blur RGB-only, composite
+          const off = this.getBlurOffscreen(Math.round(logicalW), Math.round(logicalH));
+          if (off) {
+            off.ctx.clearRect(0, 0, off.canvas.width, off.canvas.height);
+            off.ctx.save();
+            // Draw generator onto offscreen at logical dimensions
+            switch (layer.source.type) {
+              case 'generator-grain':
+                drawGrain(off.ctx, logicalW, logicalH, layer.source, frame);
+                break;
+              case 'generator-particles':
+                drawParticles(off.ctx, logicalW, logicalH, layer.source, frame);
+                break;
+              case 'generator-lines':
+                drawLines(off.ctx, logicalW, logicalH, layer.source, frame);
+                break;
+              case 'generator-dots':
+                drawDots(off.ctx, logicalW, logicalH, layer.source, frame);
+                break;
+              case 'generator-vignette':
+                drawVignette(off.ctx, logicalW, logicalH, layer.source);
+                break;
+            }
+            off.ctx.restore();
+            // Apply RGB-only blur (preserveAlpha=true to avoid alpha halos)
+            this.applyBlurToCanvas(off.canvas, off.ctx, blurRadius, off.canvas.width, off.canvas.height, true);
+            // Composite blurred offscreen onto main canvas
+            ctx.save();
+            ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+            ctx.globalAlpha = layer.opacity;
+            ctx.drawImage(off.canvas, 0, 0, logicalW, logicalH);
+            ctx.restore();
+          }
+        } else {
+          this.drawGeneratorLayer(layer, logicalW, logicalH, frame);
+        }
       } else if (isAdjustmentLayer(layer)) {
         this.drawAdjustmentLayer(layer, logicalW, logicalH);
       } else {
         // Content layer: resolve source inline
         const source = this.resolveLayerSource(layer, frame, frames, fps);
         if (source !== null) {
-          this.drawLayer(source, layer, logicalW, logicalH);
+          const blurRadius = layer.blur ?? 0;
+          if (blurRadius > 0 && !blurStore.isBypassed()) {
+            // Content layer with blur: render to offscreen, blur, composite
+            const off = this.getBlurOffscreen(Math.round(logicalW), Math.round(logicalH));
+            if (off) {
+              off.ctx.clearRect(0, 0, off.canvas.width, off.canvas.height);
+              off.ctx.save();
+              // Draw content onto offscreen using same aspect-ratio fitting as drawLayer
+              this.drawLayerToOffscreen(source, layer, off.ctx, logicalW, logicalH);
+              off.ctx.restore();
+              // Apply blur (full RGBA -- content layers have opaque pixels)
+              this.applyBlurToCanvas(off.canvas, off.ctx, blurRadius, off.canvas.width, off.canvas.height, false);
+              // Composite blurred offscreen onto main canvas
+              ctx.save();
+              ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+              ctx.globalAlpha = layer.opacity;
+              ctx.drawImage(off.canvas, 0, 0, logicalW, logicalH);
+              ctx.restore();
+            }
+          } else {
+            this.drawLayer(source, layer, logicalW, logicalH);
+          }
         } else if (layer.source.type === 'video') {
           // Draw loading placeholder for video layers not ready yet
           ctx.save();
@@ -349,29 +410,172 @@ export class PreviewRenderer {
     _logicalW: number,
     _logicalH: number,
   ): void {
-    if (layer.source.type !== 'adjustment-color-grade') return;
-
     const ctx = this.ctx;
-    ctx.save();
-    // Reset transform to identity so we can work in physical pixel coords for ImageData
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // Scale color grade parameters by layer opacity for partial application
-    const source = layer.source;
-    const opacity = layer.opacity;
-    const scaledParams: ColorGradeParams = {
-      brightness: source.brightness * opacity,
-      contrast: source.contrast * opacity,
-      saturation: source.saturation * opacity,
-      hue: source.hue * opacity,
-      fade: source.fade * opacity,
-      tintColor: source.tintColor,
-      fadeBlend: source.fadeBlend,
-    };
+    switch (layer.source.type) {
+      case 'adjustment-color-grade': {
+        ctx.save();
+        // Reset transform to identity so we can work in physical pixel coords for ImageData
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    applyColorGrade(ctx, this.canvas.width, this.canvas.height, scaledParams);
+        // Scale color grade parameters by layer opacity for partial application
+        const source = layer.source;
+        const opacity = layer.opacity;
+        const scaledParams: ColorGradeParams = {
+          brightness: source.brightness * opacity,
+          contrast: source.contrast * opacity,
+          saturation: source.saturation * opacity,
+          hue: source.hue * opacity,
+          fade: source.fade * opacity,
+          tintColor: source.tintColor,
+          fadeBlend: source.fadeBlend,
+        };
 
-    ctx.restore();
+        applyColorGrade(ctx, this.canvas.width, this.canvas.height, scaledParams);
+        ctx.restore();
+        break;
+      }
+
+      case 'adjustment-blur': {
+        if (blurStore.isBypassed()) break;
+        const blurSource = layer.source as {type: 'adjustment-blur'; radius: number};
+        if (blurSource.radius <= 0) break;
+
+        ctx.save();
+        // Reset transform to physical pixel coords (same as color-grade)
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        // Scale radius by layer opacity for partial blur application
+        const effectiveRadius = blurSource.radius * layer.opacity;
+        if (blurStore.isHQ()) {
+          applyHQBlur(this.canvas, effectiveRadius, this.canvas.width, this.canvas.height, false);
+        } else {
+          applyFastBlur(this.canvas, ctx, effectiveRadius, this.canvas.width, this.canvas.height);
+        }
+        ctx.restore();
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Get or create the blur offscreen canvas at the given dimensions.
+   */
+  private getBlurOffscreen(w: number, h: number): {canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D} | null {
+    if (!this.blurOffscreen) {
+      this.blurOffscreen = document.createElement('canvas');
+    }
+    if (this.blurOffscreen.width !== w || this.blurOffscreen.height !== h) {
+      this.blurOffscreen.width = w;
+      this.blurOffscreen.height = h;
+    }
+    const ctx = this.blurOffscreen.getContext('2d');
+    if (!ctx) return null;
+    return {canvas: this.blurOffscreen, ctx};
+  }
+
+  /**
+   * Apply blur to a canvas using the appropriate algorithm (fast or HQ).
+   * Respects blurStore bypass and HQ toggles.
+   */
+  private applyBlurToCanvas(
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+    radius: number,
+    w: number,
+    h: number,
+    preserveAlpha: boolean,
+  ): void {
+    if (blurStore.isBypassed() || radius <= 0) return;
+    if (blurStore.isHQ()) {
+      applyHQBlur(canvas, radius, w, h, preserveAlpha);
+    } else {
+      applyFastBlur(canvas, ctx, radius, w, h);
+    }
+  }
+
+  /**
+   * Draw a content layer onto an offscreen canvas context for blur processing.
+   * Same aspect-ratio fitting and transform logic as drawLayer, but without
+   * blend mode or opacity (those are applied when compositing the blurred result).
+   */
+  private drawLayerToOffscreen(
+    source: CanvasImageSource,
+    layer: Layer,
+    offCtx: CanvasRenderingContext2D,
+    canvasW: number,
+    canvasH: number,
+  ): void {
+    // Rasterize video if needed (same as drawLayer)
+    let drawSource: CanvasImageSource = source;
+    if (source instanceof HTMLVideoElement) {
+      const vw = source.videoWidth;
+      const vh = source.videoHeight;
+      if (vw > 0 && vh > 0) {
+        if (!this.offscreenCanvas) {
+          this.offscreenCanvas = document.createElement('canvas');
+        }
+        if (this.offscreenCanvas.width !== vw) this.offscreenCanvas.width = vw;
+        if (this.offscreenCanvas.height !== vh) this.offscreenCanvas.height = vh;
+        const vidCtx = this.offscreenCanvas.getContext('2d');
+        if (vidCtx) {
+          vidCtx.clearRect(0, 0, vw, vh);
+          vidCtx.drawImage(source, 0, 0);
+          drawSource = this.offscreenCanvas;
+        }
+      }
+    }
+
+    const srcW = this.getSourceWidth(source);
+    const srcH = this.getSourceHeight(source);
+    if (srcW === 0 || srcH === 0) return;
+
+    // Apply transform: translate to center + offset, rotate, scale
+    offCtx.translate(
+      layer.transform.x + canvasW / 2,
+      layer.transform.y + canvasH / 2,
+    );
+    offCtx.rotate((layer.transform.rotation * Math.PI) / 180);
+    offCtx.scale(layer.transform.scale, layer.transform.scale);
+
+    // Calculate draw dimensions to fit canvas while maintaining aspect ratio
+    const aspect = srcW / srcH;
+    const canvasAspect = canvasW / canvasH;
+    let drawW: number;
+    let drawH: number;
+    if (aspect > canvasAspect) {
+      drawW = canvasW;
+      drawH = canvasW / aspect;
+    } else {
+      drawH = canvasH;
+      drawW = canvasH * aspect;
+    }
+
+    const {cropTop, cropRight, cropBottom, cropLeft} = layer.transform;
+    const hasCrop =
+      cropTop !== 0 || cropRight !== 0 || cropBottom !== 0 || cropLeft !== 0;
+
+    if (hasCrop) {
+      const sx = cropLeft * srcW;
+      const sy = cropTop * srcH;
+      const sw = srcW * (1 - cropLeft - cropRight);
+      const sh = srcH * (1 - cropTop - cropBottom);
+      if (sw > 0 && sh > 0) {
+        const croppedAspect = sw / sh;
+        if (croppedAspect > canvasAspect) {
+          drawW = canvasW;
+          drawH = canvasW / croppedAspect;
+        } else {
+          drawH = canvasH;
+          drawW = canvasH * croppedAspect;
+        }
+        offCtx.drawImage(drawSource, sx, sy, sw, sh, -drawW / 2, -drawH / 2, drawW, drawH);
+      }
+    } else {
+      offCtx.drawImage(drawSource, -drawW / 2, -drawH / 2, drawW, drawH);
+    }
   }
 
   /**
@@ -527,6 +731,7 @@ export class PreviewRenderer {
     this.imageCache.clear();
     this.loadingImages.clear();
     this.offscreenCanvas = null;
+    this.blurOffscreen = null;
     this.onImageLoaded = null;
   }
 }
