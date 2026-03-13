@@ -40,10 +40,11 @@ export function Preview() {
 
       renderer.renderFrame(seq.layers, localFrame, seqFrames, seq.fps);
 
-      // Composite FX sequences on top of content (without clearing the canvas)
-      for (const fxSeq of allSeqs) {
-        if (fxSeq.kind !== 'fx') continue;
-        if (fxSeq.visible === false) continue;
+      // Composite FX sequences: reverse order so top-of-timeline renders last
+      // (higher FX layers affect/blur everything beneath them)
+      const fxSeqs = allSeqs.filter(s => s.kind === 'fx' && s.visible !== false);
+      for (let i = fxSeqs.length - 1; i >= 0; i--) {
+        const fxSeq = fxSeqs[i];
         if (fxSeq.inFrame != null && globalFrame < fxSeq.inFrame) continue;
         if (fxSeq.outFrame != null && globalFrame >= fxSeq.outFrame) continue;
         const fxLayers = fxSeq.layers.filter((l) => l.visible);
@@ -95,10 +96,11 @@ export function Preview() {
 
       renderer.renderFrame(seq.layers, localFrame, seqFrames, seq.fps);
 
-      // Composite FX sequences on top of content (without clearing the canvas)
-      for (const fxSeq of allSeqs) {
-        if (fxSeq.kind !== 'fx') continue;
-        if (fxSeq.visible === false) continue;
+      // Composite FX sequences: reverse order so top-of-timeline renders last
+      // (higher FX layers affect/blur everything beneath them)
+      const fxSeqs = allSeqs.filter(s => s.kind === 'fx' && s.visible !== false);
+      for (let i = fxSeqs.length - 1; i >= 0; i--) {
+        const fxSeq = fxSeqs[i];
         if (fxSeq.inFrame != null && globalFrame < fxSeq.inFrame) continue;
         if (fxSeq.outFrame != null && globalFrame >= fxSeq.outFrame) continue;
         const fxLayers = fxSeq.layers.filter((l) => l.visible);
