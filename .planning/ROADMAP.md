@@ -82,11 +82,12 @@ Plans:
   2. During playback preview, blur uses fast downscale-upscale algorithm for real-time performance
   3. During rendering/export, blur switches to StackBlur algorithm for higher quality output
   4. User can adjust blur intensity/radius and see the preview update in real-time
-**Plans**: 3 plans
+**Plans**: 4 plans
 Plans:
-- [ ] 10-01-PLAN.md — Types, blur algorithms (fast + HQ), blurStore, PreviewRenderer integration at all 3 levels
-- [ ] 10-02-PLAN.md — AddFxMenu entry, PropertiesPanel blur sections, Toolbar toggles, keyboard shortcuts
-- [ ] 10-03-PLAN.md — [gap closure] Fix panel stacking, blur persistence, fast blur quality, HQ/bypass reactivity
+- [x] 10-01-PLAN.md — Types, blur algorithms (fast + HQ), blurStore, PreviewRenderer integration at all 3 levels
+- [x] 10-02-PLAN.md — AddFxMenu entry, PropertiesPanel blur sections, Toolbar toggles, keyboard shortcuts
+- [x] 10-03-PLAN.md — [gap closure] Fix panel stacking, blur persistence, fast blur quality, HQ/bypass reactivity
+- [ ] 10-04-PLAN.md — [gap closure] Fix Rust serde persistence for blur/radius, fix tainted canvas for HQ blur
 
 ### Phase 11: Live Canvas Transform
 **Goal**: Users can manipulate layer transforms directly on the canvas preview window (move, scale, rotate) with handles, in addition to the existing parameter panel controls
@@ -177,7 +178,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 7. Cinematic FX Effects | v0.1.0 | 10/10 | Complete | 2026-03-10 |
 | 8. UI Theme System | 3/3 | Complete   | 2026-03-12 | - |
 | 9. Canvas Zoom | v0.2.0 | 4/4 | Complete | 2026-03-12 |
-| 10. FX Blur Effect | 1/3 | In Progress|  | - |
+| 10. FX Blur Effect | 3/4 | In Progress|  | - |
 | 11. Live Canvas Transform | v0.2.0 | 0/0 | Planned | - |
 | 12. Layer Keyframe Animation | v0.2.0 | 0/0 | Planned | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
