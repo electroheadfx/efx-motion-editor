@@ -15,6 +15,7 @@ const panX = signal(0);
 const panY = signal(0);
 const containerWidth = signal(0);
 const containerHeight = signal(0);
+const fitLocked = signal(false);
 
 // --- Computed ---
 
@@ -65,6 +66,7 @@ export const canvasStore = {
   panY,
   containerWidth,
   containerHeight,
+  fitLocked,
   zoomPercent,
   isAtMinZoom,
   isAtMaxZoom,
@@ -76,6 +78,7 @@ export const canvasStore = {
 
   /** Snap to next preset above current zoom (center-anchored) */
   zoomIn() {
+    fitLocked.value = false;
     const current = zoom.value;
     let next: number | null = null;
     for (const preset of ZOOM_PRESETS) {
@@ -91,6 +94,7 @@ export const canvasStore = {
 
   /** Snap to next preset below current zoom (center-anchored) */
   zoomOut() {
+    fitLocked.value = false;
     const current = zoom.value;
     let next: number | null = null;
     for (let i = ZOOM_PRESETS.length - 1; i >= 0; i--) {
@@ -106,6 +110,7 @@ export const canvasStore = {
 
   /** Smooth zoom for wheel/pinch — center-anchored, no cursor tracking */
   setSmoothZoom(newZoom: number, _cursorX?: number, _cursorY?: number) {
+    fitLocked.value = false;
     const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
     if (Math.abs(clamped - zoom.peek()) < EPSILON) return;
     zoom.value = clamped;
@@ -114,6 +119,7 @@ export const canvasStore = {
 
   /** Direct pan setter (clamped to bounds) */
   setPan(x: number, y: number) {
+    fitLocked.value = false;
     panX.value = x;
     panY.value = y;
     clampPan();
@@ -135,6 +141,17 @@ export const canvasStore = {
     zoom.value = Math.max(MIN_ZOOM, Math.min(fitScale, MAX_ZOOM));
     panX.value = 0;
     panY.value = 0;
+    fitLocked.value = true;
+  },
+
+  /** Toggle fit lock: when turning ON, also snap to fit immediately */
+  toggleFitLock() {
+    if (fitLocked.value) {
+      fitLocked.value = false;
+    } else {
+      this.fitToWindow();
+      // fitToWindow already sets fitLocked = true
+    }
   },
 
   /** Update container dimensions (called by ResizeObserver in CanvasArea) */
