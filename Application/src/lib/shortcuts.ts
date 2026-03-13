@@ -82,6 +82,7 @@ function handleDelete(): void {
   const selectedLayer = uiStore.selectedLayerId.value;
   if (selectedLayer) {
     layerStore.remove(selectedLayer);
+    layerStore.setSelected(null);
     uiStore.selectLayer(null);
     return;
   }
@@ -116,12 +117,64 @@ export function mountShortcuts(): () => void {
     'ArrowLeft': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      playbackEngine.stepBackward();
+      const selectedId = layerStore.selectedLayerId.peek();
+      if (selectedId) {
+        const allLayers = layerStore.layers.peek();
+        const layer = allLayers.find(l => l.id === selectedId);
+        if (layer) {
+          const step = e.shiftKey ? 10 : 1;
+          layerStore.updateLayer(selectedId, {
+            transform: {...layer.transform, x: layer.transform.x - step},
+          });
+        }
+      } else {
+        playbackEngine.stepBackward();
+      }
     },
     'ArrowRight': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      playbackEngine.stepForward();
+      const selectedId = layerStore.selectedLayerId.peek();
+      if (selectedId) {
+        const allLayers = layerStore.layers.peek();
+        const layer = allLayers.find(l => l.id === selectedId);
+        if (layer) {
+          const step = e.shiftKey ? 10 : 1;
+          layerStore.updateLayer(selectedId, {
+            transform: {...layer.transform, x: layer.transform.x + step},
+          });
+        }
+      } else {
+        playbackEngine.stepForward();
+      }
+    },
+    'ArrowUp': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      const selectedId = layerStore.selectedLayerId.peek();
+      if (!selectedId) return;
+      const allLayers = layerStore.layers.peek();
+      const layer = allLayers.find(l => l.id === selectedId);
+      if (layer) {
+        const step = e.shiftKey ? 10 : 1;
+        layerStore.updateLayer(selectedId, {
+          transform: {...layer.transform, y: layer.transform.y - step},
+        });
+      }
+    },
+    'ArrowDown': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      const selectedId = layerStore.selectedLayerId.peek();
+      if (!selectedId) return;
+      const allLayers = layerStore.layers.peek();
+      const layer = allLayers.find(l => l.id === selectedId);
+      if (layer) {
+        const step = e.shiftKey ? 10 : 1;
+        layerStore.updateLayer(selectedId, {
+          transform: {...layer.transform, y: layer.transform.y + step},
+        });
+      }
     },
 
     // JKL Scrub (KEY-03)
@@ -227,6 +280,14 @@ export function mountShortcuts(): () => void {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       blurStore.toggleBypass();
+    },
+
+    // Transform: Escape deselect (XFORM-09)
+    'Escape': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      layerStore.setSelected(null);
+      uiStore.selectLayer(null);
     },
   });
 }

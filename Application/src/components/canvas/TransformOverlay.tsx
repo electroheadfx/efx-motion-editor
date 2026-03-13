@@ -3,6 +3,7 @@ import type {RefObject} from 'preact';
 import type {Layer, LayerTransform} from '../../types/layer';
 import {isFxLayer} from '../../types/layer';
 import {layerStore} from '../../stores/layerStore';
+import {uiStore} from '../../stores/uiStore';
 import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
 import {timelineStore} from '../../stores/timelineStore';
@@ -192,6 +193,7 @@ export function TransformOverlay({
 
     if (hitLayerId) {
       layerStore.setSelected(hitLayerId);
+      uiStore.selectLayer(hitLayerId);
       const hitLayer = currentLayers.find((l) => l.id === hitLayerId);
       if (hitLayer) {
         e.preventDefault();
@@ -213,6 +215,7 @@ export function TransformOverlay({
 
     // 3. Nothing hit -> deselect
     layerStore.setSelected(null);
+    uiStore.selectLayer(null);
   }
 
   function handlePointerMove(e: PointerEvent) {
