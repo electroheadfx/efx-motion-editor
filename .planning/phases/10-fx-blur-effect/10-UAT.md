@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: complete
 phase: 10-fx-blur-effect
-source: [10-01-SUMMARY.md, 10-02 commits (7152d74, f18bf99, 9899e93)]
-started: 2026-03-13T12:00:00Z
-updated: 2026-03-13T12:10:00Z
+source: [10-01-SUMMARY.md, 10-02 commits (7152d74, f18bf99, 9899e93), 10-03 fixes (526d429, 4f6f07d)]
+started: 2026-03-13T14:00:00Z
+updated: 2026-03-13T14:15:00Z
 ---
 
 ## Current Test
@@ -13,36 +13,34 @@ updated: 2026-03-13T12:10:00Z
 ## Tests
 
 ### 1. Add Blur FX from Menu
-expected: Click "+ FX" in the timeline. A "Blur" entry appears under the ADJUSTMENTS section. Clicking it adds a new blur adjustment layer to the layer list.
-result: issue
-reported: "works but when on Blur layer and selecting Sequence 1 or another layer, it adds a new bottom bar with opacity — multiple stacked property bars appear instead of showing only the selected layer's panel"
-severity: major
+expected: Click "+ FX" in the timeline. A "Blur" entry appears under ADJUSTMENTS. Clicking it adds a blur adjustment layer. Selecting a different layer or sequence shows only that item's properties panel — no stacked panels.
+result: pass
 
-### 2. Standalone Blur Adjustment — Radius Slider
-expected: Select the blur adjustment layer. In the bottom PropertiesPanel, a radius slider appears. Dragging it from 0 toward ~0.5 progressively blurs the entire canvas preview.
+### 2. Blur Radius Slider and Persistence
+expected: Select the blur adjustment layer. A radius slider appears in PropertiesPanel. Dragging it blurs the canvas preview. Close and reopen the project — the blur layer and its radius setting are preserved.
 result: issue
-reported: "works the first time I add, but at blur 1.0 quality is very bad. When I quit the project and re-select the blur layer, blur settings are missing"
+reported: "I set the blur layer to 1.0, I save, quit then re-open the project: the blur layer is to 0.3 instead 1.0"
 severity: major
 
 ### 3. Per-Layer Blur on Content Layer
-expected: Select a content layer (image/video). In PropertiesPanel, a BLUR section with a Radius slider appears after CROP. Adjusting it blurs only that specific layer while others remain sharp.
-result: pass
+expected: Select a content layer (image/video). In PropertiesPanel, a BLUR section with Radius slider appears. Adjusting it blurs only that specific layer while others remain sharp.
+result: issue
+reported: "in sidebar LAYERS I select a content layer, set a blur: it works, but if I save, close an re-open the project the blur setting is not saved"
+severity: major
 
 ### 4. Per-Generator Blur on FX Layer
 expected: Add a generator FX (e.g., Film Grain). Select it. A BLUR section with Radius slider appears after the generator controls. Adjusting it blurs the grain. No dark halos around grain particles.
 result: pass
 
 ### 5. HQ Preview Toggle
-expected: An "HQ" button appears in the toolbar. Clicking it turns accent-colored and switches blur to higher-quality rendering (may look slightly smoother). Pressing B key toggles HQ on/off.
+expected: An "HQ" button appears in the toolbar. Clicking it turns accent-colored and blur visibly switches to smoother, higher-quality rendering. Pressing B key toggles HQ on/off. Canvas re-renders on toggle.
 result: issue
-reported: "can't see any quality difference between fast and HQ blur modes"
-severity: minor
+reported: "HQ no work, it make disapear the blur, then when I desactivate HQ the image is strangely zoomed and cropped, I need to fit make HQ and remove HQ. its very weird. The High quality blur no work at all"
+severity: blocker
 
 ### 6. Bypass Blur Toggle
-expected: A "Blur Off" button appears in the toolbar. Clicking it turns orange and ALL blur effects disappear across all layers. Pressing Shift+B key toggles bypass on/off.
-result: issue
-reported: "doesn't work"
-severity: major
+expected: A "Blur Off" button appears in the toolbar. Clicking it turns orange and ALL blur effects disappear across all layers. Pressing Shift+B toggles bypass on/off. Canvas re-renders immediately.
+result: pass
 
 ### 7. Shortcuts Overlay Entries
 expected: Press ? to open the shortcuts overlay. A "Blur" section appears with "B — Toggle HQ blur preview" and "Shift+B — Toggle bypass all blur" entries.
@@ -55,69 +53,37 @@ result: pass
 ## Summary
 
 total: 8
-passed: 4
-issues: 4
+passed: 5
+issues: 3
 pending: 0
 skipped: 0
 
 ## Gaps
 
-- truth: "Adding blur FX from menu works; selecting a different layer should show only that layer's properties panel"
+- truth: "Blur adjustment layer radius persists correctly after save/reopen (1.0 saved → 1.0 restored)"
   status: failed
-  reason: "User reported: works but when on Blur layer and selecting Sequence 1 or another layer, it adds a new bottom bar with opacity — multiple stacked property bars appear instead of showing only the selected layer's panel"
-  severity: major
-  test: 1
-  root_cause: "SequenceList.tsx handleSelect (line 111-116) does not call layerStore.setSelected(null) or uiStore.selectLayer(null) when user clicks a sequence in sidebar, unlike timeline click handlers which do clear selection"
-  artifacts:
-    - path: "Application/src/components/sequence/SequenceList.tsx"
-      issue: "handleSelect missing layerStore.setSelected(null) and uiStore.selectLayer(null)"
-  missing:
-    - "Add layerStore.setSelected(null) and uiStore.selectLayer(null) to handleSelect in SequenceList.tsx"
-  debug_session: ".planning/debug/properties-panel-stacking.md"
-- truth: "Blur adjustment layer radius persists after closing and reopening project; quality at max radius should be acceptable"
-  status: failed
-  reason: "User reported: works the first time I add, but at blur 1.0 quality is very bad. When I quit the project and re-select the blur layer, blur settings are missing"
+  reason: "User reported: I set the blur layer to 1.0, I save, quit then re-open the project: the blur layer is to 0.3 instead 1.0"
   severity: major
   test: 2
-  root_cause: "adjustment-blur missing from project serialization (buildMceProject), deserialization (hydrateFromMce), and MceLayerSource type in project.ts. Quality at 1.0 is inherent to fast blur (4x halving reduces to ~120x68 intermediate)"
-  artifacts:
-    - path: "Application/src/stores/projectStore.ts"
-      issue: "Missing serialization block for adjustment-blur in buildMceProject (~line 125) and deserialization in hydrateFromMce (~line 197)"
-    - path: "Application/src/types/project.ts"
-      issue: "MceLayerSource interface missing radius?: number field"
-    - path: "Application/src/lib/fxBlur.ts"
-      issue: "applyFastBlur 4 passes at radius=1.0 reduces to ~120x68 pixels — too small for smooth upscale"
-  missing:
-    - "Add radius?: number to MceLayerSource"
-    - "Add serialization block for adjustment-blur in buildMceProject"
-    - "Add deserialization case for adjustment-blur in hydrateFromMce"
-    - "Cap fast blur passes or use hybrid approach for high radii"
-  debug_session: ".planning/debug/blur-settings-persistence-and-quality.md"
-- truth: "HQ toggle should produce visibly smoother blur compared to fast mode"
+  root_cause: ""
+  artifacts: []
+  missing: []
+  debug_session: ""
+- truth: "Per-layer blur on content layers persists after save/reopen"
   status: failed
-  reason: "User reported: can't see any quality difference between fast and HQ blur modes"
-  severity: minor
-  test: 5
-  root_cause: "Preview.tsx render effect does not subscribe to blurStore.hqPreview.value — toggling HQ changes the signal but never triggers a canvas re-render. blurStore.isHQ() uses .peek() which is non-reactive"
-  artifacts:
-    - path: "Application/src/components/Preview.tsx"
-      issue: "Render effect (~line 70) missing blurStore.hqPreview.value subscription"
-    - path: "Application/src/stores/blurStore.ts"
-      issue: "isHQ() uses .peek() — non-reactive read, correct for render loop but needs reactive trigger elsewhere"
-  missing:
-    - "Add blurStore.hqPreview.value read to Preview.tsx render effect to create reactive subscription"
-  debug_session: ".planning/debug/blur-toolbar-controls.md"
-- truth: "Bypass Blur toggle in toolbar and Shift+B shortcut should disable all blur effects"
-  status: failed
-  reason: "User reported: doesn't work"
+  reason: "User reported: in sidebar LAYERS I select a content layer, set a blur: it works, but if I save, close an re-open the project the blur setting is not saved"
   severity: major
-  test: 6
-  root_cause: "Same as test 5 — Preview.tsx render effect does not subscribe to blurStore.bypassBlur.value. Toggling bypass changes the signal and updates toolbar button visuals, but never triggers a canvas re-render"
-  artifacts:
-    - path: "Application/src/components/Preview.tsx"
-      issue: "Render effect (~line 70) missing blurStore.bypassBlur.value subscription"
-    - path: "Application/src/stores/blurStore.ts"
-      issue: "isBypassed() uses .peek() — non-reactive read"
-  missing:
-    - "Add blurStore.bypassBlur.value read to Preview.tsx render effect to create reactive subscription"
-  debug_session: ".planning/debug/blur-toolbar-controls.md"
+  test: 3
+  root_cause: ""
+  artifacts: []
+  missing: []
+  debug_session: ""
+- truth: "HQ toggle produces visibly smoother blur without visual artifacts or canvas corruption"
+  status: failed
+  reason: "User reported: HQ no work, it make disapear the blur, then when I desactivate HQ the image is strangely zoomed and cropped, I need to fit make HQ and remove HQ. its very weird. The High quality blur no work at all"
+  severity: blocker
+  test: 5
+  root_cause: ""
+  artifacts: []
+  missing: []
+  debug_session: ""
