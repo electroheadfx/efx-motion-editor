@@ -9,7 +9,7 @@
  */
 
 // @ts-expect-error -- stackblur-canvas package.json "exports" omits "types" entry; types exist at index.d.ts but TS bundler resolution can't find them
-import StackBlur from 'stackblur-canvas';
+import {canvasRGB, canvasRGBA} from 'stackblur-canvas';
 
 // --- Cached offscreen canvases for ping-pong downscale ---
 
@@ -126,8 +126,8 @@ export function applyHQBlur(
   if (pixelRadius < 1) return;
 
   if (preserveAlpha) {
-    StackBlur.canvasRGB(canvas, 0, 0, width, height, pixelRadius);
+    canvasRGB(canvas, 0, 0, width, height, pixelRadius);
   } else {
-    StackBlur.canvasRGBA(canvas, 0, 0, width, height, pixelRadius);
+    canvasRGBA(canvas, 0, 0, width, height, pixelRadius);
   }
 }
