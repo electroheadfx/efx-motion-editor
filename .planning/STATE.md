@@ -76,9 +76,10 @@ No active blockers.
 | 13 | Move zoom controls from toolbar to bottom canvas bar, add F key shortcut | 2026-03-12 | 58b3593 |
 | 14 | Change zoom shortcuts from Cmd+=/- to bare =/- keys | 2026-03-13 | 51aca11 |
 | 15 | Create fit-lock toggle for responsive canvas refit on resize | 2026-03-13 | 1baf5ce |
+| 16 | Make FX blur affect all layers beneath it (reverse compositing order) | 2026-03-13 | 8913b5c |
 
 ## Session Continuity
 
-Last session: 2026-03-13T11:40:13.939Z
-Stopped at: Completed 10-01-PLAN.md
+Last session: 2026-03-13T14:58:47.000Z
+Stopped at: Completed quick-5-PLAN.md
 Resume file: None
