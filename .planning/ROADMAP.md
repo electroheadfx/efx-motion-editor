@@ -92,12 +92,17 @@ Plans:
 ### Phase 11: Live Canvas Transform
 **Goal**: Users can manipulate layer transforms directly on the canvas preview window (move, scale, rotate) with handles, in addition to the existing parameter panel controls
 **Depends on**: Phase 6, Phase 9
-**Requirements**: TBD
+**Requirements**: XFORM-01, XFORM-02, XFORM-03, XFORM-04, XFORM-05, XFORM-06, XFORM-07, XFORM-08, XFORM-09, XFORM-10
 **Success Criteria** (what must be TRUE):
   1. Selecting a layer shows transform handles (bounding box, rotation, scale corners) on the canvas preview
   2. User can drag to move, corner-drag to scale, and rotate layers directly on the canvas
   3. Canvas transform changes sync bidirectionally with the parameter panel values in real-time
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 11-01-PLAN.md — Data model: split scale into scaleX/scaleY, .mce v4->v5 migration, update renderer + PropertiesPanel
+- [ ] 11-02-PLAN.md — Utility modules: coordinate mapping, bounding box geometry, layer + handle hit testing
+- [ ] 11-03-PLAN.md — TransformOverlay component: bounding box, handles, drag state machine, CanvasArea integration
+- [ ] 11-04-PLAN.md — Keyboard shortcuts: context arrows, Escape deselect, Alt+click cycle, visual verification
 
 ### Phase 12: Layer Keyframe Animation
 **Goal**: Add per-layer keyframe animation for properties (opacity, transform, etc.) — user selects a layer, positions the playhead on the timeline, adjusts parameters, and adds a keyframe. Keyframes are visible on the timeline when a layer is selected, with configurable interpolation.
@@ -179,7 +184,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 8. UI Theme System | 3/3 | Complete   | 2026-03-12 | - |
 | 9. Canvas Zoom | v0.2.0 | 4/4 | Complete | 2026-03-12 |
 | 10. FX Blur Effect | 3/4 | In Progress|  | - |
-| 11. Live Canvas Transform | v0.2.0 | 0/0 | Planned | - |
+| 11. Live Canvas Transform | v0.2.0 | 0/4 | Planned | - |
 | 12. Layer Keyframe Animation | v0.2.0 | 0/0 | Planned | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
