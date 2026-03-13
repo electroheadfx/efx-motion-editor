@@ -4,8 +4,8 @@ milestone: v0.1
 milestone_name: milestone
 status: executing
 stopped_at: Completed 10-01-PLAN.md
-last_updated: "2026-03-13T11:40:13.941Z"
-last_activity: "2026-03-13 - Completed quick task 5: Make FX blur affect all layers beneath it"
+last_updated: "2026-03-13T15:15:32.000Z"
+last_activity: "2026-03-13 - Completed quick task 6: Add blend mode to FX blur on timeline"
 progress:
   total_phases: 10
   completed_phases: 2
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 10 (fx-blur-effect)
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-03-13 - Completed quick task 5: Make FX blur affect all layers beneath it in the timeline stack, not just the sequence
+Last activity: 2026-03-13 - Completed quick task 6: Add blend mode to FX blur on timeline
 
 Progress: [████████░░] 89%
 
@@ -77,9 +77,10 @@ No active blockers.
 | 14 | Change zoom shortcuts from Cmd+=/- to bare =/- keys | 2026-03-13 | 51aca11 |
 | 15 | Create fit-lock toggle for responsive canvas refit on resize | 2026-03-13 | 1baf5ce |
 | 16 | Make FX blur affect all layers beneath it (reverse compositing order) | 2026-03-13 | 8913b5c |
+| 17 | Add blend mode to FX blur on timeline | 2026-03-13 | e89523b |
 
 ## Session Continuity
 
-Last session: 2026-03-13T14:58:47.000Z
-Stopped at: Completed quick-5-PLAN.md
+Last session: 2026-03-13T15:15:32.000Z
+Stopped at: Completed quick-6-PLAN.md
 Resume file: None
