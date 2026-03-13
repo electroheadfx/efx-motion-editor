@@ -176,7 +176,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 7. Cinematic FX Effects | v0.1.0 | 10/10 | Complete | 2026-03-10 |
 | 8. UI Theme System | 3/3 | Complete   | 2026-03-12 | - |
 | 9. Canvas Zoom | v0.2.0 | 4/4 | Complete | 2026-03-12 |
-| 10. FX Blur Effect | v0.2.0 | 0/2 | Planned | - |
+| 10. FX Blur Effect | 1/2 | In Progress|  | - |
 | 11. Live Canvas Transform | v0.2.0 | 0/0 | Planned | - |
 | 12. Layer Keyframe Animation | v0.2.0 | 0/0 | Planned | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
