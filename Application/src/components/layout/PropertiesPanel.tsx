@@ -413,11 +413,18 @@ function TransformSection({ layer }: { layer: Layer }) {
         onChange={(val) => updateTransform('y', val)}
       />
       <NumericInput
-        label="Scale"
-        value={layer.transform.scale}
+        label="SX"
+        value={layer.transform.scaleX}
         step={0.01}
         min={0.01}
-        onChange={(val) => updateTransform('scale', val)}
+        onChange={(val) => updateTransform('scaleX', val)}
+      />
+      <NumericInput
+        label="SY"
+        value={layer.transform.scaleY}
+        step={0.01}
+        min={0.01}
+        onChange={(val) => updateTransform('scaleY', val)}
       />
       <NumericInput
         label="Rot"

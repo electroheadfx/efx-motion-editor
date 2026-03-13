@@ -568,7 +568,7 @@ export class PreviewRenderer {
       layer.transform.y + canvasH / 2,
     );
     offCtx.rotate((layer.transform.rotation * Math.PI) / 180);
-    offCtx.scale(layer.transform.scale, layer.transform.scale);
+    offCtx.scale(layer.transform.scaleX, layer.transform.scaleY);
 
     // Calculate draw dimensions to fit canvas while maintaining aspect ratio
     const aspect = srcW / srcH;
@@ -654,7 +654,7 @@ export class PreviewRenderer {
       layer.transform.y + canvasH / 2,
     );
     ctx.rotate((layer.transform.rotation * Math.PI) / 180);
-    ctx.scale(layer.transform.scale, layer.transform.scale);
+    ctx.scale(layer.transform.scaleX, layer.transform.scaleY);
 
     // Get source dimensions (use original source for video to get videoWidth/Height)
     const srcW = this.getSourceWidth(source);
