@@ -72,9 +72,10 @@ No active blockers.
 | 11 | Add Remove/Locate actions for unavailable recent projects | 2026-03-11 | 37c4f77 |
 | 12 | Save theme preference to ~/.config/efx-motion/builder-config.yaml | 2026-03-12 | a8e0cf3 |
 | 13 | Move zoom controls from toolbar to bottom canvas bar, add F key shortcut | 2026-03-12 | 58b3593 |
+| 14 | Change zoom shortcuts from Cmd+=/- to bare =/- keys | 2026-03-13 | 51aca11 |
 
 ## Session Continuity
 
-Last session: 2026-03-12T17:54:07Z
-Stopped at: Completed quick-2 (move zoom controls to bottom bar)
+Last session: 2026-03-13T08:58:56Z
+Stopped at: Completed quick-3 (change zoom shortcuts to bare =/- keys)
 Resume file: None
