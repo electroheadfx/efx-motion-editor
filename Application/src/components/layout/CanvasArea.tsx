@@ -208,7 +208,7 @@ export function CanvasArea() {
               : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
           }`}
           onClick={() => canvasStore.zoomOut()}
-          title="Zoom out (Cmd+-)"
+          title="Zoom out (-)"
         >
           <span class="text-sm text-[var(--color-text-button)]">-</span>
         </button>
@@ -222,7 +222,7 @@ export function CanvasArea() {
               : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
           }`}
           onClick={() => canvasStore.zoomIn()}
-          title="Zoom in (Cmd+=)"
+          title="Zoom in (=)"
         >
           <span class="text-sm text-[var(--color-text-button)]">+</span>
         </button>

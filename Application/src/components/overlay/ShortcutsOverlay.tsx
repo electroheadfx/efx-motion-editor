@@ -49,8 +49,8 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Canvas',
     entries: [
-      {keys: '\u2318=', description: 'Zoom in'},
-      {keys: '\u2318\u2212', description: 'Zoom out'},
+      {keys: '=', description: 'Zoom in'},
+      {keys: '\u2212', description: 'Zoom out'},
       {keys: '\u23180', description: 'Fit to window'},
       {keys: 'F', description: 'Fit to window'},
     ],
