@@ -52,7 +52,9 @@ export interface MceLayer {
 export interface MceLayerTransform {
   x: number;
   y: number;
-  scale: number;
+  scale_x: number;
+  scale_y: number;
+  scale?: number;  // Optional: backward compat for reading v4 files
   rotation: number;
   crop_top: number;
   crop_right: number;

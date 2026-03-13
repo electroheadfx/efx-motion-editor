@@ -73,7 +73,8 @@ function buildMceProject(): MceProject {
         transform: {
           x: layer.transform.x,
           y: layer.transform.y,
-          scale: layer.transform.scale,
+          scale_x: layer.transform.scaleX,
+          scale_y: layer.transform.scaleY,
           rotation: layer.transform.rotation,
           crop_top: layer.transform.cropTop,
           crop_right: layer.transform.cropRight,
@@ -135,7 +136,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 4,
+    version: 5,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -181,7 +182,8 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
                   transform: {
                     x: ml.transform.x,
                     y: ml.transform.y,
-                    scale: ml.transform.scale,
+                    scaleX: ml.transform.scale_x ?? ml.transform.scale ?? 1,
+                    scaleY: ml.transform.scale_y ?? ml.transform.scale ?? 1,
                     rotation: ml.transform.rotation,
                     cropTop: ml.transform.crop_top,
                     cropRight: ml.transform.crop_right,

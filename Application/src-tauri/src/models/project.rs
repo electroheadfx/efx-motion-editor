@@ -67,12 +67,23 @@ pub struct MceLayer {
     pub blur: Option<f64>,
 }
 
+/// Default scale value (1.0) for backward-compatible deserialization of v4 files
+fn default_scale() -> f64 {
+    1.0
+}
+
 /// Layer transform properties
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MceLayerTransform {
     pub x: f64,
     pub y: f64,
-    pub scale: f64,
+    #[serde(default = "default_scale")]
+    pub scale_x: f64,
+    #[serde(default = "default_scale")]
+    pub scale_y: f64,
+    /// Legacy field: only present in v4 files, used for migration
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
     pub rotation: f64,
     pub crop_top: f64,
     pub crop_right: f64,

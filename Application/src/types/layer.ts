@@ -41,7 +41,8 @@ export interface Layer {
 export interface LayerTransform {
   x: number;
   y: number;
-  scale: number;
+  scaleX: number;
+  scaleY: number;
   rotation: number;
   cropTop: number;
   cropRight: number;
@@ -51,7 +52,7 @@ export interface LayerTransform {
 
 /** Create a default LayerTransform with identity values */
 export function defaultTransform(): LayerTransform {
-  return { x: 0, y: 0, scale: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 };
+  return { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 };
 }
 
 /** Create the auto-generated base layer for a sequence */
