@@ -90,6 +90,9 @@ export function CanvasArea() {
       for (const entry of entries) {
         const {width, height} = entry.contentRect;
         canvasStore.updateContainerSize(width - padding, height - padding);
+        if (canvasStore.fitLocked.peek()) {
+          canvasStore.fitToWindow();
+        }
       }
     });
     observer.observe(el);
@@ -226,13 +229,21 @@ export function CanvasArea() {
         >
           <span class="text-sm text-[var(--color-text-button)]">+</span>
         </button>
-        {/* Fit button */}
+        {/* Fit button (toggles fit lock) */}
         <button
-          class="rounded bg-[var(--color-bg-settings)] px-2.5 py-1.5 cursor-pointer"
-          onClick={() => canvasStore.fitToWindow()}
-          title="Fit to window (F)"
+          class={`rounded px-2.5 py-1.5 cursor-pointer ${
+            canvasStore.fitLocked.value
+              ? 'bg-[var(--color-accent)]'
+              : 'bg-[var(--color-bg-settings)]'
+          }`}
+          onClick={() => canvasStore.toggleFitLock()}
+          title={canvasStore.fitLocked.value ? 'Fit to window \u2014 locked (F)' : 'Fit to window (F)'}
         >
-          <span class="text-[11px] text-[var(--color-text-secondary)]">
+          <span class={`text-[11px] ${
+            canvasStore.fitLocked.value
+              ? 'text-white'
+              : 'text-[var(--color-text-secondary)]'
+          }`}>
             Fit
           </span>
         </button>

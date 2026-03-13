@@ -52,7 +52,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: '=', description: 'Zoom in'},
       {keys: '\u2212', description: 'Zoom out'},
       {keys: '\u23180', description: 'Fit to window'},
-      {keys: 'F', description: 'Fit to window'},
+      {keys: 'F', description: 'Toggle fit lock'},
     ],
   },
 ];

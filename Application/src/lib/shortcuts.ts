@@ -195,12 +195,12 @@ export function mountShortcuts(): () => void {
     },
 
     // Canvas zoom (ZOOM-01, ZOOM-03) — bare keys, no Cmd modifier
-    'Equal': (e: KeyboardEvent) => {
+    '=': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       canvasStore.zoomIn();
     },
-    'Minus': (e: KeyboardEvent) => {
+    '-': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       canvasStore.zoomOut();
@@ -213,7 +213,7 @@ export function mountShortcuts(): () => void {
     'KeyF': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      canvasStore.fitToWindow();
+      canvasStore.toggleFitLock();
     },
   });
 }
