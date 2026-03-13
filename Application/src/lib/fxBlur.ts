@@ -47,7 +47,8 @@ export function normalizedToPixelRadius(normalized: number, canvasMaxDim: number
 
 /**
  * Fast blur using iterative downscale-upscale with bilinear interpolation.
- * Low quality but very fast -- suitable for real-time preview.
+ * Uses gentle 0.6x downscale per pass (instead of 0.5x) for smoother results,
+ * and high-quality bicubic upscale to reduce blockiness.
  *
  * @param source - source canvas to read from
  * @param targetCtx - target context to draw the blurred result onto
@@ -64,7 +65,9 @@ export function applyFastBlur(
 ): void {
   if (radius <= 0) return;
 
-  const passes = Math.max(1, Math.min(3, Math.ceil(radius * 3)));
+  // More passes with gentler downscale ratio for smoother blur
+  const passes = Math.max(1, Math.min(5, Math.ceil(radius * 5)));
+  const ratio = 0.65;
 
   // Start: copy source to canvas A at full size
   const slotA = getBlurCanvas('A', width, height);
@@ -76,15 +79,16 @@ export function applyFastBlur(
   let currentW = width;
   let currentH = height;
 
-  // Iterative downscale: halve dimensions each pass
+  // Iterative downscale: reduce dimensions by ratio each pass
   for (let i = 0; i < passes; i++) {
-    const nextW = Math.max(1, Math.ceil(currentW / 2));
-    const nextH = Math.max(1, Math.ceil(currentH / 2));
+    const nextW = Math.max(1, Math.ceil(currentW * ratio));
+    const nextH = Math.max(1, Math.ceil(currentH * ratio));
 
     const nextSlot = getBlurCanvas(i % 2 === 0 ? 'B' : 'A', nextW, nextH);
     if (!nextSlot) return;
 
     nextSlot.ctx.imageSmoothingEnabled = true;
+    nextSlot.ctx.imageSmoothingQuality = 'high';
     nextSlot.ctx.clearRect(0, 0, nextW, nextH);
     nextSlot.ctx.drawImage(currentCanvas, 0, 0, currentW, currentH, 0, 0, nextW, nextH);
 
@@ -93,9 +97,10 @@ export function applyFastBlur(
     currentH = nextH;
   }
 
-  // Upscale back to target size with bilinear smoothing
+  // Upscale back to target size with high-quality bicubic smoothing
   targetCtx.save();
   targetCtx.imageSmoothingEnabled = true;
+  targetCtx.imageSmoothingQuality = 'high';
   targetCtx.clearRect(0, 0, width, height);
   targetCtx.drawImage(currentCanvas, 0, 0, currentW, currentH, 0, 0, width, height);
   targetCtx.restore();

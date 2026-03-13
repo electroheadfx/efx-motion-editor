@@ -313,6 +313,7 @@ export class PreviewRenderer {
     this.loadingImages.add(imageId);
 
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
       this.loadingImages.delete(imageId);
       this.imageCache.set(imageId, img);
@@ -447,7 +448,11 @@ export class PreviewRenderer {
         // Scale radius by layer opacity for partial blur application
         const effectiveRadius = blurSource.radius * layer.opacity;
         if (blurStore.isHQ()) {
-          applyHQBlur(this.canvas, effectiveRadius, this.canvas.width, this.canvas.height, false);
+          try {
+            applyHQBlur(this.canvas, effectiveRadius, this.canvas.width, this.canvas.height, false);
+          } catch {
+            applyFastBlur(this.canvas, ctx, effectiveRadius, this.canvas.width, this.canvas.height);
+          }
         } else {
           applyFastBlur(this.canvas, ctx, effectiveRadius, this.canvas.width, this.canvas.height);
         }
@@ -490,7 +495,11 @@ export class PreviewRenderer {
   ): void {
     if (blurStore.isBypassed() || radius <= 0) return;
     if (blurStore.isHQ()) {
-      applyHQBlur(canvas, radius, w, h, preserveAlpha);
+      try {
+        applyHQBlur(canvas, radius, w, h, preserveAlpha);
+      } catch {
+        applyFastBlur(canvas, ctx, radius, w, h);
+      }
     } else {
       applyFastBlur(canvas, ctx, radius, w, h);
     }

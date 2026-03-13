@@ -63,6 +63,8 @@ pub struct MceLayer {
     pub source: MceLayerSource,
     pub is_base: bool,
     pub order: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blur: Option<f64>,
 }
 
 /// Layer transform properties
@@ -138,6 +140,9 @@ pub struct MceLayerSource {
     pub preset: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fade_blend: Option<String>,
+    // Adjustment-blur fields
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radius: Option<f64>,
 }
 
 /// Key photo within a sequence -- references an image by ID
