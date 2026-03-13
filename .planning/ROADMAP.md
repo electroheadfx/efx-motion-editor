@@ -74,15 +74,18 @@ Plans:
 - [x] 09-04-PLAN.md — [gap closure] Add Tauri View menu to fix Cmd+=/Cmd+-/Cmd+0 native interception
 
 ### Phase 10: FX Blur Effect
-**Goal**: Add blur as a new FX generator option with dual-quality rendering — Dual Kawase blur for fast playback preview and Gaussian blur for high-quality rendering/export
+**Goal**: Add blur as a cross-cutting FX capability at three levels: per-layer blur property, per-generator blur property, and standalone blur FX layer -- with dual-quality rendering (downscale-upscale for fast preview, StackBlur for high-quality export)
 **Depends on**: Phase 7
-**Requirements**: TBD
+**Requirements**: BLUR-01, BLUR-02, BLUR-03, BLUR-04, BLUR-05, BLUR-06
 **Success Criteria** (what must be TRUE):
   1. Blur appears as a new FX effect option in the FX generator alongside existing effects (grain, vignette, etc.)
-  2. During playback preview, blur uses Dual Kawase algorithm for fast real-time performance
-  3. During rendering/export, blur switches to Gaussian algorithm for higher quality output
+  2. During playback preview, blur uses fast downscale-upscale algorithm for real-time performance
+  3. During rendering/export, blur switches to StackBlur algorithm for higher quality output
   4. User can adjust blur intensity/radius and see the preview update in real-time
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 10-01-PLAN.md — Types, blur algorithms (fast + HQ), blurStore, PreviewRenderer integration at all 3 levels
+- [ ] 10-02-PLAN.md — AddFxMenu entry, PropertiesPanel blur sections, Toolbar toggles, keyboard shortcuts
 
 ### Phase 11: Live Canvas Transform
 **Goal**: Users can manipulate layer transforms directly on the canvas preview window (move, scale, rotate) with handles, in addition to the existing parameter panel controls
@@ -173,7 +176,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 7. Cinematic FX Effects | v0.1.0 | 10/10 | Complete | 2026-03-10 |
 | 8. UI Theme System | 3/3 | Complete   | 2026-03-12 | - |
 | 9. Canvas Zoom | v0.2.0 | 4/4 | Complete | 2026-03-12 |
-| 10. FX Blur Effect | v0.2.0 | 0/0 | Planned | - |
+| 10. FX Blur Effect | v0.2.0 | 0/2 | Planned | - |
 | 11. Live Canvas Transform | v0.2.0 | 0/0 | Planned | - |
 | 12. Layer Keyframe Animation | v0.2.0 | 0/0 | Planned | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
