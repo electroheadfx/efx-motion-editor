@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Completed 10-01-PLAN.md
 last_updated: "2026-03-13T11:40:13.941Z"
-last_activity: "2026-03-13 - Completed 10-01: blur rendering foundation (types, algorithms, PreviewRenderer integration)"
+last_activity: "2026-03-13 - Completed quick task 5: Make FX blur affect all layers beneath it"
 progress:
   total_phases: 10
   completed_phases: 2
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 10 (fx-blur-effect)
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-03-13 - Completed 10-01: blur rendering foundation (types, algorithms, PreviewRenderer integration)
+Last activity: 2026-03-13 - Completed quick task 5: Make FX blur affect all layers beneath it in the timeline stack, not just the sequence
 
 Progress: [████████░░] 89%
 
