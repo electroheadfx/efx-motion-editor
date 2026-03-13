@@ -26,10 +26,10 @@ initTempProjectDir().then(async () => {
   listen('menu:redo', () => { redo(); });
 
   // Listen for zoom events emitted by the native macOS View menu.
-  // On macOS, Cmd+=, Cmd+-, and Cmd+0 are intercepted by WKWebView's
-  // native zoom accelerators before keydown reaches the webview, so
-  // these menu event listeners are the sole path for zoom shortcuts
-  // on that platform.
+  // Zoom in/out now use bare = / - keys via tinykeys (no Cmd modifier),
+  // so the menu items have no accelerator. These listeners handle the
+  // click path when users select Zoom In / Zoom Out from the View menu.
+  // Fit to Window (Cmd+0) still uses a native accelerator.
   listen('menu:zoom-in', () => { canvasStore.zoomIn(); });
   listen('menu:zoom-out', () => { canvasStore.zoomOut(); });
   listen('menu:fit-to-window', () => { canvasStore.fitToWindow(); });

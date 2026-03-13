@@ -194,13 +194,13 @@ export function mountShortcuts(): () => void {
       cycleTheme();
     },
 
-    // Canvas zoom (ZOOM-01, ZOOM-03)
-    '$mod+Equal': (e: KeyboardEvent) => {
+    // Canvas zoom (ZOOM-01, ZOOM-03) — bare keys, no Cmd modifier
+    'Equal': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       canvasStore.zoomIn();
     },
-    '$mod+Minus': (e: KeyboardEvent) => {
+    'Minus': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       canvasStore.zoomOut();

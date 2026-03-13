@@ -55,12 +55,13 @@ pub fn run() {
                 .select_all()
                 .build()?;
 
-            // View submenu with custom zoom items to override WKWebView native
-            // zoom accelerators that intercept Cmd+=/Cmd+-/Cmd+0 before JS.
+            // View submenu with zoom items. Zoom in/out use bare = / - keys
+            // (handled by tinykeys in JS), so no native accelerator is set.
+            // The menu items remain for discoverability via the View menu.
             let zoom_in_item =
-                MenuItem::with_id(app, "zoom-in", "Zoom In", true, Some("CmdOrCtrl+="))?;
+                MenuItem::with_id(app, "zoom-in", "Zoom In", true, None::<&str>)?;
             let zoom_out_item =
-                MenuItem::with_id(app, "zoom-out", "Zoom Out", true, Some("CmdOrCtrl+-"))?;
+                MenuItem::with_id(app, "zoom-out", "Zoom Out", true, None::<&str>)?;
             let fit_to_window_item = MenuItem::with_id(
                 app,
                 "fit-to-window",
