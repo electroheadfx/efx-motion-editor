@@ -9,6 +9,7 @@ import {uiStore} from '../stores/uiStore';
 import {layerStore} from '../stores/layerStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {canvasStore} from '../stores/canvasStore';
+import {blurStore} from '../stores/blurStore';
 import {save, open} from '@tauri-apps/plugin-dialog';
 
 /**
@@ -214,6 +215,18 @@ export function mountShortcuts(): () => void {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       canvasStore.toggleFitLock();
+    },
+
+    // Blur quality toggles (BLUR-05)
+    'KeyB': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      blurStore.toggleHQ();
+    },
+    'Shift+KeyB': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      blurStore.toggleBypass();
     },
   });
 }

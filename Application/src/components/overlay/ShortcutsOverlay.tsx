@@ -55,6 +55,13 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: 'F', description: 'Toggle fit lock'},
     ],
   },
+  {
+    title: 'Blur',
+    entries: [
+      { keys: 'B', description: 'Toggle HQ blur preview' },
+      { keys: '\u21E7B', description: 'Toggle bypass all blur' },
+    ],
+  },
 ];
 
 export function ShortcutsOverlay() {
