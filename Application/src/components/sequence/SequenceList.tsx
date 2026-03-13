@@ -3,6 +3,7 @@ import {createPortal} from 'preact/compat';
 import Sortable from 'sortablejs';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
+import {layerStore} from '../../stores/layerStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 import type {Sequence} from '../../types/sequence';
@@ -110,6 +111,8 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
 
   const handleSelect = useCallback(() => {
     if (!editing) {
+      layerStore.setSelected(null);
+      uiStore.selectLayer(null);
       uiStore.selectSequence(seq.id);
       sequenceStore.setActive(seq.id);
     }

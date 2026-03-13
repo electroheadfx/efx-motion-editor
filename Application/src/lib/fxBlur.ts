@@ -64,7 +64,7 @@ export function applyFastBlur(
 ): void {
   if (radius <= 0) return;
 
-  const passes = Math.max(1, Math.min(4, Math.ceil(radius * 4)));
+  const passes = Math.max(1, Math.min(3, Math.ceil(radius * 3)));
 
   // Start: copy source to canvas A at full size
   const slotA = getBlurCanvas('A', width, height);

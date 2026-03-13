@@ -122,9 +122,14 @@ function buildMceProject(): MceProject {
             fade: layer.source.fade, tint_color: layer.source.tintColor,
             preset: layer.source.preset, fade_blend: layer.source.fadeBlend,
           } : {}),
+          // Adjustment-blur
+          ...(layer.source.type === 'adjustment-blur' ? {
+            radius: layer.source.radius,
+          } : {}),
         },
         is_base: layer.isBase ?? false,
         order: layerIndex,
+        ...(layer.blur != null && layer.blur > 0 ? { blur: layer.blur } : {}),
       })),
     }),
   );
@@ -194,10 +199,12 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
                     if (t === 'generator-dots') return {type: t, count: ml.source.count ?? 30, sizeMin: ml.source.size_min ?? 2, sizeMax: ml.source.size_max ?? 8, speed: ml.source.speed ?? 0.5, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
                     if (t === 'generator-vignette') return {type: t, size: ml.source.size ?? 0.6, softness: ml.source.softness ?? 0.5, intensity: ml.source.intensity ?? 0.7} as LayerSourceData;
                     if (t === 'adjustment-color-grade') return {type: t, brightness: ml.source.brightness ?? 0, contrast: ml.source.contrast ?? 0, saturation: ml.source.saturation ?? 0, hue: ml.source.hue ?? 0, fade: ml.source.fade ?? 0, tintColor: ml.source.tint_color ?? '#D4A574', preset: ml.source.preset ?? 'none', fadeBlend: ml.source.fade_blend} as LayerSourceData;
+                    if (t === 'adjustment-blur') return {type: t, radius: ml.source.radius ?? 0.3} as LayerSourceData;
                     // Fallback for unknown types
                     return ml.source as unknown as LayerSourceData;
                   })(),
                   isBase: ml.is_base,
+                  ...(ml.blur != null ? { blur: ml.blur } : {}),
                 }),
               )
           : [createBaseLayer()];

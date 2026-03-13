@@ -46,6 +46,7 @@ export interface MceLayer {
   source: MceLayerSource;
   is_base: boolean;
   order: number;
+  blur?: number;  // Per-layer blur radius (0-1), optional for backward compat
 }
 
 export interface MceLayerTransform {
@@ -92,6 +93,8 @@ export interface MceLayerSource {
   tint_color?: string;
   preset?: string;
   fade_blend?: string;
+  // Adjustment-blur
+  radius?: number;
 }
 
 /** Key photo within a sequence -- references an image by ID */
