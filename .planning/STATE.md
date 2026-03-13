@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-03-13T16:55:42.393Z"
-last_activity: "2026-03-13 - Completed 11-01: split scale into scaleX/scaleY"
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-03-13T17:01:32.498Z"
+last_activity: "2026-03-13 - Completed 11-02: canvas coordinate mapping, handle geometry, hit testing"
 progress:
   total_phases: 10
   completed_phases: 3
   total_plans: 15
-  completed_plans: 12
-  percent: 80
+  completed_plans: 13
+  percent: 87
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 Milestone: v0.2.0
 Phase: 11 (live-canvas-transform)
-Plan: 2 of 4
+Plan: 3 of 4
 Status: In Progress
-Last activity: 2026-03-13 - Completed 11-01: split scale into scaleX/scaleY
+Last activity: 2026-03-13 - Completed 11-02: canvas coordinate mapping, handle geometry, hit testing
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 87%
 
 ## Accumulated Context
 
@@ -50,6 +50,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 10]: Quadratic normalizedToPixelRadius mapping for perceptually linear blur; generator blur uses RGB-only StackBlur to avoid alpha halos
 - [Phase 11-01]: v4-to-v5 migration uses nullish coalescing: scaleX = scale_x ?? scale ?? 1
 - [Phase 11-01]: Rust serde uses default_scale() -> 1.0 for v4 backward compat
+- [Phase 11-02]: All canvas utility functions are pure (no signal reads) -- params in, results out
+- [Phase 11-02]: Bounding-box-only hit testing (no pixel sampling) for initial implementation
 
 ### Pending Todos
 
@@ -83,6 +85,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-13T16:55:42.391Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-03-13T17:01:32.496Z
+Stopped at: Completed 11-02-PLAN.md
 Resume file: None
