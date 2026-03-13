@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 9 (canvas-zoom)
 Plan: 4 of 4
 Status: Complete
-Last activity: 2026-03-12 - Phase 9 complete (canvas zoom: store, toolbar, shortcuts, Tauri menu, gap closure)
+Last activity: 2026-03-13 - Completed quick task 4: create a lock button for fit to have responsive canvas window
 
 Progress: [██████████] 100%
 
