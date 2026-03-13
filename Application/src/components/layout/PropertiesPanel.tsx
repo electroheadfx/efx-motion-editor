@@ -2,7 +2,7 @@ import { useState, useCallback } from 'preact/hooks';
 import { layerStore } from '../../stores/layerStore';
 import { sequenceStore } from '../../stores/sequenceStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
-import { isFxLayer } from '../../types/layer';
+import { isFxLayer, isGeneratorLayer } from '../../types/layer';
 import { COLOR_GRADE_PRESETS, PRESET_NAMES } from '../../lib/fxPresets';
 import type { Layer, LayerSourceData, BlendMode } from '../../types/layer';
 
@@ -347,6 +347,18 @@ function ColorGradeSection({ layer }: { layer: Layer }) {
   );
 }
 
+/** Blur adjustment controls: Radius (no seed -- blur is deterministic) */
+function BlurSection({ layer }: { layer: Layer }) {
+  const source = layer.source as Extract<LayerSourceData, { type: 'adjustment-blur' }>;
+  return (
+    <div class="flex items-center gap-3 shrink-0">
+      <SectionLabel text="BLUR" />
+      <NumericInput label="Radius" value={source.radius} step={0.01} min={0} max={1}
+        onChange={(val) => updateSource(layer.id, layer, { radius: val })} />
+    </div>
+  );
+}
+
 // In/Out range controls removed from layer level — FX sequences now own in/out frames (Plan 07-05).
 // Sequence-level in/out controls will be added by a future plan.
 
@@ -366,6 +378,8 @@ function FxSection({ layer }: { layer: Layer }) {
       return <VignetteSection layer={layer} />;
     case 'adjustment-color-grade':
       return <ColorGradeSection layer={layer} />;
+    case 'adjustment-blur':
+      return <BlurSection layer={layer} />;
     default:
       return null;
   }
@@ -549,6 +563,22 @@ export function PropertiesPanel() {
         </div>
         <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
         <FxSection layer={selectedLayer} />
+        {isGeneratorLayer(selectedLayer) && (
+          <>
+            <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
+            <div class="flex items-center gap-3 shrink-0">
+              <SectionLabel text="BLUR" />
+              <NumericInput
+                label="Radius"
+                value={selectedLayer.blur ?? 0}
+                step={0.01}
+                min={0}
+                max={1}
+                onChange={(val) => layerStore.updateLayer(selectedLayer.id, { blur: val })}
+              />
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -605,6 +635,19 @@ export function PropertiesPanel() {
       <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
       {/* CROP section */}
       <CropSection layer={selectedLayer} />
+      <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
+      {/* BLUR section */}
+      <div class="flex items-center gap-3 shrink-0">
+        <SectionLabel text="BLUR" />
+        <NumericInput
+          label="Radius"
+          value={selectedLayer.blur ?? 0}
+          step={0.01}
+          min={0}
+          max={1}
+          onChange={(val) => layerStore.updateLayer(selectedLayer.id, { blur: val })}
+        />
+      </div>
 
       {/* Source info for image layers */}
       {(selectedLayer.type === 'static-image' || selectedLayer.type === 'image-sequence') &&

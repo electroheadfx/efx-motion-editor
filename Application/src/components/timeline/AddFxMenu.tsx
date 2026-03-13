@@ -104,6 +104,13 @@ export function AddFxMenu() {
             <span class="w-2 h-2 rounded-sm bg-[#F97316] shrink-0" />
             Color Grade
           </button>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+            onClick={() => handleAddFxLayer('adjustment-blur', 'Blur')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#F97316] shrink-0" />
+            Blur
+          </button>
         </div>
       )}
     </div>
