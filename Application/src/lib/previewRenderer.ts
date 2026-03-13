@@ -445,16 +445,37 @@ export class PreviewRenderer {
         ctx.save();
         // Reset transform to physical pixel coords (same as color-grade)
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        // Scale radius by layer opacity for partial blur application
-        const effectiveRadius = blurSource.radius * layer.opacity;
-        if (blurStore.isHQ()) {
-          try {
-            applyHQBlur(this.canvas, effectiveRadius, this.canvas.width, this.canvas.height, false);
-          } catch {
+
+        if (layer.blendMode === 'normal') {
+          // Fast path: in-place blur (existing behavior, replaces canvas content)
+          // Scale radius by layer opacity for partial blur application
+          const effectiveRadius = blurSource.radius * layer.opacity;
+          if (blurStore.isHQ()) {
+            try {
+              applyHQBlur(this.canvas, effectiveRadius, this.canvas.width, this.canvas.height, false);
+            } catch {
+              applyFastBlur(this.canvas, ctx, effectiveRadius, this.canvas.width, this.canvas.height);
+            }
+          } else {
             applyFastBlur(this.canvas, ctx, effectiveRadius, this.canvas.width, this.canvas.height);
           }
         } else {
-          applyFastBlur(this.canvas, ctx, effectiveRadius, this.canvas.width, this.canvas.height);
+          // Blend mode path: blur to offscreen, composite with blend mode
+          // Radius controls blur intensity; opacity controls blend strength via globalAlpha
+          const w = this.canvas.width;
+          const h = this.canvas.height;
+          const off = this.getBlurOffscreen(w, h);
+          if (off) {
+            // Copy current canvas to offscreen
+            off.ctx.clearRect(0, 0, w, h);
+            off.ctx.drawImage(this.canvas, 0, 0);
+            // Apply blur to the offscreen copy
+            this.applyBlurToCanvas(off.canvas, off.ctx, blurSource.radius, w, h, false);
+            // Composite blurred offscreen onto original canvas using blend mode
+            ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+            ctx.globalAlpha = layer.opacity;
+            ctx.drawImage(off.canvas, 0, 0);
+          }
         }
         ctx.restore();
         break;
