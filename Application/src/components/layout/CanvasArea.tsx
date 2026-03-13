@@ -2,10 +2,13 @@ import {useRef, useCallback, useEffect} from 'preact/hooks';
 import {useSignal} from '@preact/signals';
 import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
+import {TransformOverlay} from '../canvas/TransformOverlay';
 import {timelineStore} from '../../stores/timelineStore';
 import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
+import {imageStore} from '../../stores/imageStore';
 import {playbackEngine} from '../../lib/playbackEngine';
+import type {Layer} from '../../types/layer';
 
 /** Safari macOS gesture event interface */
 interface GestureEvent extends UIEvent {
@@ -15,10 +18,39 @@ interface GestureEvent extends UIEvent {
   clientY: number;
 }
 
+/**
+ * Get source dimensions for a layer from imageStore metadata.
+ * Used by TransformOverlay for bounding box calculation.
+ */
+function getSourceDimensionsForLayer(layer: Layer): {w: number; h: number} | null {
+  if (layer.source.type === 'static-image') {
+    const img = imageStore.getById(layer.source.imageId);
+    if (img) return {w: img.width, h: img.height};
+    return null;
+  }
+  if (layer.source.type === 'image-sequence') {
+    // For image sequences, use the first image's dimensions
+    const ids = layer.source.imageIds;
+    if (ids.length > 0) {
+      const img = imageStore.getById(ids[0]);
+      if (img) return {w: img.width, h: img.height};
+    }
+    // Base layer (empty imageIds): use project dimensions as approximation
+    return {w: projectStore.width.peek(), h: projectStore.height.peek()};
+  }
+  if (layer.source.type === 'video') {
+    // Video: use project dimensions as approximation
+    return {w: projectStore.width.peek(), h: projectStore.height.peek()};
+  }
+  return null;
+}
+
 export function CanvasArea() {
   const isPlaying = timelineStore.isPlaying.value;
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useSignal(false);
+  const isSpaceHeld = useRef(false);
+  const spaceDragOccurred = useRef(false);
 
   // Drag state for panning (start coordinates, not reactive)
   const dragRef = useRef({
@@ -44,12 +76,8 @@ export function CanvasArea() {
     canvasStore.setSmoothZoom(newZoom, cursorX, cursorY);
   }, []);
 
-  // --- Pan handlers: middle-click or left-click (when zoomed) drag ---
-  const handlePointerDown = useCallback((e: PointerEvent) => {
-    // Middle mouse button always starts pan, left-click only when zoomed in
-    const isMiddle = e.button === 1;
-    const isLeftAndZoomed = e.button === 0 && canvasStore.zoom.peek() > canvasStore.fitZoom.peek() + 0.001;
-    if (!isMiddle && !isLeftAndZoomed) return;
+  // --- Pan handler: middle-click drag (left-click no longer pans) ---
+  const startPan = useCallback((e: PointerEvent) => {
     e.preventDefault();
     const drag = dragRef.current;
     isDragging.value = true;
@@ -57,8 +85,20 @@ export function CanvasArea() {
     drag.startY = e.clientY;
     drag.startPanX = canvasStore.panX.value;
     drag.startPanY = canvasStore.panY.value;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // Capture on the container, not the overlay that triggered this
+    const container = containerRef.current;
+    if (container) {
+      container.setPointerCapture(e.pointerId);
+    }
   }, []);
+
+  const handlePointerDown = useCallback((e: PointerEvent) => {
+    // Middle mouse button starts pan
+    if (e.button === 1) {
+      startPan(e);
+    }
+    // Left-click no longer starts pan -- handled by TransformOverlay
+  }, [startPan]);
 
   const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!isDragging.value) return;
@@ -68,16 +108,63 @@ export function CanvasArea() {
       drag.startPanX + (e.clientX - drag.startX) / z,
       drag.startPanY + (e.clientY - drag.startY) / z,
     );
+    // Mark that a drag happened during Space hold (for play/pause suppression)
+    if (isSpaceHeld.current) {
+      spaceDragOccurred.current = true;
+    }
   }, []);
 
   const handlePointerUp = useCallback((e: PointerEvent) => {
     if (!isDragging.value) return;
     isDragging.value = false;
     try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      const container = containerRef.current;
+      if (container) {
+        container.releasePointerCapture(e.pointerId);
+      }
     } catch {
       // Pointer capture may not be active
     }
+  }, []);
+
+  // --- Space+drag pan tracking ---
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !e.repeat) {
+        // Only track space if focus is on the canvas area (not inside inputs)
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+        isSpaceHeld.current = true;
+        spaceDragOccurred.current = false;
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        isSpaceHeld.current = false;
+
+        // If Space+drag occurred, suppress play/pause toggle
+        if (spaceDragOccurred.current) {
+          spaceDragOccurred.current = false;
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        // If no drag occurred, let the global shortcut handle play/pause toggle
+      }
+    };
+
+    // Listen on window to catch Space regardless of focused element
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, []);
 
   // --- ResizeObserver: track container dimensions ---
@@ -133,12 +220,9 @@ export function CanvasArea() {
     };
   }, []);
 
-  // Cursor: grabbing while dragging, grab when zoomed beyond fit, default otherwise
-  const cursorStyle = isDragging.value
-    ? 'grabbing'
-    : canvasStore.zoom.value > canvasStore.fitZoom.value + 0.001
-      ? 'grab'
-      : 'default';
+  // Cursor: grabbing while panning, default otherwise
+  // (TransformOverlay manages its own cursor for layer interactions)
+  const cursorStyle = isDragging.value ? 'grabbing' : 'default';
 
   return (
     <div class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-right)]">
@@ -159,9 +243,15 @@ export function CanvasArea() {
             transform: `scale(${canvasStore.zoom.value}) translate(${canvasStore.panX.value}px, ${canvasStore.panY.value}px)`,
             transformOrigin: 'center center',
           }}
-          class="rounded bg-black overflow-hidden shrink-0"
+          class="relative rounded bg-black overflow-visible shrink-0"
         >
           <Preview />
+          <TransformOverlay
+            containerRef={containerRef}
+            getSourceDimensions={getSourceDimensionsForLayer}
+            isSpaceHeld={isSpaceHeld}
+            onPanStart={startPan}
+          />
         </div>
       </div>
       {/* JKL speed badge -- positioned above playback controls */}
