@@ -561,6 +561,29 @@ export function PropertiesPanel() {
             )}
           </button>
         </div>
+        {selectedLayer.source.type === 'adjustment-blur' && (
+          <>
+            <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
+            <div class="flex items-center gap-3 shrink-0">
+              <SectionLabel text="BLEND" />
+              <select
+                class="text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[3px] outline-none cursor-pointer"
+                value={selectedLayer.blendMode}
+                onChange={(e) => {
+                  layerStore.updateLayer(selectedLayer.id, {
+                    blendMode: (e.target as HTMLSelectElement).value as BlendMode,
+                  });
+                }}
+              >
+                {BLEND_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {capitalize(mode)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
         <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
         <FxSection layer={selectedLayer} />
         {isGeneratorLayer(selectedLayer) && (
