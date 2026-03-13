@@ -2,6 +2,7 @@ import {useRef, useEffect} from 'preact/hooks';
 import {effect} from '@preact/signals';
 import {timelineStore} from '../stores/timelineStore';
 import {sequenceStore} from '../stores/sequenceStore';
+import {blurStore} from '../stores/blurStore';
 import {frameMap} from '../lib/frameMap';
 import {PreviewRenderer} from '../lib/previewRenderer';
 
@@ -72,6 +73,11 @@ export function Preview() {
       const fm = frameMap.value;
       // Subscribe to all sequence data so we re-render on layer property changes
       const allSeqs = sequenceStore.sequences.value;
+      // Subscribe to blur store signals so toggling HQ/bypass triggers a re-render.
+      // These reads create reactive subscriptions; the renderer reads actual values
+      // via .peek() (non-reactive) which is correct for the render loop.
+      void blurStore.hqPreview.value;
+      void blurStore.bypassBlur.value;
 
       if (globalFrame < 0 || globalFrame >= fm.length) return;
 
