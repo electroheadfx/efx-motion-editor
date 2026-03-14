@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 11 (live-canvas-transform)
 Plan: 4 of 4
 Status: Complete
-Last activity: 2026-03-14 - Completed Phase 11 Plan 04: keyboard shortcuts and visual verification
+Last activity: 2026-03-14 - Completed quick task 9: Fix layer deselection when dragging slider on name setting in bottom bar
 
 Progress: [██████████] 100%
 
