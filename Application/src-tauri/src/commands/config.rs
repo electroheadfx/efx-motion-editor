@@ -18,16 +18,31 @@ fn config_path() -> PathBuf {
         .join(".config/efx-motion/builder-config.yaml")
 }
 
+fn default_canvas_bg() -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    map.insert("dark".into(), "#1A1A1A".into());
+    map.insert("medium".into(), "#2E2E2E".into());
+    map.insert("light".into(), "#3A3A3A".into());
+    map
+}
+
 /// Reads the YAML config file, returning Default on any error (missing file, parse error).
+/// Populates canvas_bg defaults on first run and persists them.
 fn read_config() -> BuilderConfig {
     let path = config_path();
-    if !path.exists() {
-        return BuilderConfig::default();
+    let mut config: BuilderConfig = if !path.exists() {
+        BuilderConfig::default()
+    } else {
+        match std::fs::read_to_string(&path) {
+            Ok(contents) => serde_yaml::from_str(&contents).unwrap_or_default(),
+            Err(_) => BuilderConfig::default(),
+        }
+    };
+    if config.canvas_bg.is_none() {
+        config.canvas_bg = Some(default_canvas_bg());
+        let _ = write_config(&config);
     }
-    match std::fs::read_to_string(&path) {
-        Ok(contents) => serde_yaml::from_str(&contents).unwrap_or_default(),
-        Err(_) => BuilderConfig::default(),
-    }
+    config
 }
 
 /// Writes the config to YAML atomically (write to .tmp then rename).
