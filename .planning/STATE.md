@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Completed 11-03-PLAN.md
 last_updated: "2026-03-13T17:14:03.471Z"
-last_activity: "2026-03-14 - Completed quick task 7: add deselect layer when clicking outside canvas"
+last_activity: "2026-03-14 - Completed quick task 8: theme-aware canvas background color"
 progress:
   total_phases: 10
   completed_phases: 3
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 11 (live-canvas-transform)
 Plan: 4 of 4
 Status: In Progress
-Last activity: 2026-03-14 - Completed quick task 7: add deselect layer when clicking outside canvas
+Last activity: 2026-03-14 - Completed quick task 8: theme-aware canvas background color
 
 Progress: [█████████░] 93%
 
@@ -86,9 +86,10 @@ No active blockers.
 | 16 | Make FX blur affect all layers beneath it (reverse compositing order) | 2026-03-13 | 8913b5c |
 | 17 | Add blend mode to FX blur on timeline | 2026-03-13 | e89523b |
 | 18 | Add deselect layer when clicking outside canvas | 2026-03-14 | 1220f56 |
+| 19 | Theme-aware canvas background color with per-theme persistence | 2026-03-14 | f9bfdc6 |
 
 ## Session Continuity
 
-Last session: 2026-03-14T10:35:39Z
-Stopped at: Completed quick-7
+Last session: 2026-03-14T10:59:39Z
+Stopped at: Completed quick-8
 Resume file: None
