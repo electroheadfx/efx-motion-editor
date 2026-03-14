@@ -1,11 +1,13 @@
-import { useState, useCallback } from 'preact/hooks';
+import { useState, useCallback, useEffect } from 'preact/hooks';
 import { layerStore } from '../../stores/layerStore';
 import { sequenceStore } from '../../stores/sequenceStore';
 import { blurStore } from '../../stores/blurStore';
+import { keyframeStore } from '../../stores/keyframeStore';
+import { timelineStore } from '../../stores/timelineStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { isFxLayer, isGeneratorLayer } from '../../types/layer';
 import { COLOR_GRADE_PRESETS, PRESET_NAMES } from '../../lib/fxPresets';
-import type { Layer, LayerSourceData, BlendMode } from '../../types/layer';
+import type { Layer, LayerSourceData, BlendMode, KeyframeValues } from '../../types/layer';
 
 const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
 
@@ -401,11 +403,25 @@ function FxSection({ layer }: { layer: Layer }) {
 // and content layers use inline blend+opacity in LayerList sidebar rows.
 
 /** Position X/Y, scale, rotation controls */
-function TransformSection({ layer }: { layer: Layer }) {
+function TransformSection({
+  layer,
+  overrideValues,
+  onKeyframeEdit,
+}: {
+  layer: Layer;
+  overrideValues?: KeyframeValues | null;
+  onKeyframeEdit?: (field: keyof KeyframeValues, value: number) => void;
+}) {
+  const vals = overrideValues;
   const updateTransform = (field: string, value: number) => {
-    layerStore.updateLayer(layer.id, {
-      transform: { ...layer.transform, [field]: value },
-    });
+    if (onKeyframeEdit) {
+      // Route through keyframe edit handler (transient or keyframe update)
+      onKeyframeEdit(field as keyof KeyframeValues, value);
+    } else {
+      layerStore.updateLayer(layer.id, {
+        transform: { ...layer.transform, [field]: value },
+      });
+    }
   };
 
   return (
@@ -414,33 +430,33 @@ function TransformSection({ layer }: { layer: Layer }) {
 
       <NumericInput
         label="X"
-        value={layer.transform.x}
+        value={vals ? vals.x : layer.transform.x}
         step={1}
         onChange={(val) => updateTransform('x', val)}
       />
       <NumericInput
         label="Y"
-        value={layer.transform.y}
+        value={vals ? vals.y : layer.transform.y}
         step={1}
         onChange={(val) => updateTransform('y', val)}
       />
       <NumericInput
         label="SX"
-        value={layer.transform.scaleX}
+        value={vals ? vals.scaleX : layer.transform.scaleX}
         step={0.01}
         min={0.01}
         onChange={(val) => updateTransform('scaleX', val)}
       />
       <NumericInput
         label="SY"
-        value={layer.transform.scaleY}
+        value={vals ? vals.scaleY : layer.transform.scaleY}
         step={0.01}
         min={0.01}
         onChange={(val) => updateTransform('scaleY', val)}
       />
       <NumericInput
         label="Rot"
-        value={layer.transform.rotation}
+        value={vals ? vals.rotation : layer.transform.rotation}
         step={1}
         onChange={(val) => updateTransform('rotation', val)}
       />
@@ -496,6 +512,31 @@ function CropSection({ layer }: { layer: Layer }) {
         onChange={(val) => updateCrop('cropLeft', val)}
       />
     </div>
+  );
+}
+
+/** [+ Keyframe] / [Update] button for content layers with keyframe support */
+function KeyframeButton({ layer }: { layer: Layer }) {
+  // Only show for content layers (not FX, not base)
+  if (isFxLayer(layer) || layer.isBase) return null;
+
+  const isOnKf = keyframeStore.isOnKeyframe.value;
+
+  return (
+    <button
+      class={`text-[10px] px-2 py-[3px] rounded font-medium transition-colors ${
+        isOnKf
+          ? 'bg-[#FFD700] text-black hover:bg-[#E5C000]'
+          : 'bg-[var(--color-accent)] text-white hover:opacity-80'
+      }`}
+      title={isOnKf ? 'Update keyframe at this frame' : 'Add keyframe at this frame'}
+      onClick={() => {
+        const globalFrame = timelineStore.currentFrame.peek();
+        keyframeStore.addKeyframe(layer.id, globalFrame);
+      }}
+    >
+      {isOnKf ? '\u25C6 Update' : '+ Keyframe'}
+    </button>
   );
 }
 
@@ -631,11 +672,59 @@ export function PropertiesPanel() {
     );
   }
 
-  // Non-FX layers: Blend + Opacity + Transform + Crop
-  const contentOpacityPercent = Math.round(selectedLayer.opacity * 100);
+  // Non-FX layers: Blend + Opacity + Transform + Crop + Blur + Keyframe support
+
+  // When layer has keyframes, show display values (transient overrides or interpolated)
+  const kfDisplayValues = keyframeStore.displayValues.value;
+  const hasKeyframes = selectedLayer && !isFxLayer(selectedLayer) && !selectedLayer.isBase
+    && selectedLayer.keyframes && selectedLayer.keyframes.length > 0;
+  const showKfValues = hasKeyframes && kfDisplayValues;
+  const isOnKf = keyframeStore.isOnKeyframe.value;
+
+  // Transient edit routing: when a layer has keyframes and the playhead is NOT on a keyframe,
+  // edits write to transientOverrides; when ON a keyframe, edits update layerStore + keyframe.
+  const handleKeyframeEdit = hasKeyframes ? (field: keyof KeyframeValues, value: number) => {
+    if (isOnKf) {
+      // ON a keyframe: update layer state AND update keyframe values
+      if (field === 'opacity') {
+        layerStore.updateLayer(selectedLayer!.id, { opacity: value });
+      } else if (field === 'blur') {
+        layerStore.updateLayer(selectedLayer!.id, { blur: value });
+      } else {
+        // Transform fields: x, y, scaleX, scaleY, rotation
+        layerStore.updateLayer(selectedLayer!.id, {
+          transform: { ...selectedLayer!.transform, [field]: value },
+        });
+      }
+      // Also update the keyframe at this frame
+      keyframeStore.addKeyframe(selectedLayer!.id, timelineStore.currentFrame.peek());
+    } else {
+      // BETWEEN keyframes: transient edit only -- does NOT touch layerStore
+      keyframeStore.setTransientValue(field, value);
+    }
+  } : undefined;
+
+  const contentOpacityPercent = Math.round(
+    (showKfValues ? kfDisplayValues!.opacity : selectedLayer.opacity) * 100,
+  );
+
+  // Clear transient overrides when frame changes (scrub or playback advances)
+  // Note: keyframeStore already has a frame-change effect, but this ensures React
+  // re-renders pick up the cleared overrides immediately.
+  useEffect(() => {
+    void timelineStore.currentFrame.value;
+    keyframeStore.clearTransientOverrides();
+  }, [timelineStore.currentFrame.value]);
 
   return (
     <div class="flex items-center gap-5 h-14 w-full bg-[var(--color-bg-root)] px-4 shrink-0 overflow-x-auto">
+      {/* KEYFRAME button (content layers only, not base) */}
+      {!selectedLayer.isBase && (
+        <>
+          <KeyframeButton layer={selectedLayer} />
+          {hasKeyframes && <div class="w-px h-8 bg-[var(--color-bg-divider)]" />}
+        </>
+      )}
       {/* BLEND + OPACITY section */}
       <div class="flex items-center gap-3 shrink-0">
         <SectionLabel text="BLEND" />
@@ -677,7 +766,11 @@ export function PropertiesPanel() {
             }}
             onInput={(e) => {
               const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
-              layerStore.updateLayer(selectedLayer.id, { opacity: val });
+              if (handleKeyframeEdit) {
+                handleKeyframeEdit('opacity', val);
+              } else {
+                layerStore.updateLayer(selectedLayer.id, { opacity: val });
+              }
             }}
           />
           <span class="text-[11px] text-[var(--color-text-button)] w-8 text-right">{contentOpacityPercent}%</span>
@@ -685,7 +778,11 @@ export function PropertiesPanel() {
       </div>
       <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
       {/* TRANSFORM section */}
-      <TransformSection layer={selectedLayer} />
+      <TransformSection
+        layer={selectedLayer}
+        overrideValues={showKfValues ? kfDisplayValues : null}
+        onKeyframeEdit={handleKeyframeEdit}
+      />
       <div class="w-px h-8 bg-[var(--color-bg-divider)]" />
       {/* CROP section */}
       <CropSection layer={selectedLayer} />
@@ -695,11 +792,17 @@ export function PropertiesPanel() {
         <SectionLabel text="BLUR" />
         <NumericInput
           label="Radius"
-          value={selectedLayer.blur ?? 0}
+          value={showKfValues ? kfDisplayValues!.blur : (selectedLayer.blur ?? 0)}
           step={0.01}
           min={0}
           max={1}
-          onChange={(val) => layerStore.updateLayer(selectedLayer.id, { blur: val })}
+          onChange={(val) => {
+            if (handleKeyframeEdit) {
+              handleKeyframeEdit('blur', val);
+            } else {
+              layerStore.updateLayer(selectedLayer.id, { blur: val });
+            }
+          }}
         />
       </div>
 
