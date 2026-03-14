@@ -5,6 +5,8 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {blurStore} from '../stores/blurStore';
 import {frameMap} from '../lib/frameMap';
 import {PreviewRenderer} from '../lib/previewRenderer';
+import {interpolateAt} from '../lib/keyframeEngine';
+import {isFxLayer} from '../types/layer';
 
 export function Preview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -38,7 +40,30 @@ export function Preview() {
       const seqFrames = fm.filter((e) => e.sequenceId === entry.sequenceId);
       const localFrame = globalFrame - seqStart;
 
-      renderer.renderFrame(seq.layers, localFrame, seqFrames, seq.fps);
+      // Apply keyframe interpolation to content layers before rendering
+      const interpolatedLayers = seq.layers.map(layer => {
+        if (!layer.keyframes || layer.keyframes.length === 0) return layer;
+        if (isFxLayer(layer) || layer.isBase) return layer;
+
+        const values = interpolateAt(layer.keyframes, localFrame);
+        if (!values) return layer;
+
+        return {
+          ...layer,
+          opacity: values.opacity,
+          transform: {
+            ...layer.transform,
+            x: values.x,
+            y: values.y,
+            scaleX: values.scaleX,
+            scaleY: values.scaleY,
+            rotation: values.rotation,
+          },
+          blur: values.blur,
+        };
+      });
+
+      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps);
 
       // Composite FX sequences: reverse order so top-of-timeline renders last
       // (higher FX layers affect/blur everything beneath them)
@@ -94,7 +119,30 @@ export function Preview() {
       const seqFrames = fm.filter((e) => e.sequenceId === entry.sequenceId);
       const localFrame = globalFrame - seqStart;
 
-      renderer.renderFrame(seq.layers, localFrame, seqFrames, seq.fps);
+      // Apply keyframe interpolation to content layers before rendering
+      const interpolatedLayers = seq.layers.map(layer => {
+        if (!layer.keyframes || layer.keyframes.length === 0) return layer;
+        if (isFxLayer(layer) || layer.isBase) return layer;
+
+        const values = interpolateAt(layer.keyframes, localFrame);
+        if (!values) return layer;
+
+        return {
+          ...layer,
+          opacity: values.opacity,
+          transform: {
+            ...layer.transform,
+            x: values.x,
+            y: values.y,
+            scaleX: values.scaleX,
+            scaleY: values.scaleY,
+            rotation: values.rotation,
+          },
+          blur: values.blur,
+        };
+      });
+
+      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps);
 
       // Composite FX sequences: reverse order so top-of-timeline renders last
       // (higher FX layers affect/blur everything beneath them)
