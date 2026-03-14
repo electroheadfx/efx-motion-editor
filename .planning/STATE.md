@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: completed
-stopped_at: Phase 12 context gathered
-last_updated: "2026-03-14T14:37:17.306Z"
-last_activity: "2026-03-14 - Completed quick task 9: Fix layer deselection when dragging slider on name setting in bottom bar"
+status: in-progress
+stopped_at: "Completed 12-01-PLAN.md"
+last_updated: "2026-03-14T15:32:00Z"
+last_activity: "2026-03-14 - Completed 12-01: Keyframe data model, interpolation engine, keyframeStore, .mce v6"
 progress:
   total_phases: 10
   completed_phases: 4
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_plans: 19
+  completed_plans: 16
+  percent: 84
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 11 complete -- Live canvas transform with non-uniform scaling
+**Current focus:** v0.2.0 Phase 12 -- Layer keyframe animation data model and interpolation
 
 ## Current Position
 
 Milestone: v0.2.0
-Phase: 11 (live-canvas-transform)
-Plan: 4 of 4
-Status: Complete
-Last activity: 2026-03-14 - Completed quick task 9: Fix layer deselection when dragging slider on name setting in bottom bar
+Phase: 12 (layer-keyframe-animation)
+Plan: 1 of 4
+Status: In Progress
+Last activity: 2026-03-14 - Completed 12-01: Keyframe data model, interpolation engine, keyframeStore, .mce v6
 
-Progress: [██████████] 100%
+Progress: [████████░░] 84%
 
 ## Accumulated Context
 
@@ -57,6 +57,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 11-03]: Source dimensions from imageStore metadata rather than renderer image cache
 - [Phase 11-04]: Arrow key context-dependence via layerStore.selectedLayerId.peek() check in each handler
 - [Phase 11-04]: Bidirectional sync by calling both layerStore.setSelected and uiStore.selectLayer explicitly (no signal effect)
+- [Phase 12-01]: Polynomial cubic easing (t^3 / (1-t)^3 / piecewise); sequence-local frame offsets for keyframes
+- [Phase 12-01]: Transient overrides pattern for property edits between keyframes; .mce v5->v6 with backward compat
 
 ### Pending Todos
 
@@ -93,6 +95,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-14T14:37:17.302Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-layer-keyframe-animation/12-CONTEXT.md
+Last session: 2026-03-14T15:32:00Z
+Stopped at: Completed 12-01-PLAN.md
+Resume file: .planning/phases/12-layer-keyframe-animation/12-01-SUMMARY.md
