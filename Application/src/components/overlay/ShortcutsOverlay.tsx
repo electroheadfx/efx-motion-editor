@@ -66,6 +66,12 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: '\u21E7B', description: 'Toggle bypass all blur' },
     ],
   },
+  {
+    title: 'Keyframes',
+    entries: [
+      { keys: 'I', description: 'Add keyframe at current frame' },
+    ],
+  },
 ];
 
 export function ShortcutsOverlay() {

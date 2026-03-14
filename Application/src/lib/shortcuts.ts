@@ -10,6 +10,9 @@ import {layerStore} from '../stores/layerStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {canvasStore} from '../stores/canvasStore';
 import {blurStore} from '../stores/blurStore';
+import {keyframeStore} from '../stores/keyframeStore';
+import {timelineStore} from '../stores/timelineStore';
+import {isFxLayer} from '../types/layer';
 import {save, open} from '@tauri-apps/plugin-dialog';
 
 /**
@@ -277,6 +280,24 @@ export function mountShortcuts(): () => void {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
       blurStore.toggleBypass();
+    },
+
+    // Add keyframe at current frame (KF-07)
+    'KeyI': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      const selectedId = layerStore.selectedLayerId.peek();
+      if (!selectedId) return;
+      // Find the layer to check if it's animatable (content layer, not base/FX)
+      const allSeqs = sequenceStore.sequences.peek();
+      for (const seq of allSeqs) {
+        const layer = seq.layers.find(l => l.id === selectedId);
+        if (layer) {
+          if (isFxLayer(layer) || layer.isBase) return;
+          keyframeStore.addKeyframe(selectedId, timelineStore.currentFrame.peek());
+          return;
+        }
+      }
     },
 
     // Transform: Escape deselect (XFORM-09)
