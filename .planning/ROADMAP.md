@@ -105,15 +105,20 @@ Plans:
 - [x] 11-04-PLAN.md — Keyboard shortcuts: context arrows, Escape deselect, Alt+click cycle, visual verification
 
 ### Phase 12: Layer Keyframe Animation
-**Goal**: Add per-layer keyframe animation for properties (opacity, transform, etc.) — user selects a layer, positions the playhead on the timeline, adjusts parameters, and adds a keyframe. Keyframes are visible on the timeline when a layer is selected, with configurable interpolation.
+**Goal**: Add per-layer keyframe animation for properties (opacity, transform, blur) -- user selects a content layer, positions the playhead, adjusts parameters, and explicitly adds a keyframe. Keyframes are visible on the timeline as diamond markers when the layer is selected, with configurable interpolation curves.
 **Depends on**: Phase 6, Phase 11
-**Requirements**: TBD
+**Requirements**: KF-01, KF-02, KF-03, KF-04, KF-05, KF-06, KF-07, KF-08, KF-09, KF-10, KF-11, KF-12, KF-13
 **Success Criteria** (what must be TRUE):
   1. User can select a layer, position the playhead, change property values (opacity, position, scale, rotation), and add a keyframe at that frame
-  2. User can choose animation interpolation between keyframes (linear, cubic, ease-in, ease-out)
+  2. User can choose animation interpolation between keyframes (linear, ease-in, ease-out, ease-in-out)
   3. When a layer is selected, its keyframes are displayed on the timeline as markers that can be selected, moved, and deleted
   4. Preview playback animates properties smoothly between keyframes using the chosen interpolation
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 12-01-PLAN.md — Types, interpolation engine, keyframeStore CRUD, .mce v6 format support
+- [ ] 12-02-PLAN.md — Preview renderer interpolation, PropertiesPanel [+ Keyframe] button, I key shortcut
+- [ ] 12-03-PLAN.md — Timeline diamond rendering, click/drag/delete interaction, interpolation popover
+- [ ] 12-04-PLAN.md — End-to-end visual verification checkpoint
 
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences — fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
@@ -185,7 +190,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 9. Canvas Zoom | v0.2.0 | 4/4 | Complete | 2026-03-12 |
 | 10. FX Blur Effect | 3/4 | In Progress|  | - |
 | 11. Live Canvas Transform | 4/4 | Complete    | 2026-03-14 | - |
-| 12. Layer Keyframe Animation | v0.2.0 | 0/0 | Planned | - |
+| 12. Layer Keyframe Animation | v0.2.0 | 0/4 | Planned | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
