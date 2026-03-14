@@ -1,12 +1,16 @@
 import { useState, useCallback } from 'preact/hooks';
 import { layerStore } from '../../stores/layerStore';
 import { sequenceStore } from '../../stores/sequenceStore';
+import { blurStore } from '../../stores/blurStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { isFxLayer, isGeneratorLayer } from '../../types/layer';
 import { COLOR_GRADE_PRESETS, PRESET_NAMES } from '../../lib/fxPresets';
 import type { Layer, LayerSourceData, BlendMode } from '../../types/layer';
 
 const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
+
+// Track whether to restore blur after range slider drag
+let _rangeBlurRestore = false;
 
 const FADE_BLEND_MODES = ['source-over', 'screen', 'multiply', 'overlay', 'color', 'soft-light', 'hard-light'];
 
@@ -75,6 +79,12 @@ function NumericInput({
     target.setPointerCapture(e.pointerId);
     setIsDraggingLabel(true);
     startCoalescing();
+    // Bypass blur during drag for performance
+    let restoreBlur = false;
+    if (!blurStore.isBypassed()) {
+      blurStore.toggleBypass();
+      restoreBlur = true;
+    }
     let startX = e.clientX;
     let currentVal = value;
 
@@ -97,6 +107,7 @@ function NumericInput({
     const onUp = () => {
       setIsDraggingLabel(false);
       stopCoalescing();
+      if (restoreBlur) blurStore.toggleBypass();
       target.removeEventListener('pointermove', onMove);
       target.removeEventListener('pointerup', onUp);
     };
@@ -536,8 +547,14 @@ export function PropertiesPanel() {
               max="100"
               value={fxOpacityPercent}
               class="w-20 h-1 accent-[var(--color-accent)] cursor-pointer"
-              onPointerDown={() => startCoalescing()}
-              onPointerUp={() => stopCoalescing()}
+              onPointerDown={() => {
+                startCoalescing();
+                if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }
+              }}
+              onPointerUp={() => {
+                stopCoalescing();
+                if (_rangeBlurRestore) { blurStore.toggleBypass(); _rangeBlurRestore = false; }
+              }}
               onInput={(e) => {
                 const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
                 layerStore.updateLayer(selectedLayer.id, { opacity: val });
@@ -650,8 +667,14 @@ export function PropertiesPanel() {
             max="100"
             value={contentOpacityPercent}
             class="w-20 h-1 accent-[var(--color-accent)] cursor-pointer"
-            onPointerDown={() => startCoalescing()}
-            onPointerUp={() => stopCoalescing()}
+            onPointerDown={() => {
+              startCoalescing();
+              if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }
+            }}
+            onPointerUp={() => {
+              stopCoalescing();
+              if (_rangeBlurRestore) { blurStore.toggleBypass(); _rangeBlurRestore = false; }
+            }}
             onInput={(e) => {
               const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
               layerStore.updateLayer(selectedLayer.id, { opacity: val });
