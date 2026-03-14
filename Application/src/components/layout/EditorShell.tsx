@@ -8,9 +8,14 @@ import {DropZone} from '../import/DropZone';
 import {ShortcutsOverlay} from '../overlay/ShortcutsOverlay';
 import {useFileDrop} from '../../lib/dragDrop';
 import {imageStore} from '../../stores/imageStore';
+import {layerStore} from '../../stores/layerStore';
 import {projectStore} from '../../stores/projectStore';
 import {uiStore} from '../../stores/uiStore';
 import {tempProjectDir} from '../../lib/projectDir';
+
+/** Interactive element selectors that should NOT trigger deselection */
+const INTERACTIVE_SELECTOR =
+  'button, input, textarea, select, [role="button"], [data-interactive], [contenteditable]';
 
 export function EditorShell() {
   const handleDrop = useCallback((paths: string[]) => {
@@ -27,8 +32,29 @@ export function EditorShell() {
 
   useFileDrop(handleDrop, handleReject);
 
+  /** Deselect the active layer when clicking on non-interactive chrome outside the canvas */
+  const handleShellPointerDown = useCallback((e: PointerEvent) => {
+    // Nothing to deselect
+    if (layerStore.selectedLayerId.peek() === null) return;
+
+    const target = e.target as HTMLElement;
+
+    // Click is inside the canvas area -- let TransformOverlay handle it
+    if (target.closest('[data-canvas-area]')) return;
+
+    // Click is on an interactive control -- don't interfere
+    if (target.closest(INTERACTIVE_SELECTOR)) return;
+
+    // Dead space click -- deselect
+    layerStore.setSelected(null);
+    uiStore.selectLayer(null);
+  }, []);
+
   return (
-    <div class="flex flex-col w-full h-full bg-[var(--color-bg-shell)] font-primary">
+    <div
+      class="flex flex-col w-full h-full bg-[var(--color-bg-shell)] font-primary"
+      onPointerDown={handleShellPointerDown}
+    >
       <Toolbar />
       {/* Body Area */}
       <div class="flex flex-1 min-h-0">
