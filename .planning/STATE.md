@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Completed 11-03-PLAN.md
 last_updated: "2026-03-13T17:14:03.471Z"
-last_activity: "2026-03-13 - Completed 11-03: TransformOverlay with drag state machine, revised pan model"
+last_activity: "2026-03-14 - Completed quick task 7: add deselect layer when clicking outside canvas"
 progress:
   total_phases: 10
   completed_phases: 3
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 11 (live-canvas-transform)
 Plan: 4 of 4
 Status: In Progress
-Last activity: 2026-03-13 - Completed 11-03: TransformOverlay with drag state machine, revised pan model
+Last activity: 2026-03-14 - Completed quick task 7: add deselect layer when clicking outside canvas
 
 Progress: [█████████░] 93%
 
