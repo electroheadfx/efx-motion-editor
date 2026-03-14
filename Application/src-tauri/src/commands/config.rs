@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::command;
 
@@ -6,6 +7,8 @@ use tauri::command;
 struct BuilderConfig {
     #[serde(default)]
     theme: Option<String>,
+    #[serde(default)]
+    canvas_bg: Option<HashMap<String, String>>,
 }
 
 /// Returns the path to ~/.config/efx-motion/builder-config.yaml.
@@ -54,5 +57,21 @@ pub fn config_get_theme() -> Option<String> {
 pub fn config_set_theme(theme: String) -> Result<(), String> {
     let mut config = read_config();
     config.theme = Some(theme);
+    write_config(&config)
+}
+
+#[command]
+pub fn config_get_canvas_bg(theme: String) -> Option<String> {
+    read_config()
+        .canvas_bg
+        .and_then(|map| map.get(&theme).cloned())
+}
+
+#[command]
+pub fn config_set_canvas_bg(theme: String, color: String) -> Result<(), String> {
+    let mut config = read_config();
+    let mut map = config.canvas_bg.unwrap_or_default();
+    map.insert(theme, color);
+    config.canvas_bg = Some(map);
     write_config(&config)
 }

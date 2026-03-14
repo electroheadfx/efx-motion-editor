@@ -5,7 +5,7 @@
   /* Backgrounds */
   --color-bg-root: #0F0F0F;
   --color-bg-sidebar: #111111;
-  --color-bg-right: #0A0A0A;          /* Canvas area -- stays dark in ALL themes */
+  --color-bg-right: #1A1A1A;          /* Canvas area -- theme-aware dark gray */
   --color-bg-card: #1A1A1A;
   --color-bg-card-alt: #161616;
   --color-bg-input: #1E1E1E;
@@ -78,7 +78,7 @@
   /* Backgrounds -- Premiere Pro-style mid-gray */
   --color-bg-root: #404040;
   --color-bg-sidebar: #383838;
-  --color-bg-right: #0A0A0A;          /* Canvas stays dark */
+  --color-bg-right: #2E2E2E;          /* Canvas area -- medium-dark gray */
   --color-bg-card: #4A4A4A;
   --color-bg-card-alt: #444444;
   --color-bg-input: #4E4E4E;
@@ -140,7 +140,7 @@
   /* Backgrounds -- true light mode */
   --color-bg-root: #E8E8E8;
   --color-bg-sidebar: #F0F0F0;
-  --color-bg-right: #0A0A0A;          /* Canvas stays dark */
+  --color-bg-right: #3A3A3A;          /* Canvas area -- lighter dark gray */
   --color-bg-card: #FFFFFF;
   --color-bg-card-alt: #F5F5F5;
   --color-bg-input: #EBEBEB;

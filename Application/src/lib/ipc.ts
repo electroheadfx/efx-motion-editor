@@ -71,3 +71,11 @@ export async function configGetTheme(): Promise<Result<string | null>> {
 export async function configSetTheme(theme: string): Promise<Result<null>> {
   return safeInvoke<null>('config_set_theme', { theme });
 }
+
+export async function configGetCanvasBg(theme: string): Promise<Result<string | null>> {
+  return safeInvoke<string | null>('config_get_canvas_bg', { theme });
+}
+
+export async function configSetCanvasBg(theme: string, color: string): Promise<Result<null>> {
+  return safeInvoke<null>('config_set_canvas_bg', { theme, color });
+}

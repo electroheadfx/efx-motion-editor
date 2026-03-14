@@ -1,5 +1,5 @@
 import { LazyStore } from '@tauri-apps/plugin-store';
-import { configGetTheme, configSetTheme } from './ipc';
+import { configGetTheme, configSetTheme, configGetCanvasBg, configSetCanvasBg } from './ipc';
 
 /** Singleton app config store -- persists as JSON in Tauri app data dir */
 const store = new LazyStore('app-config.json');
@@ -75,4 +75,15 @@ export async function getTheme(): Promise<string | null> {
 
 export async function setThemePreference(theme: string): Promise<void> {
   await configSetTheme(theme);
+}
+
+// --- Canvas Background (persisted per-theme via Rust) ---
+
+export async function getCanvasBg(theme: string): Promise<string | null> {
+  const result = await configGetCanvasBg(theme);
+  return result.ok ? result.data : null;
+}
+
+export async function setCanvasBg(theme: string, color: string): Promise<void> {
+  await configSetCanvasBg(theme, color);
 }

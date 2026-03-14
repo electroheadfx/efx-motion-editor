@@ -246,6 +246,8 @@ pub fn run() {
             image::import_images,
             config::config_get_theme,
             config::config_set_theme,
+            config::config_get_canvas_bg,
+            config::config_set_canvas_bg,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
