@@ -230,7 +230,7 @@ export function CanvasArea() {
   const cursorStyle = isDragging.value ? 'grabbing' : 'default';
 
   return (
-    <div data-canvas-area class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-right)]">
+    <div class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-right)]">
       {/* Preview Frame with zoom/pan */}
       <div
         ref={containerRef}
@@ -248,6 +248,7 @@ export function CanvasArea() {
             transform: `scale(${canvasStore.zoom.value}) translate(${canvasStore.panX.value}px, ${canvasStore.panY.value}px)`,
             transformOrigin: 'center center',
           }}
+          data-canvas-area
           class="relative rounded bg-black overflow-visible shrink-0"
         >
           <Preview />
