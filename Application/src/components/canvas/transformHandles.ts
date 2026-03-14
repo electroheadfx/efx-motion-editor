@@ -272,10 +272,16 @@ function baseAngleForHandle(handle: HandleType): number {
   }
 }
 
+// Inline SVG rotation cursor (16×16 curved arrow)
+const ROTATE_CURSOR = (() => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M8 1a7 7 0 0 1 6.93 6H13a5 5 0 1 0-1.46 3.54l1.42 1.42A7 7 0 1 1 8 1z" fill="%23fff" stroke="%23000" stroke-width="0.8"/><path d="M16 7l-3-3v2H13V4l2 0-3-3" fill="%23fff" stroke="%23000" stroke-width="0.8" stroke-linejoin="round"/></svg>`;
+  return `url('data:image/svg+xml,${svg}') 8 8, crosshair`;
+})();
+
 /**
  * Returns CSS cursor value for a handle or rotation zone.
  * Corner/edge handles use resize cursors rotated by the layer rotation.
- * Rotation zone uses a crosshair cursor (custom rotation cursor can be added later).
+ * Rotation zone uses a custom rotation arrow cursor.
  */
 export function getCursorForHandle(
   handle: HandleType | null,
@@ -283,7 +289,7 @@ export function getCursorForHandle(
   rotation: number,
 ): string {
   if (isRotationZone) {
-    return 'crosshair'; // Rotation cursor -- can be replaced with custom SVG data URL
+    return ROTATE_CURSOR;
   }
   if (!handle || handle === 'rotate') {
     return 'default';
