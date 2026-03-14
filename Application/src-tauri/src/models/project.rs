@@ -65,6 +65,8 @@ pub struct MceLayer {
     pub order: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blur: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keyframes: Vec<MceKeyframe>,
 }
 
 /// Default scale value (1.0) for backward-compatible deserialization of v4 files
@@ -154,6 +156,27 @@ pub struct MceLayerSource {
     // Adjustment-blur fields
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radius: Option<f64>,
+}
+
+/// Animation keyframe on a layer
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceKeyframe {
+    pub frame: u32,
+    pub easing: String,
+    pub values: MceKeyframeValues,
+}
+
+/// Animatable property values at a keyframe
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceKeyframeValues {
+    pub opacity: f64,
+    pub x: f64,
+    pub y: f64,
+    pub scale_x: f64,
+    pub scale_y: f64,
+    pub rotation: f64,
+    #[serde(default)]
+    pub blur: f64,
 }
 
 /// Key photo within a sequence -- references an image by ID

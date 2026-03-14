@@ -47,6 +47,7 @@ export interface MceLayer {
   is_base: boolean;
   order: number;
   blur?: number;  // Per-layer blur radius (0-1), optional for backward compat
+  keyframes?: MceKeyframe[];  // Animation keyframes, optional for backward compat with v5 files
 }
 
 export interface MceLayerTransform {
@@ -97,6 +98,24 @@ export interface MceLayerSource {
   fade_blend?: string;
   // Adjustment-blur
   radius?: number;
+}
+
+/** Keyframe definition for serialization (snake_case fields) */
+export interface MceKeyframe {
+  frame: number;
+  easing: string;
+  values: MceKeyframeValues;
+}
+
+/** Keyframe animatable values (snake_case for .mce format) */
+export interface MceKeyframeValues {
+  opacity: number;
+  x: number;
+  y: number;
+  scale_x: number;
+  scale_y: number;
+  rotation: number;
+  blur: number;
 }
 
 /** Key photo within a sequence -- references an image by ID */

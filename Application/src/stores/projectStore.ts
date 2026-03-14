@@ -1,7 +1,7 @@
 import {signal, computed, batch} from '@preact/signals';
 import type {ProjectData, MceProject, MceSequence, MceKeyPhoto, MceLayer} from '../types/project';
 import type {Sequence, KeyPhoto} from '../types/sequence';
-import type {Layer, LayerType, BlendMode, LayerSourceData} from '../types/layer';
+import type {Layer, LayerType, BlendMode, LayerSourceData, EasingType} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
 import {projectCreate, projectSave as ipcProjectSave, projectOpen as ipcProjectOpen, projectMigrateTempImages} from '../lib/ipc';
 import {imageStore, _setImageMarkDirtyCallback} from './imageStore';
@@ -131,12 +131,27 @@ function buildMceProject(): MceProject {
         is_base: layer.isBase ?? false,
         order: layerIndex,
         ...(layer.blur != null && layer.blur > 0 ? { blur: layer.blur } : {}),
+        ...(layer.keyframes && layer.keyframes.length > 0 ? {
+          keyframes: layer.keyframes.map(kf => ({
+            frame: kf.frame,
+            easing: kf.easing,
+            values: {
+              opacity: kf.values.opacity,
+              x: kf.values.x,
+              y: kf.values.y,
+              scale_x: kf.values.scaleX,
+              scale_y: kf.values.scaleY,
+              rotation: kf.values.rotation,
+              blur: kf.values.blur,
+            },
+          })),
+        } : {}),
       })),
     }),
   );
 
   return {
-    version: 5,
+    version: 6,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -207,6 +222,21 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
                   })(),
                   isBase: ml.is_base,
                   ...(ml.blur != null ? { blur: ml.blur } : {}),
+                  ...(ml.keyframes && ml.keyframes.length > 0 ? {
+                    keyframes: ml.keyframes.map(mkf => ({
+                      frame: mkf.frame,
+                      easing: mkf.easing as EasingType,
+                      values: {
+                        opacity: mkf.values.opacity,
+                        x: mkf.values.x,
+                        y: mkf.values.y,
+                        scaleX: mkf.values.scale_x,
+                        scaleY: mkf.values.scale_y,
+                        rotation: mkf.values.rotation,
+                        blur: mkf.values.blur ?? 0,
+                      },
+                    })),
+                  } : {}),
                 }),
               )
           : [createBaseLayer()];
