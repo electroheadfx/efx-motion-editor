@@ -85,9 +85,10 @@ No active blockers.
 | 15 | Create fit-lock toggle for responsive canvas refit on resize | 2026-03-13 | 1baf5ce |
 | 16 | Make FX blur affect all layers beneath it (reverse compositing order) | 2026-03-13 | 8913b5c |
 | 17 | Add blend mode to FX blur on timeline | 2026-03-13 | e89523b |
+| 18 | Add deselect layer when clicking outside canvas | 2026-03-14 | 1220f56 |
 
 ## Session Continuity
 
-Last session: 2026-03-13T17:14:03.471Z
-Stopped at: Completed 11-03-PLAN.md
+Last session: 2026-03-14T10:35:39Z
+Stopped at: Completed quick-7
 Resume file: None
