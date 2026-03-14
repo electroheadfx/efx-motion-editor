@@ -36,6 +36,7 @@ export interface Layer {
   source: LayerSourceData;
   isBase?: boolean;  // true for auto-generated base layer (non-deletable)
   blur?: number;  // per-layer blur radius (normalized 0-1, default 0)
+  keyframes?: Keyframe[];  // Animation keyframes (sequence-local frame offsets)
 }
 
 export interface LayerTransform {
@@ -48,6 +49,26 @@ export interface LayerTransform {
   cropRight: number;
   cropBottom: number;
   cropLeft: number;
+}
+
+export type EasingType = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
+
+/** Snapshot of all animatable layer properties at a keyframe */
+export interface KeyframeValues {
+  opacity: number;
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+  blur: number;
+}
+
+/** A single animation keyframe on a layer */
+export interface Keyframe {
+  frame: number;          // Sequence-local frame offset (NOT global frame number)
+  easing: EasingType;     // Interpolation curve to the NEXT keyframe
+  values: KeyframeValues; // Snapshot of all animatable properties
 }
 
 /** Create a default LayerTransform with identity values */
@@ -67,6 +88,19 @@ export function createBaseLayer(): Layer {
     transform: defaultTransform(),
     source: { type: 'image-sequence', imageIds: [] },
     isBase: true,
+  };
+}
+
+/** Extract animatable property values from a layer into a KeyframeValues snapshot */
+export function extractKeyframeValues(layer: Layer): KeyframeValues {
+  return {
+    opacity: layer.opacity,
+    x: layer.transform.x,
+    y: layer.transform.y,
+    scaleX: layer.transform.scaleX,
+    scaleY: layer.transform.scaleY,
+    rotation: layer.transform.rotation,
+    blur: layer.blur ?? 0,
   };
 }
 
