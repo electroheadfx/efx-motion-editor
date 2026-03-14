@@ -8,6 +8,7 @@ import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
 import {imageStore} from '../../stores/imageStore';
 import {playbackEngine} from '../../lib/playbackEngine';
+import {activeSequenceFrames} from '../../lib/frameMap';
 import type {Layer} from '../../types/layer';
 
 /** Safari macOS gesture event interface */
@@ -35,7 +36,15 @@ function getSourceDimensionsForLayer(layer: Layer): {w: number; h: number} | nul
       const img = imageStore.getById(ids[0]);
       if (img) return {w: img.width, h: img.height};
     }
-    // Base layer (empty imageIds): use project dimensions as approximation
+    // Base layer (empty imageIds): look up actual image from current frame
+    const frames = activeSequenceFrames.peek();
+    if (frames.length > 0) {
+      const frame = frames[timelineStore.currentFrame.peek()] ?? frames[0];
+      if (frame) {
+        const img = imageStore.getById(frame.imageId);
+        if (img) return {w: img.width, h: img.height};
+      }
+    }
     return {w: projectStore.width.peek(), h: projectStore.height.peek()};
   }
   if (layer.source.type === 'video') {
@@ -108,7 +117,6 @@ export function CanvasArea() {
       drag.startPanX + (e.clientX - drag.startX) / z,
       drag.startPanY + (e.clientY - drag.startY) / z,
     );
-    // Mark that a drag happened during Space hold (for play/pause suppression)
     if (isSpaceHeld.current) {
       spaceDragOccurred.current = true;
     }
@@ -127,17 +135,13 @@ export function CanvasArea() {
     }
   }, []);
 
-  // --- Space+drag pan tracking ---
+  // --- Space: hold for pan mode, tap for play/pause ---
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' && !e.repeat) {
-        // Only track space if focus is on the canvas area (not inside inputs)
         const target = e.target as HTMLElement;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+        e.preventDefault();
         isSpaceHeld.current = true;
         spaceDragOccurred.current = false;
       }
@@ -145,22 +149,23 @@ export function CanvasArea() {
 
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
+        const wasHeld = isSpaceHeld.current;
         isSpaceHeld.current = false;
+        if (!wasHeld) return;
 
-        // If Space+drag occurred, suppress play/pause toggle
-        if (spaceDragOccurred.current) {
-          spaceDragOccurred.current = false;
-          e.preventDefault();
-          e.stopPropagation();
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+
+        if (!spaceDragOccurred.current) {
+          // No drag occurred -- toggle play/pause
+          playbackEngine.toggle();
         }
-        // If no drag occurred, let the global shortcut handle play/pause toggle
+        spaceDragOccurred.current = false;
       }
     };
 
-    // Listen on window to catch Space regardless of focused element
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
@@ -260,6 +265,7 @@ export function CanvasArea() {
       <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0">
         {/* Step backward */}
         <button
+          tabIndex={-1}
           class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] cursor-pointer"
           onClick={() => playbackEngine.stepBackward()}
           title="Step backward"
@@ -268,6 +274,7 @@ export function CanvasArea() {
         </button>
         {/* Play / Pause */}
         <button
+          tabIndex={-1}
           class="flex items-center justify-center w-9 h-9 rounded-full bg-[var(--color-accent)] cursor-pointer"
           onClick={() => playbackEngine.toggle()}
           title={isPlaying ? 'Pause' : 'Play'}
@@ -278,6 +285,7 @@ export function CanvasArea() {
         </button>
         {/* Step forward */}
         <button
+          tabIndex={-1}
           class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] cursor-pointer"
           onClick={() => playbackEngine.stepForward()}
           title="Step forward"

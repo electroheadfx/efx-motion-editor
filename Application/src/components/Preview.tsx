@@ -135,21 +135,18 @@ export function Preview() {
   }, []);
 
   return (
-    <div class="relative w-full">
-      <div class="relative w-full aspect-video bg-black rounded overflow-hidden">
-        <canvas
-          ref={canvasRef}
-          class="absolute inset-0 w-full h-full"
-          style={{objectFit: 'contain'}}
-        />
-        {!hasContent && (
-          <div class="absolute inset-0 flex items-center justify-center">
-            <span class="text-[var(--color-text-secondary)] text-sm">
-              No frames to preview
-            </span>
-          </div>
-        )}
-      </div>
+    <div class="absolute inset-0">
+      <canvas
+        ref={canvasRef}
+        class="absolute inset-0 w-full h-full"
+      />
+      {!hasContent && (
+        <div class="absolute inset-0 flex items-center justify-center">
+          <span class="text-[var(--color-text-secondary)] text-sm">
+            No frames to preview
+          </span>
+        </div>
+      )}
     </div>
   );
 }

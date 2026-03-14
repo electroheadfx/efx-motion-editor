@@ -76,21 +76,16 @@ export class PreviewRenderer {
     fps: number,
     clearCanvas = true,
   ): void {
-    // Sync canvas internal resolution to display size (Retina DPI)
-    const rect = this.canvas.getBoundingClientRect();
+    // Sync canvas internal resolution to layout size (excludes CSS transforms like zoom)
+    const logicalW = this.canvas.clientWidth || this.canvas.offsetWidth;
+    const logicalH = this.canvas.clientHeight || this.canvas.offsetHeight;
     const dpr = window.devicePixelRatio || 1;
-    const displayW = Math.round(rect.width * dpr);
-    const displayH = Math.round(rect.height * dpr);
+    const displayW = Math.round(logicalW * dpr);
+    const displayH = Math.round(logicalH * dpr);
     if (this.canvas.width !== displayW || this.canvas.height !== displayH) {
       this.canvas.width = displayW;
       this.canvas.height = displayH;
     }
-
-    // Pre-check: determine if ANY visible layer will draw something.
-    // If nothing will draw, keep the previous frame visible
-    // (avoids black flashes while images load asynchronously).
-    const logicalW = rect.width;
-    const logicalH = rect.height;
 
     let hasDrawable = false;
     if (!clearCanvas) {

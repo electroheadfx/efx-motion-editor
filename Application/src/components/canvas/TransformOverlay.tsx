@@ -8,6 +8,7 @@ import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
 import {timelineStore} from '../../stores/timelineStore';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
+import {blurStore} from '../../stores/blurStore';
 import {clientToCanvas} from './coordinateMapper';
 import {
   getLayerBounds,
@@ -31,7 +32,7 @@ interface TransformOverlayProps {
   onPanStart: (e: PointerEvent) => void;
 }
 
-type DragMode = 'none' | 'pending' | 'move' | 'scale' | 'rotate';
+type DragMode = 'none' | 'pending' | 'pan-pending' | 'move' | 'scale' | 'rotate';
 
 interface DragState {
   mode: DragMode;
@@ -41,6 +42,7 @@ interface DragState {
   handleType?: HandleType;
   layerId?: string;
   startBounds?: LayerBounds;
+  _restoreBlur?: boolean;
 }
 
 const DRAG_THRESHOLD = 4; // pixels
@@ -127,7 +129,7 @@ export function TransformOverlay({
   }
 
   function handlePointerDown(e: PointerEvent) {
-    // Middle-click or Space+drag -> pan
+    // Middle-click or Space+click -> pan
     if (e.button === 1 || (e.button === 0 && isSpaceHeld.current)) {
       onPanStart(e);
       return;
@@ -144,7 +146,7 @@ export function TransformOverlay({
     const currentSelectedId = layerStore.selectedLayerId.peek();
     const currentSelected = currentSelectedId ? currentLayers.find((l) => l.id === currentSelectedId) : null;
 
-    // 1. If a layer is selected, hit-test handles first
+    // 1. If a layer is selected, hit-test handles and rotation zone
     if (currentSelected && !isFxLayer(currentSelected)) {
       const selDims = getSourceDimensions(currentSelected);
       if (selDims) {
@@ -183,39 +185,48 @@ export function TransformOverlay({
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           return;
         }
+
+        // Click inside the selected layer's bounding box -> move drag
+        if (pointInPolygon(point, selBounds.corners)) {
+          e.preventDefault();
+          dragRef.current = {
+            mode: 'pending',
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+            startLayerTransform: {...currentSelected.transform},
+            layerId: currentSelectedId!,
+            startBounds: selBounds,
+          };
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          return;
+        }
       }
     }
 
-    // 2. Hit-test layers
+    // 2. Hit-test unselected layers -- select on click, but drag will pan
     const hitLayerId = e.altKey
       ? hitTestLayersCycle(point, currentLayers, pW, pH, getSourceDimensions, currentSelectedId)
       : hitTestLayers(point, currentLayers, pW, pH, getSourceDimensions);
 
-    if (hitLayerId) {
+    if (hitLayerId && hitLayerId !== currentSelectedId) {
+      // Select the layer, but set up pan-pending so dragging pans
       layerStore.setSelected(hitLayerId);
       uiStore.selectLayer(hitLayerId);
-      const hitLayer = currentLayers.find((l) => l.id === hitLayerId);
-      if (hitLayer) {
-        e.preventDefault();
-        dragRef.current = {
-          mode: 'pending',
-          startClientX: e.clientX,
-          startClientY: e.clientY,
-          startLayerTransform: {...hitLayer.transform},
-          layerId: hitLayerId,
-        };
-        const hitDims = getSourceDimensions(hitLayer);
-        if (hitDims) {
-          dragRef.current.startBounds = getLayerBounds(hitLayer, hitDims.w, hitDims.h, pW, pH);
-        }
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      }
-      return;
+    } else if (!hitLayerId) {
+      // Nothing hit -> deselect
+      layerStore.setSelected(null);
+      uiStore.selectLayer(null);
     }
 
-    // 3. Nothing hit -> deselect
-    layerStore.setSelected(null);
-    uiStore.selectLayer(null);
+    // In all cases outside selected layer body/handles: drag = pan
+    e.preventDefault();
+    dragRef.current = {
+      mode: 'pan-pending',
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startLayerTransform: {x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0},
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
   function handlePointerMove(e: PointerEvent) {
@@ -224,6 +235,29 @@ export function TransformOverlay({
     if (state.mode === 'none') {
       // Update cursor based on what's under the pointer
       updateCursor(e);
+      return;
+    }
+
+    if (state.mode === 'pan-pending') {
+      const dist = Math.hypot(e.clientX - state.startClientX, e.clientY - state.startClientY);
+      if (dist < DRAG_THRESHOLD) return;
+      // Transition to pan -- hand off to CanvasArea
+      dragRef.current = {
+        mode: 'none',
+        startClientX: 0,
+        startClientY: 0,
+        startLayerTransform: {x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0},
+      };
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch { /* ignore */ }
+      // Create a synthetic event at the original start position for pan
+      onPanStart(new PointerEvent('pointerdown', {
+        clientX: state.startClientX,
+        clientY: state.startClientY,
+        button: 0,
+        pointerId: e.pointerId,
+      }));
       return;
     }
 
@@ -240,6 +274,11 @@ export function TransformOverlay({
         dragRef.current = {...state, mode: 'move'};
       }
       startCoalescing();
+      // Temporarily bypass blur during drag for smoother performance
+      if (!blurStore.isBypassed()) {
+        blurStore.toggleBypass();
+        dragRef.current._restoreBlur = true;
+      }
     }
 
     const currentState = dragRef.current;
@@ -364,6 +403,10 @@ export function TransformOverlay({
 
     if (state.mode === 'move' || state.mode === 'scale' || state.mode === 'rotate') {
       stopCoalescing();
+      // Restore blur if it was bypassed for this drag
+      if (state._restoreBlur) {
+        blurStore.toggleBypass();
+      }
     }
 
     dragRef.current = {

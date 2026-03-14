@@ -99,6 +99,30 @@ function handleDelete(): void {
   }
 }
 
+// --- Nudge helpers ---
+
+function nudgeIfSelected(axis: 'x' | 'y', delta: number): void {
+  const selectedId = layerStore.selectedLayerId.peek();
+  if (!selectedId) return;
+  const allLayers = layerStore.layers.peek();
+  const layer = allLayers.find(l => l.id === selectedId);
+  if (layer) {
+    layerStore.updateLayer(selectedId, {
+      transform: {...layer.transform, [axis]: layer.transform[axis] + delta},
+    });
+  }
+}
+
+function nudgeOrStep(axis: 'x', delta: number, _e: KeyboardEvent): void {
+  const selectedId = layerStore.selectedLayerId.peek();
+  if (selectedId) {
+    nudgeIfSelected(axis, delta);
+  } else {
+    if (delta < 0) playbackEngine.stepBackward();
+    else playbackEngine.stepForward();
+  }
+}
+
 // --- Mount shortcuts ---
 
 /**
@@ -108,73 +132,46 @@ function handleDelete(): void {
  */
 export function mountShortcuts(): () => void {
   return tinykeys(window, {
-    // Playback (KEY-01, KEY-02)
-    'Space': (e: KeyboardEvent) => {
-      if (shouldSuppressShortcut(e)) return;
-      e.preventDefault(); // Prevent page scroll (Pitfall 6)
-      playbackEngine.toggle();
-    },
+    // Playback: Space is handled in CanvasArea (deferred to keyup for Space+drag pan support)
     'ArrowLeft': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      const selectedId = layerStore.selectedLayerId.peek();
-      if (selectedId) {
-        const allLayers = layerStore.layers.peek();
-        const layer = allLayers.find(l => l.id === selectedId);
-        if (layer) {
-          const step = e.shiftKey ? 10 : 1;
-          layerStore.updateLayer(selectedId, {
-            transform: {...layer.transform, x: layer.transform.x - step},
-          });
-        }
-      } else {
-        playbackEngine.stepBackward();
-      }
+      nudgeOrStep('x', -1, e);
+    },
+    'Shift+ArrowLeft': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      nudgeOrStep('x', -10, e);
     },
     'ArrowRight': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      const selectedId = layerStore.selectedLayerId.peek();
-      if (selectedId) {
-        const allLayers = layerStore.layers.peek();
-        const layer = allLayers.find(l => l.id === selectedId);
-        if (layer) {
-          const step = e.shiftKey ? 10 : 1;
-          layerStore.updateLayer(selectedId, {
-            transform: {...layer.transform, x: layer.transform.x + step},
-          });
-        }
-      } else {
-        playbackEngine.stepForward();
-      }
+      nudgeOrStep('x', 1, e);
+    },
+    'Shift+ArrowRight': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      nudgeOrStep('x', 10, e);
     },
     'ArrowUp': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      const selectedId = layerStore.selectedLayerId.peek();
-      if (!selectedId) return;
-      const allLayers = layerStore.layers.peek();
-      const layer = allLayers.find(l => l.id === selectedId);
-      if (layer) {
-        const step = e.shiftKey ? 10 : 1;
-        layerStore.updateLayer(selectedId, {
-          transform: {...layer.transform, y: layer.transform.y - step},
-        });
-      }
+      nudgeIfSelected('y', -1);
+    },
+    'Shift+ArrowUp': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      nudgeIfSelected('y', -10);
     },
     'ArrowDown': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      const selectedId = layerStore.selectedLayerId.peek();
-      if (!selectedId) return;
-      const allLayers = layerStore.layers.peek();
-      const layer = allLayers.find(l => l.id === selectedId);
-      if (layer) {
-        const step = e.shiftKey ? 10 : 1;
-        layerStore.updateLayer(selectedId, {
-          transform: {...layer.transform, y: layer.transform.y + step},
-        });
-      }
+      nudgeIfSelected('y', 1);
+    },
+    'Shift+ArrowDown': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      nudgeIfSelected('y', 10);
     },
 
     // JKL Scrub (KEY-03)
