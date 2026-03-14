@@ -81,6 +81,17 @@ async function handleOpenProject(): Promise<void> {
 }
 
 function handleDelete(): void {
+  // Check for selected keyframe diamonds first (KF-12)
+  const selectedKfFrames = keyframeStore.selectedKeyframeFrames.peek();
+  if (selectedKfFrames.size > 0) {
+    const layerId = layerStore.selectedLayerId.peek();
+    if (layerId) {
+      keyframeStore.removeKeyframes(layerId, [...selectedKfFrames]);
+      keyframeStore.clearSelection();
+      return;
+    }
+  }
+
   // Delete selected layer if any (FX layers delete via this path)
   const selectedLayer = uiStore.selectedLayerId.value;
   if (selectedLayer) {

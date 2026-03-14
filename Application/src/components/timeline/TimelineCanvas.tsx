@@ -1,12 +1,15 @@
-import {useRef, useEffect} from 'preact/hooks';
+import {useRef, useEffect, useState} from 'preact/hooks';
 import {effect} from '@preact/signals';
 import {TimelineRenderer, invalidateColorCache} from './TimelineRenderer';
 import {TimelineInteraction} from './TimelineInteraction';
+import {KeyframePopover} from './KeyframePopover';
 import {timelineStore} from '../../stores/timelineStore';
 import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {imageStore} from '../../stores/imageStore';
 import {layerStore} from '../../stores/layerStore';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {keyframeStore} from '../../stores/keyframeStore';
+import {isFxLayer} from '../../types/layer';
 import {currentTheme} from '../../lib/themeManager';
 
 /**
@@ -19,6 +22,7 @@ export function TimelineCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<TimelineRenderer | null>(null);
   const interactionRef = useRef<TimelineInteraction | null>(null);
+  const [popover, setPopover] = useState<{ layerId: string; frame: number; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -32,6 +36,13 @@ export function TimelineCanvas() {
     interactionRef.current = interaction;
 
     interaction.attach(canvas, renderer);
+
+    // Listen for keyframe double-click events from TimelineInteraction
+    const handleKfDblClick = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setPopover({ layerId: detail.layerId, frame: detail.frame, x: detail.clientX, y: detail.clientY });
+    };
+    canvas.addEventListener('keyframe-dblclick', handleKfDblClick);
 
     // ResizeObserver to handle container size changes
     const resizeObserver = new ResizeObserver(() => {
@@ -78,6 +89,29 @@ export function TimelineCanvas() {
       // Read active sequence ID for content track highlight
       const selectedContentSequenceId = sequenceStore.activeSequenceId.value;
 
+      // Keyframe diamond data for selected content layer
+      // Subscribe to keyframeStore signals for reactive redraws
+      const selectedKfFrames = keyframeStore.selectedKeyframeFrames.value;
+      const activeKfs = keyframeStore.activeLayerKeyframes.value;
+
+      let selectedLayerKeyframes: { frame: number; easing: string }[] | undefined;
+      let selectedLayerSequenceId: string | null = null;
+
+      if (selectedLayerId) {
+        for (const seq of sequenceStore.sequences.value) {
+          if (seq.kind === 'fx') continue;
+          const layer = seq.layers.find(l => l.id === selectedLayerId);
+          if (layer && layer.keyframes && layer.keyframes.length > 0 && !isFxLayer(layer) && !layer.isBase) {
+            selectedLayerKeyframes = layer.keyframes.map(kf => ({ frame: kf.frame, easing: kf.easing }));
+            selectedLayerSequenceId = seq.id;
+            break;
+          }
+        }
+      }
+
+      // Use activeKfs to ensure this effect re-runs when keyframes are added/removed/moved
+      void activeKfs;
+
       renderer.draw({
         frame,
         zoom,
@@ -89,12 +123,16 @@ export function TimelineCanvas() {
         totalFrames,
         selectedFxSequenceId,
         selectedContentSequenceId,
+        selectedLayerKeyframes,
+        selectedKeyframeFrames: selectedKfFrames,
+        selectedLayerSequenceId,
       });
     });
 
     return () => {
       disposeTheme();
       dispose();
+      canvas.removeEventListener('keyframe-dblclick', handleKfDblClick);
       interaction.detach();
       renderer.destroy();
       resizeObserver.disconnect();
@@ -104,8 +142,17 @@ export function TimelineCanvas() {
   }, []);
 
   return (
-    <div class="flex-1 min-h-0 overflow-hidden">
+    <div class="flex-1 min-h-0 overflow-hidden relative">
       <canvas ref={canvasRef} class="w-full h-full" />
+      {popover && (
+        <KeyframePopover
+          layerId={popover.layerId}
+          frame={popover.frame}
+          x={popover.x}
+          y={popover.y}
+          onClose={() => setPopover(null)}
+        />
+      )}
     </div>
   );
 }

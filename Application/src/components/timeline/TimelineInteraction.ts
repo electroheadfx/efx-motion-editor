@@ -3,6 +3,7 @@ import {playbackEngine} from '../../lib/playbackEngine';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
+import {keyframeStore} from '../../stores/keyframeStore';
 import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, TRACK_HEIGHT, FX_TRACK_HEIGHT} from './TimelineRenderer';
@@ -41,6 +42,14 @@ export class TimelineInteraction {
   private isDraggingFxReorder = false;
   private fxReorderFromIndex = -1;
   private fxReorderMoved = false;
+
+  // Keyframe diamond drag state (KF-09)
+  private isDraggingKeyframe = false;
+  private kfDragLayerId = '';
+  private kfDragFromFrame = 0;  // sequence-local frame
+  private kfDragSequenceStartFrame = 0;  // global start of the owning sequence
+  private kfLastClickFrame = -1;
+  private kfLastClickTime = 0;
 
   // Bound handlers for cleanup
   private handlePointerDown = this.onPointerDown.bind(this);
@@ -190,6 +199,69 @@ export class TimelineInteraction {
     return null;
   }
 
+  /** Hit-test keyframe diamonds: returns the hit keyframe info or null */
+  private keyframeHitTest(clientX: number, clientY: number): { frame: number; layerId: string; sequenceStartFrame: number } | null {
+    // Only hit-test if we have active keyframes
+    const keyframes = keyframeStore.activeLayerKeyframes.peek();
+    if (keyframes.length === 0) return null;
+
+    const selectedId = layerStore.selectedLayerId.peek();
+    if (!selectedId) return null;
+
+    // Find which sequence owns the selected layer
+    const allSeqs = sequenceStore.sequences.peek();
+    let owningSeqId: string | null = null;
+    for (const seq of allSeqs) {
+      if (seq.layers.some(l => l.id === selectedId)) {
+        owningSeqId = seq.id;
+        break;
+      }
+    }
+    if (!owningSeqId) return null;
+
+    // Must be in the content track area (not FX, not ruler, not header)
+    if (this.isInRuler(clientY) || this.isInFxArea(clientY)) return null;
+    if (!this.canvas) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    if (clientX - rect.left < TRACK_HEADER_WIDTH) return null;
+
+    // Find the track for this sequence
+    const tracks = trackLayouts.peek();
+    const track = tracks.find(t => t.sequenceId === owningSeqId);
+    if (!track) return null;
+
+    // Check if click Y is on this track
+    const trackIndex = tracks.indexOf(track);
+    const clickedTrackIndex = this.trackIndexFromY(clientY);
+    if (clickedTrackIndex !== trackIndex) return null;
+
+    // Get the frame at click position
+    const clickFrame = this.getFrame(clientX);
+    const localClickFrame = clickFrame - track.startFrame;
+
+    // Diamond hit threshold: within 0.6 frames of a keyframe (generous for small diamonds)
+    const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
+    const hitThresholdFrames = Math.max(0.6, 8 / frameWidth); // At least 8px
+
+    for (const kf of keyframes) {
+      if (Math.abs(localClickFrame - kf.frame) <= hitThresholdFrames) {
+        return { frame: kf.frame, layerId: selectedId, sequenceStartFrame: track.startFrame };
+      }
+    }
+
+    return null;
+  }
+
+  /** Delete selected keyframe diamonds (called from shortcuts) */
+  deleteSelectedKeyframes(): void {
+    const selectedFrames = keyframeStore.selectedKeyframeFrames.peek();
+    if (selectedFrames.size === 0) return;
+    const layerId = layerStore.selectedLayerId.peek();
+    if (!layerId) return;
+    keyframeStore.removeKeyframes(layerId, [...selectedFrames]);
+    keyframeStore.clearSelection();
+  }
+
   // --- Click-to-seek (TIME-02), playhead drag start, track header drag, and FX drag ---
   private onPointerDown(e: PointerEvent) {
     if (!this.canvas) return;
@@ -256,6 +328,50 @@ export class TimelineInteraction {
       return;
     }
 
+    // Check keyframe diamond hit BEFORE regular track interactions
+    const kfHit = this.keyframeHitTest(e.clientX, e.clientY);
+    if (kfHit) {
+      const now = Date.now();
+      // Double-click detection (within 400ms on same frame)
+      if (kfHit.frame === this.kfLastClickFrame && now - this.kfLastClickTime < 400) {
+        // Double-click: open interpolation popover
+        this.kfLastClickFrame = -1;
+        this.kfLastClickTime = 0;
+        // Emit custom event for popover (handled by TimelineCanvas)
+        const globalFrame = kfHit.sequenceStartFrame + kfHit.frame;
+        const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
+        const diamondX = globalFrame * frameWidth - timelineStore.scrollX.peek() + TRACK_HEADER_WIDTH;
+        const canvasRect = this.canvas.getBoundingClientRect();
+        this.canvas.dispatchEvent(new CustomEvent('keyframe-dblclick', {
+          detail: {
+            layerId: kfHit.layerId,
+            frame: kfHit.frame,
+            clientX: canvasRect.left + diamondX,
+            clientY: e.clientY,
+          },
+        }));
+        return;
+      }
+
+      this.kfLastClickFrame = kfHit.frame;
+      this.kfLastClickTime = now;
+
+      // Select the keyframe (shift for additive)
+      keyframeStore.selectKeyframe(kfHit.frame, e.shiftKey);
+
+      // Snap playhead to keyframe frame
+      playbackEngine.seekToFrame(kfHit.sequenceStartFrame + kfHit.frame);
+
+      // Start keyframe drag
+      this.isDraggingKeyframe = true;
+      this.kfDragLayerId = kfHit.layerId;
+      this.kfDragFromFrame = kfHit.frame;
+      this.kfDragSequenceStartFrame = kfHit.sequenceStartFrame;
+      this.canvas.setPointerCapture(e.pointerId);
+      startCoalescing();
+      return;
+    }
+
     const rect = this.canvas.getBoundingClientRect();
     const localX = e.clientX - rect.left;
 
@@ -317,8 +433,21 @@ export class TimelineInteraction {
     }
   }
 
-  // --- Playhead scrubbing (TIME-03), track header drag (TIME-06), and FX drag (FX-09) ---
+  // --- Playhead scrubbing (TIME-03), track header drag (TIME-06), FX drag (FX-09), keyframe drag (KF-10) ---
   private onPointerMove(e: PointerEvent) {
+    // Keyframe diamond drag
+    if (this.isDraggingKeyframe) {
+      const globalFrame = this.getFrame(e.clientX);
+      const localFrame = Math.max(0, globalFrame - this.kfDragSequenceStartFrame);
+      if (localFrame !== this.kfDragFromFrame) {
+        keyframeStore.moveKeyframe(this.kfDragLayerId, this.kfDragFromFrame, localFrame);
+        // Update selected frames to track the moved keyframe
+        keyframeStore.selectKeyframe(localFrame, false);
+        this.kfDragFromFrame = localFrame;
+      }
+      return;
+    }
+
     // FX header reorder dragging with visual feedback
     if (this.isDraggingFxReorder) {
       this.fxReorderMoved = true;
@@ -426,6 +555,20 @@ export class TimelineInteraction {
   }
 
   private onPointerUp(e: PointerEvent) {
+    // Keyframe diamond drag end
+    if (this.isDraggingKeyframe) {
+      this.isDraggingKeyframe = false;
+      stopCoalescing();
+      if (this.canvas) {
+        try {
+          this.canvas.releasePointerCapture(e.pointerId);
+        } catch {
+          // Pointer capture may have been released
+        }
+      }
+      return;
+    }
+
     // FX header reorder drag end
     if (this.isDraggingFxReorder) {
       if (this.fxReorderMoved) {
