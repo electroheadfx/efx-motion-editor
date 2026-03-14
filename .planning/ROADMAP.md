@@ -32,7 +32,7 @@ See: `milestones/v0.1.0-ROADMAP.md` for full details.
 - [x] **Phase 8: UI Theme System** - Add theme with 3 gray levels (light, medium, dark) to fix overly dark UI (completed 2026-03-12)
 - [x] **Phase 9: Canvas Zoom** - Wire up canvas zoom functionality to existing UI +/- percent controls (completed 2026-03-12)
 - [ ] **Phase 10: FX Blur Effect** - Dual-quality blur: Dual Kawase for fast playback preview, Gaussian for high-quality rendering
-- [ ] **Phase 11: Live Canvas Transform** - Direct transform manipulation on canvas preview (move, scale, rotate) in addition to existing parameter controls
+- [x] **Phase 11: Live Canvas Transform** - Direct transform manipulation on canvas preview (move, scale, rotate) in addition to existing parameter controls (completed 2026-03-14)
 - [ ] **Phase 12: Layer Keyframe Animation** - Per-layer keyframe motion (opacity, transform) with interpolation curves (cubic, linear) visible on timeline
 - [ ] **Phase 13: Sequence Fade In/Out** - Fade with opacity (PNG+alpha transparency) or fade to solid color (default black)
 - [ ] **Phase 14: Cross-Sequence Transitions** - Fade between sequences (seq 1 out → seq 2 in) with cubic/linear interpolation
@@ -99,10 +99,10 @@ Plans:
   3. Canvas transform changes sync bidirectionally with the parameter panel values in real-time
 **Plans**: 4 plans
 Plans:
-- [ ] 11-01-PLAN.md — Data model: split scale into scaleX/scaleY, .mce v4->v5 migration, update renderer + PropertiesPanel
-- [ ] 11-02-PLAN.md — Utility modules: coordinate mapping, bounding box geometry, layer + handle hit testing
-- [ ] 11-03-PLAN.md — TransformOverlay component: bounding box, handles, drag state machine, CanvasArea integration
-- [ ] 11-04-PLAN.md — Keyboard shortcuts: context arrows, Escape deselect, Alt+click cycle, visual verification
+- [x] 11-01-PLAN.md — Data model: split scale into scaleX/scaleY, .mce v4->v5 migration, update renderer + PropertiesPanel
+- [x] 11-02-PLAN.md — Utility modules: coordinate mapping, bounding box geometry, layer + handle hit testing
+- [x] 11-03-PLAN.md — TransformOverlay component: bounding box, handles, drag state machine, CanvasArea integration
+- [x] 11-04-PLAN.md — Keyboard shortcuts: context arrows, Escape deselect, Alt+click cycle, visual verification
 
 ### Phase 12: Layer Keyframe Animation
 **Goal**: Add per-layer keyframe animation for properties (opacity, transform, etc.) — user selects a layer, positions the playhead on the timeline, adjusts parameters, and adds a keyframe. Keyframes are visible on the timeline when a layer is selected, with configurable interpolation.
@@ -184,7 +184,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 8. UI Theme System | 3/3 | Complete   | 2026-03-12 | - |
 | 9. Canvas Zoom | v0.2.0 | 4/4 | Complete | 2026-03-12 |
 | 10. FX Blur Effect | 3/4 | In Progress|  | - |
-| 11. Live Canvas Transform | 3/4 | In Progress|  | - |
+| 11. Live Canvas Transform | 4/4 | Complete   | 2026-03-14 | - |
 | 12. Layer Keyframe Animation | v0.2.0 | 0/0 | Planned | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |

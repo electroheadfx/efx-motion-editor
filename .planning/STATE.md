@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-03-13T17:14:03.471Z"
-last_activity: "2026-03-14 - Completed quick task 8: theme-aware canvas background color"
+stopped_at: Completed 11-04-PLAN.md
+last_updated: "2026-03-14T12:14:18Z"
+last_activity: "2026-03-14 - Completed Phase 11 Plan 04: keyboard shortcuts and visual verification"
 progress:
   total_phases: 10
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 15
-  completed_plans: 14
-  percent: 93
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 11 -- Live canvas transform with non-uniform scaling
+**Current focus:** v0.2.0 Phase 11 complete -- Live canvas transform with non-uniform scaling
 
 ## Current Position
 
 Milestone: v0.2.0
 Phase: 11 (live-canvas-transform)
 Plan: 4 of 4
-Status: In Progress
-Last activity: 2026-03-14 - Completed quick task 8: theme-aware canvas background color
+Status: Complete
+Last activity: 2026-03-14 - Completed Phase 11 Plan 04: keyboard shortcuts and visual verification
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Accumulated Context
 
@@ -55,6 +55,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 11-03]: TransformOverlay inside CSS-transformed div (project-space coordinates, not client-space)
 - [Phase 11-03]: Pan model: left-click selects/transforms, middle-click and Space+drag pan only
 - [Phase 11-03]: Source dimensions from imageStore metadata rather than renderer image cache
+- [Phase 11-04]: Arrow key context-dependence via layerStore.selectedLayerId.peek() check in each handler
+- [Phase 11-04]: Bidirectional sync by calling both layerStore.setSelected and uiStore.selectLayer explicitly (no signal effect)
 
 ### Pending Todos
 
@@ -90,6 +92,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-14T10:59:39Z
-Stopped at: Completed quick-8
+Last session: 2026-03-14T12:14:18Z
+Stopped at: Completed 11-04-PLAN.md
 Resume file: None
