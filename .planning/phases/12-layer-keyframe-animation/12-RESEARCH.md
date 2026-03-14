@@ -106,12 +106,14 @@ Application/src/
 **When to use:** Always -- this is the locked design choice
 **Why:** structuredClone snapshot/restore for undo/redo captures keyframes automatically. No cross-referencing between separate stores. Serialization to .mce falls out naturally from the existing layer serialization in `buildMceProject()`.
 
+**RESOLVED: Sequence-local frame offsets (not global).** Keyframe `frame` values are stored as offsets from the owning sequence's start frame. This makes keyframes immune to changes in other sequences (reordering, adding/removing key photos). The conversion from global frame to sequence-local happens at the call site using `trackLayouts` or `activeSequenceStartFrame` from `frameMap.ts`. See Open Questions section for full rationale.
+
 ```typescript
 // types/layer.ts additions
 export type EasingType = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
 
 export interface Keyframe {
-  frame: number;          // Global frame number (not local-to-sequence)
+  frame: number;          // Sequence-local frame offset (NOT global frame number)
   easing: EasingType;     // Interpolation to NEXT keyframe
   values: KeyframeValues; // Snapshot of all animatable properties
 }
@@ -136,7 +138,7 @@ export interface KeyframeValues {
 // lib/keyframeEngine.ts
 export function interpolateAt(
   keyframes: Keyframe[],
-  frame: number,
+  frame: number,       // sequence-local frame offset
 ): KeyframeValues | null {
   if (keyframes.length === 0) return null;
   if (keyframes.length === 1) return keyframes[0].values;
@@ -182,7 +184,7 @@ const selectedKeyframeIds = signal<Set<string>>(new Set());
 const interpolatedValues = computed(() => {
   const layerId = layerStore.selectedLayerId.value;
   if (!layerId) return null;
-  // ... find layer, call interpolateAt()
+  // ... find layer, compute sequence-local frame, call interpolateAt()
 });
 
 export const keyframeStore = {
@@ -205,18 +207,40 @@ export const keyframeStore = {
 // In TimelineRenderer.draw(), after drawing track content:
 if (selectedLayerKeyframes && selectedLayerKeyframes.length > 0) {
   for (const kf of selectedLayerKeyframes) {
-    const kfX = kf.frame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+    // kf.frame is sequence-local; convert to global for pixel positioning
+    const globalFrame = track.startFrame + kf.frame;
+    const kfX = globalFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
     if (kfX < TRACK_HEADER_WIDTH || kfX > w) continue; // virtualize
     this.drawDiamond(ctx, kfX, trackCenterY, isSelected);
   }
 }
 ```
 
+### Pattern 5: Transient Edits Between Keyframes
+**What:** A transient override signal in keyframeStore that holds property values the user edited between keyframes, without persisting them to Layer state
+**When to use:** When the user edits properties on a layer with keyframes while the playhead is NOT on a keyframe frame
+**Why:** The locked decision states "Edits between keyframes are transient -- only saved when user clicks [+ Keyframe]." Since `layerStore.updateLayer()` immediately writes to the store and creates undo entries, property edits between keyframes must NOT go through `layerStore.updateLayer()`. Instead, they write to `keyframeStore.transientOverrides` -- a signal holding the user's temporary edits. The preview renderer ignores transient overrides (always uses interpolated values). PropertiesPanel shows transient overrides while they exist. On frame change (playhead move), transient overrides are cleared and the display reverts to interpolated values. The [+ Keyframe] button reads from transient overrides (if set) to capture what the user edited.
+
+```typescript
+// In keyframeStore:
+const transientOverrides = signal<KeyframeValues | null>(null);
+
+// When user edits a property between keyframes:
+// - PropertiesPanel calls keyframeStore.setTransientValue(field, value)
+// - This updates transientOverrides without touching layerStore
+// - Preview renderer always uses interpolateAt() (unaffected)
+// - [+ Keyframe] button reads transientOverrides to snapshot user's edits
+
+// When playhead moves (frame change effect):
+// - Clear transientOverrides to null
+// - PropertiesPanel falls back to interpolatedValues
+```
+
 ### Anti-Patterns to Avoid
 - **Auto-key mode:** User explicitly decided against this. Always require [+ Keyframe] button click.
 - **Per-property keyframes:** Full snapshot model is locked. Do NOT create separate keyframe tracks per property.
 - **Keyframes on FX layers:** Content layers only. Skip base layer too.
-- **Local frame numbers for keyframes:** Use GLOBAL frame numbers so keyframes survive sequence reordering.
+- **Writing property edits to layerStore between keyframes:** When a layer has keyframes and the playhead is NOT on a keyframe frame, property edits must go through `keyframeStore.transientOverrides`, NOT `layerStore.updateLayer()`. This prevents corrupting the animation and creating spurious undo entries.
 - **Right-click for interpolation menu:** Tauri reserves right-click. Use double-click.
 
 ## Don't Hand-Roll
@@ -232,17 +256,17 @@ if (selectedLayerKeyframes && selectedLayerKeyframes.length > 0) {
 
 ## Common Pitfalls
 
-### Pitfall 1: Global vs Local Frame Numbers
-**What goes wrong:** Keyframes stored as local frame offsets break when sequences are reordered or key photos are added/removed
-**Why it happens:** The frameMap flattens all sequences into a global timeline; local offsets require constant recalculation
-**How to avoid:** Store keyframe frames as GLOBAL frame numbers. When rendering, the global frame from `timelineStore.currentFrame` maps directly to keyframe lookup.
-**Warning signs:** Keyframes appear to "jump" when adding/removing key photos in other sequences
+### Pitfall 1: Global vs Local Frame Numbers (RESOLVED -- use local)
+**Decision:** Store keyframe frames as SEQUENCE-LOCAL OFFSETS (e.g., "frame 5 within this sequence"), not global frame numbers.
+**Why local is correct:** Global frame numbers become stale when sequences are reordered or key photos are added/removed in OTHER sequences. Local offsets are immune to changes in other sequences. The `activeSequenceStartFrame` computed in `frameMap.ts` provides the conversion factor.
+**Conversion pattern:** `localFrame = globalFrame - sequenceStartFrame` at the call site (keyframeStore, Preview renderer, PropertiesPanel). All stored values are sequence-local. All interpolation calls use sequence-local frames.
+**Warning signs (if done wrong):** Keyframes appear to "jump" when adding/removing key photos in other sequences.
 
 ### Pitfall 2: Transient Edits Persisted Accidentally
-**What goes wrong:** Property changes between keyframes get saved to the Layer state, corrupting the animation
+**What goes wrong:** Property changes between keyframes get saved to the Layer state, corrupting the animation and creating spurious undo entries
 **Why it happens:** The existing `layerStore.updateLayer()` immediately writes to the store with undo support
-**How to avoid:** When a layer has keyframes and the playhead is NOT on a keyframe frame, property edits should update a transient/preview state, not the layer's base properties. Only the [+ Keyframe] action should persist values.
-**Warning signs:** Values "stick" after scrubbing to a different frame without clicking [+ Keyframe]
+**How to avoid:** When a layer has keyframes and the playhead is NOT on a keyframe frame, property edits write to `keyframeStore.transientOverrides` (a signal), NOT to `layerStore.updateLayer()`. Transient overrides are cleared on frame change. The [+ Keyframe] button reads transient overrides to capture the user's edits as a new keyframe snapshot. When the playhead IS on a keyframe frame, edits go through `layerStore.updateLayer()` AND update that keyframe's values.
+**Warning signs:** Values "stick" after scrubbing to a different frame without clicking [+ Keyframe], or spurious undo entries for transient edits
 
 ### Pitfall 3: Interpolation During Playback Performance
 **What goes wrong:** Calling `interpolateAt()` creates garbage (new objects) on every frame during 24fps playback
@@ -374,8 +398,14 @@ private drawDiamond(
 // In PropertiesPanel.tsx or keyframeStore.ts
 
 function addKeyframeAtCurrentFrame(layer: Layer) {
-  const frame = timelineStore.currentFrame.peek();
-  const values: KeyframeValues = {
+  const globalFrame = timelineStore.currentFrame.peek();
+  // Convert global frame to sequence-local offset
+  const seqStartFrame = findSequenceStartForLayer(layer.id);
+  const localFrame = globalFrame - seqStartFrame;
+
+  // Read values from transient overrides (user edits) or layer stored values
+  const overrides = keyframeStore.transientOverrides.peek();
+  const values: KeyframeValues = overrides ?? {
     opacity: layer.opacity,
     x: layer.transform.x,
     y: layer.transform.y,
@@ -386,19 +416,21 @@ function addKeyframeAtCurrentFrame(layer: Layer) {
   };
 
   const keyframes = [...(layer.keyframes ?? [])];
-  const existingIdx = keyframes.findIndex(kf => kf.frame === frame);
+  const existingIdx = keyframes.findIndex(kf => kf.frame === localFrame);
 
   if (existingIdx >= 0) {
     // Update existing keyframe's values
     keyframes[existingIdx] = { ...keyframes[existingIdx], values };
   } else {
     // Insert new keyframe, maintaining frame-sorted order
-    const newKf: Keyframe = { frame, easing: 'ease-in-out', values };
+    const newKf: Keyframe = { frame: localFrame, easing: 'ease-in-out', values };
     keyframes.push(newKf);
     keyframes.sort((a, b) => a.frame - b.frame);
   }
 
   layerStore.updateLayer(layer.id, { keyframes });
+  // Clear transient overrides after committing
+  keyframeStore.transientOverrides.value = null;
 }
 ```
 
@@ -411,7 +443,8 @@ const interpolatedLayers = seq.layers.map(layer => {
   if (!layer.keyframes || layer.keyframes.length === 0) return layer;
   if (isFxLayer(layer) || layer.isBase) return layer;
 
-  const values = interpolateAt(layer.keyframes, globalFrame);
+  // Use sequence-local frame for interpolation
+  const values = interpolateAt(layer.keyframes, localFrame);
   if (!values) return layer;
 
   return {
@@ -495,20 +528,17 @@ pub struct MceKeyframeValues {
 
 ## Open Questions
 
-1. **Global frame numbers vs. sequence-relative frame numbers**
-   - What we know: Global frames map directly from timelineStore.currentFrame. Keyframes stored as global frames work for interpolation lookup.
-   - What's unclear: When sequences are reordered or key photos added/removed in a DIFFERENT sequence, all keyframe frame numbers in sequences AFTER the change become stale. This is the biggest design risk.
-   - Recommendation: Store keyframe frames as OFFSETS from the sequence start frame (e.g., "frame 5 within this sequence"). Compute the sequence start frame at render time. This makes keyframes immune to changes in other sequences. The `activeSequenceStartFrame` computed already exists in `frameMap.ts`.
+1. **Global frame numbers vs. sequence-relative frame numbers -- RESOLVED**
+   - **Decision: Sequence-local offsets.** Keyframe `frame` values are stored as offsets from the sequence start frame.
+   - **Rationale:** Global frame numbers become stale when sequences are reordered or key photos are added/removed in OTHER sequences. Local offsets are immune to those changes. The `activeSequenceStartFrame` computed in `frameMap.ts` and `trackLayouts` provide the conversion factor at call sites.
+   - **Conversion:** `localFrame = globalFrame - sequenceStartFrame` at keyframeStore, Preview renderer, and PropertiesPanel. All stored values and all `interpolateAt()` calls use sequence-local frames.
 
-2. **PropertiesPanel value source when layer has keyframes**
-   - What we know: Currently, PropertiesPanel reads `layer.opacity`, `layer.transform.x`, etc. directly. With keyframes, it must show interpolated values.
-   - What's unclear: When the user edits a property between keyframes (transient edit), should the NumericInput show the user's edit or snap back to interpolated on next frame change?
-   - Recommendation: Show user's transient edits immediately (local state in NumericInput already handles this). On frame change (playhead move), interpolated values overwrite the display. This matches the "edits are transient until [+ Keyframe]" decision.
+2. **PropertiesPanel value source when layer has keyframes -- RESOLVED**
+   - **Decision:** Use `keyframeStore.transientOverrides` for user edits between keyframes, `keyframeStore.interpolatedValues` for display.
+   - When the user edits a property between keyframes, the edit writes to `keyframeStore.transientOverrides` (NOT `layerStore.updateLayer()`). PropertiesPanel shows transient overrides while they exist. On frame change (playhead move), transient overrides are cleared and the display reverts to interpolated values. The [+ Keyframe] button reads from transient overrides to capture user edits. When ON a keyframe frame, edits go through `layerStore.updateLayer()` AND update that keyframe's values directly.
 
-3. **Keyboard shortcut for Add Keyframe**
-   - What we know: K key is available (not used by existing shortcuts). Industry standard in video editors.
-   - What's unclear: Whether to use bare K or modified key.
-   - Recommendation: Use bare `K` key (suppressed when typing in inputs). Add to `mountShortcuts()`.
+3. **Keyboard shortcut for Add Keyframe -- RESOLVED**
+   - **Decision:** Use `I` key (K is taken by JKL shuttle scrub system). I = "Insert keyframe."
 
 ## Sources
 
