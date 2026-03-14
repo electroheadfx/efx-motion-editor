@@ -89,9 +89,10 @@ No active blockers.
 | 17 | Add blend mode to FX blur on timeline | 2026-03-13 | e89523b |
 | 18 | Add deselect layer when clicking outside canvas | 2026-03-14 | 1220f56 |
 | 19 | Theme-aware canvas background color with per-theme persistence | 2026-03-14 | f9bfdc6 |
+| 20 | Fix layer deselection when drag-scrubbing NumericInput labels | 2026-03-14 | ad89d5b |
 
 ## Session Continuity
 
-Last session: 2026-03-14T12:14:18Z
-Stopped at: Completed 11-04-PLAN.md
+Last session: 2026-03-14T12:49:12Z
+Stopped at: Completed quick-9
 Resume file: None
