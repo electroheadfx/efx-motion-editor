@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: in-progress
-stopped_at: "Completed 12-01-PLAN.md"
-last_updated: "2026-03-14T15:32:00Z"
-last_activity: "2026-03-14 - Completed 12-01: Keyframe data model, interpolation engine, keyframeStore, .mce v6"
+status: executing
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-03-14T15:40:48Z"
+last_activity: "2026-03-14 - Completed 12-02: Preview interpolation, PropertiesPanel keyframe UI, I shortcut"
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 19
-  completed_plans: 16
-  percent: 84
+  completed_plans: 17
+  percent: 89
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 Milestone: v0.2.0
 Phase: 12 (layer-keyframe-animation)
-Plan: 1 of 4
+Plan: 2 of 4
 Status: In Progress
-Last activity: 2026-03-14 - Completed 12-01: Keyframe data model, interpolation engine, keyframeStore, .mce v6
+Last activity: 2026-03-14 - Completed 12-02: Preview interpolation, PropertiesPanel keyframe UI, I shortcut
 
-Progress: [████████░░] 84%
+Progress: [█████████░] 89%
 
 ## Accumulated Context
 
@@ -59,6 +59,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 11-04]: Bidirectional sync by calling both layerStore.setSelected and uiStore.selectLayer explicitly (no signal effect)
 - [Phase 12-01]: Polynomial cubic easing (t^3 / (1-t)^3 / piecewise); sequence-local frame offsets for keyframes
 - [Phase 12-01]: Transient overrides pattern for property edits between keyframes; .mce v5->v6 with backward compat
+- [Phase 12-02]: I key (KeyI) for add-keyframe shortcut since K taken by JKL shuttle; TransformSection extended with override props for keyframe-aware editing
 
 ### Pending Todos
 
@@ -95,6 +96,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-14T15:32:00Z
-Stopped at: Completed 12-01-PLAN.md
-Resume file: .planning/phases/12-layer-keyframe-animation/12-01-SUMMARY.md
+Last session: 2026-03-14T15:40:48Z
+Stopped at: Completed 12-02-PLAN.md
+Resume file: .planning/phases/12-layer-keyframe-animation/12-02-SUMMARY.md
