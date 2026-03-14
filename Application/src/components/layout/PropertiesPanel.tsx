@@ -109,6 +109,7 @@ function NumericInput({
     <div class="flex items-center gap-1">
       <span
         class={`text-[10px] text-[var(--color-text-muted)] whitespace-nowrap select-none ${isDraggingLabel ? 'cursor-ew-resize' : 'cursor-ew-resize'}`}
+        data-interactive
         onPointerDown={handleLabelPointerDown}
       >
         {label}
