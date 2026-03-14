@@ -117,7 +117,7 @@ Plans:
 Plans:
 - [ ] 12-01-PLAN.md — Types, interpolation engine, keyframeStore CRUD, .mce v6 format support
 - [ ] 12-02-PLAN.md — Preview renderer interpolation, PropertiesPanel [+ Keyframe] button, I key shortcut
-- [ ] 12-03-PLAN.md — Timeline diamond rendering, click/drag/delete interaction, interpolation popover
+- [x] 12-03-PLAN.md — Timeline diamond rendering, click/drag/delete interaction, interpolation popover
 - [ ] 12-04-PLAN.md — End-to-end visual verification checkpoint
 
 ### Phase 13: Sequence Fade In/Out
@@ -190,7 +190,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 9. Canvas Zoom | v0.2.0 | 4/4 | Complete | 2026-03-12 |
 | 10. FX Blur Effect | 3/4 | In Progress|  | - |
 | 11. Live Canvas Transform | 4/4 | Complete    | 2026-03-14 | - |
-| 12. Layer Keyframe Animation | 2/4 | In Progress|  | - |
+| 12. Layer Keyframe Animation | 3/4 | In Progress|  | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
