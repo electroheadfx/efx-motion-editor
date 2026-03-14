@@ -64,6 +64,9 @@ export interface DrawState {
   totalFrames: number;
   selectedFxSequenceId?: string | null;
   selectedContentSequenceId?: string | null;
+  selectedLayerKeyframes?: { frame: number; easing: string }[];  // sequence-local frames
+  selectedKeyframeFrames?: Set<number>;  // frames that are selected (highlighted)
+  selectedLayerSequenceId?: string | null;  // which sequence the selected layer belongs to
 }
 
 /**
@@ -346,6 +349,9 @@ export class TimelineRenderer {
       ctx.closePath();
       ctx.fill();
     }
+
+    // 4. Draw keyframe diamonds (on top of everything else in the track area)
+    this.drawKeyframeDiamonds(ctx, state, w);
   }
 
   /** Draw a single FX sequence as a colored range bar */
@@ -519,6 +525,74 @@ export class TimelineRenderer {
     this.selectedFxSequenceId = id;
     if (this.lastState) {
       this.draw(this.lastState);
+    }
+  }
+
+  /** Draw a single diamond marker at the given position */
+  private drawDiamond(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    size: number,
+    isSelected: boolean,
+  ): void {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, y - size);       // top
+    ctx.lineTo(x + size, y);       // right
+    ctx.lineTo(x, y + size);       // bottom
+    ctx.lineTo(x - size, y);       // left
+    ctx.closePath();
+
+    ctx.fillStyle = isSelected ? '#FFD700' : '#E5A020';
+    ctx.fill();
+
+    if (isSelected) {
+      ctx.shadowColor = '#FFD700';
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(136, 102, 0, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Draw keyframe diamond markers for the selected layer */
+  private drawKeyframeDiamonds(
+    ctx: CanvasRenderingContext2D,
+    state: DrawState,
+    w: number,
+  ): void {
+    if (!state.selectedLayerKeyframes || state.selectedLayerKeyframes.length === 0) return;
+    if (!state.selectedLayerSequenceId) return;
+
+    // Find the track row for the sequence that owns the selected layer
+    const trackIndex = state.tracks.findIndex(t => t.sequenceId === state.selectedLayerSequenceId);
+    if (trackIndex < 0) return;
+
+    const track = state.tracks[trackIndex];
+    const fxOffset = state.fxTracks.length * FX_TRACK_HEIGHT;
+    const trackCenterY = RULER_HEIGHT + fxOffset + trackIndex * TRACK_HEIGHT + TRACK_HEIGHT / 2 - state.scrollY;
+    const frameWidth = BASE_FRAME_WIDTH * state.zoom;
+    const diamondSize = 6;
+    const selectedFrames = state.selectedKeyframeFrames ?? new Set();
+
+    for (const kf of state.selectedLayerKeyframes) {
+      // kf.frame is sequence-local offset, convert to global for positioning
+      const globalFrame = track.startFrame + kf.frame;
+      const kfX = globalFrame * frameWidth - state.scrollX + TRACK_HEADER_WIDTH;
+
+      // Virtualize: skip diamonds outside visible area
+      if (kfX < TRACK_HEADER_WIDTH - diamondSize || kfX > w + diamondSize) continue;
+
+      // Skip if track center is outside visible area (vertical clipping)
+      if (trackCenterY < RULER_HEIGHT - diamondSize || trackCenterY > ctx.canvas.height / (window.devicePixelRatio || 1)) continue;
+
+      const isSelected = selectedFrames.has(kf.frame);
+      this.drawDiamond(ctx, kfX, trackCenterY, diamondSize, isSelected);
     }
   }
 
