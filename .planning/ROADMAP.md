@@ -123,13 +123,23 @@ Plans:
 
 ### Phase 12.1: Remove bottom parameters bar and relocate to sidebar panel (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Remove the bottom PropertiesPanel bar entirely. Relocate all layer/FX property controls into the left sidebar with collapsible sections. Extract Imported grid and Settings into full-window views. Add sidebar collapse toggle and uniform Scale input.
+**Requirements**: 12.1-INFRA, 12.1-SIDEBAR, 12.1-PROPERTIES, 12.1-FX-PROPS, 12.1-SCALE, 12.1-KEYPHOTO, 12.1-IMPORTED, 12.1-SETTINGS, 12.1-TOOLBAR, 12.1-WIRE, 12.1-REMOVE
 **Depends on:** Phase 12
-**Plans:** 0 plans
+**Success Criteria** (what must be TRUE):
+  1. Bottom properties bar is completely removed from the editor layout
+  2. All property editing (content layers and FX layers) happens in the left sidebar
+  3. Sidebar has collapsible SEQUENCES, LAYERS, and PROPERTIES sections
+  4. Imported grid and Settings are accessible as full-window views via toolbar buttons
+  5. Toolbar is cleaned up: no FPS toggle or ThemeSwitcher, has Imported and Settings buttons
+  6. Sidebar is horizontally collapsible
+**Plans**: 4 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 12.1 to break down)
+- [ ] 12.1-01-PLAN.md — Extract shared components (NumericInput, SectionLabel), CollapsibleSection, uiStore signals
+- [ ] 12.1-02-PLAN.md — Rebuild sidebar: collapsible sections, SidebarProperties, SidebarFxProperties, uniform Scale
+- [ ] 12.1-03-PLAN.md — ImportedView, SettingsView full-window views, Toolbar cleanup
+- [ ] 12.1-04-PLAN.md — EditorShell wiring (mode switching, sidebar collapse), remove bottom bar, visual verification
 
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences — fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
@@ -185,7 +195,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -202,6 +212,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 10. FX Blur Effect | 3/4 | In Progress|  | - |
 | 11. Live Canvas Transform | 4/4 | Complete    | 2026-03-14 | - |
 | 12. Layer Keyframe Animation | 4/5 | In Progress|  | - |
+| 12.1. Remove Bottom Parameters Bar | v0.2.0 | 0/4 | Planned | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
