@@ -3,7 +3,8 @@ import {Toolbar} from './Toolbar';
 import {LeftPanel} from './LeftPanel';
 import {CanvasArea} from './CanvasArea';
 import {TimelinePanel} from './TimelinePanel';
-import {PropertiesPanel} from './PropertiesPanel';
+import {ImportedView} from '../views/ImportedView';
+import {SettingsView} from '../views/SettingsView';
 import {DropZone} from '../import/DropZone';
 import {ShortcutsOverlay} from '../overlay/ShortcutsOverlay';
 import {useFileDrop} from '../../lib/dragDrop';
@@ -58,17 +59,32 @@ export function EditorShell() {
       <Toolbar />
       {/* Body Area */}
       <div class="flex flex-1 min-h-0">
-        <LeftPanel />
-        {/* Right Area: Canvas + Timeline */}
-        <div class="flex flex-col flex-1 min-w-0">
-          <CanvasArea />
-          <div class="w-full h-px bg-[var(--color-separator)]" />
-          <TimelinePanel />
-        </div>
+        {/* Sidebar (collapsible) */}
+        {!uiStore.sidebarCollapsed.value ? (
+          <LeftPanel />
+        ) : (
+          <div class="flex flex-col items-center w-6 bg-[var(--color-bg-card-alt)] shrink-0 pt-2">
+            <button
+              class="w-5 h-5 flex items-center justify-center text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-button)]"
+              onClick={() => uiStore.toggleSidebar()}
+              title="Show sidebar"
+            >
+              &raquo;
+            </button>
+          </div>
+        )}
+
+        {/* Right Area: mode-dependent content */}
+        {uiStore.editorMode.value === 'editor' && (
+          <div class="flex flex-col flex-1 min-w-0">
+            <CanvasArea />
+            <div class="w-full h-px bg-[var(--color-separator)]" />
+            <TimelinePanel />
+          </div>
+        )}
+        {uiStore.editorMode.value === 'imported' && <ImportedView />}
+        {uiStore.editorMode.value === 'settings' && <SettingsView />}
       </div>
-      {/* Properties Divider */}
-      <div class="w-full h-px bg-[var(--color-bg-card)]" />
-      <PropertiesPanel />
       {/* Drop overlay -- renders on top of everything when dragging files */}
       <DropZone />
       {/* Shortcuts help overlay */}
