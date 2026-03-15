@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-03-14T15:42:00Z"
-last_activity: "2026-03-14 - Completed 12-03: Timeline keyframe diamonds with full interaction and interpolation popover"
+stopped_at: Completed 12-05-PLAN.md
+last_updated: "2026-03-15T11:31:32.164Z"
+last_activity: "2026-03-15 - Completed 12-05: Gap closure fix for keyframe diamond disappearing bug"
 progress:
   total_phases: 10
   completed_phases: 4
-  total_plans: 19
-  completed_plans: 18
-  percent: 94
+  total_plans: 20
+  completed_plans: 19
+  percent: 95
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 Milestone: v0.2.0
 Phase: 12 (layer-keyframe-animation)
-Plan: 3 of 4
+Plan: 5 of 5
 Status: In Progress
-Last activity: 2026-03-14 - Completed 12-03: Timeline keyframe diamonds with full interaction and interpolation popover
+Last activity: 2026-03-15 - Completed 12-05: Gap closure fix for keyframe diamond disappearing bug
 
-Progress: [█████████░] 94%
+Progress: [██████████] 95%
 
 ## Accumulated Context
 
@@ -61,6 +61,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12-01]: Transient overrides pattern for property edits between keyframes; .mce v5->v6 with backward compat
 - [Phase 12-02]: I key (KeyI) for add-keyframe shortcut since K taken by JKL shuttle; TransformSection extended with override props for keyframe-aware editing
 - [Phase 12-03]: Diamond hit threshold scales with zoom: max(0.6 frames, 8px); custom DOM event pattern for canvas-to-component popover trigger
+- [Phase 12-05]: clearFxLayerSelection() helper: only nulls selectedLayerId when current selection is FX layer, preserving content layer keyframe diamond visibility
 
 ### Pending Todos
 
@@ -97,6 +98,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-14T15:42:00Z
-Stopped at: Completed 12-03-PLAN.md
-Resume file: .planning/phases/12-layer-keyframe-animation/12-03-SUMMARY.md
+Last session: 2026-03-15T11:31:32.161Z
+Stopped at: Completed 12-05-PLAN.md
+Resume file: None
