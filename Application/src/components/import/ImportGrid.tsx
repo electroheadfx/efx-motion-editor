@@ -21,7 +21,7 @@ export function ImportGrid() {
   }
 
   return (
-    <div class="overflow-y-auto max-h-[200px]">
+    <div class="overflow-y-auto">
       {/* Image assets */}
       {images.length > 0 && (
         <div class="grid grid-cols-3 gap-1 p-2">
