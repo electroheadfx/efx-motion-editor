@@ -142,7 +142,7 @@ export function TimelineCanvas() {
   }, []);
 
   return (
-    <div class="flex-1 min-h-0 overflow-hidden relative">
+    <div class="flex-1 min-h-0 overflow-hidden relative" data-interactive>
       <canvas ref={canvasRef} class="w-full h-full" />
       {popover && (
         <KeyframePopover
