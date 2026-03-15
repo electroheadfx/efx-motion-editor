@@ -121,6 +121,16 @@ Plans:
 - [ ] 12-04-PLAN.md — End-to-end visual verification checkpoint
 - [ ] 12-05-PLAN.md — [gap closure] Fix keyframe diamonds disappearing on timeline interaction
 
+### Phase 12.1: Remove bottom parameters bar and relocate to sidebar panel (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 12
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 12.1 to break down)
+
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences — fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12

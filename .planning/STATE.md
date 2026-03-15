@@ -67,6 +67,10 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 
 None.
 
+### Roadmap Evolution
+
+- Phase 12.1 inserted after Phase 12: Remove bottom parameters bar and relocate to sidebar panel (URGENT)
+
 ### Blockers/Concerns
 
 No active blockers.
