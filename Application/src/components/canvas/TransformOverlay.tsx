@@ -20,6 +20,7 @@ import {
 } from './transformHandles';
 import type {HandleType, LayerBounds} from './transformHandles';
 import {hitTestLayers, hitTestLayersCycle} from './hitTest';
+import {keyframeStore} from '../../stores/keyframeStore';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +47,23 @@ interface DragState {
 }
 
 const DRAG_THRESHOLD = 4; // pixels
+
+/** Apply keyframe-interpolated transform values to a layer for correct overlay positioning */
+function applyInterpolatedTransform(layer: Layer): Layer {
+  const interp = keyframeStore.interpolatedValues.peek();
+  if (!interp) return layer;
+  return {
+    ...layer,
+    transform: {
+      ...layer.transform,
+      x: interp.x,
+      y: interp.y,
+      scaleX: interp.scaleX,
+      scaleY: interp.scaleY,
+      rotation: interp.rotation,
+    },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -86,6 +104,22 @@ export function TransformOverlay({
     );
   }
 
+  // Apply keyframe interpolation so the overlay matches the preview render
+  const interpValues = keyframeStore.interpolatedValues.value;
+  const effectiveLayer = interpValues
+    ? {
+        ...selectedLayer,
+        transform: {
+          ...selectedLayer.transform,
+          x: interpValues.x,
+          y: interpValues.y,
+          scaleX: interpValues.scaleX,
+          scaleY: interpValues.scaleY,
+          rotation: interpValues.rotation,
+        },
+      }
+    : selectedLayer;
+
   // Get source dimensions and bounds
   const dims = getSourceDimensions(selectedLayer);
   if (!dims) {
@@ -97,7 +131,7 @@ export function TransformOverlay({
     );
   }
 
-  const bounds = getLayerBounds(selectedLayer, dims.w, dims.h, projW, projH);
+  const bounds = getLayerBounds(effectiveLayer, dims.w, dims.h, projW, projH);
   const handles = getHandlePositions(bounds, zoom);
 
   // Build bounding box polygon path (SVG)
@@ -150,7 +184,9 @@ export function TransformOverlay({
     if (currentSelected && !isFxLayer(currentSelected)) {
       const selDims = getSourceDimensions(currentSelected);
       if (selDims) {
-        const selBounds = getLayerBounds(currentSelected, selDims.w, selDims.h, pW, pH);
+        // Use interpolated transform for hit-testing so handles match visual position
+        const effectiveSel = applyInterpolatedTransform(currentSelected);
+        const selBounds = getLayerBounds(effectiveSel, selDims.w, selDims.h, pW, pH);
         const selHandles = getHandlePositions(selBounds, currentZoom);
 
         // Check handle hit
@@ -161,7 +197,7 @@ export function TransformOverlay({
             mode: 'pending',
             startClientX: e.clientX,
             startClientY: e.clientY,
-            startLayerTransform: {...currentSelected.transform},
+            startLayerTransform: {...effectiveSel.transform},
             handleType: handleHit,
             layerId: currentSelectedId!,
             startBounds: selBounds,
@@ -177,7 +213,7 @@ export function TransformOverlay({
             mode: 'pending',
             startClientX: e.clientX,
             startClientY: e.clientY,
-            startLayerTransform: {...currentSelected.transform},
+            startLayerTransform: {...effectiveSel.transform},
             handleType: 'rotate',
             layerId: currentSelectedId!,
             startBounds: selBounds,
@@ -193,7 +229,7 @@ export function TransformOverlay({
             mode: 'pending',
             startClientX: e.clientX,
             startClientY: e.clientY,
-            startLayerTransform: {...currentSelected.transform},
+            startLayerTransform: {...effectiveSel.transform},
             layerId: currentSelectedId!,
             startBounds: selBounds,
           };
@@ -438,17 +474,18 @@ export function TransformOverlay({
     if (currentSelected && !isFxLayer(currentSelected)) {
       const selDims = getSourceDimensions(currentSelected);
       if (selDims) {
-        const selBounds = getLayerBounds(currentSelected, selDims.w, selDims.h, pW, pH);
+        const effectiveSel = applyInterpolatedTransform(currentSelected);
+        const selBounds = getLayerBounds(effectiveSel, selDims.w, selDims.h, pW, pH);
         const selHandles = getHandlePositions(selBounds, currentZoom);
 
         const handleHit = hitTestHandles(point, selHandles, currentZoom);
         if (handleHit) {
-          el.style.cursor = getCursorForHandle(handleHit, false, currentSelected.transform.rotation);
+          el.style.cursor = getCursorForHandle(handleHit, false, effectiveSel.transform.rotation);
           return;
         }
 
         if (getRotationZone(point, selBounds, currentZoom)) {
-          el.style.cursor = getCursorForHandle(null, true, currentSelected.transform.rotation);
+          el.style.cursor = getCursorForHandle(null, true, effectiveSel.transform.rotation);
           return;
         }
 
