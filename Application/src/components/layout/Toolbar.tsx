@@ -3,7 +3,6 @@ import {projectStore} from '../../stores/projectStore';
 import {uiStore} from '../../stores/uiStore';
 import {guardUnsavedChanges} from '../../lib/unsavedGuard';
 import {NewProjectDialog} from '../project/NewProjectDialog';
-import {ThemeSwitcher} from './ThemeSwitcher';
 import {blurStore} from '../../stores/blurStore';
 
 export function Toolbar() {
@@ -87,24 +86,6 @@ export function Toolbar() {
         <div class="w-2 h-2 rounded-full bg-[var(--color-dot-orange)] shrink-0" title="Unsaved changes" />
       )}
       <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
-      {/* FPS Toggle -- wired to projectStore */}
-      <div class="flex items-center gap-0.5 rounded-[5px] bg-[var(--color-bg-settings)] p-1">
-        <div
-          class={`flex items-center rounded px-2.5 py-1 cursor-pointer ${projectStore.fps.value === 15 ? 'bg-[var(--color-accent)]' : ''}`}
-          onClick={() => projectStore.setFps(15)}
-        >
-          <span class={`text-[11px] ${projectStore.fps.value === 15 ? 'text-white' : 'text-[var(--color-text-secondary)]'}`}>15fps</span>
-        </div>
-        <div
-          class={`flex items-center rounded px-2.5 py-1 cursor-pointer ${projectStore.fps.value === 24 ? 'bg-[var(--color-accent)]' : ''}`}
-          onClick={() => projectStore.setFps(24)}
-        >
-          <span class={`text-[11px] ${projectStore.fps.value === 24 ? 'text-white' : 'text-[var(--color-text-secondary)]'}`}>24fps</span>
-        </div>
-      </div>
-      <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
-      <ThemeSwitcher />
-      <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
       {/* Blur Controls */}
       <button
         class={`rounded-[5px] px-2.5 py-1 transition-colors ${
@@ -134,6 +115,36 @@ export function Toolbar() {
       </button>
       {/* Spacer */}
       <div class="flex-1" />
+      {/* Imported button */}
+      <button
+        class={`flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 transition-colors ${
+          uiStore.editorMode.value === 'imported'
+            ? 'bg-[var(--color-accent)]'
+            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)]'
+        }`}
+        onClick={() => uiStore.setEditorMode(
+          uiStore.editorMode.value === 'imported' ? 'editor' : 'imported'
+        )}
+      >
+        <span class={`text-xs ${
+          uiStore.editorMode.value === 'imported' ? 'text-white' : 'text-[var(--color-text-button)]'
+        }`}>Imported</span>
+      </button>
+      {/* Settings button */}
+      <button
+        class={`flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 transition-colors ${
+          uiStore.editorMode.value === 'settings'
+            ? 'bg-[var(--color-accent)]'
+            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)]'
+        }`}
+        onClick={() => uiStore.setEditorMode(
+          uiStore.editorMode.value === 'settings' ? 'editor' : 'settings'
+        )}
+      >
+        <span class={`text-xs ${
+          uiStore.editorMode.value === 'settings' ? 'text-white' : 'text-[var(--color-text-button)]'
+        }`}>Settings</span>
+      </button>
       <button class="flex items-center gap-1.5 rounded-[5px] bg-[#F97316] px-4 py-1.5">
         <span class="text-xs font-semibold text-white">Export</span>
       </button>
