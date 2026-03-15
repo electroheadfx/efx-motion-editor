@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Completed 12-05-PLAN.md
 last_updated: "2026-03-15T11:31:32.164Z"
-last_activity: "2026-03-15 - Completed 12-05: Gap closure fix for keyframe diamond disappearing bug"
+last_activity: "2026-03-15 - Completed quick task 11: Fix interpolation menu z-index and transparency issues"
 progress:
   total_phases: 10
   completed_phases: 4
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12 (layer-keyframe-animation)
 Plan: 5 of 5
 Status: In Progress
-Last activity: 2026-03-15 - Completed 12-05: Gap closure fix for keyframe diamond disappearing bug
+Last activity: 2026-03-15 - Completed quick task 11: Fix interpolation menu z-index and transparency issues
 
 Progress: [██████████] 95%
 
