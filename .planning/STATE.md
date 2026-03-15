@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 12.1-01-PLAN.md"
-last_updated: "2026-03-15T17:43:00.290Z"
-last_activity: "2026-03-15 - Completed 12.1-01: Shared infrastructure (NumericInput, SectionLabel, CollapsibleSection, uiStore signals)"
+stopped_at: "Completed 12.1-03-PLAN.md"
+last_updated: "2026-03-15T17:48:48Z"
+last_activity: "2026-03-15 - Completed 12.1-03: ImportedView/SettingsView components, toolbar cleanup"
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 24
-  completed_plans: 21
-  percent: 88
+  completed_plans: 23
+  percent: 96
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 Milestone: v0.2.0
 Phase: 12.1 (remove-bottom-parameters-bar-and-relocate-to-sidebar-panel)
-Plan: 2 of 4
+Plan: 4 of 4
 Status: In Progress
-Last activity: 2026-03-15 - Completed 12.1-01: Shared infrastructure (NumericInput, SectionLabel, CollapsibleSection, uiStore signals)
+Last activity: 2026-03-15 - Completed 12.1-03: ImportedView/SettingsView components, toolbar cleanup
 
-Progress: [█████████░] 88%
+Progress: [█████████▓] 96%
 
 ## Accumulated Context
 
@@ -63,6 +63,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12-03]: Diamond hit threshold scales with zoom: max(0.6 frames, 8px); custom DOM event pattern for canvas-to-component popover trigger
 - [Phase 12-05]: clearFxLayerSelection() helper: only nulls selectedLayerId when current selection is FX layer, preserving content layer keyframe diamond visibility
 - [Phase 12.1]: Extracted NumericInput/SectionLabel to shared/; CollapsibleSection uses Signal<boolean> directly; EditorMode as string union type
+- [Phase 12.1-03]: ImportGrid max-h removed (sidebar no longer renders it); Toolbar Imported/Settings buttons toggle mode; SettingsView uses projectStore (per-project FPS/Resolution)
 
 ### Pending Todos
 
@@ -105,6 +106,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-15T17:41:31Z
-Stopped at: Completed 12.1-01-PLAN.md
-Resume file: .planning/phases/12.1-remove-bottom-parameters-bar-and-relocate-to-sidebar-panel/12.1-02-PLAN.md
+Last session: 2026-03-15T17:48:48Z
+Stopped at: Completed 12.1-03-PLAN.md
+Resume file: .planning/phases/12.1-remove-bottom-parameters-bar-and-relocate-to-sidebar-panel/12.1-04-PLAN.md
