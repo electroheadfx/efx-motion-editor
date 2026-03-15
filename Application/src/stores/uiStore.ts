@@ -1,6 +1,8 @@
 import {signal} from '@preact/signals';
 import type {PanelId} from '../types/ui';
 
+export type EditorMode = 'editor' | 'imported' | 'settings';
+
 const selectedSequenceId = signal<string | null>(null);
 const selectedLayerId = signal<string | null>(null);
 const selectedPanel = signal<PanelId | null>(null);
@@ -8,6 +10,10 @@ const sidebarWidth = signal(240);
 const propertiesPanelWidth = signal(280);
 const shortcutsOverlayOpen = signal(false);
 const showNewProjectDialog = signal(false);
+const editorMode = signal<EditorMode>('editor');
+const sidebarCollapsed = signal(false);
+const sequencesSectionCollapsed = signal(false);
+const layersSectionCollapsed = signal(false);
 
 export const uiStore = {
   selectedSequenceId,
@@ -17,6 +23,10 @@ export const uiStore = {
   propertiesPanelWidth,
   shortcutsOverlayOpen,
   showNewProjectDialog,
+  editorMode,
+  sidebarCollapsed,
+  sequencesSectionCollapsed,
+  layersSectionCollapsed,
 
   selectSequence(id: string | null) {
     selectedSequenceId.value = id;
@@ -41,6 +51,13 @@ export const uiStore = {
     shortcutsOverlayOpen.value = false;
   },
 
+  setEditorMode(mode: EditorMode) {
+    editorMode.value = mode;
+  },
+  toggleSidebar() {
+    sidebarCollapsed.value = !sidebarCollapsed.value;
+  },
+
   reset() {
     selectedSequenceId.value = null;
     selectedLayerId.value = null;
@@ -49,5 +66,9 @@ export const uiStore = {
     propertiesPanelWidth.value = 280;
     shortcutsOverlayOpen.value = false;
     showNewProjectDialog.value = false;
+    editorMode.value = 'editor';
+    sidebarCollapsed.value = false;
+    sequencesSectionCollapsed.value = false;
+    layersSectionCollapsed.value = false;
   },
 };
