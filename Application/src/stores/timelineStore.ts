@@ -5,6 +5,7 @@ import {totalFrames as totalFramesSignal} from '../lib/frameMap';
 const currentFrame = signal(0);
 const displayFrame = signal(0);
 const isPlaying = signal(false);
+const timelineDragging = signal(false);
 const zoom = signal(1);
 const scrollX = signal(0);
 const scrollY = signal(0);
@@ -17,6 +18,7 @@ export const timelineStore = {
   currentFrame,
   displayFrame,
   isPlaying,
+  timelineDragging,
   zoom,
   scrollX,
   scrollY,
@@ -25,6 +27,9 @@ export const timelineStore = {
   totalFrames: totalFramesSignal,
   totalDuration,
 
+  setTimelineDragging(v: boolean) {
+    timelineDragging.value = v;
+  },
   seek(frame: number) {
     const max = totalFramesSignal.value;
     const upper = max > 0 ? max - 1 : 0;

@@ -330,6 +330,7 @@ export class TimelineInteraction {
           this.fxDragStartFrame = this.getFrame(e.clientX);
           this.fxDragOrigIn = fxTrack.inFrame;
           this.fxDragOrigOut = fxTrack.outFrame;
+          timelineStore.setTimelineDragging(true);
           this.canvas.setPointerCapture(e.pointerId);
           this.canvas.style.cursor = mode === 'move' ? 'grabbing' : 'col-resize';
           startCoalescing();
@@ -381,6 +382,7 @@ export class TimelineInteraction {
       this.kfDragLayerId = kfHit.layerId;
       this.kfDragFromFrame = kfHit.frame;
       this.kfDragSequenceStartFrame = kfHit.sequenceStartFrame;
+      timelineStore.setTimelineDragging(true);
       this.canvas.setPointerCapture(e.pointerId);
       startCoalescing();
       return;
@@ -426,6 +428,7 @@ export class TimelineInteraction {
     // Click in ruler area or on playhead -> start drag-to-scrub immediately
     if (this.isInRuler(e.clientY) || this.isOnPlayhead(e.clientX)) {
       this.isDragging = true;
+      timelineStore.setTimelineDragging(true);
       this.canvas.setPointerCapture(e.pointerId);
       // Seek to clicked position immediately
       const frame = this.getFrame(e.clientX);
@@ -517,10 +520,11 @@ export class TimelineInteraction {
       return;
     }
 
-    // Playhead scrubbing
+    // Playhead scrubbing (deferred: only updates currentFrame for timeline canvas,
+    // does NOT call syncDisplayFrame so Preview stays frozen until mouseup)
     if (this.isDragging) {
       const frame = this.getFrame(e.clientX);
-      playbackEngine.seekToFrame(frame);
+      timelineStore.seek(frame);
       return;
     }
 
@@ -572,6 +576,8 @@ export class TimelineInteraction {
     // Keyframe diamond drag end
     if (this.isDraggingKeyframe) {
       this.isDraggingKeyframe = false;
+      timelineStore.setTimelineDragging(false);
+      timelineStore.syncDisplayFrame(); // Trigger final Preview render
       stopCoalescing();
       if (this.canvas) {
         try {
@@ -621,6 +627,8 @@ export class TimelineInteraction {
     if (this.isDraggingFx) {
       this.isDraggingFx = false;
       this.fxDragSeqId = '';
+      timelineStore.setTimelineDragging(false);
+      timelineStore.syncDisplayFrame(); // Trigger final Preview render
       stopCoalescing();
       if (this.canvas) {
         this.canvas.style.cursor = 'default';
@@ -667,6 +675,10 @@ export class TimelineInteraction {
     // Playhead drag end
     if (this.isDragging) {
       this.isDragging = false;
+      timelineStore.setTimelineDragging(false);
+      // Final sync: seekToFrame calls syncDisplayFrame which triggers Preview render
+      // now that timelineDragging is false
+      playbackEngine.seekToFrame(timelineStore.currentFrame.peek());
       if (this.canvas) {
         try {
           this.canvas.releasePointerCapture(e.pointerId);
