@@ -95,6 +95,7 @@ No active blockers.
 | 18 | Add deselect layer when clicking outside canvas | 2026-03-14 | 1220f56 |
 | 19 | Theme-aware canvas background color with per-theme persistence | 2026-03-14 | f9bfdc6 |
 | 20 | Fix layer deselection when drag-scrubbing NumericInput labels | 2026-03-14 | ad89d5b |
+| 21 | Fix interpolation popover z-index (portal) and transparent background (--color-bg-menu) | 2026-03-15 | 830368d |
 
 ## Session Continuity
 
