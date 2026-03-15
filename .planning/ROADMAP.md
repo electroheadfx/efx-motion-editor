@@ -113,12 +113,13 @@ Plans:
   2. User can choose animation interpolation between keyframes (linear, ease-in, ease-out, ease-in-out)
   3. When a layer is selected, its keyframes are displayed on the timeline as markers that can be selected, moved, and deleted
   4. Preview playback animates properties smoothly between keyframes using the chosen interpolation
-**Plans**: 4 plans
+**Plans**: 5 plans
 Plans:
-- [ ] 12-01-PLAN.md — Types, interpolation engine, keyframeStore CRUD, .mce v6 format support
-- [ ] 12-02-PLAN.md — Preview renderer interpolation, PropertiesPanel [+ Keyframe] button, I key shortcut
+- [x] 12-01-PLAN.md — Types, interpolation engine, keyframeStore CRUD, .mce v6 format support
+- [x] 12-02-PLAN.md — Preview renderer interpolation, PropertiesPanel [+ Keyframe] button, I key shortcut
 - [x] 12-03-PLAN.md — Timeline diamond rendering, click/drag/delete interaction, interpolation popover
 - [ ] 12-04-PLAN.md — End-to-end visual verification checkpoint
+- [ ] 12-05-PLAN.md — [gap closure] Fix keyframe diamonds disappearing on timeline interaction
 
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences — fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
@@ -190,7 +191,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 13 > 14 > 15 > 16 > 17
 | 9. Canvas Zoom | v0.2.0 | 4/4 | Complete | 2026-03-12 |
 | 10. FX Blur Effect | 3/4 | In Progress|  | - |
 | 11. Live Canvas Transform | 4/4 | Complete    | 2026-03-14 | - |
-| 12. Layer Keyframe Animation | 3/4 | In Progress|  | - |
+| 12. Layer Keyframe Animation | 3/5 | In Progress|  | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
