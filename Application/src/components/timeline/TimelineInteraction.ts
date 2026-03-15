@@ -8,6 +8,7 @@ import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, TRACK_HEIGHT, FX_TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
+import {isFxLayer} from '../../types/layer';
 
 /**
  * TimelineInteraction: Pointer/wheel/touch event handling for the timeline canvas.
@@ -178,6 +179,19 @@ export class TimelineInteraction {
       const layerId = seq.layers[0].id;
       layerStore.setSelected(layerId);
       uiStore.selectLayer(layerId);
+    }
+  }
+
+  /** Clear layer selection only if current selection is an FX layer.
+   *  Preserves content layer selection so keyframe diamonds stay visible. */
+  private clearFxLayerSelection(): void {
+    const currentLayerId = layerStore.selectedLayerId.peek();
+    if (!currentLayerId) return;
+    const allSeqs = sequenceStore.sequences.peek();
+    const currentLayer = allSeqs.flatMap(s => s.layers).find(l => l.id === currentLayerId);
+    if (currentLayer && isFxLayer(currentLayer)) {
+      layerStore.setSelected(null);
+      uiStore.selectLayer(null);
     }
   }
 
@@ -385,9 +399,9 @@ export class TimelineInteraction {
         const track = tracks[trackIndex];
         sequenceStore.setActive(track.sequenceId);
         uiStore.selectSequence(track.sequenceId);
-        // Clear any selected FX layer so Delete targets the sequence
-        layerStore.setSelected(null);
-        uiStore.selectLayer(null);
+        // Only clear selection if current selection is an FX layer
+        // (preserves content layer selection so keyframe diamonds stay visible)
+        this.clearFxLayerSelection();
       }
 
       // Only start drag if valid track and more than one sequence
@@ -424,9 +438,9 @@ export class TimelineInteraction {
         const track = tracks[trackIndex];
         sequenceStore.setActive(track.sequenceId);
         uiStore.selectSequence(track.sequenceId);
-        // Clear any selected FX layer so Delete targets the sequence
-        layerStore.setSelected(null);
-        uiStore.selectLayer(null);
+        // Only clear selection if current selection is an FX layer
+        // (preserves content layer selection so keyframe diamonds stay visible)
+        this.clearFxLayerSelection();
       }
       const frame = this.getFrame(e.clientX);
       playbackEngine.seekToFrame(frame);
