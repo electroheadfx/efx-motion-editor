@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Phase 12.1 context gathered
-last_updated: "2026-03-15T17:12:15.558Z"
-last_activity: "2026-03-15 - Completed quick task 10: Defer canvas re-renders during timeline drag operations"
+stopped_at: "Completed 12.1-01-PLAN.md"
+last_updated: "2026-03-15T17:43:00.290Z"
+last_activity: "2026-03-15 - Completed 12.1-01: Shared infrastructure (NumericInput, SectionLabel, CollapsibleSection, uiStore signals)"
 progress:
   total_phases: 11
   completed_phases: 5
-  total_plans: 20
-  completed_plans: 20
-  percent: 95
+  total_plans: 24
+  completed_plans: 21
+  percent: 88
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 12 -- Layer keyframe animation data model and interpolation
+**Current focus:** v0.2.0 Phase 12.1 -- Remove bottom parameters bar and relocate to sidebar panel
 
 ## Current Position
 
 Milestone: v0.2.0
-Phase: 12 (layer-keyframe-animation)
-Plan: 5 of 5
+Phase: 12.1 (remove-bottom-parameters-bar-and-relocate-to-sidebar-panel)
+Plan: 2 of 4
 Status: In Progress
-Last activity: 2026-03-15 - Completed quick task 10: Defer canvas re-renders during timeline drag operations
+Last activity: 2026-03-15 - Completed 12.1-01: Shared infrastructure (NumericInput, SectionLabel, CollapsibleSection, uiStore signals)
 
-Progress: [██████████] 95%
+Progress: [█████████░] 88%
 
 ## Accumulated Context
 
@@ -62,6 +62,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12-02]: I key (KeyI) for add-keyframe shortcut since K taken by JKL shuttle; TransformSection extended with override props for keyframe-aware editing
 - [Phase 12-03]: Diamond hit threshold scales with zoom: max(0.6 frames, 8px); custom DOM event pattern for canvas-to-component popover trigger
 - [Phase 12-05]: clearFxLayerSelection() helper: only nulls selectedLayerId when current selection is FX layer, preserving content layer keyframe diamond visibility
+- [Phase 12.1]: Extracted NumericInput/SectionLabel to shared/; CollapsibleSection uses Signal<boolean> directly; EditorMode as string union type
 
 ### Pending Todos
 
@@ -104,6 +105,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-15T17:12:15.555Z
-Stopped at: Phase 12.1 context gathered
-Resume file: .planning/phases/12.1-remove-bottom-parameters-bar-and-relocate-to-sidebar-panel/12.1-CONTEXT.md
+Last session: 2026-03-15T17:41:31Z
+Stopped at: Completed 12.1-01-PLAN.md
+Resume file: .planning/phases/12.1-remove-bottom-parameters-bar-and-relocate-to-sidebar-panel/12.1-02-PLAN.md
