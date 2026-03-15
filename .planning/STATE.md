@@ -63,6 +63,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12-03]: Diamond hit threshold scales with zoom: max(0.6 frames, 8px); custom DOM event pattern for canvas-to-component popover trigger
 - [Phase 12-05]: clearFxLayerSelection() helper: only nulls selectedLayerId when current selection is FX layer, preserving content layer keyframe diamond visibility
 - [Phase 12.1]: Extracted NumericInput/SectionLabel to shared/; CollapsibleSection uses Signal<boolean> directly; EditorMode as string union type
+- [Phase 12.1-02]: FX sub-sections vertical layout for sidebar; KeyframeButton duplicated into SidebarProperties; opacity slider flex-1 for sidebar width
 - [Phase 12.1-03]: ImportGrid max-h removed (sidebar no longer renders it); Toolbar Imported/Settings buttons toggle mode; SettingsView uses projectStore (per-project FPS/Resolution)
 
 ### Pending Todos
@@ -106,6 +107,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-15T17:48:48Z
-Stopped at: Completed 12.1-03-PLAN.md
+Last session: 2026-03-15T17:50:04Z
+Stopped at: Completed 12.1-02-PLAN.md (executed after 12.1-03 due to wave ordering)
 Resume file: .planning/phases/12.1-remove-bottom-parameters-bar-and-relocate-to-sidebar-panel/12.1-04-PLAN.md
