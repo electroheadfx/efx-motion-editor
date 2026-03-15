@@ -1,3 +1,4 @@
+import {createPortal} from 'preact/compat';
 import {keyframeStore} from '../../stores/keyframeStore';
 import type {EasingType} from '../../types/layer';
 
@@ -33,7 +34,7 @@ export function KeyframePopover({ layerId, frame, x, y, onClose }: KeyframePopov
     onClose();
   };
 
-  return (
+  return createPortal(
     <>
       {/* Invisible backdrop to catch clicks outside */}
       <div
@@ -42,7 +43,7 @@ export function KeyframePopover({ layerId, frame, x, y, onClose }: KeyframePopov
       />
       {/* Popover menu */}
       <div
-        class="fixed z-[1000] bg-[var(--color-bg-panel)] border border-[var(--color-bg-divider)] rounded-lg shadow-xl py-1 min-w-[140px]"
+        class="fixed z-[1000] bg-[var(--color-bg-menu)] border border-[var(--color-bg-divider)] rounded-lg shadow-xl py-1 min-w-[140px]"
         style={{ left: `${x}px`, top: `${y + 10}px` }}
       >
         <div class="px-3 py-1.5 text-[9px] font-semibold text-[var(--color-text-dimmer)] uppercase tracking-wider">
@@ -64,6 +65,7 @@ export function KeyframePopover({ layerId, frame, x, y, onClose }: KeyframePopov
           </button>
         ))}
       </div>
-    </>
+    </>,
+    document.body
   );
 }
