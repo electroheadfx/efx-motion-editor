@@ -45,7 +45,12 @@ export function CollapsibleSection({ title, collapsed, headerActions, children, 
           <div onClick={(e) => e.stopPropagation()}>{headerActions}</div>
         )}
       </div>
-      {!collapsed.value && children}
+      <div
+        class="overflow-hidden transition-[max-height] duration-150 ease-out"
+        style={{ maxHeight: collapsed.value ? '0px' : '9999px' }}
+      >
+        {children}
+      </div>
     </>
   );
 }
