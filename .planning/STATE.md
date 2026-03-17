@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 12.1.1-02-PLAN.md
-last_updated: "2026-03-17T09:15:01.389Z"
-last_activity: "2026-03-17 - Completed 12.1.1-02: Sidebar layout (3-panel resize, SidebarResizer, CollapseHandle)"
+stopped_at: Completed 12.1.1-03-PLAN.md
+last_updated: "2026-03-17T09:17:09.604Z"
+last_activity: "2026-03-17 - Completed 12.1.1-03: Sequence cards with inline key photos, layer lucide icons, NumericInput typography"
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 29
-  completed_plans: 26
+  completed_plans: 27
   percent: 90
 ---
 
@@ -27,9 +27,9 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 Milestone: v0.2.0
 Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
-Plan: 3 of 5
+Plan: 4 of 5
 Status: In Progress
-Last activity: 2026-03-17 - Completed 12.1.1-02: Sidebar layout (3-panel resize, SidebarResizer, CollapseHandle)
+Last activity: 2026-03-17 - Completed 12.1.1-03: Sequence cards with inline key photos, layer lucide icons, NumericInput typography
 
 Progress: [█████████░] 90%
 
@@ -68,6 +68,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.1.1]: Restore-from-zero check runs before collapse check in calcResize to prevent immediate re-collapse
 - [Phase 12.1.1]: sidebarWidth default updated from 240 to 317 per new design spec
 - [Phase 12.1.1-02]: LeftPanel width 100% (parent controls via sidebarWidth); PROPERTIES panel uses flex-1; panel scroll maxHeight = panelHeight - 36px
+- [Phase 12.1.1]: Used Ellipsis icon instead of MoreHorizontal (renamed in lucide-preact v0.460+)
+- [Phase 12.1.1]: AddKeyPhotoButton opens full importer via setEditorMode('imported') instead of popover
 
 ### Pending Todos
 
@@ -111,6 +113,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-17T09:15:01.386Z
-Stopped at: Completed 12.1.1-02-PLAN.md
+Last session: 2026-03-17T09:17:09.602Z
+Stopped at: Completed 12.1.1-03-PLAN.md
 Resume file: None
