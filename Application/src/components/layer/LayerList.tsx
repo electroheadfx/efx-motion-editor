@@ -116,15 +116,13 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
       style={{
         backgroundColor: isSelected
           ? 'var(--sidebar-selected-layer-bg)'
-          : isBase
-            ? 'var(--sidebar-input-bg)'
-            : 'var(--sidebar-panel-bg)',
+          : 'transparent',
       }}
       onClick={handleSelect}
     >
       {/* Drag handle -- hidden for base layer */}
       {!isBase ? (
-        <div class="layer-drag-handle cursor-grab shrink-0 opacity-40 hover:opacity-70">
+        <div class="layer-drag-handle cursor-grab shrink-0 opacity-60 hover:opacity-100">
           <GripVertical size={14} style={{color: 'var(--sidebar-resizer-icon)'}} />
         </div>
       ) : (
@@ -154,7 +152,7 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
       <div class="flex flex-col gap-0 flex-1 min-w-0">
         <span
           class="truncate leading-tight"
-          style={{fontSize: '13px', fontWeight: 600, color: 'var(--sidebar-text-primary)'}}
+          style={{fontSize: '13px', fontWeight: 500, color: 'var(--sidebar-text-primary)'}}
         >
           {layer.name}
         </span>

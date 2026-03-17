@@ -187,8 +187,14 @@ function KeyPhotoCard({
 export function AddKeyPhotoButton({sequenceId: _sequenceId}: {sequenceId: string}) {
   return (
     <button
-      class="flex items-center justify-center rounded shrink-0 hover:bg-[#ffffff10] transition-colors"
-      style={{width: '24px', height: '56px', color: 'var(--sidebar-text-secondary)'}}
+      class="flex items-center justify-center shrink-0 hover:brightness-125 transition-colors"
+      style={{
+        width: '24px',
+        height: '56px',
+        backgroundColor: '#3A3A50',
+        borderRadius: '4px',
+        color: 'var(--sidebar-text-secondary)',
+      }}
       onClick={() => uiStore.setEditorMode('imported')}
       aria-label="Add key photo"
       title="Add key photo from imported images"

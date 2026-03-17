@@ -1,4 +1,5 @@
 import { useEffect } from 'preact/hooks';
+import { ChevronDown } from 'lucide-preact';
 import { NumericInput } from '../shared/NumericInput';
 import { SectionLabel } from '../shared/SectionLabel';
 import { KeyframeNavBar } from './KeyframeNavBar';
@@ -98,35 +99,44 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
         </div>
       )}
 
-      {/* Blend + Opacity OR Interpolation (swapped when diamond selected) */}
+      {/* Blend + Opacity (single row) OR Interpolation (swapped when diamond selected) */}
       {hasSelectedDiamonds ? (
         <InlineInterpolation />
       ) : (
-        <div class="space-y-1.5">
-          <SectionLabel text="BLEND" />
+        <div class="flex items-center gap-2">
+          {/* Blend dropdown (90px fixed) */}
           {layer.isBase ? (
-            <span class="text-[11px]" style={{ color: 'var(--sidebar-text-secondary)' }}>Normal</span>
-          ) : (
-            <select
-              class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer"
-              style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)' }}
-              value={layer.blendMode}
-              onChange={(e) => {
-                layerStore.updateLayer(layer.id, {
-                  blendMode: (e.target as HTMLSelectElement).value as BlendMode,
-                });
-              }}
+            <div
+              class="shrink-0 flex items-center justify-between rounded px-2 py-[3px]"
+              style={{ width: '90px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', fontSize: '11px' }}
             >
-              {BLEND_MODES.map((mode) => (
-                <option key={mode} value={mode}>
-                  {capitalize(mode)}
-                </option>
-              ))}
-            </select>
+              <span>Normal</span>
+              <ChevronDown size={10} style={{ color: 'var(--sidebar-text-secondary)', opacity: 0.4 }} />
+            </div>
+          ) : (
+            <div class="relative shrink-0" style={{ width: '90px' }}>
+              <select
+                class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer appearance-none pr-5"
+                style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
+                value={layer.blendMode}
+                onChange={(e) => {
+                  layerStore.updateLayer(layer.id, {
+                    blendMode: (e.target as HTMLSelectElement).value as BlendMode,
+                  });
+                }}
+              >
+                {BLEND_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {capitalize(mode)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={10} class="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--sidebar-text-secondary)' }} />
+            </div>
           )}
 
-          <SectionLabel text="OPACITY" />
-          <div class="flex items-center gap-1.5">
+          {/* Opacity slider + percentage (fills remaining space) */}
+          <div class="flex items-center gap-1.5 flex-1 min-w-0">
             <input
               type="range"
               min="0"
@@ -150,7 +160,7 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
                 }
               }}
             />
-            <span class="text-[11px] w-8 text-right" style={{ color: 'var(--sidebar-text-primary)' }}>{opacityPercent}%</span>
+            <span class="text-[11px] w-8 text-right shrink-0" style={{ color: 'var(--sidebar-text-primary)' }}>{opacityPercent}%</span>
           </div>
         </div>
       )}

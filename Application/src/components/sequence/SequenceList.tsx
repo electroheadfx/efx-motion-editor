@@ -1,7 +1,7 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import {createPortal} from 'preact/compat';
 import Sortable from 'sortablejs';
-import {GripVertical, Ellipsis} from 'lucide-preact';
+import {GripVertical, Ellipsis, Clapperboard} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
@@ -184,6 +184,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       style={{
         border: `1px solid var(${isActive ? '--sidebar-border-selected' : '--sidebar-border-unselected'})`,
         backgroundColor: isActive ? 'var(--sidebar-selected-group-bg)' : 'var(--sidebar-panel-bg)',
+        opacity: isActive ? 1 : 0.5,
       }}
     >
       {/* Sequence row */}
@@ -201,13 +202,13 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         )}
 
         {/* Drag handle */}
-        <div class="seq-drag-handle cursor-grab shrink-0 opacity-40 hover:opacity-70">
+        <div class="seq-drag-handle cursor-grab shrink-0 opacity-60 hover:opacity-100">
           <GripVertical size={14} style={{color: 'var(--sidebar-resizer-icon)'}} />
         </div>
 
         {/* Thumbnail */}
         <div
-          class="shrink-0 rounded bg-cover bg-center"
+          class="shrink-0 rounded bg-cover bg-center relative overflow-hidden"
           style={{
             width: '40px',
             height: '40px',
@@ -215,7 +216,11 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
             backgroundColor: 'var(--sidebar-input-bg)',
             ...(thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : {}),
           }}
-        />
+        >
+          <div class="absolute bottom-0 right-0" style={{ padding: '3px', background: '#00000088', borderRadius: '4px' }}>
+            <Clapperboard size={12} color="white" />
+          </div>
+        </div>
 
         {/* Name and meta */}
         <div class="flex flex-col gap-0.5 flex-1 min-w-0">
@@ -319,7 +324,9 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         }}
       >
         <div class="px-2 py-1.5 flex items-center gap-1">
-          <KeyPhotoStripInline sequenceId={seq.id} />
+          <div class="flex-1 min-w-0 overflow-hidden">
+            <KeyPhotoStripInline sequenceId={seq.id} />
+          </div>
           <AddKeyPhotoButton sequenceId={seq.id} />
         </div>
       </div>

@@ -11,8 +11,8 @@ interface KeyframeNavBarProps {
   layer: Layer;
 }
 
-/** Get the sequence-local frame for a layer */
-function getLocalFrameForLayer(layerId: string): number {
+/** Get the sequence-local frame for a layer (uses .peek() since caller subscribes to currentFrame) */
+function getLocalFrameForLayer(layerId: string, globalFrame: number): number {
   const seqs = sequenceStore.sequences.peek();
   const layouts = trackLayouts.peek();
   for (const seq of seqs) {
@@ -20,7 +20,7 @@ function getLocalFrameForLayer(layerId: string): number {
     if (seq.layers.some((l) => l.id === layerId)) {
       const layout = layouts.find((t) => t.sequenceId === seq.id);
       const startFrame = layout?.startFrame ?? 0;
-      return timelineStore.currentFrame.peek() - startFrame;
+      return globalFrame - startFrame;
     }
   }
   return 0;
@@ -42,9 +42,15 @@ function getSequenceStartFrame(layerId: string): number {
 
 export function KeyframeNavBar({ layer }: KeyframeNavBarProps) {
   const keyframes = keyframeStore.activeLayerKeyframes.value;
-  const localFrame = getLocalFrameForLayer(layer.id);
+  const globalFrame = timelineStore.currentFrame.value;
+  const localFrame = getLocalFrameForLayer(layer.id, globalFrame);
   const nav = getKeyframeNav(keyframes, localFrame);
   const isOnKf = nav.isOnKf;
+
+  // Debug: log navigation state to diagnose prev/next button issues
+  console.warn('[KfNav] globalFrame:', globalFrame, 'localFrame:', localFrame,
+    'kfFrames:', keyframes.map(k => k.frame),
+    'nav:', { prev: nav.prevFrame, next: nav.nextFrame, isOnKf: nav.isOnKf, canPrev: nav.canPrev, canNext: nav.canNext });
 
   const btnBase = 'w-6 h-6 flex items-center justify-center rounded transition-colors';
   const btnEnabled = 'hover:bg-[var(--sidebar-input-bg)]';
@@ -71,7 +77,7 @@ export function KeyframeNavBar({ layer }: KeyframeNavBarProps) {
 
   const handleDelete = () => {
     if (!isOnKf) return;
-    const lf = getLocalFrameForLayer(layer.id);
+    const lf = getLocalFrameForLayer(layer.id, timelineStore.currentFrame.peek());
     keyframeStore.removeKeyframes(layer.id, [lf]);
   };
 
