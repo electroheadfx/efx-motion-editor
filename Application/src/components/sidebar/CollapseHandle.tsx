@@ -1,5 +1,5 @@
 import { useRef } from 'preact/hooks';
-import { GripVertical } from 'lucide-preact';
+import { Tally3 } from 'lucide-preact';
 import { uiStore } from '../../stores/uiStore';
 import { setSidebarWidth } from '../../lib/appConfig';
 
@@ -78,11 +78,12 @@ export function CollapseHandle() {
       onPointerDown={handlePointerDown}
       title={uiStore.sidebarCollapsed.value ? 'Drag or click to expand' : 'Drag to resize, click to collapse'}
     >
-      <GripVertical
-        size={14}
-        class="transition-opacity duration-150 group-hover:opacity-100"
-        style={{ color: 'var(--sidebar-collapse-line)', opacity: 0.5 }}
-      />
+      <div class="flex flex-col items-center gap-0 opacity-70 transition-opacity duration-150 group-hover:opacity-100"
+           style={{ color: 'var(--sidebar-collapse-line)' }}>
+        <Tally3 size={14} style={{ transform: 'rotate(90deg)' }} />
+        <Tally3 size={14} style={{ transform: 'rotate(90deg)' }} />
+        <Tally3 size={14} style={{ transform: 'rotate(90deg)' }} />
+      </div>
     </div>
   );
 }
