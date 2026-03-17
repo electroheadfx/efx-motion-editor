@@ -1,6 +1,8 @@
 import {tinykeys} from 'tinykeys';
 import {playbackEngine} from './playbackEngine';
 import {pressJ, pressK, pressL} from './jklShuttle';
+import {findPrevSequenceStart, findNextSequenceStart} from './sequenceNav';
+import {trackLayouts} from './frameMap';
 import {undo, redo} from './history';
 import {guardUnsavedChanges} from './unsavedGuard';
 import {cycleTheme} from './themeManager';
@@ -328,6 +330,40 @@ export function mountShortcuts(): () => void {
       e.preventDefault();
       layerStore.setSelected(null);
       uiStore.selectLayer(null);
+    },
+
+    // Timeline navigation: Home/End/PageUp/PageDown (NAV-01..04)
+    'Home': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      playbackEngine.seekToFrame(0);
+    },
+    'End': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      const lastFrame = timelineStore.totalFrames.peek();
+      playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
+    },
+    'PageUp': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      const target = findPrevSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
+      if (target !== null) {
+        playbackEngine.seekToFrame(target);
+      } else {
+        playbackEngine.seekToFrame(0);
+      }
+    },
+    'PageDown': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      const target = findNextSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
+      if (target !== null) {
+        playbackEngine.seekToFrame(target);
+      } else {
+        const lastFrame = timelineStore.totalFrames.peek();
+        playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
+      }
     },
   });
 }
