@@ -7,6 +7,8 @@ import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
+import {trackLayouts} from '../../lib/frameMap';
+import {playbackEngine} from '../../lib/playbackEngine';
 import {KeyPhotoStripInline, AddKeyPhotoButton} from './KeyPhotoStrip';
 import type {Sequence} from '../../types/sequence';
 
@@ -117,11 +119,20 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
   // which updates selectedSequenceId signal and triggers key photo collapse/expand
   const handleSelect = useCallback(() => {
     if (!editing) {
+      const wasActive = sequenceStore.activeSequenceId.peek();
       layerStore.setSelected(null);
       uiStore.selectLayer(null);
       uiStore.selectSequence(seq.id);
       sequenceStore.setActive(seq.id);
       sequenceStore.clearKeyPhotoSelection();
+      // Auto-seek timeline playhead to sequence start (only when switching sequences)
+      if (seq.id !== wasActive) {
+        const layouts = trackLayouts.peek();
+        const track = layouts.find(t => t.sequenceId === seq.id);
+        if (track) {
+          playbackEngine.seekToFrame(track.startFrame);
+        }
+      }
     }
   }, [seq.id, editing]);
 
