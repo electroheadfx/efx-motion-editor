@@ -50,6 +50,9 @@ export function EditorShell() {
     // Click is on an interactive control -- don't interfere
     if (target.closest(INTERACTIVE_SELECTOR)) return;
 
+    // Click is inside the sidebar -- don't deselect
+    if (target.closest('[data-sidebar]')) return;
+
     // Dead space click -- deselect
     layerStore.setSelected(null);
     uiStore.selectLayer(null);
