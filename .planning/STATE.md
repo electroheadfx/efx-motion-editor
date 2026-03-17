@@ -4,8 +4,8 @@ milestone: v0.1
 milestone_name: milestone
 status: executing
 stopped_at: Completed 12.1.1-04-PLAN.md
-last_updated: "2026-03-17T14:06:10Z"
-last_activity: "2026-03-17 - Completed quick task 260317-krf: Add click-to-select key photo from importer grid"
+last_updated: "2026-03-17T14:22:47Z"
+last_activity: "2026-03-17 - Completed quick task 260317-l8o: Fix sequence key photo UX (delete button, selection ring, greyout, header highlight, Delete key)"
 progress:
   total_phases: 12
   completed_phases: 6
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
 Plan: 5 of 5
 Status: In Progress
-Last activity: 2026-03-17 - Completed quick task 260317-krf: Add click-to-select key photo from importer grid
+Last activity: 2026-03-17 - Completed quick task 260317-l8o: Fix sequence key photo UX
 
 Progress: [██████████] 97%
 
@@ -114,9 +114,10 @@ No active blockers.
 | 23 | Prevent sidebar property clicks from deselecting active layer | 2026-03-17 | d32f00f |
 | 24 | Stop sidebar re-renders during playback (displayFrame gating) | 2026-03-17 | 18825f8 |
 | 25 | Add click-to-select key photo from importer grid | 2026-03-17 | b62c4c6 |
+| 26 | Fix key photo UX: delete button, thick ring, greyout, header highlight, Delete key | 2026-03-17 | 4614055 |
 
 ## Session Continuity
 
-Last session: 2026-03-17T14:06:10Z
-Stopped at: Completed quick task 260317-krf
+Last session: 2026-03-17T14:22:47Z
+Stopped at: Completed quick task 260317-l8o
 Resume file: None
