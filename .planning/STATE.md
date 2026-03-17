@@ -4,8 +4,8 @@ milestone: v0.1
 milestone_name: milestone
 status: executing
 stopped_at: Completed 12.1.1-04-PLAN.md
-last_updated: "2026-03-17T15:27:53Z"
-last_activity: "2026-03-17 - Completed quick task 260317-mqr: Sequence and layer names hover effect (muted-to-vivid)"
+last_updated: "2026-03-17T15:38:25Z"
+last_activity: "2026-03-17 - Completed quick task 260317-n0w: Smooth slide animations on sidebar collapse"
 progress:
   total_phases: 12
   completed_phases: 6
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
 Plan: 5 of 5
 Status: In Progress
-Last activity: 2026-03-17 - Completed quick task 260317-mqr: Sequence and layer names hover effect
+Last activity: 2026-03-17 - Completed quick task 260317-n0w: Smooth slide animations on sidebar collapse
 
 Progress: [██████████] 97%
 
@@ -117,9 +117,10 @@ No active blockers.
 | 26 | Fix key photo UX: delete button, thick ring, greyout, header highlight, Delete key | 2026-03-17 | 4614055 |
 | 27 | Taller sidebar grabber with 3 stacked Tally3 icons and high-contrast theme colors | 2026-03-17 | 61f9045 |
 | 28 | Sequence and layer names hover effect (muted-to-vivid color transition) | 2026-03-17 | 9466faf |
+| 29 | Smooth slide animations on sidebar collapse, Key label, unbold sequence titles | 2026-03-17 | c94cc92 |
 
 ## Session Continuity
 
-Last session: 2026-03-17T15:27:53Z
-Stopped at: Completed quick task 260317-mqr
+Last session: 2026-03-17T15:38:25Z
+Stopped at: Completed quick task 260317-n0w
 Resume file: None
