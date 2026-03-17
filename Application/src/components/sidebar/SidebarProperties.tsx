@@ -1,6 +1,8 @@
 import { useEffect } from 'preact/hooks';
 import { NumericInput } from '../shared/NumericInput';
 import { SectionLabel } from '../shared/SectionLabel';
+import { KeyframeNavBar } from './KeyframeNavBar';
+import { InlineInterpolation } from './InlineInterpolation';
 import { layerStore } from '../../stores/layerStore';
 import { keyframeStore } from '../../stores/keyframeStore';
 import { timelineStore } from '../../stores/timelineStore';
@@ -16,31 +18,6 @@ let _rangeBlurRestore = false;
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/** [+ Keyframe] / [Update] button for content layers with keyframe support */
-function KeyframeButton({ layer }: { layer: Layer }) {
-  // Only show for content layers (not FX, not base)
-  if (isFxLayer(layer) || layer.isBase) return null;
-
-  const isOnKf = keyframeStore.isOnKeyframe.value;
-
-  return (
-    <button
-      class={`text-[10px] px-2 py-[3px] rounded font-medium transition-colors ${
-        isOnKf
-          ? 'bg-[#FFD700] text-black hover:bg-[#E5C000]'
-          : 'bg-[var(--color-accent)] text-white hover:opacity-80'
-      }`}
-      title={isOnKf ? 'Update keyframe at this frame' : 'Add keyframe at this frame'}
-      onClick={() => {
-        const globalFrame = timelineStore.currentFrame.peek();
-        keyframeStore.addKeyframe(layer.id, globalFrame);
-      }}
-    >
-      {isOnKf ? '\u25C6 Update' : '+ Keyframe'}
-    </button>
-  );
 }
 
 export function SidebarProperties({ layer }: { layer: Layer }) {
@@ -100,66 +77,83 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
     }
   };
 
+  // Check if any keyframe diamonds are selected (for blend/interpolation swap)
+  const hasSelectedDiamonds = keyframeStore.selectedKeyframeFrames.value.size > 0;
+
   return (
     <div class="overflow-y-auto px-3 py-2 space-y-3">
-      {/* Keyframe button row (not for base layer) */}
+      {/* Keyframe nav bar + Blur (same row, gap 16) -- only for non-base layers */}
       {!layer.isBase && (
-        <div class="flex items-center justify-between">
-          <KeyframeButton layer={layer} />
+        <div class="flex items-center gap-4">
+          <KeyframeNavBar layer={layer} />
+          <div class="flex-1">
+            <NumericInput label="Blur"
+              value={showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)}
+              step={0.01} min={0} max={1}
+              onChange={(val) => {
+                if (handleKeyframeEdit) handleKeyframeEdit('blur', val);
+                else layerStore.updateLayer(layer.id, { blur: val });
+              }} />
+          </div>
         </div>
       )}
 
-      {/* Blend + Opacity section */}
-      <div class="space-y-1.5">
-        <SectionLabel text="BLEND" />
-        {layer.isBase ? (
-          <span class="text-[11px] text-[var(--color-text-dim)]">Normal</span>
-        ) : (
-          <select
-            class="w-full text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[3px] outline-none cursor-pointer"
-            value={layer.blendMode}
-            onChange={(e) => {
-              layerStore.updateLayer(layer.id, {
-                blendMode: (e.target as HTMLSelectElement).value as BlendMode,
-              });
-            }}
-          >
-            {BLEND_MODES.map((mode) => (
-              <option key={mode} value={mode}>
-                {capitalize(mode)}
-              </option>
-            ))}
-          </select>
-        )}
+      {/* Blend + Opacity OR Interpolation (swapped when diamond selected) */}
+      {hasSelectedDiamonds ? (
+        <InlineInterpolation />
+      ) : (
+        <div class="space-y-1.5">
+          <SectionLabel text="BLEND" />
+          {layer.isBase ? (
+            <span class="text-[11px]" style={{ color: 'var(--sidebar-text-secondary)' }}>Normal</span>
+          ) : (
+            <select
+              class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer"
+              style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)' }}
+              value={layer.blendMode}
+              onChange={(e) => {
+                layerStore.updateLayer(layer.id, {
+                  blendMode: (e.target as HTMLSelectElement).value as BlendMode,
+                });
+              }}
+            >
+              {BLEND_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {capitalize(mode)}
+                </option>
+              ))}
+            </select>
+          )}
 
-        <SectionLabel text="OPACITY" />
-        <div class="flex items-center gap-1.5">
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={opacityPercent}
-            class="flex-1 h-1 accent-[var(--color-accent)] cursor-pointer"
-            onPointerDown={() => {
-              startCoalescing();
-              if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }
-            }}
-            onPointerUp={() => {
-              stopCoalescing();
-              if (_rangeBlurRestore) { blurStore.toggleBypass(); _rangeBlurRestore = false; }
-            }}
-            onInput={(e) => {
-              const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
-              if (handleKeyframeEdit) {
-                handleKeyframeEdit('opacity', val);
-              } else {
-                layerStore.updateLayer(layer.id, { opacity: val });
-              }
-            }}
-          />
-          <span class="text-[11px] text-[var(--color-text-button)] w-8 text-right">{opacityPercent}%</span>
+          <SectionLabel text="OPACITY" />
+          <div class="flex items-center gap-1.5">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={opacityPercent}
+              class="flex-1 h-1 accent-[var(--color-accent)] cursor-pointer"
+              onPointerDown={() => {
+                startCoalescing();
+                if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }
+              }}
+              onPointerUp={() => {
+                stopCoalescing();
+                if (_rangeBlurRestore) { blurStore.toggleBypass(); _rangeBlurRestore = false; }
+              }}
+              onInput={(e) => {
+                const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
+                if (handleKeyframeEdit) {
+                  handleKeyframeEdit('opacity', val);
+                } else {
+                  layerStore.updateLayer(layer.id, { opacity: val });
+                }
+              }}
+            />
+            <span class="text-[11px] w-8 text-right" style={{ color: 'var(--sidebar-text-primary)' }}>{opacityPercent}%</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Transform section (two-column grid) */}
       <div class="space-y-1.5">
@@ -193,18 +187,6 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
           <NumericInput label="L" value={layer.transform.cropLeft} step={0.01} min={0} max={1}
             onChange={(val) => layerStore.updateLayer(layer.id, { transform: { ...layer.transform, cropLeft: Math.max(0, Math.min(1, val)) } })} />
         </div>
-      </div>
-
-      {/* Blur section */}
-      <div class="space-y-1.5">
-        <SectionLabel text="BLUR" />
-        <NumericInput label="Radius"
-          value={showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)}
-          step={0.01} min={0} max={1}
-          onChange={(val) => {
-            if (handleKeyframeEdit) handleKeyframeEdit('blur', val);
-            else layerStore.updateLayer(layer.id, { blur: val });
-          }} />
       </div>
     </div>
   );

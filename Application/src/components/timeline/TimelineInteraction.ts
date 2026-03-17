@@ -49,8 +49,6 @@ export class TimelineInteraction {
   private kfDragLayerId = '';
   private kfDragFromFrame = 0;  // sequence-local frame
   private kfDragSequenceStartFrame = 0;  // global start of the owning sequence
-  private kfLastClickFrame = -1;
-  private kfLastClickTime = 0;
 
   // Bound handlers for cleanup
   private handlePointerDown = this.onPointerDown.bind(this);
@@ -346,31 +344,6 @@ export class TimelineInteraction {
     // Check keyframe diamond hit BEFORE regular track interactions
     const kfHit = this.keyframeHitTest(e.clientX, e.clientY);
     if (kfHit) {
-      const now = Date.now();
-      // Double-click detection (within 400ms on same frame)
-      if (kfHit.frame === this.kfLastClickFrame && now - this.kfLastClickTime < 400) {
-        // Double-click: open interpolation popover
-        this.kfLastClickFrame = -1;
-        this.kfLastClickTime = 0;
-        // Emit custom event for popover (handled by TimelineCanvas)
-        const globalFrame = kfHit.sequenceStartFrame + kfHit.frame;
-        const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
-        const diamondX = globalFrame * frameWidth - timelineStore.scrollX.peek() + TRACK_HEADER_WIDTH;
-        const canvasRect = this.canvas.getBoundingClientRect();
-        this.canvas.dispatchEvent(new CustomEvent('keyframe-dblclick', {
-          detail: {
-            layerId: kfHit.layerId,
-            frame: kfHit.frame,
-            clientX: canvasRect.left + diamondX,
-            clientY: e.clientY,
-          },
-        }));
-        return;
-      }
-
-      this.kfLastClickFrame = kfHit.frame;
-      this.kfLastClickTime = now;
-
       // Select the keyframe (shift for additive)
       keyframeStore.selectKeyframe(kfHit.frame, e.shiftKey);
 

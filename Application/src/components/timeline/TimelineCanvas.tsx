@@ -1,8 +1,7 @@
-import {useRef, useEffect, useState} from 'preact/hooks';
+import {useRef, useEffect} from 'preact/hooks';
 import {effect} from '@preact/signals';
 import {TimelineRenderer, invalidateColorCache} from './TimelineRenderer';
 import {TimelineInteraction} from './TimelineInteraction';
-import {KeyframePopover} from './KeyframePopover';
 import {timelineStore} from '../../stores/timelineStore';
 import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {imageStore} from '../../stores/imageStore';
@@ -22,7 +21,6 @@ export function TimelineCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<TimelineRenderer | null>(null);
   const interactionRef = useRef<TimelineInteraction | null>(null);
-  const [popover, setPopover] = useState<{ layerId: string; frame: number; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -36,13 +34,6 @@ export function TimelineCanvas() {
     interactionRef.current = interaction;
 
     interaction.attach(canvas, renderer);
-
-    // Listen for keyframe double-click events from TimelineInteraction
-    const handleKfDblClick = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      setPopover({ layerId: detail.layerId, frame: detail.frame, x: detail.clientX, y: detail.clientY });
-    };
-    canvas.addEventListener('keyframe-dblclick', handleKfDblClick);
 
     // ResizeObserver to handle container size changes
     const resizeObserver = new ResizeObserver(() => {
@@ -132,7 +123,6 @@ export function TimelineCanvas() {
     return () => {
       disposeTheme();
       dispose();
-      canvas.removeEventListener('keyframe-dblclick', handleKfDblClick);
       interaction.detach();
       renderer.destroy();
       resizeObserver.disconnect();
@@ -144,15 +134,6 @@ export function TimelineCanvas() {
   return (
     <div class="flex-1 min-h-0 overflow-hidden relative" data-interactive>
       <canvas ref={canvasRef} class="w-full h-full" />
-      {popover && (
-        <KeyframePopover
-          layerId={popover.layerId}
-          frame={popover.frame}
-          x={popover.x}
-          y={popover.y}
-          onClose={() => setPopover(null)}
-        />
-      )}
     </div>
   );
 }
