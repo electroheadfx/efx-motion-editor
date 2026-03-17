@@ -186,7 +186,7 @@ Plans:
   3. Page Up jumps the playhead to the start of the previous content sequence
   4. Page Down jumps the playhead to the start of the next content sequence
   5. ShortcutsOverlay documents all new navigation shortcuts
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 12.3-01-PLAN.md -- Navigation helpers, Home/End/PageUp/PageDown bindings, ShortcutsOverlay update
@@ -265,7 +265,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 13 > 14 > 15 > 16 >
 | 12.1. Remove Bottom Parameters Bar | 3/4 | In Progress|  | - |
 | 12.1.1. Big UI Frontend Design Changes | 4/5 | In Progress|  | - |
 | 12.2. Auto-seek Timeline to Sequence Start | 1/1 | Complete    | 2026-03-17 | - |
-| 12.3. Add Quick Keys for Navigation | 0/1 | Planned | - | - |
+| 12.3. Add Quick Keys for Navigation | 1/1 | Complete   | 2026-03-17 | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |

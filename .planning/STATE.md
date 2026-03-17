@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 12.2-01-PLAN.md
-last_updated: "2026-03-17T17:22:39.018Z"
-last_activity: "2026-03-17 - Completed Phase 12.2 Plan 01: Auto-seek timeline to sequence start"
+stopped_at: Completed 12.3-01-PLAN.md
+last_updated: "2026-03-17T17:51:31.416Z"
+last_activity: "2026-03-17 - Completed Phase 12.3 Plan 01: Quick keys for navigation"
 progress:
-  total_phases: 13
-  completed_phases: 7
-  total_plans: 30
-  completed_plans: 29
+  total_phases: 14
+  completed_phases: 8
+  total_plans: 31
+  completed_plans: 30
   percent: 97
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 12.2 -- Auto-seek timeline to sequence start on sidebar selection (COMPLETE)
+**Current focus:** v0.2.0 Phase 12.3 -- Add quick keys for navigation (COMPLETE)
 
 ## Current Position
 
 Milestone: v0.2.0
-Phase: 12.2 (auto-seek-timeline-to-sequence-start-on-sidebar-selection)
+Phase: 12.3 (add-quick-keys-for-navigation)
 Plan: 1 of 1
 Status: Complete
-Last activity: 2026-03-17 - Completed Phase 12.2 Plan 01: Auto-seek timeline to sequence start
+Last activity: 2026-03-17 - Completed Phase 12.3 Plan 01: Quick keys for navigation
 
 Progress: [██████████] 97%
 
@@ -72,6 +72,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.1.1]: AddKeyPhotoButton opens full importer via setEditorMode('imported') instead of popover
 - [Phase 12.1.1]: Used playbackEngine.seekToFrame for keyframe nav (syncs displayFrame + preview); removed KeyframePopover entirely, interpolation editing now inline via sidebar chips
 - [Phase 12.2]: trackLayouts.peek() for imperative signal read in event handler; wasActive guard prevents playhead jump on re-click
+- [Phase 12.3]: Pure functions for sequence navigation (no signal reads) -- caller passes values in for full testability; PageUp/PageDown fallback to start/end when no further sequences exist
 
 ### Pending Todos
 
@@ -125,6 +126,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-17T17:19:45.145Z
-Stopped at: Completed 12.2-01-PLAN.md
+Last session: 2026-03-17T17:51:15.374Z
+Stopped at: Completed 12.3-01-PLAN.md
 Resume file: None
