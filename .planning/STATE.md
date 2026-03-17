@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 12.1.1-01-PLAN.md
-last_updated: "2026-03-17T09:08:06.739Z"
-last_activity: "2026-03-17 - Completed 12.1.1-01: Infrastructure foundation (CSS vars, Rust config, pure logic)"
+stopped_at: Completed 12.1.1-02-PLAN.md
+last_updated: "2026-03-17T09:15:01.389Z"
+last_activity: "2026-03-17 - Completed 12.1.1-02: Sidebar layout (3-panel resize, SidebarResizer, CollapseHandle)"
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 29
-  completed_plans: 25
-  percent: 96
+  completed_plans: 26
+  percent: 90
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 Milestone: v0.2.0
 Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
-Plan: 2 of 5
+Plan: 3 of 5
 Status: In Progress
-Last activity: 2026-03-17 - Completed 12.1.1-01: Infrastructure foundation (CSS vars, Rust config, pure logic)
+Last activity: 2026-03-17 - Completed 12.1.1-02: Sidebar layout (3-panel resize, SidebarResizer, CollapseHandle)
 
-Progress: [█████████▓] 96%
+Progress: [█████████░] 90%
 
 ## Accumulated Context
 
@@ -67,6 +67,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.1-03]: ImportGrid max-h removed (sidebar no longer renders it); Toolbar Imported/Settings buttons toggle mode; SettingsView uses projectStore (per-project FPS/Resolution)
 - [Phase 12.1.1]: Restore-from-zero check runs before collapse check in calcResize to prevent immediate re-collapse
 - [Phase 12.1.1]: sidebarWidth default updated from 240 to 317 per new design spec
+- [Phase 12.1.1-02]: LeftPanel width 100% (parent controls via sidebarWidth); PROPERTIES panel uses flex-1; panel scroll maxHeight = panelHeight - 36px
 
 ### Pending Todos
 
@@ -110,6 +111,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-17T09:08:06.737Z
-Stopped at: Completed 12.1.1-01-PLAN.md
+Last session: 2026-03-17T09:15:01.386Z
+Stopped at: Completed 12.1.1-02-PLAN.md
 Resume file: None
