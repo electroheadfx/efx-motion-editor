@@ -1,4 +1,4 @@
-import { Ellipsis } from 'lucide-preact';
+import { GripHorizontal } from 'lucide-preact';
 
 interface PanelResizerProps {
   onResize: (deltaY: number) => void;
@@ -31,11 +31,11 @@ export function PanelResizer({ onResize, onResizeEnd }: PanelResizerProps) {
   return (
     <div
       data-interactive
-      class="h-4 flex items-center justify-center cursor-grab active:cursor-grabbing shrink-0 select-none"
-      style={{ color: 'var(--sidebar-resizer-icon)' }}
+      class="h-4 flex items-center justify-center cursor-grab active:cursor-grabbing shrink-0 select-none group"
+      style={{ color: 'var(--sidebar-collapse-line)' }}
       onPointerDown={handlePointerDown}
     >
-      <Ellipsis size={14} />
+      <GripHorizontal size={14} class="opacity-70 transition-opacity duration-150 group-hover:opacity-100" />
     </div>
   );
 }
