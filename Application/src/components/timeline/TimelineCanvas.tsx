@@ -36,8 +36,11 @@ export function TimelineCanvas() {
     interaction.attach(canvas, renderer);
 
     // ResizeObserver to handle container size changes
-    const resizeObserver = new ResizeObserver(() => {
+    const resizeObserver = new ResizeObserver((entries) => {
       renderer.resize();
+      for (const entry of entries) {
+        timelineStore.setViewportWidth(entry.contentRect.width);
+      }
     });
     resizeObserver.observe(canvas.parentElement ?? canvas);
 

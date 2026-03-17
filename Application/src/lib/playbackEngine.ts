@@ -56,6 +56,7 @@ export class PlaybackEngine {
   seekToFrame(frame: number) {
     timelineStore.seek(frame);
     timelineStore.syncDisplayFrame();
+    timelineStore.ensureFrameVisible(timelineStore.currentFrame.peek());
     this.syncActiveSequence();
     this.syncPlayer();
   }
@@ -63,6 +64,7 @@ export class PlaybackEngine {
   stepForward() {
     timelineStore.stepForward();
     timelineStore.syncDisplayFrame();
+    timelineStore.ensureFrameVisible(timelineStore.currentFrame.peek());
     this.syncActiveSequence();
     this.syncPlayer();
   }
@@ -70,6 +72,7 @@ export class PlaybackEngine {
   stepBackward() {
     timelineStore.stepBackward();
     timelineStore.syncDisplayFrame();
+    timelineStore.ensureFrameVisible(timelineStore.currentFrame.peek());
     this.syncActiveSequence();
     this.syncPlayer();
   }
@@ -126,6 +129,7 @@ export class PlaybackEngine {
       }
     }
 
+    timelineStore.ensureFrameVisiblePaged(timelineStore.currentFrame.peek());
     this.syncPlayer();
 
     if (timelineStore.isPlaying.peek()) {

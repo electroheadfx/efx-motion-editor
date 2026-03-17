@@ -9,10 +9,15 @@ const timelineDragging = signal(false);
 const zoom = signal(1);
 const scrollX = signal(0);
 const scrollY = signal(0);
+const viewportWidth = signal(0);
 
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);
 const displayTime = computed(() => displayFrame.value / projectStore.fps.value);
 const totalDuration = computed(() => totalFramesSignal.value / projectStore.fps.value);
+
+// Timeline layout constants (mirrored from TimelineRenderer to avoid circular deps)
+const BASE_FRAME_WIDTH = 60;
+const TRACK_HEADER_WIDTH = 80;
 
 export const timelineStore = {
   currentFrame,
@@ -22,6 +27,7 @@ export const timelineStore = {
   zoom,
   scrollX,
   scrollY,
+  viewportWidth,
   currentTime,
   displayTime,
   totalFrames: totalFramesSignal,
@@ -59,6 +65,40 @@ export const timelineStore = {
   },
   setScrollY(v: number) {
     scrollY.value = Math.max(0, v);
+  },
+  setViewportWidth(v: number) {
+    viewportWidth.value = v;
+  },
+  /** Scroll the timeline so the given frame is visible (smooth follow for seeks). */
+  ensureFrameVisible(frame: number) {
+    const vw = viewportWidth.value;
+    if (vw <= 0) return;
+    const frameWidth = BASE_FRAME_WIDTH * zoom.value;
+    const playheadX = frame * frameWidth;
+    const trackArea = vw - TRACK_HEADER_WIDTH;
+    const visibleLeft = scrollX.value;
+    const visibleRight = scrollX.value + trackArea;
+    const margin = frameWidth * 2;
+    if (playheadX < visibleLeft + margin) {
+      scrollX.value = Math.max(0, playheadX - margin);
+    } else if (playheadX > visibleRight - margin) {
+      scrollX.value = Math.max(0, playheadX - trackArea + margin);
+    }
+  },
+  /** Page-style scroll: jump one screen width when playhead exits viewport. */
+  ensureFrameVisiblePaged(frame: number) {
+    const vw = viewportWidth.value;
+    if (vw <= 0) return;
+    const frameWidth = BASE_FRAME_WIDTH * zoom.value;
+    const playheadX = frame * frameWidth;
+    const trackArea = vw - TRACK_HEADER_WIDTH;
+    const visibleLeft = scrollX.value;
+    const visibleRight = scrollX.value + trackArea;
+    if (playheadX < visibleLeft) {
+      scrollX.value = Math.max(0, scrollX.value - trackArea);
+    } else if (playheadX > visibleRight) {
+      scrollX.value = scrollX.value + trackArea;
+    }
   },
   syncDisplayFrame() {
     displayFrame.value = currentFrame.value;
