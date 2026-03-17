@@ -161,10 +161,12 @@ export function LeftPanel() {
           onCollapse={handleSeqCollapse}
           headerActions={
             <button
-              class="rounded px-2 py-1 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] transition-colors"
+              class="flex items-center rounded transition-colors hover:brightness-110"
+              style={{ gap: '4px', padding: '4px 10px', borderRadius: '4px', backgroundColor: 'var(--sidebar-input-bg)' }}
               onClick={() => sequenceStore.createSequence(`Sequence ${sequences.length + 1}`)}
             >
-              <span class="text-[10px] text-[var(--color-text-secondary)]">+ Add</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--sidebar-text-button)' }}>+</span>
+              <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--sidebar-text-button)' }}>Add</span>
             </button>
           }
         >

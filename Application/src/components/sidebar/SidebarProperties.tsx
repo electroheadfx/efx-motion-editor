@@ -82,7 +82,7 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
   const hasSelectedDiamonds = keyframeStore.selectedKeyframeFrames.value.size > 0;
 
   return (
-    <div class="overflow-y-auto px-3 py-2 space-y-3">
+    <div class="px-3 py-2 space-y-3">
       {/* Keyframe nav bar + Blur (same row, gap 16px per Pencil spec) -- only for non-base layers */}
       {!layer.isBase && (
         <div class="flex items-center" style={{ gap: '16px' }}>

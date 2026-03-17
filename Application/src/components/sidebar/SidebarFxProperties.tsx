@@ -258,7 +258,7 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
     : layer.visible;
 
   return (
-    <div class="overflow-y-auto px-3 py-2 space-y-3">
+    <div class="px-3 py-2 space-y-3">
       {/* Opacity + Visibility */}
       <div class="space-y-1.5">
         <div class="flex items-center justify-between">

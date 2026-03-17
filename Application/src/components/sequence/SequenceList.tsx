@@ -51,7 +51,7 @@ export function SequenceList() {
   }, [sequences.length]);
 
   return (
-    <div ref={listRef} class="flex flex-col gap-1.5 flex-1 min-h-0 overflow-y-auto p-1.5">
+    <div ref={listRef} class="flex flex-col gap-1.5 flex-1 min-h-0 p-1.5">
       {sequences.map((seq) => (
         <SequenceItem
           key={seq.id}

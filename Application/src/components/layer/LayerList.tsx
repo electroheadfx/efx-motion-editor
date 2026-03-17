@@ -57,7 +57,7 @@ export function LayerList() {
   }
 
   return (
-    <div class="flex flex-col flex-1 min-h-0 overflow-y-auto p-2">
+    <div class="flex flex-col flex-1 min-h-0 p-2">
       {/* Content layers (SortableJS container) */}
       <div ref={listRef} class="flex flex-col gap-0.5">
         {displayLayers.map((layer) => (

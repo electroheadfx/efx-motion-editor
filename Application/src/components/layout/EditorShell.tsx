@@ -7,7 +7,6 @@ import { ImportedView } from '../views/ImportedView';
 import { SettingsView } from '../views/SettingsView';
 import { DropZone } from '../import/DropZone';
 import { ShortcutsOverlay } from '../overlay/ShortcutsOverlay';
-import { SidebarResizer } from '../sidebar/SidebarResizer';
 import { CollapseHandle } from '../sidebar/CollapseHandle';
 import { useFileDrop } from '../../lib/dragDrop';
 import { imageStore } from '../../stores/imageStore';
@@ -66,13 +65,12 @@ export function EditorShell() {
       <div class="flex flex-1 min-h-0">
         {/* Sidebar (collapsible) */}
         {!uiStore.sidebarCollapsed.value ? (
-          <div class="relative shrink-0" style={{ width: `${uiStore.sidebarWidth.value}px` }}>
+          <div class="relative shrink-0" data-sidebar style={{ width: `${uiStore.sidebarWidth.value}px` }}>
             <LeftPanel />
-            <SidebarResizer />
             <CollapseHandle />
           </div>
         ) : (
-          <div class="relative shrink-0" style={{ width: '20px', backgroundColor: 'var(--sidebar-bg)' }}>
+          <div class="relative shrink-0" data-sidebar style={{ width: '20px', backgroundColor: 'var(--sidebar-bg)' }}>
             <CollapseHandle />
           </div>
         )}
