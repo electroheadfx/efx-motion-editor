@@ -191,7 +191,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
     >
       {/* Sequence row */}
       <div
-        class="flex items-center gap-2 h-10 w-full px-3 cursor-pointer"
+        class="group/row flex items-center gap-2 h-10 w-full px-3 cursor-pointer"
         style={{
           backgroundColor: isActive ? 'var(--sidebar-selected-row-bg)' : 'transparent',
           borderLeft: isActive && !hasSelectedKeyPhoto ? '2px solid var(--color-accent)' : '2px solid transparent',
@@ -246,8 +246,8 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
             />
           ) : (
             <span
-              class="truncate"
-              style={{fontSize: '14px', fontWeight: 600, color: 'var(--sidebar-text-primary)'}}
+              class="truncate text-[var(--sidebar-collapse-line)] group-hover/row:text-[var(--sidebar-text-primary)] transition-colors duration-150"
+              style={{fontSize: '14px', fontWeight: 600}}
               onDblClick={(e) => {
                 e.stopPropagation();
                 startRename();
