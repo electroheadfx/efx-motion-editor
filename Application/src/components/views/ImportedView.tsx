@@ -1,11 +1,22 @@
 import {open} from '@tauri-apps/plugin-dialog';
 import {imageStore} from '../../stores/imageStore';
 import {projectStore} from '../../stores/projectStore';
+import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {ImportGrid} from '../import/ImportGrid';
 import {tempProjectDir} from '../../lib/projectDir';
 
 export function ImportedView() {
+  const seqId = sequenceStore.activeSequenceId.value;
+  const isPickingKeyPhoto = !!seqId;
+
+  const handleSelectForKeyPhoto = (imageId: string) => {
+    const activeId = sequenceStore.activeSequenceId.peek();
+    if (!activeId) return;
+    sequenceStore.addKeyPhoto(activeId, imageId);
+    uiStore.setEditorMode('editor');
+  };
+
   const handleImport = async () => {
     const selected = await open({
       multiple: true,
@@ -26,7 +37,7 @@ export function ImportedView() {
     <div class="flex flex-col flex-1 min-w-0 bg-[var(--color-bg-root)]">
       {/* Header bar */}
       <div class="flex items-center justify-between h-10 px-4 bg-[var(--color-bg-toolbar)] border-b border-[var(--color-separator)] shrink-0">
-        <span class="text-sm font-semibold text-[var(--color-text-button)]">Imported Assets</span>
+        <span class="text-sm font-semibold text-[var(--color-text-button)]">{isPickingKeyPhoto ? 'Select a key photo' : 'Imported Assets'}</span>
         <div class="flex items-center gap-2">
           <button
             class="rounded-[5px] bg-[var(--color-accent)] px-3 py-1.5 hover:bg-[var(--color-accent-hover)] transition-colors"
@@ -63,7 +74,7 @@ export function ImportedView() {
 
       {/* Full-size import grid */}
       <div class="flex-1 overflow-y-auto p-4">
-        <ImportGrid />
+        <ImportGrid onSelect={isPickingKeyPhoto ? handleSelectForKeyPhoto : undefined} />
       </div>
     </div>
   );

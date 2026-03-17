@@ -2,11 +2,16 @@ import {useRef, useEffect} from 'preact/hooks';
 import {imageStore, type VideoAsset} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 
+interface ImportGridProps {
+  /** When provided, images become selectable and clicking calls this with the image ID */
+  onSelect?: (imageId: string) => void;
+}
+
 /**
  * Thumbnail grid showing imported images and video assets.
  * Displayed in the LeftPanel when assets have been imported.
  */
-export function ImportGrid() {
+export function ImportGrid({onSelect}: ImportGridProps) {
   const images = imageStore.images.value;
   const videos = imageStore.videoAssets.value;
 
@@ -28,8 +33,9 @@ export function ImportGrid() {
           {images.map((img) => (
             <div
               key={img.id}
-              class="relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] cursor-pointer group"
+              class={`relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] group${onSelect ? ' cursor-pointer ring-0 hover:ring-2 ring-[var(--color-accent)]' : ''}`}
               title={`${img.width}x${img.height} ${img.format.toUpperCase()}`}
+              onClick={onSelect ? () => onSelect(img.id) : undefined}
             >
               <img
                 src={assetUrl(img.thumbnail_path)}
@@ -56,7 +62,7 @@ export function ImportGrid() {
           </span>
           <div class="grid grid-cols-3 gap-1">
             {videos.map((video) => (
-              <VideoThumb key={video.id} video={video} />
+              <VideoThumb key={video.id} video={video} selectMode={!!onSelect} />
             ))}
           </div>
         </div>
@@ -66,7 +72,7 @@ export function ImportGrid() {
 }
 
 /** Video thumbnail that seeks to middle frame for a meaningful preview */
-function VideoThumb({video}: {video: VideoAsset}) {
+function VideoThumb({video, selectMode}: {video: VideoAsset; selectMode?: boolean}) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -83,8 +89,8 @@ function VideoThumb({video}: {video: VideoAsset}) {
 
   return (
     <div
-      class="relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] cursor-pointer group"
-      title={video.name}
+      class={`relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] group${selectMode ? ' opacity-50' : ' cursor-pointer'}`}
+      title={selectMode ? 'Videos cannot be used as key photos' : video.name}
     >
       <video
         ref={videoRef}
