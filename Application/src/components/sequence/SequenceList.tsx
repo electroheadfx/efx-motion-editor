@@ -7,8 +7,6 @@ import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
-import {trackLayouts} from '../../lib/frameMap';
-import {playbackEngine} from '../../lib/playbackEngine';
 import {KeyPhotoStripInline, AddKeyPhotoButton} from './KeyPhotoStrip';
 import type {Sequence} from '../../types/sequence';
 
