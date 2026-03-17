@@ -1,4 +1,5 @@
 import { useRef } from 'preact/hooks';
+import { GripVertical } from 'lucide-preact';
 import { uiStore } from '../../stores/uiStore';
 import { setSidebarWidth } from '../../lib/appConfig';
 
@@ -77,25 +78,11 @@ export function CollapseHandle() {
       onPointerDown={handlePointerDown}
       title={uiStore.sidebarCollapsed.value ? 'Drag or click to expand' : 'Drag to resize, click to collapse'}
     >
-      {/* Double lines: 10% height, vertically centered, nudged 1px right */}
-      <div class="flex gap-[2px] items-center" style={{ height: '10%', marginRight: '-1px' }}>
-        <div
-          class="h-full rounded-full transition-opacity duration-150 group-hover:opacity-100"
-          style={{
-            width: '1.5px',
-            backgroundColor: 'var(--sidebar-collapse-line)',
-            opacity: 0.6,
-          }}
-        />
-        <div
-          class="h-full rounded-full transition-opacity duration-150 group-hover:opacity-100"
-          style={{
-            width: '1.5px',
-            backgroundColor: 'var(--sidebar-collapse-line)',
-            opacity: 0.6,
-          }}
-        />
-      </div>
+      <GripVertical
+        size={14}
+        class="transition-opacity duration-150 group-hover:opacity-100"
+        style={{ color: 'var(--sidebar-collapse-line)', opacity: 0.5 }}
+      />
     </div>
   );
 }

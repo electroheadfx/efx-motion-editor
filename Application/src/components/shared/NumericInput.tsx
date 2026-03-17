@@ -24,7 +24,12 @@ export function NumericInput({
 
 
   const formatDisplay = useCallback(
-    (v: number) => (step < 1 ? v.toFixed(2) : String(v)),
+    (v: number) => {
+      if (step >= 1) return String(Math.round(v));
+      // Show up to 3 decimals, strip trailing zeros
+      const fixed = v.toFixed(3);
+      return fixed.replace(/\.?0+$/, '') || '0';
+    },
     [step],
   );
 
