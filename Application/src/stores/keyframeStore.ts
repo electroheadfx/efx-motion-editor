@@ -52,7 +52,7 @@ function getLocalFrame(): number {
   if (!layerId) return 0;
   const ctx = findLayerContext(layerId);
   if (!ctx) return 0;
-  return timelineStore.currentFrame.value - ctx.startFrame;
+  return timelineStore.displayFrame.value - ctx.startFrame;
 }
 
 // --- Computed signals ---
@@ -90,9 +90,9 @@ const displayValues = computed<KeyframeValues | null>(() => {
 
 // --- Frame-change side effect: clear transient overrides when frame changes ---
 
-let _lastFrame = timelineStore.currentFrame.peek();
+let _lastFrame = timelineStore.displayFrame.peek();
 effect(() => {
-  const frame = timelineStore.currentFrame.value;
+  const frame = timelineStore.displayFrame.value;
   if (frame !== _lastFrame) {
     _lastFrame = frame;
     transientOverrides.value = null;
