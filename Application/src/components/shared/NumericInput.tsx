@@ -90,10 +90,10 @@ export function NumericInput({
   }, [value, step, min, max, onChange]);
 
   return (
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-4 flex-1 min-w-0">
       <span
-        class="whitespace-nowrap select-none cursor-ew-resize"
-        style={{fontSize: '12px', fontWeight: 600, color: 'var(--sidebar-text-secondary)'}}
+        class="shrink-0 whitespace-nowrap select-none cursor-ew-resize"
+        style={{width: '32px', fontSize: '12px', fontWeight: 500, color: 'var(--sidebar-text-secondary)'}}
         data-interactive
         onPointerDown={handleLabelPointerDown}
       >
@@ -105,8 +105,8 @@ export function NumericInput({
         min={min}
         max={max}
         value={isEditing ? localValue : formatDisplay(value)}
-        class="w-16 rounded px-2 py-[5px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        style={{fontSize: '12px', fontWeight: 400, color: 'var(--sidebar-text-primary)', backgroundColor: 'var(--sidebar-input-bg)'}}
+        class="flex-1 min-w-0 w-full rounded outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        style={{fontSize: '12px', fontWeight: 400, color: 'var(--sidebar-text-primary)', backgroundColor: 'var(--sidebar-input-bg)', borderRadius: '4px', padding: '6px 10px'}}
         onFocus={() => {
           setIsEditing(true);
           setLocalValue(formatDisplay(value));

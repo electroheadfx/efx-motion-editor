@@ -83,19 +83,17 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
 
   return (
     <div class="overflow-y-auto px-3 py-2 space-y-3">
-      {/* Keyframe nav bar + Blur (same row, gap 16) -- only for non-base layers */}
+      {/* Keyframe nav bar + Blur (same row, gap 16px per Pencil spec) -- only for non-base layers */}
       {!layer.isBase && (
-        <div class="flex items-center gap-4">
+        <div class="flex items-center" style={{ gap: '16px' }}>
           <KeyframeNavBar layer={layer} />
-          <div class="flex-1">
-            <NumericInput label="Blur"
-              value={showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)}
-              step={0.01} min={0} max={1}
-              onChange={(val) => {
-                if (handleKeyframeEdit) handleKeyframeEdit('blur', val);
-                else layerStore.updateLayer(layer.id, { blur: val });
-              }} />
-          </div>
+          <NumericInput label="Blur"
+            value={showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)}
+            step={0.01} min={0} max={1}
+            onChange={(val) => {
+              if (handleKeyframeEdit) handleKeyframeEdit('blur', val);
+              else layerStore.updateLayer(layer.id, { blur: val });
+            }} />
         </div>
       )}
 
@@ -103,7 +101,7 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
       {hasSelectedDiamonds ? (
         <InlineInterpolation />
       ) : (
-        <div class="flex items-center gap-2">
+        <div class="flex items-center" style={{ gap: '16px' }}>
           {/* Blend dropdown (90px fixed) */}
           {layer.isBase ? (
             <div
@@ -165,37 +163,47 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
         </div>
       )}
 
-      {/* Transform section (two-column grid) */}
-      <div class="space-y-1.5">
+      {/* Transform section (flex rows, gap-10 vertical, gap-16 horizontal per Pencil spec) */}
+      <div style={{ paddingTop: '12px' }}>
         <SectionLabel text="TRANSFORM" />
-        <div class="grid grid-cols-2 gap-x-2 gap-y-1.5">
-          <NumericInput label="X" value={showKfValues ? kfDisplayValues!.x : layer.transform.x} step={1}
-            onChange={(val) => updateTransform('x', val)} />
-          <NumericInput label="Y" value={showKfValues ? kfDisplayValues!.y : layer.transform.y} step={1}
-            onChange={(val) => updateTransform('y', val)} />
-          <NumericInput label="Scale" value={uniformScale} step={0.01} min={0.01}
-            onChange={(val) => { updateTransform('scaleX', val); updateTransform('scaleY', val); }} />
-          <NumericInput label="Rot" value={showKfValues ? kfDisplayValues!.rotation : layer.transform.rotation} step={1}
-            onChange={(val) => updateTransform('rotation', val)} />
-          <NumericInput label="SX" value={scaleX} step={0.01} min={0.01}
-            onChange={(val) => updateTransform('scaleX', val)} />
-          <NumericInput label="SY" value={scaleY} step={0.01} min={0.01}
-            onChange={(val) => updateTransform('scaleY', val)} />
+        <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+          <div class="flex items-center" style={{ gap: '16px' }}>
+            <NumericInput label="X" value={showKfValues ? kfDisplayValues!.x : layer.transform.x} step={1}
+              onChange={(val) => updateTransform('x', val)} />
+            <NumericInput label="Y" value={showKfValues ? kfDisplayValues!.y : layer.transform.y} step={1}
+              onChange={(val) => updateTransform('y', val)} />
+          </div>
+          <div class="flex items-center" style={{ gap: '16px' }}>
+            <NumericInput label="Scale" value={uniformScale} step={0.01} min={0.01}
+              onChange={(val) => { updateTransform('scaleX', val); updateTransform('scaleY', val); }} />
+            <NumericInput label="Rot" value={showKfValues ? kfDisplayValues!.rotation : layer.transform.rotation} step={1}
+              onChange={(val) => updateTransform('rotation', val)} />
+          </div>
+          <div class="flex items-center" style={{ gap: '16px' }}>
+            <NumericInput label="SX" value={scaleX} step={0.01} min={0.01}
+              onChange={(val) => updateTransform('scaleX', val)} />
+            <NumericInput label="SY" value={scaleY} step={0.01} min={0.01}
+              onChange={(val) => updateTransform('scaleY', val)} />
+          </div>
         </div>
       </div>
 
-      {/* Crop section (two-column grid) */}
-      <div class="space-y-1.5">
+      {/* Crop section (flex rows, same alignment as Transform) */}
+      <div style={{ paddingTop: '12px' }}>
         <SectionLabel text="CROP" />
-        <div class="grid grid-cols-2 gap-x-2 gap-y-1.5">
-          <NumericInput label="T" value={layer.transform.cropTop} step={0.01} min={0} max={1}
-            onChange={(val) => layerStore.updateLayer(layer.id, { transform: { ...layer.transform, cropTop: Math.max(0, Math.min(1, val)) } })} />
-          <NumericInput label="R" value={layer.transform.cropRight} step={0.01} min={0} max={1}
-            onChange={(val) => layerStore.updateLayer(layer.id, { transform: { ...layer.transform, cropRight: Math.max(0, Math.min(1, val)) } })} />
-          <NumericInput label="B" value={layer.transform.cropBottom} step={0.01} min={0} max={1}
-            onChange={(val) => layerStore.updateLayer(layer.id, { transform: { ...layer.transform, cropBottom: Math.max(0, Math.min(1, val)) } })} />
-          <NumericInput label="L" value={layer.transform.cropLeft} step={0.01} min={0} max={1}
-            onChange={(val) => layerStore.updateLayer(layer.id, { transform: { ...layer.transform, cropLeft: Math.max(0, Math.min(1, val)) } })} />
+        <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+          <div class="flex items-center" style={{ gap: '16px' }}>
+            <NumericInput label="T" value={layer.transform.cropTop} step={0.01} min={0} max={1}
+              onChange={(val) => layerStore.updateLayer(layer.id, { transform: { ...layer.transform, cropTop: Math.max(0, Math.min(1, val)) } })} />
+            <NumericInput label="R" value={layer.transform.cropRight} step={0.01} min={0} max={1}
+              onChange={(val) => layerStore.updateLayer(layer.id, { transform: { ...layer.transform, cropRight: Math.max(0, Math.min(1, val)) } })} />
+          </div>
+          <div class="flex items-center" style={{ gap: '16px' }}>
+            <NumericInput label="B" value={layer.transform.cropBottom} step={0.01} min={0} max={1}
+              onChange={(val) => layerStore.updateLayer(layer.id, { transform: { ...layer.transform, cropBottom: Math.max(0, Math.min(1, val)) } })} />
+            <NumericInput label="L" value={layer.transform.cropLeft} step={0.01} min={0} max={1}
+              onChange={(val) => layerStore.updateLayer(layer.id, { transform: { ...layer.transform, cropLeft: Math.max(0, Math.min(1, val)) } })} />
+          </div>
         </div>
       </div>
     </div>
