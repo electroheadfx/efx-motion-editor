@@ -9,6 +9,10 @@ struct BuilderConfig {
     theme: Option<String>,
     #[serde(default)]
     canvas_bg: Option<HashMap<String, String>>,
+    #[serde(default)]
+    sidebar_width: Option<f64>,
+    #[serde(default)]
+    panel_heights: Option<(f64, f64)>,
 }
 
 /// Returns the path to ~/.config/efx-motion/builder-config.yaml.
@@ -88,5 +92,29 @@ pub fn config_set_canvas_bg(theme: String, color: String) -> Result<(), String> 
     let mut map = config.canvas_bg.unwrap_or_default();
     map.insert(theme, color);
     config.canvas_bg = Some(map);
+    write_config(&config)
+}
+
+#[command]
+pub fn config_get_sidebar_width() -> Option<f64> {
+    read_config().sidebar_width
+}
+
+#[command]
+pub fn config_set_sidebar_width(width: f64) -> Result<(), String> {
+    let mut config = read_config();
+    config.sidebar_width = Some(width);
+    write_config(&config)
+}
+
+#[command]
+pub fn config_get_panel_heights() -> Option<(f64, f64)> {
+    read_config().panel_heights
+}
+
+#[command]
+pub fn config_set_panel_heights(seq_height: f64, layers_height: f64) -> Result<(), String> {
+    let mut config = read_config();
+    config.panel_heights = Some((seq_height, layers_height));
     write_config(&config)
 }

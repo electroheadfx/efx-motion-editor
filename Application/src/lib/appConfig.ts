@@ -1,5 +1,5 @@
 import { LazyStore } from '@tauri-apps/plugin-store';
-import { configGetTheme, configSetTheme, configGetCanvasBg, configSetCanvasBg } from './ipc';
+import { configGetTheme, configSetTheme, configGetCanvasBg, configSetCanvasBg, configGetSidebarWidth, configSetSidebarWidth, configGetPanelHeights, configSetPanelHeights } from './ipc';
 
 /** Singleton app config store -- persists as JSON in Tauri app data dir */
 const store = new LazyStore('app-config.json');
@@ -86,4 +86,24 @@ export async function getCanvasBg(theme: string): Promise<string | null> {
 
 export async function setCanvasBg(theme: string, color: string): Promise<void> {
   await configSetCanvasBg(theme, color);
+}
+
+// --- Sidebar Layout (persisted via Rust) ---
+
+export async function getSidebarWidth(): Promise<number> {
+  const result = await configGetSidebarWidth();
+  return result.ok && result.data != null ? result.data : 317;
+}
+
+export async function setSidebarWidth(width: number): Promise<void> {
+  await configSetSidebarWidth(width);
+}
+
+export async function getPanelHeights(): Promise<[number, number]> {
+  const result = await configGetPanelHeights();
+  return result.ok && result.data != null ? result.data : [200, 200];
+}
+
+export async function setPanelHeights(seqHeight: number, layersHeight: number): Promise<void> {
+  await configSetPanelHeights(seqHeight, layersHeight);
 }

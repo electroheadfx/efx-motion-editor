@@ -79,3 +79,19 @@ export async function configGetCanvasBg(theme: string): Promise<Result<string | 
 export async function configSetCanvasBg(theme: string, color: string): Promise<Result<null>> {
   return safeInvoke<null>('config_set_canvas_bg', { theme, color });
 }
+
+export function configGetSidebarWidth() {
+  return safeInvoke<number | null>('config_get_sidebar_width');
+}
+
+export function configSetSidebarWidth(width: number) {
+  return safeInvoke<null>('config_set_sidebar_width', { width });
+}
+
+export function configGetPanelHeights() {
+  return safeInvoke<[number, number] | null>('config_get_panel_heights');
+}
+
+export function configSetPanelHeights(seqHeight: number, layersHeight: number) {
+  return safeInvoke<null>('config_set_panel_heights', { seqHeight, layersHeight });
+}

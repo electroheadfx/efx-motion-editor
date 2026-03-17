@@ -248,6 +248,10 @@ pub fn run() {
             config::config_set_theme,
             config::config_get_canvas_bg,
             config::config_set_canvas_bg,
+            config::config_get_sidebar_width,
+            config::config_set_sidebar_width,
+            config::config_get_panel_heights,
+            config::config_set_panel_heights,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
