@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: executing
-stopped_at: Completed 12.1.1-04-PLAN.md
-last_updated: "2026-03-17T15:38:25Z"
-last_activity: "2026-03-17 - Completed quick task 260317-nvg: Fix FX range bar in/out point desync on scroll"
+status: completed
+stopped_at: Completed 12.2-01-PLAN.md
+last_updated: "2026-03-17T17:19:45.147Z"
+last_activity: "2026-03-17 - Completed Phase 12.2 Plan 01: Auto-seek timeline to sequence start"
 progress:
-  total_phases: 12
-  completed_phases: 6
-  total_plans: 29
-  completed_plans: 28
+  total_phases: 13
+  completed_phases: 7
+  total_plans: 30
+  completed_plans: 29
   percent: 97
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 12.1 -- Remove bottom parameters bar and relocate to sidebar panel
+**Current focus:** v0.2.0 Phase 12.2 -- Auto-seek timeline to sequence start on sidebar selection (COMPLETE)
 
 ## Current Position
 
 Milestone: v0.2.0
-Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
-Plan: 5 of 5
-Status: In Progress
-Last activity: 2026-03-17 - Completed quick task 260317-nvg: Fix FX range bar in/out point desync on scroll
+Phase: 12.2 (auto-seek-timeline-to-sequence-start-on-sidebar-selection)
+Plan: 1 of 1
+Status: Complete
+Last activity: 2026-03-17 - Completed Phase 12.2 Plan 01: Auto-seek timeline to sequence start
 
 Progress: [██████████] 97%
 
@@ -71,6 +71,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.1.1]: Used Ellipsis icon instead of MoreHorizontal (renamed in lucide-preact v0.460+)
 - [Phase 12.1.1]: AddKeyPhotoButton opens full importer via setEditorMode('imported') instead of popover
 - [Phase 12.1.1]: Used playbackEngine.seekToFrame for keyframe nav (syncs displayFrame + preview); removed KeyframePopover entirely, interpolation editing now inline via sidebar chips
+- [Phase 12.2]: trackLayouts.peek() for imperative signal read in event handler; wasActive guard prevents playhead jump on re-click
 
 ### Pending Todos
 
@@ -80,6 +81,7 @@ None.
 
 - Phase 12.1 inserted after Phase 12: Remove bottom parameters bar and relocate to sidebar panel (URGENT)
 - Phase 12.1.1 inserted after Phase 12.1: Big UI frontend design changes with new sidebar layout (URGENT)
+- Phase 12.2 inserted after Phase 12.1.1: Auto-seek timeline to sequence start on sidebar selection (URGENT)
 
 ### Blockers/Concerns
 
@@ -122,6 +124,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-17T15:38:25Z
-Stopped at: Completed quick task 260317-nvg
+Last session: 2026-03-17T17:19:45.145Z
+Stopped at: Completed 12.2-01-PLAN.md
 Resume file: None

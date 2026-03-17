@@ -170,10 +170,10 @@ Plans:
 **Depends on:** Phase 12.1.1
 **Success Criteria** (what must be TRUE):
   1. Selecting a sequence in the sidebar automatically moves the timeline playhead to that sequence's first frame
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 12.2-01-PLAN.md -- Wire handleSelect to auto-seek playhead via trackLayouts + playbackEngine.seekToFrame
+- [x] 12.2-01-PLAN.md -- Wire handleSelect to auto-seek playhead via trackLayouts + playbackEngine.seekToFrame
 
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
@@ -248,7 +248,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 13 > 14 > 15 > 16 > 17
 | 12. Layer Keyframe Animation | 4/5 | In Progress|  | - |
 | 12.1. Remove Bottom Parameters Bar | 3/4 | In Progress|  | - |
 | 12.1.1. Big UI Frontend Design Changes | 4/5 | In Progress|  | - |
-| 12.2. Auto-seek Timeline to Sequence Start | v0.2.0 | 0/1 | Planned | - |
+| 12.2. Auto-seek Timeline to Sequence Start | 1/1 | Complete   | 2026-03-17 | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
