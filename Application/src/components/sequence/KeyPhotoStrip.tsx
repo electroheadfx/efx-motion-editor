@@ -1,6 +1,6 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import Sortable from 'sortablejs';
-import {Plus} from 'lucide-preact';
+import {Plus, X} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {imageStore} from '../../stores/imageStore';
@@ -112,6 +112,7 @@ function KeyPhotoCard({
   const image = imageStore.getById(imageId);
   const thumbUrl = image ? assetUrl(image.thumbnail_path) : null;
   const isSelected = sequenceStore.selectedKeyPhotoId.value === keyPhotoId;
+  const anySelected = sequenceStore.selectedKeyPhotoId.value !== null;
 
   useEffect(() => {
     if (editingFrames && inputRef.current) {
@@ -130,12 +131,13 @@ function KeyPhotoCard({
 
   return (
     <div
-      class={`h-14 rounded-md relative shrink-0 bg-cover bg-center overflow-hidden cursor-pointer${isSelected ? ' ring-1 ring-[var(--color-accent)]' : ''}`}
+      class={`group h-14 rounded-md relative shrink-0 bg-cover bg-center overflow-hidden cursor-pointer${isSelected ? ' ring-2 ring-[var(--color-accent)]' : ''}`}
       style={{
         width: 'auto',
         minWidth: '56px',
         height: '56px',
         backgroundColor: 'var(--sidebar-input-bg)',
+        opacity: !isSelected && anySelected ? 0.4 : 1,
         ...(thumbUrl ? {backgroundImage: `url(${thumbUrl})`, aspectRatio: 'auto'} : {}),
       }}
       onClick={() => sequenceStore.selectKeyPhoto(keyPhotoId)}
@@ -146,6 +148,18 @@ function KeyPhotoCard({
           <span class="text-[10px]" style={{color: 'var(--sidebar-text-secondary)'}}>?</span>
         </div>
       )}
+
+      {/* Delete button on hover */}
+      <button
+        class="absolute top-0.5 right-0.5 w-3.5 h-3.5 flex items-center justify-center bg-[#000000AA] rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+        onClick={(e) => {
+          e.stopPropagation();
+          sequenceStore.removeKeyPhoto(sequenceId, keyPhotoId);
+        }}
+        title="Remove key photo"
+      >
+        <X size={10} color="white" />
+      </button>
 
       {/* Hold frames badge */}
       {editingFrames ? (
