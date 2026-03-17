@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'preact/hooks';
 import { sequenceStore } from '../../stores/sequenceStore';
 import { layerStore } from '../../stores/layerStore';
 import { uiStore } from '../../stores/uiStore';
@@ -5,14 +6,18 @@ import { CollapsibleSection } from '../sidebar/CollapsibleSection';
 import { SidebarProperties } from '../sidebar/SidebarProperties';
 import { SidebarFxProperties } from '../sidebar/SidebarFxProperties';
 import { SequenceList } from '../sequence/SequenceList';
-import { KeyPhotoStrip, AddKeyPhotoButton } from '../sequence/KeyPhotoStrip';
 import { LayerList } from '../layer/LayerList';
 import { AddLayerMenu } from '../layer/AddLayerMenu';
+import { PanelResizer } from '../sidebar/PanelResizer';
+import { calcResize } from '../../lib/panelResize';
+import { setPanelHeights } from '../../lib/appConfig';
 import { isFxLayer } from '../../types/layer';
+
+/** Height of each PanelResizer (h-4 = 16px) */
+const RESIZER_HEIGHT = 16;
 
 export function LeftPanel() {
   const sequences = sequenceStore.sequences.value;
-  const activeSeq = sequenceStore.getActiveSequence();
 
   // Find selected layer across all sequences (FX layers live in FX sequences)
   const selectedId = layerStore.selectedLayerId.value;
@@ -31,135 +36,165 @@ export function LeftPanel() {
 
   const isFx = selectedLayer && isFxLayer(selectedLayer);
 
-  return (
-    <div class="flex flex-col w-[268px] h-full bg-[var(--color-bg-card-alt)] shrink-0 overflow-y-auto">
-      {/* Sidebar collapse toggle */}
-      <div class="flex items-center justify-end h-7 px-2 shrink-0">
-        <button
-          class="w-5 h-5 flex items-center justify-center text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-button)]"
-          onClick={() => uiStore.toggleSidebar()}
-          title="Collapse sidebar"
-        >
-          &laquo;
-        </button>
-      </div>
+  // Track container height for resize calculations
+  const containerRef = useRef<HTMLDivElement>(null);
+  const containerHeight = useRef(0);
 
-      {/* SEQUENCES section */}
-      <CollapsibleSection
-        title="SEQUENCES"
-        collapsed={uiStore.sequencesSectionCollapsed}
-        headerActions={
-          <button
-            class="rounded px-2 py-1 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] transition-colors"
-            onClick={() => sequenceStore.createSequence(`Sequence ${sequences.length + 1}`)}
-          >
-            <span class="text-[10px] text-[var(--color-text-secondary)]">+ Add</span>
-          </button>
-        }
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // Available height = container height minus two resizers
+        containerHeight.current = entry.contentRect.height - RESIZER_HEIGHT * 2;
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleSeqLayResize = (deltaY: number) => {
+    const result = calcResize(
+      {
+        seqHeight: uiStore.sequencesPanelHeight.peek(),
+        layHeight: uiStore.layersPanelHeight.peek(),
+        totalAvailable: containerHeight.current,
+      },
+      deltaY,
+      'seq-lay',
+    );
+    uiStore.setSequencesPanelHeight(result.seqHeight);
+    uiStore.setLayersPanelHeight(result.layHeight);
+  };
+
+  const handleLayPropResize = (deltaY: number) => {
+    const result = calcResize(
+      {
+        seqHeight: uiStore.sequencesPanelHeight.peek(),
+        layHeight: uiStore.layersPanelHeight.peek(),
+        totalAvailable: containerHeight.current,
+      },
+      deltaY,
+      'lay-prop',
+    );
+    uiStore.setLayersPanelHeight(result.layHeight);
+  };
+
+  const persistHeights = () => {
+    setPanelHeights(uiStore.sequencesPanelHeight.peek(), uiStore.layersPanelHeight.peek());
+  };
+
+  const seqH = uiStore.sequencesPanelHeight.value;
+  const layH = uiStore.layersPanelHeight.value;
+
+  return (
+    <div
+      ref={containerRef}
+      class="flex flex-col h-full shrink-0 overflow-hidden"
+      style={{
+        width: '100%',
+        backgroundColor: 'var(--sidebar-bg)',
+        padding: '8px 16px 8px 12px',
+      }}
+    >
+      {/* SEQUENCES panel */}
+      <div
+        class="shrink-0 overflow-hidden"
+        style={{
+          height: seqH > 0 ? `${seqH}px` : '0px',
+          backgroundColor: 'var(--sidebar-panel-bg)',
+          borderRadius: 8,
+        }}
       >
-        <SequenceList />
-        {/* Key Photos inline under active sequence */}
-        {activeSeq && (
+        {seqH > 0 && (
           <>
-            <div class="w-full h-px bg-[var(--color-bg-divider)]" />
-            <div class="flex items-center justify-between h-7 px-3 bg-[var(--color-bg-subsection)]">
-              <span class="text-[9px] font-semibold text-[var(--color-text-dim)]">KEY PHOTOS</span>
-              <div class="flex items-center gap-1">
-                <KeyPhotoHeaderActions sequenceId={activeSeq.id} />
-                <AddKeyPhotoButton sequenceId={activeSeq.id} />
+            <CollapsibleSection
+              title="SEQUENCES"
+              collapsed={uiStore.sequencesSectionCollapsed}
+              headerActions={
+                <button
+                  class="rounded px-2 py-1 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] transition-colors"
+                  onClick={() => sequenceStore.createSequence(`Sequence ${sequences.length + 1}`)}
+                >
+                  <span class="text-[10px] text-[var(--color-text-secondary)]">+ Add</span>
+                </button>
+              }
+            >
+              <div class="sidebar-scroll overflow-y-auto" style={{ maxHeight: `${seqH - 36}px` }}>
+                <SequenceList />
               </div>
-            </div>
-            <KeyPhotoStrip />
+            </CollapsibleSection>
           </>
         )}
-      </CollapsibleSection>
+      </div>
 
-      {/* Divider */}
-      <div class="w-full h-px bg-[var(--color-bg-divider)] shrink-0" />
+      <PanelResizer onResize={handleSeqLayResize} onResizeEnd={persistHeights} />
 
-      {/* LAYERS section -- replaced by FX properties when FX layer is selected */}
-      {isFx ? (
-        <>
-          {/* FX layer selected: show "FX: [name]" header + FX properties */}
-          <div class="flex items-center h-9 px-3 bg-[var(--color-bg-section-header)]">
-            <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">
-              FX: {selectedLayer!.name}
-            </span>
-          </div>
-          <SidebarFxProperties layer={selectedLayer!} fxSequenceId={fxSequenceId} />
-        </>
-      ) : (
-        <CollapsibleSection
-          title="LAYERS"
-          collapsed={uiStore.layersSectionCollapsed}
-          headerActions={<AddLayerMenu />}
-        >
-          <LayerList />
-        </CollapsibleSection>
-      )}
-
-      {/* Divider */}
-      <div class="w-full h-px bg-[var(--color-bg-divider)] shrink-0" />
-
-      {/* PROPERTIES section -- only when a non-FX layer is selected */}
-      {selectedLayer && !isFx && (
-        <>
-          <div class="flex items-center h-9 px-3 bg-[var(--color-bg-section-header)]">
-            <span class="text-[10px] font-semibold text-[var(--color-text-muted)]">PROPERTIES</span>
-          </div>
-          <SidebarProperties layer={selectedLayer} />
-        </>
-      )}
-    </div>
-  );
-}
-
-/** Header actions for key photos: move left, delete, move right (only when selected) */
-function KeyPhotoHeaderActions({ sequenceId }: { sequenceId: string }) {
-  const selectedId = sequenceStore.selectedKeyPhotoId.value;
-  if (!selectedId) return null;
-
-  const seq = sequenceStore.getById(sequenceId);
-  if (!seq) return null;
-
-  const idx = seq.keyPhotos.findIndex((kp) => kp.id === selectedId);
-  if (idx === -1) return null;
-
-  const canMoveLeft = idx > 0;
-  const canMoveRight = idx < seq.keyPhotos.length - 1;
-
-  const btnClass = 'w-5 h-5 rounded flex items-center justify-center text-[10px] transition-colors';
-  const enabledClass = 'bg-[var(--color-bg-divider)] text-[var(--color-text-secondary)] hover:bg-[var(--color-border-subtle)] hover:text-white';
-  const disabledClass = 'bg-[var(--color-bg-card)] text-[var(--color-text-dimmer)] cursor-default';
-
-  return (
-    <div class="flex items-center gap-0.5">
-      {/* Move left */}
-      <button
-        class={`${btnClass} ${canMoveLeft ? enabledClass : disabledClass}`}
-        onClick={() => canMoveLeft && sequenceStore.reorderKeyPhotos(sequenceId, idx, idx - 1)}
-        disabled={!canMoveLeft}
-        title="Move left"
+      {/* LAYERS panel */}
+      <div
+        class="shrink-0 overflow-hidden"
+        style={{
+          height: layH > 0 ? `${layH}px` : '0px',
+          backgroundColor: 'var(--sidebar-panel-bg)',
+          borderRadius: 8,
+        }}
       >
-        &lt;
-      </button>
-      {/* Delete */}
-      <button
-        class={`${btnClass} bg-[var(--color-bg-divider)] text-[var(--color-error-text-faded)] hover:bg-[var(--color-error-bg)] hover:text-[var(--color-error-text)] transition-colors`}
-        onClick={() => sequenceStore.removeKeyPhoto(sequenceId, selectedId)}
-        title="Delete selected key photo"
+        {layH > 0 && (
+          <>
+            {isFx ? (
+              <>
+                <div
+                  class="flex items-center h-9 px-3"
+                  style={{ color: 'var(--sidebar-text-secondary)' }}
+                >
+                  <span style="font-size: 11px; font-weight: 600; letter-spacing: 2px">
+                    FX: {selectedLayer!.name}
+                  </span>
+                </div>
+                <div class="sidebar-scroll overflow-y-auto" style={{ maxHeight: `${layH - 36}px` }}>
+                  <SidebarFxProperties layer={selectedLayer!} fxSequenceId={fxSequenceId} />
+                </div>
+              </>
+            ) : (
+              <CollapsibleSection
+                title="LAYERS"
+                collapsed={uiStore.layersSectionCollapsed}
+                headerActions={<AddLayerMenu />}
+              >
+                <div class="sidebar-scroll overflow-y-auto" style={{ maxHeight: `${layH - 36}px` }}>
+                  <LayerList />
+                </div>
+              </CollapsibleSection>
+            )}
+          </>
+        )}
+      </div>
+
+      <PanelResizer onResize={handleLayPropResize} onResizeEnd={persistHeights} />
+
+      {/* PROPERTIES panel (flex-1, takes remaining space) */}
+      <div
+        class="flex-1 min-h-0 overflow-hidden flex flex-col"
+        style={{
+          backgroundColor: 'var(--sidebar-panel-bg)',
+          borderRadius: 8,
+        }}
       >
-        x
-      </button>
-      {/* Move right */}
-      <button
-        class={`${btnClass} ${canMoveRight ? enabledClass : disabledClass}`}
-        onClick={() => canMoveRight && sequenceStore.reorderKeyPhotos(sequenceId, idx, idx + 1)}
-        disabled={!canMoveRight}
-        title="Move right"
-      >
-        &gt;
-      </button>
+        {selectedLayer && !isFx && (
+          <>
+            <div
+              class="flex items-center h-9 px-3 shrink-0"
+              style={{ color: 'var(--sidebar-text-secondary)' }}
+            >
+              <span style="font-size: 11px; font-weight: 600; letter-spacing: 2px">PROPERTIES</span>
+            </div>
+            <div class="sidebar-scroll overflow-y-auto flex-1 min-h-0">
+              <SidebarProperties layer={selectedLayer} />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
