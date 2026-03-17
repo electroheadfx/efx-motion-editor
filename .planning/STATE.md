@@ -4,8 +4,8 @@ milestone: v0.1
 milestone_name: milestone
 status: executing
 stopped_at: Completed 12.1.1-04-PLAN.md
-last_updated: "2026-03-17T13:53:28Z"
-last_activity: "2026-03-17 - Completed quick task 260317-kko: Stop sidebar re-renders during playback (displayFrame gating)"
+last_updated: "2026-03-17T14:06:10Z"
+last_activity: "2026-03-17 - Completed quick task 260317-krf: Add click-to-select key photo from importer grid"
 progress:
   total_phases: 12
   completed_phases: 6
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
 Plan: 5 of 5
 Status: In Progress
-Last activity: 2026-03-17 - Completed quick task 260317-kko: Stop sidebar re-renders during playback (displayFrame gating)
+Last activity: 2026-03-17 - Completed quick task 260317-krf: Add click-to-select key photo from importer grid
 
 Progress: [██████████] 97%
 
@@ -113,9 +113,10 @@ No active blockers.
 | 22 | Defer canvas re-renders during timeline drag operations (timelineDragging signal gate) | 2026-03-15 | 979325f |
 | 23 | Prevent sidebar property clicks from deselecting active layer | 2026-03-17 | d32f00f |
 | 24 | Stop sidebar re-renders during playback (displayFrame gating) | 2026-03-17 | 18825f8 |
+| 25 | Add click-to-select key photo from importer grid | 2026-03-17 | b62c4c6 |
 
 ## Session Continuity
 
-Last session: 2026-03-17T13:53:28Z
-Stopped at: Completed quick task 260317-kko
+Last session: 2026-03-17T14:06:10Z
+Stopped at: Completed quick task 260317-krf
 Resume file: None
