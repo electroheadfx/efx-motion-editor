@@ -178,12 +178,18 @@ Plans:
 ### Phase 12.3: Add quick keys for navigation (INSERTED)
 
 **Goal:** Add keyboard shortcuts for timeline navigation: right/left arrows for frame-by-frame scrub, Home/End for go to start/end of timeline, Page Up/Page Down for jump to next/previous in-between sequence.
-**Requirements**: TBD
+**Requirements**: NAV-01, NAV-02, NAV-03, NAV-04, NAV-05
 **Depends on:** Phase 12.2
-**Plans:** 0 plans
+**Success Criteria** (what must be TRUE):
+  1. Home key moves the timeline playhead to frame 0
+  2. End key moves the timeline playhead to the last frame
+  3. Page Up jumps the playhead to the start of the previous content sequence
+  4. Page Down jumps the playhead to the start of the next content sequence
+  5. ShortcutsOverlay documents all new navigation shortcuts
+**Plans:** 1 plan
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 12.3 to break down)
+- [ ] 12.3-01-PLAN.md -- Navigation helpers, Home/End/PageUp/PageDown bindings, ShortcutsOverlay update
 
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
@@ -259,7 +265,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 13 > 14 > 15 > 16 >
 | 12.1. Remove Bottom Parameters Bar | 3/4 | In Progress|  | - |
 | 12.1.1. Big UI Frontend Design Changes | 4/5 | In Progress|  | - |
 | 12.2. Auto-seek Timeline to Sequence Start | 1/1 | Complete    | 2026-03-17 | - |
-| 12.3. Add Quick Keys for Navigation | 0/0 | Planned | - | - |
+| 12.3. Add Quick Keys for Navigation | 0/1 | Planned | - | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
