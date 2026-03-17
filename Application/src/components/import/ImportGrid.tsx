@@ -29,7 +29,7 @@ export function ImportGrid({onSelect}: ImportGridProps) {
     <div class="overflow-y-auto">
       {/* Image assets */}
       {images.length > 0 && (
-        <div class="grid grid-cols-3 gap-1 p-2">
+        <div class="grid grid-cols-4 gap-1 p-2">
           {images.map((img) => (
             <div
               key={img.id}
@@ -60,7 +60,7 @@ export function ImportGrid({onSelect}: ImportGridProps) {
           <span class="text-[9px] text-[var(--color-text-dim)] uppercase tracking-wider block mt-1 mb-1">
             Videos
           </span>
-          <div class="grid grid-cols-3 gap-1">
+          <div class="grid grid-cols-4 gap-1">
             {videos.map((video) => (
               <VideoThumb key={video.id} video={video} selectMode={!!onSelect} />
             ))}

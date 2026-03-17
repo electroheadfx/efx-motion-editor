@@ -90,9 +90,9 @@ pub fn process_image(source_path: &str, project_dir: &str) -> Result<ImportedIma
     let width = img.width();
     let height = img.height();
 
-    // Generate thumbnail (120x90 max, preserving aspect ratio)
+    // Generate thumbnail (300x225 max, preserving aspect ratio)
     // Using FilterType::Triangle for speed (good enough for thumbnails)
-    let thumb = img.resize(120, 90, FilterType::Triangle);
+    let thumb = img.resize(300, 225, FilterType::Triangle);
     let thumb_filename = format!("{}_thumb.jpg", id);
     let thumb_path = thumbs_dir.join(&thumb_filename);
 
