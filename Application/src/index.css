@@ -290,23 +290,9 @@
 
 }
 
-/* Sidebar custom scrollbar — outside @layer so it overrides Tailwind utilities */
-.sidebar-scroll {
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
-}
-.sidebar-scroll::-webkit-scrollbar {
-  width: 4px;
-}
-.sidebar-scroll::-webkit-scrollbar-track {
-  background: var(--sidebar-scrollbar-track);
-}
-.sidebar-scroll::-webkit-scrollbar-thumb {
-  background: var(--sidebar-scrollbar-thumb);
-  border-radius: 2px;
-}
-.sidebar-scroll:not(:hover)::-webkit-scrollbar-thumb {
-  background: transparent;
+/* Hide native scrollbar for SidebarScrollArea — works in Safari/WKWebView + Chrome */
+[style*="scrollbar-width: none"]::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }

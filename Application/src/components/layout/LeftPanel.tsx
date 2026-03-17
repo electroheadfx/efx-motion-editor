@@ -9,6 +9,7 @@ import { SequenceList } from '../sequence/SequenceList';
 import { LayerList } from '../layer/LayerList';
 import { AddLayerMenu } from '../layer/AddLayerMenu';
 import { PanelResizer } from '../sidebar/PanelResizer';
+import { SidebarScrollArea } from '../sidebar/SidebarScrollArea';
 import { calcFlexResize } from '../../lib/panelResize';
 import { setPanelFlex } from '../../lib/appConfig';
 import { isFxLayer } from '../../types/layer';
@@ -170,9 +171,9 @@ export function LeftPanel() {
             </button>
           }
         >
-          <div class="sidebar-scroll flex-1 min-h-0 overflow-y-auto">
+          <SidebarScrollArea>
             <SequenceList />
-          </div>
+          </SidebarScrollArea>
         </CollapsibleSection>
       </div>
 
@@ -199,9 +200,9 @@ export function LeftPanel() {
               </span>
             </div>
             {layFlex > 0 && (
-              <div class="sidebar-scroll flex-1 min-h-0 overflow-y-auto">
+              <SidebarScrollArea>
                 <SidebarFxProperties layer={selectedLayer!} fxSequenceId={fxSequenceId} />
-              </div>
+              </SidebarScrollArea>
             )}
           </>
         ) : (
@@ -211,9 +212,9 @@ export function LeftPanel() {
             onCollapse={handleLayCollapse}
             headerActions={<AddLayerMenu />}
           >
-            <div class="sidebar-scroll flex-1 min-h-0 overflow-y-auto">
+            <SidebarScrollArea>
               <LayerList />
-            </div>
+            </SidebarScrollArea>
           </CollapsibleSection>
         )}
       </div>
@@ -236,9 +237,9 @@ export function LeftPanel() {
           onCollapse={handlePropCollapse}
         >
           {selectedLayer && !isFx && (
-            <div class="sidebar-scroll flex-1 min-h-0 overflow-y-auto">
+            <SidebarScrollArea>
               <SidebarProperties layer={selectedLayer} />
-            </div>
+            </SidebarScrollArea>
           )}
         </CollapsibleSection>
       </div>

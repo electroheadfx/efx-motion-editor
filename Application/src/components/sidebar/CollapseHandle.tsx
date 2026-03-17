@@ -72,7 +72,7 @@ export function CollapseHandle() {
 
   return (
     <div
-      class="absolute top-0 right-0 w-5 h-full flex items-center justify-end cursor-col-resize z-20 group"
+      class="absolute top-0 right-0 w-5 h-full flex items-center justify-center cursor-col-resize z-20 group"
       data-interactive
       onPointerDown={handlePointerDown}
       title={uiStore.sidebarCollapsed.value ? 'Drag or click to expand' : 'Drag to resize, click to collapse'}

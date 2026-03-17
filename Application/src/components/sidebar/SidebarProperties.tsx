@@ -84,17 +84,39 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
 
   return (
     <div class="px-3 py-2 space-y-3">
-      {/* Keyframe nav bar + Blur (same row, gap 16px per Pencil spec) -- only for non-base layers */}
+      {/* Keyframe nav bar + Blur slider (same row, gap 16px per Pencil spec) -- only for non-base layers */}
       {!layer.isBase && (
         <div class="flex items-center" style={{ gap: '16px' }}>
           <KeyframeNavBar layer={layer} />
-          <NumericInput label="Blur"
-            value={showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)}
-            step={0.01} min={0} max={1}
-            onChange={(val) => {
-              if (handleKeyframeEdit) handleKeyframeEdit('blur', val);
-              else layerStore.updateLayer(layer.id, { blur: val });
-            }} />
+          <div class="flex items-center flex-1 min-w-0" style={{ gap: '16px' }}>
+            <span class="shrink-0" style={{ width: '32px', fontSize: '12px', fontWeight: 500, color: 'var(--sidebar-text-secondary)' }}>Blur</span>
+            <div class="flex items-center flex-1 min-w-0 gap-2">
+              <input
+                type="range"
+                min="0" max="100" step="1"
+                value={Math.round((showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)) * 100)}
+                class="flex-1 h-1 cursor-pointer"
+                style={{ accentColor: 'var(--color-accent)' }}
+                data-interactive
+                onPointerDown={() => {
+                  startCoalescing();
+                  if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }
+                }}
+                onPointerUp={() => {
+                  stopCoalescing();
+                  if (_rangeBlurRestore) { blurStore.toggleBypass(); _rangeBlurRestore = false; }
+                }}
+                onInput={(e) => {
+                  const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
+                  if (handleKeyframeEdit) handleKeyframeEdit('blur', val);
+                  else layerStore.updateLayer(layer.id, { blur: val });
+                }}
+              />
+              <span class="text-right shrink-0" style={{ width: '32px', fontSize: '12px', fontWeight: 400, color: 'var(--sidebar-text-primary)' }}>
+                {(showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)).toFixed(2)}
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
