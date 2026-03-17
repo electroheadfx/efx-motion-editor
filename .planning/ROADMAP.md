@@ -191,6 +191,21 @@ Plans:
 Plans:
 - [ ] 12.3-01-PLAN.md -- Navigation helpers, Home/End/PageUp/PageDown bindings, ShortcutsOverlay update
 
+### Phase 12.4: ShortcutsOverlay tabbed/paginated sections per group (INSERTED)
+
+**Goal:** Replace the flat 2-column grid in ShortcutsOverlay with a tabbed interface. Add a "Sections" index tab as table of contents, 7 group tabs (Playback, File, Editing, Navigation, Canvas, Blur, Keyframes), and full keyboard navigation (Arrow Left/Right, Tab, number keys 1-7, Arrow Up/Down in Sections, Enter to jump).
+**Requirements**: SC-TABS, SC-SECTIONS, SC-KEYNAV, SC-RESET
+**Depends on:** Phase 12.3
+**Success Criteria** (what must be TRUE):
+  1. Each shortcut group is accessible via its own tab (8 tabs total: Sections + 7 groups)
+  2. Sections index tab shows all 7 group names with entry counts, clickable to jump to group
+  3. Full keyboard navigation: Arrow Left/Right cycle tabs, Tab advances, number keys 1-7 direct jump, Arrow Up/Down navigate Sections rows, Enter jumps from Sections
+  4. Modal height remains stable across tab switches and overlay resets to Sections tab on reopen
+**Plans:** 1 plan
+
+Plans:
+- [ ] 12.4-01-PLAN.md -- Tab bar, Sections index, group content, keyboard navigation, visual verification
+
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12
@@ -245,7 +260,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -266,6 +281,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 13 > 14 > 15 > 16 >
 | 12.1.1. Big UI Frontend Design Changes | 4/5 | In Progress|  | - |
 | 12.2. Auto-seek Timeline to Sequence Start | 1/1 | Complete    | 2026-03-17 | - |
 | 12.3. Add Quick Keys for Navigation | 1/1 | Complete    | 2026-03-17 | - |
+| 12.4. ShortcutsOverlay Tabbed Sections | v0.2.0 | 0/1 | In Progress | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
