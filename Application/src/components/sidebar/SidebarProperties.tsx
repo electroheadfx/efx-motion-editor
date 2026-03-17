@@ -87,6 +87,7 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
       {/* Keyframe nav bar + Blur slider (same row, gap 16px per Pencil spec) -- only for non-base layers */}
       {!layer.isBase && (
         <div class="flex items-center gap-3">
+          <span class="shrink-0" style={{ fontSize: '12px', fontWeight: 500, color: 'var(--sidebar-text-secondary)' }}>Key</span>
           <KeyframeNavBar layer={layer} />
           <div class="flex items-center flex-1 min-w-0 gap-2">
             <span class="shrink-0" style={{ fontSize: '12px', fontWeight: 500, color: 'var(--sidebar-text-secondary)' }}>Blur</span>

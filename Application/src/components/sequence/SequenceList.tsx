@@ -232,7 +232,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
               ref={inputRef}
               type="text"
               class="bg-[var(--sidebar-input-bg)] border border-[var(--sidebar-border-selected)] rounded px-1 py-0 outline-none w-full"
-              style={{fontSize: '14px', fontWeight: 600, color: 'var(--sidebar-text-primary)'}}
+              style={{fontSize: '14px', fontWeight: 500, color: 'var(--sidebar-text-primary)'}}
               value={editName}
               onInput={(e) =>
                 setEditName((e.target as HTMLInputElement).value)
@@ -247,7 +247,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
           ) : (
             <span
               class="truncate text-[var(--sidebar-collapse-line)] group-hover/row:text-[var(--sidebar-text-primary)] transition-colors duration-150"
-              style={{fontSize: '14px', fontWeight: 600}}
+              style={{fontSize: '14px', fontWeight: 500}}
               onDblClick={(e) => {
                 e.stopPropagation();
                 startRename();
