@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Completed 12.1.1-04-PLAN.md
 last_updated: "2026-03-17T15:38:25Z"
-last_activity: "2026-03-17 - Completed quick task 260317-n0w: Smooth slide animations on sidebar collapse"
+last_activity: "2026-03-17 - Completed quick task 260317-nvg: Fix FX range bar in/out point desync on scroll"
 progress:
   total_phases: 12
   completed_phases: 6
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
 Plan: 5 of 5
 Status: In Progress
-Last activity: 2026-03-17 - Completed quick task 260317-n0w: Smooth slide animations on sidebar collapse
+Last activity: 2026-03-17 - Completed quick task 260317-nvg: Fix FX range bar in/out point desync on scroll
 
 Progress: [██████████] 97%
 
@@ -118,9 +118,10 @@ No active blockers.
 | 27 | Taller sidebar grabber with 3 stacked Tally3 icons and high-contrast theme colors | 2026-03-17 | 61f9045 |
 | 28 | Sequence and layer names hover effect (muted-to-vivid color transition) | 2026-03-17 | 9466faf |
 | 29 | Smooth slide animations on sidebar collapse, Key label, unbold sequence titles | 2026-03-17 | c94cc92 |
+| 30 | Fix FX range bar in/out point desync on horizontal scroll | 2026-03-17 | 336c90e |
 
 ## Session Continuity
 
 Last session: 2026-03-17T15:38:25Z
-Stopped at: Completed quick task 260317-n0w
+Stopped at: Completed quick task 260317-nvg
 Resume file: None
