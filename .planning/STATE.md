@@ -82,6 +82,7 @@ None.
 - Phase 12.1 inserted after Phase 12: Remove bottom parameters bar and relocate to sidebar panel (URGENT)
 - Phase 12.1.1 inserted after Phase 12.1: Big UI frontend design changes with new sidebar layout (URGENT)
 - Phase 12.2 inserted after Phase 12.1.1: Auto-seek timeline to sequence start on sidebar selection (URGENT)
+- Phase 12.3 inserted after Phase 12.2: Add quick keys for navigation (URGENT)
 
 ### Blockers/Concerns
 
