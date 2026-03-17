@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Completed 12.1.1-04-PLAN.md
 last_updated: "2026-03-17T09:24:16.931Z"
-last_activity: "2026-03-17 - Completed 12.1.1-04: KeyframeNavBar with prev/next/add/delete, InlineInterpolation easing chips, old popover removed"
+last_activity: "2026-03-17 - Completed quick task 260317-k5n: Prevent sidebar property clicks from deselecting active layer"
 progress:
   total_phases: 12
   completed_phases: 6
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
 Plan: 5 of 5
 Status: In Progress
-Last activity: 2026-03-17 - Completed 12.1.1-04: KeyframeNavBar with prev/next/add/delete, InlineInterpolation easing chips, old popover removed
+Last activity: 2026-03-17 - Completed quick task 260317-k5n: Prevent sidebar property clicks from deselecting active layer
 
 Progress: [██████████] 97%
 
