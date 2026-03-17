@@ -92,6 +92,17 @@ function handleDelete(): void {
     }
   }
 
+  // Check for selected key photo — delete just that key photo, not the sequence
+  const selectedKpId = sequenceStore.selectedKeyPhotoId.peek();
+  if (selectedKpId) {
+    const allSeqs = sequenceStore.sequences.peek();
+    const ownerSeq = allSeqs.find(s => s.keyPhotos.some(kp => kp.id === selectedKpId));
+    if (ownerSeq) {
+      sequenceStore.removeKeyPhoto(ownerSeq.id, selectedKpId);
+      return;
+    }
+  }
+
   // Delete selected layer if any (FX layers delete via this path)
   const selectedLayer = uiStore.selectedLayerId.value;
   if (selectedLayer) {
