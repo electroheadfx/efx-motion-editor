@@ -25,6 +25,7 @@ export function CollapsibleSection({ title, collapsed, headerActions, children, 
     <>
       <div
         class="flex items-center justify-between h-9 px-3 cursor-pointer select-none shrink-0"
+        data-interactive
         onClick={handleToggle}
       >
         <div class="flex items-center gap-1.5">

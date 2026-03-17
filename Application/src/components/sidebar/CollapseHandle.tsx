@@ -2,10 +2,10 @@ import { useRef } from 'preact/hooks';
 import { uiStore } from '../../stores/uiStore';
 import { setSidebarWidth } from '../../lib/appConfig';
 
-const MIN_WIDTH = 240;
+const MIN_WIDTH = 280;
 const MAX_WIDTH = 480;
 /** If dragged below this width, collapse the sidebar */
-const COLLAPSE_THRESHOLD = 180;
+const COLLAPSE_THRESHOLD = 220;
 /** Minimum drag distance (px) to count as drag vs click */
 const DRAG_THRESHOLD = 4;
 

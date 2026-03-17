@@ -56,10 +56,11 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
     (showKfValues ? kfDisplayValues!.opacity : layer.opacity) * 100,
   );
 
-  // Clear transient overrides when frame changes
+  // Clear transient overrides and deselect keyframe diamonds when frame changes (scrub/seek)
   useEffect(() => {
     void timelineStore.currentFrame.value;
     keyframeStore.clearTransientOverrides();
+    keyframeStore.clearSelection();
   }, [timelineStore.currentFrame.value]);
 
   // Uniform Scale helper
