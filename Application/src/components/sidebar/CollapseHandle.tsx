@@ -77,8 +77,8 @@ export function CollapseHandle() {
       onPointerDown={handlePointerDown}
       title={uiStore.sidebarCollapsed.value ? 'Drag or click to expand' : 'Drag to resize, click to collapse'}
     >
-      {/* Double lines: 10% height, vertically centered */}
-      <div class="flex gap-[4px] items-center" style={{ height: '10%' }}>
+      {/* Double lines: 10% height, vertically centered, nudged 1px right */}
+      <div class="flex gap-[2px] items-center" style={{ height: '10%', marginRight: '-1px' }}>
         <div
           class="h-full rounded-full transition-opacity duration-150 group-hover:opacity-100"
           style={{

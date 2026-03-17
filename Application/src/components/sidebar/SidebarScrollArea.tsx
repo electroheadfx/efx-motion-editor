@@ -51,7 +51,7 @@ export function SidebarScrollArea({ children, class: className }: SidebarScrollA
     >
       <div
         ref={scrollRef}
-        class="h-full overflow-y-auto overflow-x-hidden"
+        class="absolute inset-0 overflow-y-auto overflow-x-hidden"
         style={{ scrollbarWidth: 'none' }}
         onScroll={updateThumb}
       >

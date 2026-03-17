@@ -86,36 +86,34 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
     <div class="px-3 py-2 space-y-3">
       {/* Keyframe nav bar + Blur slider (same row, gap 16px per Pencil spec) -- only for non-base layers */}
       {!layer.isBase && (
-        <div class="flex items-center" style={{ gap: '16px' }}>
+        <div class="flex items-center gap-3">
           <KeyframeNavBar layer={layer} />
-          <div class="flex items-center flex-1 min-w-0" style={{ gap: '16px' }}>
-            <span class="shrink-0" style={{ width: '32px', fontSize: '12px', fontWeight: 500, color: 'var(--sidebar-text-secondary)' }}>Blur</span>
-            <div class="flex items-center flex-1 min-w-0 gap-2">
-              <input
-                type="range"
-                min="0" max="100" step="1"
-                value={Math.round((showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)) * 100)}
-                class="flex-1 h-1 cursor-pointer"
-                style={{ accentColor: 'var(--color-accent)' }}
-                data-interactive
-                onPointerDown={() => {
-                  startCoalescing();
-                  if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }
-                }}
-                onPointerUp={() => {
-                  stopCoalescing();
-                  if (_rangeBlurRestore) { blurStore.toggleBypass(); _rangeBlurRestore = false; }
-                }}
-                onInput={(e) => {
-                  const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
-                  if (handleKeyframeEdit) handleKeyframeEdit('blur', val);
-                  else layerStore.updateLayer(layer.id, { blur: val });
-                }}
-              />
-              <span class="text-right shrink-0" style={{ width: '32px', fontSize: '12px', fontWeight: 400, color: 'var(--sidebar-text-primary)' }}>
-                {(showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)).toFixed(2)}
-              </span>
-            </div>
+          <div class="flex items-center flex-1 min-w-0 gap-2">
+            <span class="shrink-0" style={{ fontSize: '12px', fontWeight: 500, color: 'var(--sidebar-text-secondary)' }}>Blur</span>
+            <input
+              type="range"
+              min="0" max="100" step="1"
+              value={Math.round((showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)) * 100)}
+              class="flex-1 min-w-0 h-1 cursor-pointer"
+              style={{ accentColor: 'var(--color-accent)' }}
+              data-interactive
+              onPointerDown={() => {
+                startCoalescing();
+                if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }
+              }}
+              onPointerUp={() => {
+                stopCoalescing();
+                if (_rangeBlurRestore) { blurStore.toggleBypass(); _rangeBlurRestore = false; }
+              }}
+              onInput={(e) => {
+                const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
+                if (handleKeyframeEdit) handleKeyframeEdit('blur', val);
+                else layerStore.updateLayer(layer.id, { blur: val });
+              }}
+            />
+            <span class="shrink-0" style={{ fontSize: '12px', fontWeight: 400, color: 'var(--sidebar-text-primary)' }}>
+              {(showKfValues ? kfDisplayValues!.blur : (layer.blur ?? 0)).toFixed(2)}
+            </span>
           </div>
         </div>
       )}
@@ -124,8 +122,8 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
       {hasSelectedDiamonds ? (
         <InlineInterpolation />
       ) : (
-        <div class="flex items-center" style={{ gap: '16px' }}>
-          {/* Blend dropdown (90px fixed) */}
+        <div class="flex items-center gap-3">
+          {/* Blend dropdown */}
           {layer.isBase ? (
             <div
               class="shrink-0 flex items-center justify-between rounded px-2 py-[3px]"
@@ -163,7 +161,7 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
               min="0"
               max="100"
               value={opacityPercent}
-              class="flex-1 h-1 accent-[var(--color-accent)] cursor-pointer"
+              class="flex-1 min-w-0 h-1 accent-[var(--color-accent)] cursor-pointer"
               onPointerDown={() => {
                 startCoalescing();
                 if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }
