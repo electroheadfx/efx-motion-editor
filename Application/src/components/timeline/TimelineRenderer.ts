@@ -404,7 +404,8 @@ export class TimelineRenderer {
     // Only draw if in viewport
     if (barX + barW >= TRACK_HEADER_WIDTH && barX <= canvasWidth) {
       const clippedLeft = Math.max(barX, TRACK_HEADER_WIDTH);
-      const clippedW = Math.min(barW, canvasWidth - clippedLeft);
+      const clippedRight = Math.min(barX + barW, canvasWidth);
+      const clippedW = Math.max(0, clippedRight - clippedLeft);
 
       // Bar fill (semi-transparent FX color)
       ctx.fillStyle = fxTrack.color + (isVisible ? '40' : '26'); // 25% or 15% opacity
