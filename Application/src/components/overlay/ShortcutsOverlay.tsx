@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'preact/hooks';
+import {useEffect, useRef, useState} from 'preact/hooks';
 import {uiStore} from '../../stores/uiStore';
 
 /** Shortcut entry: key symbol(s) and description */
@@ -86,6 +86,18 @@ const TAB_LABELS = ['Sections', ...SHORTCUT_GROUPS.map((g) => g.title)];
 
 export function ShortcutsOverlay() {
   const [activeTab, setActiveTab] = useState(0);
+  const [focusedRow, setFocusedRow] = useState(0);
+
+  // Refs to avoid stale closures in keyboard handler while keeping [] deps
+  const activeTabRef = useRef(0);
+  const focusedRowRef = useRef(0);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { focusedRowRef.current = focusedRow; }, [focusedRow]);
+
+  // Reset focusedRow when returning to Sections tab
+  useEffect(() => {
+    if (activeTab === 0) setFocusedRow(0);
+  }, [activeTab]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -93,6 +105,27 @@ export function ShortcutsOverlay() {
       if (e.key === 'Escape') {
         e.preventDefault();
         uiStore.closeShortcutsOverlay();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (activeTabRef.current === 0) {
+          setFocusedRow((prev) => (prev + 1) % SHORTCUT_GROUPS.length);
+        }
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (activeTabRef.current === 0) {
+          setFocusedRow((prev) => (prev - 1 + SHORTCUT_GROUPS.length) % SHORTCUT_GROUPS.length);
+        }
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeTabRef.current === 0) {
+          setActiveTab(focusedRowRef.current + 1);
+        }
         return;
       }
       if (e.key === 'ArrowRight' || e.key === 'Tab') {
@@ -172,12 +205,23 @@ export function ShortcutsOverlay() {
         {/* Content area */}
         <div class="pt-4 overflow-y-auto" style={{ minHeight: '320px' }}>
           {activeTab === 0 ? (
-            // Sections index tab (placeholder - implemented in Task 2)
+            // Sections index tab: clickable group list with entry counts
             <div class="flex flex-col gap-1">
-              {SHORTCUT_GROUPS.map((group) => (
-                <div key={group.title} class="px-3 py-2 text-sm text-[var(--color-text-button)]">
-                  {group.title}
-                </div>
+              {SHORTCUT_GROUPS.map((group, i) => (
+                <button
+                  key={group.title}
+                  class={`flex items-center justify-between px-3 py-2 rounded text-sm transition-colors cursor-pointer ${
+                    focusedRow === i
+                      ? 'bg-[var(--color-bg-hover-item)] text-[var(--color-text-heading)]'
+                      : 'text-[var(--color-text-button)] hover:bg-[var(--color-bg-hover-item)] hover:text-[var(--color-text-heading)]'
+                  }`}
+                  onClick={() => setActiveTab(i + 1)}
+                >
+                  <span>{group.title}</span>
+                  <span class="text-xs text-[var(--color-text-muted)]">
+                    {group.entries.length} {group.entries.length === 1 ? 'shortcut' : 'shortcuts'}
+                  </span>
+                </button>
               ))}
             </div>
           ) : (
