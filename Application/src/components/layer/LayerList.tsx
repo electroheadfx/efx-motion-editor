@@ -1,5 +1,6 @@
 import {useRef, useEffect} from 'preact/hooks';
 import Sortable from 'sortablejs';
+import {GripVertical, Eye, EyeOff, X, Lock} from 'lucide-preact';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
 import type {Layer} from '../../types/layer';
@@ -50,7 +51,7 @@ export function LayerList() {
   if (layers.length === 0) {
     return (
       <div class="flex items-center justify-center py-4">
-        <span class="text-[10px] text-[var(--color-text-dim)]">No active sequence</span>
+        <span style={{fontSize: '10px', color: 'var(--sidebar-text-secondary)'}}>No active sequence</span>
       </div>
     );
   }
@@ -80,12 +81,12 @@ interface LayerRowProps {
 function LayerRow({layer, isSelected}: LayerRowProps) {
   const isBase = layer.isBase ?? false;
 
-  // Color-coded type indicator
+  // Color-coded type indicator using sidebar variables
   const typeColor =
-    layer.type === 'image-sequence' ? '#3B82F6'          // blue
-    : layer.type === 'static-image' ? '#14B8A6'          // teal
-    : layer.type === 'video' ? '#8B5CF6'                 // purple
-    : 'var(--color-text-secondary)';
+    layer.type === 'image-sequence' ? 'var(--sidebar-dot-blue)'
+    : layer.type === 'static-image' ? 'var(--sidebar-dot-green)'
+    : layer.type === 'video' ? '#8B5CF6'
+    : 'var(--sidebar-text-secondary)';
 
   // Type label
   const typeLabel =
@@ -111,72 +112,76 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
 
   return (
     <div
-      class={`${isBase ? 'layer-base' : ''} flex items-center gap-2 rounded-md px-2.5 py-1.5 h-[36px] cursor-pointer select-none ${
-        isSelected
-          ? 'bg-[var(--color-bg-selected)] border-l-2 border-[var(--color-accent)]'
+      class={`${isBase ? 'layer-base' : ''} flex items-center gap-2 rounded-md px-2.5 py-1.5 h-[44px] cursor-pointer select-none`}
+      style={{
+        backgroundColor: isSelected
+          ? 'var(--sidebar-selected-layer-bg)'
           : isBase
-            ? 'bg-[var(--color-bg-input)]'
-            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-hover-item)]'
-      }`}
+            ? 'var(--sidebar-input-bg)'
+            : 'var(--sidebar-panel-bg)',
+      }}
       onClick={handleSelect}
     >
       {/* Drag handle -- hidden for base layer */}
       {!isBase ? (
-        <div class="layer-drag-handle w-2 h-4 flex flex-col justify-center gap-[2px] cursor-grab shrink-0 opacity-40 hover:opacity-70">
-          <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
-          <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
-          <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
+        <div class="layer-drag-handle cursor-grab shrink-0 opacity-40 hover:opacity-70">
+          <GripVertical size={14} style={{color: 'var(--sidebar-resizer-icon)'}} />
         </div>
       ) : (
-        <div class="w-2 shrink-0" />
+        <div class="w-[14px] shrink-0" />
       )}
 
       {/* Visibility toggle */}
       <button
-        class="w-4 h-4 flex items-center justify-center shrink-0 rounded hover:bg-[var(--color-hover-overlay-strong)]"
+        class="w-5 h-5 flex items-center justify-center shrink-0 rounded hover:bg-[#ffffff10]"
         onClick={handleToggleVisibility}
         title={layer.visible ? 'Hide layer' : 'Show layer'}
       >
-        <span class="text-[10px] leading-none" style={{color: layer.visible ? 'var(--color-text-button)' : 'var(--color-text-dim)'}}>
-          {layer.visible ? '\u25CF' : '\u25CB'}
-        </span>
+        {layer.visible ? (
+          <Eye size={14} style={{color: 'var(--sidebar-text-secondary)'}} />
+        ) : (
+          <EyeOff size={14} style={{color: 'var(--sidebar-text-secondary)', opacity: 0.4}} />
+        )}
       </button>
 
       {/* Color-coded type indicator */}
       <div
-        class="w-2.5 h-2.5 rounded-sm shrink-0"
+        class="w-2 h-2 rounded-full shrink-0"
         style={{backgroundColor: typeColor}}
       />
 
       {/* Name and type label */}
       <div class="flex flex-col gap-0 flex-1 min-w-0">
         <span
-          class={`text-[11px] truncate leading-tight ${
-            isBase ? 'text-[var(--color-text-heading)] font-medium' : 'text-[var(--color-text-link)]'
-          }`}
+          class="truncate leading-tight"
+          style={{fontSize: '13px', fontWeight: 600, color: 'var(--sidebar-text-primary)'}}
         >
           {layer.name}
         </span>
-        <span class="text-[9px] text-[var(--color-text-dim)] truncate leading-tight">
+        <span
+          class="truncate leading-tight"
+          style={{fontSize: '11px', fontWeight: 400, color: 'var(--sidebar-text-secondary)'}}
+        >
           {typeLabel}
-          {isBase && ' \u00B7 Locked'}
+          {isBase && ' . Locked'}
         </span>
       </div>
 
       {/* Delete button -- only for non-base layers */}
       {!isBase ? (
         <button
-          class="w-5 h-5 flex items-center justify-center rounded hover:bg-[var(--color-hover-overlay-strong)] text-[var(--color-text-dim)] hover:text-[var(--color-error-text)] shrink-0"
+          class="w-5 h-5 flex items-center justify-center rounded shrink-0"
+          style={{color: 'var(--sidebar-text-secondary)'}}
           onClick={handleDelete}
           title="Delete layer"
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = 'var(--color-error-text)')}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = 'var(--sidebar-text-secondary)')}
         >
-          <span class="text-[10px] leading-none">&times;</span>
+          <X size={14} />
         </button>
       ) : (
         <div class="w-5 shrink-0 flex items-center justify-center">
-          <span class="text-[9px] text-[var(--color-text-dim)]" title="Base layer (locked)">
-            &#x1F512;
-          </span>
+          <Lock size={12} style={{color: 'var(--sidebar-lock-icon)'}} />
         </div>
       )}
     </div>

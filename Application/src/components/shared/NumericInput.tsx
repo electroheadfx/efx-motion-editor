@@ -21,7 +21,7 @@ export function NumericInput({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [localValue, setLocalValue] = useState('');
-  const [isDraggingLabel, setIsDraggingLabel] = useState(false);
+
 
   const formatDisplay = useCallback(
     (v: number) => (step < 1 ? v.toFixed(2) : String(v)),
@@ -52,7 +52,6 @@ export function NumericInput({
     e.preventDefault();
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
-    setIsDraggingLabel(true);
     startCoalescing();
     // Bypass blur during drag for performance
     let restoreBlur = false;
@@ -80,7 +79,6 @@ export function NumericInput({
     };
 
     const onUp = () => {
-      setIsDraggingLabel(false);
       stopCoalescing();
       if (restoreBlur) blurStore.toggleBypass();
       target.removeEventListener('pointermove', onMove);
@@ -94,7 +92,8 @@ export function NumericInput({
   return (
     <div class="flex items-center gap-1">
       <span
-        class={`text-[10px] text-[var(--color-text-muted)] whitespace-nowrap select-none ${isDraggingLabel ? 'cursor-ew-resize' : 'cursor-ew-resize'}`}
+        class="whitespace-nowrap select-none cursor-ew-resize"
+        style={{fontSize: '12px', fontWeight: 600, color: 'var(--sidebar-text-secondary)'}}
         data-interactive
         onPointerDown={handleLabelPointerDown}
       >
@@ -106,7 +105,8 @@ export function NumericInput({
         min={min}
         max={max}
         value={isEditing ? localValue : formatDisplay(value)}
-        class="w-16 text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[5px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        class="w-16 rounded px-2 py-[5px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        style={{fontSize: '12px', fontWeight: 400, color: 'var(--sidebar-text-primary)', backgroundColor: 'var(--sidebar-input-bg)'}}
         onFocus={() => {
           setIsEditing(true);
           setLocalValue(formatDisplay(value));
