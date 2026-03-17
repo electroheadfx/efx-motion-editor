@@ -42,7 +42,7 @@ function getSequenceStartFrame(layerId: string): number {
 
 export function KeyframeNavBar({ layer }: KeyframeNavBarProps) {
   const keyframes = keyframeStore.activeLayerKeyframes.value;
-  const globalFrame = timelineStore.currentFrame.value;
+  const globalFrame = timelineStore.displayFrame.value;
   const localFrame = getLocalFrameForLayer(layer.id, globalFrame);
   const nav = getKeyframeNav(keyframes, localFrame);
   const isOnKf = nav.isOnKf;
