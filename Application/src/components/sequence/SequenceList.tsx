@@ -76,6 +76,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hasSelectedKeyPhoto = sequenceStore.selectedKeyPhotoId.value !== null;
 
   const keyCount = seq.keyPhotos.length;
   const totalFrames = seq.keyPhotos.reduce(
@@ -120,6 +121,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       uiStore.selectLayer(null);
       uiStore.selectSequence(seq.id);
       sequenceStore.setActive(seq.id);
+      sequenceStore.clearKeyPhotoSelection();
     }
   }, [seq.id, editing]);
 
@@ -192,6 +194,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         class="flex items-center gap-2 h-10 w-full px-3 cursor-pointer"
         style={{
           backgroundColor: isActive ? 'var(--sidebar-selected-row-bg)' : 'transparent',
+          borderLeft: isActive && !hasSelectedKeyPhoto ? '2px solid var(--color-accent)' : '2px solid transparent',
         }}
         onClick={handleSelect}
         onContextMenu={handleContextMenu}
