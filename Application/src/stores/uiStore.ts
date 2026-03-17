@@ -14,6 +14,19 @@ const editorMode = signal<EditorMode>('editor');
 const sidebarCollapsed = signal(false);
 const sequencesSectionCollapsed = signal(false);
 const layersSectionCollapsed = signal(false);
+const propertiesSectionCollapsed = signal(false);
+
+// Flex-grow values for the three sidebar panels (default 1 each)
+const seqPanelFlex = signal(1);
+const layPanelFlex = signal(1);
+const propPanelFlex = signal(1);
+
+// Pre-collapse flex storage (used to restore flex when expanding)
+const _preCollapseSeqFlex = signal(1);
+const _preCollapseLayFlex = signal(1);
+const _preCollapsePropFlex = signal(1);
+
+// Legacy signals kept for backward compat (not actively used by new layout)
 const sequencesPanelHeight = signal(200);
 const layersPanelHeight = signal(200);
 
@@ -29,8 +42,12 @@ export const uiStore = {
   sidebarCollapsed,
   sequencesSectionCollapsed,
   layersSectionCollapsed,
+  propertiesSectionCollapsed,
   sequencesPanelHeight,
   layersPanelHeight,
+  seqPanelFlex,
+  layPanelFlex,
+  propPanelFlex,
 
   selectSequence(id: string | null) {
     selectedSequenceId.value = id;
@@ -61,19 +78,73 @@ export const uiStore = {
   toggleSidebar() {
     sidebarCollapsed.value = !sidebarCollapsed.value;
   },
+
+  // Legacy setters (kept for backward compat)
   setSequencesPanelHeight(h: number) {
     sequencesPanelHeight.value = h;
   },
   setLayersPanelHeight(h: number) {
     layersPanelHeight.value = h;
   },
+
+  // Flex setters
+  setSeqPanelFlex(v: number) {
+    seqPanelFlex.value = v;
+  },
+  setLayPanelFlex(v: number) {
+    layPanelFlex.value = v;
+  },
+  setPropPanelFlex(v: number) {
+    propPanelFlex.value = v;
+  },
+
+  /**
+   * Collapse a panel: store its current flex, set flex to 0, mark section collapsed.
+   */
+  collapsePanel(panel: 'seq' | 'lay' | 'prop') {
+    if (panel === 'seq') {
+      _preCollapseSeqFlex.value = seqPanelFlex.value || 1;
+      seqPanelFlex.value = 0;
+      sequencesSectionCollapsed.value = true;
+    } else if (panel === 'lay') {
+      _preCollapseLayFlex.value = layPanelFlex.value || 1;
+      layPanelFlex.value = 0;
+      layersSectionCollapsed.value = true;
+    } else {
+      _preCollapsePropFlex.value = propPanelFlex.value || 1;
+      propPanelFlex.value = 0;
+      propertiesSectionCollapsed.value = true;
+    }
+  },
+
+  /**
+   * Expand a panel: restore its pre-collapse flex, mark section expanded.
+   */
+  expandPanel(panel: 'seq' | 'lay' | 'prop') {
+    if (panel === 'seq') {
+      seqPanelFlex.value = _preCollapseSeqFlex.value || 1;
+      sequencesSectionCollapsed.value = false;
+    } else if (panel === 'lay') {
+      layPanelFlex.value = _preCollapseLayFlex.value || 1;
+      layersSectionCollapsed.value = false;
+    } else {
+      propPanelFlex.value = _preCollapsePropFlex.value || 1;
+      propertiesSectionCollapsed.value = false;
+    }
+  },
+
   async initSidebarLayout() {
-    const { getSidebarWidth, getPanelHeights } = await import('../lib/appConfig');
+    const { getSidebarWidth, getPanelFlex } = await import('../lib/appConfig');
     const w = await getSidebarWidth();
     sidebarWidth.value = w;
-    const [seqH, layH] = await getPanelHeights();
-    sequencesPanelHeight.value = seqH;
-    layersPanelHeight.value = layH;
+    const [sf, lf, pf] = await getPanelFlex();
+    seqPanelFlex.value = sf;
+    layPanelFlex.value = lf;
+    propPanelFlex.value = pf;
+    // Sync collapsed state from flex values
+    sequencesSectionCollapsed.value = sf === 0;
+    layersSectionCollapsed.value = lf === 0;
+    propertiesSectionCollapsed.value = pf === 0;
   },
 
   reset() {
@@ -84,11 +155,18 @@ export const uiStore = {
     propertiesPanelWidth.value = 280;
     sequencesPanelHeight.value = 200;
     layersPanelHeight.value = 200;
+    seqPanelFlex.value = 1;
+    layPanelFlex.value = 1;
+    propPanelFlex.value = 1;
+    _preCollapseSeqFlex.value = 1;
+    _preCollapseLayFlex.value = 1;
+    _preCollapsePropFlex.value = 1;
     shortcutsOverlayOpen.value = false;
     showNewProjectDialog.value = false;
     editorMode.value = 'editor';
     sidebarCollapsed.value = false;
     sequencesSectionCollapsed.value = false;
     layersSectionCollapsed.value = false;
+    propertiesSectionCollapsed.value = false;
   },
 };

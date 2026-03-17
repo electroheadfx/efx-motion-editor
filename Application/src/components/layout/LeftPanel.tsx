@@ -9,12 +9,16 @@ import { SequenceList } from '../sequence/SequenceList';
 import { LayerList } from '../layer/LayerList';
 import { AddLayerMenu } from '../layer/AddLayerMenu';
 import { PanelResizer } from '../sidebar/PanelResizer';
-import { calcResize } from '../../lib/panelResize';
-import { setPanelHeights } from '../../lib/appConfig';
+import { calcFlexResize } from '../../lib/panelResize';
+import { setPanelFlex } from '../../lib/appConfig';
 import { isFxLayer } from '../../types/layer';
 
 /** Height of each PanelResizer (h-4 = 16px) */
 const RESIZER_HEIGHT = 16;
+/** Header height for CollapsibleSection (h-9 = 36px) */
+const HEADER_HEIGHT = 36;
+/** Minimum height for a panel = header only */
+const MIN_PANEL_HEIGHT = `${HEADER_HEIGHT}px`;
 
 export function LeftPanel() {
   const sequences = sequenceStore.sequences.value;
@@ -36,7 +40,7 @@ export function LeftPanel() {
 
   const isFx = selectedLayer && isFxLayer(selectedLayer);
 
-  // Track container height for resize calculations
+  // Track container height for px-to-flex conversion
   const containerRef = useRef<HTMLDivElement>(null);
   const containerHeight = useRef(0);
 
@@ -55,38 +59,81 @@ export function LeftPanel() {
   }, []);
 
   const handleSeqLayResize = (deltaY: number) => {
-    const result = calcResize(
+    const result = calcFlexResize(
       {
-        seqHeight: uiStore.sequencesPanelHeight.peek(),
-        layHeight: uiStore.layersPanelHeight.peek(),
-        totalAvailable: containerHeight.current,
+        seqFlex: uiStore.seqPanelFlex.peek(),
+        layFlex: uiStore.layPanelFlex.peek(),
+        propFlex: uiStore.propPanelFlex.peek(),
+        totalPixelHeight: containerHeight.current,
       },
       deltaY,
       'seq-lay',
     );
-    uiStore.setSequencesPanelHeight(result.seqHeight);
-    uiStore.setLayersPanelHeight(result.layHeight);
+    uiStore.setSeqPanelFlex(result.seqFlex);
+    uiStore.setLayPanelFlex(result.layFlex);
+    uiStore.setPropPanelFlex(result.propFlex);
+    // Sync collapsed state from flex values
+    uiStore.sequencesSectionCollapsed.value = result.seqFlex === 0;
+    uiStore.layersSectionCollapsed.value = result.layFlex === 0;
   };
 
   const handleLayPropResize = (deltaY: number) => {
-    const result = calcResize(
+    const result = calcFlexResize(
       {
-        seqHeight: uiStore.sequencesPanelHeight.peek(),
-        layHeight: uiStore.layersPanelHeight.peek(),
-        totalAvailable: containerHeight.current,
+        seqFlex: uiStore.seqPanelFlex.peek(),
+        layFlex: uiStore.layPanelFlex.peek(),
+        propFlex: uiStore.propPanelFlex.peek(),
+        totalPixelHeight: containerHeight.current,
       },
       deltaY,
       'lay-prop',
     );
-    uiStore.setLayersPanelHeight(result.layHeight);
+    uiStore.setSeqPanelFlex(result.seqFlex);
+    uiStore.setLayPanelFlex(result.layFlex);
+    uiStore.setPropPanelFlex(result.propFlex);
+    // Sync collapsed state from flex values
+    uiStore.layersSectionCollapsed.value = result.layFlex === 0;
+    uiStore.propertiesSectionCollapsed.value = result.propFlex === 0;
   };
 
-  const persistHeights = () => {
-    setPanelHeights(uiStore.sequencesPanelHeight.peek(), uiStore.layersPanelHeight.peek());
+  const persistFlex = () => {
+    setPanelFlex(
+      uiStore.seqPanelFlex.peek(),
+      uiStore.layPanelFlex.peek(),
+      uiStore.propPanelFlex.peek(),
+    );
   };
 
-  const seqH = uiStore.sequencesPanelHeight.value;
-  const layH = uiStore.layersPanelHeight.value;
+  const seqFlex = uiStore.seqPanelFlex.value;
+  const layFlex = uiStore.layPanelFlex.value;
+  const propFlex = uiStore.propPanelFlex.value;
+
+  const handleSeqCollapse = (collapsed: boolean) => {
+    if (collapsed) {
+      uiStore.collapsePanel('seq');
+    } else {
+      uiStore.expandPanel('seq');
+    }
+    persistFlex();
+  };
+
+  const handleLayCollapse = (collapsed: boolean) => {
+    if (collapsed) {
+      uiStore.collapsePanel('lay');
+    } else {
+      uiStore.expandPanel('lay');
+    }
+    persistFlex();
+  };
+
+  const handlePropCollapse = (collapsed: boolean) => {
+    if (collapsed) {
+      uiStore.collapsePanel('prop');
+    } else {
+      uiStore.expandPanel('prop');
+    }
+    persistFlex();
+  };
 
   return (
     <div
@@ -100,100 +147,98 @@ export function LeftPanel() {
     >
       {/* SEQUENCES panel */}
       <div
-        class="shrink-0 overflow-hidden"
+        class="flex flex-col overflow-hidden"
         style={{
-          height: seqH > 0 ? `${seqH}px` : '0px',
+          flex: `${seqFlex} 0 0px`,
+          minHeight: MIN_PANEL_HEIGHT,
           backgroundColor: 'var(--sidebar-panel-bg)',
           borderRadius: 8,
         }}
       >
-        {seqH > 0 && (
-          <>
-            <CollapsibleSection
-              title="SEQUENCES"
-              collapsed={uiStore.sequencesSectionCollapsed}
-              headerActions={
-                <button
-                  class="rounded px-2 py-1 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] transition-colors"
-                  onClick={() => sequenceStore.createSequence(`Sequence ${sequences.length + 1}`)}
-                >
-                  <span class="text-[10px] text-[var(--color-text-secondary)]">+ Add</span>
-                </button>
-              }
+        <CollapsibleSection
+          title="SEQUENCES"
+          collapsed={uiStore.sequencesSectionCollapsed}
+          onCollapse={handleSeqCollapse}
+          headerActions={
+            <button
+              class="rounded px-2 py-1 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] transition-colors"
+              onClick={() => sequenceStore.createSequence(`Sequence ${sequences.length + 1}`)}
             >
-              <div class="sidebar-scroll overflow-y-auto" style={{ maxHeight: `${seqH - 36}px` }}>
-                <SequenceList />
-              </div>
-            </CollapsibleSection>
-          </>
-        )}
+              <span class="text-[10px] text-[var(--color-text-secondary)]">+ Add</span>
+            </button>
+          }
+        >
+          <div class="sidebar-scroll flex-1 min-h-0 overflow-y-auto">
+            <SequenceList />
+          </div>
+        </CollapsibleSection>
       </div>
 
-      <PanelResizer onResize={handleSeqLayResize} onResizeEnd={persistHeights} />
+      <PanelResizer onResize={handleSeqLayResize} onResizeEnd={persistFlex} />
 
       {/* LAYERS panel */}
       <div
-        class="shrink-0 overflow-hidden"
+        class="flex flex-col overflow-hidden"
         style={{
-          height: layH > 0 ? `${layH}px` : '0px',
+          flex: `${layFlex} 0 0px`,
+          minHeight: MIN_PANEL_HEIGHT,
           backgroundColor: 'var(--sidebar-panel-bg)',
           borderRadius: 8,
         }}
       >
-        {layH > 0 && (
-          <>
-            {isFx ? (
-              <>
-                <div
-                  class="flex items-center h-9 px-3"
-                  style={{ color: 'var(--sidebar-text-secondary)' }}
-                >
-                  <span style="font-size: 11px; font-weight: 600; letter-spacing: 2px">
-                    FX: {selectedLayer!.name}
-                  </span>
-                </div>
-                <div class="sidebar-scroll overflow-y-auto" style={{ maxHeight: `${layH - 36}px` }}>
-                  <SidebarFxProperties layer={selectedLayer!} fxSequenceId={fxSequenceId} />
-                </div>
-              </>
-            ) : (
-              <CollapsibleSection
-                title="LAYERS"
-                collapsed={uiStore.layersSectionCollapsed}
-                headerActions={<AddLayerMenu />}
-              >
-                <div class="sidebar-scroll overflow-y-auto" style={{ maxHeight: `${layH - 36}px` }}>
-                  <LayerList />
-                </div>
-              </CollapsibleSection>
-            )}
-          </>
-        )}
-      </div>
-
-      <PanelResizer onResize={handleLayPropResize} onResizeEnd={persistHeights} />
-
-      {/* PROPERTIES panel (flex-1, takes remaining space) */}
-      <div
-        class="flex-1 min-h-0 overflow-hidden flex flex-col"
-        style={{
-          backgroundColor: 'var(--sidebar-panel-bg)',
-          borderRadius: 8,
-        }}
-      >
-        {selectedLayer && !isFx && (
+        {isFx ? (
           <>
             <div
               class="flex items-center h-9 px-3 shrink-0"
               style={{ color: 'var(--sidebar-text-secondary)' }}
             >
-              <span style="font-size: 11px; font-weight: 600; letter-spacing: 2px">PROPERTIES</span>
+              <span style="font-size: 11px; font-weight: 600; letter-spacing: 2px">
+                FX: {selectedLayer!.name}
+              </span>
             </div>
-            <div class="sidebar-scroll overflow-y-auto flex-1 min-h-0">
+            {layFlex > 0 && (
+              <div class="sidebar-scroll flex-1 min-h-0 overflow-y-auto">
+                <SidebarFxProperties layer={selectedLayer!} fxSequenceId={fxSequenceId} />
+              </div>
+            )}
+          </>
+        ) : (
+          <CollapsibleSection
+            title="LAYERS"
+            collapsed={uiStore.layersSectionCollapsed}
+            onCollapse={handleLayCollapse}
+            headerActions={<AddLayerMenu />}
+          >
+            <div class="sidebar-scroll flex-1 min-h-0 overflow-y-auto">
+              <LayerList />
+            </div>
+          </CollapsibleSection>
+        )}
+      </div>
+
+      <PanelResizer onResize={handleLayPropResize} onResizeEnd={persistFlex} />
+
+      {/* PROPERTIES panel */}
+      <div
+        class="flex flex-col overflow-hidden"
+        style={{
+          flex: `${propFlex} 0 0px`,
+          minHeight: MIN_PANEL_HEIGHT,
+          backgroundColor: 'var(--sidebar-panel-bg)',
+          borderRadius: 8,
+        }}
+      >
+        <CollapsibleSection
+          title="PROPERTIES"
+          collapsed={uiStore.propertiesSectionCollapsed}
+          onCollapse={handlePropCollapse}
+        >
+          {selectedLayer && !isFx && (
+            <div class="sidebar-scroll flex-1 min-h-0 overflow-y-auto">
               <SidebarProperties layer={selectedLayer} />
             </div>
-          </>
-        )}
+          )}
+        </CollapsibleSection>
       </div>
     </div>
   );

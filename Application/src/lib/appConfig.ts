@@ -107,3 +107,13 @@ export async function getPanelHeights(): Promise<[number, number]> {
 export async function setPanelHeights(seqHeight: number, layersHeight: number): Promise<void> {
   await configSetPanelHeights(seqHeight, layersHeight);
 }
+
+// --- Panel Flex (persisted via LazyStore) ---
+
+export async function getPanelFlex(): Promise<[number, number, number]> {
+  return (await store.get<[number, number, number]>('panelFlex')) ?? [1, 1, 1];
+}
+
+export async function setPanelFlex(seq: number, lay: number, prop: number): Promise<void> {
+  await store.set('panelFlex', [seq, lay, prop]);
+}

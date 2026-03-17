@@ -1,3 +1,5 @@
+// --- Legacy pixel-based API (kept for backward compatibility / tests) ---
+
 export const COLLAPSE_THRESHOLD = 32;
 export const MIN_RESTORED = 80;
 
@@ -15,11 +17,8 @@ interface ResizeResult {
 }
 
 /**
- * Calculate new panel heights after a resize drag.
- * - 'seq-lay' resizer: adjusts sequences (above) and layers (below)
- * - 'lay-prop' resizer: adjusts layers height; properties takes remaining (flex-1)
- * If a panel goes below COLLAPSE_THRESHOLD, it collapses to 0.
- * If a panel is restored from 0, it gets at least MIN_RESTORED.
+ * Calculate new panel heights after a resize drag (legacy pixel API).
+ * Kept for backward compatibility. New code should use calcFlexResize.
  */
 export function calcResize(current: PanelSizes, deltaY: number, resizer: ResizerId): ResizeResult {
   let { seqHeight, layHeight } = current;
@@ -57,4 +56,73 @@ export function calcResize(current: PanelSizes, deltaY: number, resizer: Resizer
   newLay = Math.max(0, newLay);
 
   return { seqHeight, layHeight: newLay };
+}
+
+// --- New flex-based API ---
+
+export const COLLAPSE_FLEX_THRESHOLD = 0.15;
+export const MIN_RESTORED_FLEX = 0.3;
+
+export interface FlexSizes {
+  seqFlex: number;
+  layFlex: number;
+  propFlex: number;
+  totalPixelHeight: number;
+}
+
+export interface FlexResizeResult {
+  seqFlex: number;
+  layFlex: number;
+  propFlex: number;
+}
+
+/**
+ * Calculate new panel flex values after a resize drag.
+ * Converts pixel delta to flex-grow adjustments.
+ *
+ * - 'seq-lay' resizer: seqFlex += delta, layFlex -= delta
+ * - 'lay-prop' resizer: layFlex += delta, propFlex -= delta
+ *
+ * Panels below COLLAPSE_FLEX_THRESHOLD snap to 0 (collapsed).
+ * Panels restored from 0 get at least MIN_RESTORED_FLEX.
+ */
+export function calcFlexResize(
+  current: FlexSizes,
+  deltaY: number,
+  resizer: ResizerId,
+): FlexResizeResult {
+  const totalFlex = current.seqFlex + current.layFlex + current.propFlex;
+  if (totalFlex === 0 || current.totalPixelHeight === 0) {
+    return { seqFlex: current.seqFlex, layFlex: current.layFlex, propFlex: current.propFlex };
+  }
+
+  const pxPerUnit = current.totalPixelHeight / totalFlex;
+  const deltaFlex = deltaY / pxPerUnit;
+
+  let { seqFlex, layFlex, propFlex } = current;
+
+  if (resizer === 'seq-lay') {
+    seqFlex += deltaFlex;
+    layFlex -= deltaFlex;
+  } else {
+    layFlex += deltaFlex;
+    propFlex -= deltaFlex;
+  }
+
+  // Restore from zero (must run before collapse check)
+  if (current.seqFlex === 0 && seqFlex > 0 && seqFlex < MIN_RESTORED_FLEX) seqFlex = MIN_RESTORED_FLEX;
+  if (current.layFlex === 0 && layFlex > 0 && layFlex < MIN_RESTORED_FLEX) layFlex = MIN_RESTORED_FLEX;
+  if (current.propFlex === 0 && propFlex > 0 && propFlex < MIN_RESTORED_FLEX) propFlex = MIN_RESTORED_FLEX;
+
+  // Collapse: snap to 0 below threshold (only when NOT restoring from zero)
+  if (current.seqFlex !== 0 && seqFlex > 0 && seqFlex < COLLAPSE_FLEX_THRESHOLD) seqFlex = 0;
+  if (current.layFlex !== 0 && layFlex > 0 && layFlex < COLLAPSE_FLEX_THRESHOLD) layFlex = 0;
+  if (current.propFlex !== 0 && propFlex > 0 && propFlex < COLLAPSE_FLEX_THRESHOLD) propFlex = 0;
+
+  // Clamp: no negative flex
+  seqFlex = Math.max(0, seqFlex);
+  layFlex = Math.max(0, layFlex);
+  propFlex = Math.max(0, propFlex);
+
+  return { seqFlex, layFlex, propFlex };
 }

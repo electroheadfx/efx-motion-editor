@@ -7,14 +7,25 @@ interface CollapsibleSectionProps {
   collapsed: Signal<boolean>;
   headerActions?: ComponentChildren;
   children: ComponentChildren;
+  /** Optional callback fired when the section is toggled. Receives the new collapsed state. */
+  onCollapse?: (collapsed: boolean) => void;
 }
 
-export function CollapsibleSection({ title, collapsed, headerActions, children }: CollapsibleSectionProps) {
+export function CollapsibleSection({ title, collapsed, headerActions, children, onCollapse }: CollapsibleSectionProps) {
+  const handleToggle = () => {
+    const newState = !collapsed.value;
+    if (onCollapse) {
+      onCollapse(newState);
+    } else {
+      collapsed.value = newState;
+    }
+  };
+
   return (
     <>
       <div
-        class="flex items-center justify-between h-9 px-3 cursor-pointer select-none"
-        onClick={() => { collapsed.value = !collapsed.value; }}
+        class="flex items-center justify-between h-9 px-3 cursor-pointer select-none shrink-0"
+        onClick={handleToggle}
       >
         <div class="flex items-center gap-1.5">
           <ChevronDown
