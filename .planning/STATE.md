@@ -4,8 +4,8 @@ milestone: v0.1
 milestone_name: milestone
 status: executing
 stopped_at: Completed 12.1.1-04-PLAN.md
-last_updated: "2026-03-17T14:58:03Z"
-last_activity: "2026-03-17 - Completed quick task 260317-m1x: Taller sidebar grabber with 3 stacked Tally3 icons and high-contrast colors"
+last_updated: "2026-03-17T15:27:53Z"
+last_activity: "2026-03-17 - Completed quick task 260317-mqr: Sequence and layer names hover effect (muted-to-vivid)"
 progress:
   total_phases: 12
   completed_phases: 6
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
 Plan: 5 of 5
 Status: In Progress
-Last activity: 2026-03-17 - Completed quick task 260317-m1x: Taller sidebar grabber with high-contrast colors
+Last activity: 2026-03-17 - Completed quick task 260317-mqr: Sequence and layer names hover effect
 
 Progress: [██████████] 97%
 
@@ -116,9 +116,10 @@ No active blockers.
 | 25 | Add click-to-select key photo from importer grid | 2026-03-17 | b62c4c6 |
 | 26 | Fix key photo UX: delete button, thick ring, greyout, header highlight, Delete key | 2026-03-17 | 4614055 |
 | 27 | Taller sidebar grabber with 3 stacked Tally3 icons and high-contrast theme colors | 2026-03-17 | 61f9045 |
+| 28 | Sequence and layer names hover effect (muted-to-vivid color transition) | 2026-03-17 | 9466faf |
 
 ## Session Continuity
 
-Last session: 2026-03-17T14:58:03Z
-Stopped at: Completed quick task 260317-m1x
+Last session: 2026-03-17T15:27:53Z
+Stopped at: Completed quick task 260317-mqr
 Resume file: None
