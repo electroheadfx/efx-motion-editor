@@ -1,6 +1,8 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import Sortable from 'sortablejs';
+import {Plus} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {uiStore} from '../../stores/uiStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 
@@ -11,7 +13,7 @@ export function KeyPhotoStrip() {
   if (!activeSeq) {
     return (
       <div class="px-3 py-3 text-center">
-        <span class="text-[10px] text-[var(--color-text-dim)]">
+        <span class="text-[10px]" style={{color: 'var(--sidebar-text-secondary)'}}>
           Select a sequence to view key photos
         </span>
       </div>
@@ -21,7 +23,7 @@ export function KeyPhotoStrip() {
   if (activeSeq.keyPhotos.length === 0) {
     return (
       <div class="px-3 py-3 text-center">
-        <span class="text-[10px] text-[var(--color-text-dim)]">
+        <span class="text-[10px]" style={{color: 'var(--sidebar-text-secondary)'}}>
           No key photos yet
         </span>
       </div>
@@ -30,12 +32,13 @@ export function KeyPhotoStrip() {
 
   return (
     <div class="px-2 py-2">
-      <KeyPhotoStripInner sequenceId={activeSeq.id} />
+      <KeyPhotoStripInline sequenceId={activeSeq.id} />
     </div>
   );
 }
 
-function KeyPhotoStripInner({sequenceId}: {sequenceId: string}) {
+/** Inline key photo strip rendered inside a SequenceItem card */
+export function KeyPhotoStripInline({sequenceId}: {sequenceId: string}) {
   const stripRef = useRef<HTMLDivElement>(null);
   const activeSeq = sequenceStore.getById(sequenceId);
   const keyPhotos = activeSeq?.keyPhotos ?? [];
@@ -127,14 +130,20 @@ function KeyPhotoCard({
 
   return (
     <div
-      class={`w-[72px] h-14 rounded-md relative shrink-0 bg-[var(--color-bg-hover-item)] bg-cover bg-center overflow-hidden cursor-pointer${isSelected ? ' ring-1 ring-[var(--color-accent)]' : ''}`}
-      style={thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : undefined}
+      class={`h-14 rounded-md relative shrink-0 bg-cover bg-center overflow-hidden cursor-pointer${isSelected ? ' ring-1 ring-[var(--color-accent)]' : ''}`}
+      style={{
+        width: 'auto',
+        minWidth: '56px',
+        height: '56px',
+        backgroundColor: 'var(--sidebar-input-bg)',
+        ...(thumbUrl ? {backgroundImage: `url(${thumbUrl})`, aspectRatio: 'auto'} : {}),
+      }}
       onClick={() => sequenceStore.selectKeyPhoto(keyPhotoId)}
     >
       {/* Placeholder icon when no image */}
       {!thumbUrl && (
         <div class="absolute inset-0 flex items-center justify-center">
-          <span class="text-[10px] text-[var(--color-text-dim)]">?</span>
+          <span class="text-[10px]" style={{color: 'var(--sidebar-text-secondary)'}}>?</span>
         </div>
       )}
 
@@ -174,68 +183,17 @@ function KeyPhotoCard({
   );
 }
 
-export function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const popRef = useRef<HTMLDivElement>(null);
-  const importedImages = imageStore.images.value;
-
-  // Close popover on click outside
-  useEffect(() => {
-    if (!popoverOpen) return;
-    function handleClick(e: MouseEvent) {
-      if (popRef.current && !popRef.current.contains(e.target as Node)) {
-        setPopoverOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [popoverOpen]);
-
-  const handleAddImage = useCallback(
-    (imageId: string) => {
-      sequenceStore.addKeyPhoto(sequenceId, imageId, 4);
-      setPopoverOpen(false);
-    },
-    [sequenceId],
-  );
-
+/** Add key photo button -- opens full imported view */
+export function AddKeyPhotoButton({sequenceId: _sequenceId}: {sequenceId: string}) {
   return (
-    <div class="relative shrink-0">
-      <button
-        class="w-5 h-5 rounded flex items-center justify-center bg-[var(--color-bg-hover-item)] text-[10px] text-[var(--color-text-secondary)] hover:bg-[var(--color-border-subtle)] hover:text-white transition-colors"
-        onClick={() => setPopoverOpen(!popoverOpen)}
-        title="Add key photo from imported images"
-      >
-        +
-      </button>
-
-      {/* Image picker popover */}
-      {popoverOpen && (
-        <div
-          ref={popRef}
-          class="absolute right-0 top-7 z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl p-2 min-w-[180px] max-w-[260px] max-h-[300px] overflow-y-auto"
-        >
-          {importedImages.length === 0 ? (
-            <span class="text-[10px] text-[var(--color-text-dim)] block p-2">
-              No imported images. Import images first.
-            </span>
-          ) : (
-            <div class="grid grid-cols-4 gap-1">
-              {importedImages.map((img) => (
-                <button
-                  key={img.id}
-                  class="w-11 h-8 rounded bg-[var(--color-bg-hover-item)] bg-cover bg-center hover:ring-1 hover:ring-[var(--color-accent)] cursor-pointer"
-                  style={{
-                    backgroundImage: `url(${assetUrl(img.thumbnail_path)})`,
-                  }}
-                  onClick={() => handleAddImage(img.id)}
-                  title={img.original_path.split('/').pop() ?? img.id}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    <button
+      class="flex items-center justify-center rounded shrink-0 hover:bg-[#ffffff10] transition-colors"
+      style={{width: '24px', height: '56px', color: 'var(--sidebar-text-secondary)'}}
+      onClick={() => uiStore.setEditorMode('imported')}
+      aria-label="Add key photo"
+      title="Add key photo from imported images"
+    >
+      <Plus size={14} />
+    </button>
   );
 }

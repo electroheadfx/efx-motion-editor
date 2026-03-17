@@ -1,11 +1,13 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import {createPortal} from 'preact/compat';
 import Sortable from 'sortablejs';
+import {GripVertical, Ellipsis} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
+import {KeyPhotoStripInline, AddKeyPhotoButton} from './KeyPhotoStrip';
 import type {Sequence} from '../../types/sequence';
 
 /** Sortable sequence list with drag reorder, context actions, inline rename */
@@ -49,7 +51,7 @@ export function SequenceList() {
   }, [sequences.length]);
 
   return (
-    <div ref={listRef} class="flex flex-col gap-px flex-1 min-h-0 overflow-y-auto">
+    <div ref={listRef} class="flex flex-col gap-1.5 flex-1 min-h-0 overflow-y-auto p-1.5">
       {sequences.map((seq) => (
         <SequenceItem
           key={seq.id}
@@ -109,6 +111,9 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
     }
   }, [editing]);
 
+  // isActive derived from uiStore.selectedSequenceId — preserves scrub auto-select:
+  // TimelineInteraction.ts calls uiStore.selectSequence() on scrub release,
+  // which updates selectedSequenceId signal and triggers key photo collapse/expand
   const handleSelect = useCallback(() => {
     if (!editing) {
       layerStore.setSelected(null);
@@ -175,130 +180,149 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
 
   return (
     <div
-      class={`flex items-center gap-2 h-10 w-full px-3 cursor-pointer select-none ${
-        isActive ? 'bg-[var(--color-bg-selected)]' : 'bg-transparent hover:bg-[var(--color-hover-overlay)]'
-      }`}
-      onClick={handleSelect}
-      onContextMenu={handleContextMenu}
+      class="rounded-lg overflow-hidden select-none"
+      style={{
+        border: `1px solid var(${isActive ? '--sidebar-border-selected' : '--sidebar-border-unselected'})`,
+        backgroundColor: isActive ? 'var(--sidebar-selected-group-bg)' : 'var(--sidebar-panel-bg)',
+      }}
     >
-      {/* Drag handle */}
-      <div class="seq-drag-handle w-2 h-4 flex flex-col justify-center gap-[2px] cursor-grab shrink-0 opacity-40 hover:opacity-70">
-        <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
-        <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
-        <div class="w-full h-[1px] bg-[var(--color-text-secondary)]" />
-      </div>
-
-      {/* Active indicator */}
-      {isActive && (
-        <div class="w-[3px] h-6 rounded-sm bg-[var(--color-accent)] shrink-0" />
-      )}
-
-      {/* Thumbnail */}
+      {/* Sequence row */}
       <div
-        class={`w-7 h-5 rounded-[3px] shrink-0 bg-cover bg-center ${
-          isActive ? 'bg-[var(--color-bg-settings)]' : 'bg-[var(--color-bg-hover-item)]'
-        }`}
-        style={thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : undefined}
-      />
-
-      {/* Name and meta */}
-      <div class="flex flex-col gap-0.5 flex-1 min-w-0">
-        {editing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            class="text-xs bg-[var(--color-bg-card)] border border-[var(--color-accent)] rounded px-1 py-0 text-[var(--color-text-heading)] outline-none w-full"
-            value={editName}
-            onInput={(e) =>
-              setEditName((e.target as HTMLInputElement).value)
-            }
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitRename();
-              if (e.key === 'Escape') setEditing(false);
-            }}
-            onBlur={commitRename}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <span
-            class={`text-xs truncate ${
-              isActive
-                ? 'font-medium text-[var(--color-text-heading)]'
-                : 'text-[var(--color-text-secondary)]'
-            }`}
-            onDblClick={(e) => {
-              e.stopPropagation();
-              startRename();
-            }}
-          >
-            {seq.name}
-          </span>
+        class="flex items-center gap-2 h-10 w-full px-3 cursor-pointer"
+        style={{
+          backgroundColor: isActive ? 'var(--sidebar-selected-row-bg)' : 'transparent',
+        }}
+        onClick={handleSelect}
+        onContextMenu={handleContextMenu}
+      >
+        {/* Left accent bar (only when active) */}
+        {isActive && (
+          <div class="shrink-0" style={{width: '4px', height: '24px', borderRadius: '2px', backgroundColor: 'var(--sidebar-accent-bar)'}} />
         )}
-        <span
-          class={`text-[10px] ${
-            isActive
-              ? 'text-[var(--color-text-muted)]'
-              : 'text-[var(--color-text-dim)]'
-          }`}
+
+        {/* Drag handle */}
+        <div class="seq-drag-handle cursor-grab shrink-0 opacity-40 hover:opacity-70">
+          <GripVertical size={14} style={{color: 'var(--sidebar-resizer-icon)'}} />
+        </div>
+
+        {/* Thumbnail */}
+        <div
+          class="shrink-0 rounded bg-cover bg-center"
+          style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '4px',
+            backgroundColor: 'var(--sidebar-input-bg)',
+            ...(thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : {}),
+          }}
+        />
+
+        {/* Name and meta */}
+        <div class="flex flex-col gap-0.5 flex-1 min-w-0">
+          {editing ? (
+            <input
+              ref={inputRef}
+              type="text"
+              class="bg-[var(--sidebar-input-bg)] border border-[var(--sidebar-border-selected)] rounded px-1 py-0 outline-none w-full"
+              style={{fontSize: '14px', fontWeight: 600, color: 'var(--sidebar-text-primary)'}}
+              value={editName}
+              onInput={(e) =>
+                setEditName((e.target as HTMLInputElement).value)
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') setEditing(false);
+              }}
+              onBlur={commitRename}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              class="truncate"
+              style={{fontSize: '14px', fontWeight: 600, color: 'var(--sidebar-text-primary)'}}
+              onDblClick={(e) => {
+                e.stopPropagation();
+                startRename();
+              }}
+            >
+              {seq.name}
+            </span>
+          )}
+          <span style={{fontSize: '11px', fontWeight: 400, color: 'var(--sidebar-text-secondary)'}}>
+            {keyCount} keys &middot; {duration}s
+          </span>
+        </div>
+
+        {/* Action button */}
+        <button
+          ref={menuBtnRef}
+          class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#ffffff10] shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (menuOpen) {
+              setMenuOpen(false);
+            } else {
+              openMenu();
+            }
+          }}
         >
-          {keyCount} keys &middot; {duration}s
-        </span>
+          <Ellipsis size={14} style={{color: 'var(--sidebar-text-secondary)'}} />
+        </button>
+
+        {/* Context Menu -- rendered via portal to avoid scrollbar from overflow container */}
+        {menuOpen && createPortal(
+          <div
+            ref={menuRef}
+            class="fixed z-50 rounded-md shadow-xl py-1 min-w-[120px]"
+            style={{top: menuPos.top, left: menuPos.left, backgroundColor: 'var(--sidebar-panel-bg)', border: '1px solid var(--sidebar-border-unselected)'}}
+          >
+            <button
+              class="w-full text-left px-3 py-1.5 text-xs hover:bg-[#ffffff10]"
+              style={{color: 'var(--sidebar-text-button)'}}
+              onClick={(e) => {
+                e.stopPropagation();
+                startRename();
+              }}
+            >
+              Rename
+            </button>
+            <button
+              class="w-full text-left px-3 py-1.5 text-xs hover:bg-[#ffffff10]"
+              style={{color: 'var(--sidebar-text-button)'}}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDuplicate();
+              }}
+            >
+              Duplicate
+            </button>
+            <div class="w-full h-px my-1" style={{backgroundColor: 'var(--sidebar-border-unselected)'}} />
+            <button
+              class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-error-text)] hover:bg-[#ffffff10]"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete();
+              }}
+            >
+              Delete
+            </button>
+          </div>,
+          document.body,
+        )}
       </div>
 
-      {/* Action button */}
-      <button
-        ref={menuBtnRef}
-        class="w-5 h-5 flex items-center justify-center rounded hover:bg-[var(--color-hover-overlay-strong)] text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] shrink-0"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (menuOpen) {
-            setMenuOpen(false);
-          } else {
-            openMenu();
-          }
+      {/* Inline key photos -- only for active sequence */}
+      <div
+        class="overflow-hidden transition-[max-height] duration-150 ease-out"
+        style={{
+          maxHeight: isActive && seq.keyPhotos.length > 0 ? '72px' : '0px',
         }}
       >
-        <span class="text-xs leading-none">...</span>
-      </button>
-
-      {/* Context Menu — rendered via portal to avoid scrollbar from overflow container */}
-      {menuOpen && createPortal(
-        <div
-          ref={menuRef}
-          class="fixed z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl py-1 min-w-[120px]"
-          style={{top: menuPos.top, left: menuPos.left}}
-        >
-          <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)]"
-            onClick={(e) => {
-              e.stopPropagation();
-              startRename();
-            }}
-          >
-            Rename
-          </button>
-          <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)]"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDuplicate();
-            }}
-          >
-            Duplicate
-          </button>
-          <div class="w-full h-px bg-[var(--color-border-subtle)] my-1" />
-          <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-error-text)] hover:bg-[var(--color-hover-overlay)]"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDelete();
-            }}
-          >
-            Delete
-          </button>
-        </div>,
-        document.body,
-      )}
+        <div class="px-2 py-1.5 flex items-center gap-1">
+          <KeyPhotoStripInline sequenceId={seq.id} />
+          <AddKeyPhotoButton sequenceId={seq.id} />
+        </div>
+      </div>
     </div>
   );
 }
