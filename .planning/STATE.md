@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 12.1-03-PLAN.md"
-last_updated: "2026-03-15T17:48:48Z"
+stopped_at: Phase 12.1.1 context gathered
+last_updated: "2026-03-17T08:08:53.495Z"
 last_activity: "2026-03-15 - Completed 12.1-03: ImportedView/SettingsView components, toolbar cleanup"
 progress:
-  total_phases: 11
-  completed_phases: 5
+  total_phases: 12
+  completed_phases: 6
   total_plans: 24
-  completed_plans: 23
+  completed_plans: 24
   percent: 96
 ---
 
@@ -73,6 +73,7 @@ None.
 ### Roadmap Evolution
 
 - Phase 12.1 inserted after Phase 12: Remove bottom parameters bar and relocate to sidebar panel (URGENT)
+- Phase 12.1.1 inserted after Phase 12.1: Big UI frontend design changes with new sidebar layout (URGENT)
 
 ### Blockers/Concerns
 
@@ -107,6 +108,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-15T17:50:04Z
-Stopped at: Completed 12.1-02-PLAN.md (executed after 12.1-03 due to wave ordering)
-Resume file: .planning/phases/12.1-remove-bottom-parameters-bar-and-relocate-to-sidebar-panel/12.1-04-PLAN.md
+Last session: 2026-03-17T08:08:53.492Z
+Stopped at: Phase 12.1.1 context gathered
+Resume file: .planning/phases/12.1.1-big-ui-frontend-design-changes-with-new-sidebar-layout/12.1.1-CONTEXT.md
