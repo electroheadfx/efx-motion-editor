@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Phase 12.1.1 context gathered
-last_updated: "2026-03-17T08:08:53.495Z"
-last_activity: "2026-03-15 - Completed 12.1-03: ImportedView/SettingsView components, toolbar cleanup"
+stopped_at: Completed 12.1.1-01-PLAN.md
+last_updated: "2026-03-17T09:08:06.739Z"
+last_activity: "2026-03-17 - Completed 12.1.1-01: Infrastructure foundation (CSS vars, Rust config, pure logic)"
 progress:
   total_phases: 12
   completed_phases: 6
-  total_plans: 24
-  completed_plans: 24
+  total_plans: 29
+  completed_plans: 25
   percent: 96
 ---
 
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Milestone: v0.2.0
-Phase: 12.1 (remove-bottom-parameters-bar-and-relocate-to-sidebar-panel)
-Plan: 4 of 4
+Phase: 12.1.1 (big-ui-frontend-design-changes-with-new-sidebar-layout)
+Plan: 2 of 5
 Status: In Progress
-Last activity: 2026-03-15 - Completed 12.1-03: ImportedView/SettingsView components, toolbar cleanup
+Last activity: 2026-03-17 - Completed 12.1.1-01: Infrastructure foundation (CSS vars, Rust config, pure logic)
 
 Progress: [█████████▓] 96%
 
@@ -65,6 +65,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.1]: Extracted NumericInput/SectionLabel to shared/; CollapsibleSection uses Signal<boolean> directly; EditorMode as string union type
 - [Phase 12.1-02]: FX sub-sections vertical layout for sidebar; KeyframeButton duplicated into SidebarProperties; opacity slider flex-1 for sidebar width
 - [Phase 12.1-03]: ImportGrid max-h removed (sidebar no longer renders it); Toolbar Imported/Settings buttons toggle mode; SettingsView uses projectStore (per-project FPS/Resolution)
+- [Phase 12.1.1]: Restore-from-zero check runs before collapse check in calcResize to prevent immediate re-collapse
+- [Phase 12.1.1]: sidebarWidth default updated from 240 to 317 per new design spec
 
 ### Pending Todos
 
@@ -108,6 +110,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-17T08:08:53.492Z
-Stopped at: Phase 12.1.1 context gathered
-Resume file: .planning/phases/12.1.1-big-ui-frontend-design-changes-with-new-sidebar-layout/12.1.1-CONTEXT.md
+Last session: 2026-03-17T09:08:06.737Z
+Stopped at: Completed 12.1.1-01-PLAN.md
+Resume file: None
