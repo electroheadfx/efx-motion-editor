@@ -86,6 +86,7 @@ export class PlaybackEngine {
       if (entry.sequenceId !== activeId) {
         sequenceStore.setActive(entry.sequenceId);
         uiStore.selectSequence(entry.sequenceId);
+        timelineStore.ensureTrackVisible(entry.sequenceId);
       }
     }
   }
@@ -130,6 +131,19 @@ export class PlaybackEngine {
     }
 
     timelineStore.ensureFrameVisiblePaged(timelineStore.currentFrame.peek());
+
+    // Auto vertical scroll: keep active track visible during playback
+    const cf = timelineStore.currentFrame.peek();
+    const entry = frameMap.peek()[cf];
+    if (entry) {
+      const activeId = sequenceStore.activeSequenceId.peek();
+      if (entry.sequenceId !== activeId) {
+        sequenceStore.setActive(entry.sequenceId);
+        uiStore.selectSequence(entry.sequenceId);
+        timelineStore.ensureTrackVisible(entry.sequenceId);
+      }
+    }
+
     this.syncPlayer();
 
     if (timelineStore.isPlaying.peek()) {
