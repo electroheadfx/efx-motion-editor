@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: completed
-stopped_at: Phase 12.5 context gathered
-last_updated: "2026-03-18T07:20:46.804Z"
-last_activity: "2026-03-18 - Completed quick task 260318-as5: fix z-index issue where sequence thumbnails overlap sequence title when scrolling horizontally"
+status: executing
+stopped_at: Completed 12.5-01-PLAN.md
+last_updated: "2026-03-18T07:44:06.138Z"
+last_activity: "2026-03-18 - Completed 12.5-01: vertical scrollbar component and store signals"
 progress:
   total_phases: 16
   completed_phases: 8
-  total_plans: 32
-  completed_plans: 30
-  percent: 97
+  total_plans: 34
+  completed_plans: 31
+  percent: 91
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 12.3 -- Add quick keys for navigation (COMPLETE)
+**Current focus:** v0.2.0 Phase 12.5 -- Vertical scroll issues
 
 ## Current Position
 
 Milestone: v0.2.0
-Phase: 12.3 (add-quick-keys-for-navigation)
-Plan: 1 of 1
-Status: Complete
-Last activity: 2026-03-18 - Completed quick task 260318-as5: fix z-index issue where sequence thumbnails overlap sequence title when scrolling horizontally
+Phase: 12.5 (vertical-scroll-issues)
+Plan: 1 of 2
+Status: In Progress
+Last activity: 2026-03-18 - Completed 12.5-01: vertical scrollbar component and store signals
 
-Progress: [██████████] 97%
+Progress: [█████████░] 91%
 
 ## Accumulated Context
 
@@ -73,6 +73,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.1.1]: Used playbackEngine.seekToFrame for keyframe nav (syncs displayFrame + preview); removed KeyframePopover entirely, interpolation editing now inline via sidebar chips
 - [Phase 12.2]: trackLayouts.peek() for imperative signal read in event handler; wasActive guard prevents playhead jump on re-click
 - [Phase 12.3]: Pure functions for sequence navigation (no signal reads) -- caller passes values in for full testability; PageUp/PageDown fallback to start/end when no further sequences exist
+- [Phase 12.5]: Always-visible scrollbar (no conditional hide) per user request; mirrored layout constants in timelineStore to avoid circular dependency with TimelineRenderer
 
 ### Pending Todos
 
@@ -129,6 +130,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T07:20:46.801Z
-Stopped at: Phase 12.5 context gathered
-Resume file: .planning/phases/12.5-vertical-scroll-issues/12.5-CONTEXT.md
+Last session: 2026-03-18T07:44:06.136Z
+Stopped at: Completed 12.5-01-PLAN.md
+Resume file: None

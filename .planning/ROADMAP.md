@@ -217,7 +217,7 @@ Plans:
   3. Dragging the scrollbar thumb scrolls the timeline vertically
   4. Clicking the scrollbar track (not the thumb) jumps scrollY to that relative position
   5. During playback, when the playhead enters a sequence whose track is off-screen, the timeline auto-scrolls vertically to show that track
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 12.5-01-PLAN.md -- Store infrastructure (viewportHeight, totalContentHeight, maxScrollY, ensureTrackVisible), TimelineScrollbar component, TimelinePanel layout wiring
@@ -299,7 +299,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 13 > 
 | 12.2. Auto-seek Timeline to Sequence Start | 1/1 | Complete    | 2026-03-17 | - |
 | 12.3. Add Quick Keys for Navigation | 1/1 | Complete    | 2026-03-17 | - |
 | 12.4. ShortcutsOverlay Tabbed Sections | v0.2.0 | 0/1 | In Progress | - |
-| 12.5. Vertical Scroll Issues | v0.2.0 | 0/2 | Planned | - |
+| 12.5. Vertical Scroll Issues | 1/2 | In Progress|  | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
