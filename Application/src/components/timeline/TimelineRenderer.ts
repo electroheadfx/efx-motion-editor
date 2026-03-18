@@ -15,6 +15,7 @@ const PLAYHEAD_TRIANGLE_SIZE = 6;
 const DROP_INDICATOR_COLOR = '#4488FF';
 const PLACEHOLDER_BG_A = '#1A1A2A';
 const PLACEHOLDER_BG_B = '#1A2A1A';
+const MIN_FRAME_WIDTH_FOR_THUMB = 4; // Below this px width, use solid color fallback
 
 // --- Theme-aware color cache ---
 // Colors are read from CSS variables once per theme change, not every frame.
@@ -249,6 +250,17 @@ export class TimelineRenderer {
         const thumbnailUrl = image ? imageStore.getDisplayUrl(image) : '';
         const cachedImg = thumbnailUrl ? this.thumbnailCache.get(range.imageId, thumbnailUrl) : null;
 
+        // Create tile pattern once per range (reused for all frames in this range)
+        let pattern: CanvasPattern | null = null;
+        if (cachedImg) {
+          const cellH = TRACK_HEIGHT - 4;  // same as fh
+          const scale = cellH / cachedImg.naturalHeight;
+          pattern = ctx.createPattern(cachedImg, 'repeat');
+          if (pattern) {
+            pattern.setTransform(new DOMMatrix().scale(scale, scale));
+          }
+        }
+
         // Draw individual frames within this range
         for (let f = 0; f < range.holdFrames; f++) {
           const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
@@ -261,20 +273,29 @@ export class TimelineRenderer {
             continue;
           }
 
-          if (cachedImg) {
-            // Draw thumbnail image
-            ctx.drawImage(cachedImg, fx, fy, fw, fh);
+          if (cachedImg && pattern && fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
+            // Tile thumbnail maintaining aspect ratio
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(fx, fy, fw, fh);
+            ctx.clip();
+            ctx.translate(fx, fy);
+            ctx.fillStyle = pattern;
+            ctx.fillRect(0, 0, fw, fh);
+            ctx.restore();
           } else {
-            // Draw placeholder
+            // Placeholder: solid color (loading state OR low-zoom fallback)
             ctx.fillStyle = ri % 2 === 0 ? PLACEHOLDER_BG_A : PLACEHOLDER_BG_B;
             ctx.fillRect(fx, fy, fw, fh);
-            // Show key photo index in placeholder
-            ctx.fillStyle = '#555555';
-            ctx.font = '9px system-ui, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(`${ri + 1}`, fx + fw / 2, fy + fh / 2);
-            ctx.textAlign = 'start'; // Reset
+            if (fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
+              // Show key photo index in placeholder (only when frames are large enough)
+              ctx.fillStyle = '#555555';
+              ctx.font = '9px system-ui, sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(`${ri + 1}`, fx + fw / 2, fy + fh / 2);
+              ctx.textAlign = 'start'; // Reset
+            }
           }
 
           // Frame border
