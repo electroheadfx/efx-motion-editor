@@ -3,8 +3,14 @@ import Sortable from 'sortablejs';
 import {Plus, X} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
+import {layerStore} from '../../stores/layerStore';
+import {timelineStore} from '../../stores/timelineStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
+import {trackLayouts} from '../../lib/frameMap';
+import {playbackEngine} from '../../lib/playbackEngine';
+import {getTopLayerId} from '../../lib/layerSelection';
+import {getActiveKeyPhotoIndex} from '../../lib/keyPhotoNav';
 
 /** Key photo strip with thumbnails, hold duration editing, click-to-select + SortableJS drag reorder */
 export function KeyPhotoStrip() {
@@ -23,9 +29,13 @@ export function KeyPhotoStrip() {
   if (activeSeq.keyPhotos.length === 0) {
     return (
       <div class="px-3 py-3 text-center">
-        <span class="text-[10px]" style={{color: 'var(--sidebar-text-secondary)'}}>
-          No key photos yet
-        </span>
+        <button
+          class="text-[10px] hover:underline cursor-pointer"
+          style={{ color: 'var(--color-accent)' }}
+          onClick={() => uiStore.setEditorMode('imported')}
+        >
+          + Add photos
+        </button>
       </div>
     );
   }
@@ -42,6 +52,33 @@ export function KeyPhotoStripInline({sequenceId}: {sequenceId: string}) {
   const stripRef = useRef<HTMLDivElement>(null);
   const activeSeq = sequenceStore.getById(sequenceId);
   const keyPhotos = activeSeq?.keyPhotos ?? [];
+
+  // Read displayFrame for auto-scroll (only changes when NOT playing, or on stop)
+  const displayFrame = timelineStore.displayFrame.value;
+
+  // Compute active key photo index from displayFrame
+  const layouts = trackLayouts.peek();
+  const track = layouts.find(t => t.sequenceId === sequenceId);
+  const activeKpIndex = track ? getActiveKeyPhotoIndex(track.keyPhotoRanges, displayFrame) : -1;
+
+  // Auto-scroll strip to keep active key photo visible
+  useEffect(() => {
+    // Only auto-scroll when NOT playing
+    if (timelineStore.isPlaying.peek()) return;
+    if (!stripRef.current) return;
+
+    const currentLayouts = trackLayouts.peek();
+    const currentTrack = currentLayouts.find(t => t.sequenceId === sequenceId);
+    if (!currentTrack) return;
+
+    const kpIndex = getActiveKeyPhotoIndex(currentTrack.keyPhotoRanges, displayFrame);
+    if (kpIndex < 0) return;
+
+    const child = stripRef.current.children[kpIndex] as HTMLElement;
+    if (child) {
+      child.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }, [displayFrame, sequenceId]);
 
   // Convert vertical wheel to horizontal scroll
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -80,13 +117,15 @@ export function KeyPhotoStripInline({sequenceId}: {sequenceId: string}) {
       class="flex gap-1 overflow-x-auto scrollbar-hidden pb-1"
       onWheel={handleWheel}
     >
-      {keyPhotos.map((kp) => (
+      {keyPhotos.map((kp, index) => (
         <KeyPhotoCard
           key={kp.id}
           sequenceId={sequenceId}
           keyPhotoId={kp.id}
           imageId={kp.imageId}
           holdFrames={kp.holdFrames}
+          isActiveByFrame={index === activeKpIndex}
+          anyActiveByFrame={activeKpIndex >= 0}
         />
       ))}
     </div>
@@ -98,6 +137,8 @@ interface KeyPhotoCardProps {
   keyPhotoId: string;
   imageId: string;
   holdFrames: number;
+  isActiveByFrame: boolean;
+  anyActiveByFrame: boolean;
 }
 
 function KeyPhotoCard({
@@ -105,14 +146,14 @@ function KeyPhotoCard({
   keyPhotoId,
   imageId,
   holdFrames,
+  isActiveByFrame,
+  anyActiveByFrame,
 }: KeyPhotoCardProps) {
   const [editingFrames, setEditingFrames] = useState(false);
   const [frameValue, setFrameValue] = useState(String(holdFrames));
   const inputRef = useRef<HTMLInputElement>(null);
   const image = imageStore.getById(imageId);
   const thumbUrl = image ? assetUrl(image.thumbnail_path) : null;
-  const isSelected = sequenceStore.selectedKeyPhotoId.value === keyPhotoId;
-  const anySelected = sequenceStore.selectedKeyPhotoId.value !== null;
 
   useEffect(() => {
     if (editingFrames && inputRef.current) {
@@ -131,16 +172,39 @@ function KeyPhotoCard({
 
   return (
     <div
-      class={`group h-14 rounded-md relative shrink-0 bg-cover bg-center overflow-hidden cursor-pointer${isSelected ? ' ring-2 ring-[var(--color-accent)]' : ''}`}
+      class={`group h-14 rounded-md relative shrink-0 bg-cover bg-center overflow-hidden cursor-pointer${isActiveByFrame ? ' ring-2 ring-[var(--color-accent)]' : ''}`}
       style={{
         width: 'auto',
         minWidth: '56px',
         height: '56px',
         backgroundColor: 'var(--sidebar-input-bg)',
-        opacity: !isSelected && anySelected ? 0.4 : 1,
+        opacity: !isActiveByFrame && anyActiveByFrame ? 0.4 : 1,
         ...(thumbUrl ? {backgroundImage: `url(${thumbUrl})`, aspectRatio: 'auto'} : {}),
       }}
-      onClick={() => sequenceStore.selectKeyPhoto(keyPhotoId)}
+      onClick={() => {
+        // Select key photo (for Delete key targeting)
+        sequenceStore.selectKeyPhoto(keyPhotoId);
+
+        // Auto-select top-most layer (bidirectional sync)
+        const seq = sequenceStore.getById(sequenceId);
+        if (seq) {
+          const topLayerId = getTopLayerId(seq);
+          if (topLayerId) {
+            layerStore.setSelected(topLayerId);
+            uiStore.selectLayer(topLayerId);
+          }
+        }
+
+        // Seek playhead to key photo start frame
+        const seekLayouts = trackLayouts.peek();
+        const seekTrack = seekLayouts.find(t => t.sequenceId === sequenceId);
+        if (seekTrack) {
+          const range = seekTrack.keyPhotoRanges.find(r => r.keyPhotoId === keyPhotoId);
+          if (range) {
+            playbackEngine.seekToFrame(range.startFrame);
+          }
+        }
+      }}
     >
       {/* Placeholder icon when no image */}
       {!thumbUrl && (
