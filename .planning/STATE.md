@@ -135,9 +135,10 @@ No active blockers.
 | 29 | Smooth slide animations on sidebar collapse, Key label, unbold sequence titles | 2026-03-17 | c94cc92 |
 | 30 | Fix FX range bar in/out point desync on horizontal scroll | 2026-03-17 | 336c90e |
 | 31 | Fix z-index issue where sequence thumbnails overlap track header on scroll | 2026-03-18 | 04206a8 |
+| 32 | Fix arrow key scrubbing: context-aware via mouseRegion (timeline scrubs, canvas nudges) | 2026-03-18 | 05913fb |
 
 ## Session Continuity
 
-Last session: 2026-03-18T13:45:09.556Z
-Stopped at: Completed 12.7-01-PLAN.md
+Last session: 2026-03-18T13:57:16Z
+Stopped at: Completed quick task 260318-kn8
 Resume file: None
