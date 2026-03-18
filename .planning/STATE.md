@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.9-01-PLAN.md
-last_updated: "2026-03-18T20:11:51.732Z"
+stopped_at: Completed 12.10-01-PLAN.md
+last_updated: "2026-03-18T21:20:05.105Z"
 progress:
-  total_phases: 20
+  total_phases: 21
   completed_phases: 15
-  total_plans: 40
-  completed_plans: 40
+  total_plans: 42
+  completed_plans: 41
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 12.9 — fix-sidebar-add-layer-dialogs-for-static-image-image-sequence-and-video-layers
+**Current focus:** Phase 12.10 — gpu-accelerated-blur-via-webgl2
 
 ## Current Position
 
-Phase: 12.9 (fix-sidebar-add-layer-dialogs-for-static-image-image-sequence-and-video-layers) — COMPLETE
-Plan: 1 of 1 (complete)
+Phase: 12.10 (gpu-accelerated-blur-via-webgl2) — EXECUTING
+Plan: 2 of 2
 
 ## Accumulated Context
 
@@ -77,6 +77,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.8]: createPattern-based tile rendering with DOMMatrix scaling; center-crop offset (fw-tileWidth)/2 when frame narrower than tile; MIN_FRAME_WIDTH_FOR_THUMB=4px fallback
 - [Phase 12.9]: Intent dispatch pattern: AddLayerMenu sets intent signal + switches to imported mode, ImportedView reads intent to derive filter/selection/handlers
 - [Phase 12.9]: Priority-based mode resolution: addLayerIntent > pendingNewSequenceId > activeSequenceId; cancel-delete collision prevention via intent check first
+- [Phase 12.10]: Inlined normalizedToPixelRadius in glBlur.ts to avoid circular import; runtime Gaussian weights in shader; RGBA8 texStorage2D; sigma=pixelRadius/3.0 mapping; 64-iteration shader loop cap
 
 ### Pending Todos
 
@@ -94,6 +95,7 @@ None.
 - Phase 12.7 inserted after Phase 12.6: Change keyframe icons and improve keyframe click targets (URGENT)
 - Phase 12.8 inserted after Phase 12.7: Fix timeline thumb horizontal stretching on zoom - use repeat cover pattern (URGENT)
 - Phase 12.9 inserted after Phase 12.8: Fix sidebar add-layer dialogs for Static Image, Image Sequence, and Video layers (URGENT)
+- Phase 12.10 inserted after Phase 12.9: GPU-Accelerated Blur via WebGL2 (URGENT)
 
 ### Blockers/Concerns
 
@@ -142,6 +144,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T19:58:55.629Z
-Stopped at: Completed 12.9-01-PLAN.md
+Last session: 2026-03-18T21:20:05.102Z
+Stopped at: Completed 12.10-01-PLAN.md
 Resume file: None
