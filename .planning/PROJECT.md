@@ -70,7 +70,7 @@ Known technical debt:
 - **Platform:** macOS only — native title bar, file dialogs, macOS conventions
 - **Framework:** Tauri 2.0 (Rust backend) + Preact (not React) + Preact Signals (not Redux/MobX)
 - **Package manager:** pnpm
-- **Rendering:** Canvas 2D PreviewRenderer for compositing; @efxlab/motion-canvas-* v4.0.0 for player embedding
+- **Rendering:** Canvas 2D PreviewRenderer for compositing; WebGL2 GPU blur (glBlur.ts) with CPU StackBlur fallback; @efxlab/motion-canvas-* v4.0.0 for player embedding
 - **Styling:** Tailwind CSS v4 + custom components — no heavy UI libraries
 - **Performance:** Preview must play smoothly at 15/24 fps
 - **Min resolution:** 1280x720 window minimum
@@ -92,4 +92,4 @@ Known technical debt:
 | PNG sequence export (not video) | Downstream editing in DaVinci Resolve/Premiere Pro is the workflow | — Pending (v0.2.0) |
 
 ---
-*Last updated: 2026-03-18 after Phase 12.9 — add-layer dialogs refactored to intent-driven ImportedView flows*
+*Last updated: 2026-03-18 after Phase 12.10 — GPU-accelerated blur via WebGL2, HQ/fast toggle removed*
