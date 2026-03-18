@@ -206,6 +206,23 @@ Plans:
 Plans:
 - [ ] 12.4-01-PLAN.md -- Tab bar, Sections index, group content, keyboard navigation, visual verification
 
+### Phase 12.5: Vertical scroll issues (INSERTED)
+
+**Goal:** Fix timeline canvas vertical scrolling by adding a custom 4px vertical scrollbar (DOM element beside the canvas) and auto vertical scroll during playback to keep the active track visible when tracks overflow the timeline panel.
+**Requirements**: VSCROLL-01, VSCROLL-02, VSCROLL-03, VSCROLL-04, VSCROLL-05
+**Depends on:** Phase 12.4
+**Success Criteria** (what must be TRUE):
+  1. A 4px vertical scrollbar is always visible at the right edge of the timeline panel
+  2. The scrollbar thumb reflects the current scroll position and content-to-viewport ratio
+  3. Dragging the scrollbar thumb scrolls the timeline vertically
+  4. Clicking the scrollbar track (not the thumb) jumps scrollY to that relative position
+  5. During playback, when the playhead enters a sequence whose track is off-screen, the timeline auto-scrolls vertically to show that track
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12.5-01-PLAN.md -- Store infrastructure (viewportHeight, totalContentHeight, maxScrollY, ensureTrackVisible), TimelineScrollbar component, TimelinePanel layout wiring
+- [ ] 12.5-02-PLAN.md -- Auto vertical scroll in playbackEngine tick loop, visual verification checkpoint
+
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12
@@ -260,7 +277,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -282,6 +299,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 13 > 14 > 15
 | 12.2. Auto-seek Timeline to Sequence Start | 1/1 | Complete    | 2026-03-17 | - |
 | 12.3. Add Quick Keys for Navigation | 1/1 | Complete    | 2026-03-17 | - |
 | 12.4. ShortcutsOverlay Tabbed Sections | v0.2.0 | 0/1 | In Progress | - |
+| 12.5. Vertical Scroll Issues | v0.2.0 | 0/2 | Planned | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
