@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// gsd-hook-version: 1.26.0
 // Context Monitor - PostToolUse/AfterTool hook (Gemini uses AfterTool)
 // Reads context metrics from the statusline bridge file and injects
 // warnings when context usage is high. This makes the AGENT aware of
@@ -17,23 +18,24 @@
 // Debounce: 5 tool uses between warnings to avoid spam
 // Severity escalation bypasses debounce (WARNING -> CRITICAL fires immediately)
 
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
-const WARNING_THRESHOLD = 35; // remaining_percentage <= 35%
+const WARNING_THRESHOLD = 35;  // remaining_percentage <= 35%
 const CRITICAL_THRESHOLD = 25; // remaining_percentage <= 25%
-const STALE_SECONDS = 60; // ignore metrics older than 60s
-const DEBOUNCE_CALLS = 5; // min tool uses between warnings
+const STALE_SECONDS = 60;      // ignore metrics older than 60s
+const DEBOUNCE_CALLS = 5;      // min tool uses between warnings
 
-let input = "";
-// Timeout guard: if stdin doesn't close within 3s (e.g. pipe issues on
-// Windows/Git Bash), exit silently instead of hanging until Claude Code
-// kills the process and reports "hook error". See #775.
-const stdinTimeout = setTimeout(() => process.exit(0), 3000);
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => (input += chunk));
-process.stdin.on("end", () => {
+let input = '';
+// Timeout guard: if stdin doesn't close within 10s (e.g. pipe issues on
+// Windows/Git Bash, or slow Claude Code piping during large outputs),
+// exit silently instead of hanging until Claude Code kills the process
+// and reports "hook error". See #775, #1162.
+const stdinTimeout = setTimeout(() => process.exit(0), 10000);
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => input += chunk);
+process.stdin.on('end', () => {
   clearTimeout(stdinTimeout);
   try {
     const data = JSON.parse(input);
@@ -45,10 +47,10 @@ process.stdin.on("end", () => {
 
     // Check if context warnings are disabled via config
     const cwd = data.cwd || process.cwd();
-    const configPath = path.join(cwd, ".planning", "config.json");
+    const configPath = path.join(cwd, '.planning', 'config.json');
     if (fs.existsSync(configPath)) {
       try {
-        const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         if (config.hooks?.context_warnings === false) {
           process.exit(0);
         }
@@ -65,11 +67,11 @@ process.stdin.on("end", () => {
       process.exit(0);
     }
 
-    const metrics = JSON.parse(fs.readFileSync(metricsPath, "utf8"));
+    const metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
     const now = Math.floor(Date.now() / 1000);
 
     // Ignore stale metrics
-    if (metrics.timestamp && now - metrics.timestamp > STALE_SECONDS) {
+    if (metrics.timestamp && (now - metrics.timestamp) > STALE_SECONDS) {
       process.exit(0);
     }
 
@@ -88,7 +90,7 @@ process.stdin.on("end", () => {
 
     if (fs.existsSync(warnPath)) {
       try {
-        warnData = JSON.parse(fs.readFileSync(warnPath, "utf8"));
+        warnData = JSON.parse(fs.readFileSync(warnPath, 'utf8'));
         firstWarn = false;
       } catch (e) {
         // Corrupted file, reset
@@ -98,17 +100,12 @@ process.stdin.on("end", () => {
     warnData.callsSinceWarn = (warnData.callsSinceWarn || 0) + 1;
 
     const isCritical = remaining <= CRITICAL_THRESHOLD;
-    const currentLevel = isCritical ? "critical" : "warning";
+    const currentLevel = isCritical ? 'critical' : 'warning';
 
     // Emit immediately on first warning, then debounce subsequent ones
     // Severity escalation (WARNING -> CRITICAL) bypasses debounce
-    const severityEscalated =
-      currentLevel === "critical" && warnData.lastLevel === "warning";
-    if (
-      !firstWarn &&
-      warnData.callsSinceWarn < DEBOUNCE_CALLS &&
-      !severityEscalated
-    ) {
+    const severityEscalated = currentLevel === 'critical' && warnData.lastLevel === 'warning';
+    if (!firstWarn && warnData.callsSinceWarn < DEBOUNCE_CALLS && !severityEscalated) {
       // Update counter and exit without warning
       fs.writeFileSync(warnPath, JSON.stringify(warnData));
       process.exit(0);
@@ -120,7 +117,7 @@ process.stdin.on("end", () => {
     fs.writeFileSync(warnPath, JSON.stringify(warnData));
 
     // Detect if GSD is active (has .planning/STATE.md in working directory)
-    const isGsdActive = fs.existsSync(path.join(cwd, ".planning", "STATE.md"));
+    const isGsdActive = fs.existsSync(path.join(cwd, '.planning', 'STATE.md'));
 
     // Build advisory warning message (never use imperative commands that
     // override user preferences — see #884)
@@ -128,27 +125,27 @@ process.stdin.on("end", () => {
     if (isCritical) {
       message = isGsdActive
         ? `CONTEXT CRITICAL: Usage at ${usedPct}%. Remaining: ${remaining}%. ` +
-          "Context is nearly exhausted. Do NOT start new complex work or write handoff files — " +
-          "GSD state is already tracked in STATE.md. Inform the user so they can run " +
-          "/gsd:pause-work at the next natural stopping point."
+          'Context is nearly exhausted. Do NOT start new complex work or write handoff files — ' +
+          'GSD state is already tracked in STATE.md. Inform the user so they can run ' +
+          '/gsd:pause-work at the next natural stopping point.'
         : `CONTEXT CRITICAL: Usage at ${usedPct}%. Remaining: ${remaining}%. ` +
-          "Context is nearly exhausted. Inform the user that context is low and ask how they " +
-          "want to proceed. Do NOT autonomously save state or write handoff files unless the user asks.";
+          'Context is nearly exhausted. Inform the user that context is low and ask how they ' +
+          'want to proceed. Do NOT autonomously save state or write handoff files unless the user asks.';
     } else {
       message = isGsdActive
         ? `CONTEXT WARNING: Usage at ${usedPct}%. Remaining: ${remaining}%. ` +
-          "Context is getting limited. Avoid starting new complex work. If not between " +
-          "defined plan steps, inform the user so they can prepare to pause."
+          'Context is getting limited. Avoid starting new complex work. If not between ' +
+          'defined plan steps, inform the user so they can prepare to pause.'
         : `CONTEXT WARNING: Usage at ${usedPct}%. Remaining: ${remaining}%. ` +
-          "Be aware that context is getting limited. Avoid unnecessary exploration or " +
-          "starting new complex work.";
+          'Be aware that context is getting limited. Avoid unnecessary exploration or ' +
+          'starting new complex work.';
     }
 
     const output = {
       hookSpecificOutput: {
         hookEventName: process.env.GEMINI_API_KEY ? "AfterTool" : "PostToolUse",
-        additionalContext: message,
-      },
+        additionalContext: message
+      }
     };
 
     process.stdout.write(JSON.stringify(output));
