@@ -9,6 +9,8 @@ import {guardUnsavedChanges} from './lib/unsavedGuard';
 import {mountShortcuts} from './lib/shortcuts';
 import {undo, redo} from './lib/history';
 import {canvasStore} from './stores/canvasStore';
+import {uiStore} from './stores/uiStore';
+import {timelineStore} from './stores/timelineStore';
 
 // Resolve temp project dir from Tauri's app data path before rendering
 initTempProjectDir().then(async () => {
@@ -30,8 +32,20 @@ initTempProjectDir().then(async () => {
   // so the menu items have no accelerator. These listeners handle the
   // click path when users select Zoom In / Zoom Out from the View menu.
   // Fit to Window (Cmd+0) still uses a native accelerator.
-  listen('menu:zoom-in', () => { canvasStore.zoomIn(); });
-  listen('menu:zoom-out', () => { canvasStore.zoomOut(); });
+  listen('menu:zoom-in', () => {
+    if (uiStore.mouseRegion.peek() === 'timeline') {
+      timelineStore.zoomIn();
+    } else {
+      canvasStore.zoomIn();
+    }
+  });
+  listen('menu:zoom-out', () => {
+    if (uiStore.mouseRegion.peek() === 'timeline') {
+      timelineStore.zoomOut();
+    } else {
+      canvasStore.zoomOut();
+    }
+  });
   listen('menu:fit-to-window', () => { canvasStore.fitToWindow(); });
 
   // Guard window close: show unsaved-changes dialog and prevent close on Cancel

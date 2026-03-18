@@ -209,7 +209,6 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       style={{
         border: `1px solid var(${isActive ? '--sidebar-border-selected' : '--sidebar-border-unselected'})`,
         backgroundColor: isActive ? 'var(--sidebar-selected-group-bg)' : 'var(--sidebar-panel-bg)',
-        opacity: isActive ? 1 : 0.5,
       }}
     >
       {/* Sequence row */}

@@ -59,9 +59,9 @@ pub fn run() {
             // (handled by tinykeys in JS), so no native accelerator is set.
             // The menu items remain for discoverability via the View menu.
             let zoom_in_item =
-                MenuItem::with_id(app, "zoom-in", "Zoom In", true, None::<&str>)?;
+                MenuItem::with_id(app, "zoom-in", "Zoom In (+/=)", true, None::<&str>)?;
             let zoom_out_item =
-                MenuItem::with_id(app, "zoom-out", "Zoom Out", true, None::<&str>)?;
+                MenuItem::with_id(app, "zoom-out", "Zoom Out (-)", true, None::<&str>)?;
             let fit_to_window_item = MenuItem::with_id(
                 app,
                 "fit-to-window",
