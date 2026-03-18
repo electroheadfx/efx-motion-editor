@@ -223,6 +223,23 @@ Plans:
 - [ ] 12.5-01-PLAN.md -- Store infrastructure (viewportHeight, totalContentHeight, maxScrollY, ensureTrackVisible), TimelineScrollbar component, TimelinePanel layout wiring
 - [ ] 12.5-02-PLAN.md -- Auto vertical scroll in playbackEngine tick loop, visual verification checkpoint
 
+### Phase 12.6: Layer sequence auto-selection and key photo UX fixes (INSERTED)
+
+**Goal:** Fix sequence/layer auto-selection UX: auto-select new sequences with open key photo section, open importer on creation with multi-select confirm flow, auto-select top-most layer on sequence selection, and improve key photo strip sync with timeline
+**Requirements**: 12.6-01, 12.6-02, 12.6-03, 12.6-04, 12.6-05
+**Depends on:** Phase 12.5
+**Success Criteria** (what must be TRUE):
+  1. Clicking + Add creates a new sequence, auto-selects it, opens importer in multi-select mode with Confirm button
+  2. Cancelling the importer after + Add deletes the newly created sequence (transactional creation)
+  3. Switching sequences auto-selects the top-most layer with visible transform overlay handles
+  4. Clicking a key photo seeks the playhead to that photo's frame and selects the top-most layer
+  5. Key photo strip auto-scrolls on timeline scrub and playback stop, but not during playback
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12.6-01-PLAN.md -- Layer auto-selection on sequence switch, key photo click enhancements, strip auto-scroll, empty sequence prompt
+- [ ] 12.6-02-PLAN.md -- New sequence creation transactional flow with multi-select importer
+
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12
@@ -277,7 +294,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -300,6 +317,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 13 > 
 | 12.3. Add Quick Keys for Navigation | 1/1 | Complete    | 2026-03-17 | - |
 | 12.4. ShortcutsOverlay Tabbed Sections | v0.2.0 | 0/1 | In Progress | - |
 | 12.5. Vertical Scroll Issues | 2/2 | Complete    | 2026-03-18 | - |
+| 12.6. Layer Sequence Auto-Selection | v0.2.0 | 0/2 | In Progress | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
