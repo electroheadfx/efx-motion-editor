@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.7 (change-keyframe-icons-and-improve-keyframe-click-targets)
 Plan: 1 of 1
 Status: Phase Complete
-Last activity: 2026-03-18 - Completed 12.7-01: interpolation-aware keyframe icons with expanded hit area and hover feedback
+Last activity: 2026-03-18 - Completed quick task 260318-l3c: Timeline zoom: remove slider, add +/- icon buttons with fit-all between them, add +/= and - keyboard shortcuts that target timeline or canvas based on mouse region, preserve existing ctrl+scroll zoom
 
 Progress: [██████████] 100%
 
