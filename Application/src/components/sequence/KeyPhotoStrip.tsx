@@ -203,6 +203,7 @@ function KeyPhotoCard({
           if (range) {
             playbackEngine.seekToFrame(range.startFrame);
           }
+          timelineStore.ensureTrackVisible(sequenceId);
         }
       }}
     >
