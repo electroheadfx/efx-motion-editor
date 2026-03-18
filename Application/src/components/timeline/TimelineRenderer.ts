@@ -87,6 +87,7 @@ export class TimelineRenderer {
   private fxDragState: FxDragState | null = null;
   private selectedFxSequenceId: string | null = null;
   private selectedContentSequenceId: string | null = null;
+  private hoveredKeyframeFrame: number | null = null;
   /** Number of FX tracks (used by TimelineInteraction for layout calculations) */
   fxTrackCount = 0;
   /** Last scrollY value (used by TimelineInteraction for hit-testing) */
@@ -538,13 +539,23 @@ export class TimelineRenderer {
     }
   }
 
-  /** Draw a single diamond marker at the given position */
-  private drawDiamond(
+  /** Set hovered keyframe frame for highlight rendering */
+  setHoveredKeyframe(frame: number | null) {
+    if (this.hoveredKeyframeFrame === frame) return;
+    this.hoveredKeyframeFrame = frame;
+    if (this.lastState) {
+      this.draw(this.lastState);
+    }
+  }
+
+  /** Draw a losange (diamond/rhombus) marker for linear keyframes */
+  private drawLosange(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
     size: number,
     isSelected: boolean,
+    isHovered: boolean,
   ): void {
     ctx.save();
     ctx.beginPath();
@@ -554,12 +565,17 @@ export class TimelineRenderer {
     ctx.lineTo(x - size, y);       // left
     ctx.closePath();
 
-    ctx.fillStyle = isSelected ? '#FFD700' : '#E5A020';
+    ctx.fillStyle = isSelected ? '#FFD700' : (isHovered ? '#F0B830' : '#E5A020');
     ctx.fill();
 
     if (isSelected) {
       ctx.shadowColor = '#FFD700';
       ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (isHovered) {
+      ctx.shadowColor = '#E5A020';
+      ctx.shadowBlur = 3;
       ctx.fill();
       ctx.shadowBlur = 0;
     }
@@ -568,6 +584,160 @@ export class TimelineRenderer {
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.restore();
+  }
+
+  /** Draw a full circle marker for ease-in-out keyframes */
+  private drawCircle(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    size: number,
+    isSelected: boolean,
+    isHovered: boolean,
+  ): void {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, size * 0.7, 0, Math.PI * 2);
+
+    ctx.fillStyle = isSelected ? '#FFD700' : (isHovered ? '#F0B830' : '#E5A020');
+    ctx.fill();
+
+    if (isSelected) {
+      ctx.shadowColor = '#FFD700';
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (isHovered) {
+      ctx.shadowColor = '#E5A020';
+      ctx.shadowBlur = 3;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(136, 102, 0, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Draw a left half-circle marker for ease-in keyframes (left side filled) */
+  private drawHalfCircleLeft(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    size: number,
+    isSelected: boolean,
+    isHovered: boolean,
+  ): void {
+    ctx.save();
+    const r = size * 0.7;
+    const fillColor = isSelected ? '#FFD700' : (isHovered ? '#F0B830' : '#E5A020');
+
+    // Filled left half
+    ctx.beginPath();
+    ctx.arc(x, y, r, Math.PI * 0.5, Math.PI * 1.5);
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+
+    if (isSelected) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, Math.PI * 0.5, Math.PI * 1.5);
+      ctx.closePath();
+      ctx.shadowColor = '#FFD700';
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (isHovered) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, Math.PI * 0.5, Math.PI * 1.5);
+      ctx.closePath();
+      ctx.shadowColor = '#E5A020';
+      ctx.shadowBlur = 3;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Full circle outline
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(136, 102, 0, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Draw a right half-circle marker for ease-out keyframes (right side filled) */
+  private drawHalfCircleRight(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    size: number,
+    isSelected: boolean,
+    isHovered: boolean,
+  ): void {
+    ctx.save();
+    const r = size * 0.7;
+    const fillColor = isSelected ? '#FFD700' : (isHovered ? '#F0B830' : '#E5A020');
+
+    // Filled right half
+    ctx.beginPath();
+    ctx.arc(x, y, r, Math.PI * 1.5, Math.PI * 0.5);
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+
+    if (isSelected) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, Math.PI * 1.5, Math.PI * 0.5);
+      ctx.closePath();
+      ctx.shadowColor = '#FFD700';
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (isHovered) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, Math.PI * 1.5, Math.PI * 0.5);
+      ctx.closePath();
+      ctx.shadowColor = '#E5A020';
+      ctx.shadowBlur = 3;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Full circle outline
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(136, 102, 0, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Dispatch to the correct keyframe icon draw method based on easing type */
+  private drawKeyframeIcon(
+    ctx: CanvasRenderingContext2D,
+    x: number, y: number, size: number,
+    easing: string,
+    isSelected: boolean,
+    isHovered: boolean,
+  ): void {
+    switch (easing) {
+      case 'linear':
+        this.drawLosange(ctx, x, y, size, isSelected, isHovered);
+        break;
+      case 'ease-in-out':
+        this.drawCircle(ctx, x, y, size, isSelected, isHovered);
+        break;
+      case 'ease-in':
+        this.drawHalfCircleLeft(ctx, x, y, size, isSelected, isHovered);
+        break;
+      case 'ease-out':
+        this.drawHalfCircleRight(ctx, x, y, size, isSelected, isHovered);
+        break;
+      default:
+        this.drawLosange(ctx, x, y, size, isSelected, isHovered);
+    }
   }
 
   /** Draw keyframe diamond markers for the selected layer */
@@ -587,7 +757,7 @@ export class TimelineRenderer {
     const fxOffset = state.fxTracks.length * FX_TRACK_HEIGHT;
     const trackCenterY = RULER_HEIGHT + fxOffset + trackIndex * TRACK_HEIGHT + TRACK_HEIGHT / 2 - state.scrollY;
     const frameWidth = BASE_FRAME_WIDTH * state.zoom;
-    const diamondSize = 6;
+    const iconSize = 9;
     const selectedFrames = state.selectedKeyframeFrames ?? new Set();
 
     for (const kf of state.selectedLayerKeyframes) {
@@ -595,14 +765,15 @@ export class TimelineRenderer {
       const globalFrame = track.startFrame + kf.frame;
       const kfX = globalFrame * frameWidth - state.scrollX + TRACK_HEADER_WIDTH;
 
-      // Virtualize: skip diamonds outside visible area
-      if (kfX < TRACK_HEADER_WIDTH - diamondSize || kfX > w + diamondSize) continue;
+      // Virtualize: skip icons outside visible area
+      if (kfX < TRACK_HEADER_WIDTH - iconSize || kfX > w + iconSize) continue;
 
       // Skip if track center is outside visible area (vertical clipping)
-      if (trackCenterY < RULER_HEIGHT - diamondSize || trackCenterY > ctx.canvas.height / (window.devicePixelRatio || 1)) continue;
+      if (trackCenterY < RULER_HEIGHT - iconSize || trackCenterY > ctx.canvas.height / (window.devicePixelRatio || 1)) continue;
 
       const isSelected = selectedFrames.has(kf.frame);
-      this.drawDiamond(ctx, kfX, trackCenterY, diamondSize, isSelected);
+      const isHovered = kf.frame === this.hoveredKeyframeFrame;
+      this.drawKeyframeIcon(ctx, kfX, trackCenterY, iconSize, kf.easing, isSelected, isHovered);
     }
   }
 

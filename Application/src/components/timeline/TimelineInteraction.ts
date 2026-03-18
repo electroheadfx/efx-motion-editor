@@ -44,6 +44,9 @@ export class TimelineInteraction {
   private fxReorderFromIndex = -1;
   private fxReorderMoved = false;
 
+  // Keyframe hover state
+  private hoveredKeyframeFrame: number | null = null;
+
   // Keyframe diamond drag state (KF-09)
   private isDraggingKeyframe = false;
   private kfDragLayerId = '';
@@ -251,14 +254,22 @@ export class TimelineInteraction {
     const clickFrame = this.getFrame(clientX);
     const localClickFrame = clickFrame - track.startFrame;
 
-    // Diamond hit threshold: within 0.6 frames of a keyframe (generous for small diamonds)
+    // Keyframe hit threshold: 18px invisible hit area for generous click targets
     const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
-    const hitThresholdFrames = Math.max(0.6, 8 / frameWidth); // At least 8px
+    const hitThresholdFrames = Math.max(0.6, 18 / frameWidth); // At least 18px
 
+    // Nearest-wins: find the closest keyframe within the hit threshold
+    let bestHit: { frame: number; distance: number } | null = null;
     for (const kf of keyframes) {
-      if (Math.abs(localClickFrame - kf.frame) <= hitThresholdFrames) {
-        return { frame: kf.frame, layerId: selectedId, sequenceStartFrame: track.startFrame };
+      const dist = Math.abs(localClickFrame - kf.frame);
+      if (dist <= hitThresholdFrames) {
+        if (!bestHit || dist < bestHit.distance) {
+          bestHit = { frame: kf.frame, distance: dist };
+        }
       }
+    }
+    if (bestHit) {
+      return { frame: bestHit.frame, layerId: selectedId, sequenceStartFrame: track.startFrame };
     }
 
     return null;
@@ -499,6 +510,22 @@ export class TimelineInteraction {
       const frame = this.getFrame(e.clientX);
       timelineStore.seek(frame);
       return;
+    }
+
+    // Keyframe hover detection: crosshair cursor + highlight
+    if (this.canvas && !this.isInRuler(e.clientY) && !this.isInFxArea(e.clientY)) {
+      const kfHover = this.keyframeHitTest(e.clientX, e.clientY);
+      const newHoveredFrame = kfHover ? kfHover.frame : null;
+      if (newHoveredFrame !== this.hoveredKeyframeFrame) {
+        this.hoveredKeyframeFrame = newHoveredFrame;
+        if (this.renderer) {
+          this.renderer.setHoveredKeyframe(newHoveredFrame);
+        }
+      }
+      if (newHoveredFrame !== null) {
+        this.canvas.style.cursor = 'crosshair';
+        return;
+      }
     }
 
     // Cursor hints (hover state)
