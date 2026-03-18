@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Phase 12.8 context gathered
-last_updated: "2026-03-18T16:42:55.381Z"
-last_activity: "2026-03-18 - Completed quick task 260318-m9x: Add missing scroll shortcuts to help overlay"
+stopped_at: Completed 12.8-01-PLAN.md
+last_updated: "2026-03-18T17:09:06.429Z"
+last_activity: "2026-03-18 - Completed 12.8-01: tile-pattern thumbnail rendering with center-crop"
 progress:
   total_phases: 19
-  completed_phases: 13
-  total_plans: 38
-  completed_plans: 38
+  completed_phases: 14
+  total_plans: 39
+  completed_plans: 39
   percent: 100
 ---
 
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Milestone: v0.2.0
-Phase: 12.7 (change-keyframe-icons-and-improve-keyframe-click-targets)
+Phase: 12.8 (fix-timeline-thumb-horizontal-stretching-on-zoom-use-repeat-cover-pattern)
 Plan: 1 of 1
 Status: Phase Complete
-Last activity: 2026-03-18 - Completed quick task 260318-m9x: Add missing scroll shortcuts to help overlay
+Last activity: 2026-03-18 - Completed 12.8-01: tile-pattern thumbnail rendering with center-crop
 
 Progress: [██████████] 100%
 
@@ -80,6 +80,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.6]: Auto-scroll suppressed during playback via isPlaying.peek() gate, fires on stop when displayFrame syncs
 - [Phase 12.6]: ensureTrackVisible placed outside if(range) but inside if(seekTrack) -- scroll happens even if key photo range not found
 - [Phase 12.7]: Icon size 9px fixed (not zoom-scaled) with 18px hit area; nearest-wins replaces first-match; hover glow shadowBlur 3 with #E5A020 distinct from selected shadowBlur 6
+- [Phase 12.8]: createPattern-based tile rendering with DOMMatrix scaling; center-crop offset (fw-tileWidth)/2 when frame narrower than tile; MIN_FRAME_WIDTH_FOR_THUMB=4px fallback
 
 ### Pending Todos
 
@@ -144,6 +145,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T16:42:55.377Z
-Stopped at: Phase 12.8 context gathered
-Resume file: .planning/phases/12.8-fix-timeline-thumb-horizontal-stretching-on-zoom-use-repeat-cover-pattern/12.8-CONTEXT.md
+Last session: 2026-03-18T17:09:06.424Z
+Stopped at: Completed 12.8-01-PLAN.md
+Resume file: None

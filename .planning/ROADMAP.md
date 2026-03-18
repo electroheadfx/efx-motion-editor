@@ -261,7 +261,7 @@ Plans:
 **Goal:** When zooming the timeline, sequence thumbnails are stretched horizontally which looks bad. Replace the stretched rendering with a repeat/cover pattern so thumbnails maintain their aspect ratio at any zoom level.
 **Requirements**: THUMB-TILE
 **Depends on:** Phase 12.7
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 12.8-01-PLAN.md -- Replace stretched drawImage with tile-pattern rendering, visual verification
@@ -345,7 +345,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.5. Vertical Scroll Issues | 2/2 | Complete    | 2026-03-18 | - |
 | 12.6. Layer Sequence Auto-Selection | 3/3 | Complete    | 2026-03-18 | - |
 | 12.7. Change Keyframe Icons | 1/1 | Complete    | 2026-03-18 | - |
-| 12.8. Fix Timeline Thumb Stretching | v0.2.0 | 0/1 | In Progress | - |
+| 12.8. Fix Timeline Thumb Stretching | 1/1 | Complete   | 2026-03-18 | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
