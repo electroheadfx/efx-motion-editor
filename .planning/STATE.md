@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 12.5-02-PLAN.md
-last_updated: "2026-03-18T08:13:47.096Z"
+stopped_at: Phase 12.6 context gathered
+last_updated: "2026-03-18T09:00:28.668Z"
 last_activity: "2026-03-18 - Completed 12.5-02: auto vertical scroll during playback"
 progress:
-  total_phases: 16
+  total_phases: 17
   completed_phases: 9
   total_plans: 34
   completed_plans: 32
@@ -88,6 +88,7 @@ None.
 - Phase 12.3 inserted after Phase 12.2: Add quick keys for navigation (URGENT)
 - Phase 12.4 inserted after Phase 12.3: ShortcutsOverlay tabbed/paginated sections per group (URGENT)
 - Phase 12.5 inserted after Phase 12.4: vertical scroll issues (URGENT)
+- Phase 12.6 inserted after Phase 12.5: Layer sequence auto-selection and key photo UX fixes (URGENT)
 
 ### Blockers/Concerns
 
@@ -131,6 +132,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T08:06:49.209Z
-Stopped at: Completed 12.5-02-PLAN.md
-Resume file: None
+Last session: 2026-03-18T09:00:28.665Z
+Stopped at: Phase 12.6 context gathered
+Resume file: .planning/phases/12.6-layer-sequence-auto-selection-and-key-photo-ux-fixes/12.6-CONTEXT.md
