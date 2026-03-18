@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.7 (change-keyframe-icons-and-improve-keyframe-click-targets)
 Plan: 1 of 1
 Status: Phase Complete
-Last activity: 2026-03-18 - Completed quick task 260318-l3c: Timeline zoom: remove slider, add +/- icon buttons with fit-all between them, add +/= and - keyboard shortcuts that target timeline or canvas based on mouse region, preserve existing ctrl+scroll zoom
+Last activity: 2026-03-18 - Completed quick task 260318-lgi: View menu shortcut hints, context-aware menu zoom, full-opacity sequences, key photo border fix, click-to-deselect
 
 Progress: [██████████] 100%
 
@@ -137,9 +137,10 @@ No active blockers.
 | 31 | Fix z-index issue where sequence thumbnails overlap track header on scroll | 2026-03-18 | 04206a8 |
 | 32 | Fix arrow key scrubbing: context-aware via mouseRegion (timeline scrubs, canvas nudges) | 2026-03-18 | 05913fb |
 | 33 | Timeline zoom: replace slider with +/- icon buttons, context-aware =/- shortcuts | 2026-03-18 | f32d7a3 |
+| 34 | View menu shortcut hints, context-aware menu zoom, full-opacity sequences, key photo border fix, click-to-deselect | 2026-03-18 | f2eee95 |
 
 ## Session Continuity
 
-Last session: 2026-03-18T14:16:38Z
-Stopped at: Completed quick task 260318-l3c
+Last session: 2026-03-18T14:31:23Z
+Stopped at: Completed quick task 260318-lgi
 Resume file: None
