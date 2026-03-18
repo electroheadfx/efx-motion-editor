@@ -328,9 +328,11 @@ export function applyGPUBlur(
   const pixelRadius = normalizedToPixelRadius(radiusNorm, Math.max(width, height));
   if (pixelRadius < 1) return false;
 
-  // Upload source canvas as texture
+  // Upload source canvas as texture (flip Y: canvas is top-down, GL is bottom-up)
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   gl.bindTexture(gl.TEXTURE_2D, res.texSource);
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
 
   gl.useProgram(res.program);
   gl.uniform1i(res.uTexture, 0);
@@ -355,7 +357,11 @@ export function applyGPUBlur(
 
   gl.bindVertexArray(null);
 
-  // Read back to target 2D context
+  // Read back to target 2D context — replace pixels, don't composite on top
+  // (StackBlur modifies ImageData in-place; GPU must match that behavior)
+  const prevOp = targetCtx.globalCompositeOperation;
+  targetCtx.globalCompositeOperation = 'copy';
   targetCtx.drawImage(_glCanvas!, 0, 0, width, height);
+  targetCtx.globalCompositeOperation = prevOp;
   return true;
 }
