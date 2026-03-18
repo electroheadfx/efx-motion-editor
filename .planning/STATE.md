@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Phase 12.4 context gathered
-last_updated: "2026-03-17T19:43:11.144Z"
-last_activity: "2026-03-17 - Completed Phase 12.3 Plan 01: Quick keys for navigation"
+stopped_at: Phase 12.5 context gathered
+last_updated: "2026-03-18T07:20:46.804Z"
+last_activity: "2026-03-18 - Completed quick task 260318-as5: fix z-index issue where sequence thumbnails overlap sequence title when scrolling horizontally"
 progress:
-  total_phases: 15
+  total_phases: 16
   completed_phases: 8
-  total_plans: 31
+  total_plans: 32
   completed_plans: 30
   percent: 97
 ---
@@ -85,6 +85,7 @@ None.
 - Phase 12.2 inserted after Phase 12.1.1: Auto-seek timeline to sequence start on sidebar selection (URGENT)
 - Phase 12.3 inserted after Phase 12.2: Add quick keys for navigation (URGENT)
 - Phase 12.4 inserted after Phase 12.3: ShortcutsOverlay tabbed/paginated sections per group (URGENT)
+- Phase 12.5 inserted after Phase 12.4: vertical scroll issues (URGENT)
 
 ### Blockers/Concerns
 
@@ -128,6 +129,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T06:52:23Z
-Stopped at: Completed quick task 260318-as5
-Resume file: .planning/phases/12.4-shortcutsoverlay-tabbed-paginated-sections-per-group/12.4-CONTEXT.md
+Last session: 2026-03-18T07:20:46.801Z
+Stopped at: Phase 12.5 context gathered
+Resume file: .planning/phases/12.5-vertical-scroll-issues/12.5-CONTEXT.md
