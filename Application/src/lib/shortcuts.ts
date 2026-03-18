@@ -140,13 +140,34 @@ function nudgeIfSelected(axis: 'x' | 'y', delta: number): void {
   }
 }
 
-function nudgeOrStep(axis: 'x', delta: number, _e: KeyboardEvent): void {
-  const selectedId = layerStore.selectedLayerId.peek();
-  if (selectedId) {
+function handleArrow(axis: 'x' | 'y', delta: number): void {
+  const region = uiStore.mouseRegion.peek();
+
+  if (region === 'timeline') {
+    // Timeline region: arrows always scrub timeline
+    // delta already has correct sign and magnitude (1 or 10 with shift)
+    const current = timelineStore.currentFrame.peek();
+    playbackEngine.seekToFrame(Math.max(0, current + delta));
+    return;
+  }
+
+  if (region === 'canvas') {
+    // Canvas region: nudge selected layer if any
     nudgeIfSelected(axis, delta);
+    return;
+  }
+
+  // Fallback ('other'): left/right scrub if no layer selected, nudge if selected; up/down always nudge
+  if (axis === 'x') {
+    const selectedId = layerStore.selectedLayerId.peek();
+    if (selectedId) {
+      nudgeIfSelected(axis, delta);
+    } else {
+      if (delta < 0) playbackEngine.stepBackward();
+      else playbackEngine.stepForward();
+    }
   } else {
-    if (delta < 0) playbackEngine.stepBackward();
-    else playbackEngine.stepForward();
+    nudgeIfSelected(axis, delta);
   }
 }
 
@@ -163,42 +184,42 @@ export function mountShortcuts(): () => void {
     'ArrowLeft': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      nudgeOrStep('x', -1, e);
+      handleArrow('x', -1);
     },
     'Shift+ArrowLeft': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      nudgeOrStep('x', -10, e);
+      handleArrow('x', -10);
     },
     'ArrowRight': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      nudgeOrStep('x', 1, e);
+      handleArrow('x', 1);
     },
     'Shift+ArrowRight': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      nudgeOrStep('x', 10, e);
+      handleArrow('x', 10);
     },
     'ArrowUp': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      nudgeIfSelected('y', -1);
+      handleArrow('y', -1);
     },
     'Shift+ArrowUp': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      nudgeIfSelected('y', -10);
+      handleArrow('y', -10);
     },
     'ArrowDown': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      nudgeIfSelected('y', 1);
+      handleArrow('y', 1);
     },
     'Shift+ArrowDown': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      nudgeIfSelected('y', 10);
+      handleArrow('y', 10);
     },
 
     // JKL Scrub (KEY-03)
