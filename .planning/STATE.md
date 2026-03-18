@@ -124,9 +124,10 @@ No active blockers.
 | 28 | Sequence and layer names hover effect (muted-to-vivid color transition) | 2026-03-17 | 9466faf |
 | 29 | Smooth slide animations on sidebar collapse, Key label, unbold sequence titles | 2026-03-17 | c94cc92 |
 | 30 | Fix FX range bar in/out point desync on horizontal scroll | 2026-03-17 | 336c90e |
+| 31 | Fix z-index issue where sequence thumbnails overlap track header on scroll | 2026-03-18 | 04206a8 |
 
 ## Session Continuity
 
-Last session: 2026-03-17T19:43:11.141Z
-Stopped at: Phase 12.4 context gathered
+Last session: 2026-03-18T06:52:23Z
+Stopped at: Completed quick task 260318-as5
 Resume file: .planning/phases/12.4-shortcutsoverlay-tabbed-paginated-sections-per-group/12.4-CONTEXT.md
