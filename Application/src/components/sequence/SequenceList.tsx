@@ -207,7 +207,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
     <div
       class="rounded-lg overflow-hidden select-none"
       style={{
-        border: `1px solid var(${isActive ? '--sidebar-border-selected' : '--sidebar-border-unselected'})`,
+        border: `${isActive ? '2px' : '1px'} solid var(${isActive ? '--sidebar-border-selected' : '--sidebar-border-unselected'})`,
         backgroundColor: isActive ? 'var(--sidebar-selected-group-bg)' : 'var(--sidebar-panel-bg)',
         opacity: isActive ? 1 : 0.7,
       }}
