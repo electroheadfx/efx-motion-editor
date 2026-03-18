@@ -53,7 +53,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Canvas',
     entries: [
-      {keys: '=', description: 'Zoom in (when mouse over canvas)'},
+      {keys: '= / +', description: 'Zoom in (when mouse over canvas)'},
       {keys: '\u2212', description: 'Zoom out (when mouse over canvas)'},
       {keys: '\u23180', description: 'Fit to window'},
       {keys: 'F', description: 'Toggle fit lock'},
@@ -66,7 +66,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Timeline',
     entries: [
-      {keys: '=', description: 'Zoom in (when mouse over timeline)'},
+      {keys: '= / +', description: 'Zoom in (when mouse over timeline)'},
       {keys: '\u2212', description: 'Zoom out (when mouse over timeline)'},
       {keys: '\u2303Scroll', description: 'Zoom at cursor'},
     ],

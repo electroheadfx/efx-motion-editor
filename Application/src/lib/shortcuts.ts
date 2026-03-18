@@ -305,6 +305,16 @@ export function mountShortcuts(): () => void {
         canvasStore.zoomIn();
       }
     },
+    '+': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      const region = uiStore.mouseRegion.peek();
+      if (region === 'timeline') {
+        timelineStore.zoomIn();
+      } else {
+        canvasStore.zoomIn();
+      }
+    },
     '-': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
