@@ -4,8 +4,8 @@ milestone: v0.1
 milestone_name: milestone
 status: completed
 stopped_at: Completed 12.7-01-PLAN.md
-last_updated: "2026-03-18T13:50:36.285Z"
-last_activity: "2026-03-18 - Completed 12.7-01: interpolation-aware keyframe icons with expanded hit area and hover feedback"
+last_updated: "2026-03-18T14:48:50Z"
+last_activity: "2026-03-18 - Completed quick-260318-lwe: add more contrast to grab icon in sequence row"
 progress:
   total_phases: 18
   completed_phases: 13
@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.7 (change-keyframe-icons-and-improve-keyframe-click-targets)
 Plan: 1 of 1
 Status: Phase Complete
-Last activity: 2026-03-18 - Completed quick task 260318-lgi: View menu shortcut hints, context-aware menu zoom, full-opacity sequences, key photo border fix, click-to-deselect
+Last activity: 2026-03-18 - Completed quick task 260318-lwe: Add more contrast to grab icon in sequence row
 
 Progress: [██████████] 100%
 
@@ -138,9 +138,10 @@ No active blockers.
 | 32 | Fix arrow key scrubbing: context-aware via mouseRegion (timeline scrubs, canvas nudges) | 2026-03-18 | 05913fb |
 | 33 | Timeline zoom: replace slider with +/- icon buttons, context-aware =/- shortcuts | 2026-03-18 | f32d7a3 |
 | 34 | View menu shortcut hints, context-aware menu zoom, full-opacity sequences, key photo border fix, click-to-deselect | 2026-03-18 | f2eee95 |
+| 35 | Add more contrast to grab icon in sequence row | 2026-03-18 | 58a3ef2 |
 
 ## Session Continuity
 
-Last session: 2026-03-18T14:31:23Z
-Stopped at: Completed quick task 260318-lgi
+Last session: 2026-03-18T14:48:50Z
+Stopped at: Completed quick task 260318-lwe
 Resume file: None
