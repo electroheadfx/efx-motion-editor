@@ -9,6 +9,7 @@ import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 import {trackLayouts} from '../../lib/frameMap';
 import {playbackEngine} from '../../lib/playbackEngine';
+import {timelineStore} from '../../stores/timelineStore';
 import {getTopLayerId} from '../../lib/layerSelection';
 import {KeyPhotoStripInline, AddKeyPhotoButton} from './KeyPhotoStrip';
 import type {Sequence} from '../../types/sequence';
@@ -142,6 +143,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         if (track) {
           playbackEngine.seekToFrame(track.startFrame);
         }
+        timelineStore.ensureTrackVisible(seq.id);
       }
     }
   }, [seq.id, seq, editing]);
