@@ -226,6 +226,12 @@ export class TimelineRenderer {
       const truncatedName = this.truncateText(ctx, name, TRACK_HEADER_WIDTH - 12);
       ctx.fillText(truncatedName, 6, trackY + TRACK_HEIGHT / 2);
 
+      // Clip content area to prevent thumbnails from bleeding into the track header
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(TRACK_HEADER_WIDTH, trackY, w - TRACK_HEADER_WIDTH, TRACK_HEIGHT);
+      ctx.clip();
+
       // Draw key photo ranges
       for (let ri = 0; ri < track.keyPhotoRanges.length; ri++) {
         const range = track.keyPhotoRanges[ri];
@@ -289,6 +295,9 @@ export class TimelineRenderer {
           }
         }
       }
+
+      // End content clip region (thumbnails can no longer bleed into header)
+      ctx.restore();
 
       trackY += TRACK_HEIGHT;
     }
