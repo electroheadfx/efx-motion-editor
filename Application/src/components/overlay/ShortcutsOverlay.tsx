@@ -57,6 +57,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: '\u2212', description: 'Zoom out (when mouse over canvas)'},
       {keys: '\u23180', description: 'Fit to window'},
       {keys: 'F', description: 'Toggle fit lock'},
+      {keys: '\u2318Scroll', description: 'Zoom at cursor'},
       {keys: '\u2190\u2191\u2193\u2192', description: 'Nudge layer 1px'},
       {keys: '\u21E7\u2190\u2191\u2193\u2192', description: 'Nudge layer 10px'},
       {keys: 'Esc', description: 'Deselect layer'},
@@ -69,6 +70,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: '= / +', description: 'Zoom in (when mouse over timeline)'},
       {keys: '\u2212', description: 'Zoom out (when mouse over timeline)'},
       {keys: '\u2303Scroll', description: 'Zoom at cursor'},
+      {keys: '\u21E7Scroll', description: 'Horizontal scroll'},
     ],
   },
   {
