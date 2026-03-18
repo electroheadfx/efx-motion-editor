@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Phase 12.6 context gathered
-last_updated: "2026-03-18T09:00:28.668Z"
-last_activity: "2026-03-18 - Completed 12.5-02: auto vertical scroll during playback"
+stopped_at: Completed 12.6-02-PLAN.md
+last_updated: "2026-03-18T09:29:54.224Z"
+last_activity: "2026-03-18 - Completed 12.6-02: transactional sequence creation with multi-select key photo import"
 progress:
   total_phases: 17
   completed_phases: 9
-  total_plans: 34
-  completed_plans: 32
-  percent: 94
+  total_plans: 36
+  completed_plans: 33
+  percent: 92
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 12.5 -- Vertical scroll issues
+**Current focus:** v0.2.0 Phase 12.6 -- Layer sequence auto-selection and key photo UX fixes
 
 ## Current Position
 
 Milestone: v0.2.0
-Phase: 12.5 (vertical-scroll-issues)
+Phase: 12.6 (layer-sequence-auto-selection-and-key-photo-ux-fixes)
 Plan: 2 of 2
 Status: Phase Complete
-Last activity: 2026-03-18 - Completed 12.5-02: auto vertical scroll during playback
+Last activity: 2026-03-18 - Completed 12.6-02: transactional sequence creation with multi-select key photo import
 
-Progress: [█████████░] 94%
+Progress: [█████████░] 92%
 
 ## Accumulated Context
 
@@ -75,6 +75,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.3]: Pure functions for sequence navigation (no signal reads) -- caller passes values in for full testability; PageUp/PageDown fallback to start/end when no further sequences exist
 - [Phase 12.5]: Always-visible scrollbar (no conditional hide) per user request; mirrored layout constants in timelineStore to avoid circular dependency with TimelineRenderer
 - [Phase 12.5]: Deselect sidebar sequence on playback start; tick only calls ensureTrackVisible (no setActive/selectSequence); re-sync on stop
+- [Phase 12.6]: pendingNewSequenceId signal drives multi-select mode; cancel-delete only when pendingId set
 
 ### Pending Todos
 
@@ -132,6 +133,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T09:00:28.665Z
-Stopped at: Phase 12.6 context gathered
-Resume file: .planning/phases/12.6-layer-sequence-auto-selection-and-key-photo-ux-fixes/12.6-CONTEXT.md
+Last session: 2026-03-18T09:29:54.221Z
+Stopped at: Completed 12.6-02-PLAN.md
+Resume file: None
