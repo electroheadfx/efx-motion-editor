@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: executing
-stopped_at: Completed 12.5-01-PLAN.md
-last_updated: "2026-03-18T07:44:06.138Z"
-last_activity: "2026-03-18 - Completed 12.5-01: vertical scrollbar component and store signals"
+status: completed
+stopped_at: Completed 12.5-02-PLAN.md
+last_updated: "2026-03-18T08:06:49.211Z"
+last_activity: "2026-03-18 - Completed 12.5-02: auto vertical scroll during playback"
 progress:
   total_phases: 16
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 34
-  completed_plans: 31
-  percent: 91
+  completed_plans: 32
+  percent: 94
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 Milestone: v0.2.0
 Phase: 12.5 (vertical-scroll-issues)
-Plan: 1 of 2
-Status: In Progress
-Last activity: 2026-03-18 - Completed 12.5-01: vertical scrollbar component and store signals
+Plan: 2 of 2
+Status: Phase Complete
+Last activity: 2026-03-18 - Completed 12.5-02: auto vertical scroll during playback
 
-Progress: [█████████░] 91%
+Progress: [█████████░] 94%
 
 ## Accumulated Context
 
@@ -74,6 +74,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.2]: trackLayouts.peek() for imperative signal read in event handler; wasActive guard prevents playhead jump on re-click
 - [Phase 12.3]: Pure functions for sequence navigation (no signal reads) -- caller passes values in for full testability; PageUp/PageDown fallback to start/end when no further sequences exist
 - [Phase 12.5]: Always-visible scrollbar (no conditional hide) per user request; mirrored layout constants in timelineStore to avoid circular dependency with TimelineRenderer
+- [Phase 12.5]: Deselect sidebar sequence on playback start; tick only calls ensureTrackVisible (no setActive/selectSequence); re-sync on stop
 
 ### Pending Todos
 
@@ -130,6 +131,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T07:44:06.136Z
-Stopped at: Completed 12.5-01-PLAN.md
+Last session: 2026-03-18T08:06:49.209Z
+Stopped at: Completed 12.5-02-PLAN.md
 Resume file: None
