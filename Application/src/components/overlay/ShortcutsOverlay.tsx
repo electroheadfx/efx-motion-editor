@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'preact/hooks';
+import {useEffect, useState} from 'preact/hooks';
 import {uiStore} from '../../stores/uiStore';
 
 /** Shortcut entry: key symbol(s) and description */
@@ -88,53 +88,53 @@ export function ShortcutsOverlay() {
   const [activeTab, setActiveTab] = useState(0);
   const [focusedRow, setFocusedRow] = useState(0);
 
-  // Refs to avoid stale closures in keyboard handler while keeping [] deps
-  const activeTabRef = useRef(0);
-  const focusedRowRef = useRef(0);
-  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
-  useEffect(() => { focusedRowRef.current = focusedRow; }, [focusedRow]);
-
   // Reset focusedRow when returning to Sections tab
   useEffect(() => {
     if (activeTab === 0) setFocusedRow(0);
   }, [activeTab]);
 
-  // Keyboard navigation
+  // Keyboard navigation — capture phase + stopPropagation to block app shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         uiStore.closeShortcutsOverlay();
         return;
       }
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        if (activeTabRef.current === 0) {
+        e.stopPropagation();
+        if (activeTab === 0) {
           setFocusedRow((prev) => (prev + 1) % SHORTCUT_GROUPS.length);
         }
         return;
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (activeTabRef.current === 0) {
+        e.stopPropagation();
+        if (activeTab === 0) {
           setFocusedRow((prev) => (prev - 1 + SHORTCUT_GROUPS.length) % SHORTCUT_GROUPS.length);
         }
         return;
       }
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (activeTabRef.current === 0) {
-          setActiveTab(focusedRowRef.current + 1);
+        e.stopPropagation();
+        if (activeTab === 0) {
+          setActiveTab(focusedRow + 1);
         }
         return;
       }
       if (e.key === 'ArrowRight' || e.key === 'Tab') {
         e.preventDefault();
+        e.stopPropagation();
         setActiveTab((prev) => (prev + 1) % TAB_COUNT);
         return;
       }
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
+        e.stopPropagation();
         setActiveTab((prev) => (prev - 1 + TAB_COUNT) % TAB_COUNT);
         return;
       }
@@ -142,13 +142,16 @@ export function ShortcutsOverlay() {
       const num = parseInt(e.key, 10);
       if (num >= 1 && num <= 7) {
         e.preventDefault();
+        e.stopPropagation();
         setActiveTab(num);
         return;
       }
+      // Block all other keys from reaching app while overlay is open
+      e.stopPropagation();
     }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [activeTab, focusedRow]);
 
   return (
     <div
