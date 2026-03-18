@@ -29,7 +29,7 @@ Milestone: v0.2.0
 Phase: 12.3 (add-quick-keys-for-navigation)
 Plan: 1 of 1
 Status: Complete
-Last activity: 2026-03-17 - Completed Phase 12.3 Plan 01: Quick keys for navigation
+Last activity: 2026-03-18 - Completed quick task 260318-as5: fix z-index issue where sequence thumbnails overlap sequence title when scrolling horizontally
 
 Progress: [██████████] 97%
 
