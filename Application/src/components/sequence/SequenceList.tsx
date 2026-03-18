@@ -9,6 +9,7 @@ import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 import {trackLayouts} from '../../lib/frameMap';
 import {playbackEngine} from '../../lib/playbackEngine';
+import {getTopLayerId} from '../../lib/layerSelection';
 import {KeyPhotoStripInline, AddKeyPhotoButton} from './KeyPhotoStrip';
 import type {Sequence} from '../../types/sequence';
 
@@ -120,11 +121,20 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
   const handleSelect = useCallback(() => {
     if (!editing) {
       const wasActive = sequenceStore.activeSequenceId.peek();
-      layerStore.setSelected(null);
-      uiStore.selectLayer(null);
       uiStore.selectSequence(seq.id);
       sequenceStore.setActive(seq.id);
       sequenceStore.clearKeyPhotoSelection();
+
+      // Auto-select top-most layer (bidirectional sync per Phase 11-04)
+      const topLayerId = getTopLayerId(seq);
+      if (topLayerId) {
+        layerStore.setSelected(topLayerId);
+        uiStore.selectLayer(topLayerId);
+      } else {
+        layerStore.setSelected(null);
+        uiStore.selectLayer(null);
+      }
+
       // Auto-seek timeline playhead to sequence start (only when switching sequences)
       if (seq.id !== wasActive) {
         const layouts = trackLayouts.peek();
@@ -134,7 +144,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         }
       }
     }
-  }, [seq.id, editing]);
+  }, [seq.id, seq, editing]);
 
   const startRename = useCallback(() => {
     setEditName(seq.name);
@@ -334,15 +344,30 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       <div
         class="overflow-hidden transition-[max-height] duration-150 ease-out"
         style={{
-          maxHeight: isActive && seq.keyPhotos.length > 0 ? '72px' : '0px',
+          maxHeight: isActive ? '72px' : '0px',
         }}
       >
-        <div class="px-2 py-1.5 flex items-center gap-1">
-          <div class="flex-1 min-w-0 overflow-hidden">
-            <KeyPhotoStripInline sequenceId={seq.id} />
+        {seq.keyPhotos.length > 0 ? (
+          <div class="px-2 py-1.5 flex items-center gap-1">
+            <div class="flex-1 min-w-0 overflow-hidden">
+              <KeyPhotoStripInline sequenceId={seq.id} />
+            </div>
+            <AddKeyPhotoButton sequenceId={seq.id} />
           </div>
-          <AddKeyPhotoButton sequenceId={seq.id} />
-        </div>
+        ) : (
+          <div class="px-2 py-1.5 flex items-center justify-center h-14">
+            <button
+              class="text-[11px] hover:underline transition-colors cursor-pointer"
+              style={{ color: 'var(--color-accent)', fontWeight: 500 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                uiStore.setEditorMode('imported');
+              }}
+            >
+              + Add photos
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
