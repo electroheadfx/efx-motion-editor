@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 12.6-03-PLAN.md
-last_updated: "2026-03-18T11:04:38.268Z"
+stopped_at: Phase 12.7 context gathered
+last_updated: "2026-03-18T13:02:55.533Z"
 last_activity: "2026-03-18 - Completed 12.6-03: key photo vertical scroll fix (gap closure)"
 progress:
-  total_phases: 17
-  completed_phases: 10
+  total_phases: 18
+  completed_phases: 12
   total_plans: 37
-  completed_plans: 35
+  completed_plans: 37
   percent: 95
 ---
 
@@ -93,6 +93,7 @@ None.
 - Phase 12.4 inserted after Phase 12.3: ShortcutsOverlay tabbed/paginated sections per group (URGENT)
 - Phase 12.5 inserted after Phase 12.4: vertical scroll issues (URGENT)
 - Phase 12.6 inserted after Phase 12.5: Layer sequence auto-selection and key photo UX fixes (URGENT)
+- Phase 12.7 inserted after Phase 12.6: Change keyframe icons and improve keyframe click targets (URGENT)
 
 ### Blockers/Concerns
 
@@ -136,6 +137,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T11:01:15.909Z
-Stopped at: Completed 12.6-03-PLAN.md
-Resume file: None
+Last session: 2026-03-18T13:02:55.528Z
+Stopped at: Phase 12.7 context gathered
+Resume file: .planning/phases/12.7-change-keyframe-icons-and-improve-keyframe-click-targets/12.7-CONTEXT.md
