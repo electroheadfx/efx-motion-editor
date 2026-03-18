@@ -2,16 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: completed
-stopped_at: Phase 12.9 context gathered
-last_updated: "2026-03-18T19:25:19.569Z"
-last_activity: "2026-03-18 - Completed 12.8-01: tile-pattern thumbnail rendering with center-crop"
+status: phase-complete
+stopped_at: Completed 12.9-01-PLAN.md
+last_updated: "2026-03-18T19:58:55.632Z"
 progress:
   total_phases: 20
-  completed_phases: 14
-  total_plans: 39
-  completed_plans: 39
-  percent: 100
+  completed_phases: 15
+  total_plans: 40
+  completed_plans: 40
 ---
 
 # Project State
@@ -21,17 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v0.2.0 Phase 12.7 -- Change keyframe icons and improve keyframe click targets
+**Current focus:** Phase 12.9 — fix-sidebar-add-layer-dialogs-for-static-image-image-sequence-and-video-layers
 
 ## Current Position
 
-Milestone: v0.2.0
-Phase: 12.8 (fix-timeline-thumb-horizontal-stretching-on-zoom-use-repeat-cover-pattern)
-Plan: 1 of 1
-Status: Phase Complete
-Last activity: 2026-03-18 - Completed 12.8-01: tile-pattern thumbnail rendering with center-crop
-
-Progress: [██████████] 100%
+Phase: 12.9 (fix-sidebar-add-layer-dialogs-for-static-image-image-sequence-and-video-layers) — COMPLETE
+Plan: 1 of 1 (complete)
 
 ## Accumulated Context
 
@@ -82,6 +75,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.6]: ensureTrackVisible placed outside if(range) but inside if(seekTrack) -- scroll happens even if key photo range not found
 - [Phase 12.7]: Icon size 9px fixed (not zoom-scaled) with 18px hit area; nearest-wins replaces first-match; hover glow shadowBlur 3 with #E5A020 distinct from selected shadowBlur 6
 - [Phase 12.8]: createPattern-based tile rendering with DOMMatrix scaling; center-crop offset (fw-tileWidth)/2 when frame narrower than tile; MIN_FRAME_WIDTH_FOR_THUMB=4px fallback
+- [Phase 12.9]: Intent dispatch pattern: AddLayerMenu sets intent signal + switches to imported mode, ImportedView reads intent to derive filter/selection/handlers
+- [Phase 12.9]: Priority-based mode resolution: addLayerIntent > pendingNewSequenceId > activeSequenceId; cancel-delete collision prevention via intent check first
 
 ### Pending Todos
 
@@ -147,6 +142,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T19:25:19.565Z
-Stopped at: Phase 12.9 context gathered
-Resume file: .planning/phases/12.9-fix-sidebar-add-layer-dialogs-for-static-image-image-sequence-and-video-layers/12.9-CONTEXT.md
+Last session: 2026-03-18T19:58:55.629Z
+Stopped at: Completed 12.9-01-PLAN.md
+Resume file: None
