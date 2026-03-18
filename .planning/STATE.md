@@ -136,9 +136,10 @@ No active blockers.
 | 30 | Fix FX range bar in/out point desync on horizontal scroll | 2026-03-17 | 336c90e |
 | 31 | Fix z-index issue where sequence thumbnails overlap track header on scroll | 2026-03-18 | 04206a8 |
 | 32 | Fix arrow key scrubbing: context-aware via mouseRegion (timeline scrubs, canvas nudges) | 2026-03-18 | 05913fb |
+| 33 | Timeline zoom: replace slider with +/- icon buttons, context-aware =/- shortcuts | 2026-03-18 | f32d7a3 |
 
 ## Session Continuity
 
-Last session: 2026-03-18T13:57:16Z
-Stopped at: Completed quick task 260318-kn8
+Last session: 2026-03-18T14:16:38Z
+Stopped at: Completed quick task 260318-l3c
 Resume file: None
