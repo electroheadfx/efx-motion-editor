@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 12.6-01-PLAN.md
-last_updated: "2026-03-18T09:31:40.730Z"
-last_activity: "2026-03-18 - Completed 12.6-02: transactional sequence creation with multi-select key photo import"
+stopped_at: Completed 12.6-03-PLAN.md
+last_updated: "2026-03-18T11:01:15.912Z"
+last_activity: "2026-03-18 - Completed 12.6-03: key photo vertical scroll fix (gap closure)"
 progress:
   total_phases: 17
   completed_phases: 10
-  total_plans: 36
-  completed_plans: 34
-  percent: 92
+  total_plans: 37
+  completed_plans: 35
+  percent: 95
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 Milestone: v0.2.0
 Phase: 12.6 (layer-sequence-auto-selection-and-key-photo-ux-fixes)
-Plan: 2 of 2
+Plan: 3 of 3
 Status: Phase Complete
-Last activity: 2026-03-18 - Completed 12.6-02: transactional sequence creation with multi-select key photo import
+Last activity: 2026-03-18 - Completed 12.6-03: key photo vertical scroll fix (gap closure)
 
-Progress: [█████████░] 92%
+Progress: [██████████] 95%
 
 ## Accumulated Context
 
@@ -78,6 +78,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.6]: pendingNewSequenceId signal drives multi-select mode; cancel-delete only when pendingId set
 - [Phase 12.6]: Key photo ring highlight derived from playhead displayFrame, not separate selectedKeyPhotoId state
 - [Phase 12.6]: Auto-scroll suppressed during playback via isPlaying.peek() gate, fires on stop when displayFrame syncs
+- [Phase 12.6]: ensureTrackVisible placed outside if(range) but inside if(seekTrack) -- scroll happens even if key photo range not found
 
 ### Pending Todos
 
@@ -135,6 +136,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T09:31:28.333Z
-Stopped at: Completed 12.6-01-PLAN.md
+Last session: 2026-03-18T11:01:15.909Z
+Stopped at: Completed 12.6-03-PLAN.md
 Resume file: None
