@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.10-01-PLAN.md
-last_updated: "2026-03-18T21:20:05.105Z"
+stopped_at: Completed 12.10-02-PLAN.md
+last_updated: "2026-03-18T21:37:02.728Z"
 progress:
   total_phases: 21
-  completed_phases: 15
+  completed_phases: 16
   total_plans: 42
-  completed_plans: 41
+  completed_plans: 42
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 ## Current Position
 
-Phase: 12.10 (gpu-accelerated-blur-via-webgl2) — EXECUTING
-Plan: 2 of 2
+Phase: 12.10 (gpu-accelerated-blur-via-webgl2) — COMPLETE
+Plan: 2 of 2 (all plans complete)
 
 ## Accumulated Context
 
@@ -78,6 +78,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.9]: Intent dispatch pattern: AddLayerMenu sets intent signal + switches to imported mode, ImportedView reads intent to derive filter/selection/handlers
 - [Phase 12.9]: Priority-based mode resolution: addLayerIntent > pendingNewSequenceId > activeSequenceId; cancel-delete collision prevention via intent check first
 - [Phase 12.10]: Inlined normalizedToPixelRadius in glBlur.ts to avoid circular import; runtime Gaussian weights in shader; RGBA8 texStorage2D; sigma=pixelRadius/3.0 mapping; 64-iteration shader loop cap
+- [Phase 12.10]: GPU blur makes HQ/fast distinction obsolete; removed hqPreview signal, toggleHQ(), isHQ() from blurStore; single always-high-quality blur with bypass-only controls
 
 ### Pending Todos
 
@@ -144,6 +145,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T21:20:05.102Z
-Stopped at: Completed 12.10-01-PLAN.md
+Last session: 2026-03-18T21:37:02.725Z
+Stopped at: Completed 12.10-02-PLAN.md
 Resume file: None
