@@ -114,8 +114,13 @@ export function KeyPhotoStripInline({sequenceId}: {sequenceId: string}) {
   return (
     <div
       ref={stripRef}
-      class="flex gap-1 overflow-x-auto scrollbar-hidden pb-1"
+      class="flex gap-1 overflow-x-auto scrollbar-hidden p-0.5"
       onWheel={handleWheel}
+      onClick={(e: MouseEvent) => {
+        if (e.currentTarget === e.target) {
+          sequenceStore.clearKeyPhotoSelection();
+        }
+      }}
     >
       {keyPhotos.map((kp, index) => (
         <KeyPhotoCard

@@ -210,6 +210,11 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         border: `1px solid var(${isActive ? '--sidebar-border-selected' : '--sidebar-border-unselected'})`,
         backgroundColor: isActive ? 'var(--sidebar-selected-group-bg)' : 'var(--sidebar-panel-bg)',
       }}
+      onClick={(e: MouseEvent) => {
+        if (e.currentTarget === e.target) {
+          sequenceStore.clearKeyPhotoSelection();
+        }
+      }}
     >
       {/* Sequence row */}
       <div
