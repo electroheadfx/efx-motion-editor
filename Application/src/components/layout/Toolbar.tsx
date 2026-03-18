@@ -122,9 +122,14 @@ export function Toolbar() {
             ? 'bg-[var(--color-accent)]'
             : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)]'
         }`}
-        onClick={() => uiStore.setEditorMode(
-          uiStore.editorMode.value === 'imported' ? 'editor' : 'imported'
-        )}
+        onClick={() => {
+          if (uiStore.editorMode.value === 'imported') {
+            uiStore.setAddLayerIntent(null);
+            uiStore.setEditorMode('editor');
+          } else {
+            uiStore.setEditorMode('imported');
+          }
+        }}
       >
         <span class={`text-xs ${
           uiStore.editorMode.value === 'imported' ? 'text-white' : 'text-[var(--color-text-button)]'
