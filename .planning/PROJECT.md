@@ -92,4 +92,4 @@ Known technical debt:
 | PNG sequence export (not video) | Downstream editing in DaVinci Resolve/Premiere Pro is the workflow | — Pending (v0.2.0) |
 
 ---
-*Last updated: 2026-03-11 after v0.1.0 milestone*
+*Last updated: 2026-03-18 after Phase 12.9 — add-layer dialogs refactored to intent-driven ImportedView flows*
