@@ -12,6 +12,7 @@ const shortcutsOverlayOpen = signal(false);
 const showNewProjectDialog = signal(false);
 const editorMode = signal<EditorMode>('editor');
 const sidebarCollapsed = signal(false);
+const pendingNewSequenceId = signal<string | null>(null);
 const sequencesSectionCollapsed = signal(false);
 const layersSectionCollapsed = signal(false);
 const propertiesSectionCollapsed = signal(false);
@@ -40,6 +41,7 @@ export const uiStore = {
   showNewProjectDialog,
   editorMode,
   sidebarCollapsed,
+  pendingNewSequenceId,
   sequencesSectionCollapsed,
   layersSectionCollapsed,
   propertiesSectionCollapsed,
@@ -74,6 +76,9 @@ export const uiStore = {
 
   setEditorMode(mode: EditorMode) {
     editorMode.value = mode;
+  },
+  setPendingNewSequenceId(id: string | null) {
+    pendingNewSequenceId.value = id;
   },
   toggleSidebar() {
     sidebarCollapsed.value = !sidebarCollapsed.value;
@@ -164,6 +169,7 @@ export const uiStore = {
     shortcutsOverlayOpen.value = false;
     showNewProjectDialog.value = false;
     editorMode.value = 'editor';
+    pendingNewSequenceId.value = null;
     sidebarCollapsed.value = false;
     sequencesSectionCollapsed.value = false;
     layersSectionCollapsed.value = false;

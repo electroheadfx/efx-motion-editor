@@ -164,7 +164,13 @@ export function LeftPanel() {
             <button
               class="flex items-center rounded transition-colors hover:brightness-110"
               style={{ gap: '4px', padding: '4px 10px', borderRadius: '4px', backgroundColor: 'var(--sidebar-input-bg)' }}
-              onClick={() => sequenceStore.createSequence(`Sequence ${sequences.length + 1}`)}
+              onClick={() => {
+                const seq = sequenceStore.createSequence(`Sequence ${sequences.length + 1}`);
+                uiStore.selectSequence(seq.id);
+                sequenceStore.setActive(seq.id);
+                uiStore.setPendingNewSequenceId(seq.id);
+                uiStore.setEditorMode('imported');
+              }}
             >
               <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--sidebar-text-button)' }}>+</span>
               <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--sidebar-text-button)' }}>Add</span>
