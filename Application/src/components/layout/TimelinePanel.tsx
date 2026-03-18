@@ -2,6 +2,7 @@ import {useRef, useCallback} from 'preact/hooks';
 import {timelineStore} from '../../stores/timelineStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {TimelineCanvas} from '../timeline/TimelineCanvas';
+import {TimelineScrollbar} from '../timeline/TimelineScrollbar';
 import {AddFxMenu} from '../timeline/AddFxMenu';
 import {BASE_FRAME_WIDTH} from '../timeline/TimelineRenderer';
 
@@ -106,8 +107,9 @@ export function TimelinePanel() {
       </div>
 
       {/* Canvas Timeline (replaces time ruler, mock tracks) */}
-      <div ref={canvasContainerRef} class="flex-1 min-h-0 overflow-hidden">
+      <div ref={canvasContainerRef} class="flex-1 min-h-0 overflow-hidden flex flex-row">
         <TimelineCanvas />
+        <TimelineScrollbar />
       </div>
     </div>
   );
