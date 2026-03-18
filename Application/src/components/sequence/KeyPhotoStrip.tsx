@@ -116,10 +116,8 @@ export function KeyPhotoStripInline({sequenceId}: {sequenceId: string}) {
       ref={stripRef}
       class="flex gap-1 overflow-x-auto scrollbar-hidden p-0.5"
       onWheel={handleWheel}
-      onClick={(e: MouseEvent) => {
-        if (e.currentTarget === e.target) {
-          sequenceStore.clearKeyPhotoSelection();
-        }
+      onClick={() => {
+        sequenceStore.clearKeyPhotoSelection();
       }}
     >
       {keyPhotos.map((kp, index) => (
@@ -130,7 +128,6 @@ export function KeyPhotoStripInline({sequenceId}: {sequenceId: string}) {
           imageId={kp.imageId}
           holdFrames={kp.holdFrames}
           isActiveByFrame={index === activeKpIndex}
-          anyActiveByFrame={activeKpIndex >= 0}
         />
       ))}
     </div>
@@ -143,7 +140,6 @@ interface KeyPhotoCardProps {
   imageId: string;
   holdFrames: number;
   isActiveByFrame: boolean;
-  anyActiveByFrame: boolean;
 }
 
 function KeyPhotoCard({
@@ -152,7 +148,6 @@ function KeyPhotoCard({
   imageId,
   holdFrames,
   isActiveByFrame,
-  anyActiveByFrame,
 }: KeyPhotoCardProps) {
   const [editingFrames, setEditingFrames] = useState(false);
   const [frameValue, setFrameValue] = useState(String(holdFrames));
@@ -183,10 +178,11 @@ function KeyPhotoCard({
         minWidth: '56px',
         height: '56px',
         backgroundColor: 'var(--sidebar-input-bg)',
-        opacity: !isActiveByFrame && anyActiveByFrame ? 0.4 : 1,
+        opacity: isActiveByFrame ? 1 : 0.7,
         ...(thumbUrl ? {backgroundImage: `url(${thumbUrl})`, aspectRatio: 'auto'} : {}),
       }}
-      onClick={() => {
+      onClick={(e) => {
+        e.stopPropagation();
         // Select key photo (for Delete key targeting)
         sequenceStore.selectKeyPhoto(keyPhotoId);
 
