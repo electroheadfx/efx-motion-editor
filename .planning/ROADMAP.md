@@ -283,6 +283,22 @@ Plans:
 Plans:
 - [ ] 12.9-01-PLAN.md -- Intent signal, AddLayerMenu simplification, ImportGrid filtering, ImportedView layer creation, Toolbar cleanup
 
+### Phase 12.10: GPU-Accelerated Blur via WebGL2 (INSERTED)
+
+**Goal:** Replace both CPU blur algorithms (fast downscale-upscale and HQ StackBlur) with a single WebGL2 two-pass separable Gaussian blur. GPU-accelerated, always high quality, near-constant cost regardless of layer count or radius. Falls back to CPU blur if WebGL2 unavailable.
+**Requirements**: GPU-01, GPU-02, GPU-03, GPU-04, GPU-05, GPU-06
+**Depends on:** Phase 12.9
+**Success Criteria** (what must be TRUE):
+  1. Blur rendering uses WebGL2 GPU path as primary algorithm (single quality level, no HQ/fast toggle)
+  2. Performance is decoupled from blur radius size and layer count
+  3. Graceful fallback to current CPU StackBlur when WebGL2 context creation fails
+  4. Visual quality equals or exceeds current HQ StackBlur mode
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12.10-01-PLAN.md -- WebGL2 glBlur.ts module, unified fxBlur.ts API, previewRenderer simplification
+- [ ] 12.10-02-PLAN.md -- Remove HQ toggle from blurStore/Toolbar/shortcuts/ShortcutsOverlay/Preview, visual verification
+
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12
@@ -337,7 +353,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -364,6 +380,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.7. Change Keyframe Icons | 1/1 | Complete    | 2026-03-18 | - |
 | 12.8. Fix Timeline Thumb Stretching | 1/1 | Complete    | 2026-03-18 | - |
 | 12.9. Fix Add-Layer Dialogs | 1/1 | Complete    | 2026-03-18 | - |
+| 12.10. GPU-Accelerated Blur via WebGL2 | v0.2.0 | 0/2 | In Progress | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
