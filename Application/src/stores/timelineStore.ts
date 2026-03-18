@@ -1,6 +1,6 @@
 import {signal, computed} from '@preact/signals';
 import {projectStore} from './projectStore';
-import {totalFrames as totalFramesSignal} from '../lib/frameMap';
+import {totalFrames as totalFramesSignal, trackLayouts, fxTrackLayouts} from '../lib/frameMap';
 
 const currentFrame = signal(0);
 const displayFrame = signal(0);
@@ -10,6 +10,7 @@ const zoom = signal(1);
 const scrollX = signal(0);
 const scrollY = signal(0);
 const viewportWidth = signal(0);
+const viewportHeight = signal(0);
 
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);
 const displayTime = computed(() => displayFrame.value / projectStore.fps.value);
@@ -18,6 +19,19 @@ const totalDuration = computed(() => totalFramesSignal.value / projectStore.fps.
 // Timeline layout constants (mirrored from TimelineRenderer to avoid circular deps)
 const BASE_FRAME_WIDTH = 60;
 const TRACK_HEADER_WIDTH = 80;
+const RULER_HEIGHT = 24;
+const TRACK_HEIGHT = 52;
+const FX_TRACK_HEIGHT = 28;
+
+const totalContentHeight = computed(() => {
+  const fxCount = fxTrackLayouts.value.length;
+  const contentCount = trackLayouts.value.length;
+  return RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + contentCount * TRACK_HEIGHT;
+});
+
+const maxScrollY = computed(() => {
+  return Math.max(0, totalContentHeight.value - viewportHeight.value);
+});
 
 export const timelineStore = {
   currentFrame,
@@ -28,6 +42,9 @@ export const timelineStore = {
   scrollX,
   scrollY,
   viewportWidth,
+  viewportHeight,
+  totalContentHeight,
+  maxScrollY,
   currentTime,
   displayTime,
   totalFrames: totalFramesSignal,
@@ -69,6 +86,9 @@ export const timelineStore = {
   setViewportWidth(v: number) {
     viewportWidth.value = v;
   },
+  setViewportHeight(v: number) {
+    viewportHeight.value = v;
+  },
   /** Scroll the timeline so the given frame is visible (smooth follow for seeks). */
   ensureFrameVisible(frame: number) {
     const vw = viewportWidth.value;
@@ -98,6 +118,26 @@ export const timelineStore = {
       scrollX.value = Math.max(0, scrollX.value - trackArea);
     } else if (playheadX > visibleRight) {
       scrollX.value = scrollX.value + trackArea;
+    }
+  },
+  /** Snap vertical scroll so the given sequence's track is visible. */
+  ensureTrackVisible(sequenceId: string) {
+    const tracks = trackLayouts.peek();
+    const fxCount = fxTrackLayouts.peek().length;
+    const trackIndex = tracks.findIndex(t => t.sequenceId === sequenceId);
+    if (trackIndex < 0) return;
+
+    const trackTop = fxCount * FX_TRACK_HEIGHT + trackIndex * TRACK_HEIGHT;
+    const trackBottom = trackTop + TRACK_HEIGHT;
+    const vh = viewportHeight.peek();
+    if (vh <= 0) return;
+    const visibleTop = scrollY.peek();
+    const visibleBottom = scrollY.peek() + vh - RULER_HEIGHT;
+
+    if (trackTop < visibleTop) {
+      scrollY.value = trackTop;
+    } else if (trackBottom > visibleBottom) {
+      scrollY.value = trackBottom - (vh - RULER_HEIGHT);
     }
   },
   syncDisplayFrame() {

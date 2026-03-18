@@ -40,6 +40,7 @@ export function TimelineCanvas() {
       renderer.resize();
       for (const entry of entries) {
         timelineStore.setViewportWidth(entry.contentRect.width);
+        timelineStore.setViewportHeight(entry.contentRect.height);
       }
     });
     resizeObserver.observe(canvas.parentElement ?? canvas);
