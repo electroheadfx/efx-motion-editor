@@ -241,6 +241,21 @@ Plans:
 - [x] 12.6-02-PLAN.md -- New sequence creation transactional flow with multi-select importer
 - [ ] 12.6-03-PLAN.md -- [gap closure] Fix key photo click vertical scroll
 
+### Phase 12.7: Change keyframe icons and improve keyframe click targets (INSERTED)
+
+**Goal:** Replace uniform gold diamond keyframe markers on the timeline with interpolation-aware icons (losange for linear, full circle for ease-in-out, half-circles for ease-in/ease-out), increase icon size from 6px to 9px, expand click targets to 18px with nearest-wins selection, and add hover feedback with crosshair cursor and subtle glow highlight.
+**Requirements**: KF-ICON-01, KF-ICON-02, KF-ICON-03, KF-ICON-04
+**Depends on:** Phase 12.6
+**Success Criteria** (what must be TRUE):
+  1. Keyframe markers display interpolation-specific shapes (losange, circle, half-circles) instead of uniform diamonds
+  2. Click targets are generous (~18px) with nearest-wins selection for overlapping keyframes
+  3. Hovering over a keyframe shows crosshair cursor and subtle gold glow highlight
+  4. All icons use gold color scheme: normal #E5A020, hover #F0B830, selected #FFD700
+**Plans:** 1 plan
+
+Plans:
+- [ ] 12.7-01-PLAN.md -- Interpolation-aware icon shapes, expanded hit area, nearest-wins, hover feedback, visual verification
+
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12
@@ -295,7 +310,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -319,6 +334,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.4. ShortcutsOverlay Tabbed Sections | v0.2.0 | 0/1 | In Progress | - |
 | 12.5. Vertical Scroll Issues | 2/2 | Complete    | 2026-03-18 | - |
 | 12.6. Layer Sequence Auto-Selection | 3/3 | Complete    | 2026-03-18 | - |
+| 12.7. Change Keyframe Icons | 0/1 | In Progress    | - | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
