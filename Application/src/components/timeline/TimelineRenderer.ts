@@ -275,13 +275,18 @@ export class TimelineRenderer {
 
           if (cachedImg && pattern && fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
             // Tile thumbnail maintaining aspect ratio
+            const cellH = TRACK_HEIGHT - 4;
+            const scale = cellH / cachedImg.naturalHeight;
+            const tileWidth = cachedImg.naturalWidth * scale;
+            // Center the tile when frame cell is narrower than one tile width
+            const offsetX = fw < tileWidth ? (fw - tileWidth) / 2 : 0;
             ctx.save();
             ctx.beginPath();
             ctx.rect(fx, fy, fw, fh);
             ctx.clip();
-            ctx.translate(fx, fy);
+            ctx.translate(fx + offsetX, fy);
             ctx.fillStyle = pattern;
-            ctx.fillRect(0, 0, fw, fh);
+            ctx.fillRect(0, 0, fw - offsetX, fh);
             ctx.restore();
           } else {
             // Placeholder: solid color (loading state OR low-zoom fallback)
