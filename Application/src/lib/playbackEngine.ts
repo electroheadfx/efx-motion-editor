@@ -30,6 +30,8 @@ export class PlaybackEngine {
     if (this.rafId !== null) return; // already running
     this.lastTime = performance.now();
     this.accumulator = 0;
+    // Deselect sidebar sequence during playback to avoid expensive re-renders
+    uiStore.selectSequence(null);
     timelineStore.setPlaying(true);
     this.rafId = requestAnimationFrame(this.tick);
   }
@@ -133,15 +135,12 @@ export class PlaybackEngine {
     timelineStore.ensureFrameVisiblePaged(timelineStore.currentFrame.peek());
 
     // Auto vertical scroll: keep active track visible during playback
+    // NOTE: Only scroll -- do NOT update sidebar sequence selection during playback
+    // (sidebar re-syncs when playback stops via syncActiveSequence)
     const cf = timelineStore.currentFrame.peek();
     const entry = frameMap.peek()[cf];
     if (entry) {
-      const activeId = sequenceStore.activeSequenceId.peek();
-      if (entry.sequenceId !== activeId) {
-        sequenceStore.setActive(entry.sequenceId);
-        uiStore.selectSequence(entry.sequenceId);
-        timelineStore.ensureTrackVisible(entry.sequenceId);
-      }
+      timelineStore.ensureTrackVisible(entry.sequenceId);
     }
 
     this.syncPlayer();
