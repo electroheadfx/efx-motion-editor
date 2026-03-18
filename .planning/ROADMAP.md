@@ -299,7 +299,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 13 > 
 | 12.2. Auto-seek Timeline to Sequence Start | 1/1 | Complete    | 2026-03-17 | - |
 | 12.3. Add Quick Keys for Navigation | 1/1 | Complete    | 2026-03-17 | - |
 | 12.4. ShortcutsOverlay Tabbed Sections | v0.2.0 | 0/1 | In Progress | - |
-| 12.5. Vertical Scroll Issues | 2/2 | Complete   | 2026-03-18 | - |
+| 12.5. Vertical Scroll Issues | 2/2 | Complete    | 2026-03-18 | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
