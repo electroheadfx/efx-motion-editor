@@ -293,16 +293,27 @@ export function mountShortcuts(): () => void {
       cycleTheme();
     },
 
-    // Canvas zoom (ZOOM-01, ZOOM-03) — bare keys, no Cmd modifier
+    // Context-aware zoom (ZOOM-01, ZOOM-03) — bare keys, no Cmd modifier
+    // When mouse hovers timeline: zoom timeline; otherwise: zoom canvas
     '=': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      canvasStore.zoomIn();
+      const region = uiStore.mouseRegion.peek();
+      if (region === 'timeline') {
+        timelineStore.zoomIn();
+      } else {
+        canvasStore.zoomIn();
+      }
     },
     '-': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
-      canvasStore.zoomOut();
+      const region = uiStore.mouseRegion.peek();
+      if (region === 'timeline') {
+        timelineStore.zoomOut();
+      } else {
+        canvasStore.zoomOut();
+      }
     },
     '$mod+Digit0': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;

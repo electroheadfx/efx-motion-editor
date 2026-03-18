@@ -53,14 +53,22 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Canvas',
     entries: [
-      {keys: '=', description: 'Zoom in'},
-      {keys: '\u2212', description: 'Zoom out'},
+      {keys: '=', description: 'Zoom in (when mouse over canvas)'},
+      {keys: '\u2212', description: 'Zoom out (when mouse over canvas)'},
       {keys: '\u23180', description: 'Fit to window'},
       {keys: 'F', description: 'Toggle fit lock'},
       {keys: '\u2190\u2191\u2193\u2192', description: 'Nudge layer 1px'},
       {keys: '\u21E7\u2190\u2191\u2193\u2192', description: 'Nudge layer 10px'},
       {keys: 'Esc', description: 'Deselect layer'},
       {keys: '\u2325Click', description: 'Cycle overlapping layers'},
+    ],
+  },
+  {
+    title: 'Timeline',
+    entries: [
+      {keys: '=', description: 'Zoom in (when mouse over timeline)'},
+      {keys: '\u2212', description: 'Zoom out (when mouse over timeline)'},
+      {keys: '\u2303Scroll', description: 'Zoom at cursor'},
     ],
   },
   {
@@ -78,8 +86,8 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
 ];
 
-/** Total number of tabs: Sections index (0) + 7 group tabs (1-7) */
-const TAB_COUNT = 8;
+/** Total number of tabs: Sections index (0) + 8 group tabs (1-8) */
+const TAB_COUNT = 9;
 
 /** Tab labels: index 0 = Sections, indices 1-7 = group titles */
 const TAB_LABELS = ['Sections', ...SHORTCUT_GROUPS.map((g) => g.title)];
@@ -138,9 +146,9 @@ export function ShortcutsOverlay() {
         setActiveTab((prev) => (prev - 1 + TAB_COUNT) % TAB_COUNT);
         return;
       }
-      // Number keys 1-7: direct jump to group tab
+      // Number keys 1-8: direct jump to group tab
       const num = parseInt(e.key, 10);
-      if (num >= 1 && num <= 7) {
+      if (num >= 1 && num <= 8) {
         e.preventDefault();
         e.stopPropagation();
         setActiveTab(num);
