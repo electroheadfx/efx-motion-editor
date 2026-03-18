@@ -266,6 +266,23 @@ Plans:
 Plans:
 - [ ] 12.8-01-PLAN.md -- Replace stretched drawImage with tile-pattern rendering, visual verification
 
+### Phase 12.9: Fix sidebar add-layer dialogs for Static Image, Image Sequence, and Video layers (INSERTED)
+
+**Goal:** Replace the three popover-based add-layer dialogs (thumbnail picker, OS directory picker, video text list) with proper Imported view flows. Each flow opens the existing full-window ImportedView with appropriate asset filtering (images-only or videos-only) and selection mode (single-select or multi-select), then creates the appropriate layer on selection/confirmation.
+**Requirements**: ADDLAYER-INTENT, ADDLAYER-STATIC, ADDLAYER-SEQUENCE, ADDLAYER-VIDEO, ADDLAYER-FILTER, ADDLAYER-CANCEL, ADDLAYER-TOOLBAR
+**Depends on:** Phase 12.8
+**Success Criteria** (what must be TRUE):
+  1. Clicking Static Image in Add menu opens Imported view showing only images, single-click creates static-image layer and auto-closes
+  2. Clicking Image Sequence in Add menu opens Imported view in multi-select mode for images only, Confirm creates image-sequence layer
+  3. Clicking Video in Add menu opens Imported view showing only video thumbnails with Film badges, single-click creates video layer and auto-closes
+  4. Cancel (X) in any add-layer flow closes the view without creating a layer and without affecting pending sequences
+  5. Toolbar Imported button clears stale add-layer intent when toggling
+  6. All existing key photo flows (single-select and pending sequence multi-select) remain functional
+**Plans:** 1 plan
+
+Plans:
+- [ ] 12.9-01-PLAN.md -- Intent signal, AddLayerMenu simplification, ImportGrid filtering, ImportedView layer creation, Toolbar cleanup
+
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12
@@ -320,7 +337,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -346,6 +363,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.6. Layer Sequence Auto-Selection | 3/3 | Complete    | 2026-03-18 | - |
 | 12.7. Change Keyframe Icons | 1/1 | Complete    | 2026-03-18 | - |
 | 12.8. Fix Timeline Thumb Stretching | 1/1 | Complete    | 2026-03-18 | - |
+| 12.9. Fix Add-Layer Dialogs | v0.2.0 | 0/1 | In Progress | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
