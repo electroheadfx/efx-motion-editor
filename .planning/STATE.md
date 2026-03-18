@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 12.7-01-PLAN.md
-last_updated: "2026-03-18T15:06:01Z"
-last_activity: "2026-03-18 - Completed quick-260318-m9x: add missing scroll shortcuts to help overlay"
+stopped_at: Phase 12.8 context gathered
+last_updated: "2026-03-18T16:42:55.381Z"
+last_activity: "2026-03-18 - Completed quick task 260318-m9x: Add missing scroll shortcuts to help overlay"
 progress:
-  total_phases: 18
+  total_phases: 19
   completed_phases: 13
   total_plans: 38
   completed_plans: 38
@@ -95,6 +95,7 @@ None.
 - Phase 12.5 inserted after Phase 12.4: vertical scroll issues (URGENT)
 - Phase 12.6 inserted after Phase 12.5: Layer sequence auto-selection and key photo UX fixes (URGENT)
 - Phase 12.7 inserted after Phase 12.6: Change keyframe icons and improve keyframe click targets (URGENT)
+- Phase 12.8 inserted after Phase 12.7: Fix timeline thumb horizontal stretching on zoom - use repeat cover pattern (URGENT)
 
 ### Blockers/Concerns
 
@@ -143,6 +144,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T15:06:01Z
-Stopped at: Completed quick task 260318-m9x
-Resume file: None
+Last session: 2026-03-18T16:42:55.377Z
+Stopped at: Phase 12.8 context gathered
+Resume file: .planning/phases/12.8-fix-timeline-thumb-horizontal-stretching-on-zoom-use-repeat-cover-pattern/12.8-CONTEXT.md
