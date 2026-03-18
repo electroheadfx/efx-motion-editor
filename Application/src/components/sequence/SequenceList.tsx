@@ -209,6 +209,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       style={{
         border: `1px solid var(${isActive ? '--sidebar-border-selected' : '--sidebar-border-unselected'})`,
         backgroundColor: isActive ? 'var(--sidebar-selected-group-bg)' : 'var(--sidebar-panel-bg)',
+        opacity: isActive ? 1 : 0.7,
       }}
       onClick={(e: MouseEvent) => {
         if (e.currentTarget === e.target) {
@@ -232,7 +233,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         )}
 
         {/* Drag handle */}
-        <div class="seq-drag-handle cursor-grab shrink-0 opacity-60 hover:opacity-100">
+        <div class="seq-drag-handle cursor-grab shrink-0 opacity-80 hover:opacity-100">
           <GripVertical size={14} style={{color: 'var(--sidebar-resizer-icon)'}} />
         </div>
 
