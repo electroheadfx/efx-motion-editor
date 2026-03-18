@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 12.8-01-PLAN.md
-last_updated: "2026-03-18T17:18:23.329Z"
+stopped_at: Phase 12.9 context gathered
+last_updated: "2026-03-18T19:25:19.569Z"
 last_activity: "2026-03-18 - Completed 12.8-01: tile-pattern thumbnail rendering with center-crop"
 progress:
-  total_phases: 19
+  total_phases: 20
   completed_phases: 14
   total_plans: 39
   completed_plans: 39
@@ -39,6 +39,7 @@ Progress: [██████████] 100%
 
 Archived to PROJECT.md Key Decisions table.
 Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
+
 - [Phase 08]: data-theme attribute on html for CSS variable switching; theme persistence moved from LazyStore to ~/.config/efx-motion/builder-config.yaml (quick-12)
 - [Phase 08-02]: Semi-transparent black overlays on thumbnails stay hardcoded; layer/FX identity colors exempt from theme conversion
 - [Phase 08-03]: Canvas 2D colors cached at module level with invalidation on theme signal; functional colors (playhead, drop indicator) stay hardcoded
@@ -97,6 +98,7 @@ None.
 - Phase 12.6 inserted after Phase 12.5: Layer sequence auto-selection and key photo UX fixes (URGENT)
 - Phase 12.7 inserted after Phase 12.6: Change keyframe icons and improve keyframe click targets (URGENT)
 - Phase 12.8 inserted after Phase 12.7: Fix timeline thumb horizontal stretching on zoom - use repeat cover pattern (URGENT)
+- Phase 12.9 inserted after Phase 12.8: Fix sidebar add-layer dialogs for Static Image, Image Sequence, and Video layers (URGENT)
 
 ### Blockers/Concerns
 
@@ -145,6 +147,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-18T17:09:06.424Z
-Stopped at: Completed 12.8-01-PLAN.md
-Resume file: None
+Last session: 2026-03-18T19:25:19.565Z
+Stopped at: Phase 12.9 context gathered
+Resume file: .planning/phases/12.9-fix-sidebar-add-layer-dialogs-for-static-image-image-sequence-and-video-layers/12.9-CONTEXT.md
