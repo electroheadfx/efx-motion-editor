@@ -3,6 +3,12 @@ import type {PanelId} from '../types/ui';
 
 export type EditorMode = 'editor' | 'imported' | 'settings';
 
+export type AddLayerIntent =
+  | null
+  | { type: 'static-image' }
+  | { type: 'image-sequence' }
+  | { type: 'video' };
+
 const selectedSequenceId = signal<string | null>(null);
 const selectedLayerId = signal<string | null>(null);
 const selectedPanel = signal<PanelId | null>(null);
@@ -13,6 +19,7 @@ const showNewProjectDialog = signal(false);
 const editorMode = signal<EditorMode>('editor');
 const sidebarCollapsed = signal(false);
 const pendingNewSequenceId = signal<string | null>(null);
+const addLayerIntent = signal<AddLayerIntent>(null);
 const sequencesSectionCollapsed = signal(false);
 const layersSectionCollapsed = signal(false);
 const propertiesSectionCollapsed = signal(false);
@@ -45,6 +52,7 @@ export const uiStore = {
   editorMode,
   sidebarCollapsed,
   pendingNewSequenceId,
+  addLayerIntent,
   sequencesSectionCollapsed,
   layersSectionCollapsed,
   propertiesSectionCollapsed,
@@ -83,6 +91,9 @@ export const uiStore = {
   },
   setPendingNewSequenceId(id: string | null) {
     pendingNewSequenceId.value = id;
+  },
+  setAddLayerIntent(intent: AddLayerIntent) {
+    addLayerIntent.value = intent;
   },
   toggleSidebar() {
     sidebarCollapsed.value = !sidebarCollapsed.value;
@@ -177,6 +188,7 @@ export const uiStore = {
     showNewProjectDialog.value = false;
     editorMode.value = 'editor';
     pendingNewSequenceId.value = null;
+    addLayerIntent.value = null;
     sidebarCollapsed.value = false;
     sequencesSectionCollapsed.value = false;
     layersSectionCollapsed.value = false;

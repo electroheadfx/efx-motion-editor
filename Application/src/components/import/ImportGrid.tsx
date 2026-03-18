@@ -1,4 +1,5 @@
 import {useRef, useEffect} from 'preact/hooks';
+import {Film} from 'lucide-preact';
 import {imageStore, type VideoAsset} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
 
@@ -11,21 +12,32 @@ interface ImportGridProps {
   selectedIds?: string[];
   /** Toggle selection of an image in multi-select mode */
   onToggleSelect?: (imageId: string) => void;
+  /** Filter which asset types to show */
+  assetFilter?: 'all' | 'images-only' | 'videos-only';
+  /** When provided, video thumbnails become clickable and call this with the video ID */
+  onVideoSelect?: (videoId: string) => void;
 }
 
 /**
  * Thumbnail grid showing imported images and video assets.
  * Displayed in the LeftPanel when assets have been imported.
  */
-export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect}: ImportGridProps) {
+export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, assetFilter = 'all', onVideoSelect}: ImportGridProps) {
   const images = imageStore.images.value;
   const videos = imageStore.videoAssets.value;
 
-  if (images.length === 0 && videos.length === 0) {
+  const showImages = assetFilter !== 'videos-only';
+  const showVideos = assetFilter !== 'images-only';
+
+  const visibleImages = showImages ? images : [];
+  const visibleVideos = showVideos ? videos : [];
+  if (visibleImages.length === 0 && visibleVideos.length === 0) {
     return (
       <div class="flex items-center justify-center h-20 px-3">
         <span class="text-[10px] text-[var(--color-text-dim)] text-center">
-          Drag & drop images here or use Import button
+          {assetFilter === 'videos-only'
+            ? 'No imported videos yet'
+            : 'Drag & drop images here or use Import button'}
         </span>
       </div>
     );
@@ -34,7 +46,7 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect}:
   return (
     <div class="overflow-y-auto">
       {/* Image assets */}
-      {images.length > 0 && (
+      {showImages && images.length > 0 && (
         <div class="grid grid-cols-4 gap-1 p-2">
           {images.map((img) => (
             <div
@@ -82,14 +94,21 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect}:
       )}
 
       {/* Video assets */}
-      {videos.length > 0 && (
+      {showVideos && videos.length > 0 && (
         <div class="px-2 pb-2">
-          <span class="text-[9px] text-[var(--color-text-dim)] uppercase tracking-wider block mt-1 mb-1">
-            Videos
-          </span>
+          {assetFilter === 'all' && (
+            <span class="text-[9px] text-[var(--color-text-dim)] uppercase tracking-wider block mt-1 mb-1">
+              Videos
+            </span>
+          )}
           <div class="grid grid-cols-4 gap-1">
             {videos.map((video) => (
-              <VideoThumb key={video.id} video={video} selectMode={!!onSelect} />
+              <VideoThumb
+                key={video.id}
+                video={video}
+                selectMode={!!onSelect && !onVideoSelect}
+                onClick={onVideoSelect ? () => onVideoSelect(video.id) : undefined}
+              />
             ))}
           </div>
         </div>
@@ -99,7 +118,7 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect}:
 }
 
 /** Video thumbnail that seeks to middle frame for a meaningful preview */
-function VideoThumb({video, selectMode}: {video: VideoAsset; selectMode?: boolean}) {
+function VideoThumb({video, selectMode, onClick}: {video: VideoAsset; selectMode?: boolean; onClick?: () => void}) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -116,8 +135,11 @@ function VideoThumb({video, selectMode}: {video: VideoAsset; selectMode?: boolea
 
   return (
     <div
-      class={`relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] group${selectMode ? ' opacity-50' : ' cursor-pointer'}`}
-      title={selectMode ? 'Videos cannot be used as key photos' : video.name}
+      class={`relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] group${
+        onClick ? ' cursor-pointer hover:ring-2 ring-[var(--color-accent)]' : selectMode ? ' opacity-50' : ''
+      }`}
+      title={onClick ? video.name : selectMode ? 'Videos cannot be used as key photos' : video.name}
+      onClick={onClick}
     >
       <video
         ref={videoRef}
@@ -130,6 +152,10 @@ function VideoThumb({video, selectMode}: {video: VideoAsset; selectMode?: boolea
         <span class="text-[8px] text-white truncate w-full">
           {video.name}
         </span>
+      </div>
+      <div class="absolute bottom-1 right-1 w-4 h-4 rounded-sm flex items-center justify-center"
+           style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+        <Film size={10} class="text-white" />
       </div>
     </div>
   );
