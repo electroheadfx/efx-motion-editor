@@ -5,13 +5,19 @@ import {assetUrl} from '../../lib/ipc';
 interface ImportGridProps {
   /** When provided, images become selectable and clicking calls this with the image ID */
   onSelect?: (imageId: string) => void;
+  /** Enable multi-select mode (checkmarks + toggle) */
+  multiSelect?: boolean;
+  /** Currently selected image IDs in multi-select mode */
+  selectedIds?: string[];
+  /** Toggle selection of an image in multi-select mode */
+  onToggleSelect?: (imageId: string) => void;
 }
 
 /**
  * Thumbnail grid showing imported images and video assets.
  * Displayed in the LeftPanel when assets have been imported.
  */
-export function ImportGrid({onSelect}: ImportGridProps) {
+export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect}: ImportGridProps) {
   const images = imageStore.images.value;
   const videos = imageStore.videoAssets.value;
 
@@ -33,9 +39,21 @@ export function ImportGrid({onSelect}: ImportGridProps) {
           {images.map((img) => (
             <div
               key={img.id}
-              class={`relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] group${onSelect ? ' cursor-pointer ring-0 hover:ring-2 ring-[var(--color-accent)]' : ''}`}
+              class={`relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] group${
+                multiSelect && selectedIds?.includes(img.id)
+                  ? ' ring-2 ring-[var(--color-accent)]'
+                  : onSelect || multiSelect
+                    ? ' cursor-pointer ring-0 hover:ring-2 ring-[var(--color-accent)]'
+                    : ''
+              }`}
               title={`${img.width}x${img.height} ${img.format.toUpperCase()}`}
-              onClick={onSelect ? () => onSelect(img.id) : undefined}
+              onClick={
+                multiSelect
+                  ? () => onToggleSelect?.(img.id)
+                  : onSelect
+                    ? () => onSelect(img.id)
+                    : undefined
+              }
             >
               <img
                 src={assetUrl(img.thumbnail_path)}
@@ -49,6 +67,15 @@ export function ImportGrid({onSelect}: ImportGridProps) {
                   {img.original_path.split('/').pop()}
                 </span>
               </div>
+              {/* Multi-select checkmark */}
+              {multiSelect && selectedIds?.includes(img.id) && (
+                <div
+                  class="absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: 'var(--color-accent)' }}
+                >
+                  <span class="text-white text-[10px] font-bold">&#10003;</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
