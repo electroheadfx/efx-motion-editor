@@ -234,7 +234,7 @@ Plans:
   3. Switching sequences auto-selects the top-most layer with visible transform overlay handles
   4. Clicking a key photo seeks the playhead to that photo's frame and selects the top-most layer
   5. Key photo strip auto-scrolls on timeline scrub and playback stop, but not during playback
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 12.6-01-PLAN.md -- Layer auto-selection on sequence switch, key photo click enhancements, strip auto-scroll, empty sequence prompt
@@ -317,7 +317,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.3. Add Quick Keys for Navigation | 1/1 | Complete    | 2026-03-17 | - |
 | 12.4. ShortcutsOverlay Tabbed Sections | v0.2.0 | 0/1 | In Progress | - |
 | 12.5. Vertical Scroll Issues | 2/2 | Complete    | 2026-03-18 | - |
-| 12.6. Layer Sequence Auto-Selection | 1/2 | In Progress|  | - |
+| 12.6. Layer Sequence Auto-Selection | 2/2 | Complete   | 2026-03-18 | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
