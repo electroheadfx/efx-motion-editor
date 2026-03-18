@@ -78,32 +78,42 @@ export function TimelinePanel() {
 
         <div class="flex-1" />
 
-        {/* Zoom slider */}
-        <span class="text-[10px] text-[var(--color-text-dim)]">
-          Zoom:
-        </span>
-        <input
-          type="range"
-          min="0.1"
-          max="10"
-          step="0.1"
-          value={timelineStore.zoom.value}
-          onInput={(e) => timelineStore.setZoom(parseFloat((e.target as HTMLInputElement).value))}
-          class="w-[100px] h-2 accent-[var(--color-accent)]"
-        />
+        {/* Timeline Zoom: [-] [Fit All] [+] */}
+        <button
+          class={`rounded-[5px] px-2.5 py-[5px] ${
+            timelineStore.isAtMinZoom.value
+              ? 'bg-[var(--color-bg-input)] opacity-40 cursor-default'
+              : 'bg-[var(--color-bg-input)] hover:bg-[var(--color-bg-hover-item)] cursor-pointer'
+          }`}
+          onClick={() => timelineStore.zoomOut()}
+          title="Timeline zoom out (-)"
+        >
+          <span class="text-[11px] text-[var(--color-text-secondary)]">-</span>
+        </button>
+
+        <button
+          class="rounded bg-[var(--color-bg-input)] px-2.5 py-[5px] hover:bg-[var(--color-bg-hover-item)] cursor-pointer"
+          onClick={handleFitAll}
+          title="Fit all frames"
+        >
+          <span class="text-[10px] text-[var(--color-text-secondary)]">Fit All</span>
+        </button>
+
+        <button
+          class={`rounded-[5px] px-2.5 py-[5px] ${
+            timelineStore.isAtMaxZoom.value
+              ? 'bg-[var(--color-bg-input)] opacity-40 cursor-default'
+              : 'bg-[var(--color-bg-input)] hover:bg-[var(--color-bg-hover-item)] cursor-pointer'
+          }`}
+          onClick={() => timelineStore.zoomIn()}
+          title="Timeline zoom in (+/=)"
+        >
+          <span class="text-[11px] text-[var(--color-text-secondary)]">+</span>
+        </button>
+
         <span class="text-[10px] text-[var(--color-text-dim)] w-8">
           {timelineStore.zoom.value.toFixed(1)}x
         </span>
-
-        {/* Fit All */}
-        <button
-          class="rounded bg-[var(--color-bg-input)] px-2.5 py-[5px]"
-          onClick={handleFitAll}
-        >
-          <span class="text-[10px] text-[var(--color-text-secondary)]">
-            Fit All
-          </span>
-        </button>
 
         <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
 

@@ -2,6 +2,11 @@ import {signal, computed} from '@preact/signals';
 import {projectStore} from './projectStore';
 import {totalFrames as totalFramesSignal, trackLayouts, fxTrackLayouts} from '../lib/frameMap';
 
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 10;
+const ZOOM_STEP = 1.3;
+const EPSILON = 0.001;
+
 const currentFrame = signal(0);
 const displayFrame = signal(0);
 const isPlaying = signal(false);
@@ -15,6 +20,8 @@ const viewportHeight = signal(0);
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);
 const displayTime = computed(() => displayFrame.value / projectStore.fps.value);
 const totalDuration = computed(() => totalFramesSignal.value / projectStore.fps.value);
+const isAtMinZoom = computed(() => zoom.value <= ZOOM_MIN + EPSILON);
+const isAtMaxZoom = computed(() => zoom.value >= ZOOM_MAX - EPSILON);
 
 // Timeline layout constants (mirrored from TimelineRenderer to avoid circular deps)
 const BASE_FRAME_WIDTH = 60;
@@ -49,6 +56,8 @@ export const timelineStore = {
   displayTime,
   totalFrames: totalFramesSignal,
   totalDuration,
+  isAtMinZoom,
+  isAtMaxZoom,
 
   setTimelineDragging(v: boolean) {
     timelineDragging.value = v;
@@ -75,7 +84,15 @@ export const timelineStore = {
     currentFrame.value = Math.max(0, currentFrame.value - 1);
   },
   setZoom(v: number) {
-    zoom.value = Math.max(0.1, Math.min(10, v));
+    zoom.value = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v));
+  },
+  zoomIn() {
+    const newZoom = Math.min(ZOOM_MAX, zoom.value * ZOOM_STEP);
+    zoom.value = newZoom;
+  },
+  zoomOut() {
+    const newZoom = Math.max(ZOOM_MIN, zoom.value / ZOOM_STEP);
+    zoom.value = newZoom;
   },
   setScrollX(v: number) {
     scrollX.value = v;
