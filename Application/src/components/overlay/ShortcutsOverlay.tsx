@@ -76,7 +76,6 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Blur',
     entries: [
-      { keys: 'B', description: 'Toggle HQ blur preview' },
       { keys: '\u21E7B', description: 'Toggle bypass all blur' },
     ],
   },

@@ -106,10 +106,9 @@ export function Preview() {
       const fm = frameMap.value;
       // Subscribe to all sequence data so we re-render on layer property changes
       const allSeqs = sequenceStore.sequences.value;
-      // Subscribe to blur store signals so toggling HQ/bypass triggers a re-render.
-      // These reads create reactive subscriptions; the renderer reads actual values
+      // Subscribe to blur bypass signal so toggling bypass triggers a re-render.
+      // This read creates a reactive subscription; the renderer reads the actual value
       // via .peek() (non-reactive) which is correct for the render loop.
-      void blurStore.hqPreview.value;
       void blurStore.bypassBlur.value;
 
       if (globalFrame < 0 || globalFrame >= fm.length) return;

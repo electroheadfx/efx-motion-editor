@@ -89,19 +89,6 @@ export function Toolbar() {
       {/* Blur Controls */}
       <button
         class={`rounded-[5px] px-2.5 py-1 transition-colors ${
-          blurStore.hqPreview.value
-            ? 'bg-[var(--color-accent)]'
-            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)]'
-        }`}
-        onClick={() => blurStore.toggleHQ()}
-        title="HQ Blur Preview (B)"
-      >
-        <span class={`text-[10px] font-semibold ${
-          blurStore.hqPreview.value ? 'text-white' : 'text-[var(--color-text-secondary)]'
-        }`}>HQ</span>
-      </button>
-      <button
-        class={`rounded-[5px] px-2.5 py-1 transition-colors ${
           blurStore.bypassBlur.value
             ? 'bg-[var(--color-dot-orange)]'
             : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)]'

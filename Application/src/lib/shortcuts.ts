@@ -336,12 +336,7 @@ export function mountShortcuts(): () => void {
       canvasStore.toggleFitLock();
     },
 
-    // Blur quality toggles (BLUR-05)
-    'KeyB': (e: KeyboardEvent) => {
-      if (shouldSuppressShortcut(e)) return;
-      e.preventDefault();
-      blurStore.toggleHQ();
-    },
+    // Blur bypass toggle (BLUR-05)
     'Shift+KeyB': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
