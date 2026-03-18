@@ -17,6 +17,9 @@ const sequencesSectionCollapsed = signal(false);
 const layersSectionCollapsed = signal(false);
 const propertiesSectionCollapsed = signal(false);
 
+// Tracks which UI region the mouse cursor is hovering over (for context-dependent shortcuts)
+const mouseRegion = signal<'canvas' | 'timeline' | 'other'>('other');
+
 // Flex-grow values for the three sidebar panels (default 1 each)
 const seqPanelFlex = signal(1);
 const layPanelFlex = signal(1);
@@ -50,6 +53,7 @@ export const uiStore = {
   seqPanelFlex,
   layPanelFlex,
   propPanelFlex,
+  mouseRegion,
 
   selectSequence(id: string | null) {
     selectedSequenceId.value = id;
@@ -82,6 +86,9 @@ export const uiStore = {
   },
   toggleSidebar() {
     sidebarCollapsed.value = !sidebarCollapsed.value;
+  },
+  setMouseRegion(region: 'canvas' | 'timeline' | 'other') {
+    mouseRegion.value = region;
   },
 
   // Legacy setters (kept for backward compat)
@@ -174,5 +181,6 @@ export const uiStore = {
     sequencesSectionCollapsed.value = false;
     layersSectionCollapsed.value = false;
     propertiesSectionCollapsed.value = false;
+    mouseRegion.value = 'other';
   },
 };

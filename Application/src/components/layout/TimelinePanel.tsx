@@ -1,5 +1,6 @@
 import {useRef, useCallback} from 'preact/hooks';
 import {timelineStore} from '../../stores/timelineStore';
+import {uiStore} from '../../stores/uiStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {TimelineCanvas} from '../timeline/TimelineCanvas';
 import {TimelineScrollbar} from '../timeline/TimelineScrollbar';
@@ -21,7 +22,11 @@ export function TimelinePanel() {
   }, []);
 
   return (
-    <div class="flex flex-col w-full h-[280px] bg-[var(--color-bg-section-header)]">
+    <div
+      class="flex flex-col w-full h-[280px] bg-[var(--color-bg-section-header)]"
+      onMouseEnter={() => uiStore.setMouseRegion('timeline')}
+      onMouseLeave={() => uiStore.setMouseRegion('other')}
+    >
       {/* Timeline Controls */}
       <div class="flex items-center gap-2 h-9 px-3 bg-[var(--color-bg-root)] shrink-0">
         {/* Seek to start */}

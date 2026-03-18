@@ -7,6 +7,7 @@ import {timelineStore} from '../../stores/timelineStore';
 import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
 import {imageStore} from '../../stores/imageStore';
+import {uiStore} from '../../stores/uiStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {activeSequenceFrames} from '../../lib/frameMap';
 import type {Layer} from '../../types/layer';
@@ -230,7 +231,11 @@ export function CanvasArea() {
   const cursorStyle = isDragging.value ? 'grabbing' : 'default';
 
   return (
-    <div class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-right)]">
+    <div
+      class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-right)]"
+      onMouseEnter={() => uiStore.setMouseRegion('canvas')}
+      onMouseLeave={() => uiStore.setMouseRegion('other')}
+    >
       {/* Preview Frame with zoom/pan */}
       <div
         ref={containerRef}
