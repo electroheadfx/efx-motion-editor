@@ -251,10 +251,10 @@ Plans:
   2. Click targets are generous (~18px) with nearest-wins selection for overlapping keyframes
   3. Hovering over a keyframe shows crosshair cursor and subtle gold glow highlight
   4. All icons use gold color scheme: normal #E5A020, hover #F0B830, selected #FFD700
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 12.7-01-PLAN.md -- Interpolation-aware icon shapes, expanded hit area, nearest-wins, hover feedback, visual verification
+- [x] 12.7-01-PLAN.md -- Interpolation-aware icon shapes, expanded hit area, nearest-wins, hover feedback, visual verification
 
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
@@ -334,7 +334,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.4. ShortcutsOverlay Tabbed Sections | v0.2.0 | 0/1 | In Progress | - |
 | 12.5. Vertical Scroll Issues | 2/2 | Complete    | 2026-03-18 | - |
 | 12.6. Layer Sequence Auto-Selection | 3/3 | Complete    | 2026-03-18 | - |
-| 12.7. Change Keyframe Icons | 0/1 | In Progress    | - | - |
+| 12.7. Change Keyframe Icons | 1/1 | Complete   | 2026-03-18 | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
