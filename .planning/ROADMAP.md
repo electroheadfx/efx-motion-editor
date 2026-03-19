@@ -328,7 +328,7 @@ Plans:
   4. Content overlay layers have full property controls (opacity, blend, transform, crop, keyframes) in the sidebar
   5. Image sequence and video content overlays loop seamlessly within their in/out range
   6. Keyframe animation works on content overlay layers with diamond markers on the timeline
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 12.12-01-PLAN.md -- Types, stores, frameMap, keyframeStore foundation for content-overlay sequences
@@ -419,7 +419,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.9. Fix Add-Layer Dialogs | 1/1 | Complete    | 2026-03-18 | - |
 | 12.10. GPU-Accelerated Blur via WebGL2 | 2/2 | Complete    | 2026-03-18 | - |
 | 12.11. Full-speed playback & fullscreen canvas | 2/2 | Complete    | 2026-03-19 | - |
-| 12.12. New Content Layer for Timeline | 3/4 | In Progress|  | - |
+| 12.12. New Content Layer for Timeline | 4/4 | Complete   | 2026-03-19 | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |

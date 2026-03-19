@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.12-02-PLAN.md
-last_updated: "2026-03-19T11:36:09.326Z"
+stopped_at: Completed 12.12-04-PLAN.md
+last_updated: "2026-03-19T12:56:02.341Z"
 progress:
   total_phases: 23
-  completed_phases: 17
+  completed_phases: 18
   total_plans: 48
-  completed_plans: 47
+  completed_plans: 48
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 ## Current Position
 
-Phase: 12.12 (new-content-layer-for-timeline) — EXECUTING
-Plan: 3 of 4
+Phase: 12.12 (new-content-layer-for-timeline) — COMPLETE
+Plan: 4 of 4
 
 ## Accumulated Context
 
@@ -85,6 +85,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.12-01]: content-overlay as new Sequence.kind value (not reusing fx); reorderFxSequences operates on all non-content for interleaved drag; content-overlay uses inFrame as keyframe startFrame
 - [Phase 12.12]: CSS variable colors resolved at theme cache level for Canvas 2D; clearFxLayerSelection checks sequence kind not layer type
 - [Phase 12.12]: AddLayerIntent extended with target and changeSourceFor fields; content-overlay creation reuses ImportedView flow; layerStore overlayLayers replaces fxLayers for correct routing
+- [Phase 12.12-04]: Overlay filter uses s.kind \!== 'content' (not s.kind === 'fx') so content-overlay sequences composite in same pass as FX
+- [Phase 12.12-04]: Video looping mod (targetTime % video.duration) applied universally to all video layers
 
 ### Pending Todos
 
@@ -154,6 +156,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-19T11:36:09.324Z
-Stopped at: Completed 12.12-02-PLAN.md
+Last session: 2026-03-19T12:55:58.663Z
+Stopped at: Completed 12.12-04-PLAN.md
 Resume file: None
