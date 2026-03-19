@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.11-02-PLAN.md (awaiting Task 3 human-verify checkpoint)
-last_updated: "2026-03-19T09:47:25.099Z"
+stopped_at: Phase 12.12 context gathered
+last_updated: "2026-03-19T10:44:50.082Z"
 progress:
-  total_phases: 22
+  total_phases: 23
   completed_phases: 17
   total_plans: 44
   completed_plans: 44
@@ -101,6 +101,7 @@ None.
 - Phase 12.9 inserted after Phase 12.8: Fix sidebar add-layer dialogs for Static Image, Image Sequence, and Video layers (URGENT)
 - Phase 12.10 inserted after Phase 12.9: GPU-Accelerated Blur via WebGL2 (URGENT)
 - Phase 12.11 inserted after Phase 12.10: Full-speed playback mode and fullscreen canvas mode (URGENT)
+- Phase 12.12 inserted after Phase 12.11: New content layer for timeline (URGENT)
 
 ### Blockers/Concerns
 
@@ -150,6 +151,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-19T09:53:26Z
-Stopped at: Completed quick-f18 (swap wheel scroll axes)
-Resume file: None
+Last session: 2026-03-19T10:44:50.079Z
+Stopped at: Phase 12.12 context gathered
+Resume file: .planning/phases/12.12-new-content-layer-for-timeline/12.12-CONTEXT.md
