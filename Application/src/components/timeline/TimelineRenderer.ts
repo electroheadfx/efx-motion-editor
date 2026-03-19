@@ -996,7 +996,9 @@ export class TimelineRenderer {
       // Draw diamonds on content track row
       const track = state.tracks[trackIndex];
       const fxOffset = state.fxTracks.length * FX_TRACK_HEIGHT;
-      const trackCenterY = RULER_HEIGHT + fxOffset + trackIndex * TRACK_HEIGHT + TRACK_HEIGHT / 2 - state.scrollY;
+      // In linear mode, all content tracks share a single row at index 0
+      const effectiveTrackIndex = state.layoutMode === 'linear' ? 0 : trackIndex;
+      const trackCenterY = RULER_HEIGHT + fxOffset + effectiveTrackIndex * TRACK_HEIGHT + TRACK_HEIGHT / 2 - state.scrollY;
 
       for (const kf of state.selectedLayerKeyframes) {
         const globalFrame = track.startFrame + kf.frame;
