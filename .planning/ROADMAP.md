@@ -121,6 +121,22 @@ Plans:
 - [ ] 12-04-PLAN.md -- End-to-end visual verification checkpoint
 - [ ] 12-05-PLAN.md -- [gap closure] Fix keyframe diamonds disappearing on timeline interaction
 
+### Phase 12.14: Timeline/canvas buttons enhancements (INSERTED)
+
+**Goal:** Replace all Unicode text-based button characters across timeline panel, canvas bottom bar, and toolbar with lucide-preact SVG icons. All buttons become icon-only with hover tooltips showing label + keyboard shortcut.
+**Requirements**: BTN-ICON, BTN-TOOLTIP, BTN-STYLE
+**Depends on:** Phase 12
+**Success Criteria** (what must be TRUE):
+  1. All playback, zoom, and utility buttons in TimelinePanel and CanvasArea display lucide-preact SVG icons instead of Unicode characters
+  2. All toolbar buttons (New, Open, Save, Blur Off, Imported, Settings, Export) display icons instead of text labels
+  3. Every icon-only button has a title tooltip with "Label (Shortcut)" format for keyboard shortcut discovery
+  4. Canvas play/pause button retains its emphasis styling (rounded-full, accent bg, larger icon)
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12.14-01-PLAN.md -- Replace TimelinePanel + CanvasArea Unicode buttons with lucide-preact icons and tooltips
+- [ ] 12.14-02-PLAN.md -- Replace Toolbar text buttons with lucide-preact icon-only buttons and tooltips
+
 ### Phase 12.13: Linear-timeline (INSERTED)
 
 **Goal:** Add a linear timeline layout mode where all content sequences display on a single horizontal row instead of vertically-stacked tracks. Toggle between stacked (default) and linear views via toolbar buttons. Optional name overlay on thumbnails with thumb+name / thumb-only display modes.
@@ -407,7 +423,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 12.11 > 12.12 > 12.13 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 12.11 > 12.12 > 12.13 > 12.14 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -438,6 +454,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.11. Full-speed playback & fullscreen canvas | 2/2 | Complete    | 2026-03-19 | - |
 | 12.12. New Content Layer for Timeline | 4/4 | Complete    | 2026-03-19 | - |
 | 12.13. Linear Timeline | 2/2 | Complete    | 2026-03-19 | - |
+| 12.14. Timeline/Canvas Buttons Enhancements | v0.2.0 | 0/2 | In Progress | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
