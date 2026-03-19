@@ -10,7 +10,8 @@ import {isFxLayer} from '../types/layer';
 
 export function Preview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const hasContent = sequenceStore.sequences.value.some(s => s.kind === 'content' && s.keyPhotos.length > 0) || sequenceStore.getFxSequences().length > 0;
+  const hasContent = sequenceStore.sequences.value.some(s => s.kind === 'content' && s.keyPhotos.length > 0)
+    || sequenceStore.sequences.value.some(s => s.kind !== 'content');
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -65,16 +66,43 @@ export function Preview() {
 
       renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps);
 
-      // Composite FX sequences: reverse order so top-of-timeline renders last
-      // (higher FX layers affect/blur everything beneath them)
-      const fxSeqs = allSeqs.filter(s => s.kind === 'fx' && s.visible !== false);
-      for (let i = fxSeqs.length - 1; i >= 0; i--) {
-        const fxSeq = fxSeqs[i];
-        if (fxSeq.inFrame != null && globalFrame < fxSeq.inFrame) continue;
-        if (fxSeq.outFrame != null && globalFrame >= fxSeq.outFrame) continue;
-        const fxLayers = fxSeq.layers.filter((l) => l.visible);
-        if (fxLayers.length > 0) {
-          renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false);
+      // Composite overlay sequences (FX + content overlays): reverse order so top-of-timeline renders last
+      const overlaySeqs = allSeqs.filter(s => s.kind !== 'content' && s.visible !== false);
+      for (let i = overlaySeqs.length - 1; i >= 0; i--) {
+        const overlaySeq = overlaySeqs[i];
+        if (overlaySeq.inFrame != null && globalFrame < overlaySeq.inFrame) continue;
+        if (overlaySeq.outFrame != null && globalFrame >= overlaySeq.outFrame) continue;
+
+        if (overlaySeq.kind === 'content-overlay') {
+          // Content overlay: compute local frame relative to inFrame, apply keyframe interpolation
+          const overlayLocalFrame = globalFrame - (overlaySeq.inFrame ?? 0);
+          const overlayLayers = overlaySeq.layers.filter(l => l.visible).map(layer => {
+            if (!layer.keyframes || layer.keyframes.length === 0) return layer;
+            const values = interpolateAt(layer.keyframes, overlayLocalFrame);
+            if (!values) return layer;
+            return {
+              ...layer,
+              opacity: values.opacity,
+              transform: {
+                ...layer.transform,
+                x: values.x,
+                y: values.y,
+                scaleX: values.scaleX,
+                scaleY: values.scaleY,
+                rotation: values.rotation,
+              },
+              blur: values.blur,
+            };
+          });
+          if (overlayLayers.length > 0) {
+            renderer.renderFrame(overlayLayers, overlayLocalFrame, seqFrames, seq.fps, false);
+          }
+        } else {
+          // FX sequence (existing behavior)
+          const fxLayers = overlaySeq.layers.filter((l) => l.visible);
+          if (fxLayers.length > 0) {
+            renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false);
+          }
         }
       }
     }
@@ -150,16 +178,43 @@ export function Preview() {
 
       renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps);
 
-      // Composite FX sequences: reverse order so top-of-timeline renders last
-      // (higher FX layers affect/blur everything beneath them)
-      const fxSeqs = allSeqs.filter(s => s.kind === 'fx' && s.visible !== false);
-      for (let i = fxSeqs.length - 1; i >= 0; i--) {
-        const fxSeq = fxSeqs[i];
-        if (fxSeq.inFrame != null && globalFrame < fxSeq.inFrame) continue;
-        if (fxSeq.outFrame != null && globalFrame >= fxSeq.outFrame) continue;
-        const fxLayers = fxSeq.layers.filter((l) => l.visible);
-        if (fxLayers.length > 0) {
-          renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false);
+      // Composite overlay sequences (FX + content overlays): reverse order so top-of-timeline renders last
+      const overlaySeqs = allSeqs.filter(s => s.kind !== 'content' && s.visible !== false);
+      for (let i = overlaySeqs.length - 1; i >= 0; i--) {
+        const overlaySeq = overlaySeqs[i];
+        if (overlaySeq.inFrame != null && globalFrame < overlaySeq.inFrame) continue;
+        if (overlaySeq.outFrame != null && globalFrame >= overlaySeq.outFrame) continue;
+
+        if (overlaySeq.kind === 'content-overlay') {
+          // Content overlay: compute local frame relative to inFrame, apply keyframe interpolation
+          const overlayLocalFrame = globalFrame - (overlaySeq.inFrame ?? 0);
+          const overlayLayers = overlaySeq.layers.filter(l => l.visible).map(layer => {
+            if (!layer.keyframes || layer.keyframes.length === 0) return layer;
+            const values = interpolateAt(layer.keyframes, overlayLocalFrame);
+            if (!values) return layer;
+            return {
+              ...layer,
+              opacity: values.opacity,
+              transform: {
+                ...layer.transform,
+                x: values.x,
+                y: values.y,
+                scaleX: values.scaleX,
+                scaleY: values.scaleY,
+                rotation: values.rotation,
+              },
+              blur: values.blur,
+            };
+          });
+          if (overlayLayers.length > 0) {
+            renderer.renderFrame(overlayLayers, overlayLocalFrame, seqFrames, seq.fps, false);
+          }
+        } else {
+          // FX sequence (existing behavior)
+          const fxLayers = overlaySeq.layers.filter((l) => l.visible);
+          if (fxLayers.length > 0) {
+            renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false);
+          }
         }
       }
     });

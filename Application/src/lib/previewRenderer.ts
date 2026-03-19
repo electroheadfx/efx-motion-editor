@@ -349,8 +349,9 @@ export class PreviewRenderer {
       this.videoReadyHandlers.set(layer.id, readyHandler);
     }
 
-    // Sync time to current frame
-    const targetTime = frame / fps;
+    // Sync time to current frame (mod by duration for seamless looping)
+    const rawTargetTime = frame / fps;
+    const targetTime = video.duration > 0 ? rawTargetTime % video.duration : rawTargetTime;
     if (Math.abs(video.currentTime - targetTime) > 0.01) {
       video.currentTime = targetTime;
     }
