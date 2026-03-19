@@ -228,10 +228,10 @@ export class TimelineInteraction {
     const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
     const hitThresholdFrames = Math.max(0.6, 18 / frameWidth);
 
-    // Check content-overlay tracks in the FX area
-    if (this.isInFxArea(clientY) && owningSeq.kind === 'content-overlay') {
+    // Check FX and content-overlay tracks in the FX area
+    if (this.isInFxArea(clientY) && (owningSeq.kind === 'fx' || owningSeq.kind === 'content-overlay')) {
       const fxTracks = fxTrackLayouts.peek();
-      const fxTrackIndex = fxTracks.findIndex(ft => ft.sequenceId === owningSeq!.id && ft.kind === 'content-overlay');
+      const fxTrackIndex = fxTracks.findIndex(ft => ft.sequenceId === owningSeq!.id && (ft.kind === 'fx' || ft.kind === 'content-overlay'));
       if (fxTrackIndex < 0) return null;
 
       // Check if clicked Y is on this FX track
