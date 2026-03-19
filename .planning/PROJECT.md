@@ -35,6 +35,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Cinematic FX effects (film grain, vignette, color grade, dirt/scratches, light leaks) — v0.1.0
 - ✓ FX as timeline-level sequences with draggable range bars — v0.1.0
 - ✓ Resolution-independent FX parameters — v0.1.0
+- ✓ Content overlay layers (static image, image sequence, video) as timeline-level sequences with full property controls — Validated in Phase 12.12
 
 ### Active
 
@@ -46,7 +47,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 - ProRes/MP4 video export — PNG sequence is the professional workflow; video encoding adds massive complexity
 - Live camera tethering — different product category (Dragonframe owns this)
-- Keyframe animation for layer properties — transforms product toward motion graphics/After Effects territory
+- Keyframe animation for layer properties — now partially in scope (content overlay layers support keyframe animation since Phase 12.12)
 - Plugin/extension system — requires stable internal APIs; premature
 - AI-powered features — distraction from core value; proven DSP for beat detection instead
 - Real-time collaboration — desktop app with local files; stop-motion is typically solo/small-team
@@ -92,4 +93,4 @@ Known technical debt:
 | PNG sequence export (not video) | Downstream editing in DaVinci Resolve/Premiere Pro is the workflow | — Pending (v0.2.0) |
 
 ---
-*Last updated: 2026-03-18 after Phase 12.10 — GPU-accelerated blur via WebGL2, HQ/fast toggle removed*
+*Last updated: 2026-03-19 after Phase 12.12 — Content overlay layers with timeline rendering, keyframe animation, and preview compositing*
