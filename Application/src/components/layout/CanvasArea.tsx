@@ -1,5 +1,6 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
 import {useSignal} from '@preact/signals';
+import {Play, Pause, SkipBack, SkipForward, Plus, Minus, Maximize, Maximize2, Minimize2} from 'lucide-preact';
 import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
 import {FullSpeedBadge} from '../overlay/FullSpeedBadge';
@@ -289,31 +290,29 @@ export function CanvasArea() {
         {/* Step backward */}
         <button
           tabIndex={-1}
-          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] cursor-pointer"
+          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] cursor-pointer text-[var(--color-text-secondary)]"
           onClick={() => playbackEngine.stepBackward()}
           title="Step backward"
         >
-          <span class="text-xs text-[var(--color-text-secondary)]">{'\u23EE'}</span>
+          <SkipBack size={16} />
         </button>
         {/* Play / Pause */}
         <button
           tabIndex={-1}
-          class="flex items-center justify-center w-9 h-9 rounded-full bg-[var(--color-accent)] cursor-pointer"
+          class="flex items-center justify-center w-9 h-9 rounded-full bg-[var(--color-accent)] cursor-pointer text-white"
           onClick={() => playbackEngine.toggle()}
-          title={isPlaying ? 'Pause' : 'Play'}
+          title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
         >
-          <span class="text-sm text-white">
-            {isPlaying ? '\u23F8' : '\u25B6'}
-          </span>
+          {isPlaying ? <Pause size={18} /> : <Play size={18} />}
         </button>
         {/* Step forward */}
         <button
           tabIndex={-1}
-          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] cursor-pointer"
+          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] cursor-pointer text-[var(--color-text-secondary)]"
           onClick={() => playbackEngine.stepForward()}
           title="Step forward"
         >
-          <span class="text-xs text-[var(--color-text-secondary)]">{'\u23ED'}</span>
+          <SkipForward size={16} />
         </button>
         {/* Timecode display */}
         <div class="rounded bg-[var(--color-bg-input)] px-3 py-1.5">
@@ -326,7 +325,7 @@ export function CanvasArea() {
         </span>
         {/* Zoom controls cluster: [ - ] percentage [ + ] [ Fit ] */}
         <button
-          class={`rounded-[5px] px-2.5 py-1 ${
+          class={`rounded-[5px] px-2.5 py-1 text-[var(--color-text-button)] ${
             canvasStore.isAtMinZoom.value
               ? 'bg-[var(--color-bg-settings)] opacity-40 cursor-default'
               : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
@@ -334,13 +333,13 @@ export function CanvasArea() {
           onClick={() => canvasStore.zoomOut()}
           title="Zoom out (-)"
         >
-          <span class="text-sm text-[var(--color-text-button)]">-</span>
+          <Minus size={16} />
         </button>
         <span class="text-[11px] text-[var(--color-text-dim)]">
           {canvasStore.zoomPercent.value}%
         </span>
         <button
-          class={`rounded-[5px] px-2.5 py-1 ${
+          class={`rounded-[5px] px-2.5 py-1 text-[var(--color-text-button)] ${
             canvasStore.isAtMaxZoom.value
               ? 'bg-[var(--color-bg-settings)] opacity-40 cursor-default'
               : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
@@ -348,35 +347,27 @@ export function CanvasArea() {
           onClick={() => canvasStore.zoomIn()}
           title="Zoom in (=)"
         >
-          <span class="text-sm text-[var(--color-text-button)]">+</span>
+          <Plus size={16} />
         </button>
         {/* Fit button (toggles fit lock) */}
         <button
           class={`rounded px-2.5 py-1.5 cursor-pointer ${
             canvasStore.fitLocked.value
-              ? 'bg-[var(--color-accent)]'
-              : 'bg-[var(--color-bg-settings)]'
+              ? 'bg-[var(--color-accent)] text-white'
+              : 'bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)]'
           }`}
           onClick={() => canvasStore.toggleFitLock()}
           title={canvasStore.fitLocked.value ? 'Fit to window \u2014 locked (F)' : 'Fit to window (F)'}
         >
-          <span class={`text-[11px] ${
-            canvasStore.fitLocked.value
-              ? 'text-white'
-              : 'text-[var(--color-text-secondary)]'
-          }`}>
-            Fit
-          </span>
+          {canvasStore.fitLocked.value ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
         {/* Fullscreen button */}
         <button
-          class="rounded px-2.5 py-1.5 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer"
+          class="rounded px-2.5 py-1.5 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer text-[var(--color-text-secondary)]"
           onClick={() => enterFullscreen()}
           title="Fullscreen (\u21E7\u2318F)"
         >
-          <span class="text-[11px] text-[var(--color-text-secondary)]">
-            {'\u26F6'}
-          </span>
+          <Maximize size={16} />
         </button>
         {/* Full-speed indicator */}
         <FullSpeedBadge />
