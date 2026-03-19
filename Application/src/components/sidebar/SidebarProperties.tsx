@@ -224,7 +224,16 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
           </div>
           <div class="flex items-center" style={{ gap: '16px' }}>
             <NumericInput label="Scale" value={uniformScale} step={0.01} min={0.01}
-              onChange={(val) => { updateTransform('scaleX', val); updateTransform('scaleY', val); }} />
+              onChange={(val) => {
+                if (handleKeyframeEdit) {
+                  handleKeyframeEdit('scaleX', val);
+                  handleKeyframeEdit('scaleY', val);
+                } else {
+                  layerStore.updateLayer(layer.id, {
+                    transform: { ...layer.transform, scaleX: val, scaleY: val },
+                  });
+                }
+              }} />
             <NumericInput label="Rot" value={showKfValues ? kfDisplayValues!.rotation : layer.transform.rotation} step={1}
               onChange={(val) => updateTransform('rotation', val)} />
           </div>
