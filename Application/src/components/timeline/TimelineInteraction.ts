@@ -8,7 +8,6 @@ import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, TRACK_HEIGHT, FX_TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
-// isFxLayer import removed: clearFxLayerSelection now checks sequence kind instead of layer type
 
 /**
  * TimelineInteraction: Pointer/wheel/touch event handling for the timeline canvas.
