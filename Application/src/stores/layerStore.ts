@@ -17,6 +17,7 @@ const overlayLayers = computed<Layer[]>(() => {
 
 export const layerStore = {
   layers,
+  overlayLayers,
   selectedLayerId,
 
   /** Add a layer to the active sequence (pushes undo action via sequenceStore) */

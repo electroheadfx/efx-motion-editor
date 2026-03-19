@@ -91,8 +91,11 @@ export function TransformOverlay({
   const projW = projectStore.width.value;
   const projH = projectStore.height.value;
 
-  // Find selected layer
-  const selectedLayer = selectedId ? layers.find((l) => l.id === selectedId) : null;
+  // Find selected layer (check content layers first, then overlay layers for content-overlay support)
+  const overlayLayers = layerStore.overlayLayers.value;
+  const selectedLayer = selectedId
+    ? (layers.find((l) => l.id === selectedId) ?? overlayLayers.find((l) => l.id === selectedId) ?? null)
+    : null;
 
   // Don't render overlay during playback, or if no content layer selected
   if (isPlaying || !selectedLayer || isFxLayer(selectedLayer)) {
@@ -177,8 +180,11 @@ export function TransformOverlay({
     const pW = projectStore.width.peek();
     const pH = projectStore.height.peek();
     const currentLayers = layerStore.layers.peek();
+    const currentOverlayLayers = layerStore.overlayLayers.peek();
     const currentSelectedId = layerStore.selectedLayerId.peek();
-    const currentSelected = currentSelectedId ? currentLayers.find((l) => l.id === currentSelectedId) : null;
+    const currentSelected = currentSelectedId
+      ? (currentLayers.find((l) => l.id === currentSelectedId) ?? currentOverlayLayers.find((l) => l.id === currentSelectedId) ?? null)
+      : null;
 
     // 1. If a layer is selected, hit-test handles and rotation zone
     if (currentSelected && !isFxLayer(currentSelected)) {
@@ -468,8 +474,11 @@ export function TransformOverlay({
     const pW = projectStore.width.peek();
     const pH = projectStore.height.peek();
     const currentLayers = layerStore.layers.peek();
+    const currentOverlayLayers = layerStore.overlayLayers.peek();
     const currentSelectedId = layerStore.selectedLayerId.peek();
-    const currentSelected = currentSelectedId ? currentLayers.find((l) => l.id === currentSelectedId) : null;
+    const currentSelected = currentSelectedId
+      ? (currentLayers.find((l) => l.id === currentSelectedId) ?? currentOverlayLayers.find((l) => l.id === currentSelectedId) ?? null)
+      : null;
 
     if (currentSelected && !isFxLayer(currentSelected)) {
       const selDims = getSourceDimensions(currentSelected);
