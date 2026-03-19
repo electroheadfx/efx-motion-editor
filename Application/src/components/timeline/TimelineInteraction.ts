@@ -709,6 +709,19 @@ export class TimelineInteraction {
 
       timelineStore.setZoom(newZoom);
       timelineStore.setScrollX(Math.max(0, newScrollX));
+    } else if (e.shiftKey) {
+      // Shift+scroll = vertical scroll
+      // macOS swaps deltaY→deltaX when Shift held, so use whichever axis has a value
+      const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      if (delta !== 0) {
+        const newScrollY = timelineStore.scrollY.peek() + delta;
+        const fxCount = this.renderer?.getFxTrackCount() ?? 0;
+        const contentCount = trackLayouts.peek().length;
+        const totalContentH = RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + contentCount * TRACK_HEIGHT;
+        const canvasH = this.canvas?.getBoundingClientRect().height ?? totalContentH;
+        const maxScrollY = Math.max(0, totalContentH - canvasH);
+        timelineStore.setScrollY(Math.min(maxScrollY, Math.max(0, newScrollY)));
+      }
     } else {
       // Horizontal scroll (deltaX — trackpad two-finger horizontal swipe)
       if (e.deltaX !== 0) {
@@ -716,18 +729,9 @@ export class TimelineInteraction {
         timelineStore.setScrollX(Math.max(0, newScrollX));
       }
       // Bare wheel (deltaY without modifier) = horizontal scroll
-      if (e.deltaY !== 0 && !e.shiftKey) {
+      if (e.deltaY !== 0) {
         const newScrollX = timelineStore.scrollX.peek() + e.deltaY;
         timelineStore.setScrollX(Math.max(0, newScrollX));
-      } else if (e.deltaY !== 0 && e.shiftKey) {
-        // Shift+scroll = vertical scroll
-        const newScrollY = timelineStore.scrollY.peek() + e.deltaY;
-        const fxCount = this.renderer?.getFxTrackCount() ?? 0;
-        const contentCount = trackLayouts.peek().length;
-        const totalContentH = RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + contentCount * TRACK_HEIGHT;
-        const canvasH = this.canvas?.getBoundingClientRect().height ?? totalContentH;
-        const maxScrollY = Math.max(0, totalContentH - canvasH);
-        timelineStore.setScrollY(Math.min(maxScrollY, Math.max(0, newScrollY)));
       }
     }
   }
