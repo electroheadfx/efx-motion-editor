@@ -5,9 +5,11 @@ export type EditorMode = 'editor' | 'imported' | 'settings';
 
 export type AddLayerIntent =
   | null
-  | { type: 'static-image' }
-  | { type: 'image-sequence' }
-  | { type: 'video' };
+  | {
+      type: 'static-image' | 'image-sequence' | 'video';
+      target?: 'content-overlay';
+      changeSourceFor?: { layerId: string; sequenceId: string };
+    };
 
 const selectedSequenceId = signal<string | null>(null);
 const selectedLayerId = signal<string | null>(null);

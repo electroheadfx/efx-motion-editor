@@ -6,8 +6,8 @@ import {defaultTransform, createDefaultFxSource} from '../../types/layer';
 import type {LayerType, BlendMode, Layer} from '../../types/layer';
 import {totalFrames} from '../../lib/frameMap';
 
-/** Popover menu for adding FX sequences (Generators & Adjustments) in the timeline area */
-export function AddFxMenu() {
+/** Popover menu for adding content overlay and FX sequences in the timeline area */
+export function AddLayerMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -45,17 +45,48 @@ export function AddFxMenu() {
     uiStore.selectLayer(layerId);
   };
 
+  const handleAddContentLayer = (type: 'static-image' | 'image-sequence' | 'video') => {
+    setMenuOpen(false);
+    uiStore.setAddLayerIntent({ type, target: 'content-overlay' });
+    uiStore.setEditorMode('imported');
+  };
+
   return (
     <div class="relative" ref={menuRef}>
       <button
         class="rounded px-2 py-[5px] bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)] transition-colors"
         onClick={() => setMenuOpen(!menuOpen)}
       >
-        <span class="text-[10px] text-[var(--color-text-secondary)]">+ FX</span>
+        <span class="text-[10px] text-[var(--color-text-secondary)]">+ Layer</span>
       </button>
 
       {menuOpen && (
         <div class="absolute right-0 bottom-8 z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl py-1 min-w-[160px]">
+          {/* Content section */}
+          <div class="px-3 py-1 text-[9px] text-[var(--color-text-dim)] font-semibold">CONTENT</div>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+            onClick={() => handleAddContentLayer('static-image')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[var(--sidebar-dot-green)] shrink-0" />
+            Static Image
+          </button>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+            onClick={() => handleAddContentLayer('image-sequence')}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[var(--sidebar-dot-blue)] shrink-0" />
+            Image Sequence
+          </button>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+            onClick={() => handleAddContentLayer('video')}
+          >
+            <span class="w-2 h-2 rounded-sm" style="background-color: #8B5CF6" />
+            Video
+          </button>
+          <div class="border-t border-[var(--color-border-subtle)] my-1" />
+
           {/* Generators section */}
           <div class="px-3 py-1 text-[9px] text-[var(--color-text-dim)] font-semibold">GENERATORS</div>
           <button

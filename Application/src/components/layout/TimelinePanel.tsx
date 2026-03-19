@@ -4,7 +4,7 @@ import {uiStore} from '../../stores/uiStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {TimelineCanvas} from '../timeline/TimelineCanvas';
 import {TimelineScrollbar} from '../timeline/TimelineScrollbar';
-import {AddFxMenu} from '../timeline/AddFxMenu';
+import {AddLayerMenu} from '../timeline/AddFxMenu';
 import {BASE_FRAME_WIDTH} from '../timeline/TimelineRenderer';
 
 export function TimelinePanel() {
@@ -117,8 +117,8 @@ export function TimelinePanel() {
 
         <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
 
-        {/* Add FX */}
-        <AddFxMenu />
+        {/* Add Layer */}
+        <AddLayerMenu />
       </div>
 
       {/* Canvas Timeline (replaces time ruler, mock tracks) */}
