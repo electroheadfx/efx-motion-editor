@@ -93,4 +93,4 @@ Known technical debt:
 | PNG sequence export (not video) | Downstream editing in DaVinci Resolve/Premiere Pro is the workflow | — Pending (v0.2.0) |
 
 ---
-*Last updated: 2026-03-19 after Phase 12.12 — Content overlay layers with timeline rendering, keyframe animation, and preview compositing*
+*Last updated: 2026-03-19 after Phase 12.13 — Linear-only timeline layout with single-row content rendering, X-based selection, and theme switcher in toolbar*
