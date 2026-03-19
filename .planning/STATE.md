@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Phase 12.12 context gathered
-last_updated: "2026-03-19T10:44:50.082Z"
+stopped_at: Completed 12.12-01-PLAN.md
+last_updated: "2026-03-19T11:24:45.858Z"
 progress:
   total_phases: 23
   completed_phases: 17
-  total_plans: 44
-  completed_plans: 44
+  total_plans: 48
+  completed_plans: 45
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 12.11 — full-speed-playback-and-fullscreen-canvas
+**Current focus:** Phase 12.12 — new-content-layer-for-timeline
 
 ## Current Position
 
-Phase: 12.11 (full-speed-playback-and-fullscreen-canvas) — EXECUTING
-Plan: 2 of 2
+Phase: 12.12 (new-content-layer-for-timeline) — EXECUTING
+Plan: 2 of 4
 
 ## Accumulated Context
 
@@ -82,6 +82,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.11]: isFullSpeed signal uses peek() in tick guard to avoid Preact subscription tracking in rAF
 - [Phase 12.11]: stop() clears isFullSpeed as first action before cancelAnimationFrame for clean state
 - [Phase 12.11]: FullscreenOverlay renders own Preview instance (avoids CSS reparenting); capture-phase keydown for shortcut scoping; defense-in-depth isFullscreen guards in tinykeys
+- [Phase 12.12-01]: content-overlay as new Sequence.kind value (not reusing fx); reorderFxSequences operates on all non-content for interleaved drag; content-overlay uses inFrame as keyframe startFrame
 
 ### Pending Todos
 
@@ -151,6 +152,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-19T10:44:50.079Z
-Stopped at: Phase 12.12 context gathered
-Resume file: .planning/phases/12.12-new-content-layer-for-timeline/12.12-CONTEXT.md
+Last session: 2026-03-19T11:24:45.856Z
+Stopped at: Completed 12.12-01-PLAN.md
+Resume file: None
