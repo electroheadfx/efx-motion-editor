@@ -310,7 +310,7 @@ Plans:
   3. Cmd+Shift+F enters fullscreen with black background, letterboxed canvas, and auto-hiding controls bar
   4. ESC exits fullscreen and stops playback, re-syncing all UI to current frame
   5. Only Space, Left/Right arrows, Shift+Space, and ESC work in fullscreen (all other shortcuts suppressed)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 12.11-01-PLAN.md -- Full-speed playback: isFullSpeed signal, toggleFullSpeed(), tick() gating, FullSpeedBadge, Shift+Space, Tauri capability
@@ -398,7 +398,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.8. Fix Timeline Thumb Stretching | 1/1 | Complete    | 2026-03-18 | - |
 | 12.9. Fix Add-Layer Dialogs | 1/1 | Complete    | 2026-03-18 | - |
 | 12.10. GPU-Accelerated Blur via WebGL2 | 2/2 | Complete    | 2026-03-18 | - |
-| 12.11. Full-speed playback & fullscreen canvas | 1/2 | In Progress|  | - |
+| 12.11. Full-speed playback & fullscreen canvas | 2/2 | Complete   | 2026-03-19 | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |

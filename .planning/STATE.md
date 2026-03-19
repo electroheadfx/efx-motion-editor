@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.11-01-PLAN.md
-last_updated: "2026-03-19T08:38:09.762Z"
+stopped_at: Completed 12.11-02-PLAN.md (awaiting Task 3 human-verify checkpoint)
+last_updated: "2026-03-19T08:44:51.188Z"
 progress:
   total_phases: 22
-  completed_phases: 16
+  completed_phases: 17
   total_plans: 44
-  completed_plans: 43
+  completed_plans: 44
 ---
 
 # Project State
@@ -81,6 +81,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.10]: GPU blur makes HQ/fast distinction obsolete; removed hqPreview signal, toggleHQ(), isHQ() from blurStore; single always-high-quality blur with bypass-only controls
 - [Phase 12.11]: isFullSpeed signal uses peek() in tick guard to avoid Preact subscription tracking in rAF
 - [Phase 12.11]: stop() clears isFullSpeed as first action before cancelAnimationFrame for clean state
+- [Phase 12.11]: FullscreenOverlay renders own Preview instance (avoids CSS reparenting); capture-phase keydown for shortcut scoping; defense-in-depth isFullscreen guards in tinykeys
 
 ### Pending Todos
 
@@ -148,6 +149,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-19T08:38:09.759Z
-Stopped at: Completed 12.11-01-PLAN.md
+Last session: 2026-03-19T08:44:51.185Z
+Stopped at: Completed 12.11-02-PLAN.md (awaiting Task 3 human-verify checkpoint)
 Resume file: None
