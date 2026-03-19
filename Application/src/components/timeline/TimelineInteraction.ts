@@ -378,6 +378,20 @@ export class TimelineInteraction {
           return;
         }
       }
+      // Check keyframe diamond hit in FX area before fallback seek
+      const fxKfHit = this.keyframeHitTest(e.clientX, e.clientY);
+      if (fxKfHit) {
+        keyframeStore.selectKeyframe(fxKfHit.frame, e.shiftKey);
+        playbackEngine.seekToFrame(fxKfHit.sequenceStartFrame + fxKfHit.frame);
+        this.isDraggingKeyframe = true;
+        this.kfDragLayerId = fxKfHit.layerId;
+        this.kfDragFromFrame = fxKfHit.frame;
+        this.kfDragSequenceStartFrame = fxKfHit.sequenceStartFrame;
+        timelineStore.setTimelineDragging(true);
+        this.canvas.setPointerCapture(e.pointerId);
+        startCoalescing();
+        return;
+      }
       // Click in FX area but not on a bar -- seek playhead
       const frame = this.getFrame(e.clientX);
       playbackEngine.seekToFrame(frame);

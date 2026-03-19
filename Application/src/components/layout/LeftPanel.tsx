@@ -244,7 +244,7 @@ export function LeftPanel() {
           collapsed={uiStore.propertiesSectionCollapsed}
           onCollapse={handlePropCollapse}
         >
-          {selectedLayer && !isFx && (
+          {selectedLayer && (
             <SidebarScrollArea>
               <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
             </SidebarScrollArea>

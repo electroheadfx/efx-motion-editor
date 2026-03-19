@@ -18,7 +18,7 @@ import type {Sequence} from '../../types/sequence';
 export function SequenceList() {
   const listRef = useRef<HTMLDivElement>(null);
   const allSequences = sequenceStore.sequences.value;
-  const sequences = allSequences.filter(s => s.kind !== 'fx');
+  const sequences = allSequences.filter(s => s.kind === 'content');
   const activeId = uiStore.selectedSequenceId.value;
 
   // SortableJS integration — recreate when items added/removed to keep DOM refs fresh
@@ -37,7 +37,7 @@ export function SequenceList() {
           from.removeChild(item);
           from.insertBefore(item, from.children[oldIndex] ?? null);
           // Map filtered (content-only) indices back to full sequences array
-          const contentSeqs = sequenceStore.sequences.peek().filter(s => s.kind !== 'fx');
+          const contentSeqs = sequenceStore.sequences.peek().filter(s => s.kind === 'content');
           const movedSeq = contentSeqs[oldIndex];
           const targetSeq = contentSeqs[newIndex];
           if (movedSeq && targetSeq) {
