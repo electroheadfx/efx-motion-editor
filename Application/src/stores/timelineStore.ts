@@ -16,6 +16,8 @@ const scrollX = signal(0);
 const scrollY = signal(0);
 const viewportWidth = signal(0);
 const viewportHeight = signal(0);
+const layoutMode = signal<'stacked' | 'linear'>('stacked');
+const displayMode = signal<'thumb-name' | 'thumb-only'>('thumb-name');
 
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);
 const displayTime = computed(() => displayFrame.value / projectStore.fps.value);
@@ -32,6 +34,9 @@ const FX_TRACK_HEIGHT = 28;
 
 const totalContentHeight = computed(() => {
   const fxCount = fxTrackLayouts.value.length;
+  if (layoutMode.value === 'linear') {
+    return RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + TRACK_HEIGHT;
+  }
   const contentCount = trackLayouts.value.length;
   return RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + contentCount * TRACK_HEIGHT;
 });
@@ -58,6 +63,8 @@ export const timelineStore = {
   totalDuration,
   isAtMinZoom,
   isAtMaxZoom,
+  layoutMode,
+  displayMode,
 
   setTimelineDragging(v: boolean) {
     timelineDragging.value = v;
@@ -93,6 +100,17 @@ export const timelineStore = {
   zoomOut() {
     const newZoom = Math.max(ZOOM_MIN, zoom.value / ZOOM_STEP);
     zoom.value = newZoom;
+  },
+  setLayoutMode(mode: 'stacked' | 'linear') {
+    layoutMode.value = mode;
+    // Clamp scrollY since totalContentHeight changes
+    const maxY = maxScrollY.peek();
+    if (scrollY.peek() > maxY) {
+      scrollY.value = maxY;
+    }
+  },
+  setDisplayMode(mode: 'thumb-name' | 'thumb-only') {
+    displayMode.value = mode;
   },
   setScrollX(v: number) {
     scrollX.value = v;
@@ -167,5 +185,7 @@ export const timelineStore = {
     zoom.value = 1;
     scrollX.value = 0;
     scrollY.value = 0;
+    layoutMode.value = 'stacked';
+    displayMode.value = 'thumb-name';
   },
 };

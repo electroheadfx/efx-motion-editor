@@ -73,6 +73,8 @@ export interface DrawState {
   selectedKeyframeFrames?: Set<number>;  // frames that are selected (highlighted)
   selectedLayerSequenceId?: string | null;  // which sequence the selected layer belongs to
   hidePlayhead?: boolean;  // true during full-speed playback
+  layoutMode?: 'stacked' | 'linear';
+  displayMode?: 'thumb-name' | 'thumb-only';
 }
 
 /**
