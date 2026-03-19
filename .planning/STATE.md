@@ -165,9 +165,10 @@ No active blockers.
 | 40 | Fix timeline scroll: natural trackpad, Cmd=vertical, scrollY auto-clamp | 2026-03-19 | 4bb41d2 |
 | 41 | Add Cmd+Arrow shortcuts for sequence navigation (laptop-friendly Home/End/PgUp/PgDn) | 2026-03-19 | 2ec4c5f |
 | 42 | Add keyframe animation for FX layer source properties (sourceOverrides interpolation) | 2026-03-19 | 0ecfd78 |
+| 43 | Add Cmd+ArrowUp/Down shortcuts as vertical aliases for sequence navigation | 2026-03-19 | 0467cb1 |
 
 ## Session Continuity
 
-Last session: 2026-03-19T19:17:29.120Z
-Stopped at: Completed 12.14-01-PLAN.md
+Last session: 2026-03-19T20:50:30Z
+Stopped at: Completed quick-43 (260319-u8t)
 Resume file: None
