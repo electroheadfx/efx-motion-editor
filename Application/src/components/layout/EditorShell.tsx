@@ -7,7 +7,9 @@ import { ImportedView } from '../views/ImportedView';
 import { SettingsView } from '../views/SettingsView';
 import { DropZone } from '../import/DropZone';
 import { ShortcutsOverlay } from '../overlay/ShortcutsOverlay';
+import { FullscreenOverlay } from '../overlay/FullscreenOverlay';
 import { CollapseHandle } from '../sidebar/CollapseHandle';
+import { initFullscreenListener } from '../../lib/fullscreenManager';
 import { useFileDrop } from '../../lib/dragDrop';
 import { imageStore } from '../../stores/imageStore';
 import { layerStore } from '../../stores/layerStore';
@@ -22,6 +24,8 @@ const INTERACTIVE_SELECTOR =
 export function EditorShell() {
   // Initialize sidebar layout from persisted config on mount
   useEffect(() => { uiStore.initSidebarLayout(); }, []);
+  // Initialize fullscreen change listener on mount
+  useEffect(() => { initFullscreenListener(); }, []);
 
   const handleDrop = useCallback((paths: string[]) => {
     const dir = projectStore.dirPath.value ?? tempProjectDir.value;
@@ -93,6 +97,8 @@ export function EditorShell() {
       <DropZone />
       {/* Shortcuts help overlay */}
       {uiStore.shortcutsOverlayOpen.value && <ShortcutsOverlay />}
+      {/* Fullscreen overlay -- covers everything when active */}
+      <FullscreenOverlay />
     </div>
   );
 }

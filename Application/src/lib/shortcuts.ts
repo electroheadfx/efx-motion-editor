@@ -1,5 +1,6 @@
 import {tinykeys} from 'tinykeys';
 import {playbackEngine} from './playbackEngine';
+import {isFullscreen, enterFullscreen, exitFullscreen} from './fullscreenManager';
 import {pressJ, pressK, pressL} from './jklShuttle';
 import {findPrevSequenceStart, findNextSequenceStart} from './sequenceNav';
 import {trackLayouts} from './frameMap';
@@ -183,41 +184,49 @@ export function mountShortcuts(): () => void {
     // Playback: Space is handled in CanvasArea (deferred to keyup for Space+drag pan support)
     'ArrowLeft': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleArrow('x', -1);
     },
     'Shift+ArrowLeft': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleArrow('x', -10);
     },
     'ArrowRight': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleArrow('x', 1);
     },
     'Shift+ArrowRight': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleArrow('x', 10);
     },
     'ArrowUp': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleArrow('y', -1);
     },
     'Shift+ArrowUp': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleArrow('y', -10);
     },
     'ArrowDown': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleArrow('y', 1);
     },
     'Shift+ArrowDown': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleArrow('y', 10);
     },
@@ -225,16 +234,19 @@ export function mountShortcuts(): () => void {
     // JKL Scrub (KEY-03)
     'KeyJ': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       pressJ();
     },
     'KeyK': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       pressK();
     },
     'KeyL': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       pressL();
     },
@@ -242,28 +254,44 @@ export function mountShortcuts(): () => void {
     // Undo/Redo (KEY-04)
     '$mod+KeyZ': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       undo();
     },
     '$mod+Shift+KeyZ': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       redo();
+    },
+
+    // Fullscreen toggle (FL-01)
+    '$mod+Shift+KeyF': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      e.preventDefault();
+      if (isFullscreen.peek()) {
+        exitFullscreen();
+      } else {
+        enterFullscreen();
+      }
     },
 
     // File operations (KEY-05)
     '$mod+KeyS': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleSave();
     },
     '$mod+KeyN': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleNewProject();
     },
     '$mod+KeyO': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       handleOpenProject();
     },
@@ -271,10 +299,12 @@ export function mountShortcuts(): () => void {
     // Delete (KEY-06)
     'Backspace': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       handleDelete();
     },
     'Delete': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       handleDelete();
     },
 
@@ -282,6 +312,7 @@ export function mountShortcuts(): () => void {
     'Shift+?': (e: KeyboardEvent) => {
       // ? key -- uses event.key matching for layout-independent binding
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       uiStore.toggleShortcutsOverlay();
     },
@@ -289,6 +320,7 @@ export function mountShortcuts(): () => void {
     // Theme cycle (KEY-09)
     '$mod+Shift+KeyT': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       cycleTheme();
     },
@@ -297,6 +329,7 @@ export function mountShortcuts(): () => void {
     // When mouse hovers timeline: zoom timeline; otherwise: zoom canvas
     '=': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       const region = uiStore.mouseRegion.peek();
       if (region === 'timeline') {
@@ -307,6 +340,7 @@ export function mountShortcuts(): () => void {
     },
     '+': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       const region = uiStore.mouseRegion.peek();
       if (region === 'timeline') {
@@ -317,6 +351,7 @@ export function mountShortcuts(): () => void {
     },
     '-': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       const region = uiStore.mouseRegion.peek();
       if (region === 'timeline') {
@@ -327,11 +362,13 @@ export function mountShortcuts(): () => void {
     },
     '$mod+Digit0': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       canvasStore.fitToWindow();
     },
     'KeyF': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       canvasStore.toggleFitLock();
     },
@@ -339,6 +376,7 @@ export function mountShortcuts(): () => void {
     // Blur bypass toggle (BLUR-05)
     'Shift+KeyB': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       blurStore.toggleBypass();
     },
@@ -346,6 +384,7 @@ export function mountShortcuts(): () => void {
     // Add keyframe at current frame (KF-07)
     'KeyI': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       const selectedId = layerStore.selectedLayerId.peek();
       if (!selectedId) return;
@@ -362,9 +401,14 @@ export function mountShortcuts(): () => void {
     },
 
     // Transform: Escape deselect (XFORM-09)
+    // Fullscreen exit takes priority over layer deselect
     'Escape': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
+      if (isFullscreen.peek()) {
+        exitFullscreen();
+        return;
+      }
       layerStore.setSelected(null);
       uiStore.selectLayer(null);
     },
@@ -372,17 +416,20 @@ export function mountShortcuts(): () => void {
     // Timeline navigation: Home/End/PageUp/PageDown (NAV-01..04)
     'Home': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       playbackEngine.seekToFrame(0);
     },
     'End': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       const lastFrame = timelineStore.totalFrames.peek();
       playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
     },
     'PageUp': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       const target = findPrevSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
       if (target !== null) {
@@ -393,6 +440,7 @@ export function mountShortcuts(): () => void {
     },
     'PageDown': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
       e.preventDefault();
       const target = findNextSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
       if (target !== null) {

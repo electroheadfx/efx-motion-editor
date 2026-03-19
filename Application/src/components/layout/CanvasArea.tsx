@@ -9,7 +9,8 @@ import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
 import {imageStore} from '../../stores/imageStore';
 import {uiStore} from '../../stores/uiStore';
-import {playbackEngine} from '../../lib/playbackEngine';
+import {playbackEngine, isFullSpeed} from '../../lib/playbackEngine';
+import {isFullscreen, enterFullscreen} from '../../lib/fullscreenManager';
 import {activeSequenceFrames} from '../../lib/frameMap';
 import type {Layer} from '../../types/layer';
 
@@ -163,8 +164,18 @@ export function CanvasArea() {
             // Shift+Space: toggle full-speed playback
             playbackEngine.toggleFullSpeed();
           } else {
-            // Plain Space: toggle play/pause
-            playbackEngine.toggle();
+            // In fullscreen, plain Space also uses full-speed
+            if (isFullscreen.peek()) {
+              if (timelineStore.isPlaying.peek()) {
+                playbackEngine.stop();
+              } else {
+                isFullSpeed.value = true;
+                playbackEngine.start();
+              }
+            } else {
+              // Plain Space: toggle play/pause
+              playbackEngine.toggle();
+            }
           }
         }
         spaceDragOccurred.current = false;
@@ -356,6 +367,16 @@ export function CanvasArea() {
               : 'text-[var(--color-text-secondary)]'
           }`}>
             Fit
+          </span>
+        </button>
+        {/* Fullscreen button */}
+        <button
+          class="rounded px-2.5 py-1.5 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer"
+          onClick={() => enterFullscreen()}
+          title="Fullscreen (\u21E7\u2318F)"
+        >
+          <span class="text-[11px] text-[var(--color-text-secondary)]">
+            {'\u26F6'}
           </span>
         </button>
       </div>
