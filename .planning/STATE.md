@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.13-02-PLAN.md
-last_updated: "2026-03-19T17:16:08.474Z"
+stopped_at: Completed quick-42 (260319-qmy)
+last_updated: "2026-03-19T18:23:27.071Z"
 progress:
   total_phases: 24
   completed_phases: 19
@@ -89,6 +89,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.12-04]: Video looping mod (targetTime % video.duration) applied universally to all video layers
 - [Phase 12.13]: DrawState layoutMode/displayMode fields optional for backward compat; text labels (S/L, T+N/T) for toggle buttons; drag feedback suppressed in linear mode
 - [Phase 12.13]: sequenceFromFrame helper uses trackLayouts X-ranges for linear mode selection; layout persisted to app config via Tauri IPC; linear mode as default
+- [Phase quick-42]: sourceOverrides as optional Record<string, number> bag on KeyframeValues for FX property animation; FX sequences use inFrame as keyframe startFrame
 
 ### Pending Todos
 
@@ -160,9 +161,10 @@ No active blockers.
 | 39 | Convert all FX property sections to 2-column paired-row layout | 2026-03-19 | 76905f4 |
 | 40 | Fix timeline scroll: natural trackpad, Cmd=vertical, scrollY auto-clamp | 2026-03-19 | 4bb41d2 |
 | 41 | Add Cmd+Arrow shortcuts for sequence navigation (laptop-friendly Home/End/PgUp/PgDn) | 2026-03-19 | 2ec4c5f |
+| 42 | Add keyframe animation for FX layer source properties (sourceOverrides interpolation) | 2026-03-19 | 96a80bc |
 
 ## Session Continuity
 
-Last session: 2026-03-19T18:07:16Z
-Stopped at: Completed quick-41 (260319-qga)
+Last session: 2026-03-19T18:23:09.479Z
+Stopped at: Completed quick-42 (260319-qmy)
 Resume file: None
