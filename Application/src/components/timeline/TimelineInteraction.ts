@@ -551,11 +551,11 @@ export class TimelineInteraction {
       return;
     }
 
-    // Playhead scrubbing (deferred: only updates currentFrame for timeline canvas,
-    // does NOT call syncDisplayFrame so Preview stays frozen until mouseup)
+    // Playhead scrubbing: seekToFrame updates both currentFrame and displayFrame
+    // (via syncDisplayFrame), giving realtime canvas preview during drag.
     if (this.isDragging) {
       const frame = this.getFrame(e.clientX);
-      timelineStore.seek(frame);
+      playbackEngine.seekToFrame(frame);
       return;
     }
 
@@ -625,7 +625,6 @@ export class TimelineInteraction {
     if (this.isDraggingKeyframe) {
       this.isDraggingKeyframe = false;
       timelineStore.setTimelineDragging(false);
-      timelineStore.syncDisplayFrame(); // Trigger final Preview render
       stopCoalescing();
       if (this.canvas) {
         try {
@@ -676,7 +675,6 @@ export class TimelineInteraction {
       this.isDraggingFx = false;
       this.fxDragSeqId = '';
       timelineStore.setTimelineDragging(false);
-      timelineStore.syncDisplayFrame(); // Trigger final Preview render
       stopCoalescing();
       if (this.canvas) {
         this.canvas.style.cursor = 'default';

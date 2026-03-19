@@ -123,13 +123,6 @@ export function Preview() {
     // Uses frameMap to determine which sequence owns the cursor frame, so selecting
     // a different sequence in the sidebar does not change what is rendered.
     const disposeRender = effect(() => {
-      // Skip render during timeline drags (playhead scrub, FX drag, keyframe drag).
-      // The effect subscribes to timelineDragging; when it transitions false->true
-      // we early-return, and when it transitions true->false the effect re-runs
-      // and performs the render with current state.
-      const isDragging = timelineStore.timelineDragging.value;
-      if (isDragging) return;
-
       const globalFrame = timelineStore.displayFrame.value;
       const fm = frameMap.value;
       // Subscribe to all sequence data so we re-render on layer property changes
