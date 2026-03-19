@@ -61,15 +61,23 @@ function SeedControls({ layer }: { layer: Layer }) {
 function GrainSection({ layer }: { layer: Layer }) {
   const source = layer.source as Extract<LayerSourceData, { type: 'generator-grain' }>;
   return (
-    <div class="space-y-1.5">
+    <div>
       <SectionLabel text="GRAIN" />
-      <NumericInput label="Density" value={source.density} step={0.01} min={0} max={1}
-        onChange={(val) => updateSource(layer.id, layer, { density: val })} />
-      <NumericInput label="Size" value={source.size} step={1} min={1} max={4}
-        onChange={(val) => updateSource(layer.id, layer, { size: val })} />
-      <NumericInput label="Intensity" value={source.intensity} step={0.01} min={0} max={1}
-        onChange={(val) => updateSource(layer.id, layer, { intensity: val })} />
-      <SeedControls layer={layer} />
+      <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Density" value={source.density} step={0.01} min={0} max={1}
+            onChange={(val) => updateSource(layer.id, layer, { density: val })} />
+          <NumericInput label="Size" value={source.size} step={1} min={1} max={4}
+            onChange={(val) => updateSource(layer.id, layer, { size: val })} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Intensity" value={source.intensity} step={0.01} min={0} max={1}
+            onChange={(val) => updateSource(layer.id, layer, { intensity: val })} />
+          <div class="flex items-center gap-2 flex-1 min-w-0">
+            <SeedControls layer={layer} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -77,17 +85,28 @@ function GrainSection({ layer }: { layer: Layer }) {
 function ParticlesSection({ layer }: { layer: Layer }) {
   const source = layer.source as Extract<LayerSourceData, { type: 'generator-particles' }>;
   return (
-    <div class="space-y-1.5">
+    <div>
       <SectionLabel text="PARTICLES" />
-      <NumericInput label="Count" value={source.count} step={1} min={1} max={500}
-        onChange={(val) => updateSource(layer.id, layer, { count: Math.round(val) })} />
-      <NumericInput label="Speed" value={source.speed} step={0.1} min={0} max={5}
-        onChange={(val) => updateSource(layer.id, layer, { speed: val })} />
-      <NumericInput label="Min" value={source.sizeMin} step={0.5} min={0.5} max={20}
-        onChange={(val) => updateSource(layer.id, layer, { sizeMin: val })} />
-      <NumericInput label="Max" value={source.sizeMax} step={0.5} min={0.5} max={20}
-        onChange={(val) => updateSource(layer.id, layer, { sizeMax: val })} />
-      <SeedControls layer={layer} />
+      <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Count" value={source.count} step={1} min={1} max={500}
+            onChange={(val) => updateSource(layer.id, layer, { count: Math.round(val) })} />
+          <NumericInput label="Speed" value={source.speed} step={0.1} min={0} max={5}
+            onChange={(val) => updateSource(layer.id, layer, { speed: val })} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Min" value={source.sizeMin} step={0.5} min={0.5} max={20}
+            onChange={(val) => updateSource(layer.id, layer, { sizeMin: val })} />
+          <NumericInput label="Max" value={source.sizeMax} step={0.5} min={0.5} max={20}
+            onChange={(val) => updateSource(layer.id, layer, { sizeMax: val })} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <div class="flex items-center gap-2 flex-1 min-w-0">
+            <SeedControls layer={layer} />
+          </div>
+          <div class="flex-1" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -95,17 +114,28 @@ function ParticlesSection({ layer }: { layer: Layer }) {
 function LinesSection({ layer }: { layer: Layer }) {
   const source = layer.source as Extract<LayerSourceData, { type: 'generator-lines' }>;
   return (
-    <div class="space-y-1.5">
+    <div>
       <SectionLabel text="LINES" />
-      <NumericInput label="Count" value={source.count} step={1} min={1} max={100}
-        onChange={(val) => updateSource(layer.id, layer, { count: Math.round(val) })} />
-      <NumericInput label="Thick" value={source.thickness} step={0.5} min={0.5} max={5}
-        onChange={(val) => updateSource(layer.id, layer, { thickness: val })} />
-      <NumericInput label="Min" value={source.lengthMin} step={0.01} min={0} max={1}
-        onChange={(val) => updateSource(layer.id, layer, { lengthMin: val })} />
-      <NumericInput label="Max" value={source.lengthMax} step={0.01} min={0} max={1}
-        onChange={(val) => updateSource(layer.id, layer, { lengthMax: val })} />
-      <SeedControls layer={layer} />
+      <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Count" value={source.count} step={1} min={1} max={100}
+            onChange={(val) => updateSource(layer.id, layer, { count: Math.round(val) })} />
+          <NumericInput label="Thick" value={source.thickness} step={0.5} min={0.5} max={5}
+            onChange={(val) => updateSource(layer.id, layer, { thickness: val })} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Min" value={source.lengthMin} step={0.01} min={0} max={1}
+            onChange={(val) => updateSource(layer.id, layer, { lengthMin: val })} />
+          <NumericInput label="Max" value={source.lengthMax} step={0.01} min={0} max={1}
+            onChange={(val) => updateSource(layer.id, layer, { lengthMax: val })} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <div class="flex items-center gap-2 flex-1 min-w-0">
+            <SeedControls layer={layer} />
+          </div>
+          <div class="flex-1" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -113,17 +143,28 @@ function LinesSection({ layer }: { layer: Layer }) {
 function DotsSection({ layer }: { layer: Layer }) {
   const source = layer.source as Extract<LayerSourceData, { type: 'generator-dots' }>;
   return (
-    <div class="space-y-1.5">
+    <div>
       <SectionLabel text="DOTS" />
-      <NumericInput label="Count" value={source.count} step={1} min={1} max={200}
-        onChange={(val) => updateSource(layer.id, layer, { count: Math.round(val) })} />
-      <NumericInput label="Min" value={source.sizeMin} step={0.5} min={1} max={20}
-        onChange={(val) => updateSource(layer.id, layer, { sizeMin: val })} />
-      <NumericInput label="Max" value={source.sizeMax} step={0.5} min={1} max={20}
-        onChange={(val) => updateSource(layer.id, layer, { sizeMax: val })} />
-      <NumericInput label="Speed" value={source.speed} step={0.1} min={0} max={5}
-        onChange={(val) => updateSource(layer.id, layer, { speed: val })} />
-      <SeedControls layer={layer} />
+      <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Count" value={source.count} step={1} min={1} max={200}
+            onChange={(val) => updateSource(layer.id, layer, { count: Math.round(val) })} />
+          <NumericInput label="Speed" value={source.speed} step={0.1} min={0} max={5}
+            onChange={(val) => updateSource(layer.id, layer, { speed: val })} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Min" value={source.sizeMin} step={0.5} min={1} max={20}
+            onChange={(val) => updateSource(layer.id, layer, { sizeMin: val })} />
+          <NumericInput label="Max" value={source.sizeMax} step={0.5} min={1} max={20}
+            onChange={(val) => updateSource(layer.id, layer, { sizeMax: val })} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <div class="flex items-center gap-2 flex-1 min-w-0">
+            <SeedControls layer={layer} />
+          </div>
+          <div class="flex-1" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -131,14 +172,21 @@ function DotsSection({ layer }: { layer: Layer }) {
 function VignetteSection({ layer }: { layer: Layer }) {
   const source = layer.source as Extract<LayerSourceData, { type: 'generator-vignette' }>;
   return (
-    <div class="space-y-1.5">
+    <div>
       <SectionLabel text="VIGNETTE" />
-      <NumericInput label="Size" value={source.size} step={0.01} min={0} max={1}
-        onChange={(val) => updateSource(layer.id, layer, { size: val })} />
-      <NumericInput label="Softness" value={source.softness} step={0.01} min={0} max={1}
-        onChange={(val) => updateSource(layer.id, layer, { softness: val })} />
-      <NumericInput label="Intensity" value={source.intensity} step={0.01} min={0} max={1}
-        onChange={(val) => updateSource(layer.id, layer, { intensity: val })} />
+      <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Size" value={source.size} step={0.01} min={0} max={1}
+            onChange={(val) => updateSource(layer.id, layer, { size: val })} />
+          <NumericInput label="Softness" value={source.softness} step={0.01} min={0} max={1}
+            onChange={(val) => updateSource(layer.id, layer, { softness: val })} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Intensity" value={source.intensity} step={0.01} min={0} max={1}
+            onChange={(val) => updateSource(layer.id, layer, { intensity: val })} />
+          <div class="flex-1" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -159,58 +207,66 @@ function ColorGradeSection({ layer }: { layer: Layer }) {
   };
 
   return (
-    <div class="space-y-1.5">
+    <div>
       <SectionLabel text="COLOR GRADE" />
-
-      {/* Preset dropdown */}
-      <select
-        class="w-full text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[5px] outline-none cursor-pointer"
-        value={source.preset}
-        onChange={(e) => handlePresetChange((e.target as HTMLSelectElement).value)}
-      >
-        {PRESET_NAMES.map((name) => (
-          <option key={name} value={name}>
-            {capitalize(name)}
-          </option>
-        ))}
-      </select>
-
-      <NumericInput label="Bright" value={source.brightness} step={0.1} min={-1} max={1}
-        onChange={(val) => handleParamChange('brightness', val)} />
-      <NumericInput label="Contrast" value={source.contrast} step={0.1} min={-1} max={1}
-        onChange={(val) => handleParamChange('contrast', val)} />
-      <NumericInput label="Sat" value={source.saturation} step={0.1} min={-1} max={1}
-        onChange={(val) => handleParamChange('saturation', val)} />
-      <NumericInput label="Hue" value={source.hue} step={1} min={-180} max={180}
-        onChange={(val) => handleParamChange('hue', val)} />
-      <NumericInput label="Fade" value={source.fade} step={0.1} min={0} max={1}
-        onChange={(val) => handleParamChange('fade', val)} />
-
-      {/* Tint color picker */}
-      <div class="flex items-center gap-1">
-        <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Tint</span>
-        <input
-          type="color"
-          value={source.tintColor}
-          class="w-6 h-6 rounded cursor-pointer border-none bg-transparent"
-          onInput={(e) => handleParamChange('tintColor', (e.target as HTMLInputElement).value)}
-        />
-      </div>
-
-      {/* Fade blend mode dropdown */}
-      <div class="flex items-center gap-1">
-        <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Fade Blend</span>
+      <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+        {/* Preset dropdown (full-width) */}
         <select
-          class="w-full text-[10px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-1 py-[3px] outline-none cursor-pointer"
-          value={source.fadeBlend ?? 'source-over'}
-          onChange={(e) => handleParamChange('fadeBlend', (e.target as HTMLSelectElement).value)}
+          class="w-full text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[5px] outline-none cursor-pointer"
+          value={source.preset}
+          onChange={(e) => handlePresetChange((e.target as HTMLSelectElement).value)}
         >
-          {FADE_BLEND_MODES.map((mode) => (
-            <option key={mode} value={mode}>
-              {capitalize(mode.replace('-', ' '))}
+          {PRESET_NAMES.map((name) => (
+            <option key={name} value={name}>
+              {capitalize(name)}
             </option>
           ))}
         </select>
+
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Bright" value={source.brightness} step={0.1} min={-1} max={1}
+            onChange={(val) => handleParamChange('brightness', val)} />
+          <NumericInput label="Contrast" value={source.contrast} step={0.1} min={-1} max={1}
+            onChange={(val) => handleParamChange('contrast', val)} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Sat" value={source.saturation} step={0.1} min={-1} max={1}
+            onChange={(val) => handleParamChange('saturation', val)} />
+          <NumericInput label="Hue" value={source.hue} step={1} min={-180} max={180}
+            onChange={(val) => handleParamChange('hue', val)} />
+        </div>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Fade" value={source.fade} step={0.1} min={0} max={1}
+            onChange={(val) => handleParamChange('fade', val)} />
+          <div class="flex-1" />
+        </div>
+
+        {/* Tint color picker (full-width) */}
+        <div class="flex items-center gap-1">
+          <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Tint</span>
+          <input
+            type="color"
+            value={source.tintColor}
+            class="w-6 h-6 rounded cursor-pointer border-none bg-transparent"
+            onInput={(e) => handleParamChange('tintColor', (e.target as HTMLInputElement).value)}
+          />
+        </div>
+
+        {/* Fade blend mode dropdown (full-width) */}
+        <div class="flex items-center gap-1">
+          <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Fade Blend</span>
+          <select
+            class="w-full text-[10px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-1 py-[3px] outline-none cursor-pointer"
+            value={source.fadeBlend ?? 'source-over'}
+            onChange={(e) => handleParamChange('fadeBlend', (e.target as HTMLSelectElement).value)}
+          >
+            {FADE_BLEND_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {capitalize(mode.replace('-', ' '))}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   );
@@ -219,10 +275,15 @@ function ColorGradeSection({ layer }: { layer: Layer }) {
 function BlurSection({ layer }: { layer: Layer }) {
   const source = layer.source as Extract<LayerSourceData, { type: 'adjustment-blur' }>;
   return (
-    <div class="space-y-1.5">
+    <div>
       <SectionLabel text="BLUR" />
-      <NumericInput label="Radius" value={source.radius} step={0.01} min={0} max={1}
-        onChange={(val) => updateSource(layer.id, layer, { radius: val })} />
+      <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+        <div class="flex items-center" style={{ gap: '16px' }}>
+          <NumericInput label="Radius" value={source.radius} step={0.01} min={0} max={1}
+            onChange={(val) => updateSource(layer.id, layer, { radius: val })} />
+          <div class="flex-1" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -260,7 +321,7 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
   return (
     <div class="px-3 py-2 space-y-3">
       {/* Opacity + Visibility */}
-      <div class="space-y-1.5">
+      <div>
         <div class="flex items-center justify-between">
           <SectionLabel text="OPACITY" />
           {/* Visibility toggle */}
@@ -288,7 +349,7 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
         </div>
 
         {/* Opacity slider */}
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-1.5" style={{ marginTop: '6px' }}>
           <input
             type="range"
             min="0"
@@ -314,23 +375,25 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
 
       {/* Blend mode dropdown (only for adjustment-blur type) */}
       {layer.source.type === 'adjustment-blur' && (
-        <div class="space-y-1.5">
+        <div>
           <SectionLabel text="BLEND" />
-          <select
-            class="w-full text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[3px] outline-none cursor-pointer"
-            value={layer.blendMode}
-            onChange={(e) => {
-              layerStore.updateLayer(layer.id, {
-                blendMode: (e.target as HTMLSelectElement).value as BlendMode,
-              });
-            }}
-          >
-            {BLEND_MODES.map((mode) => (
-              <option key={mode} value={mode}>
-                {capitalize(mode)}
-              </option>
-            ))}
-          </select>
+          <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+            <select
+              class="w-full text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[3px] outline-none cursor-pointer"
+              value={layer.blendMode}
+              onChange={(e) => {
+                layerStore.updateLayer(layer.id, {
+                  blendMode: (e.target as HTMLSelectElement).value as BlendMode,
+                });
+              }}
+            >
+              {BLEND_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {capitalize(mode)}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 
@@ -339,16 +402,21 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
 
       {/* Generator blur radius */}
       {isGeneratorLayer(layer) && (
-        <div class="space-y-1.5">
+        <div>
           <SectionLabel text="BLUR" />
-          <NumericInput
-            label="Radius"
-            value={layer.blur ?? 0}
-            step={0.01}
-            min={0}
-            max={1}
-            onChange={(val) => layerStore.updateLayer(layer.id, { blur: val })}
-          />
+          <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+            <div class="flex items-center" style={{ gap: '16px' }}>
+              <NumericInput
+                label="Radius"
+                value={layer.blur ?? 0}
+                step={0.01}
+                min={0}
+                max={1}
+                onChange={(val) => layerStore.updateLayer(layer.id, { blur: val })}
+              />
+              <div class="flex-1" />
+            </div>
+          </div>
         </div>
       )}
     </div>
