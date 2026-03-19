@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.14-02-PLAN.md
-last_updated: "2026-03-19T19:16:03.103Z"
+stopped_at: Completed 12.14-01-PLAN.md
+last_updated: "2026-03-19T19:17:29.122Z"
 progress:
   total_phases: 25
-  completed_phases: 19
+  completed_phases: 20
   total_plans: 52
   completed_plans: 51
 ---
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: 12.14 (timeline-canvas-buttons-enhancements) — EXECUTING
-Plan: 2 of 2 (COMPLETE)
+Plan: 2 of 2
 
 ## Accumulated Context
 
@@ -91,6 +91,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.13]: sequenceFromFrame helper uses trackLayouts X-ranges for linear mode selection; layout persisted to app config via Tauri IPC; linear mode as default
 - [Phase quick-42]: sourceOverrides as optional Record<string, number> bag on KeyframeValues for FX property animation; FX sequences use inFrame as keyframe startFrame
 - [Phase 12.14]: SaveIcon alias for lucide Save to avoid conflict with Tauri plugin-dialog save import; icon-only w-8 h-8 buttons with title tooltip format Label (Shortcut)
+- [Phase 12.14]: Icon sizes: 14px timeline compact bar, 16px canvas standard, 18px canvas play/pause emphasis; currentColor propagation via text color on button element
 
 ### Pending Todos
 
@@ -167,6 +168,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-19T19:16:03.100Z
-Stopped at: Completed 12.14-02-PLAN.md
+Last session: 2026-03-19T19:17:29.120Z
+Stopped at: Completed 12.14-01-PLAN.md
 Resume file: None
