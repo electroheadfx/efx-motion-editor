@@ -2,6 +2,7 @@ import {useRef, useCallback, useEffect} from 'preact/hooks';
 import {useSignal} from '@preact/signals';
 import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
+import {FullSpeedBadge} from '../overlay/FullSpeedBadge';
 import {TransformOverlay} from '../canvas/TransformOverlay';
 import {timelineStore} from '../../stores/timelineStore';
 import {canvasStore} from '../../stores/canvasStore';
@@ -158,8 +159,13 @@ export function CanvasArea() {
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
 
         if (!spaceDragOccurred.current) {
-          // No drag occurred -- toggle play/pause
-          playbackEngine.toggle();
+          if (e.shiftKey) {
+            // Shift+Space: toggle full-speed playback
+            playbackEngine.toggleFullSpeed();
+          } else {
+            // Plain Space: toggle play/pause
+            playbackEngine.toggle();
+          }
         }
         spaceDragOccurred.current = false;
       }
@@ -267,6 +273,7 @@ export function CanvasArea() {
       </div>
       {/* JKL speed badge -- positioned above playback controls */}
       <SpeedBadge />
+      <FullSpeedBadge />
       {/* Preview Controls */}
       <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0">
         {/* Step backward */}

@@ -21,6 +21,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: 'J', description: 'Set reverse / increase speed'},
       {keys: 'K', description: 'Reset speed to 1x forward'},
       {keys: 'L', description: 'Set forward / increase speed'},
+      {keys: '\u21E7\u2423', description: 'Full-speed playback (no UI feedback)'},
     ],
   },
   {
@@ -60,6 +61,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: '\u2318Scroll', description: 'Zoom at cursor'},
       {keys: '\u2190\u2191\u2193\u2192', description: 'Nudge layer 1px'},
       {keys: '\u21E7\u2190\u2191\u2193\u2192', description: 'Nudge layer 10px'},
+      {keys: '\u21E7\u2318F', description: 'Toggle fullscreen canvas'},
       {keys: 'Esc', description: 'Deselect layer'},
       {keys: '\u2325Click', description: 'Cycle overlapping layers'},
     ],
