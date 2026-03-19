@@ -8,6 +8,8 @@ import { layerStore } from '../../stores/layerStore';
 import { keyframeStore } from '../../stores/keyframeStore';
 import { timelineStore } from '../../stores/timelineStore';
 import { blurStore } from '../../stores/blurStore';
+import { sequenceStore } from '../../stores/sequenceStore';
+import { uiStore } from '../../stores/uiStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { isFxLayer } from '../../types/layer';
 import type { Layer, BlendMode, KeyframeValues } from '../../types/layer';
@@ -21,7 +23,7 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function SidebarProperties({ layer }: { layer: Layer }) {
+export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; isContentOverlay?: boolean }) {
   // Keyframe display values logic
   const kfDisplayValues = keyframeStore.displayValues.value;
   const hasKeyframes = !isFxLayer(layer) && !layer.isBase
@@ -84,6 +86,31 @@ export function SidebarProperties({ layer }: { layer: Layer }) {
 
   return (
     <div class="px-3 py-2 space-y-3">
+      {/* Change Source button for content overlay layers */}
+      {isContentOverlay && (
+        <div class="pb-1">
+          <button
+            class="w-full text-left px-2 py-1.5 text-[11px] rounded bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)] text-[var(--color-text-button)] transition-colors"
+            onClick={() => {
+              const seqs = sequenceStore.sequences.peek();
+              let seqId = '';
+              for (const seq of seqs) {
+                if (seq.layers.some(l => l.id === layer.id)) { seqId = seq.id; break; }
+              }
+              const layerType = layer.type as 'static-image' | 'image-sequence' | 'video';
+              uiStore.setAddLayerIntent({
+                type: layerType,
+                target: 'content-overlay',
+                changeSourceFor: { layerId: layer.id, sequenceId: seqId },
+              });
+              uiStore.setEditorMode('imported');
+            }}
+          >
+            Change Source...
+          </button>
+        </div>
+      )}
+
       {/* Keyframe nav bar + Blur slider (same row, gap 16px per Pencil spec) -- only for non-base layers */}
       {!layer.isBase && (
         <div class="flex items-center gap-3">

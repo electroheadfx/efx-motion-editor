@@ -24,16 +24,18 @@ const MIN_PANEL_HEIGHT = `${HEADER_HEIGHT}px`;
 export function LeftPanel() {
   const sequences = sequenceStore.sequences.value;
 
-  // Find selected layer across all sequences (FX layers live in FX sequences)
+  // Find selected layer across all sequences (FX layers live in FX sequences, content-overlay in their own)
   const selectedId = layerStore.selectedLayerId.value;
   let selectedLayer = null;
   let fxSequenceId: string | null = null;
+  let isContentOverlay = false;
   if (selectedId) {
     for (const seq of sequenceStore.sequences.value) {
       const found = seq.layers.find((l) => l.id === selectedId);
       if (found) {
         selectedLayer = found;
         if (seq.kind === 'fx') fxSequenceId = seq.id;
+        if (seq.kind === 'content-overlay') isContentOverlay = true;
         break;
       }
     }
@@ -211,6 +213,22 @@ export function LeftPanel() {
               </SidebarScrollArea>
             )}
           </>
+        ) : isContentOverlay ? (
+          <>
+            <div
+              class="flex items-center h-9 px-3 shrink-0"
+              style={{ color: 'var(--sidebar-text-secondary)' }}
+            >
+              <span style="font-size: 11px; font-weight: 600; letter-spacing: 2px">
+                {selectedLayer!.name}
+              </span>
+            </div>
+            {layFlex > 0 && (
+              <SidebarScrollArea>
+                <SidebarProperties layer={selectedLayer!} isContentOverlay={true} />
+              </SidebarScrollArea>
+            )}
+          </>
         ) : (
           <CollapsibleSection
             title="LAYERS"
@@ -242,7 +260,7 @@ export function LeftPanel() {
           collapsed={uiStore.propertiesSectionCollapsed}
           onCollapse={handlePropCollapse}
         >
-          {selectedLayer && !isFx && (
+          {selectedLayer && !isFx && !isContentOverlay && (
             <SidebarScrollArea>
               <SidebarProperties layer={selectedLayer} />
             </SidebarScrollArea>

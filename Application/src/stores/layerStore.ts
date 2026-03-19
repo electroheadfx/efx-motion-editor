@@ -10,9 +10,9 @@ const layers = computed<Layer[]>(() => {
   return seq?.layers ?? [];
 });
 
-/** Computed: all layers from all FX sequences */
-const fxLayers = computed<Layer[]>(() => {
-  return sequenceStore.getFxSequences().flatMap(s => s.layers);
+/** Computed: all layers from overlay sequences (FX + content-overlay) for routing */
+const overlayLayers = computed<Layer[]>(() => {
+  return sequenceStore.getOverlaySequences().flatMap(s => s.layers);
 });
 
 export const layerStore = {
@@ -24,10 +24,10 @@ export const layerStore = {
     sequenceStore.addLayer(layer);
   },
 
-  /** Remove a layer by ID (routes to sequence-aware method for FX layers) */
+  /** Remove a layer by ID (routes to sequence-aware method for FX/content-overlay layers) */
   remove(id: string) {
-    // Check if this is an FX layer
-    if (fxLayers.peek().some(l => l.id === id)) {
+    // Check if this is an overlay layer (FX or content-overlay)
+    if (overlayLayers.peek().some(l => l.id === id)) {
       sequenceStore.removeLayerFromSequence(id);
       return;
     }
@@ -36,9 +36,9 @@ export const layerStore = {
     sequenceStore.removeLayer(id);
   },
 
-  /** Update layer properties (routes to sequence-aware method for FX layers) */
+  /** Update layer properties (routes to sequence-aware method for FX/content-overlay layers) */
   updateLayer(id: string, updates: Partial<Layer>) {
-    if (fxLayers.peek().some(l => l.id === id)) {
+    if (overlayLayers.peek().some(l => l.id === id)) {
       sequenceStore.updateLayerInSequence(id, updates);
       return;
     }

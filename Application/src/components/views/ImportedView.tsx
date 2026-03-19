@@ -7,8 +7,10 @@ import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
 import {defaultTransform} from '../../types/layer';
+import type {Layer} from '../../types/layer';
 import {ImportGrid} from '../import/ImportGrid';
 import {tempProjectDir} from '../../lib/projectDir';
+import {totalFrames} from '../../lib/frameMap';
 
 export function ImportedView() {
   const intent = uiStore.addLayerIntent.value;
@@ -63,10 +65,41 @@ export function ImportedView() {
 
   // Single-select handler for static image layer creation
   const handleAddStaticImageLayer = useCallback((imageId: string) => {
+    const currentIntent = uiStore.addLayerIntent.peek();
     const img = imageStore.getById(imageId);
     if (!img) return;
     const layerId = crypto.randomUUID();
     const filename = img.original_path.split('/').pop() ?? 'image';
+
+    // Change Source flow: update existing layer source instead of creating new
+    if (currentIntent?.changeSourceFor) {
+      layerStore.updateLayer(currentIntent.changeSourceFor.layerId, {
+        source: { type: 'static-image', imageId: img.id },
+        name: filename,
+      });
+      uiStore.setAddLayerIntent(null);
+      uiStore.setEditorMode('editor');
+      return;
+    }
+
+    // Content overlay flow: create new content-overlay sequence
+    if (currentIntent?.target === 'content-overlay') {
+      const layer: Layer = {
+        id: layerId, name: filename, type: 'static-image',
+        visible: true, opacity: 1, blendMode: 'normal',
+        transform: defaultTransform(),
+        source: { type: 'static-image', imageId: img.id },
+        isBase: false,
+      };
+      sequenceStore.createContentOverlaySequence(filename, layer, totalFrames.peek());
+      layerStore.setSelected(layerId);
+      uiStore.selectLayer(layerId);
+      uiStore.setAddLayerIntent(null);
+      uiStore.setEditorMode('editor');
+      return;
+    }
+
+    // Default flow: add layer to active content sequence
     layerStore.add({
       id: layerId, name: filename, type: 'static-image',
       visible: true, opacity: 1, blendMode: 'normal',
@@ -82,9 +115,40 @@ export function ImportedView() {
 
   // Single-select handler for video layer creation
   const handleAddVideoLayer = useCallback((videoId: string) => {
+    const currentIntent = uiStore.addLayerIntent.peek();
     const video = imageStore.videoAssets.value.find(v => v.id === videoId);
     if (!video) return;
     const layerId = crypto.randomUUID();
+
+    // Change Source flow: update existing layer source
+    if (currentIntent?.changeSourceFor) {
+      layerStore.updateLayer(currentIntent.changeSourceFor.layerId, {
+        source: { type: 'video', videoPath: video.path },
+        name: video.name,
+      });
+      uiStore.setAddLayerIntent(null);
+      uiStore.setEditorMode('editor');
+      return;
+    }
+
+    // Content overlay flow: create new content-overlay sequence
+    if (currentIntent?.target === 'content-overlay') {
+      const layer: Layer = {
+        id: layerId, name: video.name, type: 'video',
+        visible: true, opacity: 1, blendMode: 'normal',
+        transform: defaultTransform(),
+        source: { type: 'video', videoPath: video.path },
+        isBase: false,
+      };
+      sequenceStore.createContentOverlaySequence(video.name, layer, totalFrames.peek());
+      layerStore.setSelected(layerId);
+      uiStore.selectLayer(layerId);
+      uiStore.setAddLayerIntent(null);
+      uiStore.setEditorMode('editor');
+      return;
+    }
+
+    // Default flow: add layer to active content sequence
     layerStore.add({
       id: layerId, name: video.name, type: 'video',
       visible: true, opacity: 1, blendMode: 'normal',
@@ -104,7 +168,40 @@ export function ImportedView() {
 
     const currentIntent = uiStore.addLayerIntent.peek();
     if (currentIntent?.type === 'image-sequence') {
-      // Add-layer flow: create image-sequence layer
+      const sortedIds = [...selectedIds].sort();
+
+      // Change Source flow: update existing layer source
+      if (currentIntent.changeSourceFor) {
+        layerStore.updateLayer(currentIntent.changeSourceFor.layerId, {
+          source: { type: 'image-sequence', imageIds: sortedIds },
+          name: `Sequence (${sortedIds.length} images)`,
+        });
+        setSelectedIds([]);
+        uiStore.setAddLayerIntent(null);
+        uiStore.setEditorMode('editor');
+        return;
+      }
+
+      // Content overlay flow: create new content-overlay sequence
+      if (currentIntent.target === 'content-overlay') {
+        const layerId = crypto.randomUUID();
+        const layer: Layer = {
+          id: layerId, name: `Sequence (${sortedIds.length} images)`,
+          type: 'image-sequence', visible: true, opacity: 1, blendMode: 'normal',
+          transform: defaultTransform(),
+          source: { type: 'image-sequence', imageIds: sortedIds },
+          isBase: false,
+        };
+        sequenceStore.createContentOverlaySequence(layer.name, layer, totalFrames.peek());
+        layerStore.setSelected(layerId);
+        uiStore.selectLayer(layerId);
+        setSelectedIds([]);
+        uiStore.setAddLayerIntent(null);
+        uiStore.setEditorMode('editor');
+        return;
+      }
+
+      // Default flow: add layer to active content sequence
       const layerId = crypto.randomUUID();
       layerStore.add({
         id: layerId, name: `Sequence (${selectedIds.length} images)`,
