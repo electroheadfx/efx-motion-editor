@@ -213,22 +213,6 @@ export function LeftPanel() {
               </SidebarScrollArea>
             )}
           </>
-        ) : isContentOverlay ? (
-          <>
-            <div
-              class="flex items-center h-9 px-3 shrink-0"
-              style={{ color: 'var(--sidebar-text-secondary)' }}
-            >
-              <span style="font-size: 11px; font-weight: 600; letter-spacing: 2px">
-                {selectedLayer!.name}
-              </span>
-            </div>
-            {layFlex > 0 && (
-              <SidebarScrollArea>
-                <SidebarProperties layer={selectedLayer!} isContentOverlay={true} />
-              </SidebarScrollArea>
-            )}
-          </>
         ) : (
           <CollapsibleSection
             title="LAYERS"
@@ -260,9 +244,9 @@ export function LeftPanel() {
           collapsed={uiStore.propertiesSectionCollapsed}
           onCollapse={handlePropCollapse}
         >
-          {selectedLayer && !isFx && !isContentOverlay && (
+          {selectedLayer && !isFx && (
             <SidebarScrollArea>
-              <SidebarProperties layer={selectedLayer} />
+              <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
             </SidebarScrollArea>
           )}
         </CollapsibleSection>
