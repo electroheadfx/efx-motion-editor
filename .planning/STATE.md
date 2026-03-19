@@ -159,9 +159,10 @@ No active blockers.
 | 38 | Re-enable realtime canvas preview during playhead scrub drag | 2026-03-19 | 160644b |
 | 39 | Convert all FX property sections to 2-column paired-row layout | 2026-03-19 | 76905f4 |
 | 40 | Fix timeline scroll: natural trackpad, Cmd=vertical, scrollY auto-clamp | 2026-03-19 | 4bb41d2 |
+| 41 | Add Cmd+Arrow shortcuts for sequence navigation (laptop-friendly Home/End/PgUp/PgDn) | 2026-03-19 | 2ec4c5f |
 
 ## Session Continuity
 
-Last session: 2026-03-19T17:56:07Z
-Stopped at: Completed quick-40 (260319-q5i)
+Last session: 2026-03-19T18:07:16Z
+Stopped at: Completed quick-41 (260319-qga)
 Resume file: None
