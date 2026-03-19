@@ -243,7 +243,7 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
 
       const seq: Sequence = {
         id: mceSeq.id,
-        kind: (mceSeq.kind as 'content' | 'fx') ?? 'content',
+        kind: (mceSeq.kind as 'content' | 'fx' | 'content-overlay') ?? 'content',
         name: mceSeq.name,
         fps: mceSeq.fps,
         width: mceSeq.width,

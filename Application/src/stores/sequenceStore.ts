@@ -190,6 +190,37 @@ export const sequenceStore = {
     return seq;
   },
 
+  /** Create a content overlay sequence with a single content layer, positioned globally on the timeline */
+  createContentOverlaySequence(name: string, layer: Layer, totalFrames: number): Sequence {
+    const before = snapshot();
+
+    const seq: Sequence = {
+      id: genId(),
+      kind: 'content-overlay',
+      name,
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: totalFrames > 0 ? totalFrames : 100,
+    };
+    sequences.value = [...sequences.value, seq];
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Add content overlay "${name}"`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+
+    return seq;
+  },
+
   /** Toggle FX sequence visibility (visible ↔ hidden) — syncs both sequence.visible and layer.visible */
   toggleFxSequenceVisibility(id: string) {
     const before = snapshot();
@@ -217,9 +248,9 @@ export const sequenceStore = {
   reorderFxSequences(fromIndex: number, toIndex: number) {
     const before = snapshot();
     const all = [...sequences.value];
-    // Extract FX-only indices
+    // Extract overlay indices (FX + content-overlay, i.e. everything except content)
     const fxIndices = all.reduce<number[]>((acc, s, i) => {
-      if (s.kind === 'fx') acc.push(i);
+      if (s.kind !== 'content') acc.push(i);
       return acc;
     }, []);
     if (fromIndex < 0 || fromIndex >= fxIndices.length || toIndex < 0 || toIndex >= fxIndices.length) return;
@@ -269,6 +300,11 @@ export const sequenceStore = {
   /** Get all FX sequences (kind === 'fx') */
   getFxSequences(): Sequence[] {
     return sequences.value.filter((s) => s.kind === 'fx');
+  },
+
+  /** Get all overlay sequences (FX + content-overlay, i.e. everything except content) */
+  getOverlaySequences(): Sequence[] {
+    return sequences.value.filter((s) => s.kind !== 'content');
   },
 
   /** Update sequence name */
@@ -556,8 +592,8 @@ export const sequenceStore = {
 
     const remainingLayers = ownerSeq.layers.filter(l => l.id !== layerId);
 
-    // If this was the only layer in an FX sequence, remove the entire sequence
-    if (ownerSeq.kind === 'fx' && remainingLayers.length === 0) {
+    // If this was the only layer in an FX or content-overlay sequence, remove the entire sequence
+    if ((ownerSeq.kind === 'fx' || ownerSeq.kind === 'content-overlay') && remainingLayers.length === 0) {
       sequences.value = sequences.value.filter(s => s.id !== ownerSeq.id);
     } else {
       sequences.value = sequences.value.map((s) =>

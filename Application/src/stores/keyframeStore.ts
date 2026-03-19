@@ -24,8 +24,13 @@ function findLayerContext(layerId: string): { sequenceId: string; startFrame: nu
   const seqs = sequenceStore.sequences.peek();
   const layouts = trackLayouts.peek();
   for (const seq of seqs) {
-    if (seq.kind === 'fx') continue; // Keyframes only on content layers for now
+    if (seq.kind === 'fx') continue; // FX sequences don't have keyframes
     if (seq.layers.some(l => l.id === layerId)) {
+      if (seq.kind === 'content-overlay') {
+        // Content overlay: startFrame is inFrame (global timeline position)
+        return { sequenceId: seq.id, startFrame: seq.inFrame ?? 0 };
+      }
+      // Content sequence: use trackLayouts for start frame
       const layout = layouts.find(t => t.sequenceId === seq.id);
       return { sequenceId: seq.id, startFrame: layout?.startFrame ?? 0 };
     }

@@ -1,14 +1,14 @@
 import {computed} from '@preact/signals';
 import {sequenceStore} from '../stores/sequenceStore';
 import type {FrameEntry, TrackLayout, FxTrackLayout, KeyPhotoRange} from '../types/timeline';
-import type {LayerType} from '../types/layer';
+import type {Layer, LayerType} from '../types/layer';
 
 /** Flattened frame array: every frame maps to a sequence, key photo, and image (GLOBAL) */
 export const frameMap = computed<FrameEntry[]>(() => {
   const entries: FrameEntry[] = [];
   let globalFrame = 0;
   for (const seq of sequenceStore.sequences.value) {
-    if (seq.kind === 'fx') continue; // FX sequences don't contribute frames to the global timeline
+    if (seq.kind !== 'content') continue; // Only content sequences contribute frames to the global timeline
     for (const kp of seq.keyPhotos) {
       for (let f = 0; f < kp.holdFrames; f++) {
         entries.push({
@@ -49,7 +49,7 @@ export const trackLayouts = computed<TrackLayout[]>(() => {
   const tracks: TrackLayout[] = [];
   let globalFrame = 0;
   for (const seq of sequenceStore.sequences.value) {
-    if (seq.kind === 'fx') continue; // FX sequences render via fxTrackLayouts
+    if (seq.kind !== 'content') continue; // Only content sequences render via trackLayouts
     const startFrame = globalFrame;
     const ranges: KeyPhotoRange[] = [];
     for (const kp of seq.keyPhotos) {
@@ -88,21 +88,41 @@ function fxColorForLayerType(type: LayerType): string {
   return FX_TRACK_COLORS[type] ?? FX_DEFAULT_COLOR;
 }
 
-/** FX track layout data for timeline rendering (one track per FX sequence) */
+/** Extract a thumbnail image ID from a content layer (for content-overlay range bar icons) */
+function getThumbnailImageId(layer: Layer | undefined): string | undefined {
+  if (!layer) return undefined;
+  if (layer.source.type === 'static-image') return (layer.source as { imageId: string }).imageId;
+  if (layer.source.type === 'image-sequence') {
+    const ids = (layer.source as { imageIds: string[] }).imageIds;
+    return ids.length > 0 ? ids[0] : undefined;
+  }
+  return undefined; // video has no thumbnail imageId
+}
+
+/** FX track layout data for timeline rendering (one track per FX or content-overlay sequence) */
 export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
   const layouts: FxTrackLayout[] = [];
   for (const seq of sequenceStore.sequences.value) {
-    if (seq.kind !== 'fx') continue;
+    if (seq.kind === 'content') continue; // content sequences render via trackLayouts
     const primaryLayer = seq.layers[0];
-    const color = primaryLayer ? fxColorForLayerType(primaryLayer.type) : FX_DEFAULT_COLOR;
+    let color: string;
+    if (seq.kind === 'content-overlay') {
+      color = primaryLayer?.type === 'static-image' ? 'var(--sidebar-dot-green)'
+            : primaryLayer?.type === 'image-sequence' ? 'var(--sidebar-dot-blue)'
+            : '#8B5CF6'; // video - purple
+    } else {
+      color = primaryLayer ? fxColorForLayerType(primaryLayer.type) : FX_DEFAULT_COLOR;
+    }
     layouts.push({
       sequenceId: seq.id,
       sequenceName: seq.name,
-      kind: 'fx',
+      kind: seq.kind as 'fx' | 'content-overlay',
       inFrame: seq.inFrame ?? 0,
       outFrame: seq.outFrame ?? 100,
       color,
       visible: seq.visible !== false,
+      thumbnailImageId: seq.kind === 'content-overlay' ? getThumbnailImageId(primaryLayer) : undefined,
+      layerType: primaryLayer?.type,
     });
   }
   return layouts;
