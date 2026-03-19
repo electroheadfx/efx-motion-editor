@@ -8,7 +8,7 @@ import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, TRACK_HEIGHT, FX_TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
-import {isFxLayer} from '../../types/layer';
+// isFxLayer import removed: clearFxLayerSelection now checks sequence kind instead of layer type
 
 /**
  * TimelineInteraction: Pointer/wheel/touch event handling for the timeline canvas.
@@ -172,10 +172,11 @@ export class TimelineInteraction {
     return Math.max(0, Math.min(idx, fxCount));
   }
 
-  /** Select the first layer in an FX sequence for property editing */
+  /** Select the first layer in an FX or content-overlay sequence for property editing.
+   *  Searches all sequences by ID (not just getFxSequences) so content-overlay sequences are found. */
   private selectFxSequenceLayer(sequenceId: string): void {
-    const fxSeqs = sequenceStore.getFxSequences();
-    const seq = fxSeqs.find(s => s.id === sequenceId);
+    const allSeqs = sequenceStore.sequences.peek();
+    const seq = allSeqs.find(s => s.id === sequenceId);
     if (seq && seq.layers.length > 0) {
       const layerId = seq.layers[0].id;
       layerStore.setSelected(layerId);
@@ -183,14 +184,15 @@ export class TimelineInteraction {
     }
   }
 
-  /** Clear layer selection only if current selection is an FX layer.
-   *  Preserves content layer selection so keyframe diamonds stay visible. */
+  /** Clear layer selection only if current selection is an FX or content-overlay layer.
+   *  Preserves content sequence layer selection so keyframe diamonds stay visible. */
   private clearFxLayerSelection(): void {
     const currentLayerId = layerStore.selectedLayerId.peek();
     if (!currentLayerId) return;
     const allSeqs = sequenceStore.sequences.peek();
-    const currentLayer = allSeqs.flatMap(s => s.layers).find(l => l.id === currentLayerId);
-    if (currentLayer && isFxLayer(currentLayer)) {
+    // Check if the layer belongs to an FX or content-overlay sequence
+    const ownerSeq = allSeqs.find(s => s.layers.some(l => l.id === currentLayerId));
+    if (ownerSeq && ownerSeq.kind !== 'content') {
       layerStore.setSelected(null);
       uiStore.selectLayer(null);
     }
@@ -225,24 +227,58 @@ export class TimelineInteraction {
 
     // Find which sequence owns the selected layer
     const allSeqs = sequenceStore.sequences.peek();
-    let owningSeqId: string | null = null;
+    let owningSeq: typeof allSeqs[0] | null = null;
     for (const seq of allSeqs) {
       if (seq.layers.some(l => l.id === selectedId)) {
-        owningSeqId = seq.id;
+        owningSeq = seq;
         break;
       }
     }
-    if (!owningSeqId) return null;
+    if (!owningSeq) return null;
 
-    // Must be in the content track area (not FX, not ruler, not header)
-    if (this.isInRuler(clientY) || this.isInFxArea(clientY)) return null;
+    if (this.isInRuler(clientY)) return null;
     if (!this.canvas) return null;
     const rect = this.canvas.getBoundingClientRect();
     if (clientX - rect.left < TRACK_HEADER_WIDTH) return null;
 
-    // Find the track for this sequence
+    const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
+    const hitThresholdFrames = Math.max(0.6, 18 / frameWidth);
+
+    // Check content-overlay tracks in the FX area
+    if (this.isInFxArea(clientY) && owningSeq.kind === 'content-overlay') {
+      const fxTracks = fxTrackLayouts.peek();
+      const fxTrackIndex = fxTracks.findIndex(ft => ft.sequenceId === owningSeq!.id && ft.kind === 'content-overlay');
+      if (fxTrackIndex < 0) return null;
+
+      // Check if clicked Y is on this FX track
+      const clickedFxIdx = this.fxTrackIndexFromY(clientY);
+      if (clickedFxIdx !== fxTrackIndex) return null;
+
+      const fxTrack = fxTracks[fxTrackIndex];
+      const clickFrame = this.getFrame(clientX);
+      const localClickFrame = clickFrame - fxTrack.inFrame;
+
+      let bestHit: { frame: number; distance: number } | null = null;
+      for (const kf of keyframes) {
+        const dist = Math.abs(localClickFrame - kf.frame);
+        if (dist <= hitThresholdFrames) {
+          if (!bestHit || dist < bestHit.distance) {
+            bestHit = { frame: kf.frame, distance: dist };
+          }
+        }
+      }
+      if (bestHit) {
+        return { frame: bestHit.frame, layerId: selectedId, sequenceStartFrame: fxTrack.inFrame };
+      }
+      return null;
+    }
+
+    // Content track area (not FX, not ruler, not header)
+    if (this.isInFxArea(clientY)) return null;
+
+    // Find the content track for this sequence
     const tracks = trackLayouts.peek();
-    const track = tracks.find(t => t.sequenceId === owningSeqId);
+    const track = tracks.find(t => t.sequenceId === owningSeq!.id);
     if (!track) return null;
 
     // Check if click Y is on this track
@@ -253,10 +289,6 @@ export class TimelineInteraction {
     // Get the frame at click position
     const clickFrame = this.getFrame(clientX);
     const localClickFrame = clickFrame - track.startFrame;
-
-    // Keyframe hit threshold: 18px invisible hit area for generous click targets
-    const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
-    const hitThresholdFrames = Math.max(0.6, 18 / frameWidth); // At least 18px
 
     // Nearest-wins: find the closest keyframe within the hit threshold
     let bestHit: { frame: number; distance: number } | null = null;
@@ -513,7 +545,8 @@ export class TimelineInteraction {
     }
 
     // Keyframe hover detection: crosshair cursor + highlight
-    if (this.canvas && !this.isInRuler(e.clientY) && !this.isInFxArea(e.clientY)) {
+    // (works on both content tracks and content-overlay tracks in the FX area)
+    if (this.canvas && !this.isInRuler(e.clientY)) {
       const kfHover = this.keyframeHitTest(e.clientX, e.clientY);
       const newHoveredFrame = kfHover ? kfHover.frame : null;
       if (newHoveredFrame !== this.hoveredKeyframeFrame) {
