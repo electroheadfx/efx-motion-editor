@@ -16,7 +16,7 @@ const scrollX = signal(0);
 const scrollY = signal(0);
 const viewportWidth = signal(0);
 const viewportHeight = signal(0);
-const layoutMode = signal<'stacked' | 'linear'>('stacked');
+const layoutMode = signal<'stacked' | 'linear'>('linear');
 const displayMode = signal<'thumb-name' | 'thumb-only'>('thumb-name');
 
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);

@@ -113,7 +113,7 @@ export async function setPanelHeights(seqHeight: number, layersHeight: number): 
 export async function getTimelineLayout(): Promise<'stacked' | 'linear'> {
   const result = await configGetTimelineLayout();
   const val = result.ok ? result.data : null;
-  return val === 'linear' ? 'linear' : 'stacked';
+  return val === 'stacked' ? 'stacked' : 'linear';
 }
 
 export async function setTimelineLayout(layout: 'stacked' | 'linear'): Promise<void> {
