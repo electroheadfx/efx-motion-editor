@@ -96,7 +96,14 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         }}
         onChange={(e) => {
-          layerStore.updateLayer(layer.id, { name: (e.target as HTMLInputElement).value });
+          const newName = (e.target as HTMLInputElement).value;
+          layerStore.updateLayer(layer.id, { name: newName });
+          // Also update the parent sequence name so timeline header stays in sync
+          const seqs = sequenceStore.sequences.peek();
+          const parentSeq = seqs.find(s => s.layers.some(l => l.id === layer.id));
+          if (parentSeq && (parentSeq.kind === 'fx' || parentSeq.kind === 'content-overlay')) {
+            sequenceStore.renameSequence(parentSeq.id, newName);
+          }
         }}
       />
 

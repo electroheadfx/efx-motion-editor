@@ -138,6 +138,13 @@ export const sequenceStore = {
   },
 
   /** Reorder sequences by moving item from oldIndex to newIndex */
+  renameSequence(id: string, name: string) {
+    sequences.value = sequences.value.map(s =>
+      s.id === id ? { ...s, name } : s,
+    );
+    markDirty();
+  },
+
   reorderSequences(oldIndex: number, newIndex: number) {
     const before = snapshot();
 
