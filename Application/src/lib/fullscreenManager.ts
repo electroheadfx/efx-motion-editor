@@ -7,7 +7,6 @@ export const isFullscreen = signal(false);
 
 export async function enterFullscreen(): Promise<void> {
   try {
-    await document.documentElement.requestFullscreen();
     await getCurrentWindow().setFullscreen(true);
     isFullscreen.value = true;
   } catch (err) {
@@ -19,9 +18,6 @@ export async function exitFullscreen(): Promise<void> {
   // Stop playback if running (this also clears isFullSpeed)
   if (timelineStore.isPlaying.peek()) {
     playbackEngine.stop();
-  }
-  if (document.fullscreenElement) {
-    await document.exitFullscreen();
   }
   try {
     await getCurrentWindow().setFullscreen(false);
@@ -39,16 +35,16 @@ export function toggleFullscreen(): void {
   }
 }
 
-// Listen for external fullscreen exit (e.g., browser ESC handling).
+// Listen for Tauri window fullscreen changes (e.g., macOS green button or system ESC).
 // Must be called once at app startup.
 export function initFullscreenListener(): void {
-  document.addEventListener('fullscreenchange', () => {
-    if (!document.fullscreenElement && isFullscreen.peek()) {
+  getCurrentWindow().onResized(async () => {
+    const fs = await getCurrentWindow().isFullscreen();
+    if (!fs && isFullscreen.peek()) {
       // External exit detected -- clean up state
       if (timelineStore.isPlaying.peek()) {
         playbackEngine.stop();
       }
-      getCurrentWindow().setFullscreen(false).catch(() => {});
       isFullscreen.value = false;
     }
   });
