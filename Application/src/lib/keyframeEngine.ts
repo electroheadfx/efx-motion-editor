@@ -37,9 +37,33 @@ export function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-/** Interpolate all 7 animatable properties between two KeyframeValues */
+/** Interpolate source overrides between two KeyframeValues */
+function lerpSourceOverrides(
+  a: Record<string, number> | undefined,
+  b: Record<string, number> | undefined,
+  t: number,
+): Record<string, number> | undefined {
+  if (!a && !b) return undefined;
+  if (a && !b) return { ...a };
+  if (!a && b) return { ...b };
+  // Both exist: lerp shared keys, copy unique keys from each side
+  const result: Record<string, number> = {};
+  const allKeys = new Set([...Object.keys(a!), ...Object.keys(b!)]);
+  for (const key of allKeys) {
+    if (key in a! && key in b!) {
+      result[key] = lerp(a![key], b![key], t);
+    } else if (key in a!) {
+      result[key] = a![key];
+    } else {
+      result[key] = b![key];
+    }
+  }
+  return result;
+}
+
+/** Interpolate all animatable properties between two KeyframeValues */
 export function lerpValues(a: KeyframeValues, b: KeyframeValues, t: number): KeyframeValues {
-  return {
+  const result: KeyframeValues = {
     opacity: lerp(a.opacity, b.opacity, t),
     x: lerp(a.x, b.x, t),
     y: lerp(a.y, b.y, t),
@@ -48,12 +72,26 @@ export function lerpValues(a: KeyframeValues, b: KeyframeValues, t: number): Key
     rotation: lerp(a.rotation, b.rotation, t),
     blur: lerp(a.blur, b.blur, t),
   };
+  const so = lerpSourceOverrides(a.sourceOverrides, b.sourceOverrides, t);
+  if (so) result.sourceOverrides = so;
+  return result;
 }
 
 // Reusable result object for the mutable interpolation path (avoids GC during playback)
 const _mutableResult: KeyframeValues = {
   opacity: 0, x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, blur: 0,
 };
+let _mutableSourceOverrides: Record<string, number> = {};
+
+/** Copy sourceOverrides from keyframe values into the mutable result */
+function _copySourceOverrides(v: KeyframeValues): void {
+  if (v.sourceOverrides) {
+    _mutableSourceOverrides = { ...v.sourceOverrides };
+    _mutableResult.sourceOverrides = _mutableSourceOverrides;
+  } else {
+    _mutableResult.sourceOverrides = undefined;
+  }
+}
 
 /** Internal mutable interpolation (reuses object, NOT safe to store the return value) */
 function _interpolateAtMutable(keyframes: Keyframe[], frame: number): KeyframeValues | null {
@@ -70,6 +108,7 @@ function _interpolateAtMutable(keyframes: Keyframe[], frame: number): KeyframeVa
     _mutableResult.scaleY = v.scaleY;
     _mutableResult.rotation = v.rotation;
     _mutableResult.blur = v.blur;
+    _copySourceOverrides(v);
     return _mutableResult;
   }
 
@@ -84,6 +123,7 @@ function _interpolateAtMutable(keyframes: Keyframe[], frame: number): KeyframeVa
     _mutableResult.scaleY = v.scaleY;
     _mutableResult.rotation = v.rotation;
     _mutableResult.blur = v.blur;
+    _copySourceOverrides(v);
     return _mutableResult;
   }
 
@@ -102,6 +142,9 @@ function _interpolateAtMutable(keyframes: Keyframe[], frame: number): KeyframeVa
       _mutableResult.scaleY = lerp(prev.values.scaleY, next.values.scaleY, t);
       _mutableResult.rotation = lerp(prev.values.rotation, next.values.rotation, t);
       _mutableResult.blur = lerp(prev.values.blur, next.values.blur, t);
+      // Lerp source overrides
+      const so = lerpSourceOverrides(prev.values.sourceOverrides, next.values.sourceOverrides, t);
+      _mutableResult.sourceOverrides = so;
       return _mutableResult;
     }
   }
@@ -125,7 +168,7 @@ export function interpolateAt(keyframes: Keyframe[], frame: number): KeyframeVal
   const result = _interpolateAtMutable(keyframes, frame);
   if (result === null) return null;
   // Return a fresh copy (the mutable result is reused across calls)
-  return {
+  const copy: KeyframeValues = {
     opacity: result.opacity,
     x: result.x,
     y: result.y,
@@ -134,4 +177,8 @@ export function interpolateAt(keyframes: Keyframe[], frame: number): KeyframeVal
     rotation: result.rotation,
     blur: result.blur,
   };
+  if (result.sourceOverrides) {
+    copy.sourceOverrides = { ...result.sourceOverrides };
+  }
+  return copy;
 }

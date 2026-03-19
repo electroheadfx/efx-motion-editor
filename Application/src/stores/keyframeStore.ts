@@ -1,6 +1,6 @@
 import {signal, computed, effect} from '@preact/signals';
 import type {Keyframe, KeyframeValues, EasingType} from '../types/layer';
-import {extractKeyframeValues, isFxLayer} from '../types/layer';
+import {extractKeyframeValues} from '../types/layer';
 import {interpolateAt} from '../lib/keyframeEngine';
 import {layerStore} from './layerStore';
 import {timelineStore} from './timelineStore';
@@ -19,15 +19,14 @@ const transientOverrides = signal<KeyframeValues | null>(null);
 
 // --- Helpers ---
 
-/** Find the content sequence that owns a layer by ID, and its start frame */
+/** Find the sequence that owns a layer by ID, and its start frame */
 function findLayerContext(layerId: string): { sequenceId: string; startFrame: number } | null {
   const seqs = sequenceStore.sequences.peek();
   const layouts = trackLayouts.peek();
   for (const seq of seqs) {
-    if (seq.kind === 'fx') continue; // FX sequences don't have keyframes
     if (seq.layers.some(l => l.id === layerId)) {
-      if (seq.kind === 'content-overlay') {
-        // Content overlay: startFrame is inFrame (global timeline position)
+      if (seq.kind === 'fx' || seq.kind === 'content-overlay') {
+        // FX and content overlay: startFrame is inFrame (global timeline position)
         return { sequenceId: seq.id, startFrame: seq.inFrame ?? 0 };
       }
       // Content sequence: use trackLayouts for start frame
@@ -38,15 +37,14 @@ function findLayerContext(layerId: string): { sequenceId: string; startFrame: nu
   return null;
 }
 
-/** Get the selected content layer (null if none, FX, or base) */
-function getSelectedContentLayer() {
+/** Get the selected animatable layer (null if none or base) */
+function getSelectedAnimatableLayer() {
   const layerId = layerStore.selectedLayerId.value;
   if (!layerId) return null;
   const seqs = sequenceStore.sequences.value;
   for (const seq of seqs) {
-    if (seq.kind === 'fx') continue;
     const layer = seq.layers.find(l => l.id === layerId);
-    if (layer && !layer.isBase && !isFxLayer(layer)) return { layer, sequenceId: seq.id };
+    if (layer && !layer.isBase) return { layer, sequenceId: seq.id };
   }
   return null;
 }
@@ -62,9 +60,9 @@ function getLocalFrame(): number {
 
 // --- Computed signals ---
 
-/** Keyframes array for the currently selected content layer (empty if none/FX/base) */
+/** Keyframes array for the currently selected animatable layer (empty if none/base) */
 const activeLayerKeyframes = computed<Keyframe[]>(() => {
-  const info = getSelectedContentLayer();
+  const info = getSelectedAnimatableLayer();
   if (!info) return [];
   return info.layer.keyframes ?? [];
 });
@@ -252,7 +250,22 @@ export const keyframeStore = {
     } else {
       current = { ...current };
     }
-    current[field] = value;
+    (current as unknown as Record<string, unknown>)[field] = value;
+    transientOverrides.value = current;
+  },
+
+  /** Update a single FX source field in transientOverrides.sourceOverrides.
+   *  If transientOverrides is null, initializes from interpolatedValues first. */
+  setTransientSourceValue(field: string, value: number) {
+    let current = transientOverrides.peek();
+    if (!current) {
+      const interp = interpolatedValues.peek();
+      if (!interp) return; // No keyframes -> nothing to override
+      current = { ...interp, sourceOverrides: { ...(interp.sourceOverrides ?? {}) } };
+    } else {
+      current = { ...current, sourceOverrides: { ...(current.sourceOverrides ?? {}) } };
+    }
+    current.sourceOverrides![field] = value;
     transientOverrides.value = current;
   },
 

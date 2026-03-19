@@ -116,6 +116,7 @@ export interface MceKeyframeValues {
   scale_y: number;
   rotation: number;
   blur: number;
+  source_overrides?: Record<string, number>;  // FX layer source property overrides
 }
 
 /** Key photo within a sequence -- references an image by ID */

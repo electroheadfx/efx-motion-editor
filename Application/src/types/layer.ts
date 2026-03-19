@@ -62,6 +62,7 @@ export interface KeyframeValues {
   scaleY: number;
   rotation: number;
   blur: number;
+  sourceOverrides?: Record<string, number>;  // FX layer source property overrides (e.g., { density: 0.3, size: 1 })
 }
 
 /** A single animation keyframe on a layer */
@@ -91,6 +92,20 @@ export function createBaseLayer(): Layer {
   };
 }
 
+/** Extract all numeric source properties from an FX layer (excluding non-animatable fields) */
+export function extractFxSourceValues(layer: Layer): Record<string, number> {
+  const result: Record<string, number> = {};
+  const exclude = new Set(['type', 'lockSeed', 'lock_seed', 'seed', 'tintColor', 'tint_color', 'preset', 'fadeBlend', 'fade_blend']);
+  for (const key in layer.source) {
+    if (exclude.has(key)) continue;
+    const val = (layer.source as Record<string, unknown>)[key];
+    if (typeof val === 'number') {
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
 /** Extract animatable property values from a layer into a KeyframeValues snapshot */
 export function extractKeyframeValues(layer: Layer): KeyframeValues {
   return {
@@ -101,6 +116,7 @@ export function extractKeyframeValues(layer: Layer): KeyframeValues {
     scaleY: layer.transform.scaleY,
     rotation: layer.transform.rotation,
     blur: layer.blur ?? 0,
+    ...(isFxLayer(layer) ? { sourceOverrides: extractFxSourceValues(layer) } : {}),
   };
 }
 
