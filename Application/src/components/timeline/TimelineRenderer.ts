@@ -33,6 +33,10 @@ function getThemeColors(): Record<string, string> {
     trackName: style.getPropertyValue('--color-timeline-track-name').trim() || '#999999',
     fxTrackBg: style.getPropertyValue('--color-timeline-fx-track-bg').trim() || '#0D0D0D',
     fxHeaderBg: style.getPropertyValue('--color-timeline-fx-header-bg').trim() || '#0A0A0A',
+    // Content overlay type-specific colors (resolved from CSS variables for Canvas 2D)
+    contentOverlayGreen: style.getPropertyValue('--sidebar-dot-green').trim() || '#22C55E',
+    contentOverlayBlue: style.getPropertyValue('--sidebar-dot-blue').trim() || '#3B82F6',
+    contentOverlayPurple: '#8B5CF6', // hardcoded, no CSS variable
   };
   return cachedColors;
 }
@@ -166,7 +170,7 @@ export class TimelineRenderer {
     let fxTrackY = RULER_HEIGHT;
     for (let fi = 0; fi < fxTracks.length; fi++) {
       const isSelected = fxTracks[fi].sequenceId === this.selectedFxSequenceId;
-      this.drawFxTrack(ctx, fxTracks[fi], fxTrackY, frameWidth, scrollX, w, isSelected);
+      this.drawFxTrack(ctx, fxTracks[fi], fxTrackY, frameWidth, scrollX, w, isSelected, imageStore);
       fxTrackY += FX_TRACK_HEIGHT;
     }
 
@@ -394,6 +398,17 @@ export class TimelineRenderer {
     this.drawKeyframeDiamonds(ctx, state, w);
   }
 
+  /** Resolve the display color for an FX/content-overlay track.
+   *  Content overlay colors use CSS variables that Canvas 2D cannot resolve directly,
+   *  so we map them to the pre-resolved theme color cache values. */
+  private resolveTrackColor(fxTrack: FxTrackLayout): string {
+    if (fxTrack.kind !== 'content-overlay') return fxTrack.color;
+    const colors = getThemeColors();
+    if (fxTrack.color.includes('sidebar-dot-green')) return colors.contentOverlayGreen;
+    if (fxTrack.color.includes('sidebar-dot-blue')) return colors.contentOverlayBlue;
+    return colors.contentOverlayPurple;
+  }
+
   /** Draw a single FX sequence as a colored range bar */
   private drawFxTrack(
     ctx: CanvasRenderingContext2D,
@@ -403,8 +418,10 @@ export class TimelineRenderer {
     scrollX: number,
     canvasWidth: number,
     isSelected = false,
+    imageStore?: typeof ImageStoreType,
   ): void {
     const colors = getThemeColors();
+    const resolvedColor = this.resolveTrackColor(fxTrack);
 
     // Track background (highlight when selected)
     ctx.fillStyle = isSelected ? '#1A1520' : colors.fxTrackBg;
@@ -412,7 +429,7 @@ export class TimelineRenderer {
 
     // Selection indicator: left accent border
     if (isSelected) {
-      ctx.fillStyle = fxTrack.color;
+      ctx.fillStyle = resolvedColor;
       ctx.fillRect(0, y, 2, FX_TRACK_HEIGHT);
     }
 
@@ -420,7 +437,7 @@ export class TimelineRenderer {
     const isVisible = fxTrack.visible;
     ctx.fillStyle = isSelected ? '#151015' : colors.fxHeaderBg;
     ctx.fillRect(isSelected ? 2 : 0, y, TRACK_HEADER_WIDTH - (isSelected ? 2 : 0), FX_TRACK_HEIGHT);
-    ctx.fillStyle = isVisible ? fxTrack.color : fxTrack.color + '4D'; // 30% opacity when hidden
+    ctx.fillStyle = isVisible ? resolvedColor : resolvedColor + '4D'; // 30% opacity when hidden
     ctx.font = '9px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
     const name = this.truncateText(ctx, fxTrack.sequenceName, TRACK_HEADER_WIDTH - 16);
@@ -447,27 +464,66 @@ export class TimelineRenderer {
       const clippedRight = Math.min(barX + barW, canvasWidth);
       const clippedW = Math.max(0, clippedRight - clippedLeft);
 
-      // Bar fill (semi-transparent FX color)
-      ctx.fillStyle = fxTrack.color + (isVisible ? '40' : '26'); // 25% or 15% opacity
+      // Bar fill (semi-transparent color)
+      ctx.fillStyle = resolvedColor + (isVisible ? '40' : '26'); // 25% or 15% opacity
       ctx.beginPath();
       ctx.roundRect(clippedLeft, barY, clippedW, barH, 3);
       ctx.fill();
 
       // Bar border
-      ctx.strokeStyle = fxTrack.color + (isVisible ? '80' : '40'); // 50% or 25% opacity
+      ctx.strokeStyle = resolvedColor + (isVisible ? '80' : '40'); // 50% or 25% opacity
       ctx.lineWidth = 1;
       ctx.stroke();
 
+      // Thumbnail icon for content overlay tracks
+      let thumbOffsetX = 0;
+      if (fxTrack.kind === 'content-overlay' && fxTrack.thumbnailImageId && imageStore) {
+        const image = imageStore.getById(fxTrack.thumbnailImageId);
+        const thumbUrl = image ? imageStore.getDisplayUrl(image) : '';
+        if (thumbUrl) {
+          const cachedImg = this.thumbnailCache.get(fxTrack.thumbnailImageId, thumbUrl);
+          if (cachedImg && cachedImg.complete) {
+            const iconH = barH - 4;
+            const aspect = cachedImg.naturalWidth / cachedImg.naturalHeight;
+            const iconW = Math.min(iconH * aspect, 20);
+            const iconX = Math.max(clippedLeft + 3, barX + 3);
+            // Only draw if icon is within visible bar area
+            if (iconX + iconW <= clippedRight) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.roundRect(iconX, barY + 2, iconW, iconH, 2);
+              ctx.clip();
+              ctx.drawImage(cachedImg, iconX, barY + 2, iconW, iconH);
+              ctx.restore();
+              thumbOffsetX = iconW + 4; // shift name text right
+            }
+          }
+        }
+      }
+
+      // Name text inside the bar (shifted right when thumbnail is present)
+      if (clippedW > 30 + thumbOffsetX) {
+        ctx.fillStyle = isVisible ? '#CCCCCC' : '#666666';
+        ctx.font = '8px system-ui, sans-serif';
+        ctx.textBaseline = 'middle';
+        const barNameX = Math.max(clippedLeft + 4 + thumbOffsetX, barX + 4 + thumbOffsetX);
+        const barNameMaxW = clippedRight - barNameX - 4;
+        if (barNameMaxW > 10) {
+          const barName = this.truncateText(ctx, fxTrack.sequenceName, barNameMaxW);
+          ctx.fillText(barName, barNameX, barY + barH / 2);
+        }
+      }
+
       // Left edge handle (drag to resize inFrame)
       if (barX >= TRACK_HEADER_WIDTH) {
-        ctx.fillStyle = fxTrack.color;
+        ctx.fillStyle = resolvedColor;
         ctx.fillRect(barX, barY + 2, 3, barH - 4);
       }
 
       // Right edge handle (drag to resize outFrame)
       const rightEdge = barX + barW;
       if (rightEdge >= TRACK_HEADER_WIDTH && rightEdge <= canvasWidth) {
-        ctx.fillStyle = fxTrack.color;
+        ctx.fillStyle = resolvedColor;
         ctx.fillRect(rightEdge - 3, barY + 2, 3, barH - 4);
       }
     }
@@ -779,31 +835,50 @@ export class TimelineRenderer {
     if (!state.selectedLayerKeyframes || state.selectedLayerKeyframes.length === 0) return;
     if (!state.selectedLayerSequenceId) return;
 
-    // Find the track row for the sequence that owns the selected layer
-    const trackIndex = state.tracks.findIndex(t => t.sequenceId === state.selectedLayerSequenceId);
-    if (trackIndex < 0) return;
-
-    const track = state.tracks[trackIndex];
-    const fxOffset = state.fxTracks.length * FX_TRACK_HEIGHT;
-    const trackCenterY = RULER_HEIGHT + fxOffset + trackIndex * TRACK_HEIGHT + TRACK_HEIGHT / 2 - state.scrollY;
     const frameWidth = BASE_FRAME_WIDTH * state.zoom;
     const iconSize = 9;
     const selectedFrames = state.selectedKeyframeFrames ?? new Set();
 
-    for (const kf of state.selectedLayerKeyframes) {
-      // kf.frame is sequence-local offset, convert to global for positioning
-      const globalFrame = track.startFrame + kf.frame;
-      const kfX = globalFrame * frameWidth - state.scrollX + TRACK_HEADER_WIDTH;
+    // First, check if the selected layer belongs to a content track
+    const trackIndex = state.tracks.findIndex(t => t.sequenceId === state.selectedLayerSequenceId);
+    if (trackIndex >= 0) {
+      // Draw diamonds on content track row
+      const track = state.tracks[trackIndex];
+      const fxOffset = state.fxTracks.length * FX_TRACK_HEIGHT;
+      const trackCenterY = RULER_HEIGHT + fxOffset + trackIndex * TRACK_HEIGHT + TRACK_HEIGHT / 2 - state.scrollY;
 
-      // Virtualize: skip icons outside visible area
-      if (kfX < TRACK_HEADER_WIDTH - iconSize || kfX > w + iconSize) continue;
+      for (const kf of state.selectedLayerKeyframes) {
+        const globalFrame = track.startFrame + kf.frame;
+        const kfX = globalFrame * frameWidth - state.scrollX + TRACK_HEADER_WIDTH;
 
-      // Skip if track center is outside visible area (vertical clipping)
-      if (trackCenterY < RULER_HEIGHT - iconSize || trackCenterY > ctx.canvas.height / (window.devicePixelRatio || 1)) continue;
+        if (kfX < TRACK_HEADER_WIDTH - iconSize || kfX > w + iconSize) continue;
+        if (trackCenterY < RULER_HEIGHT - iconSize || trackCenterY > ctx.canvas.height / (window.devicePixelRatio || 1)) continue;
 
-      const isSelected = selectedFrames.has(kf.frame);
-      const isHovered = kf.frame === this.hoveredKeyframeFrame;
-      this.drawKeyframeIcon(ctx, kfX, trackCenterY, iconSize, kf.easing, isSelected, isHovered);
+        const isSelected = selectedFrames.has(kf.frame);
+        const isHovered = kf.frame === this.hoveredKeyframeFrame;
+        this.drawKeyframeIcon(ctx, kfX, trackCenterY, iconSize, kf.easing, isSelected, isHovered);
+      }
+      return;
+    }
+
+    // Check if the selected layer belongs to a content-overlay track in the FX area
+    const fxTrackIndex = state.fxTracks.findIndex(ft => ft.sequenceId === state.selectedLayerSequenceId && ft.kind === 'content-overlay');
+    if (fxTrackIndex >= 0) {
+      const fxTrack = state.fxTracks[fxTrackIndex];
+      const trackCenterY = RULER_HEIGHT + fxTrackIndex * FX_TRACK_HEIGHT + FX_TRACK_HEIGHT / 2 - state.scrollY;
+      const startFrame = fxTrack.inFrame;
+
+      for (const kf of state.selectedLayerKeyframes) {
+        const globalFrame = startFrame + kf.frame;
+        const kfX = globalFrame * frameWidth - state.scrollX + TRACK_HEADER_WIDTH;
+
+        if (kfX < TRACK_HEADER_WIDTH - iconSize || kfX > w + iconSize) continue;
+        if (trackCenterY < RULER_HEIGHT - iconSize || trackCenterY > ctx.canvas.height / (window.devicePixelRatio || 1)) continue;
+
+        const isSelected = selectedFrames.has(kf.frame);
+        const isHovered = kf.frame === this.hoveredKeyframeFrame;
+        this.drawKeyframeIcon(ctx, kfX, trackCenterY, iconSize, kf.easing, isSelected, isHovered);
+      }
     }
   }
 
