@@ -70,12 +70,12 @@ export function TimelineCanvas() {
       const totalFrames = timelineStore.totalFrames.value;
       const fxTracks = fxTrackLayouts.value;
 
-      // Map selected layer ID to FX sequence ID for timeline highlight
+      // Map selected layer ID to FX/content-overlay sequence ID for timeline highlight
       const selectedLayerId = layerStore.selectedLayerId.value;
       let selectedFxSequenceId: string | null = null;
       if (selectedLayerId) {
         for (const seq of sequenceStore.sequences.value) {
-          if (seq.kind === 'fx' && seq.layers.some(l => l.id === selectedLayerId)) {
+          if ((seq.kind === 'fx' || seq.kind === 'content-overlay') && seq.layers.some(l => l.id === selectedLayerId)) {
             selectedFxSequenceId = seq.id;
             break;
           }
