@@ -145,10 +145,19 @@ function handleArrow(axis: 'x' | 'y', delta: number): void {
   const region = uiStore.mouseRegion.peek();
 
   if (region === 'timeline') {
-    // Timeline region: arrows always scrub timeline
-    // delta already has correct sign and magnitude (1 or 10 with shift)
-    const current = timelineStore.currentFrame.peek();
-    playbackEngine.seekToFrame(Math.max(0, current + delta));
+    if (axis === 'y') {
+      // Up/Down in timeline: navigate between sequences
+      const target = delta < 0
+        ? findPrevSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek())
+        : findNextSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
+      if (target !== null) {
+        playbackEngine.seekToFrame(target);
+      }
+    } else {
+      // Left/Right in timeline: scrub frames
+      const current = timelineStore.currentFrame.peek();
+      playbackEngine.seekToFrame(Math.max(0, current + delta));
+    }
     return;
   }
 
@@ -489,42 +498,5 @@ export function mountShortcuts(): () => void {
       playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
     },
 
-    // Cmd+Arrow Up/Down — vertical aliases for sequence navigation (NAV-CMD-UPDOWN)
-    '$mod+ArrowUp': (e: KeyboardEvent) => {
-      if (shouldSuppressShortcut(e)) return;
-      if (isFullscreen.peek()) return;
-      e.preventDefault();
-      const target = findPrevSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
-      if (target !== null) {
-        playbackEngine.seekToFrame(target);
-      } else {
-        playbackEngine.seekToFrame(0);
-      }
-    },
-    '$mod+ArrowDown': (e: KeyboardEvent) => {
-      if (shouldSuppressShortcut(e)) return;
-      if (isFullscreen.peek()) return;
-      e.preventDefault();
-      const target = findNextSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
-      if (target !== null) {
-        playbackEngine.seekToFrame(target);
-      } else {
-        const lastFrame = timelineStore.totalFrames.peek();
-        playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
-      }
-    },
-    '$mod+Shift+ArrowUp': (e: KeyboardEvent) => {
-      if (shouldSuppressShortcut(e)) return;
-      if (isFullscreen.peek()) return;
-      e.preventDefault();
-      playbackEngine.seekToFrame(0);
-    },
-    '$mod+Shift+ArrowDown': (e: KeyboardEvent) => {
-      if (shouldSuppressShortcut(e)) return;
-      if (isFullscreen.peek()) return;
-      e.preventDefault();
-      const lastFrame = timelineStore.totalFrames.peek();
-      playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
-    },
   });
 }
