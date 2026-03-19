@@ -837,11 +837,11 @@ export class TimelineRenderer {
       return;
     }
 
-    // Check if the selected layer belongs to a content-overlay track in the FX area
-    const fxTrackIndex = state.fxTracks.findIndex(ft => ft.sequenceId === state.selectedLayerSequenceId && ft.kind === 'content-overlay');
-    if (fxTrackIndex >= 0) {
-      const fxTrack = state.fxTracks[fxTrackIndex];
-      const trackCenterY = RULER_HEIGHT + fxTrackIndex * FX_TRACK_HEIGHT + FX_TRACK_HEIGHT / 2 - state.scrollY;
+    // Check if the selected layer belongs to a content-overlay or FX track in the FX area
+    const fxKfTrackIndex = state.fxTracks.findIndex(ft => ft.sequenceId === state.selectedLayerSequenceId);
+    if (fxKfTrackIndex >= 0) {
+      const fxTrack = state.fxTracks[fxKfTrackIndex];
+      const trackCenterY = RULER_HEIGHT + fxKfTrackIndex * FX_TRACK_HEIGHT + FX_TRACK_HEIGHT / 2 - state.scrollY;
       const startFrame = fxTrack.inFrame;
 
       for (const kf of state.selectedLayerKeyframes) {

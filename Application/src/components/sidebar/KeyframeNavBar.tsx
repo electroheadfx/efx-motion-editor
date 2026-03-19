@@ -16,8 +16,10 @@ function getLocalFrameForLayer(layerId: string, globalFrame: number): number {
   const seqs = sequenceStore.sequences.peek();
   const layouts = trackLayouts.peek();
   for (const seq of seqs) {
-    if (seq.kind === 'fx') continue;
     if (seq.layers.some((l) => l.id === layerId)) {
+      if (seq.kind === 'fx' || seq.kind === 'content-overlay') {
+        return globalFrame - (seq.inFrame ?? 0);
+      }
       const layout = layouts.find((t) => t.sequenceId === seq.id);
       const startFrame = layout?.startFrame ?? 0;
       return globalFrame - startFrame;
@@ -31,8 +33,10 @@ function getSequenceStartFrame(layerId: string): number {
   const seqs = sequenceStore.sequences.peek();
   const layouts = trackLayouts.peek();
   for (const seq of seqs) {
-    if (seq.kind === 'fx') continue;
     if (seq.layers.some((l) => l.id === layerId)) {
+      if (seq.kind === 'fx' || seq.kind === 'content-overlay') {
+        return seq.inFrame ?? 0;
+      }
       const layout = layouts.find((t) => t.sequenceId === seq.id);
       return layout?.startFrame ?? 0;
     }

@@ -8,7 +8,7 @@ import {imageStore} from '../../stores/imageStore';
 import {layerStore} from '../../stores/layerStore';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {keyframeStore} from '../../stores/keyframeStore';
-import {isFxLayer} from '../../types/layer';
+// isFxLayer removed: FX layers now support keyframes
 import {currentTheme} from '../../lib/themeManager';
 import {isFullSpeed} from '../../lib/playbackEngine';
 
@@ -95,9 +95,8 @@ export function TimelineCanvas() {
 
       if (selectedLayerId) {
         for (const seq of sequenceStore.sequences.value) {
-          if (seq.kind === 'fx') continue;
           const layer = seq.layers.find(l => l.id === selectedLayerId);
-          if (layer && layer.keyframes && layer.keyframes.length > 0 && !isFxLayer(layer) && !layer.isBase) {
+          if (layer && layer.keyframes && layer.keyframes.length > 0 && !layer.isBase) {
             selectedLayerKeyframes = layer.keyframes.map(kf => ({ frame: kf.frame, easing: kf.easing }));
             selectedLayerSequenceId = seq.id;
             break;

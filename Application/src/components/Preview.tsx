@@ -7,6 +7,7 @@ import {frameMap} from '../lib/frameMap';
 import {PreviewRenderer} from '../lib/previewRenderer';
 import {interpolateAt} from '../lib/keyframeEngine';
 import {isFxLayer} from '../types/layer';
+import type {LayerSourceData} from '../types/layer';
 
 export function Preview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -98,8 +99,17 @@ export function Preview() {
             renderer.renderFrame(overlayLayers, overlayLocalFrame, seqFrames, seq.fps, false);
           }
         } else {
-          // FX sequence (existing behavior)
-          const fxLayers = overlaySeq.layers.filter((l) => l.visible);
+          // FX sequence: apply keyframe interpolation to FX layers
+          const fxLocalFrame = globalFrame - (overlaySeq.inFrame ?? 0);
+          const fxLayers = overlaySeq.layers.filter((l) => l.visible).map(layer => {
+            if (!layer.keyframes || layer.keyframes.length === 0) return layer;
+            const values = interpolateAt(layer.keyframes, fxLocalFrame);
+            if (!values) return layer;
+            const interpolatedLayer = values.sourceOverrides
+              ? { ...layer, source: { ...layer.source, ...values.sourceOverrides } as LayerSourceData, opacity: values.opacity, blur: values.blur }
+              : { ...layer, opacity: values.opacity, blur: values.blur };
+            return interpolatedLayer;
+          });
           if (fxLayers.length > 0) {
             renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false);
           }
@@ -203,8 +213,17 @@ export function Preview() {
             renderer.renderFrame(overlayLayers, overlayLocalFrame, seqFrames, seq.fps, false);
           }
         } else {
-          // FX sequence (existing behavior)
-          const fxLayers = overlaySeq.layers.filter((l) => l.visible);
+          // FX sequence: apply keyframe interpolation to FX layers
+          const fxLocalFrame = globalFrame - (overlaySeq.inFrame ?? 0);
+          const fxLayers = overlaySeq.layers.filter((l) => l.visible).map(layer => {
+            if (!layer.keyframes || layer.keyframes.length === 0) return layer;
+            const values = interpolateAt(layer.keyframes, fxLocalFrame);
+            if (!values) return layer;
+            const interpolatedLayer = values.sourceOverrides
+              ? { ...layer, source: { ...layer.source, ...values.sourceOverrides } as LayerSourceData, opacity: values.opacity, blur: values.blur }
+              : { ...layer, opacity: values.opacity, blur: values.blur };
+            return interpolatedLayer;
+          });
           if (fxLayers.length > 0) {
             renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false);
           }
