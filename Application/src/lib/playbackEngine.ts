@@ -1,9 +1,12 @@
+import {signal} from '@preact/signals';
 import {timelineStore} from '../stores/timelineStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {uiStore} from '../stores/uiStore';
 import {projectStore} from '../stores/projectStore';
 import {totalFrames, frameMap} from './frameMap';
 import {shuttleDirection, shuttleSpeed, resetShuttle} from './jklShuttle';
+
+export const isFullSpeed = signal(false);
 
 /**
  * PlaybackEngine: rAF-based frame-rate-limited playback tick loop.
@@ -37,6 +40,7 @@ export class PlaybackEngine {
   }
 
   stop() {
+    isFullSpeed.value = false;
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
@@ -51,6 +55,17 @@ export class PlaybackEngine {
     if (timelineStore.isPlaying.peek()) {
       this.stop();
     } else {
+      this.start();
+    }
+  }
+
+  toggleFullSpeed() {
+    if (timelineStore.isPlaying.peek()) {
+      // Already playing: toggle full-speed on/off
+      isFullSpeed.value = !isFullSpeed.value;
+    } else {
+      // Not playing: start in full-speed mode
+      isFullSpeed.value = true;
       this.start();
     }
   }
@@ -132,15 +147,18 @@ export class PlaybackEngine {
       }
     }
 
-    timelineStore.ensureFrameVisiblePaged(timelineStore.currentFrame.peek());
+    // Gate UI feedback behind fullSpeed signal
+    if (!isFullSpeed.peek()) {
+      timelineStore.ensureFrameVisiblePaged(timelineStore.currentFrame.peek());
 
-    // Auto vertical scroll: keep active track visible during playback
-    // NOTE: Only scroll -- do NOT update sidebar sequence selection during playback
-    // (sidebar re-syncs when playback stops via syncActiveSequence)
-    const cf = timelineStore.currentFrame.peek();
-    const entry = frameMap.peek()[cf];
-    if (entry) {
-      timelineStore.ensureTrackVisible(entry.sequenceId);
+      // Auto vertical scroll: keep active track visible during playback
+      // NOTE: Only scroll -- do NOT update sidebar sequence selection during playback
+      // (sidebar re-syncs when playback stops via syncActiveSequence)
+      const cf = timelineStore.currentFrame.peek();
+      const entry = frameMap.peek()[cf];
+      if (entry) {
+        timelineStore.ensureTrackVisible(entry.sequenceId);
+      }
     }
 
     this.syncPlayer();
