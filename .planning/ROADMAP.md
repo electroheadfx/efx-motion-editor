@@ -121,6 +121,23 @@ Plans:
 - [ ] 12-04-PLAN.md -- End-to-end visual verification checkpoint
 - [ ] 12-05-PLAN.md -- [gap closure] Fix keyframe diamonds disappearing on timeline interaction
 
+### Phase 12.13: Linear-timeline (INSERTED)
+
+**Goal:** Add a linear timeline layout mode where all content sequences display on a single horizontal row instead of vertically-stacked tracks. Toggle between stacked (default) and linear views via toolbar buttons. Optional name overlay on thumbnails with thumb+name / thumb-only display modes.
+**Requirements**: LT-TOGGLE, LT-LINEAR, LT-OVERLAY, LT-DISPLAY, LT-INTERACT
+**Depends on:** Phase 12
+**Success Criteria** (what must be TRUE):
+  1. User can toggle between stacked (default) and linear layout modes via toolbar buttons
+  2. In linear mode, all content sequences render on a single horizontal row with sequence boundary separators
+  3. Sequence names appear as overlay text on thumbnails in linear mode (controllable via display mode toggle)
+  4. Clicking a sequence in linear mode correctly selects it (X-position based, not Y-position)
+  5. Keyframe diamonds render at the correct vertical position in linear mode
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12.13-01-PLAN.md -- Store signals (layoutMode, displayMode), DrawState extension, drawLinearTrack renderer, TimelineCanvas wiring, toolbar toggle UI
+- [ ] 12.13-02-PLAN.md -- Interaction adaptation (X-based selection, reorder disable), keyframe diamond Y fix, visual verification
+
 ### Phase 12.1: Remove bottom parameters bar and relocate to sidebar panel (INSERTED)
 
 **Goal:** Remove the bottom PropertiesPanel bar entirely. Relocate all layer/FX property controls into the left sidebar with collapsible sections. Extract Imported grid and Settings into full-window views. Add sidebar collapse toggle and uniform Scale input.
@@ -390,7 +407,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 12.11 > 12.12 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 12.11 > 12.12 > 12.13 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -420,6 +437,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.10. GPU-Accelerated Blur via WebGL2 | 2/2 | Complete    | 2026-03-18 | - |
 | 12.11. Full-speed playback & fullscreen canvas | 2/2 | Complete    | 2026-03-19 | - |
 | 12.12. New Content Layer for Timeline | 4/4 | Complete    | 2026-03-19 | - |
+| 12.13. Linear Timeline | v0.2.0 | 0/2 | In Progress | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
