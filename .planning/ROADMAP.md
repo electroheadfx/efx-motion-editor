@@ -316,6 +316,26 @@ Plans:
 - [ ] 12.11-01-PLAN.md -- Full-speed playback: isFullSpeed signal, toggleFullSpeed(), tick() gating, FullSpeedBadge, Shift+Space, Tauri capability
 - [ ] 12.11-02-PLAN.md -- Fullscreen canvas: fullscreenManager, FullscreenOverlay, EditorShell wiring, shortcut scoping, visual verification
 
+### Phase 12.12: New content layer for timeline (INSERTED)
+
+**Goal:** Add content layer types (static-image, image-sequence, video) as timeline-level sequences that stack and interleave with FX sequences. These content layers span the full timeline with in/out frame controls, loop their content, and have full property controls (opacity, blend mode, position, transform, crop, keyframes). Added via the timeline menu under a new "Content" section. Content overlay layers render above content sequences in the compositing stack.
+**Requirements**: CO-TYPE, CO-STORE, CO-FMAP, CO-KF, CO-MENU, CO-IMPORT, CO-SIDEBAR, CO-RENDER, CO-INTERACT, CO-DIAMOND, CO-PREVIEW
+**Depends on:** Phase 12.11
+**Success Criteria** (what must be TRUE):
+  1. User can create content overlay sequences (Static Image, Image Sequence, Video) from a "+ Layer" menu in the timeline
+  2. Content overlay tracks render as colored range bars (green/blue/purple) with thumbnail icons, interleaved with FX tracks
+  3. Content overlay sequences render above content sequences in the canvas preview with correct compositing order
+  4. Content overlay layers have full property controls (opacity, blend, transform, crop, keyframes) in the sidebar
+  5. Image sequence and video content overlays loop seamlessly within their in/out range
+  6. Keyframe animation works on content overlay layers with diamond markers on the timeline
+**Plans:** 4 plans
+
+Plans:
+- [ ] 12.12-01-PLAN.md -- Types, stores, frameMap, keyframeStore foundation for content-overlay sequences
+- [ ] 12.12-02-PLAN.md -- Menu refactor (AddLayerMenu), ImportedView creation flow, sidebar properties with Change Source
+- [ ] 12.12-03-PLAN.md -- Timeline rendering (colored range bars, thumbnails) and interaction (click, drag, keyframe diamonds)
+- [ ] 12.12-04-PLAN.md -- Preview compositing with content overlay looping and keyframe interpolation, visual verification
+
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12
@@ -370,7 +390,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 12.11 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 12.11 > 12.12 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -399,6 +419,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.9. Fix Add-Layer Dialogs | 1/1 | Complete    | 2026-03-18 | - |
 | 12.10. GPU-Accelerated Blur via WebGL2 | 2/2 | Complete    | 2026-03-18 | - |
 | 12.11. Full-speed playback & fullscreen canvas | 2/2 | Complete    | 2026-03-19 | - |
+| 12.12. New Content Layer for Timeline | v0.2.0 | 0/4 | In Progress | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
