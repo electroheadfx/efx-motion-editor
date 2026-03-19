@@ -25,6 +25,8 @@ export async function exitFullscreen(): Promise<void> {
     console.error('Failed to exit Tauri fullscreen:', err);
   }
   isFullscreen.value = false;
+  // Refocus the webview so keyboard shortcuts work immediately
+  window.focus();
 }
 
 export function toggleFullscreen(): void {

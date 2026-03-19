@@ -3,7 +3,7 @@ import {timelineStore} from '../../stores/timelineStore';
 
 /**
  * Full-speed playback indicator.
- * Shows a lightning bolt icon in the top-left corner of the window
+ * Shows a lightning bolt icon inline in the controls bar
  * when full-speed mode is active during playback.
  */
 export function FullSpeedBadge() {
@@ -13,8 +13,6 @@ export function FullSpeedBadge() {
   if (!active || !playing) return null;
 
   return (
-    <div class="fixed top-2 left-2 pointer-events-none z-40">
-      <span class="text-amber-400 text-lg" title="Full-speed playback">{'\u26A1'}</span>
-    </div>
+    <span class="text-amber-400 text-sm pointer-events-none" title="Full-speed playback">{'\u26A1'}</span>
   );
 }

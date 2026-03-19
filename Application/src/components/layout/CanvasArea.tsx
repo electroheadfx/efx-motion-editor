@@ -284,7 +284,6 @@ export function CanvasArea() {
       </div>
       {/* JKL speed badge -- positioned above playback controls */}
       <SpeedBadge />
-      <FullSpeedBadge />
       {/* Preview Controls */}
       <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0">
         {/* Step backward */}
@@ -379,6 +378,8 @@ export function CanvasArea() {
             {'\u26F6'}
           </span>
         </button>
+        {/* Full-speed indicator */}
+        <FullSpeedBadge />
       </div>
     </div>
   );
