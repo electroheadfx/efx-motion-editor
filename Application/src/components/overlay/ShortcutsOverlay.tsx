@@ -72,7 +72,8 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: '= / +', description: 'Zoom in (when mouse over timeline)'},
       {keys: '\u2212', description: 'Zoom out (when mouse over timeline)'},
       {keys: '\u2303Scroll', description: 'Zoom at cursor'},
-      {keys: '\u21E7Scroll', description: 'Horizontal scroll'},
+      {keys: 'Scroll', description: 'Horizontal scroll'},
+      {keys: '\u21E7Scroll', description: 'Vertical scroll'},
     ],
   },
   {

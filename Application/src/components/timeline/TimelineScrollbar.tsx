@@ -6,7 +6,7 @@ const RULER_HEIGHT = 24;
 const MIN_THUMB_HEIGHT = 24;
 
 /**
- * TimelineScrollbar: 4px vertical scrollbar beside the timeline canvas.
+ * TimelineScrollbar: 8px vertical scrollbar beside the timeline canvas.
  * Reads scrollY/totalContentHeight/viewportHeight from timelineStore.
  * Writes to timelineStore.setScrollY on drag/click.
  * Always visible (per user decision). Thumb color uses --sidebar-scrollbar-thumb.
@@ -98,7 +98,7 @@ export function TimelineScrollbar() {
     <div
       ref={trackRef}
       class="shrink-0 relative cursor-pointer"
-      style={{ width: '4px' }}
+      style={{ width: '8px' }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -108,11 +108,11 @@ export function TimelineScrollbar() {
         data-thumb="true"
         class="absolute left-0 cursor-grab active:cursor-grabbing"
         style={{
-          width: '4px',
+          width: '8px',
           height: `${thumbHeight.value}px`,
           top: `${thumbTop.value}px`,
           backgroundColor: 'var(--sidebar-scrollbar-thumb)',
-          borderRadius: '2px',
+          borderRadius: '4px',
         }}
       />
     </div>
