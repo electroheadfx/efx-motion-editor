@@ -146,9 +146,10 @@ No active blockers.
 | 34 | View menu shortcut hints, context-aware menu zoom, full-opacity sequences, key photo border fix, click-to-deselect | 2026-03-18 | f2eee95 |
 | 35 | Add more contrast to grab icon in sequence row | 2026-03-18 | 58a3ef2 |
 | 36 | Add missing scroll shortcuts (Cmd+Scroll, Shift+Scroll) to help overlay | 2026-03-18 | 9c9e029 |
+| 37 | Swap mouse wheel scroll axes: bare wheel=horizontal, Shift+wheel=vertical; widen scrollbar to 8px | 2026-03-19 | 198c175 |
 
 ## Session Continuity
 
-Last session: 2026-03-19T08:44:51.185Z
-Stopped at: Completed 12.11-02-PLAN.md (awaiting Task 3 human-verify checkpoint)
+Last session: 2026-03-19T09:53:26Z
+Stopped at: Completed quick-f18 (swap wheel scroll axes)
 Resume file: None
