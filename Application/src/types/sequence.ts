@@ -3,7 +3,7 @@ import type { Layer } from './layer';
 /** Runtime sequence type used by sequenceStore (frontend state) */
 export interface Sequence {
   id: string;
-  kind: 'content' | 'fx';  // Discriminator: content sequences hold key photos, FX sequences hold effects
+  kind: 'content' | 'fx' | 'content-overlay';  // Discriminator: content = key photos, fx = effects, content-overlay = timeline-level content layers
   name: string;
   fps: number;
   width: number;

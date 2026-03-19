@@ -1,3 +1,5 @@
+import type { LayerType } from './layer';
+
 export interface TimelineState {
   currentFrame: number;
   isPlaying: boolean;
@@ -23,15 +25,17 @@ export interface TrackLayout {
   keyPhotoRanges: KeyPhotoRange[];
 }
 
-/** Layout info for an FX sequence range bar in the timeline */
+/** Layout info for an FX or content-overlay sequence range bar in the timeline */
 export interface FxTrackLayout {
   sequenceId: string;
   sequenceName: string;
-  kind: 'fx';
+  kind: 'fx' | 'content-overlay';
   inFrame: number;
   outFrame: number;  // exclusive
   color: string;     // accent color for the range bar
   visible: boolean;  // false when FX sequence is hidden (toggled off)
+  thumbnailImageId?: string;  // used for thumbnail icon rendering in content overlay range bars
+  layerType?: LayerType;      // used to distinguish static-image/image-sequence/video for color and rendering decisions
 }
 
 /** Frame range for a single key photo within a track */
