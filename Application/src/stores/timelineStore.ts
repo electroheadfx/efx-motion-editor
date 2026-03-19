@@ -1,4 +1,4 @@
-import {signal, computed} from '@preact/signals';
+import {signal, computed, effect} from '@preact/signals';
 import {projectStore} from './projectStore';
 import {totalFrames as totalFramesSignal, fxTrackLayouts} from '../lib/frameMap';
 
@@ -38,6 +38,14 @@ const totalContentHeight = computed(() => {
 
 const maxScrollY = computed(() => {
   return Math.max(0, totalContentHeight.value - viewportHeight.value);
+});
+
+// Auto-clamp scrollY when content shrinks (e.g., FX layers deleted)
+effect(() => {
+  const max = maxScrollY.value;
+  if (scrollY.peek() > max) {
+    scrollY.value = max;
+  }
 });
 
 export const timelineStore = {
@@ -98,7 +106,7 @@ export const timelineStore = {
     scrollX.value = v;
   },
   setScrollY(v: number) {
-    scrollY.value = Math.max(0, v);
+    scrollY.value = Math.max(0, Math.min(maxScrollY.peek(), v));
   },
   setViewportWidth(v: number) {
     viewportWidth.value = v;

@@ -631,15 +631,15 @@ export class TimelineInteraction {
     }
   }
 
-  // --- Zoom and horizontal scroll (TIME-04) ---
+  // --- Zoom and scroll (TIME-04) ---
   private onWheel(e: WheelEvent) {
     if (!this.canvas) return;
     e.preventDefault();
 
     const rect = this.canvas.getBoundingClientRect();
 
-    if (e.ctrlKey || e.metaKey) {
-      // Zoom centered on cursor position
+    if (e.ctrlKey) {
+      // Ctrl+scroll = zoom at cursor (mouse scroll + trackpad pinch-to-zoom sets ctrlKey on macOS)
       const cursorX = e.clientX - rect.left - TRACK_HEADER_WIDTH;
       const oldZoom = timelineStore.zoom.peek();
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
@@ -651,29 +651,29 @@ export class TimelineInteraction {
 
       timelineStore.setZoom(newZoom);
       timelineStore.setScrollX(Math.max(0, newScrollX));
+    } else if (e.metaKey) {
+      // Cmd+scroll = vertical scroll (mouse users)
+      if (e.deltaY !== 0) {
+        const newScrollY = timelineStore.scrollY.peek() + e.deltaY;
+        timelineStore.setScrollY(Math.max(0, Math.min(timelineStore.maxScrollY.peek(), newScrollY)));
+      }
     } else if (e.shiftKey) {
-      // Shift+scroll = vertical scroll
-      // macOS swaps deltaY→deltaX when Shift held, so use whichever axis has a value
+      // Shift+scroll = vertical scroll (fallback)
+      // macOS swaps deltaY to deltaX when Shift held, so use whichever axis has a value
       const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
       if (delta !== 0) {
         const newScrollY = timelineStore.scrollY.peek() + delta;
-        const fxCount = this.renderer?.getFxTrackCount() ?? 0;
-        const contentCount = trackLayouts.peek().length;
-        const totalContentH = RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + contentCount * TRACK_HEIGHT;
-        const canvasH = this.canvas?.getBoundingClientRect().height ?? totalContentH;
-        const maxScrollY = Math.max(0, totalContentH - canvasH);
-        timelineStore.setScrollY(Math.min(maxScrollY, Math.max(0, newScrollY)));
+        timelineStore.setScrollY(Math.max(0, Math.min(timelineStore.maxScrollY.peek(), newScrollY)));
       }
     } else {
-      // Horizontal scroll (deltaX — trackpad two-finger horizontal swipe)
+      // No modifier — natural scrolling (trackpad two-finger swipe)
       if (e.deltaX !== 0) {
         const newScrollX = timelineStore.scrollX.peek() + e.deltaX;
         timelineStore.setScrollX(Math.max(0, newScrollX));
       }
-      // Bare wheel (deltaY without modifier) = horizontal scroll
       if (e.deltaY !== 0) {
-        const newScrollX = timelineStore.scrollX.peek() + e.deltaY;
-        timelineStore.setScrollX(Math.max(0, newScrollX));
+        const newScrollY = timelineStore.scrollY.peek() + e.deltaY;
+        timelineStore.setScrollY(Math.max(0, Math.min(timelineStore.maxScrollY.peek(), newScrollY)));
       }
     }
   }
