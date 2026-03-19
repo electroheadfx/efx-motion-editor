@@ -450,5 +450,43 @@ export function mountShortcuts(): () => void {
         playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
       }
     },
+
+    // Cmd+Arrow sequence navigation — laptop-friendly alternatives (NAV-CMD-ARROWS)
+    '$mod+ArrowLeft': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      e.preventDefault();
+      const target = findPrevSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
+      if (target !== null) {
+        playbackEngine.seekToFrame(target);
+      } else {
+        playbackEngine.seekToFrame(0);
+      }
+    },
+    '$mod+ArrowRight': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      e.preventDefault();
+      const target = findNextSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
+      if (target !== null) {
+        playbackEngine.seekToFrame(target);
+      } else {
+        const lastFrame = timelineStore.totalFrames.peek();
+        playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
+      }
+    },
+    '$mod+Shift+ArrowLeft': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      e.preventDefault();
+      playbackEngine.seekToFrame(0);
+    },
+    '$mod+Shift+ArrowRight': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      e.preventDefault();
+      const lastFrame = timelineStore.totalFrames.peek();
+      playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
+    },
   });
 }
