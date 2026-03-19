@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.13-01-PLAN.md
-last_updated: "2026-03-19T16:13:00.132Z"
+stopped_at: Completed 12.13-02-PLAN.md
+last_updated: "2026-03-19T16:52:18.424Z"
 progress:
   total_phases: 24
-  completed_phases: 18
+  completed_phases: 19
   total_plans: 50
-  completed_plans: 49
+  completed_plans: 50
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 ## Current Position
 
-Phase: 12.13 (linear-timeline) — EXECUTING
-Plan: 2 of 2
+Phase: 12.13 (linear-timeline) — COMPLETE
+Plan: 2 of 2 (all plans complete)
 
 ## Accumulated Context
 
@@ -88,6 +88,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.12-04]: Overlay filter uses s.kind \!== 'content' (not s.kind === 'fx') so content-overlay sequences composite in same pass as FX
 - [Phase 12.12-04]: Video looping mod (targetTime % video.duration) applied universally to all video layers
 - [Phase 12.13]: DrawState layoutMode/displayMode fields optional for backward compat; text labels (S/L, T+N/T) for toggle buttons; drag feedback suppressed in linear mode
+- [Phase 12.13]: sequenceFromFrame helper uses trackLayouts X-ranges for linear mode selection; layout persisted to app config via Tauri IPC; linear mode as default
 
 ### Pending Todos
 
@@ -159,6 +160,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-19T16:13:00.128Z
-Stopped at: Completed 12.13-01-PLAN.md
+Last session: 2026-03-19T16:52:17.423Z
+Stopped at: Completed 12.13-02-PLAN.md
 Resume file: None
