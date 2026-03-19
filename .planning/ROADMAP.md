@@ -299,6 +299,23 @@ Plans:
 - [ ] 12.10-01-PLAN.md -- WebGL2 glBlur.ts module, unified fxBlur.ts API, previewRenderer simplification
 - [ ] 12.10-02-PLAN.md -- Remove HQ toggle from blurStore/Toolbar/shortcuts/ShortcutsOverlay/Preview, visual verification
 
+### Phase 12.11: Full-speed playback and fullscreen canvas mode (INSERTED)
+
+**Goal:** Add full-speed playback mode (Shift+Space) that skips all UI feedback for maximum frame rate, and fullscreen canvas mode (Cmd+Shift+F) with auto-hiding controls bar. Fullscreen always uses full-speed playback. Both features work independently.
+**Requirements**: FS-01, FS-02, FS-03, FS-04, FL-01, FL-02, FL-03, FL-04, FL-05, FL-06, FL-07
+**Depends on:** Phase 12.10
+**Success Criteria** (what must be TRUE):
+  1. Shift+Space starts playback in full-speed mode skipping all UI feedback (no timeline scroll, no playhead, no timecode)
+  2. A FULL SPEED badge appears on the canvas during full-speed playback
+  3. Cmd+Shift+F enters fullscreen with black background, letterboxed canvas, and auto-hiding controls bar
+  4. ESC exits fullscreen and stops playback, re-syncing all UI to current frame
+  5. Only Space, Left/Right arrows, Shift+Space, and ESC work in fullscreen (all other shortcuts suppressed)
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12.11-01-PLAN.md -- Full-speed playback: isFullSpeed signal, toggleFullSpeed(), tick() gating, FullSpeedBadge, Shift+Space, Tauri capability
+- [ ] 12.11-02-PLAN.md -- Fullscreen canvas: fullscreenManager, FullscreenOverlay, EditorShell wiring, shortcut scoping, visual verification
+
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12
@@ -353,7 +370,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 12.11 > 13 > 14 > 15 > 16 > 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -381,6 +398,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.8. Fix Timeline Thumb Stretching | 1/1 | Complete    | 2026-03-18 | - |
 | 12.9. Fix Add-Layer Dialogs | 1/1 | Complete    | 2026-03-18 | - |
 | 12.10. GPU-Accelerated Blur via WebGL2 | 2/2 | Complete    | 2026-03-18 | - |
+| 12.11. Full-speed playback & fullscreen canvas | v0.2.0 | 0/2 | Planned | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
