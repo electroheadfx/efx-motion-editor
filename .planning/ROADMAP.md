@@ -131,7 +131,7 @@ Plans:
   2. All toolbar buttons (New, Open, Save, Blur Off, Imported, Settings, Export) display icons instead of text labels
   3. Every icon-only button has a title tooltip with "Label (Shortcut)" format for keyboard shortcut discovery
   4. Canvas play/pause button retains its emphasis styling (rounded-full, accent bg, larger icon)
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 12.14-01-PLAN.md -- Replace TimelinePanel + CanvasArea Unicode buttons with lucide-preact icons and tooltips
@@ -454,7 +454,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.11. Full-speed playback & fullscreen canvas | 2/2 | Complete    | 2026-03-19 | - |
 | 12.12. New Content Layer for Timeline | 4/4 | Complete    | 2026-03-19 | - |
 | 12.13. Linear Timeline | 2/2 | Complete    | 2026-03-19 | - |
-| 12.14. Timeline/Canvas Buttons Enhancements | v0.2.0 | 0/2 | In Progress | - |
+| 12.14. Timeline/Canvas Buttons Enhancements | 1/2 | In Progress|  | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
