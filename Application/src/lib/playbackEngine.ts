@@ -24,6 +24,8 @@ export class PlaybackEngine {
   private lastTime: number = 0;
   private accumulator: number = 0;
   private playerRef: HTMLElement | null = null;
+  /** Internal frame counter used during full-speed mode to avoid updating timeline signals */
+  private fullSpeedFrame: number = 0;
 
   setPlayerRef(el: HTMLElement | null) {
     this.playerRef = el;
@@ -40,10 +42,15 @@ export class PlaybackEngine {
   }
 
   stop() {
+    const wasFullSpeed = isFullSpeed.peek();
     isFullSpeed.value = false;
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
+    }
+    // Re-sync timeline to where full-speed playback reached
+    if (wasFullSpeed) {
+      timelineStore.seek(this.fullSpeedFrame);
     }
     timelineStore.setPlaying(false);
     timelineStore.syncDisplayFrame();
@@ -61,10 +68,19 @@ export class PlaybackEngine {
 
   toggleFullSpeed() {
     if (timelineStore.isPlaying.peek()) {
-      // Already playing: toggle full-speed on/off
-      isFullSpeed.value = !isFullSpeed.value;
+      if (isFullSpeed.peek()) {
+        // Turning OFF: sync timeline to where full-speed reached
+        timelineStore.seek(this.fullSpeedFrame);
+        timelineStore.syncDisplayFrame();
+        isFullSpeed.value = false;
+      } else {
+        // Turning ON: capture current frame as starting point
+        this.fullSpeedFrame = timelineStore.currentFrame.peek();
+        isFullSpeed.value = true;
+      }
     } else {
       // Not playing: start in full-speed mode
+      this.fullSpeedFrame = timelineStore.currentFrame.peek();
       isFullSpeed.value = true;
       this.start();
     }
@@ -125,43 +141,51 @@ export class PlaybackEngine {
     this.accumulator += delta;
 
     const maxFrames = totalFrames.peek();
+    const fullSpeed = isFullSpeed.peek();
 
     while (this.accumulator >= frameDuration) {
       this.accumulator -= frameDuration;
-      const currentFrame = timelineStore.currentFrame.peek();
 
-      if (direction > 0) {
-        // Forward playback
-        if (currentFrame >= maxFrames - 1) {
-          timelineStore.seek(0); // auto-loop to start
+      if (fullSpeed) {
+        // Full-speed: advance internal counter only (no timeline signal updates)
+        if (direction > 0) {
+          this.fullSpeedFrame = this.fullSpeedFrame >= maxFrames - 1 ? 0 : this.fullSpeedFrame + 1;
         } else {
-          timelineStore.stepForward();
+          this.fullSpeedFrame = this.fullSpeedFrame <= 0 ? maxFrames - 1 : this.fullSpeedFrame - 1;
         }
       } else {
-        // Reverse playback
-        if (currentFrame <= 0) {
-          timelineStore.seek(maxFrames - 1); // auto-loop to end
+        // Normal: advance via timelineStore (triggers UI updates)
+        const currentFrame = timelineStore.currentFrame.peek();
+        if (direction > 0) {
+          if (currentFrame >= maxFrames - 1) {
+            timelineStore.seek(0);
+          } else {
+            timelineStore.stepForward();
+          }
         } else {
-          timelineStore.stepBackward();
+          if (currentFrame <= 0) {
+            timelineStore.seek(maxFrames - 1);
+          } else {
+            timelineStore.stepBackward();
+          }
         }
       }
     }
 
-    // Gate UI feedback behind fullSpeed signal
-    if (!isFullSpeed.peek()) {
+    if (fullSpeed) {
+      // Render canvas directly from internal counter
+      const player = this.getInternalPlayer();
+      if (player) player.requestSeek(this.fullSpeedFrame);
+    } else {
+      // Normal UI sync
       timelineStore.ensureFrameVisiblePaged(timelineStore.currentFrame.peek());
-
-      // Auto vertical scroll: keep active track visible during playback
-      // NOTE: Only scroll -- do NOT update sidebar sequence selection during playback
-      // (sidebar re-syncs when playback stops via syncActiveSequence)
       const cf = timelineStore.currentFrame.peek();
       const entry = frameMap.peek()[cf];
       if (entry) {
         timelineStore.ensureTrackVisible(entry.sequenceId);
       }
+      this.syncPlayer();
     }
-
-    this.syncPlayer();
 
     if (timelineStore.isPlaying.peek()) {
       this.rafId = requestAnimationFrame(this.tick);
