@@ -43,10 +43,10 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Navigation',
     entries: [
-      {keys: 'Home / \u21E7\u2318\u2190', description: 'Go to start of timeline'},
-      {keys: 'End / \u21E7\u2318\u2192', description: 'Go to end of timeline'},
-      {keys: 'PgUp / \u2318\u2190', description: 'Jump to previous sequence'},
-      {keys: 'PgDn / \u2318\u2192', description: 'Jump to next sequence'},
+      {keys: 'Home / \u21E7\u2318\u2190\u2191', description: 'Go to start of timeline'},
+      {keys: 'End / \u21E7\u2318\u2192\u2193', description: 'Go to end of timeline'},
+      {keys: 'PgUp / \u2318\u2190\u2191', description: 'Jump to previous sequence'},
+      {keys: 'PgDn / \u2318\u2192\u2193', description: 'Jump to next sequence'},
       {keys: '\u21E7\u2318T', description: 'Cycle theme'},
       {keys: '?', description: 'Toggle this help'},
     ],

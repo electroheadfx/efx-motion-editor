@@ -488,5 +488,43 @@ export function mountShortcuts(): () => void {
       const lastFrame = timelineStore.totalFrames.peek();
       playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
     },
+
+    // Cmd+Arrow Up/Down — vertical aliases for sequence navigation (NAV-CMD-UPDOWN)
+    '$mod+ArrowUp': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      e.preventDefault();
+      const target = findPrevSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
+      if (target !== null) {
+        playbackEngine.seekToFrame(target);
+      } else {
+        playbackEngine.seekToFrame(0);
+      }
+    },
+    '$mod+ArrowDown': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      e.preventDefault();
+      const target = findNextSequenceStart(trackLayouts.peek(), timelineStore.currentFrame.peek());
+      if (target !== null) {
+        playbackEngine.seekToFrame(target);
+      } else {
+        const lastFrame = timelineStore.totalFrames.peek();
+        playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
+      }
+    },
+    '$mod+Shift+ArrowUp': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      e.preventDefault();
+      playbackEngine.seekToFrame(0);
+    },
+    '$mod+Shift+ArrowDown': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      e.preventDefault();
+      const lastFrame = timelineStore.totalFrames.peek();
+      playbackEngine.seekToFrame(Math.max(0, lastFrame - 1));
+    },
   });
 }
