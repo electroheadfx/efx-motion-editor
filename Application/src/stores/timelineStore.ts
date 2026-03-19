@@ -1,6 +1,6 @@
 import {signal, computed} from '@preact/signals';
 import {projectStore} from './projectStore';
-import {totalFrames as totalFramesSignal, trackLayouts, fxTrackLayouts} from '../lib/frameMap';
+import {totalFrames as totalFramesSignal, fxTrackLayouts} from '../lib/frameMap';
 
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 10;
@@ -16,8 +16,6 @@ const scrollX = signal(0);
 const scrollY = signal(0);
 const viewportWidth = signal(0);
 const viewportHeight = signal(0);
-const layoutMode = signal<'stacked' | 'linear'>('linear');
-const displayMode = signal<'thumb-name' | 'thumb-only'>('thumb-name');
 
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);
 const displayTime = computed(() => displayFrame.value / projectStore.fps.value);
@@ -32,13 +30,10 @@ const RULER_HEIGHT = 24;
 const TRACK_HEIGHT = 52;
 const FX_TRACK_HEIGHT = 28;
 
+// Linear timeline: single content row
 const totalContentHeight = computed(() => {
   const fxCount = fxTrackLayouts.value.length;
-  if (layoutMode.value === 'linear') {
-    return RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + TRACK_HEIGHT;
-  }
-  const contentCount = trackLayouts.value.length;
-  return RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + contentCount * TRACK_HEIGHT;
+  return RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + TRACK_HEIGHT;
 });
 
 const maxScrollY = computed(() => {
@@ -63,8 +58,6 @@ export const timelineStore = {
   totalDuration,
   isAtMinZoom,
   isAtMaxZoom,
-  layoutMode,
-  displayMode,
 
   setTimelineDragging(v: boolean) {
     timelineDragging.value = v;
@@ -100,24 +93,6 @@ export const timelineStore = {
   zoomOut() {
     const newZoom = Math.max(ZOOM_MIN, zoom.value / ZOOM_STEP);
     zoom.value = newZoom;
-  },
-  setLayoutMode(mode: 'stacked' | 'linear') {
-    layoutMode.value = mode;
-    // Clamp scrollY since totalContentHeight changes
-    const maxY = maxScrollY.peek();
-    if (scrollY.peek() > maxY) {
-      scrollY.value = maxY;
-    }
-    // Persist to user config
-    import('../lib/appConfig').then(c => c.setTimelineLayout(mode));
-  },
-  setDisplayMode(mode: 'thumb-name' | 'thumb-only') {
-    displayMode.value = mode;
-  },
-  async initTimelineLayout() {
-    const { getTimelineLayout } = await import('../lib/appConfig');
-    const saved = await getTimelineLayout();
-    layoutMode.value = saved;
   },
   setScrollX(v: number) {
     scrollX.value = v;
@@ -162,27 +137,9 @@ export const timelineStore = {
       scrollX.value = scrollX.value + trackArea;
     }
   },
-  /** Snap vertical scroll so the given sequence's track is visible. */
-  ensureTrackVisible(sequenceId: string) {
-    // In linear mode, all content tracks share one row — no vertical scroll needed
-    if (layoutMode.peek() === 'linear') return;
-    const tracks = trackLayouts.peek();
-    const fxCount = fxTrackLayouts.peek().length;
-    const trackIndex = tracks.findIndex(t => t.sequenceId === sequenceId);
-    if (trackIndex < 0) return;
-
-    const trackTop = fxCount * FX_TRACK_HEIGHT + trackIndex * TRACK_HEIGHT;
-    const trackBottom = trackTop + TRACK_HEIGHT;
-    const vh = viewportHeight.peek();
-    if (vh <= 0) return;
-    const visibleTop = scrollY.peek();
-    const visibleBottom = scrollY.peek() + vh - RULER_HEIGHT;
-
-    if (trackTop < visibleTop) {
-      scrollY.value = trackTop;
-    } else if (trackBottom > visibleBottom) {
-      scrollY.value = trackBottom - (vh - RULER_HEIGHT);
-    }
+  /** No-op in linear timeline — all content is on one row, no vertical scroll needed. */
+  ensureTrackVisible(_sequenceId: string) {
+    // Linear timeline: single content row, no per-track vertical scroll
   },
   syncDisplayFrame() {
     displayFrame.value = currentFrame.value;
@@ -194,7 +151,5 @@ export const timelineStore = {
     zoom.value = 1;
     scrollX.value = 0;
     scrollY.value = 0;
-    layoutMode.value = 'stacked';
-    displayMode.value = 'thumb-name';
   },
 };

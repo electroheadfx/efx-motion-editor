@@ -14,7 +14,6 @@ import { useFileDrop } from '../../lib/dragDrop';
 import { imageStore } from '../../stores/imageStore';
 import { layerStore } from '../../stores/layerStore';
 import { projectStore } from '../../stores/projectStore';
-import { timelineStore } from '../../stores/timelineStore';
 import { uiStore } from '../../stores/uiStore';
 import { tempProjectDir } from '../../lib/projectDir';
 
@@ -23,8 +22,8 @@ const INTERACTIVE_SELECTOR =
   'button, input, textarea, select, [role="button"], [data-interactive], [contenteditable]';
 
 export function EditorShell() {
-  // Initialize sidebar layout and timeline layout from persisted config on mount
-  useEffect(() => { uiStore.initSidebarLayout(); timelineStore.initTimelineLayout(); }, []);
+  // Initialize sidebar layout from persisted config on mount
+  useEffect(() => { uiStore.initSidebarLayout(); }, []);
   // Initialize fullscreen change listener on mount
   useEffect(() => { initFullscreenListener(); }, []);
 

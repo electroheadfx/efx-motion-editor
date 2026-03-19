@@ -4,6 +4,7 @@ import {uiStore} from '../../stores/uiStore';
 import {guardUnsavedChanges} from '../../lib/unsavedGuard';
 import {NewProjectDialog} from '../project/NewProjectDialog';
 import {blurStore} from '../../stores/blurStore';
+import {ThemeSwitcher} from './ThemeSwitcher';
 
 export function Toolbar() {
   const showNewDialog = uiStore.showNewProjectDialog.value;
@@ -100,6 +101,8 @@ export function Toolbar() {
           blurStore.bypassBlur.value ? 'text-white' : 'text-[var(--color-text-secondary)]'
         }`}>Blur Off</span>
       </button>
+      <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
+      <ThemeSwitcher />
       {/* Spacer */}
       <div class="flex-1" />
       {/* Imported button */}

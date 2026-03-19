@@ -26,10 +26,6 @@ export class TimelineInteraction {
   private renderer: TimelineRenderer | null = null;
   private isDragging = false;
 
-  // Track header drag state (TIME-06)
-  private isDraggingTrack = false;
-  private dragTrackIndex = -1;
-
   // FX range bar drag state (FX-09)
   private isDraggingFx = false;
   private fxDragMode: 'move' | 'resize-left' | 'resize-right' = 'move';
@@ -108,29 +104,6 @@ export class TimelineInteraction {
     const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
     const playheadX = currentFrame * frameWidth - timelineStore.scrollX.peek() + TRACK_HEADER_WIDTH + rect.left;
     return Math.abs(clientX - playheadX) <= 10;
-  }
-
-  /** Compute content track index from clientY (accounts for FX track offset and scrollY) */
-  private trackIndexFromY(clientY: number): number {
-    if (!this.canvas || !this.renderer) return -1;
-    const rect = this.canvas.getBoundingClientRect();
-    const scrollY = this.renderer.getScrollY();
-    const fxOffset = this.renderer.getFxTrackCount() * FX_TRACK_HEIGHT;
-    const y = clientY - rect.top - RULER_HEIGHT - fxOffset + scrollY;
-    if (y < 0) return -1;
-    return Math.floor(y / TRACK_HEIGHT);
-  }
-
-  /** Compute drop index for track reorder (accounts for FX track offset and scrollY) */
-  private dropIndexFromY(clientY: number): number {
-    if (!this.canvas || !this.renderer) return 0;
-    const rect = this.canvas.getBoundingClientRect();
-    const scrollY = this.renderer.getScrollY();
-    const fxOffset = this.renderer.getFxTrackCount() * FX_TRACK_HEIGHT;
-    const y = clientY - rect.top - RULER_HEIGHT - fxOffset + scrollY;
-    const trackCount = trackLayouts.peek().length;
-    const idx = Math.round(y / TRACK_HEIGHT);
-    return Math.max(0, Math.min(idx, trackCount));
   }
 
   /** Check if the click is in the ruler area (above tracks) */
@@ -292,56 +265,25 @@ export class TimelineInteraction {
     const track = tracks.find(t => t.sequenceId === owningSeq!.id);
     if (!track) return null;
 
-    // Check if click Y is on this track
-    const trackIndex = tracks.indexOf(track);
-    const clickedTrackIndex = this.trackIndexFromY(clientY);
-
-    // In linear mode, all content tracks share one row -- skip Y-based track matching
-    if (timelineStore.layoutMode.peek() === 'linear') {
-      // All content is at track Y = 0 (single row)
-      // Verify the click is in the content area (not FX, not ruler)
-      if (!this.isInFxArea(clientY) && !this.isInRuler(clientY)) {
-        const clickFrame = this.getFrame(clientX);
-        const localClickFrame = clickFrame - track.startFrame;
-        // Only test keyframes if the click frame is within this track's range
-        if (clickFrame >= track.startFrame && clickFrame < track.endFrame) {
-          let bestHit: { frame: number; distance: number } | null = null;
-          for (const kf of keyframes) {
-            const dist = Math.abs(localClickFrame - kf.frame);
-            if (dist <= hitThresholdFrames) {
-              if (!bestHit || dist < bestHit.distance) {
-                bestHit = { frame: kf.frame, distance: dist };
-              }
+    // Linear timeline: all content on one row — use X-based hit testing
+    if (!this.isInFxArea(clientY) && !this.isInRuler(clientY)) {
+      const clickFrame = this.getFrame(clientX);
+      const localClickFrame = clickFrame - track.startFrame;
+      if (clickFrame >= track.startFrame && clickFrame < track.endFrame) {
+        let bestHit: { frame: number; distance: number } | null = null;
+        for (const kf of keyframes) {
+          const dist = Math.abs(localClickFrame - kf.frame);
+          if (dist <= hitThresholdFrames) {
+            if (!bestHit || dist < bestHit.distance) {
+              bestHit = { frame: kf.frame, distance: dist };
             }
           }
-          if (bestHit) {
-            return { frame: bestHit.frame, layerId: selectedId, sequenceStartFrame: track.startFrame };
-          }
         }
-      }
-      return null;
-    }
-
-    if (clickedTrackIndex !== trackIndex) return null;
-
-    // Get the frame at click position
-    const clickFrame = this.getFrame(clientX);
-    const localClickFrame = clickFrame - track.startFrame;
-
-    // Nearest-wins: find the closest keyframe within the hit threshold
-    let bestHit: { frame: number; distance: number } | null = null;
-    for (const kf of keyframes) {
-      const dist = Math.abs(localClickFrame - kf.frame);
-      if (dist <= hitThresholdFrames) {
-        if (!bestHit || dist < bestHit.distance) {
-          bestHit = { frame: kf.frame, distance: dist };
+        if (bestHit) {
+          return { frame: bestHit.frame, layerId: selectedId, sequenceStartFrame: track.startFrame };
         }
       }
     }
-    if (bestHit) {
-      return { frame: bestHit.frame, layerId: selectedId, sequenceStartFrame: track.startFrame };
-    }
-
     return null;
   }
 
@@ -460,44 +402,10 @@ export class TimelineInteraction {
     const rect = this.canvas.getBoundingClientRect();
     const localX = e.clientX - rect.left;
 
-    // Check if the click is in the track header area (TIME-06: sequence reorder)
+    // Linear timeline: header click just seeks (no per-track headers)
     if (localX < TRACK_HEADER_WIDTH) {
-      // In linear mode, select sequence by clicking header but don't allow drag reorder
-      if (timelineStore.layoutMode.peek() === 'linear') {
-        // No per-sequence header in linear mode -- just seek
-        const frame = this.getFrame(e.clientX);
-        playbackEngine.seekToFrame(frame);
-        return;
-      }
-      const trackIndex = this.trackIndexFromY(e.clientY);
-      const tracks = trackLayouts.peek();
-
-      // Select the content sequence on header click
-      if (trackIndex >= 0 && trackIndex < tracks.length) {
-        const track = tracks[trackIndex];
-        sequenceStore.setActive(track.sequenceId);
-        uiStore.selectSequence(track.sequenceId);
-        // Only clear selection if current selection is an FX layer
-        // (preserves content layer selection so keyframe diamonds stay visible)
-        this.clearFxLayerSelection();
-      }
-
-      // Only start drag if valid track and more than one sequence
-      if (trackIndex >= 0 && trackIndex < tracks.length && tracks.length > 1) {
-        this.isDraggingTrack = true;
-        this.dragTrackIndex = trackIndex;
-        this.canvas.style.cursor = 'grabbing';
-        this.canvas.setPointerCapture(e.pointerId);
-
-        // Set initial drag visual state
-        if (this.renderer) {
-          this.renderer.setDragState({
-            fromIndex: trackIndex,
-            toIndex: trackIndex,
-            currentY: e.clientY,
-          });
-        }
-      }
+      const frame = this.getFrame(e.clientX);
+      playbackEngine.seekToFrame(frame);
       return;
     }
 
@@ -506,32 +414,18 @@ export class TimelineInteraction {
       this.isDragging = true;
       timelineStore.setTimelineDragging(true);
       this.canvas.setPointerCapture(e.pointerId);
-      // Seek to clicked position immediately
       const frame = this.getFrame(e.clientX);
       playbackEngine.seekToFrame(frame);
     } else {
-      // Click-to-seek on track area + select content sequence
-      if (timelineStore.layoutMode.peek() === 'linear') {
-        const frame = this.getFrame(e.clientX);
-        const seqId = this.sequenceFromFrame(frame);
-        if (seqId) {
-          sequenceStore.setActive(seqId);
-          uiStore.selectSequence(seqId);
-          this.clearFxLayerSelection();
-        }
-        playbackEngine.seekToFrame(frame);
-      } else {
-        const trackIndex = this.trackIndexFromY(e.clientY);
-        const tracks = trackLayouts.peek();
-        if (trackIndex >= 0 && trackIndex < tracks.length) {
-          const track = tracks[trackIndex];
-          sequenceStore.setActive(track.sequenceId);
-          uiStore.selectSequence(track.sequenceId);
-          this.clearFxLayerSelection();
-        }
-        const frame = this.getFrame(e.clientX);
-        playbackEngine.seekToFrame(frame);
+      // Click-to-seek + select content sequence by X position
+      const frame = this.getFrame(e.clientX);
+      const seqId = this.sequenceFromFrame(frame);
+      if (seqId) {
+        sequenceStore.setActive(seqId);
+        uiStore.selectSequence(seqId);
+        this.clearFxLayerSelection();
       }
+      playbackEngine.seekToFrame(frame);
     }
   }
 
@@ -592,19 +486,6 @@ export class TimelineInteraction {
       return;
     }
 
-    // Track header dragging
-    if (this.isDraggingTrack) {
-      const dropIndex = this.dropIndexFromY(e.clientY);
-      if (this.renderer) {
-        this.renderer.setDragState({
-          fromIndex: this.dragTrackIndex,
-          toIndex: dropIndex,
-          currentY: e.clientY,
-        });
-      }
-      return;
-    }
-
     // Playhead scrubbing: seekToFrame updates both currentFrame and displayFrame
     // (via syncDisplayFrame), giving realtime canvas preview during drag.
     if (this.isDragging) {
@@ -661,20 +542,8 @@ export class TimelineInteraction {
         return; // Skip content area cursor logic
       }
 
-      // Cursor hint: show grab cursor when hovering over track headers (stacked mode only)
-      if (timelineStore.layoutMode.peek() !== 'linear') {
-        const rect = this.canvas.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        const trackIndex = this.trackIndexFromY(e.clientY);
-        const tracks = trackLayouts.peek();
-        if (localX < TRACK_HEADER_WIDTH && trackIndex >= 0 && trackIndex < tracks.length && tracks.length > 1) {
-          this.canvas.style.cursor = 'grab';
-        } else {
-          this.canvas.style.cursor = 'default';
-        }
-      } else {
-        this.canvas.style.cursor = 'default';
-      }
+      // Linear timeline: no grab cursor on headers
+      this.canvas.style.cursor = 'default';
     }
   }
 
@@ -740,37 +609,6 @@ export class TimelineInteraction {
           this.canvas.releasePointerCapture(e.pointerId);
         } catch {
           // Pointer capture may have been released
-        }
-      }
-      return;
-    }
-
-    // Track header drop (TIME-06)
-    if (this.isDraggingTrack) {
-      const dropIndex = this.dropIndexFromY(e.clientY);
-      // Compute effective target index for reorderSequences
-      // dropIndex is the insertion point; if dropping below the dragged track, adjust
-      const fromIndex = this.dragTrackIndex;
-      let toIndex = dropIndex;
-      if (toIndex > fromIndex) {
-        toIndex -= 1; // Account for the removed item shifting indices down
-      }
-
-      if (toIndex !== fromIndex) {
-        sequenceStore.reorderSequences(fromIndex, toIndex);
-      }
-
-      this.isDraggingTrack = false;
-      this.dragTrackIndex = -1;
-      if (this.renderer) {
-        this.renderer.setDragState(null);
-      }
-      if (this.canvas) {
-        this.canvas.style.cursor = 'default';
-        try {
-          this.canvas.releasePointerCapture(e.pointerId);
-        } catch {
-          // Pointer capture may have been released by browser
         }
       }
       return;

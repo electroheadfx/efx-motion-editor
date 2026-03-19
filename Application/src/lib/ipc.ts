@@ -95,11 +95,3 @@ export function configGetPanelHeights() {
 export function configSetPanelHeights(seqHeight: number, layersHeight: number) {
   return safeInvoke<null>('config_set_panel_heights', { seqHeight, layersHeight });
 }
-
-export function configGetTimelineLayout() {
-  return safeInvoke<string | null>('config_get_timeline_layout');
-}
-
-export function configSetTimelineLayout(layout: string) {
-  return safeInvoke<null>('config_set_timeline_layout', { layout });
-}

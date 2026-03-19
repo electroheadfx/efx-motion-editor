@@ -13,8 +13,6 @@ struct BuilderConfig {
     sidebar_width: Option<f64>,
     #[serde(default)]
     panel_heights: Option<(f64, f64)>,
-    #[serde(default)]
-    timeline_layout: Option<String>,
 }
 
 /// Returns the path to ~/.config/efx-motion/builder-config.yaml.
@@ -118,17 +116,5 @@ pub fn config_get_panel_heights() -> Option<(f64, f64)> {
 pub fn config_set_panel_heights(seq_height: f64, layers_height: f64) -> Result<(), String> {
     let mut config = read_config();
     config.panel_heights = Some((seq_height, layers_height));
-    write_config(&config)
-}
-
-#[command]
-pub fn config_get_timeline_layout() -> Option<String> {
-    read_config().timeline_layout
-}
-
-#[command]
-pub fn config_set_timeline_layout(layout: String) -> Result<(), String> {
-    let mut config = read_config();
-    config.timeline_layout = Some(layout);
     write_config(&config)
 }
