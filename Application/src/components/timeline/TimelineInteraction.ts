@@ -180,6 +180,7 @@ export class TimelineInteraction {
       const layerId = seq.layers[0].id;
       layerStore.setSelected(layerId);
       uiStore.selectLayer(layerId);
+      uiStore.selectSequence(null);
     }
   }
 

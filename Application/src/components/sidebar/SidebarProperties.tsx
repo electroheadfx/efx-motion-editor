@@ -86,6 +86,20 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
 
   return (
     <div class="px-3 py-2 space-y-3">
+      {/* Editable layer name */}
+      <input
+        type="text"
+        value={layer.name}
+        class="w-full text-[12px] font-medium px-2 py-1 rounded outline-none"
+        style={{ backgroundColor: 'var(--color-bg-input)', color: 'var(--sidebar-text-primary)' }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+        onChange={(e) => {
+          layerStore.updateLayer(layer.id, { name: (e.target as HTMLInputElement).value });
+        }}
+      />
+
       {/* Change Source button for content overlay layers */}
       {isContentOverlay && (
         <div class="pb-1">
