@@ -1,6 +1,6 @@
 import {signal} from '@preact/signals';
 import {getCurrentWindow} from '@tauri-apps/api/window';
-import {playbackEngine, isFullSpeed} from './playbackEngine';
+import {playbackEngine} from './playbackEngine';
 import {timelineStore} from '../stores/timelineStore';
 
 export const isFullscreen = signal(false);
