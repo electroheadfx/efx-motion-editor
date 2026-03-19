@@ -157,9 +157,10 @@ No active blockers.
 | 36 | Add missing scroll shortcuts (Cmd+Scroll, Shift+Scroll) to help overlay | 2026-03-18 | 9c9e029 |
 | 37 | Swap mouse wheel scroll axes: bare wheel=horizontal, Shift+wheel=vertical; widen scrollbar to 8px | 2026-03-19 | 198c175 |
 | 38 | Re-enable realtime canvas preview during playhead scrub drag | 2026-03-19 | 160644b |
+| 39 | Convert all FX property sections to 2-column paired-row layout | 2026-03-19 | 76905f4 |
 
 ## Session Continuity
 
-Last session: 2026-03-19T16:52:17.423Z
-Stopped at: Completed 12.13-02-PLAN.md
+Last session: 2026-03-19T17:35:15Z
+Stopped at: Completed quick-39 (260319-pov)
 Resume file: None
