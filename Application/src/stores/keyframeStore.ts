@@ -241,7 +241,7 @@ export const keyframeStore = {
 
   /** Update a single field in transientOverrides.
    *  If transientOverrides is null, initializes from interpolatedValues first. */
-  setTransientValue(field: keyof KeyframeValues, value: number) {
+  setTransientValue(field: Exclude<keyof KeyframeValues, 'sourceOverrides'>, value: number) {
     let current = transientOverrides.peek();
     if (!current) {
       const interp = interpolatedValues.peek();
@@ -250,7 +250,7 @@ export const keyframeStore = {
     } else {
       current = { ...current };
     }
-    (current as unknown as Record<string, unknown>)[field] = value;
+    current[field] = value;
     transientOverrides.value = current;
   },
 

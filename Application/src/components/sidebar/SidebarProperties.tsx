@@ -33,7 +33,7 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
 
   // Transient edit routing: when a layer has keyframes and the playhead is NOT on a keyframe,
   // edits write to transientOverrides; when ON a keyframe, edits update layerStore + keyframe.
-  const handleKeyframeEdit = hasKeyframes ? (field: keyof KeyframeValues, value: number) => {
+  const handleKeyframeEdit = hasKeyframes ? (field: Exclude<keyof KeyframeValues, 'sourceOverrides'>, value: number) => {
     if (isOnKf) {
       // ON a keyframe: update layer state AND update keyframe values
       if (field === 'opacity') {
@@ -73,7 +73,7 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
   // Update transform helper (wraps handleKeyframeEdit for transform fields)
   const updateTransform = (field: string, value: number) => {
     if (handleKeyframeEdit) {
-      handleKeyframeEdit(field as keyof KeyframeValues, value);
+      handleKeyframeEdit(field as Exclude<keyof KeyframeValues, 'sourceOverrides'>, value);
     } else {
       layerStore.updateLayer(layer.id, {
         transform: { ...layer.transform, [field]: value },
