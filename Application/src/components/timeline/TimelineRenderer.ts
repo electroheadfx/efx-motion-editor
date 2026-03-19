@@ -68,6 +68,7 @@ export interface DrawState {
   selectedLayerKeyframes?: { frame: number; easing: string }[];  // sequence-local frames
   selectedKeyframeFrames?: Set<number>;  // frames that are selected (highlighted)
   selectedLayerSequenceId?: string | null;  // which sequence the selected layer belongs to
+  hidePlayhead?: boolean;  // true during full-speed playback
 }
 
 /**
@@ -367,23 +368,26 @@ export class TimelineRenderer {
     ctx.restore();
 
     // 3. Draw playhead line in screen space (spans full height, not affected by scroll)
-    const playheadX = frame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
-    if (playheadX >= TRACK_HEADER_WIDTH && playheadX <= w) {
-      ctx.strokeStyle = PLAYHEAD_COLOR;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(playheadX, RULER_HEIGHT);
-      ctx.lineTo(playheadX, h);
-      ctx.stroke();
+    // Hidden during full-speed playback to reinforce "no UI feedback" mode
+    if (!state.hidePlayhead) {
+      const playheadX = frame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+      if (playheadX >= TRACK_HEADER_WIDTH && playheadX <= w) {
+        ctx.strokeStyle = PLAYHEAD_COLOR;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(playheadX, RULER_HEIGHT);
+        ctx.lineTo(playheadX, h);
+        ctx.stroke();
 
-      // Playhead triangle (grab handle) at top in the ruler
-      ctx.fillStyle = PLAYHEAD_COLOR;
-      ctx.beginPath();
-      ctx.moveTo(playheadX - PLAYHEAD_TRIANGLE_SIZE, 0);
-      ctx.lineTo(playheadX + PLAYHEAD_TRIANGLE_SIZE, 0);
-      ctx.lineTo(playheadX, PLAYHEAD_TRIANGLE_SIZE * 1.5);
-      ctx.closePath();
-      ctx.fill();
+        // Playhead triangle (grab handle) at top in the ruler
+        ctx.fillStyle = PLAYHEAD_COLOR;
+        ctx.beginPath();
+        ctx.moveTo(playheadX - PLAYHEAD_TRIANGLE_SIZE, 0);
+        ctx.lineTo(playheadX + PLAYHEAD_TRIANGLE_SIZE, 0);
+        ctx.lineTo(playheadX, PLAYHEAD_TRIANGLE_SIZE * 1.5);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
 
     // 4. Draw keyframe diamonds (on top of everything else in the track area)

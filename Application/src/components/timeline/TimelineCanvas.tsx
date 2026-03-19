@@ -10,6 +10,7 @@ import {sequenceStore} from '../../stores/sequenceStore';
 import {keyframeStore} from '../../stores/keyframeStore';
 import {isFxLayer} from '../../types/layer';
 import {currentTheme} from '../../lib/themeManager';
+import {isFullSpeed} from '../../lib/playbackEngine';
 
 /**
  * TimelineCanvas: Preact component wrapping a canvas element with signal subscriptions.
@@ -121,6 +122,7 @@ export function TimelineCanvas() {
         selectedLayerKeyframes,
         selectedKeyframeFrames: selectedKfFrames,
         selectedLayerSequenceId,
+        hidePlayhead: isFullSpeed.value,
       });
     });
 
