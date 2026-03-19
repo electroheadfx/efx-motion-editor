@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.12-03-PLAN.md
-last_updated: "2026-03-19T11:34:23.487Z"
+stopped_at: Completed 12.12-02-PLAN.md
+last_updated: "2026-03-19T11:36:09.326Z"
 progress:
   total_phases: 23
   completed_phases: 17
   total_plans: 48
-  completed_plans: 46
+  completed_plans: 47
 ---
 
 # Project State
@@ -84,6 +84,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.11]: FullscreenOverlay renders own Preview instance (avoids CSS reparenting); capture-phase keydown for shortcut scoping; defense-in-depth isFullscreen guards in tinykeys
 - [Phase 12.12-01]: content-overlay as new Sequence.kind value (not reusing fx); reorderFxSequences operates on all non-content for interleaved drag; content-overlay uses inFrame as keyframe startFrame
 - [Phase 12.12]: CSS variable colors resolved at theme cache level for Canvas 2D; clearFxLayerSelection checks sequence kind not layer type
+- [Phase 12.12]: AddLayerIntent extended with target and changeSourceFor fields; content-overlay creation reuses ImportedView flow; layerStore overlayLayers replaces fxLayers for correct routing
 
 ### Pending Todos
 
@@ -153,6 +154,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-19T11:34:23.484Z
-Stopped at: Completed 12.12-03-PLAN.md
+Last session: 2026-03-19T11:36:09.324Z
+Stopped at: Completed 12.12-02-PLAN.md
 Resume file: None
