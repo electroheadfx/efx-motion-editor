@@ -117,6 +117,49 @@ export function TimelinePanel() {
 
         <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
 
+        {/* Layout mode toggle */}
+        <div class="flex items-center gap-0">
+          <button
+            class={`rounded-l-[4px] px-1.5 py-[5px] ${
+              timelineStore.layoutMode.value === 'stacked'
+                ? 'bg-[var(--color-accent)] text-white'
+                : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)]'
+            }`}
+            onClick={() => timelineStore.setLayoutMode('stacked')}
+            title="Stacked layout"
+          >
+            <span class="text-[9px] font-medium leading-none">S</span>
+          </button>
+          <button
+            class={`rounded-r-[4px] px-1.5 py-[5px] ${
+              timelineStore.layoutMode.value === 'linear'
+                ? 'bg-[var(--color-accent)] text-white'
+                : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)]'
+            }`}
+            onClick={() => timelineStore.setLayoutMode('linear')}
+            title="Linear layout"
+          >
+            <span class="text-[9px] font-medium leading-none">L</span>
+          </button>
+        </div>
+
+        {/* Display mode toggle (visible only in linear mode) */}
+        {timelineStore.layoutMode.value === 'linear' && (
+          <button
+            class="rounded-[4px] px-1.5 py-[5px] bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)]"
+            onClick={() => timelineStore.setDisplayMode(
+              timelineStore.displayMode.value === 'thumb-name' ? 'thumb-only' : 'thumb-name'
+            )}
+            title={timelineStore.displayMode.value === 'thumb-name' ? 'Hide sequence names' : 'Show sequence names'}
+          >
+            <span class="text-[9px] font-medium leading-none">
+              {timelineStore.displayMode.value === 'thumb-name' ? 'T+N' : 'T'}
+            </span>
+          </button>
+        )}
+
+        <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
+
         {/* Add Layer */}
         <AddLayerMenu />
       </div>

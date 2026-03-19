@@ -69,6 +69,8 @@ export function TimelineCanvas() {
       const tracks = trackLayouts.value;
       const totalFrames = timelineStore.totalFrames.value;
       const fxTracks = fxTrackLayouts.value;
+      const layoutMode = timelineStore.layoutMode.value;
+      const displayMode = timelineStore.displayMode.value;
 
       // Map selected layer ID to FX/content-overlay sequence ID for timeline highlight
       const selectedLayerId = layerStore.selectedLayerId.value;
@@ -123,6 +125,8 @@ export function TimelineCanvas() {
         selectedKeyframeFrames: selectedKfFrames,
         selectedLayerSequenceId,
         hidePlayhead: isFullSpeed.value,
+        layoutMode,
+        displayMode,
       });
     });
 

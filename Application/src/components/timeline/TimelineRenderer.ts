@@ -210,134 +210,138 @@ export class TimelineRenderer {
 
     // 2. Draw content track rows (below FX tracks, scrolled)
     const fxOffset = fxTracks.length * FX_TRACK_HEIGHT;
-    let trackY = RULER_HEIGHT + fxOffset;
-    for (let ti = 0; ti < tracks.length; ti++) {
-      const track = tracks[ti];
-      const isSelected = track.sequenceId === this.selectedContentSequenceId;
+    if (state.layoutMode === 'linear') {
+      this.drawLinearTrack(ctx, state, tracks, frameWidth, scrollX, w, fxOffset, colors);
+    } else {
+      let trackY = RULER_HEIGHT + fxOffset;
+      for (let ti = 0; ti < tracks.length; ti++) {
+        const track = tracks[ti];
+        const isSelected = track.sequenceId === this.selectedContentSequenceId;
 
-      // Track background (highlight when selected)
-      ctx.fillStyle = isSelected ? '#151A20' : colors.trackBg;
-      ctx.fillRect(0, trackY, w, TRACK_HEIGHT);
+        // Track background (highlight when selected)
+        ctx.fillStyle = isSelected ? '#151A20' : colors.trackBg;
+        ctx.fillRect(0, trackY, w, TRACK_HEIGHT);
 
-      // Selection indicator: left accent border
-      if (isSelected) {
-        ctx.fillStyle = '#4488FF';
-        ctx.fillRect(0, trackY, 2, TRACK_HEIGHT);
-      }
-
-      // Track header (highlight when selected)
-      ctx.fillStyle = isSelected ? '#101520' : colors.headerBg;
-      ctx.fillRect(isSelected ? 2 : 0, trackY, TRACK_HEADER_WIDTH - (isSelected ? 2 : 0), TRACK_HEIGHT);
-      ctx.fillStyle = colors.trackName;
-      ctx.font = '10px system-ui, sans-serif';
-      ctx.textBaseline = 'middle';
-      const name = track.sequenceName || `Seq ${ti + 1}`;
-      const truncatedName = this.truncateText(ctx, name, TRACK_HEADER_WIDTH - 12);
-      ctx.fillText(truncatedName, 6, trackY + TRACK_HEIGHT / 2);
-
-      // Clip content area to prevent thumbnails from bleeding into the track header
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(TRACK_HEADER_WIDTH, trackY, w - TRACK_HEADER_WIDTH, TRACK_HEIGHT);
-      ctx.clip();
-
-      // Draw key photo ranges
-      for (let ri = 0; ri < track.keyPhotoRanges.length; ri++) {
-        const range = track.keyPhotoRanges[ri];
-        const rangeX = range.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
-        const rangeWidth = range.holdFrames * frameWidth;
-
-        // Virtualization: skip ranges entirely outside visible area
-        if (rangeX + rangeWidth < TRACK_HEADER_WIDTH || rangeX > w) {
-          continue;
+        // Selection indicator: left accent border
+        if (isSelected) {
+          ctx.fillStyle = '#4488FF';
+          ctx.fillRect(0, trackY, 2, TRACK_HEIGHT);
         }
 
-        // Get image for thumbnail
-        const image = imageStore.getById(range.imageId);
-        const thumbnailUrl = image ? imageStore.getDisplayUrl(image) : '';
-        const cachedImg = thumbnailUrl ? this.thumbnailCache.get(range.imageId, thumbnailUrl) : null;
+        // Track header (highlight when selected)
+        ctx.fillStyle = isSelected ? '#101520' : colors.headerBg;
+        ctx.fillRect(isSelected ? 2 : 0, trackY, TRACK_HEADER_WIDTH - (isSelected ? 2 : 0), TRACK_HEIGHT);
+        ctx.fillStyle = colors.trackName;
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textBaseline = 'middle';
+        const name = track.sequenceName || `Seq ${ti + 1}`;
+        const truncatedName = this.truncateText(ctx, name, TRACK_HEADER_WIDTH - 12);
+        ctx.fillText(truncatedName, 6, trackY + TRACK_HEIGHT / 2);
 
-        // Create tile pattern once per range (reused for all frames in this range)
-        let pattern: CanvasPattern | null = null;
-        if (cachedImg) {
-          const cellH = TRACK_HEIGHT - 4;  // same as fh
-          const scale = cellH / cachedImg.naturalHeight;
-          pattern = ctx.createPattern(cachedImg, 'repeat');
-          if (pattern) {
-            pattern.setTransform(new DOMMatrix().scale(scale, scale));
-          }
-        }
+        // Clip content area to prevent thumbnails from bleeding into the track header
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(TRACK_HEADER_WIDTH, trackY, w - TRACK_HEADER_WIDTH, TRACK_HEIGHT);
+        ctx.clip();
 
-        // Draw individual frames within this range
-        for (let f = 0; f < range.holdFrames; f++) {
-          const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
-          const fy = trackY + 2;
-          const fw = frameWidth;
-          const fh = TRACK_HEIGHT - 4;
+        // Draw key photo ranges
+        for (let ri = 0; ri < track.keyPhotoRanges.length; ri++) {
+          const range = track.keyPhotoRanges[ri];
+          const rangeX = range.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+          const rangeWidth = range.holdFrames * frameWidth;
 
-          // Virtualization: skip individual frames outside visible area
-          if (fx + fw < TRACK_HEADER_WIDTH || fx > w) {
+          // Virtualization: skip ranges entirely outside visible area
+          if (rangeX + rangeWidth < TRACK_HEADER_WIDTH || rangeX > w) {
             continue;
           }
 
-          if (cachedImg && pattern && fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
-            // Tile thumbnail maintaining aspect ratio
-            const cellH = TRACK_HEIGHT - 4;
+          // Get image for thumbnail
+          const image = imageStore.getById(range.imageId);
+          const thumbnailUrl = image ? imageStore.getDisplayUrl(image) : '';
+          const cachedImg = thumbnailUrl ? this.thumbnailCache.get(range.imageId, thumbnailUrl) : null;
+
+          // Create tile pattern once per range (reused for all frames in this range)
+          let pattern: CanvasPattern | null = null;
+          if (cachedImg) {
+            const cellH = TRACK_HEIGHT - 4;  // same as fh
             const scale = cellH / cachedImg.naturalHeight;
-            const tileWidth = cachedImg.naturalWidth * scale;
-            // Center the tile when frame cell is narrower than one tile width
-            const offsetX = fw < tileWidth ? (fw - tileWidth) / 2 : 0;
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(fx, fy, fw, fh);
-            ctx.clip();
-            ctx.translate(fx + offsetX, fy);
-            ctx.fillStyle = pattern;
-            ctx.fillRect(0, 0, fw - offsetX, fh);
-            ctx.restore();
-          } else {
-            // Placeholder: solid color (loading state OR low-zoom fallback)
-            ctx.fillStyle = ri % 2 === 0 ? PLACEHOLDER_BG_A : PLACEHOLDER_BG_B;
-            ctx.fillRect(fx, fy, fw, fh);
-            if (fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
-              // Show key photo index in placeholder (only when frames are large enough)
-              ctx.fillStyle = '#555555';
-              ctx.font = '9px system-ui, sans-serif';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(`${ri + 1}`, fx + fw / 2, fy + fh / 2);
-              ctx.textAlign = 'start'; // Reset
+            pattern = ctx.createPattern(cachedImg, 'repeat');
+            if (pattern) {
+              pattern.setTransform(new DOMMatrix().scale(scale, scale));
             }
           }
 
-          // Frame border
-          ctx.strokeStyle = colors.frameBorder;
-          ctx.lineWidth = 0.5;
-          ctx.strokeRect(fx, fy, fw, fh);
-        }
+          // Draw individual frames within this range
+          for (let f = 0; f < range.holdFrames; f++) {
+            const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+            const fy = trackY + 2;
+            const fw = frameWidth;
+            const fh = TRACK_HEIGHT - 4;
 
-        // Key photo separator line (thicker border between different key photos)
-        if (ri > 0) {
-          const sepX = range.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
-          if (sepX >= TRACK_HEADER_WIDTH && sepX <= w) {
-            ctx.strokeStyle = '#444444';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(sepX, trackY + 1);
-            ctx.lineTo(sepX, trackY + TRACK_HEIGHT - 1);
-            ctx.stroke();
+            // Virtualization: skip individual frames outside visible area
+            if (fx + fw < TRACK_HEADER_WIDTH || fx > w) {
+              continue;
+            }
+
+            if (cachedImg && pattern && fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
+              // Tile thumbnail maintaining aspect ratio
+              const cellH = TRACK_HEIGHT - 4;
+              const scale = cellH / cachedImg.naturalHeight;
+              const tileWidth = cachedImg.naturalWidth * scale;
+              // Center the tile when frame cell is narrower than one tile width
+              const offsetX = fw < tileWidth ? (fw - tileWidth) / 2 : 0;
+              ctx.save();
+              ctx.beginPath();
+              ctx.rect(fx, fy, fw, fh);
+              ctx.clip();
+              ctx.translate(fx + offsetX, fy);
+              ctx.fillStyle = pattern;
+              ctx.fillRect(0, 0, fw - offsetX, fh);
+              ctx.restore();
+            } else {
+              // Placeholder: solid color (loading state OR low-zoom fallback)
+              ctx.fillStyle = ri % 2 === 0 ? PLACEHOLDER_BG_A : PLACEHOLDER_BG_B;
+              ctx.fillRect(fx, fy, fw, fh);
+              if (fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
+                // Show key photo index in placeholder (only when frames are large enough)
+                ctx.fillStyle = '#555555';
+                ctx.font = '9px system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`${ri + 1}`, fx + fw / 2, fy + fh / 2);
+                ctx.textAlign = 'start'; // Reset
+              }
+            }
+
+            // Frame border
+            ctx.strokeStyle = colors.frameBorder;
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(fx, fy, fw, fh);
+          }
+
+          // Key photo separator line (thicker border between different key photos)
+          if (ri > 0) {
+            const sepX = range.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+            if (sepX >= TRACK_HEADER_WIDTH && sepX <= w) {
+              ctx.strokeStyle = '#444444';
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.moveTo(sepX, trackY + 1);
+              ctx.lineTo(sepX, trackY + TRACK_HEIGHT - 1);
+              ctx.stroke();
+            }
           }
         }
+
+        // End content clip region (thumbnails can no longer bleed into header)
+        ctx.restore();
+
+        trackY += TRACK_HEIGHT;
       }
-
-      // End content clip region (thumbnails can no longer bleed into header)
-      ctx.restore();
-
-      trackY += TRACK_HEIGHT;
     }
 
     // 2b. Draw drag visual feedback (drop indicator line) in scrolled space
-    if (this.dragState) {
+    if (this.dragState && state.layoutMode !== 'linear') {
       const {fromIndex, toIndex, currentY} = this.dragState;
       const canvasRect = this.canvas.getBoundingClientRect();
 
@@ -529,6 +533,151 @@ export class TimelineRenderer {
         ctx.fillRect(rightEdge - 3, barY + 2, 3, barH - 4);
       }
     }
+  }
+
+  /** Draw all content sequences as a single linear row */
+  private drawLinearTrack(
+    ctx: CanvasRenderingContext2D,
+    state: DrawState,
+    tracks: TrackLayout[],
+    frameWidth: number,
+    scrollX: number,
+    w: number,
+    fxOffset: number,
+    colors: Record<string, string>,
+  ): void {
+    const trackY = RULER_HEIGHT + fxOffset;
+
+    // Single row background
+    ctx.fillStyle = colors.trackBg;
+    ctx.fillRect(0, trackY, w, TRACK_HEIGHT);
+
+    // Header column
+    ctx.fillStyle = colors.headerBg;
+    ctx.fillRect(0, trackY, TRACK_HEADER_WIDTH, TRACK_HEIGHT);
+    ctx.fillStyle = colors.trackName;
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Timeline', 6, trackY + TRACK_HEIGHT / 2);
+
+    // Clip content area
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(TRACK_HEADER_WIDTH, trackY, w - TRACK_HEADER_WIDTH, TRACK_HEIGHT);
+    ctx.clip();
+
+    for (let ti = 0; ti < tracks.length; ti++) {
+      const track = tracks[ti];
+      const isSelected = track.sequenceId === this.selectedContentSequenceId;
+
+      // Selection highlight for the sequence's frame range
+      if (isSelected) {
+        const selX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const selW = (track.endFrame - track.startFrame) * frameWidth;
+        ctx.fillStyle = '#151A20';
+        ctx.fillRect(selX, trackY, selW, TRACK_HEIGHT);
+      }
+
+      // Draw key photo ranges (same thumbnail tile logic as stacked mode)
+      for (let ri = 0; ri < track.keyPhotoRanges.length; ri++) {
+        const range = track.keyPhotoRanges[ri];
+        const rangeX = range.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const rangeWidth = range.holdFrames * frameWidth;
+
+        if (rangeX + rangeWidth < TRACK_HEADER_WIDTH || rangeX > w) continue;
+
+        const image = state.imageStore.getById(range.imageId);
+        const thumbnailUrl = image ? state.imageStore.getDisplayUrl(image) : '';
+        const cachedImg = thumbnailUrl ? this.thumbnailCache.get(range.imageId, thumbnailUrl) : null;
+
+        let pattern: CanvasPattern | null = null;
+        if (cachedImg) {
+          const cellH = TRACK_HEIGHT - 4;
+          const scale = cellH / cachedImg.naturalHeight;
+          pattern = ctx.createPattern(cachedImg, 'repeat');
+          if (pattern) {
+            pattern.setTransform(new DOMMatrix().scale(scale, scale));
+          }
+        }
+
+        for (let f = 0; f < range.holdFrames; f++) {
+          const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+          const fy = trackY + 2;
+          const fw = frameWidth;
+          const fh = TRACK_HEIGHT - 4;
+
+          if (fx + fw < TRACK_HEADER_WIDTH || fx > w) continue;
+
+          if (cachedImg && pattern && fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
+            const cellH = TRACK_HEIGHT - 4;
+            const scale = cellH / cachedImg.naturalHeight;
+            const tileWidth = cachedImg.naturalWidth * scale;
+            const offsetX = fw < tileWidth ? (fw - tileWidth) / 2 : 0;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(fx, fy, fw, fh);
+            ctx.clip();
+            ctx.translate(fx + offsetX, fy);
+            ctx.fillStyle = pattern;
+            ctx.fillRect(0, 0, fw - offsetX, fh);
+            ctx.restore();
+          } else {
+            ctx.fillStyle = ri % 2 === 0 ? PLACEHOLDER_BG_A : PLACEHOLDER_BG_B;
+            ctx.fillRect(fx, fy, fw, fh);
+          }
+
+          ctx.strokeStyle = colors.frameBorder;
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(fx, fy, fw, fh);
+        }
+
+        // Key photo separator
+        if (ri > 0) {
+          const sepX = range.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+          if (sepX >= TRACK_HEADER_WIDTH && sepX <= w) {
+            ctx.strokeStyle = '#444444';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(sepX, trackY + 1);
+            ctx.lineTo(sepX, trackY + TRACK_HEIGHT - 1);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Sequence boundary separator (thicker, between sequences)
+      if (ti > 0) {
+        const sepX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        if (sepX >= TRACK_HEADER_WIDTH && sepX <= w) {
+          ctx.strokeStyle = '#555555';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(sepX, trackY + 1);
+          ctx.lineTo(sepX, trackY + TRACK_HEIGHT - 1);
+          ctx.stroke();
+        }
+      }
+
+      // Name overlay (when displayMode is 'thumb-name')
+      if (state.displayMode === 'thumb-name') {
+        const segX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const segW = (track.endFrame - track.startFrame) * frameWidth;
+        if (segX + segW > TRACK_HEADER_WIDTH && segX < w && segW > 20) {
+          const labelH = 16;
+          const labelY = trackY + TRACK_HEIGHT - 2 - labelH;
+          const clippedX = Math.max(segX, TRACK_HEADER_WIDTH);
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+          ctx.fillRect(clippedX, labelY, segW - (clippedX - segX), labelH);
+          ctx.fillStyle = '#EEEEEE';
+          ctx.font = '10px system-ui, sans-serif';
+          ctx.textBaseline = 'middle';
+          const name = this.truncateText(ctx, track.sequenceName, segW - 8);
+          ctx.fillText(name, clippedX + 4, labelY + labelH / 2);
+        }
+      }
+    }
+
+    ctx.restore();
   }
 
   /** Draw the time ruler at the top */
