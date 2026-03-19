@@ -184,6 +184,17 @@ export class TimelineInteraction {
     }
   }
 
+  /** In linear mode, find which content sequence owns the given global frame number */
+  private sequenceFromFrame(frame: number): string | null {
+    const tracks = trackLayouts.peek();
+    for (const track of tracks) {
+      if (frame >= track.startFrame && frame < track.endFrame) {
+        return track.sequenceId;
+      }
+    }
+    return null;
+  }
+
   /** Clear layer selection only if current selection is an FX or content-overlay layer.
    *  Preserves content sequence layer selection so keyframe diamonds stay visible. */
   private clearFxLayerSelection(): void {
@@ -284,6 +295,33 @@ export class TimelineInteraction {
     // Check if click Y is on this track
     const trackIndex = tracks.indexOf(track);
     const clickedTrackIndex = this.trackIndexFromY(clientY);
+
+    // In linear mode, all content tracks share one row -- skip Y-based track matching
+    if (timelineStore.layoutMode.peek() === 'linear') {
+      // All content is at track Y = 0 (single row)
+      // Verify the click is in the content area (not FX, not ruler)
+      if (!this.isInFxArea(clientY) && !this.isInRuler(clientY)) {
+        const clickFrame = this.getFrame(clientX);
+        const localClickFrame = clickFrame - track.startFrame;
+        // Only test keyframes if the click frame is within this track's range
+        if (clickFrame >= track.startFrame && clickFrame < track.endFrame) {
+          let bestHit: { frame: number; distance: number } | null = null;
+          for (const kf of keyframes) {
+            const dist = Math.abs(localClickFrame - kf.frame);
+            if (dist <= hitThresholdFrames) {
+              if (!bestHit || dist < bestHit.distance) {
+                bestHit = { frame: kf.frame, distance: dist };
+              }
+            }
+          }
+          if (bestHit) {
+            return { frame: bestHit.frame, layerId: selectedId, sequenceStartFrame: track.startFrame };
+          }
+        }
+      }
+      return null;
+    }
+
     if (clickedTrackIndex !== trackIndex) return null;
 
     // Get the frame at click position
@@ -424,6 +462,13 @@ export class TimelineInteraction {
 
     // Check if the click is in the track header area (TIME-06: sequence reorder)
     if (localX < TRACK_HEADER_WIDTH) {
+      // In linear mode, select sequence by clicking header but don't allow drag reorder
+      if (timelineStore.layoutMode.peek() === 'linear') {
+        // No per-sequence header in linear mode -- just seek
+        const frame = this.getFrame(e.clientX);
+        playbackEngine.seekToFrame(frame);
+        return;
+      }
       const trackIndex = this.trackIndexFromY(e.clientY);
       const tracks = trackLayouts.peek();
 
@@ -466,18 +511,27 @@ export class TimelineInteraction {
       playbackEngine.seekToFrame(frame);
     } else {
       // Click-to-seek on track area + select content sequence
-      const trackIndex = this.trackIndexFromY(e.clientY);
-      const tracks = trackLayouts.peek();
-      if (trackIndex >= 0 && trackIndex < tracks.length) {
-        const track = tracks[trackIndex];
-        sequenceStore.setActive(track.sequenceId);
-        uiStore.selectSequence(track.sequenceId);
-        // Only clear selection if current selection is an FX layer
-        // (preserves content layer selection so keyframe diamonds stay visible)
-        this.clearFxLayerSelection();
+      if (timelineStore.layoutMode.peek() === 'linear') {
+        const frame = this.getFrame(e.clientX);
+        const seqId = this.sequenceFromFrame(frame);
+        if (seqId) {
+          sequenceStore.setActive(seqId);
+          uiStore.selectSequence(seqId);
+          this.clearFxLayerSelection();
+        }
+        playbackEngine.seekToFrame(frame);
+      } else {
+        const trackIndex = this.trackIndexFromY(e.clientY);
+        const tracks = trackLayouts.peek();
+        if (trackIndex >= 0 && trackIndex < tracks.length) {
+          const track = tracks[trackIndex];
+          sequenceStore.setActive(track.sequenceId);
+          uiStore.selectSequence(track.sequenceId);
+          this.clearFxLayerSelection();
+        }
+        const frame = this.getFrame(e.clientX);
+        playbackEngine.seekToFrame(frame);
       }
-      const frame = this.getFrame(e.clientX);
-      playbackEngine.seekToFrame(frame);
     }
   }
 
@@ -607,13 +661,17 @@ export class TimelineInteraction {
         return; // Skip content area cursor logic
       }
 
-      // Cursor hint: show grab cursor when hovering over track headers
-      const rect = this.canvas.getBoundingClientRect();
-      const localX = e.clientX - rect.left;
-      const trackIndex = this.trackIndexFromY(e.clientY);
-      const tracks = trackLayouts.peek();
-      if (localX < TRACK_HEADER_WIDTH && trackIndex >= 0 && trackIndex < tracks.length && tracks.length > 1) {
-        this.canvas.style.cursor = 'grab';
+      // Cursor hint: show grab cursor when hovering over track headers (stacked mode only)
+      if (timelineStore.layoutMode.peek() !== 'linear') {
+        const rect = this.canvas.getBoundingClientRect();
+        const localX = e.clientX - rect.left;
+        const trackIndex = this.trackIndexFromY(e.clientY);
+        const tracks = trackLayouts.peek();
+        if (localX < TRACK_HEADER_WIDTH && trackIndex >= 0 && trackIndex < tracks.length && tracks.length > 1) {
+          this.canvas.style.cursor = 'grab';
+        } else {
+          this.canvas.style.cursor = 'default';
+        }
       } else {
         this.canvas.style.cursor = 'default';
       }
