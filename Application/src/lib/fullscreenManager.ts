@@ -35,17 +35,22 @@ export function toggleFullscreen(): void {
   }
 }
 
-// Listen for Tauri window fullscreen changes (e.g., macOS green button or system ESC).
-// Must be called once at app startup.
+// Listen for external fullscreen exit (e.g., macOS green button or system ESC).
+// Only checks when we believe we're in fullscreen, with debounce to avoid IPC spam.
 export function initFullscreenListener(): void {
-  getCurrentWindow().onResized(async () => {
-    const fs = await getCurrentWindow().isFullscreen();
-    if (!fs && isFullscreen.peek()) {
-      // External exit detected -- clean up state
-      if (timelineStore.isPlaying.peek()) {
-        playbackEngine.stop();
+  let debounce: ReturnType<typeof setTimeout> | null = null;
+  getCurrentWindow().onResized(() => {
+    // Skip IPC entirely when not in fullscreen
+    if (!isFullscreen.peek()) return;
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(async () => {
+      const fs = await getCurrentWindow().isFullscreen();
+      if (!fs && isFullscreen.peek()) {
+        if (timelineStore.isPlaying.peek()) {
+          playbackEngine.stop();
+        }
+        isFullscreen.value = false;
       }
-      isFullscreen.value = false;
-    }
+    }, 200);
   });
 }

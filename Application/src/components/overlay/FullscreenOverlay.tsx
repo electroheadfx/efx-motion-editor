@@ -9,8 +9,7 @@ import {Preview} from '../Preview';
 const CONTROLS_HIDE_DELAY = 2000; // ms
 
 export function FullscreenOverlay() {
-  if (!isFullscreen.value) return null;
-
+  const active = isFullscreen.value;
   const controlsVisible = useSignal(true);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -22,16 +21,19 @@ export function FullscreenOverlay() {
     }, CONTROLS_HIDE_DELAY);
   }, []);
 
-  // Start auto-hide timer on mount
+  // Start auto-hide timer when entering fullscreen
   useEffect(() => {
+    if (!active) return;
     showControls();
     return () => {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, []);
+  }, [active]);
 
   // Handle keyboard shortcuts scoped to fullscreen
   useEffect(() => {
+    if (!active) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Escape') {
         e.preventDefault();
@@ -39,7 +41,6 @@ export function FullscreenOverlay() {
         exitFullscreen();
         return;
       }
-      // Arrow keys: step frame
       if (e.code === 'ArrowLeft') {
         e.preventDefault();
         e.stopPropagation();
@@ -52,8 +53,6 @@ export function FullscreenOverlay() {
         playbackEngine.stepForward();
         return;
       }
-      // Space: prevent default scroll but don't stopPropagation --
-      // let CanvasArea's keydown handler track space hold state
       if (e.code === 'Space') {
         e.preventDefault();
         return;
@@ -63,27 +62,10 @@ export function FullscreenOverlay() {
       e.stopPropagation();
     };
 
-    // Use capture phase to intercept before tinykeys
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, []);
+  }, [active]);
 
-  // Calculate letterbox dimensions
-  const screenW = typeof window !== 'undefined' ? window.innerWidth : 1920;
-  const screenH = typeof window !== 'undefined' ? window.innerHeight : 1080;
-  const projW = projectStore.width.value;
-  const projH = projectStore.height.value;
-
-  // Fit canvas to screen maintaining aspect ratio (letterbox)
-  const scaleX = screenW / projW;
-  const scaleY = screenH / projH;
-  const scale = Math.min(scaleX, scaleY);
-
-  const isPlaying = timelineStore.isPlaying.value;
-  const visible = controlsVisible.value;
-
-  // Fullscreen always uses full-speed for playback
-  // When user presses play in fullscreen, force full-speed mode
   const handleTogglePlay = useCallback(() => {
     if (timelineStore.isPlaying.peek()) {
       playbackEngine.stop();
@@ -101,11 +83,23 @@ export function FullscreenOverlay() {
     playbackEngine.stepForward();
   }, []);
 
+  // Early return AFTER all hooks
+  if (!active) return null;
+
+  const screenW = window.innerWidth;
+  const screenH = window.innerHeight;
+  const projW = projectStore.width.value;
+  const projH = projectStore.height.value;
+  const scale = Math.min(screenW / projW, screenH / projH);
+
+  const isPlaying = timelineStore.isPlaying.value;
+  const visible = controlsVisible.value;
+
   return (
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black"
       onMouseMove={showControls}
-      style={{ cursor: visible ? 'default' : 'none' }}
+      style={{cursor: visible ? 'default' : 'none'}}
     >
       {/* Canvas preview at letterbox scale */}
       <div
@@ -131,7 +125,6 @@ export function FullscreenOverlay() {
           pointerEvents: visible ? 'auto' : 'none',
         }}
       >
-        {/* Step backward */}
         <button
           tabIndex={-1}
           class="flex items-center justify-center w-8 h-8 rounded bg-white/10 hover:bg-white/20 cursor-pointer"
@@ -140,7 +133,6 @@ export function FullscreenOverlay() {
         >
           <span class="text-xs text-white/80">{'\u23EE'}</span>
         </button>
-        {/* Play / Pause */}
         <button
           tabIndex={-1}
           class="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 cursor-pointer"
@@ -151,7 +143,6 @@ export function FullscreenOverlay() {
             {isPlaying ? '\u23F8' : '\u25B6'}
           </span>
         </button>
-        {/* Step forward */}
         <button
           tabIndex={-1}
           class="flex items-center justify-center w-8 h-8 rounded bg-white/10 hover:bg-white/20 cursor-pointer"
@@ -160,7 +151,6 @@ export function FullscreenOverlay() {
         >
           <span class="text-xs text-white/80">{'\u23ED'}</span>
         </button>
-        {/* Timecode */}
         <div class="rounded bg-white/10 px-3 py-1.5">
           <span class="text-[13px] font-semibold text-white/90">
             {formatTime(timelineStore.displayTime.value)}
