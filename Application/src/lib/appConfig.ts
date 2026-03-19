@@ -1,5 +1,5 @@
 import { LazyStore } from '@tauri-apps/plugin-store';
-import { configGetTheme, configSetTheme, configGetCanvasBg, configSetCanvasBg, configGetSidebarWidth, configSetSidebarWidth, configGetPanelHeights, configSetPanelHeights } from './ipc';
+import { configGetTheme, configSetTheme, configGetCanvasBg, configSetCanvasBg, configGetSidebarWidth, configSetSidebarWidth, configGetPanelHeights, configSetPanelHeights, configGetTimelineLayout, configSetTimelineLayout } from './ipc';
 
 /** Singleton app config store -- persists as JSON in Tauri app data dir */
 const store = new LazyStore('app-config.json');
@@ -106,6 +106,18 @@ export async function getPanelHeights(): Promise<[number, number]> {
 
 export async function setPanelHeights(seqHeight: number, layersHeight: number): Promise<void> {
   await configSetPanelHeights(seqHeight, layersHeight);
+}
+
+// --- Timeline Layout (persisted via Rust to ~/.config/efx-motion/builder-config.yaml) ---
+
+export async function getTimelineLayout(): Promise<'stacked' | 'linear'> {
+  const result = await configGetTimelineLayout();
+  const val = result.ok ? result.data : null;
+  return val === 'linear' ? 'linear' : 'stacked';
+}
+
+export async function setTimelineLayout(layout: 'stacked' | 'linear'): Promise<void> {
+  await configSetTimelineLayout(layout);
 }
 
 // --- Panel Flex (persisted via LazyStore) ---

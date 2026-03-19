@@ -645,11 +645,11 @@ export class TimelineRenderer {
         }
       }
 
-      // Sequence boundary separator (thicker, between sequences)
+      // Sequence boundary separator (yellow/orange marker between sequences)
       if (ti > 0) {
         const sepX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
         if (sepX >= TRACK_HEADER_WIDTH && sepX <= w) {
-          ctx.strokeStyle = '#555555';
+          ctx.strokeStyle = '#E5A020';
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.moveTo(sepX, trackY + 1);
@@ -666,13 +666,15 @@ export class TimelineRenderer {
           const labelH = 16;
           const labelY = trackY + TRACK_HEIGHT - 2 - labelH;
           const clippedX = Math.max(segX, TRACK_HEADER_WIDTH);
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-          ctx.fillRect(clippedX, labelY, segW - (clippedX - segX), labelH);
-          ctx.fillStyle = '#EEEEEE';
           ctx.font = '10px system-ui, sans-serif';
           ctx.textBaseline = 'middle';
           const name = this.truncateText(ctx, track.sequenceName, segW - 8);
-          ctx.fillText(name, clippedX + 4, labelY + labelH / 2);
+          const textW = ctx.measureText(name).width;
+          const bgPad = 6;
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+          ctx.fillRect(clippedX, labelY, textW + bgPad * 2, labelH);
+          ctx.fillStyle = '#EEEEEE';
+          ctx.fillText(name, clippedX + bgPad, labelY + labelH / 2);
         }
       }
     }

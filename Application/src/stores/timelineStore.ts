@@ -108,9 +108,16 @@ export const timelineStore = {
     if (scrollY.peek() > maxY) {
       scrollY.value = maxY;
     }
+    // Persist to user config
+    import('../lib/appConfig').then(c => c.setTimelineLayout(mode));
   },
   setDisplayMode(mode: 'thumb-name' | 'thumb-only') {
     displayMode.value = mode;
+  },
+  async initTimelineLayout() {
+    const { getTimelineLayout } = await import('../lib/appConfig');
+    const saved = await getTimelineLayout();
+    layoutMode.value = saved;
   },
   setScrollX(v: number) {
     scrollX.value = v;
@@ -157,6 +164,8 @@ export const timelineStore = {
   },
   /** Snap vertical scroll so the given sequence's track is visible. */
   ensureTrackVisible(sequenceId: string) {
+    // In linear mode, all content tracks share one row — no vertical scroll needed
+    if (layoutMode.peek() === 'linear') return;
     const tracks = trackLayouts.peek();
     const fxCount = fxTrackLayouts.peek().length;
     const trackIndex = tracks.findIndex(t => t.sequenceId === sequenceId);
