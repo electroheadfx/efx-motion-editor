@@ -197,34 +197,16 @@ export function LeftPanel() {
           borderRadius: 8,
         }}
       >
-        {isFx ? (
-          <>
-            <div
-              class="flex items-center h-9 px-3 shrink-0"
-              style={{ color: 'var(--sidebar-text-secondary)' }}
-            >
-              <span style="font-size: 11px; font-weight: 600; letter-spacing: 2px">
-                FX: {selectedLayer!.name}
-              </span>
-            </div>
-            {layFlex > 0 && (
-              <SidebarScrollArea>
-                <SidebarFxProperties layer={selectedLayer!} fxSequenceId={fxSequenceId} />
-              </SidebarScrollArea>
-            )}
-          </>
-        ) : (
-          <CollapsibleSection
-            title="LAYERS"
-            collapsed={uiStore.layersSectionCollapsed}
-            onCollapse={handleLayCollapse}
-            headerActions={<AddLayerMenu />}
-          >
-            <SidebarScrollArea>
-              <LayerList />
-            </SidebarScrollArea>
-          </CollapsibleSection>
-        )}
+        <CollapsibleSection
+          title="LAYERS"
+          collapsed={uiStore.layersSectionCollapsed}
+          onCollapse={handleLayCollapse}
+          headerActions={<AddLayerMenu />}
+        >
+          <SidebarScrollArea>
+            <LayerList />
+          </SidebarScrollArea>
+        </CollapsibleSection>
       </div>
 
       <PanelResizer onResize={handleLayPropResize} onResizeEnd={persistFlex} />
@@ -244,7 +226,12 @@ export function LeftPanel() {
           collapsed={uiStore.propertiesSectionCollapsed}
           onCollapse={handlePropCollapse}
         >
-          {selectedLayer && (
+          {selectedLayer && isFx && (
+            <SidebarScrollArea>
+              <SidebarFxProperties layer={selectedLayer} fxSequenceId={fxSequenceId} />
+            </SidebarScrollArea>
+          )}
+          {selectedLayer && !isFx && (
             <SidebarScrollArea>
               <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
             </SidebarScrollArea>
