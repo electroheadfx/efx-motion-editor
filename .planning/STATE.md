@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Phase 12.11 context gathered
-last_updated: "2026-03-19T08:04:27.066Z"
+stopped_at: Completed 12.11-01-PLAN.md
+last_updated: "2026-03-19T08:38:09.762Z"
 progress:
   total_phases: 22
   completed_phases: 16
-  total_plans: 42
-  completed_plans: 42
+  total_plans: 44
+  completed_plans: 43
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 12.10 — gpu-accelerated-blur-via-webgl2
+**Current focus:** Phase 12.11 — full-speed-playback-and-fullscreen-canvas
 
 ## Current Position
 
-Phase: 12.10 (gpu-accelerated-blur-via-webgl2) — COMPLETE
-Plan: 2 of 2 (all plans complete)
+Phase: 12.11 (full-speed-playback-and-fullscreen-canvas) — EXECUTING
+Plan: 2 of 2
 
 ## Accumulated Context
 
@@ -79,6 +79,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.9]: Priority-based mode resolution: addLayerIntent > pendingNewSequenceId > activeSequenceId; cancel-delete collision prevention via intent check first
 - [Phase 12.10]: Inlined normalizedToPixelRadius in glBlur.ts to avoid circular import; runtime Gaussian weights in shader; RGBA8 texStorage2D; sigma=pixelRadius/3.0 mapping; 64-iteration shader loop cap
 - [Phase 12.10]: GPU blur makes HQ/fast distinction obsolete; removed hqPreview signal, toggleHQ(), isHQ() from blurStore; single always-high-quality blur with bypass-only controls
+- [Phase 12.11]: isFullSpeed signal uses peek() in tick guard to avoid Preact subscription tracking in rAF
+- [Phase 12.11]: stop() clears isFullSpeed as first action before cancelAnimationFrame for clean state
 
 ### Pending Todos
 
@@ -146,6 +148,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-19T08:04:27.064Z
-Stopped at: Phase 12.11 context gathered
-Resume file: .planning/phases/12.11-full-speed-playback-and-fullscreen-canvas/12.11-CONTEXT.md
+Last session: 2026-03-19T08:38:09.759Z
+Stopped at: Completed 12.11-01-PLAN.md
+Resume file: None
