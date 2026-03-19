@@ -132,7 +132,7 @@ Plans:
   3. Sequence names appear as overlay text on thumbnails in linear mode (controllable via display mode toggle)
   4. Clicking a sequence in linear mode correctly selects it (X-position based, not Y-position)
   5. Keyframe diamonds render at the correct vertical position in linear mode
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 12.13-01-PLAN.md -- Store signals (layoutMode, displayMode), DrawState extension, drawLinearTrack renderer, TimelineCanvas wiring, toolbar toggle UI
@@ -437,7 +437,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.10. GPU-Accelerated Blur via WebGL2 | 2/2 | Complete    | 2026-03-18 | - |
 | 12.11. Full-speed playback & fullscreen canvas | 2/2 | Complete    | 2026-03-19 | - |
 | 12.12. New Content Layer for Timeline | 4/4 | Complete    | 2026-03-19 | - |
-| 12.13. Linear Timeline | v0.2.0 | 0/2 | In Progress | - |
+| 12.13. Linear Timeline | 1/2 | In Progress|  | - |
 | 13. Sequence Fade In/Out | v0.2.0 | 0/0 | Planned | - |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |

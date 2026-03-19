@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed quick-260319-k9h (re-enable realtime canvas preview during scrub drag)
-last_updated: "2026-03-19T13:48:05.573Z"
+stopped_at: Completed 12.13-01-PLAN.md
+last_updated: "2026-03-19T16:13:00.132Z"
 progress:
-  total_phases: 23
+  total_phases: 24
   completed_phases: 18
-  total_plans: 48
-  completed_plans: 48
+  total_plans: 50
+  completed_plans: 49
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 12.12 — new-content-layer-for-timeline
+**Current focus:** Phase 12.13 — linear-timeline
 
 ## Current Position
 
-Phase: 12.12 (new-content-layer-for-timeline) — COMPLETE
-Plan: 4 of 4
+Phase: 12.13 (linear-timeline) — EXECUTING
+Plan: 2 of 2
 
 ## Accumulated Context
 
@@ -87,6 +87,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.12]: AddLayerIntent extended with target and changeSourceFor fields; content-overlay creation reuses ImportedView flow; layerStore overlayLayers replaces fxLayers for correct routing
 - [Phase 12.12-04]: Overlay filter uses s.kind \!== 'content' (not s.kind === 'fx') so content-overlay sequences composite in same pass as FX
 - [Phase 12.12-04]: Video looping mod (targetTime % video.duration) applied universally to all video layers
+- [Phase 12.13]: DrawState layoutMode/displayMode fields optional for backward compat; text labels (S/L, T+N/T) for toggle buttons; drag feedback suppressed in linear mode
 
 ### Pending Todos
 
@@ -107,6 +108,7 @@ None.
 - Phase 12.10 inserted after Phase 12.9: GPU-Accelerated Blur via WebGL2 (URGENT)
 - Phase 12.11 inserted after Phase 12.10: Full-speed playback mode and fullscreen canvas mode (URGENT)
 - Phase 12.12 inserted after Phase 12.11: New content layer for timeline (URGENT)
+- Phase 12.13 inserted after Phase 12.12: Linear-timeline (URGENT)
 
 ### Blockers/Concerns
 
@@ -157,6 +159,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-19T14:02:00.000Z
-Stopped at: Completed quick-260319-k9h (re-enable realtime canvas preview during scrub drag)
+Last session: 2026-03-19T16:13:00.128Z
+Stopped at: Completed 12.13-01-PLAN.md
 Resume file: None
