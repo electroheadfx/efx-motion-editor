@@ -22,8 +22,11 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
 
   const isCrossDissolve = selection.type === 'cross-dissolve';
 
-  const totalFrames = seq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0);
+  const totalFrames = seq.kind === 'content'
+    ? seq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0)
+    : (seq.outFrame ?? 100) - (seq.inFrame ?? 0);
   const maxDuration = Math.max(1, Math.floor(totalFrames / 2));
+  const isFxSeq = seq.kind !== 'content';
 
   const sectionTitle = selection.type === 'fade-in' ? 'FADE IN'
     : selection.type === 'fade-out' ? 'FADE OUT'
@@ -64,8 +67,8 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
           </div>
         </div>
 
-        {/* Row 2: Mode toggle — fade-in/fade-out only */}
-        {!isCrossDissolve && (
+        {/* Row 2: Mode toggle — content sequences only (FX always use transparency) */}
+        {!isCrossDissolve && !isFxSeq && (
           <div class="flex items-center" style={{ gap: '16px' }}>
             <span class="shrink-0" style={{ fontSize: '12px', fontWeight: 500, color: 'var(--sidebar-text-secondary)', width: '34px' }}>Mode</span>
             <div class="flex gap-1 flex-1">

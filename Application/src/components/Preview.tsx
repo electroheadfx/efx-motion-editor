@@ -215,11 +215,15 @@ export function Preview() {
             };
           });
           if (overlayLayers.length > 0) {
-            renderer.renderFrame(overlayLayers, overlayLocalFrame, seqFrames, seq.fps, false);
+            // Apply fade opacity to content-overlay sequence (transparency mode only)
+            const overlayTotalFrames = (overlaySeq.outFrame ?? 100) - (overlaySeq.inFrame ?? 0);
+            const overlayFadeOpacity = computeFadeOpacity(overlayLocalFrame, overlayTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
+            renderer.renderFrame(overlayLayers, overlayLocalFrame, seqFrames, seq.fps, false, overlayFadeOpacity);
           }
         } else {
           // FX sequence: apply keyframe interpolation to FX layers
           const fxLocalFrame = globalFrame - (overlaySeq.inFrame ?? 0);
+          const fxTotalFrames = (overlaySeq.outFrame ?? 100) - (overlaySeq.inFrame ?? 0);
           const fxLayers = overlaySeq.layers.filter((l) => l.visible).map(layer => {
             if (!layer.keyframes || layer.keyframes.length === 0) return layer;
             const values = interpolateAt(layer.keyframes, fxLocalFrame);
@@ -230,7 +234,9 @@ export function Preview() {
             return interpolatedLayer;
           });
           if (fxLayers.length > 0) {
-            renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false);
+            // Apply fade opacity to FX sequence (transparency mode only)
+            const fxFadeOpacity = computeFadeOpacity(fxLocalFrame, fxTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
+            renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false, fxFadeOpacity);
           }
         }
       }
