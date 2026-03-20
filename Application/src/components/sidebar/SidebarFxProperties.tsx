@@ -45,10 +45,10 @@ function SeedControls({ layer }: { layer: Layer }) {
   return (
     <>
       <button
-        class={`text-[10px] px-1.5 py-[3px] rounded ${
+        class={`text-[10px] px-1.5 py-[3px] rounded cursor-pointer transition-colors ${
           source.lockSeed
-            ? 'bg-[var(--color-accent)] text-white'
-            : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)]'
+            ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
+            : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover-item)] hover:text-white'
         }`}
         title={source.lockSeed ? 'Seed locked (reproducible)' : 'Seed unlocked (random each render)'}
         onClick={() => updateSource(layer.id, layer, { lockSeed: !source.lockSeed })}

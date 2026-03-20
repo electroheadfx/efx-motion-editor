@@ -141,7 +141,7 @@ export function Toolbar() {
         <Settings size={16} />
       </button>
       <button
-        class="flex items-center justify-center rounded-[5px] bg-[#F97316] w-8 h-8"
+        class="flex items-center justify-center rounded-[5px] bg-[#F97316] hover:brightness-125 w-8 h-8 cursor-pointer transition-colors"
         title="Export"
       >
         <Download size={16} class="text-white" />

@@ -229,8 +229,8 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         onClick={handleSelect}
         onContextMenu={handleContextMenu}
       >
-        {/* Left accent bar (only when active) — click to toggle isolation */}
-        {isActive && (
+        {/* Left accent bar — click to toggle isolation. Shows orange when isolated (even if not active) */}
+        {(isActive || isIsolated) && (
           <div
             class="shrink-0 cursor-pointer"
             style={{

@@ -11,7 +11,6 @@ export const FX_TRACK_HEIGHT = 28;
 
 // Functional colors -- stay hardcoded (high-visibility, theme-independent)
 const PLAYHEAD_COLOR = '#E55A2B';
-const ISOLATION_ORANGE = '#E5841B';
 const PLAYHEAD_TRIANGLE_SIZE = 6;
 const DROP_INDICATOR_COLOR = '#4488FF';
 const PLACEHOLDER_BG_A = '#1A1A2A';
@@ -478,11 +477,11 @@ export class TimelineRenderer {
         }
       }
 
-      // Sequence boundary separator (red marker between sequences)
+      // Sequence boundary separator (pink marker between sequences)
       if (ti > 0) {
         const sepX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
         if (sepX >= TRACK_HEADER_WIDTH && sepX <= w) {
-          ctx.strokeStyle = '#E55A2B';
+          ctx.strokeStyle = '#E54586';
           ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.moveTo(sepX, trackY);
@@ -495,16 +494,15 @@ export class TimelineRenderer {
       const isIsolated = state.isolatedSequenceIds?.has(track.sequenceId) ?? false;
       const isNameHovered = state.hoveredNameLabelSequenceId === track.sequenceId;
 
-      // Isolation border: orange rect around entire sequence frame range
+      // Isolation overlay: transparent light blue/cyan over isolated sequence thumbnails
       if (isIsolated) {
         const isoSegX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
         const isoSegW = (track.endFrame - track.startFrame) * frameWidth;
         const clippedIsoX = Math.max(isoSegX, TRACK_HEADER_WIDTH);
         const clippedIsoW = Math.min(isoSegX + isoSegW, w) - clippedIsoX;
         if (clippedIsoW > 0) {
-          ctx.strokeStyle = ISOLATION_ORANGE;
-          ctx.lineWidth = 2;
-          ctx.strokeRect(clippedIsoX, trackY, clippedIsoW, TRACK_HEIGHT);
+          ctx.fillStyle = 'rgba(80, 180, 220, 0.5)';
+          ctx.fillRect(clippedIsoX, trackY, clippedIsoW, TRACK_HEIGHT);
         }
       }
 
@@ -523,9 +521,9 @@ export class TimelineRenderer {
           const textW = ctx.measureText(name).width;
           const bgPad = 4;
 
-          // Background: orange if isolated or hovered, black semi-transparent otherwise
+          // Background: blue if isolated or hovered, black semi-transparent otherwise
           if (isIsolated || isNameHovered) {
-            ctx.fillStyle = ISOLATION_ORANGE;
+            ctx.fillStyle = '#2563EB';
           } else {
             ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
           }

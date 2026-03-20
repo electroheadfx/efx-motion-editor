@@ -290,7 +290,7 @@ export function CanvasArea() {
         {/* Step backward */}
         <button
           tabIndex={-1}
-          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] cursor-pointer text-[var(--color-text-secondary)]"
+          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] hover:text-white cursor-pointer text-[var(--color-text-secondary)] transition-colors"
           onClick={() => playbackEngine.stepBackward()}
           title="Step backward"
         >
@@ -299,7 +299,7 @@ export function CanvasArea() {
         {/* Play / Pause */}
         <button
           tabIndex={-1}
-          class="flex items-center justify-center w-9 h-9 rounded-full bg-[var(--color-accent)] cursor-pointer text-white"
+          class="flex items-center justify-center w-9 h-9 rounded-full bg-[var(--color-accent)] hover:brightness-125 cursor-pointer text-white transition-colors"
           onClick={() => playbackEngine.toggle()}
           title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
         >
@@ -308,7 +308,7 @@ export function CanvasArea() {
         {/* Step forward */}
         <button
           tabIndex={-1}
-          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] cursor-pointer text-[var(--color-text-secondary)]"
+          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] hover:text-white cursor-pointer text-[var(--color-text-secondary)] transition-colors"
           onClick={() => playbackEngine.stepForward()}
           title="Step forward"
         >
@@ -351,10 +351,10 @@ export function CanvasArea() {
         </button>
         {/* Fit button (toggles fit lock) */}
         <button
-          class={`rounded px-2.5 py-1.5 cursor-pointer ${
+          class={`rounded px-2.5 py-1.5 cursor-pointer transition-colors ${
             canvasStore.fitLocked.value
-              ? 'bg-[var(--color-accent)] text-white'
-              : 'bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)]'
+              ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
+              : 'bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] hover:text-white'
           }`}
           onClick={() => canvasStore.toggleFitLock()}
           title={canvasStore.fitLocked.value ? 'Fit to window \u2014 locked (F)' : 'Fit to window (F)'}

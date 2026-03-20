@@ -37,7 +37,7 @@ export function TimelinePanel() {
       <div class="flex items-center gap-2 h-9 px-3 bg-[var(--color-bg-root)] shrink-0">
         {/* Seek to start */}
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)]"
+          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
           onClick={() => playbackEngine.seekToFrame(0)}
           title="Seek to start"
         >
@@ -46,7 +46,7 @@ export function TimelinePanel() {
 
         {/* Play/Pause */}
         <button
-          class="rounded bg-[var(--color-accent)] px-2 py-[5px] text-white"
+          class="rounded bg-[var(--color-accent)] px-2 py-[5px] text-white hover:brightness-125 cursor-pointer transition-colors"
           onClick={() => playbackEngine.toggle()}
           title={timelineStore.isPlaying.value ? 'Pause (Space)' : 'Play (Space)'}
         >
@@ -55,7 +55,7 @@ export function TimelinePanel() {
 
         {/* Step backward */}
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)]"
+          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
           onClick={() => playbackEngine.stepBackward()}
           title="Step backward"
         >
@@ -64,7 +64,7 @@ export function TimelinePanel() {
 
         {/* Step forward */}
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)]"
+          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
           onClick={() => playbackEngine.stepForward()}
           title="Step forward"
         >
@@ -73,10 +73,10 @@ export function TimelinePanel() {
 
         {/* Loop toggle */}
         <button
-          class={`rounded px-2 py-[5px] ${
+          class={`rounded px-2 py-[5px] cursor-pointer transition-colors ${
             isolationStore.loopEnabled.value
-              ? 'bg-[var(--color-accent)] text-white'
-              : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)]'
+              ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
+              : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white'
           }`}
           onClick={() => isolationStore.toggleLoop()}
           title={isolationStore.loopEnabled.value ? 'Loop: ON' : 'Loop: OFF'}
