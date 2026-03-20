@@ -230,21 +230,26 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         onContextMenu={handleContextMenu}
       >
         {/* Left accent bar — click to toggle isolation. Shows orange when isolated (even if not active) */}
+        {/* Outer hit area is wider for easy clicking; inner bar stays 4px visually */}
         {(isActive || isIsolated) && (
           <div
-            class="shrink-0 cursor-pointer"
-            style={{
-              width: '4px',
-              height: '24px',
-              borderRadius: '2px',
-              backgroundColor: isIsolated ? '#E5841B' : 'var(--sidebar-accent-bar)',
-            }}
+            class="shrink-0 cursor-pointer flex items-center justify-start"
+            style={{ width: '16px', height: '24px' }}
             onClick={(e: MouseEvent) => {
               e.stopPropagation();
               isolationStore.toggleIsolation(seq.id);
             }}
             title={isIsolated ? 'Remove from isolation' : 'Isolate sequence'}
-          />
+          >
+            <div
+              style={{
+                width: '4px',
+                height: '24px',
+                borderRadius: '2px',
+                backgroundColor: isIsolated ? '#E5841B' : 'var(--sidebar-accent-bar)',
+              }}
+            />
+          </div>
         )}
 
         {/* Drag handle */}
