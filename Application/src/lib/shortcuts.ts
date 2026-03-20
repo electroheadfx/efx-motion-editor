@@ -92,6 +92,14 @@ export async function handleCloseProject(): Promise<void> {
 }
 
 function handleDelete(): void {
+  // Check for selected transition first (FADE-03)
+  const selTransition = uiStore.selectedTransition.peek();
+  if (selTransition) {
+    sequenceStore.removeTransition(selTransition.sequenceId, selTransition.type);
+    uiStore.selectTransition(null);
+    return;
+  }
+
   // Check for selected keyframe diamonds first (KF-12)
   const selectedKfFrames = keyframeStore.selectedKeyframeFrames.peek();
   if (selectedKfFrames.size > 0) {

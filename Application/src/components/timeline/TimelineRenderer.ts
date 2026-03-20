@@ -167,7 +167,7 @@ export class TimelineRenderer {
     let fxTrackY = RULER_HEIGHT;
     for (let fi = 0; fi < fxTracks.length; fi++) {
       const isSelected = fxTracks[fi].sequenceId === this.selectedFxSequenceId;
-      this.drawFxTrack(ctx, fxTracks[fi], fxTrackY, frameWidth, scrollX, w, isSelected, imageStore);
+      this.drawFxTrack(ctx, fxTracks[fi], fxTrackY, frameWidth, scrollX, w, isSelected, imageStore, state);
       fxTrackY += FX_TRACK_HEIGHT;
     }
 
@@ -237,6 +237,77 @@ export class TimelineRenderer {
     this.drawKeyframeDiamonds(ctx, state, w);
   }
 
+  /** Draw a single transition overlay (gradient + border + diagonal + label) per UI-SPEC */
+  private drawTransitionOverlay(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    w: number,
+    trackY: number,
+    trackH: number,
+    type: 'fade-in' | 'fade-out' | 'cross-dissolve',
+    isSelected: boolean,
+  ): void {
+    if (w <= 0) return;
+    ctx.save();
+
+    const inset = 4;
+    const overlayY = trackY + inset;
+    const overlayH = trackH - inset * 2;
+
+    // Graduated transparency fill
+    const gradient = ctx.createLinearGradient(x, 0, x + w, 0);
+    if (type === 'fade-in') {
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.05)');
+    } else if (type === 'fade-out') {
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.05)');
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+    } else {
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.20)');
+    }
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, overlayY, w, overlayH);
+
+    // Selected highlight fill
+    if (isSelected) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.fillRect(x, overlayY, w, overlayH);
+    }
+
+    // White outline border
+    ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, overlayY + 0.5, w - 1, overlayH - 1);
+
+    // Single diagonal line
+    ctx.beginPath();
+    if (type === 'fade-in' || type === 'cross-dissolve') {
+      ctx.moveTo(x, trackY + trackH - inset);
+      ctx.lineTo(x + w, trackY + inset);
+    } else {
+      ctx.moveTo(x, trackY + inset);
+      ctx.lineTo(x + w, trackY + trackH - inset);
+    }
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Label text (only when overlay is wide enough)
+    const label = type === 'fade-in' ? 'In' : type === 'fade-out' ? 'Out' : 'Cross Dissolve';
+    ctx.font = '8px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.textAlign = 'center';
+    const labelWidth = ctx.measureText(label).width;
+    if (w > labelWidth + 8) {
+      ctx.fillText(label, x + w / 2, trackY + trackH / 2);
+    }
+    ctx.textAlign = 'start';
+
+    ctx.restore();
+  }
+
   /** Resolve the display color for an FX/content-overlay track.
    *  Content overlay colors use CSS variables that Canvas 2D cannot resolve directly,
    *  so we map them to the pre-resolved theme color cache values. */
@@ -258,6 +329,7 @@ export class TimelineRenderer {
     canvasWidth: number,
     isSelected = false,
     imageStore?: typeof ImageStoreType,
+    state?: DrawState,
   ): void {
     const colors = getThemeColors();
     const resolvedColor = this.resolveTrackColor(fxTrack);
@@ -351,6 +423,21 @@ export class TimelineRenderer {
           const barName = this.truncateText(ctx, fxTrack.sequenceName, barNameMaxW);
           ctx.fillText(barName, barNameX, barY + barH / 2);
         }
+      }
+
+      // Draw transition overlays on FX bars
+      if (fxTrack.fadeIn) {
+        const fadeW = fxTrack.fadeIn.duration * frameWidth;
+        const isFadeSelected = state?.selectedTransition?.sequenceId === fxTrack.sequenceId
+          && state?.selectedTransition?.type === 'fade-in';
+        this.drawTransitionOverlay(ctx, barX, Math.min(fadeW, barW), barY, barH, 'fade-in', isFadeSelected);
+      }
+      if (fxTrack.fadeOut) {
+        const fadeW = fxTrack.fadeOut.duration * frameWidth;
+        const fadeX = barX + barW - fadeW;
+        const isFadeSelected = state?.selectedTransition?.sequenceId === fxTrack.sequenceId
+          && state?.selectedTransition?.type === 'fade-out';
+        this.drawTransitionOverlay(ctx, Math.max(fadeX, barX), Math.min(fadeW, barW), barY, barH, 'fade-out', isFadeSelected);
       }
 
       // Left edge handle (drag to resize inFrame)
@@ -478,6 +565,23 @@ export class TimelineRenderer {
         }
       }
 
+      // Draw transition overlays on content tracks
+      if (track.fadeIn) {
+        const seqX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const fadeW = track.fadeIn.duration * frameWidth;
+        const isFadeSelected = state.selectedTransition?.sequenceId === track.sequenceId
+          && state.selectedTransition?.type === 'fade-in';
+        this.drawTransitionOverlay(ctx, seqX, fadeW, trackY, TRACK_HEIGHT, 'fade-in', isFadeSelected);
+      }
+      if (track.fadeOut) {
+        const seqEndX = track.endFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const fadeW = track.fadeOut.duration * frameWidth;
+        const fadeX = seqEndX - fadeW;
+        const isFadeSelected = state.selectedTransition?.sequenceId === track.sequenceId
+          && state.selectedTransition?.type === 'fade-out';
+        this.drawTransitionOverlay(ctx, fadeX, fadeW, trackY, TRACK_HEIGHT, 'fade-out', isFadeSelected);
+      }
+
       // Sequence boundary separator (pink marker between sequences)
       if (ti > 0) {
         const sepX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
@@ -514,7 +618,9 @@ export class TimelineRenderer {
         if (segX + segW > TRACK_HEADER_WIDTH && segX < w && segW > 20) {
           const labelH = 16;
           const labelY = trackY + TRACK_HEIGHT - 2 - labelH;
-          const clippedX = Math.max(segX, TRACK_HEADER_WIDTH);
+          // Shift name right past fade-in transition
+          const fadeInShift = track.fadeIn ? track.fadeIn.duration * frameWidth + 4 : 0;
+          const clippedX = Math.max(segX + fadeInShift, TRACK_HEADER_WIDTH);
           const leftPad = 8;
           ctx.font = '10px system-ui, sans-serif';
           ctx.textBaseline = 'middle';

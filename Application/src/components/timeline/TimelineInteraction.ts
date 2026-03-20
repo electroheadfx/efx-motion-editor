@@ -6,7 +6,7 @@ import {uiStore} from '../../stores/uiStore';
 import {keyframeStore} from '../../stores/keyframeStore';
 import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
-import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT} from './TimelineRenderer';
+import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT, TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
 import {isolationStore} from '../../stores/isolationStore';
 
@@ -322,6 +322,74 @@ export class TimelineInteraction {
     return null;
   }
 
+  /** Hit-test transition overlays on both content tracks and FX tracks.
+   *  Returns the sequenceId + type if the point is on a transition overlay, null otherwise. */
+  private transitionHitTest(
+    localX: number,
+    localY: number,
+  ): { sequenceId: string; type: 'fade-in' | 'fade-out' } | null {
+    if (!this.renderer) return null;
+    const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
+    const scrollX = timelineStore.scrollX.peek();
+    const scrollY = this.renderer.getScrollY();
+    const contentTrackY = this.renderer.getContentTrackY() - scrollY;
+    const inset = 4;
+
+    // Check content tracks
+    if (localY >= contentTrackY + inset && localY <= contentTrackY + TRACK_HEIGHT - inset) {
+      const tracks = trackLayouts.peek();
+      for (const track of tracks) {
+        const seqX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const seqEndX = track.endFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+
+        if (track.fadeIn) {
+          const fadeW = track.fadeIn.duration * frameWidth;
+          if (localX >= seqX && localX <= seqX + fadeW) {
+            return { sequenceId: track.sequenceId, type: 'fade-in' };
+          }
+        }
+
+        if (track.fadeOut) {
+          const fadeW = track.fadeOut.duration * frameWidth;
+          const fadeX = seqEndX - fadeW;
+          if (localX >= fadeX && localX <= seqEndX) {
+            return { sequenceId: track.sequenceId, type: 'fade-out' };
+          }
+        }
+      }
+    }
+
+    // Check FX tracks
+    const fxTracks = fxTrackLayouts.peek();
+    for (let i = 0; i < fxTracks.length; i++) {
+      const fxTrack = fxTracks[i];
+      const fxY = RULER_HEIGHT + i * FX_TRACK_HEIGHT - scrollY;
+      const barY = fxY + 4;
+      const barH = FX_TRACK_HEIGHT - 8;
+      if (localY < barY || localY > barY + barH) continue;
+
+      const barX = fxTrack.inFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+      const barW = (fxTrack.outFrame - fxTrack.inFrame) * frameWidth;
+
+      if (fxTrack.fadeIn) {
+        const fadeW = fxTrack.fadeIn.duration * frameWidth;
+        if (localX >= barX && localX <= barX + Math.min(fadeW, barW)) {
+          return { sequenceId: fxTrack.sequenceId, type: 'fade-in' };
+        }
+      }
+
+      if (fxTrack.fadeOut) {
+        const fadeW = fxTrack.fadeOut.duration * frameWidth;
+        const fadeX = barX + barW - fadeW;
+        if (localX >= Math.max(fadeX, barX) && localX <= barX + barW) {
+          return { sequenceId: fxTrack.sequenceId, type: 'fade-out' };
+        }
+      }
+    }
+
+    return null;
+  }
+
   /** Delete selected keyframe diamonds (called from shortcuts) */
   deleteSelectedKeyframes(): void {
     const selectedFrames = keyframeStore.selectedKeyframeFrames.peek();
@@ -391,6 +459,16 @@ export class TimelineInteraction {
         return;
       }
 
+      // Transition hit test on FX tracks (priority: keyframes > transitions > range bar drag)
+      {
+        const localY = e.clientY - rect.top;
+        const fxTransHit = this.transitionHitTest(localX, localY);
+        if (fxTransHit) {
+          uiStore.selectTransition(fxTransHit);
+          return;
+        }
+      }
+
       if (fxIdx >= 0 && fxIdx < fxTracks.length) {
         const fxTrack = fxTracks[fxIdx];
         const mode = this.fxDragModeFromX(e.clientX, fxTrack);
@@ -408,7 +486,8 @@ export class TimelineInteraction {
           return;
         }
       }
-      // Click in FX area but not on a bar -- seek playhead
+      // Click in FX area but not on a bar -- deselect transition and seek playhead
+      uiStore.selectTransition(null);
       const frame = this.getFrame(e.clientX);
       playbackEngine.seekToFrame(frame);
       return;
@@ -444,6 +523,16 @@ export class TimelineInteraction {
       return;
     }
 
+    // Transition hit test on content tracks (priority: keyframes > transitions > sequence selection)
+    {
+      const localY = e.clientY - rect.top;
+      const transHit = this.transitionHitTest(localX, localY);
+      if (transHit) {
+        uiStore.selectTransition(transHit);
+        return;
+      }
+    }
+
     // Name label click: toggle isolation
     const nameHit = this.nameLabelHitTest(e.clientX, e.clientY);
     if (nameHit) {
@@ -462,7 +551,8 @@ export class TimelineInteraction {
       const frame = this.getFrame(e.clientX);
       playbackEngine.seekToFrame(frame);
     } else {
-      // Click-to-seek + select content sequence by X position
+      // Click-to-seek + select content sequence by X position — also deselect transition
+      uiStore.selectTransition(null);
       const frame = this.getFrame(e.clientX);
       const seqId = this.sequenceFromFrame(frame);
       if (seqId) {
@@ -552,6 +642,14 @@ export class TimelineInteraction {
       }
       if (newHoveredFrame !== null) {
         this.canvas.style.cursor = 'crosshair';
+        return;
+      }
+
+      // Transition overlay hover: pointer cursor
+      const rect = this.canvas.getBoundingClientRect();
+      const transHover = this.transitionHitTest(e.clientX - rect.left, e.clientY - rect.top);
+      if (transHover) {
+        this.canvas.style.cursor = 'pointer';
         return;
       }
     }
