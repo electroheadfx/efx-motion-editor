@@ -1,6 +1,6 @@
 import {signal, computed, batch} from '@preact/signals';
 import type {ProjectData, MceProject, MceSequence, MceKeyPhoto, MceLayer} from '../types/project';
-import type {Sequence, KeyPhoto} from '../types/sequence';
+import type {Sequence, KeyPhoto, TransitionType, FadeMode} from '../types/sequence';
 import type {Layer, LayerType, BlendMode, LayerSourceData, EasingType} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
 import {projectCreate, projectSave as ipcProjectSave, projectOpen as ipcProjectOpen, projectMigrateTempImages} from '../lib/ipc';
@@ -55,6 +55,33 @@ function buildMceProject(): MceProject {
       kind: seq.kind,
       ...(seq.inFrame != null ? { in_frame: seq.inFrame } : {}),
       ...(seq.outFrame != null ? { out_frame: seq.outFrame } : {}),
+      ...(seq.fadeIn ? {
+        fade_in: {
+          type: seq.fadeIn.type,
+          duration: seq.fadeIn.duration,
+          mode: seq.fadeIn.mode,
+          color: seq.fadeIn.color,
+          curve: seq.fadeIn.curve,
+        },
+      } : {}),
+      ...(seq.fadeOut ? {
+        fade_out: {
+          type: seq.fadeOut.type,
+          duration: seq.fadeOut.duration,
+          mode: seq.fadeOut.mode,
+          color: seq.fadeOut.color,
+          curve: seq.fadeOut.curve,
+        },
+      } : {}),
+      ...(seq.crossDissolve ? {
+        cross_dissolve: {
+          type: seq.crossDissolve.type,
+          duration: seq.crossDissolve.duration,
+          mode: seq.crossDissolve.mode,
+          color: seq.crossDissolve.color,
+          curve: seq.crossDissolve.curve,
+        },
+      } : {}),
       key_photos: seq.keyPhotos.map(
         (kp: KeyPhoto, kpIndex: number): MceKeyPhoto => ({
           id: kp.id,
@@ -152,7 +179,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 6,
+    version: 7,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -260,6 +287,33 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
         layers,
         ...(mceSeq.in_frame != null ? { inFrame: mceSeq.in_frame } : {}),
         ...(mceSeq.out_frame != null ? { outFrame: mceSeq.out_frame } : {}),
+        ...(mceSeq.fade_in ? {
+          fadeIn: {
+            type: mceSeq.fade_in.type as TransitionType,
+            duration: mceSeq.fade_in.duration,
+            mode: (mceSeq.fade_in.mode ?? 'transparency') as FadeMode,
+            color: mceSeq.fade_in.color ?? '#000000',
+            curve: (mceSeq.fade_in.curve ?? 'ease-in-out') as EasingType,
+          },
+        } : {}),
+        ...(mceSeq.fade_out ? {
+          fadeOut: {
+            type: mceSeq.fade_out.type as TransitionType,
+            duration: mceSeq.fade_out.duration,
+            mode: (mceSeq.fade_out.mode ?? 'transparency') as FadeMode,
+            color: mceSeq.fade_out.color ?? '#000000',
+            curve: (mceSeq.fade_out.curve ?? 'ease-in-out') as EasingType,
+          },
+        } : {}),
+        ...(mceSeq.cross_dissolve ? {
+          crossDissolve: {
+            type: mceSeq.cross_dissolve.type as TransitionType,
+            duration: mceSeq.cross_dissolve.duration,
+            mode: (mceSeq.cross_dissolve.mode ?? 'transparency') as FadeMode,
+            color: mceSeq.cross_dissolve.color ?? '#000000',
+            curve: (mceSeq.cross_dissolve.curve ?? 'ease-in-out') as EasingType,
+          },
+        } : {}),
       };
       sequenceStore.add(seq);
     }

@@ -32,6 +32,9 @@ export interface MceSequence {
   kind?: string;       // 'content' | 'fx' (optional for v2/v3 compat, defaults to 'content')
   in_frame?: number;   // FX sequence start frame
   out_frame?: number;  // FX sequence end frame
+  fade_in?: MceTransition;
+  fade_out?: MceTransition;
+  cross_dissolve?: MceTransition;
 }
 
 /** Layer definition within a sequence in the .mce file */
@@ -98,6 +101,15 @@ export interface MceLayerSource {
   fade_blend?: string;
   // Adjustment-blur
   radius?: number;
+}
+
+/** Transition definition within a sequence in the .mce file */
+export interface MceTransition {
+  type: string;        // 'fade-in' | 'fade-out' | 'cross-dissolve'
+  duration: number;    // in frames
+  mode: string;        // 'transparency' | 'solid'
+  color: string;       // hex color
+  curve: string;       // EasingType string
 }
 
 /** Keyframe definition for serialization (snake_case fields) */
