@@ -93,4 +93,4 @@ Known technical debt:
 | PNG sequence export (not video) | Downstream editing in DaVinci Resolve/Premiere Pro is the workflow | — Pending (v0.2.0) |
 
 ---
-*Last updated: 2026-03-19 after Phase 12.14 — Replaced all Unicode/text button characters with lucide-preact SVG icons and added hover tooltips across timeline, canvas, and toolbar*
+*Last updated: 2026-03-20 after Phase 12.15 — Sequence isolation (solo) and loop playback with timeline/sidebar controls, Escape clear, and persistence*
