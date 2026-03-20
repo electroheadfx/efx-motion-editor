@@ -7,6 +7,7 @@ import {playbackEngine} from '../../lib/playbackEngine';
 import {TimelineCanvas} from '../timeline/TimelineCanvas';
 import {TimelineScrollbar} from '../timeline/TimelineScrollbar';
 import {AddLayerMenu} from '../timeline/AddFxMenu';
+import {AddTransitionMenu} from '../timeline/AddTransitionMenu';
 import {BASE_FRAME_WIDTH} from '../timeline/TimelineRenderer';
 
 export function TimelinePanel() {
@@ -131,6 +132,9 @@ export function TimelinePanel() {
         </span>
 
         <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
+
+        {/* Add Transition */}
+        <AddTransitionMenu />
 
         {/* Add Layer */}
         <AddLayerMenu />

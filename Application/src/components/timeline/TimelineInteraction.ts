@@ -543,7 +543,13 @@ export class TimelineInteraction {
       const localY = e.clientY - rect.top;
       const transHit = this.transitionHitTest(localX, localY);
       if (transHit) {
-        uiStore.selectTransition(transHit);
+        // Toggle: clicking already-selected transition deselects it
+        const current = uiStore.selectedTransition.peek();
+        if (current && current.sequenceId === transHit.sequenceId && current.type === transHit.type) {
+          uiStore.selectTransition(null);
+        } else {
+          uiStore.selectTransition(transHit);
+        }
         return;
       }
     }
