@@ -11,6 +11,7 @@ import {keyframeStore} from '../../stores/keyframeStore';
 // isFxLayer removed: FX layers now support keyframes
 import {currentTheme} from '../../lib/themeManager';
 import {isFullSpeed} from '../../lib/playbackEngine';
+import {isolationStore} from '../../stores/isolationStore';
 
 /**
  * TimelineCanvas: Preact component wrapping a canvas element with signal subscriptions.
@@ -69,6 +70,7 @@ export function TimelineCanvas() {
       const tracks = trackLayouts.value;
       const totalFrames = timelineStore.totalFrames.value;
       const fxTracks = fxTrackLayouts.value;
+      const isolatedIds = isolationStore.isolatedSequenceIds.value;
 
       // Map selected layer ID to FX/content-overlay sequence ID for timeline highlight
       const selectedLayerId = layerStore.selectedLayerId.value;
@@ -122,6 +124,7 @@ export function TimelineCanvas() {
         selectedKeyframeFrames: selectedKfFrames,
         selectedLayerSequenceId,
         hidePlayhead: isFullSpeed.value,
+        isolatedSequenceIds: isolatedIds,
       });
     });
 
