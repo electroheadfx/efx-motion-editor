@@ -5,6 +5,8 @@ import { uiStore } from '../../stores/uiStore';
 import { CollapsibleSection } from '../sidebar/CollapsibleSection';
 import { SidebarProperties } from '../sidebar/SidebarProperties';
 import { SidebarFxProperties } from '../sidebar/SidebarFxProperties';
+import { TransitionProperties } from '../sidebar/TransitionProperties';
+import { SectionLabel } from '../shared/SectionLabel';
 import { SequenceList } from '../sequence/SequenceList';
 import { LayerList } from '../layer/LayerList';
 import { AddLayerMenu } from '../layer/AddLayerMenu';
@@ -42,6 +44,16 @@ export function LeftPanel() {
   }
 
   const isFx = selectedLayer && isFxLayer(selectedLayer);
+
+  // Transition selection state
+  const transitionSel = uiStore.selectedTransition.value;
+
+  // Determine if the selected sequence is a content sequence (for add transition buttons)
+  const selectedSeqId = uiStore.selectedSequenceId.value;
+  const selectedSeq = selectedSeqId
+    ? sequenceStore.sequences.value.find(s => s.id === selectedSeqId)
+    : null;
+  const isContentSeq = selectedSeq?.kind === 'content';
 
   // Track container height for px-to-flex conversion
   const containerRef = useRef<HTMLDivElement>(null);
@@ -226,15 +238,65 @@ export function LeftPanel() {
           collapsed={uiStore.propertiesSectionCollapsed}
           onCollapse={handlePropCollapse}
         >
-          {selectedLayer && isFx && (
+          {transitionSel && (
+            <SidebarScrollArea>
+              <TransitionProperties selection={transitionSel} />
+            </SidebarScrollArea>
+          )}
+          {!transitionSel && selectedLayer && isFx && (
             <SidebarScrollArea>
               <SidebarFxProperties layer={selectedLayer} fxSequenceId={fxSequenceId} />
             </SidebarScrollArea>
           )}
-          {selectedLayer && !isFx && (
+          {!transitionSel && selectedLayer && !isFx && (
             <SidebarScrollArea>
               <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
             </SidebarScrollArea>
+          )}
+          {isContentSeq && !transitionSel && (
+            <div class="px-2 py-1">
+              <SectionLabel text="TRANSITIONS" />
+              <div class="flex flex-col gap-1 mt-1">
+                {!selectedSeq!.fadeIn && (
+                  <button
+                    class="text-[10px] px-2 py-1 rounded bg-[var(--color-bg-input)] text-[var(--color-text-button)] hover:bg-[var(--color-bg-hover-item)] hover:text-white text-left"
+                    onClick={() => {
+                      sequenceStore.addTransition(selectedSeqId!, {
+                        type: 'fade-in',
+                        duration: 12,
+                        mode: 'transparency',
+                        color: '#000000',
+                        curve: 'ease-in-out',
+                      });
+                    }}
+                  >
+                    Add Fade In
+                  </button>
+                )}
+                {!selectedSeq!.fadeOut && (
+                  <button
+                    class="text-[10px] px-2 py-1 rounded bg-[var(--color-bg-input)] text-[var(--color-text-button)] hover:bg-[var(--color-bg-hover-item)] hover:text-white text-left"
+                    onClick={() => {
+                      sequenceStore.addTransition(selectedSeqId!, {
+                        type: 'fade-out',
+                        duration: 12,
+                        mode: 'transparency',
+                        color: '#000000',
+                        curve: 'ease-in-out',
+                      });
+                    }}
+                  >
+                    Add Fade Out
+                  </button>
+                )}
+                {selectedSeq!.fadeIn && (
+                  <TransitionProperties selection={{ sequenceId: selectedSeqId!, type: 'fade-in' }} />
+                )}
+                {selectedSeq!.fadeOut && (
+                  <TransitionProperties selection={{ sequenceId: selectedSeqId!, type: 'fade-out' }} />
+                )}
+              </div>
+            </div>
           )}
         </CollapsibleSection>
       </div>
