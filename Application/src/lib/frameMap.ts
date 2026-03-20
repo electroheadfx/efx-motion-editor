@@ -4,34 +4,16 @@ import type {FrameEntry, TrackLayout, FxTrackLayout, KeyPhotoRange} from '../typ
 import type {Layer, LayerType, EasingType} from '../types/layer';
 
 /** Flattened frame array: every frame maps to a sequence, key photo, and image (GLOBAL).
- *  Cross dissolve shortens the timeline by skipping the incoming sequence's overlapped head frames (per D-14). */
+ *  Cross dissolve does NOT shorten the timeline — both sequences keep all their frames.
+ *  The overlap is handled visually in Preview via crossDissolveOverlaps. */
 export const frameMap = computed<FrameEntry[]>(() => {
   const entries: FrameEntry[] = [];
   let globalFrame = 0;
   const contentSeqs = sequenceStore.sequences.value.filter(s => s.kind === 'content');
 
-  for (let seqIdx = 0; seqIdx < contentSeqs.length; seqIdx++) {
-    const seq = contentSeqs[seqIdx];
-    // Determine how many frames to skip at the start of this sequence
-    // due to a cross dissolve from the PREVIOUS sequence
-    let skipAtStart = 0;
-    if (seqIdx > 0) {
-      const prevSeq = contentSeqs[seqIdx - 1];
-      if (prevSeq.crossDissolve) {
-        const halfDuration = Math.floor(prevSeq.crossDissolve.duration / 2);
-        skipAtStart = prevSeq.crossDissolve.duration - halfDuration; // ceil(D/2)
-      }
-    }
-
-    let localFrameCounter = 0;
+  for (const seq of contentSeqs) {
     for (const kp of seq.keyPhotos) {
       for (let f = 0; f < kp.holdFrames; f++) {
-        if (localFrameCounter < skipAtStart) {
-          // This frame is in the overlap zone — it is rendered via crossDissolveOverlaps,
-          // not via frameMap. Skip it to shorten the timeline (per D-14).
-          localFrameCounter++;
-          continue;
-        }
         entries.push({
           globalFrame,
           sequenceId: seq.id,
@@ -40,7 +22,6 @@ export const frameMap = computed<FrameEntry[]>(() => {
           localFrame: f,
         });
         globalFrame++;
-        localFrameCounter++;
       }
     }
   }
@@ -67,48 +48,25 @@ export const activeSequenceStartFrame = computed<number>(() => {
 });
 
 /** Track layout data for timeline rendering (one track per content sequence).
- *  Reflects shortened positions when cross dissolve is active (per D-14). */
+ *  Simple sequential layout — cross dissolve does not alter positions. */
 export const trackLayouts = computed<TrackLayout[]>(() => {
   const tracks: TrackLayout[] = [];
   let globalFrame = 0;
   const contentSeqs = sequenceStore.sequences.value.filter(s => s.kind === 'content');
 
-  for (let seqIdx = 0; seqIdx < contentSeqs.length; seqIdx++) {
-    const seq = contentSeqs[seqIdx];
-    // Determine how many frames to skip at the start due to previous cross dissolve
-    let skipAtStart = 0;
-    if (seqIdx > 0) {
-      const prevSeq = contentSeqs[seqIdx - 1];
-      if (prevSeq.crossDissolve) {
-        const halfDuration = Math.floor(prevSeq.crossDissolve.duration / 2);
-        skipAtStart = prevSeq.crossDissolve.duration - halfDuration; // ceil(D/2)
-      }
-    }
-
+  for (const seq of contentSeqs) {
     const startFrame = globalFrame;
     const ranges: KeyPhotoRange[] = [];
-    let localFrameCounter = 0;
     for (const kp of seq.keyPhotos) {
       const kpStartFrame = globalFrame;
-      let kpFramesEmitted = 0;
-      for (let f = 0; f < kp.holdFrames; f++) {
-        if (localFrameCounter < skipAtStart) {
-          localFrameCounter++;
-          continue;
-        }
-        globalFrame++;
-        localFrameCounter++;
-        kpFramesEmitted++;
-      }
-      if (kpFramesEmitted > 0) {
-        ranges.push({
-          keyPhotoId: kp.id,
-          imageId: kp.imageId,
-          startFrame: kpStartFrame,
-          endFrame: kpStartFrame + kpFramesEmitted,
-          holdFrames: kpFramesEmitted,
-        });
-      }
+      globalFrame += kp.holdFrames;
+      ranges.push({
+        keyPhotoId: kp.id,
+        imageId: kp.imageId,
+        startFrame: kpStartFrame,
+        endFrame: globalFrame,
+        holdFrames: kp.holdFrames,
+      });
     }
     tracks.push({
       sequenceId: seq.id,
@@ -194,12 +152,11 @@ export interface CrossDissolveOverlap {
   incomingLocalFrameStart: number;  // always 0 — incoming seq starts from its first frame
 }
 
-/** Cross dissolve overlap zones in shortened-timeline coordinates for dual-render in Preview */
+/** Cross dissolve overlap zones in global frame coordinates for dual-render in Preview.
+ *  The overlap zone spans halfDuration frames at end of seq1 + ceil(D/2) frames at start of seq2. */
 export const crossDissolveOverlaps = computed<CrossDissolveOverlap[]>(() => {
   const contentSeqs = sequenceStore.sequences.value.filter(s => s.kind === 'content');
   const overlaps: CrossDissolveOverlap[] = [];
-
-  // We need the shortened-timeline track positions to compute overlap coordinates
   const tracks = trackLayouts.value;
 
   for (let i = 0; i < contentSeqs.length - 1; i++) {
@@ -211,12 +168,12 @@ export const crossDissolveOverlaps = computed<CrossDissolveOverlap[]>(() => {
     const outTrack = tracks.find(t => t.sequenceId === outSeq.id);
     if (!outTrack) continue;
 
-    // In the shortened timeline, the overlap zone occupies the last halfDuration
-    // frames of the outgoing track (its tail was NOT removed — only incoming's head was)
-    const overlapStart = outTrack.endFrame - halfDuration;
-    const overlapEnd = overlapStart + cd.duration;
+    // Overlap centered on the boundary between outgoing and incoming
+    const boundary = outTrack.endFrame;
+    const overlapStart = boundary - halfDuration;
+    const overlapEnd = boundary + (cd.duration - halfDuration);
 
-    // Local frame in outgoing sequence where overlap starts
+    // Local frame offsets for rendering
     const outSeqTotalFrames = outSeq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0);
     const outgoingLocalFrameStart = outSeqTotalFrames - halfDuration;
 
