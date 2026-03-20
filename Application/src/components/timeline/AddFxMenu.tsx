@@ -1,4 +1,5 @@
 import {useState, useEffect, useRef} from 'preact/hooks';
+import {Clapperboard} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
@@ -57,7 +58,7 @@ export function AddLayerMenu() {
         class="rounded px-2 py-[5px] bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)] transition-colors"
         onClick={() => setMenuOpen(!menuOpen)}
       >
-        <span class="text-[10px] text-[var(--color-text-secondary)]">+ Layer</span>
+        <span class="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1"><Clapperboard size={11} /> Layer</span>
       </button>
 
       {menuOpen && (

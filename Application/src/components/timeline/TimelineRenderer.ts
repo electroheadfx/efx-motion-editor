@@ -244,7 +244,7 @@ export class TimelineRenderer {
     w: number,
     trackY: number,
     trackH: number,
-    _type: 'fade-in' | 'fade-out' | 'cross-dissolve',
+    type: 'fade-in' | 'fade-out' | 'cross-dissolve',
     isSelected: boolean,
   ): void {
     if (w <= 0) return;
@@ -257,8 +257,21 @@ export class TimelineRenderer {
     ctx.fillStyle = isSelected ? 'rgba(34, 197, 94, 0.7)' : 'rgba(34, 197, 94, 0.5)';
     ctx.fillRect(x, barY, w, barH);
 
-    // Border
-    ctx.strokeStyle = isSelected ? 'rgba(34, 197, 94, 1)' : 'rgba(34, 197, 94, 0.6)';
+    // Diagonal line (white, semi-transparent)
+    ctx.beginPath();
+    if (type === 'fade-in' || type === 'cross-dissolve') {
+      ctx.moveTo(x, barY + barH);
+      ctx.lineTo(x + w, barY);
+    } else {
+      ctx.moveTo(x, barY);
+      ctx.lineTo(x + w, barY + barH);
+    }
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Black border (solid green when selected)
+    ctx.strokeStyle = isSelected ? 'rgba(34, 197, 94, 1)' : 'rgba(0, 0, 0, 0.8)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, barY + 0.5, w - 1, barH - 1);
 

@@ -1,4 +1,5 @@
 import {useState, useEffect, useRef} from 'preact/hooks';
+import {Layers} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 
@@ -68,7 +69,7 @@ export function AddTransitionMenu() {
         }}
         title={!isContentSeq ? 'Select a content sequence first' : !hasAnyOption ? 'All transitions already added' : 'Add transition'}
       >
-        <span class="text-[10px] text-[var(--color-text-secondary)]">+ Transition</span>
+        <span class="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1"><Layers size={11} /> Transition</span>
       </button>
 
       {menuOpen && (

@@ -1,3 +1,4 @@
+import { Trash2 } from 'lucide-preact';
 import { sequenceStore } from '../../stores/sequenceStore';
 import { uiStore, type TransitionSelection } from '../../stores/uiStore';
 import { NumericInput } from '../shared/NumericInput';
@@ -21,7 +22,6 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
 
   const isCrossDissolve = selection.type === 'cross-dissolve';
 
-  // Compute max duration: half the sequence total frames
   const totalFrames = seq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0);
   const maxDuration = Math.max(1, Math.floor(totalFrames / 2));
 
@@ -30,75 +30,25 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
     : 'CROSS DISSOLVE';
 
   return (
-    <div class="flex flex-col gap-2 px-2">
+    <div class="flex flex-col gap-1.5 px-2">
       <SectionLabel text={sectionTitle} />
 
-      {/* Row 1: Duration (per D-22) */}
-      <NumericInput
-        label="Duration"
-        value={transition.duration}
-        min={1}
-        max={maxDuration}
-        step={1}
-        onChange={(v: number) => {
-          sequenceStore.updateTransition(selection.sequenceId, selection.type, { duration: v });
-        }}
-      />
-
-      {/* Row 2: Mode toggle -- fade-in/fade-out only (per D-23, D-26) */}
-      {!isCrossDissolve && (
-        <div class="flex items-center gap-1">
-          <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Mode</span>
-          <div class="flex gap-0.5">
-            <button
-              class={`text-[10px] px-2 py-1 rounded ${
-                transition.mode === 'transparency'
-                  ? 'bg-[var(--color-accent)] text-white'
-                  : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)]'
-              }`}
-              onClick={() => {
-                sequenceStore.updateTransition(selection.sequenceId, selection.type, { mode: 'transparency' as FadeMode });
-              }}
-            >
-              Transparency
-            </button>
-            <button
-              class={`text-[10px] px-2 py-1 rounded ${
-                transition.mode === 'solid'
-                  ? 'bg-[var(--color-accent)] text-white'
-                  : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)]'
-              }`}
-              onClick={() => {
-                sequenceStore.updateTransition(selection.sequenceId, selection.type, { mode: 'solid' as FadeMode });
-              }}
-            >
-              Solid Color
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Row 3: Color picker -- visible only in Solid mode (per D-24) */}
-      {!isCrossDissolve && transition.mode === 'solid' && (
-        <div class="flex items-center gap-1">
-          <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Color</span>
-          <input
-            type="color"
-            value={transition.color}
-            class="w-6 h-6 rounded cursor-pointer"
-            onInput={(e: Event) => {
-              const target = e.target as HTMLInputElement;
-              sequenceStore.updateTransition(selection.sequenceId, selection.type, { color: target.value });
+      {/* Line 1: Duration + Curve */}
+      <div class="flex items-center gap-1">
+        <div class="flex-1">
+          <NumericInput
+            label="Duration"
+            value={transition.duration}
+            min={1}
+            max={maxDuration}
+            step={1}
+            onChange={(v: number) => {
+              sequenceStore.updateTransition(selection.sequenceId, selection.type, { duration: v });
             }}
           />
         </div>
-      )}
-
-      {/* Row 4: Curve dropdown (per D-25) */}
-      <div class="flex items-center gap-1">
-        <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Curve</span>
         <select
-          class="flex-1 text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-1 py-0.5"
+          class="text-[10px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-1 py-[3px] w-[72px]"
           value={transition.curve}
           onChange={(e: Event) => {
             const target = e.target as HTMLSelectElement;
@@ -112,15 +62,61 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
         </select>
       </div>
 
-      {/* Row 5: Remove Transition button */}
+      {/* Line 2: Mode toggle — fade-in/fade-out only */}
+      {!isCrossDissolve && (
+        <div class="flex items-center gap-1">
+          <span class="text-[10px] text-[var(--color-text-muted)] w-[34px] shrink-0">Mode</span>
+          <div class="flex gap-0.5 flex-1">
+            <button
+              class={`text-[10px] px-2 py-0.5 rounded flex-1 ${
+                transition.mode === 'transparency'
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)]'
+              }`}
+              onClick={() => {
+                sequenceStore.updateTransition(selection.sequenceId, selection.type, { mode: 'transparency' as FadeMode });
+              }}
+            >
+              Transparency
+            </button>
+            <button
+              class={`text-[10px] px-2 py-0.5 rounded flex-1 ${
+                transition.mode === 'solid'
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)]'
+              }`}
+              onClick={() => {
+                sequenceStore.updateTransition(selection.sequenceId, selection.type, { mode: 'solid' as FadeMode });
+              }}
+            >
+              Solid
+            </button>
+          </div>
+          {transition.mode === 'solid' && (
+            <input
+              type="color"
+              value={transition.color}
+              class="w-5 h-5 rounded cursor-pointer shrink-0"
+              onInput={(e: Event) => {
+                const target = e.target as HTMLInputElement;
+                sequenceStore.updateTransition(selection.sequenceId, selection.type, { color: target.value });
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Line 3: Remove button */}
       <button
-        class="text-[10px] text-[var(--color-error-text)] hover:bg-[var(--color-error-bg)] rounded px-2 py-1 text-left mt-1"
+        class="flex items-center gap-1 text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-error-text)] rounded px-1 py-0.5 self-start"
         onClick={() => {
           sequenceStore.removeTransition(selection.sequenceId, selection.type);
           uiStore.selectTransition(null);
         }}
+        title="Remove transition"
       >
-        Remove Transition
+        <Trash2 size={11} />
+        Remove
       </button>
     </div>
   );

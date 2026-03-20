@@ -47,6 +47,13 @@ export function LeftPanel() {
   // Transition selection state
   const transitionSel = uiStore.selectedTransition.value;
 
+  // Fallback: when no layer selected, show active content sequence's base layer
+  const activeSeqId = sequenceStore.activeSequenceId.value;
+  const activeSeq = activeSeqId ? sequences.find(s => s.id === activeSeqId) : null;
+  const fallbackLayer = (!selectedLayer && !transitionSel && activeSeq?.kind === 'content')
+    ? activeSeq.layers.find(l => l.isBase) ?? null
+    : null;
+
   // Track container height for px-to-flex conversion
   const containerRef = useRef<HTMLDivElement>(null);
   const containerHeight = useRef(0);
@@ -243,6 +250,11 @@ export function LeftPanel() {
           {!transitionSel && selectedLayer && !isFx && (
             <SidebarScrollArea>
               <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
+            </SidebarScrollArea>
+          )}
+          {!transitionSel && !selectedLayer && fallbackLayer && (
+            <SidebarScrollArea>
+              <SidebarProperties layer={fallbackLayer} isContentOverlay={false} />
             </SidebarScrollArea>
           )}
         </CollapsibleSection>
