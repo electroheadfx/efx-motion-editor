@@ -34,9 +34,9 @@ function shouldSuppressShortcut(event: KeyboardEvent): boolean {
   return false;
 }
 
-// --- Internal handler functions ---
+// --- Exported handler functions (called by menu event listeners in main.tsx) ---
 
-async function handleSave(): Promise<void> {
+export async function handleSave(): Promise<void> {
   if (projectStore.isSaving.value) return;
 
   if (!projectStore.filePath.value) {
@@ -61,13 +61,13 @@ async function handleSave(): Promise<void> {
   }
 }
 
-async function handleNewProject(): Promise<void> {
+export async function handleNewProject(): Promise<void> {
   const guard = await guardUnsavedChanges();
   if (guard === 'cancelled') return;
   uiStore.showNewProjectDialog.value = true;
 }
 
-async function handleOpenProject(): Promise<void> {
+export async function handleOpenProject(): Promise<void> {
   const guard = await guardUnsavedChanges();
   if (guard === 'cancelled') return;
 
@@ -82,6 +82,12 @@ async function handleOpenProject(): Promise<void> {
       console.error('Failed to open project:', err);
     }
   }
+}
+
+export async function handleCloseProject(): Promise<void> {
+  const guard = await guardUnsavedChanges();
+  if (guard === 'cancelled') return;
+  projectStore.closeProject();
 }
 
 function handleDelete(): void {
@@ -286,24 +292,14 @@ export function mountShortcuts(): () => void {
       }
     },
 
-    // File operations (KEY-05)
-    '$mod+KeyS': (e: KeyboardEvent) => {
+    // File operations — Cmd+N/O/S are handled by native macOS File menu accelerators
+    // (same pattern as Cmd+Z/Shift+Z handled by Edit menu, not tinykeys).
+    // Cmd+W is a fallback for non-macOS platforms where the native menu may not intercept.
+    '$mod+KeyW': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       if (isFullscreen.peek()) return;
       e.preventDefault();
-      handleSave();
-    },
-    '$mod+KeyN': (e: KeyboardEvent) => {
-      if (shouldSuppressShortcut(e)) return;
-      if (isFullscreen.peek()) return;
-      e.preventDefault();
-      handleNewProject();
-    },
-    '$mod+KeyO': (e: KeyboardEvent) => {
-      if (shouldSuppressShortcut(e)) return;
-      if (isFullscreen.peek()) return;
-      e.preventDefault();
-      handleOpenProject();
+      handleCloseProject();
     },
 
     // Delete (KEY-06)

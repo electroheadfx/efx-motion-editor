@@ -6,7 +6,7 @@ import {App} from './app';
 import {initTempProjectDir} from './lib/projectDir';
 import {startAutoSave} from './lib/autoSave';
 import {guardUnsavedChanges} from './lib/unsavedGuard';
-import {mountShortcuts} from './lib/shortcuts';
+import {mountShortcuts, handleSave, handleNewProject, handleOpenProject, handleCloseProject} from './lib/shortcuts';
 import {undo, redo} from './lib/history';
 import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
@@ -47,6 +47,15 @@ initTempProjectDir().then(async () => {
     }
   });
   listen('menu:fit-to-window', () => { canvasStore.fitToWindow(); });
+
+  // Listen for File menu events emitted by the native macOS File menu.
+  // On macOS, Cmd+N/O/S/W are intercepted by the native menu accelerators
+  // before keydown reaches the webview, so these listeners are the sole path
+  // for file operations on that platform (same pattern as Edit > Undo/Redo).
+  listen('menu:new-project', () => { handleNewProject(); });
+  listen('menu:open-project', () => { handleOpenProject(); });
+  listen('menu:save-project', () => { handleSave(); });
+  listen('menu:close-project', () => { handleCloseProject(); });
 
   // Guard window close: show unsaved-changes dialog and prevent close on Cancel
   getCurrentWindow().onCloseRequested(async (event) => {
