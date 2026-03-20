@@ -1,5 +1,6 @@
 import { applyEasing } from './keyframeEngine';
 import type { Transition } from '../types/sequence';
+import type { EasingType } from '../types/layer';
 
 /**
  * Compute the content opacity at a given local frame, considering optional
@@ -52,4 +53,23 @@ export function computeSolidFadeAlpha(
   fadeOut: Transition | undefined,
 ): number {
   return 1.0 - computeFadeOpacity(localFrame, totalFrames, fadeIn, fadeOut);
+}
+
+/**
+ * Compute the cross dissolve opacity pair for a given global frame.
+ * Returns [outgoingOpacity, incomingOpacity] where both sum to ~1.0.
+ * outgoingOpacity: opacity of the sequence that's fading out (1.0 -> 0.0)
+ * incomingOpacity: opacity of the sequence that's fading in (0.0 -> 1.0)
+ */
+export function computeCrossDissolveOpacity(
+  globalFrame: number,
+  overlapStart: number,
+  overlapDuration: number,
+  curve: EasingType,
+): [outgoingOpacity: number, incomingOpacity: number] {
+  if (overlapDuration <= 0) return [1, 0];
+  const framesIntoOverlap = globalFrame - overlapStart;
+  const t = Math.max(0, Math.min(1, framesIntoOverlap / overlapDuration));
+  const eased = applyEasing(t, curve);
+  return [1 - eased, eased];
 }

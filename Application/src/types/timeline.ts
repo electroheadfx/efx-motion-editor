@@ -25,6 +25,7 @@ export interface TrackLayout {
   keyPhotoRanges: KeyPhotoRange[];
   fadeIn?: { duration: number };
   fadeOut?: { duration: number };
+  crossDissolve?: { duration: number };
 }
 
 /** Layout info for an FX or content-overlay sequence range bar in the timeline */
