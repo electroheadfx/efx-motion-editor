@@ -3,8 +3,9 @@ import {timelineStore} from '../stores/timelineStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {uiStore} from '../stores/uiStore';
 import {projectStore} from '../stores/projectStore';
-import {totalFrames, frameMap} from './frameMap';
+import {totalFrames, frameMap, trackLayouts} from './frameMap';
 import {shuttleDirection, shuttleSpeed, resetShuttle} from './jklShuttle';
+import {isolationStore} from '../stores/isolationStore';
 
 export const isFullSpeed = signal(false);
 
@@ -33,6 +34,20 @@ export class PlaybackEngine {
     if (this.rafId !== null) return; // already running
     this.lastTime = performance.now();
     this.accumulator = 0;
+
+    // When isolation active, ensure playhead starts on an isolated frame
+    const isolatedIds = isolationStore.isolatedSequenceIds.peek();
+    if (isolatedIds.size > 0) {
+      const ranges = this.getIsolatedRanges(isolatedIds);
+      if (ranges.length > 0) {
+        const cf = timelineStore.currentFrame.peek();
+        const inRange = ranges.some(r => cf >= r.start && cf < r.end);
+        if (!inRange) {
+          timelineStore.seek(ranges[0].start);
+        }
+      }
+    }
+
     // Deselect sidebar sequence during playback to avoid expensive re-renders
     uiStore.selectSequence(null);
     timelineStore.setPlaying(true);
@@ -115,6 +130,55 @@ export class PlaybackEngine {
     }
   }
 
+  /** Compute sorted frame ranges for isolated sequences from trackLayouts */
+  private getIsolatedRanges(isolatedIds: Set<string>): Array<{ start: number; end: number }> {
+    const tracks = trackLayouts.peek();
+    return tracks
+      .filter(t => isolatedIds.has(t.sequenceId))
+      .map(t => ({ start: t.startFrame, end: t.endFrame }))
+      .sort((a, b) => a.start - b.start);
+  }
+
+  /** Find the next frame in isolated ranges given current frame, or -1 if past end */
+  private nextIsolatedFrame(frame: number, ranges: Array<{ start: number; end: number }>): number {
+    for (const r of ranges) {
+      if (frame >= r.start && frame < r.end - 1) {
+        return frame + 1;
+      }
+      if (frame === r.end - 1) {
+        // At end of this range -- find next range
+        const nextRange = ranges.find(nr => nr.start > frame);
+        if (nextRange) return nextRange.start;
+        return -1; // past all ranges
+      }
+    }
+    // Frame is in a gap -- find next range start
+    const nextRange = ranges.find(r => r.start > frame);
+    if (nextRange) return nextRange.start;
+    return -1;
+  }
+
+  /** Find the previous frame in isolated ranges given current frame, or -1 if before start */
+  private prevIsolatedFrame(frame: number, ranges: Array<{ start: number; end: number }>): number {
+    for (let i = ranges.length - 1; i >= 0; i--) {
+      const r = ranges[i];
+      if (frame > r.start && frame < r.end) {
+        return frame - 1;
+      }
+      if (frame === r.start) {
+        // At start of this range -- find previous range end
+        const prevRange = i > 0 ? ranges[i - 1] : null;
+        if (prevRange) return prevRange.end - 1;
+        return -1; // before all ranges
+      }
+    }
+    // Frame is in a gap -- find previous range end
+    for (let i = ranges.length - 1; i >= 0; i--) {
+      if (ranges[i].end <= frame) return ranges[i].end - 1;
+    }
+    return -1;
+  }
+
   private tick = (now: number) => {
     const fps = projectStore.fps.peek();
     const speed = shuttleSpeed.peek();
@@ -125,24 +189,73 @@ export class PlaybackEngine {
     this.accumulator += delta;
 
     const maxFrames = totalFrames.peek();
+    const isolatedIds = isolationStore.isolatedSequenceIds.peek();
+    const hasIsolation = isolatedIds.size > 0;
+    const isLooping = isolationStore.loopEnabled.peek();
 
     while (this.accumulator >= frameDuration) {
       this.accumulator -= frameDuration;
       const currentFrame = timelineStore.currentFrame.peek();
 
-      if (direction > 0) {
-        // Forward playback
-        if (currentFrame >= maxFrames - 1) {
-          timelineStore.seek(0); // auto-loop to start
+      if (hasIsolation) {
+        const ranges = this.getIsolatedRanges(isolatedIds);
+        if (ranges.length === 0) break; // No valid ranges, stop consuming accumulator
+
+        if (direction > 0) {
+          const next = this.nextIsolatedFrame(currentFrame, ranges);
+          if (next === -1) {
+            // Past all isolated ranges
+            if (isLooping) {
+              timelineStore.seek(ranges[0].start);
+            } else {
+              timelineStore.seek(ranges[0].start);
+              timelineStore.syncDisplayFrame();
+              this.stop();
+              return; // Don't schedule next rAF
+            }
+          } else {
+            timelineStore.seek(next);
+          }
         } else {
-          timelineStore.stepForward();
+          const prev = this.prevIsolatedFrame(currentFrame, ranges);
+          if (prev === -1) {
+            // Before all isolated ranges
+            if (isLooping) {
+              timelineStore.seek(ranges[ranges.length - 1].end - 1);
+            } else {
+              timelineStore.seek(ranges[0].start);
+              timelineStore.syncDisplayFrame();
+              this.stop();
+              return; // Don't schedule next rAF
+            }
+          } else {
+            timelineStore.seek(prev);
+          }
         }
       } else {
-        // Reverse playback
-        if (currentFrame <= 0) {
-          timelineStore.seek(maxFrames - 1); // auto-loop to end
+        // Normal playback (no isolation)
+        if (direction > 0) {
+          if (currentFrame >= maxFrames - 1) {
+            if (isLooping) {
+              timelineStore.seek(0);
+            } else {
+              this.stop();
+              return; // Don't schedule next rAF
+            }
+          } else {
+            timelineStore.stepForward();
+          }
         } else {
-          timelineStore.stepBackward();
+          if (currentFrame <= 0) {
+            if (isLooping) {
+              timelineStore.seek(maxFrames - 1);
+            } else {
+              this.stop();
+              return; // Don't schedule next rAF
+            }
+          } else {
+            timelineStore.stepBackward();
+          }
         }
       }
     }
