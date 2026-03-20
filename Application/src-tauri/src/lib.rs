@@ -45,6 +45,39 @@ pub fn run() {
             let redo_item =
                 MenuItem::with_id(app, "redo", "Redo", true, Some("CmdOrCtrl+Shift+Z"))?;
 
+            // File submenu with project operations that emit events to frontend.
+            // These menu items use native accelerators (CmdOrCtrl+N/O/S/W) which
+            // intercept keydown at the Cocoa layer before reaching the webview.
+            // The corresponding tinykeys bindings are removed from shortcuts.ts
+            // since these menu accelerators handle them instead.
+            let new_project_item =
+                MenuItem::with_id(app, "new-project", "New Project", true, Some("CmdOrCtrl+N"))?;
+            let open_project_item = MenuItem::with_id(
+                app,
+                "open-project",
+                "Open Project...",
+                true,
+                Some("CmdOrCtrl+O"),
+            )?;
+            let save_project_item =
+                MenuItem::with_id(app, "save-project", "Save", true, Some("CmdOrCtrl+S"))?;
+            let close_project_item = MenuItem::with_id(
+                app,
+                "close-project",
+                "Close Project",
+                true,
+                Some("CmdOrCtrl+W"),
+            )?;
+
+            let file_submenu = SubmenuBuilder::new(app, "File")
+                .item(&new_project_item)
+                .item(&open_project_item)
+                .separator()
+                .item(&save_project_item)
+                .separator()
+                .item(&close_project_item)
+                .build()?;
+
             let edit_submenu = SubmenuBuilder::new(app, "Edit")
                 .item(&undo_item)
                 .item(&redo_item)
@@ -79,6 +112,7 @@ pub fn run() {
 
             let menu = MenuBuilder::new(app)
                 .item(&app_submenu)
+                .item(&file_submenu)
                 .item(&edit_submenu)
                 .item(&view_submenu)
                 .build()?;
@@ -88,7 +122,15 @@ pub fn run() {
             // Wire menu events: emit undo/redo to frontend instead of native handling
             let handle = app.handle().clone();
             app.on_menu_event(move |_app_handle, event| {
-                if event.id() == "undo" {
+                if event.id() == "new-project" {
+                    handle.emit("menu:new-project", ()).ok();
+                } else if event.id() == "open-project" {
+                    handle.emit("menu:open-project", ()).ok();
+                } else if event.id() == "save-project" {
+                    handle.emit("menu:save-project", ()).ok();
+                } else if event.id() == "close-project" {
+                    handle.emit("menu:close-project", ()).ok();
+                } else if event.id() == "undo" {
                     handle.emit("menu:undo", ()).ok();
                 } else if event.id() == "redo" {
                     handle.emit("menu:redo", ()).ok();
