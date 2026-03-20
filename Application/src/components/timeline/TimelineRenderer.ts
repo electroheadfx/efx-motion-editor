@@ -494,14 +494,14 @@ export class TimelineRenderer {
       const isIsolated = state.isolatedSequenceIds?.has(track.sequenceId) ?? false;
       const isNameHovered = state.hoveredNameLabelSequenceId === track.sequenceId;
 
-      // Isolation overlay: transparent light blue/cyan over isolated sequence thumbnails
+      // Isolation overlay: transparent orange over isolated sequence thumbnails
       if (isIsolated) {
         const isoSegX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
         const isoSegW = (track.endFrame - track.startFrame) * frameWidth;
         const clippedIsoX = Math.max(isoSegX, TRACK_HEADER_WIDTH);
         const clippedIsoW = Math.min(isoSegX + isoSegW, w) - clippedIsoX;
         if (clippedIsoW > 0) {
-          ctx.fillStyle = 'rgba(80, 180, 220, 0.5)';
+          ctx.fillStyle = 'rgba(229, 132, 27, 0.5)';
           ctx.fillRect(clippedIsoX, trackY, clippedIsoW, TRACK_HEIGHT);
         }
       }
@@ -521,9 +521,9 @@ export class TimelineRenderer {
           const textW = ctx.measureText(name).width;
           const bgPad = 4;
 
-          // Background: blue if isolated or hovered, black semi-transparent otherwise
+          // Background: orange if isolated or hovered, black semi-transparent otherwise
           if (isIsolated || isNameHovered) {
-            ctx.fillStyle = '#2563EB';
+            ctx.fillStyle = '#E5841B';
           } else {
             ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
           }
