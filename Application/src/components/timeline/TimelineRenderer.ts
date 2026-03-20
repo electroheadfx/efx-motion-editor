@@ -552,21 +552,7 @@ export class TimelineRenderer {
         this.drawTransitionOverlay(ctx, fadeX, fadeW, trackY, TRACK_HEIGHT, 'fade-out', isFadeSelected);
       }
 
-      // Draw cross dissolve overlays (per D-08, D-09, D-15)
-      // Cross dissolve is centered on the boundary between two sequences
-      if (track.crossDissolve && ti < tracks.length - 1) {
-        const cd = track.crossDissolve;
-        const halfDuration = Math.floor(cd.duration / 2);
-        const boundary = track.endFrame;
-        const cdStartFrame = boundary - halfDuration;
-        const cdX = cdStartFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
-        const cdW = cd.duration * frameWidth;
-
-        const isCdSelected = state.selectedTransition?.sequenceId === track.sequenceId
-          && state.selectedTransition?.type === 'cross-dissolve';
-
-        this.drawTransitionOverlay(ctx, cdX, cdW, trackY, TRACK_HEIGHT, 'cross-dissolve', isCdSelected);
-      }
+      // (Cross dissolve overlays drawn in separate pass below — after all track thumbnails)
 
       // Sequence boundary separator (pink marker between sequences)
       if (ti > 0) {
@@ -623,6 +609,24 @@ export class TimelineRenderer {
           ctx.fillStyle = isIsolated || isNameHovered ? '#FFFFFF' : '#EEEEEE';
           ctx.fillText(name, clippedX + leftPad, labelY + labelH / 2);
         }
+      }
+    }
+
+    // Cross dissolve overlays — drawn AFTER all tracks so they aren't covered by next track's thumbnails
+    for (let ti = 0; ti < tracks.length; ti++) {
+      const track = tracks[ti];
+      if (track.crossDissolve && ti < tracks.length - 1) {
+        const cd = track.crossDissolve;
+        const halfDuration = Math.floor(cd.duration / 2);
+        const boundary = track.endFrame;
+        const cdStartFrame = boundary - halfDuration;
+        const cdX = cdStartFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const cdW = cd.duration * frameWidth;
+
+        const isCdSelected = state.selectedTransition?.sequenceId === track.sequenceId
+          && state.selectedTransition?.type === 'cross-dissolve';
+
+        this.drawTransitionOverlay(ctx, cdX, cdW, trackY, TRACK_HEIGHT, 'cross-dissolve', isCdSelected);
       }
     }
 
