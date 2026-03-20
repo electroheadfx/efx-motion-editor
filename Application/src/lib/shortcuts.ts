@@ -293,16 +293,6 @@ export function mountShortcuts(): () => void {
       }
     },
 
-    // File operations — Cmd+N/O/S are handled by native macOS File menu accelerators
-    // (same pattern as Cmd+Z/Shift+Z handled by Edit menu, not tinykeys).
-    // Cmd+W is a fallback for non-macOS platforms where the native menu may not intercept.
-    '$mod+KeyW': (e: KeyboardEvent) => {
-      if (shouldSuppressShortcut(e)) return;
-      if (isFullscreen.peek()) return;
-      e.preventDefault();
-      handleCloseProject();
-    },
-
     // Delete (KEY-06)
     'Backspace': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;

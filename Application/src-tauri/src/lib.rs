@@ -66,7 +66,7 @@ pub fn run() {
                 "close-project",
                 "Close Project",
                 true,
-                Some("CmdOrCtrl+W"),
+                None::<&str>,
             )?;
 
             let file_submenu = SubmenuBuilder::new(app, "File")

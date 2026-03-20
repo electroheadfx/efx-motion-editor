@@ -8,7 +8,6 @@ import {startAutoSave} from './lib/autoSave';
 import {mountShortcuts, handleSave, handleNewProject, handleOpenProject, handleCloseProject} from './lib/shortcuts';
 import {undo, redo} from './lib/history';
 import {canvasStore} from './stores/canvasStore';
-import {projectStore} from './stores/projectStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 
@@ -56,29 +55,14 @@ initTempProjectDir().then(async () => {
   listen('menu:open-project', () => { handleOpenProject(); });
   listen('menu:save-project', () => { handleSave(); });
 
-  // Close Project: On macOS, Cmd+W fires BOTH the menu accelerator event AND
-  // performClose: (window close). We use a flag to prevent double-handling.
-  // The menu event closes the project; onCloseRequested is suppressed.
-  let closingProject = false;
-  listen('menu:close-project', async () => {
-    if (closingProject) return;
-    closingProject = true;
-    await handleCloseProject();
-    closingProject = false;
-  });
+  listen('menu:close-project', () => { handleCloseProject(); });
 
-  // Guard window close (red X button, or macOS performClose: from Cmd+W).
-  // Always prevent close — either close the project or destroy the window.
+  // Guard window close: show unsaved-changes dialog and prevent close on Cancel
   getCurrentWindow().onCloseRequested(async (event) => {
-    event.preventDefault();
-    if (closingProject) return; // Already handled by menu:close-project
-    if (projectStore.dirPath.value !== null) {
-      closingProject = true;
-      await handleCloseProject();
-      closingProject = false;
-    } else {
-      // On welcome screen — actually close the window
-      getCurrentWindow().destroy();
+    const { guardUnsavedChanges } = await import('./lib/unsavedGuard');
+    const result = await guardUnsavedChanges();
+    if (result === 'cancelled') {
+      event.preventDefault();
     }
   });
 });
