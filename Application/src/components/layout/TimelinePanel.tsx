@@ -1,7 +1,8 @@
-import {useRef, useCallback} from 'preact/hooks';
-import {Play, Pause, SkipBack, SkipForward, Rewind, Plus, Minus, Shrink} from 'lucide-preact';
+import {useRef, useCallback, useEffect} from 'preact/hooks';
+import {Play, Pause, SkipBack, SkipForward, Rewind, Plus, Minus, Shrink, Repeat, Repeat1} from 'lucide-preact';
 import {timelineStore} from '../../stores/timelineStore';
 import {uiStore} from '../../stores/uiStore';
+import {isolationStore} from '../../stores/isolationStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {TimelineCanvas} from '../timeline/TimelineCanvas';
 import {TimelineScrollbar} from '../timeline/TimelineScrollbar';
@@ -10,6 +11,10 @@ import {BASE_FRAME_WIDTH} from '../timeline/TimelineRenderer';
 
 export function TimelinePanel() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    isolationStore.loadLoopPreference();
+  }, []);
 
   const handleFitAll = useCallback(() => {
     const container = canvasContainerRef.current;
@@ -64,6 +69,19 @@ export function TimelinePanel() {
           title="Step forward"
         >
           <SkipForward size={14} />
+        </button>
+
+        {/* Loop toggle */}
+        <button
+          class={`rounded px-2 py-[5px] ${
+            isolationStore.loopEnabled.value
+              ? 'bg-[var(--color-accent)] text-white'
+              : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)]'
+          }`}
+          onClick={() => isolationStore.toggleLoop()}
+          title={isolationStore.loopEnabled.value ? 'Loop: ON (L)' : 'Loop: OFF (L)'}
+        >
+          {isolationStore.loopEnabled.value ? <Repeat1 size={14} /> : <Repeat size={14} />}
         </button>
 
         <div class="w-px h-5 bg-[var(--color-border-subtle)]" />

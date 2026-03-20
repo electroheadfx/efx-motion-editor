@@ -3,6 +3,7 @@ import {createPortal} from 'preact/compat';
 import Sortable from 'sortablejs';
 import {GripVertical, Ellipsis, Clapperboard} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {isolationStore} from '../../stores/isolationStore';
 import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
 import {imageStore} from '../../stores/imageStore';
@@ -73,6 +74,7 @@ interface SequenceItemProps {
 }
 
 function SequenceItem({seq, isActive}: SequenceItemProps) {
+  const isIsolated = isolationStore.isolatedSequenceIds.value.has(seq.id);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({top: 0, left: 0});
   const [editing, setEditing] = useState(false);
@@ -227,9 +229,22 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
         onClick={handleSelect}
         onContextMenu={handleContextMenu}
       >
-        {/* Left accent bar (only when active) */}
+        {/* Left accent bar (only when active) — click to toggle isolation */}
         {isActive && (
-          <div class="shrink-0" style={{width: '4px', height: '24px', borderRadius: '2px', backgroundColor: 'var(--sidebar-accent-bar)'}} />
+          <div
+            class="shrink-0 cursor-pointer"
+            style={{
+              width: '4px',
+              height: '24px',
+              borderRadius: '2px',
+              backgroundColor: isIsolated ? '#E5841B' : 'var(--sidebar-accent-bar)',
+            }}
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation();
+              isolationStore.toggleIsolation(seq.id);
+            }}
+            title={isIsolated ? 'Remove from isolation' : 'Isolate sequence'}
+          />
         )}
 
         {/* Drag handle */}
