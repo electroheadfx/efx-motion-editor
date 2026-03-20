@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 13-02-PLAN.md
-last_updated: "2026-03-20T19:35:43.464Z"
+stopped_at: Completed 13-04-PLAN.md
+last_updated: "2026-03-20T19:47:39.998Z"
 progress:
   total_phases: 26
   completed_phases: 21
   total_plans: 61
-  completed_plans: 59
+  completed_plans: 60
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: 13 (sequence-fade-in-out) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 
 ## Accumulated Context
 
@@ -100,6 +100,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 13]: Product rule for overlapping fadeIn/fadeOut (multiply opacities); reuse applyEasing from keyframeEngine; mutual exclusion between selectedTransition and selectedLayerId
 - [Phase 13-sequence-fade-in-out]: sequenceOpacity parameter multiplied into per-layer globalAlpha rather than offscreen canvas compositing (simpler, more performant)
 - [Phase 13]: Transition overlays drawn after thumbnails before pink boundaries (z-order); hit test priority: keyframes > transitions > name labels > sequences
+- [Phase 13]: Outgoing sequence owns frameMap slots during cross dissolve overlap; incoming head frames skipped (D-14 timeline shortening)
+- [Phase 13]: Preview reactive render effect refactored to delegate to renderFromFrameMap (eliminates duplication, ensures cross dissolve works in both scrub and playback)
 
 ### Pending Todos
 
@@ -179,6 +181,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-20T19:35:43.460Z
-Stopped at: Completed 13-02-PLAN.md
+Last session: 2026-03-20T19:47:39.994Z
+Stopped at: Completed 13-04-PLAN.md
 Resume file: None

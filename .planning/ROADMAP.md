@@ -396,7 +396,7 @@ Plans:
 - [x] 13-01-PLAN.md -- Data model, transition engine, store methods, .mce v7 persistence
 - [x] 13-02-PLAN.md -- Timeline rendering: transition overlays, hit testing, selection
 - [x] 13-03-PLAN.md -- Preview compositing with fade opacity, sidebar TransitionProperties
-- [ ] 13-04-PLAN.md -- Cross dissolve: engine, frameMap overlap, dual-render, timeline
+- [x] 13-04-PLAN.md -- Cross dissolve: engine, frameMap overlap, dual-render, timeline
 - [ ] 13-05-PLAN.md -- End-to-end visual verification checkpoint
 
 ### Phase 14: Cross-Sequence Transitions
@@ -475,7 +475,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.12. New Content Layer for Timeline | 4/4 | Complete    | 2026-03-19 | - |
 | 12.13. Linear Timeline | 2/2 | Complete    | 2026-03-19 | - |
 | 12.14. Timeline/Canvas Buttons Enhancements | 2/2 | Complete    | 2026-03-19 | - |
-| 13. Sequence Fade In/Out | v0.2.0 | 3/5 | In Progress|  |
+| 13. Sequence Fade In/Out | v0.2.0 | 4/5 | In Progress|  |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
 | 16. Beat Sync | v0.2.0 | 0/0 | Planned | - |
