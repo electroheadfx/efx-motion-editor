@@ -334,7 +334,7 @@ export class TimelineInteraction {
     const scrollY = this.renderer.getScrollY();
     const contentTrackY = this.renderer.getContentTrackY() - scrollY;
     const barTop = contentTrackY + 2;
-    const barH = Math.round(TRACK_HEIGHT * 0.2);
+    const barH = Math.round(TRACK_HEIGHT * 0.3);
 
     // Check content tracks (transition bar is at top 20% of track)
     if (localY >= barTop && localY <= barTop + barH) {

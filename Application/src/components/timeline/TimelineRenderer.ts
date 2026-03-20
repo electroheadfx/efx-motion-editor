@@ -251,7 +251,7 @@ export class TimelineRenderer {
     ctx.save();
 
     const barY = trackY + 2;
-    const barH = Math.round(trackH * 0.2);
+    const barH = Math.round(trackH * 0.3);
 
     // Purple solid fill at 50% opacity (brighter when selected)
     ctx.fillStyle = isSelected ? 'rgba(139, 92, 246, 0.7)' : 'rgba(139, 92, 246, 0.5)';

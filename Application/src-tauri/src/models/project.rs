@@ -47,6 +47,26 @@ pub struct MceSequence {
     /// FX sequence visibility (None = visible)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<bool>,
+    /// Fade-in transition
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade_in: Option<MceTransition>,
+    /// Fade-out transition
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade_out: Option<MceTransition>,
+    /// Cross dissolve transition to next sequence
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cross_dissolve: Option<MceTransition>,
+}
+
+/// Transition definition within a sequence
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceTransition {
+    #[serde(rename = "type")]
+    pub transition_type: String,
+    pub duration: u32,
+    pub mode: String,
+    pub color: String,
+    pub curve: String,
 }
 
 /// Layer definition within a sequence
