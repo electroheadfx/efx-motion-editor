@@ -126,7 +126,7 @@ Plans:
 **Goal:** Multi-select sequence isolation (solo/mute) for playback with global loop toggle -- users can toggle individual sequences into an isolation set from timeline name labels and sidebar accent bar, playback skips non-isolated sequences, loop toggle persisted to app config
 **Requirements**: ISO-01, ISO-02, ISO-03, ISO-04, ISO-05, ISO-06, ISO-07, ISO-08, ISO-09, ISO-10
 **Depends on:** Phase 12
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 12.15-01-PLAN.md -- Isolation store, Tauri IPC loop persistence, isolation-aware playback engine
