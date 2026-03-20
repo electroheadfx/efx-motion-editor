@@ -3,6 +3,7 @@ import {open} from '@tauri-apps/plugin-dialog';
 import {pathExists} from '../../lib/ipc';
 import {getRecentProjects, removeRecentProject, updateRecentProjectPath, type RecentProject} from '../../lib/appConfig';
 import {projectStore} from '../../stores/projectStore';
+import {uiStore} from '../../stores/uiStore';
 import {NewProjectDialog} from './NewProjectDialog';
 
 interface RecentProjectEntry extends RecentProject {
@@ -131,7 +132,7 @@ export function WelcomeScreen() {
   const [recentProjects, setRecentProjects] = useState<RecentProjectEntry[]>(
     [],
   );
-  const [showNewDialog, setShowNewDialog] = useState(false);
+  const showNewDialog = uiStore.showNewProjectDialog.value;
   const [isOpening, setIsOpening] = useState(false);
 
   // Load recent projects on mount, validate existence
@@ -232,7 +233,7 @@ export function WelcomeScreen() {
         {/* New Project Button */}
         <button
           class="flex items-center justify-center gap-2.5 w-[340px] h-[52px] rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] transition-colors px-5"
-          onClick={() => setShowNewDialog(true)}
+          onClick={() => { uiStore.showNewProjectDialog.value = true; }}
         >
           <svg
             width="20"
@@ -368,7 +369,7 @@ export function WelcomeScreen() {
 
       {/* New Project Dialog */}
       {showNewDialog && (
-        <NewProjectDialog onClose={() => setShowNewDialog(false)} />
+        <NewProjectDialog onClose={() => { uiStore.showNewProjectDialog.value = false; }} />
       )}
     </div>
   );

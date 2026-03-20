@@ -5,10 +5,10 @@ import {listen} from '@tauri-apps/api/event';
 import {App} from './app';
 import {initTempProjectDir} from './lib/projectDir';
 import {startAutoSave} from './lib/autoSave';
-import {guardUnsavedChanges} from './lib/unsavedGuard';
 import {mountShortcuts, handleSave, handleNewProject, handleOpenProject, handleCloseProject} from './lib/shortcuts';
 import {undo, redo} from './lib/history';
 import {canvasStore} from './stores/canvasStore';
+import {projectStore} from './stores/projectStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 
@@ -57,11 +57,15 @@ initTempProjectDir().then(async () => {
   listen('menu:save-project', () => { handleSave(); });
   listen('menu:close-project', () => { handleCloseProject(); });
 
-  // Guard window close: show unsaved-changes dialog and prevent close on Cancel
+  // Guard window close:
+  // - If a project is open, Cmd+W closes the project (back to welcome screen) instead of closing the window
+  // - If on the welcome screen, allow the window to close normally
   getCurrentWindow().onCloseRequested(async (event) => {
-    const result = await guardUnsavedChanges();
-    if (result === 'cancelled') {
+    if (projectStore.dirPath.value !== null) {
+      // Project is open — close project, don't close window
       event.preventDefault();
+      handleCloseProject();
     }
+    // On welcome screen — allow window to close (Cmd+Q or red button)
   });
 });
