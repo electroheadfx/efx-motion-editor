@@ -75,6 +75,7 @@ export class PreviewRenderer {
     frames: FrameEntry[],
     fps: number,
     clearCanvas = true,
+    sequenceOpacity = 1.0,
   ): void {
     // Sync canvas internal resolution to layout size (excludes CSS transforms like zoom)
     const logicalW = this.canvas.clientWidth || this.canvas.offsetWidth;
@@ -131,6 +132,9 @@ export class PreviewRenderer {
     for (const layer of layers) {
       if (!layer.visible) continue;
 
+      // Effective opacity: layer opacity * sequence-level fade opacity
+      const effectiveOpacity = layer.opacity * sequenceOpacity;
+
       if (isGeneratorLayer(layer)) {
         const blurRadius = layer.blur ?? 0;
         if (blurRadius > 0 && !blurStore.isBypassed()) {
@@ -163,12 +167,12 @@ export class PreviewRenderer {
             // Composite blurred offscreen onto main canvas
             ctx.save();
             ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-            ctx.globalAlpha = layer.opacity;
+            ctx.globalAlpha = effectiveOpacity;
             ctx.drawImage(off.canvas, 0, 0, logicalW, logicalH);
             ctx.restore();
           }
         } else {
-          this.drawGeneratorLayer(layer, logicalW, logicalH, frame);
+          this.drawGeneratorLayer(layer, logicalW, logicalH, frame, sequenceOpacity);
         }
       } else if (isAdjustmentLayer(layer)) {
         this.drawAdjustmentLayer(layer, logicalW, logicalH);
@@ -191,23 +195,23 @@ export class PreviewRenderer {
               // Composite blurred offscreen onto main canvas
               ctx.save();
               ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-              ctx.globalAlpha = layer.opacity;
+              ctx.globalAlpha = effectiveOpacity;
               ctx.drawImage(off.canvas, 0, 0, logicalW, logicalH);
               ctx.restore();
             }
           } else {
-            this.drawLayer(source, layer, logicalW, logicalH);
+            this.drawLayer(source, layer, logicalW, logicalH, sequenceOpacity);
           }
         } else if (layer.source.type === 'video') {
           // Draw loading placeholder for video layers not ready yet
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-          ctx.globalAlpha = layer.opacity * 0.5;
+          ctx.globalAlpha = effectiveOpacity * 0.5;
           ctx.fillStyle = '#333333';
           const pw = logicalW * 0.4;
           const ph = logicalH * 0.2;
           ctx.fillRect((logicalW - pw) / 2, (logicalH - ph) / 2, pw, ph);
-          ctx.globalAlpha = layer.opacity;
+          ctx.globalAlpha = effectiveOpacity;
           ctx.fillStyle = '#FFFFFF';
           ctx.font = '12px sans-serif';
           ctx.textAlign = 'center';
@@ -371,11 +375,12 @@ export class PreviewRenderer {
     logicalW: number,
     logicalH: number,
     frame: number,
+    sequenceOpacity = 1.0,
   ): void {
     const ctx = this.ctx;
     ctx.save();
     ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-    ctx.globalAlpha = layer.opacity;
+    ctx.globalAlpha = layer.opacity * sequenceOpacity;
 
     switch (layer.source.type) {
       case 'generator-grain':
@@ -589,6 +594,7 @@ export class PreviewRenderer {
     layer: Layer,
     canvasW: number,
     canvasH: number,
+    sequenceOpacity = 1.0,
   ): void {
     const ctx = this.ctx;
 
@@ -619,7 +625,7 @@ export class PreviewRenderer {
 
     // Set blend mode BEFORE drawing
     ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-    ctx.globalAlpha = layer.opacity;
+    ctx.globalAlpha = layer.opacity * sequenceOpacity;
 
     // Apply transform: translate to center + offset, rotate, scale
     ctx.translate(

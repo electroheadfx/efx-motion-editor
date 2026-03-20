@@ -6,6 +6,7 @@ import {blurStore} from '../stores/blurStore';
 import {frameMap} from '../lib/frameMap';
 import {PreviewRenderer} from '../lib/previewRenderer';
 import {interpolateAt} from '../lib/keyframeEngine';
+import {computeFadeOpacity, computeSolidFadeAlpha} from '../lib/transitionEngine';
 import {isFxLayer} from '../types/layer';
 import type {LayerSourceData} from '../types/layer';
 
@@ -65,9 +66,38 @@ export function Preview() {
         };
       });
 
-      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps);
+      // Compute fade opacity for this frame (per D-17, D-18)
+      const totalSeqFrames = seqFrames.length;
+      const fadeOpacity = computeFadeOpacity(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
+
+      // Determine which fade is active to check mode/color
+      const activeFadeIn = seq.fadeIn && localFrame < seq.fadeIn.duration ? seq.fadeIn : undefined;
+      const activeFadeOut = seq.fadeOut && localFrame >= totalSeqFrames - seq.fadeOut.duration ? seq.fadeOut : undefined;
+      const activeFade = activeFadeIn || activeFadeOut;
+      const isSolidMode = activeFade?.mode === 'solid';
+
+      if (isSolidMode) {
+        // Solid mode: render content at full opacity, then overlay solid color
+        renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps);
+        const solidAlpha = computeSolidFadeAlpha(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
+        if (solidAlpha > 0) {
+          const color = activeFade?.color ?? '#000000';
+          const cvs = canvasRef.current!;
+          const solidCtx = cvs.getContext('2d')!;
+          solidCtx.save();
+          solidCtx.setTransform(1, 0, 0, 1, 0, 0);  // physical pixel coords (per Pitfall 5)
+          solidCtx.globalAlpha = solidAlpha;
+          solidCtx.fillStyle = color;
+          solidCtx.fillRect(0, 0, cvs.width, cvs.height);
+          solidCtx.restore();
+        }
+      } else {
+        // Transparency mode: render content with reduced opacity via sequenceOpacity
+        renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity);
+      }
 
       // Composite overlay sequences (FX + content overlays): reverse order so top-of-timeline renders last
+      // Note: FX layers are NOT affected by content fade (per Pitfall 1)
       const overlaySeqs = allSeqs.filter(s => s.kind !== 'content' && s.visible !== false);
       for (let i = overlaySeqs.length - 1; i >= 0; i--) {
         const overlaySeq = overlaySeqs[i];
@@ -179,9 +209,38 @@ export function Preview() {
         };
       });
 
-      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps);
+      // Compute fade opacity for this frame (per D-17, D-18)
+      const totalSeqFrames = seqFrames.length;
+      const fadeOpacity = computeFadeOpacity(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
+
+      // Determine which fade is active to check mode/color
+      const activeFadeIn = seq.fadeIn && localFrame < seq.fadeIn.duration ? seq.fadeIn : undefined;
+      const activeFadeOut = seq.fadeOut && localFrame >= totalSeqFrames - seq.fadeOut.duration ? seq.fadeOut : undefined;
+      const activeFade = activeFadeIn || activeFadeOut;
+      const isSolidMode = activeFade?.mode === 'solid';
+
+      if (isSolidMode) {
+        // Solid mode: render content at full opacity, then overlay solid color
+        renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps);
+        const solidAlpha = computeSolidFadeAlpha(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
+        if (solidAlpha > 0) {
+          const color = activeFade?.color ?? '#000000';
+          const cvs = canvasRef.current!;
+          const solidCtx = cvs.getContext('2d')!;
+          solidCtx.save();
+          solidCtx.setTransform(1, 0, 0, 1, 0, 0);  // physical pixel coords (per Pitfall 5)
+          solidCtx.globalAlpha = solidAlpha;
+          solidCtx.fillStyle = color;
+          solidCtx.fillRect(0, 0, cvs.width, cvs.height);
+          solidCtx.restore();
+        }
+      } else {
+        // Transparency mode: render content with reduced opacity via sequenceOpacity
+        renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity);
+      }
 
       // Composite overlay sequences (FX + content overlays): reverse order so top-of-timeline renders last
+      // Note: FX layers are NOT affected by content fade (per Pitfall 1)
       const overlaySeqs = allSeqs.filter(s => s.kind !== 'content' && s.visible !== false);
       for (let i = overlaySeqs.length - 1; i >= 0; i--) {
         const overlaySeq = overlaySeqs[i];
