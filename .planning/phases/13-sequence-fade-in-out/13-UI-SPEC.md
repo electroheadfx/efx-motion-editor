@@ -302,6 +302,8 @@ Label: "Cross Dissolve", centered, 8px system-ui, rgba(255, 255, 255, 0.8)
 
 ### TransitionProperties Panel (when transition selected)
 
+**Primary visual anchor:** Duration row -- most frequently edited control; the NumericInput with scrub-on-label draws the eye and establishes the panel's purpose immediately.
+
 ```
 CollapsibleSection "TRANSITIONS"
   padding: 8px horizontal, 0 vertical (matches existing sidebar sections)
@@ -318,7 +320,7 @@ CollapsibleSection "TRANSITIONS"
       two-button toggle: [Transparency] [Solid Color]
         active: bg var(--color-accent), text #FFFFFF
         inactive: bg var(--color-bg-input), text var(--color-text-muted)
-        button size: text-[10px] px-1.5 py-[3px] rounded
+        button size: text-[10px] px-2 py-1 rounded
 
     Row 3: Color (visible only when mode = "Solid Color")
       label "Color" (10px, var(--color-text-muted))
