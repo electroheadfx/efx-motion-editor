@@ -378,10 +378,41 @@ export class PreviewRenderer {
     sequenceOpacity = 1.0,
   ): void {
     const ctx = this.ctx;
+    const effectiveOpacity = layer.opacity * sequenceOpacity;
+
+    // Generator functions set their own globalAlpha internally (e.g., drawLines sets 0.4).
+    // When sequenceOpacity < 1, render to offscreen canvas then composite with correct opacity.
+    if (sequenceOpacity < 1) {
+      const off = this.getBlurOffscreen(Math.round(logicalW), Math.round(logicalH));
+      if (off) {
+        off.ctx.clearRect(0, 0, off.canvas.width, off.canvas.height);
+        off.ctx.save();
+        this.drawGeneratorToCtx(off.ctx, layer, logicalW, logicalH, frame);
+        off.ctx.restore();
+        ctx.save();
+        ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+        ctx.globalAlpha = effectiveOpacity;
+        ctx.drawImage(off.canvas, 0, 0, logicalW, logicalH);
+        ctx.restore();
+      }
+      return;
+    }
+
     ctx.save();
     ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-    ctx.globalAlpha = layer.opacity * sequenceOpacity;
+    ctx.globalAlpha = effectiveOpacity;
+    this.drawGeneratorToCtx(ctx, layer, logicalW, logicalH, frame);
+    ctx.restore();
+  }
 
+  /** Draw generator content to a given context (shared by direct and offscreen paths) */
+  private drawGeneratorToCtx(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    logicalW: number,
+    logicalH: number,
+    frame: number,
+  ): void {
     switch (layer.source.type) {
       case 'generator-grain':
         drawGrain(ctx, logicalW, logicalH, layer.source, frame);
@@ -399,8 +430,6 @@ export class PreviewRenderer {
         drawVignette(ctx, logicalW, logicalH, layer.source);
         break;
     }
-
-    ctx.restore();
   }
 
   /**
