@@ -727,14 +727,22 @@ export class TimelineInteraction {
         timelineStore.setScrollY(Math.max(0, Math.min(timelineStore.maxScrollY.peek(), newScrollY)));
       }
     } else {
-      // No modifier — natural scrolling (trackpad two-finger swipe)
+      // No modifier — handle both mouse wheel and trackpad
+      // Mouse wheel: only produces deltaY (deltaX === 0) → route to horizontal scroll
+      // Trackpad: produces deltaX (and maybe deltaY) → natural two-axis scrolling
       if (e.deltaX !== 0) {
+        // Trackpad horizontal swipe (or mouse tilt-wheel): apply deltaX to horizontal scroll
         const newScrollX = timelineStore.scrollX.peek() + e.deltaX;
         timelineStore.setScrollX(Math.max(0, newScrollX));
-      }
-      if (e.deltaY !== 0) {
-        const newScrollY = timelineStore.scrollY.peek() + e.deltaY;
-        timelineStore.setScrollY(Math.max(0, Math.min(timelineStore.maxScrollY.peek(), newScrollY)));
+        // Trackpad vertical component: apply deltaY to vertical scroll
+        if (e.deltaY !== 0) {
+          const newScrollY = timelineStore.scrollY.peek() + e.deltaY;
+          timelineStore.setScrollY(Math.max(0, Math.min(timelineStore.maxScrollY.peek(), newScrollY)));
+        }
+      } else if (e.deltaY !== 0) {
+        // deltaX === 0, deltaY !== 0 → mouse wheel: route to horizontal scroll
+        const newScrollX = timelineStore.scrollX.peek() + e.deltaY;
+        timelineStore.setScrollX(Math.max(0, newScrollX));
       }
     }
   }
