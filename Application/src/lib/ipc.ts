@@ -95,3 +95,11 @@ export function configGetPanelHeights() {
 export function configSetPanelHeights(seqHeight: number, layersHeight: number) {
   return safeInvoke<null>('config_set_panel_heights', { seqHeight, layersHeight });
 }
+
+export function configGetLoopEnabled() {
+  return safeInvoke<boolean | null>('config_get_loop_enabled');
+}
+
+export function configSetLoopEnabled(enabled: boolean) {
+  return safeInvoke<null>('config_set_loop_enabled', { enabled });
+}

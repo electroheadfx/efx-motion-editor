@@ -13,6 +13,8 @@ struct BuilderConfig {
     sidebar_width: Option<f64>,
     #[serde(default)]
     panel_heights: Option<(f64, f64)>,
+    #[serde(default)]
+    loop_enabled: Option<bool>,
 }
 
 /// Returns the path to ~/.config/efx-motion/builder-config.yaml.
@@ -116,5 +118,17 @@ pub fn config_get_panel_heights() -> Option<(f64, f64)> {
 pub fn config_set_panel_heights(seq_height: f64, layers_height: f64) -> Result<(), String> {
     let mut config = read_config();
     config.panel_heights = Some((seq_height, layers_height));
+    write_config(&config)
+}
+
+#[command]
+pub fn config_get_loop_enabled() -> Option<bool> {
+    read_config().loop_enabled
+}
+
+#[command]
+pub fn config_set_loop_enabled(enabled: bool) -> Result<(), String> {
+    let mut config = read_config();
+    config.loop_enabled = Some(enabled);
     write_config(&config)
 }

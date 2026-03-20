@@ -1,5 +1,5 @@
 import { LazyStore } from '@tauri-apps/plugin-store';
-import { configGetTheme, configSetTheme, configGetCanvasBg, configSetCanvasBg, configGetSidebarWidth, configSetSidebarWidth, configGetPanelHeights, configSetPanelHeights } from './ipc';
+import { configGetTheme, configSetTheme, configGetCanvasBg, configSetCanvasBg, configGetSidebarWidth, configSetSidebarWidth, configGetPanelHeights, configSetPanelHeights, configGetLoopEnabled, configSetLoopEnabled } from './ipc';
 
 /** Singleton app config store -- persists as JSON in Tauri app data dir */
 const store = new LazyStore('app-config.json');
@@ -116,4 +116,15 @@ export async function getPanelFlex(): Promise<[number, number, number]> {
 
 export async function setPanelFlex(seq: number, lay: number, prop: number): Promise<void> {
   await store.set('panelFlex', [seq, lay, prop]);
+}
+
+// --- Loop Toggle (persisted via Rust) ---
+
+export async function getLoopEnabled(): Promise<boolean> {
+  const result = await configGetLoopEnabled();
+  return result.ok && result.data != null ? result.data : false;
+}
+
+export async function setLoopEnabled(enabled: boolean): Promise<void> {
+  await configSetLoopEnabled(enabled);
 }

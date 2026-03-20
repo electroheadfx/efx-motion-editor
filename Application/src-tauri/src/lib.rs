@@ -252,6 +252,8 @@ pub fn run() {
             config::config_set_sidebar_width,
             config::config_get_panel_heights,
             config::config_set_panel_heights,
+            config::config_get_loop_enabled,
+            config::config_set_loop_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
