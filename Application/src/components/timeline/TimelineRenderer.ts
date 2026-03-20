@@ -237,7 +237,7 @@ export class TimelineRenderer {
     this.drawKeyframeDiamonds(ctx, state, w);
   }
 
-  /** Draw a transition overlay as a thin purple bar at the top of the track */
+  /** Draw a transition overlay. Content tracks: 30% height bar at top. FX tracks: full height. */
   private drawTransitionOverlay(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -246,12 +246,13 @@ export class TimelineRenderer {
     trackH: number,
     type: 'fade-in' | 'fade-out' | 'cross-dissolve',
     isSelected: boolean,
+    fullHeight = false,
   ): void {
     if (w <= 0) return;
     ctx.save();
 
-    const barY = trackY + 2;
-    const barH = Math.round(trackH * 0.3);
+    const barY = fullHeight ? trackY : trackY + 2;
+    const barH = fullHeight ? trackH : Math.round(trackH * 0.3);
 
     // Purple solid fill at 50% opacity (brighter when selected)
     ctx.fillStyle = isSelected ? 'rgba(139, 92, 246, 0.7)' : 'rgba(139, 92, 246, 0.5)';
@@ -400,14 +401,14 @@ export class TimelineRenderer {
         const fadeW = fxTrack.fadeIn.duration * frameWidth;
         const isFadeSelected = state?.selectedTransition?.sequenceId === fxTrack.sequenceId
           && state?.selectedTransition?.type === 'fade-in';
-        this.drawTransitionOverlay(ctx, barX, Math.min(fadeW, barW), barY, barH, 'fade-in', isFadeSelected);
+        this.drawTransitionOverlay(ctx, barX, Math.min(fadeW, barW), barY, barH, 'fade-in', isFadeSelected, true);
       }
       if (fxTrack.fadeOut) {
         const fadeW = fxTrack.fadeOut.duration * frameWidth;
         const fadeX = barX + barW - fadeW;
         const isFadeSelected = state?.selectedTransition?.sequenceId === fxTrack.sequenceId
           && state?.selectedTransition?.type === 'fade-out';
-        this.drawTransitionOverlay(ctx, Math.max(fadeX, barX), Math.min(fadeW, barW), barY, barH, 'fade-out', isFadeSelected);
+        this.drawTransitionOverlay(ctx, Math.max(fadeX, barX), Math.min(fadeW, barW), barY, barH, 'fade-out', isFadeSelected, true);
       }
 
       // Left edge handle (drag to resize inFrame)
