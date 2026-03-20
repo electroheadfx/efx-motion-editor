@@ -8,6 +8,7 @@ import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
+import {isolationStore} from '../../stores/isolationStore';
 
 /**
  * TimelineInteraction: Pointer/wheel/touch event handling for the timeline canvas.
@@ -180,6 +181,40 @@ export class TimelineInteraction {
       layerStore.setSelected(null);
       uiStore.selectLayer(null);
     }
+  }
+
+  /** Hit-test the name label overlay for content sequences.
+   *  Returns the sequenceId if the point is on a name label, null otherwise. */
+  private nameLabelHitTest(clientX: number, clientY: number): string | null {
+    if (!this.canvas || !this.renderer) return null;
+    if (this.isInRuler(clientY)) return null;
+    if (this.isInFxArea(clientY)) return null;
+
+    const rect = this.canvas.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    if (localX < TRACK_HEADER_WIDTH) return null;
+
+    const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
+    const scrollX = timelineStore.scrollX.peek();
+    const canvasWidth = rect.width;
+    const trackY = this.renderer.getContentTrackY();
+    const scrollY = this.renderer.getScrollY();
+    const localY = clientY - rect.top;
+
+    const tracks = trackLayouts.peek();
+    for (const track of tracks) {
+      const labelRect = this.renderer.getNameLabelRect(track, frameWidth, scrollX, canvasWidth, trackY - scrollY);
+      if (!labelRect) continue;
+      if (
+        localX >= labelRect.x &&
+        localX <= labelRect.x + labelRect.w &&
+        localY >= labelRect.y &&
+        localY <= labelRect.y + labelRect.h
+      ) {
+        return track.sequenceId;
+      }
+    }
+    return null;
   }
 
   /** Determine FX drag mode based on click position relative to range bar edges */
@@ -409,6 +444,16 @@ export class TimelineInteraction {
       return;
     }
 
+    // Name label click: toggle isolation
+    const nameHit = this.nameLabelHitTest(e.clientX, e.clientY);
+    if (nameHit) {
+      isolationStore.toggleIsolation(nameHit);
+      sequenceStore.setActive(nameHit);
+      uiStore.selectSequence(nameHit);
+      this.clearFxLayerSelection();
+      return;
+    }
+
     // Click in ruler area or on playhead -> start drag-to-scrub immediately
     if (this.isInRuler(e.clientY) || this.isOnPlayhead(e.clientX)) {
       this.isDragging = true;
@@ -539,7 +584,23 @@ export class TimelineInteraction {
         } else {
           this.canvas.style.cursor = 'default';
         }
+        if (this.renderer) this.renderer.setHoveredNameLabel(null);
         return; // Skip content area cursor logic
+      }
+
+      // Name label hover: pointer cursor + highlight
+      const nameHover = this.nameLabelHitTest(e.clientX, e.clientY);
+      if (nameHover) {
+        this.canvas.style.cursor = 'pointer';
+        if (this.renderer) {
+          this.renderer.setHoveredNameLabel(nameHover);
+        }
+        return;
+      }
+
+      // Clear name label hover when not hovering
+      if (this.renderer) {
+        this.renderer.setHoveredNameLabel(null);
       }
 
       // Linear timeline: no grab cursor on headers
