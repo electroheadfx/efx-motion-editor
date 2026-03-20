@@ -11,6 +11,7 @@ export const FX_TRACK_HEIGHT = 28;
 
 // Functional colors -- stay hardcoded (high-visibility, theme-independent)
 const PLAYHEAD_COLOR = '#E55A2B';
+const ISOLATION_ORANGE = '#E5841B';
 const PLAYHEAD_TRIANGLE_SIZE = 6;
 const DROP_INDICATOR_COLOR = '#4488FF';
 const PLACEHOLDER_BG_A = '#1A1A2A';
@@ -67,6 +68,8 @@ export interface DrawState {
   selectedKeyframeFrames?: Set<number>;  // frames that are selected (highlighted)
   selectedLayerSequenceId?: string | null;  // which sequence the selected layer belongs to
   hidePlayhead?: boolean;  // true during full-speed playback
+  isolatedSequenceIds?: Set<string>;
+  hoveredNameLabelSequenceId?: string | null;
 }
 
 /**
@@ -87,6 +90,7 @@ export class TimelineRenderer {
   private selectedFxSequenceId: string | null = null;
   private selectedContentSequenceId: string | null = null;
   private hoveredKeyframeFrame: number | null = null;
+  private hoveredNameLabelSequenceId: string | null = null;
   /** Number of FX tracks (used by TimelineInteraction for layout calculations) */
   fxTrackCount = 0;
   /** Last scrollY value (used by TimelineInteraction for hit-testing) */
@@ -487,6 +491,23 @@ export class TimelineRenderer {
         }
       }
 
+      // --- Isolation state ---
+      const isIsolated = state.isolatedSequenceIds?.has(track.sequenceId) ?? false;
+      const isNameHovered = state.hoveredNameLabelSequenceId === track.sequenceId;
+
+      // Isolation border: orange rect around entire sequence frame range
+      if (isIsolated) {
+        const isoSegX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const isoSegW = (track.endFrame - track.startFrame) * frameWidth;
+        const clippedIsoX = Math.max(isoSegX, TRACK_HEADER_WIDTH);
+        const clippedIsoW = Math.min(isoSegX + isoSegW, w) - clippedIsoX;
+        if (clippedIsoW > 0) {
+          ctx.strokeStyle = ISOLATION_ORANGE;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(clippedIsoX, trackY, clippedIsoW, TRACK_HEIGHT);
+        }
+      }
+
       // Name overlay
       {
         const segX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
@@ -501,9 +522,16 @@ export class TimelineRenderer {
           const name = this.truncateText(ctx, track.sequenceName, segW - leftPad - 6);
           const textW = ctx.measureText(name).width;
           const bgPad = 4;
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+
+          // Background: orange if isolated or hovered, black semi-transparent otherwise
+          if (isIsolated || isNameHovered) {
+            ctx.fillStyle = ISOLATION_ORANGE;
+          } else {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+          }
           ctx.fillRect(clippedX + leftPad - bgPad, labelY, textW + bgPad * 2, labelH);
-          ctx.fillStyle = '#EEEEEE';
+
+          ctx.fillStyle = isIsolated || isNameHovered ? '#FFFFFF' : '#EEEEEE';
           ctx.fillText(name, clippedX + leftPad, labelY + labelH / 2);
         }
       }
@@ -584,6 +612,38 @@ export class TimelineRenderer {
     return this.lastScrollY;
   }
 
+  /** Get the Y position of the content track row (accounts for FX tracks + ruler) */
+  getContentTrackY(): number {
+    return RULER_HEIGHT + this.fxTrackCount * FX_TRACK_HEIGHT;
+  }
+
+  /** Compute name label hit rect for a given track at current state. Returns null if label not visible. */
+  getNameLabelRect(
+    track: TrackLayout,
+    frameWidth: number,
+    scrollX: number,
+    canvasWidth: number,
+    trackY: number,
+  ): { x: number; y: number; w: number; h: number } | null {
+    const segX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+    const segW = (track.endFrame - track.startFrame) * frameWidth;
+    if (segX + segW <= TRACK_HEADER_WIDTH || segX >= canvasWidth || segW <= 20) return null;
+    const labelH = 16;
+    const labelY = trackY + TRACK_HEIGHT - 2 - labelH;
+    const clippedX = Math.max(segX, TRACK_HEADER_WIDTH);
+    const leftPad = 8;
+    this.ctx.font = '10px system-ui, sans-serif';
+    const name = this.truncateText(this.ctx, track.sequenceName, segW - leftPad - 6);
+    const textW = this.ctx.measureText(name).width;
+    const bgPad = 4;
+    return {
+      x: clippedX + leftPad - bgPad,
+      y: labelY,
+      w: textW + bgPad * 2,
+      h: labelH,
+    };
+  }
+
   /** Set FX drag state for FX reorder visual feedback */
   setFxDragState(state: FxDragState | null) {
     this.fxDragState = state;
@@ -606,6 +666,16 @@ export class TimelineRenderer {
     this.hoveredKeyframeFrame = frame;
     if (this.lastState) {
       this.draw(this.lastState);
+    }
+  }
+
+  /** Set hovered name label sequence for orange highlight preview */
+  setHoveredNameLabel(sequenceId: string | null) {
+    if (this.hoveredNameLabelSequenceId !== sequenceId) {
+      this.hoveredNameLabelSequenceId = sequenceId;
+      if (this.lastState) {
+        this.draw({ ...this.lastState, hoveredNameLabelSequenceId: sequenceId });
+      }
     }
   }
 
