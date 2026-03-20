@@ -79,7 +79,7 @@ export function TimelinePanel() {
               : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)]'
           }`}
           onClick={() => isolationStore.toggleLoop()}
-          title={isolationStore.loopEnabled.value ? 'Loop: ON (L)' : 'Loop: OFF (L)'}
+          title={isolationStore.loopEnabled.value ? 'Loop: ON' : 'Loop: OFF'}
         >
           {isolationStore.loopEnabled.value ? <Repeat1 size={14} /> : <Repeat size={14} />}
         </button>

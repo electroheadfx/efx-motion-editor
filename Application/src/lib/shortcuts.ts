@@ -13,6 +13,7 @@ import {layerStore} from '../stores/layerStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {canvasStore} from '../stores/canvasStore';
 import {blurStore} from '../stores/blurStore';
+import {isolationStore} from '../stores/isolationStore';
 import {keyframeStore} from '../stores/keyframeStore';
 import {timelineStore} from '../stores/timelineStore';
 import {isFxLayer} from '../types/layer';
@@ -410,14 +411,21 @@ export function mountShortcuts(): () => void {
     },
 
     // Transform: Escape deselect (XFORM-09)
-    // Fullscreen exit takes priority over layer deselect
+    // Priority: fullscreen > isolation > layer deselect
     'Escape': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       e.preventDefault();
+      // Priority 1: exit fullscreen
       if (isFullscreen.peek()) {
         exitFullscreen();
         return;
       }
+      // Priority 2: clear isolation
+      if (isolationStore.hasIsolation.peek()) {
+        isolationStore.clearIsolation();
+        return;
+      }
+      // Priority 3: deselect layer
       layerStore.setSelected(null);
       uiStore.selectLayer(null);
     },

@@ -3,6 +3,7 @@ import type {Sequence, KeyPhoto} from '../types/sequence';
 import type {Layer} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
 import {pushAction} from '../lib/history';
+import {isolationStore} from './isolationStore';
 
 const sequences = signal<Sequence[]>([]);
 const activeSequenceId = signal<string | null>(null);
@@ -90,6 +91,8 @@ export const sequenceStore = {
     const before = snapshot();
 
     sequences.value = sequences.value.filter((s) => s.id !== id);
+    // Clean up isolation set (not undoable)
+    isolationStore.removeSequence(id);
     if (activeSequenceId.value === id) {
       activeSequenceId.value = sequences.value[0]?.id ?? null;
     }
@@ -602,6 +605,8 @@ export const sequenceStore = {
     // If this was the only layer in an FX or content-overlay sequence, remove the entire sequence
     if ((ownerSeq.kind === 'fx' || ownerSeq.kind === 'content-overlay') && remainingLayers.length === 0) {
       sequences.value = sequences.value.filter(s => s.id !== ownerSeq.id);
+      // Clean up isolation set (not undoable)
+      isolationStore.removeSequence(ownerSeq.id);
     } else {
       sequences.value = sequences.value.map((s) =>
         s.id === ownerSeq.id
