@@ -1,5 +1,6 @@
 import {useState, useEffect, useRef} from 'preact/hooks';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {uiStore} from '../../stores/uiStore';
 
 /** Popover menu for adding transitions to the active content sequence */
 export function AddTransitionMenu() {
@@ -34,16 +35,24 @@ export function AddTransitionMenu() {
   const canCrossDissolve = isContentSeq && hasNextSeq && !activeSeq!.crossDissolve;
   const hasAnyOption = canFadeIn || canFadeOut || canCrossDissolve;
 
+  // Compute 20% of sequence total frames as default duration
+  const totalFrames = activeSeq
+    ? activeSeq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0)
+    : 0;
+  const defaultDuration = Math.max(1, Math.round(totalFrames * 0.2));
+
   const handleAdd = (type: 'fade-in' | 'fade-out' | 'cross-dissolve') => {
     setMenuOpen(false);
     if (!activeSeqId) return;
     sequenceStore.addTransition(activeSeqId, {
       type,
-      duration: type === 'cross-dissolve' ? 24 : 12,
+      duration: defaultDuration,
       mode: 'transparency',
       color: '#000000',
       curve: 'ease-in-out',
     });
+    // Auto-select the newly added transition
+    uiStore.selectTransition({ sequenceId: activeSeqId, type });
   };
 
   return (

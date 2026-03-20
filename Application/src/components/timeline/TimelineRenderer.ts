@@ -237,73 +237,30 @@ export class TimelineRenderer {
     this.drawKeyframeDiamonds(ctx, state, w);
   }
 
-  /** Draw a single transition overlay (gradient + border + diagonal + label) per UI-SPEC */
+  /** Draw a transition overlay as a thin green bar at the top of the track */
   private drawTransitionOverlay(
     ctx: CanvasRenderingContext2D,
     x: number,
     w: number,
     trackY: number,
     trackH: number,
-    type: 'fade-in' | 'fade-out' | 'cross-dissolve',
+    _type: 'fade-in' | 'fade-out' | 'cross-dissolve',
     isSelected: boolean,
   ): void {
     if (w <= 0) return;
     ctx.save();
 
-    const inset = 4;
-    const overlayY = trackY + inset;
-    const overlayH = trackH - inset * 2;
+    const barY = trackY + 2;
+    const barH = Math.round(trackH * 0.2);
 
-    // Graduated transparency fill
-    const gradient = ctx.createLinearGradient(x, 0, x + w, 0);
-    if (type === 'fade-in') {
-      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.05)');
-    } else if (type === 'fade-out') {
-      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.05)');
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
-    } else {
-      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.20)');
-    }
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x, overlayY, w, overlayH);
+    // Green solid fill at 50% opacity (brighter when selected)
+    ctx.fillStyle = isSelected ? 'rgba(34, 197, 94, 0.7)' : 'rgba(34, 197, 94, 0.5)';
+    ctx.fillRect(x, barY, w, barH);
 
-    // Selected highlight fill
-    if (isSelected) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-      ctx.fillRect(x, overlayY, w, overlayH);
-    }
-
-    // White outline border
-    ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)';
+    // Border
+    ctx.strokeStyle = isSelected ? 'rgba(34, 197, 94, 1)' : 'rgba(34, 197, 94, 0.6)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, overlayY + 0.5, w - 1, overlayH - 1);
-
-    // Single diagonal line
-    ctx.beginPath();
-    if (type === 'fade-in' || type === 'cross-dissolve') {
-      ctx.moveTo(x, trackY + trackH - inset);
-      ctx.lineTo(x + w, trackY + inset);
-    } else {
-      ctx.moveTo(x, trackY + inset);
-      ctx.lineTo(x + w, trackY + trackH - inset);
-    }
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Label text (only when overlay is wide enough)
-    const label = type === 'fade-in' ? 'In' : type === 'fade-out' ? 'Out' : 'Cross Dissolve';
-    ctx.font = '8px system-ui, sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.textAlign = 'center';
-    const labelWidth = ctx.measureText(label).width;
-    if (w > labelWidth + 8) {
-      ctx.fillText(label, x + w / 2, trackY + trackH / 2);
-    }
-    ctx.textAlign = 'start';
+    ctx.strokeRect(x + 0.5, barY + 0.5, w - 1, barH - 1);
 
     ctx.restore();
   }
@@ -634,9 +591,7 @@ export class TimelineRenderer {
         if (segX + segW > TRACK_HEADER_WIDTH && segX < w && segW > 20) {
           const labelH = 16;
           const labelY = trackY + TRACK_HEIGHT - 2 - labelH;
-          // Shift name right past fade-in transition
-          const fadeInShift = track.fadeIn ? track.fadeIn.duration * frameWidth + 4 : 0;
-          const clippedX = Math.max(segX + fadeInShift, TRACK_HEADER_WIDTH);
+          const clippedX = Math.max(segX, TRACK_HEADER_WIDTH);
           const leftPad = 8;
           ctx.font = '10px system-ui, sans-serif';
           ctx.textBaseline = 'middle';

@@ -333,10 +333,11 @@ export class TimelineInteraction {
     const scrollX = timelineStore.scrollX.peek();
     const scrollY = this.renderer.getScrollY();
     const contentTrackY = this.renderer.getContentTrackY() - scrollY;
-    const inset = 4;
+    const barTop = contentTrackY + 2;
+    const barH = Math.round(TRACK_HEIGHT * 0.2);
 
-    // Check content tracks
-    if (localY >= contentTrackY + inset && localY <= contentTrackY + TRACK_HEIGHT - inset) {
+    // Check content tracks (transition bar is at top 20% of track)
+    if (localY >= barTop && localY <= barTop + barH) {
       const tracks = trackLayouts.peek();
       for (let i = 0; i < tracks.length; i++) {
         const track = tracks[i];
