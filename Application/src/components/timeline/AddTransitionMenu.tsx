@@ -1,9 +1,10 @@
 import {useState, useEffect, useRef} from 'preact/hooks';
 import {Layers} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
 
-/** Popover menu for adding transitions to the active content sequence */
+/** Popover menu for adding transitions to content or FX sequences */
 export function AddTransitionMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -20,60 +21,85 @@ export function AddTransitionMenu() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
 
-  // Determine active content sequence and available transitions
-  const activeSeqId = sequenceStore.activeSequenceId.value;
   const allSeqs = sequenceStore.sequences.value;
+
+  // Content sequence: via activeSequenceId
+  const activeSeqId = sequenceStore.activeSequenceId.value;
   const activeSeq = activeSeqId ? allSeqs.find(s => s.id === activeSeqId) : null;
   const isContentSeq = activeSeq?.kind === 'content';
 
-  // Cross dissolve: only when next content sequence exists
+  // FX/content-overlay sequence: via selected layer
+  const selectedLayerId = layerStore.selectedLayerId.value;
+  let fxSeq: typeof allSeqs[0] | null = null;
+  if (selectedLayerId) {
+    for (const seq of allSeqs) {
+      if ((seq.kind === 'fx' || seq.kind === 'content-overlay') && seq.layers.some(l => l.id === selectedLayerId)) {
+        fxSeq = seq;
+        break;
+      }
+    }
+  }
+
+  // Determine target sequence (content takes priority, then FX)
+  const targetSeq = isContentSeq ? activeSeq : fxSeq;
+  const targetSeqId = targetSeq?.id ?? null;
+  const isFxTarget = targetSeq != null && targetSeq.kind !== 'content';
+
+  // Cross dissolve: only for content sequences with a next content sequence
   const contentSeqs = allSeqs.filter(s => s.kind === 'content');
   const currentIndex = isContentSeq ? contentSeqs.findIndex(s => s.id === activeSeqId) : -1;
   const hasNextSeq = currentIndex >= 0 && currentIndex < contentSeqs.length - 1;
 
-  const canFadeIn = isContentSeq && !activeSeq!.fadeIn;
-  const canFadeOut = isContentSeq && !activeSeq!.fadeOut;
+  const canFadeIn = targetSeq != null && !targetSeq.fadeIn;
+  const canFadeOut = targetSeq != null && !targetSeq.fadeOut;
   const canCrossDissolve = isContentSeq && hasNextSeq && !activeSeq!.crossDissolve;
   const hasAnyOption = canFadeIn || canFadeOut || canCrossDissolve;
 
-  // Compute 20% of sequence total frames as default duration
-  const totalFrames = activeSeq
-    ? activeSeq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0)
-    : 0;
+  // Default duration: 20% of sequence total frames
+  let totalFrames = 0;
+  if (targetSeq) {
+    if (targetSeq.kind === 'content') {
+      totalFrames = targetSeq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0);
+    } else {
+      totalFrames = (targetSeq.outFrame ?? 100) - (targetSeq.inFrame ?? 0);
+    }
+  }
   const defaultDuration = Math.max(1, Math.round(totalFrames * 0.2));
 
   const handleAdd = (type: 'fade-in' | 'fade-out' | 'cross-dissolve') => {
     setMenuOpen(false);
-    if (!activeSeqId) return;
-    sequenceStore.addTransition(activeSeqId, {
+    if (!targetSeqId) return;
+    sequenceStore.addTransition(targetSeqId, {
       type,
       duration: defaultDuration,
       mode: 'transparency',
       color: '#000000',
       curve: 'ease-in-out',
     });
-    // Auto-select the newly added transition
-    uiStore.selectTransition({ sequenceId: activeSeqId, type });
+    uiStore.selectTransition({ sequenceId: targetSeqId, type });
   };
 
   return (
     <div class="relative" ref={menuRef}>
       <button
         class={`rounded px-2 py-[5px] transition-colors ${
-          isContentSeq && hasAnyOption
+          targetSeq && hasAnyOption
             ? 'bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)]'
             : 'bg-[var(--color-bg-input)] opacity-40 cursor-default'
         }`}
         onClick={() => {
-          if (isContentSeq && hasAnyOption) setMenuOpen(!menuOpen);
+          if (targetSeq && hasAnyOption) setMenuOpen(!menuOpen);
         }}
-        title={!isContentSeq ? 'Select a content sequence first' : !hasAnyOption ? 'All transitions already added' : 'Add transition'}
+        title={!targetSeq ? 'Select a sequence first' : !hasAnyOption ? 'All transitions already added' : 'Add transition'}
       >
         <span class="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1"><Layers size={11} /> Transition</span>
       </button>
 
       {menuOpen && (
         <div class="absolute right-0 bottom-8 z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl py-1 min-w-[160px]">
+          {isFxTarget && (
+            <div class="px-3 py-1 text-[9px] text-[var(--color-text-dim)] font-semibold">{targetSeq!.name}</div>
+          )}
           {canFadeIn && (
             <button
               class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
