@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Phase 12.15 context gathered
-last_updated: "2026-03-20T11:29:28.109Z"
+stopped_at: Completed 12.15-01-PLAN.md
+last_updated: "2026-03-20T12:21:39.497Z"
 progress:
   total_phases: 26
   completed_phases: 20
-  total_plans: 52
-  completed_plans: 52
+  total_plans: 56
+  completed_plans: 53
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 12.14 — timeline-canvas-buttons-enhancements
+**Current focus:** Phase 12.15 — sequence-playback
 
 ## Current Position
 
-Phase: 12.14 (timeline-canvas-buttons-enhancements) — EXECUTING
-Plan: 2 of 2
+Phase: 12.15 (sequence-playback) — EXECUTING
+Plan: 2 of 4
 
 ## Accumulated Context
 
@@ -92,6 +92,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase quick-42]: sourceOverrides as optional Record<string, number> bag on KeyframeValues for FX property animation; FX sequences use inFrame as keyframe startFrame
 - [Phase 12.14]: SaveIcon alias for lucide Save to avoid conflict with Tauri plugin-dialog save import; icon-only w-8 h-8 buttons with title tooltip format Label (Shortcut)
 - [Phase 12.14]: Icon sizes: 14px timeline compact bar, 16px canvas standard, 18px canvas play/pause emphasis; currentColor propagation via text color on button element
+- [Phase 12.15]: Tick reads isolation state via .peek() for zero-overhead when no isolation active
+- [Phase 12.15]: Normal playback auto-loop now conditional on loopEnabled (was always-on)
 
 ### Pending Todos
 
@@ -170,6 +172,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-20T11:29:28.106Z
-Stopped at: Phase 12.15 context gathered
-Resume file: .planning/phases/12.15-sequence-playback/12.15-CONTEXT.md
+Last session: 2026-03-20T12:21:39.495Z
+Stopped at: Completed 12.15-01-PLAN.md
+Resume file: None
