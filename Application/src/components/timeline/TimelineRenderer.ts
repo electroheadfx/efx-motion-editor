@@ -582,6 +582,22 @@ export class TimelineRenderer {
         this.drawTransitionOverlay(ctx, fadeX, fadeW, trackY, TRACK_HEIGHT, 'fade-out', isFadeSelected);
       }
 
+      // Draw cross dissolve overlays (per D-08, D-09, D-15)
+      // Cross dissolve is centered on the boundary between two sequences
+      if (track.crossDissolve && ti < tracks.length - 1) {
+        const cd = track.crossDissolve;
+        const halfDuration = Math.floor(cd.duration / 2);
+        const boundary = track.endFrame;
+        const cdStartFrame = boundary - halfDuration;
+        const cdX = cdStartFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const cdW = cd.duration * frameWidth;
+
+        const isCdSelected = state.selectedTransition?.sequenceId === track.sequenceId
+          && state.selectedTransition?.type === 'cross-dissolve';
+
+        this.drawTransitionOverlay(ctx, cdX, cdW, trackY, TRACK_HEIGHT, 'cross-dissolve', isCdSelected);
+      }
+
       // Sequence boundary separator (pink marker between sequences)
       if (ti > 0) {
         const sepX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;

@@ -253,51 +253,78 @@ export function LeftPanel() {
               <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
             </SidebarScrollArea>
           )}
-          {isContentSeq && !transitionSel && (
-            <div class="px-2 py-1">
-              <SectionLabel text="TRANSITIONS" />
-              <div class="flex flex-col gap-1 mt-1">
-                {!selectedSeq!.fadeIn && (
-                  <button
-                    class="text-[10px] px-2 py-1 rounded bg-[var(--color-bg-input)] text-[var(--color-text-button)] hover:bg-[var(--color-bg-hover-item)] hover:text-white text-left"
-                    onClick={() => {
-                      sequenceStore.addTransition(selectedSeqId!, {
-                        type: 'fade-in',
-                        duration: 12,
-                        mode: 'transparency',
-                        color: '#000000',
-                        curve: 'ease-in-out',
-                      });
-                    }}
-                  >
-                    Add Fade In
-                  </button>
-                )}
-                {!selectedSeq!.fadeOut && (
-                  <button
-                    class="text-[10px] px-2 py-1 rounded bg-[var(--color-bg-input)] text-[var(--color-text-button)] hover:bg-[var(--color-bg-hover-item)] hover:text-white text-left"
-                    onClick={() => {
-                      sequenceStore.addTransition(selectedSeqId!, {
-                        type: 'fade-out',
-                        duration: 12,
-                        mode: 'transparency',
-                        color: '#000000',
-                        curve: 'ease-in-out',
-                      });
-                    }}
-                  >
-                    Add Fade Out
-                  </button>
-                )}
-                {selectedSeq!.fadeIn && (
-                  <TransitionProperties selection={{ sequenceId: selectedSeqId!, type: 'fade-in' }} />
-                )}
-                {selectedSeq!.fadeOut && (
-                  <TransitionProperties selection={{ sequenceId: selectedSeqId!, type: 'fade-out' }} />
-                )}
+          {isContentSeq && !transitionSel && (() => {
+            // Determine if next content sequence exists (for cross dissolve)
+            const allSeqs = sequenceStore.sequences.value;
+            const contentSeqs = allSeqs.filter(s => s.kind === 'content');
+            const currentIndex = contentSeqs.findIndex(s => s.id === selectedSeqId);
+            const hasNextSeq = currentIndex >= 0 && currentIndex < contentSeqs.length - 1;
+
+            return (
+              <div class="px-2 py-1">
+                <SectionLabel text="TRANSITIONS" />
+                <div class="flex flex-col gap-1 mt-1">
+                  {!selectedSeq!.fadeIn && (
+                    <button
+                      class="text-[10px] px-2 py-1 rounded bg-[var(--color-bg-input)] text-[var(--color-text-button)] hover:bg-[var(--color-bg-hover-item)] hover:text-white text-left"
+                      onClick={() => {
+                        sequenceStore.addTransition(selectedSeqId!, {
+                          type: 'fade-in',
+                          duration: 12,
+                          mode: 'transparency',
+                          color: '#000000',
+                          curve: 'ease-in-out',
+                        });
+                      }}
+                    >
+                      Add Fade In
+                    </button>
+                  )}
+                  {!selectedSeq!.fadeOut && (
+                    <button
+                      class="text-[10px] px-2 py-1 rounded bg-[var(--color-bg-input)] text-[var(--color-text-button)] hover:bg-[var(--color-bg-hover-item)] hover:text-white text-left"
+                      onClick={() => {
+                        sequenceStore.addTransition(selectedSeqId!, {
+                          type: 'fade-out',
+                          duration: 12,
+                          mode: 'transparency',
+                          color: '#000000',
+                          curve: 'ease-in-out',
+                        });
+                      }}
+                    >
+                      Add Fade Out
+                    </button>
+                  )}
+                  {hasNextSeq && !selectedSeq!.crossDissolve && (
+                    <button
+                      class="text-[10px] px-2 py-1 rounded bg-[var(--color-bg-input)] text-[var(--color-text-button)] hover:bg-[var(--color-bg-hover-item)] hover:text-white text-left"
+                      onClick={() => {
+                        sequenceStore.addTransition(selectedSeqId!, {
+                          type: 'cross-dissolve',
+                          duration: 24,
+                          mode: 'transparency',
+                          color: '#000000',
+                          curve: 'ease-in-out',
+                        });
+                      }}
+                    >
+                      Add Cross Dissolve
+                    </button>
+                  )}
+                  {selectedSeq!.fadeIn && (
+                    <TransitionProperties selection={{ sequenceId: selectedSeqId!, type: 'fade-in' }} />
+                  )}
+                  {selectedSeq!.fadeOut && (
+                    <TransitionProperties selection={{ sequenceId: selectedSeqId!, type: 'fade-out' }} />
+                  )}
+                  {selectedSeq!.crossDissolve && (
+                    <TransitionProperties selection={{ sequenceId: selectedSeqId!, type: 'cross-dissolve' }} />
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </CollapsibleSection>
       </div>
     </div>

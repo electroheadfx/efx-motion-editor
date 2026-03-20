@@ -327,7 +327,7 @@ export class TimelineInteraction {
   private transitionHitTest(
     localX: number,
     localY: number,
-  ): { sequenceId: string; type: 'fade-in' | 'fade-out' } | null {
+  ): { sequenceId: string; type: 'fade-in' | 'fade-out' | 'cross-dissolve' } | null {
     if (!this.renderer) return null;
     const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
     const scrollX = timelineStore.scrollX.peek();
@@ -338,7 +338,8 @@ export class TimelineInteraction {
     // Check content tracks
     if (localY >= contentTrackY + inset && localY <= contentTrackY + TRACK_HEIGHT - inset) {
       const tracks = trackLayouts.peek();
-      for (const track of tracks) {
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
         const seqX = track.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
         const seqEndX = track.endFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
 
@@ -354,6 +355,20 @@ export class TimelineInteraction {
           const fadeX = seqEndX - fadeW;
           if (localX >= fadeX && localX <= seqEndX) {
             return { sequenceId: track.sequenceId, type: 'fade-out' };
+          }
+        }
+
+        // Check cross dissolve zones
+        if (track.crossDissolve && i < tracks.length - 1) {
+          const cd = track.crossDissolve;
+          const halfDuration = Math.floor(cd.duration / 2);
+          const boundary = track.endFrame;
+          const cdStartFrame = boundary - halfDuration;
+          const cdX = cdStartFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+          const cdW = cd.duration * frameWidth;
+
+          if (localX >= cdX && localX <= cdX + cdW) {
+            return { sequenceId: track.sequenceId, type: 'cross-dissolve' };
           }
         }
       }
