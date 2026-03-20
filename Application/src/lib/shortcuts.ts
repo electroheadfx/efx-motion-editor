@@ -85,6 +85,7 @@ export async function handleOpenProject(): Promise<void> {
 }
 
 export async function handleCloseProject(): Promise<void> {
+  if (projectStore.dirPath.peek() === null) return; // No project to close
   const guard = await guardUnsavedChanges();
   if (guard === 'cancelled') return;
   projectStore.closeProject();
