@@ -121,6 +121,19 @@ Plans:
 - [ ] 12-04-PLAN.md -- End-to-end visual verification checkpoint
 - [ ] 12-05-PLAN.md -- [gap closure] Fix keyframe diamonds disappearing on timeline interaction
 
+### Phase 12.15: sequence-playback (INSERTED)
+
+**Goal:** Multi-select sequence isolation (solo/mute) for playback with global loop toggle -- users can toggle individual sequences into an isolation set from timeline name labels and sidebar accent bar, playback skips non-isolated sequences, loop toggle persisted to app config
+**Requirements**: ISO-01, ISO-02, ISO-03, ISO-04, ISO-05, ISO-06, ISO-07, ISO-08, ISO-09, ISO-10
+**Depends on:** Phase 12
+**Plans:** 4 plans
+
+Plans:
+- [ ] 12.15-01-PLAN.md -- Isolation store, Tauri IPC loop persistence, isolation-aware playback engine
+- [ ] 12.15-02-PLAN.md -- Timeline Canvas 2D isolation rendering and name label hit detection
+- [ ] 12.15-03-PLAN.md -- Sidebar accent bar toggle, loop button, Escape shortcut, deletion cleanup
+- [ ] 12.15-04-PLAN.md -- End-to-end verification checkpoint
+
 ### Phase 12.14: Timeline/canvas buttons enhancements (INSERTED)
 
 **Goal:** Replace all Unicode text-based button characters across timeline panel, canvas bottom bar, and toolbar with lucide-preact SVG icons. All buttons become icon-only with hover tooltips showing label + keyboard shortcut.
