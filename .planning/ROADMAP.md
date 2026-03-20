@@ -34,7 +34,7 @@ See: `milestones/v0.1.0-ROADMAP.md` for full details.
 - [ ] **Phase 10: FX Blur Effect** - Dual-quality blur: Dual Kawase for fast playback preview, Gaussian for high-quality rendering
 - [x] **Phase 11: Live Canvas Transform** - Direct transform manipulation on canvas preview (move, scale, rotate) in addition to existing parameter controls (completed 2026-03-14)
 - [ ] **Phase 12: Layer Keyframe Animation** - Per-layer keyframe motion (opacity, transform) with interpolation curves (cubic, linear) visible on timeline
-- [ ] **Phase 13: Sequence Fade In/Out** - Fade with opacity (PNG+alpha transparency) or fade to solid color (default black)
+- [x] **Phase 13: Sequence Fade In/Out** - Fade with opacity (PNG+alpha transparency) or fade to solid color (default black) (completed 2026-03-20)
 - [ ] **Phase 14: Cross-Sequence Transitions** - Fade between sequences (seq 1 out -> seq 2 in) with cubic/linear interpolation
 - [ ] **Phase 15: Audio Import & Waveform** - Import audio files, waveform on timeline, synchronized playback
 - [ ] **Phase 16: Beat Sync** - BPM detection, beat markers, snap modes, auto-arrange key photos
@@ -475,7 +475,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.12. New Content Layer for Timeline | 4/4 | Complete    | 2026-03-19 | - |
 | 12.13. Linear Timeline | 2/2 | Complete    | 2026-03-19 | - |
 | 12.14. Timeline/Canvas Buttons Enhancements | 2/2 | Complete    | 2026-03-19 | - |
-| 13. Sequence Fade In/Out | v0.2.0 | 4/5 | In Progress|  |
+| 13. Sequence Fade In/Out | v0.2.0 | 4/5 | Complete    | 2026-03-20 |
 | 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
 | 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
 | 16. Beat Sync | v0.2.0 | 0/0 | Planned | - |
