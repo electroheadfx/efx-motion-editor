@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.15-03-PLAN.md
-last_updated: "2026-03-20T12:29:48.822Z"
+stopped_at: Completed 12.15-02-PLAN.md
+last_updated: "2026-03-20T12:33:18.404Z"
 progress:
   total_phases: 26
   completed_phases: 20
   total_plans: 56
-  completed_plans: 54
+  completed_plans: 55
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: 12.15 (sequence-playback) — EXECUTING
-Plan: 4 of 4
+Plan: 3 of 4
 
 ## Accumulated Context
 
@@ -95,6 +95,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.15]: Tick reads isolation state via .peek() for zero-overhead when no isolation active
 - [Phase 12.15]: Normal playback auto-loop now conditional on loopEnabled (was always-on)
 - [Phase 12.15]: Skipped 'l' loop toggle shortcut (conflicts with JKL shuttle KeyL); removed (L) from loop button tooltip
+- [Phase 12.15]: Isolation border renders BEFORE name overlay so label draws on top of border
+- [Phase 12.15]: Name label hover state managed internally by renderer (setHoveredNameLabel), not passed through DrawState signal subscription
 
 ### Pending Todos
 
@@ -173,6 +175,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-20T12:29:48.820Z
-Stopped at: Completed 12.15-03-PLAN.md
+Last session: 2026-03-20T12:33:18.401Z
+Stopped at: Completed 12.15-02-PLAN.md
 Resume file: None
