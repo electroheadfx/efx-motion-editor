@@ -12,6 +12,7 @@ import {keyframeStore} from '../../stores/keyframeStore';
 import {currentTheme} from '../../lib/themeManager';
 import {isFullSpeed} from '../../lib/playbackEngine';
 import {isolationStore} from '../../stores/isolationStore';
+import {uiStore} from '../../stores/uiStore';
 
 /**
  * TimelineCanvas: Preact component wrapping a canvas element with signal subscriptions.
@@ -71,6 +72,7 @@ export function TimelineCanvas() {
       const totalFrames = timelineStore.totalFrames.value;
       const fxTracks = fxTrackLayouts.value;
       const isolatedIds = isolationStore.isolatedSequenceIds.value;
+      const selectedTransitionVal = uiStore.selectedTransition.value;
 
       // Map selected layer ID to FX/content-overlay sequence ID for timeline highlight
       const selectedLayerId = layerStore.selectedLayerId.value;
@@ -125,6 +127,7 @@ export function TimelineCanvas() {
         selectedLayerSequenceId,
         hidePlayhead: isFullSpeed.value,
         isolatedSequenceIds: isolatedIds,
+        selectedTransition: selectedTransitionVal,
       });
     });
 

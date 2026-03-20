@@ -68,6 +68,8 @@ export const trackLayouts = computed<TrackLayout[]>(() => {
       startFrame,
       endFrame: globalFrame,
       keyPhotoRanges: ranges,
+      fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
+      fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,
     });
   }
   return tracks;
@@ -123,6 +125,8 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       visible: seq.visible !== false,
       thumbnailImageId: seq.kind === 'content-overlay' ? getThumbnailImageId(primaryLayer) : undefined,
       layerType: primaryLayer?.type,
+      fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
+      fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,
     });
   }
   return layouts;

@@ -69,6 +69,7 @@ export interface DrawState {
   hidePlayhead?: boolean;  // true during full-speed playback
   isolatedSequenceIds?: Set<string>;
   hoveredNameLabelSequenceId?: string | null;
+  selectedTransition?: { sequenceId: string; type: 'fade-in' | 'fade-out' | 'cross-dissolve' } | null;
 }
 
 /**
