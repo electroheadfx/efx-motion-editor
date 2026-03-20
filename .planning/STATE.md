@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.1
+milestone: v0.1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 12.15-02-PLAN.md
-last_updated: "2026-03-20T13:35:00.985Z"
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-03-20T19:22:57.682Z"
 progress:
   total_phases: 26
   completed_phases: 21
-  total_plans: 56
-  completed_plans: 56
+  total_plans: 61
+  completed_plans: 57
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 12.15 — sequence-playback
+**Current focus:** Phase 13 — sequence-fade-in-out
 
 ## Current Position
 
-Phase: 12.15 (sequence-playback) — EXECUTING
-Plan: 3 of 4
+Phase: 13 (sequence-fade-in-out) — EXECUTING
+Plan: 2 of 5
 
 ## Accumulated Context
 
@@ -97,6 +97,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.15]: Skipped 'l' loop toggle shortcut (conflicts with JKL shuttle KeyL); removed (L) from loop button tooltip
 - [Phase 12.15]: Isolation border renders BEFORE name overlay so label draws on top of border
 - [Phase 12.15]: Name label hover state managed internally by renderer (setHoveredNameLabel), not passed through DrawState signal subscription
+- [Phase 13]: Product rule for overlapping fadeIn/fadeOut (multiply opacities); reuse applyEasing from keyframeEngine; mutual exclusion between selectedTransition and selectedLayerId
 
 ### Pending Todos
 
@@ -176,6 +177,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-20T13:57:27Z
-Stopped at: Completed quick-kn9
+Last session: 2026-03-20T19:22:57.679Z
+Stopped at: Completed 13-01-PLAN.md
 Resume file: None
