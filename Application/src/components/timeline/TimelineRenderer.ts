@@ -237,7 +237,7 @@ export class TimelineRenderer {
     this.drawKeyframeDiamonds(ctx, state, w);
   }
 
-  /** Draw a transition overlay as a thin green bar at the top of the track */
+  /** Draw a transition overlay as a thin purple bar at the top of the track */
   private drawTransitionOverlay(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -253,8 +253,8 @@ export class TimelineRenderer {
     const barY = trackY + 2;
     const barH = Math.round(trackH * 0.2);
 
-    // Green solid fill at 50% opacity (brighter when selected)
-    ctx.fillStyle = isSelected ? 'rgba(34, 197, 94, 0.7)' : 'rgba(34, 197, 94, 0.5)';
+    // Purple solid fill at 50% opacity (brighter when selected)
+    ctx.fillStyle = isSelected ? 'rgba(139, 92, 246, 0.7)' : 'rgba(139, 92, 246, 0.5)';
     ctx.fillRect(x, barY, w, barH);
 
     // Diagonal line (white, semi-transparent)
@@ -270,8 +270,8 @@ export class TimelineRenderer {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Black border (solid green when selected)
-    ctx.strokeStyle = isSelected ? 'rgba(34, 197, 94, 1)' : 'rgba(0, 0, 0, 0.8)';
+    // Black border (purple when selected)
+    ctx.strokeStyle = isSelected ? 'rgba(139, 92, 246, 1)' : 'rgba(0, 0, 0, 0.8)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, barY + 0.5, w - 1, barH - 1);
 
