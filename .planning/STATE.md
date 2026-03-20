@@ -172,9 +172,10 @@ No active blockers.
 | 41 | Add Cmd+Arrow shortcuts for sequence navigation (laptop-friendly Home/End/PgUp/PgDn) | 2026-03-19 | 2ec4c5f |
 | 42 | Add keyframe animation for FX layer source properties (sourceOverrides interpolation) | 2026-03-19 | 0ecfd78 |
 | 43 | Add Cmd+ArrowUp/Down shortcuts as vertical aliases for sequence navigation | 2026-03-19 | 0467cb1 |
+| 44 | Add Close Project to return to homepage + native File menu | 2026-03-20 | f14b49d |
 
 ## Session Continuity
 
-Last session: 2026-03-20T12:33:18.401Z
-Stopped at: Completed 12.15-02-PLAN.md
+Last session: 2026-03-20T13:57:27Z
+Stopped at: Completed quick-kn9
 Resume file: None
