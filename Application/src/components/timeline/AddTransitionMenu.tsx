@@ -40,8 +40,8 @@ export function AddTransitionMenu() {
     }
   }
 
-  // Determine target sequence (content takes priority, then FX)
-  const targetSeq = isContentSeq ? activeSeq : fxSeq;
+  // Determine target sequence (FX selection takes priority over content)
+  const targetSeq = fxSeq ?? (isContentSeq ? activeSeq : null);
   const targetSeqId = targetSeq?.id ?? null;
   const isFxTarget = targetSeq != null && targetSeq.kind !== 'content';
 
