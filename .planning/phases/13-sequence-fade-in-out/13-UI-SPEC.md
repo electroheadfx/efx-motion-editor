@@ -31,7 +31,7 @@ Declared values (must be multiples of 4):
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| xs | 4px | Icon gaps, inline padding, Canvas 2D inset offsets |
+| xs | 4px | Icon gaps, inline padding, Canvas 2D inset offsets, transition overlay inset from track edges |
 | sm | 8px | Compact element spacing, sidebar row padding, Canvas 2D label padding |
 | md | 16px | Default element spacing, section gaps in sidebar |
 | lg | 24px | Not used in this phase |
@@ -39,7 +39,7 @@ Declared values (must be multiples of 4):
 | 2xl | 48px | Not used in this phase |
 | 3xl | 64px | Not used in this phase |
 
-Exceptions: Canvas 2D track geometry uses existing constants (TRACK_HEIGHT=52, FX_TRACK_HEIGHT=28, TRACK_HEADER_WIDTH=80) which are not on the 8-point scale but are established project constants. Transition overlay insets use 2px from track top/bottom edges (established pattern from FX bar drawing).
+Exceptions: Canvas 2D track geometry uses existing named constants (`TRACK_HEIGHT=52`, `FX_TRACK_HEIGHT=28`, `TRACK_HEADER_WIDTH=80`) which are not on the 8-point scale but are established project constants exported from `TimelineRenderer.ts`. Transition overlay border and diagonal line endpoints use a 4px inset from track top/bottom edges (`trackY + 4` / `trackH - 8`), which is on the spacing grid and consistent with the FX bar inset pattern (`barY = y + 4`, `barH = FX_TRACK_HEIGHT - 8`).
 
 ---
 
@@ -51,10 +51,12 @@ This phase has two rendering contexts: DOM (sidebar properties) and Canvas 2D (t
 
 | Role | Size | Weight | Line Height | Usage |
 |------|------|--------|-------------|-------|
-| Section label | 11px | 600 (semibold) | 1.2 | CollapsibleSection/SectionLabel header text, matches existing sidebar sections |
-| Control label | 10px | 400 (regular) | 1.4 | NumericInput labels, toggle labels, color picker labels |
-| Input value | 10px | 400 (regular) | 1.4 | NumericInput value text, dropdown text |
-| Button text | 10px | 400 (regular) | 1.4 | "Add Fade In" / "Add Fade Out" button labels |
+| Section label | 11px | 600 (semibold) | 1.2 | CollapsibleSection/SectionLabel header text -- inherited from existing sidebar convention (`SectionLabel.tsx`, `CollapsibleSection.tsx`, `InlineInterpolation.tsx` all use 11px/600) |
+| Control label | 10px | 400 (regular) | 1.4 | NumericInput labels, toggle labels, color picker labels -- inherited from existing `SidebarFxProperties.tsx` control labels |
+| Input value | 11px | 400 (regular) | 1.4 | NumericInput value text, dropdown/select text -- inherited from existing select elements in `SidebarProperties.tsx` and `SidebarFxProperties.tsx` |
+| Button text | 10px | 400 (regular) | 1.4 | "Add Fade In" / "Add Fade Out" button labels -- matches existing toggle button size in `SidebarFxProperties.tsx` |
+
+**Note on 10px/11px coexistence:** The 1px gap between control labels (10px) and section headers/input values (11px) is an established project convention, not a new introduction. Section headers use 11px at weight 600 with 2px letter-spacing across all existing sidebar sections (`SectionLabel.tsx`, `CollapsibleSection.tsx`, `InlineInterpolation.tsx`). Control labels use 10px at weight 400 in `SidebarFxProperties.tsx`. Select/dropdown values use 11px in `SidebarProperties.tsx` and `SidebarFxProperties.tsx`. This phase inherits the existing pattern verbatim.
 
 ### Canvas 2D (Timeline Transition Overlay)
 
@@ -100,8 +102,8 @@ All sidebar colors use existing CSS variables -- no new variables needed:
 | Inactive toggle bg | `var(--color-bg-input)` | Unselected mode toggle |
 | Active toggle text | `#FFFFFF` | Selected mode toggle text |
 | Inactive toggle text | `var(--color-text-muted)` | Unselected mode toggle text |
-| Remove button text | `var(--color-error-text)` | "Remove" transition action |
-| Remove button hover | `var(--color-error-bg)` | "Remove" button hover background |
+| Remove button text | `var(--color-error-text)` | "Remove Transition" action |
+| Remove button hover | `var(--color-error-bg)` | "Remove Transition" button hover background |
 
 ### 60/30/10 Color Distribution (phase-scoped)
 
@@ -163,7 +165,7 @@ Accent reserved for: transition outline border, diagonal line, transition label 
 | Mode toggle (Transparency / Solid) | Two-button toggle group. Only visible for fade-in/fade-out (not cross dissolve). Defaults to "Transparency". |
 | Color picker | Native `<input type="color">`. Only visible when mode is "Solid". Default value: `#000000`. Inline with "Color" label. |
 | Curve dropdown | Native `<select>` with 4 options: Linear, Ease In, Ease Out, Ease In-Out. Default: "Ease In-Out". |
-| Remove button | Text button at bottom of section. Styled with `--color-error-text`. Removes transition without confirmation (lightweight action, undoable via Cmd+Z). |
+| Remove Transition button | Text button at bottom of section. Styled with `--color-error-text`. Removes transition without confirmation (lightweight action, undoable via Cmd+Z). |
 
 ### Adding Transitions
 
@@ -215,13 +217,13 @@ When a layer is selected:
 | Curve option 2 | Ease In |
 | Curve option 3 | Ease Out |
 | Curve option 4 | Ease In-Out |
-| Remove button | Remove |
+| Remove button | Remove Transition |
 | Timeline label: fade in | In |
 | Timeline label: fade out | Out |
 | Timeline label: cross dissolve | Cross Dissolve |
 | Empty state (no transitions) | Two buttons visible: "Add Fade In" and "Add Fade Out". No additional empty state text needed -- the buttons ARE the empty state. |
 | Error state | Not applicable -- transitions cannot fail to apply. Duration is clamped, invalid states are impossible via the UI controls. |
-| Destructive action | Remove: No confirmation dialog. Action is undoable via Cmd+Z (undo stack). Button uses error-text color as the only visual warning. |
+| Destructive action | Remove Transition: No confirmation dialog. Action is undoable via Cmd+Z (undo stack). Button uses error-text color as the only visual warning. |
 
 ---
 
@@ -234,9 +236,12 @@ Position: x = sequence start, w = fadeIn.duration * frameWidth
 Gradient: horizontal linear, left-to-right
   Stop 0: rgba(0, 0, 0, 0.55)  -- dark (fully faded end)
   Stop 1: rgba(0, 0, 0, 0.05)  -- clear (fully visible end)
-Border: 1px strokeRect, inset 2px from track top/bottom
+Border: 1px strokeRect, inset 4px from track top/bottom
+  strokeRect(x, trackY + 4, w, trackH - 8)
   Color: rgba(255, 255, 255, 0.6) unselected / #FFFFFF selected
 Diagonal: bottom-left to top-right, 1px
+  moveTo(x, trackY + trackH - 4)
+  lineTo(x + w, trackY + 4)
   Color: rgba(255, 255, 255, 0.6)
 Label: "In", centered, 8px system-ui, rgba(255, 255, 255, 0.8)
   Hidden when overlay width < measureText("In").width + 8
@@ -249,9 +254,12 @@ Position: x = sequence end - fadeOut.duration * frameWidth, w = fadeOut.duration
 Gradient: horizontal linear, left-to-right
   Stop 0: rgba(0, 0, 0, 0.05)  -- clear (fully visible end)
   Stop 1: rgba(0, 0, 0, 0.55)  -- dark (fully faded end)
-Border: 1px strokeRect, inset 2px from track top/bottom
+Border: 1px strokeRect, inset 4px from track top/bottom
+  strokeRect(x, trackY + 4, w, trackH - 8)
   Color: rgba(255, 255, 255, 0.6) unselected / #FFFFFF selected
 Diagonal: top-left to bottom-right, 1px
+  moveTo(x, trackY + 4)
+  lineTo(x + w, trackY + trackH - 4)
   Color: rgba(255, 255, 255, 0.6)
 Label: "Out", centered, 8px system-ui, rgba(255, 255, 255, 0.8)
   Hidden when overlay width < measureText("Out").width + 8
@@ -266,9 +274,12 @@ Position: centered on pink boundary marker between two sequences
 Gradient: single diagonal bottom-left to top-right creates two triangular zones
   Left triangle: rgba(0, 0, 0, 0.45) -- outgoing sequence (darker)
   Right triangle: rgba(0, 0, 0, 0.20) -- incoming sequence (lighter)
-Border: 1px strokeRect, inset 2px from track top/bottom
+Border: 1px strokeRect, inset 4px from track top/bottom
+  strokeRect(x, trackY + 4, w, trackH - 8)
   Color: rgba(255, 255, 255, 0.6) unselected / #FFFFFF selected
 Diagonal: bottom-left to top-right, 1px
+  moveTo(x, trackY + trackH - 4)
+  lineTo(x + w, trackY + 4)
   Color: rgba(255, 255, 255, 0.6)
 Pink marker: renders BEHIND the overlay but visible through transparency
 Label: "Cross Dissolve", centered, 8px system-ui, rgba(255, 255, 255, 0.8)
@@ -315,10 +326,10 @@ CollapsibleSection "TRANSITIONS"
 
     Row 4: Curve
       label "Curve" (10px, var(--color-text-muted))
-      <select> with 4 options (text-[10px], bg var(--color-bg-input), text var(--color-text-button))
+      <select> with 4 options (text-[11px], bg var(--color-bg-input), text var(--color-text-button))
 
     Row 5: Remove
-      text button "Remove" (text-[10px], var(--color-error-text))
+      text button "Remove Transition" (text-[10px], var(--color-error-text))
       hover: bg var(--color-error-bg), rounded
 
   [If no transition of this type exists:]
