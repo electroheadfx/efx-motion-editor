@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-03-20T19:22:57.682Z"
+stopped_at: Completed 13-03-PLAN.md
+last_updated: "2026-03-20T19:33:12.411Z"
 progress:
   total_phases: 26
   completed_phases: 21
   total_plans: 61
-  completed_plans: 57
+  completed_plans: 58
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: 13 (sequence-fade-in-out) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 
 ## Accumulated Context
 
@@ -98,6 +98,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 12.15]: Isolation border renders BEFORE name overlay so label draws on top of border
 - [Phase 12.15]: Name label hover state managed internally by renderer (setHoveredNameLabel), not passed through DrawState signal subscription
 - [Phase 13]: Product rule for overlapping fadeIn/fadeOut (multiply opacities); reuse applyEasing from keyframeEngine; mutual exclusion between selectedTransition and selectedLayerId
+- [Phase 13-sequence-fade-in-out]: sequenceOpacity parameter multiplied into per-layer globalAlpha rather than offscreen canvas compositing (simpler, more performant)
 
 ### Pending Todos
 
@@ -177,6 +178,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-20T19:22:57.679Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-03-20T19:33:12.407Z
+Stopped at: Completed 13-03-PLAN.md
 Resume file: None
