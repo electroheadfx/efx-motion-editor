@@ -23,6 +23,8 @@ export interface TrackLayout {
   startFrame: number;
   endFrame: number; // exclusive
   keyPhotoRanges: KeyPhotoRange[];
+  fadeIn?: { duration: number };
+  fadeOut?: { duration: number };
 }
 
 /** Layout info for an FX or content-overlay sequence range bar in the timeline */
@@ -36,6 +38,8 @@ export interface FxTrackLayout {
   visible: boolean;  // false when FX sequence is hidden (toggled off)
   thumbnailImageId?: string;  // used for thumbnail icon rendering in content overlay range bars
   layerType?: LayerType;      // used to distinguish static-image/image-sequence/video for color and rendering decisions
+  fadeIn?: { duration: number };
+  fadeOut?: { duration: number };
 }
 
 /** Frame range for a single key photo within a track */

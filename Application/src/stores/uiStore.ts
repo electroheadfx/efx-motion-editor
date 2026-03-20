@@ -11,8 +11,14 @@ export type AddLayerIntent =
       changeSourceFor?: { layerId: string; sequenceId: string };
     };
 
+export type TransitionSelection = {
+  sequenceId: string;
+  type: 'fade-in' | 'fade-out' | 'cross-dissolve';
+} | null;
+
 const selectedSequenceId = signal<string | null>(null);
 const selectedLayerId = signal<string | null>(null);
+const selectedTransition = signal<TransitionSelection>(null);
 const selectedPanel = signal<PanelId | null>(null);
 const sidebarWidth = signal(317);
 const propertiesPanelWidth = signal(280);
@@ -46,6 +52,7 @@ const layersPanelHeight = signal(200);
 export const uiStore = {
   selectedSequenceId,
   selectedLayerId,
+  selectedTransition,
   selectedPanel,
   sidebarWidth,
   propertiesPanelWidth,
@@ -70,6 +77,15 @@ export const uiStore = {
   },
   selectLayer(id: string | null) {
     selectedLayerId.value = id;
+    if (id) {
+      selectedTransition.value = null;  // mutual exclusion
+    }
+  },
+  selectTransition(sel: TransitionSelection) {
+    selectedTransition.value = sel;
+    if (sel) {
+      selectedLayerId.value = null;  // mutual exclusion per D-10 / UI-SPEC State Contract
+    }
   },
   selectPanel(id: PanelId | null) {
     selectedPanel.value = id;
@@ -175,6 +191,7 @@ export const uiStore = {
   reset() {
     selectedSequenceId.value = null;
     selectedLayerId.value = null;
+    selectedTransition.value = null;
     selectedPanel.value = null;
     sidebarWidth.value = 317;
     propertiesPanelWidth.value = 280;

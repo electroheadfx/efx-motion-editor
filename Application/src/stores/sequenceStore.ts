@@ -1,5 +1,5 @@
 import {signal, batch} from '@preact/signals';
-import type {Sequence, KeyPhoto} from '../types/sequence';
+import type {Sequence, KeyPhoto, Transition, TransitionType} from '../types/sequence';
 import type {Layer} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
 import {pushAction} from '../lib/history';
@@ -646,6 +646,71 @@ export const sequenceStore = {
     pushAction({
       id: crypto.randomUUID(),
       description: 'Reorder layers',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  // --- Transition CRUD ---
+
+  /** Add a transition (fadeIn, fadeOut, or crossDissolve) to a sequence */
+  addTransition(sequenceId: string, transition: Transition) {
+    const before = snapshot();
+    const field = transition.type === 'fade-in' ? 'fadeIn'
+      : transition.type === 'fade-out' ? 'fadeOut'
+      : 'crossDissolve';
+    sequences.value = sequences.value.map(s =>
+      s.id === sequenceId ? { ...s, [field]: transition } : s,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: genId(),
+      description: `Add ${transition.type} to sequence`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Remove a transition by type from a sequence */
+  removeTransition(sequenceId: string, type: TransitionType) {
+    const before = snapshot();
+    const field = type === 'fade-in' ? 'fadeIn'
+      : type === 'fade-out' ? 'fadeOut'
+      : 'crossDissolve';
+    sequences.value = sequences.value.map(s =>
+      s.id === sequenceId ? { ...s, [field]: undefined } : s,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: genId(),
+      description: `Remove ${type} from sequence`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Update transition properties by type on a sequence */
+  updateTransition(sequenceId: string, type: TransitionType, updates: Partial<Transition>) {
+    const before = snapshot();
+    const field = type === 'fade-in' ? 'fadeIn'
+      : type === 'fade-out' ? 'fadeOut'
+      : 'crossDissolve';
+    sequences.value = sequences.value.map(s => {
+      if (s.id !== sequenceId) return s;
+      const existing = s[field];
+      if (!existing) return s;
+      return { ...s, [field]: { ...existing, ...updates } };
+    });
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: genId(),
+      description: `Update ${type} on sequence`,
       timestamp: Date.now(),
       undo: () => restore(before),
       redo: () => restore(after),
