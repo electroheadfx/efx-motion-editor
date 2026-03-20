@@ -385,12 +385,19 @@ Plans:
 ### Phase 13: Sequence Fade In/Out
 **Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
 **Depends on**: Phase 12
-**Requirements**: TBD
+**Requirements**: FADE-01, FADE-02, FADE-03
 **Success Criteria** (what must be TRUE):
   1. User can set fade-in and fade-out duration (in frames) on a sequence
   2. Fade supports two modes: opacity fade (for transparent PNG+alpha export) and solid color fade (configurable color, default black)
   3. Fade is visible in real-time preview playback and correctly rendered in PNG export
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 13-01-PLAN.md -- Data model, transition engine, store methods, .mce v7 persistence
+- [ ] 13-02-PLAN.md -- Timeline rendering: transition overlays, hit testing, selection
+- [ ] 13-03-PLAN.md -- Preview compositing with fade opacity, sidebar TransitionProperties
+- [ ] 13-04-PLAN.md -- Cross dissolve: engine, frameMap overlap, dual-render, timeline
+- [ ] 13-05-PLAN.md -- End-to-end visual verification checkpoint
 
 ### Phase 14: Cross-Sequence Transitions
 **Goal**: Add fade transitions between sequences -- sequence 1 fades out while sequence 2 fades in, with configurable interpolation curves
