@@ -323,7 +323,11 @@ export function ImportedView() {
       try { await mkdir(audioDir, { recursive: true }); } catch { /* exists */ }
       const destPath = `${audioDir}/${filename}`;
       try { await copyFile(filePath, destPath); } catch (err) { console.error('Failed to copy audio:', err); return; }
-      imageStore.addAudioAsset({ id: crypto.randomUUID(), name: filename, path: destPath });
+      // Only add asset if not already imported (same path = same file)
+      const existing = imageStore.audioAssets.value.find(a => a.path === destPath);
+      if (!existing) {
+        imageStore.addAudioAsset({ id: crypto.randomUUID(), name: filename, path: destPath });
+      }
     } else if (currentIntent?.type === 'video') {
       // Video import flow
       const selected = await open({
