@@ -2,12 +2,13 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience: Tauri scaffold, UI shell, image pipeline, project management, timeline, preview, undo/redo, keyboard shortcuts, multi-layer compositing, and cinematic FX effects. v0.2.0 (Phases 8-17) extends the editor with new features and completes the pipeline with audio, beat sync, and PNG export.
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience: Tauri scaffold, UI shell, image pipeline, project management, timeline, preview, undo/redo, keyboard shortcuts, multi-layer compositing, and cinematic FX effects. v0.2.0 (Phases 8-14) extends the editor with new features and completes the pipeline with PNG export. v0.3.0 (Phases 15-16) adds audio import with waveforms and beat sync.
 
 ## Milestones
 
 - v0.1.0 -- Phases 1-7 (shipped 2026-03-11)
-- v0.2.0 -- Phases 8-17 (planned)
+- v0.2.0 -- Phases 8-14 (planned)
+- v0.3.0 -- Phases 15-16 (planned)
 
 ## Phases
 
@@ -34,11 +35,13 @@ See: `milestones/v0.1.0-ROADMAP.md` for full details.
 - [ ] **Phase 10: FX Blur Effect** - Dual-quality blur: Dual Kawase for fast playback preview, Gaussian for high-quality rendering
 - [x] **Phase 11: Live Canvas Transform** - Direct transform manipulation on canvas preview (move, scale, rotate) in addition to existing parameter controls (completed 2026-03-14)
 - [ ] **Phase 12: Layer Keyframe Animation** - Per-layer keyframe motion (opacity, transform) with interpolation curves (cubic, linear) visible on timeline
-- [x] **Phase 13: Sequence Fade In/Out** - Fade with opacity (PNG+alpha transparency) or fade to solid color (default black) (completed 2026-03-20)
-- [ ] **Phase 14: Cross-Sequence Transitions** - Fade between sequences (seq 1 out -> seq 2 in) with cubic/linear interpolation
+- [x] **Phase 13: Fade/Cross-Dissolve Transitions** - Fade in/out with opacity or solid color, plus cross-dissolve between sequences (completed 2026-03-20)
+- [ ] **Phase 14: PNG & Video Export** - Composited frame export (PNG sequence + ProRes/H.264/AV1 video) with resolution multipliers, progress, metadata sidecars, FFmpeg auto-provisioning
+
+### v0.3.0 (Planned)
+
 - [ ] **Phase 15: Audio Import & Waveform** - Import audio files, waveform on timeline, synchronized playback
 - [ ] **Phase 16: Beat Sync** - BPM detection, beat markers, snap modes, auto-arrange key photos
-- [ ] **Phase 17: PNG Export** - Composited frame export with resolution options, progress, metadata sidecar
 
 ## Phase Details
 
@@ -382,8 +385,8 @@ Plans:
 - [ ] 12.12-03-PLAN.md -- Timeline rendering (colored range bars, thumbnails) and interaction (click, drag, keyframe diamonds)
 - [ ] 12.12-04-PLAN.md -- Preview compositing with content overlay looping and keyframe interpolation, visual verification
 
-### Phase 13: Sequence Fade In/Out
-**Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black)
+### Phase 13: Fade/Cross-Dissolve Transitions
+**Goal**: Add fade in/out transitions on sequences -- fade with opacity for transparent PNG+alpha export, or fade to/from any solid color (default black). Also cross-dissolve transitions between adjacent sequences with configurable interpolation.
 **Depends on**: Phase 12
 **Requirements**: FADE-01, FADE-02, FADE-03
 **Success Criteria** (what must be TRUE):
@@ -398,16 +401,6 @@ Plans:
 - [x] 13-03-PLAN.md -- Preview compositing with fade opacity, sidebar TransitionProperties
 - [x] 13-04-PLAN.md -- Cross dissolve: engine, frameMap overlap, dual-render, timeline
 - [ ] 13-05-PLAN.md -- End-to-end visual verification checkpoint
-
-### Phase 14: Cross-Sequence Transitions
-**Goal**: Add fade transitions between sequences -- sequence 1 fades out while sequence 2 fades in, with configurable interpolation curves
-**Depends on**: Phase 13
-**Requirements**: TBD
-**Success Criteria** (what must be TRUE):
-  1. User can set a crossfade transition between two adjacent sequences with configurable duration (in frames)
-  2. User can choose interpolation curve for the transition (linear, cubic, ease-in, ease-out)
-  3. Crossfade is visible in real-time preview and correctly composited in PNG export
-**Plans**: TBD
 
 ### Phase 15: Audio Import & Waveform
 **Goal**: Users can import audio files, see waveforms on the timeline, and hear audio playing in sync with the visual preview
@@ -429,21 +422,31 @@ Plans:
   3. User can select a snap mode (every beat, every 2 beats, every bar, every half-beat) and auto-arrange key photos to those positions
 **Plans**: TBD
 
-### Phase 17: PNG Export
-**Goal**: Users can export their composited sequences as PNG image sequences ready for downstream editing in DaVinci Resolve or Premiere Pro
-**Depends on**: Phase 6, Phase 7
+### Phase 14: PNG & Video Export
+**Goal**: Multi-format export system: composited PNG image sequences (RGBA) and video files (ProRes, H.264, AV1) with resolution multipliers, progress tracking, metadata sidecars, and FFmpeg auto-provisioning
+**Depends on**: Phase 13
 **Requirements**: EXPORT-01, EXPORT-02, EXPORT-03, EXPORT-04, EXPORT-05, EXPORT-06
 **Success Criteria** (what must be TRUE):
-  1. User can export a sequence as a PNG image sequence to a chosen directory, with all visible layers and FX composited at the target resolution
-  2. User can select export resolution (original, 1080p, 4K, custom) and exported files follow the naming pattern frame_NNNN.png with auto-padded numbering
-  3. Export shows a progress indicator (frame X of N) with a working cancel button that remains responsive throughout the export
-  4. Export writes an audio metadata sidecar JSON file alongside the PNG sequence for downstream editor handoff
-**Plans**: TBD
+  1. User can export the full composited timeline as a PNG image sequence to a chosen directory, with all visible layers and FX baked at the target resolution
+  2. User can select export resolution via multipliers (0.15x, 0.25x, 0.5x, 1x, 2x) and exported files follow DaVinci naming pattern
+  3. Export shows a progress indicator (frame X of N) with estimated time remaining and a working cancel button
+  4. Export writes a JSON metadata sidecar alongside the PNG sequence
+  5. User can export video (ProRes/H.264/AV1) from the PNG sequence via auto-provisioned FFmpeg
+  6. Export dialog provides format selection, resolution options, preview thumbnail, folder picker, and keyboard shortcut (Cmd+Shift+E)
+**Plans**: 5 plans
+
+Plans:
+- [ ] 14-01-PLAN.md -- Core infrastructure: exportRenderer extraction, types, exportStore, Rust IPC commands
+- [ ] 14-02-PLAN.md -- Export dialog UI: ExportView, FormatSelector, ExportPreview, EditorShell/Toolbar/menu wiring
+- [ ] 14-03-PLAN.md -- Export engine: yielding frame loop, PNG writes, progress, cancel/resume, sidecars, notifications
+- [ ] 14-04-PLAN.md -- FFmpeg integration: binary management, video encoding (ProRes/H.264/AV1)
+- [ ] 14-05-PLAN.md -- Settings persistence, live preview thumbnail, quality controls, end-to-end verification
 
 ## Progress
 
 **Execution Order:**
-v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 12.11 > 12.12 > 12.13 > 12.14 > 13 > 14 > 15 > 16 > 17
+v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 > 12.7 > 12.8 > 12.9 > 12.10 > 12.11 > 12.12 > 12.13 > 12.14 > 13 > 14
+v0.3.0: 15 > 16
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -475,8 +478,7 @@ v0.2.0: 8 > 9 > 10 > 11 > 12 > 12.1 > 12.1.1 > 12.2 > 12.3 > 12.4 > 12.5 > 12.6 
 | 12.12. New Content Layer for Timeline | 4/4 | Complete    | 2026-03-19 | - |
 | 12.13. Linear Timeline | 2/2 | Complete    | 2026-03-19 | - |
 | 12.14. Timeline/Canvas Buttons Enhancements | 2/2 | Complete    | 2026-03-19 | - |
-| 13. Sequence Fade In/Out | v0.2.0 | 4/5 | Complete    | 2026-03-20 |
-| 14. Cross-Sequence Transitions | v0.2.0 | 0/0 | Planned | - |
-| 15. Audio Import & Waveform | v0.2.0 | 0/0 | Planned | - |
-| 16. Beat Sync | v0.2.0 | 0/0 | Planned | - |
-| 17. PNG Export | v0.2.0 | 0/0 | Planned | - |
+| 13. Fade/Cross-Dissolve Transitions | v0.2.0 | 5/5 | Complete    | 2026-03-20 |
+| 14. PNG & Video Export | v0.2.0 | 0/5 | In Progress | - |
+| 15. Audio Import & Waveform | v0.3.0 | 0/0 | Planned | - |
+| 16. Beat Sync | v0.3.0 | 0/0 | Planned | - |
