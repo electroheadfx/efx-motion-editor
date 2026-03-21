@@ -36,7 +36,7 @@ See: `milestones/v0.1.0-ROADMAP.md` for full details.
 - [x] **Phase 11: Live Canvas Transform** - Direct transform manipulation on canvas preview (move, scale, rotate) in addition to existing parameter controls (completed 2026-03-14)
 - [ ] **Phase 12: Layer Keyframe Animation** - Per-layer keyframe motion (opacity, transform) with interpolation curves (cubic, linear) visible on timeline
 - [x] **Phase 13: Fade/Cross-Dissolve Transitions** - Fade in/out with opacity or solid color, plus cross-dissolve between sequences (completed 2026-03-20)
-- [ ] **Phase 14: PNG & Video Export** - Composited frame export (PNG sequence + ProRes/H.264/AV1 video) with resolution multipliers, progress, metadata sidecars, FFmpeg auto-provisioning
+- [x] **Phase 14: PNG & Video Export** - Composited frame export (PNG sequence + ProRes/H.264/AV1 video) with resolution multipliers, progress, metadata sidecars, FFmpeg auto-provisioning (completed 2026-03-21)
 
 ### v0.3.0 (Planned)
 
@@ -440,7 +440,7 @@ Plans:
 - [x] 14-02-PLAN.md -- Export dialog UI: ExportView, FormatSelector, ExportPreview, EditorShell/Toolbar/menu wiring
 - [x] 14-03-PLAN.md -- Export engine: yielding frame loop, PNG writes, progress, cancel/resume, sidecars, notifications
 - [x] 14-04-PLAN.md -- FFmpeg integration: binary management, video encoding (ProRes/H.264/AV1)
-- [ ] 14-05-PLAN.md -- Settings persistence, live preview thumbnail, quality controls, end-to-end verification
+- [x] 14-05-PLAN.md -- Settings persistence, live preview thumbnail, quality controls, end-to-end verification
 
 ## Progress
 
@@ -479,6 +479,6 @@ v0.3.0: 15 > 16
 | 12.13. Linear Timeline | 2/2 | Complete    | 2026-03-19 | - |
 | 12.14. Timeline/Canvas Buttons Enhancements | 2/2 | Complete    | 2026-03-19 | - |
 | 13. Fade/Cross-Dissolve Transitions | v0.2.0 | 5/5 | Complete    | 2026-03-20 |
-| 14. PNG & Video Export | v0.2.0 | 4/5 | In Progress|  |
+| 14. PNG & Video Export | v0.2.0 | 5/5 | Complete   | 2026-03-21 |
 | 15. Audio Import & Waveform | v0.3.0 | 0/0 | Planned | - |
 | 16. Beat Sync | v0.3.0 | 0/0 | Planned | - |
