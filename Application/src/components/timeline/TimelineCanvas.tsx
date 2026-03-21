@@ -3,11 +3,12 @@ import {effect} from '@preact/signals';
 import {TimelineRenderer, invalidateColorCache} from './TimelineRenderer';
 import {TimelineInteraction} from './TimelineInteraction';
 import {timelineStore} from '../../stores/timelineStore';
-import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
+import {trackLayouts, fxTrackLayouts, audioTrackLayouts} from '../../lib/frameMap';
 import {imageStore} from '../../stores/imageStore';
 import {layerStore} from '../../stores/layerStore';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {keyframeStore} from '../../stores/keyframeStore';
+import {audioStore} from '../../stores/audioStore';
 // isFxLayer removed: FX layers now support keyframes
 import {currentTheme} from '../../lib/themeManager';
 import {isFullSpeed} from '../../lib/playbackEngine';
@@ -128,6 +129,8 @@ export function TimelineCanvas() {
         hidePlayhead: isFullSpeed.value,
         isolatedSequenceIds: isolatedIds,
         selectedTransition: selectedTransitionVal,
+        audioTracks: audioTrackLayouts.value,
+        selectedAudioTrackId: audioStore.selectedTrackId.value,
       });
     });
 
