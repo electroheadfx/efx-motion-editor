@@ -4,8 +4,8 @@ import { frameMap, crossDissolveOverlaps } from './frameMap';
 import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
 import { exportStore } from '../stores/exportStore';
-import { exportCreateDir, exportWritePng } from './ipc';
-import { generateJsonSidecar } from './exportSidecar';
+import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo } from './ipc';
+import { generateJsonSidecar, generateFcpxml } from './exportSidecar';
 
 /**
  * Convert canvas to PNG blob, then to Uint8Array for IPC.
@@ -176,10 +176,89 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     const sidecarBytes = new TextEncoder().encode(sidecarJson);
     await exportWritePng(exportDir, sidecarFilename, Array.from(sidecarBytes));
 
-    // 7. Complete
+    // 7. If video format, encode with FFmpeg (per D-03, D-08)
+    if (settings.format !== 'png') {
+      exportStore.updateProgress({ status: 'encoding' });
+
+      // Check if FFmpeg is available, download if not (D-08, D-11)
+      const ffmpegCheck = await exportCheckFfmpeg();
+      if (!ffmpegCheck.ok || !ffmpegCheck.data) {
+        exportStore.updateProgress({
+          status: 'preparing',
+          // Reuse preparing status for download indication
+        });
+        const downloadResult = await exportDownloadFfmpeg();
+        if (!downloadResult.ok) {
+          exportStore.updateProgress({
+            status: 'error',
+            errorMessage: `Failed to download FFmpeg: ${downloadResult.error}`,
+          });
+          return;
+        }
+      }
+
+      // Build output filename per D-19: ProjectName_ResolutionP_codec.ext
+      const resLabel = `${exportHeight}p`;
+      const codecLabel = settings.format === 'prores' ? 'prores'
+        : settings.format === 'h264' ? 'h264'
+        : 'av1';
+      const ext = settings.format === 'prores' ? '.mov' : '.mp4';
+      const sanitizedName = projectName.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const videoFilename = `${sanitizedName}_${resLabel}_${codecLabel}${ext}`;
+      const videoOutputPath = `${exportDir}/${videoFilename}`;
+
+      // Build FFmpeg glob pattern from naming pattern
+      // Convert '{name}_{frame}.png' to 'ProjectName_%04d.png' for FFmpeg
+      const digits = Math.max(4, String(total).length);
+      const ffmpegPattern = settings.namingPattern
+        .replace('{name}', sanitizedName)
+        .replace('{frame}', `%0${digits}d`);
+
+      const codecMap: Record<string, string> = {
+        prores: 'prores',
+        h264: 'h264',
+        av1: 'av1',
+      };
+
+      const encodeResult = await exportEncodeVideo(
+        exportDir,
+        ffmpegPattern,
+        videoOutputPath,
+        codecMap[settings.format] || 'h264',
+        projectStore.fps.peek(),
+        settings.videoQuality.h264Crf,
+        settings.videoQuality.av1Crf,
+        settings.videoQuality.proresProfile,
+      );
+
+      if (!encodeResult.ok) {
+        exportStore.updateProgress({
+          status: 'error',
+          errorMessage: `Video encoding failed: ${encodeResult.error}`,
+        });
+        return;
+      }
+
+      // Write FCPXML sidecar for ProRes only (per D-22)
+      if (settings.format === 'prores') {
+        const fcpxml = generateFcpxml(
+          projectName,
+          projectStore.fps.peek(),
+          exportWidth,
+          exportHeight,
+          total,
+          videoFilename,
+        );
+        const fcpxmlFilename = `${sanitizedName}.fcpxml`;
+        const fcpxmlBytes = new TextEncoder().encode(fcpxml);
+        await exportWritePng(exportDir, fcpxmlFilename, Array.from(fcpxmlBytes));
+      }
+    }
+
+    // 8. Complete
     exportStore.updateProgress({ status: 'complete' });
 
-    // 8. macOS notification if app is in background (D-31)
+    // 9. macOS notification if app is in background (D-31)
     if (document.hidden) {
       try {
         const { isPermissionGranted, requestPermission, sendNotification } =
