@@ -4,7 +4,7 @@ import { frameMap, crossDissolveOverlaps } from './frameMap';
 import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
 import { exportStore } from '../stores/exportStore';
-import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo } from './ipc';
+import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs } from './ipc';
 import { generateJsonSidecar, generateFcpxml } from './exportSidecar';
 
 /**
@@ -253,6 +253,9 @@ export async function startExport(startFromFrame = 0): Promise<void> {
         const fcpxmlBytes = new TextEncoder().encode(fcpxml);
         await exportWritePng(exportDir, fcpxmlFilename, Array.from(fcpxmlBytes));
       }
+
+      // Clean up intermediate PNGs after successful video encoding
+      await exportCleanupPngs(exportDir);
     }
 
     // 8. Complete

@@ -156,6 +156,10 @@ export function exportDownloadFfmpeg() {
   return safeInvoke<string>('export_download_ffmpeg', {});
 }
 
+export function exportCleanupPngs(dirPath: string) {
+  return safeInvoke<number>('export_cleanup_pngs', { dirPath });
+}
+
 export function exportEncodeVideo(
   pngDir: string,
   globPattern: string,

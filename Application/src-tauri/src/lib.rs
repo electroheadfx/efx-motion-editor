@@ -322,6 +322,7 @@ pub fn run() {
             export::export_check_ffmpeg,
             export::export_download_ffmpeg,
             export::export_encode_video,
+            export::export_cleanup_pngs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

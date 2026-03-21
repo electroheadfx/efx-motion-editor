@@ -87,3 +87,26 @@ pub fn export_encode_video(
     };
     ffmpeg::encode_video(&png_dir, &glob_pattern, &output_path, &codec, fps, &quality)
 }
+
+/// Delete intermediate PNG files from export directory after video encoding.
+/// Keeps non-PNG files (video, metadata sidecar, FCPXML).
+#[command]
+pub fn export_cleanup_pngs(dir_path: String) -> Result<u32, String> {
+    let dir = Path::new(&dir_path);
+    if !dir.exists() {
+        return Ok(0);
+    }
+    let mut deleted = 0u32;
+    for entry in std::fs::read_dir(dir).map_err(|e| format!("Failed to read dir: {e}"))? {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if entry.path().extension().map_or(false, |ext| ext == "png") {
+            if std::fs::remove_file(entry.path()).is_ok() {
+                deleted += 1;
+            }
+        }
+    }
+    Ok(deleted)
+}
