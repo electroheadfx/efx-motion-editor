@@ -18,7 +18,10 @@ export function ExportPreview() {
 
   const outWidth = Math.round(baseWidth * resolution);
   const outHeight = Math.round(baseHeight * resolution);
-  const duration = fps > 0 ? (frames / fps).toFixed(2) : '0.00';
+  const durationSec = fps > 0 ? frames / fps : 0;
+  const durationStr = durationSec >= 60
+    ? `${Math.floor(durationSec / 60)}m ${Math.round(durationSec % 60)}s`
+    : `${durationSec.toFixed(1)}s`;
 
   // Rough size estimate: PNG ~4 bytes/pixel, video ~0.5 bytes/pixel/frame
   const bytesPerFrame = format === 'png'
@@ -93,7 +96,7 @@ export function ExportPreview() {
           <span class="text-[var(--color-text-secondary)]">{frames}</span>
 
           <span class="text-[var(--color-text-muted)]">Duration</span>
-          <span class="text-[var(--color-text-secondary)]">{duration}s @ {fps} fps</span>
+          <span class="text-[var(--color-text-secondary)]">{durationStr} @ {fps} fps</span>
 
           <span class="text-[var(--color-text-muted)]">Est. Size</span>
           <span class="text-[var(--color-text-secondary)]">~{sizeMB} MB</span>

@@ -11,12 +11,27 @@ const FORMATS: {value: ExportFormat; label: string; ext: string}[] = [
 
 const RESOLUTIONS: ExportResolution[] = [0.15, 0.25, 0.5, 1, 2];
 
+const PRORES_PROFILES: {value: string; label: string}[] = [
+  {value: 'proxy', label: 'Proxy'},
+  {value: 'lt', label: 'LT'},
+  {value: 'standard', label: 'Standard'},
+  {value: 'hq', label: 'HQ'},
+];
+
 export function FormatSelector() {
   const currentFormat = exportStore.format.value;
   const currentResolution = exportStore.resolution.value;
   const baseWidth = projectStore.width.value;
   const baseHeight = projectStore.height.value;
   const projectName = projectStore.name.value;
+  const quality = exportStore.videoQuality.value;
+  const namingPattern = exportStore.namingPattern.value;
+
+  // Generate preview filename from naming pattern
+  const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const previewFilename = namingPattern
+    .replace('{name}', safeName)
+    .replace('{frame}', '0001');
 
   return (
     <div class="flex flex-col gap-6">
@@ -65,13 +80,77 @@ export function FormatSelector() {
 
       {/* Video quality (shown only for video formats) */}
       {currentFormat !== 'png' && (
-        <div class="space-y-2">
+        <div class="space-y-3">
           <label class="text-xs font-semibold text-[var(--color-text-muted)]">Quality</label>
-          <div class="text-sm text-[var(--color-text-secondary)]">
-            {currentFormat === 'h264' && `CRF ${exportStore.videoQuality.value.h264Crf} (lower = better)`}
-            {currentFormat === 'av1' && `CRF ${exportStore.videoQuality.value.av1Crf} (lower = better)`}
-            {currentFormat === 'prores' && `ProRes ${exportStore.videoQuality.value.proresProfile.toUpperCase()}`}
-          </div>
+
+          {/* H.264 CRF slider */}
+          {currentFormat === 'h264' && (
+            <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-[var(--color-text-secondary)]">CRF</span>
+                <span class="text-sm text-[var(--color-text-secondary)] font-mono w-8 text-right">{quality.h264Crf}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={51}
+                value={quality.h264Crf}
+                onInput={(e) => {
+                  const val = parseInt((e.target as HTMLInputElement).value, 10);
+                  exportStore.setVideoQuality({...quality, h264Crf: val});
+                }}
+                class="w-full accent-[var(--color-accent)]"
+              />
+              <div class="flex justify-between text-xs text-[var(--color-text-muted)]">
+                <span>Best quality</span>
+                <span>Smallest file</span>
+              </div>
+            </div>
+          )}
+
+          {/* AV1 CRF slider */}
+          {currentFormat === 'av1' && (
+            <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-[var(--color-text-secondary)]">CRF</span>
+                <span class="text-sm text-[var(--color-text-secondary)] font-mono w-8 text-right">{quality.av1Crf}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={63}
+                value={quality.av1Crf}
+                onInput={(e) => {
+                  const val = parseInt((e.target as HTMLInputElement).value, 10);
+                  exportStore.setVideoQuality({...quality, av1Crf: val});
+                }}
+                class="w-full accent-[var(--color-accent)]"
+              />
+              <div class="flex justify-between text-xs text-[var(--color-text-muted)]">
+                <span>Best quality</span>
+                <span>Smallest file</span>
+              </div>
+            </div>
+          )}
+
+          {/* ProRes profile selector */}
+          {currentFormat === 'prores' && (
+            <div class="flex flex-wrap gap-2">
+              {PRORES_PROFILES.map((p) => (
+                <button
+                  key={p.value}
+                  class={`px-3 py-1.5 rounded-[5px] text-sm transition-colors ${
+                    quality.proresProfile === p.value
+                      ? 'bg-[var(--color-accent)] text-white'
+                      : 'bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)]'
+                  }`}
+                  onClick={() => exportStore.setVideoQuality({...quality, proresProfile: p.value as 'proxy' | 'lt' | 'standard' | 'hq'})}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -79,8 +158,15 @@ export function FormatSelector() {
       {currentFormat === 'png' && (
         <div class="space-y-2">
           <label class="text-xs font-semibold text-[var(--color-text-muted)]">Naming Pattern</label>
-          <div class="text-sm text-[var(--color-text-secondary)] font-mono bg-[var(--color-bg-settings)] px-3 py-2 rounded-[5px]">
-            {projectName.replace(/[^a-zA-Z0-9_-]/g, '_')}_0001.png
+          <input
+            type="text"
+            value={namingPattern}
+            onInput={(e) => exportStore.setNamingPattern((e.target as HTMLInputElement).value)}
+            class="w-full text-sm text-[var(--color-text-secondary)] font-mono bg-[var(--color-bg-settings)] px-3 py-2 rounded-[5px] border border-[var(--color-border-subtle)] focus:border-[var(--color-accent)] outline-none"
+            placeholder="{name}_{frame}.png"
+          />
+          <div class="text-xs text-[var(--color-text-muted)]">
+            Preview: <span class="font-mono">{previewFilename}</span>
           </div>
         </div>
       )}

@@ -1,3 +1,4 @@
+import {useEffect} from 'preact/hooks';
 import {FormatSelector} from '../export/FormatSelector';
 import {ExportPreview} from '../export/ExportPreview';
 import {ExportProgress} from '../export/ExportProgress';
@@ -6,6 +7,11 @@ import {exportStore} from '../../stores/exportStore';
 import {startExport} from '../../lib/exportEngine';
 
 export function ExportView() {
+  // Load persisted export settings on mount
+  useEffect(() => {
+    exportStore.initFromConfig();
+  }, []);
+
   return (
     <div class="relative flex flex-col flex-1 min-w-0 bg-[var(--color-bg-root)]">
       {/* Header bar */}

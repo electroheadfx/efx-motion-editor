@@ -104,6 +104,32 @@ export function configSetLoopEnabled(enabled: boolean) {
   return safeInvoke<null>('config_set_loop_enabled', { enabled });
 }
 
+// --- Export config commands ---
+
+export function configGetExportFolder() {
+  return safeInvoke<string | null>('config_get_export_folder', {});
+}
+
+export function configSetExportFolder(folder: string) {
+  return safeInvoke<null>('config_set_export_folder', { folder });
+}
+
+export function configGetExportNamingPattern() {
+  return safeInvoke<string | null>('config_get_export_naming_pattern', {});
+}
+
+export function configSetExportNamingPattern(pattern: string) {
+  return safeInvoke<null>('config_set_export_naming_pattern', { pattern });
+}
+
+export function configGetVideoQuality() {
+  return safeInvoke<Record<string, unknown> | null>('config_get_video_quality', {});
+}
+
+export function configSetVideoQuality(quality: Record<string, unknown>) {
+  return safeInvoke<null>('config_set_video_quality', { quality });
+}
+
 // --- Export commands ---
 
 export function exportCreateDir(baseDir: string) {

@@ -15,6 +15,12 @@ struct BuilderConfig {
     panel_heights: Option<(f64, f64)>,
     #[serde(default)]
     loop_enabled: Option<bool>,
+    #[serde(default)]
+    export_folder: Option<String>,
+    #[serde(default)]
+    export_naming_pattern: Option<String>,
+    #[serde(default)]
+    video_quality: Option<HashMap<String, serde_json::Value>>,
 }
 
 /// Returns the path to ~/.config/efx-motion/builder-config.yaml.
@@ -130,5 +136,41 @@ pub fn config_get_loop_enabled() -> Option<bool> {
 pub fn config_set_loop_enabled(enabled: bool) -> Result<(), String> {
     let mut config = read_config();
     config.loop_enabled = Some(enabled);
+    write_config(&config)
+}
+
+#[command]
+pub fn config_get_export_folder() -> Option<String> {
+    read_config().export_folder
+}
+
+#[command]
+pub fn config_set_export_folder(folder: String) -> Result<(), String> {
+    let mut config = read_config();
+    config.export_folder = Some(folder);
+    write_config(&config)
+}
+
+#[command]
+pub fn config_get_export_naming_pattern() -> Option<String> {
+    read_config().export_naming_pattern
+}
+
+#[command]
+pub fn config_set_export_naming_pattern(pattern: String) -> Result<(), String> {
+    let mut config = read_config();
+    config.export_naming_pattern = Some(pattern);
+    write_config(&config)
+}
+
+#[command]
+pub fn config_get_video_quality() -> Option<HashMap<String, serde_json::Value>> {
+    read_config().video_quality
+}
+
+#[command]
+pub fn config_set_video_quality(quality: HashMap<String, serde_json::Value>) -> Result<(), String> {
+    let mut config = read_config();
+    config.video_quality = Some(quality);
     write_config(&config)
 }
