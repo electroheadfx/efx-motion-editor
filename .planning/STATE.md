@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 13-04-PLAN.md
-last_updated: "2026-03-20T22:23:54.100Z"
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-03-21T10:56:32.031Z"
 progress:
-  total_phases: 26
+  total_phases: 25
   completed_phases: 22
-  total_plans: 61
-  completed_plans: 61
+  total_plans: 66
+  completed_plans: 62
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 13 — sequence-fade-in-out
+**Current focus:** Phase 14 — png-export
 
 ## Current Position
 
-Phase: 14
-Plan: Not started
+Phase: 14 (png-export) — EXECUTING
+Plan: 2 of 5
 
 ## Accumulated Context
 
@@ -102,6 +102,8 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 13]: Transition overlays drawn after thumbnails before pink boundaries (z-order); hit test priority: keyframes > transitions > name labels > sequences
 - [Phase 13]: Outgoing sequence owns frameMap slots during cross dissolve overlap; incoming head frames skipped (D-14 timeline shortening)
 - [Phase 13]: Preview reactive render effect refactored to delegate to renderFromFrameMap (eliminates duplication, ensures cross dissolve works in both scrub and playback)
+- [Phase 14-01]: Made PreviewRenderer.getImageSource public for export preload checking
+- [Phase 14-01]: renderGlobalFrame takes canvas parameter for solid fade overlay (avoids canvasRef closure)
 
 ### Pending Todos
 
@@ -181,6 +183,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-20T19:47:39.994Z
-Stopped at: Completed 13-04-PLAN.md
+Last session: 2026-03-21T10:56:32.028Z
+Stopped at: Completed 14-01-PLAN.md
 Resume file: None

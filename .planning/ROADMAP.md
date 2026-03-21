@@ -436,7 +436,7 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 14-01-PLAN.md -- Core infrastructure: exportRenderer extraction, types, exportStore, Rust IPC commands
+- [x] 14-01-PLAN.md -- Core infrastructure: exportRenderer extraction, types, exportStore, Rust IPC commands
 - [ ] 14-02-PLAN.md -- Export dialog UI: ExportView, FormatSelector, ExportPreview, EditorShell/Toolbar/menu wiring
 - [ ] 14-03-PLAN.md -- Export engine: yielding frame loop, PNG writes, progress, cancel/resume, sidecars, notifications
 - [ ] 14-04-PLAN.md -- FFmpeg integration: binary management, video encoding (ProRes/H.264/AV1)
@@ -479,6 +479,6 @@ v0.3.0: 15 > 16
 | 12.13. Linear Timeline | 2/2 | Complete    | 2026-03-19 | - |
 | 12.14. Timeline/Canvas Buttons Enhancements | 2/2 | Complete    | 2026-03-19 | - |
 | 13. Fade/Cross-Dissolve Transitions | v0.2.0 | 5/5 | Complete    | 2026-03-20 |
-| 14. PNG & Video Export | v0.2.0 | 0/5 | In Progress | - |
+| 14. PNG & Video Export | v0.2.0 | 1/5 | In Progress|  |
 | 15. Audio Import & Waveform | v0.3.0 | 0/0 | Planned | - |
 | 16. Beat Sync | v0.3.0 | 0/0 | Planned | - |
