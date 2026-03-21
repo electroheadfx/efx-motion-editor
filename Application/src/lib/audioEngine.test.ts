@@ -1,6 +1,22 @@
-import {describe, it} from 'vitest';
+import {describe, it, expect} from 'vitest';
+import {audioEngine} from './audioEngine';
 
 describe('audioEngine', () => {
+  it('exports audioEngine object', () => {
+    expect(audioEngine).toBeDefined();
+  });
+
+  it('has expected methods', () => {
+    expect(typeof audioEngine.ensureContext).toBe('function');
+    expect(typeof audioEngine.decode).toBe('function');
+    expect(typeof audioEngine.getBuffer).toBe('function');
+    expect(typeof audioEngine.play).toBe('function');
+    expect(typeof audioEngine.stop).toBe('function');
+    expect(typeof audioEngine.stopAll).toBe('function');
+    expect(typeof audioEngine.setVolume).toBe('function');
+    expect(typeof audioEngine.removeTrack).toBe('function');
+  });
+
   describe('ensureContext', () => {
     it.todo('creates AudioContext lazily on first call');
     it.todo('resumes suspended AudioContext');
