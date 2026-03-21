@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos) with blend modes and transforms, apply cinematic FX effects (film grain, vignette, color grade, dirt/scratches, light leaks), preview in real-time on a canvas-based timeline, and manage projects with auto-save. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the complete editing experience from foundation through FX; v0.2.0 adds audio with beat sync and PNG export.
+A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks), add fade/cross-dissolve transitions, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1). Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 adds audio with beat sync.
 
 ## Core Value
 
@@ -35,19 +35,31 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Cinematic FX effects (film grain, vignette, color grade, dirt/scratches, light leaks) — v0.1.0
 - ✓ FX as timeline-level sequences with draggable range bars — v0.1.0
 - ✓ Resolution-independent FX parameters — v0.1.0
-- ✓ Content overlay layers (static image, image sequence, video) as timeline-level sequences with full property controls — Validated in Phase 12.12
+- ✓ 3-level UI theme system (dark/medium/light) with CSS variable architecture — v0.2.0
+- ✓ Canvas zoom/pan with keyboard shortcuts, pinch gestures, and fit-to-window — v0.2.0
+- ✓ GPU-accelerated WebGL2 blur with CPU StackBlur fallback — v0.2.0
+- ✓ Live canvas transform manipulation (move, scale, rotate) with handles — v0.2.0
+- ✓ Per-layer keyframe animation with interpolation curves (linear, ease-in, ease-out, ease-in-out) — v0.2.0
+- ✓ Content overlay layers (static image, image sequence, video) as timeline-level sequences — v0.2.0
+- ✓ Redesigned sidebar with 3 resizable sub-windows, inline key photos, keyframe navigation — v0.2.0
+- ✓ Fade/cross-dissolve transitions with opacity and solid color modes — v0.2.0
+- ✓ Export as PNG image sequence with resolution multipliers, progress, metadata sidecars — v0.2.0
+- ✓ Video export (ProRes/H.264/AV1) via FFmpeg auto-provisioning — v0.2.0
+- ✓ Full-speed playback mode and fullscreen canvas with letterboxed preview — v0.2.0
+- ✓ Sequence isolation (solo) and global loop playback toggle — v0.2.0
+- ✓ Linear timeline layout mode with togglable stacked/linear views — v0.2.0
+- ✓ Lucide-preact SVG icon buttons with keyboard shortcut tooltips — v0.2.0
+- ✓ Tabbed shortcuts overlay with 7 groups and full keyboard navigation — v0.2.0
+- ✓ Timeline vertical scrollbar with playback auto-scroll — v0.2.0
 
 ### Active
 
 - [ ] Audio import, waveform visualization, trimming, positioning
 - [ ] Beat sync (auto-detect BPM, beat markers, snap modes, auto-arrange)
-- [ ] Export as PNG image sequence (resolution options, naming pattern, progress indicator, audio metadata)
 
 ### Out of Scope
 
-- ProRes/MP4 video export — PNG sequence is the professional workflow; video encoding adds massive complexity
 - Live camera tethering — different product category (Dragonframe owns this)
-- Keyframe animation for layer properties — now partially in scope (content overlay layers support keyframe animation since Phase 12.12)
 - Plugin/extension system — requires stable internal APIs; premature
 - AI-powered features — distraction from core value; proven DSP for beat detection instead
 - Real-time collaboration — desktop app with local files; stop-motion is typically solo/small-team
@@ -56,15 +68,15 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ## Context
 
-Shipped v0.1.0 with 10,159 LOC (8,753 TypeScript + 1,352 Rust + 54 CSS) across 284 commits.
+Shipped v0.2.0 with 20,428 LOC (18,110 TypeScript + 2,020 Rust + 298 CSS) across 847 commits since v0.1.0.
 Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm.
-Architecture: 6 reactive signal stores, Rust image pipeline with thumbnail generation, Canvas 2D PreviewRenderer with multi-layer compositing, FX generator system with seeded PRNG, PlaybackEngine with rAF delta accumulation, command-pattern undo/redo engine, tinykeys keyboard shortcuts.
-Project format: .mce v4 with backward compatibility (v1 through v4).
+Architecture: 9 reactive signal stores (project, sequence, layer, keyframe, timeline, canvas, ui, blur, isolation, export), Rust image pipeline with thumbnail generation, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur (glBlur.ts) with CPU fallback, FX generator system with seeded PRNG, keyframe interpolation engine with polynomial cubic easing, PlaybackEngine with rAF delta accumulation and full-speed mode, command-pattern undo/redo engine, tinykeys keyboard shortcuts, exportRenderer with yielding frame loop and FFmpeg video encoding.
+Project format: .mce v7 with backward compatibility (v1 through v7).
 
 Known technical debt:
+- 2 medium-severity export edge cases (content-overlay image preload, FX generator frame offset)
 - Coalescing API unwired in UI (engine works, no slider consumer calls startCoalescing/stopCoalescing)
 - canUndo/canRedo signals exported but no UI consumes them for button disabling
-- resetShuttle() not called from closeProject()
 
 ## Constraints
 
@@ -89,8 +101,12 @@ Known technical debt:
 | FX as timeline-level sequences | FX apply globally with temporal range, not per-layer | ✓ Good — clean separation, draggable range bars on timeline |
 | SortableJS with forceFallback:true | CSS transforms bypass Tauri native HTML5 DnD interception | ✓ Good — reliable drag reorder in sidebar |
 | Canvas 2D for timeline | Full control over rendering, virtualization, pointer events | ✓ Good — smooth at 100+ frames |
-| .mce v4 format with backward compat | Progressive schema migration (v1→v4) without breaking old files | ✓ Good — seamless loading of older projects |
-| PNG sequence export (not video) | Downstream editing in DaVinci Resolve/Premiere Pro is the workflow | — Pending (v0.2.0) |
+| .mce progressive format migration | v1→v7 without breaking old files | ✓ Good — seamless loading of any version |
+| PNG sequence + video export | Downstream editing in DaVinci Resolve/Premiere Pro is the workflow | ✓ Good — FFmpeg auto-provisioned, ProRes/H.264/AV1 |
+| WebGL2 GPU blur over dual CPU | Constant-cost regardless of radius/layer count | ✓ Good — replaced HQ/fast toggle with always-HQ |
+| Content overlays as sequence kind | Reuses FX track pipeline with content compositing | ✓ Good — interleaves cleanly with FX on timeline |
+| Polynomial cubic easing over bezier curves | Simpler math, 21 unit tests, sufficient for stop-motion | ✓ Good — smooth interpolation, no overshooting |
+| Intent-driven add-layer flows | Eliminates popover dialogs, reuses ImportedView | ✓ Good — consistent UX for all layer types |
 
 ---
-*Last updated: 2026-03-20 after Phase 12.15 — Sequence isolation (solo) and loop playback with timeline/sidebar controls, Escape clear, and persistence*
+*Last updated: 2026-03-21 after v0.2.0 milestone — Pipeline Complete*
