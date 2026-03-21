@@ -479,6 +479,6 @@ v0.3.0: 15 > 16
 | 12.13. Linear Timeline | 2/2 | Complete    | 2026-03-19 | - |
 | 12.14. Timeline/Canvas Buttons Enhancements | 2/2 | Complete    | 2026-03-19 | - |
 | 13. Fade/Cross-Dissolve Transitions | v0.2.0 | 5/5 | Complete    | 2026-03-20 |
-| 14. PNG & Video Export | v0.2.0 | 5/5 | Complete   | 2026-03-21 |
+| 14. PNG & Video Export | v0.2.0 | 5/5 | Complete    | 2026-03-21 |
 | 15. Audio Import & Waveform | v0.3.0 | 0/0 | Planned | - |
 | 16. Beat Sync | v0.3.0 | 0/0 | Planned | - |
