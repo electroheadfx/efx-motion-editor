@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks), add fade/cross-dissolve transitions, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1). Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 adds audio with beat sync.
+A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks), add fade/cross-dissolve transitions, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1). Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 adds audio with beat sync, sidebar/solo enhancements, and canvas motion paths.
 
 ## Core Value
 
@@ -54,8 +54,20 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
-- [ ] Audio import, waveform visualization, trimming, positioning
-- [ ] Beat sync (auto-detect BPM, beat markers, snap modes, auto-arrange)
+- [ ] Audio import, waveform visualization, fade in/out, timeline positioning, synced playback
+- [ ] Audio in video export, beat sync (auto-detect BPM, beat markers, snap modes, auto-arrange)
+- [ ] Sidebar enhancements (scroll in key photos, collapse toggle) and solo mode for sequences/layers
+- [ ] Canvas motion path with interpolation preview (After Effects-style keyframe path editing)
+
+## Current Milestone: v0.3.0 Audio & Polish
+
+**Goal:** Add audio with waveforms and beat sync, enhance sidebar UX with solo mode, and introduce After Effects-style motion paths on canvas.
+
+**Target features:**
+- Audio import with waveform, synced playback, fade in/out
+- Audio in video export + beat sync with auto-arrange
+- Sidebar scroll/collapse for key photos, solo mode for sequences and layers
+- Canvas motion path visualization with keyframe dragging
 
 ### Out of Scope
 
@@ -108,5 +120,22 @@ Known technical debt:
 | Polynomial cubic easing over bezier curves | Simpler math, 21 unit tests, sufficient for stop-motion | ✓ Good — smooth interpolation, no overshooting |
 | Intent-driven add-layer flows | Eliminates popover dialogs, reuses ImportedView | ✓ Good — consistent UX for all layer types |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-03-21 after v0.2.0 milestone — Pipeline Complete*
+*Last updated: 2026-03-21 after v0.3.0 milestone started — Audio & Polish*
