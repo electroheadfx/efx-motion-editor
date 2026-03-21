@@ -165,7 +165,7 @@ export const audioTrackLayouts = computed<AudioTrackLayout[]>(() => {
       fadeInCurve: track.fadeInCurve,
       fadeOutCurve: track.fadeOutCurve,
       slipOffset: track.slipOffset,
-      totalAudioFrames: track.totalFramesInFile,
+      totalAudioFrames: track.totalFramesInFile || track.outFrame,
       selected: track.id === selectedId,
     }));
 });
