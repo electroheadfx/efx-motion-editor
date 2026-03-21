@@ -75,4 +75,9 @@ efx-motion-editor/
 
 ## License
 
-All rights reserved.
+MIT — see [LICENSE](LICENSE) for details.
+
+## Commercial Support
+
+Need custom features, integration, or enterprise support for your studio or production pipeline?
+Contact [laurentefx@icloud.com](mailto:laurentefx@icloud.com)
