@@ -77,15 +77,18 @@ export class PreviewRenderer {
     clearCanvas = true,
     sequenceOpacity = 1.0,
   ): void {
-    // Sync canvas internal resolution to layout size (excludes CSS transforms like zoom)
+    // Sync canvas internal resolution to layout size (excludes CSS transforms like zoom).
+    // Skip resize for offscreen canvases (clientWidth=0) — export sets dimensions explicitly.
     const logicalW = this.canvas.clientWidth || this.canvas.offsetWidth;
     const logicalH = this.canvas.clientHeight || this.canvas.offsetHeight;
-    const dpr = window.devicePixelRatio || 1;
-    const displayW = Math.round(logicalW * dpr);
-    const displayH = Math.round(logicalH * dpr);
-    if (this.canvas.width !== displayW || this.canvas.height !== displayH) {
-      this.canvas.width = displayW;
-      this.canvas.height = displayH;
+    const dpr = logicalW > 0 ? (window.devicePixelRatio || 1) : 1;
+    if (logicalW > 0 && logicalH > 0) {
+      const displayW = Math.round(logicalW * dpr);
+      const displayH = Math.round(logicalH * dpr);
+      if (this.canvas.width !== displayW || this.canvas.height !== displayH) {
+        this.canvas.width = displayW;
+        this.canvas.height = displayH;
+      }
     }
 
     let hasDrawable = false;
