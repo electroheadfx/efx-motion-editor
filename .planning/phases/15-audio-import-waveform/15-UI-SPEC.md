@@ -43,7 +43,7 @@ Exceptions:
 - Audio track default height: 44px (per D-01, midpoint of 40-48px range; matches existing TRACK_HEIGHT pattern at 52px for content tracks)
 - FX track height reference: 28px (existing FX_TRACK_HEIGHT constant)
 - Track header width: 80px (existing TRACK_HEADER_WIDTH constant)
-- Resize handle hit-zone: 6px (3px above + 3px below the track edge border)
+- Resize handle hit-zone: 8px (4px inside + 4px outside the visual edge)
 - Range bar vertical padding: 4px (inside the 44px track, waveform area = 36px)
 - Fade overlay triangle height: matches waveform rendering area (36px)
 
@@ -155,7 +155,7 @@ The teal waveform color (#22B8A0) was chosen because:
 
 ### INT-04: Audio Track Edge Resize (In/Out Points)
 
-- **Hit zone:** 6px around each edge (3px inside + 3px outside the visual edge)
+- **Hit zone:** 8px around each edge (4px inside + 4px outside the visual edge)
 - **Cursor:** `col-resize` when hovering within hit zone
 - **Drag behavior:** Adjusts inFrame (left edge) or outFrame (right edge); minimum 1 frame width
 - **Visual:** Edge renders as 2px vertical line in --color-audio-waveform at full opacity
@@ -178,7 +178,7 @@ The teal waveform color (#22B8A0) was chosen because:
 
 ### INT-07: Audio Track Height Resize (per D-01)
 
-- **Trigger:** Drag the bottom edge of an audio track row (6px hit zone)
+- **Trigger:** Drag the bottom edge of an audio track row (8px hit zone: 4px inside + 4px outside the visual edge)
 - **Cursor:** `row-resize`
 - **Constraint:** Minimum 28px (matches FX_TRACK_HEIGHT), maximum 120px
 - **Visual:** Track height updates in real-time; waveform re-renders to fill new height
