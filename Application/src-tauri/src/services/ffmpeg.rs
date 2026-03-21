@@ -1,10 +1,13 @@
+use std::io::Read as IoRead;
 use std::path::PathBuf;
 use std::process::Command;
 
 /// FFmpeg binary download URL.
-/// Using martin-riedl.de macOS arm64 snapshot which includes
-/// libx264, libsvtav1, and prores_ks codecs.
-const FFMPEG_DOWNLOAD_URL: &str = "https://martin-riedl.de/media/ffmpeg/ffmpeg-7.1-macOS-arm64";
+/// Using martin-riedl.de latest macOS arm64 snapshot (signed + notarized).
+/// Includes libx264, libsvtav1, and prores_ks codecs.
+/// Returns a .zip containing the ffmpeg binary.
+const FFMPEG_DOWNLOAD_URL: &str =
+    "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/snapshot/ffmpeg.zip";
 const FFMPEG_FILENAME: &str = "ffmpeg";
 
 /// Get the path where FFmpeg binary should be cached.
@@ -49,7 +52,7 @@ pub async fn download_ffmpeg() -> Result<String, String> {
         .map_err(|e| format!("Failed to create FFmpeg cache dir: {e}"))?;
 
     let target_path = ffmpeg_path();
-    let tmp_path = target_path.with_extension("tmp");
+    let zip_path = target_path.with_extension("zip");
 
     // Download via reqwest
     let response = reqwest::get(FFMPEG_DOWNLOAD_URL)
@@ -68,14 +71,41 @@ pub async fn download_ffmpeg() -> Result<String, String> {
         .await
         .map_err(|e| format!("Failed to read FFmpeg download: {e}"))?;
 
-    // Write to temp file, then rename (atomic)
-    tokio::fs::write(&tmp_path, &bytes)
+    // Write zip to disk
+    tokio::fs::write(&zip_path, &bytes)
         .await
-        .map_err(|e| format!("Failed to write FFmpeg binary: {e}"))?;
+        .map_err(|e| format!("Failed to write FFmpeg zip: {e}"))?;
 
-    tokio::fs::rename(&tmp_path, &target_path)
-        .await
-        .map_err(|e| format!("Failed to rename FFmpeg binary: {e}"))?;
+    // Extract ffmpeg binary from zip
+    let zip_file = std::fs::File::open(&zip_path)
+        .map_err(|e| format!("Failed to open FFmpeg zip: {e}"))?;
+    let mut archive =
+        zip::ZipArchive::new(zip_file).map_err(|e| format!("Failed to read FFmpeg zip: {e}"))?;
+
+    let mut found = false;
+    for i in 0..archive.len() {
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read zip entry: {e}"))?;
+        let name = file.name().to_string();
+        if name == FFMPEG_FILENAME || name.ends_with("/ffmpeg") {
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)
+                .map_err(|e| format!("Failed to extract FFmpeg: {e}"))?;
+            std::fs::write(&target_path, &buf)
+                .map_err(|e| format!("Failed to write FFmpeg binary: {e}"))?;
+            found = true;
+            break;
+        }
+    }
+
+    if !found {
+        let _ = std::fs::remove_file(&zip_path);
+        return Err("FFmpeg binary not found inside downloaded zip".to_string());
+    }
+
+    // Clean up zip
+    let _ = std::fs::remove_file(&zip_path);
 
     // Set execute permission (Research Pitfall 5)
     #[cfg(unix)]
