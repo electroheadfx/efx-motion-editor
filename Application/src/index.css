@@ -73,6 +73,14 @@
   --color-timeline-fx-track-bg: #0D0D0D;
   --color-timeline-fx-header-bg: #0A0A0A;
 
+  /* Audio track colors (Phase 15) */
+  --color-audio-waveform: #22B8A0;
+  --color-audio-waveform-muted: #22B8A033;
+  --color-audio-centerline: #FFFFFF15;
+  --color-audio-track-bg: #0A0F0E;
+  --color-audio-header-bg: #080D0C;
+  --color-audio-fade-overlay: #22B8A040;
+
   /* Sidebar-specific colors */
   --sidebar-bg: #2B2B3D;
   --sidebar-panel-bg: #252539;
@@ -158,6 +166,14 @@
   --color-timeline-fx-track-bg: #333333;
   --color-timeline-fx-header-bg: #303030;
 
+  /* Audio track colors (Phase 15) */
+  --color-audio-waveform: #22B8A0;
+  --color-audio-waveform-muted: #22B8A033;
+  --color-audio-centerline: #FFFFFF15;
+  --color-audio-track-bg: #2E3836;
+  --color-audio-header-bg: #283230;
+  --color-audio-fade-overlay: #22B8A040;
+
   /* Sidebar-specific colors */
   --sidebar-bg: #3A3A4D;
   --sidebar-panel-bg: #343449;
@@ -242,6 +258,14 @@
   --color-timeline-track-name: #444444;
   --color-timeline-fx-track-bg: #D8D8D8;
   --color-timeline-fx-header-bg: #D0D0D0;
+
+  /* Audio track colors (Phase 15) */
+  --color-audio-waveform: #1A9A85;
+  --color-audio-waveform-muted: #1A9A8533;
+  --color-audio-centerline: #00000015;
+  --color-audio-track-bg: #D5E0DE;
+  --color-audio-header-bg: #C8D8D5;
+  --color-audio-fade-overlay: #1A9A8540;
 
   /* Sidebar-specific colors */
   --sidebar-bg: #E0E0ED;
