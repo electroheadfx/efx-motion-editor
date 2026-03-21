@@ -57,6 +57,8 @@ initTempProjectDir().then(async () => {
 
   listen('menu:close-project', () => { handleCloseProject(); });
 
+  listen('menu:export', () => { uiStore.setEditorMode('export'); });
+
   // Guard window close: show unsaved-changes dialog and prevent close on Cancel
   getCurrentWindow().onCloseRequested(async (event) => {
     const { guardUnsavedChanges } = await import('./lib/unsavedGuard');

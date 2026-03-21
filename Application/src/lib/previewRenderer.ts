@@ -77,15 +77,20 @@ export class PreviewRenderer {
     clearCanvas = true,
     sequenceOpacity = 1.0,
   ): void {
-    // Sync canvas internal resolution to layout size (excludes CSS transforms like zoom)
-    const logicalW = this.canvas.clientWidth || this.canvas.offsetWidth;
-    const logicalH = this.canvas.clientHeight || this.canvas.offsetHeight;
-    const dpr = window.devicePixelRatio || 1;
-    const displayW = Math.round(logicalW * dpr);
-    const displayH = Math.round(logicalH * dpr);
-    if (this.canvas.width !== displayW || this.canvas.height !== displayH) {
-      this.canvas.width = displayW;
-      this.canvas.height = displayH;
+    // Sync canvas internal resolution to layout size (excludes CSS transforms like zoom).
+    // For offscreen canvases (clientWidth=0), use canvas.width/height directly with dpr=1.
+    const layoutW = this.canvas.clientWidth || this.canvas.offsetWidth;
+    const layoutH = this.canvas.clientHeight || this.canvas.offsetHeight;
+    const dpr = layoutW > 0 ? (window.devicePixelRatio || 1) : 1;
+    const logicalW = layoutW > 0 ? layoutW : this.canvas.width;
+    const logicalH = layoutH > 0 ? layoutH : this.canvas.height;
+    if (layoutW > 0 && layoutH > 0) {
+      const displayW = Math.round(layoutW * dpr);
+      const displayH = Math.round(layoutH * dpr);
+      if (this.canvas.width !== displayW || this.canvas.height !== displayH) {
+        this.canvas.width = displayW;
+        this.canvas.height = displayH;
+      }
     }
 
     let hasDrawable = false;
@@ -295,7 +300,7 @@ export class PreviewRenderer {
    * Uses efxasset:// custom protocol with no-cache headers set in Rust.
    * Each imageId produces a unique URL via cache-busting key.
    */
-  private getImageSource(imageId: string): HTMLImageElement | null {
+  getImageSource(imageId: string): HTMLImageElement | null {
     // Check cache first
     const cached = this.imageCache.get(imageId);
     if (cached) return cached;

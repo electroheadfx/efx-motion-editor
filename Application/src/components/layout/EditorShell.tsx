@@ -5,6 +5,7 @@ import { CanvasArea } from './CanvasArea';
 import { TimelinePanel } from './TimelinePanel';
 import { ImportedView } from '../views/ImportedView';
 import { SettingsView } from '../views/SettingsView';
+import { ExportView } from '../views/ExportView';
 import { DropZone } from '../import/DropZone';
 import { ShortcutsOverlay } from '../overlay/ShortcutsOverlay';
 import { FullscreenOverlay } from '../overlay/FullscreenOverlay';
@@ -92,6 +93,7 @@ export function EditorShell() {
         )}
         {uiStore.editorMode.value === 'imported' && <ImportedView />}
         {uiStore.editorMode.value === 'settings' && <SettingsView />}
+        {uiStore.editorMode.value === 'export' && <ExportView />}
       </div>
       {/* Drop overlay -- renders on top of everything when dragging files */}
       <DropZone />

@@ -142,7 +142,10 @@ export function Toolbar() {
       </button>
       <button
         class="flex items-center justify-center rounded-[5px] bg-[#F97316] hover:brightness-125 w-8 h-8 cursor-pointer transition-colors"
-        title="Export"
+        onClick={() => uiStore.setEditorMode(
+          uiStore.editorMode.value === 'export' ? 'editor' : 'export'
+        )}
+        title="Export (Cmd+Shift+E)"
       >
         <Download size={16} class="text-white" />
       </button>

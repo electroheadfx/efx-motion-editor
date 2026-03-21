@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 13-04-PLAN.md
-last_updated: "2026-03-20T22:23:54.100Z"
+stopped_at: Completed 14-04-PLAN.md
+last_updated: "2026-03-21T12:51:36.037Z"
 progress:
-  total_phases: 26
-  completed_phases: 22
-  total_plans: 61
-  completed_plans: 61
+  total_phases: 25
+  completed_phases: 23
+  total_plans: 66
+  completed_plans: 66
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 13 — sequence-fade-in-out
+**Current focus:** Phase 14 — png-export
 
 ## Current Position
 
-Phase: 14
+Phase: 15
 Plan: Not started
 
 ## Accumulated Context
@@ -102,6 +102,11 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 13]: Transition overlays drawn after thumbnails before pink boundaries (z-order); hit test priority: keyframes > transitions > name labels > sequences
 - [Phase 13]: Outgoing sequence owns frameMap slots during cross dissolve overlap; incoming head frames skipped (D-14 timeline shortening)
 - [Phase 13]: Preview reactive render effect refactored to delegate to renderFromFrameMap (eliminates duplication, ensures cross dissolve works in both scrub and playback)
+- [Phase 14-01]: Made PreviewRenderer.getImageSource public for export preload checking
+- [Phase 14-01]: renderGlobalFrame takes canvas parameter for solid fade overlay (avoids canvasRef closure)
+- [Phase 14]: menu:export listener in main.tsx following codebase pattern (not shortcuts.ts as plan specified)
+- [Phase 14]: Dynamic import for notification plugin with try/catch fallback for graceful degradation
+- [Phase 14-04]: FFmpeg cached at ~/.config/efx-motion/bin/ matching config_path pattern; reqwest with rustls-tls to avoid native OpenSSL
 
 ### Pending Todos
 
@@ -181,6 +186,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-20T19:47:39.994Z
-Stopped at: Completed 13-04-PLAN.md
+Last session: 2026-03-21T11:13:30.163Z
+Stopped at: Completed 14-04-PLAN.md
 Resume file: None

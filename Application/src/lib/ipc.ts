@@ -103,3 +103,75 @@ export function configGetLoopEnabled() {
 export function configSetLoopEnabled(enabled: boolean) {
   return safeInvoke<null>('config_set_loop_enabled', { enabled });
 }
+
+// --- Export config commands ---
+
+export function configGetExportFolder() {
+  return safeInvoke<string | null>('config_get_export_folder', {});
+}
+
+export function configSetExportFolder(folder: string) {
+  return safeInvoke<null>('config_set_export_folder', { folder });
+}
+
+export function configGetExportNamingPattern() {
+  return safeInvoke<string | null>('config_get_export_naming_pattern', {});
+}
+
+export function configSetExportNamingPattern(pattern: string) {
+  return safeInvoke<null>('config_set_export_naming_pattern', { pattern });
+}
+
+export function configGetVideoQuality() {
+  return safeInvoke<Record<string, unknown> | null>('config_get_video_quality', {});
+}
+
+export function configSetVideoQuality(quality: Record<string, unknown>) {
+  return safeInvoke<null>('config_set_video_quality', { quality });
+}
+
+// --- Export commands ---
+
+export function exportCreateDir(baseDir: string) {
+  return safeInvoke<string>('export_create_dir', { baseDir });
+}
+
+export function exportWritePng(dirPath: string, filename: string, data: number[]) {
+  return safeInvoke<null>('export_write_png', { dirPath, filename, data });
+}
+
+export function exportCountExistingFrames(dirPath: string) {
+  return safeInvoke<number>('export_count_existing_frames', { dirPath });
+}
+
+export function exportOpenInFinder(path: string) {
+  return safeInvoke<null>('export_open_in_finder', { path });
+}
+
+export function exportCheckFfmpeg() {
+  return safeInvoke<string | null>('export_check_ffmpeg', {});
+}
+
+export function exportDownloadFfmpeg() {
+  return safeInvoke<string>('export_download_ffmpeg', {});
+}
+
+export function exportCleanupPngs(dirPath: string) {
+  return safeInvoke<number>('export_cleanup_pngs', { dirPath });
+}
+
+export function exportEncodeVideo(
+  pngDir: string,
+  globPattern: string,
+  outputPath: string,
+  codec: string,
+  fps: number,
+  h264Crf: number,
+  av1Crf: number,
+  proresProfile: string,
+) {
+  return safeInvoke<null>('export_encode_video', {
+    pngDir, globPattern, outputPath, codec, fps,
+    h264Crf, av1Crf, proresProfile,
+  });
+}

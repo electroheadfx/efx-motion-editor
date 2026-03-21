@@ -3,6 +3,7 @@ mod models;
 mod services;
 
 use commands::config;
+use commands::export;
 use commands::image;
 use commands::project;
 use percent_encoding::percent_decode_str;
@@ -16,6 +17,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Build a custom menu that replaces the default macOS menu.
             // The default menu includes Edit > Undo (Cmd+Z) and Edit > Redo (Cmd+Shift+Z)
@@ -61,6 +63,13 @@ pub fn run() {
             )?;
             let save_project_item =
                 MenuItem::with_id(app, "save-project", "Save", true, Some("CmdOrCtrl+S"))?;
+            let export_item = MenuItem::with_id(
+                app,
+                "export",
+                "Export...",
+                true,
+                Some("CmdOrCtrl+Shift+E"),
+            )?;
             let close_project_item = MenuItem::with_id(
                 app,
                 "close-project",
@@ -74,6 +83,8 @@ pub fn run() {
                 .item(&open_project_item)
                 .separator()
                 .item(&save_project_item)
+                .separator()
+                .item(&export_item)
                 .separator()
                 .item(&close_project_item)
                 .build()?;
@@ -130,6 +141,8 @@ pub fn run() {
                     handle.emit("menu:save-project", ()).ok();
                 } else if event.id() == "close-project" {
                     handle.emit("menu:close-project", ()).ok();
+                } else if event.id() == "export" {
+                    handle.emit("menu:export", ()).ok();
                 } else if event.id() == "undo" {
                     handle.emit("menu:undo", ()).ok();
                 } else if event.id() == "redo" {
@@ -296,6 +309,20 @@ pub fn run() {
             config::config_set_panel_heights,
             config::config_get_loop_enabled,
             config::config_set_loop_enabled,
+            config::config_get_export_folder,
+            config::config_set_export_folder,
+            config::config_get_export_naming_pattern,
+            config::config_set_export_naming_pattern,
+            config::config_get_video_quality,
+            config::config_set_video_quality,
+            export::export_create_dir,
+            export::export_write_png,
+            export::export_count_existing_frames,
+            export::export_open_in_finder,
+            export::export_check_ffmpeg,
+            export::export_download_ffmpeg,
+            export::export_encode_video,
+            export::export_cleanup_pngs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
