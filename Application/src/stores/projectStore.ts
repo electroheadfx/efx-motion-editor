@@ -397,6 +397,13 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
       };
       // Load track into store (without undo -- this is hydration)
       audioStore.tracks.value = [...audioStore.tracks.value, track];
+
+      // Populate audioAssets in imageStore so ImportedView shows them
+      imageStore.addAudioAsset({
+        id: track.id,
+        name: track.originalFilename,
+        path: track.filePath,
+      });
     }
 
     // 5. Clear dirty flag (just loaded)

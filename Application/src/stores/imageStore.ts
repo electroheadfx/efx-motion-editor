@@ -12,11 +12,21 @@ export interface VideoAsset {
   path: string; // absolute path in project videos/ directory
 }
 
+/** Metadata for an imported audio asset */
+export interface AudioAsset {
+  id: string;
+  name: string;
+  path: string; // absolute path in project audio/ directory
+}
+
 /** All imported images (metadata only -- does not mean full-res is loaded) */
 const images = signal<ImportedImage[]>([]);
 
 /** All imported video assets */
 const videoAssets = signal<VideoAsset[]>([]);
+
+/** All imported audio assets */
+const audioAssets = signal<AudioAsset[]>([]);
 
 /** IDs of images currently loaded at full resolution in the DOM */
 const fullResLoaded = signal<Map<string, number>>(new Map()); // id -> lastAccessed timestamp
@@ -30,6 +40,7 @@ const importErrors = signal<string[]>([]);
 const imageCount = computed(() => images.value.length);
 const poolSize = computed(() => fullResLoaded.value.size);
 const videoAssetCount = computed(() => videoAssets.value.length);
+const audioAssetCount = computed(() => audioAssets.value.length);
 
 // markDirty callback set by projectStore to avoid circular imports
 let _markDirty: (() => void) | null = null;
@@ -46,6 +57,8 @@ export const imageStore = {
   poolSize,
   videoAssets,
   videoAssetCount,
+  audioAssets,
+  audioAssetCount,
 
   /** Import images from file paths via Rust backend */
   async importFiles(paths: string[], projectDir: string) {
@@ -82,6 +95,12 @@ export const imageStore = {
   /** Register a video file as an imported asset */
   addVideoAsset(asset: VideoAsset) {
     videoAssets.value = [...videoAssets.value, asset];
+    _markDirty?.();
+  },
+
+  /** Register an audio file as an imported asset */
+  addAudioAsset(asset: AudioAsset) {
+    audioAssets.value = [...audioAssets.value, asset];
     _markDirty?.();
   },
 
@@ -191,6 +210,7 @@ export const imageStore = {
     batch(() => {
       images.value = [];
       videoAssets.value = [];
+      audioAssets.value = [];
       fullResLoaded.value = new Map();
       isImporting.value = false;
       importErrors.value = [];
