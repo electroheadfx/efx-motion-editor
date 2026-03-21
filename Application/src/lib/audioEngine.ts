@@ -119,6 +119,10 @@ class AudioEngine {
     source.connect(gain);
     gain.connect(ctx.destination);
 
+    // Apply fade schedule at the scheduled start time
+    const scheduledStart = ctx.currentTime + delaySec;
+    this.applyFadeSchedule(gain, track, scheduledStart, offsetSeconds, fps);
+
     const inOffsetSec = (track.inFrame + track.slipOffset) / fps;
     const framesIntoTrackSec = offsetSeconds - inOffsetSec;
     const trimDurationSec = (track.outFrame - track.inFrame) / fps;
@@ -130,8 +134,7 @@ class AudioEngine {
 
     const clampedOffset = Math.min(Math.max(0, offsetSeconds), buffer.duration - 0.001);
     if (remainingDuration > 0 && clampedOffset < buffer.duration) {
-      // Schedule start at ctx.currentTime + delaySec
-      source.start(ctx.currentTime + delaySec, clampedOffset, remainingDuration);
+      source.start(scheduledStart, clampedOffset, remainingDuration);
     }
 
     this.sources.set(trackId, source);
@@ -218,27 +221,29 @@ class AudioEngine {
 
     const fadeInSec = track.fadeInFrames / fps;
     const fadeOutSec = track.fadeOutFrames / fps;
-    const totalDuration = (track.outFrame - track.inFrame) / fps;
-    const effectiveEnd = audioStartTime + totalDuration - sourceOffset;
+    const visibleDuration = (track.outFrame - track.inFrame) / fps;
+
+    // How far into the VISIBLE track portion we are (not the raw buffer position)
+    const inOffsetSec = (track.inFrame + track.slipOffset) / fps;
+    const visibleOffset = sourceOffset - inOffsetSec;
+    const effectiveEnd = audioStartTime + visibleDuration - visibleOffset;
 
     // Cancel any existing scheduled values
     gain.gain.cancelScheduledValues(audioStartTime);
 
-    const hasFadeIn = fadeInSec > 0 && sourceOffset < fadeInSec;
+    const hasFadeIn = fadeInSec > 0 && visibleOffset < fadeInSec;
     const hasFadeOut = fadeOutSec > 0;
 
     if (!hasFadeIn && !hasFadeOut) {
-      // No fades: constant volume
       gain.gain.setValueAtTime(vol, audioStartTime);
       return;
     }
 
     // Fade-in
     if (hasFadeIn) {
-      // Calculate how far into the fade-in we are
-      const fadeProgress = sourceOffset / fadeInSec;
-      const startValue = Math.max(0.001, vol * fadeProgress); // Can't use 0 for exponentialRamp
-      const fadeInEnd = audioStartTime + (fadeInSec - sourceOffset);
+      const fadeProgress = visibleOffset / fadeInSec;
+      const startValue = Math.max(0.001, vol * fadeProgress);
+      const fadeInEnd = audioStartTime + (fadeInSec - visibleOffset);
 
       gain.gain.setValueAtTime(startValue, audioStartTime);
       this.applyRamp(gain, vol, fadeInEnd, track.fadeInCurve);
@@ -250,9 +255,7 @@ class AudioEngine {
     if (hasFadeOut) {
       const fadeOutStart = effectiveEnd - fadeOutSec;
       if (fadeOutStart > audioStartTime) {
-        // Ensure volume is at full before fade-out starts
         gain.gain.setValueAtTime(vol, fadeOutStart);
-        // Ramp to near-zero (exponentialRamp cannot target 0)
         this.applyRamp(gain, 0.001, effectiveEnd, track.fadeOutCurve);
       }
     }

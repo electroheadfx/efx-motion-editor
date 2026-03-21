@@ -859,8 +859,18 @@ export class TimelineInteraction {
       const deltaFrames = currentFrame - this.audioDragStartFrame;
 
       if (this.audioDragMode === 'move') {
-        const newOffset = this.audioDragOrigOffset + deltaFrames;
-        audioStore.setOffset(this.audioDragTrackId, newOffset);
+        const rawOffset = this.audioDragOrigOffset + deltaFrames;
+        if (rawOffset < 0) {
+          // Clamp at 0 and shift excess into inFrame (trims start, enables fade-in)
+          const trimShift = -rawOffset;
+          const newIn = this.audioDragOrigIn + trimShift;
+          if (newIn < this.audioDragOrigOut - 1) {
+            audioStore.setOffset(this.audioDragTrackId, 0);
+            audioStore.setInOut(this.audioDragTrackId, newIn, this.audioDragOrigOut);
+          }
+        } else {
+          audioStore.setOffset(this.audioDragTrackId, rawOffset);
+        }
       } else if (this.audioDragMode === 'resize-left') {
         const newIn = Math.max(0, this.audioDragOrigIn + deltaFrames);
         if (newIn < this.audioDragOrigOut - 1) {
