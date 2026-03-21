@@ -2,16 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
-status: planning
-stopped_at: Phase 15 UI-SPEC approved
-last_updated: "2026-03-21T18:03:10.152Z"
-last_activity: 2026-03-21 — Roadmap created for v0.3.0
+status: unknown
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-03-21T18:51:44.135Z"
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 4
+  completed_plans: 1
 ---
 
 # Project State
@@ -21,16 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 15 — Audio Import & Waveform
+**Current focus:** Phase 15 — audio-import-waveform
 
 ## Current Position
 
-Phase: 15 of 18 (Audio Import & Waveform) — first of 4 in v0.3.0
-Plan: —
-Status: Ready to plan
-Last activity: 2026-03-21 — Roadmap created for v0.3.0
-
-Progress: [░░░░░░░░░░] 0%
+Phase: 15 (audio-import-waveform) — EXECUTING
+Plan: 2 of 4
 
 ## Performance Metrics
 
@@ -48,10 +42,16 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Accumulated Context
 
+| Phase 15 P01 | 6min | 4 tasks | 12 files |
+
 ### Decisions
 
 Archived to PROJECT.md Key Decisions table.
 Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
+
+- [Phase 15]: audioStore follows sequenceStore pattern: signals, snapshot/restore, pushAction undo
+- [Phase 15]: audioPeaksCache in lib/ as neutral module to avoid circular imports
+- [Phase 15]: Fade-out targets 0.001 not 0 due to Web Audio exponentialRamp limitation
 
 ### Pending Todos
 
@@ -72,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-21T18:03:10.149Z
-Stopped at: Phase 15 UI-SPEC approved
-Resume file: .planning/phases/15-audio-import-waveform/15-UI-SPEC.md
+Last session: 2026-03-21T18:51:44.132Z
+Stopped at: Completed 15-01-PLAN.md
+Resume file: None
