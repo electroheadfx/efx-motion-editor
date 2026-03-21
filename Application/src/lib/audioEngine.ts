@@ -98,6 +98,53 @@ class AudioEngine {
     };
   }
 
+  /**
+   * Schedule audio to start after a delay (for tracks that begin after the playhead).
+   * Uses Web Audio API's `when` parameter for sample-accurate timing.
+   */
+  playDelayed(trackId: string, delaySec: number, offsetSeconds: number, track: AudioTrack, fps: number, maxDurationSec?: number): void {
+    const ctx = this.ensureContext();
+    const buffer = this.buffers.get(trackId);
+    if (!buffer) return;
+
+    this.stop(trackId);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    const gain = ctx.createGain();
+    const vol = track.muted ? 0 : track.volume;
+    gain.gain.value = vol;
+
+    source.connect(gain);
+    gain.connect(ctx.destination);
+
+    const inOffsetSec = (track.inFrame + track.slipOffset) / fps;
+    const framesIntoTrackSec = offsetSeconds - inOffsetSec;
+    const trimDurationSec = (track.outFrame - track.inFrame) / fps;
+    let remainingDuration = trimDurationSec - framesIntoTrackSec;
+
+    if (maxDurationSec !== undefined && maxDurationSec < remainingDuration) {
+      remainingDuration = maxDurationSec;
+    }
+
+    const clampedOffset = Math.min(Math.max(0, offsetSeconds), buffer.duration - 0.001);
+    if (remainingDuration > 0 && clampedOffset < buffer.duration) {
+      // Schedule start at ctx.currentTime + delaySec
+      source.start(ctx.currentTime + delaySec, clampedOffset, remainingDuration);
+    }
+
+    this.sources.set(trackId, source);
+    this.gains.set(trackId, gain);
+
+    source.onended = () => {
+      this.sources.delete(trackId);
+      this.gains.delete(trackId);
+      try { source.disconnect(); } catch (_) { /* already disconnected */ }
+      try { gain.disconnect(); } catch (_) { /* already disconnected */ }
+    };
+  }
+
   /** Stop playback for a specific track. */
   stop(trackId: string): void {
     const source = this.sources.get(trackId);

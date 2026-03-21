@@ -207,14 +207,18 @@ export class PlaybackEngine {
       // Cap to timeline length — audio must not play beyond the last frame
       const effectiveEnd = Math.min(trackEndOnTimeline, maxFrames);
 
-      // Only play if current frame falls within this track's visible range
       if (currentFrame >= trackStartOnTimeline && currentFrame < effectiveEnd) {
-        // Buffer position = how far into the original audio file we are
+        // Playhead is within the track range — start immediately
         const framesIntoTrack = currentFrame - trackStartOnTimeline;
         const sourceOffset = (track.inFrame + track.slipOffset + framesIntoTrack) / fps;
-        // Limit duration to what's left on the timeline
         const maxPlayFrames = effectiveEnd - currentFrame;
         audioEngine.play(track.id, sourceOffset, track, fps, maxPlayFrames / fps);
+      } else if (currentFrame < trackStartOnTimeline && trackStartOnTimeline < effectiveEnd) {
+        // Track starts in the future — schedule it with a delay
+        const delaySec = (trackStartOnTimeline - currentFrame) / fps;
+        const sourceOffset = (track.inFrame + track.slipOffset) / fps;
+        const maxPlayFrames = effectiveEnd - trackStartOnTimeline;
+        audioEngine.playDelayed(track.id, delaySec, sourceOffset, track, fps, maxPlayFrames / fps);
       }
     }
   }
