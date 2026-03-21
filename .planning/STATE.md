@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
 status: unknown
-stopped_at: Completed 15-02-PLAN.md
-last_updated: "2026-03-21T19:01:41.471Z"
+stopped_at: Completed 15-03-PLAN.md
+last_updated: "2026-03-21T19:12:36.868Z"
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 ## Current Position
 
 Phase: 15 (audio-import-waveform) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 
 ## Performance Metrics
 
@@ -44,6 +44,7 @@ Plan: 3 of 4
 
 | Phase 15 P01 | 6min | 4 tasks | 12 files |
 | Phase 15 P02 | 6min | 2 tasks | 6 files |
+| Phase 15 P03 | 6min | 2 tasks | 3 files |
 
 ### Decisions
 
@@ -54,6 +55,8 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 15]: audioPeaksCache in lib/ as neutral module to avoid circular imports
 - [Phase 15]: Fade-out targets 0.001 not 0 due to Web Audio exponentialRamp limitation
 - [Phase 15]: Audio tracks render in scrolled region below content tracks, sharing scrollY context
+- [Phase 15]: Audio area check inserted between FX and content in onPointerDown priority chain
+- [Phase 15]: Audio buffer offset = (inFrame + slipOffset + framesIntoTrack) / fps for playback sync
 
 ### Pending Todos
 
@@ -74,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-21T19:01:41.469Z
-Stopped at: Completed 15-02-PLAN.md
+Last session: 2026-03-21T19:12:36.865Z
+Stopped at: Completed 15-03-PLAN.md
 Resume file: None
