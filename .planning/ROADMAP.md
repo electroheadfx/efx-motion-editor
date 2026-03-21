@@ -63,7 +63,7 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 
 **Milestone Goal:** Add audio import with waveforms and beat sync, enhance sidebar UX with solo mode, and introduce After Effects-style motion paths on canvas.
 
-- [ ] **Phase 15: Audio Import & Waveform** - Import audio, waveform visualization, synced playback, volume, offset, fades, project persistence
+- [x] **Phase 15: Audio Import & Waveform** - Import audio, waveform visualization, synced playback, volume, offset, fades, project persistence (completed 2026-03-21)
 - [ ] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange
 - [ ] **Phase 17: Enhancements** - Sidebar key photo scroll/collapse, sequence solo, layer solo
 - [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
@@ -88,7 +88,7 @@ Plans:
 - [x] 15-01-PLAN.md — Foundation: audio types, audioStore, audioEngine, waveform peaks
 - [x] 15-02-PLAN.md — Import flow (AddAudioButton), CSS variables, waveform rendering on timeline
 - [x] 15-03-PLAN.md — Timeline interaction (click, drag, resize, reorder, slip) + playback sync
-- [ ] 15-04-PLAN.md — AudioProperties panel, project persistence (v8 format), end-to-end verification
+- [x] 15-04-PLAN.md — AudioProperties panel, project persistence (v8 format), end-to-end verification
 
 ### Phase 16: Audio Export & Beat Sync
 **Goal**: Users can export video with audio included, detect beats from the audio track, and auto-arrange key photos to beat positions
@@ -130,7 +130,7 @@ v0.3.0: 15 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
 |-------|-----------|----------------|--------|-----------|
 | 1-7 | v0.1.0 | 45/45 | Complete | 2026-03-11 |
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2026-03-21 |
-| 15. Audio Import & Waveform | v0.3.0 | 3/4 | In Progress|  |
+| 15. Audio Import & Waveform | v0.3.0 | 4/4 | Complete   | 2026-03-21 |
 | 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |

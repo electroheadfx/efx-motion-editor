@@ -15,7 +15,7 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 - [x] **AUDIO-04**: User can adjust audio volume and mute/unmute
 - [x] **AUDIO-05**: User can drag audio track on timeline to offset relative to frame 0
 - [x] **AUDIO-06**: User can set fade-in and fade-out duration on audio
-- [ ] **AUDIO-07**: Audio track persists in project file (.mce v8)
+- [x] **AUDIO-07**: Audio track persists in project file (.mce v8)
 
 ### Audio Export & Beat Sync
 
@@ -78,7 +78,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUDIO-04 | Phase 15 | Complete |
 | AUDIO-05 | Phase 15 | Complete |
 | AUDIO-06 | Phase 15 | Complete |
-| AUDIO-07 | Phase 15 | Pending |
+| AUDIO-07 | Phase 15 | Complete |
 | BEAT-01 | Phase 16 | Pending |
 | BEAT-02 | Phase 16 | Pending |
 | BEAT-03 | Phase 16 | Pending |
