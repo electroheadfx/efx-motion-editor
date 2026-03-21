@@ -42,7 +42,7 @@ class AudioEngine {
    * Play audio for a track starting at the given offset.
    * Creates a fresh AudioBufferSourceNode (one-shot pattern).
    */
-  play(trackId: string, offsetSeconds: number, track: AudioTrack, fps: number): void {
+  play(trackId: string, offsetSeconds: number, track: AudioTrack, fps: number, maxDurationSec?: number): void {
     const ctx = this.ensureContext();
     const buffer = this.buffers.get(trackId);
     if (!buffer) return;
@@ -72,7 +72,12 @@ class AudioEngine {
     const inOffsetSec = (track.inFrame + track.slipOffset) / fps;
     const framesIntoTrackSec = offsetSeconds - inOffsetSec;
     const trimDurationSec = (track.outFrame - track.inFrame) / fps;
-    const remainingDuration = trimDurationSec - framesIntoTrackSec;
+    let remainingDuration = trimDurationSec - framesIntoTrackSec;
+
+    // Cap to timeline-imposed limit (e.g., sequence shorter than audio)
+    if (maxDurationSec !== undefined && maxDurationSec < remainingDuration) {
+      remainingDuration = maxDurationSec;
+    }
 
     if (remainingDuration > 0) {
       source.start(0, offsetSeconds, remainingDuration);

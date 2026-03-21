@@ -193,6 +193,7 @@ export class PlaybackEngine {
   private startAudioPlayback(): void {
     const currentFrame = timelineStore.currentFrame.peek();
     const fps = projectStore.fps.peek();
+    const maxFrames = totalFrames.peek();
 
     for (const track of audioStore.tracks.peek()) {
       if (track.muted) continue;
@@ -203,12 +204,17 @@ export class PlaybackEngine {
       const trimDuration = track.outFrame - track.inFrame;
       const trackEndOnTimeline = trackStartOnTimeline + trimDuration;
 
+      // Cap to timeline length — audio must not play beyond the last frame
+      const effectiveEnd = Math.min(trackEndOnTimeline, maxFrames);
+
       // Only play if current frame falls within this track's visible range
-      if (currentFrame >= trackStartOnTimeline && currentFrame < trackEndOnTimeline) {
+      if (currentFrame >= trackStartOnTimeline && currentFrame < effectiveEnd) {
         // Buffer position = how far into the original audio file we are
         const framesIntoTrack = currentFrame - trackStartOnTimeline;
         const sourceOffset = (track.inFrame + track.slipOffset + framesIntoTrack) / fps;
-        audioEngine.play(track.id, sourceOffset, track, fps);
+        // Limit duration to what's left on the timeline
+        const maxPlayFrames = effectiveEnd - currentFrame;
+        audioEngine.play(track.id, sourceOffset, track, fps, maxPlayFrames / fps);
       }
     }
   }
@@ -241,6 +247,8 @@ export class PlaybackEngine {
             // Past all isolated ranges
             if (isLooping) {
               timelineStore.seek(ranges[0].start);
+              audioEngine.stopAll();
+              this.startAudioPlayback();
             } else {
               timelineStore.seek(ranges[0].start);
               timelineStore.syncDisplayFrame();
@@ -256,6 +264,8 @@ export class PlaybackEngine {
             // Before all isolated ranges
             if (isLooping) {
               timelineStore.seek(ranges[ranges.length - 1].end - 1);
+              audioEngine.stopAll();
+              this.startAudioPlayback();
             } else {
               timelineStore.seek(ranges[0].start);
               timelineStore.syncDisplayFrame();
@@ -272,6 +282,8 @@ export class PlaybackEngine {
           if (currentFrame >= maxFrames - 1) {
             if (isLooping) {
               timelineStore.seek(0);
+              audioEngine.stopAll();
+              this.startAudioPlayback();
             } else {
               this.stop();
               return; // Don't schedule next rAF
@@ -283,6 +295,8 @@ export class PlaybackEngine {
           if (currentFrame <= 0) {
             if (isLooping) {
               timelineStore.seek(maxFrames - 1);
+              audioEngine.stopAll();
+              this.startAudioPlayback();
             } else {
               this.stop();
               return; // Don't schedule next rAF
