@@ -2,13 +2,13 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-16) adds audio import with waveforms and beat sync.
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-18) adds audio import with waveforms and beat sync, sidebar/solo enhancements, and After Effects-style canvas motion paths.
 
 ## Milestones
 
 - ✅ **v0.1.0** — Phases 1-7 (shipped 2026-03-11)
 - ✅ **v0.2.0 Pipeline Complete** — Phases 8-14 (shipped 2026-03-21)
-- 📋 **v0.3.0 Audio** — Phases 15-16 (planned)
+- 🚧 **v0.3.0 Audio & Polish** — Phases 15-18 (in progress)
 
 ## Phases
 
@@ -59,10 +59,14 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 
 </details>
 
-### 📋 v0.3.0 Audio (Planned)
+### 🚧 v0.3.0 Audio & Polish (In Progress)
 
-- [ ] **Phase 15: Audio Import & Waveform** - Import audio files, waveform on timeline, synchronized playback
-- [ ] **Phase 16: Beat Sync** - BPM detection, beat markers, snap modes, auto-arrange key photos
+**Milestone Goal:** Add audio import with waveforms and beat sync, enhance sidebar UX with solo mode, and introduce After Effects-style motion paths on canvas.
+
+- [ ] **Phase 15: Audio Import & Waveform** - Import audio, waveform visualization, synced playback, volume, offset, fades, project persistence
+- [ ] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange
+- [ ] **Phase 17: Enhancements** - Sidebar key photo scroll/collapse, sequence solo, layer solo
+- [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
 
 ## Phase Details
 
@@ -70,33 +74,57 @@ Phases 1-7 archived to `milestones/v0.1.0-ROADMAP.md`.
 Phases 8-14 archived to `milestones/v0.2.0-ROADMAP.md`.
 
 ### Phase 15: Audio Import & Waveform
-**Goal**: Users can import audio files, see waveforms on the timeline, and hear audio playing in sync with the visual preview
-**Depends on**: Phase 5
+**Goal**: Users can import audio, see its waveform on the timeline, and hear it playing in sync with the visual preview
+**Depends on**: Phase 14 (export pipeline, project format)
 **Requirements**: AUDIO-01, AUDIO-02, AUDIO-03, AUDIO-04, AUDIO-05, AUDIO-06, AUDIO-07
 **Success Criteria** (what must be TRUE):
-  1. User can import WAV, MP3, AAC, or OGG audio files into a sequence and see the waveform displayed on the timeline below the frame track
-  2. Audio plays in perfect sync with preview playback -- no audible drift when scrubbing or playing at project frame rate
-  3. User can adjust volume, mute/unmute, set audio offset relative to frame 0, and trim audio in/out points
+  1. User can import WAV, MP3, AAC, or FLAC audio files via file dialog or drag-and-drop, and the audio appears as a waveform track below content/FX tracks on the timeline
+  2. Audio plays in sync with visual preview during playback, and stays in sync after seeking to any frame
+  3. User can adjust volume, mute/unmute, drag the audio track to offset its start position relative to frame 0, and set fade-in and fade-out durations
+  4. Audio track persists across project save/reopen cycles (project format upgraded to .mce v8)
 **Plans**: TBD
 
-### Phase 16: Beat Sync
-**Goal**: Users can detect BPM from audio, see beat markers on the timeline, and auto-arrange key photos to beat positions
-**Depends on**: Phase 15
+### Phase 16: Audio Export & Beat Sync
+**Goal**: Users can export video with audio included, detect beats from the audio track, and auto-arrange key photos to beat positions
+**Depends on**: Phase 15 (requires loaded AudioBuffer and audioStore)
 **Requirements**: BEAT-01, BEAT-02, BEAT-03, BEAT-04, BEAT-05
 **Success Criteria** (what must be TRUE):
-  1. App detects BPM from imported audio and displays beat markers on the timeline at the detected positions
-  2. User can manually set or adjust BPM and offset when auto-detection is inaccurate
-  3. User can select a snap mode (every beat, every 2 beats, every bar, every half-beat) and auto-arrange key photos to those positions
+  1. User can export video (ProRes/H.264/AV1) with the audio track muxed in, including fade in/out applied to the audio
+  2. User can detect BPM from imported audio and see beat markers rendered as vertical lines on the timeline
+  3. User can manually set or adjust BPM and beat offset when auto-detection is inaccurate, with x2 and /2 correction available
+  4. User can snap key photo hold-duration handles to nearest beat marker, and auto-arrange all key photos to beat positions using a strategy selector (every beat, every 2 beats, every bar)
+**Plans**: TBD
+
+### Phase 17: Enhancements
+**Goal**: Users get improved sidebar UX with scrollable and collapsible key photo lists, plus granular solo controls for sequences and layers
+**Depends on**: Phase 12.15 (existing isolation infrastructure)
+**Requirements**: ENH-01, ENH-02, ENH-03, ENH-04
+**Success Criteria** (what must be TRUE):
+  1. User can scroll through key photos in the sidebar Sequences panel when the list overflows the visible area
+  2. User can collapse and expand a sequence's key photo list by clicking the sequence header bar a second time
+  3. User can solo a sequence to play it without its layers and FX, and solo individual layers within a sequence via a sidebar toggle
+**Plans**: TBD
+
+### Phase 18: Canvas Motion Path
+**Goal**: Users can see and edit position keyframe trajectories directly on the canvas as After Effects-style motion paths
+**Depends on**: Phase 12 (keyframe animation engine)
+**Requirements**: PATH-01, PATH-02, PATH-03
+**Success Criteria** (what must be TRUE):
+  1. When a layer has 2+ position keyframes, an After Effects-style motion path appears on the canvas showing the trajectory
+  2. User can drag keyframe diamond handles on the motion path to reposition keyframes directly on the canvas
+  3. Motion path dot spacing reflects interpolation speed -- dots are closer together where motion is slow and farther apart where motion is fast
 **Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-v0.3.0: 15 > 16
+v0.3.0: 15 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 1-7 | v0.1.0 | 45/45 | Complete | 2026-03-11 |
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2026-03-21 |
-| 15. Audio Import & Waveform | v0.3.0 | 0/0 | Planned | - |
-| 16. Beat Sync | v0.3.0 | 0/0 | Planned | - |
+| 15. Audio Import & Waveform | v0.3.0 | 0/0 | Not started | - |
+| 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
+| 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
+| 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
