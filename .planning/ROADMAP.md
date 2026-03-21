@@ -82,7 +82,13 @@ Phases 8-14 archived to `milestones/v0.2.0-ROADMAP.md`.
   2. Audio plays in sync with visual preview during playback, and stays in sync after seeking to any frame
   3. User can adjust volume, mute/unmute, drag the audio track to offset its start position relative to frame 0, and set fade-in and fade-out durations
   4. Audio track persists across project save/reopen cycles (project format upgraded to .mce v8)
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — Foundation: audio types, audioStore, audioEngine, waveform peaks
+- [ ] 15-02-PLAN.md — Import flow (AddAudioButton), CSS variables, waveform rendering on timeline
+- [ ] 15-03-PLAN.md — Timeline interaction (click, drag, resize, reorder, slip) + playback sync
+- [ ] 15-04-PLAN.md — AudioProperties panel, project persistence (v8 format), end-to-end verification
 
 ### Phase 16: Audio Export & Beat Sync
 **Goal**: Users can export video with audio included, detect beats from the audio track, and auto-arrange key photos to beat positions
@@ -124,7 +130,7 @@ v0.3.0: 15 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
 |-------|-----------|----------------|--------|-----------|
 | 1-7 | v0.1.0 | 45/45 | Complete | 2026-03-11 |
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2026-03-21 |
-| 15. Audio Import & Waveform | v0.3.0 | 0/0 | Not started | - |
+| 15. Audio Import & Waveform | v0.3.0 | 0/4 | Planning | - |
 | 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
