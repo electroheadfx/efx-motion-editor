@@ -179,6 +179,27 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     // 7. Complete
     exportStore.updateProgress({ status: 'complete' });
 
+    // 8. macOS notification if app is in background (D-31)
+    if (document.hidden) {
+      try {
+        const { isPermissionGranted, requestPermission, sendNotification } =
+          await import('@tauri-apps/plugin-notification');
+        let granted = await isPermissionGranted();
+        if (!granted) {
+          const permission = await requestPermission();
+          granted = permission === 'granted';
+        }
+        if (granted) {
+          sendNotification({
+            title: 'Export Complete',
+            body: `${projectName} exported ${total} frames to ${exportDir}`,
+          });
+        }
+      } catch {
+        // Notification plugin not available — silently ignore
+      }
+    }
+
   } catch (err) {
     exportStore.updateProgress({
       status: 'error',

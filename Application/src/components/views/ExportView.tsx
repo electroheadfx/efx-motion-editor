@@ -1,10 +1,13 @@
 import {FormatSelector} from '../export/FormatSelector';
 import {ExportPreview} from '../export/ExportPreview';
+import {ExportProgress} from '../export/ExportProgress';
 import {uiStore} from '../../stores/uiStore';
+import {exportStore} from '../../stores/exportStore';
+import {startExport} from '../../lib/exportEngine';
 
 export function ExportView() {
   return (
-    <div class="flex flex-col flex-1 min-w-0 bg-[var(--color-bg-root)]">
+    <div class="relative flex flex-col flex-1 min-w-0 bg-[var(--color-bg-root)]">
       {/* Header bar */}
       <div class="flex items-center justify-between h-10 px-4 bg-[var(--color-bg-toolbar)] border-b border-[var(--color-separator)] shrink-0">
         <span class="text-sm font-semibold text-[var(--color-text-button)]">Export</span>
@@ -28,12 +31,15 @@ export function ExportView() {
       {/* Bottom bar: Export button */}
       <div class="flex items-center justify-end h-14 px-6 bg-[var(--color-bg-toolbar)] border-t border-[var(--color-separator)] shrink-0">
         <button
-          class="px-6 py-2 rounded-[5px] bg-[#F97316] hover:brightness-125 text-white text-sm font-semibold transition-colors cursor-pointer"
-          onClick={() => { /* wired in Plan 03 */ }}
+          class="px-6 py-2 rounded-[5px] bg-[#F97316] hover:brightness-125 text-white text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          onClick={() => startExport()}
+          disabled={exportStore.isExporting.value || !exportStore.outputFolder.value}
         >
           Export
         </button>
       </div>
+      {/* Progress overlay */}
+      <ExportProgress />
     </div>
   );
 }
