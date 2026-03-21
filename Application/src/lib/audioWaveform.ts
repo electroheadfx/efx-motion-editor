@@ -64,9 +64,9 @@ export function computeWaveformPeaks(buffer: AudioBuffer): WaveformPeaks {
   }
 
   // Extract peaks at 3 resolution tiers
-  const tier1 = extractPeaks(mono, length, 100);   // ~100 peaks for extreme zoom-out
-  const tier2 = extractPeaks(mono, length, 2000);   // ~2000 peaks for standard zoom
-  const tier3 = extractPeaks(mono, length, 8000);   // ~8000 peaks for zoomed-in detail
+  const tier1 = extractPeaks(mono, length, 500);    // overview for extreme zoom-out
+  const tier2 = extractPeaks(mono, length, 4000);   // standard zoom
+  const tier3 = extractPeaks(mono, length, 16000);  // zoomed-in detail
 
   return {tier1, tier2, tier3};
 }

@@ -728,7 +728,7 @@ export class TimelineRenderer {
       ctx.stroke();
     }
 
-    // 8. Draw waveform peaks — slice to in/out range of the source audio
+    // 8. Draw waveform peaks — smooth filled path, sliced to in/out range
     if (peaks.length > 0 && track.totalAudioFrames > 0) {
       ctx.fillStyle = track.muted ? colors.audioWaveformMuted : colors.audioWaveform;
       const fullPeakCount = peaks.length / 2;
@@ -742,19 +742,37 @@ export class TimelineRenderer {
       const visiblePeakCount = endIdx - startIdx;
       if (visiblePeakCount <= 0) return;
 
-      const peakWidth = Math.max(1, barW / visiblePeakCount);
+      // Clip drawing to the visible bar area
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(Math.max(barX, TRACK_HEADER_WIDTH), barY, Math.min(barX + barW, canvasWidth) - Math.max(barX, TRACK_HEADER_WIDTH), barH);
+      ctx.clip();
 
+      // Draw smooth filled waveform using a single path:
+      // trace maxes left-to-right across the top, then mins right-to-left across the bottom
+      ctx.beginPath();
+      const firstPx = barX;
+      ctx.moveTo(firstPx, centerY - peaks[(startIdx) * 2 + 1] * halfH);
+
+      // Top edge (max values, left to right)
       for (let vi = 0; vi < visiblePeakCount; vi++) {
         const px = barX + (vi / visiblePeakCount) * barW;
-        if (px + peakWidth < TRACK_HEADER_WIDTH || px > canvasWidth) continue;
+        const pi = startIdx + vi;
+        const max = peaks[pi * 2 + 1];
+        ctx.lineTo(px, centerY - max * halfH);
+      }
 
+      // Bottom edge (min values, right to left)
+      for (let vi = visiblePeakCount - 1; vi >= 0; vi--) {
+        const px = barX + (vi / visiblePeakCount) * barW;
         const pi = startIdx + vi;
         const min = peaks[pi * 2];
-        const max = peaks[pi * 2 + 1];
-        const top = centerY - max * halfH;
-        const bottom = centerY - min * halfH;
-        ctx.fillRect(px, top, peakWidth, bottom - top);
+        ctx.lineTo(px, centerY - min * halfH);
       }
+
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
     }
 
     // 9. Draw fade overlays
