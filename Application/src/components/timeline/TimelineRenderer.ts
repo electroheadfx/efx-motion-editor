@@ -692,9 +692,10 @@ export class TimelineRenderer {
     }
 
     // 5. Compute range bar position
-    const barX = (track.offsetFrame + track.inFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
-    const totalFrames = track.outFrame - track.inFrame;
-    const barW = totalFrames * frameWidth;
+    // offsetFrame = timeline position; inFrame/outFrame = source audio trim points
+    const barX = track.offsetFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+    const trimFrames = track.outFrame - track.inFrame;
+    const barW = trimFrames * frameWidth;
     const padding = 4;
     const barY = y + padding;
     const barH = track.trackHeight - padding * 2;
@@ -727,20 +728,29 @@ export class TimelineRenderer {
       ctx.stroke();
     }
 
-    // 8. Draw waveform peaks
-    if (peaks.length > 0) {
+    // 8. Draw waveform peaks — slice to in/out range of the source audio
+    if (peaks.length > 0 && track.totalAudioFrames > 0) {
       ctx.fillStyle = track.muted ? colors.audioWaveformMuted : colors.audioWaveform;
-      const peakCount = peaks.length / 2;
+      const fullPeakCount = peaks.length / 2;
       const halfH = barH / 2 - 1;
-      const peakWidth = Math.max(1, barW / peakCount);
 
-      for (let i = 0; i < peakCount; i++) {
-        const px = barX + (i / peakCount) * barW;
-        // Clip to visible area
+      // Map inFrame..outFrame (with slipOffset) to peak indices
+      const srcStart = track.inFrame + track.slipOffset;
+      const srcEnd = track.outFrame + track.slipOffset;
+      const startIdx = Math.max(0, Math.floor((srcStart / track.totalAudioFrames) * fullPeakCount));
+      const endIdx = Math.min(fullPeakCount, Math.ceil((srcEnd / track.totalAudioFrames) * fullPeakCount));
+      const visiblePeakCount = endIdx - startIdx;
+      if (visiblePeakCount <= 0) return;
+
+      const peakWidth = Math.max(1, barW / visiblePeakCount);
+
+      for (let vi = 0; vi < visiblePeakCount; vi++) {
+        const px = barX + (vi / visiblePeakCount) * barW;
         if (px + peakWidth < TRACK_HEADER_WIDTH || px > canvasWidth) continue;
 
-        const min = peaks[i * 2];
-        const max = peaks[i * 2 + 1];
+        const pi = startIdx + vi;
+        const min = peaks[pi * 2];
+        const max = peaks[pi * 2 + 1];
         const top = centerY - max * halfH;
         const bottom = centerY - min * halfH;
         ctx.fillRect(px, top, peakWidth, bottom - top);

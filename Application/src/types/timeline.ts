@@ -69,5 +69,6 @@ export interface AudioTrackLayout {
   fadeInCurve: FadeCurve;
   fadeOutCurve: FadeCurve;
   slipOffset: number;       // Per D-09
+  totalAudioFrames: number; // Total audio file length in frames (for peak slicing)
   selected: boolean;
 }
