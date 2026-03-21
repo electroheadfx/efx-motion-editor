@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-03-21T10:56:32.031Z"
+stopped_at: Completed 14-02-PLAN.md
+last_updated: "2026-03-21T10:57:47.152Z"
 progress:
   total_phases: 25
   completed_phases: 22
   total_plans: 66
-  completed_plans: 62
+  completed_plans: 63
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: 14 (png-export) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 
 ## Accumulated Context
 
@@ -104,6 +104,7 @@ Full phase decisions archived in milestones/v0.1.0-ROADMAP.md.
 - [Phase 13]: Preview reactive render effect refactored to delegate to renderFromFrameMap (eliminates duplication, ensures cross dissolve works in both scrub and playback)
 - [Phase 14-01]: Made PreviewRenderer.getImageSource public for export preload checking
 - [Phase 14-01]: renderGlobalFrame takes canvas parameter for solid fade overlay (avoids canvasRef closure)
+- [Phase 14]: menu:export listener in main.tsx following codebase pattern (not shortcuts.ts as plan specified)
 
 ### Pending Todos
 
@@ -183,6 +184,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-21T10:56:32.028Z
-Stopped at: Completed 14-01-PLAN.md
+Last session: 2026-03-21T10:57:47.150Z
+Stopped at: Completed 14-02-PLAN.md
 Resume file: None
