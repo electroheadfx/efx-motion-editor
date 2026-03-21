@@ -121,3 +121,27 @@ export function exportCountExistingFrames(dirPath: string) {
 export function exportOpenInFinder(path: string) {
   return safeInvoke<null>('export_open_in_finder', { path });
 }
+
+export function exportCheckFfmpeg() {
+  return safeInvoke<string | null>('export_check_ffmpeg', {});
+}
+
+export function exportDownloadFfmpeg() {
+  return safeInvoke<string>('export_download_ffmpeg', {});
+}
+
+export function exportEncodeVideo(
+  pngDir: string,
+  globPattern: string,
+  outputPath: string,
+  codec: string,
+  fps: number,
+  h264Crf: number,
+  av1Crf: number,
+  proresProfile: string,
+) {
+  return safeInvoke<null>('export_encode_video', {
+    pngDir, globPattern, outputPath, codec, fps,
+    h264Crf, av1Crf, proresProfile,
+  });
+}

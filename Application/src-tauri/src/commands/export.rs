@@ -2,6 +2,8 @@ use std::path::Path;
 use chrono::Local;
 use tauri::command;
 
+use crate::services::ffmpeg;
+
 /// Create the timestamped export subfolder per D-18: export_YYYY-MM-DD_HH-MM/
 #[command]
 pub fn export_create_dir(base_dir: String) -> Result<String, String> {
@@ -52,4 +54,36 @@ pub fn export_open_in_finder(path: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Failed to open Finder: {e}"))?;
     Ok(())
+}
+
+/// Check if FFmpeg is available. Returns version string or null.
+#[command]
+pub fn export_check_ffmpeg() -> Option<String> {
+    ffmpeg::check_ffmpeg()
+}
+
+/// Download FFmpeg binary. Returns version string on success.
+#[command]
+pub async fn export_download_ffmpeg() -> Result<String, String> {
+    ffmpeg::download_ffmpeg().await
+}
+
+/// Encode video from PNG sequence. Per D-19: output naming ProjectName_ResolutionP_codec.ext
+#[command]
+pub fn export_encode_video(
+    png_dir: String,
+    glob_pattern: String,
+    output_path: String,
+    codec: String,
+    fps: u32,
+    h264_crf: u32,
+    av1_crf: u32,
+    prores_profile: String,
+) -> Result<(), String> {
+    let quality = ffmpeg::VideoQualityArgs {
+        h264_crf,
+        av1_crf,
+        prores_profile,
+    };
+    ffmpeg::encode_video(&png_dir, &glob_pattern, &output_path, &codec, fps, &quality)
 }

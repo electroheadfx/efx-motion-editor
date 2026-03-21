@@ -313,6 +313,9 @@ pub fn run() {
             export::export_write_png,
             export::export_count_existing_frames,
             export::export_open_in_finder,
+            export::export_check_ffmpeg,
+            export::export_download_ffmpeg,
+            export::export_encode_video,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
