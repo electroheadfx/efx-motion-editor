@@ -3,6 +3,8 @@ import {timelineStore} from '../stores/timelineStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {uiStore} from '../stores/uiStore';
 import {projectStore} from '../stores/projectStore';
+import {audioStore} from '../stores/audioStore';
+import {audioEngine} from './audioEngine';
 import {totalFrames, frameMap, trackLayouts} from './frameMap';
 import {shuttleDirection, shuttleSpeed, resetShuttle} from './jklShuttle';
 import {isolationStore} from '../stores/isolationStore';
@@ -51,6 +53,7 @@ export class PlaybackEngine {
     // Deselect sidebar sequence during playback to avoid expensive re-renders
     uiStore.selectSequence(null);
     timelineStore.setPlaying(true);
+    this.startAudioPlayback();
     this.rafId = requestAnimationFrame(this.tick);
   }
 
@@ -61,6 +64,7 @@ export class PlaybackEngine {
       this.rafId = null;
     }
     timelineStore.setPlaying(false);
+    audioEngine.stopAll();
     timelineStore.syncDisplayFrame();
     this.syncActiveSequence();
     resetShuttle();
@@ -91,6 +95,12 @@ export class PlaybackEngine {
     timelineStore.ensureFrameVisible(timelineStore.currentFrame.peek());
     this.syncActiveSequence();
     this.syncPlayer();
+
+    // If currently playing, restart audio at new seek position
+    if (timelineStore.isPlaying.peek()) {
+      audioEngine.stopAll();
+      this.startAudioPlayback();
+    }
   }
 
   stepForward() {
@@ -177,6 +187,30 @@ export class PlaybackEngine {
       if (ranges[i].end <= frame) return ranges[i].end - 1;
     }
     return -1;
+  }
+
+  /** Start all unmuted audio tracks at the correct offset for the current frame. */
+  private startAudioPlayback(): void {
+    const currentFrame = timelineStore.currentFrame.peek();
+    const fps = projectStore.fps.peek();
+
+    for (const track of audioStore.tracks.peek()) {
+      if (track.muted) continue;
+
+      // The track is audible on the timeline between:
+      //   track.offsetFrame  and  track.offsetFrame + (track.outFrame - track.inFrame)
+      const trackStartOnTimeline = track.offsetFrame;
+      const trimDuration = track.outFrame - track.inFrame;
+      const trackEndOnTimeline = trackStartOnTimeline + trimDuration;
+
+      // Only play if current frame falls within this track's visible range
+      if (currentFrame >= trackStartOnTimeline && currentFrame < trackEndOnTimeline) {
+        // Buffer position = how far into the original audio file we are
+        const framesIntoTrack = currentFrame - trackStartOnTimeline;
+        const sourceOffset = (track.inFrame + track.slipOffset + framesIntoTrack) / fps;
+        audioEngine.play(track.id, sourceOffset, track, fps);
+      }
+    }
   }
 
   private tick = (now: number) => {

@@ -1,6 +1,17 @@
-import {describe, it} from 'vitest';
+import {describe, it, expect} from 'vitest';
+import {PlaybackEngine, playbackEngine} from './playbackEngine';
 
 describe('playbackEngine audio sync', () => {
+  it('exports PlaybackEngine class and singleton instance', () => {
+    expect(PlaybackEngine).toBeDefined();
+    expect(playbackEngine).toBeInstanceOf(PlaybackEngine);
+  });
+
+  it('startAudioPlayback method exists on PlaybackEngine prototype', () => {
+    // startAudioPlayback is private, but we can verify via prototype check
+    expect(typeof (playbackEngine as any).startAudioPlayback).toBe('function');
+  });
+
   describe('AUDIO-03: start', () => {
     it.todo('calls audioEngine.play for each unmuted audio track');
     it.todo('skips muted tracks');
