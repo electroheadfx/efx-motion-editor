@@ -48,6 +48,7 @@ pub fn project_create(
         modified_at: now,
         sequences: vec![],
         images: vec![],
+        audio_tracks: vec![],
     })
 }
 
