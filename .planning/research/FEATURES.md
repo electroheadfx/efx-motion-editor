@@ -1,318 +1,331 @@
-# Feature Landscape: v2.0 Production Tool
+# Feature Research: v0.3.0 Audio & Polish
 
-**Domain:** Stop-motion cinematic editor -- layer compositing, FX, audio/beat sync, export, editing workflow
-**Researched:** 2026-03-03
-**Scope:** NEW features only. v1.0 features (import, timeline, playback, project management, sequences) are shipped.
+**Domain:** Stop-motion cinematic editor -- audio integration, beat sync, sidebar UX, canvas motion paths
+**Researched:** 2026-03-21
+**Confidence:** HIGH (Web Audio API, FFmpeg audio muxing, timeline waveform patterns well-documented; motion path patterns well-established in After Effects/Apple Motion)
 
-## Table Stakes
+## Feature Landscape
 
-Features users expect in a v2.0 production tool. Missing = product feels incomplete for its stated purpose.
+### Table Stakes (Users Expect These)
+
+Features users assume exist once "audio support" is advertised. Missing these = product feels broken or half-baked.
 
 | Feature | Why Expected | Complexity | Dependencies on Existing |
 |---------|--------------|------------|--------------------------|
-| Layer system with compositing | Every visual editor (After Effects, Photoshop, Fusion) has layers. Users need to stack FX overlays on top of their key photo base layer. Without this, the product is a slideshow player. | HIGH | Requires: sequenceStore (layers are per-sequence), timelineStore (layer tracks on timeline), previewScene.tsx (Motion Canvas Img/Rect nodes per layer). layerStore skeleton exists but has no rendering integration. |
-| Blend modes (normal, screen, multiply, overlay, add) | Standard compositing vocabulary. Screen mode is essential for light leaks, multiply for grain/dirt, overlay for color grading. Users coming from Photoshop/After Effects expect these by name. | MEDIUM | Motion Canvas Node has `compositeOperation` property that maps to Canvas 2D `globalCompositeOperation`. Nodes must be cached for compositeOperation to take effect. The five modes in `types/layer.ts` map directly to Canvas 2D operations. |
-| Layer opacity (0-1) | Fundamental compositing control. Every layer-based tool has an opacity slider. Users need to dial in FX intensity (e.g., 30% grain, 50% vignette). | LOW | Motion Canvas Node has native `opacity` property. Already defined in `Layer` type. PropertiesPanel needs a slider control. |
-| Layer transforms (position, scale, rotation, crop) | Standard spatial controls for any compositing system. Users need to position overlays, scale textures to fit, rotate for artistic effect. | MEDIUM | `LayerTransform` type already defined with x, y, scale, rotation, crop fields. Motion Canvas Img node supports position, scale, rotation natively. Crop requires clipping mask or source rectangle. |
-| Layer visibility toggle | Every layer panel has an eye icon to toggle visibility. Users need to quickly A/B test with/without specific FX layers. | LOW | `visible` boolean already on `Layer` type. Toggle skips the layer during composition. |
-| Layer reorder (drag-and-drop) | Compositing order matters. Screen-mode light leak above vs. below a multiply grain produces different results. Users expect to drag layers to reorder. | LOW | `layerStore.reorder()` already exists. SortableJS is already a dependency. Layer panel UI needs a list with drag handles. |
-| Properties panel (context-sensitive) | PropertiesPanel.tsx exists but is empty. When a layer is selected, users expect to see and edit its properties (opacity, blend mode, transform). | MEDIUM | Requires: layerStore.selectedLayerId, layer type to determine which controls to show. Static image layers show transform + blend. FX layers show effect-specific parameters. |
-| Undo/redo (100+ levels) | Non-negotiable for any creative tool. Users expect Cmd+Z to undo every destructive action. historyStore exists as a skeleton. | HIGH | historyStore has `stack` and `pointer` signals but no logic. Every store mutation (sequenceStore, layerStore, imageStore) must emit undo/redo entries. The command pattern must wrap all state changes. |
-| Keyboard shortcuts | Professional editors are keyboard-driven. Space=play/pause, arrows=step frames, Cmd+Z=undo, Cmd+S=save. Without these, the tool feels amateur. JKL scrubbing is the universal NLE convention (J=rewind, K=stop, L=forward). | MEDIUM | PlaybackEngine has `toggle()`, `stepForward()`, `stepBackward()`. Needs a global keydown listener with modifier detection, a shortcut registry, and conflict resolution. Must follow macOS conventions. |
-| PNG image sequence export | This IS the product's output pipeline. PNG sequences are the professional standard for DaVinci Resolve/Premiere Pro handoff. Users expect: choose output directory, set resolution, see progress, get consistently-named files (frame_0001.png). | HIGH | Requires: flattening all layers per frame into a single composited image, rendering at target resolution (not preview resolution), writing files via Tauri Rust backend. Motion Canvas has a built-in image sequence exporter, but it may not suit the custom layer composition model. |
-| Audio import with waveform display | Dragonframe and Stop Motion Studio both have audio timeline features. Users composing to music need to see the waveform aligned with their frames to time cuts. | HIGH | PlaybackEngine uses `performance.now()` delta accumulation -- designed for AudioContext master clock sync (noted as PREV-05 readiness). Needs: Web Audio API decode, peak extraction, canvas waveform rendering on timeline, audio playback synced to playhead. |
+| Audio file import (WAV, MP3, AAC, FLAC) | Every editor that claims audio support accepts common formats. Users drag or open an audio file and it appears on the timeline. Dragonframe, Stop Motion Studio, and iMovie all accept these. | MEDIUM | Tauri file dialog + drag-drop (already built for images). Rust backend reads file, copies to project `audio/` folder. Frontend uses `convertFileSrc()` or `efxasset://` protocol (already established) to get a URL for Web Audio API `decodeAudioData()`. Requires new `audioStore` signal store. New `MceAudioTrack` in project format (version bump to v8). |
+| Waveform visualization on timeline | The single most expected audio feature in any timeline-based editor. Premiere Pro, DaVinci Resolve, Kdenlive, and even Canva show waveforms. Users need visual feedback to align frames to audio events. Without waveform, audio is invisible. | HIGH | Requires: Web Audio API `decodeAudioData()` to get `AudioBuffer`, peak extraction by downsampling to ~100-200 peaks per second (not per-sample -- summarize peaks per pixel column for efficiency, as Kdenlive's 2025 waveform rewrite confirmed). Render as a Canvas 2D track row below content/FX tracks in `TimelineRenderer`. Track height ~40-60px. Waveform data cached in `audioStore` to avoid re-decoding. Must respect `timelineStore.zoom` and `timelineStore.scrollX` for synchronized horizontal scroll. |
+| Synced audio playback with preview | When user presses Space, audio must play in sync with visual frames. Every NLE and animation tool does this. Unsynchronized audio is worse than no audio. | HIGH | `PlaybackEngine` uses `performance.now()` delta accumulation -- already designed for audio sync readiness (noted as PREV-05 in v0.1.0). Integration: create `AudioContext` + `AudioBufferSourceNode`, start at `currentFrame / fps` offset. On seek, re-start source at new offset. On stop, `source.stop()`. The `PlaybackEngine.tick()` loop is the master clock; audio follows. Alternative: use audio as master clock via `AudioContext.currentTime` and drive `timelineStore.currentFrame` from it -- more accurate but requires refactoring tick loop. Recommend: audio-follows-video approach (simpler, sufficient at 15/24 fps). |
+| Audio volume control | Basic gain slider. Every audio feature has a volume knob. Users need to preview at comfortable levels without affecting export. | LOW | `GainNode` in Web Audio API graph. Single `audioStore.volume` signal (0-1). Slider in sidebar or timeline header. Persisted in project file. |
+| Audio timeline positioning (offset) | Users need to slide the audio track left/right to align it with their visual content. The audio may not start at frame 0. Premiere, After Effects, and Dragonframe all support this. | MEDIUM | `audioStore.offsetFrames` signal. Waveform rendering shifts by offset. Playback starts audio at `(currentFrame - offsetFrames) / fps`. Negative offset = audio starts before video (silent video lead-in). Drag handle on timeline audio track. |
+| Fade in/out on audio | Abrupt audio starts/stops sound amateur. Users expect at minimum a fade-in and fade-out control. Premiere, DaVinci, GarageBand all have this. | MEDIUM | Web Audio API `GainNode.gain.linearRampToValueAtTime()` for playback preview. FFmpeg `-af afade=t=in:d=X,afade=t=out:st=Y:d=Z` for export. Store as `fadeInDuration` and `fadeOutDuration` (in seconds) on the audio track model. Visual handles on waveform edges (triangle overlays). |
+| Audio in video export | If the editor has audio import, the exported video must include it. Silent video export when audio is present would be a bug, not a feature. | MEDIUM | FFmpeg already handles video encoding via `exportEncodeVideo()` Rust IPC. Add `-i audioPath -c:a aac -b:a 192k -map 0:v -map 1:a` to FFmpeg command. Audio offset handled with `-itsoffset` flag. Fade in/out handled with `-af afade` filter. Requires extending `exportEncodeVideo()` IPC to accept optional audio parameters. |
+| Sidebar scroll in key photos panel | With many key photos (20+), the list overflows. Users expect to scroll through them. `SidebarScrollArea` component already exists and works -- but key photos sub-window needs to use it if not already wired. | LOW | `SidebarScrollArea` component is built with custom 4px thumb (already handles WKWebView scrollbar quirk). Verify it wraps the key photos list. If key photos render inline in the sequences panel, the scroll may already work via the parent scroll area. Likely a wiring check, not new development. |
+| Sidebar collapse toggle for sections | Users need to collapse sections they're not using to save space. `CollapsibleSection` component already exists with `collapsed` signal prop and chevron animation. | LOW | `CollapsibleSection` is built. Verify all three sidebar sub-windows (Sequences, Layers, Properties) use it. May need to add collapse state persistence to `appConfig`. |
 
-## Differentiators
+### Differentiators (Competitive Advantage)
 
-Features that set EFX Motion apart. No stop-motion tool offers these. They are the product's reason to exist.
+Features that set EFX Motion apart from Dragonframe, Stop Motion Studio, and basic video editors. These are the reason to build v0.3.0.
 
 | Feature | Value Proposition | Complexity | Dependencies on Existing |
 |---------|-------------------|------------|--------------------------|
-| Built-in cinematic FX (grain, scratches, light leaks, vignette, color grade) | **The core differentiator.** Dragonframe has zero compositing. Stop Motion Studio has basic overlays. No stop-motion tool offers real-time cinematic FX baked into the timeline. Users currently do this as a separate step in After Effects/DaVinci Resolve. EFX collapses two workflow stages (capture + grade) into one. | HIGH | Motion Canvas supports CSS-standard filters: `blur()`, `grayscale()`, `hue-rotate()`, `contrast()`, `saturate()`, `brightness()`, `sepia()`. For grain/scratches/light leaks, these are overlay image/video layers with blend modes (screen for light, multiply for dark). Vignette is a radial gradient Rect with multiply. Color grade combines brightness, contrast, saturate, hue-rotate filters. |
-| Beat sync with auto-arrange | No stop-motion tool has BPM detection + beat markers + snap-to-beat + auto-arrange frames. This turns music video creation from tedious manual frame-counting into an assisted workflow. VideoProc Vlogger, Canva, and Filmora have auto-beat-marker features -- this is becoming table stakes in video editors but does not exist in stop-motion. | HIGH | web-audio-beat-detector npm package: `guess(audioBuffer)` returns `{ bpm, offset, tempo }`. Algorithm: low-pass filter to isolate kick drum, peak detection, BPM estimation (90-180 BPM range, configurable). Beat markers render on timeline canvas. Auto-arrange: distribute key photos so each occupies N frames per beat (N = fps / (bpm / 60)). Snap modes: every beat, every 2 beats, every bar (4 beats). |
-| Audio-driven frame arrangement | Beyond just markers -- automatically spacing key photos to fill beats. "I have 12 photos and a 120 BPM track at 24fps" = each beat is 12 frames, auto-distribute photos across beats. No stop-motion tool calculates this. | MEDIUM | Depends on beat sync. Core calculation: `framesPerBeat = fps * 60 / bpm`. If framesPerBeat=12 and user has 12 photos, each photo holds for 12 frames (one per beat). If 6 photos, each holds 24 frames (every 2 beats). User selects fill strategy (every beat, every 2, every bar). |
+| BPM detection with beat markers on timeline | No stop-motion tool auto-detects BPM and renders beat markers. Users composing to music currently count frames manually. Canva and Filmora have auto-beat-marker features for general video editing, but no stop-motion tool has this. Renders vertical marker lines on the timeline at each detected beat position. | MEDIUM | `web-audio-beat-detector` npm: `guess(audioBuffer)` returns `{ bpm, offset, tempo }`. Algorithm: low-pass filter isolates kick drum, peak detection estimates BPM (90-180 range, configurable). `offset` is time of first beat in seconds. Beat positions: `offset + n * (60/bpm)` converted to frames. Store as `audioStore.beatMarkers: number[]` (frame positions). Render in `TimelineRenderer` as thin vertical lines (distinct color from playhead). |
+| Snap-to-beat for key photo boundaries | When dragging key photo hold duration handles, snap to nearest beat marker. Turns frame-counting into a visual alignment task. No stop-motion tool has this. | LOW | Requires beat markers (above). When `holdFrames` drag handle is active, find nearest beat marker frame and snap if within threshold (e.g., 2 frames). Minimal code -- a `findNearestBeat()` utility function applied in `TimelineInteraction` drag handlers. |
+| Auto-arrange frames to beats | "I have 12 photos and a 120 BPM track at 24fps" = each beat is 12 frames. Auto-distribute photos so each occupies `framesPerBeat` hold duration. Core calculation: `framesPerBeat = fps * 60 / bpm`. Fill strategies: every beat, every 2 beats, every bar (4 beats). One-click operation. No stop-motion tool calculates this. | MEDIUM | Depends on: BPM detection, beat markers, sequence with key photos. Algorithm: `framesPerBeat = round(fps * 60 / bpm)`. For N photos, compute hold frames per photo based on selected strategy. If "every beat": each photo gets `framesPerBeat` hold. If "every 2 beats": `framesPerBeat * 2`. If "every bar": `framesPerBeat * 4`. Edge case: last photo may need different hold to fill remaining beats. UI: button in sidebar or audio properties panel with strategy dropdown. Applies via `sequenceStore` mutations (undoable). |
+| Canvas motion path visualization | After Effects shows position keyframes as a dotted path on the canvas, with diamonds at keyframe positions and dots between them (dot density indicates speed). No stop-motion tool or simple overlay editor has this. Users can see and directly manipulate the spatial animation path. | HIGH | Depends on: existing keyframe system (`keyframeStore`, `keyframeEngine.ts`), existing transform overlay (`TransformOverlay.tsx`), existing canvas coordinate mapper (`coordinateMapper.ts`). Implementation: read all keyframes for the selected layer, extract (x, y) positions, compute interpolated positions between keyframes (reusing `interpolateAt()`), render as a Canvas 2D path overlay. Keyframe diamonds are draggable control points that update `keyframeStore` on drag. Speed visualization via dot spacing (close together = slow, far apart = fast). |
+| Motion path keyframe dragging on canvas | Users drag keyframe position diamonds directly on the canvas instead of editing X/Y numbers in the properties panel. After Effects and Apple Motion both support this. Dramatically improves spatial animation workflow. | HIGH | Extension of motion path visualization. Requires: hit-testing keyframe diamonds on the canvas path (similar to existing `hitTestHandles`), drag interaction that updates `keyframeStore` position values, coalescing undo for smooth drag (existing `startCoalescing`/`stopCoalescing` from `history.ts`). The existing `TransformOverlay` already handles pointer capture, drag thresholds, and coordinate mapping -- extend rather than rebuild. |
+| Solo mode for sequences AND layers | Sequence isolation (`isolationStore`) already exists for playback. Extending to individual layers within a sequence lets users preview a single layer's contribution. After Effects has layer solo ("S" column). No stop-motion tool has per-layer solo. | MEDIUM | `isolationStore` handles sequence-level isolation. For layer solo: add `soloLayerIds` signal to `isolationStore` (or new signal on `layerStore`). In `PreviewRenderer.render()`, when solo is active, skip non-solo layers. Eye/solo icons in the sidebar layer list (standard After Effects pattern: eye = visibility, speaker-like icon = solo). Solo is temporary preview state (not persisted). |
 
-## Anti-Features
+### Anti-Features (Commonly Requested, Often Problematic)
 
-Features to explicitly NOT build in v2.0. These are scoped out in PROJECT.md for good reason.
+Features that seem good but create problems or are out of scope for v0.3.0.
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| Keyframe animation for layer properties | Transforms the product toward After Effects territory. Requires curve editor, interpolation modes, graph editor UI. Enormous complexity for a feature that fights the product's identity as a stop-motion tool, not a motion graphics tool. | Layer properties are static per sequence. If users need animated overlays, they import as video/image-sequence layers. |
-| ProRes/MP4 video export | Requires bundling FFmpeg (~80MB), handling codec selection, container formats, audio muxing. DaVinci Resolve does this better. The PNG sequence workflow is actually the professional standard for post-production. | PNG sequence export + audio metadata sidecar JSON (audio file path, offset, duration). Include documentation for DaVinci Resolve/Premiere import. |
-| Procedural FX (particles, flash, animated grain) | Each procedural effect is essentially a mini rendering engine. WebGL shader authoring, parameterization, real-time preview -- significant complexity that can be added later once the overlay-based FX system proves valuable. | Ship with image/video overlay-based FX. Users source grain overlays, light leak videos, etc. Built-in FX library can ship pre-made overlay assets. |
-| Onion skinning | Useful but not critical for the FX compositing workflow. Dragonframe's onion skinning serves camera capture alignment, which is not this product's workflow. | Defer to a later milestone. The layer compositing system makes it easy to add later (semi-transparent previous/next frame as a special layer). |
-| Layer loop modes (loop, mirror, ping-pong) | Nice polish but not blocking. If a grain video is shorter than the sequence, it simply stops. Users can manually duplicate. | Defer. When added, it is a simple playback modifier on video/image-sequence layers: wrap the source frame index with modulo (loop), reflection (ping-pong), or clamp (hold last). |
-| Composition templates | Requires stable layer system first. Premature to build save/load templates when the layer format may still change. | Build the layer system, validate it with users, then add template serialization in a later milestone. |
-| Sequence nesting | Requires recursive composition, timeline rendering of nested compositions, and complex state management. | Defer. Each sequence is independent for now. Users can export one sequence and import its frames into another if needed. |
-| Node-based compositing | Layer-based approach is more intuitive for target users (photographers, not VFX artists). Node graphs have steep learning curves. | Layer panel with blend modes. Simple, familiar, sufficient for overlay compositing. |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Multi-track audio mixing | "I want background music AND sound effects." Professional NLE expectation. | Requires mixer UI, per-track gain, pan, bus routing. Transforms the audio system from a simple soundtrack into a DAW. Enormous complexity for a stop-motion editor. Users who need multi-track mixing already use GarageBand/Logic/Audacity for pre-mix. | Single audio track per project. Users pre-mix in an audio tool. |
+| Audio recording / voiceover | "Record narration directly in the editor." Dragonframe has this for on-set reference audio. | Requires microphone permission management, recording UI, level meters, monitoring. The use case (stop-motion to music) does not typically involve voiceover. | Import pre-recorded audio files. |
+| Audio waveform editing (cut, trim, splice) | "I want to edit the audio to match my timeline length." | Turns the product into an audio editor. Waveform editing requires region selection, crossfade UI, non-destructive edit stack. The audio is a reference track, not the primary content. | Audio offset + fade in/out covers 90% of needs. Users trim audio in Audacity/GarageBand before import. |
+| Real-time beat detection during playback | "Show beats as the music plays, like a visualizer." BeatDetect.js and realtime-bpm-analyzer support this. | Real-time analysis competes with playback rendering for CPU. The BPM result is identical to offline analysis but less accurate (needs accumulation). No benefit over pre-computed markers. | Offline BPM analysis on import. Results cached. Instant beat markers without playback cost. |
+| Bezier curve handles on motion path | After Effects shows tangent handles for Bezier spatial interpolation. Users expect them if they see motion paths. | The existing keyframe system uses polynomial cubic easing (`applyEasing()` with `t^3` curves), not per-keyframe Bezier control points. Adding Bezier spatial interpolation would require: per-keyframe tangent storage, cubic Bezier evaluation, tangent handle hit-testing and dragging, tangent break/lock modes. This is a major rework of the interpolation engine for a v0.3.0 polish milestone. | Show motion path as a polyline with easing-based interpolation (dots show speed via existing easing). Keyframe diamonds are draggable for position. The path accurately reflects the actual interpolation curve. Bezier handles can be added in a future milestone if users request them. |
+| Audio time-stretch / pitch-shift | "Make the audio match my timeline duration." | Requires DSP time-stretching algorithm (phase vocoder or WSOLA). Web Audio API has `playbackRate` but it changes pitch. Proper time-stretch is a complex DSP problem. | Users adjust audio duration externally or adjust frame hold durations to match audio length. Auto-arrange feature handles the common case of fitting photos to beats. |
+| Per-frame audio scrubbing (audio follows playhead in real-time) | After Effects and Premiere play audio "scrub" when dragging the playhead. | At 24fps with frame-by-frame scrubbing, audio snippets are 42ms each -- sounds like clicking noise, not useful audio. Works in video editors because clips are long enough. Stop-motion frames are typically 2-8 frames of hold = 83-333ms, which is borderline. | Audio plays only during normal playback (Space bar). No scrub audio during manual frame stepping or timeline dragging. This is how Dragonframe handles it. |
+
+## Feature Dependencies
+
+```
+[Audio file import]
+    +--requires--> [audioStore signal store]
+    +--requires--> [Project format v8 with MceAudioTrack]
+    +--requires--> [Web Audio API decodeAudioData]
+    |
+    +--enables--> [Waveform visualization]
+    |                 +--requires--> [Peak extraction algorithm]
+    |                 +--requires--> [TimelineRenderer audio track row]
+    |
+    +--enables--> [Synced audio playback]
+    |                 +--requires--> [AudioContext + AudioBufferSourceNode]
+    |                 +--requires--> [PlaybackEngine integration]
+    |
+    +--enables--> [Audio fade in/out]
+    |                 +--requires--> [GainNode scheduling]
+    |
+    +--enables--> [BPM detection + beat markers]
+    |                 +--requires--> [web-audio-beat-detector library]
+    |                 +--requires--> [TimelineRenderer marker rendering]
+    |                 |
+    |                 +--enables--> [Snap-to-beat]
+    |                 |                 +--requires--> [TimelineInteraction drag handler modification]
+    |                 |
+    |                 +--enables--> [Auto-arrange frames to beats]
+    |                                   +--requires--> [sequenceStore hold duration mutations]
+    |
+    +--enables--> [Audio in video export]
+                      +--requires--> [FFmpeg command extension with -i audio -c:a aac]
+                      +--requires--> [Audio fade filter (-af afade)]
+
+[Canvas motion path]
+    +--requires--> [keyframeStore (exists)]
+    +--requires--> [keyframeEngine interpolateAt() (exists)]
+    +--requires--> [TransformOverlay.tsx (exists)]
+    +--requires--> [coordinateMapper.ts (exists)]
+    |
+    +--enables--> [Motion path keyframe dragging]
+                      +--requires--> [Hit-testing keyframe diamonds]
+                      +--requires--> [Coalescing undo for drag (exists)]
+
+[Sidebar scroll] --independent-- (low effort, likely already working)
+
+[Sidebar collapse] --independent-- (CollapsibleSection exists)
+
+[Solo mode for layers]
+    +--requires--> [isolationStore (exists)]
+    +--requires--> [PreviewRenderer layer filtering]
+    +--enhances--> [Sidebar layer list with solo icons]
+```
+
+### Dependency Notes
+
+- **Audio import is the foundation:** Every audio feature (waveform, playback, beat sync, export) depends on successfully importing and decoding audio. This must be Phase 1.
+- **Waveform before beat sync:** Beat markers render on the timeline alongside the waveform. The waveform track must exist before beat markers can be overlaid on it.
+- **Synced playback before export:** Audio export is an extension of synced playback -- both need the audio source correctly positioned. Verify sync in preview first.
+- **BPM detection enables snap and auto-arrange:** These are lightweight consumers of the beat marker data. BPM detection is the prerequisite.
+- **Canvas motion path is fully independent of audio:** No shared dependencies. Can be developed in parallel with audio features.
+- **Sidebar enhancements are independent:** Scroll and collapse can be done anytime. Solo mode requires minimal `isolationStore` extension.
+
+## MVP Definition
+
+### Phase 1: Audio Foundation
+
+Minimum audio features needed to validate the integration before building beat sync.
+
+- [ ] Audio file import (WAV, MP3, AAC, FLAC) via file dialog and drag-drop -- validates Tauri file pipeline for audio
+- [ ] `audioStore` with audio buffer, waveform peaks, volume, offset, fade durations
+- [ ] Waveform visualization as a timeline track row -- validates Canvas 2D integration with timeline
+- [ ] Synced playback (audio plays when Space pressed, stops when stopped, seeks correctly) -- validates PlaybackEngine integration
+- [ ] Audio volume control (GainNode) -- basic usability
+- [ ] Project format v8 with audio track persistence
+
+### Phase 2: Audio Polish + Beat Sync
+
+Features that make audio genuinely useful for the stop-motion-to-music workflow.
+
+- [ ] Audio timeline positioning (drag to offset) -- alignment UX
+- [ ] Audio fade in/out -- professional quality
+- [ ] BPM detection + beat markers on timeline -- the core differentiator
+- [ ] Snap-to-beat for hold duration handles -- lightweight, high value
+- [ ] Auto-arrange frames to beats -- the killer feature
+- [ ] Audio in video export (FFmpeg muxing) -- completes the pipeline
+
+### Phase 3: Canvas Motion Path + Sidebar Polish
+
+Independent features that can ship in parallel or after audio.
+
+- [ ] Canvas motion path visualization (read-only path display first)
+- [ ] Motion path keyframe dragging on canvas
+- [ ] Solo mode for layers
+- [ ] Sidebar scroll/collapse verification and fixes
+
+## Feature Prioritization Matrix
+
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Audio file import | HIGH | MEDIUM | P1 |
+| Waveform visualization | HIGH | HIGH | P1 |
+| Synced audio playback | HIGH | HIGH | P1 |
+| Audio volume control | MEDIUM | LOW | P1 |
+| Audio timeline positioning | HIGH | MEDIUM | P2 |
+| Audio fade in/out | MEDIUM | MEDIUM | P2 |
+| BPM detection + beat markers | HIGH | MEDIUM | P2 |
+| Snap-to-beat | HIGH | LOW | P2 |
+| Auto-arrange frames to beats | HIGH | MEDIUM | P2 |
+| Audio in video export | HIGH | MEDIUM | P2 |
+| Canvas motion path visualization | MEDIUM | HIGH | P3 |
+| Motion path keyframe dragging | MEDIUM | HIGH | P3 |
+| Solo mode for layers | MEDIUM | MEDIUM | P3 |
+| Sidebar scroll verification | LOW | LOW | P3 |
+| Sidebar collapse persistence | LOW | LOW | P3 |
+
+**Priority key:**
+- P1: Audio foundation -- must work before anything else
+- P2: Audio polish + beat sync -- the differentiating features
+- P3: Visual polish -- independent features, high value but not audio-blocking
+
+## Competitor Feature Analysis
+
+| Feature | Dragonframe 5 | Stop Motion Studio Pro | DaVinci Resolve | Canva Video | Our Approach |
+|---------|---------------|----------------------|-----------------|-------------|--------------|
+| Audio import | Yes (WAV, MP3) | Yes (MP3, M4A) | Yes (all formats) | Yes (MP3, WAV) | WAV, MP3, AAC, FLAC via Web Audio API decodeAudioData |
+| Waveform display | Yes, on timeline | Yes, small | Yes, full | Yes, simplified | Canvas 2D track row on timeline, peak-summarized for performance |
+| Audio playback sync | Yes, frame-accurate | Yes, basic | Yes, sample-accurate | Yes, approximate | AudioBufferSourceNode started at frame offset. Audio-follows-video model. Sufficient for 15/24 fps stop-motion. |
+| Beat detection | No | No | DaVinci Fairlight has beat detection | Yes (auto-beat sync) | web-audio-beat-detector offline analysis on import |
+| Beat markers on timeline | No | No | No (Fairlight is separate panel) | Yes (auto-placed) | Vertical lines on timeline at beat positions |
+| Snap to beat | No | No | No | Yes (implicit) | Snap hold-duration handles to nearest beat marker |
+| Auto-arrange to beats | No | No | No | Yes (auto-sync clips to beats) | Distribute key photos across beats with strategy selector |
+| Audio in export | Yes (with video) | Yes (with video) | Yes (full mixing) | Yes (with video) | FFmpeg muxing with AAC encoding + fade filters |
+| Motion path visualization | No (frame-by-frame, no animation) | No | No (not applicable -- video NLE) | No | After Effects-style dotted path on canvas with keyframe diamonds |
+| Layer solo | No (no layers) | No (basic layers) | Yes (per-track solo/mute) | No | Solo icon in sidebar layer list, temporary render filter |
 
 ## Feature Details
 
-### Layer System
+### Audio Import + Waveform
 
-**Expected behavior (informed by After Effects, Photoshop, Motion Canvas capabilities):**
+**Expected behavior (informed by Premiere Pro, DaVinci Resolve, Kdenlive):**
 
-- Layers are per-sequence. Each sequence has its own layer stack.
-- Bottom layer is always the base key photo sequence (auto-generated, not user-deletable).
-- Users add layers above: static image overlays, image sequence overlays, video layers.
-- Layer panel shows stack order with drag-to-reorder. Top layer composites last (on top).
-- Each layer has: name, type, visible toggle, opacity slider, blend mode dropdown, transform controls.
-- Selected layer shows properties in PropertiesPanel.
-- Layers render via Motion Canvas scene graph: each layer = an Img or Rect node with `compositeOperation` and `opacity` set. Parent node must have `cache` enabled for compositeOperation to work.
+- User imports audio via File > Import Audio, drag-and-drop onto timeline, or drag-drop onto app window
+- Accepted formats: WAV, MP3, AAC/M4A, FLAC. Web Audio API `decodeAudioData()` handles all of these natively in WebKit/Safari engine (WKWebView on macOS)
+- Audio file is copied to project `audio/` directory (same pattern as image import to `images/`)
+- Waveform peaks are computed via `AudioBuffer.getChannelData()`: iterate samples, find min/max per chunk (chunk size = total samples / desired peaks count). Store peaks as Float32Array in `audioStore`
+- Waveform renders as a dedicated track row in `TimelineRenderer`, below FX tracks. Height: ~48px. Color: semi-transparent blue or green (distinct from playhead red and FX track colors)
+- Waveform rendering is pixel-column-based: for each visible pixel column, map to a time range, find the peak amplitude in that range, draw a vertical line from center. This is the standard approach used by BBC peaks.js and Kdenlive's 2025 rewrite
+- Mono rendering (mix stereo to mono for display). Most users care about rhythm, not channel separation
+- Waveform data is cached after first computation. Re-decode only if audio file changes
 
-**Layer types:**
-| Type | Source | Behavior |
-|------|--------|----------|
-| `static-image` | Single image file | Same image overlaid on every frame. Use for: grain texture, vignette mask, color grade LUT. |
-| `image-sequence` | Folder of numbered images | Frame-synced overlay. Frame N of sequence = image N of overlay. Use for: animated grain, animated scratches. |
-| `video` | Video file (MP4, WebM) | Video plays in sync with sequence playhead. Use for: light leak footage, film burn footage. Video file must be in `public/` folder per Motion Canvas constraint. |
+**Performance considerations (from Kdenlive rewrite research):**
+- Do NOT render all samples -- summarize to peaks per pixel column
+- At 48kHz audio with 1000px visible width and 10 seconds visible: ~48 samples per pixel. Simple min/max per column
+- Waveform drawing pauses during full-speed playback (`isFullSpeed` flag already exists)
+- Pre-compute peaks at multiple zoom levels (mipmap approach) for instant zoom response -- or recompute on zoom (cheap enough for single audio track)
 
-**Blend modes (mapping to Canvas 2D globalCompositeOperation):**
-| App Blend Mode | Canvas 2D Operation | Use Case |
-|----------------|---------------------|----------|
-| Normal | `source-over` | Standard overlay, opacity controls transparency |
-| Screen | `screen` | Light leaks, flares (brightens, ignores black) |
-| Multiply | `multiply` | Grain, dirt, vignette (darkens, ignores white) |
-| Overlay | `overlay` | Color grading, contrast enhancement |
-| Add | `lighter` | Bright light effects, lens flare (additive blending) |
+### Synced Audio Playback
 
-### Built-in Cinematic FX
+**Expected behavior:**
 
-**Implementation approach: FX are pre-configured layer presets, not custom shaders.**
+- Press Space: audio starts playing from current playhead position
+- Audio plays through `AudioContext` -> `GainNode` (volume) -> `destination`
+- On each playback start: create `AudioBufferSourceNode`, set `source.buffer`, call `source.start(0, offsetSeconds)` where `offsetSeconds = (currentFrame - audioOffsetFrames) / fps`
+- On stop: `source.stop()`, dispose source node
+- On seek (during pause): no audio plays. Audio only plays during active playback
+- Sync strategy: **audio-follows-video** (PlaybackEngine remains the master clock). At 15/24 fps, the maximum drift per frame is ~42-67ms, which is imperceptible. If drift accumulates over long playback (minutes), periodically re-sync by checking `AudioContext.currentTime` against expected position
+- During shuttle playback (JKL at 2x, 4x speed): audio plays at normal speed (do not pitch-shift). Alternative: mute audio during shuttle. Recommend mute -- pitched audio at 2-4x is unpleasant and unhelpful
 
-Rather than building a shader pipeline, FX are implemented as convenience presets that create layers with specific settings:
+### BPM Detection + Beat Sync
 
-| FX Effect | Implementation | Parameters |
-|-----------|---------------|------------|
-| Film grain | Static image layer (grain texture) + multiply blend + 20-40% opacity | Intensity (opacity), grain texture selection |
-| Dirt/scratches | Image sequence layer (scratch animation) + screen blend + 15-30% opacity | Intensity, scratch pattern selection |
-| Light leaks | Video layer (light leak footage) + screen blend + 40-70% opacity | Intensity, leak style selection, position |
-| Vignette | Rect node with radial gradient (black edges to transparent center) + multiply blend | Intensity (opacity), size (gradient radius), softness |
-| Color grade | Motion Canvas filters on base layer: `brightness()`, `contrast()`, `saturate()`, `hue-rotate()`, `sepia()` | Temperature (hue-rotate), tint (saturate), exposure (brightness), contrast, fade (sepia amount) |
+**Expected behavior (informed by Canva Beat Sync, web-audio-beat-detector):**
 
-**Why this approach:** Motion Canvas already renders via Canvas 2D with full `globalCompositeOperation` and CSS filter support. No custom WebGL shaders needed. FX assets (grain textures, light leak videos) ship with the app or are user-importable. This is how professional editors actually work -- overlaying real film grain scans, not generating procedural noise.
+- On audio import (or on-demand button press), run `guess(audioBuffer)` from `web-audio-beat-detector`
+- Returns `{ bpm: number, offset: number, tempo: number }`. `bpm` is rounded integer, `offset` is seconds to first beat
+- Compute beat positions: `for (let t = offset; t < audioDuration; t += 60/bpm)` -> convert each `t` to frame number: `Math.round(t * fps) + audioOffsetFrames`
+- Store as `audioStore.beatMarkers: Signal<number[]>` (frame positions)
+- Render in `TimelineRenderer` as thin dashed vertical lines in a distinct color (e.g., gold/amber, `#FFB800`) on both the waveform track and the content track area
+- Optional: user can manually adjust BPM if detection is wrong (text input with BPM value, recalculates markers)
+- Optional: user can manually shift beat offset (drag first beat marker or numeric input)
 
-### Audio Import and Waveform
-
-**Expected behavior (informed by Dragonframe, wavesurfer.js, peaks.js):**
-
-1. **Import:** User imports WAV, MP3, AAC, or OGG via file dialog. Audio file is copied to project directory.
-2. **Decode:** Web Audio API `AudioContext.decodeAudioData()` decodes to `AudioBuffer`.
-3. **Peak extraction:** Extract peaks from AudioBuffer for waveform rendering. Compute min/max amplitude per pixel at current zoom level. This is a CPU-intensive one-time operation -- cache peaks in project.
-4. **Waveform rendering:** Draw peaks on timeline canvas as vertical bars (standard waveform visualization). Render in a dedicated audio track below the frame track. Color-coded (distinct from frame thumbnails).
-5. **Playback sync:** PlaybackEngine already uses `performance.now()` delta accumulation, which was designed for AudioContext sync. Replace `performance.now()` master clock with `AudioContext.currentTime` when audio is present. `AudioContext.currentTime` is the only reliable sub-millisecond audio clock in browsers.
-6. **Audio controls:** Volume, mute, trim (in/out points), offset (slide audio relative to frame 0).
-
-**Implementation recommendation:** Do NOT use wavesurfer.js or peaks.js. These are full widget libraries with their own UI, transport controls, and DOM management. They would fight with the existing canvas timeline renderer. Instead, use the Web Audio API directly:
-- `AudioContext.decodeAudioData()` for decoding
-- `AudioBuffer.getChannelData()` for raw PCM samples
-- Custom peak extraction (downsample to timeline pixel resolution)
-- Render peaks in `TimelineRenderer.ts` alongside frame thumbnails
-- `AudioBufferSourceNode` for playback, synced to PlaybackEngine
-
-**Peak extraction algorithm:**
-```
-samplesPerPixel = totalSamples / timelinePixelWidth
-For each pixel column:
-  slice = channelData[i * samplesPerPixel .. (i+1) * samplesPerPixel]
-  peaks[i] = { min: Math.min(...slice), max: Math.max(...slice) }
-```
-Cache peaks at multiple zoom levels to avoid recomputation on zoom.
-
-### Beat Sync
-
-**Expected behavior (informed by VideoProc Vlogger, Canva Beat Sync, Filmora Auto Beat Markers):**
-
-1. **BPM detection:** Use `web-audio-beat-detector` npm package. `guess(audioBuffer)` returns `{ bpm, offset, tempo }`. Algorithm isolates kick drum via low-pass filter, detects peaks, estimates BPM. Works best with rhythmic music (EDM, pop, rock). Range: 90-180 BPM by default, configurable via `tempoSettings`.
-2. **Beat markers:** Render vertical marker lines on timeline at beat positions. `beatPositionSeconds = offset + (beatIndex * 60 / bpm)`. Convert to frame: `beatFrame = Math.round(beatPositionSeconds * fps)`. Visually distinct from playhead (dashed line, accent color).
-3. **Manual beat adjustment:** Users can tap-to-set BPM, nudge offset, add/remove individual markers. Auto-detection is a starting point, not the final word.
-4. **Snap modes:**
-   - Every beat (1/1): one key photo per beat
-   - Every 2 beats (1/2): one key photo per two beats
-   - Every bar (1/4): one key photo per four beats (assumes 4/4 time)
-   - Every half-beat (2/1): two key photos per beat (fast cuts)
-5. **Auto-arrange:** Given N key photos and a snap mode, distribute photos across beat positions. Calculate `holdFrames = framesPerBeat * snapMultiplier`. If more photos than beat slots, warn user. If fewer photos than slots, either loop or leave gaps (user choice).
-
-**Frame-per-beat calculation:**
-```
-framesPerBeat = fps * 60 / bpm
-Example: 24fps, 120 BPM = 24 * 60 / 120 = 12 frames per beat
-```
-
-### PNG Image Sequence Export
-
-**Expected behavior (informed by Motion Canvas exporter, professional NLE workflows):**
-
-1. **Output directory:** Tauri `save` dialog to choose export folder. Create subfolder with sequence name.
-2. **Resolution options:** Original (match key photo resolution), 1080p (1920x1080), 4K (3840x2160), Custom (user-specified width/height, maintaining aspect ratio).
-3. **Naming pattern:** `frame_0001.png`, `frame_0002.png`, etc. Zero-padding width auto-calculated from total frame count (4 digits for < 10000 frames, 5 for more).
-4. **Composition pipeline (per frame):**
-   a. Create offscreen canvas at target resolution
-   b. Draw base key photo (scaled to fit target resolution)
-   c. For each visible layer (bottom to top): set `globalCompositeOperation`, set `globalAlpha`, apply transform, draw layer content
-   d. `canvas.toBlob('image/png')` (async, non-blocking, avoids data URL memory bloat)
-   e. Send blob to Rust backend via IPC for file write
-5. **Progress:** Show progress bar (frame X of N), estimated time remaining, cancel button.
-6. **Audio metadata sidecar:** Write `audio.json` alongside PNG sequence: `{ "audio_file": "soundtrack.mp3", "sample_rate": 44100, "duration_seconds": 30.5, "offset_frames": 0 }`. This lets DaVinci Resolve users know where to place the audio.
-
-**Performance consideration:** Export is NOT real-time. Each frame is rendered independently at full quality. For a 24fps sequence with 100 key photos averaging 3 frames hold each = 300 frames. At ~50ms per frame composition + write = ~15 seconds total. Acceptable, but show progress UI.
-
-**Rust backend role:** Receive PNG blob via IPC, write to disk using `std::fs::write`. Rust handles file I/O efficiently and respects macOS file system permissions via Tauri's fs plugin.
-
-### Undo/Redo
-
-**Expected behavior (informed by Premiere Pro 32+ levels, After Effects unlimited history):**
-
-The existing `historyStore` has the right shape (`stack: HistoryEntry[]`, `pointer: number`) but no logic. The `HistoryEntry` type has `undo: () => void` and `redo: () => void` callbacks -- this is a command pattern.
-
-**Implementation approach: Command pattern wrapping store mutations.**
-
-Every user-visible state change wraps in a history entry:
-
-| Action | Undo | Redo |
-|--------|------|------|
-| Add layer | Remove the added layer | Re-add with same ID/properties |
-| Remove layer | Re-add with captured properties | Remove again |
-| Reorder layers | Reverse the reorder | Repeat the reorder |
-| Change layer property | Restore previous value | Apply new value |
-| Add key photo | Remove it | Re-add it |
-| Change hold duration | Restore previous duration | Apply new duration |
-| Reorder key photos | Reverse reorder | Repeat reorder |
-| Delete sequence | Re-add with all its data | Delete again |
-| Audio trim/offset | Restore previous trim/offset | Apply new trim/offset |
-| Beat sync auto-arrange | Restore previous key photo durations | Re-apply auto-arrange |
-
-**Key design decisions:**
-- **100+ levels:** Stack size of 100-200 entries. Older entries are discarded (shift off front of array).
-- **Branch on new action:** When user undoes 5 steps then makes a new action, discard the 5 "future" entries. The new action becomes the new head. (Standard behavior in all editors.)
-- **Coalesce rapid changes:** Slider drags (opacity, position) should NOT create an entry per pixel. Coalesce: start entry on mousedown, commit on mouseup. Use debounce/batch window of ~300ms for keyboard-driven numeric input.
-- **Non-undoable actions:** Playback, zoom, pan, UI panel resize, selection changes. These are navigation, not edits.
-- **Alternatively, consider `@kvndy/undo-manager`:** This package has first-class Preact Signals support, distinguishing "Undoable" (user data) from "Preservable" (UI state like scroll position). It auto-registers signal changes with an undo stack. This could eliminate manual command wrapping. **LOW confidence** -- needs evaluation against the existing 6-store architecture.
-
-### Keyboard Shortcuts
-
-**Expected behavior (informed by DaVinci Resolve, Final Cut Pro, Premiere Pro conventions):**
-
-| Category | Shortcut | Action | Notes |
-|----------|----------|--------|-------|
-| **Playback** | Space | Play/Pause toggle | Universal across all NLEs |
-| | J | Play backward (1x, press again for 2x, 4x, 8x) | Standard JKL convention |
-| | K | Stop/Pause | Standard JKL convention |
-| | L | Play forward (1x, press again for 2x, 4x, 8x) | Standard JKL convention |
-| | K+J | Slow reverse (hold K, tap J) | DaVinci Resolve convention |
-| | K+L | Slow forward (hold K, tap L) | DaVinci Resolve convention |
-| **Navigation** | Left Arrow | Step one frame backward | Universal |
-| | Right Arrow | Step one frame forward | Universal |
-| | Home / Cmd+Left | Go to first frame | Standard |
-| | End / Cmd+Right | Go to last frame | Standard |
-| | Up Arrow | Previous key photo boundary | Useful for stop-motion (jump between distinct photos) |
-| | Down Arrow | Next key photo boundary | Useful for stop-motion |
-| **Editing** | Cmd+Z | Undo | macOS standard |
-| | Cmd+Shift+Z | Redo | macOS standard |
-| | Cmd+S | Save project | macOS standard |
-| | Cmd+N | New project | macOS standard |
-| | Cmd+O | Open project | macOS standard |
-| | Delete/Backspace | Delete selected (layer, key photo) | Standard |
-| | Cmd+D | Duplicate selected | Common creative app convention |
-| **View** | Cmd+0 | Fit preview to window | Common in visual editors |
-| | Cmd+= / Cmd+- | Zoom in / zoom out | macOS standard |
-| | ? | Show keyboard shortcuts overlay | Discoverable help |
-
-**Implementation approach:**
-- Global `keydown` event listener on `document`.
-- Shortcut registry: map of `key + modifiers` to action callbacks.
-- Modifier detection: `event.metaKey` (Cmd on macOS), `event.shiftKey`, `event.altKey`.
-- Input suppression: do NOT fire shortcuts when user is typing in an input/textarea.
-- JKL state machine: track current playback speed (0, 1x, 2x, 4x, 8x forward/backward). J and L increment/decrement speed. K resets to 0.
-
-## Feature Dependencies (v2.0 scope only)
+**Auto-arrange algorithm:**
 
 ```
-[Layer System]
-    |-- requires --> sequenceStore (layers are per-sequence)
-    |-- requires --> previewScene.tsx refactor (Motion Canvas nodes per layer)
-    |-- requires --> PropertiesPanel (layer property editing)
-    |-- enables --> FX Effects (FX are specialized layers)
-    |-- enables --> PNG Export (export must flatten layers)
+framesPerBeat = Math.round(fps * 60 / bpm)
 
-[FX Effects]
-    |-- requires --> Layer System (FX are layers with presets)
-    |-- requires --> Asset management (grain textures, light leak videos ship with app)
+Given N key photos and strategy (beat/2-beat/bar):
+  multiplier = strategy === 'beat' ? 1 : strategy === '2-beat' ? 2 : 4
+  holdPerPhoto = framesPerBeat * multiplier
 
-[Audio Import + Waveform]
-    |-- requires --> TimelineRenderer.ts (waveform track rendering)
-    |-- requires --> PlaybackEngine refactor (AudioContext master clock)
-    |-- enables --> Beat Sync (needs decoded audio)
-
-[Beat Sync]
-    |-- requires --> Audio Import + Waveform (needs AudioBuffer)
-    |-- requires --> sequenceStore (auto-arrange modifies hold durations)
-    |-- requires --> Timeline canvas (beat marker rendering)
-
-[PNG Export]
-    |-- requires --> Layer System (must flatten all layers)
-    |-- requires --> Rust backend extension (file write commands)
-    |-- requires --> Tauri dialog plugin (output directory selection, already installed)
-
-[Undo/Redo]
-    |-- requires --> historyStore completion (logic around existing stack/pointer)
-    |-- requires --> All store mutations wrapped in commands
-    |-- should ship with --> Every other feature (undo must cover all actions)
-
-[Keyboard Shortcuts]
-    |-- requires --> PlaybackEngine (playback shortcuts)
-    |-- requires --> historyStore (Cmd+Z/Shift+Cmd+Z)
-    |-- requires --> projectStore (Cmd+S/N/O)
-    |-- standalone --> Can ship incrementally as features land
+For each key photo:
+  keyPhoto.holdFrames = holdPerPhoto
+  (last photo may get adjusted to fill exactly to the audio end or a clean beat boundary)
 ```
 
-### Build Order Recommendation
+**Snap-to-beat:**
 
-Based on dependencies:
+- When user drags a hold-duration handle on the timeline, the target frame snaps to the nearest beat marker if within a threshold (e.g., `snapThreshold = Math.max(2, Math.round(framesPerBeat * 0.15))`)
+- Visual indicator: beat marker line thickens or highlights when snap is active
+- Snap can be toggled off (hold Cmd/Option during drag, or a toolbar toggle)
 
-1. **Undo/Redo + Keyboard Shortcuts** -- These are infrastructure. Every subsequent feature benefits from undo coverage and keyboard access. Ship these first so all later features automatically integrate.
-2. **Layer System + Properties Panel** -- Foundation for FX and export. The preview must transition from the current `<img>` overlay to Motion Canvas scene graph rendering with multiple nodes.
-3. **FX Effects** -- Built on top of the layer system. Pre-configured layer presets with appropriate blend modes and asset bundling.
-4. **Audio Import + Waveform** -- Independent of layers. Can be developed in parallel with FX. Refactors PlaybackEngine to use AudioContext.
-5. **Beat Sync** -- Requires audio. Adds BPM detection, beat markers, auto-arrange.
-6. **PNG Export** -- Requires completed layer system. The composition pipeline must flatten all layers at target resolution. Ship last so it captures the final rendering pipeline.
+### Canvas Motion Path
 
-## MVP Recommendation (v2.0)
+**Expected behavior (informed by After Effects, Apple Motion):**
 
-**Must have:**
-1. Layer system with blend modes, opacity, transforms (the compositing foundation)
-2. At least 3 FX presets (grain, vignette, color grade) to prove the cinematic value proposition
-3. Audio import with waveform display (core workflow for music-driven stop-motion)
-4. PNG sequence export (the output pipeline -- without this, work cannot leave the app)
-5. Undo/redo covering all state changes (non-negotiable for creative tools)
-6. Core keyboard shortcuts (space, arrows, Cmd+Z/S, delete)
+- When a layer with 2+ position keyframes is selected, the canvas shows the motion path
+- Path is a series of dots connecting keyframe positions, rendered on the `TransformOverlay` canvas
+- Keyframe positions shown as diamond shapes (filled, same color as keyframe UI elsewhere)
+- Dots between keyframes: computed by evaluating `interpolateAt()` at sub-frame intervals (e.g., every 0.5 frames). Dot spacing reflects speed -- close together = slow (ease-in/out), far apart = fast (linear through middle)
+- Path respects canvas zoom/pan via existing `coordinateMapper.ts` coordinate transforms
+- Color: semi-transparent white or project accent color, distinct from transform handles
 
-**Can defer to v2.1:**
-- Beat sync auto-arrange (valuable but the full BPM detection + auto-arrange is complex; manual frame timing works)
-- Light leak and scratch FX (requires video layer support which is more complex than static image layers)
-- JKL scrubbing with variable speed (nice polish, not critical for stop-motion workflows where frame-by-frame stepping is more common)
-- Keyboard shortcuts overlay (? help screen)
+**Keyframe dragging on canvas:**
+
+- Click on a keyframe diamond: select that keyframe in `keyframeStore.selectedKeyframeFrames`
+- Drag a keyframe diamond: updates `keyframeStore` position (x, y) for that keyframe
+- Uses `startCoalescing()`/`stopCoalescing()` for smooth undo (already built but unwired -- this is a good opportunity to wire it)
+- Hit-test radius: ~8px (scaled by canvas zoom, similar to transform handle hit-testing)
+- Multi-select: Shift+click to select multiple keyframe diamonds, drag moves all selected
+
+**Rendering approach:**
+
+- Extend `TransformOverlay.tsx` (which already handles transform handles, pointer capture, coordinate mapping)
+- The overlay renders after transform handles, so motion path is visible but behind the move/scale/rotate handles
+- Only render for the currently selected layer (not all layers simultaneously -- too cluttered)
+- Path extends from first keyframe to last keyframe only (no extrapolation beyond)
+
+### Solo Mode for Layers
+
+**Expected behavior (informed by After Effects, DaVinci Resolve):**
+
+- Each layer in the sidebar layer list gets a small solo icon (circle or "S" indicator) next to the visibility eye icon
+- Clicking solo: only that layer renders in preview. All other layers are temporarily hidden
+- Multiple solo: clicking solo on additional layers adds them to the solo set (like sequence isolation)
+- Solo is a preview-only state -- does not affect export, not persisted in project file
+- Visual indicator: solo'd layers have highlighted icon, non-solo layers appear dimmed
+- Clear all solo: click the solo icon on an already-solo layer, or a "Clear Solo" action
+
+**Implementation:**
+
+- Extend `isolationStore` with `soloLayerIds: Signal<Set<string>>`
+- In `PreviewRenderer.render()`, when `soloLayerIds.size > 0`, skip layers not in the set
+- Similar pattern to existing `isolatedSequenceIds` for sequences
+
+### Sidebar Enhancements
+
+**Scroll in key photos:**
+
+- `SidebarScrollArea` component already exists with custom 4px thumb
+- Verify the key photos list is wrapped in `SidebarScrollArea`
+- The inline key photos render inside the Sequences panel's collapsible section
+- With 20+ photos at ~32px each = 640px+, overflow is guaranteed. Scroll must work
+
+**Collapse toggle:**
+
+- `CollapsibleSection` exists with signal-driven collapsed state and chevron animation
+- Verify all three sidebar sections use it
+- Add persistence: save collapsed state per section to `appConfig` so it survives app restart
+- Sections: SEQUENCES, LAYERS, PROPERTIES (or FX PROPERTIES for FX layers)
 
 ## Sources
 
-- [Dragonframe Software Features](https://www.dragonframe.com/dragonframe-software/) -- Industry standard stop-motion feature set, guide layers, multi-track audio (HIGH confidence)
-- [Stop Motion Studio Pro](https://apps.apple.com/us/app/stop-motion-studio-pro/id641564761) -- Layer system, audio track editor, export options (HIGH confidence)
-- [Motion Canvas Filters and Effects](https://motioncanvas.io/docs/filters-and-effects/) -- blur, grayscale, hue-rotate, contrast, saturate filters on nodes (HIGH confidence)
-- [Motion Canvas Node API](https://motioncanvas.io/api/2d/components/Node/) -- compositeOperation, opacity, cache properties (HIGH confidence)
-- [Motion Canvas Image Sequence Export](https://motioncanvas.io/docs/rendering/image-sequence/) -- Built-in PNG/JPEG/WebP export (HIGH confidence)
-- [Canvas 2D globalCompositeOperation](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation) -- Blend mode mapping (HIGH confidence)
-- [web-audio-beat-detector](https://github.com/chrisguttandin/web-audio-beat-detector) -- analyze()/guess() API, BPM estimation from AudioBuffer (HIGH confidence)
-- [Web Audio API Visualizations](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API) -- AnalyserNode, getFloatTimeDomainData for waveform (HIGH confidence)
-- [HTMLCanvasElement.toBlob()](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob) -- Async PNG export, avoids data URL memory bloat (HIGH confidence)
-- [@kvndy/undo-manager](https://www.npmjs.com/package/@kvndy/undo-manager) -- Preact Signals undo/redo with Undoable/Preservable distinction (LOW confidence -- needs evaluation)
-- [Tauri 2 Dialog Plugin](https://v2.tauri.app/plugin/dialog/) -- save() for export directory selection (HIGH confidence)
-- [Tauri 2 File System Plugin](https://v2.tauri.app/plugin/file-system/) -- File write operations for export (HIGH confidence)
-- [JKL Editing Shortcuts](https://www.premiumbeat.com/blog/video-editing-j-k-l-shortcuts/) -- Universal NLE convention (HIGH confidence)
-- [Filmic Effects in WebGL](https://medium.com/@mattdesl/filmic-effects-for-webgl-9dab4bc899dc) -- Grain/vignette as overlay + blend mode approach (MEDIUM confidence)
-- [Filmora Auto Beat Markers](https://filmora.wondershare.com/ai-efficiency/auto-beat-marker.html) -- Beat marker UX pattern (MEDIUM confidence)
-- [VideoProc Vlogger Beat Editing](https://www.videoproc.com/video-editing-software/guide-free-win/edit-to-the-beat.htm) -- Auto-generated beat markers workflow (MEDIUM confidence)
+- [MDN: Visualizations with Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API) -- waveform data extraction methods
+- [MDN: Web Audio API Best Practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices) -- AudioBuffer vs MediaElement, gain scheduling
+- [BBC waveform-data.js](https://github.com/bbc/waveform-data.js) -- peak extraction and resampling patterns
+- [BBC peaks.js](https://github.com/bbc/peaks.js/) -- timeline waveform UI component patterns
+- [Kdenlive Audio Waveform Rewrite 2025](https://etiand.re/posts/2025/01/audio-waveforms-in-kdenlive-technical-upgrades-for-speed-precision-and-better-ux/) -- peak-per-pixel rendering, performance optimization
+- [web-audio-beat-detector](https://github.com/chrisguttandin/web-audio-beat-detector) -- BPM detection: `analyze()` and `guess()` API
+- [Beat Detection Using JavaScript and the Web Audio API](http://joesul.li/van/beat-detection-using-web-audio/) -- algorithm explanation (low-pass filter, peak detection)
+- [MDN: AudioParam.linearRampToValueAtTime()](https://developer.mozilla.org/en-US/docs/Web/API/AudioParam/linearRampToValueAtTime) -- fade implementation
+- [FFmpeg: Merge Audio and Video](https://www.mux.com/articles/merge-audio-and-video-files-with-ffmpeg) -- `-map 0:v -map 1:a -c:a aac` patterns
+- [Adobe: Keyframe Interpolation in After Effects](https://helpx.adobe.com/after-effects/using/keyframe-interpolation.html) -- motion path visualization spec
+- [Adobe: Assorted Animation Tools](https://helpx.adobe.com/after-effects/using/assorted-animation-tools.html) -- motion path display options, dot density = speed
+- [Apple Motion: Modify Animation Paths](https://support.apple.com/guide/motion/modify-animation-paths-motn14748beb/mac) -- motion path interaction patterns
+- [Canva Beat Sync](https://www.canva.com/features/beat-sync/) -- auto-sync clips to rhythm UX reference
+- [Tauri File System Plugin](https://v2.tauri.app/plugin/file-system/) -- file access patterns for audio import
+- [Building a Music Player with Tauri + Svelte](https://slavbasharov.com/blog/building-music-player-tauri-svelte) -- `convertFileSrc()` for audio file URLs
 
 ---
-*Feature research for: EFX Motion Editor v2.0 Production Tool*
-*Researched: 2026-03-03*
+*Feature research for: EFX Motion Editor v0.3.0 Audio & Polish*
+*Researched: 2026-03-21*

@@ -1,372 +1,284 @@
 # Stack Research
 
-**Domain:** Desktop stop-motion cinematic video editor (macOS) -- v2.0 additions
-**Researched:** 2026-03-03
+**Domain:** Desktop stop-motion cinematic editor (macOS) -- v0.3.0 audio, beat sync, motion paths
+**Researched:** 2026-03-21
 **Confidence:** HIGH
 
-## Context
+## Scope
 
-This is a SUBSEQUENT MILESTONE stack research. The following stack is already validated and shipping in v1.0:
+This research covers ONLY the stack additions needed for v0.3.0 features:
+1. Audio import, waveform visualization, synced playback, fade in/out
+2. BPM detection and beat sync (beat markers, snap modes, auto-arrange)
+3. Audio muxing in video export (replacing `-an` flag)
+4. Canvas motion path visualization (After Effects-style keyframe path editing)
+5. Sidebar enhancements (scroll, collapse, solo) -- no new stack needed
 
-- Tauri 2.0 (Rust) + Preact 10.28 + @preact/signals 2.8 + Vite 5.4.21 + Tailwind CSS v4
-- @efxlab/motion-canvas-* v4.0.0 (WebGL/Canvas rendering)
-- Canvas 2D timeline renderer with virtualization
-- Rust image pipeline (image crate 0.25) with thumbnails and LRU pool
-- SortableJS for drag-and-drop
-- 6 reactive signal stores + PlaybackEngine with rAF delta accumulation
-- pnpm 10.27 package manager
-
-This document covers ONLY new dependencies needed for v2.0 features: layer compositing, FX effects, audio/waveform/beat detection, PNG export, undo/redo, and keyboard shortcuts.
+The existing stack (Tauri 2.0, Preact, Preact Signals, Motion Canvas, Vite 5, Tailwind CSS v4, pnpm, tinykeys, SortableJS, stackblur-canvas) is validated and unchanged.
 
 ## Recommended Stack Additions
 
-### FX Effects (Grain, Scratches, Light Leaks, Vignette, Color Grade)
+### Audio Decoding & Playback -- Web Audio API (Built-in, No Dependencies)
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| Custom GLSL shaders | N/A (project code) | Film grain, scratches, light leaks, vignette, color grade effects | @efxlab/motion-canvas-2d v4.0.0 already supports the `shaders` property on all nodes. VERIFIED: `ShaderConfig` interface exists in installed packages with `fragment`, `uniforms`, `setup`, `teardown`. Custom GLSL is the correct approach -- NO external shader library needed |
-| @efxlab/motion-canvas-core/shaders/common.glsl | 4.0.0 (installed) | Built-in shader uniforms (time, resolution, sourceTexture, etc.) | Already available. Provides `time`, `deltaTime`, `framerate`, `frame`, `resolution`, `sourceTexture`, `destinationTexture`, `sourceUV`, `screenUV` |
+| Web Audio API | Browser built-in | Audio decoding, playback, waveform data extraction | Zero-dependency, hardware-accelerated, sample-accurate timing. macOS WebKit (Tauri's WebView) has full support. Already used implicitly via the rAF playback architecture. |
 
-**Key finding:** The `@efxlab/motion-canvas-2d` v4.0.0 already installed has full shader support. The `shaders` property on any Node accepts GLSL fragment shaders with custom uniforms. No new dependencies needed for FX effects -- only custom GLSL code.
+**Why Web Audio API over HTMLAudioElement alone:**
+- `AudioContext.decodeAudioData()` decodes audio files (WAV, MP3, AAC, FLAC) into `AudioBuffer` -- gives direct access to PCM float32 samples for waveform rendering and BPM analysis.
+- `AudioBufferSourceNode` allows sample-accurate start/stop/seek, which the existing `PlaybackEngine` rAF tick loop can synchronize against.
+- `GainNode` provides fade in/out with `linearRampToValueAtTime()` / `exponentialRampToValueAtTime()` -- no manual volume curves needed.
+- `AnalyserNode` is NOT needed here (that's for real-time frequency visualization). Pre-computed waveform peaks from the decoded AudioBuffer are what the timeline canvas needs.
 
-**Shader integration pattern (verified in installed packages):**
-```tsx
-// Fragment shader: grain.glsl
-#version 300 es
-precision highp float;
-#include "@efxlab/motion-canvas-core/shaders/common.glsl"
+**Integration point:** The existing `PlaybackEngine` uses `performance.now()` delta accumulation. Audio playback will be driven by a `AudioBufferSourceNode` started at the correct offset when playback begins, and stopped when playback stops. The rAF tick loop remains the frame clock; audio follows. This is the standard pattern for frame-accurate audio-visual sync in canvas-based editors.
 
-uniform float intensity;
-uniform float seed;
+**CSP note:** The existing `tauri.conf.json` CSP already includes `media-src 'self' asset: http://asset.localhost efxasset:` which covers local audio file access.
 
-void main() {
-  vec4 color = texture(sourceTexture, sourceUV);
-  float noise = fract(sin(dot(sourceUV + seed, vec2(12.9898, 78.233))) * 43758.5453);
-  outColor = vec4(mix(color.rgb, vec3(noise), intensity), color.a);
-}
-```
-```tsx
-// Usage in Motion Canvas scene
-<Rect shaders={{
-  fragment: grainShader,
-  uniforms: {
-    intensity: () => grainIntensity.peek(),
-    seed: () => Math.random(),
-  },
-}} />
-```
-
-**Confidence: HIGH** -- Verified against installed `@efxlab/motion-canvas-2d/lib/partials/ShaderConfig.d.ts`. The shader API is marked `@experimental` but is fully implemented with WebGL2.
-
-### Layer Compositing
+### BPM Detection -- web-audio-beat-detector
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| No new dependencies | N/A | Blend modes, opacity, transforms | Motion Canvas Rect/Img nodes already support `compositeOperation`, `opacity`, and transforms. Preact layerStore already has the data model. This is pure application code |
+| web-audio-beat-detector | ^8.2.27 | Offline BPM detection from AudioBuffer | Pure Web Audio API, TypeScript types included, returns both BPM and first-beat offset. Maintained (active releases through 2026). Offline analysis -- no microphone access needed. |
 
-**Key finding:** The existing `previewScene.tsx` currently renders a single `Img` inside a `Rect`. For layer compositing, this scene needs to be extended to render multiple layers with blend modes. Motion Canvas 2D nodes support `compositeOperation` which maps to Canvas2D `globalCompositeOperation` (screen, multiply, overlay, etc.). No new libraries needed.
+**Why this over alternatives:**
 
-**Confidence: HIGH** -- Canvas2D `globalCompositeOperation` is a web standard; Motion Canvas wraps it.
+| Considered | Verdict | Why Not |
+|------------|---------|---------|
+| **web-audio-beat-detector** | **USE THIS** | Offline analysis from AudioBuffer, returns `{ bpm, offset, tempo }`. The `offset` (first beat position in seconds) is exactly what's needed to compute beat marker frame positions. ~40% TypeScript, well-typed API. |
+| realtime-bpm-analyzer v5 | Skip | Designed for real-time streaming analysis (microphone, live playback). Overkill for analyzing a loaded audio file. Larger API surface, dependency-free but bigger codebase for a simpler need. |
+| BeatDetect.js | Skip | Less maintained, no TypeScript types, fewer downloads. Optimized for EDM which narrows accuracy range. |
+| Custom implementation (Joe Sullivan algorithm) | Skip | web-audio-beat-detector already implements this exact algorithm. No reason to rewrite. |
 
-### Audio Import, Waveform, Beat Detection
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| wavesurfer.js | ^7.12.1 | Audio waveform visualization in timeline | Framework-agnostic (no React required), TypeScript-native, Shadow DOM isolation, zero npm dependencies. Mounts to any DOM element via `WaveSurfer.create({ container })`. Works with Preact by targeting a ref'd div |
-| web-audio-beat-detector | ^8.2.35 | BPM detection and beat offset extraction | TypeScript types included, uses Web Audio API, returns `{ bpm, offset, tempo }` via `guess()`. More mature than realtime-bpm-analyzer for offline analysis (which is our use case -- we analyze imported files, not live audio) |
-| Web Audio API (built-in) | N/A | Audio decoding, playback sync, waveform data | Browser-native, no dependency. `AudioContext.decodeAudioData()` for decoding, `AudioContext.currentTime` for frame-accurate sync with PlaybackEngine |
-
-**Architecture decision: Web Audio API for audio, NOT Rust symphonia.**
-
-The v1.0 research recommended `symphonia` (Rust) for audio decoding, but this is WRONG for our use case:
-
-1. Audio needs to PLAY in the browser during preview -- Web Audio API is the natural fit
-2. Waveform data is needed in the frontend for visualization -- decoding in Rust then IPC-ing waveform peaks adds unnecessary complexity
-3. `AudioContext.decodeAudioData()` handles MP3, WAV, AAC, OGG natively in the browser
-4. wavesurfer.js handles its own audio loading and decoding internally
-5. Beat detection via `web-audio-beat-detector` operates on `AudioBuffer` from Web Audio API
-
-**Rust backend audio role:** Only needed for audio metadata export (writing `audio-metadata.json` alongside PNG export). The existing `serde_json` handles this.
-
-**Changed from v1.0 research:** Removed `symphonia`, `rodio` from Rust dependencies. Added `wavesurfer.js` and `web-audio-beat-detector` to frontend.
-
-**wavesurfer.js + Preact integration pattern:**
-```tsx
-import WaveSurfer from 'wavesurfer.js';
-import { useRef, useEffect } from 'preact/hooks';
-
-function AudioTrack({ audioUrl }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WaveSurfer | null>(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    wsRef.current = WaveSurfer.create({
-      container: containerRef.current,
-      waveColor: '#4a4a5a',
-      progressColor: '#7c7cf0',
-      url: audioUrl,
-      height: 48,
-    });
-    return () => wsRef.current?.destroy();
-  }, [audioUrl]);
-
-  return <div ref={containerRef} />;
-}
-```
-
-**Confidence: HIGH** -- wavesurfer.js v7 is framework-agnostic (verified on GitHub, TypeScript rewrite, 87% TS codebase). web-audio-beat-detector v8.2.35 released Feb 2026, actively maintained.
-
-### PNG Sequence Export
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| Canvas `toBlob()` API (built-in) | N/A | Capture composited frames as PNG binary data | 2-5x faster than `toDataURL()`, async, returns binary Blob directly without Base64 overhead |
-| @tauri-apps/plugin-fs `writeFile` | ^2.4.5 (installed) | Write PNG binary data to disk | Already installed. `writeFile(path, uint8Array)` writes binary data to any scoped path |
-| image crate (Rust) | 0.25 (installed) | Alternative: write PNG from raw pixel data passed via IPC | Already installed. `save_buffer()` for direct pixel-to-PNG. Fast PNG encoding via fdeflate |
-| rayon | ^1.10 | Parallel PNG encoding for batch export | If export sends raw pixel data to Rust, rayon parallelizes encoding across CPU cores for 3-4x speedup on batch frames |
-
-**Export pipeline decision: Hybrid frontend-capture + Rust-write**
-
-Two viable approaches; recommend **Option A** for simplicity:
-
-**Option A (Recommended): Frontend capture, Rust write**
-1. Motion Canvas renders composited frame (all layers + FX shaders) to its internal canvas
-2. `canvas.toBlob('image/png')` captures the composited result
-3. Convert Blob to `Uint8Array` via `blob.arrayBuffer()`
-4. Send to Rust via Tauri command for disk write (or use `@tauri-apps/plugin-fs` directly)
-5. Repeat for each frame
-
-**Option B: Frontend capture, Rust encode**
-1. Motion Canvas renders frame
-2. `ctx.getImageData()` extracts raw RGBA pixels
-3. Send raw pixel buffer to Rust via IPC
-4. Rust encodes to PNG via `image` crate with parallel encoding via `rayon`
-5. Higher throughput but larger IPC payload per frame
-
-**Why Option A:** Canvas `toBlob()` with PNG encoding is fast enough for our frame counts (stop-motion at 15-24fps, typically 100-500 frames). The IPC overhead of sending raw RGBA buffers (4 bytes per pixel * 1920*1080 = 8MB per frame) makes Option B slower for moderate frame counts. Option B only wins at 1000+ frames where parallel Rust encoding amortizes the IPC cost.
-
-**Add rayon ONLY if Option B is chosen:**
-```toml
-# src-tauri/Cargo.toml (only if using Option B)
-rayon = "1.10"
-```
-
-**Confidence: HIGH** -- `toBlob()` is a web standard, `@tauri-apps/plugin-fs` writeFile is already in use, `image` crate already installed.
-
-### Undo/Redo System
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| Custom command pattern | N/A (project code) | Undo/redo with 100+ levels covering all state changes | The existing `historyStore` skeleton (signal-based stack + pointer) is the right foundation. Implement the command pattern natively with Preact Signals -- no external library needed |
-
-**Why NOT use `@kvndy/undo-manager`:**
-
-Evaluated `@kvndy/undo-manager` v6.2.0 which provides `Undoable` and `Preservable` wrappers for Preact Signals. Rejected because:
-
-1. It wraps individual signals, but our undo granularity is *operations* (add layer, move sequence, change blend mode) not individual signal value changes
-2. The `Undoable` class would require replacing all 6 existing signal stores with wrapped versions -- massive refactor
-3. Our existing `HistoryEntry` type with `undo: () => void` / `redo: () => void` callbacks is simpler and maps directly to the command pattern
-4. We need to batch multiple signal changes into one undo entry (e.g., "add layer" changes `layers`, `selectedLayerId`, and triggers `markDirty` -- one undo, not three)
-
-**Implementation approach (zero new dependencies):**
+**API usage pattern for beat sync:**
 ```typescript
-// Extend existing historyStore
-function pushUndo(description: string, execute: () => void, undo: () => void) {
-  execute();
-  const entry: HistoryEntry = { id: nanoid(), description, timestamp: Date.now(), undo, redo: execute };
-  // Trim redo branch, push entry, cap at 100
-  historyStore.stack.value = [...historyStore.stack.value.slice(0, historyStore.pointer.value + 1), entry].slice(-100);
-  historyStore.pointer.value = historyStore.stack.value.length - 1;
-}
-```
+import { guess } from 'web-audio-beat-detector';
 
-**Confidence: HIGH** -- The command pattern is well-understood, the data structures already exist in `types/history.ts` and `stores/historyStore.ts`. This is application code, not a library decision.
-
-### Keyboard Shortcuts
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| tinykeys | ^3.0.0 | Keyboard shortcut binding | 650 bytes gzipped, zero dependencies, TypeScript-native, framework-agnostic. Supports `$mod` for cross-platform Meta/Ctrl. Simpler API than hotkeys-js |
-
-**Why tinykeys over hotkeys-js:**
-
-| Criterion | tinykeys | hotkeys-js |
-|-----------|----------|------------|
-| Size | ~650B gzipped | ~2.8KB gzipped |
-| TypeScript | Native (written in TS) | Types included |
-| API style | Object map: `{ "Mod+Z": handler }` | String-based: `hotkeys('ctrl+z', handler)` |
-| macOS $mod | Yes (`$mod` = Meta on macOS) | Yes (command/cmd) |
-| Sequences | Yes (e.g., `g i` for vim-style) | Yes |
-| Scope/context | Manual (bind/unbind via cleanup) | Built-in scopes |
-| Dependencies | 0 | 0 |
-
-tinykeys is smaller and its object-map API is cleaner for our use case:
-
-```typescript
-import tinykeys from 'tinykeys';
-
-const unsubscribe = tinykeys(window, {
-  '$mod+KeyZ': () => historyStore.undo(),
-  '$mod+Shift+KeyZ': () => historyStore.redo(),
-  'Space': () => playbackEngine.toggle(),
-  'ArrowRight': () => playbackEngine.stepForward(),
-  'ArrowLeft': () => playbackEngine.stepBackward(),
-  '$mod+KeyS': (e) => { e.preventDefault(); projectStore.save(); },
-  '$mod+KeyN': (e) => { e.preventDefault(); projectStore.createNew(); },
-  'KeyJ': () => playbackEngine.start(), // JKL shuttle
-  'KeyK': () => playbackEngine.stop(),
-  'KeyL': () => playbackEngine.start(), // forward
+// audioBuffer comes from AudioContext.decodeAudioData()
+const { bpm, offset, tempo } = await guess(audioBuffer, {
+  minTempo: 60,   // expand range for slow music
+  maxTempo: 200,  // expand range for fast music
 });
-```
 
-**Confidence: HIGH** -- tinykeys v3.0.0 is stable (npm: 44 dependents), TypeScript-native, 650B. Verified macOS `$mod` support.
-
-## Summary of New Dependencies
-
-### Frontend (pnpm add)
-
-```bash
-# Audio visualization and beat detection
-pnpm add wavesurfer.js web-audio-beat-detector
-
-# Keyboard shortcuts
-pnpm add tinykeys
-```
-
-**Total new frontend dependencies: 3 packages**
-
-### Rust (Cargo.toml additions)
-
-```toml
-# No new Rust crates required for v2.0 core features
-# rayon = "1.10" -- only if choosing Option B export pipeline (see PNG Export section)
-```
-
-**Total new Rust dependencies: 0 (or 1 if rayon for export)**
-
-### Already Installed (no changes needed)
-
-| Package | Used For |
-|---------|----------|
-| @efxlab/motion-canvas-2d | Layer compositing, shader FX effects |
-| @efxlab/motion-canvas-core | Shader common.glsl, rendering pipeline |
-| @preact/signals | Undo/redo state management (historyStore) |
-| @tauri-apps/plugin-fs | PNG export file writing |
-| @tauri-apps/plugin-dialog | Export folder selection |
-| image crate (Rust) | PNG encoding if using Option B export |
-
-## What NOT to Add
-
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| symphonia / rodio (Rust audio) | Audio decoding and playback happens in browser for preview. Rust-side audio adds IPC complexity with no benefit | Web Audio API (browser-native) + wavesurfer.js |
-| @kvndy/undo-manager | Wraps individual signals, but undo granularity is operations. Would require replacing all 6 stores | Custom command pattern on existing historyStore |
-| hotkeys-js | 4x larger than tinykeys (2.8KB vs 650B) with no additional features we need | tinykeys |
-| peaks.js / waveform-data.js (BBC) | Heavier than wavesurfer.js, requires server-side waveform generation, overkill for our use case | wavesurfer.js (self-contained, handles its own decoding) |
-| realtime-bpm-analyzer | Designed for real-time streaming BPM detection. We analyze imported files offline. web-audio-beat-detector is simpler and more reliable for offline analysis | web-audio-beat-detector |
-| canvas2d shader libraries (glslCanvas, etc.) | Motion Canvas already has WebGL shader support built in. Adding another WebGL context would conflict | @efxlab/motion-canvas-2d shaders property |
-| OffscreenCanvas for export | OffscreenCanvas runs in Worker but has 75-90% penalty on readback (getImageData/toBlob). Main-thread canvas.toBlob() is actually faster for our frame-by-frame export | Standard canvas.toBlob() on Motion Canvas player canvas |
-| Tone.js / Howler.js | Full audio synthesis libraries. We only need decode + playback + timing, which Web Audio API provides natively | Web Audio API (AudioContext) |
-| FFmpeg sidecar | PNG export does not need video encoding (out of scope). Audio decoding handled by browser. No reason for FFmpeg | Browser-native APIs |
-
-## Integration Points
-
-### How New Libraries Connect to Existing Architecture
-
-```
-PlaybackEngine (existing)
-  |
-  +-- AudioContext.currentTime --> master clock for audio/video sync
-  |     |
-  |     +-- wavesurfer.js.seekTo() --> sync waveform position
-  |     +-- web-audio-beat-detector --> one-time analysis on import
-  |
-  +-- Motion Canvas Player (existing)
-        |
-        +-- previewScene.tsx --> extended with multi-layer rendering
-        |     |
-        |     +-- Img nodes per layer (with compositeOperation for blend modes)
-        |     +-- Rect nodes with shaders property (for FX effects)
-        |
-        +-- canvas.toBlob() --> PNG export capture point
-
-historyStore (existing skeleton)
-  |
-  +-- pushUndo() wraps all store mutations
-  +-- undo()/redo() traverse stack
-
-tinykeys (new)
-  |
-  +-- binds to window, calls playbackEngine/historyStore/projectStore methods
-```
-
-### PlaybackEngine Audio Sync
-
-The existing `PlaybackEngine` uses `performance.now()` delta accumulation. For audio sync, the architecture change is:
-
-```typescript
-// Current: performance.now() drives frame timing
-// v2.0: AudioContext.currentTime becomes the master clock when audio is loaded
-
-class PlaybackEngine {
-  private audioContext: AudioContext | null = null;
-  private audioSource: AudioBufferSourceNode | null = null;
-
-  // When audio loaded, switch to AudioContext clock
-  private tick = (now: number) => {
-    const masterTime = this.audioContext
-      ? this.audioContext.currentTime  // audio-synced
-      : performance.now() / 1000;     // fallback (no audio)
-    // ... frame calculation from masterTime
-  };
+// Convert to beat frame positions:
+const beatIntervalSec = 60 / bpm;
+const fps = projectStore.fps.peek();
+const beats: number[] = [];
+let t = offset;
+while (t < audioBuffer.duration) {
+  beats.push(Math.round(t * fps)); // frame index of each beat
+  t += beatIntervalSec;
 }
 ```
 
-This pattern was already anticipated in v1.0 design ("PREV-05 audio sync readiness proven").
+**Confidence note:** The library's accuracy depends on the source material. Clean rhythmic tracks (pop, electronic, hip-hop) yield reliable results. Ambient/classical/arrhythmic tracks may produce inaccurate BPM. The UI should allow manual BPM override and beat offset adjustment. This is standard practice in all beat-sync tools (Ableton, Premiere Pro, DaVinci Resolve).
 
-## Version Compatibility
+### Audio in Video Export -- FFmpeg Audio Muxing (Existing Infrastructure)
 
-| New Package | Compatible With | Notes |
-|-------------|-----------------|-------|
-| wavesurfer.js ^7.12.1 | Preact (via DOM mount) | No framework dependency. Mount to div ref. TypeScript types included |
-| wavesurfer.js ^7.12.1 | Tailwind CSS v4 | Shadow DOM isolates wavesurfer CSS. Pass colors via JS options, not CSS |
-| web-audio-beat-detector ^8.2.35 | Web Audio API (browser) | Pure Web Audio API, no runtime dependencies |
-| tinykeys ^3.0.0 | Preact/any framework | Framework-agnostic, binds to window/document |
-| Custom GLSL shaders | @efxlab/motion-canvas-* 4.0.0 | Verified: `ShaderConfig` interface exists, `#include "@efxlab/motion-canvas-core/shaders/common.glsl"` path confirmed |
-| rayon ^1.10 (optional) | image 0.25 (installed) | Standard Rust parallelism crate, no conflicts |
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| FFmpeg (already provisioned) | Existing | Mux audio track into video export | Already downloaded and cached at `~/.config/efx-motion/bin/ffmpeg`. The current `encode_video()` Rust function uses `-an` (no audio). Replacing `-an` with `-i <audio_path> -c:a aac` adds the audio track. Zero new dependencies. |
+
+**Required changes to `services/ffmpeg.rs`:**
+
+The `encode_video` function signature needs an optional `audio_path: Option<&str>` parameter. When provided:
+- Remove `-an` flag
+- Add `-i <audio_path>` as a second input
+- Add `-c:a aac -b:a 256k` for AAC encoding (universal compatibility)
+- Add `-shortest` to trim output to the shorter of video/audio duration
+- For ProRes (.mov), use `-c:a pcm_s16le` instead of AAC (ProRes workflows expect uncompressed audio)
+
+**FFmpeg command pattern:**
+```
+# Without audio (current):
+ffmpeg -y -framerate 24 -i "dir/%04d.png" -c:v libx264 -crf 18 -an output.mp4
+
+# With audio (new):
+ffmpeg -y -framerate 24 -i "dir/%04d.png" -i "audio.wav" -c:v libx264 -crf 18 -c:a aac -b:a 256k -shortest output.mp4
+
+# ProRes with audio:
+ffmpeg -y -framerate 24 -i "dir/%04d.png" -i "audio.wav" -c:v prores_ks -profile:v 3 -c:a pcm_s16le -shortest output.mov
+```
+
+**Audio offset handling:** If the audio track has a timeline offset (doesn't start at frame 0), use `-itsoffset <seconds>` before the audio input. This is critical for maintaining audio-video sync in export.
+
+### Waveform Rendering -- Custom Canvas 2D (No Library)
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| Custom waveform renderer | N/A (built in-house) | Render audio waveform peaks in the timeline canvas | The timeline is already a fully custom Canvas 2D renderer (`TimelineRenderer`). Adding wavesurfer.js would introduce a Shadow DOM widget that cannot integrate with the existing canvas. Waveform data extraction is ~30 lines of code. |
+
+**Why NOT wavesurfer.js:**
+- wavesurfer.js v7 renders into a **Shadow DOM tree** with its own canvas, scroll, and playback controller. It's designed as a standalone widget.
+- The project's timeline is a single Canvas 2D element with custom hit-testing, zoom, scroll, and interaction layers (`TimelineRenderer` + `TimelineInteraction`).
+- Embedding wavesurfer.js would mean TWO separate rendering pipelines that need synchronization -- a maintenance and UX nightmare.
+- What's actually needed is just the **peak data** (min/max amplitude per time bucket), which is trivial to extract from a decoded `AudioBuffer`.
+
+**Waveform peak extraction pattern (zero dependencies):**
+```typescript
+function extractPeaks(audioBuffer: AudioBuffer, buckets: number): Float32Array {
+  const channel = audioBuffer.getChannelData(0); // mono or left channel
+  const samplesPerBucket = Math.floor(channel.length / buckets);
+  const peaks = new Float32Array(buckets);
+  for (let i = 0; i < buckets; i++) {
+    let max = 0;
+    const start = i * samplesPerBucket;
+    const end = Math.min(start + samplesPerBucket, channel.length);
+    for (let j = start; j < end; j++) {
+      const abs = Math.abs(channel[j]);
+      if (abs > max) max = abs;
+    }
+    peaks[i] = max;
+  }
+  return peaks;
+}
+```
+
+This produces a `Float32Array` of normalized (0-1) amplitude values that the `TimelineRenderer` draws as vertical bars or filled waveform shapes per audio track. Re-compute peaks when zoom level changes (different bucket count per visible time range).
+
+### Canvas Motion Paths -- Canvas 2D bezierCurveTo (Built-in)
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| Canvas 2D Path API | Browser built-in | Draw motion path curves between keyframe positions | `CanvasRenderingContext2D.bezierCurveTo()` is the standard API for cubic Bezier curves. The existing `keyframeEngine.ts` already interpolates `x, y` positions between keyframes. Motion path visualization is a Canvas 2D overlay that draws the interpolated path. |
+
+**Why no library needed:**
+- The `KeyframeValues` type already has `x, y, scaleX, scaleY, rotation` -- all the transform data needed.
+- Drawing an After Effects-style motion path means: iterate keyframe pairs, compute Bezier control points from the easing curves, draw the path with `moveTo()` + `bezierCurveTo()`, then draw keyframe diamonds at each keyframe position.
+- The existing `PreviewRenderer` renders on a canvas with known `canvasStore` pan/zoom transforms. The motion path overlay goes on the same canvas or a transparent overlay canvas (depending on whether motion paths should persist during playback).
+
+**Motion path rendering pattern:**
+```typescript
+// For each keyframe pair (prev, next) on the selected layer:
+ctx.beginPath();
+ctx.moveTo(prev.values.x, prev.values.y);
+
+// Control points derived from easing type:
+// - linear: straight line (no bezierCurveTo, just lineTo)
+// - ease-in: control points bias toward start
+// - ease-out: control points bias toward end
+// - ease-in-out: S-curve control points
+const cp1x = lerp(prev.values.x, next.values.x, 0.33);
+const cp1y = prev.values.y; // tangent based on easing
+const cp2x = lerp(prev.values.x, next.values.x, 0.67);
+const cp2y = next.values.y;
+ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, next.values.x, next.values.y);
+ctx.strokeStyle = '#4A9EFF';
+ctx.lineWidth = 1.5;
+ctx.stroke();
+
+// Draw keyframe diamonds at each position
+for (const kf of keyframes) {
+  drawDiamond(ctx, kf.values.x, kf.values.y, 6);
+}
+```
+
+**Interaction:** Dragging a keyframe diamond on the canvas updates `x, y` in the keyframe store, which triggers re-render of both the motion path and the preview. This uses the existing `canvasStore` pointer-to-world coordinate transforms already implemented for canvas transform handles.
+
+## Supporting Libraries
+
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| web-audio-beat-detector | ^8.2.27 | BPM detection + first-beat offset | Audio import flow: after decoding, run `guess()` to populate beat markers |
+
+That is the ONLY new npm dependency. Everything else is built-in browser APIs or existing infrastructure.
 
 ## Installation
 
 ```bash
-# New v2.0 frontend dependencies
-pnpm add wavesurfer.js web-audio-beat-detector tinykeys
+# Single new dependency
+pnpm add web-audio-beat-detector
 ```
 
-```toml
-# src-tauri/Cargo.toml -- no changes required
-# Existing dependencies handle all v2.0 Rust-side needs
-# Optional: add rayon = "1.10" if using parallel PNG export (Option B)
-```
+No new Rust crate dependencies. No new Vite plugins. No new Tauri plugins.
+
+## Alternatives Considered
+
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| Web Audio API (built-in) | Howler.js | Never in this context. Howler is an abstraction over Web Audio API / HTMLAudioElement for cross-browser compat. Tauri uses macOS WebKit which has full Web Audio support. Howler adds ~10KB for zero benefit. |
+| Custom waveform peaks | wavesurfer.js v7.11.0 | Only if building a standalone audio editor widget. Not suitable for integration into an existing Canvas 2D timeline. Shadow DOM rendering conflicts with custom canvas pipeline. |
+| Custom waveform peaks | peaks.js (BBC) | Only if you need segment editing with pre-computed server-side waveforms. Overkill for a single-track waveform display in a timeline. Requires Konva.js as a dependency. |
+| web-audio-beat-detector | realtime-bpm-analyzer v5 | Only if you need real-time BPM analysis from a live microphone stream. Not needed for analyzing imported audio files. |
+| web-audio-beat-detector | Essentia.js (music analysis) | Only if you need advanced music information retrieval (key detection, chord analysis, onset detection). Massive WASM bundle (~2MB). BPM detection alone doesn't justify it. |
+| Canvas 2D bezierCurveTo | Paper.js / Fabric.js | Only if you need a full vector graphics editor with object model. Adds 200KB+ for drawing a few path curves. The project already has a working Canvas 2D pipeline with hit-testing. |
+| FFmpeg audio mux | Rust audio crate (rodio/symphonia) | Only if you need Rust-side audio decoding/analysis. Not needed -- Web Audio API handles decoding, and FFmpeg handles export muxing. Adding audio crates to Rust would duplicate capability. |
+
+## What NOT to Use
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| wavesurfer.js | Shadow DOM widget conflicts with custom Canvas 2D timeline. Adds ~30KB+ for rendering we don't want. Would require synchronizing two separate rendering systems. | Extract peaks from AudioBuffer, render in existing TimelineRenderer |
+| Howler.js | Unnecessary abstraction. macOS WebKit has complete Web Audio API support. Adds complexity without solving any actual problem. | Web Audio API directly |
+| Tone.js | Full synthesis/music framework (~150KB). We need playback and analysis, not synthesis. | Web Audio API + web-audio-beat-detector |
+| peaks.js | Depends on Konva.js for canvas rendering. Designed for server-side waveform data workflows (BBC's use case). Cannot render into existing Canvas 2D timeline. | Custom waveform peak extraction |
+| Essentia.js | 2MB WASM bundle for music information retrieval. BPM detection is the only needed feature, and web-audio-beat-detector handles that in ~20KB. | web-audio-beat-detector |
+| Any Rust audio crate for decoding | Web Audio API already decodes all common formats. Adding symphonia/rodio to Cargo.toml would duplicate browser-native capability and require IPC bridges for audio data. | Web Audio API decodeAudioData |
+| react-wavesurfer or similar React wrappers | Project uses Preact, not React. These wrappers are for React + wavesurfer.js, which is already excluded. | Custom implementation |
+
+## Architecture Integration Points
+
+### Audio Store (new signal store)
+
+A new `audioStore.ts` joins the existing 12 stores. It holds:
+- `audioBuffer: Signal<AudioBuffer | null>` -- decoded audio data
+- `audioPeaks: Signal<Float32Array | null>` -- pre-computed waveform peaks
+- `bpm: Signal<number | null>` -- detected BPM
+- `beatOffset: Signal<number>` -- first beat offset in seconds
+- `beatFrames: Computed<number[]>` -- derived frame positions for beat markers
+- `audioOffset: Signal<number>` -- timeline frame offset where audio starts
+- `fadeIn: Signal<number>` -- fade-in duration in seconds
+- `fadeOut: Signal<number>` -- fade-out duration in seconds
+- `volume: Signal<number>` -- 0-1 volume level
+- `audioFilePath: Signal<string | null>` -- original file path for export
+
+### PlaybackEngine Changes
+
+The `PlaybackEngine.start()` method creates an `AudioBufferSourceNode`, applies gain/fade, and starts it at the correct offset based on `timelineStore.currentFrame`. The `stop()` method disconnects the source node. Seeking during playback requires stopping and restarting the audio source at the new position (AudioBufferSourceNode is one-shot by design).
+
+### FFmpeg Export Changes
+
+The `encode_video` Rust function gains an `audio_path: Option<String>` parameter. When `Some(path)`, it replaces `-an` with `-i <path> -c:a aac -b:a 256k -shortest`. The TypeScript `exportEncodeVideo` IPC function passes the audio file path from `audioStore.audioFilePath`.
+
+### Timeline Renderer Changes
+
+The `TimelineRenderer` gains a new track type for the audio waveform. It reads `audioStore.audioPeaks` and renders amplitude bars at the correct horizontal position based on zoom/scroll. Beat markers are vertical lines drawn at frame positions from `audioStore.beatFrames`.
+
+### Canvas Motion Path Overlay
+
+A new rendering pass in the Preview component draws the motion path when a layer with keyframes is selected and the canvas is not in playback mode. Uses `canvasStore` transforms to map keyframe `x, y` world coordinates to canvas pixel coordinates.
+
+## Version Compatibility
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| web-audio-beat-detector@^8.2.27 | Web Audio API (AudioBuffer) | Input is standard AudioBuffer from decodeAudioData. No framework coupling. |
+| Web Audio API | macOS WebKit (Safari 17+) | Tauri 2.0 on macOS uses WebKit. Full Web Audio API support confirmed. AudioContext, decodeAudioData, AudioBufferSourceNode, GainNode all available. |
+| FFmpeg (cached binary) | Any audio format | The existing FFmpeg binary includes AAC, PCM encoders. `-c:a aac` for MP4/H.264/AV1, `-c:a pcm_s16le` for ProRes/MOV. |
+
+## Project Format Impact
+
+The `.mce` project format (currently v7) needs a version bump to v8 to store:
+- Audio file reference (path relative to project directory)
+- Audio offset (frame position on timeline)
+- Volume, fade in/out settings
+- BPM and beat offset (cached to avoid re-analysis on project load)
+- Beat snap mode preference
+- Per-layer motion path visibility flag (optional, could be UI-only state)
+
+Backward compatibility: v7 projects load without audio data. The migration is additive (new optional fields).
 
 ## Sources
 
-- [@efxlab/motion-canvas-2d ShaderConfig](verified in installed node_modules) -- `lib/partials/ShaderConfig.d.ts`, HIGH confidence
-- [Motion Canvas Shaders documentation](https://motioncanvas.io/docs/shaders/) -- Official docs, HIGH confidence
-- [Motion Canvas shader docs on GitHub](https://github.com/motion-canvas/motion-canvas/blob/main/packages/docs/docs/advanced/shaders.mdx) -- Verified uniforms, textures, code examples, HIGH confidence
-- [wavesurfer.js GitHub](https://github.com/katspaugh/wavesurfer.js) -- v7.12.1, TypeScript, zero deps, HIGH confidence
-- [web-audio-beat-detector GitHub](https://github.com/chrisguttandin/web-audio-beat-detector) -- v8.2.35, Feb 2026, TypeScript, HIGH confidence
-- [web-audio-beat-detector npm](https://www.npmjs.com/package/web-audio-beat-detector) -- API: analyze(), guess(), MEDIUM confidence (npm page)
-- [tinykeys GitHub](https://github.com/jamiebuilds/tinykeys) -- v3.0.0, 650B, TypeScript, HIGH confidence
-- [hotkeys-js npm](https://www.npmjs.com/package/hotkeys-js) -- v4.0.2, compared and rejected, MEDIUM confidence
-- [@kvndy/undo-manager npm](https://www.npmjs.com/package/@kvndy/undo-manager) -- v6.2.0, evaluated and rejected, MEDIUM confidence
-- [Canvas toBlob MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob) -- Web standard, HIGH confidence
-- [Tauri 2.0 File System plugin](https://v2.tauri.app/plugin/file-system/) -- writeFile API, HIGH confidence
-- [Rust image crate](https://crates.io/crates/image) -- v0.25.9, fdeflate PNG encoding, HIGH confidence
-- [rayon crate](https://crates.io/crates/rayon) -- v1.10, parallel iterators, HIGH confidence
-- [glsl-film-grain](https://github.com/mattdesl/glsl-film-grain) -- GLSL noise patterns for reference, MEDIUM confidence
-- [WebGL Film Grain tutorial](https://maximmcnair.com/p/webgl-film-grain) -- Shader technique reference, MEDIUM confidence
+- [MDN Web Audio API Documentation](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) -- AudioContext, decodeAudioData, AudioBufferSourceNode APIs (HIGH confidence)
+- [MDN Waveform Visualization](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API) -- AnalyserNode and waveform rendering patterns (HIGH confidence)
+- [web-audio-beat-detector GitHub](https://github.com/chrisguttandin/web-audio-beat-detector) -- API: `analyze(audioBuffer)` returns Promise<number>, `guess(audioBuffer)` returns Promise<{bpm, offset, tempo}> (HIGH confidence)
+- [web-audio-beat-detector npm](https://www.npmjs.com/package/web-audio-beat-detector) -- v8.2.27, TypeScript types included (HIGH confidence)
+- [MDN bezierCurveTo](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/bezierCurveTo) -- Canvas 2D cubic Bezier curve API (HIGH confidence)
+- [BBC waveform-data.js](https://github.com/bbc/waveform-data.js) -- Reference for waveform peak extraction patterns (MEDIUM confidence, used as pattern reference only)
+- [FFmpeg documentation](https://ffmpeg.org/ffmpeg.html) -- Audio muxing with `-i`, `-c:a`, `-shortest` flags (HIGH confidence)
+- [Tauri + Web Audio example](https://slavbasharov.com/blog/building-music-player-tauri-svelte) -- Confirms Web Audio API works in Tauri WebView (MEDIUM confidence)
+- [Hans Garon: Sync Animation to Audio](https://hansgaron.com/articles/web_audio/animation_sync_with_audio/part_one/) -- Pattern for rAF + AudioBufferSourceNode synchronization (MEDIUM confidence)
+- [Mux: Merge audio and video with FFmpeg](https://www.mux.com/articles/merge-audio-and-video-files-with-ffmpeg) -- FFmpeg muxing command patterns (HIGH confidence)
 
 ---
-*Stack research for: Desktop stop-motion cinematic video editor (macOS) -- v2.0 additions*
-*Researched: 2026-03-03*
+*Stack research for: EFX Motion Editor v0.3.0 -- Audio, Beat Sync, Motion Paths*
+*Researched: 2026-03-21*
