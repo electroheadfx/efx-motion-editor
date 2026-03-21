@@ -1,7 +1,7 @@
 import {computed} from '@preact/signals';
 import {sequenceStore} from '../stores/sequenceStore';
 import {audioStore} from '../stores/audioStore';
-import {audioPeaksCache} from './audioPeaksCache';
+import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
 import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange} from '../types/timeline';
 import type {Layer, LayerType, EasingType} from '../types/layer';
 
@@ -143,6 +143,8 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
 
 /** Audio track layout data for timeline rendering (one row per audio track) */
 export const audioTrackLayouts = computed<AudioTrackLayout[]>(() => {
+  // Read revision signal to re-evaluate when peaks are added/updated asynchronously
+  peaksCacheRevision.value;
   const tracks = audioStore.tracks.value;
   const selectedId = audioStore.selectedTrackId.value;
   return tracks
