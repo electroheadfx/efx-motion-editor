@@ -1,20 +1,27 @@
 import {signal, computed, batch} from '@preact/signals';
 import type {ProjectData, MceProject, MceSequence, MceKeyPhoto, MceLayer} from '../types/project';
+import type {MceAudioTrack} from '../types/audio';
+import type {AudioTrack, FadeCurve} from '../types/audio';
 import type {Sequence, KeyPhoto, TransitionType, FadeMode} from '../types/sequence';
 import type {Layer, LayerType, BlendMode, LayerSourceData, EasingType} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
 import {projectCreate, projectSave as ipcProjectSave, projectOpen as ipcProjectOpen, projectMigrateTempImages} from '../lib/ipc';
 import {imageStore, _setImageMarkDirtyCallback} from './imageStore';
 import {sequenceStore, _setMarkDirtyCallback} from './sequenceStore';
+import {audioStore, _setAudioMarkDirtyCallback} from './audioStore';
 import {uiStore} from './uiStore';
 import {timelineStore} from './timelineStore';
 import {layerStore} from './layerStore';
 import {historyStore} from './historyStore';
 import {playbackEngine} from '../lib/playbackEngine';
+import {audioEngine} from '../lib/audioEngine';
+import {computeWaveformPeaks} from '../lib/audioWaveform';
+import {audioPeaksCache} from '../lib/audioPeaksCache';
 import {startAutoSave, stopAutoSave} from '../lib/autoSave';
 import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
+import {readFile} from '@tauri-apps/plugin-fs';
 
 // --- Signals ---
 
@@ -179,7 +186,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 7,
+    version: 8,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -188,6 +195,28 @@ function buildMceProject(): MceProject {
     modified_at: new Date().toISOString(),
     sequences: mceSequences,
     images: imageStore.toMceImages(projectRoot),
+    audio_tracks: audioStore.tracks.value.map((track, index): MceAudioTrack => ({
+      id: track.id,
+      name: track.name,
+      relative_path: track.relativePath,
+      original_filename: track.originalFilename,
+      offset_frame: track.offsetFrame,
+      in_frame: track.inFrame,
+      out_frame: track.outFrame,
+      volume: track.volume,
+      muted: track.muted,
+      fade_in_frames: track.fadeInFrames,
+      fade_out_frames: track.fadeOutFrames,
+      fade_in_curve: track.fadeInCurve,
+      fade_out_curve: track.fadeOutCurve,
+      sample_rate: track.sampleRate,
+      duration: track.duration,
+      channel_count: track.channelCount,
+      order: index,
+      track_height: track.trackHeight,
+      slip_offset: track.slipOffset,
+      total_frames_in_file: track.totalFramesInFile,
+    })),
   };
 }
 
@@ -338,9 +367,65 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
       }
     }
 
-    // 4. Clear dirty flag (just loaded)
+    // 4. Load audio tracks (v8+; empty for v7 and earlier)
+    audioStore.reset();
+    audioPeaksCache.clear();
+    const mceAudioTracks = project.audio_tracks ?? [];
+    const sortedAudio = [...mceAudioTracks].sort((a, b) => a.order - b.order);
+
+    for (const mat of sortedAudio) {
+      const track: AudioTrack = {
+        id: mat.id,
+        name: mat.name,
+        filePath: projectRoot + '/' + mat.relative_path,
+        relativePath: mat.relative_path,
+        originalFilename: mat.original_filename,
+        offsetFrame: mat.offset_frame,
+        inFrame: mat.in_frame,
+        outFrame: mat.out_frame,
+        volume: mat.volume,
+        muted: mat.muted,
+        fadeInFrames: mat.fade_in_frames,
+        fadeOutFrames: mat.fade_out_frames,
+        fadeInCurve: (mat.fade_in_curve as FadeCurve) ?? 'exponential',
+        fadeOutCurve: (mat.fade_out_curve as FadeCurve) ?? 'exponential',
+        sampleRate: mat.sample_rate,
+        duration: mat.duration,
+        channelCount: mat.channel_count,
+        order: mat.order,
+        trackHeight: mat.track_height ?? 44,
+        slipOffset: mat.slip_offset ?? 0,
+        totalFramesInFile: mat.total_frames_in_file ?? mat.out_frame,
+      };
+      // Load track into store (without undo -- this is hydration)
+      audioStore.tracks.value = [...audioStore.tracks.value, track];
+
+      // Populate audioAssets in imageStore so ImportedView shows them
+      imageStore.addAudioAsset({
+        id: track.id,
+        name: track.originalFilename,
+        path: track.filePath,
+      });
+    }
+
+    // 5. Clear dirty flag (just loaded)
     isDirty.value = false;
   });
+
+  // Async: re-decode audio files for playback and waveform peaks
+  (async () => {
+    for (const track of audioStore.tracks.peek()) {
+      try {
+        const fileBytes = await readFile(track.filePath);
+        const arrayBuffer = fileBytes.buffer;
+        const audioBuffer = await audioEngine.decode(track.id, arrayBuffer);
+        const peaks = computeWaveformPeaks(audioBuffer);
+        audioPeaksCache.set(track.id, peaks);
+      } catch (err) {
+        console.error(`Failed to decode audio track "${track.name}":`, err);
+      }
+    }
+  })();
 }
 
 // --- Store ---
@@ -526,6 +611,9 @@ export const projectStore = {
     });
     sequenceStore.reset();
     imageStore.reset();
+    audioStore.reset();
+    audioPeaksCache.clear();
+    audioEngine.stopAll();
     uiStore.reset();
     timelineStore.reset();
     layerStore.reset();
@@ -549,3 +637,7 @@ _setMarkDirtyCallback(() => projectStore.markDirty());
 // Wire imageStore's markDirty callback to projectStore
 // This avoids circular imports (imageStore -> projectStore)
 _setImageMarkDirtyCallback(() => projectStore.markDirty());
+
+// Wire audioStore's markDirty callback to projectStore
+// This avoids circular imports (audioStore -> projectStore)
+_setAudioMarkDirtyCallback(() => projectStore.markDirty());

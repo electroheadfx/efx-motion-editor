@@ -9,13 +9,13 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 
 ### Audio Import & Playback
 
-- [ ] **AUDIO-01**: User can import audio files (WAV, MP3, AAC, FLAC) via file dialog and drag-and-drop
-- [ ] **AUDIO-02**: User can see waveform visualization on the timeline below content/FX tracks
-- [ ] **AUDIO-03**: User can hear audio playing in sync with visual preview (play, stop, seek)
-- [ ] **AUDIO-04**: User can adjust audio volume and mute/unmute
-- [ ] **AUDIO-05**: User can drag audio track on timeline to offset relative to frame 0
-- [ ] **AUDIO-06**: User can set fade-in and fade-out duration on audio
-- [ ] **AUDIO-07**: Audio track persists in project file (.mce v8)
+- [x] **AUDIO-01**: User can import audio files (WAV, MP3, AAC, FLAC) via file dialog and drag-and-drop
+- [x] **AUDIO-02**: User can see waveform visualization on the timeline below content/FX tracks
+- [x] **AUDIO-03**: User can hear audio playing in sync with visual preview (play, stop, seek)
+- [x] **AUDIO-04**: User can adjust audio volume and mute/unmute
+- [x] **AUDIO-05**: User can drag audio track on timeline to offset relative to frame 0
+- [x] **AUDIO-06**: User can set fade-in and fade-out duration on audio
+- [x] **AUDIO-07**: Audio track persists in project file (.mce v8)
 
 ### Audio Export & Beat Sync
 
@@ -72,13 +72,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUDIO-01 | Phase 15 | Pending |
-| AUDIO-02 | Phase 15 | Pending |
-| AUDIO-03 | Phase 15 | Pending |
-| AUDIO-04 | Phase 15 | Pending |
-| AUDIO-05 | Phase 15 | Pending |
-| AUDIO-06 | Phase 15 | Pending |
-| AUDIO-07 | Phase 15 | Pending |
+| AUDIO-01 | Phase 15 | Complete |
+| AUDIO-02 | Phase 15 | Complete |
+| AUDIO-03 | Phase 15 | Complete |
+| AUDIO-04 | Phase 15 | Complete |
+| AUDIO-05 | Phase 15 | Complete |
+| AUDIO-06 | Phase 15 | Complete |
+| AUDIO-07 | Phase 15 | Complete |
 | BEAT-01 | Phase 16 | Pending |
 | BEAT-02 | Phase 16 | Pending |
 | BEAT-03 | Phase 16 | Pending |

@@ -1,11 +1,15 @@
 import {useState, useCallback, useEffect} from 'preact/hooks';
 import {open} from '@tauri-apps/plugin-dialog';
-import {copyFile, mkdir} from '@tauri-apps/plugin-fs';
+import {copyFile, mkdir, readFile} from '@tauri-apps/plugin-fs';
 import {imageStore} from '../../stores/imageStore';
 import {projectStore} from '../../stores/projectStore';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
+import {audioStore} from '../../stores/audioStore';
+import {audioEngine} from '../../lib/audioEngine';
+import {computeWaveformPeaks} from '../../lib/audioWaveform';
+import {audioPeaksCache} from '../../lib/audioPeaksCache';
 import {defaultTransform} from '../../types/layer';
 import type {Layer} from '../../types/layer';
 import {ImportGrid} from '../import/ImportGrid';
@@ -16,10 +20,14 @@ export function ImportedView() {
   const intent = uiStore.addLayerIntent.value;
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  const [isDecodingAudio, setIsDecodingAudio] = useState(false);
+
   // Priority 1-3: add-layer intent
   const isAddLayerFlow = !!intent;
+  const isAudioFlow = intent?.type === 'audio';
   const intentFilter = intent?.type === 'video' ? 'videos-only'
     : intent?.type === 'static-image' || intent?.type === 'image-sequence' ? 'images-only'
+    : intent?.type === 'audio' ? 'audio-only'
     : 'all';
   const intentMultiSelect = intent?.type === 'image-sequence';
 
@@ -34,7 +42,8 @@ export function ImportedView() {
   const assetFilter = isAddLayerFlow ? intentFilter : 'all' as const;
 
   // Header text derivation
-  const headerText = intent?.type === 'static-image' ? 'Select image for layer'
+  const headerText = intent?.type === 'audio' ? 'Select audio file'
+    : intent?.type === 'static-image' ? 'Select image for layer'
     : intent?.type === 'image-sequence'
       ? `Select images for sequence${selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}`
     : intent?.type === 'video' ? 'Select video for layer'
@@ -247,10 +256,79 @@ export function ImportedView() {
     uiStore.setEditorMode('editor');
   }, []);
 
+  // Audio selection handler — decode, extract peaks, create audio track
+  const handleSelectAudio = useCallback(async (audioAssetId: string) => {
+    const asset = imageStore.audioAssets.value.find(a => a.id === audioAssetId);
+    if (!asset) return;
+
+    setIsDecodingAudio(true);
+    try {
+      const fileBytes = await readFile(asset.path);
+      const arrayBuffer = fileBytes.buffer;
+      const trackId = crypto.randomUUID();
+      const audioBuffer = await audioEngine.decode(trackId, arrayBuffer);
+      const peaks = computeWaveformPeaks(audioBuffer);
+      audioPeaksCache.set(trackId, peaks);
+      const outFrame = Math.ceil(audioBuffer.duration * projectStore.fps.peek());
+
+      audioStore.addTrack({
+        id: trackId,
+        name: asset.name,
+        filePath: asset.path,
+        relativePath: 'audio/' + asset.name,
+        originalFilename: asset.name,
+        offsetFrame: 0,
+        inFrame: 0,
+        outFrame,
+        volume: 1,
+        muted: false,
+        fadeInFrames: 0,
+        fadeOutFrames: 0,
+        fadeInCurve: 'exponential',
+        fadeOutCurve: 'exponential',
+        sampleRate: audioBuffer.sampleRate,
+        duration: audioBuffer.duration,
+        channelCount: audioBuffer.numberOfChannels,
+        order: audioStore.tracks.peek().length,
+        trackHeight: 44,
+        slipOffset: 0,
+        totalFramesInFile: outFrame,
+      });
+
+      uiStore.setAddLayerIntent(null);
+      uiStore.setEditorMode('editor');
+    } catch (err) {
+      console.error('Failed to decode audio:', err);
+    } finally {
+      setIsDecodingAudio(false);
+    }
+  }, []);
+
   // Import handler -- intent-aware file filter (pitfall 3)
   const handleImport = async () => {
     const currentIntent = uiStore.addLayerIntent.peek();
-    if (currentIntent?.type === 'video') {
+    if (currentIntent?.type === 'audio') {
+      // Audio import flow
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'aac', 'flac', 'm4a', 'aif', 'aiff'] }],
+      });
+      if (!selected) return;
+      const dir = projectStore.dirPath.value ?? tempProjectDir.value;
+      if (!dir) return;
+      const filePath = typeof selected === 'string' ? selected : selected;
+      const filename = filePath.replace(/\\/g, '/').split('/').pop() ?? 'audio';
+      const sep = dir.endsWith('/') ? '' : '/';
+      const audioDir = `${dir}${sep}audio`;
+      try { await mkdir(audioDir, { recursive: true }); } catch { /* exists */ }
+      const destPath = `${audioDir}/${filename}`;
+      try { await copyFile(filePath, destPath); } catch (err) { console.error('Failed to copy audio:', err); return; }
+      // Only add asset if not already imported (same path = same file)
+      const existing = imageStore.audioAssets.value.find(a => a.path === destPath);
+      if (!existing) {
+        imageStore.addAudioAsset({ id: crypto.randomUUID(), name: filename, path: destPath });
+      }
+    } else if (currentIntent?.type === 'video') {
       // Video import flow
       const selected = await open({
         multiple: false,
@@ -344,6 +422,14 @@ export function ImportedView() {
         </div>
       )}
 
+      {/* Decoding audio overlay */}
+      {isDecodingAudio && (
+        <div class="flex items-center gap-2 px-4 py-1.5 bg-[var(--color-bg-selected)]">
+          <div class="w-3 h-3 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+          <span class="text-[10px] text-[var(--color-text-secondary)]">Decoding audio...</span>
+        </div>
+      )}
+
       {/* Full-size import grid */}
       <div class="flex-1 overflow-y-auto p-4">
         <ImportGrid
@@ -353,6 +439,7 @@ export function ImportedView() {
           onToggleSelect={isMultiSelect ? handleToggleSelect : undefined}
           assetFilter={assetFilter}
           onVideoSelect={intent?.type === 'video' ? handleAddVideoLayer : undefined}
+          onAudioSelect={isAudioFlow ? handleSelectAudio : undefined}
         />
       </div>
     </div>

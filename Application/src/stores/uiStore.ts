@@ -6,8 +6,8 @@ export type EditorMode = 'editor' | 'imported' | 'settings' | 'export';
 export type AddLayerIntent =
   | null
   | {
-      type: 'static-image' | 'image-sequence' | 'video';
-      target?: 'content-overlay';
+      type: 'static-image' | 'image-sequence' | 'video' | 'audio';
+      target?: 'content-overlay' | 'audio-track';
       changeSourceFor?: { layerId: string; sequenceId: string };
     };
 

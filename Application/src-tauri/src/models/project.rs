@@ -21,6 +21,34 @@ pub struct MceProject {
     pub modified_at: String,
     pub sequences: Vec<MceSequence>,
     pub images: Vec<MceImageRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_tracks: Vec<MceAudioTrack>,
+}
+
+/// Audio track in project file (Phase 15)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceAudioTrack {
+    pub id: String,
+    pub name: String,
+    pub relative_path: String,
+    pub original_filename: String,
+    pub offset_frame: i32,
+    pub in_frame: u32,
+    pub out_frame: u32,
+    pub volume: f64,
+    pub muted: bool,
+    pub fade_in_frames: u32,
+    pub fade_out_frames: u32,
+    pub fade_in_curve: String,
+    pub fade_out_curve: String,
+    pub sample_rate: u32,
+    pub duration: f64,
+    pub channel_count: u32,
+    pub order: u32,
+    pub track_height: u32,
+    pub slip_offset: i32,
+    #[serde(default)]
+    pub total_frames_in_file: u32,
 }
 
 /// Sequence definition within a project

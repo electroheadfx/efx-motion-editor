@@ -4,7 +4,8 @@ import {sequenceStore} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
 import {keyframeStore} from '../../stores/keyframeStore';
-import {trackLayouts, fxTrackLayouts} from '../../lib/frameMap';
+import {audioStore} from '../../stores/audioStore';
+import {trackLayouts, fxTrackLayouts, audioTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT, TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
@@ -48,6 +49,28 @@ export class TimelineInteraction {
   private kfDragLayerId = '';
   private kfDragFromFrame = 0;  // sequence-local frame
   private kfDragSequenceStartFrame = 0;  // global start of the owning sequence
+
+  // Audio track drag state (INT-03, INT-04, INT-05)
+  private isDraggingAudio = false;
+  private audioDragMode: 'move' | 'resize-left' | 'resize-right' | 'slip' = 'move';
+  private audioDragTrackId = '';
+  private audioDragStartFrame = 0;
+  private audioDragOrigOffset = 0;
+  private audioDragOrigIn = 0;
+  private audioDragOrigOut = 0;
+  private audioDragOrigSlip = 0;
+
+  // Audio track reorder state (INT-06)
+  private isDraggingAudioReorder = false;
+  private audioReorderFromIndex = -1;
+  private audioReorderStartY = 0;
+  private audioReorderMoved = false;
+
+  // Audio track height resize state (INT-07)
+  private isDraggingAudioHeight = false;
+  private audioHeightTrackId = '';
+  private audioHeightStartY = 0;
+  private audioHeightOrigHeight = 0;
 
   // Bound handlers for cleanup
   private handlePointerDown = this.onPointerDown.bind(this);
@@ -181,6 +204,81 @@ export class TimelineInteraction {
       layerStore.setSelected(null);
       uiStore.selectLayer(null);
     }
+  }
+
+  /** Get the Y position where the audio section starts (below ruler, FX, and content rows). */
+  private getAudioSectionY(): number {
+    if (!this.renderer) return 0;
+    const scrollY = this.renderer.getScrollY();
+    const fxH = this.renderer.getFxTrackCount() * FX_TRACK_HEIGHT;
+    return RULER_HEIGHT + fxH + TRACK_HEIGHT - scrollY;
+  }
+
+  /** Check if clientY is in the audio tracks area (below content tracks). */
+  private isInAudioArea(clientY: number): boolean {
+    if (!this.canvas || !this.renderer) return false;
+    const rect = this.canvas.getBoundingClientRect();
+    const localY = clientY - rect.top;
+    const audioStartY = this.getAudioSectionY();
+    if (localY < audioStartY) return false;
+    const audioLayouts = audioTrackLayouts.peek();
+    const totalAudioH = audioLayouts.reduce((sum, t) => sum + t.trackHeight, 0);
+    return localY < audioStartY + totalAudioH;
+  }
+
+  /** Hit-test audio tracks from clientY. Returns index in audioTrackLayouts + track info. */
+  private audioTrackHitFromY(clientY: number): { index: number; trackId: string; trackY: number; trackHeight: number } | null {
+    if (!this.canvas) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const localY = clientY - rect.top;
+    const audioStartY = this.getAudioSectionY();
+    const audioLayouts = audioTrackLayouts.peek();
+    let accY = audioStartY;
+    for (let i = 0; i < audioLayouts.length; i++) {
+      const h = audioLayouts[i].trackHeight;
+      if (localY >= accY && localY < accY + h) {
+        return { index: i, trackId: audioLayouts[i].trackId, trackY: accY, trackHeight: h };
+      }
+      accY += h;
+    }
+    return null;
+  }
+
+  /** Determine audio drag mode based on click position relative to range bar edges. */
+  private audioDragModeFromX(
+    clientX: number,
+    audioTrack: { offsetFrame: number; inFrame: number; outFrame: number },
+  ): 'move' | 'resize-left' | 'resize-right' | null {
+    if (!this.canvas) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const zoom = timelineStore.zoom.peek();
+    const scrollX = timelineStore.scrollX.peek();
+    const frameWidth = BASE_FRAME_WIDTH * zoom;
+
+    const barLeft = audioTrack.offsetFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH + rect.left;
+    const barRight = (audioTrack.offsetFrame + audioTrack.outFrame - audioTrack.inFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH + rect.left;
+
+    // Edge hit zone: 8px from each edge (4px inside + 4px outside)
+    if (Math.abs(clientX - barLeft) <= 8) return 'resize-left';
+    if (Math.abs(clientX - barRight) <= 8) return 'resize-right';
+    if (clientX >= barLeft && clientX <= barRight) return 'move';
+    return null;
+  }
+
+  /** Compute drop index for audio track reorder based on Y position. */
+  private audioDropIndexFromY(clientY: number): number {
+    if (!this.canvas) return 0;
+    const rect = this.canvas.getBoundingClientRect();
+    const localY = clientY - rect.top;
+    const audioStartY = this.getAudioSectionY();
+    const audioLayouts = audioTrackLayouts.peek();
+    let accY = audioStartY;
+    for (let i = 0; i < audioLayouts.length; i++) {
+      const midY = accY + audioLayouts[i].trackHeight / 2;
+      if (localY < midY) return i;
+      accY += audioLayouts[i].trackHeight;
+    }
+    return audioLayouts.length > 0 ? audioLayouts.length - 1 : 0;
   }
 
   /** Hit-test the name label overlay for content sequences.
@@ -509,6 +607,102 @@ export class TimelineInteraction {
       return;
     }
 
+    // Check audio track area (below FX + content tracks)
+    if (this.isInAudioArea(e.clientY)) {
+      const rect = this.canvas.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
+      const audioHit = this.audioTrackHitFromY(e.clientY);
+      if (!audioHit) return;
+
+      const audioLayouts = audioTrackLayouts.peek();
+      const audioTrack = audioLayouts[audioHit.index];
+
+      // Height resize check (INT-07): 4px inside + 4px outside bottom edge
+      const bottomEdgeY = audioHit.trackY + audioHit.trackHeight;
+      const localY = e.clientY - rect.top;
+      if (Math.abs(localY - bottomEdgeY) <= 4) {
+        this.isDraggingAudioHeight = true;
+        this.audioHeightTrackId = audioHit.trackId;
+        this.audioHeightStartY = e.clientY;
+        this.audioHeightOrigHeight = audioTrack.trackHeight;
+        this.canvas.setPointerCapture(e.pointerId);
+        this.canvas.style.cursor = 'row-resize';
+        return;
+      }
+
+      // Header area check (INT-06 reorder, INT-09 mute toggle via D-15)
+      if (localX < TRACK_HEADER_WIDTH) {
+        // Select the audio track
+        audioStore.selectTrack(audioHit.trackId);
+        uiStore.selectSequence(null);
+        uiStore.selectTransition(null);
+        this.clearFxLayerSelection();
+
+        // Start potential reorder
+        this.isDraggingAudioReorder = true;
+        this.audioReorderFromIndex = audioHit.index;
+        this.audioReorderStartY = e.clientY;
+        this.audioReorderMoved = false;
+        this.canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+
+      // Edge resize check (INT-04): 8px hit zone around each edge
+      const edgeMode = this.audioDragModeFromX(e.clientX, audioTrack);
+      if (edgeMode === 'resize-left' || edgeMode === 'resize-right') {
+        audioStore.selectTrack(audioHit.trackId);
+        uiStore.selectSequence(null);
+        uiStore.selectTransition(null);
+        this.clearFxLayerSelection();
+
+        this.isDraggingAudio = true;
+        this.audioDragMode = edgeMode;
+        this.audioDragTrackId = audioHit.trackId;
+        this.audioDragStartFrame = this.getFrame(e.clientX);
+        this.audioDragOrigIn = audioTrack.inFrame;
+        this.audioDragOrigOut = audioTrack.outFrame;
+        this.audioDragOrigOffset = audioTrack.offsetFrame;
+        timelineStore.setTimelineDragging(true);
+        this.canvas.setPointerCapture(e.pointerId);
+        this.canvas.style.cursor = 'col-resize';
+        startCoalescing();
+        return;
+      }
+
+      // Body click/drag check (INT-02 select, INT-03 move, INT-05 slip)
+      if (edgeMode === 'move') {
+        // Select the track (D-16)
+        audioStore.selectTrack(audioHit.trackId);
+        uiStore.selectSequence(null);
+        uiStore.selectTransition(null);
+        this.clearFxLayerSelection();
+
+        // Alt/Option key = slip mode (D-09, INT-05)
+        const mode = e.altKey ? 'slip' as const : 'move' as const;
+        this.isDraggingAudio = true;
+        this.audioDragMode = mode;
+        this.audioDragTrackId = audioHit.trackId;
+        this.audioDragStartFrame = this.getFrame(e.clientX);
+        this.audioDragOrigOffset = audioTrack.offsetFrame;
+        this.audioDragOrigIn = audioTrack.inFrame;
+        this.audioDragOrigOut = audioTrack.outFrame;
+        this.audioDragOrigSlip = audioTrack.slipOffset;
+        timelineStore.setTimelineDragging(true);
+        this.canvas.setPointerCapture(e.pointerId);
+        this.canvas.style.cursor = mode === 'slip' ? 'ew-resize' : 'grabbing';
+        startCoalescing();
+        return;
+      }
+
+      // Click in audio area but not on a bar -- select track if in row, seek playhead
+      audioStore.selectTrack(audioHit.trackId);
+      uiStore.selectSequence(null);
+      uiStore.selectTransition(null);
+      this.clearFxLayerSelection();
+      playbackEngine.seekToFrame(this.getFrame(e.clientX));
+      return;
+    }
+
     // Check keyframe diamond hit BEFORE regular track interactions
     const kfHit = this.keyframeHitTest(e.clientX, e.clientY);
     if (kfHit) {
@@ -643,6 +837,55 @@ export class TimelineInteraction {
       return;
     }
 
+    // Audio track height resize (INT-07)
+    if (this.isDraggingAudioHeight) {
+      const deltaY = e.clientY - this.audioHeightStartY;
+      const newHeight = Math.max(28, Math.min(120, this.audioHeightOrigHeight + deltaY));
+      audioStore.setTrackHeight(this.audioHeightTrackId, newHeight);
+      return;
+    }
+
+    // Audio track reorder (INT-06)
+    if (this.isDraggingAudioReorder) {
+      if (!this.audioReorderMoved && Math.abs(e.clientY - this.audioReorderStartY) > 5) {
+        this.audioReorderMoved = true;
+      }
+      return;
+    }
+
+    // Audio track drag: move, resize, slip (INT-03, INT-04, INT-05)
+    if (this.isDraggingAudio) {
+      const currentFrame = this.getFrame(e.clientX);
+      const deltaFrames = currentFrame - this.audioDragStartFrame;
+
+      if (this.audioDragMode === 'move') {
+        const rawOffset = this.audioDragOrigOffset + deltaFrames;
+        if (rawOffset < 0) {
+          // Clamp at 0 and shift excess into inFrame (trims start, enables fade-in)
+          const trimShift = -rawOffset;
+          const newIn = this.audioDragOrigIn + trimShift;
+          if (newIn < this.audioDragOrigOut - 1) {
+            audioStore.setOffset(this.audioDragTrackId, 0);
+            audioStore.setInOut(this.audioDragTrackId, newIn, this.audioDragOrigOut);
+          }
+        } else {
+          audioStore.setOffset(this.audioDragTrackId, rawOffset);
+        }
+      } else if (this.audioDragMode === 'resize-left') {
+        const newIn = Math.max(0, this.audioDragOrigIn + deltaFrames);
+        if (newIn < this.audioDragOrigOut - 1) {
+          audioStore.setInOut(this.audioDragTrackId, newIn, this.audioDragOrigOut);
+        }
+      } else if (this.audioDragMode === 'resize-right') {
+        const newOut = Math.max(this.audioDragOrigIn + 1, this.audioDragOrigOut + deltaFrames);
+        audioStore.setInOut(this.audioDragTrackId, this.audioDragOrigIn, newOut);
+      } else if (this.audioDragMode === 'slip') {
+        const newSlip = this.audioDragOrigSlip + deltaFrames;
+        audioStore.setSlipOffset(this.audioDragTrackId, newSlip);
+      }
+      return;
+    }
+
     // Playhead scrubbing: seekToFrame updates both currentFrame and displayFrame
     // (via syncDisplayFrame), giving realtime canvas preview during drag.
     if (this.isDragging) {
@@ -706,6 +949,42 @@ export class TimelineInteraction {
         }
         if (this.renderer) this.renderer.setHoveredNameLabel(null);
         return; // Skip content area cursor logic
+      }
+
+      // Cursor hint: Audio area
+      if (this.isInAudioArea(e.clientY)) {
+        const rect = this.canvas.getBoundingClientRect();
+        const localX = e.clientX - rect.left;
+        const localY = e.clientY - rect.top;
+        const audioHit = this.audioTrackHitFromY(e.clientY);
+
+        if (audioHit) {
+          const audioLayouts = audioTrackLayouts.peek();
+          const audioTrack = audioLayouts[audioHit.index];
+          const bottomEdgeY = audioHit.trackY + audioHit.trackHeight;
+
+          // Bottom edge: row-resize cursor (INT-07)
+          if (Math.abs(localY - bottomEdgeY) <= 4) {
+            this.canvas.style.cursor = 'row-resize';
+          } else if (localX < TRACK_HEADER_WIDTH) {
+            // Header area: pointer cursor for mute toggle / reorder
+            this.canvas.style.cursor = 'pointer';
+          } else {
+            // Waveform body area
+            const mode = this.audioDragModeFromX(e.clientX, audioTrack);
+            if (mode === 'resize-left' || mode === 'resize-right') {
+              this.canvas.style.cursor = 'col-resize';
+            } else if (mode === 'move') {
+              this.canvas.style.cursor = e.altKey ? 'ew-resize' : 'grab';
+            } else {
+              this.canvas.style.cursor = 'default';
+            }
+          }
+        } else {
+          this.canvas.style.cursor = 'default';
+        }
+        if (this.renderer) this.renderer.setHoveredNameLabel(null);
+        return;
       }
 
       // Name label hover: pointer cursor + highlight
@@ -782,6 +1061,70 @@ export class TimelineInteraction {
     if (this.isDraggingFx) {
       this.isDraggingFx = false;
       this.fxDragSeqId = '';
+      timelineStore.setTimelineDragging(false);
+      stopCoalescing();
+      if (this.canvas) {
+        this.canvas.style.cursor = 'default';
+        try {
+          this.canvas.releasePointerCapture(e.pointerId);
+        } catch {
+          // Pointer capture may have been released
+        }
+      }
+      return;
+    }
+
+    // Audio track height resize end (INT-07)
+    if (this.isDraggingAudioHeight) {
+      this.isDraggingAudioHeight = false;
+      this.audioHeightTrackId = '';
+      if (this.canvas) {
+        this.canvas.style.cursor = 'default';
+        try {
+          this.canvas.releasePointerCapture(e.pointerId);
+        } catch {
+          // Pointer capture may have been released
+        }
+      }
+      return;
+    }
+
+    // Audio track reorder end (INT-06)
+    if (this.isDraggingAudioReorder) {
+      if (this.audioReorderMoved) {
+        const dropIndex = this.audioDropIndexFromY(e.clientY);
+        if (dropIndex !== this.audioReorderFromIndex) {
+          audioStore.reorderTracks(this.audioReorderFromIndex, dropIndex);
+        }
+      } else {
+        // No drag happened -- it was a click, toggle mute (D-15)
+        const audioLayouts = audioTrackLayouts.peek();
+        if (this.audioReorderFromIndex >= 0 && this.audioReorderFromIndex < audioLayouts.length) {
+          const trackId = audioLayouts[this.audioReorderFromIndex].trackId;
+          const track = audioStore.getTrack(trackId);
+          if (track) {
+            audioStore.setMuted(trackId, !track.muted);
+          }
+        }
+      }
+      this.isDraggingAudioReorder = false;
+      this.audioReorderFromIndex = -1;
+      this.audioReorderMoved = false;
+      if (this.canvas) {
+        this.canvas.style.cursor = 'default';
+        try {
+          this.canvas.releasePointerCapture(e.pointerId);
+        } catch {
+          // Pointer capture may have been released
+        }
+      }
+      return;
+    }
+
+    // Audio track drag end (move/resize/slip)
+    if (this.isDraggingAudio) {
+      this.isDraggingAudio = false;
+      this.audioDragTrackId = '';
       timelineStore.setTimelineDragging(false);
       stopCoalescing();
       if (this.canvas) {

@@ -168,6 +168,7 @@ mod tests {
                 height: 1080,
                 format: "jpg".into(),
             }],
+            audio_tracks: vec![],
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -212,6 +213,7 @@ mod tests {
             modified_at: "2026-03-03T10:00:00Z".into(),
             sequences: vec![],
             images: vec![],
+            audio_tracks: vec![],
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -388,6 +390,7 @@ mod tests {
             modified_at: "2026-03-10T10:00:00Z".into(),
             sequences: vec![content_seq, grain_seq, colorgrade_seq],
             images: vec![],
+            audio_tracks: vec![],
         };
 
         // Save

@@ -15,6 +15,8 @@ import {canvasStore} from '../stores/canvasStore';
 import {blurStore} from '../stores/blurStore';
 import {isolationStore} from '../stores/isolationStore';
 import {keyframeStore} from '../stores/keyframeStore';
+import {audioStore} from '../stores/audioStore';
+import {audioEngine} from './audioEngine';
 import {timelineStore} from '../stores/timelineStore';
 import {isFxLayer} from '../types/layer';
 import {save, open} from '@tauri-apps/plugin-dialog';
@@ -128,6 +130,14 @@ function handleDelete(): void {
     layerStore.remove(selectedLayer);
     layerStore.setSelected(null);
     uiStore.selectLayer(null);
+    return;
+  }
+
+  // Delete selected audio track
+  const selectedAudioId = audioStore.selectedTrackId.value;
+  if (selectedAudioId) {
+    audioEngine.removeTrack(selectedAudioId);
+    audioStore.removeTrack(selectedAudioId);
     return;
   }
 

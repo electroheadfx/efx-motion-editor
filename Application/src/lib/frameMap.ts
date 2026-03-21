@@ -1,6 +1,8 @@
 import {computed} from '@preact/signals';
 import {sequenceStore} from '../stores/sequenceStore';
-import type {FrameEntry, TrackLayout, FxTrackLayout, KeyPhotoRange} from '../types/timeline';
+import {audioStore} from '../stores/audioStore';
+import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
+import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange} from '../types/timeline';
 import type {Layer, LayerType, EasingType} from '../types/layer';
 
 /** Flattened frame array: every frame maps to a sequence, key photo, and image (GLOBAL).
@@ -137,6 +139,35 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
     });
   }
   return layouts;
+});
+
+/** Audio track layout data for timeline rendering (one row per audio track) */
+export const audioTrackLayouts = computed<AudioTrackLayout[]>(() => {
+  // Read revision signal to re-evaluate when peaks are added/updated asynchronously
+  peaksCacheRevision.value;
+  const tracks = audioStore.tracks.value;
+  const selectedId = audioStore.selectedTrackId.value;
+  return tracks
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map(track => ({
+      trackId: track.id,
+      trackName: track.name,
+      offsetFrame: track.offsetFrame,
+      inFrame: track.inFrame,
+      outFrame: track.outFrame,
+      muted: track.muted,
+      volume: track.volume,
+      peaks: audioPeaksCache.get(track.id) ?? { tier1: new Float32Array(0), tier2: new Float32Array(0), tier3: new Float32Array(0) },
+      trackHeight: track.trackHeight,
+      fadeInFrames: track.fadeInFrames,
+      fadeOutFrames: track.fadeOutFrames,
+      fadeInCurve: track.fadeInCurve,
+      fadeOutCurve: track.fadeOutCurve,
+      slipOffset: track.slipOffset,
+      totalAudioFrames: track.totalFramesInFile || track.outFrame,
+      selected: track.id === selectedId,
+    }));
 });
 
 /** Describes a cross dissolve overlap zone in shortened-timeline coordinates */

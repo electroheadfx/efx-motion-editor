@@ -8,6 +8,7 @@ import {TimelineCanvas} from '../timeline/TimelineCanvas';
 import {TimelineScrollbar} from '../timeline/TimelineScrollbar';
 import {AddLayerMenu} from '../timeline/AddFxMenu';
 import {AddTransitionMenu} from '../timeline/AddTransitionMenu';
+import {AddAudioButton} from '../timeline/AddAudioButton';
 import {BASE_FRAME_WIDTH} from '../timeline/TimelineRenderer';
 
 export function TimelinePanel() {
@@ -138,6 +139,9 @@ export function TimelinePanel() {
 
         {/* Add Layer */}
         <AddLayerMenu />
+
+        {/* Add Audio */}
+        <AddAudioButton />
       </div>
 
       {/* Canvas Timeline (replaces time ruler, mock tracks) */}

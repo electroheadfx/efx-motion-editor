@@ -1,4 +1,4 @@
-import type {TrackLayout, FxTrackLayout} from '../../types/timeline';
+import type {TrackLayout, FxTrackLayout, AudioTrackLayout} from '../../types/timeline';
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
 import {ThumbnailCache} from './ThumbnailCache';
 
@@ -8,6 +8,7 @@ export const TRACK_HEIGHT = 52;
 export const TRACK_HEADER_WIDTH = 80;
 export const RULER_HEIGHT = 24;
 export const FX_TRACK_HEIGHT = 28;
+export const AUDIO_TRACK_HEIGHT = 44;
 
 // Functional colors -- stay hardcoded (high-visibility, theme-independent)
 const PLAYHEAD_COLOR = '#E55A2B';
@@ -37,6 +38,14 @@ function getThemeColors(): Record<string, string> {
     contentOverlayGreen: style.getPropertyValue('--sidebar-dot-green').trim() || '#22C55E',
     contentOverlayBlue: style.getPropertyValue('--sidebar-dot-blue').trim() || '#3B82F6',
     contentOverlayPurple: '#8B5CF6', // hardcoded, no CSS variable
+    // Audio track colors
+    audioTrackBg: style.getPropertyValue('--color-audio-track-bg').trim() || '#0A0F0E',
+    audioHeaderBg: style.getPropertyValue('--color-audio-header-bg').trim() || '#080D0C',
+    audioWaveform: style.getPropertyValue('--color-audio-waveform').trim() || '#22B8A0',
+    audioWaveformMuted: style.getPropertyValue('--color-audio-waveform-muted').trim() || '#22B8A033',
+    audioCenterline: style.getPropertyValue('--color-audio-centerline').trim() || '#FFFFFF15',
+    audioFadeOverlay: style.getPropertyValue('--color-audio-fade-overlay').trim() || '#22B8A040',
+    accent: style.getPropertyValue('--color-accent').trim() || '#2D5BE3',
   };
   return cachedColors;
 }
@@ -70,6 +79,8 @@ export interface DrawState {
   isolatedSequenceIds?: Set<string>;
   hoveredNameLabelSequenceId?: string | null;
   selectedTransition?: { sequenceId: string; type: 'fade-in' | 'fade-out' | 'cross-dissolve' } | null;
+  audioTracks?: AudioTrackLayout[];
+  selectedAudioTrackId?: string | null;
 }
 
 /**
@@ -93,6 +104,8 @@ export class TimelineRenderer {
   private hoveredNameLabelSequenceId: string | null = null;
   /** Number of FX tracks (used by TimelineInteraction for layout calculations) */
   fxTrackCount = 0;
+  /** Number of audio tracks (used by TimelineInteraction for layout calculations) */
+  audioTrackCount = 0;
   /** Last scrollY value (used by TimelineInteraction for hit-testing) */
   private lastScrollY = 0;
 
@@ -206,6 +219,19 @@ export class TimelineRenderer {
     // 2. Draw content tracks as a single linear row (below FX tracks, scrolled)
     const fxOffset = fxTracks.length * FX_TRACK_HEIGHT;
     this.drawLinearTrack(ctx, state, tracks, frameWidth, scrollX, w, fxOffset, colors);
+
+    // 2.5. Draw audio tracks below content tracks (scrolled)
+    this.audioTrackCount = state.audioTracks?.length ?? 0;
+    if (state.audioTracks && state.audioTracks.length > 0) {
+      const contentTracksTotalHeight = TRACK_HEIGHT; // single linear row
+      const fxTracksTotalHeight = fxTracks.length * FX_TRACK_HEIGHT;
+      const audioStartY = RULER_HEIGHT + fxTracksTotalHeight + contentTracksTotalHeight;
+      let audioY = audioStartY;
+      for (const audioTrack of state.audioTracks) {
+        this.drawAudioTrack(ctx, audioTrack, audioY, frameWidth, scrollX, w, colors);
+        audioY += audioTrack.trackHeight;
+      }
+    }
 
     // End scrolled region
     ctx.restore();
@@ -632,6 +658,158 @@ export class TimelineRenderer {
     }
 
     ctx.restore();
+  }
+
+  /** Draw a single audio track row with waveform, fades, selection, and center line */
+  private drawAudioTrack(
+    ctx: CanvasRenderingContext2D,
+    track: AudioTrackLayout,
+    y: number,
+    frameWidth: number,
+    scrollX: number,
+    canvasWidth: number,
+    colors: Record<string, string>,
+  ): void {
+    // 1. Track background
+    ctx.fillStyle = colors.audioTrackBg;
+    ctx.fillRect(0, y, canvasWidth, track.trackHeight);
+
+    // 2. Header background
+    ctx.fillStyle = colors.audioHeaderBg;
+    ctx.fillRect(0, y, TRACK_HEADER_WIDTH, track.trackHeight);
+
+    // 3. Track name in header
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = track.muted ? colors.trackName + '66' : colors.trackName;
+    const truncatedName = this.truncateText(ctx, track.trackName, TRACK_HEADER_WIDTH - 16);
+    ctx.fillText(truncatedName, 8, y + track.trackHeight / 2 + 3);
+
+    // 4. Selected indicator: 2px left accent border
+    if (track.selected) {
+      ctx.fillStyle = colors.accent;
+      ctx.fillRect(0, y, 2, track.trackHeight);
+    }
+
+    // 5. Compute range bar position
+    // offsetFrame = timeline position; inFrame/outFrame = source audio trim points
+    const barX = track.offsetFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+    const trimFrames = track.outFrame - track.inFrame;
+    const barW = trimFrames * frameWidth;
+    const padding = 4;
+    const barY = y + padding;
+    const barH = track.trackHeight - padding * 2;
+
+    // Skip if bar not visible
+    if (barX + barW < TRACK_HEADER_WIDTH || barX > canvasWidth) return;
+
+    // 6. Select resolution tier based on zoom
+    let peaks: Float32Array;
+    if (track.peaks.tier2.length > 0) {
+      const pixelsPerPeak = barW / (track.peaks.tier2.length / 2);
+      peaks = pixelsPerPeak < 1 ? track.peaks.tier1
+        : pixelsPerPeak > 4 ? track.peaks.tier3
+        : track.peaks.tier2;
+    } else {
+      peaks = track.peaks.tier1;
+    }
+
+    const centerY = barY + barH / 2;
+
+    // 7. Draw center line (zero-crossing hairline)
+    const lineStartX = Math.max(barX, TRACK_HEADER_WIDTH);
+    const lineEndX = Math.min(barX + barW, canvasWidth);
+    if (lineEndX > lineStartX) {
+      ctx.strokeStyle = colors.audioCenterline;
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(lineStartX, centerY);
+      ctx.lineTo(lineEndX, centerY);
+      ctx.stroke();
+    }
+
+    // 8. Draw waveform peaks — smooth filled path, sliced to in/out range
+    if (peaks.length > 0 && track.totalAudioFrames > 0) {
+      ctx.fillStyle = track.muted ? colors.audioWaveformMuted : colors.audioWaveform;
+      const fullPeakCount = peaks.length / 2;
+      const halfH = barH / 2 - 1;
+
+      // Map inFrame..outFrame (with slipOffset) to peak indices
+      const srcStart = track.inFrame + track.slipOffset;
+      const srcEnd = track.outFrame + track.slipOffset;
+      const startIdx = Math.max(0, Math.floor((srcStart / track.totalAudioFrames) * fullPeakCount));
+      const endIdx = Math.min(fullPeakCount, Math.ceil((srcEnd / track.totalAudioFrames) * fullPeakCount));
+      const visiblePeakCount = endIdx - startIdx;
+      if (visiblePeakCount <= 0) return;
+
+      // Clip drawing to the visible bar area
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(Math.max(barX, TRACK_HEADER_WIDTH), barY, Math.min(barX + barW, canvasWidth) - Math.max(barX, TRACK_HEADER_WIDTH), barH);
+      ctx.clip();
+
+      // Draw smooth filled waveform using a single path:
+      // trace maxes left-to-right across the top, then mins right-to-left across the bottom
+      ctx.beginPath();
+      const firstPx = barX;
+      ctx.moveTo(firstPx, centerY - peaks[(startIdx) * 2 + 1] * halfH);
+
+      // Top edge (max values, left to right)
+      for (let vi = 0; vi < visiblePeakCount; vi++) {
+        const px = barX + (vi / visiblePeakCount) * barW;
+        const pi = startIdx + vi;
+        const max = peaks[pi * 2 + 1];
+        ctx.lineTo(px, centerY - max * halfH);
+      }
+
+      // Bottom edge (min values, right to left)
+      for (let vi = visiblePeakCount - 1; vi >= 0; vi--) {
+        const px = barX + (vi / visiblePeakCount) * barW;
+        const pi = startIdx + vi;
+        const min = peaks[pi * 2];
+        ctx.lineTo(px, centerY - min * halfH);
+      }
+
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 9. Draw fade overlays
+    if (track.fadeInFrames > 0) {
+      const fadeInW = track.fadeInFrames * frameWidth;
+      const fadeX = barX;
+      const fadeEndX = barX + fadeInW;
+      if (fadeEndX > TRACK_HEADER_WIDTH && fadeX < canvasWidth) {
+        const grad = ctx.createLinearGradient(fadeX, 0, fadeEndX, 0);
+        grad.addColorStop(0, colors.audioTrackBg);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.fillRect(Math.max(fadeX, TRACK_HEADER_WIDTH), barY, Math.min(fadeInW, canvasWidth - fadeX), barH);
+      }
+    }
+    if (track.fadeOutFrames > 0) {
+      const fadeOutW = track.fadeOutFrames * frameWidth;
+      const fadeStartX = barX + barW - fadeOutW;
+      const fadeEndX = barX + barW;
+      if (fadeEndX > TRACK_HEADER_WIDTH && fadeStartX < canvasWidth) {
+        const grad = ctx.createLinearGradient(fadeStartX, 0, fadeEndX, 0);
+        grad.addColorStop(0, 'transparent');
+        grad.addColorStop(1, colors.audioTrackBg);
+        ctx.fillStyle = grad;
+        ctx.fillRect(Math.max(fadeStartX, TRACK_HEADER_WIDTH), barY, Math.min(fadeOutW, canvasWidth - fadeStartX), barH);
+      }
+    }
+
+    // 10. Draw edge lines at barX and barX+barW
+    ctx.fillStyle = colors.audioWaveform;
+    if (barX >= TRACK_HEADER_WIDTH && barX <= canvasWidth) {
+      ctx.fillRect(barX, barY, 2, barH);
+    }
+    const rightEdge = barX + barW;
+    if (rightEdge >= TRACK_HEADER_WIDTH && rightEdge <= canvasWidth) {
+      ctx.fillRect(rightEdge - 2, barY, 2, barH);
+    }
   }
 
   /** Draw the time ruler at the top */
