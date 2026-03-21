@@ -67,11 +67,15 @@ class AudioEngine {
     this.applyFadeSchedule(gain, track, ctx.currentTime, offsetSeconds, fps);
 
     // Compute playback duration
-    const totalDurationSec = (track.outFrame - track.inFrame) / fps;
-    const remainingDuration = totalDurationSec - offsetSeconds;
+    // offsetSeconds already includes inFrame + slipOffset + framesIntoTrack
+    // Remaining = trim duration minus how far into the trim range we are
+    const inOffsetSec = (track.inFrame + track.slipOffset) / fps;
+    const framesIntoTrackSec = offsetSeconds - inOffsetSec;
+    const trimDurationSec = (track.outFrame - track.inFrame) / fps;
+    const remainingDuration = trimDurationSec - framesIntoTrackSec;
 
     if (remainingDuration > 0) {
-      source.start(0, offsetSeconds + (track.inFrame / fps) + (track.slipOffset / fps), remainingDuration);
+      source.start(0, offsetSeconds, remainingDuration);
     }
 
     // Store references for stop/volume control
