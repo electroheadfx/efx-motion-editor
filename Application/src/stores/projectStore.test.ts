@@ -1,4 +1,4 @@
-import {describe, it, expect} from 'vitest';
+import {describe, it} from 'vitest';
 
 describe('projectStore audio persistence', () => {
   describe('AUDIO-07: buildMceProject', () => {

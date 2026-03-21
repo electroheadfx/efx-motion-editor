@@ -1,4 +1,5 @@
 import type { LayerType } from './layer';
+import type {WaveformPeaks, FadeCurve} from './audio';
 
 export interface TimelineState {
   currentFrame: number;
@@ -50,4 +51,23 @@ export interface KeyPhotoRange {
   startFrame: number;
   endFrame: number; // exclusive
   holdFrames: number;
+}
+
+/** Layout info for an audio track row in the timeline */
+export interface AudioTrackLayout {
+  trackId: string;
+  trackName: string;
+  offsetFrame: number;      // Global timeline position
+  inFrame: number;          // Trim in-point
+  outFrame: number;         // Trim out-point
+  muted: boolean;
+  volume: number;
+  peaks: WaveformPeaks;     // Pre-computed peak data
+  trackHeight: number;      // Per D-01, default 44
+  fadeInFrames: number;
+  fadeOutFrames: number;
+  fadeInCurve: FadeCurve;
+  fadeOutCurve: FadeCurve;
+  slipOffset: number;       // Per D-09
+  selected: boolean;
 }

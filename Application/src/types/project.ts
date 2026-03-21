@@ -1,3 +1,5 @@
+import type {MceAudioTrack} from './audio';
+
 /** Legacy type -- used by project_get_default */
 export interface ProjectData {
   name: string;
@@ -17,6 +19,7 @@ export interface MceProject {
   modified_at: string;
   sequences: MceSequence[];
   images: MceImageRef[];
+  audio_tracks?: MceAudioTrack[];  // Optional for backward compat with v7
 }
 
 /** Sequence definition within a project file */
