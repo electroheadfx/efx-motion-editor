@@ -295,7 +295,7 @@ export class PreviewRenderer {
    * Uses efxasset:// custom protocol with no-cache headers set in Rust.
    * Each imageId produces a unique URL via cache-busting key.
    */
-  private getImageSource(imageId: string): HTMLImageElement | null {
+  getImageSource(imageId: string): HTMLImageElement | null {
     // Check cache first
     const cached = this.imageCache.get(imageId);
     if (cached) return cached;

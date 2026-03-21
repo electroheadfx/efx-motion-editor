@@ -103,3 +103,21 @@ export function configGetLoopEnabled() {
 export function configSetLoopEnabled(enabled: boolean) {
   return safeInvoke<null>('config_set_loop_enabled', { enabled });
 }
+
+// --- Export commands ---
+
+export function exportCreateDir(baseDir: string) {
+  return safeInvoke<string>('export_create_dir', { baseDir });
+}
+
+export function exportWritePng(dirPath: string, filename: string, data: number[]) {
+  return safeInvoke<null>('export_write_png', { dirPath, filename, data });
+}
+
+export function exportCountExistingFrames(dirPath: string) {
+  return safeInvoke<number>('export_count_existing_frames', { dirPath });
+}
+
+export function exportOpenInFinder(path: string) {
+  return safeInvoke<null>('export_open_in_finder', { path });
+}

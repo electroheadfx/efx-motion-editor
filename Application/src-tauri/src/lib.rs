@@ -3,6 +3,7 @@ mod models;
 mod services;
 
 use commands::config;
+use commands::export;
 use commands::image;
 use commands::project;
 use percent_encoding::percent_decode_str;
@@ -61,6 +62,13 @@ pub fn run() {
             )?;
             let save_project_item =
                 MenuItem::with_id(app, "save-project", "Save", true, Some("CmdOrCtrl+S"))?;
+            let export_item = MenuItem::with_id(
+                app,
+                "export",
+                "Export...",
+                true,
+                Some("CmdOrCtrl+Shift+E"),
+            )?;
             let close_project_item = MenuItem::with_id(
                 app,
                 "close-project",
@@ -74,6 +82,8 @@ pub fn run() {
                 .item(&open_project_item)
                 .separator()
                 .item(&save_project_item)
+                .separator()
+                .item(&export_item)
                 .separator()
                 .item(&close_project_item)
                 .build()?;
@@ -130,6 +140,8 @@ pub fn run() {
                     handle.emit("menu:save-project", ()).ok();
                 } else if event.id() == "close-project" {
                     handle.emit("menu:close-project", ()).ok();
+                } else if event.id() == "export" {
+                    handle.emit("menu:export", ()).ok();
                 } else if event.id() == "undo" {
                     handle.emit("menu:undo", ()).ok();
                 } else if event.id() == "redo" {
@@ -296,6 +308,10 @@ pub fn run() {
             config::config_set_panel_heights,
             config::config_get_loop_enabled,
             config::config_set_loop_enabled,
+            export::export_create_dir,
+            export::export_write_png,
+            export::export_count_existing_frames,
+            export::export_open_in_finder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
