@@ -47,6 +47,8 @@ pub struct MceAudioTrack {
     pub order: u32,
     pub track_height: u32,
     pub slip_offset: i32,
+    #[serde(default)]
+    pub total_frames_in_file: u32,
 }
 
 /// Sequence definition within a project

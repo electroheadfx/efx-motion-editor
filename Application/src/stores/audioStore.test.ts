@@ -24,6 +24,7 @@ function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
     order: 0,
     trackHeight: 44,
     slipOffset: 0,
+    totalFramesInFile: 100,
     ...overrides,
   };
 }

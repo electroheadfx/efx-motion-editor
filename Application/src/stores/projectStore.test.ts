@@ -27,6 +27,7 @@ function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
     order: 0,
     trackHeight: 44,
     slipOffset: 3,
+    totalFramesInFile: 100,
     ...overrides,
   };
 }
@@ -119,6 +120,7 @@ describe('projectStore audio persistence', () => {
           order: 0,
           track_height: 60,
           slip_offset: -2,
+          total_frames_in_file: 200,
         }],
       });
 
@@ -156,7 +158,7 @@ describe('projectStore audio persistence', () => {
             out_frame: 50, volume: 1, muted: false, fade_in_frames: 0,
             fade_out_frames: 0, fade_in_curve: 'exponential',
             fade_out_curve: 'exponential', sample_rate: 44100, duration: 2,
-            channel_count: 2, order: 1, track_height: 44, slip_offset: 0,
+            channel_count: 2, order: 1, track_height: 44, slip_offset: 0, total_frames_in_file: 50,
           },
           {
             id: 'a', name: 'first.wav', relative_path: 'audio/first.wav',
@@ -164,7 +166,7 @@ describe('projectStore audio persistence', () => {
             out_frame: 50, volume: 1, muted: false, fade_in_frames: 0,
             fade_out_frames: 0, fade_in_curve: 'exponential',
             fade_out_curve: 'exponential', sample_rate: 44100, duration: 2,
-            channel_count: 2, order: 0, track_height: 44, slip_offset: 0,
+            channel_count: 2, order: 0, track_height: 44, slip_offset: 0, total_frames_in_file: 50,
           },
         ],
       });

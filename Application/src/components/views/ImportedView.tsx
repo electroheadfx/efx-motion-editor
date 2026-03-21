@@ -292,6 +292,7 @@ export function ImportedView() {
         order: audioStore.tracks.peek().length,
         trackHeight: 44,
         slipOffset: 0,
+        totalFramesInFile: outFrame,
       });
 
       uiStore.setAddLayerIntent(null);

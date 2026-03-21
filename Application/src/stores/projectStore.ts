@@ -215,6 +215,7 @@ function buildMceProject(): MceProject {
       order: index,
       track_height: track.trackHeight,
       slip_offset: track.slipOffset,
+      total_frames_in_file: track.totalFramesInFile,
     })),
   };
 }
@@ -394,6 +395,7 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
         order: mat.order,
         trackHeight: mat.track_height ?? 44,
         slipOffset: mat.slip_offset ?? 0,
+        totalFramesInFile: mat.total_frames_in_file ?? mat.out_frame,
       };
       // Load track into store (without undo -- this is hydration)
       audioStore.tracks.value = [...audioStore.tracks.value, track];

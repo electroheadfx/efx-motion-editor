@@ -21,6 +21,7 @@ export interface AudioTrack {
   order: number;              // Reorder position among audio tracks per D-07
   trackHeight: number;        // Per-track height, default 44 per D-01
   slipOffset: number;         // Audio content offset within in/out range (frames) per D-09
+  totalFramesInFile: number;  // Total frames in the source audio file (immutable after import)
 }
 
 /** Serialized audio track format for .mce v8 project files (snake_case) */
@@ -44,6 +45,7 @@ export interface MceAudioTrack {
   order: number;
   track_height: number;
   slip_offset: number;
+  total_frames_in_file: number;
 }
 
 /** Pre-computed waveform peak data at 3 resolution tiers per D-04 */

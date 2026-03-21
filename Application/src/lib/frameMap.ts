@@ -2,7 +2,6 @@ import {computed} from '@preact/signals';
 import {sequenceStore} from '../stores/sequenceStore';
 import {audioStore} from '../stores/audioStore';
 import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
-import {projectStore} from '../stores/projectStore';
 import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange} from '../types/timeline';
 import type {Layer, LayerType, EasingType} from '../types/layer';
 
@@ -166,7 +165,7 @@ export const audioTrackLayouts = computed<AudioTrackLayout[]>(() => {
       fadeInCurve: track.fadeInCurve,
       fadeOutCurve: track.fadeOutCurve,
       slipOffset: track.slipOffset,
-      totalAudioFrames: Math.ceil(track.duration * projectStore.fps.value),
+      totalAudioFrames: track.totalFramesInFile,
       selected: track.id === selectedId,
     }));
 });

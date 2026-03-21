@@ -79,8 +79,10 @@ class AudioEngine {
       remainingDuration = maxDurationSec;
     }
 
-    if (remainingDuration > 0) {
-      source.start(0, offsetSeconds, remainingDuration);
+    // Clamp offset to buffer duration to prevent silent playback
+    const clampedOffset = Math.min(Math.max(0, offsetSeconds), buffer.duration - 0.001);
+    if (remainingDuration > 0 && clampedOffset < buffer.duration) {
+      source.start(0, clampedOffset, remainingDuration);
     }
 
     // Store references for stop/volume control
