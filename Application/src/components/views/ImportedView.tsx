@@ -310,7 +310,7 @@ export function ImportedView() {
       // Audio import flow
       const selected = await open({
         multiple: false,
-        filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'aac', 'flac', 'm4a'] }],
+        filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'aac', 'flac', 'm4a', 'aif', 'aiff'] }],
       });
       if (!selected) return;
       const dir = projectStore.dirPath.value ?? tempProjectDir.value;
