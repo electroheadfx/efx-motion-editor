@@ -17,7 +17,7 @@ A desktop application designed for **Wallace & Gromit style animation** - creati
 
 ## Canvas Motion Fork
 
-This project depends on [@efxlab/efx-canvas-motion](https://www.npmjs.com/package/@efxlab/efx-canvas-motion), a fork of canvas-motion. Future templates for the editor will be built on top of this fork.
+This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40efxlab%2Fmotion-canvas) packages, a fork of [Motion Canvas](https://motioncanvas.io/). Currently used: core, 2d, vite-plugin, player, ui. Future templates for the editor will be built on top of this fork.
 
 ## Tech Stack
 
@@ -25,8 +25,7 @@ This project depends on [@efxlab/efx-canvas-motion](https://www.npmjs.com/packag
 |-------|-----------|
 | UI | Preact, @preact/signals, TypeScript, Tailwind CSS v4 |
 | Build | Vite |
-| Preview Engine | Efx Motion Canvas (fork of motion-canvas) |
-| Templates Engine | @efxlab/efx-canvas-motion (fork of canvas-motion) |
+| Preview Engine | @efxlab/motion-canvas-* (fork of motion-canvas) |
 | Native Backend | Rust, Tauri v2 |
 | Project Format | `.mce` (portable JSON) |
 
