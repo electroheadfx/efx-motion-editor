@@ -28,7 +28,7 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 ### Solid Sequence
 
 - [x] **SOLID-01**: User can add key solid (black) and key transparent entries to any content sequence's key photo array via split add button (Camera/Square)
-- [ ] **SOLID-02**: User can change a key solid's color via inline color picker popover with live canvas preview
+- [x] **SOLID-02**: User can change a key solid's color via inline color picker popover with live canvas preview
 - [x] **SOLID-03**: User can toggle a key solid between solid mode and transparent mode via top-left corner button
 - [x] **SOLID-04**: Key solid and transparent entries have hold frames, reorder, and delete — identical to key photos
 - [x] **SOLID-05**: Timeline renders key solid ranges as colored rectangles and key transparent ranges as checkerboard pattern
@@ -104,7 +104,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MEDIA-04 | Phase 15.1 | Complete |
 | MEDIA-05 | Phase 15.1 | Complete |
 | SOLID-01 | Phase 15.2 | Complete |
-| SOLID-02 | Phase 15.2 | Pending |
+| SOLID-02 | Phase 15.2 | Complete |
 | SOLID-03 | Phase 15.2 | Complete |
 | SOLID-04 | Phase 15.2 | Complete |
 | SOLID-05 | Phase 15.2 | Complete |
