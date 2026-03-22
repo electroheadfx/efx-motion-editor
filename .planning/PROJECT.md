@@ -138,4 +138,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-21 after v0.3.0 milestone started — Audio & Polish*
+*Last updated: 2026-03-22 after Phase 15.1 complete — in-use indicators + safe asset removal with cascade undo*
