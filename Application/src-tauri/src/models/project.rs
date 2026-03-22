@@ -234,6 +234,10 @@ pub struct MceKeyPhoto {
     pub image_id: String,
     pub hold_frames: u32,
     pub order: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solid_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_transparent: Option<bool>,
 }
 
 /// Image reference in the project -- stores relative paths for portability
