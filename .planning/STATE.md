@@ -3,10 +3,11 @@ gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
 status: unknown
-stopped_at: Completed 15-04-PLAN.md (awaiting human verification checkpoint)
-last_updated: "2026-03-21T21:19:42.569Z"
+stopped_at: Phase 15.1 UI-SPEC approved
+last_updated: "2026-03-22T09:55:03.195Z"
+last_activity: "2026-03-22 - Completed quick task 260322-d9q: add ImportGrid asset removal context menu"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 1
   total_plans: 4
   completed_plans: 4
@@ -71,6 +72,8 @@ None.
 v0.3.0 roadmap: 4 phases (15-18), 19 requirements.
 Phases 17 and 18 are independent and can parallelize after Phase 16.
 
+- Phase 15.1 inserted: Add in-use indicators to imported media and safe removal with timeline awareness (before Phase 16)
+
 ### Blockers/Concerns
 
 No active blockers.
@@ -84,6 +87,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-22T08:41:24Z
-Stopped at: Completed quick task 260322-d9q
-Resume file: None
+Last session: 2026-03-22T09:55:03.193Z
+Stopped at: Phase 15.1 UI-SPEC approved
+Resume file: .planning/phases/15.1-add-in-use-indicators-to-imported-media-and-safe-removal-with-timeline-awareness/15.1-UI-SPEC.md
