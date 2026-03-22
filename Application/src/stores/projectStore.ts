@@ -120,7 +120,13 @@ function buildMceProject(): MceProject {
           // Content layer fields (existing)
           ...(layer.source.type === 'static-image' ? {image_id: layer.source.imageId} : {}),
           ...(layer.source.type === 'image-sequence' ? {image_ids: layer.source.imageIds} : {}),
-          ...(layer.source.type === 'video' ? {video_path: layer.source.videoPath} : {}),
+          ...(layer.source.type === 'video' ? (() => {
+            const src = layer.source as {type: 'video'; videoAssetId: string};
+            return {
+              video_asset_id: src.videoAssetId,
+              video_path: imageStore.videoAssets.peek().find(v => v.id === src.videoAssetId)?.path ?? '',
+            };
+          })() : {}),
           // Generator-grain
           ...(layer.source.type === 'generator-grain' ? {
             density: layer.source.density, size: layer.source.size,
@@ -186,7 +192,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 8,
+    version: 9,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -197,6 +203,7 @@ function buildMceProject(): MceProject {
     images: imageStore.toMceImages(projectRoot),
     audio_tracks: audioStore.tracks.value.map((track, index): MceAudioTrack => ({
       id: track.id,
+      audio_asset_id: track.audioAssetId,
       name: track.name,
       relative_path: track.relativePath,
       original_filename: track.originalFilename,
@@ -234,6 +241,7 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
 
     // 3. Convert MceSequences to frontend Sequence type and load into sequenceStore
     sequenceStore.reset();
+    const videoAssetIdToPath = new Map<string, string>(); // Built during layer deserialization for video asset registration
     const sortedSeqs = [...project.sequences].sort((a, b) => a.order - b.order);
     for (const mceSeq of sortedSeqs) {
       const sortedKps = [...mceSeq.key_photos].sort((a, b) => a.order - b.order);
@@ -266,7 +274,13 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
                     const t = ml.source.type;
                     if (t === 'static-image') return {type: t, imageId: ml.source.image_id!} as LayerSourceData;
                     if (t === 'image-sequence') return {type: t, imageIds: ml.source.image_ids ?? []} as LayerSourceData;
-                    if (t === 'video') return {type: t, videoPath: ml.source.video_path!} as LayerSourceData;
+                    if (t === 'video') {
+                      const videoAssetId = ml.source.video_asset_id ?? crypto.randomUUID();
+                      const videoPath = ml.source.video_path ?? '';
+                      const absVideoPath = videoPath && !videoPath.startsWith('/') ? projectRoot + '/' + videoPath : videoPath;
+                      videoAssetIdToPath.set(videoAssetId, absVideoPath);
+                      return {type: t, videoAssetId} as LayerSourceData;
+                    }
                     if (t === 'generator-grain') return {type: t, density: ml.source.density ?? 0.3, size: ml.source.size ?? 1, intensity: ml.source.intensity ?? 0.5, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
                     if (t === 'generator-particles') return {type: t, count: ml.source.count ?? 50, speed: ml.source.speed ?? 1, sizeMin: ml.source.size_min ?? 1, sizeMax: ml.source.size_max ?? 4, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
                     if (t === 'generator-lines') return {type: t, count: ml.source.count ?? 15, thickness: ml.source.thickness ?? 1, lengthMin: ml.source.length_min ?? 0.1, lengthMax: ml.source.length_max ?? 0.4, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;
@@ -353,15 +367,16 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
       uiStore.selectSequence(sortedSeqs[0].id);
     }
 
-    // Re-discover video assets from loaded video layers
+    // Re-discover video assets from loaded video layers using videoAssetId
     for (const seq of sequenceStore.sequences.value) {
       for (const layer of seq.layers) {
-        if (layer.source.type === 'video' && layer.source.videoPath) {
-          const filename = layer.source.videoPath.split('/').pop() ?? 'video';
+        if (layer.source.type === 'video' && layer.source.videoAssetId) {
+          const videoPath = videoAssetIdToPath.get(layer.source.videoAssetId) ?? '';
+          const filename = videoPath.split('/').pop() ?? 'video';
           imageStore.addVideoAsset({
-            id: layer.id,
+            id: layer.source.videoAssetId,
             name: filename,
-            path: layer.source.videoPath,
+            path: videoPath,
           });
         }
       }
@@ -376,6 +391,7 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
     for (const mat of sortedAudio) {
       const track: AudioTrack = {
         id: mat.id,
+        audioAssetId: mat.audio_asset_id ?? mat.id,
         name: mat.name,
         filePath: projectRoot + '/' + mat.relative_path,
         relativePath: mat.relative_path,

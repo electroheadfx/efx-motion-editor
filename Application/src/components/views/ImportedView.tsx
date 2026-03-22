@@ -132,7 +132,7 @@ export function ImportedView() {
     // Change Source flow: update existing layer source
     if (currentIntent?.changeSourceFor) {
       layerStore.updateLayer(currentIntent.changeSourceFor.layerId, {
-        source: { type: 'video', videoPath: video.path },
+        source: { type: 'video', videoAssetId: video.id },
         name: video.name,
       });
       uiStore.setAddLayerIntent(null);
@@ -146,7 +146,7 @@ export function ImportedView() {
         id: layerId, name: video.name, type: 'video',
         visible: true, opacity: 1, blendMode: 'normal',
         transform: defaultTransform(),
-        source: { type: 'video', videoPath: video.path },
+        source: { type: 'video', videoAssetId: video.id },
         isBase: false,
       };
       sequenceStore.createContentOverlaySequence(video.name, layer, totalFrames.peek());
@@ -162,7 +162,7 @@ export function ImportedView() {
       id: layerId, name: video.name, type: 'video',
       visible: true, opacity: 1, blendMode: 'normal',
       transform: defaultTransform(),
-      source: { type: 'video', videoPath: video.path },
+      source: { type: 'video', videoAssetId: video.id },
       isBase: false,
     });
     layerStore.setSelected(layerId);
@@ -273,6 +273,7 @@ export function ImportedView() {
 
       audioStore.addTrack({
         id: trackId,
+        audioAssetId: audioAssetId,
         name: asset.name,
         filePath: asset.path,
         relativePath: 'audio/' + asset.name,

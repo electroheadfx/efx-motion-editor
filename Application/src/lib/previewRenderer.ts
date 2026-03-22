@@ -340,6 +340,7 @@ export class PreviewRenderer {
     fps: number,
   ): HTMLVideoElement | null {
     if (layer.source.type !== 'video') return null;
+    const source = layer.source; // Narrow to video source type
 
     let video = this.videoElements.get(layer.id);
     if (!video) {
@@ -347,7 +348,9 @@ export class PreviewRenderer {
       video.preload = 'auto';
       video.muted = true; // avoid autoplay restrictions
       video.playsInline = true;
-      video.src = assetUrl(layer.source.videoPath);
+      const videoAsset = imageStore.videoAssets.peek().find(v => v.id === source.videoAssetId);
+      if (!videoAsset) return null;
+      video.src = assetUrl(videoAsset.path);
       this.videoElements.set(layer.id, video);
 
       // Trigger re-render when video has enough data to display

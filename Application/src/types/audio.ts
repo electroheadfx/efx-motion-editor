@@ -2,6 +2,7 @@ export type FadeCurve = 'linear' | 'exponential' | 'logarithmic';
 
 export interface AudioTrack {
   id: string;
+  audioAssetId: string;  // References AudioAsset.id in imageStore
   name: string;
   filePath: string;           // Absolute path to audio file on disk
   relativePath: string;       // Relative path within project dir (for .mce persistence)
@@ -24,9 +25,10 @@ export interface AudioTrack {
   totalFramesInFile: number;  // Total frames in the source audio file (immutable after import)
 }
 
-/** Serialized audio track format for .mce v8 project files (snake_case) */
+/** Serialized audio track format for .mce project files (snake_case) */
 export interface MceAudioTrack {
   id: string;
+  audio_asset_id?: string;  // Stable asset reference (v9+)
   name: string;
   relative_path: string;
   original_filename: string;

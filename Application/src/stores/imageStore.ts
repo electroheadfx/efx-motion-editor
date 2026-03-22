@@ -10,6 +10,7 @@ export interface VideoAsset {
   id: string;
   name: string;
   path: string; // absolute path in project videos/ directory
+  relativePath?: string; // relative path within project dir (for serialization)
 }
 
 /** Metadata for an imported audio asset */

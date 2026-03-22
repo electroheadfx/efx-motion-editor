@@ -74,7 +74,8 @@ export interface MceLayerSource {
   // Content layer fields (existing)
   image_id?: string;
   image_ids?: string[];
-  video_path?: string;
+  video_path?: string;      // Kept for v8 backward compat reading
+  video_asset_id?: string;  // Stable asset reference (v9+)
   // Generator common fields
   lock_seed?: boolean;
   seed?: number;

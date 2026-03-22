@@ -8,6 +8,7 @@ import type {MceProject} from '../types/project';
 function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
   return {
     id: 'track-1',
+    audioAssetId: 'audio-asset-1',
     name: 'test-audio.wav',
     filePath: '/project/audio/test-audio.wav',
     relativePath: 'audio/test-audio.wav',
@@ -71,9 +72,9 @@ describe('projectStore audio persistence', () => {
       expect(mat.slip_offset).toBe(3);
     });
 
-    it('sets version to 8', () => {
+    it('sets version to 9', () => {
       const project = projectStore.buildMceProject();
-      expect(project.version).toBe(8);
+      expect(project.version).toBe(9);
     });
 
     it('outputs empty audio_tracks when none exist', () => {

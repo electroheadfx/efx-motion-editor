@@ -16,7 +16,7 @@ export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add';
 export type LayerSourceData =
   | { type: 'static-image'; imageId: string }
   | { type: 'image-sequence'; imageIds: string[] }  // Base layer: empty array (uses sequence's keyPhotos/frameMap). Overlay layers: imported image IDs sorted by filename, indexed as frame % imageIds.length
-  | { type: 'video'; videoPath: string }  // Relative path within project
+  | { type: 'video'; videoAssetId: string }  // References VideoAsset.id in imageStore
   | { type: 'generator-grain'; density: number; size: number; intensity: number; lockSeed: boolean; seed: number }
   | { type: 'generator-particles'; count: number; speed: number; sizeMin: number; sizeMax: number; lockSeed: boolean; seed: number }
   | { type: 'generator-lines'; count: number; thickness: number; lengthMin: number; lengthMax: number; lockSeed: boolean; seed: number }

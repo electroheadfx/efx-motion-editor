@@ -5,6 +5,7 @@ import type {AudioTrack} from '../types/audio';
 function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
   return {
     id: crypto.randomUUID(),
+    audioAssetId: crypto.randomUUID(),
     name: 'Test Track',
     filePath: '/path/to/audio.mp3',
     relativePath: 'audio/audio.mp3',
