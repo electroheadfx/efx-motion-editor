@@ -25,6 +25,17 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 - [x] **MEDIA-04**: User can click a badge to see exact usage locations and access remove/delete actions via popover
 - [x] **MEDIA-05**: Removing an in-use asset performs cascade removal (key photos become placeholders, layers removed, audio tracks removed) with undo support and detailed warning
 
+### Solid Sequence
+
+- [ ] **SOLID-01**: User can add key solid (black) and key transparent entries to any content sequence's key photo array via split add button (Camera/Square)
+- [ ] **SOLID-02**: User can change a key solid's color via inline color picker popover with live canvas preview
+- [ ] **SOLID-03**: User can toggle a key solid between solid mode and transparent mode via top-left corner button
+- [ ] **SOLID-04**: Key solid and transparent entries have hold frames, reorder, and delete — identical to key photos
+- [ ] **SOLID-05**: Timeline renders key solid ranges as colored rectangles and key transparent ranges as checkerboard pattern
+- [ ] **SOLID-06**: Canvas preview renders key solids as full-resolution colored rectangles and key transparents as canvas background
+- [ ] **SOLID-07**: Cross-dissolve between key photo and key solid blends normally via standard alpha interpolation
+- [ ] **SOLID-08**: Key solid/transparent entries persist in project file (.mce v10) with backward-compatible reading of v9 files
+
 ### Audio Export & Beat Sync
 
 - [ ] **BEAT-01**: User can export video with audio included (FFmpeg muxing with fades applied)
@@ -92,6 +103,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MEDIA-03 | Phase 15.1 | Complete |
 | MEDIA-04 | Phase 15.1 | Complete |
 | MEDIA-05 | Phase 15.1 | Complete |
+| SOLID-01 | Phase 15.2 | Pending |
+| SOLID-02 | Phase 15.2 | Pending |
+| SOLID-03 | Phase 15.2 | Pending |
+| SOLID-04 | Phase 15.2 | Pending |
+| SOLID-05 | Phase 15.2 | Pending |
+| SOLID-06 | Phase 15.2 | Pending |
+| SOLID-07 | Phase 15.2 | Pending |
+| SOLID-08 | Phase 15.2 | Pending |
 | BEAT-01 | Phase 16 | Pending |
 | BEAT-02 | Phase 16 | Pending |
 | BEAT-03 | Phase 16 | Pending |
@@ -106,10 +125,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PATH-03 | Phase 18 | Pending |
 
 **Coverage:**
-- v0.3.0 requirements: 24 total
-- Mapped to phases: 24
+- v0.3.0 requirements: 32 total
+- Mapped to phases: 32
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-21*
-*Last updated: 2026-03-22 after Phase 15.1 planning*
+*Last updated: 2026-03-22 after Phase 15.2 planning*

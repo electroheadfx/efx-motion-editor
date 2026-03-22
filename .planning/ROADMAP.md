@@ -65,6 +65,7 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 
 - [x] **Phase 15: Audio Import & Waveform** - Import audio, waveform visualization, synced playback, volume, offset, fades, project persistence (completed 2019-03-21)
 - [x] **Phase 15.1: Media In-Use Indicators & Safe Removal** - Check timeline usage before removal, warn user, visual badge on used assets in ImportGrid (completed 2026-03-22)
+- [ ] **Phase 15.2: Solid Sequence** - Key solid and key transparent entries in content sequences, color picker, timeline/canvas/export rendering
 - [ ] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange
 - [ ] **Phase 17: Enhancements** - Sidebar key photo scroll/collapse, sequence solo, layer solo
 - [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
@@ -90,6 +91,24 @@ Plans:
 - [x] 15-02-PLAN.md — Import flow (AddAudioButton), CSS variables, waveform rendering on timeline
 - [x] 15-03-PLAN.md — Timeline interaction (click, drag, resize, reorder, slip) + playback sync
 - [x] 15-04-PLAN.md — AudioProperties panel, project persistence (v8 format), end-to-end verification
+
+### Phase 15.2: Solid Sequence (INSERTED)
+
+**Goal:** Users can add key solid (colored) and key transparent entries to any content sequence, with color picker, reorder, hold frames, and rendering across timeline, canvas preview, and export
+**Requirements**: SOLID-01, SOLID-02, SOLID-03, SOLID-04, SOLID-05, SOLID-06, SOLID-07, SOLID-08
+**Depends on:** Phase 15.1
+**Success Criteria** (what must be TRUE):
+  1. User can add key solid (default black) and key transparent entries via split add button, and they have hold frames, reorder, and delete identical to key photos
+  2. User can change a key solid's color via inline color picker popover with live canvas preview, and toggle between solid and transparent mode
+  3. Timeline renders solid ranges as colored rectangles and transparent ranges as checkerboard pattern
+  4. Canvas preview renders solid entries as full-resolution colored fills and transparent entries as canvas background
+  5. Cross-dissolve between key photos and key solids blends normally, and key solid entries persist in project format v10
+**Plans**: 3 plans
+
+Plans:
+- [ ] 15.2-01-PLAN.md — Data model: KeyPhoto type extension, sequenceStore methods, frameMap pipeline, project format v10
+- [ ] 15.2-02-PLAN.md — UI: split add button, key solid card 4-corner controls, color picker popover, sidebar thumbnail
+- [ ] 15.2-03-PLAN.md — Rendering: timeline solid/checkerboard, canvas preview solid/transparent, export cross-dissolve, visual verification
 
 ### Phase 15.1: Media In-Use Indicators & Safe Removal
 **Goal:** Users can see which imported assets are in use across the project, with color-coded badges showing usage counts, and safely remove assets with cascade removal that handles key photo placeholders, layer removal, and audio track removal with undo support
@@ -140,7 +159,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.3.0: 15 > 15.1 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
+v0.3.0: 15 > 15.1 > 15.2 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -148,6 +167,7 @@ v0.3.0: 15 > 15.1 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15. Audio Import & Waveform | v0.3.0 | 4/4 | Complete    | 2019-03-21 |
 | 15.1 Media In-Use & Safe Removal | v0.3.0 | 2/2 | Complete    | 2026-03-22 |
+| 15.2 Solid Sequence | v0.3.0 | 0/3 | In progress | - |
 | 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
