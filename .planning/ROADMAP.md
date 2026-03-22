@@ -66,6 +66,7 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 - [x] **Phase 15: Audio Import & Waveform** - Import audio, waveform visualization, synced playback, volume, offset, fades, project persistence (completed 2019-03-21)
 - [x] **Phase 15.1: Media In-Use Indicators & Safe Removal** - Check timeline usage before removal, warn user, visual badge on used assets in ImportGrid (completed 2026-03-22)
 - [x] **Phase 15.2: Solid Sequence** - Key solid and key transparent entries in content sequences, color picker, timeline/canvas/export rendering (completed 2026-03-22)
+- [x] **Phase 15.3: GLSL Shadertoys** - WebGL2 shader runtime, shader browser, 17 Shadertoy-ported effects, parameter controls, keyframe animation (completed 2026-03-22)
 - [ ] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange
 - [ ] **Phase 17: Enhancements** - Sidebar key photo scroll/collapse, sequence solo, layer solo
 - [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
@@ -94,13 +95,13 @@ Plans:
 
 ### Phase 15.3: GLSL Shadertoys (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Add GPU shader effects system with WebGL2 runtime, shader browser window, 17 Shadertoy-ported shaders, sidebar parameter controls, keyframe animation support, and export integration
+**Requirements**: GLSL-01 (runtime), GLSL-02 (browser), GLSL-03 (shaders), GLSL-04 (parameters), GLSL-05 (integration)
 **Depends on:** Phase 15
-**Plans:** 0 plans
+**Plans:** 1 plan
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 15.3 to break down)
+- [x] 15.3-01-PLAN.md — GLSL shader library, browser, runtime, 17 shaders, parameter controls, export integration
 
 ### Phase 15.2: Solid Sequence (INSERTED)
 
@@ -170,7 +171,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.3.0: 15 > 15.1 > 15.2 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
+v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -179,6 +180,7 @@ v0.3.0: 15 > 15.1 > 15.2 > 16 > 17, 18 (17 and 18 are independent, can paralleli
 | 15. Audio Import & Waveform | v0.3.0 | 4/4 | Complete    | 2019-03-21 |
 | 15.1 Media In-Use & Safe Removal | v0.3.0 | 2/2 | Complete    | 2026-03-22 |
 | 15.2 Solid Sequence | v0.3.0 | 4/4 | Complete    | 2026-03-22 |
+| 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
 | 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
