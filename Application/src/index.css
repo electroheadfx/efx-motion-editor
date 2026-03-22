@@ -51,10 +51,12 @@
   --color-dot-purple: #9966FF;
   --color-dot-green: #22CC77;
   --color-dot-orange: #FF6633;
+  --color-dot-yellow: #CCAA22;
   --color-badge-bg: #2D5BE380;
   --color-badge-text: #AACCFF;
 
   /* Semantic: error/warning */
+  --color-usage-badge-red: #FF4444;
   --color-error-bg: #2A1A1A;
   --color-error-text: #FF6666;
   --color-error-text-faded: #FF666680;
@@ -147,7 +149,9 @@
   --color-hover-overlay: #ffffff12;
   --color-hover-overlay-strong: #ffffff18;
 
-  /* Semantic: error */
+  /* Semantic: error/warning */
+  --color-dot-yellow: #CCAA22;
+  --color-usage-badge-red: #FF4444;
   --color-error-bg: #5A3A3A;
   --color-error-text: #FF7777;
   --color-error-text-faded: #FF777780;
@@ -240,7 +244,9 @@
   --color-hover-overlay: #00000008;
   --color-hover-overlay-strong: #00000010;
 
-  /* Semantic: error */
+  /* Semantic: error/warning */
+  --color-dot-yellow: #AA8811;
+  --color-usage-badge-red: #CC3333;
   --color-error-bg: #FFE0E0;
   --color-error-text: #CC3333;
   --color-error-text-faded: #CC333380;
