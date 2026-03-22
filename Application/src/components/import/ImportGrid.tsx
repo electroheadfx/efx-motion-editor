@@ -1,10 +1,15 @@
 import {useRef, useState, useCallback, useEffect} from 'preact/hooks';
 import {createPortal} from 'preact/compat';
+import {computed} from '@preact/signals';
 import {Film, Music} from 'lucide-preact';
-import {remove as removeFile} from '@tauri-apps/plugin-fs';
 import {imageStore, type VideoAsset} from '../../stores/imageStore';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {audioStore} from '../../stores/audioStore';
 import {assetUrl} from '../../lib/ipc';
+import {UsageBadge} from './UsageBadge';
+import {UsagePopover} from './UsagePopover';
+import {getAllAssetUsages} from '../../lib/assetUsage';
+import {cascadeRemoveAsset, cascadeDeleteFile} from '../../lib/assetRemoval';
 
 interface ImportGridProps {
   /** When provided, images become selectable and clicking calls this with the image ID */
@@ -45,6 +50,25 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
     y: number;
   } | null>(null);
 
+  const [popover, setPopover] = useState<{
+    assetId: string;
+    assetName: string;
+    assetPath: string;
+    assetType: 'image' | 'video' | 'audio';
+    x: number;
+    y: number;
+    thumbnailPath?: string;
+  } | null>(null);
+
+  // Reactive usage map: auto-updates when any dependency signal changes
+  const usageMap = computed(() => getAllAssetUsages(
+    imageStore.images.value,
+    imageStore.videoAssets.value,
+    imageStore.audioAssets.value,
+    sequenceStore.sequences.value,
+    audioStore.tracks.value,
+  ));
+
   useEffect(() => {
     if (!ctxMenu) return;
     const close = () => setCtxMenu(null);
@@ -52,51 +76,41 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
     return () => document.removeEventListener('mousedown', close);
   }, [ctxMenu]);
 
+  const handleBadgeClick = useCallback((assetId: string, assetName: string, assetPath: string, assetType: 'image' | 'video' | 'audio', e: MouseEvent, thumbnailPath?: string) => {
+    setPopover({assetId, assetName, assetPath, assetType, x: e.clientX, y: e.clientY, thumbnailPath});
+    setCtxMenu(null);  // close context menu if open
+  }, []);
+
+  const handlePopoverRemoveRef = useCallback(() => {
+    if (!popover) return;
+    const usage = usageMap.value.get(popover.assetId);
+    cascadeRemoveAsset(popover.assetId, popover.assetType, popover.assetName, usage?.locations ?? []);
+    setPopover(null);
+  }, [popover]);
+
+  const handlePopoverDeleteFile = useCallback(async () => {
+    if (!popover) return;
+    const usage = usageMap.value.get(popover.assetId);
+    await cascadeDeleteFile(popover.assetId, popover.assetType, popover.assetName, popover.assetPath, usage?.locations ?? [], popover.thumbnailPath);
+    setPopover(null);
+  }, [popover]);
+
   const handleRemoveRef = useCallback(() => {
     if (!ctxMenu) return;
-    if (ctxMenu.type === 'image') {
-      const seqs = sequenceStore.sequences.peek();
-      if (imageStore.isImageInUse(ctxMenu.id, seqs)) {
-        if (!window.confirm(`"${ctxMenu.name}" is used in key photos or layers. Remove anyway?`)) {
-          setCtxMenu(null);
-          return;
-        }
-      }
-      imageStore.remove(ctxMenu.id);
-    } else if (ctxMenu.type === 'video') {
-      imageStore.removeVideoAsset(ctxMenu.id);
-    } else if (ctxMenu.type === 'audio') {
-      imageStore.removeAudioAsset(ctxMenu.id);
-    }
+    const usage = usageMap.value.get(ctxMenu.id);
+    cascadeRemoveAsset(ctxMenu.id, ctxMenu.type, ctxMenu.name, usage?.locations ?? []);
     setCtxMenu(null);
   }, [ctxMenu]);
 
   const handleDeleteFile = useCallback(async () => {
     if (!ctxMenu) return;
-    const confirmed = window.confirm(`Delete "${ctxMenu.name}" from disk? This cannot be undone.`);
-    if (!confirmed) { setCtxMenu(null); return; }
-
+    const usage = usageMap.value.get(ctxMenu.id);
+    let thumbnailPath: string | undefined;
     if (ctxMenu.type === 'image') {
-      const seqs = sequenceStore.sequences.peek();
-      if (imageStore.isImageInUse(ctxMenu.id, seqs)) {
-        if (!window.confirm(`"${ctxMenu.name}" is used in key photos or layers. Delete anyway?`)) {
-          setCtxMenu(null);
-          return;
-        }
-      }
       const img = imageStore.getById(ctxMenu.id);
-      imageStore.remove(ctxMenu.id);
-      try { await removeFile(ctxMenu.path); } catch { /* file may not exist */ }
-      if (img) {
-        try { await removeFile(img.thumbnail_path); } catch { /* thumbnail may not exist */ }
-      }
-    } else if (ctxMenu.type === 'video') {
-      imageStore.removeVideoAsset(ctxMenu.id);
-      try { await removeFile(ctxMenu.path); } catch { /* file may not exist */ }
-    } else if (ctxMenu.type === 'audio') {
-      imageStore.removeAudioAsset(ctxMenu.id);
-      try { await removeFile(ctxMenu.path); } catch { /* file may not exist */ }
+      thumbnailPath = img?.thumbnail_path;
     }
+    await cascadeDeleteFile(ctxMenu.id, ctxMenu.type, ctxMenu.name, ctxMenu.path, usage?.locations ?? [], thumbnailPath);
     setCtxMenu(null);
   }, [ctxMenu]);
 
@@ -156,6 +170,10 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
                 class="w-full h-full object-cover"
                 loading="lazy"
               />
+              <UsageBadge
+                count={usageMap.value.get(img.id)?.count ?? 0}
+                onClick={(e) => handleBadgeClick(img.id, img.original_path.split('/').pop() ?? 'image', img.project_path, 'image', e, img.thumbnail_path)}
+              />
               {/* Hover overlay with filename */}
               <div class="absolute inset-0 bg-[#00000080] opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
                 <span class="text-[8px] text-white truncate w-full">
@@ -186,20 +204,25 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
           )}
           <div class="grid grid-cols-4 gap-1">
             {videos.map((video) => (
-              <VideoThumb
-                key={video.id}
-                video={video}
-                selectMode={!!onSelect && !onVideoSelect}
-                onClick={onVideoSelect ? () => onVideoSelect(video.id) : undefined}
-                onContextMenu={(e: MouseEvent) => {
-                  e.preventDefault();
-                  setCtxMenu({
-                    type: 'video', id: video.id,
-                    name: video.name, path: video.path,
-                    x: e.clientX, y: e.clientY,
-                  });
-                }}
-              />
+              <div key={video.id} class="relative">
+                <VideoThumb
+                  video={video}
+                  selectMode={!!onSelect && !onVideoSelect}
+                  onClick={onVideoSelect ? () => onVideoSelect(video.id) : undefined}
+                  onContextMenu={(e: MouseEvent) => {
+                    e.preventDefault();
+                    setCtxMenu({
+                      type: 'video', id: video.id,
+                      name: video.name, path: video.path,
+                      x: e.clientX, y: e.clientY,
+                    });
+                  }}
+                />
+                <UsageBadge
+                  count={usageMap.value.get(video.id)?.count ?? 0}
+                  onClick={(e) => handleBadgeClick(video.id, video.name, video.path, 'video', e)}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -233,11 +256,34 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
               >
                 <Music size={14} class="text-[var(--color-audio-waveform,#22B8A0)] shrink-0" />
                 <span class="text-xs text-[var(--color-text-button)] truncate">{audio.name}</span>
+                <UsageBadge
+                  count={usageMap.value.get(audio.id)?.count ?? 0}
+                  onClick={(e) => handleBadgeClick(audio.id, audio.name, audio.path, 'audio', e)}
+                  layout="inline"
+                />
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {popover && (() => {
+        const usage = usageMap.value.get(popover.assetId);
+        return (
+          <UsagePopover
+            assetId={popover.assetId}
+            assetName={popover.assetName}
+            assetPath={popover.assetPath}
+            assetType={popover.assetType}
+            locations={usage?.locations ?? []}
+            count={usage?.count ?? 0}
+            position={{x: popover.x, y: popover.y}}
+            onClose={() => setPopover(null)}
+            onRemoveRef={handlePopoverRemoveRef}
+            onDeleteFile={handlePopoverDeleteFile}
+          />
+        );
+      })()}
 
       {ctxMenu && createPortal(
         <div

@@ -171,18 +171,6 @@ export const imageStore = {
     return images.value.find((img) => img.id === id);
   },
 
-  /** Check if an image is referenced by key photos or layers in any sequence */
-  isImageInUse(imageId: string, sequences: Array<{keyPhotos: Array<{imageId: string}>; layers: Array<{source: {type: string; imageId?: string; imageIds?: string[]}}>}>): boolean {
-    for (const seq of sequences) {
-      if (seq.keyPhotos.some(kp => kp.imageId === imageId)) return true;
-      for (const layer of seq.layers) {
-        if (layer.source.type === 'static-image' && layer.source.imageId === imageId) return true;
-        if (layer.source.type === 'image-sequence' && layer.source.imageIds?.includes(imageId)) return true;
-      }
-    }
-    return false;
-  },
-
   /** Load images from MceImageRef array (for project open hydration).
    *  Converts relative paths to absolute using the project root. */
   loadFromMceImages(mceImages: MceImageRef[], projectRoot: string) {
