@@ -109,6 +109,14 @@ export class PreviewRenderer {
           // Adjustments only matter if there's content below; continue checking
           continue;
         } else {
+          // Content layer: check if current frame is a solid/transparent entry
+          if (frames.length > 0 && frame >= 0 && frame < frames.length) {
+            const entry = frames[frame];
+            if (entry && (entry.solidColor || entry.isTransparent)) {
+              hasDrawable = true;
+              break;
+            }
+          }
           const source = this.resolveLayerSource(layer, frame, frames, fps);
           if (source !== null || layer.source.type === 'video') {
             hasDrawable = true;
@@ -182,7 +190,28 @@ export class PreviewRenderer {
       } else if (isAdjustmentLayer(layer)) {
         this.drawAdjustmentLayer(layer, logicalW, logicalH);
       } else {
-        // Content layer: resolve source inline
+        // Content layer: check for solid/transparent frame first (per D-18, D-19)
+        let handledAsSolid = false;
+        if (layer.isBase && frames.length > 0 && frame >= 0 && frame < frames.length) {
+          const entry = frames[frame];
+          if (entry?.solidColor && !entry?.isTransparent) {
+            // Key solid: fill canvas with solid color
+            ctx.save();
+            ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+            ctx.globalAlpha = effectiveOpacity;
+            ctx.fillStyle = entry.solidColor;
+            ctx.fillRect(0, 0, logicalW, logicalH);
+            ctx.restore();
+            handledAsSolid = true;
+          } else if (entry?.isTransparent) {
+            // Key transparent: do nothing — clearRect already cleared canvas,
+            // app background (black) shows through per D-19
+            handledAsSolid = true;
+          }
+        }
+
+        if (!handledAsSolid) {
+        // Original content layer rendering (resolve image source)
         const source = this.resolveLayerSource(layer, frame, frames, fps);
         if (source !== null) {
           const blurRadius = layer.blur ?? 0;
@@ -224,6 +253,7 @@ export class PreviewRenderer {
           ctx.fillText(`Loading ${layer.name}...`, logicalW / 2, logicalH / 2);
           ctx.restore();
         }
+        } // end if (!handledAsSolid)
       }
     }
 
@@ -301,6 +331,7 @@ export class PreviewRenderer {
    * Each imageId produces a unique URL via cache-busting key.
    */
   getImageSource(imageId: string): HTMLImageElement | null {
+    if (!imageId) return null;
     // Check cache first
     const cached = this.imageCache.get(imageId);
     if (cached) return cached;
