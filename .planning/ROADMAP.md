@@ -103,7 +103,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 15.1-01-PLAN.md — Asset reference refactor (videoAssetId, audioAssetId), project format v9, unified usage scanner, CSS variables
+- [x] 15.1-01-PLAN.md — Asset reference refactor (videoAssetId, audioAssetId), project format v9, unified usage scanner, CSS variables
 - [ ] 15.1-02-PLAN.md — UsageBadge + UsagePopover components, cascade removal module, ImportGrid integration, visual verification
 
 ### Phase 16: Audio Export & Beat Sync
@@ -147,7 +147,7 @@ v0.3.0: 15 > 15.1 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
 | 1-7 | v0.1.0 | 45/45 | Complete | 2019-03-11 |
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15. Audio Import & Waveform | v0.3.0 | 4/4 | Complete    | 2019-03-21 |
-| 15.1 Media In-Use & Safe Removal | v0.3.0 | 0/2 | Not started | - |
+| 15.1 Media In-Use & Safe Removal | v0.3.0 | 1/2 | In Progress|  |
 | 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |

@@ -19,8 +19,8 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 
 ### Media In-Use Indicators & Safe Removal
 
-- [ ] **MEDIA-01**: All asset types (image, video, audio) use stable ID-based references for reliable usage tracking
-- [ ] **MEDIA-02**: User can see usage count for any asset across all sequences and audio tracks
+- [x] **MEDIA-01**: All asset types (image, video, audio) use stable ID-based references for reliable usage tracking
+- [x] **MEDIA-02**: User can see usage count for any asset across all sequences and audio tracks
 - [ ] **MEDIA-03**: Every asset in ImportGrid displays a color-coded badge showing how many times it is used (green=0, yellow=1-2, orange=3-5, red=6+)
 - [ ] **MEDIA-04**: User can click a badge to see exact usage locations and access remove/delete actions via popover
 - [ ] **MEDIA-05**: Removing an in-use asset performs cascade removal (key photos become placeholders, layers removed, audio tracks removed) with undo support and detailed warning
@@ -87,8 +87,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUDIO-05 | Phase 15 | Complete |
 | AUDIO-06 | Phase 15 | Complete |
 | AUDIO-07 | Phase 15 | Complete |
-| MEDIA-01 | Phase 15.1 | Pending |
-| MEDIA-02 | Phase 15.1 | Pending |
+| MEDIA-01 | Phase 15.1 | Complete |
+| MEDIA-02 | Phase 15.1 | Complete |
 | MEDIA-03 | Phase 15.1 | Pending |
 | MEDIA-04 | Phase 15.1 | Pending |
 | MEDIA-05 | Phase 15.1 | Pending |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
 status: unknown
-stopped_at: Phase 15.1 UI-SPEC approved
-last_updated: "2026-03-22T09:55:03.195Z"
-last_activity: "2026-03-22 - Completed quick task 260322-d9q: add ImportGrid asset removal context menu"
+stopped_at: Completed 15.1-01-PLAN.md
+last_updated: "2026-03-22T11:01:45.793Z"
+last_activity: 2026-03-22
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 6
+  completed_plans: 5
 ---
 
 # Project State
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 15 — audio-import-waveform
-Last activity: 2026-03-22 - Completed quick task 260322-d9q: add ImportGrid asset removal context menu
+**Current focus:** Phase 15.1 — add-in-use-indicators-to-imported-media-and-safe-removal-with-timeline-awareness
+Last activity: 2026-03-22
 
 ## Current Position
 
-Phase: 16
-Plan: Not started
+Phase: 15.1 (add-in-use-indicators-to-imported-media-and-safe-removal-with-timeline-awareness) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Plan: Not started
 | Phase 15 P02 | 6min | 2 tasks | 6 files |
 | Phase 15 P03 | 6min | 2 tasks | 3 files |
 | Phase 15 P04 | 7min | 2 tasks | 7 files |
+| Phase 15.1 P01 | 6min | 2 tasks | 10 files |
 
 ### Decisions
 
@@ -62,6 +63,9 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 15]: Audio buffer offset = (inFrame + slipOffset + framesIntoTrack) / fps for playback sync
 - [Phase 15]: AudioProperties priority in LeftPanel: transition > audio > fx > content > fallback
 - [Phase 15]: Project format v8: audio_tracks with serde(default) for v7 backward compat
+- [Phase 15.1]: D-15/16/17: Video layers use videoAssetId referencing VideoAsset.id instead of videoPath
+- [Phase 15.1]: D-18/19: Usage scanner is pure module taking data as arguments for testability
+- [Phase 15.1]: Project format v9 keeps video_path for v8 backward compat reading
 
 ### Pending Todos
 
@@ -87,6 +91,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-22T09:55:03.193Z
-Stopped at: Phase 15.1 UI-SPEC approved
-Resume file: .planning/phases/15.1-add-in-use-indicators-to-imported-media-and-safe-removal-with-timeline-awareness/15.1-UI-SPEC.md
+Last session: 2026-03-22T11:01:45.791Z
+Stopped at: Completed 15.1-01-PLAN.md
+Resume file: None
