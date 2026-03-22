@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
 status: unknown
-stopped_at: Completed 15.1-01-PLAN.md
-last_updated: "2026-03-22T11:01:45.793Z"
+stopped_at: Completed 15.1-02-PLAN.md (Tasks 1-2; Task 3 awaiting human verification)
+last_updated: "2026-03-22T11:09:06.608Z"
 last_activity: 2026-03-22
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -49,6 +49,7 @@ Plan: 2 of 2
 | Phase 15 P03 | 6min | 2 tasks | 3 files |
 | Phase 15 P04 | 7min | 2 tasks | 7 files |
 | Phase 15.1 P01 | 6min | 2 tasks | 10 files |
+| Phase 15.1 P02 | 4min | 2 tasks | 5 files |
 
 ### Decisions
 
@@ -66,6 +67,8 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 15.1]: D-15/16/17: Video layers use videoAssetId referencing VideoAsset.id instead of videoPath
 - [Phase 15.1]: D-18/19: Usage scanner is pure module taking data as arguments for testability
 - [Phase 15.1]: Project format v9 keeps video_path for v8 backward compat reading
+- [Phase 15.1]: Composite undo captures all 3 stores (sequenceStore, audioStore, imageStore) as single history entry
+- [Phase 15.1]: Removed deprecated isImageInUse, replaced by unified assetUsage.ts module
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-22T11:01:45.791Z
-Stopped at: Completed 15.1-01-PLAN.md
+Last session: 2026-03-22T11:09:06.606Z
+Stopped at: Completed 15.1-02-PLAN.md (Tasks 1-2; Task 3 awaiting human verification)
 Resume file: None
