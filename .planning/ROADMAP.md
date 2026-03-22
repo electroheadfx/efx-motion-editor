@@ -103,9 +103,10 @@ Plans:
   3. Timeline renders solid ranges as colored rectangles and transparent ranges as checkerboard pattern
   4. Canvas preview renders solid entries as full-resolution colored fills and transparent entries as canvas background
   5. Cross-dissolve between key photos and key solids blends normally, and key solid entries persist in project format v10
-**Plans**: 3 plans
+**Plans**: 4 plans
 
 Plans:
+- [ ] 15.2-00-PLAN.md — Wave 0: test scaffolds for sequenceStore, frameMap, exportRenderer solid/transparent behavior
 - [ ] 15.2-01-PLAN.md — Data model: KeyPhoto type extension, sequenceStore methods, frameMap pipeline, project format v10
 - [ ] 15.2-02-PLAN.md — UI: split add button, key solid card 4-corner controls, color picker popover, sidebar thumbnail
 - [ ] 15.2-03-PLAN.md — Rendering: timeline solid/checkerboard, canvas preview solid/transparent, export cross-dissolve, visual verification
@@ -167,7 +168,7 @@ v0.3.0: 15 > 15.1 > 15.2 > 16 > 17, 18 (17 and 18 are independent, can paralleli
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15. Audio Import & Waveform | v0.3.0 | 4/4 | Complete    | 2019-03-21 |
 | 15.1 Media In-Use & Safe Removal | v0.3.0 | 2/2 | Complete    | 2026-03-22 |
-| 15.2 Solid Sequence | v0.3.0 | 0/3 | In progress | - |
+| 15.2 Solid Sequence | v0.3.0 | 0/4 | In progress | - |
 | 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
