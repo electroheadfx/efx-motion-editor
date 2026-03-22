@@ -452,6 +452,27 @@ export class TimelineRenderer {
     }
   }
 
+  /** Draw a Photoshop-style checkerboard pattern in a clipped rectangle (per D-17) */
+  private drawCheckerboard(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, cellSize = 4): void {
+    const light = '#B0B0B0';
+    const dark = '#808080';
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    ctx.fillStyle = light;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = dark;
+    for (let row = 0; row * cellSize < h; row++) {
+      for (let col = 0; col * cellSize < w; col++) {
+        if ((row + col) % 2 === 0) {
+          ctx.fillRect(x + col * cellSize, y + row * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
   /** Draw all content sequences as a single linear row */
   private drawLinearTrack(
     ctx: CanvasRenderingContext2D,
@@ -503,49 +524,80 @@ export class TimelineRenderer {
 
         if (rangeX + rangeWidth < TRACK_HEADER_WIDTH || rangeX > w) continue;
 
-        const image = state.imageStore.getById(range.imageId);
-        const thumbnailUrl = image ? state.imageStore.getDisplayUrl(image) : '';
-        const cachedImg = thumbnailUrl ? this.thumbnailCache.get(range.imageId, thumbnailUrl) : null;
-
-        let pattern: CanvasPattern | null = null;
-        if (cachedImg) {
-          const cellH = TRACK_HEIGHT - 4;
-          const scale = cellH / cachedImg.naturalHeight;
-          pattern = ctx.createPattern(cachedImg, 'repeat');
-          if (pattern) {
-            pattern.setTransform(new DOMMatrix().scale(scale, scale));
+        // === Solid/transparent range rendering (per D-16, D-17) ===
+        if (range.solidColor && !range.isTransparent) {
+          // Solid: fill entire range with solid color
+          for (let f = 0; f < range.holdFrames; f++) {
+            const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+            const fy = trackY + 2;
+            const fw = frameWidth;
+            const fh = TRACK_HEIGHT - 4;
+            if (fx + fw < TRACK_HEADER_WIDTH || fx > w) continue;
+            ctx.fillStyle = range.solidColor;
+            ctx.fillRect(fx, fy, fw, fh);
+            ctx.strokeStyle = colors.frameBorder;
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(fx, fy, fw, fh);
           }
-        }
+        } else if (range.isTransparent) {
+          // Transparent: checkerboard pattern
+          for (let f = 0; f < range.holdFrames; f++) {
+            const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+            const fy = trackY + 2;
+            const fw = frameWidth;
+            const fh = TRACK_HEIGHT - 4;
+            if (fx + fw < TRACK_HEADER_WIDTH || fx > w) continue;
+            this.drawCheckerboard(ctx, fx, fy, fw, fh, 4);
+            ctx.strokeStyle = colors.frameBorder;
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(fx, fy, fw, fh);
+          }
+        } else {
+          // === Existing image thumbnail rendering ===
+          const image = state.imageStore.getById(range.imageId);
+          const thumbnailUrl = image ? state.imageStore.getDisplayUrl(image) : '';
+          const cachedImg = thumbnailUrl ? this.thumbnailCache.get(range.imageId, thumbnailUrl) : null;
 
-        for (let f = 0; f < range.holdFrames; f++) {
-          const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
-          const fy = trackY + 2;
-          const fw = frameWidth;
-          const fh = TRACK_HEIGHT - 4;
-
-          if (fx + fw < TRACK_HEADER_WIDTH || fx > w) continue;
-
-          if (cachedImg && pattern && fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
+          let pattern: CanvasPattern | null = null;
+          if (cachedImg) {
             const cellH = TRACK_HEIGHT - 4;
             const scale = cellH / cachedImg.naturalHeight;
-            const tileWidth = cachedImg.naturalWidth * scale;
-            const offsetX = fw < tileWidth ? (fw - tileWidth) / 2 : 0;
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(fx, fy, fw, fh);
-            ctx.clip();
-            ctx.translate(fx + offsetX, fy);
-            ctx.fillStyle = pattern;
-            ctx.fillRect(0, 0, fw - offsetX, fh);
-            ctx.restore();
-          } else {
-            ctx.fillStyle = ri % 2 === 0 ? PLACEHOLDER_BG_A : PLACEHOLDER_BG_B;
-            ctx.fillRect(fx, fy, fw, fh);
+            pattern = ctx.createPattern(cachedImg, 'repeat');
+            if (pattern) {
+              pattern.setTransform(new DOMMatrix().scale(scale, scale));
+            }
           }
 
-          ctx.strokeStyle = colors.frameBorder;
-          ctx.lineWidth = 0.5;
-          ctx.strokeRect(fx, fy, fw, fh);
+          for (let f = 0; f < range.holdFrames; f++) {
+            const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+            const fy = trackY + 2;
+            const fw = frameWidth;
+            const fh = TRACK_HEIGHT - 4;
+
+            if (fx + fw < TRACK_HEADER_WIDTH || fx > w) continue;
+
+            if (cachedImg && pattern && fw >= MIN_FRAME_WIDTH_FOR_THUMB) {
+              const cellH = TRACK_HEIGHT - 4;
+              const scale = cellH / cachedImg.naturalHeight;
+              const tileWidth = cachedImg.naturalWidth * scale;
+              const offsetX = fw < tileWidth ? (fw - tileWidth) / 2 : 0;
+              ctx.save();
+              ctx.beginPath();
+              ctx.rect(fx, fy, fw, fh);
+              ctx.clip();
+              ctx.translate(fx + offsetX, fy);
+              ctx.fillStyle = pattern;
+              ctx.fillRect(0, 0, fw - offsetX, fh);
+              ctx.restore();
+            } else {
+              ctx.fillStyle = ri % 2 === 0 ? PLACEHOLDER_BG_A : PLACEHOLDER_BG_B;
+              ctx.fillRect(fx, fy, fw, fh);
+            }
+
+            ctx.strokeStyle = colors.frameBorder;
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(fx, fy, fw, fh);
+          }
         }
 
         // Key photo separator
