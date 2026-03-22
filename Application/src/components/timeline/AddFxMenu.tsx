@@ -6,6 +6,7 @@ import {uiStore} from '../../stores/uiStore';
 import {defaultTransform, createDefaultFxSource} from '../../types/layer';
 import type {LayerType, BlendMode, Layer} from '../../types/layer';
 import {totalFrames} from '../../lib/frameMap';
+import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 
 /** Popover menu for adding content overlay and FX sequences in the timeline area */
 export function AddLayerMenu() {
@@ -142,6 +143,21 @@ export function AddLayerMenu() {
           >
             <span class="w-2 h-2 rounded-sm bg-[#F97316] shrink-0" />
             Blur
+          </button>
+          <div class="border-t border-[var(--color-border-subtle)] my-1" />
+
+          {/* GLSL section */}
+          <div class="px-3 py-1 text-[9px] text-[var(--color-text-dim)] font-semibold">GLSL</div>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+            onClick={() => {
+              setMenuOpen(false);
+              capturePreviewCanvas();
+              uiStore.setEditorMode('shader-browser');
+            }}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#8B5CF6] shrink-0" />
+            Browse Shaders...
           </button>
         </div>
       )}

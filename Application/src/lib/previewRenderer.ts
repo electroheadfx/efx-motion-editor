@@ -8,6 +8,8 @@ import {applyColorGrade} from './fxColorGrade';
 import type {ColorGradeParams} from './fxColorGrade';
 import {applyBlur} from './fxBlur';
 import {blurStore} from '../stores/blurStore';
+import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
+import {getShaderById} from './shaderLibrary';
 
 /**
  * Map our BlendMode enum to Canvas 2D globalCompositeOperation values.
@@ -173,6 +175,16 @@ export class PreviewRenderer {
               case 'generator-vignette':
                 drawVignette(off.ctx, logicalW, logicalH, layer.source);
                 break;
+              case 'generator-glsl': {
+                const gs = layer.source as { shaderId: string; params: Record<string, number> };
+                const sd = getShaderById(gs.shaderId);
+                if (sd) {
+                  const t = performance.now() / 1000;
+                  const glc = renderGlslGenerator(sd, Math.round(logicalW), Math.round(logicalH), gs.params, t, frame);
+                  if (glc) off.ctx.drawImage(glc, 0, 0, logicalW, logicalH);
+                }
+                break;
+              }
             }
             off.ctx.restore();
             // Apply RGB-only blur (preserveAlpha=true to avoid alpha halos)
@@ -188,7 +200,7 @@ export class PreviewRenderer {
           this.drawGeneratorLayer(layer, logicalW, logicalH, frame, sequenceOpacity);
         }
       } else if (isAdjustmentLayer(layer)) {
-        this.drawAdjustmentLayer(layer, logicalW, logicalH);
+        this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
       } else {
         // Content layer: check for solid/transparent frame first (per D-18, D-19)
         let handledAsSolid = false;
@@ -468,6 +480,18 @@ export class PreviewRenderer {
       case 'generator-vignette':
         drawVignette(ctx, logicalW, logicalH, layer.source);
         break;
+      case 'generator-glsl': {
+        const glslSource = layer.source as { shaderId: string; params: Record<string, number> };
+        const shaderDef = getShaderById(glslSource.shaderId);
+        if (shaderDef) {
+          const time = performance.now() / 1000;
+          const glCanvas = renderGlslGenerator(shaderDef, Math.round(logicalW), Math.round(logicalH), glslSource.params, time, frame);
+          if (glCanvas) {
+            ctx.drawImage(glCanvas, 0, 0, logicalW, logicalH);
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -479,6 +503,7 @@ export class PreviewRenderer {
     layer: Layer,
     _logicalW: number,
     _logicalH: number,
+    sequenceOpacity = 1.0,
   ): void {
     const ctx = this.ctx;
 
@@ -532,6 +557,33 @@ export class PreviewRenderer {
           }
         }
         ctx.restore();
+        break;
+      }
+
+      case 'adjustment-glsl': {
+        const glslSource = layer.source as { shaderId: string; params: Record<string, number> };
+        const shaderDef = getShaderById(glslSource.shaderId);
+        if (shaderDef) {
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          const pw = this.canvas.width;
+          const ph = this.canvas.height;
+          const time = performance.now() / 1000;
+          const effectiveOpacity = layer.opacity * sequenceOpacity;
+          const glCanvas = renderGlslFxImage(shaderDef, this.canvas, pw, ph, glslSource.params, time, 0);
+          if (glCanvas) {
+            if (effectiveOpacity >= 1) {
+              // Full strength: replace canvas with shader output
+              ctx.clearRect(0, 0, pw, ph);
+              ctx.drawImage(glCanvas, 0, 0, pw, ph);
+            } else {
+              // Partial opacity/fade: mix original with shader output
+              ctx.globalAlpha = effectiveOpacity;
+              ctx.drawImage(glCanvas, 0, 0, pw, ph);
+            }
+          }
+          ctx.restore();
+        }
         break;
       }
 

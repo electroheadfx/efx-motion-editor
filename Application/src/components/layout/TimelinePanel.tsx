@@ -1,5 +1,6 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
-import {Play, Pause, SkipBack, SkipForward, Rewind, Plus, Minus, Shrink, Repeat, Repeat1} from 'lucide-preact';
+import {Play, Pause, SkipBack, SkipForward, Rewind, Plus, Minus, Shrink, Repeat, Repeat1, Sparkles} from 'lucide-preact';
+import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {timelineStore} from '../../stores/timelineStore';
 import {uiStore} from '../../stores/uiStore';
 import {isolationStore} from '../../stores/isolationStore';
@@ -136,6 +137,22 @@ export function TimelinePanel() {
 
         {/* Add Transition */}
         <AddTransitionMenu />
+
+        {/* GLSL Shader Browser */}
+        <button
+          class="rounded px-2 py-[5px] bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)] transition-colors"
+          onClick={() => {
+            if (uiStore.editorMode.peek() === 'shader-browser') {
+              uiStore.setEditorMode('editor');
+            } else {
+              capturePreviewCanvas();
+              uiStore.setEditorMode('shader-browser');
+            }
+          }}
+          title="GLSL Shader Browser"
+        >
+          <span class="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1"><Sparkles size={11} /> GLSL</span>
+        </button>
 
         {/* Add Layer */}
         <AddLayerMenu />

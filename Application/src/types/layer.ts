@@ -7,8 +7,10 @@ export type LayerType =
   | 'generator-lines'
   | 'generator-dots'
   | 'generator-vignette'
+  | 'generator-glsl'
   | 'adjustment-color-grade'
-  | 'adjustment-blur';
+  | 'adjustment-blur'
+  | 'adjustment-glsl';
 
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add';
 
@@ -23,7 +25,9 @@ export type LayerSourceData =
   | { type: 'generator-dots'; count: number; sizeMin: number; sizeMax: number; speed: number; lockSeed: boolean; seed: number }
   | { type: 'generator-vignette'; size: number; softness: number; intensity: number }
   | { type: 'adjustment-color-grade'; brightness: number; contrast: number; saturation: number; hue: number; fade: number; tintColor: string; preset: string; fadeBlend?: string }
-  | { type: 'adjustment-blur'; radius: number };
+  | { type: 'adjustment-blur'; radius: number }
+  | { type: 'generator-glsl'; shaderId: string; params: Record<string, number> }
+  | { type: 'adjustment-glsl'; shaderId: string; params: Record<string, number> };
 
 export interface Layer {
   id: string;
@@ -95,10 +99,23 @@ export function createBaseLayer(): Layer {
 /** Extract all numeric source properties from an FX layer (excluding non-animatable fields) */
 export function extractFxSourceValues(layer: Layer): Record<string, number> {
   const result: Record<string, number> = {};
+  const source = layer.source as Record<string, unknown>;
+
+  // For GLSL layers, extract from nested params object
+  if ('params' in source && typeof source.params === 'object' && source.params !== null) {
+    for (const key in source.params as Record<string, unknown>) {
+      const val = (source.params as Record<string, unknown>)[key];
+      if (typeof val === 'number') {
+        result[key] = val;
+      }
+    }
+    return result;
+  }
+
   const exclude = new Set(['type', 'lockSeed', 'lock_seed', 'seed', 'tintColor', 'tint_color', 'preset', 'fadeBlend', 'fade_blend']);
-  for (const key in layer.source) {
+  for (const key in source) {
     if (exclude.has(key)) continue;
-    const val = (layer.source as Record<string, unknown>)[key];
+    const val = source[key];
     if (typeof val === 'number') {
       result[key] = val;
     }
@@ -152,6 +169,10 @@ export function createDefaultFxSource(type: LayerType): LayerSourceData {
       return { type: 'adjustment-color-grade', brightness: 0, contrast: 0, saturation: 0, hue: 0, fade: 0, tintColor: '#D4A574', preset: 'none' };
     case 'adjustment-blur':
       return { type: 'adjustment-blur', radius: 0.3 };
+    case 'generator-glsl':
+      return { type: 'generator-glsl', shaderId: '', params: {} };
+    case 'adjustment-glsl':
+      return { type: 'adjustment-glsl', shaderId: '', params: {} };
     default:
       throw new Error(`Not an FX layer type: ${type}`);
   }

@@ -105,6 +105,9 @@ export interface MceLayerSource {
   fade_blend?: string;
   // Adjustment-blur
   radius?: number;
+  // GLSL shaders (generator-glsl / adjustment-glsl)
+  shader_id?: string;
+  params?: Record<string, number>;
 }
 
 /** Transition definition within a sequence in the .mce file */

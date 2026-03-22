@@ -95,6 +95,7 @@ Phases 17 and 18 are independent and can parallelize after Phase 16.
 
 - Phase 15.1 inserted: Add in-use indicators to imported media and safe removal with timeline awareness (before Phase 16)
 - Phase 15.2 inserted after Phase 15: Solid Sequence (URGENT)
+- Phase 15.3 inserted after Phase 15: GLSL Shadertoys (URGENT)
 
 ### Blockers/Concerns
 

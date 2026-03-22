@@ -204,6 +204,11 @@ pub struct MceLayerSource {
     // Adjustment-blur fields
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radius: Option<f64>,
+    // GLSL shader fields (generator-glsl / adjustment-glsl)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shader_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<std::collections::HashMap<String, f64>>,
 }
 
 /// Animation keyframe on a layer

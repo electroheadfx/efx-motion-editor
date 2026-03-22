@@ -6,6 +6,7 @@ import { TimelinePanel } from './TimelinePanel';
 import { ImportedView } from '../views/ImportedView';
 import { SettingsView } from '../views/SettingsView';
 import { ExportView } from '../views/ExportView';
+import { ShaderBrowser } from '../shader-browser/ShaderBrowser';
 import { DropZone } from '../import/DropZone';
 import { ShortcutsOverlay } from '../overlay/ShortcutsOverlay';
 import { FullscreenOverlay } from '../overlay/FullscreenOverlay';
@@ -94,6 +95,7 @@ export function EditorShell() {
         {uiStore.editorMode.value === 'imported' && <ImportedView />}
         {uiStore.editorMode.value === 'settings' && <SettingsView />}
         {uiStore.editorMode.value === 'export' && <ExportView />}
+        {uiStore.editorMode.value === 'shader-browser' && <ShaderBrowser />}
       </div>
       {/* Drop overlay -- renders on top of everything when dragging files */}
       <DropZone />

@@ -98,7 +98,7 @@ export function NumericInput({
     <div class="flex items-center gap-4 flex-1 min-w-0">
       <span
         class="shrink-0 whitespace-nowrap select-none cursor-ew-resize"
-        style={{width: '32px', fontSize: '12px', fontWeight: 500, color: 'var(--sidebar-text-secondary)'}}
+        style={{width: '48px', fontSize: '12px', fontWeight: 500, color: 'var(--sidebar-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis'}}
         data-interactive
         onPointerDown={handleLabelPointerDown}
       >

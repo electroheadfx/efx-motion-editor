@@ -1,7 +1,7 @@
 import {signal} from '@preact/signals';
 import type {PanelId} from '../types/ui';
 
-export type EditorMode = 'editor' | 'imported' | 'settings' | 'export';
+export type EditorMode = 'editor' | 'imported' | 'settings' | 'export' | 'shader-browser';
 
 export type AddLayerIntent =
   | null

@@ -215,9 +215,16 @@ export function renderGlobalFrame(
         if (!layer.keyframes || layer.keyframes.length === 0) return layer;
         const values = interpolateAt(layer.keyframes, fxLocalFrame);
         if (!values) return layer;
-        const interpolatedLayer = values.sourceOverrides
-          ? { ...layer, source: { ...layer.source, ...values.sourceOverrides } as LayerSourceData, opacity: values.opacity, blur: values.blur }
-          : { ...layer, opacity: values.opacity, blur: values.blur };
+        let newSource = layer.source;
+        if (values.sourceOverrides) {
+          if ('params' in layer.source) {
+            // GLSL layers: merge overrides into params sub-object
+            newSource = { ...layer.source, params: { ...(layer.source as { params: Record<string, number> }).params, ...values.sourceOverrides } } as LayerSourceData;
+          } else {
+            newSource = { ...layer.source, ...values.sourceOverrides } as LayerSourceData;
+          }
+        }
+        const interpolatedLayer = { ...layer, source: newSource, opacity: values.opacity, blur: values.blur };
         return interpolatedLayer;
       });
       if (fxLayers.length > 0) {

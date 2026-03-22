@@ -96,6 +96,8 @@ const FX_TRACK_COLORS: Record<string, string> = {
   'generator-dots': '#DA70D6',
   'generator-vignette': '#708090',
   'adjustment-color-grade': '#CD853F',
+  'generator-glsl': '#8B5CF6',
+  'adjustment-glsl': '#8B5CF6',
 };
 const FX_DEFAULT_COLOR = '#888888';
 

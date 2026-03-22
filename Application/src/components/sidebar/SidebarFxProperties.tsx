@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useState, useRef } from 'preact/hooks';
+import { X } from 'lucide-preact';
 import { NumericInput } from '../shared/NumericInput';
 import { SectionLabel } from '../shared/SectionLabel';
 import { ColorPickerModal } from '../shared/ColorPickerModal';
@@ -12,6 +13,10 @@ import { blurStore } from '../../stores/blurStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { isGeneratorLayer } from '../../types/layer';
 import { COLOR_GRADE_PRESETS, PRESET_NAMES } from '../../lib/fxPresets';
+import { getShaderById } from '../../lib/shaderLibrary';
+import type { ShaderDefinition } from '../../lib/shaderLibrary';
+import { renderShaderPreview, renderGlslFxImage } from '../../lib/glslRuntime';
+import { capturePreviewCanvas, getCapturedCanvas } from '../../lib/shaderPreviewCapture';
 import type { Layer, LayerSourceData, BlendMode } from '../../types/layer';
 
 const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
@@ -326,6 +331,341 @@ function BlurSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSection
   );
 }
 
+// ---- GLSL Shader Preview Modal ----
+
+function GlslPreviewModal({
+  shader,
+  layer,
+  onParamChange,
+  onParamsChange,
+  onClose,
+}: {
+  shader: ShaderDefinition;
+  layer: Layer;
+  onParamChange: (key: string, val: number) => void;
+  onParamsChange: (updates: Record<string, number>) => void;
+  onClose: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
+  const startTime = useRef(performance.now());
+  const source = layer.source as { params: Record<string, number> };
+  const [modalColorGroup, setModalColorGroup] = useState<string | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    let running = true;
+    if (shader.category === 'generator') {
+      const animate = () => {
+        if (!running) return;
+        const t = (performance.now() - startTime.current) / 1000;
+        renderShaderPreview(shader, canvas, 640, 400, source.params, t);
+        animRef.current = requestAnimationFrame(animate);
+      };
+      animate();
+    } else {
+      const captured = getCapturedCanvas();
+      if (captured) {
+        const glCanvas = renderGlslFxImage(shader, captured, 640, 400, source.params, 0, 0);
+        if (glCanvas) {
+          canvas.width = 640;
+          canvas.height = 400;
+          const ctx = canvas.getContext('2d');
+          if (ctx) ctx.drawImage(glCanvas, 0, 0, 640, 400);
+        }
+      }
+    }
+
+    return () => { running = false; cancelAnimationFrame(animRef.current); };
+  }, [shader, source.params]);
+
+  const renderedColorGroups = new Set<string>();
+  const modeParam = shader.params.find(p => p.key === 'mode');
+  const currentMode = modeParam ? (source.params.mode ?? modeParam.default) : -1;
+
+  return (
+    <div
+      class="fixed inset-0 z-[9999] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div class="bg-[var(--color-bg-section-header)] rounded-lg border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden" style={{ width: '680px', maxHeight: '90vh', overflowY: 'auto' }}>
+        {/* Preview */}
+        <div class="relative">
+          <canvas
+            ref={canvasRef}
+            width={640}
+            height={400}
+            class="w-full block"
+            style={{ aspectRatio: '640/400' }}
+          />
+          <button
+            class="absolute top-2 right-2 p-1.5 rounded bg-black/50 text-white hover:bg-black/70 cursor-pointer"
+            onClick={onClose}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Shader info */}
+        <div class="px-5 py-3 border-b border-[var(--color-border-subtle)]">
+          <div class="text-[15px] text-[var(--color-text-button)] font-semibold">{shader.name}</div>
+          <div class="text-[12px] text-[var(--color-text-dim)] mt-0.5">{shader.description}</div>
+          <div class="flex items-center gap-3 mt-1">
+            {shader.author && <span class="text-[11px] text-[var(--color-text-muted)]">Created by {shader.author}</span>}
+            {shader.url && (
+              <a href={shader.url} target="_blank" rel="noopener noreferrer"
+                class="text-[11px] text-[#8B5CF6] hover:underline cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); import('@tauri-apps/api/core').then(m => m.invoke('export_open_in_finder', { path: shader.url! })); }}
+              >Shadertoy</a>
+            )}
+          </div>
+        </div>
+
+        {/* Parameters — directly editing the layer */}
+        {shader.params.length > 0 && (
+          <div class="px-5 py-4 space-y-3">
+            <div class="text-[9px] text-[var(--color-text-dim)] font-semibold">PARAMETERS</div>
+            {shader.params.map((p) => {
+              if (p.hidden) return null;
+
+              if (p.colorGroup) {
+                if (renderedColorGroups.has(p.colorGroup)) return null;
+                renderedColorGroups.add(p.colorGroup);
+                if (p.colorGroup === 'tint' && (currentMode < 0.5 || currentMode > 1.5)) return null;
+                if ((p.colorGroup === 'shadow' || p.colorGroup === 'highlight') && currentMode < 1.5) return null;
+                const gp = shader.params.filter(g => g.colorGroup === p.colorGroup);
+                if (gp.length !== 3) return null;
+                const hex = rgbToHex(
+                  source.params[gp[0].key] ?? gp[0].default,
+                  source.params[gp[1].key] ?? gp[1].default,
+                  source.params[gp[2].key] ?? gp[2].default,
+                );
+                return (
+                  <div key={p.colorGroup} class="flex items-center gap-2">
+                    <span class="text-[11px] text-[var(--color-text-muted)] w-24 shrink-0">{p.label}</span>
+                    <div
+                      class="w-7 h-7 rounded cursor-pointer border border-[var(--color-border-subtle)]"
+                      style={{ backgroundColor: hex }}
+                      onClick={() => setModalColorGroup(modalColorGroup === p.colorGroup ? null : p.colorGroup!)}
+                    />
+                    {modalColorGroup === p.colorGroup && (
+                      <ColorPickerModal
+                        color={hex}
+                        onCommit={(c) => {
+                          const [r, g, b] = hexToRgb(c);
+                          onParamsChange({ [gp[0].key]: r, [gp[1].key]: g, [gp[2].key]: b });
+                          setModalColorGroup(null);
+                        }}
+                        onClose={() => setModalColorGroup(null)}
+                      />
+                    )}
+                  </div>
+                );
+              }
+
+              const val = source.params[p.key] ?? p.default;
+              const isMode = p.key === 'mode';
+              const modeLabel = isMode ? modeLabelForValue(val) : null;
+              return (
+                <div key={p.key} class="flex items-center gap-3">
+                  <span class="text-[11px] text-[var(--color-text-muted)] w-24 shrink-0 truncate">
+                    {modeLabel ?? p.label}
+                  </span>
+                  <input
+                    type="range"
+                    min={p.min ?? 0}
+                    max={p.max ?? 1}
+                    step={p.step ?? 0.01}
+                    value={val}
+                    class="flex-1 h-1 accent-[#8B5CF6] cursor-pointer"
+                    onInput={(e) => onParamChange(p.key, parseFloat((e.target as HTMLInputElement).value))}
+                  />
+                  <span class="text-[11px] text-[var(--color-text-button)] w-14 text-right">
+                    {isMode ? (modeLabel ?? '') : val.toFixed(p.step && p.step >= 1 ? 0 : p.step && p.step >= 0.1 ? 1 : p.step && p.step >= 0.01 ? 2 : 4)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Close button */}
+        <div class="px-5 py-3 border-t border-[var(--color-border-subtle)]">
+          <button
+            class="w-full py-2 rounded-md bg-[#8B5CF6] text-white text-[12px] font-semibold hover:brightness-110 transition-colors cursor-pointer"
+            onClick={onClose}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Convert RGB floats (0-1) to hex string */
+function rgbToHex(r: number, g: number, b: number): string {
+  const toHex = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+/** Convert hex string to RGB floats (0-1) */
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255];
+}
+
+/** Mode label for the B&W filter */
+function modeLabelForValue(val: number): string {
+  if (val < 0.5) return 'Grayscale';
+  if (val < 1.5) return 'Monotone';
+  return 'Duotone';
+}
+
+function GlslSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSectionKfProps) {
+  const [openColorGroup, setOpenColorGroup] = useState<string | null>(null);
+  const source = layer.source as { shaderId: string; params: Record<string, number> };
+  const shaderDef = getShaderById(source.shaderId);
+  if (!shaderDef) return <div class="text-[10px] text-[var(--color-text-muted)]">Unknown shader: {source.shaderId}</div>;
+
+  const v = (field: string, fallback: number) => fxValues ? (fxValues[field] ?? fallback) : fallback;
+
+  const editGlslParam = (field: string, val: number) => {
+    if (onFxEdit) {
+      onFxEdit(field, val);
+    } else {
+      layerStore.updateLayer(layer.id, {
+        source: { ...layer.source, params: { ...source.params, [field]: val } } as LayerSourceData,
+      });
+    }
+  };
+
+  const editGlslParams = (updates: Record<string, number>) => {
+    layerStore.updateLayer(layer.id, {
+      source: { ...layer.source, params: { ...source.params, ...updates } } as LayerSourceData,
+    });
+  };
+
+  // Get current mode value for conditional rendering
+  const modeParam = shaderDef.params.find(p => p.key === 'mode');
+  const currentMode = modeParam ? v('mode', source.params.mode ?? modeParam.default) : -1;
+
+  // Collect color groups (already seen)
+  const renderedColorGroups = new Set<string>();
+
+  // Build visible items: sliders and color pickers
+  type VisibleItem =
+    | { kind: 'slider'; key: string; label: string; value: number; min: number; max: number; step: number }
+    | { kind: 'color'; group: string; label: string; hex: string; groupParams: typeof shaderDef.params };
+
+  const items: VisibleItem[] = [];
+  for (const p of shaderDef.params) {
+    if (p.hidden) continue;
+    if (p.colorGroup) {
+      if (renderedColorGroups.has(p.colorGroup)) continue;
+      renderedColorGroups.add(p.colorGroup);
+      if (p.colorGroup === 'tint' && (currentMode < 0.5 || currentMode > 1.5)) continue;
+      if ((p.colorGroup === 'shadow' || p.colorGroup === 'highlight') && currentMode < 1.5) continue;
+      const gp = shaderDef.params.filter(g => g.colorGroup === p.colorGroup);
+      if (gp.length !== 3) continue;
+      const hex = rgbToHex(
+        v(gp[0].key, source.params[gp[0].key] ?? gp[0].default),
+        v(gp[1].key, source.params[gp[1].key] ?? gp[1].default),
+        v(gp[2].key, source.params[gp[2].key] ?? gp[2].default),
+      );
+      items.push({ kind: 'color', group: p.colorGroup, label: p.label, hex, groupParams: gp });
+    } else {
+      const val = v(p.key, source.params[p.key] ?? p.default);
+      const isMode = p.key === 'mode';
+      items.push({ kind: 'slider', key: p.key, label: isMode ? modeLabelForValue(val) : p.label, value: val, min: p.min ?? 0, max: p.max ?? 1, step: p.step ?? 0.01 });
+    }
+  }
+
+  // Pair items into 2-column rows
+  const rows: VisibleItem[][] = [];
+  for (let i = 0; i < items.length; i += 2) {
+    rows.push(items.slice(i, i + 2));
+  }
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  return (
+    <div>
+      <SectionLabel text={shaderDef.name.toUpperCase()} />
+      <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
+        {rows.map((row, ri) => (
+          <div key={ri} class="flex items-center" style={{ gap: '16px' }}>
+            {row.map((item) => {
+              if (item.kind === 'slider') {
+                return (
+                  <NumericInput
+                    key={item.key}
+                    label={item.label}
+                    value={item.value}
+                    step={item.step}
+                    min={item.min}
+                    max={item.max}
+                    onChange={(val) => editGlslParam(item.key, val)}
+                  />
+                );
+              } else {
+                return (
+                  <div key={item.group} class="flex items-center gap-1 flex-1 min-w-0">
+                    <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">{item.label}</span>
+                    <div
+                      class="w-6 h-6 rounded cursor-pointer border border-[var(--color-border-subtle)]"
+                      style={{ backgroundColor: item.hex }}
+                      onClick={() => setOpenColorGroup(openColorGroup === item.group ? null : item.group)}
+                      title={`Pick ${item.label.toLowerCase()} color`}
+                    />
+                    {openColorGroup === item.group && (
+                      <ColorPickerModal
+                        color={item.hex}
+                        onCommit={(c) => {
+                          const [r, g, b] = hexToRgb(c);
+                          editGlslParams({ [item.groupParams[0].key]: r, [item.groupParams[1].key]: g, [item.groupParams[2].key]: b });
+                          setOpenColorGroup(null);
+                        }}
+                        onClose={() => setOpenColorGroup(null)}
+                      />
+                    )}
+                  </div>
+                );
+              }
+            })}
+            {row.length === 1 && <div class="flex-1" />}
+          </div>
+        ))}
+
+        {/* Open Shader Preview button */}
+        <button
+          class="w-full py-1.5 rounded-md bg-[#8B5CF6] text-white text-[11px] font-semibold hover:brightness-110 transition-colors cursor-pointer mt-1"
+          onClick={() => {
+            capturePreviewCanvas();
+            setPreviewOpen(true);
+          }}
+        >
+          Open Shader Preview
+        </button>
+      </div>
+
+      {/* Shader Preview Modal */}
+      {previewOpen && (
+        <GlslPreviewModal
+          shader={shaderDef}
+          layer={layer}
+          onParamChange={editGlslParam}
+          onParamsChange={editGlslParams}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---- Dispatch: select the right FX section based on source type ----
 
 function FxSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSectionKfProps) {
@@ -344,6 +684,9 @@ function FxSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSectionKf
       return <ColorGradeSection layer={layer} onFxEdit={onFxEdit} fxValues={fxValues} />;
     case 'adjustment-blur':
       return <BlurSection layer={layer} onFxEdit={onFxEdit} fxValues={fxValues} />;
+    case 'generator-glsl':
+    case 'adjustment-glsl':
+      return <GlslSection layer={layer} onFxEdit={onFxEdit} fxValues={fxValues} />;
     default:
       return null;
   }
@@ -357,10 +700,18 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
   const isOnKf = keyframeStore.isOnKeyframe.value;
 
   // Keyframe-aware FX source property edit handler
+  const isGlsl = layer.source.type === 'generator-glsl' || layer.source.type === 'adjustment-glsl';
   const handleFxKeyframeEdit = hasKeyframes ? (field: string, value: number) => {
     if (isOnKf) {
       // ON a keyframe: update layer source AND update keyframe values
-      updateSource(layer.id, layer, { [field]: value });
+      if (isGlsl) {
+        const src = layer.source as { params: Record<string, number> };
+        layerStore.updateLayer(layer.id, {
+          source: { ...layer.source, params: { ...src.params, [field]: value } } as LayerSourceData,
+        });
+      } else {
+        updateSource(layer.id, layer, { [field]: value });
+      }
       keyframeStore.addKeyframe(layer.id, timelineStore.currentFrame.peek());
     } else {
       // BETWEEN keyframes: transient edit only
@@ -465,8 +816,8 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
         </div>
       )}
 
-      {/* Blend mode dropdown (only for adjustment-blur type) */}
-      {layer.source.type === 'adjustment-blur' && (
+      {/* Blend mode dropdown (for adjustment-blur and GLSL generator types — not FX image) */}
+      {(layer.source.type === 'adjustment-blur' || layer.source.type === 'generator-glsl') && (
         <div>
           <SectionLabel text="BLEND" />
           <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>

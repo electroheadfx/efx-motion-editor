@@ -1,36 +1,139 @@
 # EFX Motion Editor
 
-A desktop application designed for **Wallace & Gromit style animation** - creating motion-capture style cinematic. Import key photographs, arrange them into timed sequences, layer visual effects, preview in real-time, and export as PNG image sequences for post-production in DaVinci Resolve or Premiere Pro.
+A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
+
+<!-- Screenshot: Main editor view -->
 
 ## Features
 
-- **Key Photo Workflow** — Import photos (JPEG, PNG, TIFF, HEIC) via drag & drop or file dialog, assign hold frame counts, and arrange into named sequences
-- **Multi-Sequence Projects** — Create, reorder, duplicate, and rename sequences with per-sequence FPS (15 or 24) and resolution settings
-- **FX Layer System** — Stack static images, image sequences, or video layers with opacity, blend modes (normal, screen, multiply, overlay, add), and transform controls (position, scale, rotation, crop)
-- **Real-Time Preview** — Motion Canvas-powered playback engine with frame-rate-limited rendering
-- **Canvas Timeline** — Visual timeline with zoom, scroll, and thumbnail previews
-- **JKL Shuttle Scrubbing** — Professional-style J/K/L shuttle controls with speed multiplier
-- **Undo/Redo** — Non-destructive history stack (up to 200 entries) with drag coalescing
-- **Auto-Save** — Debounced (2s) + periodic (60s) auto-save with atomic file writes
-- **Export** — Output as PNG image sequences ready for NLE import
-- **Keyboard Shortcuts** — Space (play/pause), Arrow keys (step frames), Cmd+Z/Shift+Z (undo/redo), `?` (shortcuts overlay), and more
+### Key Photo Workflow
+
+Import photos (JPEG, PNG, TIFF, HEIC) via drag & drop or file dialog, assign hold frame counts, and arrange into named sequences. Support for solid color and transparent key entries alongside imported images.
+
+<!-- Screenshot: Key photo strip with solid/transparent entries -->
+
+### Multi-Sequence Timeline
+
+Create, reorder, duplicate, and rename sequences with per-sequence FPS (15 or 24) and resolution settings. Canvas-based timeline with zoom, scroll, thumbnail previews, and frame-accurate scrubbing.
+
+<!-- Screenshot: Timeline with multiple sequences -->
+
+### Layer System
+
+Stack static images, image sequences, or video layers with opacity, blend modes (normal, screen, multiply, overlay, add), and transform controls (position, scale, rotation, crop). Live canvas manipulation with drag handles.
+
+<!-- Screenshot: Layer compositing with transform handles -->
+
+### Cinematic FX Effects
+
+Built-in generator effects (film grain, particles, lines, dots, vignette) and adjustment effects (color grade with presets, GPU-accelerated blur). All effects have per-layer keyframe animation with interpolation curves.
+
+<!-- Screenshot: FX effects panel -->
+
+### GLSL Shader Library
+
+17 GPU-powered shader effects ported from Shadertoy, organized in a visual browser with animated previews and real-time parameter controls.
+
+**FX Image Shaders** — Process the image below with GPU filters:
+
+| Shader | Description |
+|--------|-------------|
+| B&W Pixel Filter | Grayscale, monotone, and duotone modes with color pickers |
+| Super Film Grain | 1920s film look with grain, scratches, dust, flicker, and vignette |
+| Color Fusion | RGB channel cycling for chromatic persistence effects |
+| Fast Blur | GPU disc blur with noise-rotated sampling (1-4 steps) |
+| Color Temperature | Warm/cool white balance in perceptual ProPhoto RGB space |
+| CRT Screen | Retro CRT with pixelation, barrel distortion, chromatic aberration |
+| Filmora Shake | Camera shake with motion blur, rotation, and RGB separation |
+
+**Generator Shaders** — Procedural animated content as timeline layers:
+
+| Shader | Description |
+|--------|-------------|
+| Star Nest | Volumetric star field with dark matter and distance fading |
+| Spiral Lit Clouds | Volumetric raymarched clouds through a twisting luminous tunnel |
+| The Drive Home | Rainy night drive with bokeh traffic lights and rain drops |
+| Clouds 3D Fly | Volumetric cloud flythrough with sun lighting and FBM noise |
+| Sun with Stars | Volumetric sun with fractal nebula and twinkling star field |
+| Neon Doodle Fuzz | Twin neon tubes weaving through space with fuzzy glow |
+| Seascape | Realistic ocean with raymarched waves and sky reflections |
+| Ocean Water | Multi-wave ocean simulation with ground and subsurface scattering |
+| Indefinite | Abstract fractal cloud tunnel with warm volumetric glow |
+| Zippy Zaps | Electric fractal lightning with vibrant color cycling |
+
+The shader library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](Application/src/lib/shaders/SHADER-SPEC.md) for how to add new shaders.
+
+<!-- Screenshot: GLSL shader browser with animated previews -->
+
+### Fade & Cross-Dissolve Transitions
+
+Fade in/out and cross-dissolve transitions between sequences with opacity and solid color modes. GLSL shader transitions planned for a future release.
+
+<!-- Screenshot: Cross-dissolve transition -->
+
+### Audio Import & Waveform
+
+Import WAV, MP3, AAC, or FLAC audio files. Audio waveform renders on the timeline below content tracks. Synced playback with volume, mute, drag offset, and fade in/out controls. Audio persists across project save/reopen.
+
+<!-- Screenshot: Audio waveform on timeline -->
+
+### Keyframe Animation
+
+Per-layer keyframe animation with 4 interpolation curves (linear, ease-in, ease-out, ease-in-out). Animate position, scale, rotation, opacity, blur, and FX parameters over time. Keyframe navigation and diamond editing in the sidebar.
+
+<!-- Screenshot: Keyframe animation controls -->
+
+### Media Management
+
+Color-coded usage badges on imported assets showing usage counts across all sequences. Safe removal with cascade deletion and undo support. Right-click context menu for quick asset management.
+
+<!-- Screenshot: Import grid with usage badges -->
+
+### Video Export
+
+Export as PNG image sequences with resolution multipliers, or encode video directly (ProRes/H.264/AV1) via auto-provisioned FFmpeg. Progress tracking with metadata sidecars.
+
+<!-- Screenshot: Export dialog -->
+
+### Canvas Preview
+
+Real-time preview with zoom/pan, pinch gestures, fit-to-window, and fullscreen mode with letterboxed preview. Full-speed playback mode for performance testing.
+
+<!-- Screenshot: Canvas preview with zoom -->
+
+### UI Theme System
+
+3-level UI theme (dark/medium/light) with 28+ CSS variables. DaVinci Resolve-inspired dark aesthetic throughout.
+
+<!-- Screenshot: Theme comparison -->
+
+### Professional Controls
+
+- **JKL Shuttle Scrubbing** — Professional J/K/L shuttle controls with speed multiplier
+- **Undo/Redo** — 200-level history stack with drag coalescing
+- **Auto-Save** — Debounced (2s) + periodic (60s) auto-save with atomic writes
+- **Keyboard Shortcuts** — Space, arrows, JKL, Cmd+Z/S/N/O, `?` overlay, and more
+- **Sequence Isolation** — Solo mode and global loop playback toggle
 
 ## Canvas Motion Fork
 
-This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40efxlab%2Fmotion-canvas) packages, a fork of [Motion Canvas](https://motioncanvas.io/). Currently used: core, 2d, vite-plugin, player, ui. Future templates for the editor will be built on top of this fork.
+This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40efxlab%2Fmotion-canvas) packages, a fork of [Motion Canvas](https://motioncanvas.io/). Currently used: core, 2d, vite-plugin, player, ui.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | UI | Preact, @preact/signals, TypeScript, Tailwind CSS v4 |
-| Build | Vite |
-| Preview Engine | @efxlab/motion-canvas-* (fork of motion-canvas) |
-| Native Backend | Rust, Tauri v2 |
-| Project Format | `.mce` (portable JSON) |
+| Build | Vite 5 |
+| Preview Engine | @efxlab/motion-canvas-* (fork), Canvas 2D compositing |
+| GPU Effects | WebGL2 (GLSL shaders, GPU blur) |
+| Native Backend | Rust, Tauri 2.0 |
+| Video Export | FFmpeg (auto-provisioned) |
+| Project Format | `.mce` v10 (progressive JSON with backward compat v1-v10) |
 
 ## Prerequisites
 
+- macOS (native title bar, file dialogs, macOS conventions)
 - [Rust](https://rustup.rs/) toolchain
 - [Node.js](https://nodejs.org/) (v18+)
 - [pnpm](https://pnpm.io/)
@@ -63,18 +166,36 @@ The built application will be available in `Application/src-tauri/target/release
 ```
 efx-motion-editor/
 ├── Application/
-│   ├── src/                  # Frontend (Preact + TypeScript)
-│   │   ├── components/       # UI components (layout, timeline, layers, etc.)
-│   │   ├── stores/           # Reactive state (Preact Signals)
-│   │   ├── lib/              # Utilities (playback, shortcuts, auto-save, IPC)
-│   │   ├── types/            # TypeScript type definitions
-│   │   └── scenes/           # Motion Canvas preview scene
-│   └── src-tauri/            # Native backend (Rust + Tauri)
+│   ├── src/                     # Frontend (Preact + TypeScript)
+│   │   ├── components/          # UI components
+│   │   │   ├── layout/          # EditorShell, LeftPanel, TimelinePanel, CanvasArea
+│   │   │   ├── timeline/        # TimelineCanvas, TimelineRenderer, AddFxMenu
+│   │   │   ├── sidebar/         # Properties panels, FX controls, keyframe nav
+│   │   │   ├── shader-browser/  # GLSL shader browser window
+│   │   │   ├── overlay/         # Shortcuts overlay, fullscreen
+│   │   │   └── shared/          # NumericInput, ColorPickerModal, SectionLabel
+│   │   ├── stores/              # Reactive state (9 Preact Signal stores)
+│   │   ├── lib/                 # Core logic
+│   │   │   ├── shaders/         # GLSL shader library
+│   │   │   │   ├── generators/  # 10 procedural generator shaders
+│   │   │   │   ├── fx-image/    # 7 image filter shaders
+│   │   │   │   └── SHADER-SPEC.md
+│   │   │   ├── glslRuntime.ts   # WebGL2 shader rendering engine
+│   │   │   ├── shaderLibrary.ts # Shader registry and types
+│   │   │   ├── previewRenderer.ts  # Canvas 2D compositing engine
+│   │   │   ├── exportRenderer.ts   # Export pipeline
+│   │   │   ├── glBlur.ts        # GPU-accelerated Gaussian blur
+│   │   │   ├── fxGenerators.ts  # CPU FX generators (grain, particles, etc.)
+│   │   │   ├── playbackEngine.ts   # rAF playback with delta accumulation
+│   │   │   └── ...
+│   │   ├── types/               # TypeScript type definitions
+│   │   └── scenes/              # Motion Canvas preview scene
+│   └── src-tauri/               # Native backend (Rust + Tauri 2.0)
 │       └── src/
-│           ├── commands/     # IPC command handlers
-│           ├── models/       # Data structures
-│           └── services/     # File I/O, image processing
-└── SPECS/                    # Application specification & UI mockups
+│           ├── commands/        # IPC command handlers
+│           ├── models/          # Data structures (project format)
+│           └── services/        # File I/O, image processing, thumbnails
+└── .planning/                   # GSD project planning
 ```
 
 ## License

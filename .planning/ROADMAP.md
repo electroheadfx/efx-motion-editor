@@ -92,6 +92,16 @@ Plans:
 - [x] 15-03-PLAN.md — Timeline interaction (click, drag, resize, reorder, slip) + playback sync
 - [x] 15-04-PLAN.md — AudioProperties panel, project persistence (v8 format), end-to-end verification
 
+### Phase 15.3: GLSL Shadertoys (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 15
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 15.3 to break down)
+
 ### Phase 15.2: Solid Sequence (INSERTED)
 
 **Goal:** Users can add key solid (colored) and key transparent entries to any content sequence, with color picker, reorder, hold frames, and rendering across timeline, canvas preview, and export
