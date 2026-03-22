@@ -22,6 +22,8 @@ function buildSequenceFrames(seq: Sequence): FrameEntry[] {
         keyPhotoId: kp.id,
         imageId: kp.imageId,
         localFrame: f,
+        ...(kp.solidColor ? { solidColor: kp.solidColor } : {}),
+        ...(kp.isTransparent ? { isTransparent: true } : {}),
       });
       lf++;
     }
@@ -235,7 +237,7 @@ export function preloadExportImages(
   renderer: PreviewRenderer,
   fm: FrameEntry[],
 ): Promise<void> {
-  const imageIds = [...new Set(fm.map(f => f.imageId))];
+  const imageIds = [...new Set(fm.map(f => f.imageId).filter(id => id !== ''))];
   return new Promise<void>((resolve) => {
     renderer.preloadImages(imageIds);
     // Check if all already loaded

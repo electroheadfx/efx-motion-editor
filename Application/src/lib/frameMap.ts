@@ -22,6 +22,8 @@ export const frameMap = computed<FrameEntry[]>(() => {
           keyPhotoId: kp.id,
           imageId: kp.imageId,
           localFrame: f,
+          ...(kp.solidColor ? { solidColor: kp.solidColor } : {}),
+          ...(kp.isTransparent ? { isTransparent: true } : {}),
         });
         globalFrame++;
       }
@@ -68,6 +70,8 @@ export const trackLayouts = computed<TrackLayout[]>(() => {
         startFrame: kpStartFrame,
         endFrame: globalFrame,
         holdFrames: kp.holdFrames,
+        ...(kp.solidColor ? { solidColor: kp.solidColor } : {}),
+        ...(kp.isTransparent ? { isTransparent: true } : {}),
       });
     }
     tracks.push({

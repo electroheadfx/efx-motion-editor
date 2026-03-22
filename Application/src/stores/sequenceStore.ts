@@ -481,6 +481,84 @@ export const sequenceStore = {
     });
   },
 
+  /** Add a key solid entry (per D-06: default black, no dialog) */
+  addKeySolid(sequenceId: string, solidColor: string = '#000000', holdFrames: number = 4) {
+    const before = snapshot();
+    const kp: KeyPhoto = {
+      id: genId(),
+      imageId: '',  // no image for solids
+      holdFrames,
+      solidColor,
+    };
+    sequences.value = sequences.value.map((s) =>
+      s.id === sequenceId ? {...s, keyPhotos: [...s.keyPhotos, kp]} : s,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Add key solid',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Update a key solid's color (per D-14: live preview, undo on commit) */
+  updateKeySolidColor(sequenceId: string, keyPhotoId: string, solidColor: string) {
+    const before = snapshot();
+    sequences.value = sequences.value.map((s) =>
+      s.id === sequenceId
+        ? {
+            ...s,
+            keyPhotos: s.keyPhotos.map((kp) =>
+              kp.id === keyPhotoId ? {...kp, solidColor} : kp,
+            ),
+          }
+        : s,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Change solid color',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Toggle a key entry between solid and transparent mode (per D-11/D-12) */
+  toggleKeyEntryTransparent(sequenceId: string, keyPhotoId: string) {
+    const before = snapshot();
+    sequences.value = sequences.value.map((s) =>
+      s.id === sequenceId
+        ? {
+            ...s,
+            keyPhotos: s.keyPhotos.map((kp) => {
+              if (kp.id !== keyPhotoId) return kp;
+              if (kp.isTransparent) {
+                // Switch back to solid — restore solidColor (default #000000 if none)
+                return {...kp, isTransparent: undefined, solidColor: kp.solidColor || '#000000'};
+              } else {
+                // Switch to transparent
+                return {...kp, isTransparent: true};
+              }
+            }),
+          }
+        : s,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Toggle solid/transparent',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
   // --- Layer CRUD (per active sequence) ---
 
   /** Add a layer to the active sequence */

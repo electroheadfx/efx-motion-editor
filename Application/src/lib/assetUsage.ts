@@ -26,7 +26,7 @@ export function getImageUsage(imageId: string, sequences: Sequence[]): AssetUsag
     // Check key photos (skip placeholder sentinel)
     for (let i = 0; i < seq.keyPhotos.length; i++) {
       const kp = seq.keyPhotos[i];
-      if (kp.imageId === imageId && kp.imageId !== '__placeholder__') {
+      if (kp.imageId === imageId && kp.imageId !== '__placeholder__' && kp.imageId !== '') {
         locations.push({
           sequenceId: seq.id,
           sequenceName: seq.name,
