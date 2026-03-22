@@ -6,54 +6,54 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 
 ## Milestones
 
-- ✅ **v0.1.0** — Phases 1-7 (shipped 2026-03-11)
-- ✅ **v0.2.0 Pipeline Complete** — Phases 8-14 (shipped 2026-03-21)
+- ✅ **v0.1.0** — Phases 1-7 (shipped 2019-03-11)
+- ✅ **v0.2.0 Pipeline Complete** — Phases 8-14 (shipped 2019-03-21)
 - 🚧 **v0.3.0 Audio & Polish** — Phases 15-18 (in progress)
 
 ## Phases
 
 <details>
-<summary>✅ v0.1.0 (Phases 1-7) — SHIPPED 2026-03-11</summary>
+<summary>✅ v0.1.0 (Phases 1-7) — SHIPPED 2019-03-11</summary>
 
-- [x] Phase 1: Foundation & Scaffolding (3/3 plans) — completed 2026-03-02
-- [x] Phase 2: UI Shell & Image Pipeline (3/3 plans) — completed 2026-03-03
-- [x] Phase 3: Project & Sequence Management (10/10 plans) — completed 2026-03-03
-- [x] Phase 3.1: Fix Cross-Phase Integration Wiring (1/1 plan) — completed 2026-03-03
-- [x] Phase 4: Timeline & Preview (5/5 plans) — completed 2026-03-03
-- [x] Phase 5: Editing Infrastructure (5/5 plans) — completed 2026-03-06
-- [x] Phase 6: Layer System & Properties Panel (8/8 plans) — completed 2026-03-08
-- [x] Phase 7: Cinematic FX Effects (10/10 plans) — completed 2026-03-10
+- [x] Phase 1: Foundation & Scaffolding (3/3 plans) — completed 2019-03-02
+- [x] Phase 2: UI Shell & Image Pipeline (3/3 plans) — completed 2019-03-03
+- [x] Phase 3: Project & Sequence Management (10/10 plans) — completed 2019-03-03
+- [x] Phase 3.1: Fix Cross-Phase Integration Wiring (1/1 plan) — completed 2019-03-03
+- [x] Phase 4: Timeline & Preview (5/5 plans) — completed 2019-03-03
+- [x] Phase 5: Editing Infrastructure (5/5 plans) — completed 2019-03-06
+- [x] Phase 6: Layer System & Properties Panel (8/8 plans) — completed 2019-03-08
+- [x] Phase 7: Cinematic FX Effects (10/10 plans) — completed 2019-03-10
 
 See: `milestones/v0.1.0-ROADMAP.md` for full details.
 
 </details>
 
 <details>
-<summary>✅ v0.2.0 Pipeline Complete (Phases 8-14) — SHIPPED 2026-03-21</summary>
+<summary>✅ v0.2.0 Pipeline Complete (Phases 8-14) — SHIPPED 2019-03-21</summary>
 
-- [x] Phase 8: UI Theme System (3/3 plans) — completed 2026-03-12
-- [x] Phase 9: Canvas Zoom (4/4 plans) — completed 2026-03-12
-- [x] Phase 10: FX Blur Effect (4/4 plans) — completed 2026-03-13
-- [x] Phase 11: Live Canvas Transform (4/4 plans) — completed 2026-03-14
-- [x] Phase 12: Layer Keyframe Animation (5/5 plans) — completed 2026-03-15
-- [x] Phase 12.1: Remove Bottom Bar → Sidebar (4/4 plans) — completed 2026-03-16
-- [x] Phase 12.1.1: Big UI Sidebar Design (5/5 plans) — completed 2026-03-16
-- [x] Phase 12.2: Auto-seek Timeline (1/1 plans) — completed 2026-03-17
-- [x] Phase 12.3: Quick Keys Navigation (1/1 plans) — completed 2026-03-17
-- [x] Phase 12.4: ShortcutsOverlay Tabs (1/1 plans) — completed 2026-03-17
-- [x] Phase 12.5: Vertical Scroll (2/2 plans) — completed 2026-03-18
-- [x] Phase 12.6: Layer Auto-selection UX (3/3 plans) — completed 2026-03-18
-- [x] Phase 12.7: Keyframe Icons (1/1 plans) — completed 2026-03-18
-- [x] Phase 12.8: Timeline Thumb Cover (1/1 plans) — completed 2026-03-18
-- [x] Phase 12.9: Add-Layer Dialogs (1/1 plans) — completed 2026-03-18
-- [x] Phase 12.10: GPU-Accelerated Blur (2/2 plans) — completed 2026-03-18
-- [x] Phase 12.11: Full-speed + Fullscreen (2/2 plans) — completed 2026-03-19
-- [x] Phase 12.12: Content Overlay Layers (4/4 plans) — completed 2026-03-19
-- [x] Phase 12.13: Linear Timeline (2/2 plans) — completed 2026-03-19
-- [x] Phase 12.14: Timeline/Canvas Buttons (2/2 plans) — completed 2026-03-19
-- [x] Phase 12.15: Sequence Isolation + Loop (4/4 plans) — completed 2026-03-20
-- [x] Phase 13: Fade/Cross-Dissolve (5/5 plans) — completed 2026-03-20
-- [x] Phase 14: PNG & Video Export (5/5 plans) — completed 2026-03-21
+- [x] Phase 8: UI Theme System (3/3 plans) — completed 2019-03-12
+- [x] Phase 9: Canvas Zoom (4/4 plans) — completed 2019-03-12
+- [x] Phase 10: FX Blur Effect (4/4 plans) — completed 2019-03-13
+- [x] Phase 11: Live Canvas Transform (4/4 plans) — completed 2019-03-14
+- [x] Phase 12: Layer Keyframe Animation (5/5 plans) — completed 2019-03-15
+- [x] Phase 12.1: Remove Bottom Bar → Sidebar (4/4 plans) — completed 2019-03-16
+- [x] Phase 12.1.1: Big UI Sidebar Design (5/5 plans) — completed 2019-03-16
+- [x] Phase 12.2: Auto-seek Timeline (1/1 plans) — completed 2019-03-17
+- [x] Phase 12.3: Quick Keys Navigation (1/1 plans) — completed 2019-03-17
+- [x] Phase 12.4: ShortcutsOverlay Tabs (1/1 plans) — completed 2019-03-17
+- [x] Phase 12.5: Vertical Scroll (2/2 plans) — completed 2019-03-18
+- [x] Phase 12.6: Layer Auto-selection UX (3/3 plans) — completed 2019-03-18
+- [x] Phase 12.7: Keyframe Icons (1/1 plans) — completed 2019-03-18
+- [x] Phase 12.8: Timeline Thumb Cover (1/1 plans) — completed 2019-03-18
+- [x] Phase 12.9: Add-Layer Dialogs (1/1 plans) — completed 2019-03-18
+- [x] Phase 12.10: GPU-Accelerated Blur (2/2 plans) — completed 2019-03-18
+- [x] Phase 12.11: Full-speed + Fullscreen (2/2 plans) — completed 2019-03-19
+- [x] Phase 12.12: Content Overlay Layers (4/4 plans) — completed 2019-03-19
+- [x] Phase 12.13: Linear Timeline (2/2 plans) — completed 2019-03-19
+- [x] Phase 12.14: Timeline/Canvas Buttons (2/2 plans) — completed 2019-03-19
+- [x] Phase 12.15: Sequence Isolation + Loop (4/4 plans) — completed 2019-03-20
+- [x] Phase 13: Fade/Cross-Dissolve (5/5 plans) — completed 2019-03-20
+- [x] Phase 14: PNG & Video Export (5/5 plans) — completed 2019-03-21
 
 See: `milestones/v0.2.0-ROADMAP.md` for full details.
 
@@ -63,7 +63,8 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 
 **Milestone Goal:** Add audio import with waveforms and beat sync, enhance sidebar UX with solo mode, and introduce After Effects-style motion paths on canvas.
 
-- [x] **Phase 15: Audio Import & Waveform** - Import audio, waveform visualization, synced playback, volume, offset, fades, project persistence (completed 2026-03-21)
+- [x] **Phase 15: Audio Import & Waveform** - Import audio, waveform visualization, synced playback, volume, offset, fades, project persistence (completed 2019-03-21)
+- [ ] **Phase 15.1: Media In-Use Indicators & Safe Removal** - Check timeline usage before removal, warn user, visual badge on used assets in ImportGrid
 - [ ] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange
 - [ ] **Phase 17: Enhancements** - Sidebar key photo scroll/collapse, sequence solo, layer solo
 - [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
@@ -89,6 +90,21 @@ Plans:
 - [x] 15-02-PLAN.md — Import flow (AddAudioButton), CSS variables, waveform rendering on timeline
 - [x] 15-03-PLAN.md — Timeline interaction (click, drag, resize, reorder, slip) + playback sync
 - [x] 15-04-PLAN.md — AudioProperties panel, project persistence (v8 format), end-to-end verification
+
+### Phase 15.1: Media In-Use Indicators & Safe Removal
+**Goal:** Users can see which imported assets are in use across the project, with color-coded badges showing usage counts, and safely remove assets with cascade removal that handles key photo placeholders, layer removal, and audio track removal with undo support
+**Depends on:** Phase 15
+**Requirements**: MEDIA-01, MEDIA-02, MEDIA-03, MEDIA-04, MEDIA-05
+**Success Criteria** (what must be TRUE):
+  1. All asset types (image, video, audio) use stable ID-based references, and usage counts are computed across all sequences
+  2. Every asset in ImportGrid displays a color-coded badge (green/yellow/orange/red) with its usage count
+  3. Clicking a badge opens a popover listing exact usage locations with "Remove Reference" and "Delete File" actions
+  4. Removing an in-use asset performs cascade removal with detailed warning, and the operation is undoable with Ctrl+Z
+**Plans**: 2 plans
+
+Plans:
+- [ ] 15.1-01-PLAN.md — Asset reference refactor (videoAssetId, audioAssetId), project format v9, unified usage scanner, CSS variables
+- [ ] 15.1-02-PLAN.md — UsageBadge + UsagePopover components, cascade removal module, ImportGrid integration, visual verification
 
 ### Phase 16: Audio Export & Beat Sync
 **Goal**: Users can export video with audio included, detect beats from the audio track, and auto-arrange key photos to beat positions
@@ -124,13 +140,14 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.3.0: 15 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
+v0.3.0: 15 > 15.1 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 1-7 | v0.1.0 | 45/45 | Complete | 2026-03-11 |
-| 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2026-03-21 |
-| 15. Audio Import & Waveform | v0.3.0 | 4/4 | Complete    | 2026-03-21 |
+| 1-7 | v0.1.0 | 45/45 | Complete | 2019-03-11 |
+| 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
+| 15. Audio Import & Waveform | v0.3.0 | 4/4 | Complete    | 2019-03-21 |
+| 15.1 Media In-Use & Safe Removal | v0.3.0 | 0/2 | Not started | - |
 | 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |

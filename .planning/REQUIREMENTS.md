@@ -17,6 +17,14 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 - [x] **AUDIO-06**: User can set fade-in and fade-out duration on audio
 - [x] **AUDIO-07**: Audio track persists in project file (.mce v8)
 
+### Media In-Use Indicators & Safe Removal
+
+- [ ] **MEDIA-01**: All asset types (image, video, audio) use stable ID-based references for reliable usage tracking
+- [ ] **MEDIA-02**: User can see usage count for any asset across all sequences and audio tracks
+- [ ] **MEDIA-03**: Every asset in ImportGrid displays a color-coded badge showing how many times it is used (green=0, yellow=1-2, orange=3-5, red=6+)
+- [ ] **MEDIA-04**: User can click a badge to see exact usage locations and access remove/delete actions via popover
+- [ ] **MEDIA-05**: Removing an in-use asset performs cascade removal (key photos become placeholders, layers removed, audio tracks removed) with undo support and detailed warning
+
 ### Audio Export & Beat Sync
 
 - [ ] **BEAT-01**: User can export video with audio included (FFmpeg muxing with fades applied)
@@ -79,6 +87,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUDIO-05 | Phase 15 | Complete |
 | AUDIO-06 | Phase 15 | Complete |
 | AUDIO-07 | Phase 15 | Complete |
+| MEDIA-01 | Phase 15.1 | Pending |
+| MEDIA-02 | Phase 15.1 | Pending |
+| MEDIA-03 | Phase 15.1 | Pending |
+| MEDIA-04 | Phase 15.1 | Pending |
+| MEDIA-05 | Phase 15.1 | Pending |
 | BEAT-01 | Phase 16 | Pending |
 | BEAT-02 | Phase 16 | Pending |
 | BEAT-03 | Phase 16 | Pending |
@@ -93,10 +106,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PATH-03 | Phase 18 | Pending |
 
 **Coverage:**
-- v0.3.0 requirements: 19 total
-- Mapped to phases: 19
+- v0.3.0 requirements: 24 total
+- Mapped to phases: 24
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-21*
-*Last updated: 2026-03-21 after roadmap creation*
+*Last updated: 2026-03-22 after Phase 15.1 planning*
