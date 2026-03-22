@@ -34,7 +34,7 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 - [ ] **SOLID-05**: Timeline renders key solid ranges as colored rectangles and key transparent ranges as checkerboard pattern
 - [ ] **SOLID-06**: Canvas preview renders key solids as full-resolution colored rectangles and key transparents as canvas background
 - [x] **SOLID-07**: Cross-dissolve between key photo and key solid blends normally via standard alpha interpolation
-- [ ] **SOLID-08**: Key solid/transparent entries persist in project file (.mce v10) with backward-compatible reading of v9 files
+- [x] **SOLID-08**: Key solid/transparent entries persist in project file (.mce v10) with backward-compatible reading of v9 files
 
 ### Audio Export & Beat Sync
 
@@ -110,7 +110,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SOLID-05 | Phase 15.2 | Pending |
 | SOLID-06 | Phase 15.2 | Pending |
 | SOLID-07 | Phase 15.2 | Complete |
-| SOLID-08 | Phase 15.2 | Pending |
+| SOLID-08 | Phase 15.2 | Complete |
 | BEAT-01 | Phase 16 | Pending |
 | BEAT-02 | Phase 16 | Pending |
 | BEAT-03 | Phase 16 | Pending |

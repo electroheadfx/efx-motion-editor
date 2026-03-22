@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
 status: unknown
-stopped_at: Completed 15.2-00-PLAN.md
-last_updated: "2026-03-22T14:42:04.743Z"
+stopped_at: Completed 15.2-01-PLAN.md
+last_updated: "2026-03-22T14:44:30.793Z"
 last_activity: 2026-03-22
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -26,7 +26,7 @@ Last activity: 2026-03-22
 ## Current Position
 
 Phase: 15.2 (solid-sequence) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Plan: 2 of 4
 | Phase 15.1 P01 | 6min | 2 tasks | 10 files |
 | Phase 15.1 P02 | 4min | 2 tasks | 5 files |
 | Phase 15.2 P00 | 2min | 2 tasks | 3 files |
+| Phase 15.2 P01 | 4min | 3 tasks | 9 files |
 
 ### Decisions
 
@@ -71,6 +72,8 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 15.1]: Composite undo captures all 3 stores (sequenceStore, audioStore, imageStore) as single history entry
 - [Phase 15.1]: Removed deprecated isImageInUse, replaced by unified assetUsage.ts module
 - [Phase 15.2]: Used 'as any' type assertions in test scaffolds for pre-Plan-01 compilation of unimplemented store methods
+- [Phase 15.2]: Optional fields on KeyPhoto (not discriminated union) to minimize structural change across 15+ callsites
+- [Phase 15.2]: Project format bumped from v9 to v10 with backward compat for v9 files via conditional spread
 
 ### Pending Todos
 
@@ -97,6 +100,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-22T14:42:04.741Z
-Stopped at: Completed 15.2-00-PLAN.md
+Last session: 2026-03-22T14:44:30.791Z
+Stopped at: Completed 15.2-01-PLAN.md
 Resume file: None
