@@ -95,6 +95,8 @@ function buildMceProject(): MceProject {
           image_id: kp.imageId,
           hold_frames: kp.holdFrames,
           order: kpIndex,
+          ...(kp.solidColor ? { solid_color: kp.solidColor } : {}),
+          ...(kp.isTransparent ? { is_transparent: true } : {}),
         }),
       ),
       layers: seq.layers.map((layer, layerIndex): MceLayer => ({
@@ -192,7 +194,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 9,
+    version: 10,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -325,6 +327,8 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
             id: kp.id,
             imageId: kp.image_id,
             holdFrames: kp.hold_frames,
+            ...(kp.solid_color ? { solidColor: kp.solid_color } : {}),
+            ...(kp.is_transparent ? { isTransparent: kp.is_transparent } : {}),
           }),
         ),
         layers,
