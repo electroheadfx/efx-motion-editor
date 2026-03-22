@@ -24,17 +24,18 @@ export const UsageBadge: FunctionalComponent<UsageBadgeProps> = ({count, onClick
 
   return (
     <button
-      class={`${positionClass} min-w-[18px] h-[18px] rounded-full flex items-center justify-center cursor-pointer`}
+      class={`${positionClass} min-w-[22px] h-[22px] rounded-full flex items-center justify-center cursor-pointer`}
       style={{
         backgroundColor: bgColor,
         color: textColor,
-        fontSize: '9px',
-        fontWeight: 600,
+        fontSize: '10px',
+        fontWeight: 700,
         lineHeight: '1',
-        padding: '0 4px',
-        border: 'none',
-        filter: 'brightness(1)',  // base for hover transition
-        transition: 'filter 100ms',
+        padding: '0 5px',
+        border: '1.5px solid rgba(0, 0, 0, 0.25)',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+        filter: 'brightness(1)',
+        transition: 'filter 100ms, transform 100ms',
       }}
       onClick={(e: MouseEvent) => {
         e.stopPropagation();
@@ -42,10 +43,14 @@ export const UsageBadge: FunctionalComponent<UsageBadgeProps> = ({count, onClick
         onClick(e);
       }}
       onMouseEnter={(e: MouseEvent) => {
-        (e.currentTarget as HTMLElement).style.filter = 'brightness(1.15)';
+        const el = e.currentTarget as HTMLElement;
+        el.style.filter = 'brightness(1.15)';
+        el.style.transform = 'scale(1.12)';
       }}
       onMouseLeave={(e: MouseEvent) => {
-        (e.currentTarget as HTMLElement).style.filter = 'brightness(1)';
+        const el = e.currentTarget as HTMLElement;
+        el.style.filter = 'brightness(1)';
+        el.style.transform = 'scale(1)';
       }}
       title={`Used ${count} time${count !== 1 ? 's' : ''}`}
     >
