@@ -31,8 +31,8 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 - [ ] **SOLID-02**: User can change a key solid's color via inline color picker popover with live canvas preview
 - [x] **SOLID-03**: User can toggle a key solid between solid mode and transparent mode via top-left corner button
 - [x] **SOLID-04**: Key solid and transparent entries have hold frames, reorder, and delete — identical to key photos
-- [ ] **SOLID-05**: Timeline renders key solid ranges as colored rectangles and key transparent ranges as checkerboard pattern
-- [ ] **SOLID-06**: Canvas preview renders key solids as full-resolution colored rectangles and key transparents as canvas background
+- [x] **SOLID-05**: Timeline renders key solid ranges as colored rectangles and key transparent ranges as checkerboard pattern
+- [x] **SOLID-06**: Canvas preview renders key solids as full-resolution colored rectangles and key transparents as canvas background
 - [x] **SOLID-07**: Cross-dissolve between key photo and key solid blends normally via standard alpha interpolation
 - [x] **SOLID-08**: Key solid/transparent entries persist in project file (.mce v10) with backward-compatible reading of v9 files
 
@@ -107,8 +107,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SOLID-02 | Phase 15.2 | Pending |
 | SOLID-03 | Phase 15.2 | Complete |
 | SOLID-04 | Phase 15.2 | Complete |
-| SOLID-05 | Phase 15.2 | Pending |
-| SOLID-06 | Phase 15.2 | Pending |
+| SOLID-05 | Phase 15.2 | Complete |
+| SOLID-06 | Phase 15.2 | Complete |
 | SOLID-07 | Phase 15.2 | Complete |
 | SOLID-08 | Phase 15.2 | Complete |
 | BEAT-01 | Phase 16 | Pending |
