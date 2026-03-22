@@ -20,6 +20,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
 **Current focus:** Phase 15 — audio-import-waveform
+Last activity: 2026-03-22 - Completed quick task 260322-cwc: add @efxlab/efx-canvas-motion reference
 
 ## Current Position
 
@@ -76,7 +77,9 @@ No active blockers.
 
 ### Quick Tasks Completed
 
-- [260322-cwc]: Added @efxlab/efx-canvas-motion as runtime dependency and documented fork relationship in README (2026-03-22)
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260322-cwc | Add @efxlab/efx-canvas-motion dependency and document fork | 2026-03-22 | 31c8a03 | [260322-cwc-add-reference-to-canvas-motion-because-i](./quick/260322-cwc-add-reference-to-canvas-motion-because-i/) |
 
 ## Session Continuity
 
