@@ -20,7 +20,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
 **Current focus:** Phase 15 — audio-import-waveform
-Last activity: 2026-03-22 - Completed quick task 260322-cwc: add @efxlab/efx-canvas-motion reference
+Last activity: 2026-03-22 - Completed quick task 260322-d9q: add ImportGrid asset removal context menu
 
 ## Current Position
 
@@ -80,9 +80,10 @@ No active blockers.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260322-cwc | Add @efxlab/efx-canvas-motion dependency and document fork | 2026-03-22 | 31c8a03 | [260322-cwc-add-reference-to-canvas-motion-because-i](./quick/260322-cwc-add-reference-to-canvas-motion-because-i/) |
+| 260322-d9q | Add right-click context menu to ImportGrid for asset removal | 2026-03-22 | 89cf160 | [260322-d9q-in-importer-media-can-t-be-suppressed-i-](./quick/260322-d9q-in-importer-media-can-t-be-suppressed-i-/) |
 
 ## Session Continuity
 
-Last session: 2026-03-22T08:21:25Z
-Stopped at: Completed quick task 260322-cwc
+Last session: 2026-03-22T08:41:24Z
+Stopped at: Completed quick task 260322-d9q
 Resume file: None
