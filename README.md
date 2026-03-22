@@ -15,13 +15,18 @@ A desktop application designed for **Wallace & Gromit style animation** - creati
 - **Export** — Output as PNG image sequences ready for NLE import
 - **Keyboard Shortcuts** — Space (play/pause), Arrow keys (step frames), Cmd+Z/Shift+Z (undo/redo), `?` (shortcuts overlay), and more
 
+## Canvas Motion Fork
+
+This project depends on [@efxlab/efx-canvas-motion](https://www.npmjs.com/package/@efxlab/efx-canvas-motion), a fork of canvas-motion. Future templates for the editor will be built on top of this fork.
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | UI | Preact, @preact/signals, TypeScript, Tailwind CSS v4 |
 | Build | Vite |
-| Preview Engine | Efx Motion Canvas (fork from motion-canvas) |
+| Preview Engine | Efx Motion Canvas (fork of motion-canvas) |
+| Templates Engine | @efxlab/efx-canvas-motion (fork of canvas-motion) |
 | Native Backend | Rust, Tauri v2 |
 | Project Format | `.mce` (portable JSON) |
 
