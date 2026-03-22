@@ -51,6 +51,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Lucide-preact SVG icon buttons with keyboard shortcut tooltips — v0.2.0
 - ✓ Tabbed shortcuts overlay with 7 groups and full keyboard navigation — v0.2.0
 - ✓ Timeline vertical scrollbar with playback auto-scroll — v0.2.0
+- ✓ Solid color and transparent key entries with full data pipeline, UI controls, and rendering — v0.3.0
 
 ### Active
 
@@ -83,7 +84,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 Shipped v0.2.0 with 20,428 LOC (18,110 TypeScript + 2,020 Rust + 298 CSS) across 847 commits since v0.1.0.
 Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm.
 Architecture: 9 reactive signal stores (project, sequence, layer, keyframe, timeline, canvas, ui, blur, isolation, export), Rust image pipeline with thumbnail generation, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur (glBlur.ts) with CPU fallback, FX generator system with seeded PRNG, keyframe interpolation engine with polynomial cubic easing, PlaybackEngine with rAF delta accumulation and full-speed mode, command-pattern undo/redo engine, tinykeys keyboard shortcuts, exportRenderer with yielding frame loop and FFmpeg video encoding.
-Project format: .mce v7 with backward compatibility (v1 through v7).
+Project format: .mce v10 with backward compatibility (v1 through v10).
 
 Known technical debt:
 - 2 medium-severity export edge cases (content-overlay image preload, FX generator frame offset)
