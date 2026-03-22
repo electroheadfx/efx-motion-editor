@@ -14,6 +14,7 @@ import {timelineStore} from '../../stores/timelineStore';
 import {getTopLayerId} from '../../lib/layerSelection';
 import {KeyPhotoStripInline, AddKeyPhotoButton} from './KeyPhotoStrip';
 import type {Sequence} from '../../types/sequence';
+import {isKeySolid, isKeyTransparent} from '../../types/sequence';
 
 /** Sortable sequence list with drag reorder, context actions, inline rename */
 export function SequenceList() {
@@ -93,7 +94,11 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
 
   // Get first key photo thumbnail if available
   const firstKp = seq.keyPhotos[0];
-  const firstImage = firstKp ? imageStore.getById(firstKp.imageId) : undefined;
+  const firstKpIsSolid = firstKp && isKeySolid(firstKp);
+  const firstKpIsTransparent = firstKp && isKeyTransparent(firstKp);
+  const firstImage = firstKp && !firstKpIsSolid && !firstKpIsTransparent
+    ? imageStore.getById(firstKp.imageId)
+    : undefined;
   const thumbUrl = firstImage
     ? assetUrl(firstImage.thumbnail_path)
     : null;
@@ -264,8 +269,12 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
             width: '40px',
             height: '40px',
             borderRadius: '4px',
-            backgroundColor: 'var(--sidebar-input-bg)',
-            ...(thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : {}),
+            backgroundColor: firstKpIsTransparent ? '#B0B0B0' : firstKpIsSolid ? firstKp.solidColor : 'var(--sidebar-input-bg)',
+            ...(firstKpIsTransparent ? {
+              backgroundImage: 'linear-gradient(45deg, #808080 25%, transparent 25%), linear-gradient(-45deg, #808080 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #808080 75%), linear-gradient(-45deg, transparent 75%, #808080 75%)',
+              backgroundSize: '8px 8px',
+              backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
+            } : thumbUrl ? {backgroundImage: `url(${thumbUrl})`} : {}),
           }}
         >
           <div class="absolute bottom-0 right-0" style={{ padding: '3px', background: '#00000088', borderRadius: '4px' }}>
