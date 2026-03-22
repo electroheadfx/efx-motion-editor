@@ -1,6 +1,7 @@
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { NumericInput } from '../shared/NumericInput';
 import { SectionLabel } from '../shared/SectionLabel';
+import { ColorPickerModal } from '../shared/ColorPickerModal';
 import { KeyframeNavBar } from './KeyframeNavBar';
 import { InlineInterpolation } from './InlineInterpolation';
 import { layerStore } from '../../stores/layerStore';
@@ -214,6 +215,7 @@ function VignetteSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSec
 }
 
 function ColorGradeSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSectionKfProps) {
+  const [tintPickerOpen, setTintPickerOpen] = useState(false);
   const source = layer.source as Extract<LayerSourceData, { type: 'adjustment-color-grade' }>;
   const v = (field: string, fallback: number) => fxValues ? (fxValues[field] ?? fallback) : fallback;
 
@@ -271,12 +273,19 @@ function ColorGradeSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxS
         {/* Tint color picker (full-width) */}
         <div class="flex items-center gap-1">
           <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Tint</span>
-          <input
-            type="color"
-            value={source.tintColor}
-            class="w-6 h-6 rounded cursor-pointer border-none bg-transparent"
-            onInput={(e) => handleParamChange('tintColor', (e.target as HTMLInputElement).value)}
+          <div
+            class="w-6 h-6 rounded cursor-pointer border border-[var(--color-border-subtle)]"
+            style={{ backgroundColor: source.tintColor || '#000000' }}
+            onClick={() => setTintPickerOpen(true)}
+            title="Pick tint color"
           />
+          {tintPickerOpen && (
+            <ColorPickerModal
+              color={source.tintColor || '#000000'}
+              onCommit={(c) => handleParamChange('tintColor', c)}
+              onClose={() => setTintPickerOpen(false)}
+            />
+          )}
         </div>
 
         {/* Fade blend mode dropdown (full-width) */}

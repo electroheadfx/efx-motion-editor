@@ -1,8 +1,10 @@
+import { useState } from 'preact/hooks';
 import { Trash2 } from 'lucide-preact';
 import { sequenceStore } from '../../stores/sequenceStore';
 import { uiStore, type TransitionSelection } from '../../stores/uiStore';
 import { NumericInput } from '../shared/NumericInput';
 import { SectionLabel } from '../shared/SectionLabel';
+import { ColorPickerModal } from '../shared/ColorPickerModal';
 import type { FadeMode } from '../../types/sequence';
 import type { EasingType } from '../../types/layer';
 
@@ -11,6 +13,7 @@ interface TransitionPropertiesProps {
 }
 
 export function TransitionProperties({ selection }: TransitionPropertiesProps) {
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const allSeqs = sequenceStore.sequences.value;
   const seq = allSeqs.find(s => s.id === selection.sequenceId);
   if (!seq) return null;
@@ -100,15 +103,23 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
               </button>
             </div>
             {transition.mode === 'solid' && (
-              <input
-                type="color"
-                value={transition.color}
-                class="w-6 h-6 rounded cursor-pointer shrink-0"
-                onInput={(e: Event) => {
-                  const target = e.target as HTMLInputElement;
-                  sequenceStore.updateTransition(selection.sequenceId, selection.type, { color: target.value });
-                }}
-              />
+              <>
+                <div
+                  class="w-6 h-6 rounded cursor-pointer shrink-0 border border-[var(--sidebar-border-unselected)]"
+                  style={{ backgroundColor: transition.color || '#000000' }}
+                  onClick={() => setColorPickerOpen(true)}
+                  title="Pick color"
+                />
+                {colorPickerOpen && (
+                  <ColorPickerModal
+                    color={transition.color || '#000000'}
+                    onCommit={(c) => {
+                      sequenceStore.updateTransition(selection.sequenceId, selection.type, { color: c });
+                    }}
+                    onClose={() => setColorPickerOpen(false)}
+                  />
+                )}
+              </>
             )}
           </div>
         )}
