@@ -1,6 +1,9 @@
-import {useRef, useEffect} from 'preact/hooks';
+import {useRef, useState, useCallback, useEffect} from 'preact/hooks';
+import {createPortal} from 'preact/compat';
 import {Film, Music} from 'lucide-preact';
+import {remove as removeFile} from '@tauri-apps/plugin-fs';
 import {imageStore, type VideoAsset} from '../../stores/imageStore';
+import {sequenceStore} from '../../stores/sequenceStore';
 import {assetUrl} from '../../lib/ipc';
 
 interface ImportGridProps {
@@ -32,6 +35,70 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
   const showImages = assetFilter !== 'videos-only' && assetFilter !== 'audio-only';
   const showVideos = assetFilter !== 'images-only' && assetFilter !== 'audio-only';
   const showAudio = assetFilter === 'audio-only' || assetFilter === 'all';
+
+  const [ctxMenu, setCtxMenu] = useState<{
+    type: 'image' | 'video' | 'audio';
+    id: string;
+    name: string;
+    path: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [ctxMenu]);
+
+  const handleRemoveRef = useCallback(() => {
+    if (!ctxMenu) return;
+    if (ctxMenu.type === 'image') {
+      const seqs = sequenceStore.sequences.peek();
+      if (imageStore.isImageInUse(ctxMenu.id, seqs)) {
+        if (!window.confirm(`"${ctxMenu.name}" is used in key photos or layers. Remove anyway?`)) {
+          setCtxMenu(null);
+          return;
+        }
+      }
+      imageStore.remove(ctxMenu.id);
+    } else if (ctxMenu.type === 'video') {
+      imageStore.removeVideoAsset(ctxMenu.id);
+    } else if (ctxMenu.type === 'audio') {
+      imageStore.removeAudioAsset(ctxMenu.id);
+    }
+    setCtxMenu(null);
+  }, [ctxMenu]);
+
+  const handleDeleteFile = useCallback(async () => {
+    if (!ctxMenu) return;
+    const confirmed = window.confirm(`Delete "${ctxMenu.name}" from disk? This cannot be undone.`);
+    if (!confirmed) { setCtxMenu(null); return; }
+
+    if (ctxMenu.type === 'image') {
+      const seqs = sequenceStore.sequences.peek();
+      if (imageStore.isImageInUse(ctxMenu.id, seqs)) {
+        if (!window.confirm(`"${ctxMenu.name}" is used in key photos or layers. Delete anyway?`)) {
+          setCtxMenu(null);
+          return;
+        }
+      }
+      const img = imageStore.getById(ctxMenu.id);
+      imageStore.remove(ctxMenu.id);
+      try { await removeFile(ctxMenu.path); } catch { /* file may not exist */ }
+      if (img) {
+        try { await removeFile(img.thumbnail_path); } catch { /* thumbnail may not exist */ }
+      }
+    } else if (ctxMenu.type === 'video') {
+      imageStore.removeVideoAsset(ctxMenu.id);
+      try { await removeFile(ctxMenu.path); } catch { /* file may not exist */ }
+    } else if (ctxMenu.type === 'audio') {
+      imageStore.removeAudioAsset(ctxMenu.id);
+      try { await removeFile(ctxMenu.path); } catch { /* file may not exist */ }
+    }
+    setCtxMenu(null);
+  }, [ctxMenu]);
 
   const visibleImages = showImages ? images : [];
   const visibleVideos = showVideos ? videos : [];
@@ -73,6 +140,15 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
                     ? () => onSelect(img.id)
                     : undefined
               }
+              onContextMenu={(e: MouseEvent) => {
+                e.preventDefault();
+                setCtxMenu({
+                  type: 'image', id: img.id,
+                  name: img.original_path.split('/').pop() ?? 'image',
+                  path: img.project_path,
+                  x: e.clientX, y: e.clientY,
+                });
+              }}
             >
               <img
                 src={assetUrl(img.thumbnail_path)}
@@ -115,6 +191,14 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
                 video={video}
                 selectMode={!!onSelect && !onVideoSelect}
                 onClick={onVideoSelect ? () => onVideoSelect(video.id) : undefined}
+                onContextMenu={(e: MouseEvent) => {
+                  e.preventDefault();
+                  setCtxMenu({
+                    type: 'video', id: video.id,
+                    name: video.name, path: video.path,
+                    x: e.clientX, y: e.clientY,
+                  });
+                }}
               />
             ))}
           </div>
@@ -138,6 +222,14 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
                 }`}
                 onClick={onAudioSelect ? () => onAudioSelect(audio.id) : undefined}
                 title={audio.name}
+                onContextMenu={(e: MouseEvent) => {
+                  e.preventDefault();
+                  setCtxMenu({
+                    type: 'audio', id: audio.id,
+                    name: audio.name, path: audio.path,
+                    x: e.clientX, y: e.clientY,
+                  });
+                }}
               >
                 <Music size={14} class="text-[var(--color-audio-waveform,#22B8A0)] shrink-0" />
                 <span class="text-xs text-[var(--color-text-button)] truncate">{audio.name}</span>
@@ -146,12 +238,40 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
           </div>
         </div>
       )}
+
+      {ctxMenu && createPortal(
+        <div
+          class="fixed z-50 rounded-md shadow-xl py-1 min-w-[140px]"
+          style={{
+            top: ctxMenu.y, left: ctxMenu.x,
+            backgroundColor: 'var(--sidebar-panel-bg)',
+            border: '1px solid var(--sidebar-border-unselected)',
+          }}
+          onMouseDown={(e: MouseEvent) => e.stopPropagation()}
+        >
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs hover:bg-[#ffffff10]"
+            style={{ color: 'var(--sidebar-text-button)' }}
+            onClick={handleRemoveRef}
+          >
+            Remove Reference
+          </button>
+          <div class="w-full h-px my-1" style={{ backgroundColor: 'var(--sidebar-border-unselected)' }} />
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-error-text)] hover:bg-[#ffffff10]"
+            onClick={handleDeleteFile}
+          >
+            Delete File
+          </button>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
 
 /** Video thumbnail that seeks to middle frame for a meaningful preview */
-function VideoThumb({video, selectMode, onClick}: {video: VideoAsset; selectMode?: boolean; onClick?: () => void}) {
+function VideoThumb({video, selectMode, onClick, onContextMenu}: {video: VideoAsset; selectMode?: boolean; onClick?: () => void; onContextMenu?: (e: MouseEvent) => void}) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -173,6 +293,7 @@ function VideoThumb({video, selectMode, onClick}: {video: VideoAsset; selectMode
       }`}
       title={onClick ? video.name : selectMode ? 'Videos cannot be used as key photos' : video.name}
       onClick={onClick}
+      onContextMenu={onContextMenu}
     >
       <video
         ref={videoRef}
