@@ -13,4 +13,17 @@ describe('exportRenderer', () => {
     it.todo('resolves when all images are loaded');
     it.todo('resolves immediately if all images already cached');
   });
+
+  // buildSequenceFrames is module-internal (not exported).
+  // These tests require buildSequenceFrames to be exported or tested indirectly via renderGlobalFrame.
+  // Plan 01/03 may export it or test solid behavior through renderGlobalFrame integration tests.
+  describe('buildSequenceFrames solid/transparent', () => {
+    it.todo('carries solidColor field from KeyPhoto to FrameEntry');
+    it.todo('carries isTransparent field from KeyPhoto to FrameEntry');
+    it.todo('produces empty imageId for solid/transparent entries');
+  });
+
+  describe('preloadExportImages with solids', () => {
+    it.todo('filters empty imageId strings from preload set');
+  });
 });
