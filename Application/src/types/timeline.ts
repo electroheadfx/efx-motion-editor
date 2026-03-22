@@ -15,6 +15,8 @@ export interface FrameEntry {
   keyPhotoId: string;
   imageId: string;
   localFrame: number; // frame index within this key photo's hold duration
+  solidColor?: string;       // hex color for solid frames
+  isTransparent?: boolean;   // true for transparent frames
 }
 
 /** Layout info for a sequence track row in the timeline */
@@ -51,6 +53,8 @@ export interface KeyPhotoRange {
   startFrame: number;
   endFrame: number; // exclusive
   holdFrames: number;
+  solidColor?: string;       // hex color for solid key photo ranges
+  isTransparent?: boolean;   // true for transparent key photo ranges
 }
 
 /** Layout info for an audio track row in the timeline */

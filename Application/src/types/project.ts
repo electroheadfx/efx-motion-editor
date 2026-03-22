@@ -141,6 +141,8 @@ export interface MceKeyPhoto {
   image_id: string;
   hold_frames: number;
   order: number;
+  solid_color?: string;      // v10+: hex color for solid entries
+  is_transparent?: boolean;  // v10+: true for transparent entries
 }
 
 /** Image reference in the project -- stores relative paths for portability */

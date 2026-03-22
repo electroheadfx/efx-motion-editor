@@ -32,8 +32,21 @@ export interface Sequence {
 /** Runtime key photo type (frontend state) */
 export interface KeyPhoto {
   id: string;
-  imageId: string;
+  imageId: string;           // '' for solids/transparents (keeps existing code safe)
   holdFrames: number;
+  solidColor?: string;       // hex color string, present for solid entries (default '#000000')
+  isTransparent?: boolean;   // true for transparent entries
+}
+
+/** Helper discriminators */
+export function isKeySolid(kp: KeyPhoto): boolean {
+  return !!kp.solidColor && !kp.isTransparent;
+}
+export function isKeyTransparent(kp: KeyPhoto): boolean {
+  return !!kp.isTransparent;
+}
+export function isKeyImage(kp: KeyPhoto): boolean {
+  return !!kp.imageId && !kp.solidColor && !kp.isTransparent;
 }
 
 // For .mce file format types, see types/project.ts (MceSequence, MceKeyPhoto)
