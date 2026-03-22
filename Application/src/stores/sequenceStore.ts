@@ -528,6 +528,21 @@ export const sequenceStore = {
     });
   },
 
+  /** Update color without undo — for live preview during color picker drag (per D-14) */
+  updateKeySolidColorLive(sequenceId: string, keyPhotoId: string, solidColor: string) {
+    sequences.value = sequences.value.map((s) =>
+      s.id === sequenceId
+        ? {
+            ...s,
+            keyPhotos: s.keyPhotos.map((kp) =>
+              kp.id === keyPhotoId ? {...kp, solidColor} : kp,
+            ),
+          }
+        : s,
+    );
+    markDirty();
+  },
+
   /** Toggle a key entry between solid and transparent mode (per D-11/D-12) */
   toggleKeyEntryTransparent(sequenceId: string, keyPhotoId: string) {
     const before = snapshot();

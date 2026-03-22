@@ -1,6 +1,6 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import Sortable from 'sortablejs';
-import {Plus, X} from 'lucide-preact';
+import {Camera, Square, Blend, Pipette, X} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
@@ -128,8 +128,112 @@ export function KeyPhotoStripInline({sequenceId}: {sequenceId: string}) {
           imageId={kp.imageId}
           holdFrames={kp.holdFrames}
           isActiveByFrame={index === activeKpIndex}
+          solidColor={kp.solidColor}
+          isTransparent={kp.isTransparent}
         />
       ))}
+    </div>
+  );
+}
+
+/** Color picker popover with native input + hex text field (per D-13, D-14, D-15) */
+interface ColorPickerPopoverProps {
+  color: string;
+  onLiveChange: (color: string) => void;
+  onCommit: (color: string) => void;
+  onClose: () => void;
+}
+
+function ColorPickerPopover({color, onLiveChange, onCommit, onClose}: ColorPickerPopoverProps) {
+  const [hexValue, setHexValue] = useState(color);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const initialColor = useRef(color);
+
+  // Close on click outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        if (hexValue !== initialColor.current) {
+          onCommit(hexValue);
+        }
+        onClose();
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [onClose, onCommit, hexValue]);
+
+  // Close on Escape (revert to initial)
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onLiveChange(initialColor.current);
+        onClose();
+      }
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose, onLiveChange]);
+
+  // Sync hex display when color prop changes externally
+  useEffect(() => {
+    setHexValue(color);
+  }, [color]);
+
+  const handleHexCommit = useCallback(() => {
+    if (/^#[0-9a-fA-F]{6}$/.test(hexValue)) {
+      onCommit(hexValue);
+    } else {
+      setHexValue(color);
+    }
+  }, [hexValue, color, onCommit]);
+
+  return (
+    <div
+      ref={popoverRef}
+      class="absolute z-50 rounded-lg shadow-xl p-2 flex flex-col gap-1"
+      style={{
+        bottom: '100%',
+        left: 0,
+        marginBottom: '4px',
+        backgroundColor: 'var(--sidebar-panel-bg)',
+        border: '1px solid var(--sidebar-border-unselected)',
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <input
+        type="color"
+        value={color}
+        class="w-8 h-8 rounded cursor-pointer border-0 p-0"
+        onInput={(e) => {
+          const val = (e.target as HTMLInputElement).value;
+          onLiveChange(val);
+          setHexValue(val);
+        }}
+        onChange={(e) => {
+          const val = (e.target as HTMLInputElement).value;
+          onCommit(val);
+          setHexValue(val);
+        }}
+      />
+      <input
+        type="text"
+        value={hexValue}
+        class="w-full rounded px-1 py-0.5 border-0 outline-none"
+        style={{
+          fontSize: '10px',
+          backgroundColor: 'var(--sidebar-input-bg)',
+          color: 'var(--sidebar-text-primary)',
+        }}
+        placeholder="#000000"
+        onInput={(e) => setHexValue((e.target as HTMLInputElement).value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleHexCommit();
+          if (e.key === 'Escape') onClose();
+        }}
+        onBlur={handleHexCommit}
+        onClick={(e) => e.stopPropagation()}
+      />
     </div>
   );
 }
@@ -140,6 +244,8 @@ interface KeyPhotoCardProps {
   imageId: string;
   holdFrames: number;
   isActiveByFrame: boolean;
+  solidColor?: string;
+  isTransparent?: boolean;
 }
 
 function KeyPhotoCard({
@@ -148,11 +254,15 @@ function KeyPhotoCard({
   imageId,
   holdFrames,
   isActiveByFrame,
+  solidColor,
+  isTransparent,
 }: KeyPhotoCardProps) {
   const [editingFrames, setEditingFrames] = useState(false);
   const [frameValue, setFrameValue] = useState(String(holdFrames));
+  const [pickerOpen, setPickerOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const image = imageStore.getById(imageId);
+  const isSolidEntry = !!solidColor || !!isTransparent;
+  const image = !isSolidEntry ? imageStore.getById(imageId) : undefined;
   const thumbUrl = image ? assetUrl(image.thumbnail_path) : null;
 
   useEffect(() => {
@@ -177,9 +287,13 @@ function KeyPhotoCard({
         width: 'auto',
         minWidth: '56px',
         height: '56px',
-        backgroundColor: 'var(--sidebar-input-bg)',
+        backgroundColor: isTransparent ? '#B0B0B0' : solidColor ? solidColor : 'var(--sidebar-input-bg)',
         opacity: isActiveByFrame ? 1 : 0.7,
-        ...(thumbUrl ? {backgroundImage: `url(${thumbUrl})`, aspectRatio: 'auto'} : {}),
+        ...(isTransparent ? {
+          backgroundImage: 'linear-gradient(45deg, #808080 25%, transparent 25%), linear-gradient(-45deg, #808080 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #808080 75%), linear-gradient(-45deg, transparent 75%, #808080 75%)',
+          backgroundSize: '8px 8px',
+          backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
+        } : thumbUrl ? {backgroundImage: `url(${thumbUrl})`, aspectRatio: 'auto'} : {}),
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -208,10 +322,52 @@ function KeyPhotoCard({
         }
       }}
     >
-      {/* Placeholder icon when no image */}
-      {!thumbUrl && (
+      {/* Placeholder icon when no image and not a solid/transparent entry */}
+      {!thumbUrl && !isSolidEntry && (
         <div class="absolute inset-0 flex items-center justify-center">
           <span class="text-[10px]" style={{color: 'var(--sidebar-text-secondary)'}}>?</span>
+        </div>
+      )}
+
+      {/* Top-left: Solid/Transparent toggle (per D-11) — only for solid entries, visible on hover */}
+      {isSolidEntry && (
+        <button
+          class="absolute top-0.5 left-0.5 w-3.5 h-3.5 flex items-center justify-center bg-[#00000080] hover:bg-[#000000AA] rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation();
+            sequenceStore.toggleKeyEntryTransparent(sequenceId, keyPhotoId);
+          }}
+          title={isTransparent ? 'Switch to solid color' : 'Switch to transparent'}
+        >
+          {isTransparent ? <Blend size={10} color="white" /> : <Square size={10} color="white" />}
+        </button>
+      )}
+
+      {/* Bottom-left: Pipette color picker (per D-10, D-12) — hidden when transparent */}
+      {isSolidEntry && !isTransparent && (
+        <div class="absolute bottom-0.5 left-0.5">
+          <button
+            class="w-3.5 h-3.5 flex items-center justify-center bg-[#00000080] hover:bg-[#000000AA] rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPickerOpen(!pickerOpen);
+            }}
+            title="Pick color"
+          >
+            <Pipette size={10} color="white" />
+          </button>
+          {pickerOpen && (
+            <ColorPickerPopover
+              color={solidColor || '#000000'}
+              onLiveChange={(c) => {
+                sequenceStore.updateKeySolidColorLive(sequenceId, keyPhotoId, c);
+              }}
+              onCommit={(c) => {
+                sequenceStore.updateKeySolidColor(sequenceId, keyPhotoId, c);
+              }}
+              onClose={() => setPickerOpen(false)}
+            />
+          )}
         </div>
       )}
 
@@ -263,23 +419,28 @@ function KeyPhotoCard({
   );
 }
 
-/** Add key photo button -- opens full imported view */
-export function AddKeyPhotoButton({sequenceId: _sequenceId}: {sequenceId: string}) {
+/** Split add button — Camera (top) to add key photo, Square (bottom) to add key solid (per D-05, D-06, D-07) */
+export function AddKeyPhotoButton({sequenceId}: {sequenceId: string}) {
   return (
-    <button
-      class="flex items-center justify-center shrink-0 hover:brightness-125 transition-colors"
-      style={{
-        width: '24px',
-        height: '56px',
-        backgroundColor: '#3A3A50',
-        borderRadius: '4px',
-        color: 'var(--sidebar-text-secondary)',
-      }}
-      onClick={() => uiStore.setEditorMode('imported')}
-      aria-label="Add key photo"
-      title="Add key photo from imported images"
-    >
-      <Plus size={14} />
-    </button>
+    <div class="flex flex-col shrink-0 rounded overflow-hidden" style={{ width: '24px', height: '56px' }}>
+      <button
+        class="flex-1 flex items-center justify-center hover:brightness-125 transition-colors cursor-pointer"
+        style={{ backgroundColor: '#3A3A50', color: 'var(--sidebar-text-secondary)' }}
+        onClick={() => uiStore.setEditorMode('imported')}
+        aria-label="Add key photo"
+        title="Add photo from imported images"
+      >
+        <Camera size={12} />
+      </button>
+      <button
+        class="flex-1 flex items-center justify-center hover:brightness-125 transition-colors cursor-pointer"
+        style={{ backgroundColor: '#3A3A50', color: 'var(--sidebar-text-secondary)', borderTop: '1px solid #2A2A3A' }}
+        onClick={() => sequenceStore.addKeySolid(sequenceId)}
+        aria-label="Add key solid"
+        title="Add solid color entry"
+      >
+        <Square size={12} />
+      </button>
+    </div>
   );
 }
