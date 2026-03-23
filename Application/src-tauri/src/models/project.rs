@@ -49,6 +49,21 @@ pub struct MceAudioTrack {
     pub slip_offset: i32,
     #[serde(default)]
     pub total_frames_in_file: u32,
+    /// Stable audio asset reference (v9+)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_asset_id: Option<String>,
+    /// Detected BPM (None = not yet detected)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bpm: Option<f64>,
+    /// Beat offset in frames from track start
+    #[serde(default)]
+    pub beat_offset_frames: u32,
+    /// Pre-computed beat marker frame numbers
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub beat_markers: Vec<u32>,
+    /// Whether beat markers are visible on timeline
+    #[serde(default)]
+    pub show_beat_markers: bool,
 }
 
 /// Sequence definition within a project
