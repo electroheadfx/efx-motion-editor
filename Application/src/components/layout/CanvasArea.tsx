@@ -1,6 +1,6 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
 import {useSignal} from '@preact/signals';
-import {Play, Pause, SkipBack, SkipForward, Plus, Minus, Maximize, Maximize2, Minimize2} from 'lucide-preact';
+import {Plus, Minus, Maximize, Maximize2, Minimize2} from 'lucide-preact';
 import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
 import {FullSpeedBadge} from '../overlay/FullSpeedBadge';
@@ -59,7 +59,6 @@ function getSourceDimensionsForLayer(layer: Layer): {w: number; h: number} | nul
 }
 
 export function CanvasArea() {
-  const isPlaying = timelineStore.isPlaying.value;
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useSignal(false);
   const isSpaceHeld = useRef(false);
@@ -287,42 +286,6 @@ export function CanvasArea() {
       <SpeedBadge />
       {/* Preview Controls */}
       <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0">
-        {/* Step backward */}
-        <button
-          tabIndex={-1}
-          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] hover:text-white cursor-pointer text-[var(--color-text-secondary)] transition-colors"
-          onClick={() => playbackEngine.stepBackward()}
-          title="Step backward"
-        >
-          <SkipBack size={16} />
-        </button>
-        {/* Play / Pause */}
-        <button
-          tabIndex={-1}
-          class="flex items-center justify-center w-9 h-9 rounded-full bg-[var(--color-accent)] hover:brightness-125 cursor-pointer text-white transition-colors"
-          onClick={() => playbackEngine.toggle()}
-          title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
-        >
-          {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-        </button>
-        {/* Step forward */}
-        <button
-          tabIndex={-1}
-          class="flex items-center justify-center w-8 h-8 rounded bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] hover:text-white cursor-pointer text-[var(--color-text-secondary)] transition-colors"
-          onClick={() => playbackEngine.stepForward()}
-          title="Step forward"
-        >
-          <SkipForward size={16} />
-        </button>
-        {/* Timecode display */}
-        <div class="rounded bg-[var(--color-bg-input)] px-3 py-1.5">
-          <span class="text-[13px] font-semibold text-[var(--color-text-heading)]">
-            {formatTime(timelineStore.displayTime.value)}
-          </span>
-        </div>
-        <span class="text-xs text-[var(--color-text-dim)]">
-          / {formatTime(timelineStore.totalDuration.value)}
-        </span>
         {/* Zoom controls cluster: [ - ] percentage [ + ] [ Fit ] */}
         <button
           class={`rounded-[5px] px-2.5 py-1 text-[var(--color-text-button)] ${
@@ -374,11 +337,4 @@ export function CanvasArea() {
       </div>
     </div>
   );
-}
-
-function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
 }
