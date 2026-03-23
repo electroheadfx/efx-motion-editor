@@ -11,6 +11,14 @@ export interface Transition {
   curve: EasingType;      // reuse existing EasingType
 }
 
+/** GL shader transition — mutually exclusive with crossDissolve per D-02 */
+export interface GlTransition {
+  shaderId: string;           // references ShaderDefinition.id from shaderLibrary
+  params: Record<string, number>;  // shader parameter values (static, not keyframe-animatable per D-10)
+  duration: number;           // frames (same meaning as crossDissolve.duration per D-09)
+  curve: EasingType;          // easing applied to progress before passing to shader
+}
+
 /** Runtime sequence type used by sequenceStore (frontend state) */
 export interface Sequence {
   id: string;
@@ -27,6 +35,7 @@ export interface Sequence {
   fadeIn?: Transition;       // optional fade-in at sequence start
   fadeOut?: Transition;      // optional fade-out at sequence end
   crossDissolve?: Transition; // optional cross dissolve TO the next sequence (content only)
+  glTransition?: GlTransition; // optional GL shader transition TO the next sequence — mutually exclusive with crossDissolve (D-02)
 }
 
 /** Runtime key photo type (frontend state) */

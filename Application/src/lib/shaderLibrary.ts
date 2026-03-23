@@ -62,6 +62,27 @@ import { colorTemperature } from './shaders/fx-image/colorTemperature';
 import { screenNoise } from './shaders/fx-image/screenNoise';
 import { filmoraShake } from './shaders/fx-image/filmoraShake';
 
+// ---- Shader Imports: Transitions ----
+
+import { directional } from './shaders/transitions/directional';
+import { directionalwipe } from './shaders/transitions/directionalwipe';
+import { wipeLeft } from './shaders/transitions/wipeLeft';
+import { wipeDown } from './shaders/transitions/wipeDown';
+import { dissolve } from './shaders/transitions/dissolve';
+import { fadecolor } from './shaders/transitions/fadecolor';
+import { fadegrayscale } from './shaders/transitions/fadegrayscale';
+import { swap } from './shaders/transitions/swap';
+import { windowSlice } from './shaders/transitions/windowSlice';
+import { slides } from './shaders/transitions/slides';
+import { crossZoom } from './shaders/transitions/crossZoom';
+import { zoomInCircles } from './shaders/transitions/zoomInCircles';
+import { simpleZoom } from './shaders/transitions/simpleZoom';
+import { crosswarp } from './shaders/transitions/crosswarp';
+import { cube } from './shaders/transitions/cube';
+import { pixelize } from './shaders/transitions/pixelize';
+import { dreamy } from './shaders/transitions/dreamy';
+import { glitchMemories } from './shaders/transitions/glitchMemories';
+
 // ---- Registry ----
 
 const SHADER_REGISTRY: ShaderDefinition[] = [
@@ -84,6 +105,25 @@ const SHADER_REGISTRY: ShaderDefinition[] = [
   colorTemperature,
   screenNoise,
   filmoraShake,
+  // Transitions
+  directional,
+  directionalwipe,
+  wipeLeft,
+  wipeDown,
+  dissolve,
+  fadecolor,
+  fadegrayscale,
+  swap,
+  windowSlice,
+  slides,
+  crossZoom,
+  zoomInCircles,
+  simpleZoom,
+  crosswarp,
+  cube,
+  pixelize,
+  dreamy,
+  glitchMemories,
 ];
 
 /** Get all registered shaders */
