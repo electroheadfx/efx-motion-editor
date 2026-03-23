@@ -21,7 +21,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
 **Current focus:** Phase 15.4 — gl-transition
-Last activity: 2026-03-23
+Last activity: 2026-03-23 - Completed quick task 260323-fsg: Timeline buttons cleanup
 
 ## Current Position
 
