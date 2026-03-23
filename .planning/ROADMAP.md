@@ -167,7 +167,12 @@ Plans:
   2. User can detect BPM from imported audio and see beat markers rendered as vertical lines on the timeline
   3. User can manually set or adjust BPM and beat offset when auto-detection is inaccurate, with x2 and /2 correction available
   4. User can snap key photo hold-duration handles to nearest beat marker, and auto-arrange all key photos to beat positions using a strategy selector (every beat, every 2 beats, every bar)
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Foundation: data model, BPM detector, beat marker engine, npm dependency
+- [ ] 16-02-PLAN.md — Audio export: OfflineAudioContext mixer, Rust FFmpeg muxing, export UI
+- [ ] 16-03-PLAN.md — Beat markers, BPM UI, snap-to-beat, auto-arrange, project persistence v12
 
 ### Phase 17: Enhancements
 **Goal**: Users get improved sidebar UX with scrollable and collapsible key photo lists, plus granular solo controls for sequences and layers
@@ -203,6 +208,6 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 | 15.2 Solid Sequence | v0.3.0 | 4/4 | Complete    | 2026-03-22 |
 | 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
 | 15.4 GL Transition | v0.3.0 | 3/4 | In Progress|  |
-| 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
+| 16. Audio Export & Beat Sync | v0.3.0 | 0/3 | Planned | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
