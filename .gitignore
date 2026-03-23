@@ -26,3 +26,4 @@ Application/src-tauri/gen/
 .opencode
 .Mockup
 SPECS
+.claude/pnpm-lock.yaml
