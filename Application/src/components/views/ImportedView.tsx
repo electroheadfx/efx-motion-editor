@@ -300,6 +300,9 @@ export function ImportedView() {
         showBeatMarkers: false,
       });
 
+      // Auto-detect BPM after adding track
+      audioStore.detectAndSetBPM(trackId, projectStore.fps.peek());
+
       uiStore.setAddLayerIntent(null);
       uiStore.setEditorMode('editor');
     } catch (err) {

@@ -175,6 +175,9 @@ export const audioTrackLayouts = computed<AudioTrackLayout[]>(() => {
       slipOffset: track.slipOffset,
       totalAudioFrames: track.totalFramesInFile || track.outFrame,
       selected: track.id === selectedId,
+      beatMarkers: track.beatMarkers,
+      showBeatMarkers: track.showBeatMarkers,
+      bpm: track.bpm,
     }));
 });
 

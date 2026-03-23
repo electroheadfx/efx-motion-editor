@@ -207,7 +207,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 11,
+    version: 12,
     name: name.value,
     fps: fps.value,
     width: width.value,

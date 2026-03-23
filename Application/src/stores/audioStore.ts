@@ -1,9 +1,14 @@
 import {signal, batch} from '@preact/signals';
 import type {AudioTrack} from '../types/audio';
 import {pushAction} from '../lib/history';
+import {detectBPM} from '../lib/bpmDetector';
+import {computeBeatMarkers} from '../lib/beatMarkerEngine';
+import {audioEngine} from '../lib/audioEngine';
 
 const tracks = signal<AudioTrack[]>([]);
 const selectedTrackId = signal<string | null>(null);
+const beatMarkersVisible = signal(true);
+const snapToBeatsEnabled = signal(false);
 
 // markDirty callback pattern (same as sequenceStore)
 let _markDirty: (() => void) | null = null;
@@ -222,6 +227,65 @@ export const audioStore = {
       undo: () => restore(before),
       redo: () => restore(after),
     });
+  },
+
+  /** Update track fields without pushing undo (for batch ops like auto-arrange). */
+  updateTrackSilent(trackId: string, updates: Partial<AudioTrack>): void {
+    tracks.value = tracks.value.map(t =>
+      t.id === trackId ? {...t, ...updates} : t,
+    );
+    markDirty();
+  },
+
+  /** Auto-detect BPM from audio buffer and set markers on track.
+   *  totalFramesCount must be passed to avoid circular dep (audioStore -> frameMap -> audioStore). */
+  async detectAndSetBPM(trackId: string, fps: number, totalFramesCount?: number): Promise<void> {
+    const buffer = audioEngine.getBuffer(trackId);
+    if (!buffer) return;
+    const channelData = buffer.getChannelData(0);
+    const result = detectBPM(channelData, buffer.sampleRate);
+    const total = totalFramesCount ?? Math.ceil(buffer.duration * fps);
+    const markers = computeBeatMarkers(result.bpm, 0, fps, total);
+    const before = snapshot();
+    tracks.value = tracks.value.map(t =>
+      t.id === trackId ? {
+        ...t,
+        bpm: result.bpm,
+        beatOffsetFrames: 0,
+        beatMarkers: markers,
+        showBeatMarkers: true,
+      } : t,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Detect BPM (${result.bpm})`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Recalculate beat markers when BPM or offset changes.
+   *  totalFramesCount must be passed to avoid circular dep (audioStore -> frameMap -> audioStore). */
+  recalculateBeatMarkers(trackId: string, fps: number, totalFramesCount?: number): void {
+    const track = tracks.value.find(t => t.id === trackId);
+    if (!track || track.bpm == null) return;
+    const total = totalFramesCount ?? Math.ceil(track.duration * fps);
+    const markers = computeBeatMarkers(track.bpm, track.beatOffsetFrames, fps, total);
+    this.updateTrackSilent(trackId, {beatMarkers: markers});
+  },
+
+  beatMarkersVisible,
+  snapToBeatsEnabled,
+
+  toggleBeatMarkers(): void {
+    beatMarkersVisible.value = !beatMarkersVisible.value;
+  },
+
+  toggleSnapToBeats(): void {
+    snapToBeatsEnabled.value = !snapToBeatsEnabled.value;
   },
 
   reset(): void {

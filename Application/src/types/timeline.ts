@@ -77,4 +77,7 @@ export interface AudioTrackLayout {
   slipOffset: number;       // Per D-09
   totalAudioFrames: number; // Total audio file length in frames (for peak slicing)
   selected: boolean;
+  beatMarkers: number[];      // Pre-computed beat frame positions
+  showBeatMarkers: boolean;   // Per-track visibility toggle
+  bpm: number | null;         // For display in properties
 }
