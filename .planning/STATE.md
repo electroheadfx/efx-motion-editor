@@ -21,7 +21,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
 **Current focus:** Phase 15.4 — gl-transition
-Last activity: 2026-03-23 - Completed quick task 260323-fsg: Timeline buttons cleanup
+Last activity: 2026-03-23 - Completed quick task 260323-g4n: Remove duplicate playback controls
 
 ## Current Position
 
@@ -126,9 +126,10 @@ No active blockers.
 | 260322-cwc | Add @efxlab/efx-canvas-motion dependency and document fork | 2026-03-22 | 31c8a03 | [260322-cwc-add-reference-to-canvas-motion-because-i](./quick/260322-cwc-add-reference-to-canvas-motion-because-i/) |
 | 260322-d9q | Add right-click context menu to ImportGrid for asset removal | 2026-03-22 | 89cf160 | [260322-d9q-in-importer-media-can-t-be-suppressed-i-](./quick/260322-d9q-in-importer-media-can-t-be-suppressed-i-/) |
 | 260323-fsg | Remove Color Grade/Browse Shaders from Layer menu, rename GLSL to Shader, add Audio label | 2026-03-23 | 82f240c | [260323-fsg-timeline-buttons-remove-color-grade-from](./quick/260323-fsg-timeline-buttons-remove-color-grade-from/) |
+| 260323-g4n | Remove duplicate playback controls from CanvasArea bottom bar | 2026-03-23 | bf878b4 | [260323-g4n-remove-duplicate-playback-controls-from-](./quick/260323-g4n-remove-duplicate-playback-controls-from-/) |
 
 ## Session Continuity
 
-Last session: 2026-03-23T07:06:28Z
-Stopped at: Completed 260323-fsg quick task
+Last session: 2026-03-23T10:41:35Z
+Stopped at: Completed 260323-g4n quick task
 Resume file: None
