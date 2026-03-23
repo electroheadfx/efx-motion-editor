@@ -92,38 +92,12 @@ export function autoArrangeHoldFrames(
   // Determine stride based on strategy
   const stride = strategy === 'every-bar' ? 4 : strategy === 'every-2-beats' ? 2 : 1;
 
-  // Filter markers by stride to get target beat positions
-  const targetBeats: number[] = [];
-  for (let i = 0; i < beatMarkers.length; i += stride) {
-    targetBeats.push(beatMarkers[i]);
-  }
+  // Compute stride duration from actual beat markers for precision,
+  // falling back to BPM calculation if not enough markers
+  const strideFrames = stride < beatMarkers.length
+    ? beatMarkers[stride] - beatMarkers[0]
+    : Math.round((60 / bpm) * fps) * stride;
 
-  if (targetBeats.length === 0) return [];
-
-  const framesPerBeat = Math.round((60 / bpm) * fps);
-  const framesPerStride = framesPerBeat * stride;
-
-  // Case: more photos than target beats -- each gets minimum stride duration
-  if (numKeyPhotos > targetBeats.length) {
-    return Array(numKeyPhotos).fill(framesPerStride);
-  }
-
-  // Case: photos <= target beats -- distribute evenly
-  const holdFrames: number[] = [];
-  const beatsPerPhoto = Math.floor(targetBeats.length / numKeyPhotos);
-
-  for (let i = 0; i < numKeyPhotos; i++) {
-    const startIdx = i * beatsPerPhoto;
-    if (i < numKeyPhotos - 1) {
-      const endIdx = (i + 1) * beatsPerPhoto;
-      holdFrames.push(targetBeats[endIdx] - targetBeats[startIdx]);
-    } else {
-      // Last photo: hold through remaining beats
-      // Total span from this photo's start to the last target beat + one stride
-      const lastTargetBeat = targetBeats[targetBeats.length - 1];
-      holdFrames.push(lastTargetBeat - targetBeats[startIdx] + framesPerStride);
-    }
-  }
-
-  return holdFrames;
+  // Each key photo holds for exactly one stride — transitions land on beats
+  return Array(numKeyPhotos).fill(Math.max(strideFrames, 1));
 }

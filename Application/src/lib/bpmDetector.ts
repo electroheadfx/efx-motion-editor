@@ -84,17 +84,23 @@ export function detectBPM(
   let bpm = 60 / (bestLag * hopSize / sampleRate);
 
   // Step 5: Octave correction (Pitfall 4)
-  // If bpm < 80, try doubling; if > 160, try halving
-  // Prefer value closest to 120 BPM (common musical center)
-  if (bpm < 80) {
-    const doubled = bpm * 2;
-    if (Math.abs(doubled - 120) < Math.abs(bpm - 120)) {
-      bpm = doubled;
-    }
-  } else if (bpm > 160) {
-    const halved = bpm / 2;
-    if (Math.abs(halved - 120) < Math.abs(bpm - 120)) {
-      bpm = halved;
+  // Repeatedly halve or double until closest to 120 BPM (common musical center)
+  // Loop handles multi-octave errors (e.g., 375 → 187 → 93.8)
+  let improved = true;
+  while (improved) {
+    improved = false;
+    if (bpm > 160) {
+      const halved = bpm / 2;
+      if (Math.abs(halved - 120) < Math.abs(bpm - 120)) {
+        bpm = halved;
+        improved = true;
+      }
+    } else if (bpm < 80) {
+      const doubled = bpm * 2;
+      if (Math.abs(doubled - 120) < Math.abs(bpm - 120)) {
+        bpm = doubled;
+        improved = true;
+      }
     }
   }
 

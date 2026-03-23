@@ -88,43 +88,38 @@ describe('autoArrangeHoldFrames', () => {
   // 120 BPM at 24 fps = 12 frames per beat
   const markers = [0, 12, 24, 36, 48, 60];
 
-  it('distributes 3 photos across 6 beats with every-beat strategy', () => {
+  it('gives each photo exactly 1 beat with every-beat strategy', () => {
     const holds = autoArrangeHoldFrames(3, markers, 'every-beat', 24, 120);
     expect(holds).toHaveLength(3);
-    // 3 photos across 6 beats: 2 beats each = 24 frames each
-    // Last photo holds through remaining
-    expect(holds[0]).toBe(24);
-    expect(holds[1]).toBe(24);
-    expect(holds[2]).toBe(24);
+    // Each key photo = exactly 1 beat = 12 frames
+    expect(holds[0]).toBe(12);
+    expect(holds[1]).toBe(12);
+    expect(holds[2]).toBe(12);
   });
 
-  it('gives each photo minimum 1-beat hold when more photos than beats', () => {
+  it('gives each photo exactly 1 beat even with more photos than beats', () => {
     const holds = autoArrangeHoldFrames(10, markers, 'every-beat', 24, 120);
     expect(holds).toHaveLength(10);
-    // Each gets at least framesPerBeat (12)
     for (const h of holds) {
-      expect(h).toBeGreaterThanOrEqual(12);
+      expect(h).toBe(12);
     }
   });
 
-  it('uses stride 2 for every-2-beats strategy', () => {
-    // 6 beats -> 3 target positions with stride 2
+  it('gives each photo exactly 2 beats with every-2-beats strategy', () => {
     const holds = autoArrangeHoldFrames(2, markers, 'every-2-beats', 24, 120);
     expect(holds).toHaveLength(2);
-    // 2 photos across 3 target beats (every 2nd beat): first gets 1 stride (24 frames), second gets rest
+    // stride=2: marker[2]-marker[0] = 24 frames = 2 beats
     expect(holds[0]).toBe(24);
-    expect(holds[1]).toBe(48);
+    expect(holds[1]).toBe(24);
   });
 
-  it('uses stride 4 for every-bar strategy', () => {
-    // 6 beats -> target positions at index 0 and 4 with stride 4
+  it('gives each photo exactly 1 bar with every-bar strategy', () => {
     const markers12 = [0, 12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132];
     const holds = autoArrangeHoldFrames(2, markers12, 'every-bar', 24, 120);
     expect(holds).toHaveLength(2);
-    // First photo: from marker[0] to marker[4] = 48 frames
+    // stride=4: marker[4]-marker[0] = 48 frames = 4 beats = 1 bar
     expect(holds[0]).toBe(48);
-    // Second photo: holds through remaining = marker[8]-marker[4] + rest
-    expect(holds[1]).toBeGreaterThan(0);
+    expect(holds[1]).toBe(48);
   });
 
   it('returns empty array when no beat markers', () => {
