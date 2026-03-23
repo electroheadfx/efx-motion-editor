@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
-status: Phase complete — ready for verification
-stopped_at: Completed 16-03-PLAN.md
-last_updated: "2026-03-23T14:01:15.311Z"
+status: Ready to execute
+stopped_at: Completed 16-06-PLAN.md
+last_updated: "2026-03-23T20:31:12.082Z"
 last_activity: 2026-03-23
 progress:
   total_phases: 8
   completed_phases: 5
-  total_plans: 18
-  completed_plans: 17
+  total_plans: 21
+  completed_plans: 20
 ---
 
 # Project State
@@ -26,7 +26,7 @@ Last activity: 2026-03-23
 ## Current Position
 
 Phase: 16 (audio-export-beat-sync) — EXECUTING
-Plan: 3 of 3
+Plan: 2 of 6
 
 ## Performance Metrics
 
@@ -62,6 +62,9 @@ Plan: 3 of 3
 | Phase 16 P01 | 6min | 3 tasks | 14 files |
 | Phase 16 P02 | 5min | 2 tasks | 6 files |
 | Phase 16 P03 | 10min | 3 tasks | 12 files |
+| Phase 16 P05 | 2min | 1 tasks | 1 files |
+| Phase 16 P04 | 4min | 2 tasks | 3 files |
+| Phase 16 P06 | 4min | 2 tasks | 3 files |
 
 ### Decisions
 
@@ -112,6 +115,12 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 16]: Avoided circular dep audioStore->frameMap->audioStore by making totalFrames an optional param
 - [Phase 16]: Beat markers render from selected audio track only to avoid visual chaos
 - [Phase 16]: Auto-arrange uses sequenceStore snapshot/restore for atomic undo of batch key photo updates
+- [Phase 16]: Option<f64> for bpm to match TypeScript number|null|undefined; Vec<u32> for beat_markers with skip_serializing_if
+- [Phase 16]: spawn_blocking wraps entire ffmpeg::encode_video call to keep blocking I/O properly isolated from Tauri main thread
+- [Phase 16]: 200ms polling interval for cancel-to-abort bridge balances responsiveness vs CPU overhead for audio pre-render
+- [Phase 16]: 60s timeout safety net on OfflineAudioContext.startRendering prevents indefinite hangs
+- [Phase 16]: D-20: Infinity threshold for snap-to-beat in FramesPopover (always snap to nearest, no distance limit)
+- [Phase 16]: D-21: kpStartFrame computed from trackLayouts.peek() in KeyPhotoCard for snap computation
 
 ### Pending Todos
 
@@ -143,6 +152,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-23T14:01:15.309Z
-Stopped at: Completed 16-03-PLAN.md
+Last session: 2026-03-23T20:31:12.080Z
+Stopped at: Completed 16-06-PLAN.md
 Resume file: None
