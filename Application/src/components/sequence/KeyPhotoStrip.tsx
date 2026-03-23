@@ -1,16 +1,18 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import Sortable from 'sortablejs';
-import {Camera, Square, Blend, Pipette, X, Plus, Minus} from 'lucide-preact';
+import {Camera, Square, Blend, Pipette, X, Plus, Minus, Music} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {uiStore} from '../../stores/uiStore';
 import {layerStore} from '../../stores/layerStore';
 import {timelineStore} from '../../stores/timelineStore';
 import {imageStore} from '../../stores/imageStore';
+import {audioStore} from '../../stores/audioStore';
 import {assetUrl} from '../../lib/ipc';
 import {trackLayouts} from '../../lib/frameMap';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {getTopLayerId} from '../../lib/layerSelection';
 import {getActiveKeyPhotoIndex} from '../../lib/keyPhotoNav';
+import {snapHoldFramesToBeat} from '../../lib/beatMarkerEngine';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 
 /** Key photo strip with thumbnails, hold duration editing, click-to-select + SortableJS drag reorder */
@@ -143,9 +145,10 @@ interface FramesPopoverProps {
   anchorRef: preact.RefObject<HTMLButtonElement>;
   onCommit: (frames: number) => void;
   onClose: () => void;
+  startFrame: number;
 }
 
-function FramesPopover({holdFrames, anchorRef, onCommit, onClose}: FramesPopoverProps) {
+function FramesPopover({holdFrames, anchorRef, onCommit, onClose, startFrame}: FramesPopoverProps) {
   const [value, setValue] = useState(holdFrames);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{top: number; left: number}>({top: 0, left: 0});
@@ -211,6 +214,23 @@ function FramesPopover({holdFrames, anchorRef, onCommit, onClose}: FramesPopover
     onCommit(clamped);
   }, [value, onCommit]);
 
+  const handleSnapToBeat = useCallback(() => {
+    const selectedTrack = audioStore.tracks.peek().find(
+      t => t.id === audioStore.selectedTrackId.peek(),
+    );
+    if (!selectedTrack || selectedTrack.beatMarkers.length === 0) return;
+    const snappedHold = snapHoldFramesToBeat(
+      startFrame,
+      value,
+      selectedTrack.beatMarkers,
+      Infinity, // no threshold limit -- always snap to nearest
+    );
+    if (snappedHold !== null && snappedHold !== value) {
+      setValue(snappedHold);
+      onCommit(snappedHold);
+    }
+  }, [startFrame, value, onCommit]);
+
   return (
     <div
       ref={popoverRef}
@@ -268,6 +288,26 @@ function FramesPopover({holdFrames, anchorRef, onCommit, onClose}: FramesPopover
           <Plus size={14} />
         </button>
       </div>
+      {(() => {
+        const selectedTrack = audioStore.tracks.value.find(
+          t => t.id === audioStore.selectedTrackId.value,
+        );
+        if (!selectedTrack || !selectedTrack.bpm || selectedTrack.beatMarkers.length === 0) return null;
+        return (
+          <button
+            class="w-full h-6 flex items-center justify-center gap-1 rounded-md cursor-pointer transition-colors hover:bg-[#ffffff15] text-[10px]"
+            style={{
+              backgroundColor: 'var(--sidebar-input-bg)',
+              color: 'var(--sidebar-text-primary)',
+            }}
+            onClick={handleSnapToBeat}
+            title="Snap hold duration to nearest beat marker"
+          >
+            <Music size={10} />
+            Snap to beat
+          </button>
+        );
+      })()}
     </div>
   );
 }
@@ -297,6 +337,15 @@ function KeyPhotoCard({
   const isSolidEntry = !!solidColor || !!isTransparent;
   const image = !isSolidEntry ? imageStore.getById(imageId) : undefined;
   const thumbUrl = image ? assetUrl(image.thumbnail_path) : null;
+
+  // Compute this key photo's global start frame for snap-to-beat
+  const kpStartFrame = (() => {
+    const layouts = trackLayouts.peek();
+    const track = layouts.find(t => t.sequenceId === sequenceId);
+    if (!track) return 0;
+    const range = track.keyPhotoRanges.find(r => r.keyPhotoId === keyPhotoId);
+    return range ? range.startFrame : 0;
+  })();
 
   return (
     <div
@@ -416,6 +465,7 @@ function KeyPhotoCard({
         <FramesPopover
           holdFrames={holdFrames}
           anchorRef={framesBtnRef}
+          startFrame={kpStartFrame}
           onCommit={(frames) => {
             sequenceStore.updateHoldFrames(sequenceId, keyPhotoId, frames);
           }}
