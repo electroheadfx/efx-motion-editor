@@ -1,5 +1,6 @@
 import {exportStore} from '../../stores/exportStore';
 import {projectStore} from '../../stores/projectStore';
+import {audioStore} from '../../stores/audioStore';
 import type {ExportFormat, ExportResolution} from '../../types/export';
 
 const FORMATS: {value: ExportFormat; label: string; ext: string}[] = [
@@ -26,6 +27,8 @@ export function FormatSelector() {
   const projectName = projectStore.name.value;
   const quality = exportStore.videoQuality.value;
   const namingPattern = exportStore.namingPattern.value;
+  const includeAudio = exportStore.includeAudio.value;
+  const hasAudioTracks = audioStore.tracks.value.length > 0;
 
   // Generate preview filename from naming pattern
   const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -168,6 +171,27 @@ export function FormatSelector() {
           <div class="text-xs text-[var(--color-text-muted)]">
             Preview: <span class="font-mono">{previewFilename}</span>
           </div>
+        </div>
+      )}
+
+      {/* Include Audio toggle (per D-04) */}
+      {hasAudioTracks && (
+        <div class="space-y-2">
+          <label class="text-xs font-semibold text-[var(--color-text-muted)]">Audio</label>
+          <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeAudio}
+              onChange={(e) => exportStore.setIncludeAudio((e.target as HTMLInputElement).checked)}
+              class="accent-[var(--color-accent)]"
+            />
+            Include audio in export
+          </label>
+          {currentFormat === 'png' && includeAudio && (
+            <div class="text-xs text-[var(--color-text-muted)]">
+              Audio will be exported as a WAV file alongside the PNG sequence
+            </div>
+          )}
         </div>
       )}
     </div>
