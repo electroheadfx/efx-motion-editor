@@ -146,10 +146,12 @@ function ShaderCard({
   shader,
   isExpanded,
   onClick,
+  onQuickApply,
 }: {
   shader: ShaderDefinition;
   isExpanded: boolean;
   onClick: () => void;
+  onQuickApply?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
@@ -234,20 +236,32 @@ function ShaderCard({
 
   return (
     <div
-      class={`cursor-pointer rounded-lg overflow-hidden transition-all ${
+      class={`group cursor-pointer rounded-lg overflow-hidden transition-all ${
         isExpanded
           ? 'ring-2 ring-[#8B5CF6] bg-[var(--color-bg-hover-item)]'
           : 'hover:ring-1 hover:ring-[var(--color-border-subtle)] bg-[var(--color-bg-input)]'
       }`}
       onClick={onClick}
     >
-      <canvas
-        ref={canvasRef}
-        width={PREVIEW_WIDTH}
-        height={PREVIEW_HEIGHT}
-        class="w-full block"
-        style={{ aspectRatio: `${PREVIEW_WIDTH}/${PREVIEW_HEIGHT}` }}
-      />
+      <div class="relative">
+        <canvas
+          ref={canvasRef}
+          width={PREVIEW_WIDTH}
+          height={PREVIEW_HEIGHT}
+          class="w-full block"
+          style={{ aspectRatio: `${PREVIEW_WIDTH}/${PREVIEW_HEIGHT}` }}
+        />
+        {onQuickApply && (
+          <button
+            class="absolute bottom-2 right-2 text-[10px] font-medium px-2.5 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            style={{ backgroundColor: '#8B5CF6', color: '#fff' }}
+            onClick={(e) => { e.stopPropagation(); onQuickApply(); }}
+            title="Apply with default settings"
+          >
+            Apply
+          </button>
+        )}
+      </div>
       <div class="px-3 py-2">
         <div class="text-[13px] text-[var(--color-text-button)] font-semibold truncate">{shader.name}</div>
         <div class="text-[11px] text-[var(--color-text-dim)] leading-snug" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{shader.description}</div>
@@ -610,6 +624,11 @@ export function ShaderBrowser() {
                 shader={shader}
                 isExpanded={false}
                 onClick={() => setExpandedShader(shader)}
+                onQuickApply={
+                  (shader.category !== 'transition' || canApplyTransition)
+                    ? () => handleApply(shader, getDefaultParams(shader))
+                    : undefined
+                }
               />
             ))}
             {shaders.length === 0 && (

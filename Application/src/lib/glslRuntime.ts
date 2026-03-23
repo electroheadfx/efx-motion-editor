@@ -256,6 +256,9 @@ function buildTransitionFragmentSource(shader: ShaderDefinition): string {
       const hasX = shader.params.some(q => q.key === basename + 'X');
       const hasY = shader.params.some(q => q.key === basename + 'Y');
       if (hasX && hasY) {
+        // Skip if the shader already constructs this variable (e.g. pixelize's own ivec2 squaresMin = ...)
+        const alreadyAssigned = new RegExp(`\\b${basename}\\s*=`).test(shader.fragmentSource);
+        if (alreadyAssigned) continue;
         if (shader.fragmentSource.includes(`ivec2 ${basename}`)) {
           vec2Defines.push(`#define ${basename} ivec2(int(u_${basename}X), int(u_${basename}Y))`);
         } else {

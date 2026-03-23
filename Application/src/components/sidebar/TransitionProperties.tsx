@@ -26,10 +26,18 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
     const shaderDef = getShaderById(glt.shaderId);
     if (!shaderDef) return null;
 
-    const totalFrames = seq.kind === 'content'
+    // Max duration considers BOTH sequences since overlap spans the boundary.
+    // Half extends into outgoing, half into incoming.
+    const outFrames = seq.kind === 'content'
       ? seq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0)
       : (seq.outFrame ?? 100) - (seq.inFrame ?? 0);
-    const maxDuration = Math.max(1, Math.floor(totalFrames / 2));
+    const contentSeqs = allSeqs.filter(s => s.kind === 'content');
+    const seqIdx = contentSeqs.findIndex(s => s.id === seq.id);
+    const nextSeq = seqIdx >= 0 ? contentSeqs[seqIdx + 1] : undefined;
+    const inFrames = nextSeq
+      ? nextSeq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0)
+      : outFrames;
+    const maxDuration = Math.max(1, 2 * Math.floor(Math.min(outFrames, inFrames) / 2));
 
     return (
       <div class="px-3 py-2 space-y-3">
