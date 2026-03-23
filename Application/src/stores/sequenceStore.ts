@@ -1,5 +1,5 @@
 import {signal, batch} from '@preact/signals';
-import type {Sequence, KeyPhoto, Transition, TransitionType} from '../types/sequence';
+import type {Sequence, KeyPhoto, Transition, TransitionType, GlTransition} from '../types/sequence';
 import type {Layer} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
 import {pushAction} from '../lib/history';
@@ -753,9 +753,16 @@ export const sequenceStore = {
     const field = transition.type === 'fade-in' ? 'fadeIn'
       : transition.type === 'fade-out' ? 'fadeOut'
       : 'crossDissolve';
-    sequences.value = sequences.value.map(s =>
-      s.id === sequenceId ? { ...s, [field]: transition } : s,
-    );
+    // D-02: if adding cross-dissolve, clear glTransition (mutual exclusion)
+    if (transition.type === 'cross-dissolve') {
+      sequences.value = sequences.value.map(s =>
+        s.id === sequenceId ? { ...s, [field]: transition, glTransition: undefined } : s,
+      );
+    } else {
+      sequences.value = sequences.value.map(s =>
+        s.id === sequenceId ? { ...s, [field]: transition } : s,
+      );
+    }
     markDirty();
     const after = snapshot();
     pushAction({
@@ -804,6 +811,80 @@ export const sequenceStore = {
     pushAction({
       id: genId(),
       description: `Update ${type} on sequence`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  // --- GL Transition CRUD ---
+
+  /** Set a GL shader transition on a sequence — clears crossDissolve per D-02 mutual exclusion */
+  setGlTransition(sequenceId: string, glTransition: GlTransition) {
+    const before = snapshot();
+    sequences.value = sequences.value.map(s =>
+      s.id === sequenceId
+        ? { ...s, glTransition, crossDissolve: undefined }  // D-02: mutually exclusive
+        : s,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: genId(),
+      description: 'Set GL Transition',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Remove a GL shader transition from a sequence */
+  removeGlTransition(sequenceId: string) {
+    const before = snapshot();
+    sequences.value = sequences.value.map(s =>
+      s.id === sequenceId ? { ...s, glTransition: undefined } : s,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: genId(),
+      description: 'Remove GL Transition',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Update GL transition shader parameters */
+  updateGlTransitionParams(sequenceId: string, params: Record<string, number>) {
+    const before = snapshot();
+    sequences.value = sequences.value.map(s => {
+      if (s.id !== sequenceId || !s.glTransition) return s;
+      return { ...s, glTransition: { ...s.glTransition, params } };
+    });
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: genId(),
+      description: 'Update GL Transition Params',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Update GL transition properties (duration, curve, etc.) */
+  updateGlTransition(sequenceId: string, updates: Partial<GlTransition>) {
+    const before = snapshot();
+    sequences.value = sequences.value.map(s => {
+      if (s.id !== sequenceId || !s.glTransition) return s;
+      return { ...s, glTransition: { ...s.glTransition, ...updates } };
+    });
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: genId(),
+      description: 'Update GL Transition',
       timestamp: Date.now(),
       undo: () => restore(before),
       redo: () => restore(after),

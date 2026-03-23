@@ -18,12 +18,18 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
   const seq = allSeqs.find(s => s.id === selection.sequenceId);
   if (!seq) return null;
 
-  const transition = selection.type === 'fade-in' ? seq.fadeIn
-    : selection.type === 'fade-out' ? seq.fadeOut
+  // GL transition properties handled by Plan 03 — bail out here
+  if (selection.type === 'gl-transition') return null;
+
+  // After the gl-transition guard above, type is narrowed to TransitionType
+  const selType = selection.type as 'fade-in' | 'fade-out' | 'cross-dissolve';
+
+  const transition = selType === 'fade-in' ? seq.fadeIn
+    : selType === 'fade-out' ? seq.fadeOut
     : seq.crossDissolve;
   if (!transition) return null;
 
-  const isCrossDissolve = selection.type === 'cross-dissolve';
+  const isCrossDissolve = selType === 'cross-dissolve';
 
   const totalFrames = seq.kind === 'content'
     ? seq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0)
@@ -31,8 +37,8 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
   const maxDuration = Math.max(1, Math.floor(totalFrames / 2));
   const isFxSeq = seq.kind !== 'content';
 
-  const sectionTitle = selection.type === 'fade-in' ? 'FADE IN'
-    : selection.type === 'fade-out' ? 'FADE OUT'
+  const sectionTitle = selType === 'fade-in' ? 'FADE IN'
+    : selType === 'fade-out' ? 'FADE OUT'
     : 'CROSS DISSOLVE';
 
   return (
@@ -49,7 +55,7 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
             max={maxDuration}
             step={1}
             onChange={(v: number) => {
-              sequenceStore.updateTransition(selection.sequenceId, selection.type, { duration: v });
+              sequenceStore.updateTransition(selection.sequenceId, selType, { duration: v });
             }}
           />
           <div class="relative shrink-0" style={{ width: '90px' }}>
@@ -59,7 +65,7 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
               value={transition.curve}
               onChange={(e: Event) => {
                 const target = e.target as HTMLSelectElement;
-                sequenceStore.updateTransition(selection.sequenceId, selection.type, { curve: target.value as EasingType });
+                sequenceStore.updateTransition(selection.sequenceId, selType, { curve: target.value as EasingType });
               }}
             >
               <option value="linear">Linear</option>
@@ -83,7 +89,7 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
                 }`}
                 style={transition.mode !== 'transparency' ? { backgroundColor: 'var(--sidebar-input-bg)' } : undefined}
                 onClick={() => {
-                  sequenceStore.updateTransition(selection.sequenceId, selection.type, { mode: 'transparency' as FadeMode });
+                  sequenceStore.updateTransition(selection.sequenceId, selType, { mode: 'transparency' as FadeMode });
                 }}
               >
                 Transparency
@@ -96,7 +102,7 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
                 }`}
                 style={transition.mode !== 'solid' ? { backgroundColor: 'var(--sidebar-input-bg)' } : undefined}
                 onClick={() => {
-                  sequenceStore.updateTransition(selection.sequenceId, selection.type, { mode: 'solid' as FadeMode });
+                  sequenceStore.updateTransition(selection.sequenceId, selType, { mode: 'solid' as FadeMode });
                 }}
               >
                 Solid
@@ -114,7 +120,7 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
                   <ColorPickerModal
                     color={transition.color || '#000000'}
                     onCommit={(c) => {
-                      sequenceStore.updateTransition(selection.sequenceId, selection.type, { color: c });
+                      sequenceStore.updateTransition(selection.sequenceId, selType, { color: c });
                     }}
                     onClose={() => setColorPickerOpen(false)}
                   />
@@ -130,7 +136,7 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
             class="flex items-center gap-1.5 rounded px-2 py-[3px] text-[11px] hover:brightness-125 transition-colors"
             style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-secondary)' }}
             onClick={() => {
-              sequenceStore.removeTransition(selection.sequenceId, selection.type);
+              sequenceStore.removeTransition(selection.sequenceId, selType);
               uiStore.selectTransition(null);
             }}
             title="Remove transition"

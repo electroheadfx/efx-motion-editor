@@ -97,7 +97,11 @@ function handleDelete(): void {
   // Check for selected transition first (FADE-03)
   const selTransition = uiStore.selectedTransition.peek();
   if (selTransition) {
-    sequenceStore.removeTransition(selTransition.sequenceId, selTransition.type);
+    if (selTransition.type === 'gl-transition') {
+      sequenceStore.removeGlTransition(selTransition.sequenceId);
+    } else {
+      sequenceStore.removeTransition(selTransition.sequenceId, selTransition.type);
+    }
     uiStore.selectTransition(null);
     return;
   }

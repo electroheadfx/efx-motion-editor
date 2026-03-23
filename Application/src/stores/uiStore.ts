@@ -13,7 +13,7 @@ export type AddLayerIntent =
 
 export type TransitionSelection = {
   sequenceId: string;
-  type: 'fade-in' | 'fade-out' | 'cross-dissolve';
+  type: 'fade-in' | 'fade-out' | 'cross-dissolve' | 'gl-transition';
 } | null;
 
 const selectedSequenceId = signal<string | null>(null);
