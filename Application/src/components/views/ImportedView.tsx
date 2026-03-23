@@ -294,6 +294,10 @@ export function ImportedView() {
         trackHeight: 44,
         slipOffset: 0,
         totalFramesInFile: outFrame,
+        bpm: null,
+        beatOffsetFrames: 0,
+        beatMarkers: [],
+        showBeatMarkers: false,
       });
 
       uiStore.setAddLayerIntent(null);
