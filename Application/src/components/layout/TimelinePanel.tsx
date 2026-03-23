@@ -1,10 +1,12 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
-import {Play, Pause, SkipBack, SkipForward, Rewind, Plus, Minus, Shrink, Repeat, Repeat1, Sparkles} from 'lucide-preact';
+import {Play, Pause, SkipBack, SkipForward, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Plus, Minus, Shrink, Repeat, Repeat1, Sparkles} from 'lucide-preact';
 import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {timelineStore} from '../../stores/timelineStore';
 import {uiStore} from '../../stores/uiStore';
 import {isolationStore} from '../../stores/isolationStore';
 import {playbackEngine} from '../../lib/playbackEngine';
+import {findPrevSequenceStart, findNextSequenceStart} from '../../lib/sequenceNav';
+import {totalFrames, trackLayouts} from '../../lib/frameMap';
 import {TimelineCanvas} from '../timeline/TimelineCanvas';
 import {TimelineScrollbar} from '../timeline/TimelineScrollbar';
 import {AddLayerMenu} from '../timeline/AddFxMenu';
@@ -38,13 +40,34 @@ export function TimelinePanel() {
     >
       {/* Timeline Controls */}
       <div class="flex items-center gap-2 h-9 px-3 bg-[var(--color-bg-root)] shrink-0">
-        {/* Seek to start */}
+        {/* Skip Back */}
         <button
           class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
           onClick={() => playbackEngine.seekToFrame(0)}
-          title="Seek to start"
+          title="Skip to start"
         >
-          <Rewind size={14} />
+          <SkipBack size={14} />
+        </button>
+
+        {/* Step Back (previous sequence) */}
+        <button
+          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          onClick={() => {
+            const prev = findPrevSequenceStart(trackLayouts.value, timelineStore.currentFrame.value);
+            if (prev !== null) playbackEngine.seekToFrame(prev);
+          }}
+          title="Previous sequence"
+        >
+          <ChevronFirst size={14} />
+        </button>
+
+        {/* Rewind (previous frame) */}
+        <button
+          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          onClick={() => playbackEngine.stepBackward()}
+          title="Previous frame"
+        >
+          <ChevronsLeft size={14} />
         </button>
 
         {/* Play/Pause */}
@@ -56,20 +79,32 @@ export function TimelinePanel() {
           {timelineStore.isPlaying.value ? <Pause size={14} /> : <Play size={14} />}
         </button>
 
-        {/* Step backward */}
-        <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
-          onClick={() => playbackEngine.stepBackward()}
-          title="Step backward"
-        >
-          <SkipBack size={14} />
-        </button>
-
-        {/* Step forward */}
+        {/* Fast Forward (next frame) */}
         <button
           class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
           onClick={() => playbackEngine.stepForward()}
-          title="Step forward"
+          title="Next frame"
+        >
+          <ChevronsRight size={14} />
+        </button>
+
+        {/* Step Forward (next sequence) */}
+        <button
+          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          onClick={() => {
+            const next = findNextSequenceStart(trackLayouts.value, timelineStore.currentFrame.value);
+            if (next !== null) playbackEngine.seekToFrame(next);
+          }}
+          title="Next sequence"
+        >
+          <ChevronLast size={14} />
+        </button>
+
+        {/* Skip Forward */}
+        <button
+          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          onClick={() => playbackEngine.seekToFrame(totalFrames.value - 1)}
+          title="Skip to end"
         >
           <SkipForward size={14} />
         </button>
