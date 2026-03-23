@@ -38,11 +38,11 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 
 ### Audio Export & Beat Sync
 
-- [ ] **BEAT-01**: User can export video with audio included (FFmpeg muxing with fades applied)
-- [ ] **BEAT-02**: User can detect BPM from imported audio and see beat markers on timeline
-- [ ] **BEAT-03**: User can manually set or adjust BPM and beat offset when detection is inaccurate
-- [ ] **BEAT-04**: User can snap key photo hold-duration handles to nearest beat marker
-- [ ] **BEAT-05**: User can auto-arrange key photos to beat positions with strategy selector (every beat, 2 beats, bar)
+- [x] **BEAT-01**: User can export video with audio included (FFmpeg muxing with fades applied)
+- [x] **BEAT-02**: User can detect BPM from imported audio and see beat markers on timeline
+- [x] **BEAT-03**: User can manually set or adjust BPM and beat offset when detection is inaccurate
+- [x] **BEAT-04**: User can snap key photo hold-duration handles to nearest beat marker
+- [x] **BEAT-05**: User can auto-arrange key photos to beat positions with strategy selector (every beat, 2 beats, bar)
 
 ### Enhancements
 
@@ -111,11 +111,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SOLID-06 | Phase 15.2 | Complete |
 | SOLID-07 | Phase 15.2 | Complete |
 | SOLID-08 | Phase 15.2 | Complete |
-| BEAT-01 | Phase 16 | Pending |
-| BEAT-02 | Phase 16 | Pending |
-| BEAT-03 | Phase 16 | Pending |
-| BEAT-04 | Phase 16 | Pending |
-| BEAT-05 | Phase 16 | Pending |
+| BEAT-01 | Phase 16 | Complete |
+| BEAT-02 | Phase 16 | Complete |
+| BEAT-03 | Phase 16 | Complete |
+| BEAT-04 | Phase 16 | Complete |
+| BEAT-05 | Phase 16 | Complete |
 | ENH-01 | Phase 17 | Pending |
 | ENH-02 | Phase 17 | Pending |
 | ENH-03 | Phase 17 | Pending |

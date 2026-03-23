@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
 status: Phase complete — ready for verification
-stopped_at: Phase 16 context gathered
-last_updated: "2026-03-23T12:50:59.179Z"
-last_activity: "2026-03-23 - Completed quick task 260323-h1o: 7-button transport bar"
+stopped_at: Completed 16-03-PLAN.md
+last_updated: "2026-03-23T14:01:15.311Z"
+last_activity: 2026-03-23
 progress:
   total_phases: 8
   completed_phases: 5
-  total_plans: 15
-  completed_plans: 15
+  total_plans: 18
+  completed_plans: 17
 ---
 
 # Project State
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 15.4 — gl-transition
-Last activity: 2026-03-23 - Completed quick task 260323-h1o: 7-button transport bar
+**Current focus:** Phase 16 — audio-export-beat-sync
+Last activity: 2026-03-23
 
 ## Current Position
 
-Phase: 15.4 (gl-transition) — EXECUTING
-Plan: 4 of 4
+Phase: 16 (audio-export-beat-sync) — EXECUTING
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -59,6 +59,9 @@ Plan: 4 of 4
 | Phase 15.4 P01 | 7min | 2 tasks | 22 files |
 | Phase 15.4 P02 | 8min | 3 tasks | 8 files |
 | Phase 15.4 P03 | 7min | 2 tasks | 8 files |
+| Phase 16 P01 | 6min | 3 tasks | 14 files |
+| Phase 16 P02 | 5min | 2 tasks | 6 files |
+| Phase 16 P03 | 10min | 3 tasks | 12 files |
 
 ### Decisions
 
@@ -100,6 +103,15 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 15.4]: GL transition properties panel renders shader-specific param sliders with colorGroup RGB color pickers
 - [Phase 15.4]: Teal timeline overlay with X-pattern distinguishes GL transitions from purple cross-dissolve
 - [Phase 15.4]: Project format v11 with serde(default) on gl_transition for seamless v10 backward compat
+- [Phase 16]: Onset autocorrelation with 10ms energy windows for BPM detection -- accurate, fast, no external DSP needed
+- [Phase 16]: Auto-arrange uses stride-based beat filtering (1/2/4) for every-beat/2-beats/bar strategies
+- [Phase 16]: BPM fields as required on AudioTrack (not optional) with defaults at all construction sites
+- [Phase 16]: 48kHz OfflineAudioContext pre-render for export (professional video standard, no FFmpeg resampling)
+- [Phase 16]: Audio pre-render failure is non-fatal: export continues without audio
+- [Phase 16]: WAV cleanup only for video exports; PNG keeps audio_mix.wav for NLE workflows
+- [Phase 16]: Avoided circular dep audioStore->frameMap->audioStore by making totalFrames an optional param
+- [Phase 16]: Beat markers render from selected audio track only to avoid visual chaos
+- [Phase 16]: Auto-arrange uses sequenceStore snapshot/restore for atomic undo of batch key photo updates
 
 ### Pending Todos
 
@@ -131,6 +143,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-23T12:50:59.176Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-audio-export-beat-sync/16-CONTEXT.md
+Last session: 2026-03-23T14:01:15.309Z
+Stopped at: Completed 16-03-PLAN.md
+Resume file: None
