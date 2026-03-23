@@ -109,6 +109,13 @@ export function TimelinePanel() {
           <SkipForward size={14} />
         </button>
 
+        {/* Timecode display */}
+        <span class="text-[11px] text-[var(--color-text-secondary)]">
+          {formatTime(timelineStore.displayTime.value)} / {formatTime(timelineStore.totalDuration.value)}
+        </span>
+
+        <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
+
         {/* Loop toggle */}
         <button
           class={`rounded px-2 py-[5px] cursor-pointer transition-colors ${
@@ -121,13 +128,6 @@ export function TimelinePanel() {
         >
           {isolationStore.loopEnabled.value ? <Repeat1 size={14} /> : <Repeat size={14} />}
         </button>
-
-        <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
-
-        {/* Timecode display */}
-        <span class="text-[11px] text-[var(--color-text-secondary)]">
-          {formatTime(timelineStore.displayTime.value)} / {formatTime(timelineStore.totalDuration.value)}
-        </span>
 
         <div class="flex-1" />
 
