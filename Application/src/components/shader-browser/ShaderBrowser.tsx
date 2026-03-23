@@ -525,11 +525,13 @@ export function ShaderBrowser() {
       const idx = contentSeqs.findIndex(s => s.id === activeId);
       if (idx < 0 || idx >= contentSeqs.length - 1) return; // D-03: disabled if no next sequence
 
+      // Preserve existing duration/curve when swapping shaders
+      const existing = contentSeqs[idx].glTransition;
       const glTransition: GlTransition = {
         shaderId: shader.id,
         params,
-        duration: 8,  // default 8 frames overlap
-        curve: 'ease-in-out',
+        duration: existing?.duration ?? 8,
+        curve: existing?.curve ?? 'ease-in-out',
       };
       sequenceStore.setGlTransition(activeId, glTransition);
       uiStore.selectTransition({ sequenceId: activeId, type: 'gl-transition' });
