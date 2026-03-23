@@ -238,6 +238,10 @@ function buildMceProject(): MceProject {
       track_height: track.trackHeight,
       slip_offset: track.slipOffset,
       total_frames_in_file: track.totalFramesInFile,
+      ...(track.bpm != null ? { bpm: track.bpm } : {}),
+      ...(track.beatOffsetFrames ? { beat_offset_frames: track.beatOffsetFrames } : {}),
+      ...(track.beatMarkers.length > 0 ? { beat_markers: track.beatMarkers } : {}),
+      ...(track.showBeatMarkers ? { show_beat_markers: track.showBeatMarkers } : {}),
     })),
   };
 }
@@ -438,6 +442,10 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
         trackHeight: mat.track_height ?? 44,
         slipOffset: mat.slip_offset ?? 0,
         totalFramesInFile: mat.total_frames_in_file ?? mat.out_frame,
+        bpm: mat.bpm ?? null,
+        beatOffsetFrames: mat.beat_offset_frames ?? 0,
+        beatMarkers: mat.beat_markers ?? [],
+        showBeatMarkers: mat.show_beat_markers ?? false,
       };
       // Load track into store (without undo -- this is hydration)
       audioStore.tracks.value = [...audioStore.tracks.value, track];

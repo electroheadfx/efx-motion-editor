@@ -19,6 +19,7 @@
     "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-store": "^2.4.2",
+    "audiobuffer-to-wav": "^1.0.0",
     "lucide-preact": "^0.577.0",
     "preact": "^10.28.4",
     "sortablejs": "^1.15.7",

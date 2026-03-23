@@ -6,6 +6,7 @@ const format = signal<ExportFormat>('png');
 const resolution = signal<ExportResolution>(1);
 const outputFolder = signal<string | null>(null);
 const namingPattern = signal('{name}_{frame}.png');
+const includeAudio = signal(true);
 const videoQuality = signal<ExportSettings['videoQuality']>({
   h264Crf: 18,
   av1Crf: 23,
@@ -30,6 +31,7 @@ const settings = computed<ExportSettings>(() => ({
   outputFolder: outputFolder.value,
   namingPattern: namingPattern.value,
   videoQuality: videoQuality.value,
+  includeAudio: includeAudio.value,
 }));
 
 /** True when export is actively running (rendering or encoding) */
@@ -44,6 +46,7 @@ export const exportStore = {
   outputFolder,
   namingPattern,
   videoQuality,
+  includeAudio,
   progress,
   cancelled,
   settings,
@@ -59,6 +62,7 @@ export const exportStore = {
     namingPattern.value = pattern;
     configSetExportNamingPattern(pattern);
   },
+  setIncludeAudio(v: boolean) { includeAudio.value = v; },
   setVideoQuality(q: typeof videoQuality.value) {
     videoQuality.value = q;
     configSetVideoQuality(q as Record<string, unknown>);

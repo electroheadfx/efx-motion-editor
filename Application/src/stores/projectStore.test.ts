@@ -29,6 +29,10 @@ function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
     trackHeight: 44,
     slipOffset: 3,
     totalFramesInFile: 100,
+    bpm: null,
+    beatOffsetFrames: 0,
+    beatMarkers: [],
+    showBeatMarkers: false,
     ...overrides,
   };
 }

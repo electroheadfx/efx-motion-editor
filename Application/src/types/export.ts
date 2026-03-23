@@ -14,6 +14,7 @@ export interface ExportSettings {
     av1Crf: number;    // default 23
     proresProfile: 'proxy' | 'lt' | 'standard' | 'hq'; // default 'hq'
   };
+  includeAudio: boolean;  // Default true; false = export video-only. Per D-04
 }
 
 export interface ExportProgress {

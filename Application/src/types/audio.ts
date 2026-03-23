@@ -23,6 +23,10 @@ export interface AudioTrack {
   trackHeight: number;        // Per-track height, default 44 per D-01
   slipOffset: number;         // Audio content offset within in/out range (frames) per D-09
   totalFramesInFile: number;  // Total frames in the source audio file (immutable after import)
+  bpm: number | null;              // Detected or manual BPM (null = not yet detected). Per D-07
+  beatOffsetFrames: number;        // Frame offset of first beat (default 0). Per D-08
+  beatMarkers: number[];           // Pre-computed frame numbers of each beat. Per D-07
+  showBeatMarkers: boolean;        // Per-track toggle (default true when bpm exists). Per D-12
 }
 
 /** Serialized audio track format for .mce project files (snake_case) */
@@ -48,6 +52,10 @@ export interface MceAudioTrack {
   track_height: number;
   slip_offset: number;
   total_frames_in_file: number;
+  bpm?: number | null;
+  beat_offset_frames?: number;
+  beat_markers?: number[];
+  show_beat_markers?: boolean;
 }
 
 /** Pre-computed waveform peak data at 3 resolution tiers per D-04 */
