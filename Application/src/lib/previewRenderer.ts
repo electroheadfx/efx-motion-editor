@@ -42,6 +42,7 @@ export class PreviewRenderer {
   private ctx: CanvasRenderingContext2D;
   private imageCache: Map<string, HTMLImageElement>; // imageId -> loaded HTMLImageElement
   private loadingImages: Set<string>; // imageIds currently loading
+  private failedImages: Set<string>; // imageIds that failed to load
   private videoElements: Map<string, HTMLVideoElement>; // layerId -> video element
   private videoReadyHandlers: Map<string, () => void>; // layerId -> shared loadeddata/seeked handler
   private offscreenCanvas: HTMLCanvasElement | null = null; // reusable offscreen canvas for video rasterization
@@ -59,6 +60,7 @@ export class PreviewRenderer {
     this.ctx = ctx;
     this.imageCache = sharedImageCache ?? new Map();
     this.loadingImages = new Set();
+    this.failedImages = new Set();
     this.videoElements = new Map();
     this.videoReadyHandlers = new Map();
   }
@@ -331,6 +333,11 @@ export class PreviewRenderer {
     return this.imageCache.has(imageId);
   }
 
+  /** Check if an image failed to load */
+  isImageFailed(imageId: string): boolean {
+    return this.failedImages.has(imageId);
+  }
+
   /**
    * Pre-load images into cache so they're available immediately during playback.
    * Call with all unique imageIds from the active sequence frames.
@@ -376,6 +383,9 @@ export class PreviewRenderer {
     };
     img.onerror = () => {
       this.loadingImages.delete(imageId);
+      this.failedImages.add(imageId);
+      console.warn(`[PreviewRenderer] Failed to load image: ${imageId}`);
+      this.onImageLoaded?.();
     };
     img.src = assetUrl(image.project_path, imageId);
 
@@ -867,6 +877,7 @@ export class PreviewRenderer {
     this.videoReadyHandlers.clear();
     this.imageCache.clear();
     this.loadingImages.clear();
+    this.failedImages.clear();
     this.offscreenCanvas = null;
     this.blurOffscreen = null;
     this.onImageLoaded = null;

@@ -314,24 +314,69 @@ export function renderGlobalFrame(
 
 /**
  * Preload all unique images referenced in the frame map.
- * Returns a promise that resolves when all images are cached in the renderer.
+ * Returns a promise that resolves when all images are cached or failed in the renderer.
+ * Supports cancellation via AbortSignal and a 30-second timeout safety net.
+ * Failed images are logged but do not block the export — frames referencing
+ * them will render without that image (blank/missing layer).
  */
 export function preloadExportImages(
   renderer: PreviewRenderer,
   fm: FrameEntry[],
+  signal?: AbortSignal,
 ): Promise<void> {
   const imageIds = [...new Set(fm.map(f => f.imageId).filter(id => id !== ''))];
-  return new Promise<void>((resolve) => {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      renderer.onImageLoaded = null;
+      resolve();
+    };
+    const fail = (reason: string) => {
+      if (settled) return;
+      settled = true;
+      renderer.onImageLoaded = null;
+      reject(new Error(reason));
+    };
+
+    // Abort signal support (for cancel during preload)
+    if (signal?.aborted) { fail('Export cancelled'); return; }
+    signal?.addEventListener('abort', () => fail('Export cancelled'), { once: true });
+
+    // 30-second timeout safety net — prevents infinite hang if images never resolve
+    const timeout = setTimeout(() => {
+      const loaded = imageIds.filter(id => renderer.getImageSource(id) !== null).length;
+      const failed = imageIds.filter(id => renderer.isImageFailed(id)).length;
+      console.warn(
+        `[preloadExportImages] Timeout after 30s: ${loaded} loaded, ${failed} failed, ` +
+        `${imageIds.length - loaded - failed} still pending out of ${imageIds.length} total`
+      );
+      finish(); // Proceed with whatever images loaded — missing ones render as blank
+    }, 30_000);
+
     renderer.preloadImages(imageIds);
-    // Check if all already loaded
-    const allLoaded = imageIds.every(id => renderer.getImageSource(id) !== null);
-    if (allLoaded) { resolve(); return; }
-    // Wait for all to load via onImageLoaded callback
+
+    // Check if an image is resolved (loaded or failed)
+    const isResolved = (id: string) =>
+      renderer.getImageSource(id) !== null || renderer.isImageFailed(id);
+
+    // Check if all already resolved
+    if (imageIds.every(isResolved)) {
+      clearTimeout(timeout);
+      finish();
+      return;
+    }
+
+    // Wait for all to load/fail via onImageLoaded callback
     const check = () => {
-      const ready = imageIds.every(id => renderer.getImageSource(id) !== null);
-      if (ready) {
-        renderer.onImageLoaded = null;
-        resolve();
+      if (imageIds.every(isResolved)) {
+        clearTimeout(timeout);
+        const failed = imageIds.filter(id => renderer.isImageFailed(id));
+        if (failed.length > 0) {
+          console.warn(`[preloadExportImages] ${failed.length} image(s) failed to load — export will proceed without them`);
+        }
+        finish();
       }
     };
     renderer.onImageLoaded = check;

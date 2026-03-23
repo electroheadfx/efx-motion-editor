@@ -199,6 +199,7 @@ pub fn run() {
                 Ok(m) => m,
                 Err(_) => {
                     return tauri::http::Response::builder()
+                        .header("Access-Control-Allow-Origin", "*")
                         .status(404)
                         .body(Vec::new())
                         .unwrap();
@@ -233,6 +234,7 @@ pub fn run() {
                             Ok(f) => f,
                             Err(_) => {
                                 return tauri::http::Response::builder()
+                                    .header("Access-Control-Allow-Origin", "*")
                                     .status(404)
                                     .body(Vec::new())
                                     .unwrap();
@@ -268,6 +270,7 @@ pub fn run() {
                         .body(data)
                         .unwrap(),
                     Err(_) => tauri::http::Response::builder()
+                        .header("Access-Control-Allow-Origin", "*")
                         .status(404)
                         .body(Vec::new())
                         .unwrap(),
@@ -284,6 +287,7 @@ pub fn run() {
                         .body(data)
                         .unwrap(),
                     Err(_) => tauri::http::Response::builder()
+                        .header("Access-Control-Allow-Origin", "*")
                         .status(404)
                         .body(Vec::new())
                         .unwrap(),
@@ -323,6 +327,7 @@ pub fn run() {
             export::export_download_ffmpeg,
             export::export_encode_video,
             export::export_cleanup_pngs,
+            export::export_cleanup_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

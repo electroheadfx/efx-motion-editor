@@ -173,7 +173,12 @@ pub fn encode_video(
     cmd.args(["-y", "-framerate", &fps.to_string()]);
     cmd.args(["-i", &input_pattern]);
 
-    // Codec-specific arguments per D-03, D-13
+    // Add audio input BEFORE any output options (FFmpeg requires all inputs first)
+    if let Some(audio) = audio_path {
+        cmd.args(["-i", audio]);
+    }
+
+    // Codec-specific video arguments per D-03, D-13
     match codec {
         "prores" => {
             cmd.args(["-c:v", "prores_ks"]);
@@ -195,10 +200,9 @@ pub fn encode_video(
     }
 
     // Audio muxing (per D-01, replaces D-15's -an when audio is provided)
-    if let Some(audio) = audio_path {
-        cmd.args(["-i", audio]);
+    if audio_path.is_some() {
         cmd.args(["-map", "0:v:0", "-map", "1:a:0"]);
-        // Pitfall 3: codec depends on container
+        // Pitfall 3: audio codec depends on container
         match codec {
             "prores" => {
                 cmd.args(["-c:a", "pcm_s16le"]);

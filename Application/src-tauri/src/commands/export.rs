@@ -98,6 +98,17 @@ pub async fn export_encode_video(
     .map_err(|e| format!("FFmpeg task panicked: {e}"))?
 }
 
+/// Delete a single file (e.g., temp WAV after muxing). Bypasses Tauri fs plugin scope.
+#[command]
+pub fn export_cleanup_file(file_path: String) -> Result<(), String> {
+    let path = Path::new(&file_path);
+    if path.exists() {
+        std::fs::remove_file(path)
+            .map_err(|e| format!("Failed to delete file: {e}"))?;
+    }
+    Ok(())
+}
+
 /// Delete intermediate PNG files from export directory after video encoding.
 /// Keeps non-PNG files (video, metadata sidecar, FCPXML).
 #[command]

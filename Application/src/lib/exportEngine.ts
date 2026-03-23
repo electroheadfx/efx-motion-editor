@@ -5,10 +5,10 @@ import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
 import { exportStore } from '../stores/exportStore';
 import { audioStore } from '../stores/audioStore';
-import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs } from './ipc';
+import { audioEngine } from './audioEngine';
+import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs, exportCleanupFile } from './ipc';
 import { generateJsonSidecar, generateFcpxml } from './exportSidecar';
 import { renderMixedAudio } from './audioExportMixer';
-import { writeFile, remove } from '@tauri-apps/plugin-fs';
 
 /**
  * Convert canvas to PNG blob, then to Uint8Array for IPC.
@@ -106,8 +106,22 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     // 3. Create renderer for the offscreen canvas
     const renderer = new PreviewRenderer(canvas);
 
-    // 4. Preload all images
-    await preloadExportImages(renderer, fm);
+    // 4. Preload all images (with cancel support and timeout safety net)
+    const preloadAbort = new AbortController();
+    const preloadCancelCheck = setInterval(() => {
+      if (exportStore.isCancelled()) preloadAbort.abort();
+    }, 200);
+    try {
+      await preloadExportImages(renderer, fm, preloadAbort.signal);
+    } catch (err) {
+      clearInterval(preloadCancelCheck);
+      if (preloadAbort.signal.aborted) {
+        exportStore.updateProgress({ status: 'cancelled' });
+        return;
+      }
+      throw err;
+    }
+    clearInterval(preloadCancelCheck);
 
     // 5. Export loop with yielding and cancel support
     exportStore.updateProgress({ status: 'rendering' });
@@ -202,6 +216,14 @@ export async function startExport(startFromFrame = 0): Promise<void> {
       }, 200);
 
       try {
+        // Pre-check: verify at least one audio buffer is loaded
+        const tracksWithBuffers = audioStore.tracks.peek().filter(
+          t => !t.muted && audioEngine.getBuffer(t.id),
+        );
+        if (tracksWithBuffers.length === 0) {
+          console.warn('[Export] No audio buffers loaded — audio will be skipped. Try re-importing or re-opening the project.');
+        }
+
         const totalDurationSec = total / projectStore.fps.peek();
         const wavData = await renderMixedAudio(
           audioStore.tracks.peek(),
@@ -209,17 +231,23 @@ export async function startExport(startFromFrame = 0): Promise<void> {
           totalDurationSec,
           abortController.signal,
         );
-        // Write WAV to export dir
+        // Write WAV to export dir (use IPC command, not fs plugin — avoids Tauri scope permissions)
         audioWavPath = `${exportDir}/audio_mix.wav`;
-        await writeFile(audioWavPath, new Uint8Array(wavData));
+        const wavWriteResult = await exportWritePng(exportDir, 'audio_mix.wav', Array.from(new Uint8Array(wavData)));
+        if (!wavWriteResult.ok) {
+          throw new Error(`Failed to write audio WAV: ${wavWriteResult.error}`);
+        }
       } catch (err) {
         if (abortController.signal.aborted) {
           exportStore.updateProgress({ status: 'cancelled' });
           return;
         }
-        console.error('Audio pre-render failed:', err);
-        // Continue without audio rather than failing the entire export
-        audioWavPath = null;
+        console.error('[Export] Audio pre-render failed:', err);
+        exportStore.updateProgress({
+          status: 'error',
+          errorMessage: `Audio pre-render failed: ${err instanceof Error ? err.message : String(err)}. Try exporting without audio or re-importing the audio file.`,
+        });
+        return;
       } finally {
         clearInterval(cancelCheckInterval);
       }
@@ -310,7 +338,7 @@ export async function startExport(startFromFrame = 0): Promise<void> {
       // Clean up temp WAV file after video encoding (Pitfall 8)
       // For video export, WAV is temporary. For PNG export, WAV stays per D-03.
       if (audioWavPath) {
-        try { await remove(audioWavPath); } catch { /* ignore cleanup errors */ }
+        try { await exportCleanupFile(audioWavPath); } catch { /* ignore cleanup errors */ }
       }
     }
 

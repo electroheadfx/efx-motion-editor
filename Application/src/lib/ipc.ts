@@ -160,6 +160,10 @@ export function exportCleanupPngs(dirPath: string) {
   return safeInvoke<number>('export_cleanup_pngs', { dirPath });
 }
 
+export function exportCleanupFile(filePath: string) {
+  return safeInvoke<null>('export_cleanup_file', { filePath });
+}
+
 export function exportEncodeVideo(
   pngDir: string,
   globPattern: string,
