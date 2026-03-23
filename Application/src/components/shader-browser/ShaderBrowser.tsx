@@ -1,19 +1,81 @@
-import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import { X, Sparkles, Image, ArrowRightLeft, LayoutGrid } from 'lucide-preact';
 import { uiStore } from '../../stores/uiStore';
 import { sequenceStore } from '../../stores/sequenceStore';
 import { layerStore } from '../../stores/layerStore';
 import { totalFrames } from '../../lib/frameMap';
-import { renderShaderPreview, renderGlslFxImage } from '../../lib/glslRuntime';
+import { renderShaderPreview, renderGlslFxImage, renderGlslTransition } from '../../lib/glslRuntime';
 import { getAllShaders, getShadersByCategory, getDefaultParams } from '../../lib/shaderLibrary';
 import { getCapturedCanvas } from '../../lib/shaderPreviewCapture';
 import { defaultTransform } from '../../types/layer';
 import { ColorPickerModal } from '../shared/ColorPickerModal';
 import type { ShaderDefinition, ShaderCategory } from '../../lib/shaderLibrary';
 import type { Layer, LayerSourceData, BlendMode } from '../../types/layer';
+import type { GlTransition } from '../../types/sequence';
 
 const PREVIEW_WIDTH = 200;
 const PREVIEW_HEIGHT = 140;
+
+// ---- Transition preview images (per D-14) ----
+
+let _previewImageA: HTMLCanvasElement | null = null;
+let _previewImageB: HTMLCanvasElement | null = null;
+
+function getTransitionPreviewImages(): { a: HTMLCanvasElement; b: HTMLCanvasElement } {
+  if (!_previewImageA) {
+    _previewImageA = document.createElement('canvas');
+    _previewImageA.width = PREVIEW_WIDTH;
+    _previewImageA.height = PREVIEW_HEIGHT;
+    const ctx = _previewImageA.getContext('2d')!;
+    const grad = ctx.createLinearGradient(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    grad.addColorStop(0, '#FF6B35');
+    grad.addColorStop(1, '#D62828');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+  }
+  if (!_previewImageB) {
+    _previewImageB = document.createElement('canvas');
+    _previewImageB.width = PREVIEW_WIDTH;
+    _previewImageB.height = PREVIEW_HEIGHT;
+    const ctx = _previewImageB.getContext('2d')!;
+    const grad = ctx.createLinearGradient(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    grad.addColorStop(0, '#1D3557');
+    grad.addColorStop(1, '#457B9D');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+  }
+  return { a: _previewImageA, b: _previewImageB };
+}
+
+// Higher-resolution transition preview images for detail view
+let _previewDetailA: HTMLCanvasElement | null = null;
+let _previewDetailB: HTMLCanvasElement | null = null;
+
+function getTransitionDetailImages(): { a: HTMLCanvasElement; b: HTMLCanvasElement } {
+  if (!_previewDetailA) {
+    _previewDetailA = document.createElement('canvas');
+    _previewDetailA.width = 640;
+    _previewDetailA.height = 400;
+    const ctx = _previewDetailA.getContext('2d')!;
+    const grad = ctx.createLinearGradient(0, 0, 640, 400);
+    grad.addColorStop(0, '#FF6B35');
+    grad.addColorStop(1, '#D62828');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 640, 400);
+  }
+  if (!_previewDetailB) {
+    _previewDetailB = document.createElement('canvas');
+    _previewDetailB.width = 640;
+    _previewDetailB.height = 400;
+    const ctx = _previewDetailB.getContext('2d')!;
+    const grad = ctx.createLinearGradient(0, 0, 640, 400);
+    grad.addColorStop(0, '#1D3557');
+    grad.addColorStop(1, '#457B9D');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 640, 400);
+  }
+  return { a: _previewDetailA, b: _previewDetailB };
+}
 
 // ---- Tab definitions ----
 
@@ -30,7 +92,7 @@ const TABS: TabDef[] = [
   { id: 'all', label: 'All', icon: LayoutGrid },
   { id: 'generator', label: 'Generator', icon: Sparkles },
   { id: 'fx-image', label: 'FX Image', icon: Image },
-  { id: 'transition', label: 'Transition', icon: ArrowRightLeft, disabled: true },
+  { id: 'transition', label: 'Transition', icon: ArrowRightLeft },
 ];
 
 // ---- Animated Preview Card ----
@@ -53,15 +115,37 @@ function ShaderCard({
     if (!canvas) return;
 
     let running = true;
-    const animate = () => {
-      if (!running) return;
-      const t = (performance.now() - startTime.current) / 1000;
-      const params = getDefaultParams(shader);
-      renderShaderPreview(shader, canvas, PREVIEW_WIDTH, PREVIEW_HEIGHT, params, t);
-      animRef.current = requestAnimationFrame(animate);
-    };
 
     if (shader.category === 'generator') {
+      const animate = () => {
+        if (!running) return;
+        const t = (performance.now() - startTime.current) / 1000;
+        const params = getDefaultParams(shader);
+        renderShaderPreview(shader, canvas, PREVIEW_WIDTH, PREVIEW_HEIGHT, params, t);
+        animRef.current = requestAnimationFrame(animate);
+      };
+      animate();
+    } else if (shader.category === 'transition') {
+      // Transition: animated ping-pong preview with dual gradient images (per D-14)
+      const { a, b } = getTransitionPreviewImages();
+      const animate = () => {
+        if (!running) return;
+        const elapsed = (performance.now() - startTime.current) / 1000;
+        // Ping-pong: 0->1 in 1.5s, 1->0 in 1.5s (3s total cycle)
+        const cycle = elapsed % 3;
+        const progress = cycle < 1.5 ? cycle / 1.5 : 2 - cycle / 1.5;
+        const defaultParams = getDefaultParams(shader);
+        const result = renderGlslTransition(shader, a, b, progress, PREVIEW_WIDTH / PREVIEW_HEIGHT, defaultParams, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+        if (result) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            canvas.width = PREVIEW_WIDTH;
+            canvas.height = PREVIEW_HEIGHT;
+            ctx.drawImage(result, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+          }
+        }
+        animRef.current = requestAnimationFrame(animate);
+      };
       animate();
     } else {
       // For FX image, render using captured preview canvas as input
@@ -133,10 +217,12 @@ function ShaderDetail({
   shader,
   onApply,
   onClose,
+  applyDisabled,
 }: {
   shader: ShaderDefinition;
   onApply: (params: Record<string, number>) => void;
   onClose: () => void;
+  applyDisabled?: boolean;
 }) {
   const [params, setParams] = useState<Record<string, number>>(() => getDefaultParams(shader));
   const [openColorGroup, setOpenColorGroup] = useState<string | null>(null);
@@ -154,6 +240,24 @@ function ShaderDetail({
         if (!running) return;
         const t = (performance.now() - startTime.current) / 1000;
         renderShaderPreview(shader, canvas, 640, 400, params, t);
+        animRef.current = requestAnimationFrame(animate);
+      };
+      animate();
+    } else if (shader.category === 'transition') {
+      // Transition: animated ping-pong preview at higher resolution
+      const { a, b } = getTransitionDetailImages();
+      const animate = () => {
+        if (!running) return;
+        const elapsed = (performance.now() - startTime.current) / 1000;
+        const cycle = elapsed % 3;
+        const progress = cycle < 1.5 ? cycle / 1.5 : 2 - cycle / 1.5;
+        const result = renderGlslTransition(shader, a, b, progress, 640 / 400, params, 640, 400);
+        if (result) {
+          canvas.width = 640;
+          canvas.height = 400;
+          const ctx = canvas.getContext('2d');
+          if (ctx) ctx.drawImage(result, 0, 0, 640, 400);
+        }
         animRef.current = requestAnimationFrame(animate);
       };
       animate();
@@ -316,10 +420,16 @@ function ShaderDetail({
       {/* Apply button */}
       <div class="px-4 py-3 border-t border-[var(--color-border-subtle)]">
         <button
-          class="w-full py-2 rounded-md bg-[#8B5CF6] text-white text-[12px] font-semibold hover:brightness-110 transition-colors cursor-pointer"
-          onClick={() => onApply(params)}
+          disabled={applyDisabled}
+          class={`w-full py-2 rounded-md text-[12px] font-semibold transition-colors cursor-pointer ${
+            applyDisabled
+              ? 'bg-[#8B5CF6]/30 text-white/40 cursor-not-allowed'
+              : 'bg-[#8B5CF6] text-white hover:brightness-110'
+          }`}
+          onClick={() => !applyDisabled && onApply(params)}
+          title={applyDisabled ? 'No next sequence to transition to' : undefined}
         >
-          Apply
+          {applyDisabled ? 'Apply (no next sequence)' : 'Apply'}
         </button>
       </div>
     </div>
@@ -332,9 +442,39 @@ export function ShaderBrowser() {
   const [activeTab, setActiveTab] = useState<TabId>('all');
   const [expandedShader, setExpandedShader] = useState<ShaderDefinition | null>(null);
 
-  const shaders = activeTab === 'all' ? getAllShaders() : activeTab === 'transition' ? [] : getShadersByCategory(activeTab);
+  const shaders = activeTab === 'all' ? getAllShaders() : getShadersByCategory(activeTab as ShaderCategory);
+
+  // D-03: Compute whether Apply should be enabled for transition shaders
+  const canApplyTransition = useMemo(() => {
+    const activeId = sequenceStore.activeSequenceId.value;
+    if (!activeId) return false;
+    const contentSeqs = sequenceStore.sequences.value.filter(s => s.kind === 'content');
+    const idx = contentSeqs.findIndex(s => s.id === activeId);
+    return idx >= 0 && idx < contentSeqs.length - 1;
+  }, [sequenceStore.activeSequenceId.value, sequenceStore.sequences.value]);
 
   const handleApply = useCallback((shader: ShaderDefinition, params: Record<string, number>) => {
+    // D-01, D-03: Transition apply targets active sequence + next adjacent
+    if (shader.category === 'transition') {
+      const activeId = sequenceStore.activeSequenceId.peek();
+      if (!activeId) return;
+      const contentSeqs = sequenceStore.sequences.peek().filter(s => s.kind === 'content');
+      const idx = contentSeqs.findIndex(s => s.id === activeId);
+      if (idx < 0 || idx >= contentSeqs.length - 1) return; // D-03: disabled if no next sequence
+
+      const glTransition: GlTransition = {
+        shaderId: shader.id,
+        params,
+        duration: 8,  // default 8 frames overlap
+        curve: 'ease-in-out',
+      };
+      sequenceStore.setGlTransition(activeId, glTransition);
+      uiStore.selectTransition({ sequenceId: activeId, type: 'gl-transition' });
+      uiStore.setEditorMode('editor');
+      return;
+    }
+
+    // Existing generator/fx-image logic
     const layerId = crypto.randomUUID();
     const layerType = shader.category === 'generator' ? 'generator-glsl' : 'adjustment-glsl';
     const source: LayerSourceData = {
@@ -379,7 +519,7 @@ export function ShaderBrowser() {
         </button>
       </div>
 
-      {/* Tab bar — DaVinci Resolve-style pills */}
+      {/* Tab bar -- DaVinci Resolve-style pills */}
       <div class="flex items-center gap-1 px-4 py-2 bg-[var(--color-bg-section-header)] border-b border-[var(--color-border-subtle)]">
         {TABS.map((tab) => {
           const Icon = tab.icon;
@@ -413,6 +553,7 @@ export function ShaderBrowser() {
               shader={expandedShader}
               onApply={(params) => handleApply(expandedShader, params)}
               onClose={() => setExpandedShader(null)}
+              applyDisabled={expandedShader.category === 'transition' && !canApplyTransition}
             />
           </div>
         ) : (
@@ -428,9 +569,7 @@ export function ShaderBrowser() {
             ))}
             {shaders.length === 0 && (
               <div class="col-span-full text-center py-12 text-[var(--color-text-dim)] text-[12px]">
-                {activeTab === 'transition'
-                  ? 'GLSL Transitions coming in Phase 15.4'
-                  : 'No shaders in this category'}
+                No shaders in this category
               </div>
             )}
           </div>
