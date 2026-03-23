@@ -26,4 +26,12 @@ describe('exportRenderer', () => {
   describe('preloadExportImages with solids', () => {
     it.todo('filters empty imageId strings from preload set');
   });
+
+  describe('GL transition rendering (GLT-04)', () => {
+    it.todo('renders GL transition overlap via dual-capture when overlap has glTransition');
+    it.todo('calls renderGlslTransition with correct shader, canvases, and progress');
+    it.todo('preserves existing cross-dissolve rendering when overlap has no glTransition');
+    it.todo('creates and reuses offscreen canvases for dual-capture');
+    it.todo('computes eased progress via computeTransitionProgress');
+  });
 });

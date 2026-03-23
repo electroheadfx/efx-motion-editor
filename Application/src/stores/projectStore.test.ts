@@ -181,3 +181,23 @@ describe('projectStore audio persistence', () => {
     });
   });
 });
+
+describe('GL transition persistence (GLT-08)', () => {
+  describe('serialization (save)', () => {
+    it.todo('serializes glTransition as gl_transition with snake_case fields');
+    it.todo('serializes shaderId as shader_id');
+    it.todo('serializes params HashMap');
+    it.todo('omits gl_transition when sequence has none');
+  });
+
+  describe('deserialization (load)', () => {
+    it.todo('deserializes gl_transition back to glTransition with camelCase fields');
+    it.todo('maps shader_id back to shaderId');
+    it.todo('defaults missing curve to ease-in-out');
+    it.todo('handles v10 files without gl_transition field (backward compat)');
+  });
+
+  describe('version', () => {
+    it.todo('saves with version 11');
+  });
+});

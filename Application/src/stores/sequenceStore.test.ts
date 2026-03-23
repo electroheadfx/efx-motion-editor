@@ -97,3 +97,36 @@ describe('sequenceStore solid/transparent', () => {
     });
   });
 });
+
+describe('sequenceStore GL transitions (GLT-05)', () => {
+  beforeEach(() => {
+    sequenceStore.reset();
+  });
+
+  describe('setGlTransition', () => {
+    it.todo('sets glTransition on the specified sequence');
+    it.todo('clears crossDissolve when setting glTransition (D-02 mutual exclusion)');
+    it.todo('marks project dirty');
+    it.todo('pushes undo action');
+  });
+
+  describe('removeGlTransition', () => {
+    it.todo('removes glTransition from the specified sequence');
+    it.todo('marks project dirty');
+    it.todo('pushes undo action');
+  });
+
+  describe('updateGlTransitionParams', () => {
+    it.todo('updates shader params on existing glTransition');
+    it.todo('no-ops if sequence has no glTransition');
+  });
+
+  describe('updateGlTransition', () => {
+    it.todo('merges partial updates into existing glTransition');
+    it.todo('can update duration and curve independently');
+  });
+
+  describe('addTransition mutual exclusion', () => {
+    it.todo('clears glTransition when adding cross-dissolve (D-02)');
+  });
+});
