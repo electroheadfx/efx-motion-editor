@@ -84,6 +84,9 @@ pub struct MceSequence {
     /// Cross dissolve transition to next sequence
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cross_dissolve: Option<MceTransition>,
+    /// GL shader transition to next sequence (mutually exclusive with cross_dissolve)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gl_transition: Option<MceGlTransition>,
 }
 
 /// Transition definition within a sequence
@@ -94,6 +97,15 @@ pub struct MceTransition {
     pub duration: u32,
     pub mode: String,
     pub color: String,
+    pub curve: String,
+}
+
+/// GL shader transition definition within a sequence
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceGlTransition {
+    pub shader_id: String,
+    pub params: std::collections::HashMap<String, f64>,
+    pub duration: u32,
     pub curve: String,
 }
 

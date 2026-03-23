@@ -89,6 +89,14 @@ function buildMceProject(): MceProject {
           curve: seq.crossDissolve.curve,
         },
       } : {}),
+      ...(seq.glTransition ? {
+        gl_transition: {
+          shader_id: seq.glTransition.shaderId,
+          params: seq.glTransition.params,
+          duration: seq.glTransition.duration,
+          curve: seq.glTransition.curve,
+        },
+      } : {}),
       key_photos: seq.keyPhotos.map(
         (kp: KeyPhoto, kpIndex: number): MceKeyPhoto => ({
           id: kp.id,
@@ -199,7 +207,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 10,
+    version: 11,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -365,6 +373,14 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
             mode: (mceSeq.cross_dissolve.mode ?? 'transparency') as FadeMode,
             color: mceSeq.cross_dissolve.color ?? '#000000',
             curve: (mceSeq.cross_dissolve.curve ?? 'ease-in-out') as EasingType,
+          },
+        } : {}),
+        ...((mceSeq as any).gl_transition ? {
+          glTransition: {
+            shaderId: (mceSeq as any).gl_transition.shader_id,
+            params: (mceSeq as any).gl_transition.params ?? {},
+            duration: (mceSeq as any).gl_transition.duration,
+            curve: ((mceSeq as any).gl_transition.curve ?? 'ease-in-out') as EasingType,
           },
         } : {}),
       };
