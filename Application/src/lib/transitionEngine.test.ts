@@ -84,3 +84,16 @@ describe('computeFadeOpacity', () => {
     expect(computeFadeOpacity(0, 24, fadeIn, undefined)).toBe(1.0);
   });
 });
+
+describe('computeTransitionProgress', () => {
+  // NOTE: Import will fail until Plan 01 adds the function.
+  // Use dynamic import or `as any` pattern until then.
+
+  it.todo('returns 0 when overlapDuration is 0');
+  it.todo('returns 0 at overlapStart frame with linear curve');
+  it.todo('returns 0.5 at midpoint of linear overlap');
+  it.todo('returns 1.0 at last frame of overlap');
+  it.todo('clamps to 0 when globalFrame is before overlapStart');
+  it.todo('clamps to 1 when globalFrame is past overlap end');
+  it.todo('applies ease-in-out easing to progress value');
+});
