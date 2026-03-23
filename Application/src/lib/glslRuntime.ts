@@ -72,6 +72,8 @@ let _gl: WebGL2RenderingContext | null = null;
 let _glCanvas: HTMLCanvasElement | null = null;
 let _vao: WebGLVertexArrayObject | null = null;
 let _inputTexture: WebGLTexture | null = null;
+let _fromTexture: WebGLTexture | null = null;
+let _toTexture: WebGLTexture | null = null;
 let _initFailed = false;
 const _programs: Map<string, CachedProgram> = new Map();
 
@@ -101,6 +103,8 @@ function getGL(): WebGL2RenderingContext | null {
     _gl = null;
     _vao = null;
     _inputTexture = null;
+    _fromTexture = null;
+    _toTexture = null;
     _programs.clear();
   });
 
@@ -221,6 +225,127 @@ function bindUniforms(
   }
 }
 
+// ---- Transition shader wrapper ----
+
+/**
+ * Build a WebGL2-compatible fragment shader wrapping a gl-transitions.com
+ * GLSL transition source. The wrapper provides:
+ * - uniform sampler2D u_from / u_to (bound by renderGlslTransition)
+ * - uniform float progress, ratio
+ * - uniform vec3 iResolution
+ * - Custom param uniforms as u_{key}
+ * - getFromColor / getToColor helper functions
+ * - Auto-reconstructed vec2/ivec2 from paired X/Y float params
+ */
+function buildTransitionFragmentSource(shader: ShaderDefinition): string {
+  const paramUniforms = shader.params
+    .map(p => `uniform float u_${p.key};`)
+    .join('\n');
+
+  // Auto-generate vec2 reconstruction lines for paired X/Y params
+  // Detects params ending in X/Y and checks if the GLSL source uses vec2/ivec2 basename
+  const vec2Lines: string[] = [];
+  const seenBases = new Set<string>();
+  for (const p of shader.params) {
+    if (p.key.endsWith('X') || p.key.endsWith('Y')) {
+      const basename = p.key.slice(0, -1);
+      if (seenBases.has(basename)) continue;
+      seenBases.add(basename);
+      // Check if both X and Y params exist
+      const hasX = shader.params.some(q => q.key === basename + 'X');
+      const hasY = shader.params.some(q => q.key === basename + 'Y');
+      if (hasX && hasY) {
+        // Check if source references uniform vec2 or ivec2 with this basename
+        if (shader.fragmentSource.includes(`ivec2 ${basename}`)) {
+          vec2Lines.push(`ivec2 ${basename} = ivec2(int(u_${basename}X), int(u_${basename}Y));`);
+        } else {
+          vec2Lines.push(`vec2 ${basename} = vec2(u_${basename}X, u_${basename}Y);`);
+        }
+      }
+    }
+  }
+  const vec2Reconstruction = vec2Lines.length > 0
+    ? '// Auto-reconstructed vec2/ivec2 from paired float params\n' + vec2Lines.join('\n') + '\n'
+    : '';
+
+  return `#version 300 es
+precision highp float;
+
+uniform sampler2D u_from;
+uniform sampler2D u_to;
+uniform float progress;
+uniform float ratio;
+uniform vec3 iResolution;
+
+${paramUniforms}
+
+out vec4 out_fragColor;
+
+vec4 getFromColor(vec2 uv) {
+  return texture(u_from, uv);
+}
+vec4 getToColor(vec2 uv) {
+  return texture(u_to, uv);
+}
+
+${vec2Reconstruction}
+// --- Transition code (from gl-transitions.com) ---
+${shader.fragmentSource}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  out_fragColor = transition(uv);
+}
+`;
+}
+
+function getOrCreateTransitionProgram(gl: WebGL2RenderingContext, shader: ShaderDefinition): CachedProgram | null {
+  const cacheKey = 'transition:' + shader.id;
+  const existing = _programs.get(cacheKey);
+  if (existing) return existing;
+
+  const fragSource = buildTransitionFragmentSource(shader);
+  const vert = compileShader(gl, gl.VERTEX_SHADER, VERT_SRC);
+  const frag = compileShader(gl, gl.FRAGMENT_SHADER, fragSource);
+  if (!vert || !frag) {
+    if (vert) gl.deleteShader(vert);
+    if (frag) gl.deleteShader(frag);
+    return null;
+  }
+
+  const program = gl.createProgram();
+  if (!program) return null;
+  gl.attachShader(program, vert);
+  gl.attachShader(program, frag);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    console.warn('glslRuntime transition link error:', gl.getProgramInfoLog(program));
+    gl.deleteProgram(program);
+    return null;
+  }
+
+  gl.detachShader(program, vert);
+  gl.detachShader(program, frag);
+  gl.deleteShader(vert);
+  gl.deleteShader(frag);
+
+  // Collect uniform locations
+  const uniforms = new Map<string, WebGLUniformLocation>();
+  const stdNames = ['u_from', 'u_to', 'progress', 'ratio', 'iResolution'];
+  for (const name of stdNames) {
+    const loc = gl.getUniformLocation(program, name);
+    if (loc) uniforms.set(name, loc);
+  }
+  for (const p of shader.params) {
+    const loc = gl.getUniformLocation(program, `u_${p.key}`);
+    if (loc) uniforms.set(`u_${p.key}`, loc);
+  }
+
+  const cached: CachedProgram = { program, uniforms, paramDefs: shader.params };
+  _programs.set(cacheKey, cached);
+  return cached;
+}
+
 // ---- Public API ----
 
 /**
@@ -300,6 +425,90 @@ export function renderGlslFxImage(
 }
 
 /**
+ * Render a GL transition shader with dual-texture pipeline.
+ * Accepts two source canvases (from/to), progress, ratio, and shader params.
+ * Returns the GL canvas for compositing, or null on failure.
+ */
+export function renderGlslTransition(
+  shader: ShaderDefinition,
+  fromCanvas: HTMLCanvasElement,
+  toCanvas: HTMLCanvasElement,
+  progress: number,
+  ratio: number,
+  params: Record<string, number>,
+  width: number,
+  height: number,
+): HTMLCanvasElement | null {
+  const gl = getGL();
+  if (!gl || !_glCanvas || !_vao) return null;
+
+  const cached = getOrCreateTransitionProgram(gl, shader);
+  if (!cached) return null;
+
+  ensureCanvasSize(gl, _glCanvas, width, height);
+  gl.useProgram(cached.program);
+
+  // Set standard transition uniforms
+  const iRes = cached.uniforms.get('iResolution');
+  if (iRes) gl.uniform3f(iRes, width, height, 1.0);
+
+  const uProgress = cached.uniforms.get('progress');
+  if (uProgress) gl.uniform1f(uProgress, Math.max(0.001, Math.min(0.999, progress)));
+
+  const uRatio = cached.uniforms.get('ratio');
+  if (uRatio) gl.uniform1f(uRatio, ratio);
+
+  // Bind custom param uniforms
+  for (const p of cached.paramDefs) {
+    const loc = cached.uniforms.get(`u_${p.key}`);
+    if (loc) {
+      gl.uniform1f(loc, params[p.key] ?? p.default);
+    }
+  }
+
+  // Upload fromCanvas to _fromTexture on TEXTURE0
+  if (!_fromTexture) {
+    _fromTexture = gl.createTexture();
+  }
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, _fromTexture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, fromCanvas);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+
+  // Upload toCanvas to _toTexture on TEXTURE1
+  if (!_toTexture) {
+    _toTexture = gl.createTexture();
+  }
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, _toTexture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, toCanvas);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+
+  // Set sampler uniforms
+  const uFrom = cached.uniforms.get('u_from');
+  if (uFrom) gl.uniform1i(uFrom, 0);
+  const uTo = cached.uniforms.get('u_to');
+  if (uTo) gl.uniform1i(uTo, 1);
+
+  // Draw fullscreen quad
+  gl.bindVertexArray(_vao);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.bindVertexArray(null);
+
+  return _glCanvas;
+}
+
+/**
  * Render a shader at small resolution for preview thumbnails.
  * Copies the result to a target 2D canvas.
  */
@@ -333,11 +542,15 @@ export function disposeGlslRuntime() {
       _gl.deleteProgram(cached.program);
     }
     if (_inputTexture) _gl.deleteTexture(_inputTexture);
+    if (_fromTexture) _gl.deleteTexture(_fromTexture);
+    if (_toTexture) _gl.deleteTexture(_toTexture);
   }
   _programs.clear();
   _gl = null;
   _glCanvas = null;
   _vao = null;
   _inputTexture = null;
+  _fromTexture = null;
+  _toTexture = null;
   _initFailed = false;
 }

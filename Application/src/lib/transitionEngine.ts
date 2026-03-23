@@ -56,6 +56,28 @@ export function computeSolidFadeAlpha(
 }
 
 /**
+ * Compute the eased progress value for a GL transition at a given global frame.
+ * progress = easing(framesIntoOverlap / overlapDuration)
+ *
+ * @param globalFrame - The current global frame.
+ * @param overlapStart - The first frame of the overlap zone.
+ * @param overlapDuration - The total number of frames in the overlap.
+ * @param curve - The easing curve to apply to the raw progress.
+ * @returns Eased progress value clamped to [0, 1].
+ */
+export function computeTransitionProgress(
+  globalFrame: number,
+  overlapStart: number,
+  overlapDuration: number,
+  curve: EasingType,
+): number {
+  if (overlapDuration <= 0) return 0;
+  const framesIntoOverlap = globalFrame - overlapStart;
+  const t = Math.max(0, Math.min(1, framesIntoOverlap / overlapDuration));
+  return applyEasing(t, curve);
+}
+
+/**
  * Compute the cross dissolve opacity pair for a given global frame.
  * Returns [outgoingOpacity, incomingOpacity] where both sum to ~1.0.
  * outgoingOpacity: opacity of the sequence that's fading out (1.0 -> 0.0)
