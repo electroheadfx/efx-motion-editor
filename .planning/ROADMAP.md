@@ -67,6 +67,7 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 - [x] **Phase 15.1: Media In-Use Indicators & Safe Removal** - Check timeline usage before removal, warn user, visual badge on used assets in ImportGrid (completed 2026-03-22)
 - [x] **Phase 15.2: Solid Sequence** - Key solid and key transparent entries in content sequences, color picker, timeline/canvas/export rendering (completed 2026-03-22)
 - [x] **Phase 15.3: GLSL Shadertoys** - WebGL2 shader runtime, shader browser, 17 Shadertoy-ported effects, parameter controls, keyframe animation (completed 2026-03-22)
+- [ ] **Phase 15.4: GL Transition** - GLSL-powered transitions between sequences, 18 curated gl-transitions.com shaders, dual-texture rendering pipeline, browser/sidebar/timeline integration
 - [ ] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange
 - [ ] **Phase 17: Enhancements** - Sidebar key photo scroll/collapse, sequence solo, layer solo
 - [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
@@ -92,6 +93,25 @@ Plans:
 - [x] 15-02-PLAN.md — Import flow (AddAudioButton), CSS variables, waveform rendering on timeline
 - [x] 15-03-PLAN.md — Timeline interaction (click, drag, resize, reorder, slip) + playback sync
 - [x] 15-04-PLAN.md — AudioProperties panel, project persistence (v8 format), end-to-end verification
+
+### Phase 15.4: GL Transition (INSERTED)
+
+**Goal:** Add GLSL-powered transition effects between content sequences using the gl-transitions.com convention, with dual-texture WebGL2 rendering, 18 curated transition shaders, ShaderBrowser Transition tab, TransitionProperties sidebar editing, timeline visual indicators, and project persistence (.mce v11)
+**Requirements**: GLT-01, GLT-02, GLT-03, GLT-04, GLT-05, GLT-06, GLT-07, GLT-08, GLT-09, GLT-10
+**Depends on:** Phase 15.3 (GLSL runtime, shader library, ShaderBrowser)
+**Success Criteria** (what must be TRUE):
+  1. User can browse 18 GL transition shaders in the ShaderBrowser Transition tab with animated looping previews
+  2. User can apply a GL transition to the active sequence pair, replacing cross-dissolve (mutually exclusive)
+  3. GL transitions render identically in preview and export via dual-capture WebGL2 pipeline
+  4. User can edit GL transition parameters, duration, and easing in TransitionProperties sidebar
+  5. Timeline shows teal GL transition overlays distinct from purple cross-dissolve overlays
+  6. GL transition data persists across project save/load (.mce v11)
+**Plans**: 3 plans
+
+Plans:
+- [ ] 15.4-01-PLAN.md — Foundation: GlTransition type, dual-texture GL pipeline, 18 transition shaders
+- [ ] 15.4-02-PLAN.md — Rendering pipeline + ShaderBrowser Transition tab + Apply flow
+- [ ] 15.4-03-PLAN.md — TransitionProperties sidebar, timeline indicator, project persistence (.mce v11)
 
 ### Phase 15.3: GLSL Shadertoys (INSERTED)
 
@@ -171,7 +191,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
+v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -181,6 +201,7 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 16 > 17, 18 (17 and 18 are independent, can pa
 | 15.1 Media In-Use & Safe Removal | v0.3.0 | 2/2 | Complete    | 2026-03-22 |
 | 15.2 Solid Sequence | v0.3.0 | 4/4 | Complete    | 2026-03-22 |
 | 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
+| 15.4 GL Transition | v0.3.0 | 0/3 | In progress | - |
 | 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
