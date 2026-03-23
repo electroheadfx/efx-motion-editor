@@ -48,7 +48,7 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
           <button
             class="text-left text-[11px] font-medium px-2 py-1 rounded hover:bg-[var(--color-bg-hover-item)] cursor-pointer transition-colors"
             style={{ color: 'var(--sidebar-text-primary)', backgroundColor: 'var(--sidebar-input-bg)', borderRadius: '6px' }}
-            onClick={() => uiStore.setEditorMode('shader-browser')}
+            onClick={() => { uiStore.shaderBrowserInitialTab.value = 'transition'; uiStore.setEditorMode('shader-browser'); }}
             title="Click to swap transition"
           >
             {shaderDef.name}

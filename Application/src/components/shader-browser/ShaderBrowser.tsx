@@ -498,7 +498,11 @@ function ShaderDetail({
 // ---- Main Browser Component ----
 
 export function ShaderBrowser() {
-  const [activeTab, setActiveTab] = useState<TabId>('all');
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const initial = uiStore.shaderBrowserInitialTab.peek();
+    if (initial) { uiStore.shaderBrowserInitialTab.value = null; return initial as TabId; }
+    return 'all';
+  });
   const [expandedShader, setExpandedShader] = useState<ShaderDefinition | null>(null);
 
   const shaders = activeTab === 'all' ? getAllShaders() : getShadersByCategory(activeTab as ShaderCategory);

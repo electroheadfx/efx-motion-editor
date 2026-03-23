@@ -28,6 +28,7 @@ const editorMode = signal<EditorMode>('editor');
 const sidebarCollapsed = signal(false);
 const pendingNewSequenceId = signal<string | null>(null);
 const addLayerIntent = signal<AddLayerIntent>(null);
+const shaderBrowserInitialTab = signal<string | null>(null);
 const sequencesSectionCollapsed = signal(false);
 const layersSectionCollapsed = signal(false);
 const propertiesSectionCollapsed = signal(false);
@@ -62,6 +63,7 @@ export const uiStore = {
   sidebarCollapsed,
   pendingNewSequenceId,
   addLayerIntent,
+  shaderBrowserInitialTab,
   sequencesSectionCollapsed,
   layersSectionCollapsed,
   propertiesSectionCollapsed,
