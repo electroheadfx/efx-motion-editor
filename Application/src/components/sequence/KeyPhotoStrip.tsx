@@ -214,10 +214,11 @@ function FramesPopover({holdFrames, anchorRef, onCommit, onClose}: FramesPopover
   return (
     <div
       ref={popoverRef}
-      class="fixed z-50 rounded-lg shadow-xl p-2 flex flex-col gap-1.5"
+      class="fixed rounded-lg shadow-xl p-2 flex flex-col gap-1.5"
       style={{
         top: `${pos.top}px`,
         left: `${pos.left}px`,
+        zIndex: 9999,
         backgroundColor: 'var(--sidebar-panel-bg)',
         border: '1px solid var(--sidebar-border-unselected)',
         minWidth: '120px',

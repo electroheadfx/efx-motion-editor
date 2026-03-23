@@ -7,6 +7,8 @@ import { totalFrames } from '../../lib/frameMap';
 import { renderShaderPreview, renderGlslFxImage, renderGlslTransition } from '../../lib/glslRuntime';
 import { getAllShaders, getShadersByCategory, getDefaultParams } from '../../lib/shaderLibrary';
 import { getCapturedCanvas } from '../../lib/shaderPreviewCapture';
+import { imageStore } from '../../stores/imageStore';
+import { assetUrl } from '../../lib/ipc';
 import { defaultTransform } from '../../types/layer';
 import { ColorPickerModal } from '../shared/ColorPickerModal';
 import type { ShaderDefinition, ShaderCategory } from '../../lib/shaderLibrary';
@@ -16,70 +18,108 @@ import type { GlTransition } from '../../types/sequence';
 const PREVIEW_WIDTH = 200;
 const PREVIEW_HEIGHT = 140;
 
-// ---- Transition preview images from captured content ----
+// ---- Transition preview images from sequence content ----
 
-let _previewImageA: HTMLCanvasElement | null = null;
-let _previewImageB: HTMLCanvasElement | null = null;
-let _previewDetailA: HTMLCanvasElement | null = null;
-let _previewDetailB: HTMLCanvasElement | null = null;
-let _capturedSourceKey: string | null = null; // track source to invalidate
+/** Cache for loaded transition preview image pairs */
+let _transitionCache: { key: string; thumbA: HTMLCanvasElement; thumbB: HTMLCanvasElement; detailA: HTMLCanvasElement; detailB: HTMLCanvasElement } | null = null;
 
-/** Draw captured canvas content (or fallback gradient) to a target canvas */
-function drawCapturedOrFallback(
-  target: HTMLCanvasElement, w: number, h: number,
-  captured: HTMLCanvasElement | null, flip: boolean,
+/** Get the outgoing (last KP of active seq) and incoming (first KP of next seq) image IDs */
+function getTransitionImageIds(): { fromId: string | null; toId: string | null } {
+  const contentSeqs = sequenceStore.sequences.peek().filter(s => s.kind === 'content');
+  const activeId = sequenceStore.activeSequenceId.peek();
+  const idx = contentSeqs.findIndex(s => s.id === activeId);
+  const outSeq = idx >= 0 ? contentSeqs[idx] : contentSeqs[0];
+  const inSeq = idx >= 0 && idx < contentSeqs.length - 1 ? contentSeqs[idx + 1] : contentSeqs[1] ?? contentSeqs[0];
+  const outKps = outSeq?.keyPhotos;
+  const fromId = outKps && outKps.length > 0 ? outKps[outKps.length - 1].imageId : null;
+  const toId = inSeq?.keyPhotos[0]?.imageId ?? null;
+  return { fromId, toId };
+}
+
+/** Draw an image onto a canvas by imageId, or a gradient fallback */
+function drawImageOrFallback(
+  canvas: HTMLCanvasElement, imageId: string | null,
   gradFrom: string, gradTo: string,
-) {
-  const ctx = target.getContext('2d')!;
-  if (captured && captured.width > 0 && captured.height > 0) {
-    if (flip) {
-      ctx.save();
-      ctx.translate(w, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(captured, 0, 0, w, h);
-      ctx.restore();
-    } else {
-      ctx.drawImage(captured, 0, 0, w, h);
-    }
-  } else {
+): Promise<void> {
+  const w = canvas.width;
+  const h = canvas.height;
+  const ctx = canvas.getContext('2d')!;
+  if (!imageId) {
     const grad = ctx.createLinearGradient(0, 0, w, h);
     grad.addColorStop(0, gradFrom);
     grad.addColorStop(1, gradTo);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
+    return Promise.resolve();
   }
+  const image = imageStore.getById(imageId);
+  if (!image) {
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, gradFrom);
+    grad.addColorStop(1, gradTo);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Cover-fit: maintain aspect ratio, fill canvas, center crop
+      const imgRatio = img.naturalWidth / img.naturalHeight;
+      const canvasRatio = w / h;
+      let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
+      if (imgRatio > canvasRatio) {
+        sw = img.naturalHeight * canvasRatio;
+        sx = (img.naturalWidth - sw) / 2;
+      } else {
+        sh = img.naturalWidth / canvasRatio;
+        sy = (img.naturalHeight - sh) / 2;
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+      resolve();
+    };
+    img.onerror = () => {
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0, gradFrom);
+      grad.addColorStop(1, gradTo);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+      resolve();
+    };
+    img.src = assetUrl(image.project_path, imageId);
+  });
+}
+
+function ensureTransitionCache(fromId: string | null, toId: string | null) {
+  const key = `${fromId ?? ''}_${toId ?? ''}`;
+  if (_transitionCache?.key === key) return;
+  const thumbA = document.createElement('canvas');
+  thumbA.width = PREVIEW_WIDTH; thumbA.height = PREVIEW_HEIGHT;
+  const thumbB = document.createElement('canvas');
+  thumbB.width = PREVIEW_WIDTH; thumbB.height = PREVIEW_HEIGHT;
+  const detailA = document.createElement('canvas');
+  detailA.width = 640; detailA.height = 400;
+  const detailB = document.createElement('canvas');
+  detailB.width = 640; detailB.height = 400;
+  _transitionCache = { key, thumbA, thumbB, detailA, detailB };
+  // Draw all four in parallel (async but canvases are usable immediately with fallback)
+  drawImageOrFallback(thumbA, fromId, '#FF6B35', '#D62828');
+  drawImageOrFallback(thumbB, toId, '#1D3557', '#457B9D');
+  drawImageOrFallback(detailA, fromId, '#FF6B35', '#D62828');
+  drawImageOrFallback(detailB, toId, '#1D3557', '#457B9D');
 }
 
 function getTransitionPreviewImages(): { a: HTMLCanvasElement; b: HTMLCanvasElement } {
-  const captured = getCapturedCanvas();
-  const sourceKey = captured ? `${captured.width}x${captured.height}` : null;
-  if (!_previewImageA || !_previewImageB || _capturedSourceKey !== sourceKey) {
-    _capturedSourceKey = sourceKey;
-    _previewImageA = document.createElement('canvas');
-    _previewImageA.width = PREVIEW_WIDTH;
-    _previewImageA.height = PREVIEW_HEIGHT;
-    drawCapturedOrFallback(_previewImageA, PREVIEW_WIDTH, PREVIEW_HEIGHT, captured, false, '#FF6B35', '#D62828');
-    _previewImageB = document.createElement('canvas');
-    _previewImageB.width = PREVIEW_WIDTH;
-    _previewImageB.height = PREVIEW_HEIGHT;
-    drawCapturedOrFallback(_previewImageB, PREVIEW_WIDTH, PREVIEW_HEIGHT, captured, true, '#1D3557', '#457B9D');
-  }
-  return { a: _previewImageA, b: _previewImageB };
+  const { fromId, toId } = getTransitionImageIds();
+  ensureTransitionCache(fromId, toId);
+  return { a: _transitionCache!.thumbA, b: _transitionCache!.thumbB };
 }
 
 function getTransitionDetailImages(): { a: HTMLCanvasElement; b: HTMLCanvasElement } {
-  const captured = getCapturedCanvas();
-  if (!_previewDetailA || !_previewDetailB) {
-    _previewDetailA = document.createElement('canvas');
-    _previewDetailA.width = 640;
-    _previewDetailA.height = 400;
-    _previewDetailB = document.createElement('canvas');
-    _previewDetailB.width = 640;
-    _previewDetailB.height = 400;
-  }
-  drawCapturedOrFallback(_previewDetailA, 640, 400, captured, false, '#FF6B35', '#D62828');
-  drawCapturedOrFallback(_previewDetailB, 640, 400, captured, true, '#1D3557', '#457B9D');
-  return { a: _previewDetailA, b: _previewDetailB };
+  const { fromId, toId } = getTransitionImageIds();
+  ensureTransitionCache(fromId, toId);
+  return { a: _transitionCache!.detailA, b: _transitionCache!.detailB };
 }
 
 // ---- Tab definitions ----
