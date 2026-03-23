@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
-status: unknown
-stopped_at: Phase 15.4 context gathered
-last_updated: "2026-03-23T07:16:07.980Z"
-last_activity: 2026-03-22
+status: Phase complete — ready for verification
+stopped_at: Completed 15.4-03-PLAN.md
+last_updated: "2026-03-23T08:29:25.065Z"
+last_activity: 2026-03-23
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
+  total_plans: 15
+  completed_plans: 14
 ---
 
 # Project State
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 15.2 — solid-sequence
-Last activity: 2026-03-22
+**Current focus:** Phase 15.4 — gl-transition
+Last activity: 2026-03-23
 
 ## Current Position
 
-Phase: 16
-Plan: Not started
+Phase: 15.4 (gl-transition) — EXECUTING
+Plan: 4 of 4
 
 ## Performance Metrics
 
@@ -55,6 +55,10 @@ Plan: Not started
 | Phase 15.2 P03 | 3min | 2 tasks | 2 files |
 | Phase 15.2 P02 | 4min | 2 tasks | 3 files |
 | Phase 15.2 P03 | 6min | 3 tasks | 3 files |
+| Phase 15.4 P00 | 3min | 2 tasks | 5 files |
+| Phase 15.4 P01 | 7min | 2 tasks | 22 files |
+| Phase 15.4 P02 | 8min | 3 tasks | 8 files |
+| Phase 15.4 P03 | 7min | 2 tasks | 8 files |
 
 ### Decisions
 
@@ -83,6 +87,19 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 15.2]: updateKeySolidColorLive added as lightweight mutation without undo for live preview during color picker drag
 - [Phase 15.2]: Color picker modal uses HSV internally with saturation-value area and hue slider — standard Photoshop/Figma pattern
 - [Phase 15.2]: FramesPopover with +/- buttons commits immediately on click for responsive UX
+- [Phase 15.4]: All GL transition test stubs use it.todo since implementation is in Wave 1-3
+- [Phase 15.4]: glslRuntime.test.ts WebGL2 stubs remain todo even after implementation (jsdom has no GL context)
+- [Phase 15.4]: GlTransition as separate interface on Sequence, not overloading Transition type, for clean D-02 mutual exclusion
+- [Phase 15.4]: Transition programs cached with 'transition:' prefix key distinct from generator/fx-image cache keys
+- [Phase 15.4]: Progress clamped to [0.001, 0.999] to avoid edge-case shader artifacts (Pitfall 7)
+- [Phase 15.4]: Vec2 params decomposed to paired floats with auto-reconstruction in buildTransitionFragmentSource wrapper
+- [Phase 15.4]: Offscreen canvases reused between GL transition frames via module-level cache with size-check
+- [Phase 15.4]: GL transition path checked before cross-dissolve in overlap loop, with break on match
+- [Phase 15.4]: TransitionProperties returns null for gl-transition type — Plan 03 handles GL properties panel
+- [Phase 15.4]: Transition preview uses programmatic gradients (warm/cool) instead of bundled image assets
+- [Phase 15.4]: GL transition properties panel renders shader-specific param sliders with colorGroup RGB color pickers
+- [Phase 15.4]: Teal timeline overlay with X-pattern distinguishes GL transitions from purple cross-dissolve
+- [Phase 15.4]: Project format v11 with serde(default) on gl_transition for seamless v10 backward compat
 
 ### Pending Todos
 
@@ -111,6 +128,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-23T07:16:07.978Z
-Stopped at: Phase 15.4 context gathered
-Resume file: .planning/phases/15.4-gl-transition/15.4-CONTEXT.md
+Last session: 2026-03-23T08:29:25.063Z
+Stopped at: Completed 15.4-03-PLAN.md
+Resume file: None
