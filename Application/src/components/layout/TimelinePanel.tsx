@@ -138,7 +138,7 @@ export function TimelinePanel() {
         {/* Add Transition */}
         <AddTransitionMenu />
 
-        {/* GLSL Shader Browser */}
+        {/* Shader Browser */}
         <button
           class="rounded px-2 py-[5px] bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)] transition-colors"
           onClick={() => {
@@ -149,9 +149,9 @@ export function TimelinePanel() {
               uiStore.setEditorMode('shader-browser');
             }
           }}
-          title="GLSL Shader Browser"
+          title="Shader Browser"
         >
-          <span class="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1"><Sparkles size={11} /> GLSL</span>
+          <span class="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1"><Sparkles size={11} /> Shader</span>
         </button>
 
         {/* Add Layer */}
