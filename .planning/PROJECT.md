@@ -56,7 +56,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 ### Active
 
 - [ ] Audio import, waveform visualization, fade in/out, timeline positioning, synced playback
-- [ ] Audio in video export, beat sync (auto-detect BPM, beat markers, snap modes, auto-arrange)
+- [x] Audio in video export, beat sync (auto-detect BPM, beat markers, snap modes, auto-arrange) — Validated in Phase 16
 - [ ] Sidebar enhancements (scroll in key photos, collapse toggle) and solo mode for sequences/layers
 - [ ] Canvas motion path with interpolation preview (After Effects-style keyframe path editing)
 
