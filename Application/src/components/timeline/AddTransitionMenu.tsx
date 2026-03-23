@@ -52,7 +52,7 @@ export function AddTransitionMenu() {
 
   const canFadeIn = targetSeq != null && !targetSeq.fadeIn;
   const canFadeOut = targetSeq != null && !targetSeq.fadeOut;
-  const canCrossDissolve = isContentSeq && hasNextSeq && !activeSeq!.crossDissolve;
+  const canCrossDissolve = isContentSeq && hasNextSeq && !activeSeq!.crossDissolve && !activeSeq!.glTransition;
   const hasAnyOption = canFadeIn || canFadeOut || canCrossDissolve;
 
   // Default duration: 20% of sequence total frames

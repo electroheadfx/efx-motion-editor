@@ -84,6 +84,7 @@ export const trackLayouts = computed<TrackLayout[]>(() => {
       fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
       fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,
       crossDissolve: seq.crossDissolve ? { duration: seq.crossDissolve.duration } : undefined,
+      glTransition: seq.glTransition,
     });
   }
   return tracks;

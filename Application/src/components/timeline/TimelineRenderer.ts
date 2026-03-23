@@ -305,6 +305,43 @@ export class TimelineRenderer {
     ctx.restore();
   }
 
+  /** Draw a GL transition overlay — teal/cyan color to distinguish from purple cross-dissolve */
+  private drawGlTransitionOverlay(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    w: number,
+    trackY: number,
+    trackH: number,
+    isSelected: boolean,
+  ): void {
+    if (w <= 0) return;
+    ctx.save();
+
+    const barY = trackY + 2;
+    const barH = Math.round(trackH * 0.3);
+
+    // Teal fill (distinct from purple cross-dissolve)
+    ctx.fillStyle = isSelected ? 'rgba(20, 184, 166, 0.7)' : 'rgba(20, 184, 166, 0.5)';
+    ctx.fillRect(x, barY, w, barH);
+
+    // X-pattern (two crossing diagonals) to distinguish from cross-dissolve's single diagonal
+    ctx.beginPath();
+    ctx.moveTo(x, barY);
+    ctx.lineTo(x + w, barY + barH);
+    ctx.moveTo(x + w, barY);
+    ctx.lineTo(x, barY + barH);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Border
+    ctx.strokeStyle = isSelected ? 'rgba(20, 184, 166, 1)' : 'rgba(0, 0, 0, 0.8)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, barY + 0.5, w - 1, barH - 1);
+
+    ctx.restore();
+  }
+
   /** Resolve the display color for an FX/content-overlay track.
    *  Content overlay colors use CSS variables that Canvas 2D cannot resolve directly,
    *  so we map them to the pre-resolved theme color cache values. */
@@ -691,7 +728,7 @@ export class TimelineRenderer {
       }
     }
 
-    // Cross dissolve overlays — drawn AFTER all tracks so they aren't covered by next track's thumbnails
+    // Cross dissolve and GL transition overlays — drawn AFTER all tracks so they aren't covered by next track's thumbnails
     for (let ti = 0; ti < tracks.length; ti++) {
       const track = tracks[ti];
       if (track.crossDissolve && ti < tracks.length - 1) {
@@ -706,6 +743,21 @@ export class TimelineRenderer {
           && state.selectedTransition?.type === 'cross-dissolve';
 
         this.drawTransitionOverlay(ctx, cdX, cdW, trackY, TRACK_HEIGHT, 'cross-dissolve', isCdSelected);
+      }
+
+      // GL transition overlay (teal, visually distinct from purple cross-dissolve)
+      if (track.glTransition && ti < tracks.length - 1) {
+        const glt = track.glTransition;
+        const halfDuration = Math.floor(glt.duration / 2);
+        const boundary = track.endFrame;
+        const gltStartFrame = boundary - halfDuration;
+        const gltX = gltStartFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+        const gltW = glt.duration * frameWidth;
+
+        const isGltSelected = state.selectedTransition?.sequenceId === track.sequenceId
+          && state.selectedTransition?.type === 'gl-transition';
+
+        this.drawGlTransitionOverlay(ctx, gltX, gltW, trackY, TRACK_HEIGHT, isGltSelected);
       }
     }
 

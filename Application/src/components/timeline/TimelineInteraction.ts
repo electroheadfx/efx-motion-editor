@@ -425,7 +425,7 @@ export class TimelineInteraction {
   private transitionHitTest(
     localX: number,
     localY: number,
-  ): { sequenceId: string; type: 'fade-in' | 'fade-out' | 'cross-dissolve' } | null {
+  ): { sequenceId: string; type: 'fade-in' | 'fade-out' | 'cross-dissolve' | 'gl-transition' } | null {
     if (!this.renderer) return null;
     const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
     const scrollX = timelineStore.scrollX.peek();
@@ -468,6 +468,20 @@ export class TimelineInteraction {
 
           if (localX >= cdX && localX <= cdX + cdW) {
             return { sequenceId: track.sequenceId, type: 'cross-dissolve' };
+          }
+        }
+
+        // Check GL transition zones
+        if (track.glTransition && i < tracks.length - 1) {
+          const glt = track.glTransition;
+          const halfDuration = Math.floor(glt.duration / 2);
+          const boundary = track.endFrame;
+          const gltStart = boundary - halfDuration;
+          const gltEnd = gltStart + glt.duration;
+          const gltX = gltStart * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+          const gltEndX = gltEnd * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+          if (localX >= gltX && localX <= gltEndX) {
+            return { sequenceId: track.sequenceId, type: 'gl-transition' as const };
           }
         }
       }

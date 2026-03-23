@@ -1,5 +1,6 @@
 import type { LayerType } from './layer';
 import type {WaveformPeaks, FadeCurve} from './audio';
+import type {GlTransition} from './sequence';
 
 export interface TimelineState {
   currentFrame: number;
@@ -29,6 +30,7 @@ export interface TrackLayout {
   fadeIn?: { duration: number };
   fadeOut?: { duration: number };
   crossDissolve?: { duration: number };
+  glTransition?: GlTransition;
 }
 
 /** Layout info for an FX or content-overlay sequence range bar in the timeline */
