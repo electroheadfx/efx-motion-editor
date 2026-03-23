@@ -67,9 +67,35 @@ The shader library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](Appl
 
 ### Fade & Cross-Dissolve Transitions
 
-Fade in/out and cross-dissolve transitions between sequences with opacity and solid color modes. GLSL shader transitions planned for a future release.
+Fade in/out and cross-dissolve transitions between sequences with opacity and solid color modes.
 
-<!-- Screenshot: Cross-dissolve transition -->
+### GL Shader Transitions
+
+18 GPU-powered transition shaders ported from [gl-transitions.com](https://gl-transitions.com/), rendered via a dual-texture WebGL2 pipeline. Browse transitions with animated previews showing actual sequence content, quick-apply from the grid, or expand for parameter tuning. Swap shaders after applying without losing duration/curve settings.
+
+| Transition | Description |
+|-----------|-------------|
+| Directional | Slide the scene in a configurable direction |
+| Directional Wipe | Hard-edge wipe with configurable direction and smoothness |
+| Wipe Left / Wipe Down | Clean axis-aligned wipe transitions |
+| Dissolve | Random noise dissolve |
+| Fade Color | Dissolve through a solid color intermediate |
+| Fade Grayscale | Dissolve through grayscale intermediate |
+| Swap | Two images swap positions with perspective and reflection |
+| Window Slice | Venetian blinds slice transition |
+| Slides | Multi-panel slide transition |
+| Cross Zoom | Zoom blur cross-dissolve |
+| Zoom In Circles | Circular reveal zoom pattern |
+| Simple Zoom | Simple zoom-in transition |
+| Cross Warp | Warped cross-dissolve |
+| Cube | 3D cube rotation with reflection |
+| Pixelize | Pixelation with configurable grid size |
+| Dreamy | Dreamy blur dissolve |
+| Glitch Memories | Glitch effect with chromatic aberration |
+
+Transitions render in both the live preview and video export pipelines. Duration, easing curve, and per-shader parameters are editable in the sidebar. Project persistence via `.mce` v11 format.
+
+<!-- Screenshot: GL transition browser with animated previews -->
 
 ### Audio Import & Waveform
 
@@ -129,7 +155,7 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | GPU Effects | WebGL2 (GLSL shaders, GPU blur) |
 | Native Backend | Rust, Tauri 2.0 |
 | Video Export | FFmpeg (auto-provisioned) |
-| Project Format | `.mce` v10 (progressive JSON with backward compat v1-v10) |
+| Project Format | `.mce` v11 (progressive JSON with backward compat v1-v11) |
 
 ## Prerequisites
 
@@ -179,6 +205,7 @@ efx-motion-editor/
 │   │   │   ├── shaders/         # GLSL shader library
 │   │   │   │   ├── generators/  # 10 procedural generator shaders
 │   │   │   │   ├── fx-image/    # 7 image filter shaders
+│   │   │   │   ├── transitions/ # 18 GL transition shaders
 │   │   │   │   └── SHADER-SPEC.md
 │   │   │   ├── glslRuntime.ts   # WebGL2 shader rendering engine
 │   │   │   ├── shaderLibrary.ts # Shader registry and types
