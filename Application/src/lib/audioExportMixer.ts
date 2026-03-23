@@ -75,11 +75,16 @@ function applyExportFadeSchedule(
  * Pre-render all audio tracks to a single mixed WAV ArrayBuffer using OfflineAudioContext.
  * Per D-01: guarantees fades and volume match preview playback exactly.
  * Per D-02: reuses audioEngine fade/volume/offset logic (no duplicate DSP in Rust).
+ *
+ * @param signal - Optional AbortSignal to cancel rendering mid-flight.
+ *   When aborted, rejects with a DOMException('Aborted', 'AbortError').
+ *   Also includes a 60-second timeout safety net.
  */
 export async function renderMixedAudio(
   tracks: AudioTrack[],
   fps: number,
   totalDurationSec: number,
+  signal?: AbortSignal,
 ): Promise<ArrayBuffer> {
   // Use 48000 Hz (professional video standard, avoids FFmpeg resampling artifacts)
   const sampleRate = 48000;
@@ -116,6 +121,26 @@ export async function renderMixedAudio(
     }
   }
 
-  const renderedBuffer = await offline.startRendering();
+  // Check if already aborted before starting the render
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+  // Race the offline render against abort signal and a 60s timeout safety net
+  const timeoutMs = 60_000;
+  const renderedBuffer = await Promise.race([
+    offline.startRendering(),
+    new Promise<never>((_, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('Audio pre-render timed out (60s)')),
+        timeoutMs,
+      );
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(new DOMException('Aborted', 'AbortError'));
+        }, { once: true });
+      }
+    }),
+  ]);
+
   return audioBufferToWav(renderedBuffer);
 }
