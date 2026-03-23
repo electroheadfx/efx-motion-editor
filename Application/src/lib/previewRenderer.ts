@@ -50,17 +50,25 @@ export class PreviewRenderer {
   /** Callback invoked after an image finishes loading (triggers re-render) */
   onImageLoaded: (() => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       throw new Error('PreviewRenderer: failed to get 2d context');
     }
     this.ctx = ctx;
-    this.imageCache = new Map();
+    this.imageCache = sharedImageCache ?? new Map();
     this.loadingImages = new Set();
     this.videoElements = new Map();
     this.videoReadyHandlers = new Map();
+  }
+
+  /**
+   * Create a lightweight renderer targeting a different canvas but sharing
+   * this renderer's image cache. Used for GL transition dual-capture rendering.
+   */
+  cloneForCanvas(canvas: HTMLCanvasElement): PreviewRenderer {
+    return new PreviewRenderer(canvas, this.imageCache);
   }
 
   /**

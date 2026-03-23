@@ -125,18 +125,18 @@ export function renderGlobalFrame(
             const offA = _getOrCreateTransitionOffscreen(w, h, 'A');
             const offB = _getOrCreateTransitionOffscreen(w, h, 'B');
 
-            // Render outgoing sequence to offscreen A
+            // Render outgoing sequence to offscreen A (share image cache with main renderer)
             const outLocalFrame = overlap.outgoingLocalFrameStart + framesIntoOverlap;
             const outFrames = buildSequenceFrames(outSeq);
             const outLayers = interpolateLayers(outSeq, outLocalFrame);
-            const rendererA = new PreviewRenderer(offA);
+            const rendererA = renderer.cloneForCanvas(offA);
             rendererA.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, 1.0);
 
-            // Render incoming sequence to offscreen B
+            // Render incoming sequence to offscreen B (share image cache with main renderer)
             const inLocalFrame = overlap.incomingLocalFrameStart + framesIntoOverlap;
             const inFrames = buildSequenceFrames(inSeq);
             const inLayers = interpolateLayers(inSeq, inLocalFrame);
-            const rendererB = new PreviewRenderer(offB);
+            const rendererB = renderer.cloneForCanvas(offB);
             rendererB.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, true, 1.0);
 
             // Compute eased progress (per D-07)
