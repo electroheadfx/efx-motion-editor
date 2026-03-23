@@ -169,9 +169,11 @@ export function exportEncodeVideo(
   h264Crf: number,
   av1Crf: number,
   proresProfile: string,
+  audioPath?: string | null,
 ) {
   return safeInvoke<null>('export_encode_video', {
     pngDir, globPattern, outputPath, codec, fps,
     h264Crf, av1Crf, proresProfile,
+    audioPath: audioPath ?? null,
   });
 }
