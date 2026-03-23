@@ -180,25 +180,48 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     await exportWritePng(exportDir, sidecarFilename, Array.from(sidecarBytes));
 
     // 6.5. Pre-render audio for muxing (per D-01, D-02)
+    // Check cancel before starting audio pre-render (fixes UAT Tests 9/10 hang)
+    if (exportStore.isCancelled()) {
+      exportStore.updateProgress({
+        status: 'cancelled',
+        resumeFromFrame: total, // frames done, audio step skipped
+      });
+      return;
+    }
+
     let audioWavPath: string | null = null;
     const hasAudioTracks = audioStore.tracks.peek().length > 0;
 
     if (settings.includeAudio && hasAudioTracks) {
       exportStore.updateProgress({ status: 'preparing' });
+
+      // Wire cancel flag to AbortController so renderMixedAudio can be aborted mid-render
+      const abortController = new AbortController();
+      const cancelCheckInterval = setInterval(() => {
+        if (exportStore.isCancelled()) abortController.abort();
+      }, 200);
+
       try {
         const totalDurationSec = total / projectStore.fps.peek();
         const wavData = await renderMixedAudio(
           audioStore.tracks.peek(),
           projectStore.fps.peek(),
           totalDurationSec,
+          abortController.signal,
         );
         // Write WAV to export dir
         audioWavPath = `${exportDir}/audio_mix.wav`;
         await writeFile(audioWavPath, new Uint8Array(wavData));
       } catch (err) {
+        if (abortController.signal.aborted) {
+          exportStore.updateProgress({ status: 'cancelled' });
+          return;
+        }
         console.error('Audio pre-render failed:', err);
         // Continue without audio rather than failing the entire export
         audioWavPath = null;
+      } finally {
+        clearInterval(cancelCheckInterval);
       }
     }
 
