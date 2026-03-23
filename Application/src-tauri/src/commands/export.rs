@@ -69,6 +69,7 @@ pub async fn export_download_ffmpeg() -> Result<String, String> {
 }
 
 /// Encode video from PNG sequence. Per D-19: output naming ProjectName_ResolutionP_codec.ext
+/// audio_path: Optional path to pre-rendered WAV for muxing into the video.
 #[command]
 pub fn export_encode_video(
     png_dir: String,
@@ -79,13 +80,17 @@ pub fn export_encode_video(
     h264_crf: u32,
     av1_crf: u32,
     prores_profile: String,
+    audio_path: Option<String>,
 ) -> Result<(), String> {
     let quality = ffmpeg::VideoQualityArgs {
         h264_crf,
         av1_crf,
         prores_profile,
     };
-    ffmpeg::encode_video(&png_dir, &glob_pattern, &output_path, &codec, fps, &quality)
+    ffmpeg::encode_video(
+        &png_dir, &glob_pattern, &output_path, &codec, fps, &quality,
+        audio_path.as_deref(),
+    )
 }
 
 /// Delete intermediate PNG files from export directory after video encoding.
