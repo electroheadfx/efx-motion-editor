@@ -917,6 +917,27 @@ export const sequenceStore = {
     );
   },
 
+  /** Capture state snapshot (exposed for external atomic undo like auto-arrange). */
+  snapshot,
+
+  /** Restore a snapshot (exposed for external atomic undo like auto-arrange). */
+  restore,
+
+  /** Update a key photo without pushing undo (for batch operations like auto-arrange). */
+  updateKeyPhotoSilent(seqId: string, keyPhotoId: string, updates: Partial<KeyPhoto>): void {
+    sequences.value = sequences.value.map(seq =>
+      seq.id === seqId
+        ? {
+            ...seq,
+            keyPhotos: seq.keyPhotos.map(kp =>
+              kp.id === keyPhotoId ? {...kp, ...updates} : kp,
+            ),
+          }
+        : seq,
+    );
+    markDirty();
+  },
+
   reset() {
     batch(() => {
       sequences.value = [];

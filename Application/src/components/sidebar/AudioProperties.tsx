@@ -5,11 +5,13 @@ import {copyFile, mkdir, readFile} from '@tauri-apps/plugin-fs';
 import {NumericInput} from '../shared/NumericInput';
 import {SectionLabel} from '../shared/SectionLabel';
 import {audioStore} from '../../stores/audioStore';
+import {sequenceStore} from '../../stores/sequenceStore';
 import {audioEngine} from '../../lib/audioEngine';
 import {computeWaveformPeaks} from '../../lib/audioWaveform';
 import {audioPeaksCache} from '../../lib/audioPeaksCache';
 import {projectStore} from '../../stores/projectStore';
-import {startCoalescing, stopCoalescing} from '../../lib/history';
+import {startCoalescing, stopCoalescing, pushAction} from '../../lib/history';
+import {autoArrangeHoldFrames, type ArrangeStrategy} from '../../lib/beatMarkerEngine';
 import type {AudioTrack, FadeCurve} from '../../types/audio';
 
 interface AudioPropertiesProps {
@@ -230,6 +232,159 @@ export function AudioProperties({track}: AudioPropertiesProps) {
           </div>
         </div>
       </div>
+
+      {/* Section 6: BPM */}
+      <div>
+        <SectionLabel text="BPM" />
+        <div class="flex flex-col" style={{gap: '10px', marginTop: '6px'}}>
+          <div class="flex items-center" style={{gap: '8px'}}>
+            <NumericInput
+              label="BPM"
+              value={track.bpm ?? 0}
+              step={0.1}
+              min={0}
+              onChange={(val) => {
+                audioStore.updateTrack(track.id, {bpm: val > 0 ? val : null});
+                if (val > 0) {
+                  audioStore.recalculateBeatMarkers(track.id, projectStore.fps.peek());
+                }
+              }}
+            />
+            {/* x2 and /2 quick-fix buttons */}
+            <button
+              class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => {
+                if (track.bpm) {
+                  audioStore.updateTrack(track.id, {bpm: track.bpm * 2});
+                  audioStore.recalculateBeatMarkers(track.id, projectStore.fps.peek());
+                }
+              }}
+              disabled={!track.bpm}
+              title="Double BPM"
+            >
+              x2
+            </button>
+            <button
+              class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => {
+                if (track.bpm) {
+                  audioStore.updateTrack(track.id, {bpm: track.bpm / 2});
+                  audioStore.recalculateBeatMarkers(track.id, projectStore.fps.peek());
+                }
+              }}
+              disabled={!track.bpm}
+              title="Halve BPM"
+            >
+              /2
+            </button>
+          </div>
+          <NumericInput
+            label="Beat Offset"
+            value={track.beatOffsetFrames}
+            step={1}
+            onChange={(val) => {
+              audioStore.updateTrack(track.id, {beatOffsetFrames: val});
+              audioStore.recalculateBeatMarkers(track.id, projectStore.fps.peek());
+            }}
+          />
+          <button
+            class="text-[10px] px-2 py-1 rounded bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+            onClick={() => audioStore.detectAndSetBPM(track.id, projectStore.fps.peek())}
+            title="Re-detect BPM from audio"
+          >
+            Re-detect BPM
+          </button>
+        </div>
+      </div>
+
+      {/* Section 7: AUTO-ARRANGE */}
+      {track.bpm != null && track.beatMarkers.length > 0 && (
+        <div>
+          <SectionLabel text="AUTO-ARRANGE" />
+          <div class="flex flex-col" style={{gap: '8px', marginTop: '6px'}}>
+            <AutoArrangeSection track={track} />
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+const STRATEGIES: {value: ArrangeStrategy; label: string}[] = [
+  {value: 'every-beat', label: 'Every Beat'},
+  {value: 'every-2-beats', label: 'Every 2 Beats'},
+  {value: 'every-bar', label: 'Every Bar'},
+];
+
+function AutoArrangeSection({track}: {track: AudioTrack}) {
+  const [strategy, setStrategy] = useState<ArrangeStrategy>('every-beat');
+
+  // Target the active content sequence
+  const activeSeq = sequenceStore.sequences.value.find(
+    s => s.id === sequenceStore.activeSequenceId.value && s.kind === 'content',
+  );
+
+  const handleApply = () => {
+    if (!activeSeq || !track.bpm || track.beatMarkers.length === 0) return;
+
+    const keyPhotos = activeSeq.keyPhotos;
+    if (keyPhotos.length === 0) return;
+
+    const holdFramesArr = autoArrangeHoldFrames(
+      keyPhotos.length,
+      track.beatMarkers,
+      strategy,
+      projectStore.fps.peek(),
+      track.bpm,
+    );
+
+    // Atomic undo: snapshot before, apply all, push single action
+    const before = sequenceStore.snapshot();
+    for (let i = 0; i < keyPhotos.length; i++) {
+      sequenceStore.updateKeyPhotoSilent(activeSeq.id, keyPhotos[i].id, {
+        holdFrames: holdFramesArr[i],
+      });
+    }
+    const after = sequenceStore.snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Auto-arrange to beats (${strategy})`,
+      timestamp: Date.now(),
+      undo: () => sequenceStore.restore(before),
+      redo: () => sequenceStore.restore(after),
+    });
+  };
+
+  return (
+    <>
+      <div class="flex flex-wrap gap-1">
+        {STRATEGIES.map(s => (
+          <button
+            key={s.value}
+            class={`text-[10px] px-2 py-1 rounded cursor-pointer transition-colors ${
+              strategy === s.value
+                ? 'bg-[var(--color-accent)] text-white'
+                : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)]'
+            }`}
+            onClick={() => setStrategy(s.value)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <button
+        class="w-full text-[10px] px-2 py-1.5 rounded bg-[var(--color-accent)] text-white hover:brightness-125 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        onClick={handleApply}
+        disabled={!activeSeq || activeSeq.keyPhotos.length === 0}
+        title={!activeSeq ? 'Select a content sequence first' : 'Apply auto-arrange'}
+      >
+        Apply
+      </button>
+      {!activeSeq && (
+        <div class="text-[10px] text-[var(--color-text-muted)]">
+          Select a content sequence to arrange
+        </div>
+      )}
+    </>
   );
 }
