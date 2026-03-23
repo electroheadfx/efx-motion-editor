@@ -68,7 +68,7 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 - [x] **Phase 15.2: Solid Sequence** - Key solid and key transparent entries in content sequences, color picker, timeline/canvas/export rendering (completed 2026-03-22)
 - [x] **Phase 15.3: GLSL Shadertoys** - WebGL2 shader runtime, shader browser, 17 Shadertoy-ported effects, parameter controls, keyframe animation (completed 2026-03-22)
 - [ ] **Phase 15.4: GL Transition** - GLSL-powered transitions between sequences, 18 curated gl-transitions.com shaders, dual-texture rendering pipeline, browser/sidebar/timeline integration
-- [ ] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange
+- [x] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange (completed 2026-03-23)
 - [ ] **Phase 17: Enhancements** - Sidebar key photo scroll/collapse, sequence solo, layer solo
 - [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
 
@@ -173,8 +173,8 @@ Plans:
 - [x] 16-01-PLAN.md — Foundation: data model, BPM detector, beat marker engine, npm dependency
 - [x] 16-02-PLAN.md — Audio export: OfflineAudioContext mixer, Rust FFmpeg muxing, export UI
 - [x] 16-03-PLAN.md — Beat markers, BPM UI, snap-to-beat, auto-arrange, project persistence v12
-- [ ] 16-04-PLAN.md — Gap closure: fix export hang (async FFmpeg, cancel/timeout on audio pre-render)
-- [ ] 16-05-PLAN.md — Gap closure: fix BPM persistence (add missing fields to Rust MceAudioTrack)
+- [x] 16-04-PLAN.md — Gap closure: fix export hang (async FFmpeg, cancel/timeout on audio pre-render)
+- [x] 16-05-PLAN.md — Gap closure: fix BPM persistence (add missing fields to Rust MceAudioTrack)
 - [ ] 16-06-PLAN.md — Gap closure: snap-to-beat in FramesPopover (key photo hold-duration snap)
 
 ### Phase 17: Enhancements
@@ -211,6 +211,6 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 | 15.2 Solid Sequence | v0.3.0 | 4/4 | Complete    | 2026-03-22 |
 | 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
 | 15.4 GL Transition | v0.3.0 | 3/4 | In Progress|  |
-| 16. Audio Export & Beat Sync | v0.3.0 | 3/6 | In Progress|  |
+| 16. Audio Export & Beat Sync | v0.3.0 | 5/6 | Complete    | 2026-03-23 |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
