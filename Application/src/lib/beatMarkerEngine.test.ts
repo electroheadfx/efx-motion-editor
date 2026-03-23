@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {computeBeatMarkers, computeDownbeatFrames, snapToBeat, autoArrangeHoldFrames} from './beatMarkerEngine';
+import {computeBeatMarkers, computeDownbeatFrames, snapToBeat, autoArrangeHoldFrames, snapHoldFramesToBeat} from './beatMarkerEngine';
 
 describe('computeBeatMarkers', () => {
   it('produces markers every 12 frames at 120 BPM / 24 fps', () => {
@@ -130,5 +130,36 @@ describe('autoArrangeHoldFrames', () => {
   it('returns empty array when no beat markers', () => {
     const holds = autoArrangeHoldFrames(3, [], 'every-beat', 24, 120);
     expect(holds).toEqual([]);
+  });
+});
+
+describe('snapHoldFramesToBeat', () => {
+  const markers = [0, 12, 24, 36];
+
+  it('snaps end frame to nearest beat marker and returns new holdFrames', () => {
+    // startFrame=0, currentHold=10 -> endFrame=10, nearest beat=12 (within threshold=5)
+    // newHold = 12 - 0 = 12
+    expect(snapHoldFramesToBeat(0, 10, markers, 5)).toBe(12);
+  });
+
+  it('computes correct holdFrames when startFrame is non-zero', () => {
+    // startFrame=12, currentHold=10 -> endFrame=22, nearest beat=24 (within threshold=5)
+    // newHold = 24 - 12 = 12
+    expect(snapHoldFramesToBeat(12, 10, markers, 5)).toBe(12);
+  });
+
+  it('returns null when nearest beat exceeds threshold', () => {
+    // startFrame=0, currentHold=10 -> endFrame=10, nearest beat=12 (distance=2 > threshold=1)
+    expect(snapHoldFramesToBeat(0, 10, markers, 1)).toBeNull();
+  });
+
+  it('returns null when no beat markers exist', () => {
+    expect(snapHoldFramesToBeat(0, 10, [], 5)).toBeNull();
+  });
+
+  it('guarantees minimum holdFrames of 1 (never 0 or negative)', () => {
+    // startFrame=12, currentHold=1 -> endFrame=13, nearest beat=12 (within threshold=5)
+    // newHold = 12 - 12 = 0, but clamped to 1
+    expect(snapHoldFramesToBeat(12, 1, markers, 5)).toBe(1);
   });
 });

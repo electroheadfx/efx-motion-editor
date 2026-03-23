@@ -58,6 +58,25 @@ export function snapToBeat(
   return bestMarker;
 }
 
+/**
+ * Compute new holdFrames to snap a key photo's end frame to the nearest beat marker.
+ * Returns the new holdFrames value, or null if no beat marker is within threshold.
+ * Guarantees minimum holdFrames of 1 (never 0 or negative).
+ * Per D-13: snap works on the boundary between two key photos, changing the hold frame count.
+ */
+export function snapHoldFramesToBeat(
+  startFrame: number,
+  currentHoldFrames: number,
+  beatMarkers: number[],
+  thresholdFrames: number,
+): number | null {
+  const endFrame = startFrame + currentHoldFrames;
+  const snappedEnd = snapToBeat(endFrame, beatMarkers, thresholdFrames);
+  if (snappedEnd === null) return null;
+  const newHold = snappedEnd - startFrame;
+  return newHold >= 1 ? newHold : 1;
+}
+
 /** Compute hold frame values to align key photos with beats. Per D-14, D-15, D-16 */
 export type ArrangeStrategy = 'every-beat' | 'every-2-beats' | 'every-bar';
 
