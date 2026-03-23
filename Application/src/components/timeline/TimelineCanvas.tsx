@@ -131,6 +131,8 @@ export function TimelineCanvas() {
         selectedTransition: selectedTransitionVal,
         audioTracks: audioTrackLayouts.value,
         selectedAudioTrackId: audioStore.selectedTrackId.value,
+        beatMarkersVisible: audioStore.beatMarkersVisible.value,
+        snapToBeatsEnabled: audioStore.snapToBeatsEnabled.value,
       });
     });
 

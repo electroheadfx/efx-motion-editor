@@ -1,9 +1,10 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
-import {Play, Pause, SkipBack, SkipForward, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Plus, Minus, Shrink, Repeat, Repeat1, Sparkles} from 'lucide-preact';
+import {Play, Pause, SkipBack, SkipForward, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Plus, Minus, Shrink, Repeat, Repeat1, Sparkles, Music, Magnet} from 'lucide-preact';
 import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {timelineStore} from '../../stores/timelineStore';
 import {uiStore} from '../../stores/uiStore';
 import {isolationStore} from '../../stores/isolationStore';
+import {audioStore} from '../../stores/audioStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {findPrevSequenceStart, findNextSequenceStart} from '../../lib/sequenceNav';
 import {totalFrames, trackLayouts} from '../../lib/frameMap';
@@ -128,6 +129,36 @@ export function TimelinePanel() {
         >
           {isolationStore.loopEnabled.value ? <Repeat1 size={14} /> : <Repeat size={14} />}
         </button>
+
+        {/* Beat markers toggle */}
+        {audioStore.tracks.value.length > 0 && (
+          <button
+            class={`rounded px-2 py-[5px] cursor-pointer transition-colors ${
+              audioStore.beatMarkersVisible.value
+                ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
+                : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white'
+            }`}
+            onClick={() => audioStore.toggleBeatMarkers()}
+            title={audioStore.beatMarkersVisible.value ? 'Beat markers: ON' : 'Beat markers: OFF'}
+          >
+            <Music size={14} />
+          </button>
+        )}
+
+        {/* Snap-to-beat toggle */}
+        {audioStore.tracks.value.length > 0 && (
+          <button
+            class={`rounded px-2 py-[5px] cursor-pointer transition-colors ${
+              audioStore.snapToBeatsEnabled.value
+                ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
+                : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white'
+            }`}
+            onClick={() => audioStore.toggleSnapToBeats()}
+            title={audioStore.snapToBeatsEnabled.value ? 'Snap to beats: ON' : 'Snap to beats: OFF'}
+          >
+            <Magnet size={14} />
+          </button>
+        )}
 
         <div class="flex-1" />
 

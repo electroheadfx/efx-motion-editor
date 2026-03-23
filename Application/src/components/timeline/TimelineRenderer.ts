@@ -1,5 +1,6 @@
 import type {TrackLayout, FxTrackLayout, AudioTrackLayout} from '../../types/timeline';
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
+import {computeDownbeatFrames} from '../../lib/beatMarkerEngine';
 import {ThumbnailCache} from './ThumbnailCache';
 
 // --- Design constants (exported for TimelineInteraction) ---
@@ -81,6 +82,8 @@ export interface DrawState {
   selectedTransition?: { sequenceId: string; type: 'fade-in' | 'fade-out' | 'cross-dissolve' | 'gl-transition' } | null;
   audioTracks?: AudioTrackLayout[];
   selectedAudioTrackId?: string | null;
+  beatMarkersVisible?: boolean;
+  snapToBeatsEnabled?: boolean;
 }
 
 /**
@@ -230,6 +233,21 @@ export class TimelineRenderer {
       for (const audioTrack of state.audioTracks) {
         this.drawAudioTrack(ctx, audioTrack, audioY, frameWidth, scrollX, w, colors);
         audioY += audioTrack.trackHeight;
+      }
+    }
+
+    // 2.7. Draw beat markers (spanning full height from FX to audio)
+    if (state.beatMarkersVisible && state.audioTracks) {
+      // Show markers from selected track only to avoid visual chaos
+      const selectedTrack = state.audioTracks.find(at => at.selected && at.showBeatMarkers);
+      if (selectedTrack && selectedTrack.beatMarkers.length > 0) {
+        const contentTracksTotalHeight = TRACK_HEIGHT;
+        const fxTracksTotalHeight = fxTracks.length * FX_TRACK_HEIGHT;
+        const audioTracksTotalHeight = (state.audioTracks ?? []).reduce((sum, at) => sum + at.trackHeight, 0);
+        const yTop = RULER_HEIGHT;
+        const yBottom = RULER_HEIGHT + fxTracksTotalHeight + contentTracksTotalHeight + audioTracksTotalHeight;
+        const downbeats = computeDownbeatFrames(selectedTrack.beatMarkers);
+        this.drawBeatMarkers(ctx, selectedTrack.beatMarkers, downbeats, frameWidth, scrollX, w, yTop, yBottom);
       }
     }
 
@@ -762,6 +780,43 @@ export class TimelineRenderer {
     }
 
     ctx.restore();
+  }
+
+  /** Draw beat marker vertical lines spanning the full track area */
+  private drawBeatMarkers(
+    ctx: CanvasRenderingContext2D,
+    beatMarkers: number[],
+    downbeats: Set<number>,
+    frameWidth: number,
+    scrollX: number,
+    canvasWidth: number,
+    yTop: number,
+    yBottom: number,
+  ): void {
+    // Only draw markers in visible frame range
+    const startFrame = Math.floor(scrollX / frameWidth);
+    const endFrame = Math.ceil((scrollX + canvasWidth - TRACK_HEADER_WIDTH) / frameWidth);
+
+    // Fade opacity based on zoom level
+    const baseOpacity = Math.min(1, frameWidth / 8);
+
+    for (const frame of beatMarkers) {
+      if (frame < startFrame || frame > endFrame) continue;
+      const x = frame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+      if (x < TRACK_HEADER_WIDTH || x > canvasWidth) continue;
+
+      const isDownbeat = downbeats.has(frame);
+      // amber at 20-30% for regular, 50% for downbeats
+      const opacity = isDownbeat ? baseOpacity * 0.5 : baseOpacity * 0.25;
+      const width = isDownbeat ? 1.5 : 0.5;
+
+      ctx.strokeStyle = `rgba(245, 158, 11, ${opacity})`;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(x, yTop);
+      ctx.lineTo(x, yBottom);
+      ctx.stroke();
+    }
   }
 
   /** Draw a single audio track row with waveform, fades, selection, and center line */

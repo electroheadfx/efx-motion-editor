@@ -7,6 +7,7 @@ import {keyframeStore} from '../../stores/keyframeStore';
 import {audioStore} from '../../stores/audioStore';
 import {trackLayouts, fxTrackLayouts, audioTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
+import {snapToBeat} from '../../lib/beatMarkerEngine';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT, TRACK_HEIGHT} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
 import {isolationStore} from '../../stores/isolationStore';
@@ -119,6 +120,19 @@ export class TimelineInteraction {
       timelineStore.zoom.peek(),
       totalFrames,
     );
+  }
+
+  /** Apply magnetic snap-to-beat if enabled. Returns the snapped frame or original. */
+  private snapFrame(frame: number): number {
+    if (!audioStore.snapToBeatsEnabled.peek()) return frame;
+    const selectedTrack = audioStore.tracks.peek().find(
+      t => t.id === audioStore.selectedTrackId.peek(),
+    );
+    if (!selectedTrack || selectedTrack.beatMarkers.length === 0) return frame;
+    const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.peek();
+    const snapThresholdFrames = 10 / frameWidth; // 10px magnetic range
+    const snapped = snapToBeat(frame, selectedTrack.beatMarkers, snapThresholdFrames);
+    return snapped !== null ? snapped : frame;
   }
 
   private isOnPlayhead(clientX: number): boolean {
@@ -902,8 +916,9 @@ export class TimelineInteraction {
 
     // Playhead scrubbing: seekToFrame updates both currentFrame and displayFrame
     // (via syncDisplayFrame), giving realtime canvas preview during drag.
+    // Magnetic snap to beat markers when snap is enabled.
     if (this.isDragging) {
-      const frame = this.getFrame(e.clientX);
+      const frame = this.snapFrame(this.getFrame(e.clientX));
       playbackEngine.seekToFrame(frame);
       return;
     }
