@@ -3,6 +3,7 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {audioStore} from '../stores/audioStore';
 import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
 import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange} from '../types/timeline';
+import type {GlTransition} from '../types/sequence';
 import type {Layer, LayerType, EasingType} from '../types/layer';
 
 /** Flattened frame array: every frame maps to a sequence, key photo, and image (GLOBAL).
@@ -187,6 +188,8 @@ export interface CrossDissolveOverlap {
   // Local frame offsets for rendering each sequence's content during overlap
   outgoingLocalFrameStart: number;  // local frame in outgoing seq where overlap starts
   incomingLocalFrameStart: number;  // always 0 — incoming seq starts from its first frame
+  /** If this overlap is a GL shader transition instead of cross-dissolve */
+  glTransition?: GlTransition;
 }
 
 /** Cross dissolve overlap zones in global frame coordinates for dual-render in Preview.
@@ -198,17 +201,21 @@ export const crossDissolveOverlaps = computed<CrossDissolveOverlap[]>(() => {
 
   for (let i = 0; i < contentSeqs.length - 1; i++) {
     const outSeq = contentSeqs[i];
-    if (!outSeq.crossDissolve) continue;
-
+    // Support both crossDissolve and glTransition (mutually exclusive per D-02)
     const cd = outSeq.crossDissolve;
-    const halfDuration = Math.floor(cd.duration / 2);
+    const glt = outSeq.glTransition;
+    if (!cd && !glt) continue;
+
+    const duration = cd ? cd.duration : glt!.duration;
+    const curve = cd ? cd.curve : glt!.curve;
+    const halfDuration = Math.floor(duration / 2);
     const outTrack = tracks.find(t => t.sequenceId === outSeq.id);
     if (!outTrack) continue;
 
     // Overlap centered on the boundary between outgoing and incoming
     const boundary = outTrack.endFrame;
     const overlapStart = boundary - halfDuration;
-    const overlapEnd = boundary + (cd.duration - halfDuration);
+    const overlapEnd = boundary + (duration - halfDuration);
 
     // Local frame offsets for rendering
     const outSeqTotalFrames = outSeq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0);
@@ -219,10 +226,11 @@ export const crossDissolveOverlaps = computed<CrossDissolveOverlap[]>(() => {
       incomingSequenceId: contentSeqs[i + 1].id,
       overlapStart,
       overlapEnd,
-      duration: cd.duration,
-      curve: cd.curve,
+      duration,
+      curve,
       outgoingLocalFrameStart,
       incomingLocalFrameStart: 0,
+      ...(glt ? { glTransition: glt } : {}),
     });
   }
 

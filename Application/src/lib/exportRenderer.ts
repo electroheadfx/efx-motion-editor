@@ -1,6 +1,8 @@
 import {PreviewRenderer} from './previewRenderer';
 import {interpolateAt} from './keyframeEngine';
-import {computeFadeOpacity, computeSolidFadeAlpha, computeCrossDissolveOpacity} from './transitionEngine';
+import {computeFadeOpacity, computeSolidFadeAlpha, computeCrossDissolveOpacity, computeTransitionProgress} from './transitionEngine';
+import {renderGlslTransition} from './glslRuntime';
+import {getShaderById} from './shaderLibrary';
 import {isFxLayer} from '../types/layer';
 import type {LayerSourceData} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
@@ -57,6 +59,22 @@ function interpolateLayers(seq: Sequence, localFrame: number) {
   });
 }
 
+// ---- GL Transition offscreen canvases ----
+
+let _transitionOffA: HTMLCanvasElement | null = null;
+let _transitionOffB: HTMLCanvasElement | null = null;
+
+function _getOrCreateTransitionOffscreen(w: number, h: number, label: 'A' | 'B'): HTMLCanvasElement {
+  const ref = label === 'A' ? _transitionOffA : _transitionOffB;
+  if (ref && ref.width === w && ref.height === h) return ref;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  if (label === 'A') _transitionOffA = c;
+  else _transitionOffB = c;
+  return c;
+}
+
 /**
  * Render a single global frame with full compositing.
  * Pure function: caller passes all data, no signal reads.
@@ -91,6 +109,64 @@ export function renderGlobalFrame(
     if (globalFrame >= overlap.overlapStart && globalFrame < overlap.overlapEnd) {
       handledByCrossDissolve = true;
 
+      // === GL Transition path (per D-05, D-08) ===
+      if (overlap.glTransition) {
+        const shaderDef = getShaderById(overlap.glTransition.shaderId);
+        if (shaderDef) {
+          const outSeq = allSeqs.find(s => s.id === overlap.outgoingSequenceId);
+          const inSeq = allSeqs.find(s => s.id === overlap.incomingSequenceId);
+
+          if (outSeq && inSeq && outSeq.kind === 'content' && inSeq.kind === 'content') {
+            const framesIntoOverlap = globalFrame - overlap.overlapStart;
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // Create/reuse two offscreen canvases for dual-capture
+            const offA = _getOrCreateTransitionOffscreen(w, h, 'A');
+            const offB = _getOrCreateTransitionOffscreen(w, h, 'B');
+
+            // Render outgoing sequence to offscreen A
+            const outLocalFrame = overlap.outgoingLocalFrameStart + framesIntoOverlap;
+            const outFrames = buildSequenceFrames(outSeq);
+            const outLayers = interpolateLayers(outSeq, outLocalFrame);
+            const rendererA = new PreviewRenderer(offA);
+            rendererA.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, 1.0);
+
+            // Render incoming sequence to offscreen B
+            const inLocalFrame = overlap.incomingLocalFrameStart + framesIntoOverlap;
+            const inFrames = buildSequenceFrames(inSeq);
+            const inLayers = interpolateLayers(inSeq, inLocalFrame);
+            const rendererB = new PreviewRenderer(offB);
+            rendererB.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, true, 1.0);
+
+            // Compute eased progress (per D-07)
+            const progress = computeTransitionProgress(
+              globalFrame, overlap.overlapStart, overlap.duration, overlap.glTransition.curve
+            );
+
+            // Run GL transition shader
+            const glResult = renderGlslTransition(
+              shaderDef, offA, offB,
+              progress, w / h,
+              overlap.glTransition.params, w, h
+            );
+
+            // Composite onto main canvas
+            if (glResult) {
+              const ctx = canvas.getContext('2d')!;
+              ctx.save();
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+              ctx.clearRect(0, 0, w, h);
+              ctx.drawImage(glResult, 0, 0, w, h);
+              ctx.restore();
+            }
+          }
+
+          break;
+        }
+      }
+
+      // === Existing cross-dissolve opacity path (unchanged) ===
       const [outOpacity, inOpacity] = computeCrossDissolveOpacity(
         globalFrame, overlap.overlapStart, overlap.duration, overlap.curve
       );
