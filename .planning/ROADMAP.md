@@ -106,9 +106,10 @@ Plans:
   4. User can edit GL transition parameters, duration, and easing in TransitionProperties sidebar
   5. Timeline shows teal GL transition overlays distinct from purple cross-dissolve overlays
   6. GL transition data persists across project save/load (.mce v11)
-**Plans**: 3 plans
+**Plans**: 4 plans
 
 Plans:
+- [ ] 15.4-00-PLAN.md — Wave 0: test scaffolds for glslRuntime, transitionEngine, sequenceStore, projectStore, exportRenderer
 - [ ] 15.4-01-PLAN.md — Foundation: GlTransition type, dual-texture GL pipeline, 18 transition shaders
 - [ ] 15.4-02-PLAN.md — Rendering pipeline + ShaderBrowser Transition tab + Apply flow
 - [ ] 15.4-03-PLAN.md — TransitionProperties sidebar, timeline indicator, project persistence (.mce v11)
@@ -201,7 +202,7 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 | 15.1 Media In-Use & Safe Removal | v0.3.0 | 2/2 | Complete    | 2026-03-22 |
 | 15.2 Solid Sequence | v0.3.0 | 4/4 | Complete    | 2026-03-22 |
 | 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
-| 15.4 GL Transition | v0.3.0 | 0/3 | In progress | - |
+| 15.4 GL Transition | v0.3.0 | 0/4 | In progress | - |
 | 16. Audio Export & Beat Sync | v0.3.0 | 0/0 | Not started | - |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
