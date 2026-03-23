@@ -150,15 +150,20 @@ function FramesPopover({holdFrames, anchorRef, onCommit, onClose}: FramesPopover
   const popoverRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{top: number; left: number}>({top: 0, left: 0});
 
-  // Compute fixed position from anchor element
+  // Compute fixed position from anchor element, clamped to viewport
   useEffect(() => {
-    if (anchorRef.current) {
-      const rect = anchorRef.current.getBoundingClientRect();
-      setPos({
-        top: rect.top - 4,
-        left: rect.right,
-      });
-    }
+    if (!anchorRef.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const popW = 140; // approximate popover width
+    const popH = 80;  // approximate popover height
+    // Default: above-left of anchor
+    let top = rect.top - 4 - popH;
+    let left = rect.right - popW;
+    // Clamp to keep inside viewport
+    if (left < 4) left = rect.right + 4;
+    if (top < 4) top = rect.bottom + 4;
+    if (left + popW > window.innerWidth - 4) left = window.innerWidth - popW - 4;
+    setPos({ top, left });
   }, [anchorRef]);
 
   // Close on click outside
@@ -213,7 +218,6 @@ function FramesPopover({holdFrames, anchorRef, onCommit, onClose}: FramesPopover
       style={{
         top: `${pos.top}px`,
         left: `${pos.left}px`,
-        transform: 'translate(-100%, -100%)',
         backgroundColor: 'var(--sidebar-panel-bg)',
         border: '1px solid var(--sidebar-border-unselected)',
         minWidth: '120px',

@@ -16,64 +16,69 @@ import type { GlTransition } from '../../types/sequence';
 const PREVIEW_WIDTH = 200;
 const PREVIEW_HEIGHT = 140;
 
-// ---- Transition preview images (per D-14) ----
+// ---- Transition preview images from captured content ----
 
 let _previewImageA: HTMLCanvasElement | null = null;
 let _previewImageB: HTMLCanvasElement | null = null;
+let _previewDetailA: HTMLCanvasElement | null = null;
+let _previewDetailB: HTMLCanvasElement | null = null;
+let _capturedSourceKey: string | null = null; // track source to invalidate
+
+/** Draw captured canvas content (or fallback gradient) to a target canvas */
+function drawCapturedOrFallback(
+  target: HTMLCanvasElement, w: number, h: number,
+  captured: HTMLCanvasElement | null, flip: boolean,
+  gradFrom: string, gradTo: string,
+) {
+  const ctx = target.getContext('2d')!;
+  if (captured && captured.width > 0 && captured.height > 0) {
+    if (flip) {
+      ctx.save();
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(captured, 0, 0, w, h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(captured, 0, 0, w, h);
+    }
+  } else {
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, gradFrom);
+    grad.addColorStop(1, gradTo);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  }
+}
 
 function getTransitionPreviewImages(): { a: HTMLCanvasElement; b: HTMLCanvasElement } {
-  if (!_previewImageA) {
+  const captured = getCapturedCanvas();
+  const sourceKey = captured ? `${captured.width}x${captured.height}` : null;
+  if (!_previewImageA || !_previewImageB || _capturedSourceKey !== sourceKey) {
+    _capturedSourceKey = sourceKey;
     _previewImageA = document.createElement('canvas');
     _previewImageA.width = PREVIEW_WIDTH;
     _previewImageA.height = PREVIEW_HEIGHT;
-    const ctx = _previewImageA.getContext('2d')!;
-    const grad = ctx.createLinearGradient(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
-    grad.addColorStop(0, '#FF6B35');
-    grad.addColorStop(1, '#D62828');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
-  }
-  if (!_previewImageB) {
+    drawCapturedOrFallback(_previewImageA, PREVIEW_WIDTH, PREVIEW_HEIGHT, captured, false, '#FF6B35', '#D62828');
     _previewImageB = document.createElement('canvas');
     _previewImageB.width = PREVIEW_WIDTH;
     _previewImageB.height = PREVIEW_HEIGHT;
-    const ctx = _previewImageB.getContext('2d')!;
-    const grad = ctx.createLinearGradient(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
-    grad.addColorStop(0, '#1D3557');
-    grad.addColorStop(1, '#457B9D');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    drawCapturedOrFallback(_previewImageB, PREVIEW_WIDTH, PREVIEW_HEIGHT, captured, true, '#1D3557', '#457B9D');
   }
   return { a: _previewImageA, b: _previewImageB };
 }
 
-// Higher-resolution transition preview images for detail view
-let _previewDetailA: HTMLCanvasElement | null = null;
-let _previewDetailB: HTMLCanvasElement | null = null;
-
 function getTransitionDetailImages(): { a: HTMLCanvasElement; b: HTMLCanvasElement } {
-  if (!_previewDetailA) {
+  const captured = getCapturedCanvas();
+  if (!_previewDetailA || !_previewDetailB) {
     _previewDetailA = document.createElement('canvas');
     _previewDetailA.width = 640;
     _previewDetailA.height = 400;
-    const ctx = _previewDetailA.getContext('2d')!;
-    const grad = ctx.createLinearGradient(0, 0, 640, 400);
-    grad.addColorStop(0, '#FF6B35');
-    grad.addColorStop(1, '#D62828');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 640, 400);
-  }
-  if (!_previewDetailB) {
     _previewDetailB = document.createElement('canvas');
     _previewDetailB.width = 640;
     _previewDetailB.height = 400;
-    const ctx = _previewDetailB.getContext('2d')!;
-    const grad = ctx.createLinearGradient(0, 0, 640, 400);
-    grad.addColorStop(0, '#1D3557');
-    grad.addColorStop(1, '#457B9D');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 640, 400);
   }
+  drawCapturedOrFallback(_previewDetailA, 640, 400, captured, false, '#FF6B35', '#D62828');
+  drawCapturedOrFallback(_previewDetailB, 640, 400, captured, true, '#1D3557', '#457B9D');
   return { a: _previewDetailA, b: _previewDetailB };
 }
 

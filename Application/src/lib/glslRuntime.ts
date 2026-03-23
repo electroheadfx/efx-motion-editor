@@ -242,30 +242,30 @@ function buildTransitionFragmentSource(shader: ShaderDefinition): string {
     .map(p => `uniform float u_${p.key};`)
     .join('\n');
 
-  // Auto-generate vec2 reconstruction lines for paired X/Y params
-  // Detects params ending in X/Y and checks if the GLSL source uses vec2/ivec2 basename
-  const vec2Lines: string[] = [];
+  // Auto-generate #define macros for paired X/Y params so the transition source
+  // can reference e.g. `direction` while we only expose float uniforms.
+  // Must use #define (not global-scope vec2 = ...) because GLSL ES 300 forbids
+  // non-constant global initializers referencing uniforms.
+  const vec2Defines: string[] = [];
   const seenBases = new Set<string>();
   for (const p of shader.params) {
     if (p.key.endsWith('X') || p.key.endsWith('Y')) {
       const basename = p.key.slice(0, -1);
       if (seenBases.has(basename)) continue;
       seenBases.add(basename);
-      // Check if both X and Y params exist
       const hasX = shader.params.some(q => q.key === basename + 'X');
       const hasY = shader.params.some(q => q.key === basename + 'Y');
       if (hasX && hasY) {
-        // Check if source references uniform vec2 or ivec2 with this basename
         if (shader.fragmentSource.includes(`ivec2 ${basename}`)) {
-          vec2Lines.push(`ivec2 ${basename} = ivec2(int(u_${basename}X), int(u_${basename}Y));`);
+          vec2Defines.push(`#define ${basename} ivec2(int(u_${basename}X), int(u_${basename}Y))`);
         } else {
-          vec2Lines.push(`vec2 ${basename} = vec2(u_${basename}X, u_${basename}Y);`);
+          vec2Defines.push(`#define ${basename} vec2(u_${basename}X, u_${basename}Y)`);
         }
       }
     }
   }
-  const vec2Reconstruction = vec2Lines.length > 0
-    ? '// Auto-reconstructed vec2/ivec2 from paired float params\n' + vec2Lines.join('\n') + '\n'
+  const vec2Reconstruction = vec2Defines.length > 0
+    ? vec2Defines.join('\n') + '\n'
     : '';
 
   return `#version 300 es
