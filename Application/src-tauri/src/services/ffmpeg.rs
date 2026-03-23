@@ -151,7 +151,8 @@ pub struct VideoQualityArgs {
 /// Encode a video from a PNG image sequence using FFmpeg.
 /// Per D-03: ProRes (prores_ks), H.264 (libx264), AV1 (libsvtav1)
 /// Per D-13: Sensible defaults per codec
-/// Per D-15: No audio track (-an flag)
+/// Audio muxing: if audio_path is Some, muxes pre-rendered WAV into output.
+/// ProRes uses pcm_s16le; H.264/AV1 use AAC at 192k.
 pub fn encode_video(
     png_dir: &str,
     glob_pattern: &str,
@@ -159,6 +160,7 @@ pub fn encode_video(
     codec: &str,
     fps: u32,
     quality_args: &VideoQualityArgs,
+    audio_path: Option<&str>,
 ) -> Result<(), String> {
     let ffmpeg = ffmpeg_path();
     if !ffmpeg.exists() {
@@ -192,8 +194,22 @@ pub fn encode_video(
         _ => return Err(format!("Unknown codec: {codec}")),
     }
 
-    // No audio (D-15)
-    cmd.arg("-an");
+    // Audio muxing (per D-01, replaces D-15's -an when audio is provided)
+    if let Some(audio) = audio_path {
+        cmd.args(["-i", audio]);
+        cmd.args(["-map", "0:v:0", "-map", "1:a:0"]);
+        // Pitfall 3: codec depends on container
+        match codec {
+            "prores" => {
+                cmd.args(["-c:a", "pcm_s16le"]);
+            }
+            _ => {
+                cmd.args(["-c:a", "aac", "-b:a", "192k"]);
+            }
+        };
+    } else {
+        cmd.arg("-an");
+    }
     cmd.arg(output_path);
 
     let output = cmd

@@ -69,8 +69,10 @@ pub async fn export_download_ffmpeg() -> Result<String, String> {
 }
 
 /// Encode video from PNG sequence. Per D-19: output naming ProjectName_ResolutionP_codec.ext
+/// audio_path: Optional path to pre-rendered WAV for muxing into the video.
+/// Runs FFmpeg on a background thread via spawn_blocking to avoid blocking the Tauri main thread.
 #[command]
-pub fn export_encode_video(
+pub async fn export_encode_video(
     png_dir: String,
     glob_pattern: String,
     output_path: String,
@@ -79,13 +81,21 @@ pub fn export_encode_video(
     h264_crf: u32,
     av1_crf: u32,
     prores_profile: String,
+    audio_path: Option<String>,
 ) -> Result<(), String> {
     let quality = ffmpeg::VideoQualityArgs {
         h264_crf,
         av1_crf,
         prores_profile,
     };
-    ffmpeg::encode_video(&png_dir, &glob_pattern, &output_path, &codec, fps, &quality)
+    tokio::task::spawn_blocking(move || {
+        ffmpeg::encode_video(
+            &png_dir, &glob_pattern, &output_path, &codec, fps, &quality,
+            audio_path.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| format!("FFmpeg task panicked: {e}"))?
 }
 
 /// Delete intermediate PNG files from export directory after video encoding.

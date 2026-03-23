@@ -4,8 +4,11 @@ import { frameMap, crossDissolveOverlaps } from './frameMap';
 import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
 import { exportStore } from '../stores/exportStore';
+import { audioStore } from '../stores/audioStore';
 import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs } from './ipc';
 import { generateJsonSidecar, generateFcpxml } from './exportSidecar';
+import { renderMixedAudio } from './audioExportMixer';
+import { writeFile, remove } from '@tauri-apps/plugin-fs';
 
 /**
  * Convert canvas to PNG blob, then to Uint8Array for IPC.
@@ -176,6 +179,29 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     const sidecarBytes = new TextEncoder().encode(sidecarJson);
     await exportWritePng(exportDir, sidecarFilename, Array.from(sidecarBytes));
 
+    // 6.5. Pre-render audio for muxing (per D-01, D-02)
+    let audioWavPath: string | null = null;
+    const hasAudioTracks = audioStore.tracks.peek().length > 0;
+
+    if (settings.includeAudio && hasAudioTracks) {
+      exportStore.updateProgress({ status: 'preparing' });
+      try {
+        const totalDurationSec = total / projectStore.fps.peek();
+        const wavData = await renderMixedAudio(
+          audioStore.tracks.peek(),
+          projectStore.fps.peek(),
+          totalDurationSec,
+        );
+        // Write WAV to export dir
+        audioWavPath = `${exportDir}/audio_mix.wav`;
+        await writeFile(audioWavPath, new Uint8Array(wavData));
+      } catch (err) {
+        console.error('Audio pre-render failed:', err);
+        // Continue without audio rather than failing the entire export
+        audioWavPath = null;
+      }
+    }
+
     // 7. If video format, encode with FFmpeg (per D-03, D-08)
     if (settings.format !== 'png') {
       exportStore.updateProgress({ status: 'encoding' });
@@ -229,6 +255,7 @@ export async function startExport(startFromFrame = 0): Promise<void> {
         settings.videoQuality.h264Crf,
         settings.videoQuality.av1Crf,
         settings.videoQuality.proresProfile,
+        audioWavPath,
       );
 
       if (!encodeResult.ok) {
@@ -256,6 +283,12 @@ export async function startExport(startFromFrame = 0): Promise<void> {
 
       // Clean up intermediate PNGs after successful video encoding
       await exportCleanupPngs(exportDir);
+
+      // Clean up temp WAV file after video encoding (Pitfall 8)
+      // For video export, WAV is temporary. For PNG export, WAV stays per D-03.
+      if (audioWavPath) {
+        try { await remove(audioWavPath); } catch { /* ignore cleanup errors */ }
+      }
     }
 
     // 8. Complete
