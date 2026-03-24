@@ -57,7 +57,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 - [ ] Audio import, waveform visualization, fade in/out, timeline positioning, synced playback
 - [x] Audio in video export, beat sync (auto-detect BPM, beat markers, snap modes, auto-arrange) — Validated in Phase 16
-- [ ] Sidebar enhancements (scroll in key photos, collapse toggle) and solo mode for sequences/layers
+- [x] Sidebar enhancements (collapsible key photo lists, global solo mode), gradient overlay fills with v13 persistence, Tailwind v4 migration — Validated in Phase 17
 - [ ] Canvas motion path with interpolation preview (After Effects-style keyframe path editing)
 
 ## Current Milestone: v0.3.0 Audio & Polish
@@ -84,7 +84,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 Shipped v0.2.0 with 20,428 LOC (18,110 TypeScript + 2,020 Rust + 298 CSS) across 847 commits since v0.1.0.
 Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm.
 Architecture: 9 reactive signal stores (project, sequence, layer, keyframe, timeline, canvas, ui, blur, isolation, export), Rust image pipeline with thumbnail generation, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur (glBlur.ts) with CPU fallback, FX generator system with seeded PRNG, keyframe interpolation engine with polynomial cubic easing, PlaybackEngine with rAF delta accumulation and full-speed mode, command-pattern undo/redo engine, tinykeys keyboard shortcuts, exportRenderer with yielding frame loop and FFmpeg video encoding.
-Project format: .mce v10 with backward compatibility (v1 through v10).
+Project format: .mce v13 with backward compatibility (v1 through v13).
 
 Known technical debt:
 - 2 medium-severity export edge cases (content-overlay image preload, FX generator frame offset)
@@ -139,4 +139,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after Phase 17 complete — collapsible key photo lists, global solo mode, gradient fills with v13 persistence, Tailwind v4 migration*
+*Last updated: 2026-03-24 after Phase 17 re-verification — all 6 plans complete, 3 UAT gaps closed (portal rendering, gradient input tabs, timeline thumbnails)*
