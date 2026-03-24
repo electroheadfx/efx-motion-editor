@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
-status: Ready to plan
-stopped_at: Phase 17.1 context gathered
-last_updated: "2026-03-24T12:05:55.965Z"
+status: Milestone complete
+stopped_at: Completed 17.1-01-PLAN.md
+last_updated: "2026-03-24T13:13:12.850Z"
 last_activity: 2026-03-24
 progress:
   total_phases: 8
-  completed_phases: 7
-  total_plans: 27
-  completed_plans: 27
+  completed_phases: 8
+  total_plans: 29
+  completed_plans: 29
 ---
 
 # Project State
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 17 — enhancements
+**Current focus:** Phase 17.1 — adaptative-sidebar-s-layer-window
 Last activity: 2026-03-24
 
 ## Current Position
 
-Phase: 999.1
+Phase: 17.1
 Plan: Not started
 
 ## Performance Metrics
@@ -71,6 +71,7 @@ Plan: Not started
 | Phase 17 P04 | 7min | 2 tasks | 9 files |
 | Phase 17 P05 | 2min | 2 tasks | 1 files |
 | Phase 17 P06 | 3min | 2 tasks | 4 files |
+| Phase 17.1 P01 | 5min | 2 tasks | 4 files |
 
 ### Decisions
 
@@ -140,6 +141,8 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 17]: Portal rendering alone resolves drag propagation; SortableJS handle/filter not needed
 - [Phase 17]: Export createCanvasGradient from previewRenderer for reuse in TimelineRenderer
 - [Phase 17]: Gradient check before solidColor in timeline rendering; clip rect per cell for gradient overflow
+- [Phase 17.1]: Kept calcFlexResize (3-panel) intact for backward compat; Plan 02 updates LeftPanel.tsx consumers
+- [Phase 17.1]: getPanelFlex migration detects stored.length===3 and drops index 1 (lay) for seamless 3-to-2 upgrade
 
 ### Pending Todos
 
@@ -172,6 +175,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-24T12:05:55.961Z
-Stopped at: Phase 17.1 context gathered
-Resume file: .planning/phases/17.1-adaptative-sidebar-s-layer-window/17.1-CONTEXT.md
+Last session: 2026-03-24T12:47:45.404Z
+Stopped at: Completed 17.1-01-PLAN.md
+Resume file: None

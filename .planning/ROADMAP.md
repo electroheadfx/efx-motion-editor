@@ -210,8 +210,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 17.1-01-PLAN.md — State infrastructure: uiStore 2-panel state, calcFlexResize2, appConfig migration
-- [ ] 17.1-02-PLAN.md — UI restructure: LeftPanel 2-panel layout, SequenceItem layer icon, adaptive view
+- [x] 17.1-01-PLAN.md — State infrastructure: uiStore 2-panel state, calcFlexResize2, appConfig migration
+- [x] 17.1-02-PLAN.md — UI restructure: LeftPanel 2-panel layout, SequenceItem layer icon, adaptive view
 
 ### Phase 18: Canvas Motion Path (DEFERRED → v0.4.0)
 **Goal**: Users can see and edit position keyframe trajectories directly on the canvas as After Effects-style motion paths
@@ -239,7 +239,7 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17 > 17.1
 | 15.4 GL Transition | v0.3.0 | 4/4 | Complete    | 2026-03-23 |
 | 16. Audio Export & Beat Sync | v0.3.0 | 6/6 | Complete    | 2026-03-23 |
 | 17. Enhancements | v0.3.0 | 6/6 | Complete    | 2026-03-24 |
-| 17.1 Adaptive Sidebar | v0.3.0 | 0/2 | In Progress | - |
+| 17.1 Adaptive Sidebar | v0.3.0 | 2/2 | Complete    | 2026-03-24 |
 | 18. Canvas Motion Path | v0.4.0 | 0/0 | Deferred    | - |
 
 ## Backlog
