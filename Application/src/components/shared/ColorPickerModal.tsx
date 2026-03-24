@@ -1,4 +1,5 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
+import {createPortal} from 'preact/compat';
 import {X} from 'lucide-preact';
 import type {GradientData, GradientStop} from '../../types/sequence';
 import {createDefaultGradient} from '../../types/sequence';
@@ -385,10 +386,11 @@ export function ColorPickerModal({
   const isGradientMode = fillMode === 'gradient';
   const modalWidth = isGradientMode ? '340px' : '300px';
 
-  return (
+  return createPortal(
     <div
       class="fixed inset-0 flex items-center justify-center z-50"
       onClick={handleCancel}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       {/* Backdrop */}
       <div class="absolute inset-0 bg-black/50" />
@@ -709,6 +711,7 @@ export function ColorPickerModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
