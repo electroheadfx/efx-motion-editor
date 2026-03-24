@@ -21,6 +21,12 @@ import {
 import type {HandleType, LayerBounds} from './transformHandles';
 import {hitTestLayers, hitTestLayersCycle} from './hitTest';
 import {keyframeStore} from '../../stores/keyframeStore';
+import {hitTestKeyframeCircles} from './motionPathHitTest';
+import {motionPathCircles} from './MotionPath';
+import {playbackEngine} from '../../lib/playbackEngine';
+import {sequenceStore} from '../../stores/sequenceStore';
+import {trackLayouts} from '../../lib/frameMap';
+import type {KeyframeValues} from '../../types/layer';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,7 +39,7 @@ interface TransformOverlayProps {
   onPanStart: (e: PointerEvent) => void;
 }
 
-type DragMode = 'none' | 'pending' | 'pan-pending' | 'move' | 'scale' | 'rotate';
+type DragMode = 'none' | 'pending' | 'pan-pending' | 'move' | 'scale' | 'rotate' | 'kf-pending' | 'kf-drag';
 
 interface DragState {
   mode: DragMode;
@@ -44,9 +50,27 @@ interface DragState {
   layerId?: string;
   startBounds?: LayerBounds;
   _restoreBlur?: boolean;
+  kfIndex?: number;          // Index into activeLayerKeyframes for the dragged keyframe
+  kfStartValues?: KeyframeValues;  // Original values of the dragged keyframe (for delta calc)
 }
 
 const DRAG_THRESHOLD = 4; // pixels
+
+/** Find the global start frame of the sequence owning a layer */
+function findLayerStartFrame(layerId: string): number {
+  const seqs = sequenceStore.sequences.peek();
+  const layouts = trackLayouts.peek();
+  for (const seq of seqs) {
+    if (seq.layers.some(l => l.id === layerId)) {
+      if (seq.kind === 'fx' || seq.kind === 'content-overlay') {
+        return seq.inFrame ?? 0;
+      }
+      const layout = layouts.find(t => t.sequenceId === seq.id);
+      return layout?.startFrame ?? 0;
+    }
+  }
+  return 0;
+}
 
 /** Apply keyframe-interpolated transform values to a layer for correct overlay positioning */
 function applyInterpolatedTransform(layer: Layer): Layer {
@@ -195,6 +219,36 @@ export function TransformOverlay({
         const selBounds = getLayerBounds(effectiveSel, selDims.w, selDims.h, pW, pH);
         const selHandles = getHandlePositions(selBounds, currentZoom);
 
+        // Check motion path keyframe circles first (higher priority than transform handles)
+        const circles = motionPathCircles.peek();
+        if (circles.length > 0) {
+          const kfHit = hitTestKeyframeCircles(point, circles, currentZoom);
+          if (kfHit !== null) {
+            e.preventDefault();
+            const kfs = keyframeStore.activeLayerKeyframes.peek();
+            const hitCircle = circles[kfHit];
+
+            // Auto-seek to keyframe frame (D-06)
+            const startFrame = findLayerStartFrame(currentSelectedId!);
+            playbackEngine.seekToFrame(hitCircle.frame + startFrame);
+
+            // Select the keyframe (D-02: filled when selected)
+            keyframeStore.selectKeyframe(hitCircle.frame, false);
+
+            dragRef.current = {
+              mode: 'kf-pending',
+              startClientX: e.clientX,
+              startClientY: e.clientY,
+              startLayerTransform: {...effectiveSel.transform},
+              layerId: currentSelectedId!,
+              kfIndex: kfHit,
+              kfStartValues: {...kfs[kfHit].values},
+            };
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            return;
+          }
+        }
+
         // Check handle hit
         const handleHit = hitTestHandles(point, selHandles, currentZoom);
         if (handleHit) {
@@ -300,6 +354,39 @@ export function TransformOverlay({
         button: 0,
         pointerId: e.pointerId,
       }));
+      return;
+    }
+
+    if (state.mode === 'kf-pending') {
+      const dist = Math.hypot(e.clientX - state.startClientX, e.clientY - state.startClientY);
+      if (dist < DRAG_THRESHOLD) return;
+      // Transition to kf-drag
+      dragRef.current = {...state, mode: 'kf-drag'};
+      startCoalescing();
+      return;
+    }
+
+    if (state.mode === 'kf-drag') {
+      // Compute delta in project space
+      const currentZoom = canvasStore.zoom.peek();
+      const dx = (e.clientX - state.startClientX) / currentZoom;
+      const dy = (e.clientY - state.startClientY) / currentZoom;
+
+      // Update the keyframe's x,y values
+      const kfs = keyframeStore.activeLayerKeyframes.peek();
+      if (state.kfIndex == null || state.kfIndex >= kfs.length || !state.kfStartValues) return;
+
+      const newX = state.kfStartValues.x + dx;
+      const newY = state.kfStartValues.y + dy;
+
+      // Build updated keyframes array
+      const updated = kfs.map((kf, i) =>
+        i === state.kfIndex
+          ? {...kf, values: {...kf.values, x: newX, y: newY}}
+          : kf
+      );
+
+      layerStore.updateLayer(state.layerId!, {keyframes: updated});
       return;
     }
 
@@ -443,7 +530,7 @@ export function TransformOverlay({
   function handlePointerUp(e: PointerEvent) {
     const state = dragRef.current;
 
-    if (state.mode === 'move' || state.mode === 'scale' || state.mode === 'rotate') {
+    if (state.mode === 'move' || state.mode === 'scale' || state.mode === 'rotate' || state.mode === 'kf-drag') {
       stopCoalescing();
       // Restore blur if it was bypassed for this drag
       if (state._restoreBlur) {
@@ -486,6 +573,16 @@ export function TransformOverlay({
         const effectiveSel = applyInterpolatedTransform(currentSelected);
         const selBounds = getLayerBounds(effectiveSel, selDims.w, selDims.h, pW, pH);
         const selHandles = getHandlePositions(selBounds, currentZoom);
+
+        // Check motion path keyframe circles (highest priority cursor)
+        const circles = motionPathCircles.peek();
+        if (circles.length > 0) {
+          const kfHit = hitTestKeyframeCircles(point, circles, currentZoom);
+          if (kfHit !== null) {
+            el.style.cursor = 'pointer';
+            return;
+          }
+        }
 
         const handleHit = hitTestHandles(point, selHandles, currentZoom);
         if (handleHit) {

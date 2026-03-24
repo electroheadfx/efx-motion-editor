@@ -1,3 +1,4 @@
+import {signal} from '@preact/signals';
 import type {Keyframe} from '../../types/layer';
 import {interpolateAt} from '../../lib/keyframeEngine';
 import {keyframeStore} from '../../stores/keyframeStore';
@@ -8,6 +9,10 @@ import {layerStore} from '../../stores/layerStore';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {trackLayouts} from '../../lib/frameMap';
 import type {KeyframeCircle} from './motionPathHitTest';
+
+/** Shared signal: keyframe circle positions in project space, updated by MotionPath render cycle.
+ *  TransformOverlay reads this for hit testing during pointer events. */
+export const motionPathCircles = signal<KeyframeCircle[]>([]);
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for testing)
@@ -95,14 +100,29 @@ export function MotionPath() {
   const selectedLayerId = layerStore.selectedLayerId.value;
 
   // --- Early returns ---
-  if (isPlaying) return null;
-  if (!selectedLayerId) return null;
-  if (keyframes.length < 2) return null;
-  if (!hasMotion(keyframes)) return null;
+  if (isPlaying) {
+    motionPathCircles.value = [];
+    return null;
+  }
+  if (!selectedLayerId) {
+    motionPathCircles.value = [];
+    return null;
+  }
+  if (keyframes.length < 2) {
+    motionPathCircles.value = [];
+    return null;
+  }
+  if (!hasMotion(keyframes)) {
+    motionPathCircles.value = [];
+    return null;
+  }
 
   // --- Sample dots ---
   const dots = sampleMotionDots(keyframes, canvasW, canvasH);
-  if (dots.length === 0) return null;
+  if (dots.length === 0) {
+    motionPathCircles.value = [];
+    return null;
+  }
 
   // --- Counter-scaled sizes ---
   const dotRadius = 2 / zoom;
@@ -116,6 +136,9 @@ export function MotionPath() {
     y: kf.values.y + canvasH / 2,
     frame: kf.frame,
   }));
+
+  // Update the shared signal so TransformOverlay can hit-test keyframe circles
+  motionPathCircles.value = kfCircles;
 
   // --- Find current frame dot ---
   const startFrame = findLayerStartFrame(selectedLayerId);
