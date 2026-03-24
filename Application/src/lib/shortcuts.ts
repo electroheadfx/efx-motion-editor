@@ -14,6 +14,7 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {canvasStore} from '../stores/canvasStore';
 import {blurStore} from '../stores/blurStore';
 import {isolationStore} from '../stores/isolationStore';
+import {soloStore} from '../stores/soloStore';
 import {keyframeStore} from '../stores/keyframeStore';
 import {audioStore} from '../stores/audioStore';
 import {audioEngine} from './audioEngine';
@@ -398,6 +399,13 @@ export function mountShortcuts(): () => void {
       if (isFullscreen.peek()) return;
       e.preventDefault();
       blurStore.toggleBypass();
+    },
+
+    // Solo toggle (ENH-03)
+    's': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      soloStore.toggleSolo();
     },
 
     // Add keyframe at current frame (KF-07)

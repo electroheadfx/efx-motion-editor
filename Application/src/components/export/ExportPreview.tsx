@@ -5,6 +5,7 @@ import {totalFrames, frameMap, crossDissolveOverlaps} from '../../lib/frameMap';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {PreviewRenderer} from '../../lib/previewRenderer';
 import {renderGlobalFrame, preloadExportImages} from '../../lib/exportRenderer';
+import {soloStore} from '../../stores/soloStore';
 import {open} from '@tauri-apps/plugin-dialog';
 
 export function ExportPreview() {
@@ -54,7 +55,7 @@ export function ExportPreview() {
     const sampleFrame = Math.floor(frames / 2);
 
     preloadExportImages(renderer, fm).then(() => {
-      renderGlobalFrame(renderer, canvas, sampleFrame, fm, allSeqs, overlaps);
+      renderGlobalFrame(renderer, canvas, sampleFrame, fm, allSeqs, overlaps, soloStore.soloEnabled.value);
     });
 
     return () => {
