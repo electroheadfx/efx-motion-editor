@@ -1,6 +1,7 @@
 import type {Layer, BlendMode} from '../types/layer';
 import {isGeneratorLayer, isAdjustmentLayer} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
+import type {GradientData} from '../types/sequence';
 import {imageStore} from '../stores/imageStore';
 import {assetUrl} from './ipc';
 import {drawGrain, drawParticles, drawLines, drawDots, drawVignette} from './fxGenerators';
@@ -10,6 +11,50 @@ import {applyBlur} from './fxBlur';
 import {blurStore} from '../stores/blurStore';
 import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
+
+/**
+ * Create a Canvas 2D gradient from GradientData.
+ * Supports linear, radial, and conic gradient types with runtime fallback
+ * for conic gradients on older WebKit builds.
+ */
+function createCanvasGradient(
+  ctx: CanvasRenderingContext2D,
+  gradient: GradientData,
+  width: number,
+  height: number,
+): CanvasGradient {
+  let canvasGrad: CanvasGradient;
+  if (gradient.type === 'linear') {
+    const angle = (gradient.angle ?? 0) * Math.PI / 180;
+    const cx = width / 2, cy = height / 2;
+    const len = Math.sqrt(width * width + height * height) / 2;
+    canvasGrad = ctx.createLinearGradient(
+      cx - Math.sin(angle) * len, cy - Math.cos(angle) * len,
+      cx + Math.sin(angle) * len, cy + Math.cos(angle) * len,
+    );
+  } else if (gradient.type === 'radial') {
+    const gcx = (gradient.centerX ?? 0.5) * width;
+    const gcy = (gradient.centerY ?? 0.5) * height;
+    const radius = Math.max(width, height) / 2;
+    canvasGrad = ctx.createRadialGradient(gcx, gcy, 0, gcx, gcy, radius);
+  } else {
+    // Conic gradient -- check for createConicGradient support (Pitfall 3)
+    const gcx = (gradient.centerX ?? 0.5) * width;
+    const gcy = (gradient.centerY ?? 0.5) * height;
+    const startAngle = ((gradient.angle ?? 0) - 90) * Math.PI / 180;
+    if (typeof ctx.createConicGradient === 'function') {
+      canvasGrad = ctx.createConicGradient(startAngle, gcx, gcy);
+    } else {
+      // Fallback: render as linear gradient if conic not supported
+      console.warn('createConicGradient not supported -- falling back to linear');
+      canvasGrad = ctx.createLinearGradient(0, 0, width, height);
+    }
+  }
+  for (const stop of gradient.stops) {
+    canvasGrad.addColorStop(stop.position, stop.color);
+  }
+  return canvasGrad;
+}
 
 /**
  * Map our BlendMode enum to Canvas 2D globalCompositeOperation values.
@@ -121,10 +166,10 @@ export class PreviewRenderer {
           // Adjustments only matter if there's content below; continue checking
           continue;
         } else {
-          // Content layer: check if current frame is a solid/transparent entry
+          // Content layer: check if current frame is a gradient/solid/transparent entry
           if (frames.length > 0 && frame >= 0 && frame < frames.length) {
             const entry = frames[frame];
-            if (entry && (entry.solidColor || entry.isTransparent)) {
+            if (entry && (entry.gradient || entry.solidColor || entry.isTransparent)) {
               hasDrawable = true;
               break;
             }
@@ -212,11 +257,20 @@ export class PreviewRenderer {
       } else if (isAdjustmentLayer(layer)) {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
       } else {
-        // Content layer: check for solid/transparent frame first (per D-18, D-19)
+        // Content layer: check for gradient/solid/transparent frame first (per D-12, D-18, D-19)
         let handledAsSolid = false;
         if (layer.isBase && frames.length > 0 && frame >= 0 && frame < frames.length) {
           const entry = frames[frame];
-          if (entry?.solidColor && !entry?.isTransparent) {
+          if (entry?.gradient && !entry?.isTransparent) {
+            // D-12: Gradient fill (check before solidColor)
+            ctx.save();
+            ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+            ctx.globalAlpha = effectiveOpacity;
+            ctx.fillStyle = createCanvasGradient(ctx, entry.gradient, logicalW, logicalH);
+            ctx.fillRect(0, 0, logicalW, logicalH);
+            ctx.restore();
+            handledAsSolid = true;
+          } else if (entry?.solidColor && !entry?.isTransparent) {
             // Key solid: fill canvas with solid color
             ctx.save();
             ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);

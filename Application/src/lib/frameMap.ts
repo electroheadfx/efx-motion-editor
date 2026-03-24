@@ -25,6 +25,7 @@ export const frameMap = computed<FrameEntry[]>(() => {
           localFrame: f,
           ...(kp.solidColor ? { solidColor: kp.solidColor } : {}),
           ...(kp.isTransparent ? { isTransparent: true } : {}),
+          ...(kp.gradient ? { gradient: kp.gradient } : {}),
         });
         globalFrame++;
       }
