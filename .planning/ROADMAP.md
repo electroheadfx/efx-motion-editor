@@ -194,7 +194,7 @@ Plans:
 - [x] 17-02-PLAN.md — Global solo mode: soloStore, toolbar button, renderGlobalFrame gating, keyboard shortcut
 - [x] 17-03-PLAN.md — Gradient data model (types) + ColorPickerModal gradient mode UI + GradientBar component
 - [x] 17-04-PLAN.md — Gradient rendering pipeline + project persistence v13 + gradient UI wiring
-- [ ] 17-05-PLAN.md — Gap closure: ColorPickerModal portal rendering + gradient input modes
+- [x] 17-05-PLAN.md — Gap closure: ColorPickerModal portal rendering + gradient input modes
 - [ ] 17-06-PLAN.md — Gap closure: timeline gradient thumbnail rendering
 
 ### Phase 18: Canvas Motion Path
@@ -222,7 +222,7 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 | 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
 | 15.4 GL Transition | v0.3.0 | 3/4 | In Progress|  |
 | 16. Audio Export & Beat Sync | v0.3.0 | 5/6 | Complete    | 2026-03-23 |
-| 17. Enhancements | v0.3.0 | 4/6 | In Progress |  |
+| 17. Enhancements | v0.3.0 | 5/6 | In Progress|  |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
 
 ## Backlog
