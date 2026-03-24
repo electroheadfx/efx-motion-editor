@@ -126,3 +126,51 @@ export function calcFlexResize(
 
   return { seqFlex, layFlex, propFlex };
 }
+
+// --- 2-panel flex API (seq + prop, no lay) ---
+
+export interface FlexSizes2 {
+  seqFlex: number;
+  propFlex: number;
+  totalPixelHeight: number;
+}
+
+export interface FlexResizeResult2 {
+  seqFlex: number;
+  propFlex: number;
+}
+
+/**
+ * Calculate new panel flex values after a resize drag (2-panel layout).
+ * Converts pixel delta to flex-grow adjustments for seq/prop only.
+ */
+export function calcFlexResize2(
+  current: FlexSizes2,
+  deltaY: number,
+): FlexResizeResult2 {
+  const totalFlex = current.seqFlex + current.propFlex;
+  if (totalFlex === 0 || current.totalPixelHeight === 0) {
+    return { seqFlex: current.seqFlex, propFlex: current.propFlex };
+  }
+
+  const pxPerUnit = current.totalPixelHeight / totalFlex;
+  const deltaFlex = deltaY / pxPerUnit;
+
+  let { seqFlex, propFlex } = current;
+  seqFlex += deltaFlex;
+  propFlex -= deltaFlex;
+
+  // Restore from zero (must run before collapse check)
+  if (current.seqFlex === 0 && seqFlex > 0 && seqFlex < MIN_RESTORED_FLEX) seqFlex = MIN_RESTORED_FLEX;
+  if (current.propFlex === 0 && propFlex > 0 && propFlex < MIN_RESTORED_FLEX) propFlex = MIN_RESTORED_FLEX;
+
+  // Collapse: snap to 0 below threshold (only when NOT restoring from zero)
+  if (current.seqFlex !== 0 && seqFlex > 0 && seqFlex < COLLAPSE_FLEX_THRESHOLD) seqFlex = 0;
+  if (current.propFlex !== 0 && propFlex > 0 && propFlex < COLLAPSE_FLEX_THRESHOLD) propFlex = 0;
+
+  // Clamp: no negative flex
+  seqFlex = Math.max(0, seqFlex);
+  propFlex = Math.max(0, propFlex);
+
+  return { seqFlex, propFlex };
+}

@@ -30,20 +30,20 @@ const pendingNewSequenceId = signal<string | null>(null);
 const addLayerIntent = signal<AddLayerIntent>(null);
 const shaderBrowserInitialTab = signal<string | null>(null);
 const sequencesSectionCollapsed = signal(false);
-const layersSectionCollapsed = signal(false);
 const propertiesSectionCollapsed = signal(false);
+
+// Adaptive view: which sequence's layer view is open (null = show sequence list)
+const layerViewSequenceId = signal<string | null>(null);
 
 // Tracks which UI region the mouse cursor is hovering over (for context-dependent shortcuts)
 const mouseRegion = signal<'canvas' | 'timeline' | 'other'>('other');
 
-// Flex-grow values for the three sidebar panels (default 1 each)
+// Flex-grow values for the two sidebar panels (default 1 each)
 const seqPanelFlex = signal(1);
-const layPanelFlex = signal(1);
 const propPanelFlex = signal(1);
 
 // Pre-collapse flex storage (used to restore flex when expanding)
 const _preCollapseSeqFlex = signal(1);
-const _preCollapseLayFlex = signal(1);
 const _preCollapsePropFlex = signal(1);
 
 // Legacy signals kept for backward compat (not actively used by new layout)
@@ -65,12 +65,11 @@ export const uiStore = {
   addLayerIntent,
   shaderBrowserInitialTab,
   sequencesSectionCollapsed,
-  layersSectionCollapsed,
   propertiesSectionCollapsed,
+  layerViewSequenceId,
   sequencesPanelHeight,
   layersPanelHeight,
   seqPanelFlex,
-  layPanelFlex,
   propPanelFlex,
   mouseRegion,
 
@@ -122,6 +121,14 @@ export const uiStore = {
     mouseRegion.value = region;
   },
 
+  // Adaptive layer view
+  openLayerView(sequenceId: string) {
+    layerViewSequenceId.value = sequenceId;
+  },
+  closeLayerView() {
+    layerViewSequenceId.value = null;
+  },
+
   // Legacy setters (kept for backward compat)
   setSequencesPanelHeight(h: number) {
     sequencesPanelHeight.value = h;
@@ -134,9 +141,6 @@ export const uiStore = {
   setSeqPanelFlex(v: number) {
     seqPanelFlex.value = v;
   },
-  setLayPanelFlex(v: number) {
-    layPanelFlex.value = v;
-  },
   setPropPanelFlex(v: number) {
     propPanelFlex.value = v;
   },
@@ -144,15 +148,11 @@ export const uiStore = {
   /**
    * Collapse a panel: store its current flex, set flex to 0, mark section collapsed.
    */
-  collapsePanel(panel: 'seq' | 'lay' | 'prop') {
+  collapsePanel(panel: 'seq' | 'prop') {
     if (panel === 'seq') {
       _preCollapseSeqFlex.value = seqPanelFlex.value || 1;
       seqPanelFlex.value = 0;
       sequencesSectionCollapsed.value = true;
-    } else if (panel === 'lay') {
-      _preCollapseLayFlex.value = layPanelFlex.value || 1;
-      layPanelFlex.value = 0;
-      layersSectionCollapsed.value = true;
     } else {
       _preCollapsePropFlex.value = propPanelFlex.value || 1;
       propPanelFlex.value = 0;
@@ -163,13 +163,10 @@ export const uiStore = {
   /**
    * Expand a panel: restore its pre-collapse flex, mark section expanded.
    */
-  expandPanel(panel: 'seq' | 'lay' | 'prop') {
+  expandPanel(panel: 'seq' | 'prop') {
     if (panel === 'seq') {
       seqPanelFlex.value = _preCollapseSeqFlex.value || 1;
       sequencesSectionCollapsed.value = false;
-    } else if (panel === 'lay') {
-      layPanelFlex.value = _preCollapseLayFlex.value || 1;
-      layersSectionCollapsed.value = false;
     } else {
       propPanelFlex.value = _preCollapsePropFlex.value || 1;
       propertiesSectionCollapsed.value = false;
@@ -180,13 +177,10 @@ export const uiStore = {
     const { getSidebarWidth, getPanelFlex } = await import('../lib/appConfig');
     const w = await getSidebarWidth();
     sidebarWidth.value = w;
-    const [sf, lf, pf] = await getPanelFlex();
+    const [sf, pf] = await getPanelFlex();
     seqPanelFlex.value = sf;
-    layPanelFlex.value = lf;
     propPanelFlex.value = pf;
-    // Sync collapsed state from flex values
     sequencesSectionCollapsed.value = sf === 0;
-    layersSectionCollapsed.value = lf === 0;
     propertiesSectionCollapsed.value = pf === 0;
   },
 
@@ -200,10 +194,8 @@ export const uiStore = {
     sequencesPanelHeight.value = 200;
     layersPanelHeight.value = 200;
     seqPanelFlex.value = 1;
-    layPanelFlex.value = 1;
     propPanelFlex.value = 1;
     _preCollapseSeqFlex.value = 1;
-    _preCollapseLayFlex.value = 1;
     _preCollapsePropFlex.value = 1;
     shortcutsOverlayOpen.value = false;
     showNewProjectDialog.value = false;
@@ -212,8 +204,8 @@ export const uiStore = {
     addLayerIntent.value = null;
     sidebarCollapsed.value = false;
     sequencesSectionCollapsed.value = false;
-    layersSectionCollapsed.value = false;
     propertiesSectionCollapsed.value = false;
     mouseRegion.value = 'other';
+    layerViewSequenceId.value = null;
   },
 };
