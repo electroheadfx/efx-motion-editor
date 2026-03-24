@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 17-enhancements
 source: [17-01-SUMMARY.md, 17-02-SUMMARY.md, 17-03-SUMMARY.md, 17-04-SUMMARY.md]
 started: 2026-03-24T10:15:00Z
@@ -72,27 +72,47 @@ blocked: 0
   reason: "User reported: I have a small bug in color picker, if I drag and drop on the UI (for example for select angle text), it drag the key solid in background"
   severity: major
   test: 5
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "ColorPickerModal rendered inline inside SortableJS container (no createPortal). SortableJS has no handle/filter option, so mousedown events on modal controls bubble up and initiate card drag. Modal only stops click/pointerdown, not mousedown."
+  artifacts:
+    - path: "Application/src/components/sequence/KeyPhotoStrip.tsx"
+      issue: "ColorPickerModal rendered inline (line 434) inside SortableJS container; no handle/filter on SortableJS config (line 100)"
+    - path: "Application/src/components/shared/ColorPickerModal.tsx"
+      issue: "Missing onMouseDown stopPropagation on outer wrapper; no portal rendering"
+  missing:
+    - "Render ColorPickerModal via createPortal to document.body"
+    - "Add onMouseDown stopPropagation as belt-and-suspenders"
+    - "Add handle or filter to SortableJS config in KeyPhotoStrip"
+  debug_session: ".planning/debug/colorpicker-drag-propagation.md"
 
 - truth: "Timeline thumbnail should show gradient preview for gradient key photos"
   status: failed
   reason: "User reported: Another issue in timeline no preview thumb of the gradient, with solid the thumb preview work"
   severity: major
   test: 5
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "KeyPhotoRange interface missing gradient field, trackLayouts computed signal doesn't spread gradient data into ranges, and TimelineRenderer.ts has no gradient rendering branch"
+  artifacts:
+    - path: "Application/src/types/timeline.ts"
+      issue: "KeyPhotoRange interface missing gradient?: GradientData field (line 53-61)"
+    - path: "Application/src/lib/frameMap.ts"
+      issue: "trackLayouts builder not spreading gradient data into ranges (line 75-76)"
+    - path: "Application/src/components/timeline/TimelineRenderer.ts"
+      issue: "No rendering branch for gradient key photos (line 582-610)"
+  missing:
+    - "Add gradient?: GradientData to KeyPhotoRange interface"
+    - "Spread gradient data in trackLayouts range builder"
+    - "Add gradient rendering branch in TimelineRenderer using Canvas 2D gradient APIs"
+  debug_session: ".planning/debug/gradient-timeline-thumbnails.md"
 
 - truth: "Gradient stop color editing should offer all color input modes (hex/rgba/hsl), not only HSV picker"
   status: failed
   reason: "User reported: perfect but I'd like to have the pickers option from simple solid color, not only HSV picker"
   severity: minor
   test: 6
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "Color input mode tabs and text fields (hex/rgba/hsl) are wrapped in {!isGradientMode && (...)} conditional block (lines 613-692 in ColorPickerModal.tsx), explicitly hidden in gradient mode"
+  artifacts:
+    - path: "Application/src/components/shared/ColorPickerModal.tsx"
+      issue: "Lines 613-692: !isGradientMode guard hides all input mode tabs and text fields"
+  missing:
+    - "Remove !isGradientMode guard around mode tabs and input fields"
+    - "Keep gradient preview bar visible (already present)"
+  debug_session: ".planning/debug/gradient-stop-missing-input-modes.md"
