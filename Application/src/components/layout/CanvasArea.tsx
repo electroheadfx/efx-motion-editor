@@ -7,6 +7,7 @@ import {FullSpeedBadge} from '../overlay/FullSpeedBadge';
 import {TransformOverlay} from '../canvas/TransformOverlay';
 import {PaintOverlay} from '../canvas/PaintOverlay';
 import {MotionPath} from '../canvas/MotionPath';
+import {OnionSkinOverlay} from '../canvas/OnionSkinOverlay';
 import {PaintToolbar} from '../overlay/PaintToolbar';
 import {timelineStore} from '../../stores/timelineStore';
 import {canvasStore} from '../../stores/canvasStore';
@@ -377,6 +378,9 @@ export function CanvasArea() {
         >
           <Preview />
           <MotionPath />
+          {isPaintModeActive && paintStore.onionSkinEnabled.value && (
+            <OnionSkinOverlay />
+          )}
           {isPaintModeActive ? (
             <PaintOverlay
               containerRef={containerRef}
