@@ -77,12 +77,13 @@ See: `milestones/v0.3.0-ROADMAP.md` for full details.
 
 ### v0.4.0 (Planned)
 
-- [x] Phase 18: Canvas Motion Path — After Effects-style keyframe path editing on canvas (completed 2026-03-24)
+- [ ] Phase 18: Canvas Motion Path — After Effects-style keyframe path editing on canvas
   **Goal:** Visualize spatial trajectory of animated layers as a dotted trail with interactive keyframe markers; users can drag keyframe positions directly on the canvas
-  **Plans:** 2 plans
+  **Plans:** 3 plans
   Plans:
   - [x] 18-01-PLAN.md — Motion path rendering (dotted trail, keyframe circles, current-frame highlight, tests)
   - [x] 18-02-PLAN.md — Keyframe circle drag interaction (drag to reposition, auto-seek, undo coalescing)
+  - [ ] 18-03-PLAN.md — Gap closure: real-time canvas updates for keyframe property edits
 
 - [ ] Phase 19: Add Paint Layer Rotopaint — Frame-by-frame drawing and rotoscoping with perfect-freehand brush engine, onion skinning, and sidecar persistence (6 plans)
 
@@ -93,5 +94,5 @@ See: `milestones/v0.3.0-ROADMAP.md` for full details.
 | 1-7 | v0.1.0 | 45/45 | Complete | 2019-03-11 |
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
-| 18. Canvas Motion Path | v0.4.0 | 2/2 | Complete    | 2026-03-24 |
+| 18. Canvas Motion Path | v0.4.0 | 2/3 | In Progress | - |
 | 19. Paint Layer Rotopaint | v0.4.0 | 0/6 | Planned | - |
