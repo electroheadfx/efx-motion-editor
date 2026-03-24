@@ -4,6 +4,7 @@ import {
   COLLAPSE_THRESHOLD,
   MIN_RESTORED,
   calcFlexResize,
+  calcFlexResize2,
   COLLAPSE_FLEX_THRESHOLD,
   MIN_RESTORED_FLEX,
 } from './panelResize';
@@ -231,5 +232,77 @@ describe('panelResize (flex API)', () => {
       );
       expect(result).toEqual({ seqFlex: 0, layFlex: 0, propFlex: 0 });
     });
+  });
+});
+
+// --- 2-panel flex API tests ---
+
+describe('calcFlexResize2', () => {
+  it('drag down increases seqFlex, decreases propFlex', () => {
+    // totalFlex=2, totalPixelHeight=600 => pxPerUnit=300
+    // deltaY=100 => deltaFlex=100/300 ≈ 0.333
+    const result = calcFlexResize2(
+      { seqFlex: 1, propFlex: 1, totalPixelHeight: 600 },
+      100,
+    );
+    expect(result.seqFlex).toBeCloseTo(1.333, 2);
+    expect(result.propFlex).toBeCloseTo(0.667, 2);
+  });
+
+  it('drag up decreases seqFlex, increases propFlex', () => {
+    // totalFlex=2, totalPixelHeight=600 => pxPerUnit=300
+    // deltaY=-100 => deltaFlex=-0.333
+    const result = calcFlexResize2(
+      { seqFlex: 1, propFlex: 1, totalPixelHeight: 600 },
+      -100,
+    );
+    expect(result.seqFlex).toBeCloseTo(0.667, 2);
+    expect(result.propFlex).toBeCloseTo(1.333, 2);
+  });
+
+  it('collapse: flex below COLLAPSE_FLEX_THRESHOLD snaps to 0', () => {
+    // totalFlex=2, totalPixelHeight=600 => pxPerUnit=300
+    // deltaY=-270 => deltaFlex=-0.9, seqFlex = 1-0.9 = 0.1 (< 0.15) -> 0
+    const result = calcFlexResize2(
+      { seqFlex: 1, propFlex: 1, totalPixelHeight: 600 },
+      -270,
+    );
+    expect(result.seqFlex).toBe(0);
+  });
+
+  it('restore from zero: gets at least MIN_RESTORED_FLEX', () => {
+    // seqFlex starts at 0; small drag
+    // totalFlex=1, totalPixelHeight=600 => pxPerUnit=600
+    // deltaY=60 => deltaFlex=0.1 (< 0.3) -> snaps to 0.3
+    const result = calcFlexResize2(
+      { seqFlex: 0, propFlex: 1, totalPixelHeight: 600 },
+      60,
+    );
+    expect(result.seqFlex).toBe(MIN_RESTORED_FLEX);
+  });
+
+  it('no negative flex values', () => {
+    const result = calcFlexResize2(
+      { seqFlex: 0.5, propFlex: 0.5, totalPixelHeight: 600 },
+      -600,
+    );
+    expect(result.seqFlex).toBeGreaterThanOrEqual(0);
+    expect(result.propFlex).toBeGreaterThanOrEqual(0);
+  });
+
+  it('returns current values when totalPixelHeight is 0', () => {
+    const result = calcFlexResize2(
+      { seqFlex: 1, propFlex: 1, totalPixelHeight: 0 },
+      100,
+    );
+    expect(result).toEqual({ seqFlex: 1, propFlex: 1 });
+  });
+
+  it('returns current values when totalFlex is 0', () => {
+    const result = calcFlexResize2(
+      { seqFlex: 0, propFlex: 0, totalPixelHeight: 600 },
+      100,
+    );
+    expect(result).toEqual({ seqFlex: 0, propFlex: 0 });
   });
 });
