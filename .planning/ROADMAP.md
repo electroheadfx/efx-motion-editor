@@ -93,5 +93,5 @@ See: `milestones/v0.3.0-ROADMAP.md` for full details.
 | 1-7 | v0.1.0 | 45/45 | Complete | 2019-03-11 |
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
-| 18. Canvas Motion Path | v0.4.0 | 0/2 | Planned | - |
+| 18. Canvas Motion Path | v0.4.0 | 1/2 | In Progress | - |
 | 19. Paint Layer Rotopaint | v0.4.0 | 0/6 | Planned | - |
