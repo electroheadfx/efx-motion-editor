@@ -110,12 +110,18 @@ export async function setPanelHeights(seqHeight: number, layersHeight: number): 
 
 // --- Panel Flex (persisted via LazyStore) ---
 
-export async function getPanelFlex(): Promise<[number, number, number]> {
-  return (await store.get<[number, number, number]>('panelFlex')) ?? [1, 1, 1];
+export async function getPanelFlex(): Promise<[number, number]> {
+  const stored = await store.get<number[]>('panelFlex');
+  if (!stored) return [1, 1];
+  if (stored.length === 3) {
+    // Migration: [seq, lay, prop] -> [seq, prop] (discard lay at index 1)
+    return [stored[0] || 1, stored[2] || 1];
+  }
+  return [stored[0] || 1, stored[1] || 1];
 }
 
-export async function setPanelFlex(seq: number, lay: number, prop: number): Promise<void> {
-  await store.set('panelFlex', [seq, lay, prop]);
+export async function setPanelFlex(seq: number, prop: number): Promise<void> {
+  await store.set('panelFlex', [seq, prop]);
 }
 
 // --- Loop Toggle (persisted via Rust) ---
