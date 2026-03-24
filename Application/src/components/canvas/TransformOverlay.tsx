@@ -89,6 +89,16 @@ function applyInterpolatedTransform(layer: Layer): Layer {
   };
 }
 
+/** Look up a layer by ID across all sequences */
+function getLayerById(layerId: string): Layer | undefined {
+  const seqs = sequenceStore.sequences.peek();
+  for (const seq of seqs) {
+    const l = seq.layers.find(ly => ly.id === layerId);
+    if (l) return l;
+  }
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -416,13 +426,20 @@ export function TransformOverlay({
     if (currentState.mode === 'move') {
       const dx = (e.clientX - currentState.startClientX) / currentZoom;
       const dy = (e.clientY - currentState.startClientY) / currentZoom;
-      layerStore.updateLayer(currentState.layerId!, {
-        transform: {
-          ...currentState.startLayerTransform,
-          x: currentState.startLayerTransform.x + dx,
-          y: currentState.startLayerTransform.y + dy,
-        },
-      });
+      const newX = currentState.startLayerTransform.x + dx;
+      const newY = currentState.startLayerTransform.y + dy;
+      const moveLayer = getLayerById(currentState.layerId!);
+      if (moveLayer?.keyframes?.length) {
+        keyframeStore.upsertKeyframeTransform(currentState.layerId!, timelineStore.currentFrame.peek(), { x: newX, y: newY });
+      } else {
+        layerStore.updateLayer(currentState.layerId!, {
+          transform: {
+            ...currentState.startLayerTransform,
+            x: newX,
+            y: newY,
+          },
+        });
+      }
     } else if (currentState.mode === 'scale') {
       applyScale(e, currentState);
     } else if (currentState.mode === 'rotate') {
@@ -443,16 +460,21 @@ export function TransformOverlay({
     if (startDist < 1) return;
     const scaleFactor = currentDist / startDist;
 
+    const scaleLayer = getLayerById(state.layerId);
+    const isKeyframed = !!(scaleLayer?.keyframes?.length);
+
     const ht = state.handleType;
     if (ht?.startsWith('corner')) {
       // Uniform scale
-      layerStore.updateLayer(state.layerId, {
-        transform: {
-          ...state.startLayerTransform,
-          scaleX: state.startLayerTransform.scaleX * scaleFactor,
-          scaleY: state.startLayerTransform.scaleY * scaleFactor,
-        },
-      });
+      const newScaleX = state.startLayerTransform.scaleX * scaleFactor;
+      const newScaleY = state.startLayerTransform.scaleY * scaleFactor;
+      if (isKeyframed) {
+        keyframeStore.upsertKeyframeTransform(state.layerId, timelineStore.currentFrame.peek(), { scaleX: newScaleX, scaleY: newScaleY });
+      } else {
+        layerStore.updateLayer(state.layerId, {
+          transform: { ...state.startLayerTransform, scaleX: newScaleX, scaleY: newScaleY },
+        });
+      }
     } else if (ht === 'edge-left' || ht === 'edge-right') {
       // Project the mouse delta onto the horizontal axis (rotated)
       const rad = (state.startLayerTransform.rotation * Math.PI) / 180;
@@ -465,12 +487,14 @@ export function TransformOverlay({
       if (Math.abs(startProj) < 1) return;
       const factor = currProj / startProj;
 
-      layerStore.updateLayer(state.layerId, {
-        transform: {
-          ...state.startLayerTransform,
-          scaleX: state.startLayerTransform.scaleX * factor,
-        },
-      });
+      const newScaleX = state.startLayerTransform.scaleX * factor;
+      if (isKeyframed) {
+        keyframeStore.upsertKeyframeTransform(state.layerId, timelineStore.currentFrame.peek(), { scaleX: newScaleX });
+      } else {
+        layerStore.updateLayer(state.layerId, {
+          transform: { ...state.startLayerTransform, scaleX: newScaleX },
+        });
+      }
     } else if (ht === 'edge-top' || ht === 'edge-bottom') {
       // Project the mouse delta onto the vertical axis (rotated)
       const rad = (state.startLayerTransform.rotation * Math.PI) / 180;
@@ -483,12 +507,14 @@ export function TransformOverlay({
       if (Math.abs(startProj) < 1) return;
       const factor = currProj / startProj;
 
-      layerStore.updateLayer(state.layerId, {
-        transform: {
-          ...state.startLayerTransform,
-          scaleY: state.startLayerTransform.scaleY * factor,
-        },
-      });
+      const newScaleY = state.startLayerTransform.scaleY * factor;
+      if (isKeyframed) {
+        keyframeStore.upsertKeyframeTransform(state.layerId, timelineStore.currentFrame.peek(), { scaleY: newScaleY });
+      } else {
+        layerStore.updateLayer(state.layerId, {
+          transform: { ...state.startLayerTransform, scaleY: newScaleY },
+        });
+      }
     }
   }
 
@@ -503,12 +529,18 @@ export function TransformOverlay({
     const startAngle = Math.atan2(startMouse.y - center.y, startMouse.x - center.x);
     const deltaAngle = ((currentAngle - startAngle) * 180) / Math.PI;
 
-    layerStore.updateLayer(state.layerId, {
-      transform: {
-        ...state.startLayerTransform,
-        rotation: state.startLayerTransform.rotation + deltaAngle,
-      },
-    });
+    const newRotation = state.startLayerTransform.rotation + deltaAngle;
+    const rotateLayer = getLayerById(state.layerId);
+    if (rotateLayer?.keyframes?.length) {
+      keyframeStore.upsertKeyframeTransform(state.layerId, timelineStore.currentFrame.peek(), { rotation: newRotation });
+    } else {
+      layerStore.updateLayer(state.layerId, {
+        transform: {
+          ...state.startLayerTransform,
+          rotation: newRotation,
+        },
+      });
+    }
   }
 
   function getProjectPointFromClient(clientX: number, clientY: number) {
