@@ -1,5 +1,6 @@
 import {getStroke} from 'perfect-freehand';
-import type {PaintFrame, PaintElement, PaintStroke, PaintShape, PaintStrokeOptions} from '../types/paint';
+import {floodFill, hexToRgba} from './paintFloodFill';
+import type {PaintFrame, PaintElement, PaintStroke, PaintShape, PaintFill, PaintStrokeOptions} from '../types/paint';
 
 /**
  * Convert stroke points to a Path2D outline using perfect-freehand.
@@ -115,25 +116,36 @@ function renderShape(ctx: CanvasRenderingContext2D, element: PaintShape): void {
  *
  * @param ctx - The canvas 2D rendering context to draw on
  * @param frame - The PaintFrame containing elements to render
- * @param _width - Canvas width (reserved for future use, e.g. fill rendering)
- * @param _height - Canvas height (reserved for future use, e.g. fill rendering)
+ * @param width - Canvas width (used for fill rendering)
+ * @param height - Canvas height (used for fill rendering)
  */
 export function renderPaintFrame(
   ctx: CanvasRenderingContext2D,
   frame: PaintFrame,
-  _width: number,
-  _height: number,
+  width: number,
+  height: number,
 ): void {
   for (const element of frame.elements) {
-    renderElement(ctx, element);
+    renderElement(ctx, element, width, height);
   }
+}
+
+/**
+ * Render a single PaintFill element by re-executing flood fill at render time.
+ * Deterministic given prior elements already rendered to the context.
+ */
+function renderFill(ctx: CanvasRenderingContext2D, element: PaintFill, width: number, height: number): void {
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const rgba = hexToRgba(element.color, element.opacity);
+  floodFill(imgData, Math.round(element.x), Math.round(element.y), rgba, element.tolerance);
+  ctx.putImageData(imgData, 0, 0);
 }
 
 /**
  * Render a single PaintElement to a canvas context.
  * Dispatches to the appropriate renderer based on element tool type.
  */
-function renderElement(ctx: CanvasRenderingContext2D, element: PaintElement): void {
+function renderElement(ctx: CanvasRenderingContext2D, element: PaintElement, width: number, height: number): void {
   switch (element.tool) {
     case 'brush':
     case 'eraser':
@@ -145,8 +157,7 @@ function renderElement(ctx: CanvasRenderingContext2D, element: PaintElement): vo
       renderShape(ctx, element as PaintShape);
       break;
     case 'fill':
-      // Fill elements are pre-rasterized as ImageData.
-      // Fill rendering will be implemented in Plan 06.
+      renderFill(ctx, element as PaintFill, width, height);
       break;
   }
 }

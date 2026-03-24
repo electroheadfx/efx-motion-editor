@@ -6,8 +6,9 @@ import {projectStore} from '../../stores/projectStore';
 import {layerStore} from '../../stores/layerStore';
 import {timelineStore} from '../../stores/timelineStore';
 import {clientToCanvas} from './coordinateMapper';
-import {strokeToPath} from '../../lib/paintRenderer';
-import type {PaintStroke, PaintShape, PaintToolType} from '../../types/paint';
+import {strokeToPath, renderPaintFrame} from '../../lib/paintRenderer';
+import {floodFill, hexToRgba} from '../../lib/paintFloodFill';
+import type {PaintStroke, PaintShape, PaintFill, PaintToolType} from '../../types/paint';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -237,7 +238,41 @@ export function PaintOverlay({
         }
       }
     }
-    // fill: no-op for now (Plan 06)
+    if (tool === 'fill') {
+      // 1. Rasterize current frame's existing paint to an offscreen canvas
+      const projW = projectStore.width.peek();
+      const projH = projectStore.height.peek();
+      const offscreen = document.createElement('canvas');
+      offscreen.width = projW;
+      offscreen.height = projH;
+      const offCtx = offscreen.getContext('2d')!;
+
+      const layerId = getSelectedPaintLayerId();
+      const frame = timelineStore.currentFrame.peek();
+      if (!layerId) return;
+
+      const existingFrame = paintStore.getFrame(layerId, frame);
+      if (existingFrame) {
+        renderPaintFrame(offCtx, existingFrame, projW, projH);
+      }
+
+      // 2. Get ImageData and run flood fill
+      const imgData = offCtx.getImageData(0, 0, projW, projH);
+      const fillRgba = hexToRgba(paintStore.brushColor.peek(), paintStore.brushOpacity.peek());
+      floodFill(imgData, Math.round(point.x), Math.round(point.y), fillRgba, paintStore.fillTolerance.peek());
+
+      // 3. Store as PaintFill element
+      const fillElement: PaintFill = {
+        id: crypto.randomUUID(),
+        tool: 'fill',
+        x: point.x,
+        y: point.y,
+        color: paintStore.brushColor.peek(),
+        opacity: paintStore.brushOpacity.peek(),
+        tolerance: paintStore.fillTolerance.peek(),
+      };
+      paintStore.addElement(layerId, frame, fillElement);
+    }
 
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     e.preventDefault();
