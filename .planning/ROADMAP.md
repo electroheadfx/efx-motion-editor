@@ -85,7 +85,7 @@ See: `milestones/v0.3.0-ROADMAP.md` for full details.
   - [x] 18-02-PLAN.md — Keyframe circle drag interaction (drag to reposition, auto-seek, undo coalescing)
   - [x] 18-03-PLAN.md — Gap closure: real-time canvas updates for keyframe property edits
 
-- [ ] Phase 19: Add Paint Layer Rotopaint — Frame-by-frame drawing and rotoscoping with perfect-freehand brush engine, onion skinning, and sidecar persistence (6 plans)
+- [x] Phase 19: Add Paint Layer Rotopaint — Frame-by-frame drawing and rotoscoping with perfect-freehand brush engine, onion skinning, and sidecar persistence (6 plans) (completed 2026-03-24)
 
 ## Progress
 
@@ -95,4 +95,4 @@ See: `milestones/v0.3.0-ROADMAP.md` for full details.
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18. Canvas Motion Path | v0.4.0 | 3/3 | Complete   | 2026-03-24 |
-| 19. Paint Layer Rotopaint | v0.4.0 | 0/6 | Planned | - |
+| 19. Paint Layer Rotopaint | v0.4.0 | 6/6 | Complete    | 2026-03-24 |
