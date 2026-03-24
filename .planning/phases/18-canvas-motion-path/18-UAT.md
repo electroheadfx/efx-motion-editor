@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 18-canvas-motion-path
 source: 18-01-SUMMARY.md, 18-02-SUMMARY.md
 started: 2026-03-24T18:30:00Z
-updated: 2026-03-24T18:40:00Z
+updated: 2026-03-24T18:45:00Z
 ---
 
 ## Current Test
@@ -66,7 +66,20 @@ blocked: 0
   reason: "User reported: edit work but update is bad, because each modification on each keyframe in live it need to click on 'update keyframe', I think a modification from a key frame should update in real time. When i click on keyframe and resize, move, rotate, the canvas is not updated, I do in blind mode, when I refresh I can see the change in canvas, not before."
   severity: major
   test: 5
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "Two-part gap: (1) Sidebar edits between keyframes write to keyframeStore.transientOverrides which Preview.tsx never subscribes to — dead-end signal path. (2) Canvas drag move/scale/rotate handlers update layer.transform but not layer.keyframes, so interpolateLayers() in exportRenderer.ts immediately overwrites the change with keyframe-interpolated values."
+  artifacts:
+    - path: "Application/src/components/Preview.tsx"
+      issue: "render effect subscribes to sequenceStore.sequences but not transientOverrides or displayValues"
+    - path: "Application/src/lib/exportRenderer.ts"
+      issue: "interpolateLayers overwrites layer.transform with keyframe data, ignoring direct transform edits"
+    - path: "Application/src/stores/keyframeStore.ts"
+      issue: "transientOverrides signal dead-ends at UI, never reaches renderer"
+    - path: "Application/src/components/canvas/TransformOverlay.tsx"
+      issue: "move/scale/rotate handlers update transform but not keyframes"
+    - path: "Application/src/components/sidebar/SidebarProperties.tsx"
+      issue: "between-keyframe edits write to transient-only path"
+  missing:
+    - "Preview.tsx render effect needs to subscribe to transientOverrides/displayValues"
+    - "TransformOverlay move/scale/rotate handlers should update layer.keyframes (like kf-drag already does)"
+    - "interpolateLayers needs to apply transient overrides for the selected layer"
+  debug_session: ".planning/debug/canvas-no-live-update.md"
