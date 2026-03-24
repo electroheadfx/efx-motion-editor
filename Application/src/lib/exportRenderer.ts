@@ -80,6 +80,12 @@ function _getOrCreateTransitionOffscreen(w: number, h: number, label: 'A' | 'B')
  * Render a single global frame with full compositing.
  * Pure function: caller passes all data, no signal reads.
  * Used by both Preview.tsx (live preview) and exportEngine.ts (file export).
+ *
+ * Paint layers: type 'paint' passes through to PreviewRenderer.renderFrame()
+ * which handles paint rendering via paintStore.getFrame() + renderPaintFrame().
+ * Verified: interpolateLayers does not filter paint layers (they are not
+ * isContentLayer, isGeneratorLayer, or isAdjustmentLayer — they pass through as-is).
+ * Paint data must be loaded into paintStore before export starts.
  */
 export function renderGlobalFrame(
   renderer: PreviewRenderer,

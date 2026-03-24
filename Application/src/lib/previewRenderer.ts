@@ -11,6 +11,8 @@ import {applyBlur} from './fxBlur';
 import {blurStore} from '../stores/blurStore';
 import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
+import {renderPaintFrame} from './paintRenderer';
+import {paintStore} from '../stores/paintStore';
 
 /**
  * Create a Canvas 2D gradient from GradientData.
@@ -162,6 +164,13 @@ export class PreviewRenderer {
         if (isGeneratorLayer(layer)) {
           hasDrawable = true;
           break;
+        } else if (layer.type === 'paint') {
+          const pf = paintStore.getFrame(layer.id, frame);
+          if (pf && pf.elements.length > 0) {
+            hasDrawable = true;
+            break;
+          }
+          continue;
         } else if (isAdjustmentLayer(layer)) {
           // Adjustments only matter if there's content below; continue checking
           continue;
@@ -256,6 +265,15 @@ export class PreviewRenderer {
         }
       } else if (isAdjustmentLayer(layer)) {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
+      } else if (layer.type === 'paint') {
+        const paintFrame = paintStore.getFrame(layer.id, frame);
+        if (paintFrame && paintFrame.elements.length > 0) {
+          ctx.save();
+          ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+          ctx.globalAlpha = effectiveOpacity;
+          renderPaintFrame(ctx, paintFrame, logicalW, logicalH);
+          ctx.restore();
+        }
       } else {
         // Content layer: check for gradient/solid/transparent frame first (per D-12, D-18, D-19)
         let handledAsSolid = false;
