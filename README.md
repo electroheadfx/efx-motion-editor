@@ -1,6 +1,6 @@
 # EFX Motion Editor
 
-A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
+A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
 
 <!-- Screenshot: Main editor view -->
 
@@ -109,6 +109,12 @@ Import WAV, MP3, AAC, or FLAC audio files. Audio waveform renders on the timelin
 
 <!-- Screenshot: Audio waveform on timeline -->
 
+### Paint Layer / Rotopaint
+
+Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perfect-freehand brush engine for smooth, pressure-sensitive strokes. 7 tools: brush, eraser, eyedropper, flood fill, line, rectangle, and ellipse. Onion skinning overlay shows ghosted paint from adjacent frames with configurable range and opacity falloff. Paint data persists as sidecar JSON files alongside the project. Paint layers composite in both the live preview and video export pipelines with full blend mode and opacity support.
+
+<!-- Screenshot: Paint overlay with onion skinning -->
+
 ### Keyframe Animation
 
 Per-layer keyframe animation with 4 interpolation curves (linear, ease-in, ease-out, ease-in-out). Animate position, scale, rotation, opacity, blur, and FX parameters over time. Keyframe navigation and diamond editing in the sidebar.
@@ -162,7 +168,8 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | GPU Effects | WebGL2 (GLSL shaders, GPU blur) |
 | Native Backend | Rust, Tauri 2.0 |
 | Video Export | FFmpeg (auto-provisioned) |
-| Project Format | `.mce` v13 (progressive JSON with backward compat v1-v13) |
+| Paint Engine | perfect-freehand (pressure-sensitive strokes) |
+| Project Format | `.mce` v14 (progressive JSON with backward compat v1-v14) |
 
 ## Prerequisites
 
@@ -207,7 +214,7 @@ efx-motion-editor/
 │   │   │   ├── shader-browser/  # GLSL shader browser window
 │   │   │   ├── overlay/         # Shortcuts overlay, fullscreen
 │   │   │   └── shared/          # NumericInput, ColorPickerModal, SectionLabel
-│   │   ├── stores/              # Reactive state (9 Preact Signal stores)
+│   │   ├── stores/              # Reactive state (10 Preact Signal stores)
 │   │   ├── lib/                 # Core logic
 │   │   │   ├── shaders/         # GLSL shader library
 │   │   │   │   ├── generators/  # 10 procedural generator shaders
@@ -220,6 +227,9 @@ efx-motion-editor/
 │   │   │   ├── exportRenderer.ts   # Export pipeline
 │   │   │   ├── glBlur.ts        # GPU-accelerated Gaussian blur
 │   │   │   ├── fxGenerators.ts  # CPU FX generators (grain, particles, etc.)
+│   │   │   ├── paintRenderer.ts    # Paint stroke/shape/fill renderer
+│   │   │   ├── paintFloodFill.ts   # Stack-based flood fill algorithm
+│   │   │   ├── paintPersistence.ts # Sidecar file I/O for paint data
 │   │   │   ├── playbackEngine.ts   # rAF playback with delta accumulation
 │   │   │   └── ...
 │   │   ├── types/               # TypeScript type definitions
