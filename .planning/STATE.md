@@ -169,9 +169,10 @@ No active blockers.
 | 260323-fsg | Remove Color Grade/Browse Shaders from Layer menu, rename GLSL to Shader, add Audio label | 2026-03-23 | 82f240c | [260323-fsg-timeline-buttons-remove-color-grade-from](./quick/260323-fsg-timeline-buttons-remove-color-grade-from/) |
 | 260323-g4n | Remove duplicate playback controls from CanvasArea bottom bar | 2026-03-23 | bf878b4 | [260323-g4n-remove-duplicate-playback-controls-from-](./quick/260323-g4n-remove-duplicate-playback-controls-from-/) |
 | 260323-h1o | Replace 4-button playback controls with 7-button transport bar | 2026-03-23 | bf4f703 | [260323-h1o-replace-timeline-playback-controls-with-](./quick/260323-h1o-replace-timeline-playback-controls-with-/) |
+| 260324-k49 | Move Shader button from timeline header to Layer dropdown menu | 2026-03-24 | 9da80c3 | [260324-k49-move-the-shader-button-from-timeline-hea](./quick/260324-k49-move-the-shader-button-from-timeline-hea/) |
 
 ## Session Continuity
 
-Last session: 2026-03-24T12:05:55.961Z
-Stopped at: Phase 17.1 context gathered
+Last session: 2026-03-24T13:33:39Z
+Stopped at: Completed quick-260324-k49
 Resume file: .planning/phases/17.1-adaptative-sidebar-s-layer-window/17.1-CONTEXT.md
