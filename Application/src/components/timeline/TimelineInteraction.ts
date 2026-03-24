@@ -731,6 +731,16 @@ export class TimelineInteraction {
       return;
     }
 
+    // Name label click: highest priority in content area (labels use precise bounding box)
+    const nameHit = this.nameLabelHitTest(e.clientX, e.clientY);
+    if (nameHit) {
+      isolationStore.toggleIsolation(nameHit);
+      sequenceStore.setActive(nameHit);
+      uiStore.selectSequence(nameHit);
+      this.clearFxLayerSelection();
+      return;
+    }
+
     // Check keyframe diamond hit BEFORE regular track interactions
     const kfHit = this.keyframeHitTest(e.clientX, e.clientY);
     if (kfHit) {
@@ -761,7 +771,7 @@ export class TimelineInteraction {
       return;
     }
 
-    // Transition hit test on content tracks (priority: keyframes > transitions > sequence selection)
+    // Transition hit test on content tracks (priority: labels > keyframes > transitions > sequence selection)
     {
       const localY = e.clientY - rect.top;
       const transHit = this.transitionHitTest(localX, localY);
@@ -775,16 +785,6 @@ export class TimelineInteraction {
         }
         return;
       }
-    }
-
-    // Name label click: toggle isolation
-    const nameHit = this.nameLabelHitTest(e.clientX, e.clientY);
-    if (nameHit) {
-      isolationStore.toggleIsolation(nameHit);
-      sequenceStore.setActive(nameHit);
-      uiStore.selectSequence(nameHit);
-      this.clearFxLayerSelection();
-      return;
     }
 
     // Click in ruler area or on playhead -> start drag-to-scrub immediately
@@ -923,9 +923,26 @@ export class TimelineInteraction {
       return;
     }
 
-    // Keyframe hover detection: crosshair cursor + highlight
-    // (works on both content tracks and content-overlay tracks in the FX area)
+    // Hover detection: name labels > keyframes > transitions
+    // (name labels use precise bounding box; keyframes use broad X-based hit zone)
     if (this.canvas && !this.isInRuler(e.clientY)) {
+      // Name label hover: pointer cursor + highlight (checked first — precise hit area)
+      const nameHoverEarly = this.nameLabelHitTest(e.clientX, e.clientY);
+      if (nameHoverEarly) {
+        // Clear keyframe hover if we're on a label
+        if (this.hoveredKeyframeFrame !== null) {
+          this.hoveredKeyframeFrame = null;
+          if (this.renderer) this.renderer.setHoveredKeyframe(null);
+        }
+        this.canvas.style.cursor = 'pointer';
+        if (this.renderer) {
+          this.renderer.setHoveredNameLabel(nameHoverEarly);
+        }
+        return;
+      }
+
+      // Keyframe hover detection: crosshair cursor + highlight
+      // (works on both content tracks and content-overlay tracks in the FX area)
       const kfHover = this.keyframeHitTest(e.clientX, e.clientY);
       const newHoveredFrame = kfHover ? kfHover.frame : null;
       if (newHoveredFrame !== this.hoveredKeyframeFrame) {
