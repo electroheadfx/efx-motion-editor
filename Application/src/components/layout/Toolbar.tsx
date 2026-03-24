@@ -59,10 +59,10 @@ export function Toolbar() {
   };
 
   return (
-    <div class="flex items-center gap-1 h-11 w-full bg-[var(--color-bg-toolbar)] px-3 shrink-0">
+    <div class="flex items-center gap-1 h-11 w-full bg-(--color-bg-toolbar) px-3 shrink-0">
       {/* New button */}
       <button
-        class="flex items-center justify-center rounded-[5px] bg-[var(--color-accent)] w-8 h-8 hover:bg-[var(--color-accent-hover)] transition-colors"
+        class="flex items-center justify-center rounded-[5px] bg-(--color-accent) w-8 h-8 hover:bg-(--color-accent-hover) transition-colors"
         onClick={handleNew}
         title="New (Cmd+N)"
       >
@@ -70,7 +70,7 @@ export function Toolbar() {
       </button>
       {/* Open button */}
       <button
-        class="flex items-center justify-center rounded-[5px] bg-[var(--color-bg-settings)] w-8 h-8 hover:bg-[var(--color-bg-input)] transition-colors text-[var(--color-text-button)]"
+        class="flex items-center justify-center rounded-[5px] bg-(--color-bg-settings) w-8 h-8 hover:bg-(--color-bg-input) transition-colors text-(--color-text-button)"
         onClick={handleOpen}
         title="Open (Cmd+O)"
       >
@@ -78,7 +78,7 @@ export function Toolbar() {
       </button>
       {/* Save button */}
       <button
-        class={`flex items-center justify-center rounded-[5px] bg-[var(--color-bg-settings)] w-8 h-8 hover:bg-[var(--color-bg-input)] transition-colors text-[var(--color-text-button)] ${
+        class={`flex items-center justify-center rounded-[5px] bg-(--color-bg-settings) w-8 h-8 hover:bg-(--color-bg-input) transition-colors text-(--color-text-button) ${
           projectStore.isSaving.value ? 'opacity-60' : ''
         }`}
         onClick={handleSave}
@@ -88,22 +88,22 @@ export function Toolbar() {
       </button>
       {/* Dirty indicator */}
       {projectStore.isDirty.value && (
-        <div class="w-2 h-2 rounded-full bg-[var(--color-dot-orange)] shrink-0" title="Unsaved changes" />
+        <div class="w-2 h-2 rounded-full bg-(--color-dot-orange) shrink-0" title="Unsaved changes" />
       )}
-      <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
+      <div class="w-px h-6 bg-(--color-border-subtle)" />
       {/* Blur Controls */}
       <button
         class={`flex items-center justify-center rounded-[5px] w-8 h-8 transition-colors ${
           blurStore.bypassBlur.value
-            ? 'bg-[var(--color-dot-orange)] text-white'
-            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] text-[var(--color-text-secondary)]'
+            ? 'bg-(--color-dot-orange) text-white'
+            : 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) text-(--color-text-secondary)'
         }`}
         onClick={() => blurStore.toggleBypass()}
         title="Bypass All Blur (Shift+B)"
       >
         <Ban size={16} />
       </button>
-      <div class="w-px h-6 bg-[var(--color-border-subtle)]" />
+      <div class="w-px h-6 bg-(--color-border-subtle)" />
       <ThemeSwitcher />
       {/* Spacer */}
       <div class="flex-1" />
@@ -111,8 +111,8 @@ export function Toolbar() {
       <button
         class={`flex items-center justify-center rounded-[5px] w-8 h-8 transition-colors ${
           uiStore.editorMode.value === 'imported'
-            ? 'bg-[var(--color-accent)] text-white'
-            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] text-[var(--color-text-button)]'
+            ? 'bg-(--color-accent) text-white'
+            : 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) text-(--color-text-button)'
         }`}
         onClick={() => {
           if (uiStore.editorMode.value === 'imported') {
@@ -130,8 +130,8 @@ export function Toolbar() {
       <button
         class={`flex items-center justify-center rounded-[5px] w-8 h-8 transition-colors ${
           uiStore.editorMode.value === 'settings'
-            ? 'bg-[var(--color-accent)] text-white'
-            : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] text-[var(--color-text-button)]'
+            ? 'bg-(--color-accent) text-white'
+            : 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) text-(--color-text-button)'
         }`}
         onClick={() => uiStore.setEditorMode(
           uiStore.editorMode.value === 'settings' ? 'editor' : 'settings'

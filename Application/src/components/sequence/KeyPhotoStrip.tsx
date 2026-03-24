@@ -349,7 +349,7 @@ function KeyPhotoCard({
 
   return (
     <div
-      class={`group h-14 rounded-md relative shrink-0 bg-cover bg-center overflow-hidden cursor-pointer${isActiveByFrame ? ' ring-2 ring-[var(--color-accent)]' : ''}`}
+      class={`group h-14 rounded-md relative shrink-0 bg-cover bg-center overflow-hidden cursor-pointer${isActiveByFrame ? ' ring-2 ring-(--color-accent)' : ''}`}
       style={{
         width: 'auto',
         minWidth: '56px',

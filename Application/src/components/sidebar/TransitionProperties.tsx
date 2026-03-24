@@ -46,7 +46,7 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
         <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
           {/* Shader name — clickable to reopen browser for swapping (D-04) */}
           <button
-            class="text-left text-[11px] font-medium px-2 py-1 rounded hover:bg-[var(--color-bg-hover-item)] cursor-pointer transition-colors"
+            class="text-left text-[11px] font-medium px-2 py-1 rounded hover:bg-(--color-bg-hover-item) cursor-pointer transition-colors"
             style={{ color: 'var(--sidebar-text-primary)', backgroundColor: 'var(--sidebar-input-bg)', borderRadius: '6px' }}
             onClick={() => { uiStore.shaderBrowserInitialTab.value = 'transition'; uiStore.setEditorMode('shader-browser'); }}
             title="Click to swap transition"
@@ -232,8 +232,8 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
               <button
                 class={`text-[11px] px-2 py-[3px] rounded flex-1 ${
                   transition.mode === 'transparency'
-                    ? 'bg-[var(--color-accent)] text-white'
-                    : 'text-[var(--sidebar-text-primary)]'
+                    ? 'bg-(--color-accent) text-white'
+                    : 'text-(--sidebar-text-primary)'
                 }`}
                 style={transition.mode !== 'transparency' ? { backgroundColor: 'var(--sidebar-input-bg)' } : undefined}
                 onClick={() => {
@@ -245,8 +245,8 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
               <button
                 class={`text-[11px] px-2 py-[3px] rounded flex-1 ${
                   transition.mode === 'solid'
-                    ? 'bg-[var(--color-accent)] text-white'
-                    : 'text-[var(--sidebar-text-primary)]'
+                    ? 'bg-(--color-accent) text-white'
+                    : 'text-(--sidebar-text-primary)'
                 }`}
                 style={transition.mode !== 'solid' ? { backgroundColor: 'var(--sidebar-input-bg)' } : undefined}
                 onClick={() => {
@@ -259,7 +259,7 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
             {transition.mode === 'solid' && (
               <>
                 <div
-                  class="w-6 h-6 rounded cursor-pointer shrink-0 border border-[var(--sidebar-border-unselected)]"
+                  class="w-6 h-6 rounded cursor-pointer shrink-0 border border-(--sidebar-border-unselected)"
                   style={{ backgroundColor: transition.color || '#000000' }}
                   onClick={() => setColorPickerOpen(true)}
                   title="Pick color"

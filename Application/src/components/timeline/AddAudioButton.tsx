@@ -9,11 +9,11 @@ export function AddAudioButton() {
 
   return (
     <button
-      class="rounded px-2 py-[5px] bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)] cursor-pointer transition-colors"
+      class="rounded px-2 py-[5px] bg-(--color-bg-input) hover:bg-(--color-border-subtle) cursor-pointer transition-colors"
       onClick={handleAddAudio}
       title="Add Audio"
     >
-      <span class="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1"><Music size={11} /> Audio</span>
+      <span class="text-[10px] text-(--color-text-secondary) flex items-center gap-1"><Music size={11} /> Audio</span>
     </button>
   );
 }

@@ -12,12 +12,12 @@ export function SettingsView() {
   const currentResLabel = `${projectStore.width.value}x${projectStore.height.value}`;
 
   return (
-    <div class="flex flex-col flex-1 min-w-0 bg-[var(--color-bg-root)]">
+    <div class="flex flex-col flex-1 min-w-0 bg-(--color-bg-root)">
       {/* Header bar */}
-      <div class="flex items-center justify-between h-10 px-4 bg-[var(--color-bg-toolbar)] border-b border-[var(--color-separator)] shrink-0">
-        <span class="text-sm font-semibold text-[var(--color-text-button)]">Settings</span>
+      <div class="flex items-center justify-between h-10 px-4 bg-(--color-bg-toolbar) border-b border-(--color-separator) shrink-0">
+        <span class="text-sm font-semibold text-(--color-text-button)">Settings</span>
         <button
-          class="w-6 h-6 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-button)] transition-colors"
+          class="w-6 h-6 flex items-center justify-center text-(--color-text-muted) hover:text-(--color-text-button) transition-colors"
           onClick={() => uiStore.setEditorMode('editor')}
           title="Close"
         >
@@ -30,15 +30,15 @@ export function SettingsView() {
         <div class="max-w-md space-y-6">
           {/* FPS */}
           <div class="space-y-2">
-            <label class="text-xs font-semibold text-[var(--color-text-muted)]">Frame Rate</label>
+            <label class="text-xs font-semibold text-(--color-text-muted)">Frame Rate</label>
             <div class="flex gap-2">
               {[15, 24].map((rate) => (
                 <button
                   key={rate}
                   class={`px-4 py-2 rounded-[5px] text-sm transition-colors ${
                     projectStore.fps.value === rate
-                      ? 'bg-[var(--color-accent)] text-white'
-                      : 'bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)]'
+                      ? 'bg-(--color-accent) text-white'
+                      : 'bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input)'
                   }`}
                   onClick={() => projectStore.setFps(rate)}
                 >
@@ -50,9 +50,9 @@ export function SettingsView() {
 
           {/* Resolution */}
           <div class="space-y-2">
-            <label class="text-xs font-semibold text-[var(--color-text-muted)]">Resolution</label>
+            <label class="text-xs font-semibold text-(--color-text-muted)">Resolution</label>
             <select
-              class="w-full text-sm bg-[var(--color-bg-input)] text-[var(--color-text-button)] border border-[var(--color-border-subtle)] rounded-[5px] px-3 py-2 outline-none cursor-pointer"
+              class="w-full text-sm bg-(--color-bg-input) text-(--color-text-button) border border-(--color-border-subtle) rounded-[5px] px-3 py-2 outline-none cursor-pointer"
               value={currentResLabel}
               onChange={(e) => {
                 const val = (e.target as HTMLSelectElement).value;
@@ -71,7 +71,7 @@ export function SettingsView() {
 
           {/* Theme */}
           <div class="space-y-2">
-            <label class="text-xs font-semibold text-[var(--color-text-muted)]">Theme</label>
+            <label class="text-xs font-semibold text-(--color-text-muted)">Theme</label>
             <ThemeSwitcher />
           </div>
         </div>

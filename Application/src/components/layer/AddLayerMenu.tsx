@@ -46,23 +46,23 @@ export function AddLayerMenu() {
       </button>
 
       {menuOpen && (
-        <div class="absolute right-0 top-7 z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl py-1 min-w-[160px]">
+        <div class="absolute right-0 top-7 z-50 bg-(--color-bg-menu) border border-(--color-border-subtle) rounded-md shadow-xl py-1 min-w-[160px]">
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+            class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
             onClick={handleStaticImage}
           >
             <span class="w-2 h-2 rounded-sm bg-[#14B8A6] shrink-0" />
             Static Image
           </button>
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+            class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
             onClick={handleImageSequence}
           >
             <span class="w-2 h-2 rounded-sm bg-[#3B82F6] shrink-0" />
             Image Sequence
           </button>
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+            class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
             onClick={handleVideo}
           >
             <span class="w-2 h-2 rounded-sm bg-[#8B5CF6] shrink-0" />

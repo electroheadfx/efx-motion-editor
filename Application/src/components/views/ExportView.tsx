@@ -13,12 +13,12 @@ export function ExportView() {
   }, []);
 
   return (
-    <div class="relative flex flex-col flex-1 min-w-0 bg-[var(--color-bg-root)]">
+    <div class="relative flex flex-col flex-1 min-w-0 bg-(--color-bg-root)">
       {/* Header bar */}
-      <div class="flex items-center justify-between h-10 px-4 bg-[var(--color-bg-toolbar)] border-b border-[var(--color-separator)] shrink-0">
-        <span class="text-sm font-semibold text-[var(--color-text-button)]">Export</span>
+      <div class="flex items-center justify-between h-10 px-4 bg-(--color-bg-toolbar) border-b border-(--color-separator) shrink-0">
+        <span class="text-sm font-semibold text-(--color-text-button)">Export</span>
         <button
-          class="w-6 h-6 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-button)] transition-colors"
+          class="w-6 h-6 flex items-center justify-center text-(--color-text-muted) hover:text-(--color-text-button) transition-colors"
           onClick={() => uiStore.setEditorMode('editor')}
           title="Close"
         >
@@ -35,7 +35,7 @@ export function ExportView() {
         </div>
       </div>
       {/* Bottom bar: Export button */}
-      <div class="flex items-center justify-end h-14 px-6 bg-[var(--color-bg-toolbar)] border-t border-[var(--color-separator)] shrink-0">
+      <div class="flex items-center justify-end h-14 px-6 bg-(--color-bg-toolbar) border-t border-(--color-separator) shrink-0">
         <button
           class="px-6 py-2 rounded-[5px] bg-[#F97316] hover:brightness-125 text-white text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           onClick={() => startExport()}

@@ -73,15 +73,15 @@ export function ExportPreview() {
     <div class="flex flex-col gap-6 h-full">
       {/* Preview thumbnail */}
       <div class="space-y-2">
-        <label class="text-xs font-semibold text-[var(--color-text-muted)]">Preview</label>
+        <label class="text-xs font-semibold text-(--color-text-muted)">Preview</label>
         <div
-          class="flex items-center justify-center rounded-[5px] border border-[var(--color-border-subtle)] bg-[var(--color-bg-settings)] overflow-hidden"
+          class="flex items-center justify-center rounded-[5px] border border-(--color-border-subtle) bg-(--color-bg-settings) overflow-hidden"
           style={{aspectRatio: `${baseWidth}/${baseHeight}`, maxHeight: '240px'}}
         >
           {frames > 0 ? (
             <canvas ref={canvasRef} class="w-full h-full object-contain" />
           ) : (
-            <span class="text-sm text-[var(--color-text-muted)]">
+            <span class="text-sm text-(--color-text-muted)">
               {outWidth} x {outHeight}
             </span>
           )}
@@ -90,32 +90,32 @@ export function ExportPreview() {
 
       {/* Output summary */}
       <div class="space-y-2">
-        <label class="text-xs font-semibold text-[var(--color-text-muted)]">Output Summary</label>
+        <label class="text-xs font-semibold text-(--color-text-muted)">Output Summary</label>
         <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          <span class="text-[var(--color-text-muted)]">Frames</span>
-          <span class="text-[var(--color-text-secondary)]">{frames}</span>
+          <span class="text-(--color-text-muted)">Frames</span>
+          <span class="text-(--color-text-secondary)">{frames}</span>
 
-          <span class="text-[var(--color-text-muted)]">Duration</span>
-          <span class="text-[var(--color-text-secondary)]">{durationStr} @ {fps} fps</span>
+          <span class="text-(--color-text-muted)">Duration</span>
+          <span class="text-(--color-text-secondary)">{durationStr} @ {fps} fps</span>
 
-          <span class="text-[var(--color-text-muted)]">Est. Size</span>
-          <span class="text-[var(--color-text-secondary)]">~{sizeMB} MB</span>
+          <span class="text-(--color-text-muted)">Est. Size</span>
+          <span class="text-(--color-text-secondary)">~{sizeMB} MB</span>
 
-          <span class="text-[var(--color-text-muted)]">Resolution</span>
-          <span class="text-[var(--color-text-secondary)]">{outWidth} x {outHeight}</span>
+          <span class="text-(--color-text-muted)">Resolution</span>
+          <span class="text-(--color-text-secondary)">{outWidth} x {outHeight}</span>
         </div>
       </div>
 
       {/* Output folder */}
       <div class="space-y-2">
-        <label class="text-xs font-semibold text-[var(--color-text-muted)]">Output Folder</label>
+        <label class="text-xs font-semibold text-(--color-text-muted)">Output Folder</label>
         {folder ? (
           <div class="flex items-center gap-2">
-            <span class="text-sm text-[var(--color-text-secondary)] truncate flex-1 font-mono bg-[var(--color-bg-settings)] px-3 py-2 rounded-[5px]">
+            <span class="text-sm text-(--color-text-secondary) truncate flex-1 font-mono bg-(--color-bg-settings) px-3 py-2 rounded-[5px]">
               {folder}
             </span>
             <button
-              class="px-3 py-2 rounded-[5px] text-sm bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] transition-colors shrink-0"
+              class="px-3 py-2 rounded-[5px] text-sm bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input) transition-colors shrink-0"
               onClick={handlePickFolder}
             >
               Change
@@ -123,7 +123,7 @@ export function ExportPreview() {
           </div>
         ) : (
           <button
-            class="px-4 py-2 rounded-[5px] text-sm bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] transition-colors"
+            class="px-4 py-2 rounded-[5px] text-sm bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input) transition-colors"
             onClick={handlePickFolder}
           >
             Choose Folder...

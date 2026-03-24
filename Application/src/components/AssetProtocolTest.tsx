@@ -33,12 +33,12 @@ export function AssetProtocolTest() {
 
   return (
     <div class="flex flex-col items-center gap-2">
-      <h3 class="text-sm font-medium text-[var(--color-text-secondary)]">
+      <h3 class="text-sm font-medium text-(--color-text-secondary)">
         Asset Protocol Test
       </h3>
 
       {status.value === 'not-tauri' && (
-        <p class="text-xs text-[var(--color-text-muted)]">
+        <p class="text-xs text-(--color-text-muted)">
           Asset protocol requires Tauri runtime (run with pnpm tauri dev)
         </p>
       )}
@@ -52,7 +52,7 @@ export function AssetProtocolTest() {
           <img
             src={imgSrc.value}
             alt="Test image via asset protocol"
-            class="max-w-xs rounded border border-[var(--color-separator)]"
+            class="max-w-xs rounded border border-(--color-separator)"
             onLoad={handleLoad}
             onError={handleError}
           />
@@ -65,11 +65,11 @@ export function AssetProtocolTest() {
       )}
 
       {status.value === 'loading' && !imgSrc.value && (
-        <p class="text-xs text-[var(--color-text-muted)]">Resolving asset path...</p>
+        <p class="text-xs text-(--color-text-muted)">Resolving asset path...</p>
       )}
 
       {imgSrc.value && (
-        <p class="text-xs text-[var(--color-text-muted)] font-mono break-all max-w-xs">
+        <p class="text-xs text-(--color-text-muted) font-mono break-all max-w-xs">
           {imgSrc.value}
         </p>
       )}

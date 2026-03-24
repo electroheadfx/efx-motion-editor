@@ -57,7 +57,7 @@ export function KeyframeNavBar({ layer }: KeyframeNavBarProps) {
     'nav:', { prev: nav.prevFrame, next: nav.nextFrame, isOnKf: nav.isOnKf, canPrev: nav.canPrev, canNext: nav.canNext });
 
   const btnBase = 'w-6 h-6 flex items-center justify-center rounded transition-colors';
-  const btnEnabled = 'hover:bg-[var(--sidebar-input-bg)]';
+  const btnEnabled = 'hover:bg-(--sidebar-input-bg)';
   const btnDisabled = 'opacity-40 cursor-default';
 
   const handlePrev = () => {

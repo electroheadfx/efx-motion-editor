@@ -19,12 +19,12 @@ const featurePills = [
 
 function FeaturePill({label, color}: {label: string; color: string}) {
   return (
-    <div class="flex items-center gap-2 rounded-lg bg-[var(--color-bg-card)] px-4 py-2.5">
+    <div class="flex items-center gap-2 rounded-lg bg-(--color-bg-card) px-4 py-2.5">
       <div
         class="w-2 h-2 rounded-full shrink-0"
         style={{backgroundColor: color}}
       />
-      <span class="text-xs text-[var(--color-text-secondary)]">{label}</span>
+      <span class="text-xs text-(--color-text-secondary)">{label}</span>
     </div>
   );
 }
@@ -56,8 +56,8 @@ function RecentProjectItem({
     <div
       class={`flex items-center gap-3 rounded-lg px-4 h-[60px] w-[340px] transition-colors ${
         highlighted
-          ? 'bg-[var(--color-bg-card)]'
-          : 'bg-[var(--color-bg-card-alt)] hover:bg-[var(--color-bg-card)]'
+          ? 'bg-(--color-bg-card)'
+          : 'bg-(--color-bg-card-alt) hover:bg-(--color-bg-card)'
       } ${project.available ? 'cursor-pointer' : 'cursor-default'}`}
       onClick={onClick}
     >
@@ -72,8 +72,8 @@ function RecentProjectItem({
         <span
           class={`text-[13px] truncate ${
             highlighted
-              ? 'font-medium text-[var(--color-text-heading)]'
-              : 'text-[var(--color-text-button)]'
+              ? 'font-medium text-(--color-text-heading)'
+              : 'text-(--color-text-button)'
           }`}
         >
           {project.name}
@@ -82,8 +82,8 @@ function RecentProjectItem({
           <span
             class={`text-[11px] truncate ${
               highlighted
-                ? 'text-[var(--color-text-dim)]'
-                : 'text-[var(--color-text-secondary)]'
+                ? 'text-(--color-text-dim)'
+                : 'text-(--color-text-secondary)'
             }`}
           >
             {formatLastOpened(project.lastOpened)}
@@ -91,14 +91,14 @@ function RecentProjectItem({
         ) : (
           <span class="flex items-center gap-1.5 text-[11px]">
             <button
-              class="text-[var(--color-error-text)] hover:brightness-125 cursor-pointer"
+              class="text-(--color-error-text) hover:brightness-125 cursor-pointer"
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
             >
               Remove
             </button>
-            <span class="text-[var(--color-text-muted)]">&middot;</span>
+            <span class="text-(--color-text-muted)">&middot;</span>
             <button
-              class="text-[var(--color-text-link)] hover:brightness-125 cursor-pointer"
+              class="text-(--color-text-link) hover:brightness-125 cursor-pointer"
               onClick={(e) => { e.stopPropagation(); onLocate(); }}
             >
               Locate...
@@ -211,28 +211,28 @@ export function WelcomeScreen() {
   };
 
   return (
-    <div class="flex w-full h-full bg-[var(--color-bg-root)] font-primary">
+    <div class="flex w-full h-full bg-(--color-bg-root) font-primary">
       {/* Left Sidebar */}
-      <div class="flex flex-col gap-8 w-[420px] h-full bg-[var(--color-bg-sidebar)] px-10 pt-12 pb-12 shrink-0">
+      <div class="flex flex-col gap-8 w-[420px] h-full bg-(--color-bg-sidebar) px-10 pt-12 pb-12 shrink-0">
         {/* Logo */}
         <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-md bg-[var(--color-accent)]" />
-          <span class="text-xl font-bold text-[var(--color-text-primary)]">
+          <div class="w-8 h-8 rounded-md bg-(--color-accent)" />
+          <span class="text-xl font-bold text-(--color-text-primary)">
             EFX-Motion
           </span>
         </div>
 
         {/* Tagline */}
-        <p class="text-sm text-[var(--color-text-muted)] leading-relaxed whitespace-pre-line">
+        <p class="text-sm text-(--color-text-muted) leading-relaxed whitespace-pre-line">
           {'Stop-motion & capture editor\nfor cinematic sequences'}
         </p>
 
         {/* Separator */}
-        <div class="w-[340px] h-px bg-[var(--color-separator)]" />
+        <div class="w-[340px] h-px bg-(--color-separator)" />
 
         {/* New Project Button */}
         <button
-          class="flex items-center justify-center gap-2.5 w-[340px] h-[52px] rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] transition-colors px-5"
+          class="flex items-center justify-center gap-2.5 w-[340px] h-[52px] rounded-lg bg-(--color-accent) hover:bg-(--color-accent-hover) transition-colors px-5"
           onClick={() => { uiStore.showNewProjectDialog.value = true; }}
         >
           <svg
@@ -270,14 +270,14 @@ export function WelcomeScreen() {
               stroke-linecap="round"
             />
           </svg>
-          <span class="text-[15px] font-semibold text-[var(--color-text-white)]">
+          <span class="text-[15px] font-semibold text-(--color-text-white)">
             New Project
           </span>
         </button>
 
         {/* Open Project Button */}
         <button
-          class="flex items-center gap-2.5 w-[340px] h-[44px] rounded-lg bg-[var(--color-bg-input)] px-5 hover:bg-[var(--color-bg-settings)] transition-colors"
+          class="flex items-center gap-2.5 w-[340px] h-[44px] rounded-lg bg-(--color-bg-input) px-5 hover:bg-(--color-bg-settings) transition-colors"
           onClick={handleOpenProject}
           disabled={isOpening}
         >
@@ -295,16 +295,16 @@ export function WelcomeScreen() {
               stroke-linejoin="round"
             />
           </svg>
-          <span class="text-sm text-[var(--color-text-link)]">
+          <span class="text-sm text-(--color-text-link)">
             {isOpening ? 'Opening...' : 'Open Project...'}
           </span>
         </button>
 
         {/* Separator */}
-        <div class="w-[340px] h-px bg-[var(--color-separator)]" />
+        <div class="w-[340px] h-px bg-(--color-separator)" />
 
         {/* Recent Projects Label */}
-        <span class="text-[10px] font-semibold text-[var(--color-text-dimmer)] tracking-wide">
+        <span class="text-[10px] font-semibold text-(--color-text-dimmer) tracking-wide">
           RECENT PROJECTS
         </span>
 
@@ -322,34 +322,34 @@ export function WelcomeScreen() {
               />
             ))
           ) : (
-            <span class="text-[11px] text-[var(--color-text-dim)]">
+            <span class="text-[11px] text-(--color-text-dim)">
               No recent projects
             </span>
           )}
         </div>
 
         {/* Version info */}
-        <div class="flex items-center gap-2 w-[340px] rounded-lg bg-[var(--color-bg-card)] p-3 px-4">
-          <span class="text-[10px] text-[var(--color-text-dim)]">
+        <div class="flex items-center gap-2 w-[340px] rounded-lg bg-(--color-bg-card) p-3 px-4">
+          <span class="text-[10px] text-(--color-text-dim)">
             EFX Motion Editor v0.1.0
           </span>
         </div>
       </div>
 
       {/* Right Side - Hero Area */}
-      <div class="flex flex-col items-center justify-center gap-12 flex-1 h-full bg-[var(--color-bg-right)] p-20">
+      <div class="flex flex-col items-center justify-center gap-12 flex-1 h-full bg-(--color-bg-right) p-20">
         {/* Centered tagline and version (replaces hero image) */}
         <div class="flex flex-col items-center gap-6">
-          <div class="flex items-center gap-2 rounded-full bg-[var(--color-badge-bg)] px-4 py-2">
-            <div class="w-2 h-2 rounded-full bg-[var(--color-dot-blue)]" />
-            <span class="text-xs text-[var(--color-badge-text)]">
+          <div class="flex items-center gap-2 rounded-full bg-(--color-badge-bg) px-4 py-2">
+            <div class="w-2 h-2 rounded-full bg-(--color-dot-blue)" />
+            <span class="text-xs text-(--color-badge-text)">
               Stop-Motion -- 15fps / 24fps -- PNG Sequence Export
             </span>
           </div>
-          <h2 class="text-2xl font-semibold text-[var(--color-text-primary)] text-center">
+          <h2 class="text-2xl font-semibold text-(--color-text-primary) text-center">
             Create cinematic stop-motion sequences
           </h2>
-          <p class="text-sm text-[var(--color-text-muted)] text-center max-w-md leading-relaxed">
+          <p class="text-sm text-(--color-text-muted) text-center max-w-md leading-relaxed">
             Import key photographs, arrange them into timed sequences with FX
             layers, preview in real-time, and export as PNG image sequences.
           </p>

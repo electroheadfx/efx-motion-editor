@@ -66,7 +66,7 @@ export function EditorShell() {
 
   return (
     <div
-      class="flex flex-col w-full h-full bg-[var(--color-bg-shell)] font-primary"
+      class="flex flex-col w-full h-full bg-(--color-bg-shell) font-primary"
       onPointerDown={handleShellPointerDown}
     >
       <Toolbar />
@@ -88,7 +88,7 @@ export function EditorShell() {
         {uiStore.editorMode.value === 'editor' && (
           <div class="flex flex-col flex-1 min-w-0">
             <CanvasArea />
-            <div class="w-full h-px bg-[var(--color-separator)]" />
+            <div class="w-full h-px bg-(--color-separator)" />
             <TimelinePanel />
           </div>
         )}

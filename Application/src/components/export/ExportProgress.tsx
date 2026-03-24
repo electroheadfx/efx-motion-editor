@@ -20,9 +20,9 @@ export function ExportProgress() {
 
   return (
     <div class="absolute inset-0 flex items-center justify-center bg-black/60 z-50">
-      <div class="bg-[var(--color-bg-root)] rounded-lg p-8 w-[480px] space-y-4 shadow-2xl border border-[var(--color-separator)]">
+      <div class="bg-(--color-bg-root) rounded-lg p-8 w-[480px] space-y-4 shadow-2xl border border-(--color-separator)">
         {/* Status text */}
-        <div class="text-sm font-semibold text-[var(--color-text-button)]">
+        <div class="text-sm font-semibold text-(--color-text-button)">
           {p.status === 'preparing' && 'Preparing export...'}
           {p.status === 'rendering' && `Rendering frame ${p.currentFrame} of ${p.totalFrames}`}
           {p.status === 'encoding' && 'Encoding video...'}
@@ -33,7 +33,7 @@ export function ExportProgress() {
 
         {/* Progress bar */}
         {(p.status === 'preparing' || p.status === 'rendering' || p.status === 'encoding') && (
-          <div class="w-full h-2 bg-[var(--color-bg-input)] rounded-full overflow-hidden">
+          <div class="w-full h-2 bg-(--color-bg-input) rounded-full overflow-hidden">
             <div
               class="h-full bg-[#F97316] rounded-full transition-all duration-200"
               style={{ width: `${percent}%` }}
@@ -43,7 +43,7 @@ export function ExportProgress() {
 
         {/* ETA */}
         {p.status === 'rendering' && p.estimatedSecondsRemaining != null && (
-          <div class="text-xs text-[var(--color-text-muted)]">
+          <div class="text-xs text-(--color-text-muted)">
             {formatEta(p.estimatedSecondsRemaining)} ({percent}%)
           </div>
         )}
@@ -60,7 +60,7 @@ export function ExportProgress() {
           {/* Cancel button during rendering */}
           {(p.status === 'preparing' || p.status === 'rendering' || p.status === 'encoding') && (
             <button
-              class="px-4 py-2 rounded-[5px] bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] text-sm transition-colors"
+              class="px-4 py-2 rounded-[5px] bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input) text-sm transition-colors"
               onClick={() => exportStore.cancel()}
             >
               Cancel
@@ -80,7 +80,7 @@ export function ExportProgress() {
           {/* Open in Finder on complete (per D-30) */}
           {p.status === 'complete' && p.outputPath && (
             <button
-              class="px-4 py-2 rounded-[5px] bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] text-sm transition-colors"
+              class="px-4 py-2 rounded-[5px] bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input) text-sm transition-colors"
               onClick={() => exportOpenInFinder(p.outputPath!)}
             >
               Open in Finder
@@ -90,7 +90,7 @@ export function ExportProgress() {
           {/* Close button on complete/cancelled/error */}
           {(p.status === 'complete' || p.status === 'cancelled' || p.status === 'error') && (
             <button
-              class="px-4 py-2 rounded-[5px] bg-[var(--color-accent)] text-white text-sm font-semibold hover:brightness-110 transition-colors"
+              class="px-4 py-2 rounded-[5px] bg-(--color-accent) text-white text-sm font-semibold hover:brightness-110 transition-colors"
               onClick={() => {
                 exportStore.resetProgress();
                 uiStore.setEditorMode('editor');

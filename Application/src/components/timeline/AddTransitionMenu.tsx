@@ -84,25 +84,25 @@ export function AddTransitionMenu() {
       <button
         class={`rounded px-2 py-[5px] transition-colors ${
           targetSeq && hasAnyOption
-            ? 'bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)]'
-            : 'bg-[var(--color-bg-input)] opacity-40 cursor-default'
+            ? 'bg-(--color-bg-input) hover:bg-(--color-border-subtle)'
+            : 'bg-(--color-bg-input) opacity-40 cursor-default'
         }`}
         onClick={() => {
           if (targetSeq && hasAnyOption) setMenuOpen(!menuOpen);
         }}
         title={!targetSeq ? 'Select a sequence first' : !hasAnyOption ? 'All transitions already added' : 'Add transition'}
       >
-        <span class="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1"><Layers size={11} /> Transition</span>
+        <span class="text-[10px] text-(--color-text-secondary) flex items-center gap-1"><Layers size={11} /> Transition</span>
       </button>
 
       {menuOpen && (
-        <div class="absolute right-0 bottom-8 z-50 bg-[var(--color-bg-menu)] border border-[var(--color-border-subtle)] rounded-md shadow-xl py-1 min-w-[160px]">
+        <div class="absolute right-0 bottom-8 z-50 bg-(--color-bg-menu) border border-(--color-border-subtle) rounded-md shadow-xl py-1 min-w-[160px]">
           {isFxTarget && (
-            <div class="px-3 py-1 text-[9px] text-[var(--color-text-dim)] font-semibold">{targetSeq!.name}</div>
+            <div class="px-3 py-1 text-[9px] text-(--color-text-dim) font-semibold">{targetSeq!.name}</div>
           )}
           {canFadeIn && (
             <button
-              class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+              class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
               onClick={() => handleAdd('fade-in')}
             >
               Fade In
@@ -110,7 +110,7 @@ export function AddTransitionMenu() {
           )}
           {canFadeOut && (
             <button
-              class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+              class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
               onClick={() => handleAdd('fade-out')}
             >
               Fade Out
@@ -118,7 +118,7 @@ export function AddTransitionMenu() {
           )}
           {canCrossDissolve && (
             <button
-              class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-text-button)] hover:bg-[var(--color-hover-overlay)] flex items-center gap-2"
+              class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
               onClick={() => handleAdd('cross-dissolve')}
             >
               Cross Dissolve

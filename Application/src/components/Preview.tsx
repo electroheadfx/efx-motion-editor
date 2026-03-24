@@ -89,7 +89,7 @@ export function Preview() {
       />
       {!hasContent && (
         <div class="absolute inset-0 flex items-center justify-center">
-          <span class="text-[var(--color-text-secondary)] text-sm">
+          <span class="text-(--color-text-secondary) text-sm">
             No frames to preview
           </span>
         </div>

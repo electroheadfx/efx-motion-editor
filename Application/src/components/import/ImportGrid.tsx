@@ -120,7 +120,7 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
   if (visibleImages.length === 0 && visibleVideos.length === 0 && visibleAudios.length === 0) {
     return (
       <div class="flex items-center justify-center h-20 px-3">
-        <span class="text-[10px] text-[var(--color-text-dim)] text-center">
+        <span class="text-[10px] text-(--color-text-dim) text-center">
           {assetFilter === 'videos-only'
             ? 'No imported videos yet'
             : assetFilter === 'audio-only'
@@ -139,11 +139,11 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
           {images.map((img) => (
             <div
               key={img.id}
-              class={`relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] group${
+              class={`relative aspect-[4/3] rounded overflow-hidden bg-(--color-bg-input) group${
                 multiSelect && selectedIds?.includes(img.id)
-                  ? ' ring-2 ring-[var(--color-accent)]'
+                  ? ' ring-2 ring-(--color-accent)'
                   : onSelect || multiSelect
-                    ? ' cursor-pointer ring-0 hover:ring-2 ring-[var(--color-accent)]'
+                    ? ' cursor-pointer ring-0 hover:ring-2 ring-(--color-accent)'
                     : ''
               }`}
               title={`${img.width}x${img.height} ${img.format.toUpperCase()}`}
@@ -198,7 +198,7 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
       {showVideos && videos.length > 0 && (
         <div class="px-2 pb-2">
           {assetFilter === 'all' && (
-            <span class="text-[9px] text-[var(--color-text-dim)] uppercase tracking-wider block mt-1 mb-1">
+            <span class="text-[9px] text-(--color-text-dim) uppercase tracking-wider block mt-1 mb-1">
               Videos
             </span>
           )}
@@ -232,7 +232,7 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
       {showAudio && audios.length > 0 && (
         <div class="px-2 pb-2">
           {assetFilter === 'all' && (
-            <span class="text-[9px] text-[var(--color-text-dim)] uppercase tracking-wider block mt-1 mb-1">
+            <span class="text-[9px] text-(--color-text-dim) uppercase tracking-wider block mt-1 mb-1">
               Audio
             </span>
           )}
@@ -240,8 +240,8 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
             {audios.map((audio) => (
               <div
                 key={audio.id}
-                class={`flex items-center gap-2 px-3 py-2 rounded bg-[var(--color-bg-input)] group${
-                  onAudioSelect ? ' cursor-pointer hover:bg-[var(--color-bg-hover-item)] hover:ring-1 ring-[var(--color-accent)]' : ''
+                class={`flex items-center gap-2 px-3 py-2 rounded bg-(--color-bg-input) group${
+                  onAudioSelect ? ' cursor-pointer hover:bg-(--color-bg-hover-item) hover:ring-1 ring-(--color-accent)' : ''
                 }`}
                 onClick={onAudioSelect ? () => onAudioSelect(audio.id) : undefined}
                 title={audio.name}
@@ -254,8 +254,8 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
                   });
                 }}
               >
-                <Music size={14} class="text-[var(--color-audio-waveform,#22B8A0)] shrink-0" />
-                <span class="text-xs text-[var(--color-text-button)] truncate">{audio.name}</span>
+                <Music size={14} class="text-(--color-audio-waveform,#22B8A0) shrink-0" />
+                <span class="text-xs text-(--color-text-button) truncate">{audio.name}</span>
                 <UsageBadge
                   count={usageMap.value.get(audio.id)?.count ?? 0}
                   onClick={(e) => handleBadgeClick(audio.id, audio.name, audio.path, 'audio', e)}
@@ -304,7 +304,7 @@ export function ImportGrid({onSelect, multiSelect, selectedIds, onToggleSelect, 
           </button>
           <div class="w-full h-px my-1" style={{ backgroundColor: 'var(--sidebar-border-unselected)' }} />
           <button
-            class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-error-text)] hover:bg-[#ffffff10]"
+            class="w-full text-left px-3 py-1.5 text-xs text-(--color-error-text) hover:bg-[#ffffff10]"
             onClick={handleDeleteFile}
           >
             Delete File
@@ -334,8 +334,8 @@ function VideoThumb({video, selectMode, onClick, onContextMenu}: {video: VideoAs
 
   return (
     <div
-      class={`relative aspect-[4/3] rounded overflow-hidden bg-[var(--color-bg-input)] group${
-        onClick ? ' cursor-pointer hover:ring-2 ring-[var(--color-accent)]' : selectMode ? ' opacity-50' : ''
+      class={`relative aspect-[4/3] rounded overflow-hidden bg-(--color-bg-input) group${
+        onClick ? ' cursor-pointer hover:ring-2 ring-(--color-accent)' : selectMode ? ' opacity-50' : ''
       }`}
       title={onClick ? video.name : selectMode ? 'Videos cannot be used as key photos' : video.name}
       onClick={onClick}

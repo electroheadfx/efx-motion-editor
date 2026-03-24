@@ -151,7 +151,7 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
       {/* Name and type label */}
       <div class="flex flex-col gap-0 flex-1 min-w-0">
         <span
-          class="truncate leading-tight text-[var(--sidebar-collapse-line)] group-hover/row:text-[var(--sidebar-text-primary)] transition-colors duration-150"
+          class="truncate leading-tight text-(--sidebar-collapse-line) group-hover/row:text-(--sidebar-text-primary) transition-colors duration-150"
           style={{fontSize: '13px', fontWeight: 500}}
         >
           {layer.name}

@@ -111,7 +111,7 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
       {isContentOverlay && (
         <div class="pb-1">
           <button
-            class="w-full text-left px-2 py-1.5 text-[11px] rounded bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)] text-[var(--color-text-button)] transition-colors"
+            class="w-full text-left px-2 py-1.5 text-[11px] rounded bg-(--color-bg-input) hover:bg-(--color-border-subtle) text-(--color-text-button) transition-colors"
             onClick={() => {
               const seqs = sequenceStore.sequences.peek();
               let seqId = '';
@@ -210,7 +210,7 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
               min="0"
               max="100"
               value={opacityPercent}
-              class="flex-1 min-w-0 h-1 accent-[var(--color-accent)] cursor-pointer"
+              class="flex-1 min-w-0 h-1 accent-(--color-accent) cursor-pointer"
               onPointerDown={() => {
                 startCoalescing();
                 if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }

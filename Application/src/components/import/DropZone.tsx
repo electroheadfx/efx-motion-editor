@@ -10,12 +10,12 @@ export function DropZone() {
 
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 pointer-events-none">
-      <div class="flex flex-col items-center gap-4 p-8 rounded-xl border-2 border-dashed border-[var(--color-accent)] bg-[var(--color-bg-card)]">
+      <div class="flex flex-col items-center gap-4 p-8 rounded-xl border-2 border-dashed border-(--color-accent) bg-(--color-bg-card)">
         <div class="text-4xl">&#128247;</div>
-        <span class="text-lg font-medium text-[var(--color-text-primary)]">
+        <span class="text-lg font-medium text-(--color-text-primary)">
           Drop images to import
         </span>
-        <span class="text-sm text-[var(--color-text-secondary)]">
+        <span class="text-sm text-(--color-text-secondary)">
           JPEG, PNG, TIFF, HEIC supported
         </span>
       </div>

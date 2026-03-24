@@ -35,15 +35,15 @@ export function TimelinePanel() {
 
   return (
     <div
-      class="flex flex-col w-full h-[280px] bg-[var(--color-bg-section-header)]"
+      class="flex flex-col w-full h-[280px] bg-(--color-bg-section-header)"
       onMouseEnter={() => uiStore.setMouseRegion('timeline')}
       onMouseLeave={() => uiStore.setMouseRegion('other')}
     >
       {/* Timeline Controls */}
-      <div class="flex items-center gap-2 h-9 px-3 bg-[var(--color-bg-root)] shrink-0">
+      <div class="flex items-center gap-2 h-9 px-3 bg-(--color-bg-root) shrink-0">
         {/* Skip Back */}
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          class="rounded bg-(--color-bg-input) px-2 py-[5px] text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors"
           onClick={() => playbackEngine.seekToFrame(0)}
           title="Skip to start"
         >
@@ -52,7 +52,7 @@ export function TimelinePanel() {
 
         {/* Step Back (previous sequence) */}
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          class="rounded bg-(--color-bg-input) px-2 py-[5px] text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors"
           onClick={() => {
             const prev = findPrevSequenceStart(trackLayouts.value, timelineStore.currentFrame.value);
             if (prev !== null) playbackEngine.seekToFrame(prev);
@@ -64,7 +64,7 @@ export function TimelinePanel() {
 
         {/* Rewind (previous frame) */}
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          class="rounded bg-(--color-bg-input) px-2 py-[5px] text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors"
           onClick={() => playbackEngine.stepBackward()}
           title="Previous frame"
         >
@@ -73,7 +73,7 @@ export function TimelinePanel() {
 
         {/* Play/Pause */}
         <button
-          class="rounded bg-[var(--color-accent)] px-2 py-[5px] text-white hover:brightness-125 cursor-pointer transition-colors"
+          class="rounded bg-(--color-accent) px-2 py-[5px] text-white hover:brightness-125 cursor-pointer transition-colors"
           onClick={() => playbackEngine.toggle()}
           title={timelineStore.isPlaying.value ? 'Pause (Space)' : 'Play (Space)'}
         >
@@ -82,7 +82,7 @@ export function TimelinePanel() {
 
         {/* Fast Forward (next frame) */}
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          class="rounded bg-(--color-bg-input) px-2 py-[5px] text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors"
           onClick={() => playbackEngine.stepForward()}
           title="Next frame"
         >
@@ -91,7 +91,7 @@ export function TimelinePanel() {
 
         {/* Step Forward (next sequence) */}
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          class="rounded bg-(--color-bg-input) px-2 py-[5px] text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors"
           onClick={() => {
             const next = findNextSequenceStart(trackLayouts.value, timelineStore.currentFrame.value);
             if (next !== null) playbackEngine.seekToFrame(next);
@@ -103,7 +103,7 @@ export function TimelinePanel() {
 
         {/* Skip Forward */}
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+          class="rounded bg-(--color-bg-input) px-2 py-[5px] text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors"
           onClick={() => playbackEngine.seekToFrame(totalFrames.value - 1)}
           title="Skip to end"
         >
@@ -111,18 +111,18 @@ export function TimelinePanel() {
         </button>
 
         {/* Timecode display */}
-        <span class="text-[11px] text-[var(--color-text-secondary)]">
+        <span class="text-[11px] text-(--color-text-secondary)">
           {formatTime(timelineStore.displayTime.value)} / {formatTime(timelineStore.totalDuration.value)}
         </span>
 
-        <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
+        <div class="w-px h-5 bg-(--color-border-subtle)" />
 
         {/* Loop toggle */}
         <button
           class={`rounded px-2 py-[5px] cursor-pointer transition-colors ${
             isolationStore.loopEnabled.value
-              ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
-              : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white'
+              ? 'bg-(--color-accent) text-white hover:brightness-125'
+              : 'bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white'
           }`}
           onClick={() => isolationStore.toggleLoop()}
           title={isolationStore.loopEnabled.value ? 'Loop: ON' : 'Loop: OFF'}
@@ -135,8 +135,8 @@ export function TimelinePanel() {
           <button
             class={`rounded px-2 py-[5px] cursor-pointer transition-colors ${
               audioStore.beatMarkersVisible.value
-                ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
-                : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white'
+                ? 'bg-(--color-accent) text-white hover:brightness-125'
+                : 'bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white'
             }`}
             onClick={() => audioStore.toggleBeatMarkers()}
             title={audioStore.beatMarkersVisible.value ? 'Beat markers: ON' : 'Beat markers: OFF'}
@@ -150,8 +150,8 @@ export function TimelinePanel() {
           <button
             class={`rounded px-2 py-[5px] cursor-pointer transition-colors ${
               audioStore.snapToBeatsEnabled.value
-                ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
-                : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white'
+                ? 'bg-(--color-accent) text-white hover:brightness-125'
+                : 'bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white'
             }`}
             onClick={() => audioStore.toggleSnapToBeats()}
             title={audioStore.snapToBeatsEnabled.value ? 'Snap to beats: ON' : 'Snap to beats: OFF'}
@@ -164,10 +164,10 @@ export function TimelinePanel() {
 
         {/* Timeline Zoom: [-] [Fit All] [+] */}
         <button
-          class={`rounded-[5px] px-2.5 py-[5px] text-[var(--color-text-secondary)] ${
+          class={`rounded-[5px] px-2.5 py-[5px] text-(--color-text-secondary) ${
             timelineStore.isAtMinZoom.value
-              ? 'bg-[var(--color-bg-input)] opacity-40 cursor-default'
-              : 'bg-[var(--color-bg-input)] hover:bg-[var(--color-bg-hover-item)] cursor-pointer'
+              ? 'bg-(--color-bg-input) opacity-40 cursor-default'
+              : 'bg-(--color-bg-input) hover:bg-(--color-bg-hover-item) cursor-pointer'
           }`}
           onClick={() => timelineStore.zoomOut()}
           title="Timeline zoom out (-)"
@@ -176,7 +176,7 @@ export function TimelinePanel() {
         </button>
 
         <button
-          class="rounded bg-[var(--color-bg-input)] px-2.5 py-[5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] cursor-pointer"
+          class="rounded bg-(--color-bg-input) px-2.5 py-[5px] text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) cursor-pointer"
           onClick={handleFitAll}
           title="Fit all frames"
         >
@@ -184,10 +184,10 @@ export function TimelinePanel() {
         </button>
 
         <button
-          class={`rounded-[5px] px-2.5 py-[5px] text-[var(--color-text-secondary)] ${
+          class={`rounded-[5px] px-2.5 py-[5px] text-(--color-text-secondary) ${
             timelineStore.isAtMaxZoom.value
-              ? 'bg-[var(--color-bg-input)] opacity-40 cursor-default'
-              : 'bg-[var(--color-bg-input)] hover:bg-[var(--color-bg-hover-item)] cursor-pointer'
+              ? 'bg-(--color-bg-input) opacity-40 cursor-default'
+              : 'bg-(--color-bg-input) hover:bg-(--color-bg-hover-item) cursor-pointer'
           }`}
           onClick={() => timelineStore.zoomIn()}
           title="Timeline zoom in (+/=)"
@@ -195,18 +195,18 @@ export function TimelinePanel() {
           <Plus size={14} />
         </button>
 
-        <span class="text-[10px] text-[var(--color-text-dim)] w-8">
+        <span class="text-[10px] text-(--color-text-dim) w-8">
           {timelineStore.zoom.value.toFixed(1)}x
         </span>
 
-        <div class="w-px h-5 bg-[var(--color-border-subtle)]" />
+        <div class="w-px h-5 bg-(--color-border-subtle)" />
 
         {/* Add Transition */}
         <AddTransitionMenu />
 
         {/* Shader Browser */}
         <button
-          class="rounded px-2 py-[5px] bg-[var(--color-bg-input)] hover:bg-[var(--color-border-subtle)] transition-colors"
+          class="rounded px-2 py-[5px] bg-(--color-bg-input) hover:bg-(--color-border-subtle) transition-colors"
           onClick={() => {
             if (uiStore.editorMode.peek() === 'shader-browser') {
               uiStore.setEditorMode('editor');
@@ -217,7 +217,7 @@ export function TimelinePanel() {
           }}
           title="Shader Browser"
         >
-          <span class="text-[10px] text-[var(--color-text-secondary)] flex items-center gap-1"><Sparkles size={11} /> Shader</span>
+          <span class="text-[10px] text-(--color-text-secondary) flex items-center gap-1"><Sparkles size={11} /> Shader</span>
         </button>
 
         {/* Add Layer */}

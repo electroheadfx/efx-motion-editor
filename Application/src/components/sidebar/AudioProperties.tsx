@@ -89,7 +89,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
           <input
             type="text"
             value={track.name}
-            class="w-full bg-[var(--color-bg-input)] text-[var(--color-text-primary)] text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+            class="w-full bg-(--color-bg-input) text-(--color-text-primary) text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-(--color-accent)"
             onKeyDown={(e) => {
               if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
             }}
@@ -104,11 +104,11 @@ export function AudioProperties({track}: AudioPropertiesProps) {
       <div>
         <SectionLabel text="FILE" />
         <div class="flex items-center justify-between" style={{marginTop: '6px'}}>
-          <span class="text-[10px] text-[var(--color-text-secondary)] truncate flex-1 min-w-0">
+          <span class="text-[10px] text-(--color-text-secondary) truncate flex-1 min-w-0">
             {track.originalFilename}
           </span>
           <button
-            class="shrink-0 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors ml-2"
+            class="shrink-0 text-[10px] text-(--color-text-secondary) hover:text-(--color-text-primary) cursor-pointer transition-colors ml-2"
             onClick={handleReplace}
             disabled={isReplacing}
           >
@@ -136,7 +136,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             min="0"
             max="100"
             value={volumePercent}
-            class="flex-1 h-1 accent-[var(--color-accent)] cursor-pointer"
+            class="flex-1 h-1 accent-(--color-accent) cursor-pointer"
             onPointerDown={() => startCoalescing()}
             onPointerUp={() => stopCoalescing()}
             onInput={(e) => {
@@ -164,7 +164,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             />
             <div class="flex items-center gap-1 flex-1 min-w-0">
               <select
-                class="w-full bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] text-[10px] px-1 py-0.5 rounded outline-none cursor-pointer"
+                class="w-full bg-(--color-bg-input) text-(--color-text-secondary) text-[10px] px-1 py-0.5 rounded outline-none cursor-pointer"
                 value={track.fadeInCurve}
                 onChange={(e) => {
                   audioStore.updateTrack(track.id, {fadeInCurve: (e.target as HTMLSelectElement).value as FadeCurve});
@@ -186,7 +186,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             />
             <div class="flex items-center gap-1 flex-1 min-w-0">
               <select
-                class="w-full bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] text-[10px] px-1 py-0.5 rounded outline-none cursor-pointer"
+                class="w-full bg-(--color-bg-input) text-(--color-text-secondary) text-[10px] px-1 py-0.5 rounded outline-none cursor-pointer"
                 value={track.fadeOutCurve}
                 onChange={(e) => {
                   audioStore.updateTrack(track.id, {fadeOutCurve: (e.target as HTMLSelectElement).value as FadeCurve});
@@ -252,7 +252,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             />
             {/* x2 and /2 quick-fix buttons */}
             <button
-              class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              class="text-[10px] px-1.5 py-0.5 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={() => {
                 if (track.bpm) {
                   audioStore.updateTrack(track.id, {bpm: track.bpm * 2});
@@ -265,7 +265,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
               x2
             </button>
             <button
-              class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              class="text-[10px] px-1.5 py-0.5 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={() => {
                 if (track.bpm) {
                   audioStore.updateTrack(track.id, {bpm: track.bpm / 2});
@@ -288,7 +288,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             }}
           />
           <button
-            class="text-[10px] px-2 py-1 rounded bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-white cursor-pointer transition-colors"
+            class="text-[10px] px-2 py-1 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors"
             onClick={() => audioStore.detectAndSetBPM(track.id, projectStore.fps.peek())}
             title="Re-detect BPM from audio"
           >
@@ -363,8 +363,8 @@ function AutoArrangeSection({track}: {track: AudioTrack}) {
             key={s.value}
             class={`text-[10px] px-2 py-1 rounded cursor-pointer transition-colors ${
               strategy === s.value
-                ? 'bg-[var(--color-accent)] text-white'
-                : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)]'
+                ? 'bg-(--color-accent) text-white'
+                : 'bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item)'
             }`}
             onClick={() => setStrategy(s.value)}
           >
@@ -373,7 +373,7 @@ function AutoArrangeSection({track}: {track: AudioTrack}) {
         ))}
       </div>
       <button
-        class="w-full text-[10px] px-2 py-1.5 rounded bg-[var(--color-accent)] text-white hover:brightness-125 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        class="w-full text-[10px] px-2 py-1.5 rounded bg-(--color-accent) text-white hover:brightness-125 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         onClick={handleApply}
         disabled={!activeSeq || activeSeq.keyPhotos.length === 0}
         title={!activeSeq ? 'Select a content sequence first' : 'Apply auto-arrange'}
@@ -381,7 +381,7 @@ function AutoArrangeSection({track}: {track: AudioTrack}) {
         Apply
       </button>
       {!activeSeq && (
-        <div class="text-[10px] text-[var(--color-text-muted)]">
+        <div class="text-[10px] text-(--color-text-muted)">
           Select a content sequence to arrange
         </div>
       )}

@@ -249,7 +249,7 @@ export function CanvasArea() {
 
   return (
     <div
-      class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--color-bg-right)]"
+      class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-(--color-bg-right)"
       onMouseEnter={() => uiStore.setMouseRegion('canvas')}
       onMouseLeave={() => uiStore.setMouseRegion('other')}
     >
@@ -288,24 +288,24 @@ export function CanvasArea() {
       <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0">
         {/* Zoom controls cluster: [ - ] percentage [ + ] [ Fit ] */}
         <button
-          class={`rounded-[5px] px-2.5 py-1 text-[var(--color-text-button)] ${
+          class={`rounded-[5px] px-2.5 py-1 text-(--color-text-button) ${
             canvasStore.isAtMinZoom.value
-              ? 'bg-[var(--color-bg-settings)] opacity-40 cursor-default'
-              : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
+              ? 'bg-(--color-bg-settings) opacity-40 cursor-default'
+              : 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) cursor-pointer'
           }`}
           onClick={() => canvasStore.zoomOut()}
           title="Zoom out (-)"
         >
           <Minus size={16} />
         </button>
-        <span class="text-[11px] text-[var(--color-text-dim)]">
+        <span class="text-[11px] text-(--color-text-dim)">
           {canvasStore.zoomPercent.value}%
         </span>
         <button
-          class={`rounded-[5px] px-2.5 py-1 text-[var(--color-text-button)] ${
+          class={`rounded-[5px] px-2.5 py-1 text-(--color-text-button) ${
             canvasStore.isAtMaxZoom.value
-              ? 'bg-[var(--color-bg-settings)] opacity-40 cursor-default'
-              : 'bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer'
+              ? 'bg-(--color-bg-settings) opacity-40 cursor-default'
+              : 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) cursor-pointer'
           }`}
           onClick={() => canvasStore.zoomIn()}
           title="Zoom in (=)"
@@ -316,8 +316,8 @@ export function CanvasArea() {
         <button
           class={`rounded px-2.5 py-1.5 cursor-pointer transition-colors ${
             canvasStore.fitLocked.value
-              ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
-              : 'bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] hover:text-white'
+              ? 'bg-(--color-accent) text-white hover:brightness-125'
+              : 'bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input) hover:text-white'
           }`}
           onClick={() => canvasStore.toggleFitLock()}
           title={canvasStore.fitLocked.value ? 'Fit to window \u2014 locked (F)' : 'Fit to window (F)'}
@@ -326,7 +326,7 @@ export function CanvasArea() {
         </button>
         {/* Fullscreen button */}
         <button
-          class="rounded px-2.5 py-1.5 bg-[var(--color-bg-settings)] hover:bg-[var(--color-bg-input)] cursor-pointer text-[var(--color-text-secondary)]"
+          class="rounded px-2.5 py-1.5 bg-(--color-bg-settings) hover:bg-(--color-bg-input) cursor-pointer text-(--color-text-secondary)"
           onClick={() => enterFullscreen()}
           title="Fullscreen (\u21E7\u2318F)"
         >

@@ -264,7 +264,7 @@ export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: Color
   };
 
   const modeButtonClass = (m: ColorMode) =>
-    `px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ${mode === m ? 'bg-[var(--color-accent)] text-white font-medium' : 'text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text-primary)]'}`;
+    `px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ${mode === m ? 'bg-(--color-accent) text-white font-medium' : 'text-(--sidebar-text-secondary) hover:text-(--sidebar-text-primary)'}`;
 
   return (
     <div

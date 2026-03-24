@@ -53,8 +53,8 @@ function SeedControls({ layer }: { layer: Layer }) {
       <button
         class={`text-[10px] px-1.5 py-[3px] rounded cursor-pointer transition-colors ${
           source.lockSeed
-            ? 'bg-[var(--color-accent)] text-white hover:brightness-125'
-            : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover-item)] hover:text-white'
+            ? 'bg-(--color-accent) text-white hover:brightness-125'
+            : 'bg-(--color-bg-input) text-(--color-text-muted) hover:bg-(--color-bg-hover-item) hover:text-white'
         }`}
         title={source.lockSeed ? 'Seed locked (reproducible)' : 'Seed unlocked (random each render)'}
         onClick={() => updateSource(layer.id, layer, { lockSeed: !source.lockSeed })}
@@ -246,7 +246,7 @@ function ColorGradeSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxS
       <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
         {/* Preset dropdown (full-width) */}
         <select
-          class="w-full text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[5px] outline-none cursor-pointer"
+          class="w-full text-[11px] bg-(--color-bg-input) text-(--color-text-button) rounded px-2 py-[5px] outline-none cursor-pointer"
           value={source.preset}
           onChange={(e) => handlePresetChange((e.target as HTMLSelectElement).value)}
         >
@@ -277,9 +277,9 @@ function ColorGradeSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxS
 
         {/* Tint color picker (full-width) */}
         <div class="flex items-center gap-1">
-          <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Tint</span>
+          <span class="text-[10px] text-(--color-text-muted) whitespace-nowrap">Tint</span>
           <div
-            class="w-6 h-6 rounded cursor-pointer border border-[var(--color-border-subtle)]"
+            class="w-6 h-6 rounded cursor-pointer border border-(--color-border-subtle)"
             style={{ backgroundColor: source.tintColor || '#000000' }}
             onClick={() => setTintPickerOpen(true)}
             title="Pick tint color"
@@ -295,9 +295,9 @@ function ColorGradeSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxS
 
         {/* Fade blend mode dropdown (full-width) */}
         <div class="flex items-center gap-1">
-          <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">Fade Blend</span>
+          <span class="text-[10px] text-(--color-text-muted) whitespace-nowrap">Fade Blend</span>
           <select
-            class="w-full text-[10px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-1 py-[3px] outline-none cursor-pointer"
+            class="w-full text-[10px] bg-(--color-bg-input) text-(--color-text-button) rounded px-1 py-[3px] outline-none cursor-pointer"
             value={source.fadeBlend ?? 'source-over'}
             onChange={(e) => handleParamChange('fadeBlend', (e.target as HTMLSelectElement).value)}
           >
@@ -391,7 +391,7 @@ function GlslPreviewModal({
       style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div class="bg-[var(--color-bg-section-header)] rounded-lg border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden" style={{ width: '680px', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div class="bg-(--color-bg-section-header) rounded-lg border border-(--color-border-subtle) shadow-2xl overflow-hidden" style={{ width: '680px', maxHeight: '90vh', overflowY: 'auto' }}>
         {/* Preview */}
         <div class="relative">
           <canvas
@@ -410,11 +410,11 @@ function GlslPreviewModal({
         </div>
 
         {/* Shader info */}
-        <div class="px-5 py-3 border-b border-[var(--color-border-subtle)]">
-          <div class="text-[15px] text-[var(--color-text-button)] font-semibold">{shader.name}</div>
-          <div class="text-[12px] text-[var(--color-text-dim)] mt-0.5">{shader.description}</div>
+        <div class="px-5 py-3 border-b border-(--color-border-subtle)">
+          <div class="text-[15px] text-(--color-text-button) font-semibold">{shader.name}</div>
+          <div class="text-[12px] text-(--color-text-dim) mt-0.5">{shader.description}</div>
           <div class="flex items-center gap-3 mt-1">
-            {shader.author && <span class="text-[11px] text-[var(--color-text-muted)]">Created by {shader.author}</span>}
+            {shader.author && <span class="text-[11px] text-(--color-text-muted)">Created by {shader.author}</span>}
             {shader.url && (
               <a href={shader.url} target="_blank" rel="noopener noreferrer"
                 class="text-[11px] text-[#8B5CF6] hover:underline cursor-pointer"
@@ -427,7 +427,7 @@ function GlslPreviewModal({
         {/* Parameters — directly editing the layer */}
         {shader.params.length > 0 && (
           <div class="px-5 py-4 space-y-3">
-            <div class="text-[9px] text-[var(--color-text-dim)] font-semibold">PARAMETERS</div>
+            <div class="text-[9px] text-(--color-text-dim) font-semibold">PARAMETERS</div>
             {shader.params.map((p) => {
               if (p.hidden) return null;
 
@@ -445,9 +445,9 @@ function GlslPreviewModal({
                 );
                 return (
                   <div key={p.colorGroup} class="flex items-center gap-2">
-                    <span class="text-[11px] text-[var(--color-text-muted)] w-24 shrink-0">{p.label}</span>
+                    <span class="text-[11px] text-(--color-text-muted) w-24 shrink-0">{p.label}</span>
                     <div
-                      class="w-7 h-7 rounded cursor-pointer border border-[var(--color-border-subtle)]"
+                      class="w-7 h-7 rounded cursor-pointer border border-(--color-border-subtle)"
                       style={{ backgroundColor: hex }}
                       onClick={() => setModalColorGroup(modalColorGroup === p.colorGroup ? null : p.colorGroup!)}
                     />
@@ -471,7 +471,7 @@ function GlslPreviewModal({
               const modeLabel = isMode ? modeLabelForValue(val) : null;
               return (
                 <div key={p.key} class="flex items-center gap-3">
-                  <span class="text-[11px] text-[var(--color-text-muted)] w-24 shrink-0 truncate">
+                  <span class="text-[11px] text-(--color-text-muted) w-24 shrink-0 truncate">
                     {modeLabel ?? p.label}
                   </span>
                   <input
@@ -483,7 +483,7 @@ function GlslPreviewModal({
                     class="flex-1 h-1 accent-[#8B5CF6] cursor-pointer"
                     onInput={(e) => onParamChange(p.key, parseFloat((e.target as HTMLInputElement).value))}
                   />
-                  <span class="text-[11px] text-[var(--color-text-button)] w-14 text-right">
+                  <span class="text-[11px] text-(--color-text-button) w-14 text-right">
                     {isMode ? (modeLabel ?? '') : val.toFixed(p.step && p.step >= 1 ? 0 : p.step && p.step >= 0.1 ? 1 : p.step && p.step >= 0.01 ? 2 : 4)}
                   </span>
                 </div>
@@ -493,7 +493,7 @@ function GlslPreviewModal({
         )}
 
         {/* Close button */}
-        <div class="px-5 py-3 border-t border-[var(--color-border-subtle)]">
+        <div class="px-5 py-3 border-t border-(--color-border-subtle)">
           <button
             class="w-full py-2 rounded-md bg-[#8B5CF6] text-white text-[12px] font-semibold hover:brightness-110 transition-colors cursor-pointer"
             onClick={onClose}
@@ -529,7 +529,7 @@ function GlslSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSection
   const [openColorGroup, setOpenColorGroup] = useState<string | null>(null);
   const source = layer.source as { shaderId: string; params: Record<string, number> };
   const shaderDef = getShaderById(source.shaderId);
-  if (!shaderDef) return <div class="text-[10px] text-[var(--color-text-muted)]">Unknown shader: {source.shaderId}</div>;
+  if (!shaderDef) return <div class="text-[10px] text-(--color-text-muted)">Unknown shader: {source.shaderId}</div>;
 
   const v = (field: string, fallback: number) => fxValues ? (fxValues[field] ?? fallback) : fallback;
 
@@ -614,9 +614,9 @@ function GlslSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSection
               } else {
                 return (
                   <div key={item.group} class="flex items-center gap-1 flex-1 min-w-0">
-                    <span class="text-[10px] text-[var(--color-text-muted)] whitespace-nowrap">{item.label}</span>
+                    <span class="text-[10px] text-(--color-text-muted) whitespace-nowrap">{item.label}</span>
                     <div
-                      class="w-6 h-6 rounded cursor-pointer border border-[var(--color-border-subtle)]"
+                      class="w-6 h-6 rounded cursor-pointer border border-(--color-border-subtle)"
                       style={{ backgroundColor: item.hex }}
                       onClick={() => setOpenColorGroup(openColorGroup === item.group ? null : item.group)}
                       title={`Pick ${item.label.toLowerCase()} color`}
@@ -764,7 +764,7 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
             <SectionLabel text="OPACITY" />
             {/* Visibility toggle */}
             <button
-              class="text-[var(--color-text-muted)] hover:text-[var(--color-text-button)] transition-colors p-0.5"
+              class="text-(--color-text-muted) hover:text-(--color-text-button) transition-colors p-0.5"
               title={fxIsVisible ? 'Hide layer' : 'Show layer'}
               onClick={() => {
                 if (fxSequenceId) {
@@ -793,7 +793,7 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
               min="0"
               max="100"
               value={fxOpacityPercent}
-              class="flex-1 h-1 accent-[var(--color-accent)] cursor-pointer"
+              class="flex-1 h-1 accent-(--color-accent) cursor-pointer"
               onPointerDown={() => {
                 startCoalescing();
                 if (!blurStore.isBypassed()) { blurStore.toggleBypass(); _rangeBlurRestore = true; }
@@ -811,7 +811,7 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
                 }
               }}
             />
-            <span class="text-[11px] text-[var(--color-text-button)] w-8 text-right">{fxOpacityPercent}%</span>
+            <span class="text-[11px] text-(--color-text-button) w-8 text-right">{fxOpacityPercent}%</span>
           </div>
         </div>
       )}
@@ -822,7 +822,7 @@ export function SidebarFxProperties({ layer, fxSequenceId }: { layer: Layer; fxS
           <SectionLabel text="BLEND" />
           <div class="flex flex-col" style={{ gap: '10px', marginTop: '6px' }}>
             <select
-              class="w-full text-[11px] bg-[var(--color-bg-input)] text-[var(--color-text-button)] rounded px-2 py-[3px] outline-none cursor-pointer"
+              class="w-full text-[11px] bg-(--color-bg-input) text-(--color-text-button) rounded px-2 py-[3px] outline-none cursor-pointer"
               value={layer.blendMode}
               onChange={(e) => {
                 layerStore.updateLayer(layer.id, {

@@ -238,8 +238,8 @@ function ShaderCard({
     <div
       class={`group cursor-pointer rounded-lg overflow-hidden transition-all ${
         isExpanded
-          ? 'ring-2 ring-[#8B5CF6] bg-[var(--color-bg-hover-item)]'
-          : 'hover:ring-1 hover:ring-[var(--color-border-subtle)] bg-[var(--color-bg-input)]'
+          ? 'ring-2 ring-[#8B5CF6] bg-(--color-bg-hover-item)'
+          : 'hover:ring-1 hover:ring-(--color-border-subtle) bg-(--color-bg-input)'
       }`}
       onClick={onClick}
     >
@@ -263,8 +263,8 @@ function ShaderCard({
         )}
       </div>
       <div class="px-3 py-2">
-        <div class="text-[13px] text-[var(--color-text-button)] font-semibold truncate">{shader.name}</div>
-        <div class="text-[11px] text-[var(--color-text-dim)] leading-snug" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{shader.description}</div>
+        <div class="text-[13px] text-(--color-text-button) font-semibold truncate">{shader.name}</div>
+        <div class="text-[11px] text-(--color-text-dim) leading-snug" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{shader.description}</div>
       </div>
     </div>
   );
@@ -364,7 +364,7 @@ function ShaderDetail({
   const renderedColorGroups = new Set<string>();
 
   return (
-    <div class="bg-[var(--color-bg-section-header)] rounded-lg border border-[var(--color-border-subtle)] overflow-hidden">
+    <div class="bg-(--color-bg-section-header) rounded-lg border border-(--color-border-subtle) overflow-hidden">
       {/* Preview */}
       <div class="relative">
         <canvas
@@ -383,12 +383,12 @@ function ShaderDetail({
       </div>
 
       {/* Shader info */}
-      <div class="px-5 py-3 border-b border-[var(--color-border-subtle)]">
-        <div class="text-[15px] text-[var(--color-text-button)] font-semibold">{shader.name}</div>
-        <div class="text-[12px] text-[var(--color-text-dim)] mt-0.5">{shader.description}</div>
+      <div class="px-5 py-3 border-b border-(--color-border-subtle)">
+        <div class="text-[15px] text-(--color-text-button) font-semibold">{shader.name}</div>
+        <div class="text-[12px] text-(--color-text-dim) mt-0.5">{shader.description}</div>
         <div class="flex items-center gap-3 mt-1.5">
           {shader.author && (
-            <span class="text-[11px] text-[var(--color-text-muted)]">Created by {shader.author}</span>
+            <span class="text-[11px] text-(--color-text-muted)">Created by {shader.author}</span>
           )}
           {shader.url && (
             <a
@@ -407,7 +407,7 @@ function ShaderDetail({
       {/* Parameters */}
       {shader.params.length > 0 && (
         <div class="px-4 py-3 space-y-2">
-          <div class="text-[9px] text-[var(--color-text-dim)] font-semibold">PARAMETERS</div>
+          <div class="text-[9px] text-(--color-text-dim) font-semibold">PARAMETERS</div>
           {shader.params.map((p) => {
             if (p.hidden) return null;
 
@@ -428,9 +428,9 @@ function ShaderDetail({
               );
               return (
                 <div key={p.colorGroup} class="flex items-center gap-2">
-                  <span class="text-[10px] text-[var(--color-text-muted)] w-20 shrink-0">{p.label}</span>
+                  <span class="text-[10px] text-(--color-text-muted) w-20 shrink-0">{p.label}</span>
                   <div
-                    class="w-6 h-6 rounded cursor-pointer border border-[var(--color-border-subtle)]"
+                    class="w-6 h-6 rounded cursor-pointer border border-(--color-border-subtle)"
                     style={{ backgroundColor: hex }}
                     onClick={() => setOpenColorGroup(openColorGroup === p.colorGroup ? null : p.colorGroup!)}
                     title={`Pick ${p.label.toLowerCase()} color`}
@@ -455,7 +455,7 @@ function ShaderDetail({
             const modeLabel = isMode ? (val < 0.5 ? 'Grayscale' : val < 1.5 ? 'Monotone' : 'Duotone') : null;
             return (
               <div key={p.key} class="flex items-center gap-2">
-                <span class="text-[10px] text-[var(--color-text-muted)] w-20 shrink-0 truncate">
+                <span class="text-[10px] text-(--color-text-muted) w-20 shrink-0 truncate">
                   {modeLabel ?? p.label}
                 </span>
                 <input
@@ -467,7 +467,7 @@ function ShaderDetail({
                   class="flex-1 h-1 accent-[#8B5CF6] cursor-pointer"
                   onInput={(e) => updateParam(p.key, parseFloat((e.target as HTMLInputElement).value))}
                 />
-                <span class="text-[10px] text-[var(--color-text-button)] w-12 text-right">
+                <span class="text-[10px] text-(--color-text-button) w-12 text-right">
                   {isMode ? (modeLabel ?? '') : val.toFixed(p.step && p.step >= 1 ? 0 : p.step && p.step >= 0.1 ? 1 : p.step && p.step >= 0.01 ? 2 : 4)}
                 </span>
               </div>
@@ -477,7 +477,7 @@ function ShaderDetail({
       )}
 
       {/* Apply button */}
-      <div class="px-4 py-3 border-t border-[var(--color-border-subtle)]">
+      <div class="px-4 py-3 border-t border-(--color-border-subtle)">
         <button
           disabled={applyDisabled}
           class={`w-full py-2 rounded-md text-[12px] font-semibold transition-colors cursor-pointer ${
@@ -569,23 +569,23 @@ export function ShaderBrowser() {
   }, []);
 
   return (
-    <div class="flex-1 flex flex-col min-w-0 bg-[var(--color-bg-root)]">
+    <div class="flex-1 flex flex-col min-w-0 bg-(--color-bg-root)">
       {/* Header */}
-      <div class="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-section-header)]">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-(--color-border-subtle) bg-(--color-bg-section-header)">
         <div class="flex items-center gap-2">
           <Sparkles size={16} class="text-[#8B5CF6]" />
-          <span class="text-[13px] font-semibold text-[var(--color-text-button)]">GLSL Shaders</span>
+          <span class="text-[13px] font-semibold text-(--color-text-button)">GLSL Shaders</span>
         </div>
         <button
-          class="p-1 rounded hover:bg-[var(--color-bg-hover-item)] transition-colors cursor-pointer"
+          class="p-1 rounded hover:bg-(--color-bg-hover-item) transition-colors cursor-pointer"
           onClick={() => uiStore.setEditorMode('editor')}
         >
-          <X size={16} class="text-[var(--color-text-secondary)]" />
+          <X size={16} class="text-(--color-text-secondary)" />
         </button>
       </div>
 
       {/* Tab bar -- DaVinci Resolve-style pills */}
-      <div class="flex items-center gap-1 px-4 py-2 bg-[var(--color-bg-section-header)] border-b border-[var(--color-border-subtle)]">
+      <div class="flex items-center gap-1 px-4 py-2 bg-(--color-bg-section-header) border-b border-(--color-border-subtle)">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -595,10 +595,10 @@ export function ShaderBrowser() {
               disabled={tab.disabled}
               class={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer ${
                 tab.disabled
-                  ? 'opacity-30 cursor-not-allowed text-[var(--color-text-dim)]'
+                  ? 'opacity-30 cursor-not-allowed text-(--color-text-dim)'
                   : isActive
                     ? 'bg-[#8B5CF6] text-white'
-                    : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover-item)] hover:text-[var(--color-text-button)]'
+                    : 'text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-(--color-text-button)'
               }`}
               onClick={() => !tab.disabled && setActiveTab(tab.id)}
             >
@@ -638,7 +638,7 @@ export function ShaderBrowser() {
               />
             ))}
             {shaders.length === 0 && (
-              <div class="col-span-full text-center py-12 text-[var(--color-text-dim)] text-[12px]">
+              <div class="col-span-full text-center py-12 text-(--color-text-dim) text-[12px]">
                 No shaders in this category
               </div>
             )}

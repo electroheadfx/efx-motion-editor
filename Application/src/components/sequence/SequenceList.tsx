@@ -297,7 +297,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
             <input
               ref={inputRef}
               type="text"
-              class="bg-[var(--sidebar-input-bg)] border border-[var(--sidebar-border-selected)] rounded px-1 py-0 outline-none w-full"
+              class="bg-(--sidebar-input-bg) border border-(--sidebar-border-selected) rounded px-1 py-0 outline-none w-full"
               style={{fontSize: '14px', fontWeight: 500, color: 'var(--sidebar-text-primary)'}}
               value={editName}
               onInput={(e) =>
@@ -312,7 +312,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
             />
           ) : (
             <span
-              class="truncate text-[var(--sidebar-collapse-line)] group-hover/row:text-[var(--sidebar-text-primary)] transition-colors duration-150"
+              class="truncate text-(--sidebar-collapse-line) group-hover/row:text-(--sidebar-text-primary) transition-colors duration-150"
               style={{fontSize: '14px', fontWeight: 500}}
               onDblClick={(e) => {
                 e.stopPropagation();
@@ -372,7 +372,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
             </button>
             <div class="w-full h-px my-1" style={{backgroundColor: 'var(--sidebar-border-unselected)'}} />
             <button
-              class="w-full text-left px-3 py-1.5 text-xs text-[var(--color-error-text)] hover:bg-[#ffffff10]"
+              class="w-full text-left px-3 py-1.5 text-xs text-(--color-error-text) hover:bg-[#ffffff10]"
               onClick={(e) => {
                 e.stopPropagation();
                 handleDelete();

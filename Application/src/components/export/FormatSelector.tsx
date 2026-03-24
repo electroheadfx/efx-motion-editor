@@ -40,15 +40,15 @@ export function FormatSelector() {
     <div class="flex flex-col gap-6">
       {/* Format selector */}
       <div class="space-y-2">
-        <label class="text-xs font-semibold text-[var(--color-text-muted)]">Format</label>
+        <label class="text-xs font-semibold text-(--color-text-muted)">Format</label>
         <div class="flex flex-wrap gap-2">
           {FORMATS.map((fmt) => (
             <button
               key={fmt.value}
               class={`px-4 py-2 rounded-[5px] text-sm transition-colors ${
                 currentFormat === fmt.value
-                  ? 'bg-[var(--color-accent)] text-white'
-                  : 'bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)]'
+                  ? 'bg-(--color-accent) text-white'
+                  : 'bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input)'
               }`}
               onClick={() => exportStore.setFormat(fmt.value)}
             >
@@ -60,15 +60,15 @@ export function FormatSelector() {
 
       {/* Resolution multiplier */}
       <div class="space-y-2">
-        <label class="text-xs font-semibold text-[var(--color-text-muted)]">Resolution</label>
+        <label class="text-xs font-semibold text-(--color-text-muted)">Resolution</label>
         <div class="flex flex-wrap gap-2">
           {RESOLUTIONS.map((res) => (
             <button
               key={res}
               class={`px-4 py-2 rounded-[5px] text-sm transition-colors ${
                 currentResolution === res
-                  ? 'bg-[var(--color-accent)] text-white'
-                  : 'bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)]'
+                  ? 'bg-(--color-accent) text-white'
+                  : 'bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input)'
               }`}
               onClick={() => exportStore.setResolution(res)}
             >
@@ -76,7 +76,7 @@ export function FormatSelector() {
             </button>
           ))}
         </div>
-        <div class="text-xs text-[var(--color-text-muted)]">
+        <div class="text-xs text-(--color-text-muted)">
           {Math.round(baseWidth * currentResolution)} x {Math.round(baseHeight * currentResolution)} px
         </div>
       </div>
@@ -84,14 +84,14 @@ export function FormatSelector() {
       {/* Video quality (shown only for video formats) */}
       {currentFormat !== 'png' && (
         <div class="space-y-3">
-          <label class="text-xs font-semibold text-[var(--color-text-muted)]">Quality</label>
+          <label class="text-xs font-semibold text-(--color-text-muted)">Quality</label>
 
           {/* H.264 CRF slider */}
           {currentFormat === 'h264' && (
             <div class="space-y-1">
               <div class="flex items-center justify-between">
-                <span class="text-sm text-[var(--color-text-secondary)]">CRF</span>
-                <span class="text-sm text-[var(--color-text-secondary)] font-mono w-8 text-right">{quality.h264Crf}</span>
+                <span class="text-sm text-(--color-text-secondary)">CRF</span>
+                <span class="text-sm text-(--color-text-secondary) font-mono w-8 text-right">{quality.h264Crf}</span>
               </div>
               <input
                 type="range"
@@ -102,9 +102,9 @@ export function FormatSelector() {
                   const val = parseInt((e.target as HTMLInputElement).value, 10);
                   exportStore.setVideoQuality({...quality, h264Crf: val});
                 }}
-                class="w-full accent-[var(--color-accent)]"
+                class="w-full accent-(--color-accent)"
               />
-              <div class="flex justify-between text-xs text-[var(--color-text-muted)]">
+              <div class="flex justify-between text-xs text-(--color-text-muted)">
                 <span>Best quality</span>
                 <span>Smallest file</span>
               </div>
@@ -115,8 +115,8 @@ export function FormatSelector() {
           {currentFormat === 'av1' && (
             <div class="space-y-1">
               <div class="flex items-center justify-between">
-                <span class="text-sm text-[var(--color-text-secondary)]">CRF</span>
-                <span class="text-sm text-[var(--color-text-secondary)] font-mono w-8 text-right">{quality.av1Crf}</span>
+                <span class="text-sm text-(--color-text-secondary)">CRF</span>
+                <span class="text-sm text-(--color-text-secondary) font-mono w-8 text-right">{quality.av1Crf}</span>
               </div>
               <input
                 type="range"
@@ -127,9 +127,9 @@ export function FormatSelector() {
                   const val = parseInt((e.target as HTMLInputElement).value, 10);
                   exportStore.setVideoQuality({...quality, av1Crf: val});
                 }}
-                class="w-full accent-[var(--color-accent)]"
+                class="w-full accent-(--color-accent)"
               />
-              <div class="flex justify-between text-xs text-[var(--color-text-muted)]">
+              <div class="flex justify-between text-xs text-(--color-text-muted)">
                 <span>Best quality</span>
                 <span>Smallest file</span>
               </div>
@@ -144,8 +144,8 @@ export function FormatSelector() {
                   key={p.value}
                   class={`px-3 py-1.5 rounded-[5px] text-sm transition-colors ${
                     quality.proresProfile === p.value
-                      ? 'bg-[var(--color-accent)] text-white'
-                      : 'bg-[var(--color-bg-settings)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)]'
+                      ? 'bg-(--color-accent) text-white'
+                      : 'bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input)'
                   }`}
                   onClick={() => exportStore.setVideoQuality({...quality, proresProfile: p.value as 'proxy' | 'lt' | 'standard' | 'hq'})}
                 >
@@ -160,15 +160,15 @@ export function FormatSelector() {
       {/* PNG naming pattern */}
       {currentFormat === 'png' && (
         <div class="space-y-2">
-          <label class="text-xs font-semibold text-[var(--color-text-muted)]">Naming Pattern</label>
+          <label class="text-xs font-semibold text-(--color-text-muted)">Naming Pattern</label>
           <input
             type="text"
             value={namingPattern}
             onInput={(e) => exportStore.setNamingPattern((e.target as HTMLInputElement).value)}
-            class="w-full text-sm text-[var(--color-text-secondary)] font-mono bg-[var(--color-bg-settings)] px-3 py-2 rounded-[5px] border border-[var(--color-border-subtle)] focus:border-[var(--color-accent)] outline-none"
+            class="w-full text-sm text-(--color-text-secondary) font-mono bg-(--color-bg-settings) px-3 py-2 rounded-[5px] border border-(--color-border-subtle) focus:border-(--color-accent) outline-none"
             placeholder="{name}_{frame}.png"
           />
-          <div class="text-xs text-[var(--color-text-muted)]">
+          <div class="text-xs text-(--color-text-muted)">
             Preview: <span class="font-mono">{previewFilename}</span>
           </div>
         </div>
@@ -177,18 +177,18 @@ export function FormatSelector() {
       {/* Include Audio toggle (per D-04) */}
       {hasAudioTracks && (
         <div class="space-y-2">
-          <label class="text-xs font-semibold text-[var(--color-text-muted)]">Audio</label>
-          <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
+          <label class="text-xs font-semibold text-(--color-text-muted)">Audio</label>
+          <label class="flex items-center gap-2 text-sm text-(--color-text-secondary) cursor-pointer">
             <input
               type="checkbox"
               checked={includeAudio}
               onChange={(e) => exportStore.setIncludeAudio((e.target as HTMLInputElement).checked)}
-              class="accent-[var(--color-accent)]"
+              class="accent-(--color-accent)"
             />
             Include audio in export
           </label>
           {currentFormat === 'png' && includeAudio && (
-            <div class="text-xs text-[var(--color-text-muted)]">
+            <div class="text-xs text-(--color-text-muted)">
               Audio will be exported as a WAV file alongside the PNG sequence
             </div>
           )}
