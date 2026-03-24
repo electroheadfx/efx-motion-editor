@@ -5,7 +5,7 @@ import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
 import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {defaultTransform, createDefaultFxSource} from '../../types/layer';
-import type {LayerType, BlendMode, Layer} from '../../types/layer';
+import type {LayerType, BlendMode, Layer, LayerSourceData} from '../../types/layer';
 import {totalFrames} from '../../lib/frameMap';
 
 /** Popover menu for adding content overlay and FX sequences in the timeline area */
@@ -63,6 +63,25 @@ export function AddLayerMenu() {
     }
   };
 
+  const handleAddPaintLayer = () => {
+    setMenuOpen(false);
+    const layerId = crypto.randomUUID();
+    const paintLayer: Layer = {
+      id: layerId,
+      name: 'Paint',
+      type: 'paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'paint', layerId } as LayerSourceData,
+      isBase: false,
+    };
+    sequenceStore.createFxSequence('Paint', paintLayer, totalFrames.peek());
+    layerStore.setSelected(layerId);
+    uiStore.selectLayer(layerId);
+  };
+
   return (
     <div class="relative" ref={menuRef}>
       <button
@@ -97,6 +116,16 @@ export function AddLayerMenu() {
             <span class="w-2 h-2 rounded-sm" style="background-color: #8B5CF6" />
             Video
           </button>
+          <div class="border-t border-(--color-border-subtle) my-1" />
+          <div class="px-3 py-1 text-[9px] text-(--color-text-dim) font-semibold">PAINT</div>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
+            onClick={handleAddPaintLayer}
+          >
+            <span class="w-2 h-2 rounded-sm bg-[#E91E63] shrink-0" />
+            Paint / Rotopaint
+          </button>
+
           <div class="border-t border-(--color-border-subtle) my-1" />
 
           {/* Generators section */}
