@@ -1,16 +1,19 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
 import {useSignal} from '@preact/signals';
-import {Plus, Minus, Maximize, Maximize2, Minimize2} from 'lucide-preact';
+import {Plus, Minus, Maximize, Maximize2, Minimize2, Paintbrush} from 'lucide-preact';
 import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
 import {FullSpeedBadge} from '../overlay/FullSpeedBadge';
 import {TransformOverlay} from '../canvas/TransformOverlay';
+import {PaintOverlay} from '../canvas/PaintOverlay';
 import {MotionPath} from '../canvas/MotionPath';
 import {timelineStore} from '../../stores/timelineStore';
 import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
 import {imageStore} from '../../stores/imageStore';
 import {uiStore} from '../../stores/uiStore';
+import {paintStore} from '../../stores/paintStore';
+import {layerStore} from '../../stores/layerStore';
 import {playbackEngine, isFullSpeed} from '../../lib/playbackEngine';
 import {isFullscreen, enterFullscreen} from '../../lib/fullscreenManager';
 import {activeSequenceFrames} from '../../lib/frameMap';
@@ -140,6 +143,7 @@ export function CanvasArea() {
   }, []);
 
   // --- Space: hold for pan mode, tap for play/pause ---
+  // --- P key: toggle paint mode ---
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' && !e.repeat) {
@@ -148,6 +152,13 @@ export function CanvasArea() {
         e.preventDefault();
         isSpaceHeld.current = true;
         spaceDragOccurred.current = false;
+      }
+      // P key: toggle paint mode (per D-09)
+      if (e.code === 'KeyP' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+        e.preventDefault();
+        paintStore.togglePaintMode();
       }
     };
 
@@ -248,6 +259,15 @@ export function CanvasArea() {
   // (TransformOverlay manages its own cursor for layer interactions)
   const cursorStyle = isDragging.value ? 'grabbing' : 'default';
 
+  // Determine if paint mode overlay should be active
+  const selectedId = layerStore.selectedLayerId.value;
+  const allLayers = layerStore.layers.value;
+  const overlayLayers = layerStore.overlayLayers.value;
+  const selectedLayer = selectedId
+    ? (allLayers.find(l => l.id === selectedId) ?? overlayLayers.find(l => l.id === selectedId) ?? null)
+    : null;
+  const isPaintModeActive = paintStore.paintMode.value && selectedLayer?.type === 'paint';
+
   return (
     <div
       class="relative flex flex-col items-center justify-center flex-1 min-h-0 bg-(--color-bg-right)"
@@ -256,6 +276,18 @@ export function CanvasArea() {
     >
       {/* Preview Controls (zoom, fit, fullscreen) */}
       <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0">
+        {/* Paint mode toggle button */}
+        <button
+          class={`rounded p-1.5 transition-colors ${
+            paintStore.paintMode.value
+              ? 'bg-(--color-accent) text-white'
+              : 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) text-(--color-text-secondary)'
+          }`}
+          onClick={() => paintStore.togglePaintMode()}
+          title={paintStore.paintMode.value ? 'Exit paint mode (P)' : 'Enter paint mode (P)'}
+        >
+          <Paintbrush size={14} />
+        </button>
         {/* Zoom controls cluster: [ - ] percentage [ + ] [ Fit ] */}
         <button
           class={`rounded-[5px] px-2.5 py-1 text-(--color-text-button) ${
@@ -323,16 +355,26 @@ export function CanvasArea() {
             transformOrigin: 'center center',
           }}
           data-canvas-area
-          class="relative rounded bg-black overflow-visible shrink-0"
+          class={`relative rounded bg-black overflow-visible shrink-0 border-2 ${
+            isPaintModeActive ? 'border-(--color-accent)' : 'border-transparent'
+          }`}
         >
           <Preview />
           <MotionPath />
-          <TransformOverlay
-            containerRef={containerRef}
-            getSourceDimensions={getSourceDimensionsForLayer}
-            isSpaceHeld={isSpaceHeld}
-            onPanStart={startPan}
-          />
+          {isPaintModeActive ? (
+            <PaintOverlay
+              containerRef={containerRef}
+              isSpaceHeld={isSpaceHeld}
+              onPanStart={startPan}
+            />
+          ) : (
+            <TransformOverlay
+              containerRef={containerRef}
+              getSourceDimensions={getSourceDimensionsForLayer}
+              isSpaceHeld={isSpaceHeld}
+              onPanStart={startPan}
+            />
+          )}
         </div>
       </div>
       {/* JKL speed badge */}

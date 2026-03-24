@@ -3,6 +3,7 @@ import type {RefObject} from 'preact';
 import type {Layer, LayerTransform} from '../../types/layer';
 import {isFxLayer} from '../../types/layer';
 import {layerStore} from '../../stores/layerStore';
+import {paintStore} from '../../stores/paintStore';
 import {uiStore} from '../../stores/uiStore';
 import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
@@ -109,6 +110,17 @@ export function TransformOverlay({
   isSpaceHeld,
   onPanStart,
 }: TransformOverlayProps) {
+  // Skip transform overlay when paint mode is active on a paint layer (per D-09)
+  if (paintStore.paintMode.value) {
+    const selected = layerStore.selectedLayerId.peek();
+    if (selected) {
+      const allLayers = layerStore.layers.peek();
+      const overlay = layerStore.overlayLayers.peek();
+      const layer = allLayers.find(l => l.id === selected) ?? overlay.find(l => l.id === selected);
+      if (layer?.type === 'paint') return null;
+    }
+  }
+
   const dragRef = useRef<DragState>({
     mode: 'none',
     startClientX: 0,
