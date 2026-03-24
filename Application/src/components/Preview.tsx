@@ -3,6 +3,7 @@ import {effect} from '@preact/signals';
 import {timelineStore} from '../stores/timelineStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {blurStore} from '../stores/blurStore';
+import {paintStore} from '../stores/paintStore';
 import {soloStore} from '../stores/soloStore';
 import {frameMap, crossDissolveOverlaps} from '../lib/frameMap';
 import {PreviewRenderer} from '../lib/previewRenderer';
@@ -54,6 +55,8 @@ export function Preview() {
       void frameMap.value;
       // Subscribe to blur bypass signal so toggling bypass triggers a re-render.
       void blurStore.bypassBlur.value;
+      // Subscribe to paint data mutations so strokes appear after drawing.
+      void paintStore.paintVersion.value;
 
       renderFromFrameMap(globalFrame);
     });

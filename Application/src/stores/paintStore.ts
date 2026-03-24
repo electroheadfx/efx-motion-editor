@@ -18,6 +18,9 @@ const onionSkinPrevRange = signal(3);
 const onionSkinNextRange = signal(2);
 const onionSkinOpacity = signal(0.3);
 
+/** Bumped on every paint data mutation so reactive consumers (Preview) re-render */
+const paintVersion = signal(0);
+
 // --- Private state ---
 
 /** layerId -> (frameNumber -> PaintFrame) */
@@ -47,6 +50,7 @@ function _getOrCreateFrame(layerId: string, frame: number): PaintFrame {
 export const paintStore = {
   // Signals (read-only externally via .value)
   paintMode,
+  paintVersion,
   activeTool,
   brushSize,
   brushColor,
@@ -68,12 +72,14 @@ export const paintStore = {
     _getOrCreateFrame(layerId, frame);
     _frames.get(layerId)!.set(frame, pf);
     this.markDirty(layerId, frame);
+    paintVersion.value++;
   },
 
   addElement(layerId: string, frame: number, element: PaintElement): void {
     const frameData = _getOrCreateFrame(layerId, frame);
     frameData.elements.push(element);
     this.markDirty(layerId, frame);
+    paintVersion.value++;
     pushAction({
       id: crypto.randomUUID(),
       description: `Add paint element to frame ${frame}`,
@@ -97,6 +103,7 @@ export const paintStore = {
     if (idx === -1) return;
     const removed = frameData.elements.splice(idx, 1)[0];
     this.markDirty(layerId, frame);
+    paintVersion.value++;
     pushAction({
       id: crypto.randomUUID(),
       description: `Remove paint element from frame ${frame}`,
@@ -119,6 +126,7 @@ export const paintStore = {
     const backup = [...frameData.elements];
     frameData.elements = [];
     this.markDirty(layerId, frame);
+    paintVersion.value++;
     pushAction({
       id: crypto.randomUUID(),
       description: `Clear paint frame ${frame}`,
@@ -173,6 +181,7 @@ export const paintStore = {
       _frames.set(layerId, layerFrames);
     }
     layerFrames.set(frame, pf);
+    paintVersion.value++;
   },
 
   /** Clear all paint data (called on project close/new) */

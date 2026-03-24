@@ -154,12 +154,18 @@ export function CanvasArea() {
         isSpaceHeld.current = true;
         spaceDragOccurred.current = false;
       }
-      // P key: toggle paint mode (per D-09)
+      // P key: toggle paint mode (only when a paint layer is selected)
       if (e.code === 'KeyP' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         const target = e.target as HTMLElement;
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
         e.preventDefault();
-        paintStore.togglePaintMode();
+        const selId = layerStore.selectedLayerId.peek();
+        if (selId) {
+          const all = layerStore.layers.peek();
+          const ovl = layerStore.overlayLayers.peek();
+          const sel = all.find(l => l.id === selId) ?? ovl.find(l => l.id === selId);
+          if (sel?.type === 'paint') paintStore.togglePaintMode();
+        }
       }
     };
 
@@ -267,7 +273,13 @@ export function CanvasArea() {
   const selectedLayer = selectedId
     ? (allLayers.find(l => l.id === selectedId) ?? overlayLayers.find(l => l.id === selectedId) ?? null)
     : null;
-  const isPaintModeActive = paintStore.paintMode.value && selectedLayer?.type === 'paint';
+  const hasPaintLayerSelected = selectedLayer?.type === 'paint';
+  const isPaintModeActive = paintStore.paintMode.value && hasPaintLayerSelected;
+
+  // Auto-deactivate paint mode when switching away from a paint layer
+  if (paintStore.paintMode.value && !hasPaintLayerSelected) {
+    paintStore.paintMode.value = false;
+  }
 
   return (
     <div
@@ -277,15 +289,18 @@ export function CanvasArea() {
     >
       {/* Preview Controls (zoom, fit, fullscreen) */}
       <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0">
-        {/* Paint mode toggle button */}
+        {/* Paint mode toggle button (only active when a paint layer is selected) */}
         <button
           class={`rounded p-1.5 transition-colors ${
-            paintStore.paintMode.value
+            isPaintModeActive
               ? 'bg-(--color-accent) text-white'
-              : 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) text-(--color-text-secondary)'
+              : hasPaintLayerSelected
+                ? 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) text-(--color-text-secondary)'
+                : 'bg-(--color-bg-settings) text-(--color-text-secondary) opacity-40 cursor-not-allowed'
           }`}
-          onClick={() => paintStore.togglePaintMode()}
-          title={paintStore.paintMode.value ? 'Exit paint mode (P)' : 'Enter paint mode (P)'}
+          onClick={() => hasPaintLayerSelected && paintStore.togglePaintMode()}
+          title={!hasPaintLayerSelected ? 'Select a paint layer first' : isPaintModeActive ? 'Exit paint mode (P)' : 'Enter paint mode (P)'}
+          disabled={!hasPaintLayerSelected}
         >
           <Paintbrush size={14} />
         </button>
@@ -379,7 +394,7 @@ export function CanvasArea() {
         </div>
       </div>
       {/* Paint floating toolbar (shown when paint mode active) */}
-      {paintStore.paintMode.value && <PaintToolbar />}
+      {isPaintModeActive && <PaintToolbar />}
       {/* JKL speed badge */}
       <SpeedBadge />
     </div>
