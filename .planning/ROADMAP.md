@@ -69,7 +69,7 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 - [x] **Phase 15.3: GLSL Shadertoys** - WebGL2 shader runtime, shader browser, 17 Shadertoy-ported effects, parameter controls, keyframe animation (completed 2026-03-22)
 - [ ] **Phase 15.4: GL Transition** - GLSL-powered transitions between sequences, 18 curated gl-transitions.com shaders, dual-texture rendering pipeline, browser/sidebar/timeline integration
 - [x] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange (completed 2026-03-23)
-- [ ] **Phase 17: Enhancements** - Key photo collapse/expand, global solo mode, gradient solids, Tailwind v4 cleanup
+- [x] **Phase 17: Enhancements** - Key photo collapse/expand, global solo mode, gradient solids, Tailwind v4 cleanup (completed 2026-03-24)
 - [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
 
 ## Phase Details
@@ -191,9 +191,9 @@ Plans:
 
 Plans:
 - [x] 17-01-PLAN.md — Key photo collapse/expand toggle + Tailwind v4 syntax migration
-- [ ] 17-02-PLAN.md — Global solo mode: soloStore, toolbar button, renderGlobalFrame gating, keyboard shortcut
-- [ ] 17-03-PLAN.md — Gradient data model (types) + ColorPickerModal gradient mode UI + GradientBar component
-- [ ] 17-04-PLAN.md — Gradient rendering pipeline + project persistence v13 + gradient UI wiring
+- [x] 17-02-PLAN.md — Global solo mode: soloStore, toolbar button, renderGlobalFrame gating, keyboard shortcut
+- [x] 17-03-PLAN.md — Gradient data model (types) + ColorPickerModal gradient mode UI + GradientBar component
+- [x] 17-04-PLAN.md — Gradient rendering pipeline + project persistence v13 + gradient UI wiring
 
 ### Phase 18: Canvas Motion Path
 **Goal**: Users can see and edit position keyframe trajectories directly on the canvas as After Effects-style motion paths
@@ -220,7 +220,7 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 | 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
 | 15.4 GL Transition | v0.3.0 | 3/4 | In Progress|  |
 | 16. Audio Export & Beat Sync | v0.3.0 | 5/6 | Complete    | 2026-03-23 |
-| 17. Enhancements | v0.3.0 | 1/4 | In Progress | - |
+| 17. Enhancements | v0.3.0 | 4/4 | Complete   | 2026-03-24 |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
 
 ## Backlog

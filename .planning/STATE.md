@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
-status: Ready to execute
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-03-24T09:43:32.788Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 17-04-PLAN.md
+last_updated: "2026-03-24T10:05:31.813Z"
 last_activity: 2026-03-24
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 31
-  completed_plans: 21
+  completed_plans: 25
 ---
 
 # Project State
@@ -26,7 +26,7 @@ Last activity: 2026-03-24
 ## Current Position
 
 Phase: 17 (enhancements) — EXECUTING
-Plan: 2 of 4
+Plan: 4 of 4
 
 ## Performance Metrics
 
@@ -66,6 +66,9 @@ Plan: 2 of 4
 | Phase 16 P04 | 4min | 2 tasks | 3 files |
 | Phase 16 P06 | 4min | 2 tasks | 3 files |
 | Phase 17 P01 | 3min | 2 tasks | 34 files |
+| Phase 17 P02 | 5min | 2 tasks | 10 files |
+| Phase 17 P03 | 5min | 2 tasks | 4 files |
+| Phase 17 P04 | 7min | 2 tasks | 9 files |
 
 ### Decisions
 
@@ -123,6 +126,15 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 16]: D-20: Infinity threshold for snap-to-beat in FramesPopover (always snap to nearest, no distance limit)
 - [Phase 16]: D-21: kpStartFrame computed from trackLayouts.peek() in KeyPhotoCard for snap computation
 - [Phase 17]: Regex batch replacement for Tailwind migration with manual fix for var() fallback values
+- [Phase 17]: soloStore is session-only state, not persisted in .mce project file
+- [Phase 17]: renderGlobalFrame soloActive parameter keeps function pure — no signal reads inside
+- [Phase 17]: Solo gating wraps entire overlay loop — FX and content-overlays both stripped in solo mode
+- [Phase 17]: GradientData uses optional angle/centerX/centerY fields with sensible defaults per gradient type
+- [Phase 17]: ColorPickerModal fillMode (solid/gradient) separate from colorInputMode (hex/rgba/hsl) to avoid naming collision
+- [Phase 17]: buildGradientCSS exported from GradientBar for reuse in preview and export renderers
+- [Phase 17]: Project format bumped to v13 with serde(default) for v12 backward compat
+- [Phase 17]: createCanvasGradient uses diagonal length for linear gradient endpoints, conic fallback to linear
+- [Phase 17]: Gradient check before solidColor in renderFrame; updateKeyGradient clears solidColor
 
 ### Pending Todos
 
@@ -154,6 +166,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-24T09:43:32.786Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-03-24T10:05:31.811Z
+Stopped at: Completed 17-04-PLAN.md
 Resume file: None
