@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
 status: Ready to plan
-stopped_at: Completed 17-06-PLAN.md
-last_updated: "2026-03-24T11:13:26.090Z"
+stopped_at: Phase 17.1 context gathered
+last_updated: "2026-03-24T12:05:55.965Z"
 last_activity: 2026-03-24
 progress:
-  total_phases: 9
+  total_phases: 8
   completed_phases: 7
-  total_plans: 33
+  total_plans: 27
   completed_plans: 27
 ---
 
@@ -154,6 +154,7 @@ Phases 17 and 18 are independent and can parallelize after Phase 16.
 - Phase 15.2 inserted after Phase 15: Solid Sequence (URGENT)
 - Phase 15.3 inserted after Phase 15: GLSL Shadertoys (URGENT)
 - Phase 15.4 inserted after Phase 15: GL Transition (URGENT)
+- Phase 17.1 inserted after Phase 17: Adaptative sidebar's layer window (URGENT)
 
 ### Blockers/Concerns
 
@@ -171,6 +172,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-24T11:04:41.863Z
-Stopped at: Completed 17-06-PLAN.md
-Resume file: None
+Last session: 2026-03-24T12:05:55.961Z
+Stopped at: Phase 17.1 context gathered
+Resume file: .planning/phases/17.1-adaptative-sidebar-s-layer-window/17.1-CONTEXT.md
