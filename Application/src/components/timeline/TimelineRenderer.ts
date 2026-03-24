@@ -593,8 +593,9 @@ export class TimelineRenderer {
             ctx.beginPath();
             ctx.rect(fx, fy, fw, fh);
             ctx.clip();
+            ctx.translate(fx, fy);
             ctx.fillStyle = createCanvasGradient(ctx, range.gradient, fw, fh);
-            ctx.fillRect(fx, fy, fw, fh);
+            ctx.fillRect(0, 0, fw, fh);
             ctx.restore();
             ctx.strokeStyle = colors.frameBorder;
             ctx.lineWidth = 0.5;
