@@ -87,6 +87,7 @@ export function renderGlobalFrame(
   fm: FrameEntry[],
   allSeqs: Sequence[],
   overlaps: CrossDissolveOverlap[],
+  soloActive: boolean = false,
 ): void {
   if (globalFrame < 0 || globalFrame >= fm.length) return;
 
@@ -249,7 +250,8 @@ export function renderGlobalFrame(
     }
   }
 
-  // Composite overlay sequences (FX + content overlays): reverse order so top-of-timeline renders last
+  // Composite overlay sequences (FX + content overlays): skip entirely in solo mode (D-08)
+  if (!soloActive) {
   const overlaySeqs = allSeqs.filter(s => s.kind !== 'content' && s.visible !== false);
   for (let i = overlaySeqs.length - 1; i >= 0; i--) {
     const overlaySeq = overlaySeqs[i];
@@ -310,6 +312,7 @@ export function renderGlobalFrame(
       }
     }
   }
+  } // end if (!soloActive)
 }
 
 /**

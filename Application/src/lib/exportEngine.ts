@@ -5,6 +5,7 @@ import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
 import { exportStore } from '../stores/exportStore';
 import { audioStore } from '../stores/audioStore';
+import { soloStore } from '../stores/soloStore';
 import { audioEngine } from './audioEngine';
 import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs, exportCleanupFile } from './ipc';
 import { generateJsonSidecar, generateFcpxml } from './exportSidecar';
@@ -140,7 +141,7 @@ export async function startExport(startFromFrame = 0): Promise<void> {
       const frameStart = performance.now();
 
       // Render frame
-      renderGlobalFrame(renderer, canvas, frame, fm, allSeqs, overlaps);
+      renderGlobalFrame(renderer, canvas, frame, fm, allSeqs, overlaps, soloStore.soloEnabled.peek());
 
       // Extract PNG
       const blob = await canvasToBlob(canvas);

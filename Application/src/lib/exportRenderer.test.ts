@@ -27,6 +27,12 @@ describe('exportRenderer', () => {
     it.todo('filters empty imageId strings from preload set');
   });
 
+  describe('solo mode (ENH-03)', () => {
+    it.todo('renderGlobalFrame with soloActive=true skips overlay sequences entirely');
+    it.todo('renderGlobalFrame with soloActive=false renders overlay sequences normally');
+    it.todo('cross-dissolve transitions still render in solo mode');
+  });
+
   describe('GL transition rendering (GLT-04)', () => {
     it.todo('renders GL transition overlap via dual-capture when overlap has glTransition');
     it.todo('calls renderGlslTransition with correct shader, canvases, and progress');

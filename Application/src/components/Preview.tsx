@@ -3,6 +3,7 @@ import {effect} from '@preact/signals';
 import {timelineStore} from '../stores/timelineStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {blurStore} from '../stores/blurStore';
+import {soloStore} from '../stores/soloStore';
 import {frameMap, crossDissolveOverlaps} from '../lib/frameMap';
 import {PreviewRenderer} from '../lib/previewRenderer';
 import {renderGlobalFrame} from '../lib/exportRenderer';
@@ -28,7 +29,7 @@ export function Preview() {
       const fm = frameMap.peek();
       const allSeqs = sequenceStore.sequences.peek();
       const overlaps = crossDissolveOverlaps.peek();
-      renderGlobalFrame(renderer, canvas, globalFrame, fm, allSeqs, overlaps);
+      renderGlobalFrame(renderer, canvas, globalFrame, fm, allSeqs, overlaps, soloStore.soloEnabled.value);
     }
 
     // When an image finishes loading, re-render with current values
