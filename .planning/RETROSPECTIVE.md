@@ -2,6 +2,61 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v0.3.0 — Audio & Polish
+
+**Shipped:** 2026-03-24
+**Phases:** 8 | **Plans:** 29 | **Tasks:** 63
+
+### What Was Built
+- Audio import with waveform visualization, synced playback, volume/fade controls, and timeline interactions (click, drag, trim, slip, reorder, resize)
+- Media in-use tracking with color-coded badges, portal-based usage popovers, and cascade asset removal with composite undo
+- Solid/transparent key entries with split add button, inline color picker, and gradient fills (linear/radial/conic)
+- GLSL shader system: WebGL2 runtime, 17 Shadertoy-ported effects, ShaderBrowser with animated previews, parameter controls
+- GL transitions: 18 curated gl-transitions.com shaders, dual-texture WebGL2 pipeline, timeline/sidebar integration
+- Audio export with OfflineAudioContext pre-render, FFmpeg muxing, BPM detection, beat markers, snap-to-beat, auto-arrange
+- Sidebar enhancements: collapsible key photos, global solo mode, Tailwind v4 migration across 33 files
+- Adaptive 2-panel sidebar replacing 3-panel layout with sequence/layer view switching
+- 7 quick-task inline fixes (context menu removal, transport bar, zoom controls relocation, shader button move)
+- Project format progressed from v8 through v13 with full backward compatibility chain
+
+### What Worked
+- **Inserted phase pattern (15.x):** 5 phases inserted as decimal sub-phases kept features modular without disrupting the main roadmap numbering
+- **Signal store architecture continued to scale:** Added audioStore and soloStore (now 11 stores) with zero architectural friction
+- **Progressive .mce format migration (v8→v13):** Each phase bumped version independently with serde(default) backward compat — never broke existing projects
+- **TDD test scaffolds (Wave 0 pattern):** Phases 15.2 and 15.4 started with failing test scaffolds that guided implementation — caught integration issues early
+- **Gap closure plans:** Phases 16 and 17 each had 2-3 gap closure plans that fixed UAT issues (export hang, BPM persistence, snap-to-beat, portal rendering, timeline gradients)
+- **WebGL2 reuse:** GLSL runtime built for shader effects (Phase 15.3) was directly reusable for GL transitions (Phase 15.4) — architecture paid off
+- **Dual-callback pattern for live preview:** onLiveChange/onCommit prevented undo stack flooding from continuous color picker drags
+
+### What Was Inefficient
+- **GLSL/GLT requirements not tracked in REQUIREMENTS.md:** Phases 15.3 and 15.4 were inserted urgently and their requirements never made it into the formal tracking table
+- **ASIDE requirements left "Pending" after completion:** Phase 17.1 completed but REQUIREMENTS.md traceability wasn't updated — a tracking gap
+- **Phase 15.3 plan count discrepancy:** ROADMAP shows "3/4 plans executed" but only 1 summary exists — single mega-plan covered all work
+- **No milestone audit before completion:** Proceeding without `/gsd:audit-milestone` — past milestones caught real issues during audit
+- **Phase 16 needed 3 gap closure plans:** BPM persistence (Rust struct mismatch), export hang (async FFmpeg), and snap-to-beat (missing UI) — suggests initial planning underestimated Rust/TS boundary complexity
+
+### Patterns Established
+- Web Audio engine pattern: OfflineAudioContext pre-render at 48kHz for export, AudioContext for real-time playback
+- Fade scheduling: exponentialRampToValueAtTime targeting 0.001 (not 0) to avoid Web Audio limitation
+- Composite undo: capturing multiple store snapshots (sequenceStore + audioStore + imageStore) as single history entry
+- Portal rendering for modals to prevent SortableJS drag propagation issues
+- Split add button pattern: Camera/Square for photo vs solid entry creation
+- Teal/purple color coding: teal for GL transitions, purple for cross-dissolve — visual language on timeline
+
+### Key Lessons
+1. **Rust/TypeScript boundary needs explicit type auditing** — Phase 16's BPM persistence bug was serde silently dropping fields missing from the Rust struct
+2. **Wave 0 test scaffolds accelerate implementation** — Phases 15.2 and 15.4 both benefited from upfront behavioral contracts
+3. **Gap closure plans are a natural part of the process** — 5 gap closure plans across 2 phases is healthy, not a sign of poor planning
+4. **WebGL2 architecture investment pays compound returns** — glslRuntime served both shader effects and transitions with minimal additional code
+5. **Inserted phases work well for urgent features** — 5 inserted phases (15.1-15.4, 17.1) kept the roadmap flexible without losing structure
+
+### Cost Observations
+- Model mix: ~70% opus, ~25% sonnet, ~5% haiku
+- Sessions: ~15+ sessions over 5 days
+- Notable: 29 plans in 5 days is the fastest milestone yet; gap closure plans averaged <4 min each
+
+---
+
 ## Milestone: v0.2.0 — Pipeline Complete
 
 **Shipped:** 2026-03-21
@@ -109,6 +164,7 @@
 |-----------|----------|--------|-------|------------|
 | v1.0 | ~5 | 5 | 13 | First milestone; established GSD workflow |
 | v0.2.0 | ~30 | 23 | 66 | Decimal sub-phases for UX iteration; quick task system for inline fixes |
+| v0.3.0 | ~15 | 8 | 29 | Wave 0 test scaffolds; gap closure plans; 5 inserted phases for urgent features |
 
 ### Cumulative Quality
 
@@ -116,11 +172,15 @@
 |-----------|-----|-------|-----------------|-------------------|
 | v1.0 | 5,055 | 118 | 11 | 3 (2 medium, 1 high) |
 | v0.2.0 | 20,428 | 252+ | 28 | 2 (both medium) |
+| v0.3.0 | 31,522 | 350+ | 4 (carried) | 0 new |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Risk-first phase ordering catches integration issues early and accelerates later phases
 2. Milestone audits find real bugs that execution-time verification misses
-3. Signal store architecture scales well — 6→9 stores with zero friction
+3. Signal store architecture scales well — 6→9→11 stores with zero friction
 4. `.peek()` pattern is essential for performance-critical paths (rAF, event handlers)
 5. Quick tasks are the right vehicle for user-testing feedback — keeps formal phases focused
+6. Progressive .mce format migration (v1→v13) with serde(default) is the proven persistence pattern
+7. Wave 0 test scaffolds accelerate implementation and catch integration issues early
+8. WebGL2 architecture investments pay compound returns across features (blur, shaders, transitions)

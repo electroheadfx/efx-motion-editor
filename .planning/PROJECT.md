@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks), add fade/cross-dissolve transitions, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1). Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 adds audio with beat sync, sidebar/solo enhancements, and canvas motion paths.
+A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks) and GLSL shader effects (17 Shadertoy + 18 GL transitions), add fade/cross-dissolve/GL transitions, import audio with waveform visualization and beat-synced editing, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1) with audio. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 added audio with beat sync, GLSL shader effects/transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar.
 
 ## Core Value
 
@@ -52,23 +52,24 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Tabbed shortcuts overlay with 7 groups and full keyboard navigation — v0.2.0
 - ✓ Timeline vertical scrollbar with playback auto-scroll — v0.2.0
 - ✓ Solid color and transparent key entries with full data pipeline, UI controls, and rendering — v0.3.0
+- ✓ Audio import with waveform visualization, synced playback, volume/fade controls, timeline interactions — v0.3.0
+- ✓ Media in-use tracking with color-coded badges, usage popovers, and cascade removal with undo — v0.3.0
+- ✓ GLSL shader effects: WebGL2 runtime, 17 Shadertoy-ported effects, ShaderBrowser, parameter controls — v0.3.0
+- ✓ GL transitions: 18 curated gl-transitions.com shaders, dual-texture WebGL2 pipeline, timeline/sidebar integration — v0.3.0
+- ✓ Audio export with BPM detection, beat markers, snap-to-beat, auto-arrange strategies — v0.3.0
+- ✓ Collapsible key photo lists, global solo mode (S key), gradient fills (linear/radial/conic) — v0.3.0
+- ✓ Adaptive 2-panel sidebar with sequence/layer view switching, Layers icon with count badge — v0.3.0
+- ✓ Tailwind v4 syntax migration across 33 component files — v0.3.0
+- ✓ Project format .mce v8→v13 progressive migration with full backward compatibility — v0.3.0
 
 ### Active
 
-- [ ] Audio import, waveform visualization, fade in/out, timeline positioning, synced playback
-- [x] Audio in video export, beat sync (auto-detect BPM, beat markers, snap modes, auto-arrange) — Validated in Phase 16
-- [x] Sidebar enhancements (collapsible key photo lists, global solo mode), gradient overlay fills with v13 persistence, Tailwind v4 migration — Validated in Phase 17
-- [ ] Canvas motion path with interpolation preview (After Effects-style keyframe path editing)
+- [ ] Canvas motion path with interpolation preview (After Effects-style keyframe path editing) — deferred to v0.4.0
+- [ ] Paint/rotopaint layer for frame-by-frame drawing and rotoscoping — backlog
 
-## Current Milestone: v0.3.0 Audio & Polish
+## Latest Milestone: v0.3.0 Audio & Polish (Shipped 2026-03-24)
 
-**Goal:** Add audio with waveforms and beat sync, enhance sidebar UX with solo mode, and introduce After Effects-style motion paths on canvas.
-
-**Target features:**
-- Audio import with waveform, synced playback, fade in/out
-- Audio in video export + beat sync with auto-arrange
-- Sidebar scroll/collapse for key photos, solo mode for sequences and layers
-- Canvas motion path visualization with keyframe dragging
+8 phases, 29 plans, 63 tasks over 5 days. See `.planning/MILESTONES.md` for details.
 
 ### Out of Scope
 
@@ -81,15 +82,16 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ## Context
 
-Shipped v0.2.0 with 20,428 LOC (18,110 TypeScript + 2,020 Rust + 298 CSS) across 847 commits since v0.1.0.
+Shipped v0.3.0 with 31,522 LOC (29,037 TypeScript + 2,157 Rust + 328 CSS) across ~327 commits since v0.2.0.
 Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm.
-Architecture: 9 reactive signal stores (project, sequence, layer, keyframe, timeline, canvas, ui, blur, isolation, export), Rust image pipeline with thumbnail generation, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur (glBlur.ts) with CPU fallback, FX generator system with seeded PRNG, keyframe interpolation engine with polynomial cubic easing, PlaybackEngine with rAF delta accumulation and full-speed mode, command-pattern undo/redo engine, tinykeys keyboard shortcuts, exportRenderer with yielding frame loop and FFmpeg video encoding.
+Architecture: 11 reactive signal stores (project, sequence, layer, keyframe, timeline, canvas, ui, blur, isolation, export, audio, solo), Rust image pipeline with thumbnail generation, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur (glBlur.ts) with CPU fallback, WebGL2 GLSL runtime (glslRuntime) for shader effects and GL transitions, FX generator system with seeded PRNG, keyframe interpolation engine with polynomial cubic easing, PlaybackEngine with rAF delta accumulation and full-speed mode, Web Audio engine with fade scheduling and waveform peak extraction, BPM detector with onset autocorrelation, OfflineAudioContext pre-render for export, command-pattern undo/redo engine, tinykeys keyboard shortcuts, exportRenderer with yielding frame loop and FFmpeg video/audio encoding.
 Project format: .mce v13 with backward compatibility (v1 through v13).
 
 Known technical debt:
-- 2 medium-severity export edge cases (content-overlay image preload, FX generator frame offset)
-- Coalescing API unwired in UI (engine works, no slider consumer calls startCoalescing/stopCoalescing)
-- canUndo/canRedo signals exported but no UI consumes them for button disabling
+- 2 medium-severity export edge cases (content-overlay image preload, FX generator frame offset) — carried from v0.2.0
+- Coalescing API unwired in UI (engine works, no slider consumer calls startCoalescing/stopCoalescing) — carried from v0.1.0
+- canUndo/canRedo signals exported but no UI consumes them for button disabling — carried from v0.1.0
+- GLSL/GLT requirements not formally tracked in REQUIREMENTS.md (phases inserted urgently)
 
 ## Constraints
 
@@ -120,6 +122,15 @@ Known technical debt:
 | Content overlays as sequence kind | Reuses FX track pipeline with content compositing | ✓ Good — interleaves cleanly with FX on timeline |
 | Polynomial cubic easing over bezier curves | Simpler math, 21 unit tests, sufficient for stop-motion | ✓ Good — smooth interpolation, no overshooting |
 | Intent-driven add-layer flows | Eliminates popover dialogs, reuses ImportedView | ✓ Good — consistent UX for all layer types |
+| audioStore follows sequenceStore pattern | Signals, snapshot/restore, pushAction undo — proven architecture | ✓ Good — zero friction adding 11th store |
+| Onset autocorrelation for BPM detection | Accurate, fast, no external DSP dependency needed | ✓ Good — reliable detection without heavy libraries |
+| GlTransition as separate type (not overloading Transition) | Clean mutual exclusion between cross-dissolve and GL transitions | ✓ Good — D-02 mutual exclusion simple to enforce |
+| Dual-texture WebGL2 pipeline for GL transitions | gl-transitions.com convention with dual capture from exportRenderer | ✓ Good — identical preview and export rendering |
+| Optional fields on KeyPhoto for solid/transparent | Minimal structural change across 15+ callsites vs discriminated union | ✓ Good — pragmatic, avoided massive refactor |
+| soloStore as session-only state | Solo mode is ephemeral preview behavior, not project data | ✓ Good — no persistence overhead |
+| 2-panel adaptive sidebar over 3 panels | Layers merged into Sequences panel with icon toggle | ✓ Good — simpler UX, one fewer resizer |
+| Progressive .mce format v8→v13 | Each phase bumps version with serde(default) backward compat | ✓ Good — seamless loading of any version |
+| spawn_blocking for FFmpeg encoding | Keeps blocking I/O isolated from Tauri main thread | ✓ Good — fixed UAT export hang |
 
 ## Evolution
 
@@ -139,4 +150,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after Phase 17.1 — sidebar restructured from 3 panels to 2 panels with adaptive sequence/layer view switching*
+*Last updated: 2026-03-24 after v0.3.0 milestone*

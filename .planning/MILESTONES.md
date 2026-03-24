@@ -1,5 +1,36 @@
 # Milestones
 
+## v0.3.0 Audio & Polish (Shipped: 2026-03-24)
+
+**Phases:** 8 (Phases 15-17, 15.1-15.4, 17.1) | **Plans:** 29 | **Tasks:** 63
+**Lines of code:** 31,522 (29,037 TypeScript + 2,157 Rust + 328 CSS)
+**Timeline:** 5 days (2026-03-20 → 2026-03-24) | **Commits:** ~327
+**Quick tasks:** 7 inline fixes
+
+**Delivered:** Audio import with waveform visualization and synced playback, media in-use tracking with cascade removal, solid/transparent key entries with gradient fills, GLSL shader effects (17 Shadertoy + 18 GL transitions), audio export with BPM beat sync, and a streamlined 2-panel adaptive sidebar.
+
+**Key accomplishments:**
+
+1. Audio import with waveform visualization, synced playback, volume/fade controls, timeline interactions (click, drag, trim, slip, reorder, resize), and .mce v8-v9 persistence
+2. Media in-use tracking with color-coded badges, portal-based usage popovers, and cascade asset removal with composite undo across sequenceStore/audioStore/imageStore
+3. Solid/transparent key entries with split add button, inline color picker, timeline/canvas/export rendering, cross-dissolve blending, and .mce v10 persistence
+4. GLSL shader system: WebGL2 runtime with 17 Shadertoy-ported effects, ShaderBrowser with animated previews, parameter controls, and keyframe animation support
+5. GL transitions: 18 curated gl-transitions.com shaders, dual-texture WebGL2 pipeline, TransitionProperties sidebar, teal timeline overlays, and .mce v11 persistence
+6. Audio export with OfflineAudioContext pre-render, FFmpeg muxing, BPM detection via onset autocorrelation, beat markers, snap-to-beat, auto-arrange strategies, and .mce v12 persistence
+7. Sidebar enhancements: collapsible key photos, global solo mode (S key), gradient fills (linear/radial/conic) with draggable stops, and .mce v13 persistence
+8. Adaptive 2-panel sidebar with sequence/layer view switching, Layers icon with green count badge, back navigation, and 3-to-2 panel flex migration
+
+**Technical debt carried forward:**
+
+- Coalescing API still unwired in UI (carried from v0.1.0)
+- canUndo/canRedo signals unused for button state (carried from v0.1.0)
+- 2 medium-severity export edge cases (content-overlay preload, FX generator frame offset) (carried from v0.2.0)
+- GLSL/GLT requirements not formally tracked in REQUIREMENTS.md (phases inserted urgently)
+
+**Archives:** `milestones/v0.3.0-ROADMAP.md`, `milestones/v0.3.0-REQUIREMENTS.md`
+
+---
+
 ## v0.2.0 Pipeline Complete (Shipped: 2026-03-21)
 
 **Phases:** 23 (Phases 8-14, 12.1-12.15) | **Plans:** 66 | **Tasks:** 128

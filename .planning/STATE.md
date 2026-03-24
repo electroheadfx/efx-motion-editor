@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
-status: Milestone complete
-stopped_at: Completed 17.1-01-PLAN.md
-last_updated: "2026-03-24T13:13:12.850Z"
+status: Milestone complete — archived
+stopped_at: v0.3.0 milestone archived
+last_updated: "2026-03-24"
 last_activity: 2026-03-24
 progress:
   total_phases: 8
@@ -17,132 +17,31 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-21)
+See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 17.1 — adaptative-sidebar-s-layer-window
-Last activity: 2026-03-24 - Completed quick task 260324-k49: Move Shader button from timeline header to Layer dropdown menu
+**Current focus:** Planning next milestone (v0.4.0)
+Last activity: 2026-03-24 - v0.3.0 milestone archived
 
 ## Current Position
 
-Phase: 17.1
-Plan: Not started
+Phase: None (between milestones)
+Plan: None
 
 ## Performance Metrics
 
-**Velocity:**
+**Velocity (v0.3.0):**
 
-- Total plans completed: 0 (v0.3.0)
-- Average duration: —
-- Total execution time: —
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
+- Total plans completed: 29
+- Phases: 8 (15, 15.1, 15.2, 15.3, 15.4, 16, 17, 17.1)
+- Timeline: 5 days (2026-03-20 → 2026-03-24)
 
 ## Accumulated Context
-
-| Phase 15 P01 | 6min | 4 tasks | 12 files |
-| Phase 15 P02 | 6min | 2 tasks | 6 files |
-| Phase 15 P03 | 6min | 2 tasks | 3 files |
-| Phase 15 P04 | 7min | 2 tasks | 7 files |
-| Phase 15.1 P01 | 6min | 2 tasks | 10 files |
-| Phase 15.1 P02 | 4min | 2 tasks | 5 files |
-| Phase 15.2 P00 | 2min | 2 tasks | 3 files |
-| Phase 15.2 P01 | 4min | 3 tasks | 9 files |
-| Phase 15.2 P03 | 3min | 2 tasks | 2 files |
-| Phase 15.2 P02 | 4min | 2 tasks | 3 files |
-| Phase 15.2 P03 | 6min | 3 tasks | 3 files |
-| Phase 15.4 P00 | 3min | 2 tasks | 5 files |
-| Phase 15.4 P01 | 7min | 2 tasks | 22 files |
-| Phase 15.4 P02 | 8min | 3 tasks | 8 files |
-| Phase 15.4 P03 | 7min | 2 tasks | 8 files |
-| Phase 16 P01 | 6min | 3 tasks | 14 files |
-| Phase 16 P02 | 5min | 2 tasks | 6 files |
-| Phase 16 P03 | 10min | 3 tasks | 12 files |
-| Phase 16 P05 | 2min | 1 tasks | 1 files |
-| Phase 16 P04 | 4min | 2 tasks | 3 files |
-| Phase 16 P06 | 4min | 2 tasks | 3 files |
-| Phase 17 P01 | 3min | 2 tasks | 34 files |
-| Phase 17 P02 | 5min | 2 tasks | 10 files |
-| Phase 17 P03 | 5min | 2 tasks | 4 files |
-| Phase 17 P04 | 7min | 2 tasks | 9 files |
-| Phase 17 P05 | 2min | 2 tasks | 1 files |
-| Phase 17 P06 | 3min | 2 tasks | 4 files |
-| Phase 17.1 P01 | 5min | 2 tasks | 4 files |
 
 ### Decisions
 
 Archived to PROJECT.md Key Decisions table.
-Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
-
-- [Phase 15]: audioStore follows sequenceStore pattern: signals, snapshot/restore, pushAction undo
-- [Phase 15]: audioPeaksCache in lib/ as neutral module to avoid circular imports
-- [Phase 15]: Fade-out targets 0.001 not 0 due to Web Audio exponentialRamp limitation
-- [Phase 15]: Audio tracks render in scrolled region below content tracks, sharing scrollY context
-- [Phase 15]: Audio area check inserted between FX and content in onPointerDown priority chain
-- [Phase 15]: Audio buffer offset = (inFrame + slipOffset + framesIntoTrack) / fps for playback sync
-- [Phase 15]: AudioProperties priority in LeftPanel: transition > audio > fx > content > fallback
-- [Phase 15]: Project format v8: audio_tracks with serde(default) for v7 backward compat
-- [Phase 15.1]: D-15/16/17: Video layers use videoAssetId referencing VideoAsset.id instead of videoPath
-- [Phase 15.1]: D-18/19: Usage scanner is pure module taking data as arguments for testability
-- [Phase 15.1]: Project format v9 keeps video_path for v8 backward compat reading
-- [Phase 15.1]: Composite undo captures all 3 stores (sequenceStore, audioStore, imageStore) as single history entry
-- [Phase 15.1]: Removed deprecated isImageInUse, replaced by unified assetUsage.ts module
-- [Phase 15.2]: Used 'as any' type assertions in test scaffolds for pre-Plan-01 compilation of unimplemented store methods
-- [Phase 15.2]: Optional fields on KeyPhoto (not discriminated union) to minimize structural change across 15+ callsites
-- [Phase 15.2]: Project format bumped from v9 to v10 with backward compat for v9 files via conditional spread
-- [Phase 15.2]: No export renderer changes needed — Plan 01 buildSequenceFrames already carries solidColor/isTransparent
-- [Phase 15.2]: getImageSource guards empty imageId at top to prevent loading pipeline pollution for solid/transparent entries
-- [Phase 15.2]: ColorPickerPopover uses onLiveChange/onCommit dual callback to prevent undo stack flooding from continuous color picker drag
-- [Phase 15.2]: updateKeySolidColorLive added as lightweight mutation without undo for live preview during color picker drag
-- [Phase 15.2]: Color picker modal uses HSV internally with saturation-value area and hue slider — standard Photoshop/Figma pattern
-- [Phase 15.2]: FramesPopover with +/- buttons commits immediately on click for responsive UX
-- [Phase 15.4]: All GL transition test stubs use it.todo since implementation is in Wave 1-3
-- [Phase 15.4]: glslRuntime.test.ts WebGL2 stubs remain todo even after implementation (jsdom has no GL context)
-- [Phase 15.4]: GlTransition as separate interface on Sequence, not overloading Transition type, for clean D-02 mutual exclusion
-- [Phase 15.4]: Transition programs cached with 'transition:' prefix key distinct from generator/fx-image cache keys
-- [Phase 15.4]: Progress clamped to [0.001, 0.999] to avoid edge-case shader artifacts (Pitfall 7)
-- [Phase 15.4]: Vec2 params decomposed to paired floats with auto-reconstruction in buildTransitionFragmentSource wrapper
-- [Phase 15.4]: Offscreen canvases reused between GL transition frames via module-level cache with size-check
-- [Phase 15.4]: GL transition path checked before cross-dissolve in overlap loop, with break on match
-- [Phase 15.4]: TransitionProperties returns null for gl-transition type — Plan 03 handles GL properties panel
-- [Phase 15.4]: Transition preview uses programmatic gradients (warm/cool) instead of bundled image assets
-- [Phase 15.4]: GL transition properties panel renders shader-specific param sliders with colorGroup RGB color pickers
-- [Phase 15.4]: Teal timeline overlay with X-pattern distinguishes GL transitions from purple cross-dissolve
-- [Phase 15.4]: Project format v11 with serde(default) on gl_transition for seamless v10 backward compat
-- [Phase 16]: Onset autocorrelation with 10ms energy windows for BPM detection -- accurate, fast, no external DSP needed
-- [Phase 16]: Auto-arrange uses stride-based beat filtering (1/2/4) for every-beat/2-beats/bar strategies
-- [Phase 16]: BPM fields as required on AudioTrack (not optional) with defaults at all construction sites
-- [Phase 16]: 48kHz OfflineAudioContext pre-render for export (professional video standard, no FFmpeg resampling)
-- [Phase 16]: Audio pre-render failure is non-fatal: export continues without audio
-- [Phase 16]: WAV cleanup only for video exports; PNG keeps audio_mix.wav for NLE workflows
-- [Phase 16]: Avoided circular dep audioStore->frameMap->audioStore by making totalFrames an optional param
-- [Phase 16]: Beat markers render from selected audio track only to avoid visual chaos
-- [Phase 16]: Auto-arrange uses sequenceStore snapshot/restore for atomic undo of batch key photo updates
-- [Phase 16]: Option<f64> for bpm to match TypeScript number|null|undefined; Vec<u32> for beat_markers with skip_serializing_if
-- [Phase 16]: spawn_blocking wraps entire ffmpeg::encode_video call to keep blocking I/O properly isolated from Tauri main thread
-- [Phase 16]: 200ms polling interval for cancel-to-abort bridge balances responsiveness vs CPU overhead for audio pre-render
-- [Phase 16]: 60s timeout safety net on OfflineAudioContext.startRendering prevents indefinite hangs
-- [Phase 16]: D-20: Infinity threshold for snap-to-beat in FramesPopover (always snap to nearest, no distance limit)
-- [Phase 16]: D-21: kpStartFrame computed from trackLayouts.peek() in KeyPhotoCard for snap computation
-- [Phase 17]: Regex batch replacement for Tailwind migration with manual fix for var() fallback values
-- [Phase 17]: soloStore is session-only state, not persisted in .mce project file
-- [Phase 17]: renderGlobalFrame soloActive parameter keeps function pure — no signal reads inside
-- [Phase 17]: Solo gating wraps entire overlay loop — FX and content-overlays both stripped in solo mode
-- [Phase 17]: GradientData uses optional angle/centerX/centerY fields with sensible defaults per gradient type
-- [Phase 17]: ColorPickerModal fillMode (solid/gradient) separate from colorInputMode (hex/rgba/hsl) to avoid naming collision
-- [Phase 17]: buildGradientCSS exported from GradientBar for reuse in preview and export renderers
-- [Phase 17]: Project format bumped to v13 with serde(default) for v12 backward compat
-- [Phase 17]: createCanvasGradient uses diagonal length for linear gradient endpoints, conic fallback to linear
-- [Phase 17]: Gradient check before solidColor in renderFrame; updateKeyGradient clears solidColor
-- [Phase 17]: Portal rendering alone resolves drag propagation; SortableJS handle/filter not needed
-- [Phase 17]: Export createCanvasGradient from previewRenderer for reuse in TimelineRenderer
-- [Phase 17]: Gradient check before solidColor in timeline rendering; clip rect per cell for gradient overflow
-- [Phase 17.1]: Kept calcFlexResize (3-panel) intact for backward compat; Plan 02 updates LeftPanel.tsx consumers
-- [Phase 17.1]: getPanelFlex migration detects stored.length===3 and drops index 1 (lay) for seamless 3-to-2 upgrade
+Full phase decisions archived in milestones/v0.3.0-ROADMAP.md.
 
 ### Pending Todos
 
@@ -150,14 +49,8 @@ None.
 
 ### Roadmap Evolution
 
-v0.3.0 roadmap: 4 phases (15-18), 19 requirements.
-Phases 17 and 18 are independent and can parallelize after Phase 16.
-
-- Phase 15.1 inserted: Add in-use indicators to imported media and safe removal with timeline awareness (before Phase 16)
-- Phase 15.2 inserted after Phase 15: Solid Sequence (URGENT)
-- Phase 15.3 inserted after Phase 15: GLSL Shadertoys (URGENT)
-- Phase 15.4 inserted after Phase 15: GL Transition (URGENT)
-- Phase 17.1 inserted after Phase 17: Adaptative sidebar's layer window (URGENT)
+v0.3.0 complete. v0.4.0 planned with Phase 18 (Canvas Motion Path).
+Backlog: Paint Layer Rotopaint (Phase 999.1).
 
 ### Blockers/Concerns
 
@@ -165,18 +58,10 @@ No active blockers.
 
 ### Quick Tasks Completed
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260322-cwc | Add @efxlab/efx-canvas-motion dependency and document fork | 2026-03-22 | 31c8a03 | [260322-cwc-add-reference-to-canvas-motion-because-i](./quick/260322-cwc-add-reference-to-canvas-motion-because-i/) |
-| 260322-d9q | Add right-click context menu to ImportGrid for asset removal | 2026-03-22 | 89cf160 | [260322-d9q-in-importer-media-can-t-be-suppressed-i-](./quick/260322-d9q-in-importer-media-can-t-be-suppressed-i-/) |
-| 260323-fsg | Remove Color Grade/Browse Shaders from Layer menu, rename GLSL to Shader, add Audio label | 2026-03-23 | 82f240c | [260323-fsg-timeline-buttons-remove-color-grade-from](./quick/260323-fsg-timeline-buttons-remove-color-grade-from/) |
-| 260323-g4n | Remove duplicate playback controls from CanvasArea bottom bar | 2026-03-23 | bf878b4 | [260323-g4n-remove-duplicate-playback-controls-from-](./quick/260323-g4n-remove-duplicate-playback-controls-from-/) |
-| 260323-h1o | Replace 4-button playback controls with 7-button transport bar | 2026-03-23 | bf4f703 | [260323-h1o-replace-timeline-playback-controls-with-](./quick/260323-h1o-replace-timeline-playback-controls-with-/) |
-| 260324-ju7 | Move canvas zoom controls from bottom to top of canvas area | 2026-03-24 | 728fe92 | [260324-ju7-move-canvas-zoom-controls-from-bottom-to](./quick/260324-ju7-move-canvas-zoom-controls-from-bottom-to/) |
-| 260324-k49 | Move Shader button from timeline header to Layer dropdown menu | 2026-03-24 | 9da80c3 | [260324-k49-move-the-shader-button-from-timeline-hea](./quick/260324-k49-move-the-shader-button-from-timeline-hea/) |
+Archived with v0.3.0 milestone.
 
 ## Session Continuity
 
-Last session: 2026-03-24T13:33:39Z
-Stopped at: Completed quick-260324-k49
+Last session: 2026-03-24
+Stopped at: v0.3.0 milestone completion
 Resume file: None
