@@ -1,6 +1,7 @@
 import type {TrackLayout, FxTrackLayout, AudioTrackLayout} from '../../types/timeline';
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
 import {computeDownbeatFrames} from '../../lib/beatMarkerEngine';
+import {createCanvasGradient} from '../../lib/previewRenderer';
 import {ThumbnailCache} from './ThumbnailCache';
 
 // --- Design constants (exported for TimelineInteraction) ---
@@ -579,8 +580,27 @@ export class TimelineRenderer {
 
         if (rangeX + rangeWidth < TRACK_HEADER_WIDTH || rangeX > w) continue;
 
-        // === Solid/transparent range rendering (per D-16, D-17) ===
-        if (range.solidColor && !range.isTransparent) {
+        // === Gradient / Solid / Transparent range rendering ===
+        if (range.gradient) {
+          // Gradient: fill each frame cell with Canvas 2D gradient
+          for (let f = 0; f < range.holdFrames; f++) {
+            const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+            const fy = trackY + 2;
+            const fw = frameWidth;
+            const fh = TRACK_HEIGHT - 4;
+            if (fx + fw < TRACK_HEADER_WIDTH || fx > w) continue;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(fx, fy, fw, fh);
+            ctx.clip();
+            ctx.fillStyle = createCanvasGradient(ctx, range.gradient, fw, fh);
+            ctx.fillRect(fx, fy, fw, fh);
+            ctx.restore();
+            ctx.strokeStyle = colors.frameBorder;
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(fx, fy, fw, fh);
+          }
+        } else if (range.solidColor && !range.isTransparent) {
           // Solid: fill entire range with solid color
           for (let f = 0; f < range.holdFrames; f++) {
             const fx = (range.startFrame + f) * frameWidth - scrollX + TRACK_HEADER_WIDTH;

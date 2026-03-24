@@ -58,6 +58,7 @@ export interface KeyPhotoRange {
   holdFrames: number;
   solidColor?: string;       // hex color for solid key photo ranges
   isTransparent?: boolean;   // true for transparent key photo ranges
+  gradient?: GradientData;   // gradient fill data for gradient key photo ranges
 }
 
 /** Layout info for an audio track row in the timeline */

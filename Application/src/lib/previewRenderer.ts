@@ -17,7 +17,7 @@ import {getShaderById} from './shaderLibrary';
  * Supports linear, radial, and conic gradient types with runtime fallback
  * for conic gradients on older WebKit builds.
  */
-function createCanvasGradient(
+export function createCanvasGradient(
   ctx: CanvasRenderingContext2D,
   gradient: GradientData,
   width: number,
