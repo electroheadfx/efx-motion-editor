@@ -3,6 +3,10 @@ import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions} from '
 import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX} from '../types/paint';
 import {pushAction} from '../lib/history';
 
+// Late-bound callback to mark project dirty without circular import
+let _markProjectDirty: (() => void) | null = null;
+export function _setPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
+
 // --- Signals ---
 
 const paintMode = signal(false);
@@ -80,6 +84,7 @@ export const paintStore = {
     frameData.elements.push(element);
     this.markDirty(layerId, frame);
     paintVersion.value++;
+    _markProjectDirty?.();
     pushAction({
       id: crypto.randomUUID(),
       description: `Add paint element to frame ${frame}`,
@@ -104,6 +109,7 @@ export const paintStore = {
     const removed = frameData.elements.splice(idx, 1)[0];
     this.markDirty(layerId, frame);
     paintVersion.value++;
+    _markProjectDirty?.();
     pushAction({
       id: crypto.randomUUID(),
       description: `Remove paint element from frame ${frame}`,
@@ -127,6 +133,7 @@ export const paintStore = {
     frameData.elements = [];
     this.markDirty(layerId, frame);
     paintVersion.value++;
+    _markProjectDirty?.();
     pushAction({
       id: crypto.randomUUID(),
       description: `Clear paint frame ${frame}`,

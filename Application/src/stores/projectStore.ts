@@ -21,7 +21,7 @@ import {startAutoSave, stopAutoSave} from '../lib/autoSave';
 import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
-import {paintStore} from './paintStore';
+import {paintStore, _setPaintMarkDirtyCallback} from './paintStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
 import {readFile} from '@tauri-apps/plugin-fs';
 
@@ -744,3 +744,7 @@ _setImageMarkDirtyCallback(() => projectStore.markDirty());
 // Wire audioStore's markDirty callback to projectStore
 // This avoids circular imports (audioStore -> projectStore)
 _setAudioMarkDirtyCallback(() => projectStore.markDirty());
+
+// Wire paintStore's markDirty callback to projectStore
+// This ensures auto-save fires when the user paints
+_setPaintMarkDirtyCallback(() => projectStore.markDirty());

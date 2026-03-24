@@ -236,6 +236,9 @@ pub struct MceLayerSource {
     pub shader_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub params: Option<std::collections::HashMap<String, f64>>,
+    // Paint layer fields
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer_id: Option<String>,
 }
 
 /// Animation keyframe on a layer

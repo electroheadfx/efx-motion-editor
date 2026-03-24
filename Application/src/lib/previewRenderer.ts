@@ -268,10 +268,17 @@ export class PreviewRenderer {
       } else if (layer.type === 'paint') {
         const paintFrame = paintStore.getFrame(layer.id, frame);
         if (paintFrame && paintFrame.elements.length > 0) {
+          // Render paint to offscreen canvas so eraser's destination-out
+          // only erases paint (not the underlying image)
+          const off = document.createElement('canvas');
+          off.width = logicalW;
+          off.height = logicalH;
+          const offCtx = off.getContext('2d')!;
+          renderPaintFrame(offCtx, paintFrame, logicalW, logicalH);
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
           ctx.globalAlpha = effectiveOpacity;
-          renderPaintFrame(ctx, paintFrame, logicalW, logicalH);
+          ctx.drawImage(off, 0, 0);
           ctx.restore();
         }
       } else {

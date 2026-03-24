@@ -1,5 +1,4 @@
 import {useState} from 'preact/hooks';
-import {Pen, Eraser, Pipette, PaintBucket, Minus, Square, Circle} from 'lucide-preact';
 import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 import {paintStore} from '../../stores/paintStore';
@@ -7,16 +6,6 @@ import {timelineStore} from '../../stores/timelineStore';
 import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX} from '../../types/paint';
 import type {PaintToolType} from '../../types/paint';
 import type {Layer} from '../../types/layer';
-
-const TOOLS: {type: PaintToolType; Icon: typeof Pen; label: string}[] = [
-  {type: 'brush', Icon: Pen, label: 'Brush'},
-  {type: 'eraser', Icon: Eraser, label: 'Eraser'},
-  {type: 'eyedropper', Icon: Pipette, label: 'Eyedropper'},
-  {type: 'fill', Icon: PaintBucket, label: 'Fill'},
-  {type: 'line', Icon: Minus, label: 'Line'},
-  {type: 'rect', Icon: Square, label: 'Rectangle'},
-  {type: 'ellipse', Icon: Circle, label: 'Ellipse'},
-];
 
 const SHAPE_TOOLS: PaintToolType[] = ['line', 'rect', 'ellipse'];
 const BRUSH_TOOLS: PaintToolType[] = ['brush', 'eraser'];
@@ -47,31 +36,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
         {layer.name}
       </div>
 
-      {/* 1. Tool Selection */}
-      <div>
-        <SectionLabel text="TOOLS" />
-        <div class="grid grid-cols-4 gap-1 mt-1.5">
-          {TOOLS.map(({type, Icon, label}) => {
-            const isActive = activeTool === type;
-            return (
-              <button
-                key={type}
-                class={`flex items-center justify-center w-full h-8 rounded cursor-pointer transition-colors ${
-                  isActive
-                    ? 'bg-(--color-accent) text-white'
-                    : 'bg-(--color-bg-input) text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-border-subtle)'
-                }`}
-                title={label}
-                onClick={() => paintStore.setTool(type)}
-              >
-                <Icon size={16} />
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 2. Brush Settings */}
+      {/* Brush Settings */}
       {showBrushSettings && (
         <div>
           <SectionLabel text="BRUSH" />
