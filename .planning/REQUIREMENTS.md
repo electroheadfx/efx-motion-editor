@@ -47,7 +47,7 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 ### Enhancements
 
 - [ ] ~~**ENH-01**: User can scroll through key photos in sidebar Sequences panel when list overflows~~ (dropped per D-01 — subsumed by ENH-02 collapse)
-- [ ] **ENH-02**: User can collapse/expand key photo list by clicking sequence header bar a second time
+- [x] **ENH-02**: User can collapse/expand key photo list by clicking sequence header bar a second time
 - [ ] **ENH-03**: User can toggle global solo mode to preview and export without overlay layers and FX (revised per D-06 from per-sequence to global)
 - [ ] ~~**ENH-04**: User can solo individual layers within a sequence via sidebar toggle~~ (dropped per D-07 — only global solo)
 - [ ] **ENH-05**: User can apply gradient fills (linear, radial, conic) with 2-5 draggable color stops to solid key entries and timeline layer solids via extended ColorPickerModal, with gradient data persisting in .mce project file
@@ -118,7 +118,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BEAT-04 | Phase 16 | Complete |
 | BEAT-05 | Phase 16 | Complete |
 | ENH-01 | Phase 17 | Dropped (subsumed by ENH-02 per D-01) |
-| ENH-02 | Phase 17 | Pending |
+| ENH-02 | Phase 17 | Complete |
 | ENH-03 | Phase 17 | Pending |
 | ENH-04 | Phase 17 | Dropped (per D-07, only global solo) |
 | ENH-05 | Phase 17 | Pending |

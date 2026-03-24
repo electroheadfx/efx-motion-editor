@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.3.0
 milestone_name: Audio & Polish
-status: Ready to plan
-stopped_at: Phase 999.1 context gathered
-last_updated: "2026-03-24T09:05:00.128Z"
-last_activity: 2026-03-23
+status: Ready to execute
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-24T09:43:32.788Z"
+last_activity: 2026-03-24
 progress:
   total_phases: 9
   completed_phases: 6
-  total_plans: 21
+  total_plans: 31
   completed_plans: 21
 ---
 
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 16 — audio-export-beat-sync
-Last activity: 2026-03-23
+**Current focus:** Phase 17 — enhancements
+Last activity: 2026-03-24
 
 ## Current Position
 
-Phase: 17
-Plan: Not started
+Phase: 17 (enhancements) — EXECUTING
+Plan: 2 of 4
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Plan: Not started
 | Phase 16 P05 | 2min | 1 tasks | 1 files |
 | Phase 16 P04 | 4min | 2 tasks | 3 files |
 | Phase 16 P06 | 4min | 2 tasks | 3 files |
+| Phase 17 P01 | 3min | 2 tasks | 34 files |
 
 ### Decisions
 
@@ -121,6 +122,7 @@ Full phase decisions archived in milestones/v0.2.0-ROADMAP.md.
 - [Phase 16]: 60s timeout safety net on OfflineAudioContext.startRendering prevents indefinite hangs
 - [Phase 16]: D-20: Infinity threshold for snap-to-beat in FramesPopover (always snap to nearest, no distance limit)
 - [Phase 16]: D-21: kpStartFrame computed from trackLayouts.peek() in KeyPhotoCard for snap computation
+- [Phase 17]: Regex batch replacement for Tailwind migration with manual fix for var() fallback values
 
 ### Pending Todos
 
@@ -152,6 +154,6 @@ No active blockers.
 
 ## Session Continuity
 
-Last session: 2026-03-24T09:05:00.125Z
-Stopped at: Phase 999.1 context gathered
-Resume file: .planning/phases/999.1-add-paint-layer-rotopaint/999.1-CONTEXT.md
+Last session: 2026-03-24T09:43:32.786Z
+Stopped at: Completed 17-01-PLAN.md
+Resume file: None
