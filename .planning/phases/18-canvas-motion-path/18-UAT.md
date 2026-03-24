@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: complete
 phase: 18-canvas-motion-path
 source: 18-01-SUMMARY.md, 18-02-SUMMARY.md
 started: 2026-03-24T18:30:00Z
-updated: 2026-03-24T18:45:00Z
+updated: 2026-03-24T19:50:00Z
 ---
 
 ## Current Test
@@ -30,9 +30,8 @@ result: pass
 
 ### 5. Keyframe Circle Drag Repositioning
 expected: Click and drag a keyframe circle on the motion path to move it to a new position. The dotted trail should update in real-time as you drag, reflecting the new path shape.
-result: issue
-reported: "edit work but update is bad, because each modification on each keyframe in live it need to click on 'update keyframe', I think a modification from a key frame should update in real time. When i click on keyframe and resize, move, rotate, the canvas is not updated, I do in blind mode, when I refresh I can see the change in canvas, not before."
-severity: major
+result: pass
+retest: "Gap closure plan 18-03 fixed both dead-end signal paths. Sidebar edits and canvas drag now write to layer.keyframes, flowing through sequenceStore.sequences to Preview.tsx. User approved re-test."
 
 ### 6. Auto-Seek on Drag Start
 expected: When you begin dragging a keyframe circle, the playhead (timeline scrubber) should automatically jump to that keyframe's frame.
@@ -53,8 +52,8 @@ result: pass
 ## Summary
 
 total: 9
-passed: 8
-issues: 1
+passed: 9
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -62,24 +61,6 @@ blocked: 0
 ## Gaps
 
 - truth: "Keyframe modifications (move, resize, rotate) should update the canvas and motion path trail in real-time without requiring a manual 'update keyframe' click or page refresh"
-  status: failed
-  reason: "User reported: edit work but update is bad, because each modification on each keyframe in live it need to click on 'update keyframe', I think a modification from a key frame should update in real time. When i click on keyframe and resize, move, rotate, the canvas is not updated, I do in blind mode, when I refresh I can see the change in canvas, not before."
-  severity: major
+  status: closed
+  closed_by: 18-03-PLAN.md (gap closure)
   test: 5
-  root_cause: "Two-part gap: (1) Sidebar edits between keyframes write to keyframeStore.transientOverrides which Preview.tsx never subscribes to — dead-end signal path. (2) Canvas drag move/scale/rotate handlers update layer.transform but not layer.keyframes, so interpolateLayers() in exportRenderer.ts immediately overwrites the change with keyframe-interpolated values."
-  artifacts:
-    - path: "Application/src/components/Preview.tsx"
-      issue: "render effect subscribes to sequenceStore.sequences but not transientOverrides or displayValues"
-    - path: "Application/src/lib/exportRenderer.ts"
-      issue: "interpolateLayers overwrites layer.transform with keyframe data, ignoring direct transform edits"
-    - path: "Application/src/stores/keyframeStore.ts"
-      issue: "transientOverrides signal dead-ends at UI, never reaches renderer"
-    - path: "Application/src/components/canvas/TransformOverlay.tsx"
-      issue: "move/scale/rotate handlers update transform but not keyframes"
-    - path: "Application/src/components/sidebar/SidebarProperties.tsx"
-      issue: "between-keyframe edits write to transient-only path"
-  missing:
-    - "Preview.tsx render effect needs to subscribe to transientOverrides/displayValues"
-    - "TransformOverlay move/scale/rotate handlers should update layer.keyframes (like kf-drag already does)"
-    - "interpolateLayers needs to apply transient overrides for the selected layer"
-  debug_session: ".planning/debug/canvas-no-live-update.md"
