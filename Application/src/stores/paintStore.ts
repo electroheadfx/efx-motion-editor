@@ -14,8 +14,8 @@ const strokeOptions = signal<PaintStrokeOptions>({...DEFAULT_STROKE_OPTIONS});
 const shapeFilled = signal(false);
 const fillTolerance = signal(10);
 const onionSkinEnabled = signal(false);
-const onionSkinPrevRange = signal(3);
-const onionSkinNextRange = signal(2);
+const onionSkinPrevRange = signal(1);
+const onionSkinNextRange = signal(0);
 const onionSkinOpacity = signal(0.3);
 
 /** Bumped on every paint data mutation so reactive consumers (Preview) re-render */
@@ -197,8 +197,8 @@ export const paintStore = {
     shapeFilled.value = false;
     fillTolerance.value = 10;
     onionSkinEnabled.value = false;
-    onionSkinPrevRange.value = 3;
-    onionSkinNextRange.value = 2;
+    onionSkinPrevRange.value = 1;
+    onionSkinNextRange.value = 0;
     onionSkinOpacity.value = 0.3;
   },
 

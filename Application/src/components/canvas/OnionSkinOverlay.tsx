@@ -48,6 +48,13 @@ export function OnionSkinOverlay() {
     const layerId = layerStore.selectedLayerId.peek();
     if (!layerId) return;
 
+    // Offscreen canvas so renderPaintFrame's per-element globalAlpha
+    // doesn't override the onion skin opacity
+    const offscreen = document.createElement('canvas');
+    offscreen.width = w;
+    offscreen.height = h;
+    const offCtx = offscreen.getContext('2d')!;
+
     // Render previous frames (opacity decreases with distance)
     for (let i = 1; i <= prevRange; i++) {
       const frameNum = currentFrame - i;
@@ -57,9 +64,11 @@ export function OnionSkinOverlay() {
       if (!frameData || frameData.elements.length === 0) continue;
 
       const opacity = baseOpacity * (1 - i / (prevRange + 1));
+      offCtx.clearRect(0, 0, w, h);
+      renderPaintFrame(offCtx, frameData, w, h);
       ctx.save();
       ctx.globalAlpha = opacity;
-      renderPaintFrame(ctx, frameData, w, h);
+      ctx.drawImage(offscreen, 0, 0);
       ctx.restore();
     }
 
@@ -71,9 +80,11 @@ export function OnionSkinOverlay() {
       if (!frameData || frameData.elements.length === 0) continue;
 
       const opacity = baseOpacity * (1 - i / (nextRange + 1));
+      offCtx.clearRect(0, 0, w, h);
+      renderPaintFrame(offCtx, frameData, w, h);
       ctx.save();
       ctx.globalAlpha = opacity;
-      renderPaintFrame(ctx, frameData, w, h);
+      ctx.drawImage(offscreen, 0, 0);
       ctx.restore();
     }
   }, [currentFrame, enabled, prevRange, nextRange, baseOpacity, version]);
