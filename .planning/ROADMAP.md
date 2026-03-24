@@ -180,7 +180,7 @@ Plans:
 ### Phase 17: Enhancements
 **Goal**: Users get collapsible key photo lists in the sidebar, a global solo mode that strips layers/FX from preview and export, gradient fills for solid entries, and Tailwind v4 syntax cleanup
 **Depends on**: Phase 16 (project format v12), Phase 12.15 (isolation infrastructure)
-**Requirements**: ENH-02, ENH-03, ENH-05 (ENH-01 dropped per D-01, ENH-04 dropped per D-07)
+**Requirements**: ENH-01, ENH-02, ENH-03, ENH-04
 **Success Criteria** (what must be TRUE):
   1. User can collapse and expand a sequence's key photo list by clicking the sequence header bar a second time (ENH-01 subsumed by ENH-02 per D-01)
   2. User can toggle global solo mode via timeline toolbar button or S key, stripping all overlay layers and FX from preview and export
@@ -227,9 +227,24 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 
 ### Phase 999.1: Add Paint Layer Rotopaint (BACKLOG)
 
-**Goal:** [Captured for future planning] Add a paint/rotopaint layer type for frame-by-frame painting and rotoscoping directly on the canvas
-**Requirements:** TBD
-**Plans:** 0 plans
+**Goal:** Add a paint/rotopaint layer type for frame-by-frame drawing and rotoscoping directly on the canvas, with a perfect-freehand brush engine, full tool suite (brush, eraser, eyedropper, fill, shapes), per-frame vector stroke storage, onion skinning, sidecar file persistence, and standard layer compositing
+**Depends on:** Any phase with project format (will use next available version number)
+**Requirements:** PAINT-01, PAINT-02, PAINT-03, PAINT-04, PAINT-05, PAINT-06, PAINT-07, PAINT-08, PAINT-09, PAINT-10, PAINT-11, PAINT-12, PAINT-13
+**Success Criteria** (what must be TRUE):
+  1. User can add a paint layer via the Layer menu and enter paint mode via toolbar button or P key
+  2. User can draw pressure-sensitive brush strokes and erase with per-stroke color/opacity
+  3. User can use fill tool and geometric shape tools (line, rect, ellipse)
+  4. Paint is per-frame (every timeline frame has its own canvas), supporting true frame-by-frame animation
+  5. Onion skinning shows ghosted adjacent frame paint with configurable range and opacity
+  6. Paint layers composite normally in the layer stack with blend modes and opacity
+  7. Paint renders identically in preview and export
+  8. Paint data persists as sidecar JSON files alongside the .mce project
+**Plans**: 6 plans
 
 Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+- [ ] 999.1-01-PLAN.md — Foundation: paint types, paintStore, paintRenderer, LayerType extension, perfect-freehand install
+- [ ] 999.1-02-PLAN.md — Canvas interaction: PaintOverlay, paint mode toggle, TransformOverlay gating
+- [ ] 999.1-03-PLAN.md — Rendering pipeline: PreviewRenderer/exportRenderer integration, frameMap color, AddLayerMenu entry
+- [ ] 999.1-04-PLAN.md — Paint UI: PaintProperties sidebar, PaintToolbar floating overlay, LeftPanel routing
+- [ ] 999.1-05-PLAN.md — Persistence: sidecar file I/O, projectStore save/load wiring, project format version bump, Rust paint dir
+- [ ] 999.1-06-PLAN.md — Advanced: flood fill tool, onion skinning overlay, end-to-end visual verification
