@@ -69,7 +69,7 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 - [x] **Phase 15.3: GLSL Shadertoys** - WebGL2 shader runtime, shader browser, 17 Shadertoy-ported effects, parameter controls, keyframe animation (completed 2026-03-22)
 - [ ] **Phase 15.4: GL Transition** - GLSL-powered transitions between sequences, 18 curated gl-transitions.com shaders, dual-texture rendering pipeline, browser/sidebar/timeline integration
 - [x] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange (completed 2026-03-23)
-- [ ] **Phase 17: Enhancements** - Sidebar key photo scroll/collapse, sequence solo, layer solo
+- [ ] **Phase 17: Enhancements** - Key photo collapse/expand, global solo mode, gradient solids, Tailwind v4 cleanup
 - [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
 
 ## Phase Details
@@ -178,14 +178,22 @@ Plans:
 - [ ] 16-06-PLAN.md — Gap closure: snap-to-beat in FramesPopover (key photo hold-duration snap)
 
 ### Phase 17: Enhancements
-**Goal**: Users get improved sidebar UX with scrollable and collapsible key photo lists, plus granular solo controls for sequences and layers
-**Depends on**: Phase 12.15 (existing isolation infrastructure)
+**Goal**: Users get collapsible key photo lists in the sidebar, a global solo mode that strips layers/FX from preview and export, gradient fills for solid entries, and Tailwind v4 syntax cleanup
+**Depends on**: Phase 16 (project format v12), Phase 12.15 (isolation infrastructure)
 **Requirements**: ENH-01, ENH-02, ENH-03, ENH-04
 **Success Criteria** (what must be TRUE):
-  1. User can scroll through key photos in the sidebar Sequences panel when the list overflows the visible area
-  2. User can collapse and expand a sequence's key photo list by clicking the sequence header bar a second time
-  3. User can solo a sequence to play it without its layers and FX, and solo individual layers within a sequence via a sidebar toggle
-**Plans**: TBD
+  1. User can collapse and expand a sequence's key photo list by clicking the sequence header bar a second time (ENH-01 subsumed by ENH-02 per D-01)
+  2. User can toggle global solo mode via timeline toolbar button or S key, stripping all overlay layers and FX from preview and export
+  3. User can apply gradient fills (linear, radial, conic) with 2-5 color stops to solid key entries via extended ColorPickerModal
+  4. Gradient data persists in .mce project file v13 with backward compat for v12
+  5. All Tailwind v4 deprecated `[var(--...)]` patterns migrated to parenthetical `(--...)` syntax
+**Plans**: 4 plans
+
+Plans:
+- [ ] 17-01-PLAN.md — Key photo collapse/expand toggle + Tailwind v4 syntax migration
+- [ ] 17-02-PLAN.md — Global solo mode: soloStore, toolbar button, renderGlobalFrame gating, keyboard shortcut
+- [ ] 17-03-PLAN.md — Gradient data model (types) + ColorPickerModal gradient mode UI + GradientBar component
+- [ ] 17-04-PLAN.md — Gradient rendering pipeline + project persistence v13 + gradient UI wiring
 
 ### Phase 18: Canvas Motion Path
 **Goal**: Users can see and edit position keyframe trajectories directly on the canvas as After Effects-style motion paths
@@ -212,7 +220,7 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 | 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
 | 15.4 GL Transition | v0.3.0 | 3/4 | In Progress|  |
 | 16. Audio Export & Beat Sync | v0.3.0 | 5/6 | Complete    | 2026-03-23 |
-| 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
+| 17. Enhancements | v0.3.0 | 0/4 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
 
 ## Backlog
