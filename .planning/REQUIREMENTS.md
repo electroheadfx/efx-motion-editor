@@ -52,6 +52,12 @@ Requirements for milestone v0.3.0 Audio & Polish. Each maps to roadmap phases.
 - [ ] ~~**ENH-04**: User can solo individual layers within a sequence via sidebar toggle~~ (dropped per D-07 — only global solo)
 - [x] **ENH-05**: User can apply gradient fills (linear, radial, conic) with 2-5 draggable color stops to solid key entries and timeline layer solids via extended ColorPickerModal, with gradient data persisting in .mce project file
 
+### Adaptive Sidebar Layer Window
+
+- [ ] **ASIDE-01**: Sidebar layout simplifies from 3 panels (Sequences, Layers, Properties) to 2 panels (Sequences/Layers adaptive + Properties) with single resizer
+- [ ] **ASIDE-02**: User can open a sequence's layer view by clicking a layer icon on the sequence header, view layers and add new layers, and return to the sequence list via back arrow
+- [ ] **ASIDE-03**: Panel flex persistence migrates from 3-value to 2-value format with backward compatibility for existing saved configurations
+
 ### Canvas Motion Path
 
 - [ ] **PATH-01**: User can see After Effects-style motion path on canvas when a layer has 2+ position keyframes
@@ -122,15 +128,18 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENH-03 | Phase 17 | Complete |
 | ENH-04 | Phase 17 | Dropped (per D-07, only global solo) |
 | ENH-05 | Phase 17 | Complete |
+| ASIDE-01 | Phase 17.1 | Pending |
+| ASIDE-02 | Phase 17.1 | Pending |
+| ASIDE-03 | Phase 17.1 | Pending |
 | PATH-01 | Phase 18 | Pending |
 | PATH-02 | Phase 18 | Pending |
 | PATH-03 | Phase 18 | Pending |
 
 **Coverage:**
-- v0.3.0 requirements: 34 total (2 dropped)
-- Mapped to phases: 34
+- v0.3.0 requirements: 37 total (2 dropped)
+- Mapped to phases: 37
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-21*
-*Last updated: 2026-03-24 after Phase 17 planning revision (added ENH-05 gradient solids, marked ENH-01/ENH-04 dropped)*
+*Last updated: 2026-03-24 after Phase 17.1 planning (added ASIDE-01/02/03 adaptive sidebar requirements)*

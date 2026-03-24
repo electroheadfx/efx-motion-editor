@@ -2,13 +2,13 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-18) adds audio import with waveforms and beat sync, sidebar/solo enhancements, and After Effects-style canvas motion paths.
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) adds audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences, and sidebar/solo enhancements.
 
 ## Milestones
 
 - ✅ **v0.1.0** — Phases 1-7 (shipped 2019-03-11)
 - ✅ **v0.2.0 Pipeline Complete** — Phases 8-14 (shipped 2019-03-21)
-- 🚧 **v0.3.0 Audio & Polish** — Phases 15-18 (in progress)
+- 🚧 **v0.3.0 Audio & Polish** — Phases 15-17 (in progress)
 
 ## Phases
 
@@ -61,16 +61,15 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 
 ### 🚧 v0.3.0 Audio & Polish (In Progress)
 
-**Milestone Goal:** Add audio import with waveforms and beat sync, enhance sidebar UX with solo mode, and introduce After Effects-style motion paths on canvas.
+**Milestone Goal:** Add audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences, and enhance sidebar UX with solo mode and gradient fills.
 
 - [x] **Phase 15: Audio Import & Waveform** - Import audio, waveform visualization, synced playback, volume, offset, fades, project persistence (completed 2019-03-21)
 - [x] **Phase 15.1: Media In-Use Indicators & Safe Removal** - Check timeline usage before removal, warn user, visual badge on used assets in ImportGrid (completed 2026-03-22)
 - [x] **Phase 15.2: Solid Sequence** - Key solid and key transparent entries in content sequences, color picker, timeline/canvas/export rendering (completed 2026-03-22)
 - [x] **Phase 15.3: GLSL Shadertoys** - WebGL2 shader runtime, shader browser, 17 Shadertoy-ported effects, parameter controls, keyframe animation (completed 2026-03-22)
-- [ ] **Phase 15.4: GL Transition** - GLSL-powered transitions between sequences, 18 curated gl-transitions.com shaders, dual-texture rendering pipeline, browser/sidebar/timeline integration
+- [x] **Phase 15.4: GL Transition** - GLSL-powered transitions between sequences, 18 curated gl-transitions.com shaders, dual-texture rendering pipeline, browser/sidebar/timeline integration (completed 2026-03-23)
 - [x] **Phase 16: Audio Export & Beat Sync** - Audio in video export, BPM detection, beat markers, snap-to-beat, auto-arrange (completed 2026-03-23)
-- [x] **Phase 17: Enhancements** - Key photo collapse/expand, global solo mode, gradient solids, Tailwind v4 cleanup (UAT gap closure in progress) (completed 2026-03-24)
-- [ ] **Phase 18: Canvas Motion Path** - Position keyframe path on canvas, draggable diamonds, speed-indicating dot spacing
+- [x] **Phase 17: Enhancements** - Key photo collapse/expand, global solo mode, gradient solids, Tailwind v4 cleanup (completed 2026-03-24)
 
 ## Phase Details
 
@@ -112,7 +111,7 @@ Plans:
 - [x] 15.4-00-PLAN.md — Wave 0: test scaffolds for glslRuntime, transitionEngine, sequenceStore, projectStore, exportRenderer
 - [x] 15.4-01-PLAN.md — Foundation: GlTransition type, dual-texture GL pipeline, 18 transition shaders
 - [x] 15.4-02-PLAN.md — Rendering pipeline + ShaderBrowser Transition tab + Apply flow
-- [ ] 15.4-03-PLAN.md — TransitionProperties sidebar, timeline indicator, project persistence (.mce v11)
+- [x] 15.4-03-PLAN.md — TransitionProperties sidebar, timeline indicator, project persistence (.mce v11)
 
 ### Phase 15.3: GLSL Shadertoys (INSERTED)
 
@@ -175,7 +174,7 @@ Plans:
 - [x] 16-03-PLAN.md — Beat markers, BPM UI, snap-to-beat, auto-arrange, project persistence v12
 - [x] 16-04-PLAN.md — Gap closure: fix export hang (async FFmpeg, cancel/timeout on audio pre-render)
 - [x] 16-05-PLAN.md — Gap closure: fix BPM persistence (add missing fields to Rust MceAudioTrack)
-- [ ] 16-06-PLAN.md — Gap closure: snap-to-beat in FramesPopover (key photo hold-duration snap)
+- [x] 16-06-PLAN.md — Gap closure: snap-to-beat in FramesPopover (key photo hold-duration snap)
 
 ### Phase 17: Enhancements
 **Goal**: Users get collapsible key photo lists in the sidebar, a global solo mode that strips layers/FX from preview and export, gradient fills for solid entries, and Tailwind v4 syntax cleanup
@@ -195,9 +194,26 @@ Plans:
 - [x] 17-03-PLAN.md — Gradient data model (types) + ColorPickerModal gradient mode UI + GradientBar component
 - [x] 17-04-PLAN.md — Gradient rendering pipeline + project persistence v13 + gradient UI wiring
 - [x] 17-05-PLAN.md — Gap closure: ColorPickerModal portal rendering + gradient input modes
-- [ ] 17-06-PLAN.md — Gap closure: timeline gradient thumbnail rendering
+- [x] 17-06-PLAN.md — Gap closure: timeline gradient thumbnail rendering
 
-### Phase 18: Canvas Motion Path
+### Phase 17.1: Adaptative sidebar's layer window (INSERTED)
+
+**Goal:** Replace the standalone LAYERS panel with an adaptive view inside the SEQUENCES panel, simplifying the sidebar from 3 panels to 2 panels with a layer icon button on each sequence header to switch between sequence list and layer view
+**Requirements**: ASIDE-01, ASIDE-02, ASIDE-03
+**Depends on:** Phase 17
+**Success Criteria** (what must be TRUE):
+  1. Sidebar has 2 panels (Sequences/Layers adaptive + Properties) with a single resizer, not 3 panels
+  2. User can click a Layers icon on any content sequence header to switch the panel to that sequence's layer view
+  3. Layer view shows back arrow header, compact sequence info, LayerList (reused as-is), and AddLayerMenu
+  4. Back arrow returns to the sequence list, switching sequences auto-closes the layer view
+  5. Panel flex persistence migrates from 3-value to 2-value format with backward compatibility
+**Plans**: 2 plans
+
+Plans:
+- [ ] 17.1-01-PLAN.md — State infrastructure: uiStore 2-panel state, calcFlexResize2, appConfig migration
+- [ ] 17.1-02-PLAN.md — UI restructure: LeftPanel 2-panel layout, SequenceItem layer icon, adaptive view
+
+### Phase 18: Canvas Motion Path (DEFERRED → v0.4.0)
 **Goal**: Users can see and edit position keyframe trajectories directly on the canvas as After Effects-style motion paths
 **Depends on**: Phase 12 (keyframe animation engine)
 **Requirements**: PATH-01, PATH-02, PATH-03
@@ -210,7 +226,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent, can parallelize)
+v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17 > 17.1
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -220,10 +236,11 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 | 15.1 Media In-Use & Safe Removal | v0.3.0 | 2/2 | Complete    | 2026-03-22 |
 | 15.2 Solid Sequence | v0.3.0 | 4/4 | Complete    | 2026-03-22 |
 | 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
-| 15.4 GL Transition | v0.3.0 | 3/4 | In Progress|  |
-| 16. Audio Export & Beat Sync | v0.3.0 | 5/6 | Complete    | 2026-03-23 |
-| 17. Enhancements | v0.3.0 | 5/6 | Complete    | 2026-03-24 |
-| 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
+| 15.4 GL Transition | v0.3.0 | 4/4 | Complete    | 2026-03-23 |
+| 16. Audio Export & Beat Sync | v0.3.0 | 6/6 | Complete    | 2026-03-23 |
+| 17. Enhancements | v0.3.0 | 6/6 | Complete    | 2026-03-24 |
+| 17.1 Adaptive Sidebar | v0.3.0 | 0/2 | In Progress | - |
+| 18. Canvas Motion Path | v0.4.0 | 0/0 | Deferred    | - |
 
 ## Backlog
 
