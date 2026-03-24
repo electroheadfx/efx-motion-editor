@@ -339,11 +339,31 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
 
         {/* Layer icon -- opens adaptive layer view (per D-02) */}
         <button
-          class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#ffffff10] shrink-0"
+          class="relative w-6 h-6 flex items-center justify-center rounded hover:bg-[#ffffff10] shrink-0"
           onClick={handleLayerView}
           title="Show layers"
         >
-          <Layers size={14} style={{color: 'var(--sidebar-text-secondary)'}} />
+          <Layers size={18} style={{color: 'var(--sidebar-text-secondary)'}} />
+          {seq.layers.length > 1 && (
+            <span
+              class="absolute flex items-center justify-center"
+              style={{
+                top: '-4px',
+                right: '-5px',
+                minWidth: '14px',
+                height: '14px',
+                fontSize: '9px',
+                fontWeight: 600,
+                lineHeight: 1,
+                color: '#fff',
+                backgroundColor: '#22c55e',
+                borderRadius: '7px',
+                padding: '0 3px',
+              }}
+            >
+              {seq.layers.length - 1}
+            </span>
+          )}
         </button>
 
         {/* Action button */}
