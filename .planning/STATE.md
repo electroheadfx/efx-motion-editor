@@ -173,9 +173,10 @@ No active blockers.
 | 260323-g4n | Remove duplicate playback controls from CanvasArea bottom bar | 2026-03-23 | bf878b4 | [260323-g4n-remove-duplicate-playback-controls-from-](./quick/260323-g4n-remove-duplicate-playback-controls-from-/) |
 | 260323-h1o | Replace 4-button playback controls with 7-button transport bar | 2026-03-23 | bf4f703 | [260323-h1o-replace-timeline-playback-controls-with-](./quick/260323-h1o-replace-timeline-playback-controls-with-/) |
 | 260324-ju7 | Move canvas zoom controls from bottom to top of canvas area | 2026-03-24 | 728fe92 | [260324-ju7-move-canvas-zoom-controls-from-bottom-to](./quick/260324-ju7-move-canvas-zoom-controls-from-bottom-to/) |
+| 260324-k49 | Move Shader button from timeline header to Layer dropdown menu | 2026-03-24 | 9da80c3 | [260324-k49-move-the-shader-button-from-timeline-hea](./quick/260324-k49-move-the-shader-button-from-timeline-hea/) |
 
 ## Session Continuity
 
-Last session: 2026-03-24T12:47:45.404Z
-Stopped at: Completed 17.1-01-PLAN.md
+Last session: 2026-03-24T13:33:39Z
+Stopped at: Completed quick-260324-k49
 Resume file: None
