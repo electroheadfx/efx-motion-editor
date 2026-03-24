@@ -169,6 +169,7 @@ No active blockers.
 | 260323-fsg | Remove Color Grade/Browse Shaders from Layer menu, rename GLSL to Shader, add Audio label | 2026-03-23 | 82f240c | [260323-fsg-timeline-buttons-remove-color-grade-from](./quick/260323-fsg-timeline-buttons-remove-color-grade-from/) |
 | 260323-g4n | Remove duplicate playback controls from CanvasArea bottom bar | 2026-03-23 | bf878b4 | [260323-g4n-remove-duplicate-playback-controls-from-](./quick/260323-g4n-remove-duplicate-playback-controls-from-/) |
 | 260323-h1o | Replace 4-button playback controls with 7-button transport bar | 2026-03-23 | bf4f703 | [260323-h1o-replace-timeline-playback-controls-with-](./quick/260323-h1o-replace-timeline-playback-controls-with-/) |
+| 260324-ju7 | Move canvas zoom controls from bottom to top of canvas area | 2026-03-24 | 728fe92 | [260324-ju7-move-canvas-zoom-controls-from-bottom-to](./quick/260324-ju7-move-canvas-zoom-controls-from-bottom-to/) |
 
 ## Session Continuity
 
