@@ -76,9 +76,9 @@ describe('projectStore audio persistence', () => {
       expect(mat.slip_offset).toBe(3);
     });
 
-    it('sets version to 12', () => {
+    it('sets version to 13', () => {
       const project = projectStore.buildMceProject();
-      expect(project.version).toBe(12);
+      expect(project.version).toBe(13);
     });
 
     it('outputs empty audio_tracks when none exist', () => {

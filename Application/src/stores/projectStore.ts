@@ -105,6 +105,15 @@ function buildMceProject(): MceProject {
           order: kpIndex,
           ...(kp.solidColor ? { solid_color: kp.solidColor } : {}),
           ...(kp.isTransparent ? { is_transparent: true } : {}),
+          ...(kp.gradient ? {
+            gradient: {
+              type: kp.gradient.type,
+              stops: kp.gradient.stops.map(s => ({ color: s.color, position: s.position })),
+              ...(kp.gradient.angle != null ? { angle: kp.gradient.angle } : {}),
+              ...(kp.gradient.centerX != null ? { center_x: kp.gradient.centerX } : {}),
+              ...(kp.gradient.centerY != null ? { center_y: kp.gradient.centerY } : {}),
+            }
+          } : {}),
         }),
       ),
       layers: seq.layers.map((layer, layerIndex): MceLayer => ({
@@ -207,7 +216,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 12,
+    version: 13,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -347,6 +356,15 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
             holdFrames: kp.hold_frames,
             ...(kp.solid_color ? { solidColor: kp.solid_color } : {}),
             ...(kp.is_transparent ? { isTransparent: kp.is_transparent } : {}),
+            ...(kp.gradient ? {
+              gradient: {
+                type: kp.gradient.type as 'linear' | 'radial' | 'conic',
+                stops: kp.gradient.stops,
+                ...(kp.gradient.angle != null ? { angle: kp.gradient.angle } : {}),
+                ...(kp.gradient.center_x != null ? { centerX: kp.gradient.center_x } : {}),
+                ...(kp.gradient.center_y != null ? { centerY: kp.gradient.center_y } : {}),
+              },
+            } : {}),
           }),
         ),
         layers,

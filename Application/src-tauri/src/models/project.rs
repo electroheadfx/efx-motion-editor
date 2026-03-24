@@ -259,6 +259,27 @@ pub struct MceKeyframeValues {
     pub blur: f64,
 }
 
+/// Gradient stop in the .mce file format (v13+)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceGradientStop {
+    pub color: String,
+    pub position: f64,
+}
+
+/// Gradient data in the .mce file format (v13+)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceGradientData {
+    #[serde(rename = "type")]
+    pub gradient_type: String,
+    pub stops: Vec<MceGradientStop>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub angle: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub center_x: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub center_y: Option<f64>,
+}
+
 /// Key photo within a sequence -- references an image by ID
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MceKeyPhoto {
@@ -270,6 +291,8 @@ pub struct MceKeyPhoto {
     pub solid_color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_transparent: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gradient: Option<MceGradientData>,
 }
 
 /// Image reference in the project -- stores relative paths for portability

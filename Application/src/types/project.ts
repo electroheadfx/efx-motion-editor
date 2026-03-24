@@ -138,6 +138,21 @@ export interface MceKeyframeValues {
   source_overrides?: Record<string, number>;  // FX layer source property overrides
 }
 
+/** Gradient stop in the .mce file format (v13+) */
+export interface MceGradientStop {
+  color: string;
+  position: number;
+}
+
+/** Gradient data in the .mce file format (v13+) */
+export interface MceGradientData {
+  type: string;               // 'linear' | 'radial' | 'conic'
+  stops: MceGradientStop[];
+  angle?: number;
+  center_x?: number;          // snake_case for .mce format consistency
+  center_y?: number;
+}
+
 /** Key photo within a sequence -- references an image by ID */
 export interface MceKeyPhoto {
   id: string;
@@ -146,6 +161,7 @@ export interface MceKeyPhoto {
   order: number;
   solid_color?: string;      // v10+: hex color for solid entries
   is_transparent?: boolean;  // v10+: true for transparent entries
+  gradient?: MceGradientData;  // v13+: gradient fill data
 }
 
 /** Image reference in the project -- stores relative paths for portability */

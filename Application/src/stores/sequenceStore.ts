@@ -1,5 +1,5 @@
 import {signal, batch} from '@preact/signals';
-import type {Sequence, KeyPhoto, Transition, TransitionType, GlTransition} from '../types/sequence';
+import type {Sequence, KeyPhoto, Transition, TransitionType, GlTransition, GradientData} from '../types/sequence';
 import type {Layer} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
 import {pushAction} from '../lib/history';
@@ -536,6 +536,47 @@ export const sequenceStore = {
             ...s,
             keyPhotos: s.keyPhotos.map((kp) =>
               kp.id === keyPhotoId ? {...kp, solidColor} : kp,
+            ),
+          }
+        : s,
+    );
+    markDirty();
+  },
+
+  /** Update gradient on a key photo (per D-12: gradient fill, undo on commit) */
+  updateKeyGradient(sequenceId: string, keyPhotoId: string, gradient: GradientData | undefined) {
+    const before = snapshot();
+    sequences.value = sequences.value.map((s) =>
+      s.id === sequenceId
+        ? {
+            ...s,
+            keyPhotos: s.keyPhotos.map((kp) =>
+              kp.id === keyPhotoId
+                ? { ...kp, gradient, ...(gradient ? { solidColor: undefined } : {}) }
+                : kp,
+            ),
+          }
+        : s,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Change gradient',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Update gradient without undo -- for live preview during gradient picker drag (per D-12) */
+  updateKeyGradientLive(sequenceId: string, keyPhotoId: string, gradient: GradientData) {
+    sequences.value = sequences.value.map((s) =>
+      s.id === sequenceId
+        ? {
+            ...s,
+            keyPhotos: s.keyPhotos.map((kp) =>
+              kp.id === keyPhotoId ? { ...kp, gradient } : kp,
             ),
           }
         : s,

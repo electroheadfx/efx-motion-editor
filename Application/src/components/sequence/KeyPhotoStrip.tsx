@@ -14,6 +14,8 @@ import {getTopLayerId} from '../../lib/layerSelection';
 import {getActiveKeyPhotoIndex} from '../../lib/keyPhotoNav';
 import {snapHoldFramesToBeat} from '../../lib/beatMarkerEngine';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
+import {buildGradientCSS} from '../shared/GradientBar';
+import type {GradientData} from '../../types/sequence';
 
 /** Key photo strip with thumbnails, hold duration editing, click-to-select + SortableJS drag reorder */
 export function KeyPhotoStrip() {
@@ -133,6 +135,7 @@ export function KeyPhotoStripInline({sequenceId}: {sequenceId: string}) {
           isActiveByFrame={index === activeKpIndex}
           solidColor={kp.solidColor}
           isTransparent={kp.isTransparent}
+          gradient={kp.gradient}
         />
       ))}
     </div>
@@ -320,6 +323,7 @@ interface KeyPhotoCardProps {
   isActiveByFrame: boolean;
   solidColor?: string;
   isTransparent?: boolean;
+  gradient?: GradientData;
 }
 
 function KeyPhotoCard({
@@ -330,11 +334,12 @@ function KeyPhotoCard({
   isActiveByFrame,
   solidColor,
   isTransparent,
+  gradient,
 }: KeyPhotoCardProps) {
   const [framesPopoverOpen, setFramesPopoverOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const framesBtnRef = useRef<HTMLButtonElement>(null);
-  const isSolidEntry = !!solidColor || !!isTransparent;
+  const isSolidEntry = !!solidColor || !!isTransparent || !!gradient;
   const image = !isSolidEntry ? imageStore.getById(imageId) : undefined;
   const thumbUrl = image ? assetUrl(image.thumbnail_path) : null;
 
@@ -354,12 +359,14 @@ function KeyPhotoCard({
         width: 'auto',
         minWidth: '56px',
         height: '56px',
-        backgroundColor: isTransparent ? '#B0B0B0' : solidColor ? solidColor : 'var(--sidebar-input-bg)',
+        backgroundColor: isTransparent ? '#B0B0B0' : solidColor ? solidColor : gradient ? undefined : 'var(--sidebar-input-bg)',
         opacity: isActiveByFrame ? 1 : 0.7,
         ...(isTransparent ? {
           backgroundImage: 'linear-gradient(45deg, #808080 25%, transparent 25%), linear-gradient(-45deg, #808080 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #808080 75%), linear-gradient(-45deg, transparent 75%, #808080 75%)',
           backgroundSize: '8px 8px',
           backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
+        } : gradient ? {
+          backgroundImage: buildGradientCSS(gradient.stops, gradient.type, gradient.angle, gradient.centerX, gradient.centerY),
         } : thumbUrl ? {backgroundImage: `url(${thumbUrl})`, aspectRatio: 'auto'} : {}),
       }}
       onClick={(e) => {
@@ -434,6 +441,10 @@ function KeyPhotoCard({
             sequenceStore.updateKeySolidColor(sequenceId, keyPhotoId, c);
           }}
           onClose={() => setPickerOpen(false)}
+          showGradientMode={true}
+          gradient={gradient}
+          onGradientChange={(g) => sequenceStore.updateKeyGradient(sequenceId, keyPhotoId, g)}
+          onGradientLiveChange={(g) => sequenceStore.updateKeyGradientLive(sequenceId, keyPhotoId, g)}
         />
       )}
 
