@@ -5,6 +5,7 @@ import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
 import {FullSpeedBadge} from '../overlay/FullSpeedBadge';
 import {TransformOverlay} from '../canvas/TransformOverlay';
+import {MotionPath} from '../canvas/MotionPath';
 import {timelineStore} from '../../stores/timelineStore';
 import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
@@ -325,6 +326,7 @@ export function CanvasArea() {
           class="relative rounded bg-black overflow-visible shrink-0"
         >
           <Preview />
+          <MotionPath />
           <TransformOverlay
             containerRef={containerRef}
             getSourceDimensions={getSourceDimensionsForLayer}
