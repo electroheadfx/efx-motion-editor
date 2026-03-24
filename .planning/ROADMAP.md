@@ -220,7 +220,7 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 | 15.3 GLSL Shadertoys | v0.3.0 | 1/1 | Complete    | 2026-03-22 |
 | 15.4 GL Transition | v0.3.0 | 3/4 | In Progress|  |
 | 16. Audio Export & Beat Sync | v0.3.0 | 5/6 | Complete    | 2026-03-23 |
-| 17. Enhancements | v0.3.0 | 4/4 | Complete   | 2026-03-24 |
+| 17. Enhancements | v0.3.0 | 4/4 | Complete    | 2026-03-24 |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
 
 ## Backlog
