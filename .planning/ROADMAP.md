@@ -180,7 +180,7 @@ Plans:
 ### Phase 17: Enhancements
 **Goal**: Users get collapsible key photo lists in the sidebar, a global solo mode that strips layers/FX from preview and export, gradient fills for solid entries, and Tailwind v4 syntax cleanup
 **Depends on**: Phase 16 (project format v12), Phase 12.15 (isolation infrastructure)
-**Requirements**: ENH-01, ENH-02, ENH-03, ENH-04
+**Requirements**: ENH-02, ENH-03, ENH-05 (ENH-01 dropped per D-01, ENH-04 dropped per D-07)
 **Success Criteria** (what must be TRUE):
   1. User can collapse and expand a sequence's key photo list by clicking the sequence header bar a second time (ENH-01 subsumed by ENH-02 per D-01)
   2. User can toggle global solo mode via timeline toolbar button or S key, stripping all overlay layers and FX from preview and export
