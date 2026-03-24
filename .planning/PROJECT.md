@@ -139,4 +139,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-22 after Phase 15.1 complete — in-use indicators + safe asset removal with cascade undo*
+*Last updated: 2026-03-24 after Phase 17 complete — collapsible key photo lists, global solo mode, gradient fills with v13 persistence, Tailwind v4 migration*
