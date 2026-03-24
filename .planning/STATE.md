@@ -21,7 +21,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
 **Current focus:** Phase 17.1 — adaptative-sidebar-s-layer-window
-Last activity: 2026-03-24
+Last activity: 2026-03-24 - Completed quick task 260324-k49: Move Shader button from timeline header to Layer dropdown menu
 
 ## Current Position
 
