@@ -14,7 +14,6 @@ import {paintStore} from '../../stores/paintStore';
 import {projectStore} from '../../stores/projectStore';
 import {imageStore} from '../../stores/imageStore';
 import {uiStore} from '../../stores/uiStore';
-import {paintStore} from '../../stores/paintStore';
 import {layerStore} from '../../stores/layerStore';
 import {playbackEngine, isFullSpeed} from '../../lib/playbackEngine';
 import {isFullscreen, enterFullscreen} from '../../lib/fullscreenManager';
