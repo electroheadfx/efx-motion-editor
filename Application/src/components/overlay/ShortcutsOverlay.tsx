@@ -75,6 +75,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: '\u2318Scroll', description: 'Vertical scroll'},
       {keys: 'Scroll', description: 'Natural scroll (trackpad)'},
       {keys: '\u21E7Scroll', description: 'Vertical scroll'},
+      {keys: 'S', description: 'Toggle solo mode (base content only)'},
     ],
   },
   {

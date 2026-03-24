@@ -1,9 +1,10 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
-import {Play, Pause, SkipBack, SkipForward, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Plus, Minus, Shrink, Repeat, Repeat1, Sparkles, Music, Magnet} from 'lucide-preact';
+import {Play, Pause, SkipBack, SkipForward, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Plus, Minus, Shrink, Repeat, Repeat1, Sparkles, Music, Magnet, Headphones} from 'lucide-preact';
 import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {timelineStore} from '../../stores/timelineStore';
 import {uiStore} from '../../stores/uiStore';
 import {isolationStore} from '../../stores/isolationStore';
+import {soloStore} from '../../stores/soloStore';
 import {audioStore} from '../../stores/audioStore';
 import {playbackEngine} from '../../lib/playbackEngine';
 import {findPrevSequenceStart, findNextSequenceStart} from '../../lib/sequenceNav';
@@ -128,6 +129,19 @@ export function TimelinePanel() {
           title={isolationStore.loopEnabled.value ? 'Loop: ON' : 'Loop: OFF'}
         >
           {isolationStore.loopEnabled.value ? <Repeat1 size={14} /> : <Repeat size={14} />}
+        </button>
+
+        {/* Solo toggle (D-09: lives in timeline toolbar) */}
+        <button
+          class={`rounded px-2 py-[5px] cursor-pointer transition-colors ${
+            soloStore.isSolo.value
+              ? 'bg-(--color-accent) text-white hover:brightness-125'
+              : 'bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white'
+          }`}
+          onClick={() => soloStore.toggleSolo()}
+          title={soloStore.isSolo.value ? 'Solo: ON (S) — only base content' : 'Solo: OFF (S)'}
+        >
+          <Headphones size={14} />
         </button>
 
         {/* Beat markers toggle */}
