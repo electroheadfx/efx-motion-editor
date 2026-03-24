@@ -19,6 +19,21 @@ export interface GlTransition {
   curve: EasingType;          // easing applied to progress before passing to shader
 }
 
+/** Color stop in a gradient (D-15: 2-5 stops) */
+export interface GradientStop {
+  color: string;      // hex color (e.g., '#ff0000')
+  position: number;   // 0-1 normalized position along the gradient
+}
+
+/** Gradient configuration for solid entries (D-12, D-14) */
+export interface GradientData {
+  type: 'linear' | 'radial' | 'conic';
+  stops: GradientStop[];     // 2-5 stops
+  angle?: number;            // degrees, for linear (default 0 = top to bottom)
+  centerX?: number;          // 0-1, for radial/conic (default 0.5)
+  centerY?: number;          // 0-1, for radial/conic (default 0.5)
+}
+
 /** Runtime sequence type used by sequenceStore (frontend state) */
 export interface Sequence {
   id: string;
@@ -45,6 +60,7 @@ export interface KeyPhoto {
   holdFrames: number;
   solidColor?: string;       // hex color string, present for solid entries (default '#000000')
   isTransparent?: boolean;   // true for transparent entries
+  gradient?: GradientData;   // D-12: present when using gradient mode instead of solidColor
 }
 
 /** Helper discriminators */
@@ -56,6 +72,20 @@ export function isKeyTransparent(kp: KeyPhoto): boolean {
 }
 export function isKeyImage(kp: KeyPhoto): boolean {
   return !!kp.imageId && !kp.solidColor && !kp.isTransparent;
+}
+export function isKeyGradient(kp: KeyPhoto): boolean {
+  return !!kp.gradient && !kp.isTransparent;
+}
+
+export function createDefaultGradient(): GradientData {
+  return {
+    type: 'linear',
+    stops: [
+      { color: '#000000', position: 0 },
+      { color: '#ffffff', position: 1 },
+    ],
+    angle: 180,
+  };
 }
 
 // For .mce file format types, see types/project.ts (MceSequence, MceKeyPhoto)
