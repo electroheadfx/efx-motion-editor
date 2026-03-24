@@ -214,3 +214,14 @@ v0.3.0: 15 > 15.1 > 15.2 > 15.3 > 15.4 > 16 > 17, 18 (17 and 18 are independent,
 | 16. Audio Export & Beat Sync | v0.3.0 | 5/6 | Complete    | 2026-03-23 |
 | 17. Enhancements | v0.3.0 | 0/0 | Not started | - |
 | 18. Canvas Motion Path | v0.3.0 | 0/0 | Not started | - |
+
+## Backlog
+
+### Phase 999.1: Add Paint Layer Rotopaint (BACKLOG)
+
+**Goal:** [Captured for future planning] Add a paint/rotopaint layer type for frame-by-frame painting and rotoscoping directly on the canvas
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
