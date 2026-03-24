@@ -21,6 +21,8 @@ import {startAutoSave, stopAutoSave} from '../lib/autoSave';
 import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
+import {paintStore} from './paintStore';
+import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
 import {readFile} from '@tauri-apps/plugin-fs';
 
 // --- Signals ---
@@ -216,7 +218,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 13,
+    version: 14,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -480,6 +482,17 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
     isDirty.value = false;
   });
 
+  // Load paint layer sidecar data (async, outside batch)
+  const paintLayerIds = sequenceStore.sequences.value
+    .flatMap(s => s.layers)
+    .filter(l => l.type === 'paint')
+    .map(l => l.id);
+  if (paintLayerIds.length > 0) {
+    loadPaintData(projectRoot, paintLayerIds).catch(err => {
+      console.error('Failed to load paint data (non-fatal):', err);
+    });
+  }
+
   // Async: re-decode audio files for playback and waveform peaks
   (async () => {
     for (const track of audioStore.tracks.peek()) {
@@ -583,6 +596,22 @@ export const projectStore = {
 
     isSaving.value = true;
     try {
+      // Save paint sidecar files before .mce (per Pitfall 5: write paint files first)
+      const currentDir = dirPath.value;
+      if (currentDir) {
+        try {
+          await savePaintData(currentDir);
+          // Cleanup orphaned paint directories for deleted paint layers
+          const paintLayerIds = sequenceStore.sequences.value
+            .flatMap(s => s.layers)
+            .filter(l => l.type === 'paint')
+            .map(l => l.id);
+          await cleanupOrphanedPaintFiles(currentDir, paintLayerIds);
+        } catch (err) {
+          console.error('Failed to save paint data (non-fatal):', err);
+        }
+      }
+
       const project = buildMceProject();
       const result = await ipcProjectSave(project, currentFilePath);
       if (!result.ok) {
@@ -680,6 +709,7 @@ export const projectStore = {
     sequenceStore.reset();
     imageStore.reset();
     audioStore.reset();
+    paintStore.reset();
     audioPeaksCache.clear();
     audioEngine.stopAll();
     uiStore.reset();

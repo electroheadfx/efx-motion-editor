@@ -2,18 +2,22 @@ use crate::models::project::MceProject;
 use std::fs;
 use std::path::Path;
 
-/// Create the project directory with images/, images/.thumbs/, and videos/ subdirectories.
+/// Create the project directory with images/, images/.thumbs/, videos/, and paint/ subdirectories.
 pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     let base = Path::new(dir_path);
     let images_dir = base.join("images");
     let thumbs_dir = images_dir.join(".thumbs");
     let videos_dir = base.join("videos");
+    let paint_dir = base.join("paint");
 
     fs::create_dir_all(&thumbs_dir)
         .map_err(|e| format!("Failed to create project directories: {}", e))?;
 
     fs::create_dir_all(&videos_dir)
         .map_err(|e| format!("Failed to create videos directory: {}", e))?;
+
+    fs::create_dir_all(&paint_dir)
+        .map_err(|e| format!("Failed to create paint directory: {}", e))?;
 
     Ok(())
 }
@@ -141,6 +145,7 @@ mod tests {
         create_project_dir(test_dir.to_str().unwrap()).unwrap();
         assert!(test_dir.join("images").exists());
         assert!(test_dir.join("images/.thumbs").exists());
+        assert!(test_dir.join("paint").exists());
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 

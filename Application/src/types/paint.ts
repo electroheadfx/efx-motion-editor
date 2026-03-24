@@ -1,14 +1,6 @@
 /** Paint tool types (per D-04) */
 export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse';
 
-/** Options passed to perfect-freehand getStroke() */
-export interface PaintStrokeOptions {
-  thinning: number;      // 0-1, default 0.5
-  smoothing: number;     // 0-1, default 0.5
-  streamline: number;    // 0-1, default 0.5
-  simulatePressure: boolean; // false when real pressure data provided
-}
-
 /** A freehand stroke recorded from pointer input (per D-02, D-03) */
 export interface PaintStroke {
   id: string;
@@ -18,6 +10,14 @@ export interface PaintStroke {
   opacity: number;       // 0-1 (per D-03)
   size: number;          // brush diameter in project pixels
   options: PaintStrokeOptions;
+}
+
+/** Options passed to perfect-freehand getStroke() */
+export interface PaintStrokeOptions {
+  thinning: number;      // 0-1, default 0.5
+  smoothing: number;     // 0-1, default 0.5
+  streamline: number;    // 0-1, default 0.5
+  simulatePressure: boolean; // false when real pressure data provided
 }
 
 /** A geometric shape element (per D-04, D-05) */
