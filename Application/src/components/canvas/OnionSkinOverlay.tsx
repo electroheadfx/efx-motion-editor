@@ -17,12 +17,13 @@ import {renderPaintFrame} from '../../lib/paintRenderer';
 export function OnionSkinOverlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Re-render when frame, onion skin settings, or layer selection change
+  // Re-render when frame, onion skin settings, paint data, or layer selection change
   const currentFrame = timelineStore.currentFrame.value;
   const enabled = paintStore.onionSkinEnabled.value;
   const prevRange = paintStore.onionSkinPrevRange.value;
   const nextRange = paintStore.onionSkinNextRange.value;
   const baseOpacity = paintStore.onionSkinOpacity.value;
+  const version = paintStore.paintVersion.value;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -75,7 +76,7 @@ export function OnionSkinOverlay() {
       renderPaintFrame(ctx, frameData, w, h);
       ctx.restore();
     }
-  }, [currentFrame, enabled, prevRange, nextRange, baseOpacity]);
+  }, [currentFrame, enabled, prevRange, nextRange, baseOpacity, version]);
 
   return (
     <canvas
