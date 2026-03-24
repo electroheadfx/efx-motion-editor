@@ -61,10 +61,10 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Adaptive 2-panel sidebar with sequence/layer view switching, Layers icon with count badge — v0.3.0
 - ✓ Tailwind v4 syntax migration across 33 component files — v0.3.0
 - ✓ Project format .mce v8→v13 progressive migration with full backward compatibility — v0.3.0
+- ✓ Canvas motion path with After Effects-style dotted trail, keyframe circle markers, and drag-to-reposition interaction — v0.4.0
 
 ### Active
 
-- [ ] Canvas motion path with interpolation preview (After Effects-style keyframe path editing) — deferred to v0.4.0
 - [ ] Paint/rotopaint layer for frame-by-frame drawing and rotoscoping — backlog
 
 ## Latest Milestone: v0.3.0 Audio & Polish (Shipped 2026-03-24)
@@ -89,7 +89,7 @@ Project format: .mce v13 with backward compatibility (v1 through v13).
 
 Known technical debt:
 - 2 medium-severity export edge cases (content-overlay image preload, FX generator frame offset) — carried from v0.2.0
-- Coalescing API unwired in UI (engine works, no slider consumer calls startCoalescing/stopCoalescing) — carried from v0.1.0
+- Coalescing API now used by motion path keyframe drag (startCoalescing/stopCoalescing) — partially resolved in v0.4.0
 - canUndo/canRedo signals exported but no UI consumes them for button disabling — carried from v0.1.0
 - GLSL/GLT requirements not formally tracked in REQUIREMENTS.md (phases inserted urgently)
 
