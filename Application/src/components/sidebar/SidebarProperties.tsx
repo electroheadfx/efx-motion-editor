@@ -31,27 +31,11 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
   const showKfValues = hasKeyframes && kfDisplayValues;
   const isOnKf = keyframeStore.isOnKeyframe.value;
 
-  // Transient edit routing: when a layer has keyframes and the playhead is NOT on a keyframe,
-  // edits write to transientOverrides; when ON a keyframe, edits update layerStore + keyframe.
+  // Unified keyframe edit routing: all edits (on-keyframe and between-keyframe) write
+  // directly to layer.keyframes via upsertKeyframeValues, which flows through
+  // sequenceStore.sequences -> Preview.tsx re-render. No dead-end transientOverrides path.
   const handleKeyframeEdit = hasKeyframes ? (field: Exclude<keyof KeyframeValues, 'sourceOverrides'>, value: number) => {
-    if (isOnKf) {
-      // ON a keyframe: update layer state AND update keyframe values
-      if (field === 'opacity') {
-        layerStore.updateLayer(layer.id, { opacity: value });
-      } else if (field === 'blur') {
-        layerStore.updateLayer(layer.id, { blur: value });
-      } else {
-        // Transform fields: x, y, scaleX, scaleY, rotation
-        layerStore.updateLayer(layer.id, {
-          transform: { ...layer.transform, [field]: value },
-        });
-      }
-      // Also update the keyframe at this frame
-      keyframeStore.addKeyframe(layer.id, timelineStore.currentFrame.peek());
-    } else {
-      // BETWEEN keyframes: transient edit only -- does NOT touch layerStore
-      keyframeStore.setTransientValue(field, value);
-    }
+    keyframeStore.upsertKeyframeValues(layer.id, timelineStore.currentFrame.peek(), field, value);
   } : undefined;
 
   const opacityPercent = Math.round(

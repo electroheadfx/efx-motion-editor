@@ -273,4 +273,68 @@ export const keyframeStore = {
   clearTransientOverrides() {
     transientOverrides.value = null;
   },
+
+  /** Upsert a single keyframe property value directly into the layer's keyframes array.
+   *  If the playhead is ON a keyframe, updates that keyframe's value.
+   *  If BETWEEN keyframes, creates a new keyframe at the current frame with interpolated base values.
+   *  Writes flow through layerStore -> sequenceStore.sequences -> Preview.tsx re-render. */
+  upsertKeyframeValues(layerId: string, globalFrame: number, field: Exclude<keyof KeyframeValues, 'sourceOverrides'>, value: number) {
+    const ctx = findLayerContext(layerId);
+    if (!ctx) return;
+
+    const localFrame = globalFrame - ctx.startFrame;
+
+    const seqs = sequenceStore.sequences.peek();
+    const seq = seqs.find(s => s.id === ctx.sequenceId);
+    const layer = seq?.layers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    const kfs = (layer.keyframes ?? []).slice();
+    const idx = kfs.findIndex(k => k.frame === localFrame);
+
+    if (idx >= 0) {
+      // ON a keyframe: update the specific field
+      kfs[idx] = { ...kfs[idx], values: { ...kfs[idx].values, [field]: value } };
+    } else {
+      // BETWEEN keyframes: create a new keyframe with interpolated base values
+      const baseValues = interpolateAt(kfs, localFrame) ?? extractKeyframeValues(layer);
+      const newValues = { ...baseValues, [field]: value };
+      kfs.push({ frame: localFrame, easing: 'ease-in-out' as const, values: newValues });
+      kfs.sort((a, b) => a.frame - b.frame);
+    }
+
+    layerStore.updateLayer(layerId, { keyframes: kfs });
+    transientOverrides.value = null;
+  },
+
+  /** Upsert multiple keyframe property values at once (for canvas drag: move/scale/rotate).
+   *  Same upsert logic as upsertKeyframeValues but applies multiple fields in one call. */
+  upsertKeyframeTransform(layerId: string, globalFrame: number, updates: Partial<KeyframeValues>) {
+    const ctx = findLayerContext(layerId);
+    if (!ctx) return;
+
+    const localFrame = globalFrame - ctx.startFrame;
+
+    const seqs = sequenceStore.sequences.peek();
+    const seq = seqs.find(s => s.id === ctx.sequenceId);
+    const layer = seq?.layers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    const kfs = (layer.keyframes ?? []).slice();
+    const idx = kfs.findIndex(k => k.frame === localFrame);
+
+    if (idx >= 0) {
+      // ON a keyframe: merge the updates
+      kfs[idx] = { ...kfs[idx], values: { ...kfs[idx].values, ...updates } };
+    } else {
+      // BETWEEN keyframes: create a new keyframe with interpolated base values
+      const baseValues = interpolateAt(kfs, localFrame) ?? extractKeyframeValues(layer);
+      const newValues = { ...baseValues, ...updates };
+      kfs.push({ frame: localFrame, easing: 'ease-in-out' as const, values: newValues });
+      kfs.sort((a, b) => a.frame - b.frame);
+    }
+
+    layerStore.updateLayer(layerId, { keyframes: kfs });
+    transientOverrides.value = null;
+  },
 };
