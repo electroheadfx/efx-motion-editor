@@ -253,38 +253,7 @@ export function CanvasArea() {
       onMouseEnter={() => uiStore.setMouseRegion('canvas')}
       onMouseLeave={() => uiStore.setMouseRegion('other')}
     >
-      {/* Preview Frame with zoom/pan */}
-      <div
-        ref={containerRef}
-        class="flex items-center justify-center flex-1 w-full min-h-0 p-4 overflow-hidden"
-        onWheel={handleWheel}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        style={{cursor: cursorStyle}}
-      >
-        <div
-          style={{
-            width: `${projectStore.width.value}px`,
-            height: `${projectStore.height.value}px`,
-            transform: `scale(${canvasStore.zoom.value}) translate(${canvasStore.panX.value}px, ${canvasStore.panY.value}px)`,
-            transformOrigin: 'center center',
-          }}
-          data-canvas-area
-          class="relative rounded bg-black overflow-visible shrink-0"
-        >
-          <Preview />
-          <TransformOverlay
-            containerRef={containerRef}
-            getSourceDimensions={getSourceDimensionsForLayer}
-            isSpaceHeld={isSpaceHeld}
-            onPanStart={startPan}
-          />
-        </div>
-      </div>
-      {/* JKL speed badge -- positioned above playback controls */}
-      <SpeedBadge />
-      {/* Preview Controls */}
+      {/* Preview Controls (zoom, fit, fullscreen) */}
       <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0">
         {/* Zoom controls cluster: [ - ] percentage [ + ] [ Fit ] */}
         <button
@@ -335,6 +304,37 @@ export function CanvasArea() {
         {/* Full-speed indicator */}
         <FullSpeedBadge />
       </div>
+      {/* Preview Frame with zoom/pan */}
+      <div
+        ref={containerRef}
+        class="flex items-center justify-center flex-1 w-full min-h-0 p-4 overflow-hidden"
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        style={{cursor: cursorStyle}}
+      >
+        <div
+          style={{
+            width: `${projectStore.width.value}px`,
+            height: `${projectStore.height.value}px`,
+            transform: `scale(${canvasStore.zoom.value}) translate(${canvasStore.panX.value}px, ${canvasStore.panY.value}px)`,
+            transformOrigin: 'center center',
+          }}
+          data-canvas-area
+          class="relative rounded bg-black overflow-visible shrink-0"
+        >
+          <Preview />
+          <TransformOverlay
+            containerRef={containerRef}
+            getSourceDimensions={getSourceDimensionsForLayer}
+            isSpaceHeld={isSpaceHeld}
+            onPanStart={startPan}
+          />
+        </div>
+      </div>
+      {/* JKL speed badge */}
+      <SpeedBadge />
     </div>
   );
 }
