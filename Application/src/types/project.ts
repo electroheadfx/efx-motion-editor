@@ -108,6 +108,8 @@ export interface MceLayerSource {
   // GLSL shaders (generator-glsl / adjustment-glsl)
   shader_id?: string;
   params?: Record<string, number>;
+  // Paint layer
+  layer_id?: string;
 }
 
 /** Transition definition within a sequence in the .mce file */

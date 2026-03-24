@@ -193,6 +193,10 @@ function buildMceProject(): MceProject {
             shader_id: (layer.source as { shaderId: string }).shaderId,
             params: (layer.source as { params: Record<string, number> }).params,
           } : {}),
+          // Paint layer
+          ...(layer.source.type === 'paint' ? {
+            layer_id: (layer.source as { layerId: string }).layerId,
+          } : {}),
         },
         is_base: layer.isBase ?? false,
         order: layerIndex,
@@ -319,6 +323,7 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
                     if (t === 'adjustment-color-grade') return {type: t, brightness: ml.source.brightness ?? 0, contrast: ml.source.contrast ?? 0, saturation: ml.source.saturation ?? 0, hue: ml.source.hue ?? 0, fade: ml.source.fade ?? 0, tintColor: ml.source.tint_color ?? '#D4A574', preset: ml.source.preset ?? 'none', fadeBlend: ml.source.fade_blend} as LayerSourceData;
                     if (t === 'adjustment-blur') return {type: t, radius: ml.source.radius ?? 0.3} as LayerSourceData;
                     if (t === 'generator-glsl' || t === 'adjustment-glsl') return {type: t, shaderId: ml.source.shader_id ?? '', params: ml.source.params ?? {}} as LayerSourceData;
+                    if (t === 'paint') return {type: t, layerId: ml.source.layer_id ?? ml.id} as LayerSourceData;
                     // Fallback for unknown types
                     return ml.source as unknown as LayerSourceData;
                   })(),

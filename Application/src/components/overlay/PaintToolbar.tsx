@@ -1,5 +1,7 @@
+import {useState} from 'preact/hooks';
 import {Pen, Eraser, Pipette, PaintBucket, Minus, Square, Circle} from 'lucide-preact';
 import {paintStore} from '../../stores/paintStore';
+import {ColorPickerModal} from '../shared/ColorPickerModal';
 import type {PaintToolType} from '../../types/paint';
 
 const TOOLS: {type: PaintToolType; Icon: typeof Pen; label: string}[] = [
@@ -22,6 +24,7 @@ export function PaintToolbar() {
   const brushSizeVal = paintStore.brushSize.value;
   const brushColorVal = paintStore.brushColor.value;
   const brushOpacityVal = paintStore.brushOpacity.value;
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   return (
     <div
@@ -82,23 +85,18 @@ export function PaintToolbar() {
       {/* Divider */}
       <div class="w-px h-5 mx-0.5" style={{backgroundColor: 'var(--color-border-subtle)'}} />
 
-      {/* Color swatch with native color input */}
-      <div class="relative" style={{width: '20px', height: '20px'}}>
-        <div
-          class="w-full h-full rounded border"
-          style={{
-            backgroundColor: brushColorVal,
-            borderColor: 'var(--color-border-subtle)',
-          }}
-        />
-        <input
-          type="color"
-          value={brushColorVal}
-          class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          title="Brush color"
-          onInput={(e) => paintStore.setBrushColor((e.target as HTMLInputElement).value)}
-        />
-      </div>
+      {/* Color swatch — opens app ColorPickerModal */}
+      <button
+        class="rounded border cursor-pointer"
+        style={{
+          width: '20px',
+          height: '20px',
+          backgroundColor: brushColorVal,
+          borderColor: 'var(--color-border-subtle)',
+        }}
+        title="Brush color"
+        onClick={() => setShowColorPicker(true)}
+      />
 
       {/* Opacity display */}
       <span
@@ -108,6 +106,19 @@ export function PaintToolbar() {
       >
         {Math.round(brushOpacityVal * 100)}%
       </span>
+
+      {/* Color Picker Modal */}
+      {showColorPicker && (
+        <ColorPickerModal
+          color={brushColorVal}
+          onLiveChange={(c) => paintStore.setBrushColor(c)}
+          onCommit={(c) => {
+            paintStore.setBrushColor(c);
+            setShowColorPicker(false);
+          }}
+          onClose={() => setShowColorPicker(false)}
+        />
+      )}
     </div>
   );
 }
