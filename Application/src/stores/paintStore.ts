@@ -1,0 +1,216 @@
+import {signal} from '@preact/signals';
+import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions} from '../types/paint';
+import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX} from '../types/paint';
+import {pushAction} from '../lib/history';
+
+// --- Signals ---
+
+const paintMode = signal(false);
+const activeTool = signal<PaintToolType>('brush');
+const brushSize = signal(DEFAULT_BRUSH_SIZE);
+const brushColor = signal(DEFAULT_BRUSH_COLOR);
+const brushOpacity = signal(DEFAULT_BRUSH_OPACITY);
+const strokeOptions = signal<PaintStrokeOptions>({...DEFAULT_STROKE_OPTIONS});
+const shapeFilled = signal(false);
+const fillTolerance = signal(10);
+const onionSkinEnabled = signal(false);
+const onionSkinPrevRange = signal(3);
+const onionSkinNextRange = signal(2);
+const onionSkinOpacity = signal(0.3);
+
+// --- Private state ---
+
+/** layerId -> (frameNumber -> PaintFrame) */
+const _frames = new Map<string, Map<number, PaintFrame>>();
+
+/** "layerId:frameNum" strings for persistence tracking */
+const _dirtyFrames = new Set<string>();
+
+// --- Helpers ---
+
+function _getOrCreateFrame(layerId: string, frame: number): PaintFrame {
+  let layerFrames = _frames.get(layerId);
+  if (!layerFrames) {
+    layerFrames = new Map();
+    _frames.set(layerId, layerFrames);
+  }
+  let paintFrame = layerFrames.get(frame);
+  if (!paintFrame) {
+    paintFrame = {elements: []};
+    layerFrames.set(frame, paintFrame);
+  }
+  return paintFrame;
+}
+
+// --- Store ---
+
+export const paintStore = {
+  // Signals (read-only externally via .value)
+  paintMode,
+  activeTool,
+  brushSize,
+  brushColor,
+  brushOpacity,
+  strokeOptions,
+  shapeFilled,
+  fillTolerance,
+  onionSkinEnabled,
+  onionSkinPrevRange,
+  onionSkinNextRange,
+  onionSkinOpacity,
+
+  // Frame data access
+  getFrame(layerId: string, frame: number): PaintFrame | null {
+    return _frames.get(layerId)?.get(frame) ?? null;
+  },
+
+  setFrame(layerId: string, frame: number, pf: PaintFrame): void {
+    _getOrCreateFrame(layerId, frame);
+    _frames.get(layerId)!.set(frame, pf);
+    this.markDirty(layerId, frame);
+  },
+
+  addElement(layerId: string, frame: number, element: PaintElement): void {
+    const frameData = _getOrCreateFrame(layerId, frame);
+    frameData.elements.push(element);
+    this.markDirty(layerId, frame);
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Add paint element to frame ${frame}`,
+      timestamp: Date.now(),
+      undo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = f.elements.filter(e => e.id !== element.id);
+      },
+      redo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements.push(element);
+        paintStore.markDirty(layerId, frame);
+      },
+    });
+  },
+
+  removeElement(layerId: string, frame: number, elementId: string): void {
+    const frameData = _frames.get(layerId)?.get(frame);
+    if (!frameData) return;
+    const idx = frameData.elements.findIndex(e => e.id === elementId);
+    if (idx === -1) return;
+    const removed = frameData.elements.splice(idx, 1)[0];
+    this.markDirty(layerId, frame);
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Remove paint element from frame ${frame}`,
+      timestamp: Date.now(),
+      undo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements.splice(idx, 0, removed);
+      },
+      redo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = f.elements.filter(e => e.id !== elementId);
+        paintStore.markDirty(layerId, frame);
+      },
+    });
+  },
+
+  clearFrame(layerId: string, frame: number): void {
+    const frameData = _frames.get(layerId)?.get(frame);
+    if (!frameData || frameData.elements.length === 0) return;
+    const backup = [...frameData.elements];
+    frameData.elements = [];
+    this.markDirty(layerId, frame);
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Clear paint frame ${frame}`,
+      timestamp: Date.now(),
+      undo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...backup];
+      },
+      redo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [];
+        paintStore.markDirty(layerId, frame);
+      },
+    });
+  },
+
+  getLayerFrameNumbers(layerId: string): number[] {
+    const layerFrames = _frames.get(layerId);
+    if (!layerFrames) return [];
+    return Array.from(layerFrames.keys()).sort((a, b) => a - b);
+  },
+
+  removeLayer(layerId: string): void {
+    _frames.delete(layerId);
+    // Remove dirty entries for this layer
+    for (const key of _dirtyFrames) {
+      if (key.startsWith(layerId + ':')) {
+        _dirtyFrames.delete(key);
+      }
+    }
+  },
+
+  markDirty(layerId: string, frame: number): void {
+    _dirtyFrames.add(`${layerId}:${frame}`);
+  },
+
+  getDirtyFrames(): Array<{layerId: string; frame: number}> {
+    const result: Array<{layerId: string; frame: number}> = [];
+    for (const key of _dirtyFrames) {
+      const [layerId, frameStr] = key.split(':');
+      result.push({layerId, frame: parseInt(frameStr, 10)});
+    }
+    _dirtyFrames.clear();
+    return result;
+  },
+
+  /** Load frame data without undo (used by persistence) */
+  loadFrame(layerId: string, frame: number, pf: PaintFrame): void {
+    let layerFrames = _frames.get(layerId);
+    if (!layerFrames) {
+      layerFrames = new Map();
+      _frames.set(layerId, layerFrames);
+    }
+    layerFrames.set(frame, pf);
+  },
+
+  /** Clear all paint data (called on project close/new) */
+  reset(): void {
+    _frames.clear();
+    _dirtyFrames.clear();
+    paintMode.value = false;
+    activeTool.value = 'brush';
+    brushSize.value = DEFAULT_BRUSH_SIZE;
+    brushColor.value = DEFAULT_BRUSH_COLOR;
+    brushOpacity.value = DEFAULT_BRUSH_OPACITY;
+    strokeOptions.value = {...DEFAULT_STROKE_OPTIONS};
+    shapeFilled.value = false;
+    fillTolerance.value = 10;
+    onionSkinEnabled.value = false;
+    onionSkinPrevRange.value = 3;
+    onionSkinNextRange.value = 2;
+    onionSkinOpacity.value = 0.3;
+  },
+
+  // Tool settings
+  togglePaintMode(): void {
+    paintMode.value = !paintMode.value;
+  },
+
+  setTool(tool: PaintToolType): void {
+    activeTool.value = tool;
+  },
+
+  setBrushSize(size: number): void {
+    brushSize.value = Math.max(BRUSH_SIZE_MIN, Math.min(BRUSH_SIZE_MAX, size));
+  },
+
+  setBrushColor(color: string): void {
+    brushColor.value = color;
+  },
+
+  setBrushOpacity(opacity: number): void {
+    brushOpacity.value = Math.max(0, Math.min(1, opacity));
+  },
+};

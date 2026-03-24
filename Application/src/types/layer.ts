@@ -10,7 +10,8 @@ export type LayerType =
   | 'generator-glsl'
   | 'adjustment-color-grade'
   | 'adjustment-blur'
-  | 'adjustment-glsl';
+  | 'adjustment-glsl'
+  | 'paint';
 
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add';
 
@@ -27,7 +28,8 @@ export type LayerSourceData =
   | { type: 'adjustment-color-grade'; brightness: number; contrast: number; saturation: number; hue: number; fade: number; tintColor: string; preset: string; fadeBlend?: string }
   | { type: 'adjustment-blur'; radius: number }
   | { type: 'generator-glsl'; shaderId: string; params: Record<string, number> }
-  | { type: 'adjustment-glsl'; shaderId: string; params: Record<string, number> };
+  | { type: 'adjustment-glsl'; shaderId: string; params: Record<string, number> }
+  | { type: 'paint'; layerId: string };
 
 export interface Layer {
   id: string;
