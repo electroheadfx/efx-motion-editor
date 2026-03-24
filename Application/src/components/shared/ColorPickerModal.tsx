@@ -1,5 +1,8 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import {X} from 'lucide-preact';
+import type {GradientData, GradientStop} from '../../types/sequence';
+import {createDefaultGradient} from '../../types/sequence';
+import {GradientBar, buildGradientCSS} from './GradientBar';
 
 // === Color conversion utilities ===
 
@@ -91,16 +94,26 @@ export function hsvToRgb(h: number, s: number, v: number): {r: number; g: number
 // === ColorPickerModal component ===
 
 type ColorMode = 'hex' | 'rgba' | 'hsl';
+type FillMode = 'solid' | 'gradient';
 
 export interface ColorPickerModalProps {
   color: string;
   onLiveChange?: (color: string) => void;
   onCommit: (color: string) => void;
   onClose: () => void;
+  // Gradient mode props (all optional for backward compat)
+  gradient?: GradientData;
+  onGradientChange?: (gradient: GradientData) => void;
+  onGradientLiveChange?: (gradient: GradientData) => void;
+  showGradientMode?: boolean;  // false by default for backward compat
 }
 
-export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: ColorPickerModalProps) {
+export function ColorPickerModal({
+  color, onLiveChange, onCommit, onClose,
+  gradient, onGradientChange, onGradientLiveChange, showGradientMode,
+}: ColorPickerModalProps) {
   const initialColor = useRef(color);
+  const initialGradient = useRef(gradient);
   const rgba = hexToRgba(color);
   const hsv = rgbToHsv(rgba.r, rgba.g, rgba.b);
   const hsl = rgbToHsl(rgba.r, rgba.g, rgba.b);
@@ -108,7 +121,7 @@ export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: Color
   const [hue, setHue] = useState(hsv.h);
   const [sat, setSat] = useState(hsv.s);
   const [val, setVal] = useState(hsv.v);
-  const [mode, setMode] = useState<ColorMode>('hex');
+  const [colorInputMode, setColorInputMode] = useState<ColorMode>('hex');
   const [hexInput, setHexInput] = useState(color);
   const [rInput, setRInput] = useState(String(rgba.r));
   const [gInput, setGInput] = useState(String(rgba.g));
@@ -116,6 +129,13 @@ export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: Color
   const [hInput, setHInput] = useState(String(Math.round(hsl.h * 360)));
   const [sInput, setSInput] = useState(String(Math.round(hsl.s * 100)));
   const [lInput, setLInput] = useState(String(Math.round(hsl.l * 100)));
+
+  // Gradient state
+  const [fillMode, setFillMode] = useState<FillMode>(gradient ? 'gradient' : 'solid');
+  const [gradientState, setGradientState] = useState<GradientData>(
+    gradient ?? createDefaultGradient(),
+  );
+  const [selectedStopIndex, setSelectedStopIndex] = useState(0);
 
   const areaRef = useRef<HTMLDivElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
@@ -138,22 +158,52 @@ export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: Color
     setLInput(String(Math.round(currentHsl.l * 100)));
   }, [hue, sat, val]);
 
-  // Live preview as user drags
+  // Live preview as user drags (solid mode only)
   useEffect(() => {
-    if (onLiveChange) onLiveChange(currentHex);
-  }, [currentHex]);
+    if (fillMode === 'solid' && onLiveChange) onLiveChange(currentHex);
+  }, [currentHex, fillMode]);
+
+  // Sync HSV picker with selected gradient stop color when in gradient mode
+  useEffect(() => {
+    if (fillMode === 'gradient' && gradientState.stops[selectedStopIndex]) {
+      const stopColor = gradientState.stops[selectedStopIndex].color;
+      const stopRgba = hexToRgba(stopColor);
+      const stopHsv = rgbToHsv(stopRgba.r, stopRgba.g, stopRgba.b);
+      setHue(stopHsv.h);
+      setSat(stopHsv.s);
+      setVal(stopHsv.v);
+    }
+  }, [selectedStopIndex, fillMode]);
+
+  // Update selected stop color when HSV changes in gradient mode
+  useEffect(() => {
+    if (fillMode !== 'gradient') return;
+    const stop = gradientState.stops[selectedStopIndex];
+    if (!stop) return;
+    // Avoid infinite loop: only update if color actually changed
+    if (stop.color === currentHex) return;
+    const newStops = gradientState.stops.map((s: GradientStop, i: number) =>
+      i === selectedStopIndex ? {...s, color: currentHex} : s,
+    );
+    const newGradient = {...gradientState, stops: newStops};
+    setGradientState(newGradient);
+    if (onGradientLiveChange) onGradientLiveChange(newGradient);
+  }, [currentHex, fillMode, selectedStopIndex]);
 
   // Close on Escape
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        if (onLiveChange) onLiveChange(initialColor.current);
+        if (fillMode === 'solid' && onLiveChange) onLiveChange(initialColor.current);
+        if (fillMode === 'gradient' && onGradientLiveChange && initialGradient.current) {
+          onGradientLiveChange(initialGradient.current);
+        }
         onClose();
       }
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose, onLiveChange]);
+  }, [onClose, onLiveChange, onGradientLiveChange, fillMode]);
 
   // Color area interaction (saturation-X, value-Y)
   const handleAreaPointer = useCallback((e: PointerEvent) => {
@@ -230,20 +280,79 @@ export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: Color
     const h = parseInt(hInput, 10), s = parseInt(sInput, 10), l = parseInt(lInput, 10);
     if (!isNaN(h) && h >= 0 && h <= 360 && !isNaN(s) && s >= 0 && s <= 100 && !isNaN(l) && l >= 0 && l <= 100) {
       const rgb = hslToRgb(h / 360, s / 100, l / 100);
-      const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
-      setHue(hsv.h); setSat(hsv.s); setVal(hsv.v);
+      const hsv2 = rgbToHsv(rgb.r, rgb.g, rgb.b);
+      setHue(hsv2.h); setSat(hsv2.s); setVal(hsv2.v);
     }
   }, [hInput, sInput, lInput]);
 
   const handleApply = useCallback(() => {
-    onCommit(currentHex);
+    if (fillMode === 'gradient') {
+      if (onGradientChange) onGradientChange(gradientState);
+    } else {
+      onCommit(currentHex);
+    }
     onClose();
-  }, [currentHex, onCommit, onClose]);
+  }, [currentHex, onCommit, onClose, fillMode, gradientState, onGradientChange]);
 
   const handleCancel = useCallback(() => {
-    if (onLiveChange) onLiveChange(initialColor.current);
+    if (fillMode === 'solid' && onLiveChange) onLiveChange(initialColor.current);
+    if (fillMode === 'gradient' && onGradientLiveChange && initialGradient.current) {
+      onGradientLiveChange(initialGradient.current);
+    }
     onClose();
-  }, [onLiveChange, onClose]);
+  }, [onLiveChange, onClose, onGradientLiveChange, fillMode]);
+
+  // Handle fill mode switch
+  const handleFillModeSwitch = useCallback((newMode: FillMode) => {
+    if (newMode === fillMode) return;
+    if (newMode === 'gradient') {
+      // Solid -> Gradient: use current solid color as first stop
+      const newGradient: GradientData = {
+        type: 'linear',
+        stops: [
+          {color: currentHex, position: 0},
+          {color: '#ffffff', position: 1},
+        ],
+        angle: 180,
+      };
+      setGradientState(newGradient);
+      setSelectedStopIndex(0);
+      if (onGradientLiveChange) onGradientLiveChange(newGradient);
+    } else {
+      // Gradient -> Solid: use first stop's color
+      const firstColor = gradientState.stops[0]?.color ?? '#000000';
+      const rgb = hexToRgba(firstColor);
+      const h = rgbToHsv(rgb.r, rgb.g, rgb.b);
+      setHue(h.h); setSat(h.s); setVal(h.v);
+      if (onLiveChange) onLiveChange(firstColor);
+    }
+    setFillMode(newMode);
+  }, [fillMode, currentHex, gradientState, onLiveChange, onGradientLiveChange]);
+
+  // Gradient controls handlers
+  const handleGradientTypeChange = useCallback((type: 'linear' | 'radial' | 'conic') => {
+    const newGradient = {...gradientState, type};
+    setGradientState(newGradient);
+    if (onGradientLiveChange) onGradientLiveChange(newGradient);
+  }, [gradientState, onGradientLiveChange]);
+
+  const handleGradientAngleChange = useCallback((angle: number) => {
+    const newGradient = {...gradientState, angle};
+    setGradientState(newGradient);
+    if (onGradientLiveChange) onGradientLiveChange(newGradient);
+  }, [gradientState, onGradientLiveChange]);
+
+  const handleGradientCenterChange = useCallback((axis: 'centerX' | 'centerY', value: number) => {
+    const newGradient = {...gradientState, [axis]: value};
+    setGradientState(newGradient);
+    if (onGradientLiveChange) onGradientLiveChange(newGradient);
+  }, [gradientState, onGradientLiveChange]);
+
+  const handleStopsChange = useCallback((stops: GradientStop[]) => {
+    const newGradient = {...gradientState, stops};
+    setGradientState(newGradient);
+    if (onGradientLiveChange) onGradientLiveChange(newGradient);
+  }, [gradientState, onGradientLiveChange]);
 
   // Hue color for the area background
   const hueRgb = hsvToRgb(hue, 1, 1);
@@ -264,7 +373,17 @@ export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: Color
   };
 
   const modeButtonClass = (m: ColorMode) =>
-    `px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ${mode === m ? 'bg-(--color-accent) text-white font-medium' : 'text-(--sidebar-text-secondary) hover:text-(--sidebar-text-primary)'}`;
+    `px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ${colorInputMode === m ? 'bg-(--color-accent) text-white font-medium' : 'text-(--sidebar-text-secondary) hover:text-(--sidebar-text-primary)'}`;
+
+  const fillModeButtonClass = (m: FillMode) =>
+    `flex-1 text-[11px] py-1 rounded cursor-pointer transition-colors ${
+      fillMode === m
+        ? 'bg-(--color-accent) text-white'
+        : 'bg-(--color-bg-input) text-(--color-text-secondary) hover:text-white'
+    }`;
+
+  const isGradientMode = fillMode === 'gradient';
+  const modalWidth = isGradientMode ? '340px' : '300px';
 
   return (
     <div
@@ -278,7 +397,7 @@ export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: Color
       <div
         class="relative rounded-xl shadow-2xl p-5 flex flex-col gap-4"
         style={{
-          width: '300px',
+          width: modalWidth,
           backgroundColor: 'var(--sidebar-panel-bg)',
           border: '1px solid var(--sidebar-border-unselected)',
         }}
@@ -295,6 +414,139 @@ export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: Color
             <X size={12} style={{color: 'var(--sidebar-text-secondary)'}} />
           </button>
         </div>
+
+        {/* Solid / Gradient toggle (only when showGradientMode is true) */}
+        {showGradientMode && (
+          <div class="flex gap-1">
+            <button
+              class={fillModeButtonClass('solid')}
+              onClick={() => handleFillModeSwitch('solid')}
+            >
+              Solid
+            </button>
+            <button
+              class={fillModeButtonClass('gradient')}
+              onClick={() => handleFillModeSwitch('gradient')}
+            >
+              Gradient
+            </button>
+          </div>
+        )}
+
+        {/* Gradient controls (only in gradient mode) */}
+        {isGradientMode && showGradientMode && (
+          <div class="flex flex-col gap-3">
+            {/* Gradient preview */}
+            <div
+              class="rounded-lg"
+              style={{
+                width: '100%',
+                height: '40px',
+                background: buildGradientCSS(
+                  gradientState.stops,
+                  gradientState.type,
+                  gradientState.angle,
+                  gradientState.centerX,
+                  gradientState.centerY,
+                ),
+                border: '1px solid rgba(255,255,255,0.1)',
+              }}
+            />
+
+            {/* Gradient type selector */}
+            <div class="flex flex-col gap-1">
+              <span style={labelStyle}>Type</span>
+              <select
+                class="w-full rounded px-2 py-1.5 border-0 outline-none text-[11px] cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--sidebar-input-bg)',
+                  color: 'var(--sidebar-text-primary)',
+                }}
+                value={gradientState.type}
+                onChange={(e) => handleGradientTypeChange((e.target as HTMLSelectElement).value as 'linear' | 'radial' | 'conic')}
+              >
+                <option value="linear">Linear</option>
+                <option value="radial">Radial</option>
+                <option value="conic">Conic</option>
+              </select>
+            </div>
+
+            {/* Gradient bar with draggable stops */}
+            <div class="flex flex-col gap-1">
+              <span style={labelStyle}>Color Stops</span>
+              <GradientBar
+                stops={gradientState.stops}
+                gradientType={gradientState.type}
+                angle={gradientState.angle}
+                centerX={gradientState.centerX}
+                centerY={gradientState.centerY}
+                onStopsChange={handleStopsChange}
+                onStopSelect={setSelectedStopIndex}
+                selectedStopIndex={selectedStopIndex}
+              />
+              <span class="text-[9px] mt-0.5" style={{color: 'var(--sidebar-text-secondary)'}}>
+                Click bar to add stop. Right-click or double-click handle to remove.
+              </span>
+            </div>
+
+            {/* Angle control (for linear and conic) */}
+            {(gradientState.type === 'linear' || gradientState.type === 'conic') && (
+              <div class="flex flex-col gap-1">
+                <span style={labelStyle}>Angle</span>
+                <div class="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={360}
+                    value={gradientState.angle ?? (gradientState.type === 'linear' ? 180 : 0)}
+                    class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
+                    style={inputStyle}
+                    onInput={(e) => handleGradientAngleChange(Number((e.target as HTMLInputElement).value))}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <span class="text-[10px] shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>deg</span>
+                </div>
+              </div>
+            )}
+
+            {/* Center controls (for radial and conic) */}
+            {(gradientState.type === 'radial' || gradientState.type === 'conic') && (
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex flex-col gap-1">
+                  <span style={labelStyle}>Center X</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={Math.round((gradientState.centerX ?? 0.5) * 100)}
+                    class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
+                    style={inputStyle}
+                    onInput={(e) => handleGradientCenterChange('centerX', Number((e.target as HTMLInputElement).value) / 100)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <span style={labelStyle}>Center Y</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={Math.round((gradientState.centerY ?? 0.5) * 100)}
+                    class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
+                    style={inputStyle}
+                    onInput={(e) => handleGradientCenterChange('centerY', Number((e.target as HTMLInputElement).value) / 100)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Separator before selected stop color picker */}
+            <div style={{borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '8px'}}>
+              <span style={labelStyle}>Selected Stop Color</span>
+            </div>
+          </div>
+        )}
 
         {/* Color area (saturation-value) */}
         <div
@@ -347,90 +599,96 @@ export function ColorPickerModal({color, onLiveChange, onCommit, onClose}: Color
           />
         </div>
 
-        {/* Color preview + current/initial */}
-        <div class="flex gap-2 items-center">
-          <div class="flex rounded overflow-hidden" style={{width: '48px', height: '24px'}}>
-            <div style={{flex: 1, backgroundColor: currentHex}} title="Current" />
-            <div style={{flex: 1, backgroundColor: initialColor.current}} title="Original" />
-          </div>
-          <span class="text-[10px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>{currentHex.toUpperCase()}</span>
-        </div>
-
-        {/* Mode tabs */}
-        <div class="flex gap-1 items-center">
-          <button class={modeButtonClass('hex')} onClick={() => setMode('hex')}>HEX</button>
-          <button class={modeButtonClass('rgba')} onClick={() => setMode('rgba')}>RGBA</button>
-          <button class={modeButtonClass('hsl')} onClick={() => setMode('hsl')}>HSL</button>
-        </div>
-
-        {/* Mode-specific inputs */}
-        {mode === 'hex' && (
-          <div class="flex flex-col gap-1">
-            <span style={labelStyle}>Hex</span>
-            <input
-              type="text"
-              value={hexInput}
-              class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
-              style={inputStyle}
-              placeholder="#000000"
-              onInput={(e) => setHexInput((e.target as HTMLInputElement).value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitHex(); }}
-              onBlur={commitHex}
-              onClick={(e) => e.stopPropagation()}
-            />
+        {/* Color preview + current/initial (solid mode only) */}
+        {!isGradientMode && (
+          <div class="flex gap-2 items-center">
+            <div class="flex rounded overflow-hidden" style={{width: '48px', height: '24px'}}>
+              <div style={{flex: 1, backgroundColor: currentHex}} title="Current" />
+              <div style={{flex: 1, backgroundColor: initialColor.current}} title="Original" />
+            </div>
+            <span class="text-[10px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>{currentHex.toUpperCase()}</span>
           </div>
         )}
 
-        {mode === 'rgba' && (
-          <div class="grid grid-cols-3 gap-2">
-            {[
-              {label: 'R', value: rInput, set: setRInput, commit: commitRgba},
-              {label: 'G', value: gInput, set: setGInput, commit: commitRgba},
-              {label: 'B', value: bInput, set: setBInput, commit: commitRgba},
-            ].map(({label, value, set, commit}) => (
-              <div class="flex flex-col gap-1" key={label}>
-                <span style={labelStyle}>{label}</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={255}
-                  value={value}
-                  class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
-                  style={inputStyle}
-                  onInput={(e) => set((e.target as HTMLInputElement).value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
-                  onBlur={commit}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Mode tabs (solid mode only) */}
+        {!isGradientMode && (
+          <>
+            <div class="flex gap-1 items-center">
+              <button class={modeButtonClass('hex')} onClick={() => setColorInputMode('hex')}>HEX</button>
+              <button class={modeButtonClass('rgba')} onClick={() => setColorInputMode('rgba')}>RGBA</button>
+              <button class={modeButtonClass('hsl')} onClick={() => setColorInputMode('hsl')}>HSL</button>
+            </div>
 
-        {mode === 'hsl' && (
-          <div class="grid grid-cols-3 gap-2">
-            {[
-              {label: 'H', value: hInput, set: setHInput, commit: commitHsl, max: 360, unit: '\u00B0'},
-              {label: 'S', value: sInput, set: setSInput, commit: commitHsl, max: 100, unit: '%'},
-              {label: 'L', value: lInput, set: setLInput, commit: commitHsl, max: 100, unit: '%'},
-            ].map(({label, value, set, commit, max}) => (
-              <div class="flex flex-col gap-1" key={label}>
-                <span style={labelStyle}>{label}</span>
+            {/* Mode-specific inputs */}
+            {colorInputMode === 'hex' && (
+              <div class="flex flex-col gap-1">
+                <span style={labelStyle}>Hex</span>
                 <input
-                  type="number"
-                  min={0}
-                  max={max}
-                  value={value}
+                  type="text"
+                  value={hexInput}
                   class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
                   style={inputStyle}
-                  onInput={(e) => set((e.target as HTMLInputElement).value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
-                  onBlur={commit}
+                  placeholder="#000000"
+                  onInput={(e) => setHexInput((e.target as HTMLInputElement).value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commitHex(); }}
+                  onBlur={commitHex}
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>
-            ))}
-          </div>
+            )}
+
+            {colorInputMode === 'rgba' && (
+              <div class="grid grid-cols-3 gap-2">
+                {[
+                  {label: 'R', value: rInput, set: setRInput, commit: commitRgba},
+                  {label: 'G', value: gInput, set: setGInput, commit: commitRgba},
+                  {label: 'B', value: bInput, set: setBInput, commit: commitRgba},
+                ].map(({label, value, set, commit}) => (
+                  <div class="flex flex-col gap-1" key={label}>
+                    <span style={labelStyle}>{label}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={255}
+                      value={value}
+                      class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
+                      style={inputStyle}
+                      onInput={(e) => set((e.target as HTMLInputElement).value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+                      onBlur={commit}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {colorInputMode === 'hsl' && (
+              <div class="grid grid-cols-3 gap-2">
+                {[
+                  {label: 'H', value: hInput, set: setHInput, commit: commitHsl, max: 360, unit: '\u00B0'},
+                  {label: 'S', value: sInput, set: setSInput, commit: commitHsl, max: 100, unit: '%'},
+                  {label: 'L', value: lInput, set: setLInput, commit: commitHsl, max: 100, unit: '%'},
+                ].map(({label, value, set, commit, max}) => (
+                  <div class="flex flex-col gap-1" key={label}>
+                    <span style={labelStyle}>{label}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={max}
+                      value={value}
+                      class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
+                      style={inputStyle}
+                      onInput={(e) => set((e.target as HTMLInputElement).value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+                      onBlur={commit}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* Action buttons */}

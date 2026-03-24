@@ -1,6 +1,6 @@
 import type { LayerType } from './layer';
 import type {WaveformPeaks, FadeCurve} from './audio';
-import type {GlTransition} from './sequence';
+import type {GlTransition, GradientData} from './sequence';
 
 export interface TimelineState {
   currentFrame: number;
@@ -18,6 +18,7 @@ export interface FrameEntry {
   localFrame: number; // frame index within this key photo's hold duration
   solidColor?: string;       // hex color for solid frames
   isTransparent?: boolean;   // true for transparent frames
+  gradient?: GradientData;   // Gradient fill data for rendering
 }
 
 /** Layout info for a sequence track row in the timeline */
