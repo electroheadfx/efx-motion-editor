@@ -1,7 +1,7 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import {createPortal} from 'preact/compat';
 import Sortable from 'sortablejs';
-import {GripVertical, Ellipsis, Clapperboard} from 'lucide-preact';
+import {GripVertical, Ellipsis, Clapperboard, Layers} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {isolationStore} from '../../stores/isolationStore';
 import {uiStore} from '../../stores/uiStore';
@@ -140,6 +140,9 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       // D-04: Switching sequences — always auto-expand (reset collapse)
       setKeyPhotoCollapsed(false);
 
+      // D-11: Auto-close layer view when switching sequences
+      uiStore.closeLayerView();
+
       uiStore.selectSequence(seq.id);
       sequenceStore.setActive(seq.id);
       sequenceStore.clearKeyPhotoSelection();
@@ -218,6 +221,13 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
     },
     [menuOpen, openMenu],
   );
+
+  const handleLayerView = useCallback((e: MouseEvent) => {
+    e.stopPropagation();  // Prevent triggering handleSelect on the row
+    sequenceStore.setActive(seq.id);
+    uiStore.selectSequence(seq.id);
+    uiStore.openLayerView(seq.id);
+  }, [seq.id]);
 
   return (
     <div
@@ -326,6 +336,15 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
             {keyCount} keys &middot; {duration}s
           </span>
         </div>
+
+        {/* Layer icon -- opens adaptive layer view (per D-02) */}
+        <button
+          class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#ffffff10] shrink-0"
+          onClick={handleLayerView}
+          title="Show layers"
+        >
+          <Layers size={14} style={{color: 'var(--sidebar-text-secondary)'}} />
+        </button>
 
         {/* Action button */}
         <button
