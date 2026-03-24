@@ -612,85 +612,81 @@ export function ColorPickerModal({
           </div>
         )}
 
-        {/* Mode tabs (solid mode only) */}
-        {!isGradientMode && (
-          <>
-            <div class="flex gap-1 items-center">
-              <button class={modeButtonClass('hex')} onClick={() => setColorInputMode('hex')}>HEX</button>
-              <button class={modeButtonClass('rgba')} onClick={() => setColorInputMode('rgba')}>RGBA</button>
-              <button class={modeButtonClass('hsl')} onClick={() => setColorInputMode('hsl')}>HSL</button>
-            </div>
+        {/* Mode tabs (both solid and gradient modes) */}
+        <div class="flex gap-1 items-center">
+          <button class={modeButtonClass('hex')} onClick={() => setColorInputMode('hex')}>HEX</button>
+          <button class={modeButtonClass('rgba')} onClick={() => setColorInputMode('rgba')}>RGBA</button>
+          <button class={modeButtonClass('hsl')} onClick={() => setColorInputMode('hsl')}>HSL</button>
+        </div>
 
-            {/* Mode-specific inputs */}
-            {colorInputMode === 'hex' && (
-              <div class="flex flex-col gap-1">
-                <span style={labelStyle}>Hex</span>
+        {/* Mode-specific inputs */}
+        {colorInputMode === 'hex' && (
+          <div class="flex flex-col gap-1">
+            <span style={labelStyle}>Hex</span>
+            <input
+              type="text"
+              value={hexInput}
+              class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
+              style={inputStyle}
+              placeholder="#000000"
+              onInput={(e) => setHexInput((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') commitHex(); }}
+              onBlur={commitHex}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
+
+        {colorInputMode === 'rgba' && (
+          <div class="grid grid-cols-3 gap-2">
+            {[
+              {label: 'R', value: rInput, set: setRInput, commit: commitRgba},
+              {label: 'G', value: gInput, set: setGInput, commit: commitRgba},
+              {label: 'B', value: bInput, set: setBInput, commit: commitRgba},
+            ].map(({label, value, set, commit}) => (
+              <div class="flex flex-col gap-1" key={label}>
+                <span style={labelStyle}>{label}</span>
                 <input
-                  type="text"
-                  value={hexInput}
+                  type="number"
+                  min={0}
+                  max={255}
+                  value={value}
                   class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
                   style={inputStyle}
-                  placeholder="#000000"
-                  onInput={(e) => setHexInput((e.target as HTMLInputElement).value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') commitHex(); }}
-                  onBlur={commitHex}
+                  onInput={(e) => set((e.target as HTMLInputElement).value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+                  onBlur={commit}
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>
-            )}
+            ))}
+          </div>
+        )}
 
-            {colorInputMode === 'rgba' && (
-              <div class="grid grid-cols-3 gap-2">
-                {[
-                  {label: 'R', value: rInput, set: setRInput, commit: commitRgba},
-                  {label: 'G', value: gInput, set: setGInput, commit: commitRgba},
-                  {label: 'B', value: bInput, set: setBInput, commit: commitRgba},
-                ].map(({label, value, set, commit}) => (
-                  <div class="flex flex-col gap-1" key={label}>
-                    <span style={labelStyle}>{label}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={255}
-                      value={value}
-                      class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
-                      style={inputStyle}
-                      onInput={(e) => set((e.target as HTMLInputElement).value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
-                      onBlur={commit}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </div>
-                ))}
+        {colorInputMode === 'hsl' && (
+          <div class="grid grid-cols-3 gap-2">
+            {[
+              {label: 'H', value: hInput, set: setHInput, commit: commitHsl, max: 360, unit: '\u00B0'},
+              {label: 'S', value: sInput, set: setSInput, commit: commitHsl, max: 100, unit: '%'},
+              {label: 'L', value: lInput, set: setLInput, commit: commitHsl, max: 100, unit: '%'},
+            ].map(({label, value, set, commit, max}) => (
+              <div class="flex flex-col gap-1" key={label}>
+                <span style={labelStyle}>{label}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={max}
+                  value={value}
+                  class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
+                  style={inputStyle}
+                  onInput={(e) => set((e.target as HTMLInputElement).value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+                  onBlur={commit}
+                  onClick={(e) => e.stopPropagation()}
+                />
               </div>
-            )}
-
-            {colorInputMode === 'hsl' && (
-              <div class="grid grid-cols-3 gap-2">
-                {[
-                  {label: 'H', value: hInput, set: setHInput, commit: commitHsl, max: 360, unit: '\u00B0'},
-                  {label: 'S', value: sInput, set: setSInput, commit: commitHsl, max: 100, unit: '%'},
-                  {label: 'L', value: lInput, set: setLInput, commit: commitHsl, max: 100, unit: '%'},
-                ].map(({label, value, set, commit, max}) => (
-                  <div class="flex flex-col gap-1" key={label}>
-                    <span style={labelStyle}>{label}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={max}
-                      value={value}
-                      class="w-full rounded px-2 py-1.5 border-0 outline-none font-mono"
-                      style={inputStyle}
-                      onInput={(e) => set((e.target as HTMLInputElement).value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
-                      onBlur={commit}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
+            ))}
+          </div>
         )}
 
         {/* Action buttons */}
