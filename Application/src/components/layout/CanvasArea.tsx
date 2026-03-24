@@ -6,8 +6,10 @@ import {SpeedBadge} from '../overlay/SpeedBadge';
 import {FullSpeedBadge} from '../overlay/FullSpeedBadge';
 import {TransformOverlay} from '../canvas/TransformOverlay';
 import {MotionPath} from '../canvas/MotionPath';
+import {PaintToolbar} from '../overlay/PaintToolbar';
 import {timelineStore} from '../../stores/timelineStore';
 import {canvasStore} from '../../stores/canvasStore';
+import {paintStore} from '../../stores/paintStore';
 import {projectStore} from '../../stores/projectStore';
 import {imageStore} from '../../stores/imageStore';
 import {uiStore} from '../../stores/uiStore';
@@ -335,6 +337,8 @@ export function CanvasArea() {
           />
         </div>
       </div>
+      {/* Paint floating toolbar (shown when paint mode active) */}
+      {paintStore.paintMode.value && <PaintToolbar />}
       {/* JKL speed badge */}
       <SpeedBadge />
     </div>

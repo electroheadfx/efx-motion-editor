@@ -9,6 +9,7 @@ import { SidebarProperties } from '../sidebar/SidebarProperties';
 import { SidebarFxProperties } from '../sidebar/SidebarFxProperties';
 import { TransitionProperties } from '../sidebar/TransitionProperties';
 import { AudioProperties } from '../sidebar/AudioProperties';
+import { PaintProperties } from '../sidebar/PaintProperties';
 import { audioStore } from '../../stores/audioStore';
 import { SequenceList } from '../sequence/SequenceList';
 import { LayerList } from '../layer/LayerList';
@@ -291,7 +292,12 @@ export function LeftPanel() {
               <SidebarFxProperties layer={selectedLayer} fxSequenceId={fxSequenceId} />
             </SidebarScrollArea>
           )}
-          {!transitionSel && !selectedAudioTrack && selectedLayer && !isFx && (
+          {!transitionSel && !selectedAudioTrack && selectedLayer && !isFx && selectedLayer.type === 'paint' && (
+            <SidebarScrollArea>
+              <PaintProperties layer={selectedLayer} />
+            </SidebarScrollArea>
+          )}
+          {!transitionSel && !selectedAudioTrack && selectedLayer && !isFx && selectedLayer.type !== 'paint' && (
             <SidebarScrollArea>
               <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
             </SidebarScrollArea>
