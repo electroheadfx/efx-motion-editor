@@ -139,4 +139,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after Phase 17 re-verification — all 6 plans complete, 3 UAT gaps closed (portal rendering, gradient input tabs, timeline thumbnails)*
+*Last updated: 2026-03-24 after Phase 17.1 — sidebar restructured from 3 panels to 2 panels with adaptive sequence/layer view switching*
