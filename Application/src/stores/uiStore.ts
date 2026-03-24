@@ -32,11 +32,11 @@ const shaderBrowserInitialTab = signal<string | null>(null);
 const sequencesSectionCollapsed = signal(false);
 const propertiesSectionCollapsed = signal(false);
 
+// Adaptive view: which sequence's layer view is open (null = show sequence list)
+const layerViewSequenceId = signal<string | null>(null);
+
 // Tracks which UI region the mouse cursor is hovering over (for context-dependent shortcuts)
 const mouseRegion = signal<'canvas' | 'timeline' | 'other'>('other');
-
-// Adaptive layer view: which sequence's layer view is open (null = sequence list, string = layer view)
-const layerViewSequenceId = signal<string | null>(null);
 
 // Flex-grow values for the two sidebar panels (default 1 each)
 const seqPanelFlex = signal(1);
@@ -66,19 +66,12 @@ export const uiStore = {
   shaderBrowserInitialTab,
   sequencesSectionCollapsed,
   propertiesSectionCollapsed,
+  layerViewSequenceId,
   sequencesPanelHeight,
   layersPanelHeight,
   seqPanelFlex,
   propPanelFlex,
   mouseRegion,
-  layerViewSequenceId,
-
-  openLayerView(sequenceId: string) {
-    layerViewSequenceId.value = sequenceId;
-  },
-  closeLayerView() {
-    layerViewSequenceId.value = null;
-  },
 
   selectSequence(id: string | null) {
     selectedSequenceId.value = id;
@@ -126,6 +119,14 @@ export const uiStore = {
   },
   setMouseRegion(region: 'canvas' | 'timeline' | 'other') {
     mouseRegion.value = region;
+  },
+
+  // Adaptive layer view
+  openLayerView(sequenceId: string) {
+    layerViewSequenceId.value = sequenceId;
+  },
+  closeLayerView() {
+    layerViewSequenceId.value = null;
   },
 
   // Legacy setters (kept for backward compat)
