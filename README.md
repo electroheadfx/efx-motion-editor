@@ -8,7 +8,7 @@ A macOS desktop application for creating **cinematic stop-motion films** from ph
 
 ### Key Photo Workflow
 
-Import photos (JPEG, PNG, TIFF, HEIC) via drag & drop or file dialog, assign hold frame counts, and arrange into named sequences. Support for solid color and transparent key entries alongside imported images.
+Import photos (JPEG, PNG, TIFF, HEIC) via drag & drop or file dialog, assign hold frame counts, and arrange into named sequences. Support for solid color, transparent, and gradient key entries alongside imported images. Collapsible key photo lists in the sidebar with click-to-toggle.
 
 <!-- Screenshot: Key photo strip with solid/transparent entries -->
 
@@ -64,6 +64,12 @@ Built-in generator effects (film grain, particles, lines, dots, vignette) and ad
 The shader library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](Application/src/lib/shaders/SHADER-SPEC.md) for how to add new shaders.
 
 <!-- Screenshot: GLSL shader browser with animated previews -->
+
+### Gradient Fills
+
+Apply linear, radial, or conic gradient fills to solid key entries with 2–5 color stops. Drag-to-position gradient stops on a visual gradient bar, edit stop colors via HEX/RGBA/HSL inputs, and adjust angle or center point. Gradients render in the preview canvas, timeline thumbnails, and video export.
+
+<!-- Screenshot: Gradient color picker with stop editor -->
 
 ### Fade & Cross-Dissolve Transitions
 
@@ -139,6 +145,7 @@ Real-time preview with zoom/pan, pinch gestures, fit-to-window, and fullscreen m
 - **Undo/Redo** — 200-level history stack with drag coalescing
 - **Auto-Save** — Debounced (2s) + periodic (60s) auto-save with atomic writes
 - **Keyboard Shortcuts** — Space, arrows, JKL, Cmd+Z/S/N/O, `?` overlay, and more
+- **Global Solo Mode** — Strip all overlay layers and FX from preview/export with one click or `S` key
 - **Sequence Isolation** — Solo mode and global loop playback toggle
 
 ## Canvas Motion Fork
@@ -155,7 +162,7 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | GPU Effects | WebGL2 (GLSL shaders, GPU blur) |
 | Native Backend | Rust, Tauri 2.0 |
 | Video Export | FFmpeg (auto-provisioned) |
-| Project Format | `.mce` v11 (progressive JSON with backward compat v1-v11) |
+| Project Format | `.mce` v13 (progressive JSON with backward compat v1-v13) |
 
 ## Prerequisites
 
