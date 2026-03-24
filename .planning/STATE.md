@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: Ready to plan
-stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-03-24T18:19:37.647Z"
+stopped_at: Completed 18-03-PLAN.md
+last_updated: "2026-03-24T19:45:32.105Z"
 last_activity: 2026-03-24
 progress:
   total_phases: 2
   completed_phases: 1
-  total_plans: 8
-  completed_plans: 2
+  total_plans: 9
+  completed_plans: 3
 ---
 
 # Project State
@@ -46,6 +46,7 @@ Full phase decisions archived in milestones/v0.3.0-ROADMAP.md.
 - [Phase 18]: Polyline optimization for >300 frame motion paths using stroke-dasharray
 - [Phase 18]: Counter-scaled SVG sizes using 1/zoom pattern matching TransformOverlay convention
 - [Phase 18]: Shared signal (motionPathCircles) for MotionPath-to-TransformOverlay coordinate exchange
+- [Phase 18]: Unified keyframe upsert path for sidebar and canvas drag eliminates dead-end transientOverrides signal routing
 
 ### Pending Todos
 
@@ -66,6 +67,6 @@ Archived with v0.3.0 milestone.
 
 ## Session Continuity
 
-Last session: 2026-03-24T18:13:11.611Z
-Stopped at: Completed 18-02-PLAN.md
+Last session: 2026-03-24T19:45:32.103Z
+Stopped at: Completed 18-03-PLAN.md
 Resume file: None
