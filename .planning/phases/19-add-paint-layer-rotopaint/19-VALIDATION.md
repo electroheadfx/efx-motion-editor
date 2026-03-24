@@ -1,0 +1,87 @@
+---
+phase: 19
+slug: add-paint-layer-rotopaint
+status: draft
+nyquist_compliant: true
+created: 2026-03-24
+---
+
+# Phase 19 — Validation Strategy
+
+> Per-phase validation contract for feedback sampling during execution.
+
+---
+
+## Test Infrastructure
+
+| Property | Value |
+|----------|-------|
+| **Framework** | Vitest 2.1.9+ |
+| **Config file** | `Application/vitest.config.ts` |
+| **Quick run command** | `cd Application && pnpm vitest run --reporter=verbose` |
+| **Full suite command** | `cd Application && pnpm vitest run` |
+| **Estimated runtime** | ~15 seconds |
+
+---
+
+## Verification Strategy
+
+This phase uses **TSC type-checking** as its primary automated verification method. Each task's `<verify>` uses `npx tsc --noEmit` to confirm type correctness. This is the accepted approach because:
+
+1. Paint layer features are primarily UI/canvas interaction code that requires visual verification
+2. The brush engine (perfect-freehand), Canvas 2D rendering, and pointer event handling are not meaningfully unit-testable without a DOM/canvas environment
+3. TypeScript compilation catches structural errors (missing imports, type mismatches, interface violations)
+4. End-to-end verification is handled by the Plan 06 checkpoint (human-verify)
+
+---
+
+## Sampling Rate
+
+- **After every task commit:** Run `cd Application && npx tsc --noEmit`
+- **After every plan wave:** Run `cd Application && pnpm vitest run` (existing tests stay green)
+- **Before `/gsd:verify-work`:** Full suite must be green
+- **Max feedback latency:** 15 seconds
+
+---
+
+## Per-Task Verification Map
+
+| Task ID | Plan | Wave | Requirement | Test Type | Automated Command |
+|---------|------|------|-------------|-----------|-------------------|
+| T-01 | 01 | 1 | Paint types | tsc | `npx tsc --noEmit` |
+| T-02 | 01 | 1 | Paint store | tsc | `npx tsc --noEmit` |
+| T-03 | 01 | 1 | Paint renderer | tsc | `npx tsc --noEmit` |
+| T-04 | 02 | 2 | PaintOverlay | tsc | `npx tsc --noEmit` |
+| T-05 | 02 | 2 | Paint mode toggle | tsc | `npx tsc --noEmit` |
+| T-06 | 03 | 2 | Renderer integration | tsc | `npx tsc --noEmit` |
+| T-07 | 03 | 2 | Layer menu + frameMap | tsc | `npx tsc --noEmit` |
+| T-08 | 04 | 3 | PaintProperties sidebar | tsc | `npx tsc --noEmit` |
+| T-09 | 04 | 3 | PaintToolbar + LeftPanel | tsc | `npx tsc --noEmit` |
+| T-10 | 05 | 3 | paintPersistence | tsc | `npx tsc --noEmit` + `cargo check` |
+| T-11 | 05 | 3 | projectStore v14 | tsc | `npx tsc --noEmit` + `cargo check` |
+| T-12 | 06 | 4 | Flood fill + wiring | tsc | `npx tsc --noEmit` |
+| T-13 | 06 | 4 | OnionSkinOverlay | tsc | `npx tsc --noEmit` |
+| T-14 | 06 | 4 | Visual verification | checkpoint | Human verify |
+
+---
+
+## Manual-Only Verifications
+
+| Behavior | Requirement | Why Manual | Test Instructions |
+|----------|-------------|------------|-------------------|
+| Paint stroke visual quality | D-01, D-02 | Visual smoothness requires human judgment | Draw strokes at various speeds, verify smooth pressure-sensitive lines |
+| Onion skinning appearance | D-08 | Opacity falloff quality is visual | Enable onion skin, paint across frames, verify ghosted frames visible |
+| Canvas interaction feel | D-09, D-11 | Input responsiveness is subjective | Enter paint mode, draw strokes, Space+drag to pan, verify fluid interaction |
+| Floating toolbar UX | D-10 | Layout and positioning assessment | Enter paint mode, verify toolbar visible, use brush/color controls |
+
+---
+
+## Validation Sign-Off
+
+- [x] All tasks have `<automated>` verify (TSC type-checking)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s
+- [x] `nyquist_compliant: true` set in frontmatter
+
+**Approval:** TSC-only verification accepted for this phase

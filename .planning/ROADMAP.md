@@ -78,6 +78,7 @@ See: `milestones/v0.3.0-ROADMAP.md` for full details.
 ### 📋 v0.4.0 (Planned)
 
 - [ ] Phase 18: Canvas Motion Path — After Effects-style keyframe path editing on canvas
+- [ ] Phase 19: Add Paint Layer Rotopaint — Frame-by-frame drawing and rotoscoping with perfect-freehand brush engine, onion skinning, and sidecar persistence (6 plans)
 
 ## Progress
 
@@ -87,29 +88,4 @@ See: `milestones/v0.3.0-ROADMAP.md` for full details.
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18. Canvas Motion Path | v0.4.0 | 0/0 | Planned | - |
-
-## Backlog
-
-### Phase 999.1: Add Paint Layer Rotopaint (BACKLOG)
-
-**Goal:** Add a paint/rotopaint layer type for frame-by-frame drawing and rotoscoping directly on the canvas, with a perfect-freehand brush engine, full tool suite (brush, eraser, eyedropper, fill, shapes), per-frame vector stroke storage, onion skinning, sidecar file persistence, and standard layer compositing
-**Depends on:** Any phase with project format (will use next available version number)
-**Requirements:** PAINT-01, PAINT-02, PAINT-03, PAINT-04, PAINT-05, PAINT-06, PAINT-07, PAINT-08, PAINT-09, PAINT-10, PAINT-11, PAINT-12, PAINT-13
-**Success Criteria** (what must be TRUE):
-  1. User can add a paint layer via the Layer menu and enter paint mode via toolbar button or P key
-  2. User can draw pressure-sensitive brush strokes and erase with per-stroke color/opacity
-  3. User can use fill tool and geometric shape tools (line, rect, ellipse)
-  4. Paint is per-frame (every timeline frame has its own canvas), supporting true frame-by-frame animation
-  5. Onion skinning shows ghosted adjacent frame paint with configurable range and opacity
-  6. Paint layers composite normally in the layer stack with blend modes and opacity
-  7. Paint renders identically in preview and export
-  8. Paint data persists as sidecar JSON files alongside the .mce project
-**Plans**: 6 plans
-
-Plans:
-- [ ] 999.1-01-PLAN.md — Foundation: paint types, paintStore, paintRenderer, LayerType extension, perfect-freehand install
-- [ ] 999.1-02-PLAN.md — Canvas interaction: PaintOverlay, paint mode toggle, TransformOverlay gating
-- [ ] 999.1-03-PLAN.md — Rendering pipeline: PreviewRenderer/exportRenderer integration, frameMap color, AddLayerMenu entry
-- [ ] 999.1-04-PLAN.md — Paint UI: PaintProperties sidebar, PaintToolbar floating overlay, LeftPanel routing
-- [ ] 999.1-05-PLAN.md — Persistence: sidecar file I/O, projectStore save/load wiring, project format version bump, Rust paint dir
-- [ ] 999.1-06-PLAN.md — Advanced: flood fill tool, onion skinning overlay, end-to-end visual verification
+| 19. Paint Layer Rotopaint | v0.4.0 | 0/6 | Planned | - |
