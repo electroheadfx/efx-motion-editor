@@ -1,8 +1,9 @@
 import {useState, useEffect, useRef} from 'preact/hooks';
-import {Clapperboard} from 'lucide-preact';
+import {Clapperboard, Sparkles} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
+import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {defaultTransform, createDefaultFxSource} from '../../types/layer';
 import type {LayerType, BlendMode, Layer} from '../../types/layer';
 import {totalFrames} from '../../lib/frameMap';
@@ -50,6 +51,16 @@ export function AddLayerMenu() {
     setMenuOpen(false);
     uiStore.setAddLayerIntent({ type, target: 'content-overlay' });
     uiStore.setEditorMode('imported');
+  };
+
+  const handleShaderBrowser = () => {
+    setMenuOpen(false);
+    if (uiStore.editorMode.peek() === 'shader-browser') {
+      uiStore.setEditorMode('editor');
+    } else {
+      capturePreviewCanvas();
+      uiStore.setEditorMode('shader-browser');
+    }
   };
 
   return (
@@ -135,6 +146,15 @@ export function AddLayerMenu() {
           >
             <span class="w-2 h-2 rounded-sm bg-[#F97316] shrink-0" />
             Blur
+          </button>
+
+          <div class="border-t border-(--color-border-subtle) my-1" />
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
+            onClick={handleShaderBrowser}
+          >
+            <Sparkles size={11} class="shrink-0 text-(--color-text-secondary)" />
+            Shader Browser
           </button>
         </div>
       )}

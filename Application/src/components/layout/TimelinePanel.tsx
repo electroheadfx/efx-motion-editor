@@ -1,6 +1,5 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
-import {Play, Pause, SkipBack, SkipForward, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Plus, Minus, Shrink, Repeat, Repeat1, Sparkles, Music, Magnet, Headphones} from 'lucide-preact';
-import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
+import {Play, Pause, SkipBack, SkipForward, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Plus, Minus, Shrink, Repeat, Repeat1, Music, Magnet, Headphones} from 'lucide-preact';
 import {timelineStore} from '../../stores/timelineStore';
 import {uiStore} from '../../stores/uiStore';
 import {isolationStore} from '../../stores/isolationStore';
@@ -217,22 +216,6 @@ export function TimelinePanel() {
 
         {/* Add Transition */}
         <AddTransitionMenu />
-
-        {/* Shader Browser */}
-        <button
-          class="rounded px-2 py-[5px] bg-(--color-bg-input) hover:bg-(--color-border-subtle) transition-colors"
-          onClick={() => {
-            if (uiStore.editorMode.peek() === 'shader-browser') {
-              uiStore.setEditorMode('editor');
-            } else {
-              capturePreviewCanvas();
-              uiStore.setEditorMode('shader-browser');
-            }
-          }}
-          title="Shader Browser"
-        >
-          <span class="text-[10px] text-(--color-text-secondary) flex items-center gap-1"><Sparkles size={11} /> Shader</span>
-        </button>
 
         {/* Add Layer */}
         <AddLayerMenu />
