@@ -80,6 +80,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
   const [menuPos, setMenuPos] = useState({top: 0, left: 0});
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(seq.name);
+  const [keyPhotoCollapsed, setKeyPhotoCollapsed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -129,6 +130,16 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
   const handleSelect = useCallback(() => {
     if (!editing) {
       const wasActive = sequenceStore.activeSequenceId.peek();
+
+      // D-02: Second click on SAME active sequence toggles collapse
+      if (seq.id === wasActive) {
+        setKeyPhotoCollapsed(prev => !prev);
+        return;  // Don't re-select, just toggle
+      }
+
+      // D-04: Switching sequences — always auto-expand (reset collapse)
+      setKeyPhotoCollapsed(false);
+
       uiStore.selectSequence(seq.id);
       sequenceStore.setActive(seq.id);
       sequenceStore.clearKeyPhotoSelection();
@@ -144,14 +155,12 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       }
 
       // Auto-seek timeline playhead to sequence start (only when switching sequences)
-      if (seq.id !== wasActive) {
-        const layouts = trackLayouts.peek();
-        const track = layouts.find(t => t.sequenceId === seq.id);
-        if (track) {
-          playbackEngine.seekToFrame(track.startFrame);
-        }
-        timelineStore.ensureTrackVisible(seq.id);
+      const layouts = trackLayouts.peek();
+      const track = layouts.find(t => t.sequenceId === seq.id);
+      if (track) {
+        playbackEngine.seekToFrame(track.startFrame);
       }
+      timelineStore.ensureTrackVisible(seq.id);
     }
   }, [seq.id, seq, editing]);
 
@@ -380,7 +389,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       <div
         class="overflow-hidden transition-[max-height] duration-150 ease-out"
         style={{
-          maxHeight: isActive ? '72px' : '0px',
+          maxHeight: isActive && !keyPhotoCollapsed ? '72px' : '0px',
         }}
       >
         {seq.keyPhotos.length > 0 ? (
