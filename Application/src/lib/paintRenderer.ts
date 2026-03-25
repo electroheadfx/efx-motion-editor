@@ -2,11 +2,11 @@ import {getStroke} from 'perfect-freehand';
 import {floodFill, hexToRgba} from './paintFloodFill';
 import type {PaintFrame, PaintElement, PaintStroke, PaintShape, PaintFill, PaintStrokeOptions} from '../types/paint';
 
-/** Pressure easing function lookup */
-const PRESSURE_EASINGS: Record<string, (p: number) => number> = {
-  linear: (p: number) => p,
-  gentle: (p: number) => p * (2 - p),
-  firm: (p: number) => p * p,
+/** Legacy pressure easing presets → curve exponent mapping */
+const LEGACY_EASING_CURVES: Record<string, number> = {
+  linear: 1.0,
+  gentle: 0.5,
+  firm: 2.0,
 };
 
 /**
@@ -20,8 +20,11 @@ export function strokeToPath(
   size: number,
   options: PaintStrokeOptions,
 ): Path2D | null {
-  // Backward-compatible: old saved strokes may lack new fields
-  const easing = PRESSURE_EASINGS[options.pressureEasing ?? 'linear'] || PRESSURE_EASINGS.linear;
+  // Resolve pressure curve: prefer numeric pressureCurve, fall back to legacy string preset
+  const curveExponent = options.pressureCurve
+    ?? LEGACY_EASING_CURVES[options.pressureEasing ?? 'linear']
+    ?? 1.0;
+  const easing = (p: number) => Math.pow(p, curveExponent);
   const taperStart = options.taperStart ?? 0;
   const taperEnd = options.taperEnd ?? 0;
 
@@ -45,11 +48,23 @@ export function strokeToPath(
 
   if (outline.length < 2) return null;
 
+  // Use quadratic bezier curves through midpoints for smooth outlines.
+  // Straight lineTo produces angular/faceted strokes at large brush sizes.
   const path = new Path2D();
+  const len = outline.length;
   path.moveTo(outline[0][0], outline[0][1]);
-  for (let i = 1; i < outline.length; i++) {
-    path.lineTo(outline[i][0], outline[i][1]);
+
+  for (let i = 0; i < len - 1; i++) {
+    const curr = outline[i];
+    const next = outline[i + 1];
+    // Midpoint between current and next
+    const mx = (curr[0] + next[0]) / 2;
+    const my = (curr[1] + next[1]) / 2;
+    path.quadraticCurveTo(curr[0], curr[1], mx, my);
   }
+  // Final segment to close back to the last point
+  const last = outline[len - 1];
+  path.lineTo(last[0], last[1]);
   path.closePath();
   return path;
 }

@@ -1,5 +1,6 @@
 import {useRef, useEffect} from 'preact/hooks';
 import type {RefObject} from 'preact';
+import {listen} from '@tauri-apps/api/event';
 import {paintStore} from '../../stores/paintStore';
 import {canvasStore} from '../../stores/canvasStore';
 import {projectStore} from '../../stores/projectStore';
@@ -65,7 +66,12 @@ export function PaintOverlay({
   const rafId = useRef(0);
 
   // --- Tablet pen tracking refs ---
-  const isPenStroke = useRef(false);
+  // WebKit (WKWebView) reports pointerType:'mouse' for pen input, so we detect
+  // pen via native Tauri bridge timing instead of PointerEvent.pointerType.
+  const nativePressure = useRef(0.5);     // latest pressure from native macOS NSEvent
+  const nativeTiltX = useRef(0);
+  const nativeTiltY = useRef(0);
+  const lastNativeEventTime = useRef(0);  // timestamp of last native tablet event
   const avgTilt = useRef(0);
   const tiltSamples = useRef(0);
 
@@ -75,6 +81,32 @@ export function PaintOverlay({
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };
   }, []);
+
+  // --- Listen for native tablet pressure from Tauri backend ---
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<{pressure: number; tilt_x: number; tilt_y: number}>('tablet:pressure', (event) => {
+      nativePressure.current = event.payload.pressure;
+      nativeTiltX.current = event.payload.tilt_x;
+      nativeTiltY.current = event.payload.tilt_y;
+      lastNativeEventTime.current = performance.now();
+      // Mark tablet as detected
+      if (!paintStore.tabletDetected.peek()) {
+        paintStore.setTabletDetected(true);
+      }
+      // Update live pressure readout for sidebar
+      paintStore.livePressure.value = event.payload.pressure;
+    }).then(fn => { unlisten = fn; });
+    return () => unlisten?.();
+  }, []);
+
+  // --- Detect pen input via native bridge timing ---
+  // Returns true if native tablet events arrived recently (within 300ms).
+  // WebKit reports pointerType:'mouse' for pen, so this is the only reliable check.
+  function isNativePenActive(): boolean {
+    return lastNativeEventTime.current > 0 &&
+      (performance.now() - lastNativeEventTime.current) < 300;
+  }
 
   // --- Get project point from any event-like object with clientX/clientY ---
   function getProjectPointFromEvent(ev: {clientX: number; clientY: number}) {
@@ -149,10 +181,10 @@ export function PaintOverlay({
       const options = paintStore.strokeOptions.peek();
       const size = paintStore.brushSize.peek();
 
-      // Override simulatePressure based on input device for live preview
+      // When native tablet bridge is active, use real pressure (disable simulation).
       const previewOptions = {
         ...options,
-        simulatePressure: !isPenStroke.current,
+        simulatePressure: !isNativePenActive(),
       };
       const path = strokeToPath(points, size, previewOptions);
       if (path) {
@@ -233,26 +265,22 @@ export function PaintOverlay({
     // Only left button
     if (e.button !== 0) return;
 
-    // Auto-detect pen vs mouse
-    const isPen = e.pointerType === 'pen';
-    if (isPen && !paintStore.tabletDetected.peek()) {
-      paintStore.setTabletDetected(true);
-    }
-    isPenStroke.current = isPen;
+    // Detect pen via native bridge (WebKit reports pointerType:'mouse' for pen)
+    const isPen = isNativePenActive();
 
     const point = getProjectPoint(e);
-    // For pen: use real pressure. For mouse: browser reports 0.5 for button down.
-    // simulatePressure handles velocity-based width for mouse strokes.
-    const pressure = isPen ? e.pressure : 0.5;
+    const pressure = isPen ? nativePressure.current : 0.5;
     const tool = paintStore.activeTool.peek();
 
     if (tool === 'brush' || tool === 'eraser') {
       isDrawing.current = true;
       currentPoints.current = [[point.x, point.y, pressure]];
       currentElementId.current = crypto.randomUUID();
-      // Initialize tilt tracking for pen
+      // Initialize tilt tracking for pen (use native tilt from Tauri bridge)
       if (isPen) {
-        const tiltMagnitude = Math.sqrt(e.tiltX ** 2 + e.tiltY ** 2) / 90;
+        const tx = nativeTiltX.current;
+        const ty = nativeTiltY.current;
+        const tiltMagnitude = Math.min(1, Math.sqrt(tx * tx + ty * ty));
         avgTilt.current = tiltMagnitude;
         tiltSamples.current = 1;
       } else {
@@ -329,17 +357,20 @@ export function PaintOverlay({
     if (!isDrawing.current) return;
 
     const tool = paintStore.activeTool.peek();
-    const isPen = e.pointerType === 'pen';
+    const isPen = isNativePenActive();
 
     if (tool === 'brush' || tool === 'eraser') {
-      // Use coalesced events for higher-resolution tablet input
+      // Use coalesced events for higher-resolution position input
       const coalescedPts = getCoalescedPoints(e);
       for (const pt of coalescedPts) {
-        const pressure = isPen ? pt.pressure : 0.5;
+        // Use native macOS pressure for pen (WebKit always reports 0.5)
+        const pressure = isPen ? nativePressure.current : 0.5;
         currentPoints.current.push([pt.x, pt.y, pressure]);
         // Update running tilt average for pen
         if (isPen) {
-          const tiltMag = Math.sqrt(pt.tiltX ** 2 + pt.tiltY ** 2) / 90;
+          const tx = nativeTiltX.current;
+          const ty = nativeTiltY.current;
+          const tiltMag = Math.min(1, Math.sqrt(tx * tx + ty * ty));
           tiltSamples.current++;
           avgTilt.current += (tiltMag - avgTilt.current) / tiltSamples.current;
         }
@@ -347,7 +378,7 @@ export function PaintOverlay({
       requestPreview();
     } else if (tool === 'line' || tool === 'rect' || tool === 'ellipse') {
       const point = getProjectPoint(e);
-      const pressure = isPen ? e.pressure : 0.5;
+      const pressure = isPen ? nativePressure.current : 0.5;
       // Update shape end point (store as last point)
       currentPoints.current = [currentPoints.current[0], [point.x, point.y, pressure]];
       requestPreview();
@@ -358,20 +389,20 @@ export function PaintOverlay({
     const tool = paintStore.activeTool.peek();
     const layerId = getSelectedPaintLayerId();
     const frame = timelineStore.currentFrame.peek();
-    const isPen = e.pointerType === 'pen';
+    const isPen = isNativePenActive();
 
     if ((tool === 'brush' || tool === 'eraser') && isDrawing.current && layerId) {
       const points = currentPoints.current;
       if (points.length > 0) {
         // Build per-stroke options with device-specific overrides
         const baseOptions = {...paintStore.strokeOptions.peek()};
-        // Override simulatePressure: false for pen (real data), true for mouse (velocity-based)
+        // When native bridge provided real pressure, disable velocity simulation
         baseOptions.simulatePressure = !isPen;
 
         // When pen is tilted, reduce thinning (flatter stroke like a real brush on its side)
         if (isPen && baseOptions.tiltInfluence > 0) {
-          const tiltFactor = avgTilt.current; // 0-1 normalized
-          baseOptions.thinning = baseOptions.thinning * (1 - tiltFactor * baseOptions.tiltInfluence);
+          const tiltFactor = Math.min(1, avgTilt.current); // 0-1 clamped
+          baseOptions.thinning = Math.max(0.1, baseOptions.thinning * (1 - tiltFactor * baseOptions.tiltInfluence));
         }
 
         const stroke: PaintStroke = {
@@ -414,7 +445,6 @@ export function PaintOverlay({
     // Reset tilt tracking
     avgTilt.current = 0;
     tiltSamples.current = 0;
-    isPenStroke.current = false;
 
     // Clear temp canvas
     const canvas = tempCanvasRef.current;

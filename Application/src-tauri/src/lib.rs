@@ -10,6 +10,9 @@ use percent_encoding::percent_decode_str;
 use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::Emitter;
 
+#[cfg(target_os = "macos")]
+use services::tablet;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -155,6 +158,12 @@ pub fn run() {
                     handle.emit("menu:fit-to-window", ()).ok();
                 }
             });
+
+            // Install native tablet pressure monitor (macOS only).
+            // WebKit doesn't report real pen pressure via PointerEvent — this
+            // bridges native NSEvent tablet data to the frontend.
+            #[cfg(target_os = "macos")]
+            tablet::install_tablet_monitor(app.handle().clone());
 
             Ok(())
         })

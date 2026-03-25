@@ -25,8 +25,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
   const shapeFilledVal = paintStore.shapeFilled.value;
   const fillToleranceVal = paintStore.fillTolerance.value;
 
-  const tabletDetectedVal = paintStore.tabletDetected.value;
-
   const showBrushSettings = BRUSH_TOOLS.includes(activeTool) || SHAPE_TOOLS.includes(activeTool);
   const showStrokeOptions = STROKE_TOOLS.includes(activeTool);
   const showShapeOptions = SHAPE_TOOLS.includes(activeTool);
@@ -199,49 +197,50 @@ export function PaintProperties({layer}: {layer: Layer}) {
 
           {!tabletCollapsed && (
             <div class="flex flex-col gap-2 mt-1.5">
-              {/* Pressure Curve (pen-only) */}
-              {tabletDetectedVal && (
-                <div class="flex items-center gap-2">
-                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Pressure</span>
-                  <select
-                    class="text-[11px] rounded px-1.5 py-0.5 outline-none flex-1"
-                    style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
-                    value={strokeOpts.pressureEasing}
-                    onChange={(e) => {
-                      paintStore.strokeOptions.value = {
-                        ...paintStore.strokeOptions.value,
-                        pressureEasing: (e.target as HTMLSelectElement).value,
-                      };
-                    }}
-                  >
-                    <option value="linear">Linear</option>
-                    <option value="gentle">Gentle</option>
-                    <option value="firm">Firm</option>
-                  </select>
-                </div>
-              )}
+              {/* Pressure Curve slider: exponent controls how pressure maps to width.
+                  0.5 = gentle (light touch has effect), 1.0 = linear, 2.0+ = firm (hard press needed) */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Curve</span>
+                <input
+                  type="range"
+                  min={0.3}
+                  max={4.0}
+                  step={0.1}
+                  value={strokeOpts.pressureCurve ?? 2.0}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => {
+                    const val = parseFloat((e.target as HTMLInputElement).value);
+                    paintStore.strokeOptions.value = {
+                      ...paintStore.strokeOptions.value,
+                      pressureCurve: val,
+                    };
+                  }}
+                />
+                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {(strokeOpts.pressureCurve ?? 2.0).toFixed(1)}
+                </span>
+              </div>
 
-              {/* Tilt Influence (pen-only) */}
-              {tabletDetectedVal && (
-                <div class="flex items-center gap-2">
-                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Tilt</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    value={strokeOpts.tiltInfluence}
-                    class="flex-1 min-w-0 h-1 cursor-pointer"
-                    style={{accentColor: 'var(--color-accent)'}}
-                    onInput={(e) => {
-                      paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, tiltInfluence: parseFloat((e.target as HTMLInputElement).value)};
-                    }}
-                  />
-                  <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                    {strokeOpts.tiltInfluence.toFixed(1)}
-                  </span>
-                </div>
-              )}
+              {/* Tilt Influence */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Tilt</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={strokeOpts.tiltInfluence}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => {
+                    paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, tiltInfluence: parseFloat((e.target as HTMLInputElement).value)};
+                  }}
+                />
+                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {strokeOpts.tiltInfluence.toFixed(1)}
+                </span>
+              </div>
 
               {/* Taper Start (available for all input) */}
               <div class="flex items-center gap-2">

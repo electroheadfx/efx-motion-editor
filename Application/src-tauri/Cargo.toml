@@ -29,3 +29,10 @@ tauri-plugin-notification = "2.3.3"
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 tokio = { version = "1", features = ["fs"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", features = ["exception"] }
+objc2-foundation = { version = "0.3", features = ["NSObject", "NSThread"] }
+objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSResponder"] }
+block2 = "0.6"
+dispatch = "0.2"

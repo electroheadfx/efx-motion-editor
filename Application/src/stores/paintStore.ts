@@ -18,6 +18,7 @@ const strokeOptions = signal<PaintStrokeOptions>({...DEFAULT_STROKE_OPTIONS});
 const shapeFilled = signal(false);
 const fillTolerance = signal(10);
 const tabletDetected = signal(false);
+const livePressure = signal(0);  // real-time pressure readout from pen
 const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
@@ -64,6 +65,7 @@ export const paintStore = {
   shapeFilled,
   fillTolerance,
   tabletDetected,
+  livePressure,
   onionSkinEnabled,
   onionSkinPrevRange,
   onionSkinNextRange,
@@ -206,6 +208,7 @@ export const paintStore = {
     shapeFilled.value = false;
     fillTolerance.value = 10;
     tabletDetected.value = false;
+    livePressure.value = 0;
     onionSkinEnabled.value = false;
     onionSkinPrevRange.value = 1;
     onionSkinNextRange.value = 0;

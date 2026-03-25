@@ -18,9 +18,10 @@ export interface PaintStrokeOptions {
   smoothing: number;     // 0-1, default 0.5
   streamline: number;    // 0-1, default 0.5
   simulatePressure: boolean; // true for mouse (velocity-based), false for pen (real pressure)
-  // Pressure easing function identifier (stored as string for serialization)
-  // 'linear' = (p) => p  |  'gentle' = (p) => p * (2 - p)  |  'firm' = (p) => p * p
+  // Pressure easing function identifier (legacy, for old saved strokes)
   pressureEasing: string;
+  // Pressure curve exponent: 1.0 = linear, 2.0+ = firm (soft=thin, hard=thick), 0.5 = gentle
+  pressureCurve: number;
   // Start/end taper: 0 = no taper, >0 = taper length in pixels, -1 = auto
   taperStart: number;
   taperEnd: number;
@@ -68,6 +69,7 @@ export const DEFAULT_STROKE_OPTIONS: PaintStrokeOptions = {
   streamline: 0.5,
   simulatePressure: true,  // default true; PaintOverlay overrides to false for pen input
   pressureEasing: 'linear',
+  pressureCurve: 2.0,  // firm by default: soft press = thin, hard press = thick
   taperStart: 0,
   taperEnd: 0,
   tiltInfluence: 0.3,
