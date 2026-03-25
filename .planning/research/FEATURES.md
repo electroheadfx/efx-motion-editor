@@ -1,331 +1,205 @@
-# Feature Research: v0.3.0 Audio & Polish
+# Feature Research
 
-**Domain:** Stop-motion cinematic editor -- audio integration, beat sync, sidebar UX, canvas motion paths
-**Researched:** 2026-03-21
-**Confidence:** HIGH (Web Audio API, FFmpeg audio muxing, timeline waveform patterns well-documented; motion path patterns well-established in After Effects/Apple Motion)
+**Domain:** Expressive paint brush FX and per-layer motion blur for stop-motion animation editor
+**Researched:** 2026-03-25
+**Confidence:** MEDIUM-HIGH
 
 ## Feature Landscape
 
 ### Table Stakes (Users Expect These)
 
-Features users assume exist once "audio support" is advertised. Missing these = product feels broken or half-baked.
+Features that users of expressive brush tools and motion blur in creative/animation software assume exist. Missing any of these makes the feature feel broken or half-baked.
 
-| Feature | Why Expected | Complexity | Dependencies on Existing |
-|---------|--------------|------------|--------------------------|
-| Audio file import (WAV, MP3, AAC, FLAC) | Every editor that claims audio support accepts common formats. Users drag or open an audio file and it appears on the timeline. Dragonframe, Stop Motion Studio, and iMovie all accept these. | MEDIUM | Tauri file dialog + drag-drop (already built for images). Rust backend reads file, copies to project `audio/` folder. Frontend uses `convertFileSrc()` or `efxasset://` protocol (already established) to get a URL for Web Audio API `decodeAudioData()`. Requires new `audioStore` signal store. New `MceAudioTrack` in project format (version bump to v8). |
-| Waveform visualization on timeline | The single most expected audio feature in any timeline-based editor. Premiere Pro, DaVinci Resolve, Kdenlive, and even Canva show waveforms. Users need visual feedback to align frames to audio events. Without waveform, audio is invisible. | HIGH | Requires: Web Audio API `decodeAudioData()` to get `AudioBuffer`, peak extraction by downsampling to ~100-200 peaks per second (not per-sample -- summarize peaks per pixel column for efficiency, as Kdenlive's 2025 waveform rewrite confirmed). Render as a Canvas 2D track row below content/FX tracks in `TimelineRenderer`. Track height ~40-60px. Waveform data cached in `audioStore` to avoid re-decoding. Must respect `timelineStore.zoom` and `timelineStore.scrollX` for synchronized horizontal scroll. |
-| Synced audio playback with preview | When user presses Space, audio must play in sync with visual frames. Every NLE and animation tool does this. Unsynchronized audio is worse than no audio. | HIGH | `PlaybackEngine` uses `performance.now()` delta accumulation -- already designed for audio sync readiness (noted as PREV-05 in v0.1.0). Integration: create `AudioContext` + `AudioBufferSourceNode`, start at `currentFrame / fps` offset. On seek, re-start source at new offset. On stop, `source.stop()`. The `PlaybackEngine.tick()` loop is the master clock; audio follows. Alternative: use audio as master clock via `AudioContext.currentTime` and drive `timelineStore.currentFrame` from it -- more accurate but requires refactoring tick loop. Recommend: audio-follows-video approach (simpler, sufficient at 15/24 fps). |
-| Audio volume control | Basic gain slider. Every audio feature has a volume knob. Users need to preview at comfortable levels without affecting export. | LOW | `GainNode` in Web Audio API graph. Single `audioStore.volume` signal (0-1). Slider in sidebar or timeline header. Persisted in project file. |
-| Audio timeline positioning (offset) | Users need to slide the audio track left/right to align it with their visual content. The audio may not start at frame 0. Premiere, After Effects, and Dragonframe all support this. | MEDIUM | `audioStore.offsetFrames` signal. Waveform rendering shifts by offset. Playback starts audio at `(currentFrame - offsetFrames) / fps`. Negative offset = audio starts before video (silent video lead-in). Drag handle on timeline audio track. |
-| Fade in/out on audio | Abrupt audio starts/stops sound amateur. Users expect at minimum a fade-in and fade-out control. Premiere, DaVinci, GarageBand all have this. | MEDIUM | Web Audio API `GainNode.gain.linearRampToValueAtTime()` for playback preview. FFmpeg `-af afade=t=in:d=X,afade=t=out:st=Y:d=Z` for export. Store as `fadeInDuration` and `fadeOutDuration` (in seconds) on the audio track model. Visual handles on waveform edges (triangle overlays). |
-| Audio in video export | If the editor has audio import, the exported video must include it. Silent video export when audio is present would be a bug, not a feature. | MEDIUM | FFmpeg already handles video encoding via `exportEncodeVideo()` Rust IPC. Add `-i audioPath -c:a aac -b:a 192k -map 0:v -map 1:a` to FFmpeg command. Audio offset handled with `-itsoffset` flag. Fade in/out handled with `-af afade` filter. Requires extending `exportEncodeVideo()` IPC to accept optional audio parameters. |
-| Sidebar scroll in key photos panel | With many key photos (20+), the list overflows. Users expect to scroll through them. `SidebarScrollArea` component already exists and works -- but key photos sub-window needs to use it if not already wired. | LOW | `SidebarScrollArea` component is built with custom 4px thumb (already handles WKWebView scrollbar quirk). Verify it wraps the key photos list. If key photos render inline in the sequences panel, the scroll may already work via the parent scroll area. Likely a wiring check, not new development. |
-| Sidebar collapse toggle for sections | Users need to collapse sections they're not using to save space. `CollapsibleSection` component already exists with `collapsed` signal prop and chevron animation. | LOW | `CollapsibleSection` is built. Verify all three sidebar sub-windows (Sequences, Layers, Properties) use it. May need to add collapse state persistence to `appConfig`. |
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Brush style selector UI with visual previews | Every painting app (Procreate, Krita, Rebelle, Photoshop) shows brush previews in a picker. Users must see what they'll get before painting. | LOW | Extends existing PaintProperties panel. Thumbnails can be pre-rendered static images or tiny canvas previews. |
+| Ink brush with clean, confident strokes | Ink is the most common rotoscoping/animation brush. Hand-drawn animators use it 90% of the time. Defined edges, slight thickness variation from pressure. | MEDIUM | Built on existing perfect-freehand pipeline with WebGL2 edge-darkening post-pass. Simplest non-flat style. |
+| Charcoal brush with grainy texture | Expected as a "sketch" tool in any natural media suite. Grainy, soft-edged strokes with paper texture interaction. | MEDIUM | Stamp-based rendering with texture atlas + alpha erosion. Grain intensity tied to pressure. |
+| Watercolor with visible bleed/diffusion | The signature natural media effect. Users expect paint to spread beyond stroke edges with organic randomness. | HIGH | Tyler Hobbs polygon deformation algorithm: 7 recursive deformation rounds on base polygon, then 30-100 semi-transparent layers at ~4% opacity each. Most complex brush style. |
+| Physically-based color mixing (overlapping strokes) | When two paint strokes overlap, users expect subtractive mixing (blue + yellow = green). RGB additive mixing (blue + yellow = gray) breaks immersion instantly. | MEDIUM | Use spectral.js (MIT, v3.0.0) with spectral.glsl for GPU mixing. 37-band Kubelka-Munk reflectance model. The spec already identifies this correctly. |
+| Motion blur toggle in preview toolbar | Users need instant on/off when blur costs performance. Every NLE (Premiere, DaVinci, After Effects) has this. | LOW | Boolean toggle + icon button. Connects to a motionBlur enabled signal. |
+| Shutter angle control for motion blur | Standard in After Effects, DaVinci Resolve, Nuke. Users think in shutter angle (180 degrees = standard film look). | LOW | UI slider 0-360 mapped to strength 0.0-1.0. The spec correctly identifies this mapping. |
+| Motion blur applies per-layer based on keyframe velocity | Users expect stationary layers to stay sharp while moving layers blur. After Effects does this automatically from keyframe data. | MEDIUM | Velocity computed from keyframe deltas between current and previous frame. Already feasible since `interpolateAt()` accepts fractional frames. |
+| Flat brush remains default and unaffected | Existing users must not see any regression. Current perfect-freehand strokes must render identically. | LOW | `brushStyle === 'flat'` skips WebGL2 pipeline entirely. Spec already specifies this fallback. |
+| Export produces same visual output as preview | What you see in preview must match export. Motion blur in export should be at least as good as preview quality. | MEDIUM | GLSL velocity blur used in both paths. Export adds sub-frame accumulation for higher quality. |
 
 ### Differentiators (Competitive Advantage)
 
-Features that set EFX Motion apart from Dragonframe, Stop Motion Studio, and basic video editors. These are the reason to build v0.3.0.
+Features that set this apart from other stop-motion editors. These are not expected by users but create significant value.
 
-| Feature | Value Proposition | Complexity | Dependencies on Existing |
-|---------|-------------------|------------|--------------------------|
-| BPM detection with beat markers on timeline | No stop-motion tool auto-detects BPM and renders beat markers. Users composing to music currently count frames manually. Canva and Filmora have auto-beat-marker features for general video editing, but no stop-motion tool has this. Renders vertical marker lines on the timeline at each detected beat position. | MEDIUM | `web-audio-beat-detector` npm: `guess(audioBuffer)` returns `{ bpm, offset, tempo }`. Algorithm: low-pass filter isolates kick drum, peak detection estimates BPM (90-180 range, configurable). `offset` is time of first beat in seconds. Beat positions: `offset + n * (60/bpm)` converted to frames. Store as `audioStore.beatMarkers: number[]` (frame positions). Render in `TimelineRenderer` as thin vertical lines (distinct color from playhead). |
-| Snap-to-beat for key photo boundaries | When dragging key photo hold duration handles, snap to nearest beat marker. Turns frame-counting into a visual alignment task. No stop-motion tool has this. | LOW | Requires beat markers (above). When `holdFrames` drag handle is active, find nearest beat marker frame and snap if within threshold (e.g., 2 frames). Minimal code -- a `findNearestBeat()` utility function applied in `TimelineInteraction` drag handlers. |
-| Auto-arrange frames to beats | "I have 12 photos and a 120 BPM track at 24fps" = each beat is 12 frames. Auto-distribute photos so each occupies `framesPerBeat` hold duration. Core calculation: `framesPerBeat = fps * 60 / bpm`. Fill strategies: every beat, every 2 beats, every bar (4 beats). One-click operation. No stop-motion tool calculates this. | MEDIUM | Depends on: BPM detection, beat markers, sequence with key photos. Algorithm: `framesPerBeat = round(fps * 60 / bpm)`. For N photos, compute hold frames per photo based on selected strategy. If "every beat": each photo gets `framesPerBeat` hold. If "every 2 beats": `framesPerBeat * 2`. If "every bar": `framesPerBeat * 4`. Edge case: last photo may need different hold to fill remaining beats. UI: button in sidebar or audio properties panel with strategy dropdown. Applies via `sequenceStore` mutations (undoable). |
-| Canvas motion path visualization | After Effects shows position keyframes as a dotted path on the canvas, with diamonds at keyframe positions and dots between them (dot density indicates speed). No stop-motion tool or simple overlay editor has this. Users can see and directly manipulate the spatial animation path. | HIGH | Depends on: existing keyframe system (`keyframeStore`, `keyframeEngine.ts`), existing transform overlay (`TransformOverlay.tsx`), existing canvas coordinate mapper (`coordinateMapper.ts`). Implementation: read all keyframes for the selected layer, extract (x, y) positions, compute interpolated positions between keyframes (reusing `interpolateAt()`), render as a Canvas 2D path overlay. Keyframe diamonds are draggable control points that update `keyframeStore` on drag. Speed visualization via dot spacing (close together = slow, far apart = fast). |
-| Motion path keyframe dragging on canvas | Users drag keyframe position diamonds directly on the canvas instead of editing X/Y numbers in the properties panel. After Effects and Apple Motion both support this. Dramatically improves spatial animation workflow. | HIGH | Extension of motion path visualization. Requires: hit-testing keyframe diamonds on the canvas path (similar to existing `hitTestHandles`), drag interaction that updates `keyframeStore` position values, coalescing undo for smooth drag (existing `startCoalescing`/`stopCoalescing` from `history.ts`). The existing `TransformOverlay` already handles pointer capture, drag thresholds, and coordinate mapping -- extend rather than rebuild. |
-| Solo mode for sequences AND layers | Sequence isolation (`isolationStore`) already exists for playback. Extending to individual layers within a sequence lets users preview a single layer's contribution. After Effects has layer solo ("S" column). No stop-motion tool has per-layer solo. | MEDIUM | `isolationStore` handles sequence-level isolation. For layer solo: add `soloLayerIds` signal to `isolationStore` (or new signal on `layerStore`). In `PreviewRenderer.render()`, when solo is active, skip non-solo layers. Eye/solo icons in the sidebar layer list (standard After Effects pattern: eye = visibility, speaker-like icon = solo). Solo is temporary preview state (not persisted). |
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Spectral pigment mixing via Kubelka-Munk theory | No other stop-motion editor offers physically-accurate paint mixing. Most tools use RGB blending which produces muddy results. Spectral mixing makes overlapping paint strokes behave like real pigments (blue+yellow=green). | MEDIUM | spectral.js v3.0.0 provides spectral.glsl with `spectral_mix()` for 2-4 color blending on GPU. MIT licensed. The GLSL shader can be embedded directly into the WebGL2 offscreen renderer. |
+| Flow field distortion on brush strokes | Organic, hand-drawn quality without requiring artist skill. Strokes follow vector fields (wobble, spiral, wave patterns) instead of precise cursor paths. Unique for animation tools. | MEDIUM | Grid-based 2D vector field (Perlin noise or preset patterns). Applied per-step during stroke rasterization, deflecting stamp positions. p5.brush demonstrates this technique well. |
+| Combined GLSL + sub-frame motion blur for export | After Effects uses 16 fixed samples. Our combined approach achieves better quality with only 4-8 sub-frames because GLSL fills motion gaps between discrete positions. This is the approach used by high-end compositing tools (Nuke). | MEDIUM | The existing `interpolateAt()` already supports fractional frames. Sub-frame accumulation blends N renders at fractional positions. Each sub-frame also gets GLSL directional blur. |
+| Per-layer motion blur override | Allow disabling motion blur on specific layers (e.g., text overlays, UI elements that should stay sharp). After Effects has this; most simpler tools don't. | LOW | Per-layer boolean `motionBlurEnabled` with default true. UI checkbox in layer properties. |
+| Pencil brush with graphite texture | Sketching is a primary workflow for animation. A pencil that responds to pressure with realistic graphite grain is immediately useful for storyboarding. | MEDIUM | Similar architecture to charcoal but with finer grain texture, lighter default opacity, and narrower pressure-to-width mapping. |
+| Marker brush with flat, saturated fills | Useful for bold coloring in animation. Flat tip with consistent opacity and hard edges. | LOW | Simpler than watercolor -- rectangular stamp with slight angle variation. No bleed or diffusion needed. |
+| Watercolor edge darkening (ink pooling) | Subtle but high-impact visual effect where overlapping transparent regions darken at edges, simulating ink/paint pooling. | LOW | Fragment shader post-pass: darken pixels where alpha > 0.7. Simple and visually striking per the spec. |
+| Grain/texture post-processing pass | Paper texture interaction makes all brush styles feel more organic. Stochastic erosion punches semi-transparent holes simulating paper absorption. | LOW | Single-pass shader with noise texture. Applied after stroke rendering, before compositing back to Canvas 2D. |
+| Adaptive preview quality for motion blur | Auto-reduce sample count when FPS drops below target. Users get smooth playback without manual quality management. | LOW | Monitor frame timing; switch from 8 to 4 samples (or disable) if framerate drops below 20fps. |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem good but create problems or are out of scope for v0.3.0.
+Features that seem appealing but create problems for this specific product.
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Multi-track audio mixing | "I want background music AND sound effects." Professional NLE expectation. | Requires mixer UI, per-track gain, pan, bus routing. Transforms the audio system from a simple soundtrack into a DAW. Enormous complexity for a stop-motion editor. Users who need multi-track mixing already use GarageBand/Logic/Audacity for pre-mix. | Single audio track per project. Users pre-mix in an audio tool. |
-| Audio recording / voiceover | "Record narration directly in the editor." Dragonframe has this for on-set reference audio. | Requires microphone permission management, recording UI, level meters, monitoring. The use case (stop-motion to music) does not typically involve voiceover. | Import pre-recorded audio files. |
-| Audio waveform editing (cut, trim, splice) | "I want to edit the audio to match my timeline length." | Turns the product into an audio editor. Waveform editing requires region selection, crossfade UI, non-destructive edit stack. The audio is a reference track, not the primary content. | Audio offset + fade in/out covers 90% of needs. Users trim audio in Audacity/GarageBand before import. |
-| Real-time beat detection during playback | "Show beats as the music plays, like a visualizer." BeatDetect.js and realtime-bpm-analyzer support this. | Real-time analysis competes with playback rendering for CPU. The BPM result is identical to offline analysis but less accurate (needs accumulation). No benefit over pre-computed markers. | Offline BPM analysis on import. Results cached. Instant beat markers without playback cost. |
-| Bezier curve handles on motion path | After Effects shows tangent handles for Bezier spatial interpolation. Users expect them if they see motion paths. | The existing keyframe system uses polynomial cubic easing (`applyEasing()` with `t^3` curves), not per-keyframe Bezier control points. Adding Bezier spatial interpolation would require: per-keyframe tangent storage, cubic Bezier evaluation, tangent handle hit-testing and dragging, tangent break/lock modes. This is a major rework of the interpolation engine for a v0.3.0 polish milestone. | Show motion path as a polyline with easing-based interpolation (dots show speed via existing easing). Keyframe diamonds are draggable for position. The path accurately reflects the actual interpolation curve. Bezier handles can be added in a future milestone if users request them. |
-| Audio time-stretch / pitch-shift | "Make the audio match my timeline duration." | Requires DSP time-stretching algorithm (phase vocoder or WSOLA). Web Audio API has `playbackRate` but it changes pitch. Proper time-stretch is a complex DSP problem. | Users adjust audio duration externally or adjust frame hold durations to match audio length. Auto-arrange feature handles the common case of fitting photos to beats. |
-| Per-frame audio scrubbing (audio follows playhead in real-time) | After Effects and Premiere play audio "scrub" when dragging the playhead. | At 24fps with frame-by-frame scrubbing, audio snippets are 42ms each -- sounds like clicking noise, not useful audio. Works in video editors because clips are long enough. Stop-motion frames are typically 2-8 frames of hold = 83-333ms, which is borderline. | Audio plays only during normal playback (Space bar). No scrub audio during manual frame stepping or timeline dragging. This is how Dragonframe handles it. |
+| Real-time watercolor fluid simulation (Navier-Stokes) | Rebelle uses physics-based fluid simulation for watercolor. Users may expect the same. | Rebelle's simulation requires a dedicated physics engine and runs on native GPU with frame-budget control. Implementing Navier-Stokes in a WebGL2 offscreen pass would consume the entire frame budget at 24fps, killing preview playback. Also conflicts with the vector-data-model (strokes as point arrays) since fluid sim requires pixel-level state. | Tyler Hobbs polygon deformation gives watercolor appearance at a fraction of the cost. Pre-compute deformed polygons once per stroke, cache result. No per-frame simulation needed. |
+| Full velocity buffer for whole-frame motion blur | Single-pass approach blurs the entire composited frame using per-pixel velocity. Seems more efficient (one pass vs N per-layer passes). | Causes artifacts at layer boundaries (color bleeding between layers), requires a separate velocity buffer render target, and cannot cleanly disable blur per-layer. John Chapman's per-object technique specifically calls out silhouette artifacts as a major issue. | Per-layer velocity blur (Strategy A in spec). One shader pass per moving layer. Clean boundaries, no artifacts, trivial per-layer override. |
+| Brush preset import/export | Power users want to share brush configurations between projects or import from other tools. | Premature abstraction. The brush system doesn't exist yet. Designing an import/export format before the parameters stabilize leads to format churn. Procreate's .brush format is proprietary; Krita's .kpp is XML-heavy. | Build brush styles as code-defined presets first. After the parameter space stabilizes (v0.6+), add user-customizable presets with save/load. |
+| Wet-on-wet paint interaction (strokes interact after placement) | Rebelle's signature feature: painting on wet areas causes colors to mix and flow. | Requires per-pixel wetness state that persists and decays over time. Fundamentally incompatible with the vector stroke model (strokes as `[x,y,pressure][]` arrays). Would require a complete rendering architecture change to pixel-based. | Spectral mixing handles overlap at render time. Overlapping strokes mix correctly via Kubelka-Munk compositing. Feels close enough without pixel-level state. |
+| Motion blur on paint layers | Paint strokes are static per-frame (frame-by-frame animation). Motion blur on paint layers would blur hand-drawn content that is intentionally sharp. | Paint layers don't have keyframe transforms -- they're drawn frame-by-frame. There's no velocity vector to compute. Blurring would destroy the hand-drawn aesthetic. | Only apply motion blur to layers with keyframe animation (content + overlay layers). Paint layers are inherently excluded since they lack transform keyframes. |
+| GPU-based real-time Kuwahara filter for painterly post-processing | Visually impressive post-processing that makes any image look like a painting. | This is a post-processing effect on the entire frame, not a brush style. It would conflict with the existing FX/shader pipeline and wouldn't give per-stroke control. Also, it's unrelated to the paint brush FX feature scope. | Could be added as a GLSL shader effect in the existing Shadertoy pipeline (v0.6+). Not a brush feature. |
 
 ## Feature Dependencies
 
 ```
-[Audio file import]
-    +--requires--> [audioStore signal store]
-    +--requires--> [Project format v8 with MceAudioTrack]
-    +--requires--> [Web Audio API decodeAudioData]
+[BrushStyle field + UI selector]
     |
-    +--enables--> [Waveform visualization]
-    |                 +--requires--> [Peak extraction algorithm]
-    |                 +--requires--> [TimelineRenderer audio track row]
+    +--requires--> [WebGL2 offscreen renderer with point stamping]
+    |                   |
+    |                   +--enables--> [Spectral color mixing shader]
+    |                   |                  |
+    |                   |                  +--enhances--> [Watercolor bleed]
+    |                   |                  +--enhances--> [Ink edge darkening]
+    |                   |
+    |                   +--enables--> [Flow field integration]
+    |                   |
+    |                   +--enables--> [Grain/texture post-pass]
+    |                   |
+    |                   +--enables--> [Charcoal brush]
+    |                   |
+    |                   +--enables--> [Pencil brush]
+    |                   |
+    |                   +--enables--> [Marker brush]
     |
-    +--enables--> [Synced audio playback]
-    |                 +--requires--> [AudioContext + AudioBufferSourceNode]
-    |                 +--requires--> [PlaybackEngine integration]
-    |
-    +--enables--> [Audio fade in/out]
-    |                 +--requires--> [GainNode scheduling]
-    |
-    +--enables--> [BPM detection + beat markers]
-    |                 +--requires--> [web-audio-beat-detector library]
-    |                 +--requires--> [TimelineRenderer marker rendering]
-    |                 |
-    |                 +--enables--> [Snap-to-beat]
-    |                 |                 +--requires--> [TimelineInteraction drag handler modification]
-    |                 |
-    |                 +--enables--> [Auto-arrange frames to beats]
-    |                                   +--requires--> [sequenceStore hold duration mutations]
-    |
-    +--enables--> [Audio in video export]
-                      +--requires--> [FFmpeg command extension with -i audio -c:a aac]
-                      +--requires--> [Audio fade filter (-af afade)]
+    +--independent--> [Ink brush (can use Canvas 2D fallback initially)]
 
-[Canvas motion path]
-    +--requires--> [keyframeStore (exists)]
-    +--requires--> [keyframeEngine interpolateAt() (exists)]
-    +--requires--> [TransformOverlay.tsx (exists)]
-    +--requires--> [coordinateMapper.ts (exists)]
+[GLSL velocity blur engine (glMotionBlur.ts)]
     |
-    +--enables--> [Motion path keyframe dragging]
-                      +--requires--> [Hit-testing keyframe diamonds]
-                      +--requires--> [Coalescing undo for drag (exists)]
+    +--enables--> [Preview integration (per-layer blur in renderFrame)]
+    |                  |
+    |                  +--requires--> [Previous-frame velocity cache]
+    |
+    +--enables--> [Sub-frame accumulation (export only)]
+    |                  |
+    |                  +--requires--> [interpolateAt() fractional frames] (ALREADY EXISTS)
+    |
+    +--enables--> [Combined GLSL + sub-frame export pipeline]
 
-[Sidebar scroll] --independent-- (low effort, likely already working)
+[Shutter angle UI control] --independent--> [GLSL velocity blur engine]
 
-[Sidebar collapse] --independent-- (CollapsibleSection exists)
+[Per-layer motion blur override] --requires--> [Preview integration]
 
-[Solo mode for layers]
-    +--requires--> [isolationStore (exists)]
-    +--requires--> [PreviewRenderer layer filtering]
-    +--enhances--> [Sidebar layer list with solo icons]
+[Adaptive preview quality] --requires--> [Preview integration]
 ```
 
 ### Dependency Notes
 
-- **Audio import is the foundation:** Every audio feature (waveform, playback, beat sync, export) depends on successfully importing and decoding audio. This must be Phase 1.
-- **Waveform before beat sync:** Beat markers render on the timeline alongside the waveform. The waveform track must exist before beat markers can be overlaid on it.
-- **Synced playback before export:** Audio export is an extension of synced playback -- both need the audio source correctly positioned. Verify sync in preview first.
-- **BPM detection enables snap and auto-arrange:** These are lightweight consumers of the beat marker data. BPM detection is the prerequisite.
-- **Canvas motion path is fully independent of audio:** No shared dependencies. Can be developed in parallel with audio features.
-- **Sidebar enhancements are independent:** Scroll and collapse can be done anytime. Solo mode requires minimal `isolationStore` extension.
+- **WebGL2 offscreen renderer is the keystone for all brush FX:** Every non-flat brush style depends on it. This must be built first and built well, because everything else layers on top. The existing glBlur.ts and glslRuntime.ts provide proven patterns for lazy-init WebGL2 context management.
+- **Spectral mixing enables watercolor and ink quality but is not strictly required for charcoal/pencil:** Charcoal and pencil could use simpler alpha blending initially, but spectral mixing elevates their overlap behavior. Build spectral mixing early.
+- **Motion blur is fully independent of paint brush FX:** Zero shared dependencies. These two feature tracks can be built in parallel or in any order. The motion blur engine follows the same WebGL2 offscreen pattern as glBlur.ts.
+- **Sub-frame accumulation depends on the existing `interpolateAt()` engine:** Already accepts fractional frame numbers, so no modifications needed. The export renderer's `interpolateLayers()` function already calls `interpolateAt()` -- it just needs to be called N times per output frame.
+- **Flow fields enhance all stamp-based brushes:** Once the grid-based vector field system exists, it can be applied to charcoal, pencil, and watercolor. It's an enhancement layer, not a prerequisite.
 
 ## MVP Definition
 
-### Phase 1: Audio Foundation
+### Launch With (v0.5.0 core)
 
-Minimum audio features needed to validate the integration before building beat sync.
+Minimum feature set to ship the milestone with meaningful value.
 
-- [ ] Audio file import (WAV, MP3, AAC, FLAC) via file dialog and drag-drop -- validates Tauri file pipeline for audio
-- [ ] `audioStore` with audio buffer, waveform peaks, volume, offset, fade durations
-- [ ] Waveform visualization as a timeline track row -- validates Canvas 2D integration with timeline
-- [ ] Synced playback (audio plays when Space pressed, stops when stopped, seeks correctly) -- validates PlaybackEngine integration
-- [ ] Audio volume control (GainNode) -- basic usability
-- [ ] Project format v8 with audio track persistence
+- [ ] BrushStyle field on PaintStroke + UI selector in PaintProperties -- foundation for all styles
+- [ ] WebGL2 offscreen renderer with point-stamp technique -- the rendering backbone
+- [ ] Spectral color mixing via spectral.glsl -- transforms overlap behavior from broken (RGB) to correct (pigment)
+- [ ] Ink brush style -- most useful for animation workflows, simplest non-flat style
+- [ ] Charcoal brush style -- second most requested, demonstrates texture capability
+- [ ] Grain/texture post-pass -- small effort, big visual impact across all styles
+- [ ] Edge darkening post-pass -- small effort, dramatically improves ink appearance
+- [ ] GLSL velocity motion blur engine (glMotionBlur.ts) -- core blur capability
+- [ ] Motion blur preview integration with toolbar toggle -- users can see it in real time
+- [ ] Shutter angle UI control -- standard professional control
+- [ ] Sub-frame accumulation for export -- high-quality export output
+- [ ] Project-level motion blur settings with .mce persistence -- settings survive save/load
 
-### Phase 2: Audio Polish + Beat Sync
+### Add After Validation (v0.5.x polish)
 
-Features that make audio genuinely useful for the stop-motion-to-music workflow.
+Features to add once core paint FX and motion blur are working correctly.
 
-- [ ] Audio timeline positioning (drag to offset) -- alignment UX
-- [ ] Audio fade in/out -- professional quality
-- [ ] BPM detection + beat markers on timeline -- the core differentiator
-- [ ] Snap-to-beat for hold duration handles -- lightweight, high value
-- [ ] Auto-arrange frames to beats -- the killer feature
-- [ ] Audio in video export (FFmpeg muxing) -- completes the pipeline
+- [ ] Watercolor bleed (polygon deformation + layered fill) -- most complex brush style, defer until WebGL2 renderer is proven stable
+- [ ] Flow field integration with preset patterns -- enhances all brushes but not essential for v0.5.0
+- [ ] Pencil brush style -- straightforward once charcoal exists (similar architecture, finer grain)
+- [ ] Marker brush style -- simplest stamp-based brush, low priority
+- [ ] Per-layer motion blur override -- useful but edge case for v0.5.0
+- [ ] Adaptive preview quality -- nice-to-have performance optimization
 
-### Phase 3: Canvas Motion Path + Sidebar Polish
+### Future Consideration (v0.6+)
 
-Independent features that can ship in parallel or after audio.
+Features to defer until the brush system matures.
 
-- [ ] Canvas motion path visualization (read-only path display first)
-- [ ] Motion path keyframe dragging on canvas
-- [ ] Solo mode for layers
-- [ ] Sidebar scroll/collapse verification and fixes
+- [ ] User-customizable brush presets with save/load -- wait for parameter space to stabilize
+- [ ] Watercolor wet-on-wet interaction -- requires fundamental architecture change, not feasible in vector model
+- [ ] Motion blur visualization/debug mode (velocity vectors overlay) -- developer tool, not user-facing priority
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Audio file import | HIGH | MEDIUM | P1 |
-| Waveform visualization | HIGH | HIGH | P1 |
-| Synced audio playback | HIGH | HIGH | P1 |
-| Audio volume control | MEDIUM | LOW | P1 |
-| Audio timeline positioning | HIGH | MEDIUM | P2 |
-| Audio fade in/out | MEDIUM | MEDIUM | P2 |
-| BPM detection + beat markers | HIGH | MEDIUM | P2 |
-| Snap-to-beat | HIGH | LOW | P2 |
-| Auto-arrange frames to beats | HIGH | MEDIUM | P2 |
-| Audio in video export | HIGH | MEDIUM | P2 |
-| Canvas motion path visualization | MEDIUM | HIGH | P3 |
-| Motion path keyframe dragging | MEDIUM | HIGH | P3 |
-| Solo mode for layers | MEDIUM | MEDIUM | P3 |
-| Sidebar scroll verification | LOW | LOW | P3 |
-| Sidebar collapse persistence | LOW | LOW | P3 |
+| BrushStyle field + UI selector | HIGH | LOW | P1 |
+| WebGL2 offscreen renderer | HIGH | MEDIUM | P1 |
+| Spectral color mixing (Kubelka-Munk) | HIGH | MEDIUM | P1 |
+| Ink brush style | HIGH | MEDIUM | P1 |
+| Charcoal brush style | MEDIUM | MEDIUM | P1 |
+| Edge darkening post-pass | MEDIUM | LOW | P1 |
+| Grain/texture post-pass | MEDIUM | LOW | P1 |
+| GLSL velocity motion blur engine | HIGH | MEDIUM | P1 |
+| Motion blur preview integration | HIGH | MEDIUM | P1 |
+| Shutter angle UI control | MEDIUM | LOW | P1 |
+| Sub-frame accumulation for export | HIGH | MEDIUM | P1 |
+| Motion blur project settings + persistence | HIGH | LOW | P1 |
+| Watercolor bleed simulation | HIGH | HIGH | P2 |
+| Flow field integration | MEDIUM | MEDIUM | P2 |
+| Pencil brush style | MEDIUM | LOW | P2 |
+| Marker brush style | LOW | LOW | P2 |
+| Per-layer motion blur override | LOW | LOW | P2 |
+| Adaptive preview quality | LOW | LOW | P2 |
+| User brush presets | LOW | MEDIUM | P3 |
 
 **Priority key:**
-- P1: Audio foundation -- must work before anything else
-- P2: Audio polish + beat sync -- the differentiating features
-- P3: Visual polish -- independent features, high value but not audio-blocking
+- P1: Must have for v0.5.0 launch
+- P2: Should have, add during polish or as follow-up
+- P3: Nice to have, future milestone
 
 ## Competitor Feature Analysis
 
-| Feature | Dragonframe 5 | Stop Motion Studio Pro | DaVinci Resolve | Canva Video | Our Approach |
-|---------|---------------|----------------------|-----------------|-------------|--------------|
-| Audio import | Yes (WAV, MP3) | Yes (MP3, M4A) | Yes (all formats) | Yes (MP3, WAV) | WAV, MP3, AAC, FLAC via Web Audio API decodeAudioData |
-| Waveform display | Yes, on timeline | Yes, small | Yes, full | Yes, simplified | Canvas 2D track row on timeline, peak-summarized for performance |
-| Audio playback sync | Yes, frame-accurate | Yes, basic | Yes, sample-accurate | Yes, approximate | AudioBufferSourceNode started at frame offset. Audio-follows-video model. Sufficient for 15/24 fps stop-motion. |
-| Beat detection | No | No | DaVinci Fairlight has beat detection | Yes (auto-beat sync) | web-audio-beat-detector offline analysis on import |
-| Beat markers on timeline | No | No | No (Fairlight is separate panel) | Yes (auto-placed) | Vertical lines on timeline at beat positions |
-| Snap to beat | No | No | No | Yes (implicit) | Snap hold-duration handles to nearest beat marker |
-| Auto-arrange to beats | No | No | No | Yes (auto-sync clips to beats) | Distribute key photos across beats with strategy selector |
-| Audio in export | Yes (with video) | Yes (with video) | Yes (full mixing) | Yes (with video) | FFmpeg muxing with AAC encoding + fade filters |
-| Motion path visualization | No (frame-by-frame, no animation) | No | No (not applicable -- video NLE) | No | After Effects-style dotted path on canvas with keyframe diamonds |
-| Layer solo | No (no layers) | No (basic layers) | Yes (per-track solo/mute) | No | Solo icon in sidebar layer list, temporary render filter |
+| Feature | After Effects | Procreate | Krita | Rebelle 6 | Our Approach |
+|---------|---------------|-----------|-------|-----------|--------------|
+| Brush styles | Paint tool is basic, not focus | 200+ presets, stamp-based | 10+ engines, highly configurable | Physics-based watercolor/oil | 5-6 styles via WebGL2 point-stamping with spectral mixing |
+| Pigment mixing | N/A (not a paint tool) | No (RGB blending) | Experimental Kubelka-Munk plugin | Yes (Mixbox integration) | Yes (spectral.js / spectral.glsl, MIT) |
+| Watercolor simulation | N/A | Basic wet brush | Wet brush preset | Navier-Stokes fluid sim | Tyler Hobbs polygon deformation (visual approximation, no physics) |
+| Motion blur type | Per-layer velocity + sub-frame (16 samples) | N/A (not animation tool) | N/A (not animation tool) | N/A (not animation tool) | Per-layer GLSL velocity + sub-frame accumulation (4-8 combined) |
+| Shutter angle control | Yes (0-720 degrees + phase) | N/A | N/A | N/A | Yes (0-360 degrees) |
+| Sub-frame accumulation | Yes (16 fixed samples) | N/A | N/A | N/A | Yes (4-16 configurable, combined with GLSL) |
+| Flow fields on brushes | N/A | No | No | Paint flow follows canvas tilt | Yes (grid-based vector fields with presets) |
+| Texture/grain on brushes | N/A | Yes (dual texture system) | Yes (texture brush engine) | Yes (canvas texture interaction) | Yes (stochastic erosion post-pass) |
+| Per-layer blur override | Yes | N/A | N/A | N/A | Yes (planned P2) |
 
-## Feature Details
-
-### Audio Import + Waveform
-
-**Expected behavior (informed by Premiere Pro, DaVinci Resolve, Kdenlive):**
-
-- User imports audio via File > Import Audio, drag-and-drop onto timeline, or drag-drop onto app window
-- Accepted formats: WAV, MP3, AAC/M4A, FLAC. Web Audio API `decodeAudioData()` handles all of these natively in WebKit/Safari engine (WKWebView on macOS)
-- Audio file is copied to project `audio/` directory (same pattern as image import to `images/`)
-- Waveform peaks are computed via `AudioBuffer.getChannelData()`: iterate samples, find min/max per chunk (chunk size = total samples / desired peaks count). Store peaks as Float32Array in `audioStore`
-- Waveform renders as a dedicated track row in `TimelineRenderer`, below FX tracks. Height: ~48px. Color: semi-transparent blue or green (distinct from playhead red and FX track colors)
-- Waveform rendering is pixel-column-based: for each visible pixel column, map to a time range, find the peak amplitude in that range, draw a vertical line from center. This is the standard approach used by BBC peaks.js and Kdenlive's 2025 rewrite
-- Mono rendering (mix stereo to mono for display). Most users care about rhythm, not channel separation
-- Waveform data is cached after first computation. Re-decode only if audio file changes
-
-**Performance considerations (from Kdenlive rewrite research):**
-- Do NOT render all samples -- summarize to peaks per pixel column
-- At 48kHz audio with 1000px visible width and 10 seconds visible: ~48 samples per pixel. Simple min/max per column
-- Waveform drawing pauses during full-speed playback (`isFullSpeed` flag already exists)
-- Pre-compute peaks at multiple zoom levels (mipmap approach) for instant zoom response -- or recompute on zoom (cheap enough for single audio track)
-
-### Synced Audio Playback
-
-**Expected behavior:**
-
-- Press Space: audio starts playing from current playhead position
-- Audio plays through `AudioContext` -> `GainNode` (volume) -> `destination`
-- On each playback start: create `AudioBufferSourceNode`, set `source.buffer`, call `source.start(0, offsetSeconds)` where `offsetSeconds = (currentFrame - audioOffsetFrames) / fps`
-- On stop: `source.stop()`, dispose source node
-- On seek (during pause): no audio plays. Audio only plays during active playback
-- Sync strategy: **audio-follows-video** (PlaybackEngine remains the master clock). At 15/24 fps, the maximum drift per frame is ~42-67ms, which is imperceptible. If drift accumulates over long playback (minutes), periodically re-sync by checking `AudioContext.currentTime` against expected position
-- During shuttle playback (JKL at 2x, 4x speed): audio plays at normal speed (do not pitch-shift). Alternative: mute audio during shuttle. Recommend mute -- pitched audio at 2-4x is unpleasant and unhelpful
-
-### BPM Detection + Beat Sync
-
-**Expected behavior (informed by Canva Beat Sync, web-audio-beat-detector):**
-
-- On audio import (or on-demand button press), run `guess(audioBuffer)` from `web-audio-beat-detector`
-- Returns `{ bpm: number, offset: number, tempo: number }`. `bpm` is rounded integer, `offset` is seconds to first beat
-- Compute beat positions: `for (let t = offset; t < audioDuration; t += 60/bpm)` -> convert each `t` to frame number: `Math.round(t * fps) + audioOffsetFrames`
-- Store as `audioStore.beatMarkers: Signal<number[]>` (frame positions)
-- Render in `TimelineRenderer` as thin dashed vertical lines in a distinct color (e.g., gold/amber, `#FFB800`) on both the waveform track and the content track area
-- Optional: user can manually adjust BPM if detection is wrong (text input with BPM value, recalculates markers)
-- Optional: user can manually shift beat offset (drag first beat marker or numeric input)
-
-**Auto-arrange algorithm:**
-
-```
-framesPerBeat = Math.round(fps * 60 / bpm)
-
-Given N key photos and strategy (beat/2-beat/bar):
-  multiplier = strategy === 'beat' ? 1 : strategy === '2-beat' ? 2 : 4
-  holdPerPhoto = framesPerBeat * multiplier
-
-For each key photo:
-  keyPhoto.holdFrames = holdPerPhoto
-  (last photo may get adjusted to fill exactly to the audio end or a clean beat boundary)
-```
-
-**Snap-to-beat:**
-
-- When user drags a hold-duration handle on the timeline, the target frame snaps to the nearest beat marker if within a threshold (e.g., `snapThreshold = Math.max(2, Math.round(framesPerBeat * 0.15))`)
-- Visual indicator: beat marker line thickens or highlights when snap is active
-- Snap can be toggled off (hold Cmd/Option during drag, or a toolbar toggle)
-
-### Canvas Motion Path
-
-**Expected behavior (informed by After Effects, Apple Motion):**
-
-- When a layer with 2+ position keyframes is selected, the canvas shows the motion path
-- Path is a series of dots connecting keyframe positions, rendered on the `TransformOverlay` canvas
-- Keyframe positions shown as diamond shapes (filled, same color as keyframe UI elsewhere)
-- Dots between keyframes: computed by evaluating `interpolateAt()` at sub-frame intervals (e.g., every 0.5 frames). Dot spacing reflects speed -- close together = slow (ease-in/out), far apart = fast (linear through middle)
-- Path respects canvas zoom/pan via existing `coordinateMapper.ts` coordinate transforms
-- Color: semi-transparent white or project accent color, distinct from transform handles
-
-**Keyframe dragging on canvas:**
-
-- Click on a keyframe diamond: select that keyframe in `keyframeStore.selectedKeyframeFrames`
-- Drag a keyframe diamond: updates `keyframeStore` position (x, y) for that keyframe
-- Uses `startCoalescing()`/`stopCoalescing()` for smooth undo (already built but unwired -- this is a good opportunity to wire it)
-- Hit-test radius: ~8px (scaled by canvas zoom, similar to transform handle hit-testing)
-- Multi-select: Shift+click to select multiple keyframe diamonds, drag moves all selected
-
-**Rendering approach:**
-
-- Extend `TransformOverlay.tsx` (which already handles transform handles, pointer capture, coordinate mapping)
-- The overlay renders after transform handles, so motion path is visible but behind the move/scale/rotate handles
-- Only render for the currently selected layer (not all layers simultaneously -- too cluttered)
-- Path extends from first keyframe to last keyframe only (no extrapolation beyond)
-
-### Solo Mode for Layers
-
-**Expected behavior (informed by After Effects, DaVinci Resolve):**
-
-- Each layer in the sidebar layer list gets a small solo icon (circle or "S" indicator) next to the visibility eye icon
-- Clicking solo: only that layer renders in preview. All other layers are temporarily hidden
-- Multiple solo: clicking solo on additional layers adds them to the solo set (like sequence isolation)
-- Solo is a preview-only state -- does not affect export, not persisted in project file
-- Visual indicator: solo'd layers have highlighted icon, non-solo layers appear dimmed
-- Clear all solo: click the solo icon on an already-solo layer, or a "Clear Solo" action
-
-**Implementation:**
-
-- Extend `isolationStore` with `soloLayerIds: Signal<Set<string>>`
-- In `PreviewRenderer.render()`, when `soloLayerIds.size > 0`, skip layers not in the set
-- Similar pattern to existing `isolatedSequenceIds` for sequences
-
-### Sidebar Enhancements
-
-**Scroll in key photos:**
-
-- `SidebarScrollArea` component already exists with custom 4px thumb
-- Verify the key photos list is wrapped in `SidebarScrollArea`
-- The inline key photos render inside the Sequences panel's collapsible section
-- With 20+ photos at ~32px each = 640px+, overflow is guaranteed. Scroll must work
-
-**Collapse toggle:**
-
-- `CollapsibleSection` exists with signal-driven collapsed state and chevron animation
-- Verify all three sidebar sections use it
-- Add persistence: save collapsed state per section to `appConfig` so it survives app restart
-- Sections: SEQUENCES, LAYERS, PROPERTIES (or FX PROPERTIES for FX layers)
+**Key competitive positioning:** No other stop-motion editor combines spectral pigment mixing with motion blur. After Effects has excellent motion blur but basic painting. Procreate/Krita have excellent painting but no motion/animation blur. Rebelle has the best watercolor simulation but is not an animation tool. This product occupies a unique niche: expressive natural media painting with professional motion blur, specifically for stop-motion animation workflows.
 
 ## Sources
 
-- [MDN: Visualizations with Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API) -- waveform data extraction methods
-- [MDN: Web Audio API Best Practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices) -- AudioBuffer vs MediaElement, gain scheduling
-- [BBC waveform-data.js](https://github.com/bbc/waveform-data.js) -- peak extraction and resampling patterns
-- [BBC peaks.js](https://github.com/bbc/peaks.js/) -- timeline waveform UI component patterns
-- [Kdenlive Audio Waveform Rewrite 2025](https://etiand.re/posts/2025/01/audio-waveforms-in-kdenlive-technical-upgrades-for-speed-precision-and-better-ux/) -- peak-per-pixel rendering, performance optimization
-- [web-audio-beat-detector](https://github.com/chrisguttandin/web-audio-beat-detector) -- BPM detection: `analyze()` and `guess()` API
-- [Beat Detection Using JavaScript and the Web Audio API](http://joesul.li/van/beat-detection-using-web-audio/) -- algorithm explanation (low-pass filter, peak detection)
-- [MDN: AudioParam.linearRampToValueAtTime()](https://developer.mozilla.org/en-US/docs/Web/API/AudioParam/linearRampToValueAtTime) -- fade implementation
-- [FFmpeg: Merge Audio and Video](https://www.mux.com/articles/merge-audio-and-video-files-with-ffmpeg) -- `-map 0:v -map 1:a -c:a aac` patterns
-- [Adobe: Keyframe Interpolation in After Effects](https://helpx.adobe.com/after-effects/using/keyframe-interpolation.html) -- motion path visualization spec
-- [Adobe: Assorted Animation Tools](https://helpx.adobe.com/after-effects/using/assorted-animation-tools.html) -- motion path display options, dot density = speed
-- [Apple Motion: Modify Animation Paths](https://support.apple.com/guide/motion/modify-animation-paths-motn14748beb/mac) -- motion path interaction patterns
-- [Canva Beat Sync](https://www.canva.com/features/beat-sync/) -- auto-sync clips to rhythm UX reference
-- [Tauri File System Plugin](https://v2.tauri.app/plugin/file-system/) -- file access patterns for audio import
-- [Building a Music Player with Tauri + Svelte](https://slavbasharov.com/blog/building-music-player-tauri-svelte) -- `convertFileSrc()` for audio file URLs
+- [spectral.js v3.0.0](https://github.com/rvanwijnen/spectral.js) -- MIT licensed, Kubelka-Munk pigment mixing with GLSL support (HIGH confidence)
+- [p5.brush](https://github.com/acamposuribe/p5.brush) -- WebGL2 brush rendering library, reference implementation for techniques (HIGH confidence)
+- [Tyler Hobbs - Watercolor Simulation](https://www.tylerxhobbs.com/words/a-guide-to-simulating-watercolor-paint-with-generative-art) -- Polygon deformation algorithm (HIGH confidence)
+- [Mixbox](https://scrtwpns.com/mixbox/) -- Alternative pigment mixing (proprietary license, not recommended) (HIGH confidence)
+- [John Chapman - Per-Object Motion Blur](http://john-chapman-graphics.blogspot.com/2013/01/per-object-motion-blur.html) -- Velocity buffer technique reference (HIGH confidence)
+- [After Effects motion blur](https://www.provideocoalition.com/motion_blur/) -- Shutter angle and sub-frame behavior reference (MEDIUM confidence)
+- [Chris Arasin - Real-Time Paint System](https://chrisarasin.com/paint-system-webgl/) -- WebGL paint system reference (LOW confidence, limited docs)
+- [Maxime Heckel - Painterly Shaders](https://blog.maximeheckel.com/posts/on-crafting-painterly-shaders/) -- Kuwahara filter and anisotropic techniques (MEDIUM confidence)
+- [Krita brush engines](https://docs.krita.org/en/reference_manual/krita_4_preset_bundle.html) -- Natural media brush reference (MEDIUM confidence)
+- [Rebelle 6](https://www.escapemotions.com/products/rebelle/about) -- Physics-based watercolor reference (MEDIUM confidence)
+- [NVIDIA Motion Blur Sample](https://docs.nvidia.com/gameworks/content/gameworkslibrary/graphicssamples/opengl_samples/motionblurgl4gles3advancedsample.htm) -- GLSL motion blur patterns (MEDIUM confidence)
 
 ---
-*Feature research for: EFX Motion Editor v0.3.0 Audio & Polish*
-*Researched: 2026-03-21*
+*Feature research for: Expressive paint brush FX and per-layer motion blur*
+*Researched: 2026-03-25*

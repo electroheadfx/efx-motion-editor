@@ -1,189 +1,218 @@
 # Project Research Summary
 
-**Project:** EFX Motion Editor v0.3.0 — Audio, Beat Sync, Motion Paths, Sidebar Polish
-**Domain:** Desktop stop-motion cinematic editor (macOS, Tauri 2.0)
-**Researched:** 2026-03-21
-**Confidence:** HIGH
+**Project:** efx-motion-editor v0.5.0 — Paint Brush FX and Motion Blur
+**Domain:** WebGL2 expressive brush rendering + per-layer GLSL motion blur for desktop stop-motion animation editor
+**Researched:** 2026-03-25
+**Confidence:** HIGH (stack, architecture) / MEDIUM-HIGH (features, pitfalls)
 
 ## Executive Summary
 
-EFX Motion Editor v0.3.0 adds audio integration and visual polish to an already-mature v0.2.0 codebase with a proven pipeline: Tauri 2.0, Preact Signals, Canvas 2D timeline, rAF-driven PlaybackEngine, and FFmpeg video export. The research confirms that all required capabilities exist in browser-native APIs (Web Audio API, Canvas 2D) and existing infrastructure (FFmpeg binary, isolationStore, keyframeEngine). The only new npm dependency is `web-audio-beat-detector` for BPM analysis. No new Rust crates are required.
+v0.5.0 adds two independent feature tracks to an existing Tauri 2.0 + Preact + Canvas 2D pipeline: expressive paint brush FX (spectral pigment mixing, watercolor bleed, flow field distortion, grain/texture post-processing) and per-layer GLSL velocity motion blur with sub-frame accumulation for export. The recommended approach for brush FX is a new shared WebGL2 context (`glBrushFx.ts`) that renders non-flat strokes via GPU point-stamping with spectral.js Kubelka-Munk GLSL for physically-correct color mixing — bypassing the expensive Canvas 2D round-trip entirely. Motion blur follows the exact same lazy-init shared context pattern as the existing `glBlur.ts`, using a simple directional GLSL shader and fractional frame interpolation that the existing keyframe engine already supports.
 
-The recommended approach is to build in dependency order: audio import and store foundation first, then waveform visualization and synced playback, then FFmpeg audio mux, then beat sync features, with canvas motion paths and sidebar solo running independently in parallel. This order is dictated by a hard dependency chain: every audio feature downstream (beat sync, snap-to-beat, auto-arrange, export) requires a working AudioBuffer from the import pipeline. The architecture research identifies HTMLAudioElement bridged into Web Audio API (via `createMediaElementSource`) as the correct playback approach — not AudioBufferSourceNode alone — because HTMLAudioElement supports seeking after creation, which AudioBufferSourceNode cannot do.
+The single most critical architectural constraint is the browser WebGL2 context budget (Chrome: ~16, WKWebView: more conservative). The app currently owns 2 contexts; v0.5.0 must stay at 3 by sharing a context between `glBlur.ts` and `glMotionBlur.ts` via a new `glSharedContext.ts` module. Both new features are largely independent of each other and can be built in parallel after shared infrastructure is established, which gives the roadmap a clean two-track structure. The two external additions are minimal: `spectral.js@^3.0.0` (MIT, ships `shader/spectral.glsl` for GPU Kubelka-Munk mixing) and `simplex-noise@^4.0.3` (CPU-side flow field computation). All watercolor and motion blur implementations are custom, using well-documented algorithms with no additional dependency footprint.
 
-The two critical risks are: (1) clock drift between PlaybackEngine's `performance.now()` accumulator and `AudioContext.currentTime`, which must be resolved by making the audio clock the master clock when audio is loaded; and (2) AudioContext suspension in WKWebView after focus loss, which requires defensive `resume()` calls on every play action. Both must be designed before any playback code is written, not retrofitted. The .mce project format must be bumped to v8 with `MceAudioTrack` schema as the very first implementation task — missing this causes audio to silently disappear on project save/reopen.
+The primary risks are performance-related rather than algorithmic: Canvas-to-WebGL2 texture upload stalls in WKWebView (10-40ms per call vs 1-2ms in Chrome), per-frame offscreen canvas allocation causing GC pressure, and sub-frame accumulation dark fringing from 8-bit Canvas 2D quantization. All three have clear mitigations documented in the pitfalls research: render strokes directly in WebGL2 to skip the round-trip, pool and reuse offscreen canvases following the existing `getBlurOffscreen` pattern, and accumulate sub-frames in a float FBO rather than Canvas 2D. These must be addressed during infrastructure phases before building visual features on top.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The existing stack is unchanged. One new npm dependency is added, and one existing infrastructure piece (FFmpeg) is extended with audio mux support.
+The existing stack (Tauri 2.0, Preact, Preact Signals, Vite 5, Tailwind CSS v4, pnpm, perfect-freehand, WebGL2) is unchanged. Only two new npm dependencies are added for v0.5.0.
 
 **Core technologies:**
-- **Web Audio API (browser built-in):** Audio decoding via `decodeAudioData()`, waveform peak extraction from `AudioBuffer`, GainNode for volume/fades — zero dependencies, full support in macOS WKWebView (Safari 17+)
-- **HTMLAudioElement + `createMediaElementSource()`:** Seekable audio playback bridged into the Web Audio graph — preferred over AudioBufferSourceNode alone because it supports `currentTime` seeking after creation
-- **web-audio-beat-detector ^8.2.27:** Offline BPM detection from `AudioBuffer`; `guess(audioBuffer)` returns `{ bpm, offset, tempo }`; TypeScript types included; ~20KB bundle; the only new npm dependency
-- **Custom waveform renderer (Canvas 2D):** Peak extraction via `AudioBuffer.getChannelData()` + `Float32Array` peaks rendered in `TimelineRenderer` — wavesurfer.js explicitly rejected because its Shadow DOM widget cannot integrate with the existing Canvas 2D pipeline
-- **Canvas 2D Path2D:** Motion path visualization using the existing `interpolateAt()` engine sampled at 1-frame intervals — no graphics library needed
-- **FFmpeg (existing cached binary):** Audio mux via two-step encode: video encode (proven, unchanged) then `ffmpeg -i video -i audio -c:v copy -c:a aac output`; ProRes uses `-c:a pcm_s16le`
+
+- `spectral.js@^3.0.0`: Kubelka-Munk pigment mixing — ships `shader/spectral.glsl` (MIT), provides `spectral_mix()` for 2-4 color GPU blending; the GLSL file is the critical asset, embedded as a string constant via Vite `?raw` import
+- `simplex-noise@^4.0.3`: Flow field noise generation — CPU-side computation during stroke recording; zero deps, TypeScript-native, seeded PRNG for deterministic export replay; only `createNoise2D` imported
+- `glMotionBlur.ts` (custom): ~30-line GLSL directional blur shader following the `glBlur.ts` lazy-init pattern; no library needed
+- `watercolorBleed.ts` (custom): Tyler Hobbs polygon deformation algorithm (~100 lines TypeScript); no library exists for this
+- Sub-frame accumulation via existing `interpolateAt()` fractional frame support — no new APIs needed
+
+**What not to add:** p5.js, Three.js, regl, GPU.js, glslify, Mixbox (commercial license). OffscreenCanvas-per-layer WebGL2 contexts are explicitly forbidden — they would exhaust the context budget within a single project.
 
 ### Expected Features
 
-**Must have (table stakes):**
-- Audio file import (WAV, MP3, AAC, FLAC) via file dialog and drag-drop — users expect this the moment "audio" is advertised
-- Waveform visualization as a dedicated timeline track row — the single most expected audio feature in any timeline editor; without it, audio is invisible
-- Synced audio playback when Space is pressed — unsynchronized audio is worse than no audio
-- Audio volume control (GainNode slider) — basic usability requirement
-- Audio timeline positioning (drag track offset) — essential for aligning audio that does not start at frame 0
-- Fade in/out controls — abrupt starts/stops sound amateur; GainNode scheduling in preview, FFmpeg `-af afade` in export
-- Audio in video export (FFmpeg mux) — silent export when audio is present would be treated as a bug
-- Project format v8 with audio persistence — missing this makes audio evaporate on save/reopen
+**Must have (v0.5.0 table stakes):**
+- Brush style selector UI with visual previews — users expect this in any natural media tool
+- Ink brush with clean confident strokes — most common animation workflow brush
+- Charcoal brush with grainy texture — second most requested, demonstrates texture capability
+- Physically-based color mixing on overlapping strokes — RGB additive blending (blue+yellow=gray) breaks immersion; spectral subtractive mixing (blue+yellow=green) is expected
+- Flat brush remains default and unaffected — zero regression for existing users
+- Motion blur preview toggle — instant on/off; standard in every NLE
+- Shutter angle UI control (0-360 degrees) — cinematographers think in shutter angle
+- Per-layer velocity-based blur — stationary layers stay sharp, moving layers blur
+- Export output matches preview quality — what you see must match what you get
 
-**Should have (differentiators):**
-- BPM detection with beat markers on timeline — no stop-motion tool does this; renders amber vertical lines at beat positions
-- Snap-to-beat for hold duration handles — turns frame-counting into visual alignment; minimal code on top of beat markers
-- Auto-arrange frames to beats — the killer feature: distributes key photos across beats with strategy selector (every beat / 2 beats / bar)
-- Canvas motion path visualization — After Effects-style dotted path showing position keyframe trajectory; no competitor has this
-- Motion path keyframe dragging on canvas — drag position diamonds to edit X/Y directly on canvas
-- Solo mode for layers — extends existing `isolationStore` pattern; adds `isolatedLayerIds` signal; filters PreviewRenderer at render time
+**Should have (competitive differentiators):**
+- Watercolor bleed via Tyler Hobbs polygon deformation — most visually distinctive brush style; no other stop-motion editor has this
+- Flow field distortion on brush strokes — organic hand-drawn quality without artist skill required
+- Combined GLSL + sub-frame motion blur export — better quality than After Effects' 16 fixed samples at only 4-8 sub-frames because GLSL fills gaps between discrete positions
+- Grain/texture post-processing pass — paper texture interaction across all brush styles
+- Edge darkening post-pass (ink pooling) — small effort, high visual impact
 
-**Defer (v2+):**
-- Multi-track audio mixing — transforms audio from a soundtrack into a DAW; enormous complexity for a stop-motion editor
-- Bezier curve handles on motion path — requires reworking the interpolation engine; the existing polynomial cubic easing does not use Bezier spatial curves
-- Audio time-stretch / pitch-shift — complex DSP; users adjust duration externally
-- Audio recording / voiceover — out of scope for stop-motion-to-music workflow
-- Per-frame audio scrubbing — 42ms snippets at 24fps produce click noise, not useful audio
+**Defer to v0.5.x and beyond:**
+- Pencil and marker brush styles — straightforward once charcoal exists
+- Per-layer motion blur override — useful edge case, not essential for v0.5.0
+- Adaptive preview quality — performance optimization, not a launch requirement
+- User brush preset save/load — wait for parameter space to stabilize in v0.6+
+- Wet-on-wet paint interaction — incompatible with vector stroke model, requires full architecture change
 
 ### Architecture Approach
 
-The architecture follows the existing store/engine pattern: a new `audioStore` (Preact Signals) holds audio track metadata, waveform peaks, and beat marker data; a new `AudioEngine` (class, not store) owns the Web Audio API context and HTMLAudioElement lifecycle; `PlaybackEngine` gains 4 touch points (~15 lines) to drive `AudioEngine` on start/stop/tick/seek; `TimelineRenderer` gains an audio track row below FX tracks; and `ffmpeg.rs` gains an optional `audio_path` parameter. Canvas motion path adds a `MotionPathOverlay` SVG component as a sibling inside the existing `TransformOverlay`. Layer solo extends `isolationStore` with an `isolatedLayerIds` signal (~25 lines).
+Seven new files and five modified files deliver the milestone. The architecture cleanly separates brush FX rendering (`glBrushFx.ts`) from motion blur (`glMotionBlur.ts`), both following the established lazy-init shared context pattern from `glBlur.ts`. A shared context module (`glSharedContext.ts`) reduces total WebGL2 context count from 4 to 3. The paint rendering dispatch in `paintRenderer.ts` routes `brushStyle === 'flat'` through the existing Canvas 2D path (zero regression) and all other styles through `glBrushFx.ts`. Motion blur hooks into `previewRenderer.ts` after each layer is rendered to its offscreen canvas, before compositing to the main canvas. Sub-frame accumulation wraps the export frame loop in `exportEngine.ts` using fractional `interpolateAt()` calls that already work. Motion blur settings extend `projectStore.ts` as four signals with .mce format bump to v15.
 
 **Major components:**
-1. `audioStore.ts` (NEW) — audio track data, waveform peaks cache, BPM, beat markers; project-level (not sequence-level), mirrors After Effects model; uses `AudioTrack[]` array to allow future multi-track without format migration
-2. `AudioEngine` (NEW) — Web Audio API context + HTMLAudioElement playback + `syncToFrame()` for drift correction; PlaybackEngine remains master clock; `ClockSource` abstraction switches between audio-clock and rAF-accumulator
-3. `waveformGenerator.ts` (NEW) — `generatePeaks(AudioBuffer, samplesPerPeak=128)` returns `Float32Array`; decode once, cache peaks, discard PCM buffer; ~50KB for 5-minute song
-4. `beatDetector.ts` (NEW) — wraps `web-audio-beat-detector`; runs via `OfflineAudioContext` (no autoplay restrictions); populates `audioStore.beatMarkersCache`
-5. `AudioTrackRenderer.ts` (NEW) — Canvas 2D waveform + beat marker rendering in TimelineRenderer; follows existing FX track renderer pattern; 48px track height
-6. `MotionPathOverlay.tsx` (NEW) — SVG path sampled from `interpolateAt()` at 1-frame intervals; draggable keyframe diamonds; sibling of existing TransformOverlay; hidden during playback and excluded from export
-7. `ffmpeg.rs` `encode_video()` (MODIFIED) — optional `audio_path: Option<&str>` parameter; two-step encode-then-mux approach keeps proven video pipeline intact
+1. `glBrushFx.ts` — WebGL2 shared-context brush renderer (point stamping, spectral mixing, post-process passes); the keystone for all brush FX
+2. `glMotionBlur.ts` + `motionBlurEngine.ts` — GLSL velocity blur shader + velocity computation from keyframe deltas + sub-frame accumulation buffer
+3. `watercolorBleed.ts` + `flowField.ts` — CPU-side geometry algorithms (polygon deformation, vector field) feeding into glBrushFx
+4. `spectralMix.ts` — Kubelka-Munk JS+GLSL (spectral.js wrapper), included in glBrushFx fragment shader
+5. `glSharedContext.ts` — shared WebGL2 context for glBlur + glMotionBlur (keeps total context count at 3)
+
+**Four established patterns that must be followed:**
+- Lazy-init shared context with `webglcontextlost`/`webglcontextrestored` handlers
+- Offscreen canvas per-layer isolation (pool and reuse, never allocate per-frame)
+- Signal-bump reactivity for paint data (paint version signal, not reactive Map entries)
+- Shader program caching by ID/style to avoid recompilation
 
 ### Critical Pitfalls
 
-1. **Two-clock drift (PlaybackEngine vs AudioContext)** — `performance.now()` delta accumulator and `AudioContext.currentTime` diverge by 1-3 frames over 30 seconds of playback. Fix: when audio is loaded, derive frame number directly from `AudioContext.currentTime * fps` — no accumulator. Use a `ClockSource` abstraction (`AudioClockSource` vs `SystemClockSource`). This must be the first architectural decision, before any playback code.
+1. **WebGL2 context exhaustion** — four independent contexts would push against WKWebView limits; must consolidate glBlur + glMotionBlur to share a context via `glSharedContext.ts`. Decide architecture in Phase 1 before writing any new GL code.
 
-2. **AudioContext suspended in WKWebView after focus loss** — after switching apps and back, AudioContext silently suspends; frames advance but no audio plays. Fix: call `audioContext.resume()` defensively inside every play action. Show "Audio paused — press Space to resume" indicator when state is `suspended`. Do not rely on Tauri focus events for resume (WebKit rejects non-gesture-initiated resume).
+2. **Canvas-to-WebGL2 texture upload stalls** — `texImage2D(canvas)` takes 10-40ms per call on WKWebView vs 1-2ms in Chrome. Fix: render paint strokes directly in WebGL2 via vertex attributes, skipping the Canvas 2D round-trip entirely.
 
-3. **Waveform memory bloat from decoded AudioBuffer** — a 5-minute WAV decoded via `decodeAudioData()` produces ~110MB of Float32 data on the main thread. Fix: compute peaks immediately after decode, store as compact `Float32Array` (~50KB), then release the AudioBuffer reference. Consider Rust-side peak extraction via symphonia for files that exceed a size threshold (e.g., 100MB compressed).
+3. **Per-frame offscreen canvas allocation** — `document.createElement('canvas')` inside the render loop causes 64MB+ GC churn per frame with FX paint layers active. Fix: pool canvases following the existing `getBlurOffscreen` pattern; fix the existing paint path before adding FX on top.
 
-4. **FFmpeg audio mux requires two-step pipeline, not a bolted-on flag** — adding audio to the monolithic `encode_video` function with 6+ new parameters is unmaintainable. Fix: use two-step approach — encode video (proven, unchanged), then a separate FFmpeg invocation with `-c:v copy -c:a aac` for mux. Video is never re-encoded. Audio codec must match container: AAC for MP4, PCM (`pcm_s16le`) for ProRes MOV.
+4. **Sub-frame accumulation dark fringing** — Canvas 2D 8-bit quantization causes dark halos at semi-transparent edges. Fix: accumulate in WebGL2 float FBO (`RGBA16F` with `EXT_color_buffer_float`), single readback to Canvas 2D at end.
 
-5. **BPM detection produces halved/doubled tempo for many genres** — 140 BPM drum-and-bass detected as 70 BPM; 60 BPM ambient detected as 120 BPM. Fix: always surface x2 and /2 correction buttons next to BPM display; show confidence color coding; constrain detection range to 40-200 BPM; never auto-arrange without user verifying beat markers on timeline first.
+5. **Spectral precision collapse** — `mediump` float in GLSL causes catastrophic cancellation in K/S coefficient computation; always use `highp float`. Clamp reflectance R to [0.001, 0.999]. Validate against JavaScript reference with known color pairs.
 
-6. **Motion path must sample actual interpolation, not draw Bezier approximation** — the existing interpolation engine uses polynomial cubic easing for the RATE of travel; the spatial path between keyframe positions is always a straight line. Drawing a Bezier spatial path creates a visual mismatch with actual motion. Fix: sample `interpolateAt()` at 1-frame intervals and draw `lineTo()` segments. Dot spacing reveals speed via easing.
+6. **GL state corruption when sharing contexts** — blend mode, pixel store params, active program, and framebuffer binding persist between modules. Establish a `resetGLState()` call at each consumer entry point in Phase 1.
 
-7. **.mce project format v8 must be the literal first implementation task** — skipping format migration causes audio to disappear on save/reopen. Fix: define `MceAudioTrack` schema, add optional `audio_tracks?: MceAudioTrack[]` to `MceProject`, write v7->v8 migration (adds empty array), update save/load — all before any audio import UI is built.
+7. **Motion blur edge bleeding** — blur samples outside layer bounds return transparent black, producing dark fringes. Fix: extend offscreen allocation by velocity magnitude on all sides; use alpha-weighted sample accumulation in the shader.
 
 ## Implications for Roadmap
 
-Based on the dependency chain identified in research, the suggested phase structure groups features by hard prerequisite relationships. Audio import is the foundation everything else rests on. Beat sync is a consumer of audio data. Motion path and sidebar features are fully independent and can run in parallel.
+Based on combined research, the architecture suggests a 9-phase build order. Two feature tracks (brush FX and motion blur) are mostly independent after shared infrastructure is established. The motion blur track is simpler and should be completed first to deliver early value. The brush FX track is more complex and depends on the WebGL2 infrastructure being solid before layering spectral mixing and watercolor on top.
 
-### Phase 1: Audio Foundation
+### Phase 1: WebGL2 Infrastructure and Shared Context
 
-**Rationale:** Every audio feature downstream — waveform, playback, beat sync, export — requires a loaded and decoded audio file. The `audioStore`, `.mce` v8 format, and `ClockSource` architecture must exist before any of them. The two-clock architecture decision must be made here, not retrofitted later.
-**Delivers:** Audio file import (WAV, MP3, AAC, FLAC), `audioStore` with all signals, `AudioEngine` with `ClockSource` abstraction, waveform peak extraction, timeline audio track row, synced playback (Space key), volume control (GainNode), project persistence in .mce v8.
-**Addresses:** All P1 table-stakes features from FEATURES.md.
-**Avoids:** Pitfalls 1 (two-clock drift), 2 (AudioContext suspended in WKWebView), 3 (waveform memory bloat), 7 (.mce format migration must be first).
-**Implementation order:** `types/audio.ts` + .mce v8 schema → Rust `audio_import` command → `audioStore` → `AudioEngine` with `ClockSource` abstraction → `waveformGenerator.ts` + peak cache → `AudioTrackRenderer.ts` in TimelineRenderer → PlaybackEngine sync (4 touch points) → project serialization.
-**Research flag:** Standard patterns. No phase-level research needed. Web Audio API, HTMLAudioElement, Canvas 2D waveform rendering are well-documented with high-confidence sources.
+**Rationale:** Both feature tracks depend on reliable WebGL2 context management. All pitfalls rooted in context exhaustion and GL state corruption must be resolved here, before any feature-specific shader code is written. This is the single most impactful architectural decision for the milestone.
+**Delivers:** `glSharedContext.ts` (shared context for glBlur + glMotionBlur), `resetGLState()` utility, `webglcontextrestored` handlers on all consumers. Total WebGL2 contexts: 3.
+**Addresses:** Pitfalls 1 (context exhaustion), 6 (GL state corruption)
+**Avoids:** Writing blur modules independently that require painful consolidation later
 
-### Phase 2: Audio Polish + Beat Sync
+### Phase 2: GLSL Motion Blur Engine
 
-**Rationale:** These features are lightweight consumers of the Phase 1 audio pipeline. Audio export is included here because it completes the end-to-end pipeline and the FFmpeg two-step mux approach is well-understood.
-**Delivers:** Audio timeline positioning (drag offset), fade in/out controls (GainNode scheduling + FFmpeg `-af afade` in export), BPM detection with beat markers on timeline, snap-to-beat for hold duration handles, auto-arrange frames to beats (with strategy selector), audio in video export (two-step FFmpeg mux).
-**Addresses:** All P2 differentiator features from FEATURES.md.
-**Avoids:** Pitfalls 4 (FFmpeg two-step mux — never re-encode video), 5 (BPM halving/doubling — ship x2//2 UI and confidence color alongside detection, never without it).
-**Key decisions:** Do not trigger auto-arrange without user verifying beat markers first. Use `Math.round(fps * 60 / bpm)` for `framesPerBeat`. ProRes export uses `-c:a pcm_s16le`, not AAC.
-**Research flag:** Standard patterns. FFmpeg audio mux and `web-audio-beat-detector` API are well-documented. No phase-level research needed.
+**Rationale:** Motion blur is the simpler and more self-contained of the two features. Completing it first delivers immediate user value and proves the shared WebGL2 context pattern before the more complex brush FX work begins.
+**Delivers:** `glMotionBlur.ts` (directional blur shader using Phase 1 shared context), `motionBlurEngine.ts` (velocity computation, sub-frame accumulation in float FBO)
+**Avoids:** Pitfall 4 (sub-frame dark fringing — use float FBO accumulation from the start, not Canvas 2D globalAlpha)
 
-### Phase 3: Canvas Motion Path
+### Phase 3: Motion Blur Preview Integration, Store, and UI
 
-**Rationale:** Fully independent of audio. Can be developed in parallel with Phase 1/2 or sequentially after. Depends entirely on existing infrastructure: `keyframeStore`, `keyframeEngine.interpolateAt()`, `TransformOverlay`, `coordinateMapper.ts`.
-**Delivers:** Motion path visualization as SVG overlay on canvas (dotted path from `interpolateAt()` sampled at 1-frame intervals, dot density shows easing speed), draggable keyframe diamonds for direct position editing, path hidden during playback and fully excluded from export.
-**Addresses:** P3 canvas motion path features from FEATURES.md.
-**Avoids:** Pitfall 6 (must sample `interpolateAt()` — never draw Bezier spatial approximation). Motion path must not appear in exports (separate rendering pass gated behind UI toggle). Cache `Path2D` objects; invalidate only when keyframes change.
-**Research flag:** After Effects and Apple Motion motion path patterns are well-documented. Canvas 2D/SVG hit-testing for draggable handles is standard. No phase-level research needed.
+**Rationale:** Completes the motion blur feature end-to-end. Pure integration work: hooking Phase 2 into the existing renderer, adding UI controls, persisting settings to .mce.
+**Delivers:** PreviewRenderer per-layer motion blur hook with bounds-aware offscreen, `projectStore.ts` extensions (4 signals), .mce v15 bump, preview toolbar toggle, shutter angle slider
+**Addresses:** Pitfall 7 (edge bleeding — implement bounds-aware offscreen allocation with velocity padding)
 
-### Phase 4: Sidebar Polish + Solo Mode
+### Phase 4: Brush Style Data Model and UI
 
-**Rationale:** Independent of both audio and motion path. Can ship with any prior phase or at the end. Solo mode is a minimal extension of the existing `isolationStore` pattern. Sidebar scroll/collapse enhancements are primarily verification and wiring of already-built components (`SidebarScrollArea`, `CollapsibleSection`).
-**Delivers:** Layer-level solo mode (`isolatedLayerIds` signal in `isolationStore`, `toggleLayerIsolation()`, PreviewRenderer layer filtering), sidebar section collapse persistence (`appConfig`), key photos panel scroll verification (SortableJS drag + overflow compatibility).
-**Addresses:** Remaining P3 sidebar features from FEATURES.md.
-**Avoids:** Layer solo must use an ephemeral signal, not mutate `layer.visible` (would create undo entries and lose visibility settings). Sidebar scroll must preserve `scrollTop` on data change (store in `uiStore`). SortableJS `forceFallback: true` drag ghost clipping when scroll container has `overflow: hidden` — set `overflow: visible` during active drag.
-**Research flag:** Standard patterns. No phase-level research needed.
+**Rationale:** Pure TypeScript and UI work — no rendering. Establishes the `BrushStyle` type contract that glBrushFx will implement. Can be built in parallel with Phases 2-3 on a separate branch.
+**Delivers:** `types/paint.ts` extensions (`BrushStyle`, `BrushFxParams` optional on `PaintStroke`), `PaintProperties` brush style selector with visual previews, paintStore brush param support. Backward compat: missing `brushStyle` defaults to `'flat'`.
+
+### Phase 5: WebGL2 Brush FX Core (Point Stamping + Canvas Pool Fix)
+
+**Rationale:** The keystone phase for all brush FX. Must also fix the existing per-frame canvas allocation before adding FX rendering on top — otherwise GC churn will mask performance characteristics of the new pipeline.
+**Delivers:** `glBrushFx.ts` (shared WebGL2 context, point-stamp renderer via direct vertex rendering), canvas pooling fix in `previewRenderer.ts`, `paintRenderer.ts` flat/styled dispatch, ink + charcoal brush styles rendering in GPU
+**Addresses:** Pitfall 3 (per-frame canvas allocation — pool canvases as prerequisite), Pitfall 2 (texture upload stalls — direct WebGL2 vertex rendering, no Canvas-to-GL round-trip)
+
+### Phase 6: Spectral Pigment Mixing
+
+**Rationale:** Spectral mixing changes how strokes composite. Must have the basic point-stamp pipeline stable before wiring in the Kubelka-Munk shader; color errors would otherwise compound rendering bugs.
+**Delivers:** `spectralMix.ts`, `spectral.glsl` embedded and integrated into `glBrushFx.ts` compositing pass, physically-correct color blending for overlapping strokes
+**Uses:** `spectral.js@^3.0.0`
+**Addresses:** Pitfall 5 (spectral precision — `highp float` required, clamp K/S range, validate 10 known color pairs against JS reference)
+
+### Phase 7: Watercolor Bleed and Flow Fields
+
+**Rationale:** Most complex brush style, deferred until the WebGL2 pipeline is proven. Tyler Hobbs polygon deformation is CPU-intensive; bleed geometry must be pre-computed and cached per stroke, never re-computed per frame.
+**Delivers:** `watercolorBleed.ts` (polygon deformation + 20-30 layer transparent fill + stochastic erosion), `flowField.ts` (simplex-noise grid distortion with preset patterns), watercolor brush style
+**Uses:** `simplex-noise@^4.0.3`
+
+### Phase 8: Grain/Texture Post-Pass, Edge Darkening, and Export Integration
+
+**Rationale:** Polish passes that enhance all brush styles (low complexity, high visual impact). Motion blur export sub-frame accumulation finalizes here since it depends on stable per-layer GLSL blur from Phase 2.
+**Delivers:** Grain/texture erosion post-pass (stochastic shader), edge darkening post-pass (alpha threshold shader) — both in `glBrushFx.ts`; export sub-frame accumulation in `exportEngine.ts`; export panel motion blur settings UI
+**Addresses:** "Looks done but isn't" items: sRGB gamma encoding on spectral output, rotation velocity in motion blur, fractional frame interpolation validation, paint data pre-loading for export
+
+### Phase 9: Polish and Performance
+
+**Rationale:** Optimization after correctness is established. Only real-world usage reveals which paths need tuning.
+**Delivers:** LRU cache for rendered paint layer results (skip WebGL re-render when paintVersion unchanged for current frame), adaptive preview quality (auto-reduce blur sample count below 20fps), shutter angle visual reference tooltip, export progress showing sub-frame count
+**Addresses:** Performance traps: per-stroke draw call batching, watercolor polygon deformation caching, sub-frame accumulation skipping static layers, motion blur velocity caching (use previous frame's interpolated values)
 
 ### Phase Ordering Rationale
 
-- Phase 1 is the dependency root: audio import unblocks all other audio features
-- Phase 2 after Phase 1: beat sync requires AudioBuffer; audio export benefits from verifying playback sync first
-- Phase 3 can overlap with Phase 1 or 2: zero shared dependencies; a separate developer stream is viable
-- Phase 4 is last or concurrent: smallest scope, all components already exist in the codebase
+- Shared context infrastructure first prevents rework when consolidating separate contexts later — all six pitfall-prevention strategies depend on this being in place
+- Motion blur before brush FX because it is simpler (1 shader, proven pattern) and delivers user-visible value without the complex GPU brush pipeline
+- Data model before GPU rendering to establish the type contract without coupling; this phase is independent and can run in parallel
+- Core WebGL2 brush renderer before spectral mixing so color errors do not obscure basic rendering bugs
+- Watercolor deferred until the WebGL2 pipeline is stable — it is the most CPU-intensive brush style and needs a reliable performance baseline
+- Post-pass polish before export integration because post-passes must be correct in preview before being validated in export frames
 
 ### Research Flags
 
-Phases with standard patterns (skip `/gsd:research-phase`):
-- **All four phases:** The research corpus is comprehensive. Web Audio API, FFmpeg mux, Canvas 2D waveform, BPM detection, SVG motion path, and Preact Signals patterns are all well-documented with high-confidence sources. The existing codebase architecture is deeply understood from the v0.2.0 work.
+Phases likely needing deeper research during planning:
+- **Phase 5 (WebGL2 Brush FX Core):** Point-stamp rendering pipeline design has multiple valid approaches (GL_POINTS with sprite texture vs. instanced quads). The texture atlas design, pressure-to-size mapping curve, and WKWebView GL_POINTS compatibility need to be specified before implementation begins.
+- **Phase 7 (Watercolor Bleed):** Tyler Hobbs algorithm parameters (deformation rounds, layer count, opacity per layer, erosion density) need empirical tuning against target visual quality. Budget explicit tuning time before coding the final implementation.
 
-Optional spikes worth considering before Phase 1 commit:
-- **`ClockSource` abstraction prototype (2 hours):** The two-clock drift pitfall is the highest-risk integration point. Prototyping `AudioClockSource` and `SystemClockSource` in isolation before writing PlaybackEngine changes de-risks the architectural decision.
-- **Rust-side waveform peaks via symphonia (2-4 hours):** PITFALLS.md recommends this for large files to avoid the 110MB main-thread AudioBuffer allocation. Worth prototyping to determine if a new Rust crate is warranted vs. browser-side peak extraction with a file size warning.
+Phases with standard patterns (skip deeper research):
+- **Phase 1 (WebGL2 Infrastructure):** Shared context pattern, context loss recovery, and state reset are all documented in `glBlur.ts` and MDN WebGL best practices. No open questions.
+- **Phase 2 (GLSL Motion Blur):** 30-line directional blur shader is specified in full in ARCHITECTURE.md (see fragment shader listing). Pattern mirrors `glBlur.ts` exactly.
+- **Phase 3 (Motion Blur UI):** Extends existing `projectStore.ts` signals and `previewRenderer.ts` per-layer loop. UI components extend existing panel patterns.
+- **Phase 4 (Data Model):** TypeScript type extension and UI component are fully specified with field names and types in ARCHITECTURE.md.
+- **Phase 6 (Spectral Mixing):** spectral.js GLSL API, integration approach, and test methodology are fully specified. Precision guards are documented.
+- **Phase 8 (Post-Passes + Export):** Post-pass shaders are simple. Sub-frame export wraps an existing function call. No novel patterns.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All technologies are browser-native or existing project dependencies. `web-audio-beat-detector` is actively maintained with published TypeScript types. No experimental APIs. WKWebView Web Audio support confirmed via Tauri community examples and MDN. |
-| Features | HIGH | Feature set is informed by competitor analysis (Dragonframe, Stop Motion Studio, DaVinci Resolve, Canva) and established NLE patterns. Dependency chain is explicit and verified. Anti-features are clearly scoped out with rationale. |
-| Architecture | HIGH | Research is based on deep analysis of the existing v0.2.0 codebase. Integration points identified with diff estimates (~15 lines PlaybackEngine, ~20 lines ffmpeg.rs, ~80 lines TimelineRenderer). `ClockSource` abstraction and two-step FFmpeg mux are well-established patterns. |
-| Pitfalls | MEDIUM-HIGH | Critical pitfalls sourced from WebKit bug trackers (Bug 237878), Web Audio API issues (GitHub WebAudio/web-audio-api#2445), and implementation post-mortems. Two-clock drift confirmed by multiple independent sources. BPM octave error is a known limitation of all energy-based detection algorithms. |
+| Stack | HIGH | All packages verified on npm with correct versions. spectral.glsl shader confirmed in repo. Existing patterns (glBlur.ts, glslRuntime.ts) provide proven blueprint. No ambiguity about what to add or exclude. |
+| Features | MEDIUM-HIGH | Table stakes, competitive features, and anti-features are clearly defined with reasoning. MVP scope is tight and well-argued. Slight uncertainty: watercolor visual quality targets are qualitative — the right parameter values require visual testing. |
+| Architecture | HIGH | Build order is fully specified with 9 phases. Component boundaries are unambiguous. Modified files and integration points are identified by name. WebGL2 context strategy is resolved. |
+| Pitfalls | MEDIUM-HIGH | Critical pitfalls are specific with warning signs, recovery costs, and phase assignments. Performance numbers (10-40ms texture upload on WKWebView) have source references but need direct profiling validation on the target macOS/Tauri hardware. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **BPM detection accuracy on the project's actual music genre:** `web-audio-beat-detector` accuracy varies by genre. If the primary user base creates stop-motion to ambient or jazz, detection may be unreliable. Resolution: manual BPM entry must be a first-class path, not a fallback. Add "Tap Tempo" if detection accuracy is reported as insufficient post-launch.
-
-- **AudioContext.outputLatency on Bluetooth audio:** Bluetooth output can add 100-300ms latency (4-7 frames at 24fps) that the `ClockSource` abstraction does not automatically compensate for. Whether to account for `outputLatency` in frame derivation is a product decision (visual-leads-audio is usually acceptable for editing). Flag for review during Phase 1 implementation.
-
-- **Waveform peak extraction approach (browser vs Rust):** STACK.md recommends browser-side for simplicity; PITFALLS.md recommends Rust-side (symphonia) to avoid 110MB main-thread allocation for large files. Resolution: start with browser-side, add a file size warning (>100MB compressed), gate the Rust-side optimization as a performance improvement if user-reported freezes occur.
-
-- **Sample rate mismatch (48kHz file in 44.1kHz AudioContext):** A 48kHz file played in a 44.1kHz AudioContext is resampled and can cause minor timing drift. Resolution: configure `AudioContext` with `sampleRate` matching the source file's sample rate. Add to the "looks done but isn't" verification checklist.
+- **WKWebView texture upload performance:** The 10-40ms figure comes from Firefox/WebKit bug trackers, not a direct Tauri/WKWebView measurement. Profile `texImage2D(canvas)` vs. `texImage2D(imageBitmap)` vs. direct WebGL2 vertex rendering early in Phase 5 before committing to the pipeline architecture.
+- **WKWebView context limit lower bound:** The Chrome 16-context limit is confirmed. WKWebView on macOS may be lower. Test `WEBGL_lose_context` trigger point on the actual Tauri binary before finalizing the context budget.
+- **Watercolor visual quality targets:** Parameters (deformation rounds, layer count, opacity) are starting points from the Tyler Hobbs essay. Final values require visual comparison against reference watercolor. Budget tuning time during Phase 7.
+- **Flow field preset definitions:** ARCHITECTURE.md names the presets (wobble, curved, zigzag, waves, spiral) but does not specify the noise math behind each. These need to be defined during Phase 7 planning.
+- **sRGB gamma encoding in spectral shader:** PITFALLS.md flags this as commonly missing in Kubelka-Munk implementations. Must be validated explicitly during Phase 6 sign-off.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [MDN Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) — AudioContext, decodeAudioData, AudioBufferSourceNode, GainNode APIs
-- [MDN: AudioParam.linearRampToValueAtTime()](https://developer.mozilla.org/en-US/docs/Web/API/AudioParam/linearRampToValueAtTime) — fade in/out scheduling
-- [MDN: CanvasRenderingContext2D.bezierCurveTo()](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/bezierCurveTo) — motion path Canvas 2D API
-- [web-audio-beat-detector npm](https://www.npmjs.com/package/web-audio-beat-detector) — v8.2.27, `guess(audioBuffer)` returns `{ bpm, offset, tempo }`
-- [web-audio-beat-detector GitHub](https://github.com/chrisguttandin/web-audio-beat-detector) — algorithm details, TypeScript types
-- [FFmpeg documentation](https://ffmpeg.org/ffmpeg.html) — audio mux with `-i`, `-c:a`, `-shortest`, `-itsoffset`, `-af afade` flags
-- [Mux: Merge audio and video with FFmpeg](https://www.mux.com/articles/merge-audio-and-video-files-with-ffmpeg) — two-step mux command patterns
+- [spectral.js v3.0.0 GitHub](https://github.com/rvanwijnen/spectral.js) — GLSL shader verified, MIT license confirmed, API documented
+- [simplex-noise.js v4.0.3 GitHub](https://github.com/jwagner/simplex-noise.js) — TypeScript native, ESM, seeded PRNG, zero deps verified
+- [Tyler Hobbs: Watercolor Simulation](https://www.tylerxhobbs.com/words/a-guide-to-simulating-watercolor-paint-with-generative-art) — polygon deformation algorithm, canonical reference
+- [John Chapman: Per-Object Motion Blur](http://john-chapman-graphics.blogspot.com/2013/01/per-object-motion-blur.html) — per-layer velocity blur technique and edge artifact documentation
+- [MDN WebGL Best Practices](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices) — context management, state, texture uploads
+- [Khronos WebGL Wiki: Handling Context Lost](https://www.khronos.org/webgl/wiki/HandlingContextLost) — context loss recovery patterns
+- Existing codebase: `glBlur.ts`, `glslRuntime.ts`, `previewRenderer.ts`, `paintRenderer.ts`, `exportRenderer.ts` — verified integration points and established patterns
 
 ### Secondary (MEDIUM confidence)
-- [Audio-Video Synchronization with Web Audio API (paul.cx)](https://blog.paul.cx/post/audio-video-synchronization-with-the-web-audio-api/) — clock domain drift, `outputLatency`, `getOutputTimestamp()`
-- [Sync Animation to Audio (Hans Garon)](https://hansgaron.com/articles/web_audio/animation_sync_with_audio/part_one/) — rAF + AudioContext.currentTime synchronization pattern
-- [BBC waveform-data.js](https://github.com/bbc/waveform-data.js) — peak extraction and resampling patterns
-- [Kdenlive Audio Waveform Rewrite 2025](https://etiand.re/posts/2025/01/audio-waveforms-in-kdenlive-technical-upgrades-for-speed-precision-and-better-ux/) — peak-per-pixel rendering, zoom performance
-- [Beat Detection Using JavaScript and the Web Audio API (Joe Sullivan)](http://joesul.li/van/beat-detection-using-web-audio/) — BPM algorithm, octave error issues
-- [Adobe After Effects: Keyframe Interpolation](https://helpx.adobe.com/after-effects/using/keyframe-interpolation.html) — motion path visualization spec
-- [Apple Motion: Modify Animation Paths](https://support.apple.com/guide/motion/modify-animation-paths-motn14748beb/mac) — motion path interaction patterns
-- [Tauri + Web Audio (Slav Basharov)](https://slavbasharov.com/blog/building-music-player-tauri-svelte) — confirms Web Audio API works in Tauri WKWebView
+- [p5.brush](https://github.com/acamposuribe/p5.brush) — WebGL2 brush rendering reference for algorithm patterns (not a dependency)
+- [spectral.js Shadertoy demo](https://www.shadertoy.com/view/33XSWl) — GPU spectral_mix() validated in real-time fragment shader
+- [NVIDIA GPU Gems 3 Ch.27: Motion Blur](https://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-27-motion-blur-post-processing-effect) — velocity buffer, sample count guidance
+- [Unity HDRP Accumulation](https://docs.unity3d.com/Packages/com.unity.render-pipelines.high-definition@10.1/manual/Accumulation.html) — sub-frame accumulation with correct alpha handling
+- [Chromium WebGL context limits](https://issues.chromium.org/issues/40939743) — 16 context limit documentation
+- [Tauri WebGL Context Issue #6559](https://github.com/tauri-apps/tauri/issues/6559) — Tauri-specific WKWebView WebGL context behavior
 
 ### Tertiary (LOW confidence, needs validation)
-- [WebKit Bug 237878](https://bugs.webkit.org/show_bug.cgi?id=237878) — AudioContext suspended on WKWebView backgrounding; behavior may vary across macOS versions
-- [WebAudio/web-audio-api#2445](https://github.com/WebAudio/web-audio-api/issues/2445) — OfflineAudioContext memory concerns; behavior depends on WebKit version
-- [Canva Beat Sync](https://www.canva.com/features/beat-sync/) — UX reference for auto beat sync; internal implementation not documented
+- WKWebView texture upload cost (10-40ms) — inferred from Firefox/WebKit bug trackers; needs direct measurement on target hardware
+- [Chris Arasin: Real-Time Paint System](https://chrisarasin.com/paint-system-webgl/) — WebGL paint system reference (limited documentation)
 
 ---
-*Research completed: 2026-03-21*
+*Research completed: 2026-03-25*
 *Ready for roadmap: yes*

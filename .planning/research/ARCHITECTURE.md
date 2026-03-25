@@ -1,816 +1,624 @@
-# Architecture Research: v0.3.0 Feature Integration
+# Architecture Research: v0.5.0 Paint Brush FX & Motion Blur
 
-**Domain:** Audio/waveform/beat-sync, sidebar solo mode, canvas motion paths -- integration with existing Tauri 2.0 + Preact stop-motion editor
-**Researched:** 2026-03-21
+**Domain:** WebGL2 expressive brush rendering + per-layer GLSL motion blur for stop-motion editor
+**Researched:** 2026-03-25
 **Confidence:** HIGH
 
 ## Existing Architecture Snapshot
 
-Before detailing new integration points, here is the relevant existing architecture for context:
-
 ```
-FRONTEND (Preact + Preact Signals)
+RENDERING PIPELINE (current v0.4.0)
 =====================================================================
-Stores (reactive state):
-  projectStore ---- fps, resolution, dirty, save/open/close
-  sequenceStore --- sequences[], activeSequenceId, CRUD + undo
-  layerStore ------ computed layers from active seq, selection
-  keyframeStore --- keyframe CRUD, interpolation, transient overrides
-  timelineStore --- currentFrame, displayFrame, zoom, scroll, playing
-  canvasStore ----- zoom, pan, fitLock
-  uiStore --------- sidebar layout, selections, mode, collapse state
-  isolationStore -- isolatedSequenceIds, loopEnabled
-  exportStore ----- format, resolution, progress
-  blurStore ------- GPU bypass toggle
-  imageStore ------ image pool, LRU, video assets
-  historyStore ---- undo/redo stack + pointer
 
-Engines (stateful logic):
-  PlaybackEngine -- rAF tick loop, delta accumulation, shuttle
-  PreviewRenderer - Canvas 2D compositing, image cache, video elements
-  keyframeEngine -- interpolation with polynomial cubic easing
-  transitionEngine - fade/crossDissolve opacity math
-  exportEngine ---- offscreen canvas render + IPC write loop
-  exportRenderer -- shared renderGlobalFrame(), layer interpolation
+exportRenderer.renderGlobalFrame()
+  │
+  ├── interpolateLayers() ─── keyframeEngine.interpolateAt()
+  │                            (already supports fractional frames)
+  │
+  └── PreviewRenderer.renderFrame(layers, localFrame, frames, fps, ...)
+       │
+       ├── per-layer loop (bottom → top):
+       │   │
+       │   ├── Generator layers ─── fxGenerators / glslRuntime
+       │   │   └── optional: glBlur.ts (Gaussian blur offscreen)
+       │   │
+       │   ├── Paint layers ─── paintStore.getFrame(layerId, globalFrame)
+       │   │   └── renderPaintFrame() ─── strokeToPath() + ctx.fill()
+       │   │       (offscreen canvas per paint layer for eraser isolation)
+       │   │
+       │   ├── Content layers ─── resolveLayerSource() + drawLayer()
+       │   │   └── optional: per-layer blur via getBlurOffscreen()
+       │   │
+       │   └── Adjustment layers ─── applyColorGrade() etc.
+       │
+       └── composite each layer to main canvas
+            (blendMode → globalCompositeOperation, effectiveOpacity)
 
-Computed (derived reactive):
-  frameMap -------- flattened FrameEntry[] for all content sequences
-  trackLayouts ---- TrackLayout[] for timeline rendering
-  fxTrackLayouts -- FxTrackLayout[] for overlay range bars
-  crossDissolveOverlaps -- overlap zones for dual-render
-
-BACKEND (Rust / Tauri 2.0)
+WebGL2 CONTEXTS (current)
 =====================================================================
-Commands:
-  project_* ------ CRUD, save, open, migrate
-  image_* -------- import, info, thumbnails
-  config_* ------- theme, sidebar, panels, export prefs
-  export_* ------- dir creation, PNG write, FFmpeg encode
-Services:
-  ffmpeg.rs ------ binary provisioning, encode_video (PNG seq -> video)
-  project_io.rs -- .mce format read/write
-  image_pool.rs -- LRU cache, thumbnail generation
+  glBlur.ts ─────── shared HTMLCanvasElement + WebGL2 context (lazy init)
+                     compile-once shader, texStorage2D, ping-pong FBO
+                     API: applyGPUBlur(source, targetCtx, radius, w, h)
 
-IPC Bridge:
-  efxasset:// ---- custom protocol for local file serving (images + video)
-  invoke() ------- Rust command calls via Tauri IPC
+  glslRuntime.ts ── separate shared HTMLCanvasElement + WebGL2 context
+                     cached program map (shader.id → CachedProgram)
+                     API: renderGlslGenerator(), renderGlslFxImage(),
+                          renderGlslTransition()
+
+PAINT DATA MODEL (current)
+=====================================================================
+  paintStore: Map<layerId, Map<frameNum, PaintFrame>>
+  PaintFrame: { elements: PaintElement[] }
+  PaintElement: PaintStroke | PaintShape | PaintFill
+  PaintStroke: { points: [x,y,pressure][], color, opacity, size, options }
+  Rendering: perfect-freehand → Path2D → ctx.fill() (Canvas 2D only)
 ```
 
-## System Overview: v0.3.0 Additions
+## New Components
+
+### 1. Brush FX Renderer (`glBrushFx.ts`)
+
+**What:** WebGL2 offscreen renderer for expressive brush styles (watercolor, ink, charcoal, pencil, marker).
+
+**Why new file:** The existing `paintRenderer.ts` is Canvas 2D only. Brush FX requires fragment shaders for spectral mixing, point stamping, and post-processing. Cleanly separated so flat brushes continue on the fast Canvas 2D path.
+
+**Architecture:**
 
 ```
-EXISTING                          NEW (v0.3.0)
-========                          ============
-
-projectStore ---------.           audioStore (NEW)
-sequenceStore         |             |-- audioTracks signal
-timelineStore         |             |-- waveformData signal
-canvasStore           |             |-- beatMarkers signal
-keyframeStore         |             |-- bpm signal
-isolationStore        |             |-- playback state
-exportStore           |
-                      |           AudioEngine (NEW)
-PlaybackEngine <------+------->    |-- Web Audio API context
-  tick() ---------.   |           |-- HTMLAudioElement sync
-                  |   |           |-- currentTime <-> frame mapping
-PreviewRenderer   |   |
-                  |   |           WaveformRenderer (NEW)
-exportRenderer    |   |           |-- Canvas 2D mini-waveform
-                  |   |           |-- beat marker overlay
-                  |   |
-Timeline ---------+   |           AudioTrack row (NEW in timeline)
-Canvas overlay ---+   |           MotionPathOverlay (NEW)
-Sidebar ----------+   |           SoloModeButton (NEW)
-                      |
-ffmpeg.rs <-----------'           audio mux in encode_video (MODIFIED)
-                                  audio_import command (NEW)
-                                  waveform generation (NEW Rust or JS)
+PaintStroke (brushStyle !== 'flat')
+    │
+    ▼
+glBrushFx.ts ─── shared WebGL2 context (lazy init, same pattern as glBlur)
+    │
+    ├── Point-stamp renderer ─── GL_POINTS with soft-falloff sprite
+    │   (each stroke point becomes a textured quad/point)
+    │
+    ├── Spectral mixing shader ─── spectral.glsl (Kubelka-Munk)
+    │   (composites overlapping strokes with subtractive color blend)
+    │
+    ├── Post-process passes:
+    │   ├── Edge darkening (alpha > threshold → darken)
+    │   ├── Grain/texture erosion (stochastic holes)
+    │   └── Flow field displacement (per-step UV distortion)
+    │
+    └── Result: framebuffer → readback to OffscreenCanvas
+        (composited into paint layer's offscreen canvas)
 ```
 
-### Component Responsibilities
+**Integration point:** `paintRenderer.ts` dispatches based on `brushStyle`:
+- `'flat'` → existing `strokeToPath()` + `ctx.fill()` (zero regression)
+- anything else → `glBrushFx.renderStroke()` which returns a canvas
 
-| Component | Responsibility | New / Modified | Communicates With |
-|-----------|----------------|----------------|-------------------|
-| `audioStore` | Audio track data, waveform cache, beat markers, BPM, fade in/out, timeline position | **NEW store** | sequenceStore, timelineStore, projectStore |
-| `AudioEngine` | Web Audio API context, HTMLAudioElement playback, frame-accurate sync with PlaybackEngine | **NEW engine** | PlaybackEngine, audioStore, timelineStore |
-| `WaveformRenderer` | Canvas 2D waveform drawing for timeline audio track row | **NEW renderer** | audioStore, timelineStore |
-| `BeatDetector` | BPM estimation and beat position extraction from AudioBuffer | **NEW lib** | audioStore |
-| `MotionPathOverlay` | SVG path visualization of keyframe position trajectory on canvas | **NEW component** | keyframeStore, canvasStore, layerStore |
-| `AudioTrack` | Timeline row rendering for audio waveform + beat markers | **NEW in TimelineRenderer** | audioStore, timelineStore |
-| `PlaybackEngine` | Add audio sync start/stop/seek | **MODIFIED** | AudioEngine |
-| `exportEngine` | Pass audio path to FFmpeg for mux | **MODIFIED** | audioStore, ffmpeg.rs |
-| `ffmpeg.rs` | Replace `-an` with `-i audio` mux | **MODIFIED** | exportEngine |
-| `TimelineRenderer` | Add audio track row below FX tracks | **MODIFIED** | audioStore |
-| `TimelineCanvas` | Handle audio track interactions | **MODIFIED** | audioStore |
-| Sidebar | Solo mode buttons per sequence/layer | **MODIFIED** | isolationStore |
-| `MceProject` | Add `audio_tracks` field | **MODIFIED** | projectStore |
-| `projectStore` | Serialize/deserialize audio tracks | **MODIFIED** | audioStore |
-| `TransformOverlay` | Render motion path when layer selected | **MODIFIED** | keyframeStore |
+**WebGL2 context strategy:** Reuse a SINGLE new shared context for all brush FX (same lazy-init pattern as `glBlur.ts`). This is the 3rd WebGL2 context in the app. Chrome allows 16 per page; Safari/WebKit allows at least 8. Three contexts is well within limits. Do NOT create per-layer or per-frame contexts.
 
-## Recommended Project Structure (new files only)
+### 2. Spectral Mixing Module (`spectralMix.ts` + `spectral.glsl`)
 
+**What:** Kubelka-Munk pigment mixing for physically-based color blending in brush FX.
+
+**Why:** Standard RGB blending produces muddy colors when overlapping strokes (blue + yellow = gray). Spectral mixing produces physically correct results (blue + yellow = green). This is the core differentiator for expressive brush styles.
+
+**Implementation:**
+- Use `spectral.js` v3.0.0 GLSL shader (`spectral.glsl`) -- MIT licensed, 7-primary reflectance model
+- The GLSL file is embedded directly (small, ~200 lines) as a string constant in `spectralMix.ts`
+- Provides both JS-side mixing (for CPU fallback/preview) and GLSL include for the brush FX fragment shader
+- Spectral.js chosen over Mixbox because: MIT license (Mixbox is commercial), GLSL shader included out-of-box, established use in p5.brush ecosystem
+
+**Integration:** `glBrushFx.ts` `#include`s the spectral mixing functions into its fragment shader for stroke compositing.
+
+### 3. Watercolor Bleed Engine (`watercolorBleed.ts`)
+
+**What:** Tyler Hobbs polygon deformation algorithm for watercolor edge diffusion.
+
+**Why new file:** Complex geometry algorithm (recursive polygon deformation + multi-layer transparent fill) that is conceptually separate from the WebGL rendering. Generates deformed polygon vertices that are then rendered by `glBrushFx.ts`.
+
+**Algorithm:**
 ```
-src/
-  stores/
-    audioStore.ts           # NEW: audio track state, waveform, beats
-  lib/
-    audioEngine.ts          # NEW: Web Audio API playback + sync
-    beatDetector.ts         # NEW: BPM detection + beat position extraction
-    waveformGenerator.ts    # NEW: AudioBuffer -> peak data for rendering
-    motionPath.ts           # NEW: keyframe position -> SVG path data
-  components/
-    canvas/
-      MotionPathOverlay.tsx # NEW: SVG motion path on canvas
-    timeline/
-      AudioTrackRenderer.ts # NEW: waveform + beat marker rendering
-    sidebar/
-      SoloModeButton.tsx    # NEW: per-sequence/layer solo toggle
-  types/
-    audio.ts                # NEW: AudioTrack, BeatMarker, WaveformData types
-
-src-tauri/src/
-  commands/
-    audio.rs                # NEW: audio_import, audio_get_waveform
-  services/
-    ffmpeg.rs               # MODIFIED: add audio mux path
+Input polygon (stroke outline from perfect-freehand)
+    │
+    ├── Assign per-segment variance (high at edges, low at center)
+    ├── Deform N times (N~7) ─── displace vertices along edge normals
+    │                             with Gaussian random offsets
+    │   Result: "base polygon"
+    │
+    └── For each layer (20-40 layers):
+        ├── Start from base polygon
+        ├── Deform M more times (M~4-5)
+        ├── Draw at low opacity (~4%)
+        └── Optional: stochastic erosion pass (destination-out circles)
 ```
 
-### Structure Rationale
+**Integration:** Called by `glBrushFx.ts` when `brushStyle === 'watercolor'`. The deformed polygons are tessellated into triangles and rendered via WebGL2 with spectral mixing active.
 
-- **audioStore.ts**: Follows existing store pattern (Preact Signals, no class, exported object). Audio is project-level state like images -- not per-sequence (a single audio track spans the entire timeline).
-- **audioEngine.ts**: Follows PlaybackEngine pattern (class with start/stop/seek, not a store). The engine owns the Web Audio API context lifecycle.
-- **beatDetector.ts / waveformGenerator.ts**: Pure computation split from store/engine for testability. beatDetector runs once on import; waveformGenerator produces resampled peak data at the current timeline zoom.
-- **MotionPathOverlay.tsx**: Same layer as TransformOverlay.tsx, rendered as sibling SVG. Uses canvas coordinate system via `coordinateMapper.ts`.
-- **AudioTrackRenderer.ts**: Canvas 2D rendering function called by TimelineRenderer, follows fxTrack rendering pattern.
+### 4. Flow Field Engine (`flowField.ts`)
 
-## Architectural Patterns
+**What:** 2D vector field grid that deflects stroke paths for organic rendering.
 
-### Pattern 1: Audio Track as Project-Level Data (not Sequence-Level)
+**Implementation:**
+- Grid-based: divide canvas into cells, each with a 2D direction vector
+- Preset patterns: wobble (Perlin noise), curved, zigzag, waves, spiral
+- Applied per-step during stroke rasterization (CPU-side point displacement before GPU rendering)
+- Lightweight: no WebGL needed for the field itself, just math on point arrays
 
-**What:** Audio lives on the project, not on sequences. A single audio track (or small fixed number) spans the full timeline. This mirrors After Effects / DaVinci Resolve where audio is a separate timeline lane, not bound to visual sequences.
+**Integration:** Called before point stamping in `glBrushFx.ts`. Each stroke point's position is displaced by sampling the flow field at that location.
 
-**When to use:** Always for v0.3.0. Stop-motion projects have one music track, not per-sequence audio.
+### 5. Motion Blur Engine (`glMotionBlur.ts`)
 
-**Trade-offs:** Simpler model (one audio file, one waveform), but limits future multi-track. Design the store as `audioTracks: AudioTrack[]` with initially one track to allow future extension without format migration.
+**What:** GLSL per-layer velocity-based directional blur.
 
-**Example:**
+**Why new file (not extending glBlur.ts):** Different shader (directional vs Gaussian), different uniforms (velocity vector vs radius), different use case (temporal motion vs static defocus). Same lazy-init pattern but separate program cache.
 
-```typescript
-// types/audio.ts
-export interface AudioTrack {
-  id: string;
-  name: string;             // display name (filename)
-  relativePath: string;     // relative to project dir (like video layers)
-  offsetFrames: number;     // start position on timeline (0 = bar 1)
-  durationFrames: number;   // computed from audio duration * fps
-  durationSeconds: number;  // raw audio duration
-  fadeInFrames: number;     // fade envelope
-  fadeOutFrames: number;    // fade envelope
-  volume: number;           // 0-1 gain
-  muted: boolean;
-}
+**Architecture:**
 
-export interface WaveformData {
-  peaks: Float32Array;      // downsampled peak amplitudes
-  samplesPerPeak: number;   // how many source samples per peak entry
-  sampleRate: number;       // original sample rate
-  channels: number;         // 1 (mono mixed) or 2
-}
-
-export interface BeatMarker {
-  timeSeconds: number;      // beat position in seconds
-  frame: number;            // beat position as global frame
-  strength: number;         // 0-1 beat confidence
-}
+```
+glMotionBlur.ts ─── reuses glBlur.ts WebGL2 context OR creates 4th context
+    │
+    ├── Shader: velocity-directed sampling along motion vector
+    │   uniforms: iChannel0 (layer texture), uVelocity, uStrength, uSamples
+    │
+    ├── applyMotionBlur(source, velocity, {strength, samples}) → canvas
+    │
+    └── Context sharing decision:
+        RECOMMENDED: Share glBlur.ts context (refactor to export getGL())
+        because motion blur and Gaussian blur never run simultaneously
+        on the same layer. This keeps total context count at 3.
 ```
 
-### Pattern 2: AudioEngine as PlaybackEngine Companion (not Replacement)
+**GLSL Shader (from spec, validated):**
+```glsl
+#version 300 es
+precision highp float;
 
-**What:** AudioEngine owns an `HTMLAudioElement` and synchronizes it with PlaybackEngine's frame-based tick loop. PlaybackEngine remains the master clock. AudioEngine is a slave that follows.
+uniform sampler2D iChannel0;
+uniform vec2 iResolution;
+uniform vec2 uVelocity;         // pixels (dx, dy)
+uniform float uStrength;        // 0.0 - 1.0
+uniform int uSamples;           // 8 (preview) or 16 (export)
 
-**When to use:** Playback start, stop, seek, shuttle speed changes.
+in vec2 vUV;
+out vec4 fragColor;
 
-**Why not Web Audio API `AudioBufferSourceNode`:** AudioBufferSourceNode cannot seek -- once started, you cannot jump to an arbitrary position. HTMLAudioElement.currentTime is seekable and has minimal latency on macOS WebKit. Using `createMediaElementSource()` bridges the HTMLAudioElement into the Web Audio graph for future effects (fade, gain).
+void main() {
+    vec2 texelSize = 1.0 / iResolution;
+    vec2 velocity = uVelocity * texelSize * uStrength;
+    vec4 color = vec4(0.0);
+    float totalWeight = 0.0;
 
-**Trade-offs:** HTMLAudioElement has ~10-50ms latency on seek, acceptable for stop-motion at 15-24fps (one frame is 41-66ms). For frame-accurate export, FFmpeg handles audio mux independently.
-
-**Example:**
-
-```typescript
-// lib/audioEngine.ts
-export class AudioEngine {
-  private audioCtx: AudioContext | null = null;
-  private mediaElement: HTMLAudioElement | null = null;
-  private sourceNode: MediaElementAudioSourceNode | null = null;
-  private gainNode: GainNode | null = null;
-
-  /** Initialize with audio file path */
-  async load(audioPath: string): Promise<AudioBuffer> {
-    this.audioCtx = this.audioCtx ?? new AudioContext();
-    this.mediaElement = new Audio(assetUrl(audioPath));
-    this.mediaElement.preload = 'auto';
-    this.sourceNode = this.audioCtx.createMediaElementSource(this.mediaElement);
-    this.gainNode = this.audioCtx.createGain();
-    this.sourceNode.connect(this.gainNode);
-    this.gainNode.connect(this.audioCtx.destination);
-
-    // Also decode full buffer for waveform + beat analysis
-    const response = await fetch(assetUrl(audioPath));
-    const arrayBuffer = await response.arrayBuffer();
-    return this.audioCtx.decodeAudioData(arrayBuffer);
-  }
-
-  /** Sync to PlaybackEngine's current frame */
-  syncToFrame(frame: number, fps: number) {
-    if (!this.mediaElement) return;
-    const targetTime = frame / fps;
-    // Only seek if drift exceeds one frame duration
-    if (Math.abs(this.mediaElement.currentTime - targetTime) > (1 / fps)) {
-      this.mediaElement.currentTime = targetTime;
+    for (int i = 0; i < uSamples; i++) {
+        float t = float(i) / float(uSamples - 1) - 0.5;
+        vec2 offset = velocity * t;
+        vec2 sampleUV = clamp(vUV + offset, vec2(0.0), vec2(1.0));
+        float weight = 1.0 - abs(t * 2.0);  // triangle filter
+        color += texture(iChannel0, sampleUV) * weight;
+        totalWeight += weight;
     }
-  }
-
-  play() { this.mediaElement?.play(); }
-  pause() { this.mediaElement?.pause(); }
-  setVolume(v: number) { if (this.gainNode) this.gainNode.gain.value = v; }
-  dispose() { /* cleanup */ }
+    fragColor = color / totalWeight;
 }
 ```
 
-### Pattern 3: Waveform as Resampled Peak Cache
+### 6. Motion Blur Velocity Engine (`motionBlurEngine.ts`)
 
-**What:** On audio import, decode to AudioBuffer, extract peak amplitude data at a fixed resolution (e.g., 1 peak per ~100 samples). Store this `WaveformData` in audioStore. TimelineRenderer reads peaks and maps to pixel columns at the current zoom level using simple index math.
+**What:** Computes per-layer velocity vectors from keyframe transform deltas; manages sub-frame accumulation buffer for export.
 
-**When to use:** Waveform visualization in the timeline audio track row.
+**Architecture:**
+```
+motionBlurEngine.ts
+    │
+    ├── computeLayerVelocity(current, previous) → {dx, dy, dRotation, dScale}
+    │   (uses InterpolatedKeyframeValues from two consecutive frames)
+    │
+    ├── renderFrameWithMotionBlur(globalFrame, subFrames, renderer, strength)
+    │   → OffscreenCanvas
+    │   (sub-frame accumulation: render N sub-frames, blend with 1/N opacity)
+    │
+    └── shouldApplyMotionBlur(velocity, threshold) → boolean
+        (skip blur when velocity below perceptual threshold)
+```
 
-**Why not render directly from AudioBuffer:** AudioBuffer can be millions of samples. Rendering requires downsampling to pixel-column resolution. Pre-compute peaks once, then slice/subsample at render time based on zoom.
+### 7. Motion Blur Store (`motionBlurStore.ts` or extend `projectStore`)
 
-**Trade-offs:** ~100KB memory for a typical 3-minute song at 44.1kHz. Trivial. The alternative (re-analyzing on every zoom change) burns CPU needlessly.
+**What:** Project-level motion blur settings with signal-based reactivity.
 
-**Example:**
+**Decision: Extend projectStore** rather than creating a new store. Reason: Motion blur settings are project-level data that persists in .mce files, just like fps and resolution. A 13th store for 4 signals is excessive. Add to projectStore:
 
 ```typescript
-// lib/waveformGenerator.ts
-export function generatePeaks(buffer: AudioBuffer, samplesPerPeak = 128): Float32Array {
-  const channel = buffer.getChannelData(0); // mono mix
-  const numPeaks = Math.ceil(channel.length / samplesPerPeak);
-  const peaks = new Float32Array(numPeaks);
-  for (let i = 0; i < numPeaks; i++) {
-    let max = 0;
-    const start = i * samplesPerPeak;
-    const end = Math.min(start + samplesPerPeak, channel.length);
-    for (let j = start; j < end; j++) {
-      const abs = Math.abs(channel[j]);
-      if (abs > max) max = abs;
-    }
-    peaks[i] = max;
-  }
-  return peaks;
-}
+// In projectStore
+const motionBlurEnabled = signal(false);
+const motionBlurStrength = signal(0.5);    // shutter angle 180 = 0.5
+const motionBlurPreviewQuality = signal<'off' | 'low' | 'medium'>('off');
+const motionBlurExportSubFrames = signal(8);
 ```
 
-### Pattern 4: Beat Detection via Energy-Based Algorithm (not Essentia.js)
+## Modified Components
 
-**What:** Use a lightweight energy-based onset detection algorithm on the decoded AudioBuffer. Compute spectral flux in frequency bands, find peaks above threshold, cluster into BPM.
+### previewRenderer.ts -- Per-Layer Motion Blur Hook
 
-**When to use:** On audio import or when user triggers "Detect BPM" explicitly.
+**What changes:** After each layer is rendered to its offscreen canvas (or main canvas), apply motion blur if enabled.
 
-**Why not Essentia.js:** Essentia.js pulls in a 2MB+ WASM bundle. For BPM detection of a single audio file in a desktop app, a simple energy/spectral-flux algorithm (Joe Sullivan's approach) is 50-100 lines of code and runs in <1 second for a 5-minute track. If accuracy is insufficient, Essentia.js can be added later as an optional dependency.
+**Where exactly:** In the `renderFrame()` method, the per-layer loop already renders each layer to an offscreen canvas when blur is active (lines ~226-350). Motion blur hooks into the SAME offscreen canvas pattern:
 
-**Trade-offs:** Energy-based detection works well for rhythmic music (electronic, pop, rock) which is the primary use case for stop-motion sync. Complex polyrhythmic music may need manual BPM entry as fallback.
+```
+For each layer:
+  1. Render layer content to offscreen canvas (existing)
+  2. Apply Gaussian blur if layer.blur > 0 (existing)
+  3. NEW: Apply motion blur if motionBlurEnabled && velocity > threshold
+     └── computeLayerVelocity(currentValues, previousValues)
+     └── applyMotionBlur(offscreenCanvas, velocity, {strength, samples})
+  4. Composite offscreen → main canvas (existing)
+```
 
-**Example:**
+**State needed:** Previous frame's interpolated values per layer. Store as `Map<layerId, InterpolatedKeyframeValues>` on the PreviewRenderer instance. Updated each frame.
+
+**Paint layers + motion blur:** Paint layers CAN receive motion blur when the paint layer itself has animated transforms (position/rotation keyframes). The motion blur is applied to the composited paint layer offscreen canvas, not to individual strokes.
+
+### paintRenderer.ts -- Brush Style Dispatch
+
+**What changes:** The `renderElement()` function gains a branch for non-flat brush styles that delegates to `glBrushFx.ts`.
+
+```
+renderElement(ctx, element, width, height)
+  │
+  ├── element.tool === 'brush' && element.brushStyle !== 'flat'
+  │   └── glBrushFx.renderStroke(element) → OffscreenCanvas
+  │       ctx.drawImage(fxCanvas, 0, 0)
+  │
+  └── everything else → existing Canvas 2D paths (unchanged)
+```
+
+**Critical: eraser isolation.** Brush FX strokes must be rendered to the same offscreen canvas that erasers use `destination-out` on. The integration point in `previewRenderer.ts` already creates an offscreen canvas per paint layer (line ~287). The brush FX renderer blits its output onto this same offscreen, so erasers work correctly across mixed flat/FX strokes.
+
+### exportRenderer.ts -- Sub-Frame Accumulation
+
+**What changes:** `renderGlobalFrame()` gains an optional sub-frame accumulation wrapper.
+
+```
+Current:
+  renderGlobalFrame(renderer, canvas, frame, fm, allSeqs, overlaps, solo)
+
+With motion blur (export only):
+  if (motionBlurEnabled && exportSubFrames > 1):
+    accumulator = new OffscreenCanvas(w, h)
+    for i in 0..subFrames:
+      subFrame = globalFrame + (i / subFrames)
+      renderGlobalFrame(renderer, tempCanvas, subFrame, ...)
+      accumulator.drawImage(tempCanvas, globalAlpha=1/subFrames)
+    canvas ← accumulator
+  else:
+    renderGlobalFrame(renderer, canvas, frame, ...) // unchanged
+```
+
+**Key insight from existing code:** `interpolateLayers()` calls `interpolateAt(layer.keyframes, localFrame)` which already supports fractional frame values. Sub-frame accumulation works out of the box for keyframe interpolation. No changes to `keyframeEngine.ts` needed.
+
+### exportEngine.ts -- Motion Blur Settings Integration
+
+**What changes:** The export frame loop (line 131: `for (let frame = startFromFrame; frame < total; frame++)`) wraps the existing `renderGlobalFrame()` call with the sub-frame accumulation logic from `motionBlurEngine.ts`. Export settings gain motion blur controls.
+
+### types/paint.ts -- Brush Style Extension
+
+**What changes:** Extend `PaintStroke` with optional brush style fields:
 
 ```typescript
-// lib/beatDetector.ts
-export interface BeatResult {
-  bpm: number;
-  beats: number[];  // beat times in seconds
-  confidence: number; // 0-1
+interface PaintStroke {
+  // ... existing fields unchanged ...
+  brushStyle?: BrushStyle;       // default: 'flat' (backward compat)
+  brushParams?: BrushFxParams;   // per-stroke FX params
 }
 
-export function detectBeats(buffer: AudioBuffer): BeatResult {
-  // 1. Compute energy in frequency bands using FFT windows
-  // 2. Find onset peaks via spectral flux
-  // 3. Auto-correlate to find BPM
-  // 4. Quantize beat positions to BPM grid
-  // Returns { bpm, beats[], confidence }
+type BrushStyle = 'flat' | 'watercolor' | 'ink' | 'charcoal' | 'pencil' | 'marker';
+
+interface BrushFxParams {
+  grain?: number;        // 0-1
+  bleed?: number;        // 0-1
+  scatter?: number;      // 0-1
+  fieldStrength?: number;// 0-1
+  edgeDarken?: number;   // 0-1
 }
 ```
 
-### Pattern 5: Motion Path as SVG Overlay on Canvas
+Optional fields ensure backward compatibility with existing .mce v14 paint sidecar files. Missing `brushStyle` defaults to `'flat'`.
 
-**What:** When a layer has 2+ position keyframes, render an SVG path showing the interpolated x,y trajectory. Show keyframe diamonds on the path that can be dragged to edit position values. The path updates reactively when keyframes change.
+### types/project.ts -- Motion Blur Settings Type
 
-**When to use:** When a non-base, non-FX layer is selected and has position keyframes.
-
-**Why SVG over Canvas:** The TransformOverlay already uses SVG for bounding box rendering. SVG paths (`<path d="M... C...">`) are ideal for smooth curves. Hit-testing SVG elements is free via pointer events. Canvas 2D would require manual hit-testing.
-
-**Trade-offs:** SVG rendering is slightly slower than Canvas for many nodes, but motion paths have at most ~20 keyframes. Performance is not a concern.
-
-**Example:**
+**What changes:** Add `MotionBlurSettings` interface and include in project type:
 
 ```typescript
-// lib/motionPath.ts
-export interface MotionPathPoint {
-  x: number;          // project-space coordinates
-  y: number;
-  frame: number;      // sequence-local frame
-  isKeyframe: boolean; // true = diamond handle
-}
-
-export function computeMotionPath(
-  keyframes: Keyframe[],
-  totalFrames: number,
-  sampleInterval: number = 1, // sample every N frames
-): MotionPathPoint[] {
-  const points: MotionPathPoint[] = [];
-  for (let f = 0; f <= totalFrames; f += sampleInterval) {
-    const values = interpolateAt(keyframes, f);
-    if (values) {
-      points.push({
-        x: values.x,
-        y: values.y,
-        frame: f,
-        isKeyframe: keyframes.some(kf => kf.frame === f),
-      });
-    }
-  }
-  return points;
+interface MotionBlurSettings {
+  enabled: boolean;
+  strength: number;        // 0.0-1.0 (shutterAngle / 360)
+  previewQuality: 'off' | 'low' | 'medium';
+  exportSubFrames: number; // 4, 8, or 16
 }
 ```
+
+### projectStore.ts -- .mce v15
+
+**What changes:** Add motion blur signals. Bump .mce format to v15 with `serde(default)` backward compatibility (same pattern as v8-v14 progressive migration).
 
 ## Data Flow
 
-### Audio Import Flow
+### Paint Brush FX Rendering Flow
 
 ```
-User drags audio file (or File > Import Audio)
-    |
-    v
-[Rust: audio_import command]
-    |-- Validate file (wav/mp3/aac/m4a/ogg/flac)
-    |-- Copy to project_dir/audio/
-    |-- Return { relativePath, durationSeconds }
-    |
-    v
-[audioStore.addTrack()]
-    |-- Store AudioTrack with offset=0, volume=1
-    |-- Mark project dirty
-    |
-    v
-[AudioEngine.load(path)]
-    |-- Decode AudioBuffer via Web Audio API
-    |-- Generate WaveformData (peaks)
-    |-- Run BeatDetector (optional, user-triggered)
-    |-- Store waveform + beats in audioStore
-    |
-    v
-[Timeline re-renders with audio track row]
-[Waveform visible, beat markers visible]
+User draws stroke (PaintOverlay pointer events)
+    │
+    ▼
+paintStore.addElement(layerId, frame, PaintStroke{brushStyle:'watercolor',...})
+    │
+    ▼
+paintVersion signal bumps → PreviewRenderer re-renders
+    │
+    ▼
+PreviewRenderer.renderFrame() → paint layer branch (line 275)
+    │
+    ├── Creates project-sized offscreen canvas
+    │
+    ├── renderPaintFrame(offCtx, paintFrame, projW, projH)
+    │   │
+    │   └── for each element:
+    │       ├── brushStyle === 'flat' → strokeToPath() + ctx.fill()
+    │       │
+    │       └── brushStyle !== 'flat' → glBrushFx.renderStroke()
+    │           │
+    │           ├── Apply flow field displacement to points
+    │           ├── Point-stamp to WebGL2 framebuffer
+    │           ├── Spectral mixing shader composites overlaps
+    │           ├── Post-process: edge darken, grain, bleed
+    │           └── readback → ctx.drawImage(fxResult, 0, 0)
+    │
+    ├── ctx.drawImage(offscreen, 0, 0, logicalW, logicalH)
+    │   (with blendMode + effectiveOpacity)
+    │
+    └── offscreen composited onto main canvas
 ```
 
-### Audio-Synced Playback Flow
+### Motion Blur Preview Flow
 
 ```
-PlaybackEngine.start()
-    |
-    |-- AudioEngine.syncToFrame(currentFrame, fps)
-    |-- AudioEngine.play()
-    |
-    v
-PlaybackEngine.tick(now)  [existing rAF loop]
-    |
-    |-- Advance frame via delta accumulation (existing)
-    |-- Every N ticks: AudioEngine.syncToFrame(currentFrame, fps)
-    |      (drift correction -- only seek if > 1 frame off)
-    |
-    v
-PlaybackEngine.stop()
-    |-- AudioEngine.pause()
-    |-- AudioEngine.syncToFrame(currentFrame, fps)
+PlaybackEngine tick → frame N
+    │
+    ▼
+exportRenderer.renderGlobalFrame(renderer, canvas, N, ...)
+    │
+    ▼
+interpolateLayers(seq, localFrame) → layerValues[N]
+    │
+    ▼
+PreviewRenderer.renderFrame(interpolatedLayers, ...)
+    │
+    ├── For each layer:
+    │   ├── Render to offscreen canvas (existing logic)
+    │   │
+    │   ├── Retrieve previousValues from _prevFrameCache Map
+    │   │
+    │   ├── computeLayerVelocity(currentValues, previousValues)
+    │   │   → {dx, dy} in pixels/frame
+    │   │
+    │   ├── if (|dx| > threshold || |dy| > threshold):
+    │   │   applyMotionBlur(offscreen, {dx, dy}, {
+    │   │     strength: projectStore.motionBlurStrength,
+    │   │     samples: previewQuality === 'low' ? 4 : 8
+    │   │   })
+    │   │
+    │   └── Composite to main canvas
+    │
+    └── Update _prevFrameCache with current layerValues
 ```
 
-**Critical design decision:** PlaybackEngine remains the **master clock**. Audio follows video, not the other way around. This is correct for stop-motion editors where frame-accurate visual sync matters more than audio continuity. If audio drifts slightly during shuttle/scrub, that is acceptable.
-
-### Audio in Video Export Flow
+### Motion Blur Export Flow (Sub-Frame Accumulation)
 
 ```
-exportEngine.startExport()
-    |
-    |-- [existing] Render PNG frames
-    |-- [existing] Call exportEncodeVideo
-    |
-    v
-[Rust: export_encode_video] (MODIFIED)
-    |
-    |-- audioPath parameter added
-    |-- If audioPath provided:
-    |     ffmpeg -y -framerate {fps} -i {pattern}
-    |       -i {audioPath}
-    |       -c:v {codec} ... -c:a aac -b:a 192k
-    |       -map 0:v -map 1:a
-    |       -shortest     // trim to shorter of video/audio
-    |       {output}
-    |-- If no audioPath:
-    |     [existing] ffmpeg ... -an {output}
+ExportEngine frame loop → frame N
+    │
+    ▼
+motionBlurEnabled && exportSubFrames > 1?
+    │
+    ├── YES: renderFrameWithMotionBlur(N, subFrames=8, renderer, strength)
+    │   │
+    │   ├── accumulator = new OffscreenCanvas(exportW, exportH)
+    │   ├── accumCtx.globalAlpha = 1/8
+    │   │
+    │   └── for i in 0..7:
+    │       ├── subFrame = N + (i/8)   // e.g., N+0.0, N+0.125, ...
+    │       ├── interpolateLayers(seq, subFrame) // fractional → smooth interp
+    │       ├── renderFrame() with per-layer GLSL velocity blur (samples=16)
+    │       └── accumCtx.drawImage(tempCanvas, 0, 0)
+    │
+    │   Result: averaged 8 sub-frames, each with GLSL velocity blur
+    │   Quality: Excellent (GLSL fills gaps between discrete sub-frames)
+    │
+    └── NO: renderGlobalFrame() as before (unchanged)
 ```
 
-### Beat Sync Auto-Arrange Flow
+## Component Boundary Map
+
+| Component | Responsibility | Communicates With |
+|-----------|---------------|-------------------|
+| `glBrushFx.ts` | WebGL2 brush stroke rendering (point stamp + spectral mix + post-process) | paintRenderer.ts (called by), spectralMix.ts (shader include), flowField.ts (point displacement), watercolorBleed.ts (polygon deformation for watercolor style) |
+| `spectralMix.ts` | Kubelka-Munk color mixing (JS + GLSL shader source) | glBrushFx.ts (GLSL include) |
+| `watercolorBleed.ts` | Tyler Hobbs polygon deformation algorithm | glBrushFx.ts (generates polygon vertices for watercolor rendering) |
+| `flowField.ts` | 2D vector field for organic stroke distortion | glBrushFx.ts (displaces stroke points before GPU rendering) |
+| `glMotionBlur.ts` | GLSL velocity-directed blur shader + WebGL2 pipeline | previewRenderer.ts (per-layer blur), motionBlurEngine.ts (called by accumulation) |
+| `motionBlurEngine.ts` | Velocity computation, sub-frame accumulation buffer, threshold logic | exportRenderer.ts (export accumulation), previewRenderer.ts (velocity computation), keyframeEngine.ts (interpolateAt for sub-frames) |
+| `paintRenderer.ts` (modified) | Dispatch: flat → Canvas 2D, styled → glBrushFx | glBrushFx.ts (delegates styled strokes) |
+| `previewRenderer.ts` (modified) | Per-layer motion blur hook in render loop | glMotionBlur.ts (applies blur), motionBlurEngine.ts (computes velocity) |
+| `exportRenderer.ts` (modified) | Sub-frame accumulation wrapper around renderGlobalFrame | motionBlurEngine.ts (accumulation logic) |
+| `projectStore.ts` (modified) | Motion blur project settings (enabled, strength, quality) | .mce v15 persistence, previewRenderer, exportEngine |
+
+## WebGL2 Context Budget
+
+| Context | Owner | Purpose | Shared? |
+|---------|-------|---------|---------|
+| 1 | `glBlur.ts` | Gaussian blur (2-pass separable) | Could share with glMotionBlur |
+| 2 | `glslRuntime.ts` | GLSL shader effects + GL transitions | No (many cached programs) |
+| 3 | `glBrushFx.ts` | Brush FX point stamping + spectral mix | New, dedicated |
+| 4 | `glMotionBlur.ts` | Velocity motion blur | **SHARE with glBlur.ts** |
+
+**Recommendation:** Share context between `glBlur.ts` and `glMotionBlur.ts` by extracting a `glSharedContext.ts` module that manages the lazy-init WebGL2 context, fullscreen-quad VAO, and texture upload utilities. Both blur modules compile their own shader programs but share the context and VAO. Total contexts: **3** (well within all browser limits).
+
+**Why not share all on one context?** `glslRuntime.ts` maintains a large program cache (17+ shader programs) with its own texture management. Mixing brush FX state (multiple render targets, framebuffer ping-pong for spectral compositing) with the shader effect pipeline would create fragile state coupling. Three contexts is safe and clean.
+
+## Architectural Patterns
+
+### Pattern 1: Lazy-Init Shared Context (Established)
+
+**What:** WebGL2 context created on first use, cached as module-level singleton. Context loss handled via event listener that nullifies cached state, triggering re-initialization on next use.
+
+**When:** Every WebGL2 module in this app.
+
+**Example:** See `glBlur.ts` lines 89-124 -- `getGL()` function with `_initFailed` guard, `webglcontextlost` handler.
+
+**Trade-offs:** Simple, proven in this codebase. Slight first-call latency (~5ms for context creation). Context loss recovery is automatic.
+
+### Pattern 2: Offscreen Canvas Per-Layer Isolation (Established)
+
+**What:** Each layer with special compositing needs (eraser, blur, FX) renders to a temporary offscreen canvas, which is then composited onto the main canvas with proper blend mode and opacity.
+
+**When:** Paint layers (eraser needs destination-out isolation), blurred layers, motion-blurred layers.
+
+**Trade-offs:** Memory cost per offscreen canvas (~4 bytes * W * H). Currently creates a new `document.createElement('canvas')` per paint layer per frame, which is wasteful. Should pool/reuse offscreen canvases (see Anti-Patterns section).
+
+### Pattern 3: Signal-Bump Reactivity for Non-Reactive Data (Established)
+
+**What:** `paintStore` stores actual data in plain `Map` (non-reactive) but bumps a `paintVersion` counter signal on mutations. Consumers (PreviewRenderer) react to the signal bump, not the Map changes.
+
+**When:** Large mutable data structures (paint frames, potentially cached brush FX results) where making every entry reactive would be expensive.
+
+**Trade-offs:** Requires manual signal bumps on every mutation. Missing a bump = stale render. But avoids O(n) reactive subscription overhead for thousands of strokes.
+
+### Pattern 4: Shader Program Caching (Established)
+
+**What:** GLSL programs compiled once and cached by ID in a `Map<string, CachedProgram>`. Uniform locations resolved at compile time.
+
+**When:** `glslRuntime.ts` caches by shader ID. `glBrushFx.ts` should cache by brush style (6 styles = 6 programs max).
+
+**Trade-offs:** Memory for compiled programs (~negligible). Fast subsequent renders. Must handle context loss (clear cache, recompile on next use).
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: WebGL2 Context Per Paint Layer
+
+**What people do:** Create a new WebGL2 context for each paint layer that uses brush FX.
+**Why it's wrong:** Browsers limit contexts to 8-16 (OffscreenCanvas even lower at 4). A project with 3+ paint layers would exhaust the budget.
+**Do this instead:** Single shared context in `glBrushFx.ts`. Render each layer's strokes sequentially through the same context, reading back between layers.
+
+### Anti-Pattern 2: Allocating Offscreen Canvas Per Frame Per Layer
+
+**What people do:** `document.createElement('canvas')` inside the per-frame render loop (the current paint layer code does this at line ~287 of previewRenderer.ts).
+**Why it's wrong:** GC pressure from creating/destroying canvases at 24fps. Each allocation is ~W*H*4 bytes.
+**Do this instead:** Pool offscreen canvases by size. Create once, clear and reuse. The existing `getBlurOffscreen()` method already does this for blur -- extend the pattern to paint layers.
+
+### Anti-Pattern 3: Re-rendering All Brush FX Strokes Every Frame
+
+**What people do:** Run every styled stroke through the WebGL pipeline on every frame, even when paint data hasn't changed.
+**Why it's wrong:** Brush FX rendering is expensive (spectral mixing, multi-layer watercolor). At 24fps with 50+ strokes, this kills performance.
+**Do this instead:** Cache the rendered paint layer result. Only re-render when `paintVersion` changes (stroke added/removed) or the frame changes. Store per-layer per-frame rendered canvases in a cache with LRU eviction.
+
+### Anti-Pattern 4: Motion Blur on Static Layers
+
+**What people do:** Apply motion blur to every layer unconditionally.
+**Why it's wrong:** Most layers in stop-motion are static between keyframes. Blurring a stationary layer wastes GPU time and can introduce subtle quality loss from the sampling.
+**Do this instead:** Compute velocity first. Skip blur when `|dx| < threshold && |dy| < threshold` (threshold ~0.5px). The `shouldApplyMotionBlur()` function handles this.
+
+### Anti-Pattern 5: Full Sub-Frame Count in Preview
+
+**What people do:** Use 8+ sub-frames for preview motion blur.
+**Why it's wrong:** Each sub-frame requires a full `renderGlobalFrame()` pass. 8 sub-frames = 8x render cost = ~3fps instead of 24fps.
+**Do this instead:** Preview uses GLSL velocity blur only (single pass, ~1ms). Sub-frame accumulation is export-only. The spec's "previewQuality" setting of 'off'/'low'/'medium' controls GLSL sample count, not sub-frame count.
+
+## Suggested Build Order
+
+Build order accounts for dependencies between paint FX and motion blur (they are largely independent and can be built in parallel, but brush FX is more complex).
+
+### Phase 1: Foundation (Motion Blur GLSL Engine)
+**Build:** `glMotionBlur.ts` + `motionBlurEngine.ts`
+**Why first:** Smallest scope, cleanest integration (single new shader), provides immediate visual value. The GLSL velocity blur shader is self-contained and well-understood.
+**Depends on:** Nothing new. Uses existing `glBlur.ts` lazy-init pattern.
+**Delivers:** Per-layer velocity blur in preview.
+
+### Phase 2: Motion Blur Integration (Preview + Store + UI)
+**Build:** PreviewRenderer motion blur hook, projectStore extensions, preview toolbar toggle, .mce v15
+**Why second:** Completes the motion blur preview pipeline end-to-end.
+**Depends on:** Phase 1 (glMotionBlur engine).
+**Delivers:** Togglable motion blur in live preview.
+
+### Phase 3: Brush Style Data Model + UI
+**Build:** `BrushStyle` type extension, PaintProperties UI selector, paintStore brush param support
+**Why third:** Pure data model and UI work, no rendering. Establishes the contract that `glBrushFx` will implement.
+**Depends on:** Nothing (parallel with Phase 1-2 if desired).
+**Delivers:** Users can select brush styles (rendering still falls back to flat).
+
+### Phase 4: WebGL2 Brush FX Core
+**Build:** `glBrushFx.ts` with point-stamp renderer + basic brush presets (ink, charcoal, pencil, marker)
+**Why fourth:** Core GPU rendering pipeline for non-watercolor brushes. Point stamping with soft falloff + opacity layering covers ink/charcoal/pencil/marker.
+**Depends on:** Phase 3 (data model).
+**Delivers:** 4 of 5 brush styles rendering with GPU acceleration.
+
+### Phase 5: Spectral Pigment Mixing
+**Build:** `spectralMix.ts` + `spectral.glsl` integration into `glBrushFx.ts`
+**Why fifth:** Spectral mixing changes HOW strokes composite. Must have the basic point-stamp pipeline working first.
+**Depends on:** Phase 4 (brush FX core).
+**Delivers:** Physically-correct color blending for overlapping strokes.
+
+### Phase 6: Watercolor Bleed + Flow Fields
+**Build:** `watercolorBleed.ts` + `flowField.ts` integration
+**Why sixth:** Most complex brush style. Polygon deformation is CPU-heavy and needs careful performance tuning.
+**Depends on:** Phase 4 (brush FX core), Phase 5 (spectral mixing for watercolor color blending).
+**Delivers:** Watercolor style with bleed + flow field distortion.
+
+### Phase 7: Grain/Texture Post-Pass + Edge Darkening
+**Build:** Post-processing shader passes in `glBrushFx.ts`
+**Why seventh:** Polish passes that enhance all brush styles. Low complexity.
+**Depends on:** Phase 4 (brush FX core).
+**Delivers:** Paper grain texture, ink pooling at overlaps.
+
+### Phase 8: Motion Blur Export (Sub-Frame Accumulation)
+**Build:** Export sub-frame accumulation in `motionBlurEngine.ts` + `exportEngine.ts` integration + export panel UI
+**Why eighth:** Export path is separate from preview. Can be built after preview blur is stable.
+**Depends on:** Phase 1-2 (motion blur GLSL + preview integration).
+**Delivers:** High-quality motion blur in exported video/PNG sequences.
+
+### Phase 9: Polish + Performance
+**Build:** Offscreen canvas pooling, brush FX render caching, shutter angle UI, adaptive preview quality
+**Why last:** Optimization after correctness. Performance issues only visible with real-world usage.
+**Depends on:** All prior phases.
+**Delivers:** Production-ready performance.
+
+## File Map (New + Modified)
 
 ```
-User clicks "Auto-Arrange to Beats"
-    |
-    v
-[beatSync.autoArrange()]
-    |-- Read beatMarkers from audioStore
-    |-- Read key photos from active sequence
-    |-- Compute: holdFrames[i] = beatFrame[i+1] - beatFrame[i]
-    |      (each key photo holds exactly one beat interval)
-    |-- Apply via sequenceStore.updateHoldFrames() for each kp
-    |-- Push single undo action wrapping all updates
-    |
-    v
-[frameMap recomputes]
-[Timeline re-renders with beat-aligned key photos]
+Application/src/
+├── lib/
+│   ├── glBrushFx.ts          NEW  WebGL2 brush FX renderer
+│   ├── spectralMix.ts        NEW  Kubelka-Munk JS + GLSL shader source
+│   ├── watercolorBleed.ts    NEW  Polygon deformation algorithm
+│   ├── flowField.ts          NEW  2D vector field engine
+│   ├── glMotionBlur.ts       NEW  GLSL velocity blur shader + pipeline
+│   ├── motionBlurEngine.ts   NEW  Velocity computation + sub-frame accumulation
+│   ├── glSharedContext.ts    NEW  Shared WebGL2 context for glBlur + glMotionBlur
+│   ├── paintRenderer.ts      MOD  Brush style dispatch
+│   ├── previewRenderer.ts    MOD  Per-layer motion blur hook + prev-frame cache
+│   ├── exportRenderer.ts     MOD  Sub-frame accumulation wrapper
+│   ├── exportEngine.ts       MOD  Motion blur export settings
+│   └── glBlur.ts             MOD  Refactor to use glSharedContext.ts
+├── stores/
+│   └── projectStore.ts       MOD  Motion blur settings signals + .mce v15
+├── types/
+│   ├── paint.ts              MOD  BrushStyle, BrushFxParams on PaintStroke
+│   └── project.ts            MOD  MotionBlurSettings interface
+└── components/
+    ├── PaintProperties.tsx    MOD  Brush style selector UI
+    ├── PreviewToolbar.tsx     MOD  Motion blur toggle
+    └── ExportPanel.tsx        MOD  Motion blur export settings
 ```
-
-### Motion Path Rendering Flow
-
-```
-TransformOverlay renders (existing)
-    |
-    |-- Check: selectedLayer has keyframes with x/y changes?
-    |-- YES:
-    |     v
-    |   [MotionPathOverlay]
-    |     |-- Compute path points via motionPath.computeMotionPath()
-    |     |-- Convert project-space coords to screen coords via coordinateMapper
-    |     |-- Render SVG <path> with catmull-rom or linear segments
-    |     |-- Render keyframe diamonds as draggable handles
-    |     |-- On diamond drag: update keyframeStore position values
-    |
-    v
-[Canvas shows motion trajectory + draggable keyframe handles]
-```
-
-### Solo Mode Data Flow
-
-```
-User clicks Solo button on sequence/layer
-    |
-    v
-[isolationStore.toggleIsolation(sequenceId)]  (EXISTING)
-    |
-    |-- For sequence solo: already works via isolatedSequenceIds
-    |-- For layer solo: NEW signal in isolationStore
-    |     isolatedLayerIds: Set<string>
-    |
-    v
-[PlaybackEngine.tick()]
-    |-- Already skips non-isolated sequences (EXISTING)
-    |
-[PreviewRenderer.renderFrame()]
-    |-- Check isolatedLayerIds
-    |-- If layer solo active: only render isolated layers
-    |-- Otherwise: render all visible layers (existing)
-```
-
-## Integration Points: What Changes in Existing Code
-
-### NEW Store: `audioStore.ts`
-
-```typescript
-// stores/audioStore.ts
-import { signal, computed } from '@preact/signals';
-import type { AudioTrack, WaveformData, BeatMarker } from '../types/audio';
-
-const audioTracks = signal<AudioTrack[]>([]);
-const activeTrackId = signal<string | null>(null);
-const waveformCache = signal<Map<string, WaveformData>>(new Map());
-const beatMarkersCache = signal<Map<string, BeatMarker[]>>(new Map());
-const bpmCache = signal<Map<string, number>>(new Map());
-
-export const audioStore = {
-  audioTracks,
-  activeTrackId,
-  waveformCache,
-  beatMarkersCache,
-  bpmCache,
-
-  // Computed
-  activeTrack: computed(() => {
-    const id = activeTrackId.value;
-    return audioTracks.value.find(t => t.id === id) ?? null;
-  }),
-  hasAudio: computed(() => audioTracks.value.length > 0),
-
-  addTrack(track: AudioTrack) { /* ... pushAction for undo */ },
-  removeTrack(id: string) { /* ... pushAction for undo */ },
-  updateTrack(id: string, updates: Partial<AudioTrack>) { /* ... */ },
-  setWaveform(trackId: string, data: WaveformData) { /* ... */ },
-  setBeatMarkers(trackId: string, markers: BeatMarker[]) { /* ... */ },
-  setBpm(trackId: string, bpm: number) { /* ... */ },
-  reset() { /* clear all signals */ },
-};
-```
-
-### MODIFIED: `PlaybackEngine` (3 touch points)
-
-1. **`start()`**: Call `audioEngine.syncToFrame()` then `audioEngine.play()`
-2. **`stop()`**: Call `audioEngine.pause()`
-3. **`tick()`**: Every ~5 ticks, call `audioEngine.syncToFrame()` for drift correction
-4. **`seekToFrame()`**: Call `audioEngine.syncToFrame()`
-
-Estimated diff: ~15 lines added to `playbackEngine.ts`.
-
-### MODIFIED: `timelineStore.ts` (audio track height)
-
-Add audio track height to `totalContentHeight` computed:
-
-```typescript
-const AUDIO_TRACK_HEIGHT = 48;
-
-const totalContentHeight = computed(() => {
-  const fxCount = fxTrackLayouts.value.length;
-  const audioCount = audioStore.audioTracks.value.length;
-  return RULER_HEIGHT + fxCount * FX_TRACK_HEIGHT + TRACK_HEIGHT
-    + audioCount * AUDIO_TRACK_HEIGHT;
-});
-```
-
-Estimated diff: ~5 lines modified.
-
-### MODIFIED: `TimelineRenderer.ts` (audio track rendering)
-
-Add audio track rendering after FX track rendering in the draw loop. Audio track appears below FX tracks, above the scrollbar.
-
-Estimated diff: ~80-120 lines added (waveform drawing, beat marker lines, track header).
-
-### MODIFIED: `ffmpeg.rs` `encode_video()` (audio mux)
-
-Replace the unconditional `-an` flag:
-
-```rust
-pub fn encode_video(
-    png_dir: &str,
-    glob_pattern: &str,
-    output_path: &str,
-    codec: &str,
-    fps: u32,
-    quality_args: &VideoQualityArgs,
-    audio_path: Option<&str>,  // NEW parameter
-) -> Result<(), String> {
-    // ... existing codec args ...
-
-    if let Some(audio) = audio_path {
-        cmd.args(["-i", audio]);
-        cmd.args(["-c:a", "aac", "-b:a", "192k"]);
-        cmd.args(["-map", "0:v", "-map", "1:a"]);
-        cmd.arg("-shortest");
-    } else {
-        cmd.arg("-an");
-    }
-    // ...
-}
-```
-
-Estimated diff: ~20 lines modified in `ffmpeg.rs`, ~10 lines in `export.rs` command, ~10 lines in `ipc.ts`.
-
-### MODIFIED: `MceProject` type (audio persistence)
-
-```typescript
-// types/project.ts -- add to MceProject
-export interface MceProject {
-  // ... existing fields ...
-  audio_tracks?: MceAudioTrack[];  // optional for backward compat
-}
-
-export interface MceAudioTrack {
-  id: string;
-  name: string;
-  relative_path: string;
-  offset_frames: number;
-  duration_seconds: number;
-  fade_in_frames: number;
-  fade_out_frames: number;
-  volume: number;
-  muted: boolean;
-}
-```
-
-This bumps .mce format to **v8**. Old readers skip unknown fields (existing backward compat design).
-
-### MODIFIED: `projectStore.ts` (audio serialization)
-
-Add audio track serialization in `buildMceProject()` and deserialization in `hydrateFromMce()`.
-
-Estimated diff: ~30 lines in buildMceProject, ~20 lines in hydrateFromMce.
-
-### MODIFIED: `isolationStore.ts` (layer-level solo)
-
-Add `isolatedLayerIds` signal and `toggleLayerIsolation()` method:
-
-```typescript
-const isolatedLayerIds = signal<Set<string>>(new Set());
-
-// ... existing methods ...
-
-toggleLayerIsolation(layerId: string) {
-  const current = new Set(isolatedLayerIds.peek());
-  if (current.has(layerId)) current.delete(layerId);
-  else current.add(layerId);
-  isolatedLayerIds.value = current;
-},
-hasLayerIsolation: computed(() => isolatedLayerIds.value.size > 0),
-```
-
-Estimated diff: ~25 lines added.
-
-### MODIFIED: `PreviewRenderer.renderFrame()` (layer solo filtering)
-
-Before the layer loop, filter layers by isolation:
-
-```typescript
-renderFrame(layers: Layer[], ...) {
-  // NEW: filter by layer isolation
-  const isoLayers = isolationStore.isolatedLayerIds.peek();
-  const effectiveLayers = isoLayers.size > 0
-    ? layers.filter(l => isoLayers.has(l.id) || l.isBase)
-    : layers;
-  // ... existing loop over effectiveLayers ...
-}
-```
-
-Estimated diff: ~5 lines added.
-
-### NEW: Rust `audio_import` command
-
-```rust
-// commands/audio.rs
-#[command]
-pub fn audio_import(source_path: String, project_dir: String) -> Result<AudioImportResult, String> {
-    // 1. Validate extension (wav, mp3, aac, m4a, ogg, flac)
-    // 2. Create project_dir/audio/ if needed
-    // 3. Copy file to project_dir/audio/{filename}
-    // 4. Return { relative_path, filename }
-}
-```
-
-The actual audio decoding and waveform generation happen in the frontend via Web Audio API (AudioContext.decodeAudioData). The Rust side only handles file copy -- same pattern as image import.
-
-### MODIFIED: `TransformOverlay.tsx` (motion path rendering)
-
-Add MotionPathOverlay as a sibling element inside the TransformOverlay render:
-
-```tsx
-export function TransformOverlay({ ... }) {
-  // ... existing logic ...
-
-  return (
-    <div ref={overlayRef} ...>
-      {/* NEW: Motion path when layer has position keyframes */}
-      {selectedLayer && !isFxLayer(selectedLayer) && (
-        <MotionPathOverlay
-          layer={selectedLayer}
-          keyframes={keyframeStore.activeLayerKeyframes.value}
-          zoom={zoom}
-          projW={projW}
-          projH={projH}
-        />
-      )}
-      {/* Existing: bounding box, handles */}
-      <svg ...>
-        <polygon ... />
-      </svg>
-      {/* Existing: corner/edge handles */}
-    </div>
-  );
-}
-```
-
-Estimated diff: ~10 lines in TransformOverlay.tsx, ~150 lines in new MotionPathOverlay.tsx.
-
-## Scaling Considerations
-
-| Concern | Current (v0.2.0) | With Audio (v0.3.0) | Mitigation |
-|---------|-------------------|---------------------|------------|
-| Memory | ~50-200MB (images) | +5-50MB (AudioBuffer) | Single track; dispose on project close |
-| Playback CPU | rAF tick + Canvas 2D | +Audio sync every 5 ticks | Negligible: one `currentTime` comparison |
-| Timeline render | Content + FX tracks | +1 audio track row | Canvas 2D waveform is cheap (~1000 rect calls) |
-| Export time | PNG render + FFmpeg encode | +FFmpeg audio mux | Audio mux is stream-copy, adds <1 second |
-| Beat detection | N/A | One-time ~500ms analysis | Run async, non-blocking UI |
-| Motion path | N/A | SVG overlay with ~20 points | Negligible render cost |
-
-### First Bottleneck: Long Audio Files
-
-A 30-minute audio file at 44.1kHz = ~80M samples = ~300MB AudioBuffer. Mitigation: limit audio to 30 minutes (warn user), or decode only the section needed for the timeline duration.
-
-### Second Bottleneck: Waveform Zoom Responsiveness
-
-At extreme zoom levels, each pixel column may represent <1ms of audio. Pre-computed peaks at 128 samples/peak (~3ms at 44.1kHz) are sufficient for all reasonable zoom levels. No re-analysis needed.
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Audio as Master Clock
-
-**What people do:** Make audio playback drive the frame counter (audio.currentTime -> frame number).
-**Why it's wrong:** Audio currentTime has variable latency, not frame-accurate. During shuttle/scrub, audio jumps create frame jitter. The existing rAF delta accumulation is the correct clock source.
-**Do this instead:** Keep PlaybackEngine as master. Sync audio TO the frame counter, not the other way around.
-
-### Anti-Pattern 2: Re-decoding Audio on Every Zoom Change
-
-**What people do:** Call `decodeAudioData()` or regenerate waveform peaks every time the timeline zooms.
-**Why it's wrong:** `decodeAudioData` is expensive (~100ms for a 3-minute file). Blocks the UI.
-**Do this instead:** Decode once, generate peaks once, then subsample the peak array at render time with simple index math.
-
-### Anti-Pattern 3: Storing Waveform Data in .mce Project File
-
-**What people do:** Serialize the WaveformData peaks into the project file.
-**Why it's wrong:** WaveformData is ~100KB of derived data. It inflates the .mce file and is trivially re-derivable from the source audio file.
-**Do this instead:** Store only the AudioTrack metadata (path, offset, volume, fade). Regenerate waveform on project open.
-
-### Anti-Pattern 4: Motion Path with Bezier Curve Fitting
-
-**What people do:** Fit Bezier curves through keyframe positions to make the motion path smooth.
-**Why it's wrong:** The existing interpolation engine uses polynomial cubic easing, NOT Bezier spatial curves. A Bezier motion path would not match what the renderer actually does. Users would see a smooth path but jerky actual motion.
-**Do this instead:** Sample the actual interpolation engine at every frame (or every N frames) and connect the points with straight line segments. The path accurately represents what the user will see.
-
-### Anti-Pattern 5: Layer Solo via Visibility Toggle
-
-**What people do:** Implement solo by toggling `layer.visible` on non-solo layers.
-**Why it's wrong:** This mutates the layer data, creates undo entries for every solo toggle, and loses the user's original visibility settings.
-**Do this instead:** Use a separate `isolatedLayerIds` set (same pattern as existing `isolatedSequenceIds`). Filter at render time without modifying layer state.
-
-## Internal Boundaries
-
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| audioStore <-> AudioEngine | Direct method calls | Engine reads store signals, writes back waveform/beat data |
-| AudioEngine <-> PlaybackEngine | PlaybackEngine calls AudioEngine methods | One-way dependency: PlaybackEngine imports AudioEngine |
-| audioStore <-> TimelineRenderer | TimelineRenderer reads audioStore signals | Reactive via Preact Signals |
-| audioStore <-> projectStore | projectStore serializes audioStore data | Same pattern as sequenceStore <-> projectStore |
-| beatDetector <-> audioStore | beatDetector is pure function, audioStore calls it | No circular dependency |
-| motionPath <-> keyframeEngine | motionPath calls `interpolateAt()` from keyframeEngine | Read-only dependency |
-| MotionPathOverlay <-> TransformOverlay | Sibling components in same container | Share canvas coordinate system via canvasStore |
-| ffmpeg.rs <-> exportEngine | IPC via `export_encode_video` with new audio_path param | Backward-compatible: audio_path is optional |
-
-## Build Order (Dependency-Driven)
-
-Based on the data flow analysis, here is the recommended implementation order:
-
-### Phase A: Audio Foundation (no dependencies on other new features)
-1. **Types + Store**: `types/audio.ts` + `audioStore.ts` -- foundation everything else depends on
-2. **Audio import**: Rust `audio_import` command + IPC + import UI (file dialog / drag-drop)
-3. **Waveform generation**: `waveformGenerator.ts` + store integration
-4. **Timeline audio track**: `AudioTrackRenderer.ts` in TimelineRenderer -- visual proof of import working
-5. **Project persistence**: .mce v8 with `audio_tracks` field, serialize/deserialize
-
-### Phase B: Audio Playback (depends on Phase A store)
-6. **AudioEngine**: Web Audio API + HTMLAudioElement playback
-7. **PlaybackEngine sync**: Modify start/stop/tick/seek to drive AudioEngine
-8. **Audio fade in/out**: Gain envelope on AudioEngine + UI controls
-
-### Phase C: Audio in Export (depends on Phases A + B for data)
-9. **FFmpeg audio mux**: Modify `ffmpeg.rs` encode_video, update IPC, update exportEngine
-
-### Phase D: Beat Sync (depends on Phase A waveform data)
-10. **Beat detection**: `beatDetector.ts` energy-based algorithm
-11. **Beat markers on timeline**: Render vertical lines at beat positions in AudioTrackRenderer
-12. **Auto-arrange**: Beat-snap logic that adjusts key photo hold frames
-13. **Manual BPM override**: UI for entering BPM + regenerating markers
-
-### Phase E: Sidebar Solo Mode (independent of audio)
-14. **Layer solo signal**: Add `isolatedLayerIds` to isolationStore
-15. **Solo button UI**: SoloModeButton component in sidebar per sequence and per layer
-16. **Render filtering**: PreviewRenderer + exportRenderer respect layer isolation
-
-### Phase F: Canvas Motion Path (independent of audio)
-17. **Motion path computation**: `motionPath.ts` using existing keyframeEngine
-18. **SVG overlay**: MotionPathOverlay.tsx in canvas coordinate space
-19. **Keyframe diamond dragging**: Pointer event handling to update keyframe position values
-20. **Path styling**: Dotted line with easing color coding
-
-### Phase ordering rationale:
-- **A before B**: AudioEngine needs audioStore data to know what file to load
-- **A before C**: Export needs audio path from audioStore
-- **A before D**: Beat detection needs AudioBuffer from the import pipeline
-- **B before C**: Export audio mux is conceptually separate but testing requires playback working
-- **E and F are independent**: Can be built in parallel with audio phases or after
 
 ## Sources
 
-- [MDN: Visualizations with Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API)
-- [MDN: Using the Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_Web_Audio_API)
-- [BBC waveform-data.js](https://github.com/bbc/waveform-data.js) -- reference for peak generation approach
-- [Beat Detection Using JavaScript and the Web Audio API (Joe Sullivan)](http://joesul.li/van/beat-detection-using-web-audio/) -- energy-based BPM detection algorithm
-- [BeatDetect.js](https://arthurbeaulieu.github.io/BeatDetect.js/) -- lightweight alternative to Essentia.js
-- [Essentia.js](https://mtg.github.io/essentia.js/) -- heavy-weight alternative if accuracy is insufficient
-- [FFmpeg muxing audio and video (Mux)](https://www.mux.com/articles/merge-audio-and-video-files-with-ffmpeg)
-- [Audio-animation sync with Web Audio](https://hansgaron.com/articles/web_audio/animation_sync_with_audio/part_one/)
-- [Adobe After Effects keyframe interpolation](https://helpx.adobe.com/after-effects/using/keyframe-interpolation.html)
-- Existing codebase analysis: PlaybackEngine, PreviewRenderer, exportRenderer, ffmpeg.rs, projectStore, keyframeEngine, TransformOverlay
+- [spectral.js v3.0.0](https://github.com/rvanwijnen/spectral.js) -- MIT licensed Kubelka-Munk pigment mixing with GLSL shader (HIGH confidence)
+- [p5.brush](https://github.com/acamposuribe/p5.brush) -- WebGL2 brush rendering reference (algorithms ported, not used as dependency) (HIGH confidence)
+- [Tyler Hobbs: Watercolor Simulation](https://www.tylerxhobbs.com/words/a-guide-to-simulating-watercolor-paint-with-generative-art) -- Polygon deformation algorithm (HIGH confidence)
+- [John Chapman: Per-Object Motion Blur](http://john-chapman-graphics.blogspot.com/2013/01/per-object-motion-blur.html) -- Velocity buffer motion blur technique (HIGH confidence)
+- [Chromium WebGL context limits](https://issues.chromium.org/issues/40939743) -- 16 context limit on desktop, 4 for OffscreenCanvas (MEDIUM confidence -- may vary by browser version)
+- [glbrush.js](https://github.com/Oletus/glbrush.js) -- WebGL brush rendering reference with 16-bit precision (MEDIUM confidence)
 
 ---
-*Architecture research for: v0.3.0 Audio & Polish milestone integration*
-*Researched: 2026-03-21*
+*Architecture research for: v0.5.0 Paint Brush FX & Motion Blur*
+*Researched: 2026-03-25*
