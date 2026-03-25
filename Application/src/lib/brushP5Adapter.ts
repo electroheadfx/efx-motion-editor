@@ -2,36 +2,38 @@
  * p5.brush standalone adapter for brush FX rendering.
  *
  * p5.brush renders via WebGL2 with spectral pigment mixing (Kubelka-Munk).
- * Strokes are stamped into a WebGL mask framebuffer, then composited to the
- * canvas via a spectral blend shader. brush.render() flushes this pipeline.
+ * Uses built-in brush presets (pen, charcoal, HB, marker) — no custom
+ * brush.add() calls needed, avoiding initialization issues.
  *
- * Coordinate system: p5.brush uses center-origin coords where (0,0) = center.
- * Our project-space uses top-left origin. We offset each point by (-w/2, -h/2)
- * in JS rather than using brush.translate() to avoid WebGL state accumulation.
+ * Coordinate system: p5.brush uses center-origin (0,0 = center).
+ * We offset each point by (-w/2, -h/2) in JS to convert from our
+ * top-left origin project-space coordinates.
  */
 
 import * as brush from 'p5.brush/standalone';
 import type {PaintStroke} from '../types/paint';
 
 // ---------------------------------------------------------------------------
-// Style mapping + weight compensation
+// Style → built-in p5.brush preset mapping
+// All presets are pre-registered at module load — no brush.add() needed.
 // ---------------------------------------------------------------------------
 const STYLE_MAP: Record<string, string> = {
   flat: '',
-  watercolor: 'marker',
-  ink: 'our_ink',
-  charcoal: 'our_charcoal',
-  pencil: 'our_pencil',
-  marker: 'marker',
+  watercolor: 'marker',   // marker tip + fill/bleed for wash
+  ink: 'pen',              // fine pen with slight scatter
+  charcoal: 'charcoal',   // heavy, grainy strokes
+  pencil: 'HB',           // standard graphite
+  marker: 'marker',        // solid disc, even coverage
 };
 
-// p5.brush computes stamp diameter = 2 * strokeWeight * paramWeight * pressure.
-// To render at desired pixel diameter D: strokeWeight = D / (2 * paramWeight).
+// Built-in param.weight for each preset — from p5.brush source.
+// Visual diameter = 2 * strokeWeight * paramWeight * pressure.
+// Compensated strokeWeight = desiredDiameter / (2 * paramWeight).
 const PARAM_WEIGHT: Record<string, number> = {
+  pen: 0.3,
+  charcoal: 1.5,
+  HB: 1,
   marker: 2,
-  our_ink: 0.25,
-  our_charcoal: 0.35,
-  our_pencil: 0.3,
 };
 
 function compensatedWeight(brushName: string, diameter: number): number {
@@ -39,45 +41,14 @@ function compensatedWeight(brushName: string, diameter: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Singleton canvas + init
+// Singleton canvas + init (no custom brushes needed)
 // ---------------------------------------------------------------------------
 let _canvas: HTMLCanvasElement | null = null;
 let _gl: WebGL2RenderingContext | null = null;
 let _initialized = false;
-let _customBrushesAdded = false;
 let _currentWidth = 0;
 let _currentHeight = 0;
 let _loadFailed = false;
-
-function initCustomBrushes(): void {
-  brush.add('our_ink', {
-    type: 'default',
-    weight: 0.25,
-    scatter: 0.2,
-    sharpness: 0.85,
-    grain: 0.8,
-    opacity: 180,
-    pressure: [0.8, 1.2],
-    rotate: 'natural',
-  });
-  brush.add('our_charcoal', {
-    type: 'default',
-    weight: 0.35,
-    scatter: 1.5,
-    sharpness: 0.68,
-    grain: 2.0,
-    opacity: 120,
-    rotate: 'random',
-  });
-  brush.add('our_pencil', {
-    type: 'default',
-    weight: 0.3,
-    scatter: 0.6,
-    sharpness: 0.3,
-    grain: 0.7,
-    opacity: 170,
-  });
-}
 
 function ensureInitialized(width: number, height: number): boolean {
   if (typeof document === 'undefined' || _loadFailed) return false;
@@ -86,7 +57,6 @@ function ensureInitialized(width: number, height: number): boolean {
     return true;
   }
 
-  // Fresh canvas each time dimensions change — avoids stale GL state
   _canvas = document.createElement('canvas');
   _canvas.width = width;
   _canvas.height = height;
@@ -102,21 +72,14 @@ function ensureInitialized(width: number, height: number): boolean {
     return false;
   }
 
-  // Cache the GL context for explicit flush
   _gl = _canvas.getContext('webgl2');
-
   brush.seed(42);
   _initialized = true;
-
-  if (!_customBrushesAdded) {
-    initCustomBrushes();
-    _customBrushesAdded = true;
-  }
   return true;
 }
 
 // ---------------------------------------------------------------------------
-// Core rendering — no push/pop/translate, offset points in JS
+// Core rendering
 // ---------------------------------------------------------------------------
 
 export function renderStyledStrokes(
@@ -135,7 +98,6 @@ export function renderStyledStrokes(
   const halfW = width / 2;
   const halfH = height / 2;
 
-  // Fresh frame: clear canvas + reset compositor state
   brush.clear();
 
   for (const stroke of styled) {
@@ -165,10 +127,7 @@ export function renderStyledStrokes(
     brush.noField();
   }
 
-  // Flush WebGL compositing pipeline to canvas
   brush.render();
-
-  // Force GPU completion — WKWebView may not implicitly sync before drawImage
   if (_gl) _gl.finish();
 
   return _canvas;
