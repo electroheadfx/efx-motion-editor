@@ -2,7 +2,12 @@
  * p5.brush standalone adapter for brush FX rendering.
  *
  * p5.brush renders via WebGL2 with spectral pigment mixing (Kubelka-Munk).
- * Uses built-in brush presets — no custom brush.add() needed.
+ *
+ * Key calibration insights from p5.brush examples:
+ * - Weights are 0.7-2.0 (NOT pixel sizes)
+ * - Pressure values are 0.8-1.5 (size multiplier, not 0-1 normalized)
+ * - Splines use 3-6 control points, not 60
+ * - Canvas is typically 600x600
  */
 
 import * as brush from 'p5.brush/standalone';
@@ -13,14 +18,14 @@ import type {PaintStroke} from '../types/paint';
 // ---------------------------------------------------------------------------
 const STYLE_MAP: Record<string, string> = {
   flat: '',
-  watercolor: 'marker',   // smooth base for watercolor wash
-  ink: 'pen',              // fine pen with slight scatter
-  charcoal: 'charcoal',   // heavy grainy strokes
-  pencil: 'cpencil',      // color pencil — controlled scatter + grain
-  marker: 'marker',       // solid disc, even coverage
+  watercolor: 'marker',
+  ink: 'pen',
+  charcoal: 'charcoal',
+  pencil: 'cpencil',
+  marker: 'marker',
 };
 
-// Built-in param.weight for weight compensation.
+// Built-in param.weight for each preset
 const PARAM_WEIGHT: Record<string, number> = {
   pen: 0.3,
   charcoal: 1.5,
@@ -28,19 +33,27 @@ const PARAM_WEIGHT: Record<string, number> = {
   marker: 2,
 };
 
-// Per-preset visual scale factor — tuned so each style looks natural.
-// Higher = thicker strokes with more stamp overlap.
+// Per-preset visual scale tuning
 const WEIGHT_SCALE: Record<string, number> = {
-  pen: 1.0,        // pen stamps overlap well at default
-  charcoal: 1.0,   // charcoal scatter is fine at default
-  cpencil: 1.0,    // color pencil at default
-  marker: 2.0,     // marker needs 2x to be visible (low opacity preset)
+  pen: 1.0,
+  charcoal: 1.0,
+  cpencil: 1.0,
+  marker: 1.5,
 };
 
 function compensatedWeight(brushName: string, diameter: number): number {
   const pw = PARAM_WEIGHT[brushName] ?? 1;
   const scale = WEIGHT_SCALE[brushName] ?? 1;
   return (diameter * scale) / (2 * pw);
+}
+
+/**
+ * Map pointer pressure (0-1, mouse=0.5) to p5.brush pressure range (0.8-1.3).
+ * p5.brush treats pressure as a size MULTIPLIER around 1.0, not a 0-1 value.
+ * Values in examples: random(0.8, 1.5), min_max: [0.78, 1.3].
+ */
+function mapPressure(p: number): number {
+  return 0.8 + p * 0.5;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +95,36 @@ function ensureInitialized(width: number, height: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Point preparation — downsample + offset + pressure mapping
+// ---------------------------------------------------------------------------
+
+function preparePoints(
+  raw: [number, number, number][],
+  halfW: number,
+  halfH: number,
+  maxControlPoints: number,
+): [number, number, number][] {
+  // Downsample dense pointer data to manageable control points
+  const step = Math.max(1, Math.floor(raw.length / maxControlPoints));
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i < raw.length; i += step) {
+    const [x, y, p] = raw[i];
+    pts.push([x - halfW, y - halfH, mapPressure(p)]);
+  }
+  // Always include last point
+  if (raw.length > 1) {
+    const [x, y, p] = raw[raw.length - 1];
+    const last: [number, number, number] = [x - halfW, y - halfH, mapPressure(p)];
+    // Avoid duplicate if last point was already included
+    const prev = pts[pts.length - 1];
+    if (prev[0] !== last[0] || prev[1] !== last[1]) {
+      pts.push(last);
+    }
+  }
+  return pts;
+}
+
+// ---------------------------------------------------------------------------
 // Core rendering
 // ---------------------------------------------------------------------------
 
@@ -101,7 +144,7 @@ export function renderStyledStrokes(
   const halfW = width / 2;
   const halfH = height / 2;
 
-  // Clear to proper transparent (0,0,0,0) for correct compositing
+  // Clear to proper transparent for compositing
   brush.clear();
   if (_gl) {
     _gl.clearColor(0, 0, 0, 0);
@@ -112,15 +155,9 @@ export function renderStyledStrokes(
     const brushName = STYLE_MAP[stroke.brushStyle!] || 'marker';
     const params = stroke.brushParams ?? {};
 
-    // Offset points to p5.brush centered coords + downsample for spline quality
-    const allPts: [number, number, number][] = stroke.points.map(
-      ([x, y, p]) => [x - halfW, y - halfH, p],
-    );
-    // Downsample dense pointer data to ~60 control points for smoother splines
-    const step = Math.max(1, Math.floor(allPts.length / 60));
-    const pts: [number, number, number][] = [];
-    for (let i = 0; i < allPts.length; i += step) pts.push(allPts[i]);
-    if (allPts.length > 1) pts.push(allPts[allPts.length - 1]);
+    // Prepare points: offset + downsample + pressure mapping
+    // Use ~20 control points for splines (p5.brush examples use 3-6)
+    const pts = preparePoints(stroke.points, halfW, halfH, 20);
 
     // Flow field
     if ((params.fieldStrength ?? 0) > 0.01) {
@@ -147,7 +184,7 @@ export function renderStyledStrokes(
 }
 
 // ---------------------------------------------------------------------------
-// Watercolor: spline stroke with wash effect — no filled polygon by default
+// Watercolor
 // ---------------------------------------------------------------------------
 
 function renderWatercolorStroke(
@@ -159,19 +196,19 @@ function renderWatercolorStroke(
   const bleed = stroke.brushParams?.bleed ?? 0.5;
   const grain = stroke.brushParams?.grain ?? 0.4;
 
-  // Draw the stroke with marker brush at reduced opacity for watercolor feel
+  // Stroke with marker brush for the core wash line
   const w = compensatedWeight('marker', stroke.size);
   brush.set('marker', stroke.color, w);
   brush.spline(pts, 0.5);
 
-  // Add watercolor wash along the stroke path — small circles with bleed
-  const washStep = Math.max(2, Math.floor(pts.length / 15));
+  // Subtle bleed wash along the path
+  const washStep = Math.max(2, Math.floor(pts.length / 10));
   brush.fill(stroke.color, Math.round(stroke.opacity * 25));
   brush.fillBleed(bleed, 'out');
   brush.fillTexture(grain, 0.5);
   for (let i = 0; i < pts.length; i += washStep) {
     const pt = pts[i];
-    brush.circle(pt[0], pt[1], stroke.size * 0.5);
+    brush.circle(pt[0], pt[1], stroke.size * 0.4);
   }
   brush.noFill();
 }
