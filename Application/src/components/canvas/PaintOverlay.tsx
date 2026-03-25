@@ -64,6 +64,11 @@ export function PaintOverlay({
   const tempCanvasRef = useRef<HTMLCanvasElement>(null);
   const rafId = useRef(0);
 
+  // --- Tablet pen tracking refs ---
+  const isPenStroke = useRef(false);
+  const avgTilt = useRef(0);
+  const tiltSamples = useRef(0);
+
   // --- Clean up rAF on unmount ---
   useEffect(() => {
     return () => {
@@ -71,14 +76,14 @@ export function PaintOverlay({
     };
   }, []);
 
-  // --- Get project point from pointer event ---
-  function getProjectPoint(e: PointerEvent) {
+  // --- Get project point from any event-like object with clientX/clientY ---
+  function getProjectPointFromEvent(ev: {clientX: number; clientY: number}) {
     const container = containerRef.current;
     if (!container) return {x: 0, y: 0};
     const rect = container.getBoundingClientRect();
     return clientToCanvas(
-      e.clientX,
-      e.clientY,
+      ev.clientX,
+      ev.clientY,
       rect,
       canvasStore.zoom.peek(),
       canvasStore.panX.peek(),
@@ -86,6 +91,25 @@ export function PaintOverlay({
       projectStore.width.peek(),
       projectStore.height.peek(),
     );
+  }
+
+  function getProjectPoint(e: PointerEvent) {
+    return getProjectPointFromEvent(e);
+  }
+
+  // --- Extract coalesced points from a PointerEvent (tablet high-frequency input) ---
+  function getCoalescedPoints(e: PointerEvent): Array<{x: number; y: number; pressure: number; tiltX: number; tiltY: number}> {
+    const coalesced = (e as any).getCoalescedEvents?.() as PointerEvent[] | undefined;
+    const events = coalesced && coalesced.length > 0 ? coalesced : [e];
+    return events.map(ev => {
+      const pt = getProjectPointFromEvent(ev);
+      return {
+        ...pt,
+        pressure: ev.pressure,
+        tiltX: ev.tiltX || 0,
+        tiltY: ev.tiltY || 0,
+      };
+    });
   }
 
   // --- Get selected paint layer ID ---
@@ -125,7 +149,12 @@ export function PaintOverlay({
       const options = paintStore.strokeOptions.peek();
       const size = paintStore.brushSize.peek();
 
-      const path = strokeToPath(points, size, options);
+      // Override simulatePressure based on input device for live preview
+      const previewOptions = {
+        ...options,
+        simulatePressure: !isPenStroke.current,
+      };
+      const path = strokeToPath(points, size, previewOptions);
       if (path) {
         ctx.save();
         if (tool === 'eraser') {
@@ -204,14 +233,32 @@ export function PaintOverlay({
     // Only left button
     if (e.button !== 0) return;
 
+    // Auto-detect pen vs mouse
+    const isPen = e.pointerType === 'pen';
+    if (isPen && !paintStore.tabletDetected.peek()) {
+      paintStore.setTabletDetected(true);
+    }
+    isPenStroke.current = isPen;
+
     const point = getProjectPoint(e);
-    const pressure = e.pressure > 0 ? e.pressure : 0.5;
+    // For pen: use real pressure. For mouse: browser reports 0.5 for button down.
+    // simulatePressure handles velocity-based width for mouse strokes.
+    const pressure = isPen ? e.pressure : 0.5;
     const tool = paintStore.activeTool.peek();
 
     if (tool === 'brush' || tool === 'eraser') {
       isDrawing.current = true;
       currentPoints.current = [[point.x, point.y, pressure]];
       currentElementId.current = crypto.randomUUID();
+      // Initialize tilt tracking for pen
+      if (isPen) {
+        const tiltMagnitude = Math.sqrt(e.tiltX ** 2 + e.tiltY ** 2) / 90;
+        avgTilt.current = tiltMagnitude;
+        tiltSamples.current = 1;
+      } else {
+        avgTilt.current = 0;
+        tiltSamples.current = 0;
+      }
       requestPreview();
     } else if (tool === 'line' || tool === 'rect' || tool === 'ellipse') {
       shapeStart.current = {x: point.x, y: point.y};
@@ -281,14 +328,26 @@ export function PaintOverlay({
   function handlePointerMove(e: PointerEvent) {
     if (!isDrawing.current) return;
 
-    const point = getProjectPoint(e);
-    const pressure = e.pressure > 0 ? e.pressure : 0.5;
     const tool = paintStore.activeTool.peek();
+    const isPen = e.pointerType === 'pen';
 
     if (tool === 'brush' || tool === 'eraser') {
-      currentPoints.current.push([point.x, point.y, pressure]);
+      // Use coalesced events for higher-resolution tablet input
+      const coalescedPts = getCoalescedPoints(e);
+      for (const pt of coalescedPts) {
+        const pressure = isPen ? pt.pressure : 0.5;
+        currentPoints.current.push([pt.x, pt.y, pressure]);
+        // Update running tilt average for pen
+        if (isPen) {
+          const tiltMag = Math.sqrt(pt.tiltX ** 2 + pt.tiltY ** 2) / 90;
+          tiltSamples.current++;
+          avgTilt.current += (tiltMag - avgTilt.current) / tiltSamples.current;
+        }
+      }
       requestPreview();
     } else if (tool === 'line' || tool === 'rect' || tool === 'ellipse') {
+      const point = getProjectPoint(e);
+      const pressure = isPen ? e.pressure : 0.5;
       // Update shape end point (store as last point)
       currentPoints.current = [currentPoints.current[0], [point.x, point.y, pressure]];
       requestPreview();
@@ -299,10 +358,22 @@ export function PaintOverlay({
     const tool = paintStore.activeTool.peek();
     const layerId = getSelectedPaintLayerId();
     const frame = timelineStore.currentFrame.peek();
+    const isPen = e.pointerType === 'pen';
 
     if ((tool === 'brush' || tool === 'eraser') && isDrawing.current && layerId) {
       const points = currentPoints.current;
       if (points.length > 0) {
+        // Build per-stroke options with device-specific overrides
+        const baseOptions = {...paintStore.strokeOptions.peek()};
+        // Override simulatePressure: false for pen (real data), true for mouse (velocity-based)
+        baseOptions.simulatePressure = !isPen;
+
+        // When pen is tilted, reduce thinning (flatter stroke like a real brush on its side)
+        if (isPen && baseOptions.tiltInfluence > 0) {
+          const tiltFactor = avgTilt.current; // 0-1 normalized
+          baseOptions.thinning = baseOptions.thinning * (1 - tiltFactor * baseOptions.tiltInfluence);
+        }
+
         const stroke: PaintStroke = {
           id: currentElementId.current,
           tool,
@@ -310,7 +381,7 @@ export function PaintOverlay({
           color: paintStore.brushColor.peek(),
           opacity: paintStore.brushOpacity.peek(),
           size: paintStore.brushSize.peek(),
-          options: {...paintStore.strokeOptions.peek()},
+          options: baseOptions,
         };
         paintStore.addElement(layerId, frame, stroke);
       }
@@ -340,6 +411,10 @@ export function PaintOverlay({
     currentPoints.current = [];
     shapeStart.current = null;
     currentElementId.current = '';
+    // Reset tilt tracking
+    avgTilt.current = 0;
+    tiltSamples.current = 0;
+    isPenStroke.current = false;
 
     // Clear temp canvas
     const canvas = tempCanvasRef.current;
@@ -368,6 +443,7 @@ export function PaintOverlay({
         pointerEvents: 'all',
         cursor,
         zIndex: 20,
+        touchAction: 'none',  // prevent browser gestures on pen/touch input
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
