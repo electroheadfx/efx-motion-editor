@@ -1,4 +1,5 @@
 import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
+import {createPortal} from 'preact/compat';
 import Sortable from 'sortablejs';
 import {Camera, Square, Blend, Pipette, X, Plus, Minus, Music} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
@@ -472,7 +473,7 @@ function KeyPhotoCard({
       >
         {holdFrames}f
       </button>
-      {framesPopoverOpen && (
+      {framesPopoverOpen && createPortal(
         <FramesPopover
           holdFrames={holdFrames}
           anchorRef={framesBtnRef}
@@ -481,7 +482,8 @@ function KeyPhotoCard({
             sequenceStore.updateHoldFrames(sequenceId, keyPhotoId, frames);
           }}
           onClose={() => setFramesPopoverOpen(false)}
-        />
+        />,
+        document.body,
       )}
     </div>
   );
