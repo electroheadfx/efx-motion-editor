@@ -1,5 +1,35 @@
 # Milestones
 
+## v0.4.0 Canvas & Paint (Shipped: 2026-03-25)
+
+**Phases:** 2 (Phases 18-19) | **Plans:** 9 | **Tasks:** 19
+**Lines of code:** 34,067 (31,814 TypeScript + 2,253 Rust)
+**Timeline:** 2 days (2026-03-24 → 2026-03-25) | **Commits:** 75
+**Quick tasks:** 1 inline fix (tablet pen support)
+
+**Delivered:** After Effects-style canvas motion path with interactive keyframe markers, and a complete frame-by-frame paint/rotopaint layer with perfect-freehand brush engine, 7 drawing tools, onion skinning, flood fill, and sidecar JSON persistence.
+
+**Key accomplishments:**
+
+1. After Effects-style canvas motion path with dotted trail, keyframe circle markers, drag-to-reposition interaction, auto-seek, and undo-coalesced position editing
+2. Unified keyframe upsert routing for sidebar and canvas drag edits, closing the real-time preview gap for keyframed layers
+3. Frame-by-frame paint/rotopaint layer with perfect-freehand brush engine, eraser, line, rect, ellipse, eyedropper, and flood fill tools
+4. Paint layer rendering integrated into PreviewRenderer compositing loop with blend modes, opacity, and export pipeline passthrough
+5. Onion skinning overlay for rotoscoping workflow with configurable frame range and opacity falloff via offscreen canvas compositing
+6. Sidecar JSON persistence for paint frames with project format v14, Tauri FS read/write, and Rust paint/ directory creation
+7. Tablet pen support with pressure sensitivity, tilt modulation, coalesced pointer events, and backward-compatible stroke defaults
+
+**Technical debt carried forward:**
+
+- Coalescing API partially resolved (motion path drag uses it) but still unwired in most UI (carried from v0.1.0)
+- canUndo/canRedo signals unused for button state (carried from v0.1.0)
+- 2 medium-severity export edge cases (content-overlay preload, FX generator frame offset) (carried from v0.2.0)
+- 3 pre-existing audioWaveform test failures (unrelated to v0.4.0 work)
+
+**Archives:** `milestones/v0.4.0-ROADMAP.md`
+
+---
+
 ## v0.3.0 Audio & Polish (Shipped: 2026-03-24)
 
 **Phases:** 8 (Phases 15-17, 15.1-15.4, 17.1) | **Plans:** 29 | **Tasks:** 63

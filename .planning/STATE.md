@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
-status: Milestone complete
+status: v0.4.0 milestone complete
 stopped_at: Completed quick task 260325-db2 (tablet pen support)
-last_updated: "2026-03-25T08:50:10.181Z"
-last_activity: 2026-03-24
+last_updated: "2026-03-25T10:45:40.516Z"
+last_activity: 2026-03-25
 progress:
   total_phases: 2
   completed_phases: 2
@@ -17,45 +17,31 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-24)
+See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 19 — add-paint-layer-rotopaint
-Last activity: 2026-03-25 - Completed quick task 260325-db2: Add tablet pen support (pressure, tilt, coalesced events)
+**Current focus:** Planning next milestone
+Last activity: 2026-03-25
 
 ## Current Position
 
-Phase: 19
-Plan: Not started
+Phase: (none — between milestones)
+Plan: N/A
 
 ## Performance Metrics
 
-**Velocity (v0.3.0):**
+**Velocity (v0.4.0):**
 
-- Total plans completed: 29
-- Phases: 8 (15, 15.1, 15.2, 15.3, 15.4, 16, 17, 17.1)
-- Timeline: 5 days (2026-03-20 → 2026-03-24)
+- Total plans completed: 9
+- Phases: 2 (18, 19)
+- Timeline: 2 days (2026-03-24 → 2026-03-25)
 
 ## Accumulated Context
 
 ### Decisions
 
 Archived to PROJECT.md Key Decisions table.
-Full phase decisions archived in milestones/v0.3.0-ROADMAP.md.
-
-- [Phase 18]: Polyline optimization for >300 frame motion paths using stroke-dasharray
-- [Phase 18]: Counter-scaled SVG sizes using 1/zoom pattern matching TransformOverlay convention
-- [Phase 18]: Shared signal (motionPathCircles) for MotionPath-to-TransformOverlay coordinate exchange
-- [Phase 18]: Unified keyframe upsert path for sidebar and canvas drag eliminates dead-end transientOverrides signal routing
-- [Phase 19]: Map<string, Map<number, PaintFrame>> for per-layer per-frame paint storage
-- [Phase 19]: PaintFill rendering deferred to Plan 06 (pre-rasterized ImageData)
-- [Phase 19]: Paint layers render in standard compositing loop between adjustment and content layers with blend mode and opacity
-- [Phase 19]: Export pipeline passes paint layers through without filtering (verified by code analysis)
-- [Phase 19]: PaintOverlay temp canvas for live stroke preview, conditional overlay swap pattern
-- [Phase 19]: Collapsible onion skin section reduces sidebar clutter; native color input on toolbar for simplicity
-- [Phase 19]: Paint sidecar files written BEFORE .mce file during save to prevent sync issues (per Pitfall 5)
-- [Phase 19]: Non-fatal error handling for paint persistence operations matches Phase 16 audio pattern
-- [Phase quick-260325-db2]: simulatePressure defaults true for mouse, overridden false per-stroke for pen; tilt modulates thinning; backward-compatible ?? defaults for old strokes
+Full phase decisions archived in milestones/v0.4.0-ROADMAP.md.
 
 ### Pending Todos
 
@@ -63,8 +49,7 @@ None.
 
 ### Roadmap Evolution
 
-v0.3.0 complete. v0.4.0 planned with Phase 18 (Canvas Motion Path).
-Backlog: Paint Layer Rotopaint (Phase 999.1).
+v0.4.0 complete. Next milestone TBD via `/gsd:new-milestone`.
 
 ### Blockers/Concerns
 
@@ -72,14 +57,10 @@ No active blockers.
 
 ### Quick Tasks Completed
 
-Archived with v0.3.0 milestone.
-
-| # | Description | Date | Commit | Status | Directory |
-|---|-------------|------|--------|--------|-----------|
-| 260325-db2 | Add tablet pen support (pressure, tilt, coalesced events) | 2026-03-25 | 5556891 | Verified | [260325-db2-perfect-freehand-doesn-t-support-pressur](./quick/260325-db2-perfect-freehand-doesn-t-support-pressur/) |
+Archived with v0.4.0 milestone.
 
 ## Session Continuity
 
-Last session: 2026-03-25T08:50:05.152Z
-Stopped at: Completed quick task 260325-db2 (tablet pen support)
+Last session: 2026-03-25
+Stopped at: Completed v0.4.0 milestone archival
 Resume file: None

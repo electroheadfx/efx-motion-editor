@@ -2,6 +2,55 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v0.4.0 — Canvas & Paint
+
+**Shipped:** 2026-03-25
+**Phases:** 2 | **Plans:** 9 | **Tasks:** 19
+
+### What Was Built
+- After Effects-style canvas motion path with dotted SVG trail, keyframe circle markers, drag-to-reposition interaction, auto-seek, and undo coalescing
+- Unified keyframe upsert routing (upsertKeyframeValues/upsertKeyframeTransform) closing the real-time preview gap for sidebar and canvas drag edits on keyframed layers
+- Frame-by-frame paint/rotopaint layer with perfect-freehand brush engine, eraser, line, rect, ellipse, eyedropper, and flood fill (7 tools total)
+- Onion skinning overlay for rotoscoping workflow with configurable frame range and opacity falloff via offscreen canvas compositing
+- Full paint UI: PaintProperties sidebar panel (7 sections), PaintToolbar floating canvas overlay, P key toggle, paint mode conditional overlay swap
+- Paint layer rendering integrated into PreviewRenderer and export pipeline with blend modes and opacity
+- Sidecar JSON persistence for paint frames (paint/{uuid}/frame-NNN.json) with project format v14
+- Tablet pen support with pressure sensitivity, tilt modulation, coalesced pointer events, and backward-compatible stroke defaults
+- 1 quick task: tablet pen pressure/tilt support for perfect-freehand
+
+### What Worked
+- **Wave-based parallelization:** Phase 19's 6 plans executed in 3 waves (Plans 01 solo → 02/03/04/05 parallel → 06 with human verification) — completed entire paint system in <1 hour of AI execution time
+- **Plan 06 as visual verification checkpoint:** Mandatory human verification plan discovered 8 bugs that code analysis alone would have missed (non-reactive Map, missing Tauri FS permission, paint mode gating, etc.)
+- **Existing architecture absorbed new layer type cleanly:** Adding 'paint' to LayerType, paintStore as 12th store, and paint rendering case in PreviewRenderer required minimal changes to existing code
+- **Sidecar persistence pattern (from audio):** paintPersistence.ts closely followed the audio persistence pattern — proven approach required no architectural decisions
+- **Motion path phase was compact and clean:** 3 plans, 5 tasks, 11 min total execution — pattern of counter-scaled SVG overlays was already established by TransformOverlay
+
+### What Was Inefficient
+- **No milestone audit before completion:** Proceeding without `/gsd:audit-milestone` for the second consecutive milestone
+- **No REQUIREMENTS.md for v0.4.0:** Requirements existed only in PROJECT.md Active section and phase-level PAINT-01 through PAINT-13 — no formal traceability table
+- **Merge conflicts between parallel worktrees:** Phase 19 Plan 06 had to resolve conflicts on paintStore.ts and paint.ts between wave 3 worktrees — expected but added human overhead
+- **3 pre-existing audioWaveform test failures carried:** Not caused by v0.4.0 but not fixed either — accumulating unrelated test debt
+
+### Patterns Established
+- paintVersion counter signal: bump a plain counter signal to make non-reactive data structures (Map) trigger Preact re-renders
+- Offscreen canvas compositing: render to temp canvas first, then drawImage to main canvas for correct alpha/composite behavior
+- Paint sidecar persistence: paint/{uuid}/frame-NNN.json files written BEFORE .mce file for consistency
+- Conditional overlay swap: PaintOverlay replaces TransformOverlay entirely rather than overlapping (cleaner DOM, fewer event conflicts)
+- Shared module-level signal for cross-component communication (motionPathCircles between MotionPath.tsx and TransformOverlay.tsx)
+
+### Key Lessons
+1. **Visual verification plans are essential for paint/drawing features** — 8/8 bugs found in Plan 06 were invisible to static analysis and TypeScript compilation
+2. **Perfect-freehand is an excellent library choice** — zero-config quality for brush strokes; only needed tablet pen extensions as a quick task
+3. **Counter signal pattern is the cleanest way to bridge imperative data (Map/Set) with reactive rendering** — avoid making all storage reactive
+4. **Pre-save data write order matters** — writing sidecar files before the main .mce prevents sync issues if save is interrupted
+
+### Cost Observations
+- Model mix: ~80% opus, ~15% sonnet, ~5% haiku
+- Sessions: ~3 sessions over 2 days
+- Notable: Phase 19 (6 plans, 14 tasks) completed in <1 hour AI time via wave parallelization — fastest feature-per-time ratio yet
+
+---
+
 ## Milestone: v0.3.0 — Audio & Polish
 
 **Shipped:** 2026-03-24
@@ -165,6 +214,7 @@
 | v1.0 | ~5 | 5 | 13 | First milestone; established GSD workflow |
 | v0.2.0 | ~30 | 23 | 66 | Decimal sub-phases for UX iteration; quick task system for inline fixes |
 | v0.3.0 | ~15 | 8 | 29 | Wave 0 test scaffolds; gap closure plans; 5 inserted phases for urgent features |
+| v0.4.0 | ~3 | 2 | 9 | Wave parallelization for paint; visual verification checkpoint plan |
 
 ### Cumulative Quality
 
@@ -173,14 +223,17 @@
 | v1.0 | 5,055 | 118 | 11 | 3 (2 medium, 1 high) |
 | v0.2.0 | 20,428 | 252+ | 28 | 2 (both medium) |
 | v0.3.0 | 31,522 | 350+ | 4 (carried) | 0 new |
+| v0.4.0 | 34,067 | 430+ | 4 (carried) | 0 new |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Risk-first phase ordering catches integration issues early and accelerates later phases
 2. Milestone audits find real bugs that execution-time verification misses
-3. Signal store architecture scales well — 6→9→11 stores with zero friction
+3. Signal store architecture scales well — 6→9→11→12 stores with zero friction
 4. `.peek()` pattern is essential for performance-critical paths (rAF, event handlers)
 5. Quick tasks are the right vehicle for user-testing feedback — keeps formal phases focused
-6. Progressive .mce format migration (v1→v13) with serde(default) is the proven persistence pattern
+6. Progressive .mce format migration (v1→v14) with serde(default) is the proven persistence pattern
 7. Wave 0 test scaffolds accelerate implementation and catch integration issues early
 8. WebGL2 architecture investments pay compound returns across features (blur, shaders, transitions)
+9. Visual verification plans are essential for drawing/paint features — static analysis misses runtime rendering bugs
+10. Counter signal pattern bridges imperative data structures (Map/Set) with reactive rendering cleanly

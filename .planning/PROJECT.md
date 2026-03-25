@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks) and GLSL shader effects (17 Shadertoy + 18 GL transitions), add fade/cross-dissolve/GL transitions, import audio with waveform visualization and beat-synced editing, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1) with audio. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 added audio with beat sync, GLSL shader effects/transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar.
+A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos, paint/rotopaint) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks) and GLSL shader effects (17 Shadertoy + 18 GL transitions), add fade/cross-dissolve/GL transitions, import audio with waveform visualization and beat-synced editing, draw frame-by-frame with pressure-sensitive brush/shape/fill tools and onion skinning, edit keyframe positions directly on canvas via motion path, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1) with audio. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 added audio with beat sync, GLSL shader effects/transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar; v0.4.0 added canvas motion path editing and frame-by-frame paint/rotopaint layers.
 
 ## Core Value
 
@@ -62,14 +62,17 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Tailwind v4 syntax migration across 33 component files — v0.3.0
 - ✓ Project format .mce v8→v13 progressive migration with full backward compatibility — v0.3.0
 - ✓ Canvas motion path with After Effects-style dotted trail, keyframe circle markers, and drag-to-reposition interaction — v0.4.0
+- ✓ Paint/rotopaint layer with perfect-freehand brush engine, 7 drawing tools, onion skinning, flood fill, and sidecar persistence — v0.4.0
+- ✓ Tablet pen support with pressure sensitivity, tilt modulation, and coalesced pointer events — v0.4.0
+- ✓ Project format .mce v14 with paint layer sidecar persistence — v0.4.0
 
 ### Active
 
-- [ ] Paint/rotopaint layer for frame-by-frame drawing and rotoscoping — backlog
+(None yet — define with `/gsd:new-milestone`)
 
-## Latest Milestone: v0.3.0 Audio & Polish (Shipped 2026-03-24)
+## Latest Milestone: v0.4.0 Canvas & Paint (Shipped 2026-03-25)
 
-8 phases, 29 plans, 63 tasks over 5 days. See `.planning/MILESTONES.md` for details.
+2 phases, 9 plans, 19 tasks over 2 days. See `.planning/MILESTONES.md` for details.
 
 ### Out of Scope
 
@@ -82,16 +85,16 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ## Context
 
-Shipped v0.3.0 with 31,522 LOC (29,037 TypeScript + 2,157 Rust + 328 CSS) across ~327 commits since v0.2.0.
+Shipped v0.4.0 with 34,067 LOC (31,814 TypeScript + 2,253 Rust) across ~75 commits since v0.3.0.
 Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm.
-Architecture: 11 reactive signal stores (project, sequence, layer, keyframe, timeline, canvas, ui, blur, isolation, export, audio, solo), Rust image pipeline with thumbnail generation, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur (glBlur.ts) with CPU fallback, WebGL2 GLSL runtime (glslRuntime) for shader effects and GL transitions, FX generator system with seeded PRNG, keyframe interpolation engine with polynomial cubic easing, PlaybackEngine with rAF delta accumulation and full-speed mode, Web Audio engine with fade scheduling and waveform peak extraction, BPM detector with onset autocorrelation, OfflineAudioContext pre-render for export, command-pattern undo/redo engine, tinykeys keyboard shortcuts, exportRenderer with yielding frame loop and FFmpeg video/audio encoding.
-Project format: .mce v13 with backward compatibility (v1 through v13).
+Architecture: 12 reactive signal stores (project, sequence, layer, keyframe, timeline, canvas, ui, blur, isolation, export, audio, solo, paint), Rust image pipeline with thumbnail generation, Canvas 2D PreviewRenderer with multi-layer compositing (including paint layers), WebGL2 GPU blur (glBlur.ts) with CPU fallback, WebGL2 GLSL runtime (glslRuntime) for shader effects and GL transitions, FX generator system with seeded PRNG, keyframe interpolation engine with polynomial cubic easing and unified upsert routing, PlaybackEngine with rAF delta accumulation and full-speed mode, Web Audio engine with fade scheduling and waveform peak extraction, BPM detector with onset autocorrelation, OfflineAudioContext pre-render for export, perfect-freehand brush engine with pressure/tilt support, paint sidecar JSON persistence via Tauri FS, command-pattern undo/redo engine, tinykeys keyboard shortcuts, exportRenderer with yielding frame loop and FFmpeg video/audio encoding.
+Project format: .mce v14 with backward compatibility (v1 through v14).
 
 Known technical debt:
 - 2 medium-severity export edge cases (content-overlay image preload, FX generator frame offset) — carried from v0.2.0
-- Coalescing API now used by motion path keyframe drag (startCoalescing/stopCoalescing) — partially resolved in v0.4.0
+- Coalescing API partially resolved (motion path drag uses startCoalescing/stopCoalescing) — most UI interactions still unwired (carried from v0.1.0)
 - canUndo/canRedo signals exported but no UI consumes them for button disabling — carried from v0.1.0
-- GLSL/GLT requirements not formally tracked in REQUIREMENTS.md (phases inserted urgently)
+- 3 pre-existing audioWaveform test failures (unrelated to v0.4.0 work)
 
 ## Constraints
 
@@ -131,6 +134,12 @@ Known technical debt:
 | 2-panel adaptive sidebar over 3 panels | Layers merged into Sequences panel with icon toggle | ✓ Good — simpler UX, one fewer resizer |
 | Progressive .mce format v8→v13 | Each phase bumps version with serde(default) backward compat | ✓ Good — seamless loading of any version |
 | spawn_blocking for FFmpeg encoding | Keeps blocking I/O isolated from Tauri main thread | ✓ Good — fixed UAT export hang |
+| Shared signal (motionPathCircles) for cross-component coordinate exchange | Simpler than prop drilling; matches signal-based architecture | ✓ Good — MotionPath→TransformOverlay communication clean |
+| Unified keyframe upsert path (upsertKeyframeValues/Transform) | Eliminates dead-end transientOverrides routing | ✓ Good — sidebar and canvas drag edits both flow through keyframes |
+| Map<string, Map<number, PaintFrame>> for paint storage | Efficient sparse frame data; per-layer per-frame isolation | ✓ Good — clean API, dirty tracking via Set<string> keys |
+| paintVersion counter signal for reactivity | Non-reactive Map storage + explicit signal bump = controlled re-renders | ✓ Good — solved disappearing strokes without making all Maps reactive |
+| Offscreen canvas compositing for eraser and onion skin | Isolates destination-out and global alpha operations | ✓ Good — correct rendering without side effects |
+| Paint sidecar JSON files (paint/{uuid}/frame-NNN.json) | Keeps .mce file lean; paint data can be large | ✓ Good — pre-save write order prevents sync issues |
 
 ## Evolution
 
@@ -150,4 +159,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after v0.3.0 milestone*
+*Last updated: 2026-03-25 after v0.4.0 milestone*
