@@ -97,7 +97,7 @@ See: `milestones/v0.4.0-ROADMAP.md` for full details.
 ## Phase Details
 
 ### Phase 20: Paint Brush FX
-**Goal**: Users can draw with expressive brush styles that simulate physical media through WebGL2 rendering, spectral color mixing, and organic stroke effects
+**Goal**: Users can draw with expressive brush styles that simulate physical media through p5.brush standalone rendering, spectral color mixing, and organic stroke effects
 **Depends on**: Phase 19 (paint layer foundation)
 **Requirements**: PAINT-01, PAINT-02, PAINT-03, PAINT-04, PAINT-05, PAINT-06, PAINT-07, PAINT-08, PAINT-09, PAINT-10, PAINT-11, PAINT-12, PAINT-13
 **Success Criteria** (what must be TRUE):
@@ -106,7 +106,7 @@ See: `milestones/v0.4.0-ROADMAP.md` for full details.
   3. User can draw with the watercolor brush and see edge bleed, paper texture, and flow field distortion producing organic, non-mechanical stroke paths
   4. User can export a project containing styled brush strokes and the exported frames render identically to the canvas preview
   5. User can open a previously saved project and all brush styles and FX parameters are preserved exactly as drawn
-**Plans**: 8 plans
+**Plans**: 10 plans
 
 Plans:
 - [x] 20-00-PLAN.md — Wave 0 test stubs (Nyquist scaffold for all 7 test files)
@@ -115,8 +115,10 @@ Plans:
 - [x] 20-03-PLAN.md — WebGL2 brush FX renderer core (context, framebuffers, stamp rendering, spectral compositing)
 - [x] 20-04-PLAN.md — Brush style selector UI and BRUSH FX parameter sliders
 - [x] 20-05-PLAN.md — Per-style rendering configs (ink/charcoal/pencil/marker) and flow field module
-- [ ] 20-06-PLAN.md — Watercolor polygon deformation and renderer integration
-- [ ] 20-07-PLAN.md — Paint renderer routing integration, export parity, and visual verification
+- [x] 20-06-PLAN.md — Watercolor polygon deformation and renderer integration
+- [x] 20-07-PLAN.md — Paint renderer routing integration, export parity, and visual verification
+- [ ] 20-08-PLAN.md — [GAP CLOSURE] Replace custom renderer with p5.brush standalone adapter
+- [ ] 20-09-PLAN.md — [GAP CLOSURE] Rewire paintRenderer to p5.brush adapter and visual verification
 
 ### Phase 21: Motion Blur
 **Goal**: Users can see per-layer directional motion blur during preview playback and export with cinematographic shutter angle controls
@@ -146,5 +148,5 @@ Phases execute in numeric order: 20 → 21
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
-| 20. Paint Brush FX | v0.5.0 | 6/8 | In Progress|  |
+| 20. Paint Brush FX | v0.5.0 | 6/10 | In Progress (gap closure) |  |
 | 21. Motion Blur | v0.5.0 | 0/? | Not started | - |
