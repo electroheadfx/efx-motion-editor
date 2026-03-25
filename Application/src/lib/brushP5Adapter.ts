@@ -29,7 +29,10 @@ const PARAM_WEIGHT: Record<string, number> = {
 };
 
 function compensatedWeight(brushName: string, diameter: number): number {
-  return diameter / (2 * (PARAM_WEIGHT[brushName] ?? 1));
+  // diameter = 2 * strokeWeight * paramWeight * pressure
+  // At typical pressure ~0.5 (mouse), we want visual diameter ≈ desired diameter.
+  // So: strokeWeight = diameter / (paramWeight)  → at p=0.5: visual = diameter
+  return diameter / (PARAM_WEIGHT[brushName] ?? 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -153,15 +156,14 @@ function renderWatercolorStroke(
   brush.set('marker', stroke.color, w);
   brush.spline(pts, 0.5);
 
-  // Add watercolor wash along the stroke path using filled circles at key points
-  // This creates bleed edges without filling the entire polygon
-  const washStep = Math.max(3, Math.floor(pts.length / 8));
-  brush.fill(stroke.color, Math.round(stroke.opacity * 40));
+  // Add watercolor wash along the stroke path — small circles with bleed
+  const washStep = Math.max(2, Math.floor(pts.length / 15));
+  brush.fill(stroke.color, Math.round(stroke.opacity * 25));
   brush.fillBleed(bleed, 'out');
   brush.fillTexture(grain, 0.5);
   for (let i = 0; i < pts.length; i += washStep) {
     const pt = pts[i];
-    brush.circle(pt[0], pt[1], stroke.size * 1.2);
+    brush.circle(pt[0], pt[1], stroke.size * 0.5);
   }
   brush.noFill();
 }
