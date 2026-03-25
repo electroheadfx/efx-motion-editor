@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
-status: Ready to plan Phase 20
-stopped_at: Roadmap created with 2 phases (20-21)
-last_updated: "2026-03-25"
-last_activity: 2026-03-25
+status: planning
+stopped_at: Phase 20 context gathered
+last_updated: "2026-03-25T12:08:58.817Z"
+last_activity: 2026-03-25 — Roadmap created for v0.5.0
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -65,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25
-Stopped at: Roadmap created for v0.5.0
-Resume file: None
+Last session: 2026-03-25T12:08:58.813Z
+Stopped at: Phase 20 context gathered
+Resume file: .planning/phases/20-paint-brush-fx/20-CONTEXT.md
