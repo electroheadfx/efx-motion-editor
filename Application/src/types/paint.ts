@@ -17,7 +17,15 @@ export interface PaintStrokeOptions {
   thinning: number;      // 0-1, default 0.5
   smoothing: number;     // 0-1, default 0.5
   streamline: number;    // 0-1, default 0.5
-  simulatePressure: boolean; // false when real pressure data provided
+  simulatePressure: boolean; // true for mouse (velocity-based), false for pen (real pressure)
+  // Pressure easing function identifier (stored as string for serialization)
+  // 'linear' = (p) => p  |  'gentle' = (p) => p * (2 - p)  |  'firm' = (p) => p * p
+  pressureEasing: string;
+  // Start/end taper: 0 = no taper, >0 = taper length in pixels, -1 = auto
+  taperStart: number;
+  taperEnd: number;
+  // How much pen tilt affects pressure easing (0 = none, 1 = full)
+  tiltInfluence: number;
 }
 
 /** A geometric shape element (per D-04, D-05) */
@@ -58,7 +66,11 @@ export const DEFAULT_STROKE_OPTIONS: PaintStrokeOptions = {
   thinning: 0.5,
   smoothing: 0.5,
   streamline: 0.5,
-  simulatePressure: false,
+  simulatePressure: true,  // default true; PaintOverlay overrides to false for pen input
+  pressureEasing: 'linear',
+  taperStart: 0,
+  taperEnd: 0,
+  tiltInfluence: 0.3,
 };
 export const BRUSH_SIZE_MIN = 1;
 export const BRUSH_SIZE_MAX = 200;
