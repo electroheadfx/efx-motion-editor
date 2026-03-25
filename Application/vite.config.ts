@@ -62,6 +62,11 @@ export default defineConfig({
     watch: { ignored: ['**/src-tauri/**'] },
   },
   envPrefix: ['VITE_', 'TAURI_ENV_*'],
+  // p5.brush standalone uses WebGL2 internally with complex module-scoped state.
+  // esbuild pre-bundling breaks its internal variable scoping (ReferenceError: v).
+  optimizeDeps: {
+    exclude: ['p5.brush'],
+  },
   build: {
     target: 'safari13',
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
