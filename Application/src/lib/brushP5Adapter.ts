@@ -28,11 +28,19 @@ const PARAM_WEIGHT: Record<string, number> = {
   marker: 2,
 };
 
+// Per-preset visual scale factor — tuned so each style looks natural.
+// Higher = thicker strokes with more stamp overlap.
+const WEIGHT_SCALE: Record<string, number> = {
+  pen: 1.0,        // pen stamps overlap well at default
+  charcoal: 1.0,   // charcoal scatter is fine at default
+  cpencil: 1.0,    // color pencil at default
+  marker: 2.0,     // marker needs 2x to be visible (low opacity preset)
+};
+
 function compensatedWeight(brushName: string, diameter: number): number {
-  // diameter = 2 * strokeWeight * paramWeight * pressure
-  // At typical pressure ~0.5 (mouse), we want visual diameter ≈ desired diameter.
-  // So: strokeWeight = diameter / (paramWeight)  → at p=0.5: visual = diameter
-  return diameter / (PARAM_WEIGHT[brushName] ?? 1);
+  const pw = PARAM_WEIGHT[brushName] ?? 1;
+  const scale = WEIGHT_SCALE[brushName] ?? 1;
+  return (diameter * scale) / (2 * pw);
 }
 
 // ---------------------------------------------------------------------------
