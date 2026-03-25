@@ -9,7 +9,7 @@ import {timelineStore} from '../../stores/timelineStore';
 import {clientToCanvas} from './coordinateMapper';
 import {strokeToPath, renderPaintFrame} from '../../lib/paintRenderer';
 import {floodFill, hexToRgba} from '../../lib/paintFloodFill';
-import type {PaintStroke, PaintShape, PaintFill, PaintToolType} from '../../types/paint';
+import type {PaintStroke, PaintShape, PaintFill, PaintToolType, BrushStyle} from '../../types/paint';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -413,6 +413,8 @@ export function PaintOverlay({
           opacity: paintStore.brushOpacity.peek(),
           size: paintStore.brushSize.peek(),
           options: baseOptions,
+          brushStyle: paintStore.brushStyle.peek() as BrushStyle,
+          brushParams: { ...paintStore.brushFxParams.peek() },
         };
         paintStore.addElement(layerId, frame, stroke);
       }
