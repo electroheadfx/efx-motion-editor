@@ -124,53 +124,53 @@ const STYLE_CONFIGS: Record<string, StyleConfig> = {
     postEffects: [],
   },
   ink: {
-    // Bold flowing ink — high opacity, slight vibration, edge darkening
-    hardness: 0.55,
-    stampSpacing: 0.05,
-    opacityMultiplier: 0.9,
-    sizeJitter: 0.03,
-    posJitter: 0.015,
-    opacityJitter: 0.08,
+    // Bold flowing ink — p5.brush default opacity ~40/255, hard edge, edge darkening
+    hardness: 0.85,
+    stampSpacing: 0.25,
+    opacityMultiplier: 0.16,
+    sizeJitter: 0.15,
+    posJitter: 0.02,
+    opacityJitter: 0.1,
     useScatterShader: false,
     postEffects: ['edgeDarken'],
   },
   charcoal: {
-    // Gritty textured — medium density, scatter gives rough edge, strong grain
-    hardness: 0.2,
-    stampSpacing: 0.06,
-    opacityMultiplier: 0.7,
-    sizeJitter: 0.25,
-    posJitter: 0.08,
-    opacityJitter: 0.35,
+    // Gritty — low definition (many stamps skipped), scatter, grain
+    hardness: 0.3,
+    stampSpacing: 0.15,
+    opacityMultiplier: 0.1,
+    sizeJitter: 0.15,
+    posJitter: 0.15,
+    opacityJitter: 0.3,
     useScatterShader: true,
     postEffects: ['grain'],
   },
   pencil: {
-    // Fine thin lines — tight spacing, lower opacity for layered shading
-    hardness: 0.45,
-    stampSpacing: 0.03,
-    opacityMultiplier: 0.5,
-    sizeJitter: 0.06,
-    posJitter: 0.02,
-    opacityJitter: 0.12,
+    // Fine — high definition, tight spacing, moderate opacity
+    hardness: 0.6,
+    stampSpacing: 0.2,
+    opacityMultiplier: 0.12,
+    sizeJitter: 0.15,
+    posJitter: 0.03,
+    opacityJitter: 0.1,
     useScatterShader: false,
     postEffects: ['grain'],
   },
   marker: {
-    // Flat even coverage — hard edge, dense, consistent opacity
-    hardness: 0.75,
-    stampSpacing: 0.03,
-    opacityMultiplier: 0.65,
-    sizeJitter: 0.01,
-    posJitter: 0.005,
-    opacityJitter: 0.03,
+    // Flat even — hard edge, consistent, p5.brush marker is single circle per step
+    hardness: 0.95,
+    stampSpacing: 0.15,
+    opacityMultiplier: 0.25,
+    sizeJitter: 0.0,
+    posJitter: 0.01,
+    opacityJitter: 0.1,
     useScatterShader: false,
     postEffects: [],
   },
   watercolor: {
-    // Watercolor uses polygon path, stamps are fallback only
+    // Watercolor uses polygon deformation path, stamps are fallback only
     hardness: 0.1,
-    stampSpacing: 0.08,
+    stampSpacing: 0.2,
     opacityMultiplier: 0.3,
     sizeJitter: 0.15,
     posJitter: 0.1,
@@ -600,7 +600,10 @@ function renderStrokeStamps(
 
   gl.useProgram(program);
   gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  // p5.brush blend mode: ONE_MINUS_DST_ALPHA, ONE
+  // "Under" compositing: first stamps contribute fully, later stamps fill gaps
+  // without over-saturating. This is THE key to natural stroke accumulation.
+  gl.blendFunc(gl.ONE_MINUS_DST_ALPHA, gl.ONE);
 
   // Set common uniforms
   const uCenter = gl.getUniformLocation(program, 'u_center');
@@ -631,17 +634,18 @@ function renderStrokeStamps(
   for (let i = 0; i < stamps.length; i++) {
     const stamp = stamps[i];
 
-    // Per-stamp size jitter
-    const sizeVariation = 1.0 + config.sizeJitter * (rng() * 2 - 1);
-    const stampSize = stroke.size * stamp.pressure * sizeVariation;
+    // p5.brush: size = pressure² * weight * random(0.85, 1.15)
+    const sizeRand = 0.85 + rng() * 0.30;
+    const stampSize = stroke.size * stamp.pressure * stamp.pressure * sizeRand;
 
-    // Per-stamp position jitter (vibration)
+    // Vibration: perpendicular offset proportional to stroke weight
     const jitterX = config.posJitter * stroke.size * (rng() * 2 - 1);
     const jitterY = config.posJitter * stroke.size * (rng() * 2 - 1);
 
-    // Per-stamp opacity jitter
-    const opacityVariation = 1.0 - config.opacityJitter * rng();
-    const stampAlpha = baseColor[3] * opacityVariation;
+    // p5.brush: alpha * max(0.8, pressure) * random(0.9, 1.1)
+    const pressureMod = Math.max(0.8, stamp.pressure);
+    const alphaRand = 0.9 + rng() * 0.2;
+    const stampAlpha = baseColor[3] * pressureMod * alphaRand;
 
     gl.uniform2f(uCenter, stamp.x + jitterX, stamp.y + jitterY);
     gl.uniform2f(uSize, stampSize, stampSize);

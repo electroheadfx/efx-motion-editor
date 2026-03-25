@@ -142,9 +142,9 @@ export function renderWatercolorLayers(
   const rng = seedableGaussian(seed);
   let base = outlineToPolygon(outline);
 
-  // Scale deformation to polygon size — larger strokes get proportionally more bleed
+  // Scale deformation to polygon size — subtle bleed around stroke edges
   const edgeLen = avgEdgeLength(base);
-  const baseVariance = Math.max(edgeLen * 0.8, 5);
+  const baseVariance = Math.max(edgeLen * 0.35, 2);
 
   // 7 base deformation passes with decreasing variance
   // This creates the shared organic base shape all layers inherit
