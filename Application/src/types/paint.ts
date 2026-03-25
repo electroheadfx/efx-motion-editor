@@ -1,6 +1,41 @@
 /** Paint tool types (per D-04) */
 export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse';
 
+/** Brush rendering styles (per D-01) */
+export type BrushStyle = 'flat' | 'watercolor' | 'ink' | 'charcoal' | 'pencil' | 'marker';
+
+/** Ordered list of brush styles for UI iteration */
+export const BRUSH_STYLES: BrushStyle[] = ['flat', 'watercolor', 'ink', 'charcoal', 'pencil', 'marker'];
+
+/** FX parameters that control brush rendering behavior (per D-05, D-08) */
+export interface BrushFxParams {
+  grain?: number;        // 0-1, paper texture intensity
+  bleed?: number;        // 0-1, watercolor edge diffusion
+  scatter?: number;      // 0-1, tip scatter amount
+  fieldStrength?: number;// 0-1, flow field influence
+  edgeDarken?: number;   // 0-1, ink pooling at overlaps
+}
+
+/** Per-style default FX params with tuned presets (per D-07) */
+export const DEFAULT_BRUSH_FX_PARAMS: Record<BrushStyle, BrushFxParams> = {
+  flat: {},
+  watercolor: { bleed: 0.6, grain: 0.4, fieldStrength: 0.3 },
+  ink: { edgeDarken: 0.7, fieldStrength: 0.15 },
+  charcoal: { grain: 0.6, scatter: 0.4 },
+  pencil: { grain: 0.3 },
+  marker: {},
+};
+
+/** Per-style visible FX param keys for UI (per D-05) — only show relevant sliders */
+export const BRUSH_FX_VISIBLE_PARAMS: Record<BrushStyle, (keyof BrushFxParams)[]> = {
+  flat: [],
+  watercolor: ['bleed', 'grain', 'fieldStrength'],
+  ink: ['edgeDarken', 'fieldStrength'],
+  charcoal: ['grain', 'scatter'],
+  pencil: ['grain'],
+  marker: [],
+};
+
 /** A freehand stroke recorded from pointer input (per D-02, D-03) */
 export interface PaintStroke {
   id: string;
@@ -10,6 +45,8 @@ export interface PaintStroke {
   opacity: number;       // 0-1 (per D-03)
   size: number;          // brush diameter in project pixels
   options: PaintStrokeOptions;
+  brushStyle?: BrushStyle;      // rendering style (default: 'flat' for backward compat)
+  brushParams?: BrushFxParams;  // FX parameters at draw time
 }
 
 /** Options passed to perfect-freehand getStroke() */
