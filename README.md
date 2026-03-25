@@ -222,7 +222,7 @@ efx-motion-editor/
 │   │   │   ├── shader-browser/  # GLSL shader browser window
 │   │   │   ├── overlay/         # Shortcuts overlay, fullscreen
 │   │   │   └── shared/          # NumericInput, ColorPickerModal, SectionLabel
-│   │   ├── stores/              # Reactive state (10 Preact Signal stores)
+│   │   ├── stores/              # Reactive state (12 Preact Signal stores)
 │   │   ├── lib/                 # Core logic
 │   │   │   ├── shaders/         # GLSL shader library
 │   │   │   │   ├── generators/  # 10 procedural generator shaders
