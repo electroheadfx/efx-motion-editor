@@ -1,6 +1,7 @@
 import {getStroke} from 'perfect-freehand';
 import {floodFill, hexToRgba} from './paintFloodFill';
 import type {PaintFrame, PaintElement, PaintStroke, PaintShape, PaintFill, PaintStrokeOptions} from '../types/paint';
+import {renderStyledStrokes} from './brushFxRenderer';
 
 /** Legacy pressure easing presets → curve exponent mapping */
 const LEGACY_EASING_CURVES: Record<string, number> = {
@@ -145,10 +146,53 @@ function renderShape(ctx: CanvasRenderingContext2D, element: PaintShape): void {
 }
 
 /**
+ * Type guard: check if a paint element is a styled (non-flat) brush stroke
+ * that should be routed to the WebGL2 renderer.
+ *
+ * Narrowing logic:
+ * 1. element.tool is safe on PaintElement (all union members have .tool)
+ * 2. tool === 'brush' narrows to PaintStroke (only PaintStroke has 'brush')
+ * 3. Then .brushStyle access is type-safe on PaintStroke
+ */
+function isStyledStroke(element: PaintElement): element is PaintStroke {
+  // All PaintElement union members have .tool -- no 'in' check needed.
+  // Only PaintStroke has tool === 'brush' (eraser also PaintStroke but returns false).
+  if (element.tool !== 'brush') return false;
+  // After this check, TS narrows element to PaintStroke.
+  // Now .brushStyle is safely accessible (optional field on PaintStroke).
+  return !!element.brushStyle && element.brushStyle !== 'flat';
+}
+
+/**
+ * Render accumulated styled strokes via WebGL2 and composite onto Canvas 2D.
+ */
+function flushStyledStrokes(
+  ctx: CanvasRenderingContext2D,
+  strokes: PaintStroke[],
+  width: number,
+  height: number,
+): void {
+  const glCanvas = renderStyledStrokes(strokes, width, height);
+  if (glCanvas) {
+    ctx.drawImage(glCanvas, 0, 0);
+  } else {
+    // WebGL2 unavailable: fall back to flat rendering for all styled strokes
+    for (const stroke of strokes) {
+      renderStroke(ctx, stroke);
+    }
+  }
+}
+
+/**
  * Render all paint elements for a single frame to a Canvas 2D context.
  *
  * Elements are rendered in order (first element = bottom, last = top).
- * Each element is wrapped in save/restore to isolate alpha and composite changes.
+ * Flat elements (and erasers) use the existing Canvas 2D path unchanged.
+ * Styled brush strokes are batched and rendered via the WebGL2 brush FX
+ * renderer, then composited back onto the Canvas 2D context.
+ *
+ * Z-order is maintained: when a flat element follows styled strokes,
+ * the styled batch is flushed before rendering the flat element.
  *
  * @param ctx - The canvas 2D rendering context to draw on
  * @param frame - The PaintFrame containing elements to render
@@ -161,8 +205,30 @@ export function renderPaintFrame(
   width: number,
   height: number,
 ): void {
+  // Separate elements into flat (Canvas 2D) and styled (WebGL2) groups
+  // IMPORTANT: Maintain rendering order! Elements must composite in their
+  // original array order, so we process in order but track styled strokes.
+  const styledStrokes: PaintStroke[] = [];
+
   for (const element of frame.elements) {
-    renderElement(ctx, element, width, height);
+    if (isStyledStroke(element)) {
+      // Collect styled strokes for batch WebGL2 rendering
+      styledStrokes.push(element);
+    } else {
+      // Render flat elements inline via Canvas 2D (existing path, unchanged)
+      // Before rendering flat elements, flush any accumulated styled strokes
+      // to maintain correct z-order
+      if (styledStrokes.length > 0) {
+        flushStyledStrokes(ctx, styledStrokes, width, height);
+        styledStrokes.length = 0;
+      }
+      renderElement(ctx, element, width, height);
+    }
+  }
+
+  // Flush any remaining styled strokes
+  if (styledStrokes.length > 0) {
+    flushStyledStrokes(ctx, styledStrokes, width, height);
   }
 }
 
