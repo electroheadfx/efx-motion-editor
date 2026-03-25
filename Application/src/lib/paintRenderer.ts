@@ -2,6 +2,13 @@ import {getStroke} from 'perfect-freehand';
 import {floodFill, hexToRgba} from './paintFloodFill';
 import type {PaintFrame, PaintElement, PaintStroke, PaintShape, PaintFill, PaintStrokeOptions} from '../types/paint';
 
+/** Pressure easing function lookup */
+const PRESSURE_EASINGS: Record<string, (p: number) => number> = {
+  linear: (p: number) => p,
+  gentle: (p: number) => p * (2 - p),
+  firm: (p: number) => p * p,
+};
+
 /**
  * Convert stroke points to a Path2D outline using perfect-freehand.
  * Returns null if the outline has fewer than 2 points.
@@ -13,12 +20,26 @@ export function strokeToPath(
   size: number,
   options: PaintStrokeOptions,
 ): Path2D | null {
+  // Backward-compatible: old saved strokes may lack new fields
+  const easing = PRESSURE_EASINGS[options.pressureEasing ?? 'linear'] || PRESSURE_EASINGS.linear;
+  const taperStart = options.taperStart ?? 0;
+  const taperEnd = options.taperEnd ?? 0;
+
   const outline = getStroke(points, {
     size,
     thinning: options.thinning,
     smoothing: options.smoothing,
     streamline: options.streamline,
     simulatePressure: options.simulatePressure,
+    easing,
+    start: taperStart > 0 ? {
+      taper: taperStart === -1 ? true : taperStart,
+      cap: true,
+    } : {cap: true},
+    end: taperEnd > 0 ? {
+      taper: taperEnd === -1 ? true : taperEnd,
+      cap: true,
+    } : {cap: true},
     last: true,
   });
 

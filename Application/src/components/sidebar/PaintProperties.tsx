@@ -15,6 +15,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [onionCollapsed, setOnionCollapsed] = useState(true);
+  const [tabletCollapsed, setTabletCollapsed] = useState(true);
 
   const activeTool = paintStore.activeTool.value;
   const brushSizeVal = paintStore.brushSize.value;
@@ -23,6 +24,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
   const strokeOpts = paintStore.strokeOptions.value;
   const shapeFilledVal = paintStore.shapeFilled.value;
   const fillToleranceVal = paintStore.fillTolerance.value;
+
+  const tabletDetectedVal = paintStore.tabletDetected.value;
 
   const showBrushSettings = BRUSH_TOOLS.includes(activeTool) || SHAPE_TOOLS.includes(activeTool);
   const showStrokeOptions = STROKE_TOOLS.includes(activeTool);
@@ -172,6 +175,115 @@ export function PaintProperties({layer}: {layer: Layer}) {
               </span>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 3b. Tablet / Taper Options (collapsible, always shown for stroke tools) */}
+      {showStrokeOptions && (
+        <div>
+          <button
+            class="flex items-center gap-1 cursor-pointer w-full"
+            onClick={() => setTabletCollapsed(!tabletCollapsed)}
+          >
+            <span
+              class="text-[10px] transition-transform"
+              style={{
+                color: 'var(--sidebar-text-secondary)',
+                transform: tabletCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+              }}
+            >
+              &#9660;
+            </span>
+            <SectionLabel text="TABLET" />
+          </button>
+
+          {!tabletCollapsed && (
+            <div class="flex flex-col gap-2 mt-1.5">
+              {/* Pressure Curve (pen-only) */}
+              {tabletDetectedVal && (
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Pressure</span>
+                  <select
+                    class="text-[11px] rounded px-1.5 py-0.5 outline-none flex-1"
+                    style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
+                    value={strokeOpts.pressureEasing}
+                    onChange={(e) => {
+                      paintStore.strokeOptions.value = {
+                        ...paintStore.strokeOptions.value,
+                        pressureEasing: (e.target as HTMLSelectElement).value,
+                      };
+                    }}
+                  >
+                    <option value="linear">Linear</option>
+                    <option value="gentle">Gentle</option>
+                    <option value="firm">Firm</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Tilt Influence (pen-only) */}
+              {tabletDetectedVal && (
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Tilt</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={strokeOpts.tiltInfluence}
+                    class="flex-1 min-w-0 h-1 cursor-pointer"
+                    style={{accentColor: 'var(--color-accent)'}}
+                    onInput={(e) => {
+                      paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, tiltInfluence: parseFloat((e.target as HTMLInputElement).value)};
+                    }}
+                  />
+                  <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                    {strokeOpts.tiltInfluence.toFixed(1)}
+                  </span>
+                </div>
+              )}
+
+              {/* Taper Start (available for all input) */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Taper In</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={strokeOpts.taperStart}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => {
+                    paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, taperStart: parseInt((e.target as HTMLInputElement).value, 10)};
+                  }}
+                />
+                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {strokeOpts.taperStart}
+                </span>
+              </div>
+
+              {/* Taper End (available for all input) */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Taper Out</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={strokeOpts.taperEnd}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => {
+                    paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, taperEnd: parseInt((e.target as HTMLInputElement).value, 10)};
+                  }}
+                />
+                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {strokeOpts.taperEnd}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
