@@ -5,17 +5,16 @@
  * Strokes are stamped into a WebGL mask framebuffer, then composited to the
  * canvas via a spectral blend shader. brush.render() flushes this pipeline.
  *
- * Weight scaling: p5.brush computes visual diameter as
- *   2 * strokeWeight * brush.param.weight * pressure
- * Each preset has a different param.weight, so we compensate to match our
- * stroke.size (desired diameter in project pixels).
+ * Coordinate system: p5.brush uses center-origin coords where (0,0) = center.
+ * Our project-space uses top-left origin. We offset each point by (-w/2, -h/2)
+ * in JS rather than using brush.translate() to avoid WebGL state accumulation.
  */
 
 import * as brush from 'p5.brush/standalone';
 import type {PaintStroke} from '../types/paint';
 
 // ---------------------------------------------------------------------------
-// Style mapping: our BrushStyle -> p5.brush preset name
+// Style mapping + weight compensation
 // ---------------------------------------------------------------------------
 const STYLE_MAP: Record<string, string> = {
   flat: '',
@@ -26,9 +25,8 @@ const STYLE_MAP: Record<string, string> = {
   marker: 'marker',
 };
 
-// p5.brush internal param.weight for each preset — used to compensate stroke size.
-// Visual diameter = 2 * strokeWeight * paramWeight * pressure.
-// To get desired diameter D at pressure=1: strokeWeight = D / (2 * paramWeight).
+// p5.brush computes stamp diameter = 2 * strokeWeight * paramWeight * pressure.
+// To render at desired pixel diameter D: strokeWeight = D / (2 * paramWeight).
 const PARAM_WEIGHT: Record<string, number> = {
   marker: 2,
   our_ink: 0.25,
@@ -36,12 +34,15 @@ const PARAM_WEIGHT: Record<string, number> = {
   our_pencil: 0.3,
 };
 
+function compensatedWeight(brushName: string, diameter: number): number {
+  return diameter / (2 * (PARAM_WEIGHT[brushName] ?? 1));
+}
+
 // ---------------------------------------------------------------------------
-// Singleton canvas management
-// p5.brush requires WebGL2 — OffscreenCanvas doesn't support WebGL2 in
-// WKWebView (Tauri/Safari), so we use a detached HTMLCanvasElement.
+// Singleton canvas + init
 // ---------------------------------------------------------------------------
 let _canvas: HTMLCanvasElement | null = null;
+let _gl: WebGL2RenderingContext | null = null;
 let _initialized = false;
 let _customBrushesAdded = false;
 let _currentWidth = 0;
@@ -59,7 +60,6 @@ function initCustomBrushes(): void {
     pressure: [0.8, 1.2],
     rotate: 'natural',
   });
-
   brush.add('our_charcoal', {
     type: 'default',
     weight: 0.35,
@@ -69,7 +69,6 @@ function initCustomBrushes(): void {
     opacity: 120,
     rotate: 'random',
   });
-
   brush.add('our_pencil', {
     type: 'default',
     weight: 0.3,
@@ -81,13 +80,13 @@ function initCustomBrushes(): void {
 }
 
 function ensureInitialized(width: number, height: number): boolean {
-  if (typeof document === 'undefined') return false;
-  if (_loadFailed) return false;
+  if (typeof document === 'undefined' || _loadFailed) return false;
 
   if (_canvas && _initialized && _currentWidth === width && _currentHeight === height) {
     return true;
   }
 
+  // Fresh canvas each time dimensions change — avoids stale GL state
   _canvas = document.createElement('canvas');
   _canvas.width = width;
   _canvas.height = height;
@@ -97,11 +96,15 @@ function ensureInitialized(width: number, height: number): boolean {
   try {
     brush.load(_canvas);
   } catch (e) {
-    console.warn('[brushP5Adapter] p5.brush init failed (WebGL2 required):', e);
+    console.warn('[brushP5Adapter] p5.brush init failed:', e);
     _canvas = null;
     _loadFailed = true;
     return false;
   }
+
+  // Cache the GL context for explicit flush
+  _gl = _canvas.getContext('webgl2');
+
   brush.seed(42);
   _initialized = true;
 
@@ -112,14 +115,8 @@ function ensureInitialized(width: number, height: number): boolean {
   return true;
 }
 
-/** Compute strokeWeight that produces the desired pixel diameter. */
-function compensatedWeight(brushName: string, desiredDiameter: number): number {
-  const pw = PARAM_WEIGHT[brushName] ?? 1;
-  return desiredDiameter / (2 * pw);
-}
-
 // ---------------------------------------------------------------------------
-// Core rendering
+// Core rendering — no push/pop/translate, offset points in JS
 // ---------------------------------------------------------------------------
 
 export function renderStyledStrokes(
@@ -135,17 +132,20 @@ export function renderStyledStrokes(
   if (styled.length === 0) return null;
   if (!ensureInitialized(width, height)) return null;
 
-  // Lifecycle: clear → push/translate → draw all strokes → pop → render
+  const halfW = width / 2;
+  const halfH = height / 2;
+
+  // Fresh frame: clear canvas + reset compositor state
   brush.clear();
-  brush.push();
-  // p5.brush uses center-origin coords; translate so our top-left (0,0)
-  // maps to p5.brush's (-width/2, -height/2).
-  brush.translate(-width / 2, -height / 2);
 
   for (const stroke of styled) {
     const brushName = STYLE_MAP[stroke.brushStyle!] || 'marker';
     const params = stroke.brushParams ?? {};
-    const pts = stroke.points;
+
+    // Offset points from top-left origin to p5.brush centered coords
+    const pts: [number, number, number][] = stroke.points.map(
+      ([x, y, p]) => [x - halfW, y - halfH, p],
+    );
 
     // Flow field
     if ((params.fieldStrength ?? 0) > 0.01) {
@@ -154,12 +154,9 @@ export function renderStyledStrokes(
     }
 
     if (stroke.brushStyle === 'watercolor') {
-      renderWatercolorStroke(stroke, brushName);
+      renderWatercolorStroke(stroke, brushName, pts);
     } else {
-      // Weight-compensated size so visual diameter matches stroke.size
-      const w = compensatedWeight(brushName, stroke.size);
-      brush.set(brushName, stroke.color, w);
-
+      brush.set(brushName, stroke.color, compensatedWeight(brushName, stroke.size));
       if (pts.length >= 2) {
         brush.spline(pts, 0.5);
       }
@@ -168,32 +165,36 @@ export function renderStyledStrokes(
     brush.noField();
   }
 
-  brush.pop();
-  brush.render(); // flush WebGL compositing to canvas
+  // Flush WebGL compositing pipeline to canvas
+  brush.render();
+
+  // Force GPU completion — WKWebView may not implicitly sync before drawImage
+  if (_gl) _gl.finish();
 
   return _canvas;
 }
 
-function renderWatercolorStroke(stroke: PaintStroke, brushName: string): void {
+function renderWatercolorStroke(
+  stroke: PaintStroke,
+  brushName: string,
+  pts: [number, number, number][],
+): void {
   const bleed = stroke.brushParams?.bleed ?? 0.6;
   const grain = stroke.brushParams?.grain ?? 0.4;
-  const pts = stroke.points;
 
-  // Part 1: stroke path with marker brush — weight-compensated
-  const w = compensatedWeight(brushName, stroke.size);
-  brush.set(brushName, stroke.color, w);
+  // Stroke path with marker brush
+  brush.set(brushName, stroke.color, compensatedWeight(brushName, stroke.size));
   if (pts.length >= 2) {
     brush.spline(pts, 0.5);
   }
 
-  // Part 2: fill bleed circles along path for watercolor wash
+  // Fill bleed circles along path for watercolor wash
   const step = Math.max(5, Math.floor(pts.length / 12));
   for (let i = 0; i < pts.length; i += step) {
     const pt = pts[i];
     brush.fill(stroke.color, Math.round(stroke.opacity * 80));
     brush.fillBleed(bleed);
     brush.fillTexture(grain, 0.4);
-    // circle diameter in p5.brush centered coords — use raw size
     brush.circle(pt[0], pt[1], stroke.size * 0.6);
     brush.noFill();
   }
@@ -205,6 +206,7 @@ function renderWatercolorStroke(stroke: PaintStroke, brushName: string): void {
 
 export function disposeBrushFx(): void {
   _canvas = null;
+  _gl = null;
   _initialized = false;
   _currentWidth = 0;
   _currentHeight = 0;
