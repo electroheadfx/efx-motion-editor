@@ -2,10 +2,7 @@
  * p5.brush standalone adapter for brush FX rendering.
  *
  * p5.brush renders via WebGL2 with spectral pigment mixing (Kubelka-Munk).
- * Uses built-in brush presets (rotational, charcoal, 2B, marker).
- *
- * Coordinate system: p5.brush uses center-origin (0,0 = center).
- * We offset each point by (-w/2, -h/2) in JS.
+ * Uses built-in brush presets — no custom brush.add() needed.
  */
 
 import * as brush from 'p5.brush/standalone';
@@ -16,19 +13,18 @@ import type {PaintStroke} from '../types/paint';
 // ---------------------------------------------------------------------------
 const STYLE_MAP: Record<string, string> = {
   flat: '',
-  watercolor: 'marker',     // marker for the stroke spine, fill system for wash
-  ink: 'rotational',        // smooth pen with natural rotation
-  charcoal: 'charcoal',     // grainy heavy strokes
-  pencil: '2B',             // soft graphite with grain
-  marker: 'marker',         // solid disc, even coverage
+  watercolor: 'marker',   // smooth base for watercolor wash
+  ink: 'pen',              // fine pen with slight scatter
+  charcoal: 'charcoal',   // heavy grainy strokes
+  pencil: 'cpencil',      // color pencil — controlled scatter + grain
+  marker: 'marker',       // solid disc, even coverage
 };
 
-// Built-in param.weight from p5.brush source — for weight compensation.
-// Visual diameter = 2 * strokeWeight * paramWeight * pressure.
+// Built-in param.weight for weight compensation.
 const PARAM_WEIGHT: Record<string, number> = {
-  rotational: 1.5,
+  pen: 0.3,
   charcoal: 1.5,
-  '2B': 1,
+  cpencil: 0.4,
   marker: 2,
 };
 
@@ -94,9 +90,7 @@ export function renderStyledStrokes(
   const halfW = width / 2;
   const halfH = height / 2;
 
-  // Clear to proper transparent black (0,0,0,0) for correct compositing.
-  // p5.brush's default clear uses (1,1,1,0) which causes premultiplied alpha
-  // artifacts that erase flat strokes underneath when composited via drawImage.
+  // Clear to proper transparent (0,0,0,0) for correct compositing
   brush.clear();
   if (_gl) {
     _gl.clearColor(0, 0, 0, 0);
@@ -107,10 +101,15 @@ export function renderStyledStrokes(
     const brushName = STYLE_MAP[stroke.brushStyle!] || 'marker';
     const params = stroke.brushParams ?? {};
 
-    // Offset points from top-left origin to p5.brush centered coords
-    const pts: [number, number, number][] = stroke.points.map(
+    // Offset points to p5.brush centered coords + downsample for spline quality
+    const allPts: [number, number, number][] = stroke.points.map(
       ([x, y, p]) => [x - halfW, y - halfH, p],
     );
+    // Downsample dense pointer data to ~60 control points for smoother splines
+    const step = Math.max(1, Math.floor(allPts.length / 60));
+    const pts: [number, number, number][] = [];
+    for (let i = 0; i < allPts.length; i += step) pts.push(allPts[i]);
+    if (allPts.length > 1) pts.push(allPts[allPts.length - 1]);
 
     // Flow field
     if ((params.fieldStrength ?? 0) > 0.01) {
@@ -137,7 +136,7 @@ export function renderStyledStrokes(
 }
 
 // ---------------------------------------------------------------------------
-// Watercolor: fill polygon with bleed + texture for natural wash effect
+// Watercolor: spline stroke with wash effect — no filled polygon by default
 // ---------------------------------------------------------------------------
 
 function renderWatercolorStroke(
@@ -146,32 +145,25 @@ function renderWatercolorStroke(
 ): void {
   if (pts.length < 2) return;
 
-  const bleed = stroke.brushParams?.bleed ?? 0.6;
+  const bleed = stroke.brushParams?.bleed ?? 0.5;
   const grain = stroke.brushParams?.grain ?? 0.4;
-  const opacity = Math.round(stroke.opacity * 100);
 
-  // 1. Draw a filled polygon along the stroke path for the watercolor wash.
-  //    The fill/bleed system spreads color outward from the polygon boundary,
-  //    creating natural watercolor edge bleed and paper texture.
-  brush.fill(stroke.color, opacity);
+  // Draw the stroke with marker brush at reduced opacity for watercolor feel
+  const w = compensatedWeight('marker', stroke.size);
+  brush.set('marker', stroke.color, w);
+  brush.spline(pts, 0.5);
+
+  // Add watercolor wash along the stroke path using filled circles at key points
+  // This creates bleed edges without filling the entire polygon
+  const washStep = Math.max(3, Math.floor(pts.length / 8));
+  brush.fill(stroke.color, Math.round(stroke.opacity * 40));
   brush.fillBleed(bleed, 'out');
   brush.fillTexture(grain, 0.5);
-
-  brush.beginShape();
-  // Use a subset of points for the polygon (every Nth) to avoid overly complex shapes
-  const step = Math.max(1, Math.floor(pts.length / 40));
-  for (let i = 0; i < pts.length; i += step) {
-    brush.vertex(pts[i][0], pts[i][1]);
+  for (let i = 0; i < pts.length; i += washStep) {
+    const pt = pts[i];
+    brush.circle(pt[0], pt[1], stroke.size * 1.2);
   }
-  // Always include the last point
-  const last = pts[pts.length - 1];
-  brush.vertex(last[0], last[1]);
-  brush.endShape();
   brush.noFill();
-
-  // 2. Draw a soft stroke spine on top for the wet-on-wet core wash.
-  brush.set('marker', stroke.color, compensatedWeight('marker', stroke.size * 0.5));
-  brush.spline(pts, 0.5);
 }
 
 // ---------------------------------------------------------------------------
