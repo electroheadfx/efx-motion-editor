@@ -81,6 +81,12 @@ declare module 'p5.brush/standalone' {
     scatter?: boolean,
   ): void;
 
+  /** Shape drawing (for filled polygons) */
+  export function beginShape(): void;
+  export function vertex(x: number, y: number): void;
+  export function endShape(close?: boolean): void;
+  export function move(x: number, y: number): void;
+
   /** Wash */
   export function wash(color: string, opacity?: number): void;
   export function noWash(): void;
