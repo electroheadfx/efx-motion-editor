@@ -1,7 +1,7 @@
 import {getStroke} from 'perfect-freehand';
 import {floodFill, hexToRgba} from './paintFloodFill';
 import type {PaintFrame, PaintElement, PaintStroke, PaintShape, PaintFill, PaintStrokeOptions} from '../types/paint';
-import {renderStyledStrokes} from './brushFxRenderer';
+import {renderStyledStrokes} from './brushP5Adapter';
 
 /** Legacy pressure easing presets → curve exponent mapping */
 const LEGACY_EASING_CURVES: Record<string, number> = {
@@ -147,7 +147,7 @@ function renderShape(ctx: CanvasRenderingContext2D, element: PaintShape): void {
 
 /**
  * Type guard: check if a paint element is a styled (non-flat) brush stroke
- * that should be routed to the WebGL2 renderer.
+ * that should be routed to the p5.brush adapter.
  *
  * Narrowing logic:
  * 1. element.tool is safe on PaintElement (all union members have .tool)
@@ -164,7 +164,7 @@ function isStyledStroke(element: PaintElement): element is PaintStroke {
 }
 
 /**
- * Render accumulated styled strokes via WebGL2 and composite onto Canvas 2D.
+ * Render accumulated styled strokes via p5.brush adapter and composite onto Canvas 2D.
  */
 function flushStyledStrokes(
   ctx: CanvasRenderingContext2D,
@@ -172,11 +172,11 @@ function flushStyledStrokes(
   width: number,
   height: number,
 ): void {
-  const glCanvas = renderStyledStrokes(strokes, width, height);
-  if (glCanvas) {
-    ctx.drawImage(glCanvas, 0, 0);
+  const fxCanvas: HTMLCanvasElement | OffscreenCanvas | null = renderStyledStrokes(strokes, width, height);
+  if (fxCanvas) {
+    ctx.drawImage(fxCanvas, 0, 0);
   } else {
-    // WebGL2 unavailable: fall back to flat rendering for all styled strokes
+    // Adapter unavailable (jsdom/SSR): fall back to flat rendering for all styled strokes
     for (const stroke of strokes) {
       renderStroke(ctx, stroke);
     }
@@ -188,8 +188,8 @@ function flushStyledStrokes(
  *
  * Elements are rendered in order (first element = bottom, last = top).
  * Flat elements (and erasers) use the existing Canvas 2D path unchanged.
- * Styled brush strokes are batched and rendered via the WebGL2 brush FX
- * renderer, then composited back onto the Canvas 2D context.
+ * Styled brush strokes are batched and rendered via the p5.brush adapter
+ * on an OffscreenCanvas, then composited back onto the Canvas 2D context.
  *
  * Z-order is maintained: when a flat element follows styled strokes,
  * the styled batch is flushed before rendering the flat element.
@@ -205,14 +205,14 @@ export function renderPaintFrame(
   width: number,
   height: number,
 ): void {
-  // Separate elements into flat (Canvas 2D) and styled (WebGL2) groups
+  // Separate elements into flat (Canvas 2D) and styled (p5.brush) groups
   // IMPORTANT: Maintain rendering order! Elements must composite in their
   // original array order, so we process in order but track styled strokes.
   const styledStrokes: PaintStroke[] = [];
 
   for (const element of frame.elements) {
     if (isStyledStroke(element)) {
-      // Collect styled strokes for batch WebGL2 rendering
+      // Collect styled strokes for batch p5.brush rendering
       styledStrokes.push(element);
     } else {
       // Render flat elements inline via Canvas 2D (existing path, unchanged)

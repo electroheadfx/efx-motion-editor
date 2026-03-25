@@ -13,7 +13,7 @@
  */
 
 import * as brush from 'p5.brush/standalone';
-import type {PaintStroke, BrushStyle, BrushFxParams} from '../types/paint';
+import type {PaintStroke} from '../types/paint';
 
 // ---------------------------------------------------------------------------
 // Style mapping: our BrushStyle -> p5.brush preset name
@@ -80,6 +80,9 @@ function initCustomBrushes(): void {
  * Ensure the OffscreenCanvas and p5.brush are initialized at the right size.
  */
 function ensureInitialized(width: number, height: number): void {
+  // Guard: OffscreenCanvas not available in jsdom test env or SSR
+  if (typeof OffscreenCanvas === 'undefined') return;
+
   if (_offscreen && _initialized && _currentWidth === width && _currentHeight === height) {
     return;
   }
@@ -146,6 +149,11 @@ export function renderStyledStrokes(
   width: number,
   height: number,
 ): OffscreenCanvas | null {
+  // Guard: OffscreenCanvas not available in jsdom test env or SSR
+  if (typeof OffscreenCanvas === 'undefined') {
+    return null;
+  }
+
   // Filter out flat and eraser strokes (safety check)
   const styled = strokes.filter(
     (s) => s.tool === 'brush' && s.brushStyle && s.brushStyle !== 'flat',
