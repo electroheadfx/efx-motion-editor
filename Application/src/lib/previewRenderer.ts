@@ -13,6 +13,7 @@ import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
 import {renderPaintFrame} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
+import {projectStore} from '../stores/projectStore';
 
 /**
  * Create a Canvas 2D gradient from GradientData.
@@ -124,9 +125,11 @@ export class PreviewRenderer {
    * Render all visible layers for the given frame number.
    * Called on every frame change and on layer property changes.
    * @param layers - layers array in bottom-to-top order (index 0 = bottom)
-   * @param frame - current frame number (0-based)
+   * @param frame - current frame number (0-based, local to the sequence)
    * @param frames - flattened frame map for image-sequence base layer lookup
    * @param fps - frames per second from the active sequence, needed for video layer time sync
+   * @param globalFrame - absolute timeline frame for paint layer lookup (paint
+   *   data is stored by global frame). When omitted, falls back to `frame`.
    */
   renderFrame(
     layers: Layer[],
@@ -135,7 +138,11 @@ export class PreviewRenderer {
     fps: number,
     clearCanvas = true,
     sequenceOpacity = 1.0,
+    globalFrame?: number,
   ): void {
+    // Paint layers are keyed by global (absolute) timeline frame, not the
+    // sequence-local frame used for content/generator layers.
+    const paintLookupFrame = globalFrame ?? frame;
     // Sync canvas internal resolution to layout size (excludes CSS transforms like zoom).
     // For offscreen canvases (clientWidth=0), use canvas.width/height directly with dpr=1.
     const layoutW = this.canvas.clientWidth || this.canvas.offsetWidth;
@@ -165,7 +172,7 @@ export class PreviewRenderer {
           hasDrawable = true;
           break;
         } else if (layer.type === 'paint') {
-          const pf = paintStore.getFrame(layer.id, frame);
+          const pf = paintStore.getFrame(layer.id, paintLookupFrame);
           if (pf && pf.elements.length > 0) {
             hasDrawable = true;
             break;
@@ -266,19 +273,26 @@ export class PreviewRenderer {
       } else if (isAdjustmentLayer(layer)) {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
       } else if (layer.type === 'paint') {
-        const paintFrame = paintStore.getFrame(layer.id, frame);
+        const paintFrame = paintStore.getFrame(layer.id, paintLookupFrame);
         if (paintFrame && paintFrame.elements.length > 0) {
           // Render paint to offscreen canvas so eraser's destination-out
-          // only erases paint (not the underlying image)
+          // only erases paint (not the underlying image).
+          // Paint data is stored in project-space coordinates, so we render
+          // to a project-sized offscreen and then draw it scaled to the
+          // output (logicalW x logicalH). During live preview logicalW ==
+          // projectWidth so no scaling occurs; during export at e.g. 0.5x
+          // the drawImage call scales paint down to match.
+          const projW = projectStore.width.peek();
+          const projH = projectStore.height.peek();
           const off = document.createElement('canvas');
-          off.width = logicalW;
-          off.height = logicalH;
+          off.width = projW;
+          off.height = projH;
           const offCtx = off.getContext('2d')!;
-          renderPaintFrame(offCtx, paintFrame, logicalW, logicalH);
+          renderPaintFrame(offCtx, paintFrame, projW, projH);
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
           ctx.globalAlpha = effectiveOpacity;
-          ctx.drawImage(off, 0, 0);
+          ctx.drawImage(off, 0, 0, logicalW, logicalH);
           ctx.restore();
         }
       } else {

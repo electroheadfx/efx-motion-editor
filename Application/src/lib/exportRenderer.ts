@@ -138,14 +138,14 @@ export function renderGlobalFrame(
             const outFrames = buildSequenceFrames(outSeq);
             const outLayers = interpolateLayers(outSeq, outLocalFrame);
             const rendererA = renderer.cloneForCanvas(offA);
-            rendererA.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, 1.0);
+            rendererA.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, 1.0, globalFrame);
 
             // Render incoming sequence to offscreen B (share image cache with main renderer)
             const inLocalFrame = overlap.incomingLocalFrameStart + framesIntoOverlap;
             const inFrames = buildSequenceFrames(inSeq);
             const inLayers = interpolateLayers(inSeq, inLocalFrame);
             const rendererB = renderer.cloneForCanvas(offB);
-            rendererB.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, true, 1.0);
+            rendererB.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, true, 1.0, globalFrame);
 
             // Compute eased progress (per D-07)
             const progress = computeTransitionProgress(
@@ -195,7 +195,7 @@ export function renderGlobalFrame(
           const fadeOpacity = computeFadeOpacity(outLocalFrame, outSeqTotalFrames, undefined, outSeq.fadeOut);
           effectiveOutOpacity *= fadeOpacity;
         }
-        renderer.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, effectiveOutOpacity);
+        renderer.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, effectiveOutOpacity, globalFrame);
       }
 
       // --- Render incoming sequence ON TOP ---
@@ -215,7 +215,7 @@ export function renderGlobalFrame(
           effectiveInOpacity *= fadeOpacity;
         }
         // clearCanvas=false so incoming composites ON TOP of outgoing
-        renderer.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, false, effectiveInOpacity);
+        renderer.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, false, effectiveInOpacity, globalFrame);
       }
 
       break; // Only one cross dissolve can be active at a time
@@ -239,7 +239,7 @@ export function renderGlobalFrame(
 
     if (isSolidMode) {
       // Solid mode: render content at full opacity, then overlay solid color
-      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps);
+      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, 1.0, globalFrame);
       const solidAlpha = computeSolidFadeAlpha(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
       if (solidAlpha > 0) {
         const color = activeFade?.color ?? '#000000';
@@ -253,7 +253,7 @@ export function renderGlobalFrame(
       }
     } else {
       // Transparency mode: render content with reduced opacity via sequenceOpacity
-      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity);
+      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity, globalFrame);
     }
   }
 
@@ -290,7 +290,7 @@ export function renderGlobalFrame(
         // Apply fade opacity to content-overlay sequence (transparency mode only)
         const overlayTotalFrames = (overlaySeq.outFrame ?? 100) - (overlaySeq.inFrame ?? 0);
         const overlayFadeOpacity = computeFadeOpacity(overlayLocalFrame, overlayTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
-        renderer.renderFrame(overlayLayers, overlayLocalFrame, seqFrames, seq.fps, false, overlayFadeOpacity);
+        renderer.renderFrame(overlayLayers, overlayLocalFrame, seqFrames, seq.fps, false, overlayFadeOpacity, globalFrame);
       }
     } else {
       // FX sequence: apply keyframe interpolation to FX layers
@@ -315,7 +315,7 @@ export function renderGlobalFrame(
       if (fxLayers.length > 0) {
         // Apply fade opacity to FX sequence (transparency mode only)
         const fxFadeOpacity = computeFadeOpacity(fxLocalFrame, fxTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
-        renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false, fxFadeOpacity);
+        renderer.renderFrame(fxLayers, localFrame, seqFrames, seq.fps, false, fxFadeOpacity, globalFrame);
       }
     }
   }
