@@ -9,19 +9,19 @@ Requirements for milestone v0.5.0: Motion Blur & Paint Styles. Each maps to road
 
 ### Paint Brush FX
 
-- [ ] **PAINT-01**: User can select brush style (flat/watercolor/ink/charcoal/pencil/marker) from PaintProperties panel
-- [ ] **PAINT-02**: User can draw with ink brush style showing edge darkening and variable opacity overlap
-- [ ] **PAINT-03**: User can draw with charcoal brush style showing grain texture and scatter
-- [ ] **PAINT-04**: User can draw with pencil brush style showing fine-grain texture
-- [ ] **PAINT-05**: User can draw with marker brush style showing flat semi-transparent strokes
-- [ ] **PAINT-06**: User can see physically-correct color blending when overlapping strokes mix (spectral mixing: blue + yellow = green)
-- [ ] **PAINT-07**: User can draw with watercolor brush style showing edge bleed and paper texture
-- [ ] **PAINT-08**: User can adjust brush FX parameters (grain, bleed, scatter, field strength, edge darken)
-- [ ] **PAINT-09**: User can see flow field distortion affecting stroke paths for organic rendering
-- [ ] **PAINT-10**: User can see grain/texture post-effects simulating paper absorption
-- [ ] **PAINT-11**: Flat brush strokes render identically to current behavior (no regression)
+- [x] **PAINT-01**: User can select brush style (flat/watercolor/ink/charcoal/pencil/marker) from PaintProperties panel
+- [x] **PAINT-02**: User can draw with ink brush style showing edge darkening and variable opacity overlap
+- [x] **PAINT-03**: User can draw with charcoal brush style showing grain texture and scatter
+- [x] **PAINT-04**: User can draw with pencil brush style showing fine-grain texture
+- [x] **PAINT-05**: User can draw with marker brush style showing flat semi-transparent strokes
+- [x] **PAINT-06**: User can see physically-correct color blending when overlapping strokes mix (spectral mixing: blue + yellow = green)
+- [x] **PAINT-07**: User can draw with watercolor brush style showing edge bleed and paper texture
+- [x] **PAINT-08**: User can adjust brush FX parameters (grain, bleed, scatter, field strength, edge darken)
+- [x] **PAINT-09**: User can see flow field distortion affecting stroke paths for organic rendering
+- [x] **PAINT-10**: User can see grain/texture post-effects simulating paper absorption
+- [x] **PAINT-11**: Flat brush strokes render identically to current behavior (no regression)
 - [ ] **PAINT-12**: Paint brush FX render correctly in export pipeline
-- [ ] **PAINT-13**: Brush style and FX params persist in paint sidecar JSON files
+- [x] **PAINT-13**: Brush style and FX params persist in paint sidecar JSON files
 
 ### Motion Blur
 
@@ -69,19 +69,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PAINT-01 | Phase 20 | Pending |
-| PAINT-02 | Phase 20 | Pending |
-| PAINT-03 | Phase 20 | Pending |
-| PAINT-04 | Phase 20 | Pending |
-| PAINT-05 | Phase 20 | Pending |
-| PAINT-06 | Phase 20 | Pending |
-| PAINT-07 | Phase 20 | Pending |
-| PAINT-08 | Phase 20 | Pending |
-| PAINT-09 | Phase 20 | Pending |
-| PAINT-10 | Phase 20 | Pending |
-| PAINT-11 | Phase 20 | Pending |
+| PAINT-01 | Phase 20 | Complete |
+| PAINT-02 | Phase 20 | Complete |
+| PAINT-03 | Phase 20 | Complete |
+| PAINT-04 | Phase 20 | Complete |
+| PAINT-05 | Phase 20 | Complete |
+| PAINT-06 | Phase 20 | Complete |
+| PAINT-07 | Phase 20 | Complete |
+| PAINT-08 | Phase 20 | Complete |
+| PAINT-09 | Phase 20 | Complete |
+| PAINT-10 | Phase 20 | Complete |
+| PAINT-11 | Phase 20 | Complete |
 | PAINT-12 | Phase 20 | Pending |
-| PAINT-13 | Phase 20 | Pending |
+| PAINT-13 | Phase 20 | Complete |
 | MBLR-01 | Phase 21 | Pending |
 | MBLR-02 | Phase 21 | Pending |
 | MBLR-03 | Phase 21 | Pending |

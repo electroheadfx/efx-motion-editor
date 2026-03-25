@@ -109,12 +109,12 @@ See: `milestones/v0.4.0-ROADMAP.md` for full details.
 **Plans**: 8 plans
 
 Plans:
-- [ ] 20-00-PLAN.md — Wave 0 test stubs (Nyquist scaffold for all 7 test files)
-- [ ] 20-01-PLAN.md — Types, store signals, persistence wiring, and PaintOverlay stroke attachment
-- [ ] 20-02-PLAN.md — GLSL shader source strings (spectral, noise, post-effects)
-- [ ] 20-03-PLAN.md — WebGL2 brush FX renderer core (context, framebuffers, stamp rendering, spectral compositing)
-- [ ] 20-04-PLAN.md — Brush style selector UI and BRUSH FX parameter sliders
-- [ ] 20-05-PLAN.md — Per-style rendering configs (ink/charcoal/pencil/marker) and flow field module
+- [x] 20-00-PLAN.md — Wave 0 test stubs (Nyquist scaffold for all 7 test files)
+- [x] 20-01-PLAN.md — Types, store signals, persistence wiring, and PaintOverlay stroke attachment
+- [x] 20-02-PLAN.md — GLSL shader source strings (spectral, noise, post-effects)
+- [x] 20-03-PLAN.md — WebGL2 brush FX renderer core (context, framebuffers, stamp rendering, spectral compositing)
+- [x] 20-04-PLAN.md — Brush style selector UI and BRUSH FX parameter sliders
+- [x] 20-05-PLAN.md — Per-style rendering configs (ink/charcoal/pencil/marker) and flow field module
 - [ ] 20-06-PLAN.md — Watercolor polygon deformation and renderer integration
 - [ ] 20-07-PLAN.md — Paint renderer routing integration, export parity, and visual verification
 
@@ -146,5 +146,5 @@ Phases execute in numeric order: 20 → 21
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
-| 20. Paint Brush FX | v0.5.0 | 1/8 | In Progress | - |
+| 20. Paint Brush FX | v0.5.0 | 6/8 | In Progress|  |
 | 21. Motion Blur | v0.5.0 | 0/? | Not started | - |
