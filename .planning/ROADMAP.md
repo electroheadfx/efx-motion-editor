@@ -117,7 +117,7 @@ Plans:
 - [x] 20-05-PLAN.md — Per-style rendering configs (ink/charcoal/pencil/marker) and flow field module
 - [x] 20-06-PLAN.md — Watercolor polygon deformation and renderer integration
 - [x] 20-07-PLAN.md — Paint renderer routing integration, export parity, and visual verification
-- [ ] 20-08-PLAN.md — [GAP CLOSURE] Replace custom renderer with p5.brush standalone adapter
+- [x] 20-08-PLAN.md — [GAP CLOSURE] Replace custom renderer with p5.brush standalone adapter
 - [ ] 20-09-PLAN.md — [GAP CLOSURE] Rewire paintRenderer to p5.brush adapter and visual verification
 
 ### Phase 21: Motion Blur
@@ -148,5 +148,5 @@ Phases execute in numeric order: 20 → 21
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
-| 20. Paint Brush FX | v0.5.0 | 6/10 | In Progress (gap closure) |  |
+| 20. Paint Brush FX | v0.5.0 | 8/10 | In Progress|  |
 | 21. Motion Blur | v0.5.0 | 0/? | Not started | - |
