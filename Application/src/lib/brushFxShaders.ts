@@ -402,3 +402,209 @@ export function buildSpectralCompositeSrc(): string {
     + SPECTRAL_GLSL + '\n'
     + SPECTRAL_COMPOSITE_FRAG_BODY;
 }
+
+// ---------------------------------------------------------------------------
+// 6. Simplex 2D noise — ashima/webgl-noise (MIT license)
+//    Source: https://github.com/ashima/webgl-noise
+//    Self-contained snoise(vec2) returning float in [-1, 1]
+// ---------------------------------------------------------------------------
+
+export const SIMPLEX_NOISE_GLSL = `
+//
+// Description : Array and textureless GLSL 2D simplex noise function.
+//      Author : Ian McEwan, Ashima Arts.
+//  Maintainer : stegu
+//     Lastmod : 20110822 (ijm)
+//     License : Copyright (C) 2011 Ashima Arts. All rights reserved.
+//               Distributed under the MIT License. See LICENSE file.
+//               https://github.com/ashima/webgl-noise
+//               https://github.com/stegu/webgl-noise
+//
+
+vec3 mod289(vec3 x) {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec2 mod289(vec2 x) {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec3 permute(vec3 x) {
+  return mod289(((x * 34.0) + 10.0) * x);
+}
+
+float snoise(vec2 v) {
+  const vec4 C = vec4( 0.211324865405187,  // (3.0-sqrt(3.0))/6.0
+                       0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
+                      -0.577350269189626,  // -1.0 + 2.0 * C.x
+                       0.024390243902439); // 1.0 / 41.0
+  // First corner
+  vec2 i  = floor(v + dot(v, C.yy));
+  vec2 x0 = v -   i + dot(i, C.xx);
+
+  // Other corners
+  vec2 i1;
+  i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+  vec4 x12 = x0.xyxy + C.xxzz;
+  x12.xy -= i1;
+
+  // Permutations
+  i = mod289(i); // Avoid truncation effects in permutation
+  vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0))
+                          + i.x + vec3(0.0, i1.x, 1.0));
+
+  vec3 m = max(0.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy),
+                           dot(x12.zw, x12.zw)), 0.0);
+  m = m * m;
+  m = m * m;
+
+  // Gradients: 41 points uniformly over a line, mapped onto a diamond.
+  // The ring size 17*17 = 289 is close to a multiple of 41 (41*7 = 287)
+  vec3 x = 2.0 * fract(p * C.www) - 1.0;
+  vec3 h = abs(x) - 0.5;
+  vec3 ox = floor(x + 0.5);
+  vec3 a0 = x - ox;
+
+  // Normalise gradients implicitly by scaling m
+  // Approximation of: m *= inversesqrt( a0*a0 + h*h );
+  m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
+
+  // Compute final noise value at P
+  vec3 g;
+  g.x  = a0.x  * x0.x  + h.x  * x0.y;
+  g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+  return 130.0 * dot(m, g);
+}
+`;
+
+// ---------------------------------------------------------------------------
+// 7. Grain post-effect fragment shader — paper texture (D-13, PAINT-10)
+//    Simplex noise is prepended via buildGrainPostSrc()
+// ---------------------------------------------------------------------------
+
+const GRAIN_POST_FRAG_BODY = `
+in vec2 v_texCoord;
+uniform sampler2D u_input;
+uniform float u_grain;       // 0-1 grain intensity
+uniform vec2 u_resolution;
+out vec4 out_fragColor;
+
+void main() {
+  vec4 color = texture(u_input, v_texCoord);
+  if (color.a < 0.001) { out_fragColor = color; return; }
+  vec2 noiseCoord = gl_FragCoord.xy;
+  float noise = snoise(noiseCoord * 0.15) * 0.5
+              + snoise(noiseCoord * 0.3) * 0.25
+              + snoise(noiseCoord * 0.6) * 0.125;
+  float grainMask = 1.0 - u_grain * noise * 0.3;
+  out_fragColor = vec4(color.rgb * grainMask, color.a * grainMask);
+}
+`;
+
+/**
+ * Build the full grain post-effect fragment shader source by concatenating
+ * the version/precision header, simplex noise library, and grain body.
+ */
+export function buildGrainPostSrc(): string {
+  return '#version 300 es\nprecision highp float;\n'
+    + SIMPLEX_NOISE_GLSL + '\n'
+    + GRAIN_POST_FRAG_BODY;
+}
+
+// ---------------------------------------------------------------------------
+// 8. Edge darkening post-effect fragment shader — ink pooling simulation
+//    Self-contained (no noise dependency)
+// ---------------------------------------------------------------------------
+
+export const EDGE_DARKEN_POST_FRAG_SRC = `#version 300 es
+precision highp float;
+in vec2 v_texCoord;
+uniform sampler2D u_input;
+uniform float u_edgeDarken;  // 0-1 strength
+out vec4 out_fragColor;
+void main() {
+  vec4 color = texture(u_input, v_texCoord);
+  if (color.a < 0.001) { out_fragColor = color; return; }
+  float darkenFactor = smoothstep(0.4, 0.9, color.a) * u_edgeDarken * 0.4;
+  out_fragColor = vec4(color.rgb * (1.0 - darkenFactor), color.a);
+}
+`;
+
+// ---------------------------------------------------------------------------
+// 9. Bleed post-effect fragment shader — watercolor edge spread
+//    Simplex noise is prepended via buildBleedPostSrc()
+// ---------------------------------------------------------------------------
+
+const BLEED_POST_FRAG_BODY = `
+in vec2 v_texCoord;
+uniform sampler2D u_input;
+uniform float u_bleed;       // 0-1 bleed strength
+uniform vec2 u_resolution;
+out vec4 out_fragColor;
+
+void main() {
+  vec4 center = texture(u_input, v_texCoord);
+  vec2 texel = 1.0 / u_resolution;
+  float bleedRadius = u_bleed * 4.0;
+
+  // Sample neighbors with noise-offset for organic edge
+  float angle = snoise(gl_FragCoord.xy * 0.1) * 3.14159;
+  vec2 offset = vec2(cos(angle), sin(angle)) * texel * bleedRadius;
+
+  vec4 s1 = texture(u_input, v_texCoord + offset);
+  vec4 s2 = texture(u_input, v_texCoord - offset);
+  vec4 s3 = texture(u_input, v_texCoord + offset.yx * vec2(1.0, -1.0));
+  vec4 s4 = texture(u_input, v_texCoord - offset.yx * vec2(1.0, -1.0));
+
+  vec4 blurred = (center * 2.0 + s1 + s2 + s3 + s4) / 6.0;
+
+  // Only bleed where there is paint (alpha > 0)
+  float bleedMask = smoothstep(0.0, 0.1, max(center.a, max(max(s1.a, s2.a), max(s3.a, s4.a))));
+  out_fragColor = mix(center, blurred, u_bleed * bleedMask * 0.6);
+}
+`;
+
+/**
+ * Build the full bleed post-effect fragment shader source by concatenating
+ * the version/precision header, simplex noise library, and bleed body.
+ */
+export function buildBleedPostSrc(): string {
+  return '#version 300 es\nprecision highp float;\n'
+    + SIMPLEX_NOISE_GLSL + '\n'
+    + BLEED_POST_FRAG_BODY;
+}
+
+// ---------------------------------------------------------------------------
+// 10. Scatter offset fragment shader — charcoal scatter + grain
+//     Simplex noise is prepended via buildScatterStampSrc()
+// ---------------------------------------------------------------------------
+
+const SCATTER_OFFSET_FRAG_BODY = `
+in vec2 v_texCoord;
+uniform vec4 u_color;
+uniform float u_hardness;
+uniform float u_scatter;     // 0-1 scatter amount
+out vec4 out_fragColor;
+
+void main() {
+  vec2 uv = v_texCoord;
+  float noiseX = snoise(gl_FragCoord.xy * 0.2) * u_scatter * 0.1;
+  float noiseY = snoise(gl_FragCoord.xy * 0.2 + 100.0) * u_scatter * 0.1;
+  uv += vec2(noiseX, noiseY);
+  float dist = length(uv - 0.5) * 2.0;
+  float alpha = 1.0 - smoothstep(u_hardness, 1.0, dist);
+  // Add grain texture to stamp itself
+  float grain = snoise(gl_FragCoord.xy * 0.4) * 0.3 + 0.85;
+  out_fragColor = vec4(u_color.rgb, u_color.a * alpha * grain);
+}
+`;
+
+/**
+ * Build the full scatter stamp fragment shader source by concatenating
+ * the version/precision header, simplex noise library, and scatter body.
+ */
+export function buildScatterStampSrc(): string {
+  return '#version 300 es\nprecision highp float;\n'
+    + SIMPLEX_NOISE_GLSL + '\n'
+    + SCATTER_OFFSET_FRAG_BODY;
+}
