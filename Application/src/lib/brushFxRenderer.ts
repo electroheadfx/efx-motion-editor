@@ -24,6 +24,7 @@ import {
   buildScatterStampSrc,
 } from './brushFxShaders';
 import {getFlowField, applyFlowField} from './brushFlowField';
+import {renderWatercolorLayers, polygonToTriangles, polygonCenter} from './brushWatercolor';
 
 // ---------------------------------------------------------------------------
 // Module-level state (same pattern as glBlur.ts)
@@ -57,6 +58,11 @@ let _accumTex_B: WebGLTexture | null = null;
 let _postFBO: WebGLFramebuffer | null = null;
 let _postTex: WebGLTexture | null = null;
 
+// Watercolor triangle rendering resources
+let _watercolorVAO: WebGLVertexArrayObject | null = null;
+let _watercolorVBO: WebGLBuffer | null = null;
+let _watercolorProgram: WebGLProgram | null = null;
+
 // Quad geometry (shared VAOs)
 let _quadVAO: WebGLVertexArrayObject | null = null;
 let _stampVAO: WebGLVertexArrayObject | null = null;
@@ -68,6 +74,27 @@ in vec2 v_texCoord;
 uniform sampler2D u_input;
 out vec4 out_fragColor;
 void main() { out_fragColor = texture(u_input, v_texCoord); }
+`;
+
+// Watercolor vertex shader: triangle positions in pixel coords to NDC
+const WATERCOLOR_VERT_SRC = `#version 300 es
+uniform vec2 u_resolution;
+layout(location = 0) in vec2 a_position;
+void main() {
+  vec2 ndc = (a_position / u_resolution) * 2.0 - 1.0;
+  ndc.y = -ndc.y;
+  gl_Position = vec4(ndc, 0.0, 1.0);
+}
+`;
+
+// Watercolor fragment shader: flat color with given opacity
+const WATERCOLOR_FRAG_SRC = `#version 300 es
+precision highp float;
+uniform vec4 u_color;
+out vec4 out_fragColor;
+void main() {
+  out_fragColor = u_color;
+}
 `;
 
 // ---------------------------------------------------------------------------
@@ -301,6 +328,7 @@ function clearAllResources(): void {
   _edgeDarkenProgram = null;
   _bleedProgram = null;
   _passthroughProgram = null;
+  _watercolorProgram = null;
   _strokeFBO = null;
   _strokeTex = null;
   _accumFBO_A = null;
@@ -311,6 +339,8 @@ function clearAllResources(): void {
   _postTex = null;
   _quadVAO = null;
   _stampVAO = null;
+  _watercolorVAO = null;
+  _watercolorVBO = null;
   _currentW = 0;
   _currentH = 0;
 }
@@ -345,6 +375,7 @@ function ensurePrograms(gl: WebGL2RenderingContext): boolean {
   _edgeDarkenProgram = linkProgram(gl, BRUSH_FX_VERT_SRC, EDGE_DARKEN_POST_FRAG_SRC);
   _bleedProgram = linkProgram(gl, BRUSH_FX_VERT_SRC, buildBleedPostSrc());
   _passthroughProgram = linkProgram(gl, BRUSH_FX_VERT_SRC, PASSTHROUGH_FRAG_SRC);
+  _watercolorProgram = linkProgram(gl, WATERCOLOR_VERT_SRC, WATERCOLOR_FRAG_SRC);
 
   if (!_stampProgram || !_compositeProgram || !_passthroughProgram) {
     console.warn('brushFxRenderer: failed to compile required shader programs');
@@ -390,6 +421,10 @@ function ensureVAOs(gl: WebGL2RenderingContext): boolean {
   if (_quadVAO && _stampVAO) return true;
   _quadVAO = setupQuadVAO(gl);
   _stampVAO = setupStampVAO(gl);
+  if (!_watercolorVAO) {
+    _watercolorVAO = gl.createVertexArray();
+    _watercolorVBO = gl.createBuffer();
+  }
   return !!_quadVAO && !!_stampVAO;
 }
 
@@ -560,6 +595,83 @@ function renderStrokeStamps(
     gl.uniform2f(uCenter, stamp.x, stamp.y);
     gl.uniform2f(uSize, stampSize, stampSize);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  gl.bindVertexArray(null);
+  gl.disable(gl.BLEND);
+}
+
+// ---------------------------------------------------------------------------
+// Watercolor rendering
+// ---------------------------------------------------------------------------
+
+/**
+ * Simple string hash for deterministic seed from stroke.id (D-12).
+ */
+function hashStringToNumber(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Render a watercolor stroke using polygon deformation layers.
+ * Instead of stamp quads, renders 7 semi-transparent deformed polygon layers
+ * using fan triangulation (Tyler Hobbs technique, simplified per D-11).
+ */
+function renderWatercolorStroke(
+  gl: WebGL2RenderingContext,
+  stroke: PaintStroke,
+  w: number,
+  h: number,
+): void {
+  if (!_watercolorProgram || !_watercolorVAO || !_watercolorVBO) return;
+
+  // 1. Get outline from perfect-freehand
+  const outline = getStroke(stroke.points, {
+    size: stroke.size,
+    thinning: stroke.options.thinning,
+    smoothing: stroke.options.smoothing,
+    streamline: stroke.options.streamline,
+    simulatePressure: stroke.options.simulatePressure,
+    last: true,
+  });
+  if (outline.length < 3) return;
+
+  // 2. Generate deformed polygon layers (deterministic via stroke.id as seed)
+  const seed = hashStringToNumber(stroke.id);
+  const layerCount = 7; // within 5-10 range per D-11
+  const layers = renderWatercolorLayers(outline as [number, number][], seed, layerCount);
+
+  // 3. Render each layer as semi-transparent triangles to stroke FBO
+  gl.bindFramebuffer(gl.FRAMEBUFFER, _strokeFBO);
+  gl.viewport(0, 0, w, h);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  gl.useProgram(_watercolorProgram);
+  gl.uniform2f(gl.getUniformLocation(_watercolorProgram, 'u_resolution'), w, h);
+
+  const [r, g, b] = hexToGLColor(stroke.color, stroke.opacity);
+  const perLayerAlpha = stroke.opacity * 0.3 / layerCount;
+
+  gl.bindVertexArray(_watercolorVAO);
+
+  for (const layer of layers) {
+    const center = polygonCenter(layer);
+    const triangles = polygonToTriangles(layer, center);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, _watercolorVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, triangles, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+    gl.uniform4f(gl.getUniformLocation(_watercolorProgram, 'u_color'), r, g, b, perLayerAlpha);
+    gl.drawArrays(gl.TRIANGLES, 0, triangles.length / 2);
   }
 
   gl.bindVertexArray(null);
@@ -754,8 +866,12 @@ export function renderStyledStrokes(
   let writeAccumTex = _accumTex_B!;
 
   for (const stroke of renderStrokes) {
-    // 1. Render stroke stamps to _strokeFBO
-    renderStrokeStamps(gl, stroke, width, height);
+    // 1. Render stroke to _strokeFBO (watercolor uses polygon deformation, others use stamp quads)
+    if (stroke.brushStyle === 'watercolor') {
+      renderWatercolorStroke(gl, stroke, width, height);
+    } else {
+      renderStrokeStamps(gl, stroke, width, height);
+    }
 
     // 2. Composite _strokeTex onto accumulation buffer using spectral mix
     compositeSpectral(gl, readAccumTex, _strokeTex!, writeAccumFBO, width, height);
@@ -823,6 +939,7 @@ export function disposeBrushFx(): void {
   if (_edgeDarkenProgram) gl.deleteProgram(_edgeDarkenProgram);
   if (_bleedProgram) gl.deleteProgram(_bleedProgram);
   if (_passthroughProgram) gl.deleteProgram(_passthroughProgram);
+  if (_watercolorProgram) gl.deleteProgram(_watercolorProgram);
 
   // Delete FBOs and textures
   deleteFBOs(gl);
@@ -830,6 +947,8 @@ export function disposeBrushFx(): void {
   // Delete VAOs
   if (_quadVAO) gl.deleteVertexArray(_quadVAO);
   if (_stampVAO) gl.deleteVertexArray(_stampVAO);
+  if (_watercolorVAO) gl.deleteVertexArray(_watercolorVAO);
+  if (_watercolorVBO) gl.deleteBuffer(_watercolorVBO);
 
   clearAllResources();
 
