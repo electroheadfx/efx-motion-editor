@@ -106,10 +106,10 @@ See: `milestones/v0.4.0-ROADMAP.md` for full details.
   3. User can draw with the watercolor brush and see edge bleed, paper texture, and flow field distortion producing organic, non-mechanical stroke paths
   4. User can export a project containing styled brush strokes and the exported frames render identically to the canvas preview
   5. User can open a previously saved project and all brush styles and FX parameters are preserved exactly as drawn
-**Plans**: 7 plans
-**UI hint**: yes
+**Plans**: 8 plans
 
 Plans:
+- [ ] 20-00-PLAN.md — Wave 0 test stubs (Nyquist scaffold for all 7 test files)
 - [ ] 20-01-PLAN.md — Types, store signals, persistence wiring, and PaintOverlay stroke attachment
 - [ ] 20-02-PLAN.md — GLSL shader source strings (spectral, noise, post-effects)
 - [ ] 20-03-PLAN.md — WebGL2 brush FX renderer core (context, framebuffers, stamp rendering, spectral compositing)
@@ -146,5 +146,5 @@ Phases execute in numeric order: 20 → 21
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
-| 20. Paint Brush FX | v0.5.0 | 0/7 | Planning complete | - |
+| 20. Paint Brush FX | v0.5.0 | 0/8 | Planning complete | - |
 | 21. Motion Blur | v0.5.0 | 0/? | Not started | - |
