@@ -124,49 +124,54 @@ const STYLE_CONFIGS: Record<string, StyleConfig> = {
     postEffects: [],
   },
   ink: {
-    hardness: 0.45,
-    stampSpacing: 0.06,
-    opacityMultiplier: 0.55,
-    sizeJitter: 0.05,
-    posJitter: 0.02,
-    opacityJitter: 0.1,
+    // Bold flowing ink — high opacity, slight vibration, edge darkening
+    hardness: 0.55,
+    stampSpacing: 0.05,
+    opacityMultiplier: 0.9,
+    sizeJitter: 0.03,
+    posJitter: 0.015,
+    opacityJitter: 0.08,
     useScatterShader: false,
     postEffects: ['edgeDarken'],
   },
   charcoal: {
-    hardness: 0.15,
-    stampSpacing: 0.08,
-    opacityMultiplier: 0.35,
-    sizeJitter: 0.2,
-    posJitter: 0.15,
-    opacityJitter: 0.3,
+    // Gritty textured — medium density, scatter gives rough edge, strong grain
+    hardness: 0.2,
+    stampSpacing: 0.06,
+    opacityMultiplier: 0.7,
+    sizeJitter: 0.25,
+    posJitter: 0.08,
+    opacityJitter: 0.35,
     useScatterShader: true,
     postEffects: ['grain'],
   },
   pencil: {
-    hardness: 0.35,
-    stampSpacing: 0.04,
-    opacityMultiplier: 0.25,
-    sizeJitter: 0.08,
-    posJitter: 0.03,
-    opacityJitter: 0.15,
+    // Fine thin lines — tight spacing, lower opacity for layered shading
+    hardness: 0.45,
+    stampSpacing: 0.03,
+    opacityMultiplier: 0.5,
+    sizeJitter: 0.06,
+    posJitter: 0.02,
+    opacityJitter: 0.12,
     useScatterShader: false,
     postEffects: ['grain'],
   },
   marker: {
-    hardness: 0.7,
-    stampSpacing: 0.04,
-    opacityMultiplier: 0.4,
-    sizeJitter: 0.02,
-    posJitter: 0.01,
-    opacityJitter: 0.05,
+    // Flat even coverage — hard edge, dense, consistent opacity
+    hardness: 0.75,
+    stampSpacing: 0.03,
+    opacityMultiplier: 0.65,
+    sizeJitter: 0.01,
+    posJitter: 0.005,
+    opacityJitter: 0.03,
     useScatterShader: false,
     postEffects: [],
   },
   watercolor: {
+    // Watercolor uses polygon path, stamps are fallback only
     hardness: 0.1,
-    stampSpacing: 0.1,
-    opacityMultiplier: 0.2,
+    stampSpacing: 0.08,
+    opacityMultiplier: 0.3,
     sizeJitter: 0.15,
     posJitter: 0.1,
     opacityJitter: 0.2,
@@ -705,8 +710,11 @@ function renderWatercolorStroke(
   gl.uniform2f(gl.getUniformLocation(_watercolorProgram, 'u_resolution'), w, h);
 
   const [r, g, b] = hexToGLColor(stroke.color, stroke.opacity);
-  // Each layer is semi-transparent; 7 layers at ~12% each → ~60% peak opacity
-  const perLayerAlpha = stroke.opacity * 0.85 / layerCount;
+  // Each layer is semi-transparent; with alpha blending, 7 layers accumulate.
+  // Target: ~70-80% peak opacity where all layers overlap (center of stroke).
+  // Formula: 1 - (1 - perLayerAlpha)^layerCount ≈ target
+  // For 7 layers targeting 75%: perLayerAlpha ≈ 0.18
+  const perLayerAlpha = 0.18 * stroke.opacity;
 
   gl.bindVertexArray(_watercolorVAO);
 

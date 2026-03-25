@@ -142,17 +142,19 @@ export function renderWatercolorLayers(
   const rng = seedableGaussian(seed);
   let base = outlineToPolygon(outline);
 
-  // Scale deformation to polygon size (creates visible watercolor bleed)
+  // Scale deformation to polygon size — larger strokes get proportionally more bleed
   const edgeLen = avgEdgeLength(base);
-  const baseVariance = Math.max(edgeLen * 0.5, 3);
+  const baseVariance = Math.max(edgeLen * 0.8, 5);
 
   // 7 base deformation passes with decreasing variance
+  // This creates the shared organic base shape all layers inherit
   for (let i = 0; i < 7; i++) {
     base = deformPolygon(base, baseVariance / (i + 1), rng);
   }
 
-  // Generate layers with additional per-layer deformation for bleed variation
-  const layerVariance = baseVariance * 0.6;
+  // Per-layer deformation creates the characteristic watercolor bleed edges
+  // where each layer extends slightly differently beyond the base
+  const layerVariance = baseVariance * 0.8;
   const layers: Point[][] = [];
   for (let l = 0; l < layerCount; l++) {
     let layer = [...base.map((p) => ({...p}))];

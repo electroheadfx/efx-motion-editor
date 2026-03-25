@@ -62,19 +62,21 @@ void main() {
   vec2 centered = v_texCoord - 0.5;
   float dist = length(centered) * 2.0;
 
-  // Gaussian-like falloff — sigma controlled by hardness
-  // Low hardness = wide soft gaussian; high = tight hard circle
-  float sigma = mix(0.28, 0.8, u_hardness);
+  // Falloff shape depends on hardness:
+  // High hardness (marker/ink): nearly flat center with sharp cutoff
+  // Low hardness (charcoal/watercolor): smooth gaussian fade
+  float sigma = mix(0.32, 0.95, u_hardness);
   float gauss = exp(-(dist * dist) / (2.0 * sigma * sigma));
 
-  // Hard edge cutoff at the stamp boundary
-  float edge = 1.0 - smoothstep(0.9, 1.0, dist);
+  // Edge cutoff — harder brushes have sharper edges
+  float edgeSoftness = mix(0.15, 0.05, u_hardness);
+  float edge = 1.0 - smoothstep(1.0 - edgeSoftness, 1.0, dist);
   float falloff = gauss * edge;
 
   // Per-pixel grain noise (gives texture to each stamp)
   float grain = hash(v_texCoord * 200.0 + u_seed);
-  // Grain strength inversely proportional to hardness (soft brushes = more grain)
-  float grainStrength = mix(0.35, 0.05, u_hardness);
+  // Grain strength inversely proportional to hardness
+  float grainStrength = mix(0.4, 0.02, u_hardness);
   float grainMod = 1.0 - grainStrength * (grain - 0.5) * 2.0;
 
   float alpha = falloff * grainMod;
