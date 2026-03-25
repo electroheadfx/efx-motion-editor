@@ -12,7 +12,7 @@
  */
 
 import {getStroke} from 'perfect-freehand';
-import type {PaintStroke, BrushStyle} from '../types/paint';
+import type {PaintStroke} from '../types/paint';
 import {
   BRUSH_FX_VERT_SRC,
   STAMP_VERT_SRC,
@@ -23,6 +23,7 @@ import {
   buildBleedPostSrc,
   buildScatterStampSrc,
 } from './brushFxShaders';
+import {getFlowField, applyFlowField} from './brushFlowField';
 
 // ---------------------------------------------------------------------------
 // Module-level state (same pattern as glBlur.ts)
@@ -69,15 +70,66 @@ out vec4 out_fragColor;
 void main() { out_fragColor = texture(u_input, v_texCoord); }
 `;
 
-// Style-dependent hardness values: 0 = very soft, 1 = hard edge
-const STYLE_HARDNESS: Record<BrushStyle, number> = {
-  flat: 1.0,
-  watercolor: 0.2,
-  ink: 0.7,
-  charcoal: 0.3,
-  pencil: 0.8,
-  marker: 0.9,
+// ---------------------------------------------------------------------------
+// Per-style rendering configuration
+// ---------------------------------------------------------------------------
+
+interface StyleConfig {
+  hardness: number;          // 0 = soft (watercolor), 1 = hard edge
+  stampSpacing: number;      // multiplier on stroke.size for stamp interval (0.2 = dense, 0.5 = sparse)
+  opacityMultiplier: number; // multiplied with stroke opacity for stamp alpha
+  useScatterShader: boolean; // true = use scatter stamp shader (charcoal)
+  postEffects: string[];     // which post-effects to apply: 'grain', 'edgeDarken', 'bleed'
+}
+
+const STYLE_CONFIGS: Record<string, StyleConfig> = {
+  flat: {
+    hardness: 1.0,
+    stampSpacing: 0.3,
+    opacityMultiplier: 1.0,
+    useScatterShader: false,
+    postEffects: [],
+  },
+  ink: {
+    hardness: 0.6,
+    stampSpacing: 0.25,
+    opacityMultiplier: 0.85,
+    useScatterShader: false,
+    postEffects: ['edgeDarken'],
+  },
+  charcoal: {
+    hardness: 0.2,
+    stampSpacing: 0.3,
+    opacityMultiplier: 0.6,
+    useScatterShader: true,
+    postEffects: ['grain'],
+  },
+  pencil: {
+    hardness: 0.7,
+    stampSpacing: 0.2,
+    opacityMultiplier: 0.4,
+    useScatterShader: false,
+    postEffects: ['grain'],
+  },
+  marker: {
+    hardness: 0.95,
+    stampSpacing: 0.15,
+    opacityMultiplier: 0.7,
+    useScatterShader: false,
+    postEffects: [],
+  },
+  watercolor: {
+    hardness: 0.15,
+    stampSpacing: 0.2,
+    opacityMultiplier: 0.3,
+    useScatterShader: false,
+    postEffects: ['bleed', 'grain'],
+  },
 };
+
+function getStyleConfig(style: string): StyleConfig {
+  return STYLE_CONFIGS[style] ?? STYLE_CONFIGS['ink'];
+}
 
 // ---------------------------------------------------------------------------
 // GL helpers
@@ -382,9 +434,10 @@ interface StampPosition {
 
 /**
  * Compute stamp positions along the centroid of a perfect-freehand outline.
- * Returns positions spaced at intervals of stroke.size * 0.3 for smooth stamps.
+ * Returns positions spaced at style-dependent intervals.
+ * Applies flow field distortion when fieldStrength > 0.
  */
-function computeStampPositions(stroke: PaintStroke): StampPosition[] {
+function computeStampPositions(stroke: PaintStroke, w: number, h: number): StampPosition[] {
   const outline = getStroke(stroke.points, {
     size: stroke.size,
     thinning: stroke.options.thinning,
@@ -408,8 +461,9 @@ function computeStampPositions(stroke: PaintStroke): StampPosition[] {
   if (centroids.length === 0) return [];
   if (centroids.length === 1) return [centroids[0]];
 
-  // Re-sample at regular intervals
-  const spacing = Math.max(stroke.size * 0.3, 1);
+  // Re-sample at style-dependent intervals
+  const config = getStyleConfig(stroke.brushStyle ?? 'ink');
+  const spacing = Math.max(stroke.size * config.stampSpacing, 1);
   const result: StampPosition[] = [centroids[0]];
   let accumulated = 0;
   let prevX = centroids[0].x;
@@ -436,6 +490,18 @@ function computeStampPositions(stroke: PaintStroke): StampPosition[] {
     prevY = centroids[i].y;
   }
 
+  // Apply flow field distortion if fieldStrength > 0
+  const fieldStrength = stroke.brushParams?.fieldStrength ?? 0;
+  if (fieldStrength > 0.01) {
+    const field = getFlowField(w, h);
+    const displaced = applyFlowField(result, field, fieldStrength);
+    // Merge displaced positions back with pressure values
+    for (let i = 0; i < result.length; i++) {
+      result[i].x = displaced[i].x;
+      result[i].y = displaced[i].y;
+    }
+  }
+
   return result;
 }
 
@@ -454,9 +520,10 @@ function renderStrokeStamps(
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
-  // Choose stamp program based on style
+  // Choose stamp program based on style config
   const style = stroke.brushStyle ?? 'flat';
-  const useScatter = style === 'charcoal' && _scatterStampProgram;
+  const config = getStyleConfig(style);
+  const useScatter = config.useScatterShader && _scatterStampProgram;
   const program = useScatter ? _scatterStampProgram! : _stampProgram!;
 
   gl.useProgram(program);
@@ -472,11 +539,11 @@ function renderStrokeStamps(
 
   gl.uniform2f(uResolution, w, h);
 
-  const [r, g, b, a] = hexToGLColor(stroke.color, stroke.opacity);
+  // Apply style opacity multiplier to stamp alpha
+  const [r, g, b, a] = hexToGLColor(stroke.color, stroke.opacity * config.opacityMultiplier);
   gl.uniform4f(uColor, r, g, b, a);
 
-  const hardness = STYLE_HARDNESS[style] ?? 0.5;
-  gl.uniform1f(uHardness, hardness);
+  gl.uniform1f(uHardness, config.hardness);
 
   // Set scatter uniform if using scatter program
   if (useScatter) {
@@ -486,8 +553,8 @@ function renderStrokeStamps(
 
   gl.bindVertexArray(_stampVAO);
 
-  // Compute stamp positions and render each
-  const stamps = computeStampPositions(stroke);
+  // Compute stamp positions (with style-dependent spacing and flow field) and render each
+  const stamps = computeStampPositions(stroke, w, h);
   for (const stamp of stamps) {
     const stampSize = stroke.size * stamp.pressure;
     gl.uniform2f(uCenter, stamp.x, stamp.y);
@@ -601,6 +668,7 @@ interface AggregatedParams {
 
 /**
  * Aggregate post-effect parameters across all strokes.
+ * Only includes a post-effect param if the stroke's style config declares it active.
  * Takes the max of each FX param (post-effects apply to the entire frame).
  */
 function aggregatePostEffectParams(strokes: PaintStroke[]): AggregatedParams {
@@ -610,11 +678,11 @@ function aggregatePostEffectParams(strokes: PaintStroke[]): AggregatedParams {
 
   for (const stroke of strokes) {
     if (stroke.tool === 'eraser') continue;
-    const params = stroke.brushParams;
-    if (!params) continue;
-    if (params.grain !== undefined && params.grain > grain) grain = params.grain;
-    if (params.bleed !== undefined && params.bleed > bleed) bleed = params.bleed;
-    if (params.edgeDarken !== undefined && params.edgeDarken > edgeDarken) edgeDarken = params.edgeDarken;
+    const config = getStyleConfig(stroke.brushStyle ?? 'ink');
+    const p = stroke.brushParams ?? {};
+    if (config.postEffects.includes('grain')) grain = Math.max(grain, p.grain ?? 0);
+    if (config.postEffects.includes('edgeDarken')) edgeDarken = Math.max(edgeDarken, p.edgeDarken ?? 0);
+    if (config.postEffects.includes('bleed')) bleed = Math.max(bleed, p.bleed ?? 0);
   }
 
   return {grain, bleed, edgeDarken};
