@@ -113,7 +113,15 @@ Import WAV, MP3, AAC, or FLAC audio files. Audio waveform renders on the timelin
 
 Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perfect-freehand brush engine for smooth, pressure-sensitive strokes. 7 tools: brush, eraser, eyedropper, flood fill, line, rectangle, and ellipse. Onion skinning overlay shows ghosted paint from adjacent frames with configurable range and opacity falloff. Paint data persists as sidecar JSON files alongside the project. Paint layers composite in both the live preview and video export pipelines with full blend mode and opacity support.
 
+**Tablet & Pen Support** — Native macOS tablet pressure bridge via NSEvent. Supports pen pressure sensitivity with easing/taper curves for natural brush dynamics, tilt detection, and coalesced touch events for high-resolution stroke capture at full tablet polling rate. Works with Wacom, Apple Pencil (iPad Sidecar), and other pressure-sensitive input devices.
+
 <!-- Screenshot: Paint overlay with onion skinning -->
+
+### Canvas Motion Path
+
+After Effects-style spatial keyframe path editing directly on the canvas. Animated layers display their trajectory as a dotted trail with interactive keyframe markers. Drag keyframe positions on the canvas to reshape motion paths in real-time with auto-seek and undo coalescing.
+
+<!-- Screenshot: Motion path with keyframe markers -->
 
 ### Keyframe Animation
 
