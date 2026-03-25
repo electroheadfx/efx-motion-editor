@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
 status: Ready to execute
-stopped_at: Completed 20-08-PLAN.md
-last_updated: "2026-03-25T19:26:47.004Z"
+stopped_at: Completed 20-09-PLAN.md Task 1 (awaiting human-verify checkpoint)
+last_updated: "2026-03-25T19:33:12.597Z"
 progress:
   total_phases: 2
   completed_phases: 0
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-25)
 ## Current Position
 
 Phase: 20 (paint-brush-fx) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Full phase decisions archived in milestones/v0.4.0-ROADMAP.md.
 - [Phase 20]: Per-layer watercolor alpha = stroke.opacity * 0.3 / layerCount for natural transparency buildup; hashStringToNumber(stroke.id) for deterministic seeding
 - [Phase 20]: p5.brush standalone replaces ~2000 lines of broken custom WebGL2 renderer with ~200 lines of adapter code
 - [Phase 20]: Custom our_ink/our_pencil brushes via brush.add() for distinct style character (PAINT-02 edge darkening, PAINT-04 fine grain)
+- [Phase 20]: HTMLCanvasElement | OffscreenCanvas | null union type for fxCanvas; typeof OffscreenCanvas guard for jsdom/SSR
 
 ### Pending Todos
 
@@ -72,6 +73,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T19:26:47.001Z
-Stopped at: Completed 20-08-PLAN.md
+Last session: 2026-03-25T19:33:12.593Z
+Stopped at: Completed 20-09-PLAN.md Task 1 (awaiting human-verify checkpoint)
 Resume file: None

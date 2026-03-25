@@ -20,7 +20,7 @@ Requirements for milestone v0.5.0: Motion Blur & Paint Styles. Each maps to road
 - [x] **PAINT-09**: User can see flow field distortion affecting stroke paths for organic rendering
 - [x] **PAINT-10**: User can see grain/texture post-effects simulating paper absorption
 - [x] **PAINT-11**: Flat brush strokes render identically to current behavior (no regression)
-- [ ] **PAINT-12**: Paint brush FX render correctly in export pipeline
+- [x] **PAINT-12**: Paint brush FX render correctly in export pipeline
 - [x] **PAINT-13**: Brush style and FX params persist in paint sidecar JSON files
 
 ### Motion Blur
@@ -80,7 +80,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PAINT-09 | Phase 20 | Complete |
 | PAINT-10 | Phase 20 | Complete |
 | PAINT-11 | Phase 20 | Complete |
-| PAINT-12 | Phase 20 | Pending |
+| PAINT-12 | Phase 20 | Complete |
 | PAINT-13 | Phase 20 | Complete |
 | MBLR-01 | Phase 21 | Pending |
 | MBLR-02 | Phase 21 | Pending |
