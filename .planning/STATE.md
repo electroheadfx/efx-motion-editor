@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.1.0
 milestone_name: milestone
 status: Milestone complete
-stopped_at: Completed 19-05-PLAN.md
-last_updated: "2026-03-24T21:40:21.608Z"
+stopped_at: Completed quick task 260325-db2 (tablet pen support)
+last_updated: "2026-03-25T08:50:10.181Z"
 last_activity: 2026-03-24
 progress:
   total_phases: 2
@@ -21,7 +21,7 @@ See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
 **Current focus:** Phase 19 — add-paint-layer-rotopaint
-Last activity: 2026-03-24
+Last activity: 2026-03-25 - Completed quick task 260325-db2: Add tablet pen support (pressure, tilt, coalesced events)
 
 ## Current Position
 
@@ -55,6 +55,7 @@ Full phase decisions archived in milestones/v0.3.0-ROADMAP.md.
 - [Phase 19]: Collapsible onion skin section reduces sidebar clutter; native color input on toolbar for simplicity
 - [Phase 19]: Paint sidecar files written BEFORE .mce file during save to prevent sync issues (per Pitfall 5)
 - [Phase 19]: Non-fatal error handling for paint persistence operations matches Phase 16 audio pattern
+- [Phase quick-260325-db2]: simulatePressure defaults true for mouse, overridden false per-stroke for pen; tilt modulates thinning; backward-compatible ?? defaults for old strokes
 
 ### Pending Todos
 
@@ -73,8 +74,12 @@ No active blockers.
 
 Archived with v0.3.0 milestone.
 
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260325-db2 | Add tablet pen support (pressure, tilt, coalesced events) | 2026-03-25 | 5556891 | Verified | [260325-db2-perfect-freehand-doesn-t-support-pressur](./quick/260325-db2-perfect-freehand-doesn-t-support-pressur/) |
+
 ## Session Continuity
 
-Last session: 2026-03-24T20:35:15.029Z
-Stopped at: Completed 19-05-PLAN.md
+Last session: 2026-03-25T08:50:05.152Z
+Stopped at: Completed quick task 260325-db2 (tablet pen support)
 Resume file: None
