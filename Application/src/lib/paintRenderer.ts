@@ -172,14 +172,21 @@ function flushStyledStrokes(
   width: number,
   height: number,
 ): void {
-  const fxCanvas = renderStyledStrokes(strokes, width, height);
-  if (fxCanvas) {
-    ctx.drawImage(fxCanvas, 0, 0);
-  } else {
-    // Adapter unavailable (jsdom/SSR): fall back to flat rendering for all styled strokes
-    for (const stroke of strokes) {
-      renderStroke(ctx, stroke);
+  try {
+    const fxCanvas = renderStyledStrokes(strokes, width, height);
+    if (fxCanvas) {
+      ctx.drawImage(fxCanvas, 0, 0);
+      return;
     }
+  } catch (e) {
+    // p5.brush error — fall through to Canvas 2D fallback.
+    // MUST NOT propagate: this runs inside a Preact signal effect
+    // and uncaught errors corrupt the signal dependency graph.
+    console.warn('[paintRenderer] brush FX render failed, falling back to flat:', e);
+  }
+  // Fallback: render styled strokes as flat via Canvas 2D
+  for (const stroke of strokes) {
+    renderStroke(ctx, stroke);
   }
 }
 
