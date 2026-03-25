@@ -472,8 +472,8 @@ function hexToGLColor(hex: string, opacity: number): [number, number, number, nu
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
-  // sRGB to linear: linearR = pow(sRGBr, 2.2)
-  return [Math.pow(r, 2.2), Math.pow(g, 2.2), Math.pow(b, 2.2), opacity];
+  // Stay in sRGB space — no gamma conversion needed for standard rendering
+  return [r, g, b, opacity];
 }
 
 // ---------------------------------------------------------------------------
@@ -632,9 +632,10 @@ function renderStrokeStamps(
     // definition=0.35: skip 65% of stamps (charcoal)
     if (rng() > config.definition) continue;
 
-    // p5.brush: size = pressure² * weight * random(0.85, 1.15)
+    // Size = weight * pressure * random(0.85, 1.15)
+    // (p5.brush uses pressure² but their pressure range is 0.78-1.3, ours is 0-1)
     const sizeRand = 0.85 + rng() * 0.30;
-    const stampSize = stroke.size * stamp.pressure * stamp.pressure * sizeRand;
+    const stampSize = stroke.size * stamp.pressure * sizeRand;
 
     // p5.brush vibration: random offset in absolute pixels
     const jitterX = config.vibration * (rng() * 2 - 1);
@@ -932,8 +933,20 @@ export function renderStyledStrokes(
       renderStrokeStamps(gl, stroke, width, height);
     }
 
-    // 2. Composite _strokeTex onto accumulation buffer using spectral mix
-    compositeSpectral(gl, readAccumTex, _strokeTex!, writeAccumFBO, width, height);
+    // 2. Composite _strokeTex onto accumulation buffer using normal alpha blend
+    // (spectral compositing was mangling colors — use simple alpha for correct color)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, writeAccumFBO);
+    gl.viewport(0, 0, width, height);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(_passthroughProgram!);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, _strokeTex!);
+    gl.uniform1i(gl.getUniformLocation(_passthroughProgram!, 'u_input'), 0);
+    gl.bindVertexArray(_quadVAO);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindVertexArray(null);
+    gl.disable(gl.BLEND);
 
     // 3. Swap ping-pong buffers
     const tmpTex = readAccumTex;
