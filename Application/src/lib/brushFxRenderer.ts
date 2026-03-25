@@ -124,45 +124,43 @@ const STYLE_CONFIGS: Record<string, StyleConfig> = {
     postEffects: [],
   },
   ink: {
-    // Bold flowing ink — very low per-stamp opacity, dense accumulation
-    // p5.brush ref: opacity 10/255 ≈ 0.04. We use slightly higher since our
-    // Gaussian falloff already reduces effective coverage per stamp.
+    // Bold flowing ink — high opacity, slight vibration, edge darkening
     hardness: 0.55,
     stampSpacing: 0.05,
-    opacityMultiplier: 0.06,
+    opacityMultiplier: 0.9,
     sizeJitter: 0.03,
-    posJitter: 0.02,
-    opacityJitter: 0.15,
+    posJitter: 0.015,
+    opacityJitter: 0.08,
     useScatterShader: false,
     postEffects: ['edgeDarken'],
   },
   charcoal: {
-    // Gritty textured — scatter + low opacity for organic buildup
+    // Gritty textured — medium density, scatter gives rough edge, strong grain
     hardness: 0.2,
     stampSpacing: 0.06,
-    opacityMultiplier: 0.05,
+    opacityMultiplier: 0.7,
     sizeJitter: 0.25,
-    posJitter: 0.12,
-    opacityJitter: 0.4,
+    posJitter: 0.08,
+    opacityJitter: 0.35,
     useScatterShader: true,
     postEffects: ['grain'],
   },
   pencil: {
-    // Fine thin lines — very low opacity, ultra-dense for shading buildup
+    // Fine thin lines — tight spacing, lower opacity for layered shading
     hardness: 0.45,
     stampSpacing: 0.03,
-    opacityMultiplier: 0.04,
+    opacityMultiplier: 0.5,
     sizeJitter: 0.06,
     posJitter: 0.02,
-    opacityJitter: 0.15,
+    opacityJitter: 0.12,
     useScatterShader: false,
     postEffects: ['grain'],
   },
   marker: {
-    // Flat even semi-transparent — moderate opacity, very dense, hard edge
-    hardness: 0.8,
+    // Flat even coverage — hard edge, dense, consistent opacity
+    hardness: 0.75,
     stampSpacing: 0.03,
-    opacityMultiplier: 0.08,
+    opacityMultiplier: 0.65,
     sizeJitter: 0.01,
     posJitter: 0.005,
     opacityJitter: 0.03,
@@ -602,11 +600,7 @@ function renderStrokeStamps(
 
   gl.useProgram(program);
   gl.enable(gl.BLEND);
-  // Additive blending for stamp accumulation within a stroke.
-  // Each stamp contributes a tiny amount of color+alpha that accumulates.
-  // The stroke FBO is then composited onto the canvas with normal blending.
-  // This prevents individual stamps from being visible as distinct shapes.
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   // Set common uniforms
   const uCenter = gl.getUniformLocation(program, 'u_center');
