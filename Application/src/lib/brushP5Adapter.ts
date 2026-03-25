@@ -1,15 +1,14 @@
 /**
  * p5.brush standalone adapter for brush FX rendering.
  *
- * Replaces the custom WebGL2 brush FX renderer (~2000 lines across 4 files)
- * with ~200 lines of adapter code wrapping p5.brush standalone.
+ * p5.brush renders via WebGL2 with spectral pigment mixing (Kubelka-Munk).
+ * Strokes are stamped into a WebGL mask framebuffer, then composited to the
+ * canvas via a spectral blend shader. brush.render() flushes this pipeline.
  *
- * p5.brush provides: spectral pigment mixing (Kubelka-Munk), 11 brush presets,
- * flow fields, watercolor fill/bleed/texture, grain, and scatter -- all in a
- * battle-tested 75KB library.
- *
- * Exports match the old brushFxRenderer.ts signature so paintRenderer.ts can
- * switch imports with a single path change (Plan 20-09).
+ * Weight scaling: p5.brush computes visual diameter as
+ *   2 * strokeWeight * brush.param.weight * pressure
+ * Each preset has a different param.weight, so we compensate to match our
+ * stroke.size (desired diameter in project pixels).
  */
 
 import * as brush from 'p5.brush/standalone';
@@ -17,21 +16,30 @@ import type {PaintStroke} from '../types/paint';
 
 // ---------------------------------------------------------------------------
 // Style mapping: our BrushStyle -> p5.brush preset name
-// Custom brushes (our_ink, our_charcoal, our_pencil) registered in initCustomBrushes()
 // ---------------------------------------------------------------------------
 const STYLE_MAP: Record<string, string> = {
-  flat: '', // never reaches p5.brush (handled by Canvas2D)
-  watercolor: 'marker', // marker tip + fill effects for wash
-  ink: 'our_ink', // custom: fine pen with edge darkening (PAINT-02)
-  charcoal: 'our_charcoal', // custom: heavy scatter, grainy
-  pencil: 'our_pencil', // custom: fine grain texture (PAINT-04)
-  marker: 'marker', // solid disc, minimal variation
+  flat: '',
+  watercolor: 'marker',
+  ink: 'our_ink',
+  charcoal: 'our_charcoal',
+  pencil: 'our_pencil',
+  marker: 'marker',
+};
+
+// p5.brush internal param.weight for each preset — used to compensate stroke size.
+// Visual diameter = 2 * strokeWeight * paramWeight * pressure.
+// To get desired diameter D at pressure=1: strokeWeight = D / (2 * paramWeight).
+const PARAM_WEIGHT: Record<string, number> = {
+  marker: 2,
+  our_ink: 0.25,
+  our_charcoal: 0.35,
+  our_pencil: 0.3,
 };
 
 // ---------------------------------------------------------------------------
 // Singleton canvas management
-// p5.brush requires WebGL2 context — OffscreenCanvas doesn't support WebGL2
-// in WKWebView (Tauri/Safari), so we use a hidden HTMLCanvasElement instead.
+// p5.brush requires WebGL2 — OffscreenCanvas doesn't support WebGL2 in
+// WKWebView (Tauri/Safari), so we use a detached HTMLCanvasElement.
 // ---------------------------------------------------------------------------
 let _canvas: HTMLCanvasElement | null = null;
 let _initialized = false;
@@ -40,12 +48,7 @@ let _currentWidth = 0;
 let _currentHeight = 0;
 let _loadFailed = false;
 
-/**
- * Register custom brush definitions tuned for our styles.
- * Called once after first brush.load().
- */
 function initCustomBrushes(): void {
-  // our_ink: provides ink edge darkening via overlap (PAINT-02)
   brush.add('our_ink', {
     type: 'default',
     weight: 0.25,
@@ -57,7 +60,6 @@ function initCustomBrushes(): void {
     rotate: 'natural',
   });
 
-  // our_charcoal: heavy scatter, grainy texture
   brush.add('our_charcoal', {
     type: 'default',
     weight: 0.35,
@@ -68,7 +70,6 @@ function initCustomBrushes(): void {
     rotate: 'random',
   });
 
-  // our_pencil: fine grain texture (PAINT-04)
   brush.add('our_pencil', {
     type: 'default',
     weight: 0.3,
@@ -79,17 +80,12 @@ function initCustomBrushes(): void {
   });
 }
 
-/**
- * Ensure the HTMLCanvasElement and p5.brush are initialized at the right size.
- */
-function ensureInitialized(width: number, height: number): void {
-  // Guard: no DOM in jsdom test env or SSR
-  if (typeof document === 'undefined') return;
-  // Don't retry if WebGL2 is unavailable
-  if (_loadFailed) return;
+function ensureInitialized(width: number, height: number): boolean {
+  if (typeof document === 'undefined') return false;
+  if (_loadFailed) return false;
 
   if (_canvas && _initialized && _currentWidth === width && _currentHeight === height) {
-    return;
+    return true;
   }
 
   _canvas = document.createElement('canvas');
@@ -101,94 +97,49 @@ function ensureInitialized(width: number, height: number): void {
   try {
     brush.load(_canvas);
   } catch (e) {
-    // WebGL2 not available — fall back to Canvas 2D rendering
     console.warn('[brushP5Adapter] p5.brush init failed (WebGL2 required):', e);
     _canvas = null;
-    _initialized = false;
     _loadFailed = true;
-    return;
+    return false;
   }
-  brush.seed(42); // Deterministic rendering (export parity per D-12)
+  brush.seed(42);
   _initialized = true;
 
   if (!_customBrushesAdded) {
     initCustomBrushes();
     _customBrushesAdded = true;
   }
+  return true;
+}
+
+/** Compute strokeWeight that produces the desired pixel diameter. */
+function compensatedWeight(brushName: string, desiredDiameter: number): number {
+  const pw = PARAM_WEIGHT[brushName] ?? 1;
+  return desiredDiameter / (2 * pw);
 }
 
 // ---------------------------------------------------------------------------
-// Watercolor rendering helper
+// Core rendering
 // ---------------------------------------------------------------------------
 
-/**
- * Render a watercolor stroke using p5.brush fill/bleed/texture system.
- * Two-part approach: stroke path with marker brush + filled circles for bleed.
- */
-function renderWatercolorStroke(stroke: PaintStroke): void {
-  const bleed = stroke.brushParams?.bleed ?? 0.6;
-  const grain = stroke.brushParams?.grain ?? 0.4;
-  const pts = stroke.points;
-
-  // Part 1: Draw the stroke path with marker brush for core wash
-  brush.set('marker', stroke.color, stroke.size * 1.2);
-  if (pts.length >= 2) {
-    brush.spline(pts, 0.5);
-  }
-
-  // Part 2: Add fill bleed along the stroke with filled circles
-  const step = Math.max(5, Math.floor(pts.length / 12));
-  for (let i = 0; i < pts.length; i += step) {
-    const pt = pts[i];
-    brush.fill(stroke.color, Math.round(stroke.opacity * 80));
-    brush.fillBleed(bleed);
-    brush.fillTexture(grain, 0.4);
-    brush.circle(pt[0], pt[1], stroke.size * 0.8);
-    brush.noFill();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Core rendering function
-// ---------------------------------------------------------------------------
-
-/**
- * Render styled (non-flat) strokes via p5.brush standalone on OffscreenCanvas.
- *
- * @param strokes Array of PaintStroke objects to render
- * @param width Canvas width in pixels
- * @param height Canvas height in pixels
- * @returns HTMLCanvasElement with rendered strokes, or null if no styled strokes / WebGL2 unavailable
- */
 export function renderStyledStrokes(
   strokes: PaintStroke[],
   width: number,
   height: number,
 ): HTMLCanvasElement | null {
-  // Guard: no DOM in jsdom test env or SSR
-  if (typeof document === 'undefined') {
-    return null;
-  }
+  if (typeof document === 'undefined') return null;
 
-  // Filter out flat and eraser strokes (safety check)
   const styled = strokes.filter(
     (s) => s.tool === 'brush' && s.brushStyle && s.brushStyle !== 'flat',
   );
+  if (styled.length === 0) return null;
+  if (!ensureInitialized(width, height)) return null;
 
-  if (styled.length === 0) {
-    return null;
-  }
-
-  ensureInitialized(width, height);
-
-  // If p5.brush failed to init (no WebGL2), fall back to Canvas 2D in paintRenderer
-  if (!_canvas || !_initialized) {
-    return null;
-  }
-
+  // Lifecycle: clear → push/translate → draw all strokes → pop → render
   brush.clear();
   brush.push();
-  // CRITICAL: p5.brush uses center-origin coords, translate to top-left origin
+  // p5.brush uses center-origin coords; translate so our top-left (0,0)
+  // maps to p5.brush's (-width/2, -height/2).
   brush.translate(-width / 2, -height / 2);
 
   for (const stroke of styled) {
@@ -196,55 +147,62 @@ export function renderStyledStrokes(
     const params = stroke.brushParams ?? {};
     const pts = stroke.points;
 
-    // Apply flow field if fieldStrength > threshold
+    // Flow field
     if ((params.fieldStrength ?? 0) > 0.01) {
       brush.field('curved');
       brush.wiggle(params.fieldStrength!);
     }
 
     if (stroke.brushStyle === 'watercolor') {
-      // Watercolor uses fill/bleed/texture system (D-11 superseded)
-      renderWatercolorStroke(stroke);
+      renderWatercolorStroke(stroke, brushName);
     } else {
-      // Non-watercolor styles: set brush and draw spline
-      brush.set(brushName, stroke.color, stroke.size);
-
-      // Edge darkening for ink (PAINT-02): modulate via overlapping strokes
-      // p5.brush spectral mixing naturally produces darker edges on overlap
-      // edgeDarken param handled by custom brush opacity in our_ink definition
-
-      // Scatter modulation for charcoal
-      if (stroke.brushStyle === 'charcoal' && (params.scatter ?? 0) > 0) {
-        brush.scaleBrushes(1 + (params.scatter ?? 0.4));
-      }
+      // Weight-compensated size so visual diameter matches stroke.size
+      const w = compensatedWeight(brushName, stroke.size);
+      brush.set(brushName, stroke.color, w);
 
       if (pts.length >= 2) {
         brush.spline(pts, 0.5);
       }
-
-      // Restore scale after charcoal scatter
-      if (stroke.brushStyle === 'charcoal' && (params.scatter ?? 0) > 0) {
-        brush.scaleBrushes(1);
-      }
     }
 
-    // Reset field after each stroke
     brush.noField();
   }
 
   brush.pop();
-  brush.render(); // MANDATORY: flushes compositing
+  brush.render(); // flush WebGL compositing to canvas
 
   return _canvas;
+}
+
+function renderWatercolorStroke(stroke: PaintStroke, brushName: string): void {
+  const bleed = stroke.brushParams?.bleed ?? 0.6;
+  const grain = stroke.brushParams?.grain ?? 0.4;
+  const pts = stroke.points;
+
+  // Part 1: stroke path with marker brush — weight-compensated
+  const w = compensatedWeight(brushName, stroke.size);
+  brush.set(brushName, stroke.color, w);
+  if (pts.length >= 2) {
+    brush.spline(pts, 0.5);
+  }
+
+  // Part 2: fill bleed circles along path for watercolor wash
+  const step = Math.max(5, Math.floor(pts.length / 12));
+  for (let i = 0; i < pts.length; i += step) {
+    const pt = pts[i];
+    brush.fill(stroke.color, Math.round(stroke.opacity * 80));
+    brush.fillBleed(bleed);
+    brush.fillTexture(grain, 0.4);
+    // circle diameter in p5.brush centered coords — use raw size
+    brush.circle(pt[0], pt[1], stroke.size * 0.6);
+    brush.noFill();
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
 
-/**
- * Dispose the brush FX renderer, releasing the OffscreenCanvas and WebGL resources.
- */
 export function disposeBrushFx(): void {
   _canvas = null;
   _initialized = false;
