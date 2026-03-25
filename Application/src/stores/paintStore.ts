@@ -17,6 +17,7 @@ const brushOpacity = signal(DEFAULT_BRUSH_OPACITY);
 const strokeOptions = signal<PaintStrokeOptions>({...DEFAULT_STROKE_OPTIONS});
 const shapeFilled = signal(false);
 const fillTolerance = signal(10);
+const tabletDetected = signal(false);
 const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
@@ -62,6 +63,7 @@ export const paintStore = {
   strokeOptions,
   shapeFilled,
   fillTolerance,
+  tabletDetected,
   onionSkinEnabled,
   onionSkinPrevRange,
   onionSkinNextRange,
@@ -203,6 +205,7 @@ export const paintStore = {
     strokeOptions.value = {...DEFAULT_STROKE_OPTIONS};
     shapeFilled.value = false;
     fillTolerance.value = 10;
+    tabletDetected.value = false;
     onionSkinEnabled.value = false;
     onionSkinPrevRange.value = 1;
     onionSkinNextRange.value = 0;
@@ -228,5 +231,9 @@ export const paintStore = {
 
   setBrushOpacity(opacity: number): void {
     brushOpacity.value = Math.max(0, Math.min(1, opacity));
+  },
+
+  setTabletDetected(detected: boolean): void {
+    tabletDetected.value = detected;
   },
 };
