@@ -66,6 +66,10 @@ let _currentWidth = 0;
 let _currentHeight = 0;
 let _loadFailed = false;
 
+// Render cache — skip re-rendering if strokes haven't changed
+let _cachedCanvas: HTMLCanvasElement | null = null;
+let _cacheKey = '';
+
 function ensureInitialized(width: number, height: number): boolean {
   if (typeof document === 'undefined' || _loadFailed) return false;
 
@@ -135,6 +139,13 @@ export function renderStyledStrokes(
     (s) => s.tool === 'brush' && s.brushStyle && s.brushStyle !== 'flat',
   );
   if (styled.length === 0) return null;
+
+  // Cache check — skip expensive re-render if strokes haven't changed
+  const key = styled.map((s) => s.id).join(',');
+  if (key === _cacheKey && _cachedCanvas) {
+    return _cachedCanvas;
+  }
+
   if (!ensureInitialized(width, height)) return null;
 
   const halfW = width / 2;
@@ -176,6 +187,10 @@ export function renderStyledStrokes(
   brush.render();
   if (_gl) _gl.finish();
 
+  // Cache the result — reused until strokes change
+  _cacheKey = key;
+  _cachedCanvas = _canvas;
+
   return _canvas;
 }
 
@@ -192,6 +207,9 @@ function renderWatercolorStroke(
   const bleed = stroke.brushParams?.bleed ?? 0.3;
   const grain = stroke.brushParams?.grain ?? 0.4;
   const opacity = Math.round(stroke.opacity * 50);
+
+  // Disable stroke so previous brush state doesn't draw an outline
+  brush.noStroke();
 
   // Filled polygon with watercolor wash — bleed creates the soft edges
   brush.fill(stroke.color, opacity);
@@ -216,4 +234,6 @@ export function disposeBrushFx(): void {
   _initialized = false;
   _currentWidth = 0;
   _currentHeight = 0;
+  _cachedCanvas = null;
+  _cacheKey = '';
 }
