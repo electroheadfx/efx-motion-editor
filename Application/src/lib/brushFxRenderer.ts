@@ -102,12 +102,11 @@ void main() {
 // ---------------------------------------------------------------------------
 
 interface StyleConfig {
-  hardness: number;          // 0 = very soft gaussian, 1 = hard edge
-  stampSpacing: number;      // multiplier on stroke.size for stamp interval (lower = denser)
+  hardness: number;          // 0 = soft edge, 1 = hard edge (p5.brush style)
+  stampSpacing: number;      // ABSOLUTE pixel spacing between stamps (not multiplied by size)
   opacityMultiplier: number; // multiplied with stroke opacity for stamp alpha
-  sizeJitter: number;        // random size variation per stamp (0-1)
-  posJitter: number;         // random position offset per stamp (fraction of size)
-  opacityJitter: number;     // random opacity variation per stamp (0-1)
+  vibration: number;         // random position offset in pixels (p5.brush vibration)
+  definition: number;        // 0-1: fraction of stamps rendered (1=all, 0.3=30% for grain)
   useScatterShader: boolean; // true = use scatter stamp shader (charcoal)
   postEffects: string[];     // which post-effects to apply: 'grain', 'edgeDarken', 'bleed'
 }
@@ -115,66 +114,60 @@ interface StyleConfig {
 const STYLE_CONFIGS: Record<string, StyleConfig> = {
   flat: {
     hardness: 1.0,
-    stampSpacing: 0.3,
+    stampSpacing: 5,
     opacityMultiplier: 1.0,
-    sizeJitter: 0,
-    posJitter: 0,
-    opacityJitter: 0,
+    vibration: 0,
+    definition: 1.0,
     useScatterShader: false,
     postEffects: [],
   },
   ink: {
-    // Bold flowing ink — p5.brush default opacity ~40/255, hard edge, edge darkening
+    // Bold — every stamp rendered, hard edge, edge darkening
     hardness: 0.85,
-    stampSpacing: 0.25,
+    stampSpacing: 2,
     opacityMultiplier: 0.16,
-    sizeJitter: 0.15,
-    posJitter: 0.02,
-    opacityJitter: 0.1,
+    vibration: 0.5,
+    definition: 1.0,
     useScatterShader: false,
     postEffects: ['edgeDarken'],
   },
   charcoal: {
-    // Gritty — low definition (many stamps skipped), scatter, grain
+    // Gritty — skip 65% of stamps for scattered grain texture
     hardness: 0.3,
-    stampSpacing: 0.15,
-    opacityMultiplier: 0.1,
-    sizeJitter: 0.15,
-    posJitter: 0.15,
-    opacityJitter: 0.3,
+    stampSpacing: 2,
+    opacityMultiplier: 0.12,
+    vibration: 3,
+    definition: 0.35,
     useScatterShader: true,
     postEffects: ['grain'],
   },
   pencil: {
-    // Fine — high definition, tight spacing, moderate opacity
+    // Fine — skip 45% of stamps for subtle grain
     hardness: 0.6,
-    stampSpacing: 0.2,
+    stampSpacing: 1.5,
     opacityMultiplier: 0.12,
-    sizeJitter: 0.15,
-    posJitter: 0.03,
-    opacityJitter: 0.1,
+    vibration: 0.3,
+    definition: 0.55,
     useScatterShader: false,
     postEffects: ['grain'],
   },
   marker: {
-    // Flat even — hard edge, consistent, p5.brush marker is single circle per step
+    // Flat even — every stamp, hard edge, minimal variation
     hardness: 0.95,
-    stampSpacing: 0.15,
-    opacityMultiplier: 0.25,
-    sizeJitter: 0.0,
-    posJitter: 0.01,
-    opacityJitter: 0.1,
+    stampSpacing: 1.5,
+    opacityMultiplier: 0.2,
+    vibration: 0.2,
+    definition: 1.0,
     useScatterShader: false,
     postEffects: [],
   },
   watercolor: {
-    // Watercolor uses polygon deformation path, stamps are fallback only
+    // Watercolor uses polygon deformation, stamps fallback only
     hardness: 0.1,
-    stampSpacing: 0.2,
+    stampSpacing: 3,
     opacityMultiplier: 0.3,
-    sizeJitter: 0.15,
-    posJitter: 0.1,
-    opacityJitter: 0.2,
+    vibration: 2,
+    definition: 1.0,
     useScatterShader: false,
     postEffects: ['bleed', 'grain'],
   },
@@ -522,9 +515,9 @@ function computeStampPositions(stroke: PaintStroke, w: number, h: number): Stamp
   if (centroids.length === 0) return [];
   if (centroids.length === 1) return [centroids[0]];
 
-  // Re-sample at style-dependent intervals
+  // Re-sample at ABSOLUTE pixel intervals (not proportional to size)
   const config = getStyleConfig(stroke.brushStyle ?? 'ink');
-  const spacing = Math.max(stroke.size * config.stampSpacing, 1);
+  const spacing = Math.max(config.stampSpacing, 0.5);
   const result: StampPosition[] = [centroids[0]];
   let accumulated = 0;
   let prevX = centroids[0].x;
@@ -634,13 +627,18 @@ function renderStrokeStamps(
   for (let i = 0; i < stamps.length; i++) {
     const stamp = stamps[i];
 
+    // Probabilistic stamp skipping (p5.brush "definition/grain")
+    // definition=1.0: render every stamp (marker, ink)
+    // definition=0.35: skip 65% of stamps (charcoal)
+    if (rng() > config.definition) continue;
+
     // p5.brush: size = pressure² * weight * random(0.85, 1.15)
     const sizeRand = 0.85 + rng() * 0.30;
     const stampSize = stroke.size * stamp.pressure * stamp.pressure * sizeRand;
 
-    // Vibration: perpendicular offset proportional to stroke weight
-    const jitterX = config.posJitter * stroke.size * (rng() * 2 - 1);
-    const jitterY = config.posJitter * stroke.size * (rng() * 2 - 1);
+    // p5.brush vibration: random offset in absolute pixels
+    const jitterX = config.vibration * (rng() * 2 - 1);
+    const jitterY = config.vibration * (rng() * 2 - 1);
 
     // p5.brush: alpha * max(0.8, pressure) * random(0.9, 1.1)
     const pressureMod = Math.max(0.8, stamp.pressure);
