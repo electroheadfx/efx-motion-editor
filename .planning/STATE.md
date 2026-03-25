@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
-status: Defining requirements
-stopped_at: Milestone v0.5.0 started
+status: Ready to plan Phase 20
+stopped_at: Roadmap created with 2 phases (20-21)
 last_updated: "2026-03-25"
 last_activity: 2026-03-25
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,15 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Milestone v0.5.0 — Motion Blur & Paint Styles
-Last activity: 2026-03-25
+**Current focus:** Phase 20 — Paint Brush FX
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-25 — Milestone v0.5.0 started
+Phase: 20 of 21 (Paint Brush FX)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-25 — Roadmap created for v0.5.0
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -51,7 +52,8 @@ None.
 
 ### Roadmap Evolution
 
-v0.5.0 milestone started. 2 phases planned (20-21).
+v0.5.0 roadmap created. 2 phases (20-21), 22 requirements mapped.
+Research recommends shared WebGL2 context (`glSharedContext.ts`) for both features.
 
 ### Blockers/Concerns
 
@@ -64,5 +66,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-25
-Stopped at: Milestone v0.5.0 initialization
+Stopped at: Roadmap created for v0.5.0
 Resume file: None
