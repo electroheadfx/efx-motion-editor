@@ -172,7 +172,7 @@ function flushStyledStrokes(
   width: number,
   height: number,
 ): void {
-  const fxCanvas: HTMLCanvasElement | OffscreenCanvas | null = renderStyledStrokes(strokes, width, height);
+  const fxCanvas = renderStyledStrokes(strokes, width, height);
   if (fxCanvas) {
     ctx.drawImage(fxCanvas, 0, 0);
   } else {

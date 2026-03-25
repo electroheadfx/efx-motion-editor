@@ -29,13 +29,16 @@ const STYLE_MAP: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Singleton OffscreenCanvas management
+// Singleton canvas management
+// p5.brush requires WebGL2 context — OffscreenCanvas doesn't support WebGL2
+// in WKWebView (Tauri/Safari), so we use a hidden HTMLCanvasElement instead.
 // ---------------------------------------------------------------------------
-let _offscreen: OffscreenCanvas | null = null;
+let _canvas: HTMLCanvasElement | null = null;
 let _initialized = false;
 let _customBrushesAdded = false;
 let _currentWidth = 0;
 let _currentHeight = 0;
+let _loadFailed = false;
 
 /**
  * Register custom brush definitions tuned for our styles.
@@ -77,21 +80,34 @@ function initCustomBrushes(): void {
 }
 
 /**
- * Ensure the OffscreenCanvas and p5.brush are initialized at the right size.
+ * Ensure the HTMLCanvasElement and p5.brush are initialized at the right size.
  */
 function ensureInitialized(width: number, height: number): void {
-  // Guard: OffscreenCanvas not available in jsdom test env or SSR
-  if (typeof OffscreenCanvas === 'undefined') return;
+  // Guard: no DOM in jsdom test env or SSR
+  if (typeof document === 'undefined') return;
+  // Don't retry if WebGL2 is unavailable
+  if (_loadFailed) return;
 
-  if (_offscreen && _initialized && _currentWidth === width && _currentHeight === height) {
+  if (_canvas && _initialized && _currentWidth === width && _currentHeight === height) {
     return;
   }
 
-  _offscreen = new OffscreenCanvas(width, height);
+  _canvas = document.createElement('canvas');
+  _canvas.width = width;
+  _canvas.height = height;
   _currentWidth = width;
   _currentHeight = height;
 
-  brush.load(_offscreen);
+  try {
+    brush.load(_canvas);
+  } catch (e) {
+    // WebGL2 not available — fall back to Canvas 2D rendering
+    console.warn('[brushP5Adapter] p5.brush init failed (WebGL2 required):', e);
+    _canvas = null;
+    _initialized = false;
+    _loadFailed = true;
+    return;
+  }
   brush.seed(42); // Deterministic rendering (export parity per D-12)
   _initialized = true;
 
@@ -142,15 +158,15 @@ function renderWatercolorStroke(stroke: PaintStroke): void {
  * @param strokes Array of PaintStroke objects to render
  * @param width Canvas width in pixels
  * @param height Canvas height in pixels
- * @returns OffscreenCanvas with rendered strokes, or null if no styled strokes
+ * @returns HTMLCanvasElement with rendered strokes, or null if no styled strokes / WebGL2 unavailable
  */
 export function renderStyledStrokes(
   strokes: PaintStroke[],
   width: number,
   height: number,
-): OffscreenCanvas | null {
-  // Guard: OffscreenCanvas not available in jsdom test env or SSR
-  if (typeof OffscreenCanvas === 'undefined') {
+): HTMLCanvasElement | null {
+  // Guard: no DOM in jsdom test env or SSR
+  if (typeof document === 'undefined') {
     return null;
   }
 
@@ -164,6 +180,11 @@ export function renderStyledStrokes(
   }
 
   ensureInitialized(width, height);
+
+  // If p5.brush failed to init (no WebGL2), fall back to Canvas 2D in paintRenderer
+  if (!_canvas || !_initialized) {
+    return null;
+  }
 
   brush.clear();
   brush.push();
@@ -214,7 +235,7 @@ export function renderStyledStrokes(
   brush.pop();
   brush.render(); // MANDATORY: flushes compositing
 
-  return _offscreen;
+  return _canvas;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +246,7 @@ export function renderStyledStrokes(
  * Dispose the brush FX renderer, releasing the OffscreenCanvas and WebGL resources.
  */
 export function disposeBrushFx(): void {
-  _offscreen = null;
+  _canvas = null;
   _initialized = false;
   _currentWidth = 0;
   _currentHeight = 0;
