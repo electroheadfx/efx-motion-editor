@@ -44,7 +44,10 @@ const WEIGHT_SCALE: Record<string, number> = {
 function compensatedWeight(brushName: string, diameter: number): number {
   const pw = PARAM_WEIGHT[brushName] ?? 1;
   const scale = WEIGHT_SCALE[brushName] ?? 1;
-  return (diameter * scale) / (2 * pw);
+  // Divide by 4 instead of 2 — p5.brush FX (grain, scatter, texture)
+  // are only visible when stamps DON'T completely fill the stroke area.
+  // At full size, all styles look like solid blobs.
+  return (diameter * scale) / (4 * pw);
 }
 
 /**
@@ -201,14 +204,14 @@ function renderWatercolorStroke(
   brush.set('marker', stroke.color, w);
   brush.spline(pts, 0.5);
 
-  // Subtle bleed wash along the path
-  const washStep = Math.max(2, Math.floor(pts.length / 10));
-  brush.fill(stroke.color, Math.round(stroke.opacity * 25));
+  // Small bleed wash circles along the path for watercolor edge
+  const washStep = Math.max(2, Math.floor(pts.length / 8));
+  brush.fill(stroke.color, Math.round(stroke.opacity * 20));
   brush.fillBleed(bleed, 'out');
   brush.fillTexture(grain, 0.5);
   for (let i = 0; i < pts.length; i += washStep) {
     const pt = pts[i];
-    brush.circle(pt[0], pt[1], stroke.size * 0.4);
+    brush.circle(pt[0], pt[1], stroke.size * 0.15);
   }
   brush.noFill();
 }
