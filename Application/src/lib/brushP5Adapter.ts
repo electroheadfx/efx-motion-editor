@@ -51,12 +51,13 @@ function compensatedWeight(brushName: string, diameter: number): number {
 }
 
 /**
- * Map pointer pressure (0-1, mouse=0.5) to p5.brush pressure range (0.8-1.3).
- * p5.brush treats pressure as a size MULTIPLIER around 1.0, not a 0-1 value.
- * Values in examples: random(0.8, 1.5), min_max: [0.78, 1.3].
+ * Map pointer pressure (0-1, mouse=0.5) to p5.brush pressure range.
+ * Preserve full dynamic range for tablet pressure tapering.
+ * Light touch → thin line, hard press → thick line.
  */
 function mapPressure(p: number): number {
-  return 0.8 + p * 0.5;
+  // 0.3-1.3 range preserves 1:4 ratio for visible pressure variation
+  return 0.3 + p;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,22 +199,25 @@ function renderWatercolorStroke(
 
   const bleed = stroke.brushParams?.bleed ?? 0.5;
   const grain = stroke.brushParams?.grain ?? 0.4;
+  const opacity = Math.round(stroke.opacity * 60);
 
-  // Stroke with marker brush for the core wash line
-  const w = compensatedWeight('marker', stroke.size);
-  brush.set('marker', stroke.color, w);
-  brush.spline(pts, 0.5);
-
-  // Small bleed wash circles along the path for watercolor edge
-  const washStep = Math.max(2, Math.floor(pts.length / 8));
-  brush.fill(stroke.color, Math.round(stroke.opacity * 20));
+  // Filled polygon along stroke path — produces natural watercolor wash
+  // with bleeding edges and paper texture (like Image 43)
+  brush.fill(stroke.color, opacity);
   brush.fillBleed(bleed, 'out');
   brush.fillTexture(grain, 0.5);
-  for (let i = 0; i < pts.length; i += washStep) {
-    const pt = pts[i];
-    brush.circle(pt[0], pt[1], stroke.size * 0.15);
+
+  brush.beginShape();
+  for (const pt of pts) {
+    brush.vertex(pt[0], pt[1]);
   }
+  brush.endShape();
   brush.noFill();
+
+  // Soft spline on top for the core wet-on-wet stroke
+  const w = compensatedWeight('marker', stroke.size) * 0.6;
+  brush.set('marker', stroke.color, w);
+  brush.spline(pts, 0.5);
 }
 
 // ---------------------------------------------------------------------------
