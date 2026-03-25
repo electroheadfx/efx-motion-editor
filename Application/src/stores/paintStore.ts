@@ -1,6 +1,6 @@
 import {signal} from '@preact/signals';
-import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions} from '../types/paint';
-import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX} from '../types/paint';
+import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams} from '../types/paint';
+import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_BRUSH_FX_PARAMS} from '../types/paint';
 import {pushAction} from '../lib/history';
 
 // Late-bound callback to mark project dirty without circular import
@@ -19,6 +19,8 @@ const shapeFilled = signal(false);
 const fillTolerance = signal(10);
 const tabletDetected = signal(false);
 const livePressure = signal(0);  // real-time pressure readout from pen
+const brushStyle = signal<BrushStyle>('flat');
+const brushFxParams = signal<BrushFxParams>({});
 const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
@@ -66,6 +68,8 @@ export const paintStore = {
   fillTolerance,
   tabletDetected,
   livePressure,
+  brushStyle,
+  brushFxParams,
   onionSkinEnabled,
   onionSkinPrevRange,
   onionSkinNextRange,
@@ -209,6 +213,8 @@ export const paintStore = {
     fillTolerance.value = 10;
     tabletDetected.value = false;
     livePressure.value = 0;
+    brushStyle.value = 'flat';
+    brushFxParams.value = {};
     onionSkinEnabled.value = false;
     onionSkinPrevRange.value = 1;
     onionSkinNextRange.value = 0;
@@ -238,5 +244,19 @@ export const paintStore = {
 
   setTabletDetected(detected: boolean): void {
     tabletDetected.value = detected;
+  },
+
+  setBrushStyle(style: BrushStyle): void {
+    brushStyle.value = style;
+    // Reset FX params to style defaults when style changes (per D-07)
+    brushFxParams.value = { ...DEFAULT_BRUSH_FX_PARAMS[style] };
+  },
+
+  setBrushFxParams(params: BrushFxParams): void {
+    brushFxParams.value = params;
+  },
+
+  updateBrushFxParam(key: keyof BrushFxParams, value: number): void {
+    brushFxParams.value = { ...brushFxParams.value, [key]: value };
   },
 };

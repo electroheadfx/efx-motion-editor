@@ -146,5 +146,5 @@ Phases execute in numeric order: 20 → 21
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
-| 20. Paint Brush FX | v0.5.0 | 0/8 | Planning complete | - |
+| 20. Paint Brush FX | v0.5.0 | 1/8 | In Progress | - |
 | 21. Motion Blur | v0.5.0 | 0/? | Not started | - |

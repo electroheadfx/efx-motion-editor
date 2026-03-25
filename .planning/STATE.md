@@ -2,16 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
-status: planning
-stopped_at: Phase 20 context gathered
-last_updated: "2026-03-25T12:08:58.817Z"
-last_activity: 2026-03-25 — Roadmap created for v0.5.0
+status: Ready to execute
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-03-25T13:12:19.939Z"
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 8
   completed_plans: 0
-  percent: 0
 ---
 
 # Project State
@@ -21,16 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 20 — Paint Brush FX
+**Current focus:** Phase 20 — paint-brush-fx
 
 ## Current Position
 
-Phase: 20 of 21 (Paint Brush FX)
-Plan: --
-Status: Ready to plan
-Last activity: 2026-03-25 — Roadmap created for v0.5.0
-
-Progress: [░░░░░░░░░░] 0%
+Phase: 20 (paint-brush-fx) — EXECUTING
+Plan: 3 of 8
 
 ## Performance Metrics
 
@@ -46,6 +40,10 @@ Progress: [░░░░░░░░░░] 0%
 
 Archived to PROJECT.md Key Decisions table.
 Full phase decisions archived in milestones/v0.4.0-ROADMAP.md.
+
+- [Phase 20]: Wave 0 test scaffold: 7 vitest stub files with 57 it.todo() cases covering full brush FX verification surface
+- [Phase 20]: BrushStyle/BrushFxParams as optional PaintStroke fields for backward compat with existing sidecar data
+- [Phase 20]: setBrushStyle auto-resets brushFxParams to per-style defaults for tuned values on style switch
 
 ### Pending Todos
 
@@ -66,6 +64,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T12:08:58.813Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-paint-brush-fx/20-CONTEXT.md
+Last session: 2026-03-25T13:12:19.937Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: None
