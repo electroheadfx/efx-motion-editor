@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.1.0
-milestone_name: milestone
-status: v0.4.0 milestone complete
-stopped_at: Completed quick task 260325-db2 (tablet pen support)
-last_updated: "2026-03-25T10:45:40.516Z"
+milestone: v0.5.0
+milestone_name: Motion Blur & Paint Styles
+status: Defining requirements
+stopped_at: Milestone v0.5.0 started
+last_updated: "2026-03-25"
 last_activity: 2026-03-25
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -20,13 +20,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Planning next milestone
+**Current focus:** Milestone v0.5.0 — Motion Blur & Paint Styles
 Last activity: 2026-03-25
 
 ## Current Position
 
-Phase: (none — between milestones)
-Plan: N/A
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-25 — Milestone v0.5.0 started
 
 ## Performance Metrics
 
@@ -49,7 +51,7 @@ None.
 
 ### Roadmap Evolution
 
-v0.4.0 complete. Next milestone TBD via `/gsd:new-milestone`.
+v0.5.0 milestone started. 2 phases planned (20-21).
 
 ### Blockers/Concerns
 
@@ -57,10 +59,10 @@ No active blockers.
 
 ### Quick Tasks Completed
 
-Archived with v0.4.0 milestone.
+None.
 
 ## Session Continuity
 
 Last session: 2026-03-25
-Stopped at: Completed v0.4.0 milestone archival
+Stopped at: Milestone v0.5.0 initialization
 Resume file: None

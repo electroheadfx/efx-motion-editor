@@ -68,7 +68,26 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
-(None yet — define with `/gsd:new-milestone`)
+- [ ] Paint brush styles (watercolor, ink, charcoal, pencil, marker) with WebGL2 offscreen rendering
+- [ ] Spectral pigment mixing (Kubelka-Munk) for physically-based color blending
+- [ ] Watercolor bleed simulation (polygon deformation + layered fill)
+- [ ] Flow field distortion for organic stroke paths
+- [ ] Grain/texture post-pass and edge darkening effects
+- [ ] Brush style UI selector in PaintProperties panel
+- [ ] GLSL per-layer velocity motion blur for real-time preview
+- [ ] Sub-frame accumulation buffer for high-quality export
+- [ ] Combined GLSL + sub-frame motion blur pipeline for export
+- [ ] Motion blur shutter angle UI control and preview toolbar toggle
+- [ ] Motion blur export settings (sub-frame count, strength)
+- [ ] Project-level motion blur settings with .mce persistence
+
+## Current Milestone: v0.5.0 Motion Blur & Paint Styles
+
+**Goal:** Add expressive brush rendering (watercolor, ink, charcoal) to paint layers via WebGL2, and per-layer motion blur with GLSL velocity blur + sub-frame accumulation for export.
+
+**Target features:**
+- Paint brush FX: WebGL2 offscreen renderer with spectral pigment mixing, watercolor bleed, flow fields, grain/texture
+- Motion blur: GLSL velocity blur for preview, sub-frame accumulation for export, shutter angle controls
 
 ## Latest Milestone: v0.4.0 Canvas & Paint (Shipped 2026-03-25)
 
@@ -159,4 +178,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after v0.4.0 milestone*
+*Last updated: 2026-03-25 after v0.5.0 milestone start*
