@@ -102,9 +102,12 @@ void main() {
 // ---------------------------------------------------------------------------
 
 interface StyleConfig {
-  hardness: number;          // 0 = soft (watercolor), 1 = hard edge
-  stampSpacing: number;      // multiplier on stroke.size for stamp interval (0.2 = dense, 0.5 = sparse)
+  hardness: number;          // 0 = very soft gaussian, 1 = hard edge
+  stampSpacing: number;      // multiplier on stroke.size for stamp interval (lower = denser)
   opacityMultiplier: number; // multiplied with stroke opacity for stamp alpha
+  sizeJitter: number;        // random size variation per stamp (0-1)
+  posJitter: number;         // random position offset per stamp (fraction of size)
+  opacityJitter: number;     // random opacity variation per stamp (0-1)
   useScatterShader: boolean; // true = use scatter stamp shader (charcoal)
   postEffects: string[];     // which post-effects to apply: 'grain', 'edgeDarken', 'bleed'
 }
@@ -114,41 +117,59 @@ const STYLE_CONFIGS: Record<string, StyleConfig> = {
     hardness: 1.0,
     stampSpacing: 0.3,
     opacityMultiplier: 1.0,
+    sizeJitter: 0,
+    posJitter: 0,
+    opacityJitter: 0,
     useScatterShader: false,
     postEffects: [],
   },
   ink: {
-    hardness: 0.6,
-    stampSpacing: 0.25,
-    opacityMultiplier: 0.85,
+    hardness: 0.45,
+    stampSpacing: 0.06,
+    opacityMultiplier: 0.55,
+    sizeJitter: 0.05,
+    posJitter: 0.02,
+    opacityJitter: 0.1,
     useScatterShader: false,
     postEffects: ['edgeDarken'],
   },
   charcoal: {
-    hardness: 0.2,
-    stampSpacing: 0.3,
-    opacityMultiplier: 0.6,
+    hardness: 0.15,
+    stampSpacing: 0.08,
+    opacityMultiplier: 0.35,
+    sizeJitter: 0.2,
+    posJitter: 0.15,
+    opacityJitter: 0.3,
     useScatterShader: true,
     postEffects: ['grain'],
   },
   pencil: {
-    hardness: 0.7,
-    stampSpacing: 0.2,
-    opacityMultiplier: 0.4,
+    hardness: 0.35,
+    stampSpacing: 0.04,
+    opacityMultiplier: 0.25,
+    sizeJitter: 0.08,
+    posJitter: 0.03,
+    opacityJitter: 0.15,
     useScatterShader: false,
     postEffects: ['grain'],
   },
   marker: {
-    hardness: 0.95,
-    stampSpacing: 0.15,
-    opacityMultiplier: 0.7,
+    hardness: 0.7,
+    stampSpacing: 0.04,
+    opacityMultiplier: 0.4,
+    sizeJitter: 0.02,
+    posJitter: 0.01,
+    opacityJitter: 0.05,
     useScatterShader: false,
     postEffects: [],
   },
   watercolor: {
-    hardness: 0.15,
-    stampSpacing: 0.2,
-    opacityMultiplier: 0.3,
+    hardness: 0.1,
+    stampSpacing: 0.1,
+    opacityMultiplier: 0.2,
+    sizeJitter: 0.15,
+    posJitter: 0.1,
+    opacityJitter: 0.2,
     useScatterShader: false,
     postEffects: ['bleed', 'grain'],
   },
@@ -544,6 +565,17 @@ function computeStampPositions(stroke: PaintStroke, w: number, h: number): Stamp
 // Stroke stamp rendering
 // ---------------------------------------------------------------------------
 
+// Simple seeded random for per-stamp variation (mulberry32)
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function renderStrokeStamps(
   gl: WebGL2RenderingContext,
   stroke: PaintStroke,
@@ -571,13 +603,9 @@ function renderStrokeStamps(
   const uResolution = gl.getUniformLocation(program, 'u_resolution');
   const uColor = gl.getUniformLocation(program, 'u_color');
   const uHardness = gl.getUniformLocation(program, 'u_hardness');
+  const uSeed = gl.getUniformLocation(program, 'u_seed');
 
   gl.uniform2f(uResolution, w, h);
-
-  // Apply style opacity multiplier to stamp alpha
-  const [r, g, b, a] = hexToGLColor(stroke.color, stroke.opacity * config.opacityMultiplier);
-  gl.uniform4f(uColor, r, g, b, a);
-
   gl.uniform1f(uHardness, config.hardness);
 
   // Set scatter uniform if using scatter program
@@ -590,10 +618,30 @@ function renderStrokeStamps(
 
   // Compute stamp positions (with style-dependent spacing and flow field) and render each
   const stamps = computeStampPositions(stroke, w, h);
-  for (const stamp of stamps) {
-    const stampSize = stroke.size * stamp.pressure;
-    gl.uniform2f(uCenter, stamp.x, stamp.y);
+
+  // Per-stroke deterministic RNG for jitter
+  const rng = mulberry32(hashStringToNumber(stroke.id));
+  const baseColor = hexToGLColor(stroke.color, stroke.opacity * config.opacityMultiplier);
+
+  for (let i = 0; i < stamps.length; i++) {
+    const stamp = stamps[i];
+
+    // Per-stamp size jitter
+    const sizeVariation = 1.0 + config.sizeJitter * (rng() * 2 - 1);
+    const stampSize = stroke.size * stamp.pressure * sizeVariation;
+
+    // Per-stamp position jitter (vibration)
+    const jitterX = config.posJitter * stroke.size * (rng() * 2 - 1);
+    const jitterY = config.posJitter * stroke.size * (rng() * 2 - 1);
+
+    // Per-stamp opacity jitter
+    const opacityVariation = 1.0 - config.opacityJitter * rng();
+    const stampAlpha = baseColor[3] * opacityVariation;
+
+    gl.uniform2f(uCenter, stamp.x + jitterX, stamp.y + jitterY);
     gl.uniform2f(uSize, stampSize, stampSize);
+    gl.uniform4f(uColor, baseColor[0], baseColor[1], baseColor[2], stampAlpha);
+    if (uSeed) gl.uniform1f(uSeed, rng() * 1000);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
@@ -657,7 +705,8 @@ function renderWatercolorStroke(
   gl.uniform2f(gl.getUniformLocation(_watercolorProgram, 'u_resolution'), w, h);
 
   const [r, g, b] = hexToGLColor(stroke.color, stroke.opacity);
-  const perLayerAlpha = stroke.opacity * 0.3 / layerCount;
+  // Each layer is semi-transparent; 7 layers at ~12% each → ~60% peak opacity
+  const perLayerAlpha = stroke.opacity * 0.85 / layerCount;
 
   gl.bindVertexArray(_watercolorVAO);
 

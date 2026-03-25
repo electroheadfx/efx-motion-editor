@@ -49,11 +49,37 @@ export const STAMP_FRAG_SRC = `#version 300 es
 precision highp float;
 in vec2 v_texCoord;
 uniform vec4 u_color;
-uniform float u_hardness; // 0 = soft, 1 = hard edge
+uniform float u_hardness; // 0 = very soft gaussian, 1 = hard edge
+uniform float u_seed;     // per-stamp random seed for variation
 out vec4 out_fragColor;
+
+// Simple hash for per-pixel noise
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
 void main() {
-  float dist = length(v_texCoord - 0.5) * 2.0;
-  float alpha = 1.0 - smoothstep(u_hardness, 1.0, dist);
+  vec2 centered = v_texCoord - 0.5;
+  float dist = length(centered) * 2.0;
+
+  // Gaussian-like falloff — sigma controlled by hardness
+  // Low hardness = wide soft gaussian; high = tight hard circle
+  float sigma = mix(0.28, 0.8, u_hardness);
+  float gauss = exp(-(dist * dist) / (2.0 * sigma * sigma));
+
+  // Hard edge cutoff at the stamp boundary
+  float edge = 1.0 - smoothstep(0.9, 1.0, dist);
+  float falloff = gauss * edge;
+
+  // Per-pixel grain noise (gives texture to each stamp)
+  float grain = hash(v_texCoord * 200.0 + u_seed);
+  // Grain strength inversely proportional to hardness (soft brushes = more grain)
+  float grainStrength = mix(0.35, 0.05, u_hardness);
+  float grainMod = 1.0 - grainStrength * (grain - 0.5) * 2.0;
+
+  float alpha = falloff * grainMod;
+  alpha = clamp(alpha, 0.0, 1.0);
+
   out_fragColor = vec4(u_color.rgb, u_color.a * alpha);
 }
 `;
@@ -584,18 +610,28 @@ in vec2 v_texCoord;
 uniform vec4 u_color;
 uniform float u_hardness;
 uniform float u_scatter;     // 0-1 scatter amount
+uniform float u_seed;        // per-stamp random seed
 out vec4 out_fragColor;
 
 void main() {
   vec2 uv = v_texCoord;
-  float noiseX = snoise(gl_FragCoord.xy * 0.2) * u_scatter * 0.1;
-  float noiseY = snoise(gl_FragCoord.xy * 0.2 + 100.0) * u_scatter * 0.1;
+  // Scatter displacement via simplex noise
+  float noiseX = snoise(gl_FragCoord.xy * 0.15 + u_seed) * u_scatter * 0.15;
+  float noiseY = snoise(gl_FragCoord.xy * 0.15 + u_seed + 100.0) * u_scatter * 0.15;
   uv += vec2(noiseX, noiseY);
+
   float dist = length(uv - 0.5) * 2.0;
-  float alpha = 1.0 - smoothstep(u_hardness, 1.0, dist);
-  // Add grain texture to stamp itself
-  float grain = snoise(gl_FragCoord.xy * 0.4) * 0.3 + 0.85;
-  out_fragColor = vec4(u_color.rgb, u_color.a * alpha * grain);
+
+  // Gaussian falloff (matching stamp shader)
+  float sigma = mix(0.28, 0.8, u_hardness);
+  float gauss = exp(-(dist * dist) / (2.0 * sigma * sigma));
+  float edge = 1.0 - smoothstep(0.9, 1.0, dist);
+  float falloff = gauss * edge;
+
+  // Grain texture from simplex noise (charcoal-like)
+  float grain = snoise(gl_FragCoord.xy * 0.3 + u_seed * 0.1) * 0.4 + 0.7;
+
+  out_fragColor = vec4(u_color.rgb, u_color.a * falloff * grain);
 }
 `;
 

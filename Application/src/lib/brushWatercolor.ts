@@ -108,11 +108,24 @@ function outlineToPolygon(outline: [number, number][]): Point[] {
 // ---------------------------------------------------------------------------
 
 /**
+ * Compute the average edge length of a polygon to scale deformation variance.
+ */
+function avgEdgeLength(polygon: Point[]): number {
+  let total = 0;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    total += Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+  }
+  return total / (polygon.length || 1);
+}
+
+/**
  * Generate deformed polygon layers for watercolor rendering.
  *
  * 1. Converts outline to polygon
  * 2. Creates a seeded RNG from the seed
- * 3. Applies 7 base deformation passes with decreasing variance: 2.0/(i+1)
+ * 3. Applies 7 base deformation passes with variance scaled to polygon size
  * 4. Generates layerCount independent layer variations (4 additional passes each)
  * 5. Returns array of deformed polygons, one per layer
  *
@@ -129,17 +142,22 @@ export function renderWatercolorLayers(
   const rng = seedableGaussian(seed);
   let base = outlineToPolygon(outline);
 
+  // Scale deformation to polygon size (creates visible watercolor bleed)
+  const edgeLen = avgEdgeLength(base);
+  const baseVariance = Math.max(edgeLen * 0.5, 3);
+
   // 7 base deformation passes with decreasing variance
   for (let i = 0; i < 7; i++) {
-    base = deformPolygon(base, 2.0 / (i + 1), rng);
+    base = deformPolygon(base, baseVariance / (i + 1), rng);
   }
 
-  // Generate layers with additional deformation
+  // Generate layers with additional per-layer deformation for bleed variation
+  const layerVariance = baseVariance * 0.6;
   const layers: Point[][] = [];
   for (let l = 0; l < layerCount; l++) {
     let layer = [...base.map((p) => ({...p}))];
     for (let i = 0; i < 4; i++) {
-      layer = deformPolygon(layer, 1.0 / (i + 1), rng);
+      layer = deformPolygon(layer, layerVariance / (i + 1), rng);
     }
     layers.push(layer);
   }
