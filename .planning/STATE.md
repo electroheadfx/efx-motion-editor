@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
-status: Ready to execute
-stopped_at: Completed 20-03-PLAN.md
-last_updated: "2026-03-26T08:48:26.926Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 20-04-PLAN.md (Tasks 1-2; Task 3 checkpoint awaiting human-verify)
+last_updated: "2026-03-26T09:00:42.594Z"
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -59,6 +59,8 @@ Full phase decisions archived in milestones/v0.4.0-ROADMAP.md.
 - [Phase 20]: Flat-only drawing: brushStyle='flat' hardcoded in handlePointerUp -- FX applied post-draw via select tool per D-01
 - [Phase 20]: FX application triggers full-frame re-render of ALL FX strokes for spectral mixing correctness (not just selected)
 - [Phase 20]: showSequenceOverlay signal in paintStore (not component-level) for cross-component access
+- [Phase 20]: flattenFrame ensures all styled strokes are marked fx-applied before calling renderFrameFx
+- [Phase 20]: Export parity confirmed: exportRenderer delegates to PreviewRenderer which uses renderPaintFrameWithBg
 
 ### Pending Todos
 
@@ -79,6 +81,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-26T08:48:26.924Z
-Stopped at: Completed 20-03-PLAN.md
+Last session: 2026-03-26T09:00:42.592Z
+Stopped at: Completed 20-04-PLAN.md (Tasks 1-2; Task 3 checkpoint awaiting human-verify)
 Resume file: None
