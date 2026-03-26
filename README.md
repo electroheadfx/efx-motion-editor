@@ -1,6 +1,6 @@
 # EFX Motion Editor
 
-A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
+A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame, apply **Hollywood-grade per-layer motion blur** with GLSL velocity shaders and sub-frame accumulation, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
 
 <!-- Screenshot: Main editor view -->
 
@@ -123,6 +123,20 @@ Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perf
 
 <!-- Screenshot: Paint overlay with brush FX styles -->
 
+### Per-Layer Motion Blur
+
+Hollywood-quality per-layer directional motion blur with cinematographic shutter angle control. Each animated layer is individually blurred based on its velocity — fast-moving layers streak while stationary layers stay razor-sharp, just like a real film camera with a rotary disc shutter.
+
+**Real-Time Preview** — WebGL2 GLSL directional blur shader runs per-layer in the preview pipeline. Configurable quality tiers (Low/16 samples, Medium/32 samples) for smooth playback. Toggle with `M` key or toolbar button, adjust shutter angle (0-360 degrees) and quality from the dropdown popover.
+
+**Export with Sub-Frame Accumulation** — Export pipeline renders 8 to 128 sub-frames per output frame at fractional temporal positions, accumulates them in a Float32 buffer for mathematically perfect averaging, then applies GLSL velocity blur per sub-frame. The result is cinema-grade motion blur indistinguishable from footage shot on a physical camera. Export shutter angle can be overridden independently from preview settings.
+
+**Velocity Intelligence** — Per-layer velocity cache tracks keyframe position deltas frame-to-frame with automatic seek invalidation. Layers below the motion threshold are skipped entirely — zero GPU cost for static elements. The velocity engine feeds both the preview GLSL shader and the export accumulation pipeline.
+
+**Controls** — Toolbar toggle (Zap icon) with dropdown for shutter angle slider and quality selector. Export dialog with enable toggle, shutter angle override, and sample count selector (8/16/32/64/128). Keyboard shortcut `M` (guarded in paint mode). All settings persist in the `.mce` project file.
+
+<!-- Screenshot: Motion blur preview with shutter angle popover -->
+
 ### Canvas Motion Path
 
 After Effects-style spatial keyframe path editing directly on the canvas. Animated layers display their trajectory as a dotted trail with interactive keyframe markers. Drag keyframe positions on the canvas to reshape motion paths in real-time with auto-seek and undo coalescing.
@@ -143,7 +157,7 @@ Color-coded usage badges on imported assets showing usage counts across all sequ
 
 ### Video Export
 
-Export as PNG image sequences with resolution multipliers, or encode video directly (ProRes/H.264/AV1) via auto-provisioned FFmpeg. Progress tracking with metadata sidecars.
+Export as PNG image sequences with resolution multipliers, or encode video directly (ProRes/H.264/AV1) via auto-provisioned FFmpeg. Optional per-layer motion blur with up to 128 sub-frame accumulation samples for cinema-grade output. Export the full timeline or selected sequence only for fast iteration. Progress tracking with metadata sidecars.
 
 <!-- Screenshot: Export dialog -->
 
@@ -179,11 +193,11 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | UI | Preact, @preact/signals, TypeScript, Tailwind CSS v4 |
 | Build | Vite 5 |
 | Preview Engine | @efxlab/motion-canvas-* (fork), Canvas 2D compositing |
-| GPU Effects | WebGL2 (GLSL shaders, GPU blur) |
+| GPU Effects | WebGL2 (GLSL shaders, GPU blur, per-layer motion blur) |
 | Native Backend | Rust, Tauri 2.0 |
 | Video Export | FFmpeg (auto-provisioned) |
 | Paint Engine | perfect-freehand (flat strokes), p5.brush (FX styles with spectral mixing) |
-| Project Format | `.mce` v14 (progressive JSON with backward compat v1-v14) |
+| Project Format | `.mce` v15 (progressive JSON with backward compat v1-v15) |
 
 ## Prerequisites
 
@@ -240,6 +254,8 @@ efx-motion-editor/
 │   │   │   ├── previewRenderer.ts  # Canvas 2D compositing engine
 │   │   │   ├── exportRenderer.ts   # Export pipeline
 │   │   │   ├── glBlur.ts        # GPU-accelerated Gaussian blur
+│   │   │   ├── glMotionBlur.ts  # WebGL2 GLSL directional motion blur
+│   │   │   ├── motionBlurEngine.ts # Velocity computation & sub-frame accumulation
 │   │   │   ├── fxGenerators.ts  # CPU FX generators (grain, particles, etc.)
 │   │   │   ├── paintRenderer.ts    # Paint stroke/shape/fill renderer
 │   │   │   ├── brushP5Adapter.ts   # p5.brush FX adapter (spectral mixing, multi-pass)
