@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 22-foundation-quick-wins
 source: [22-01-SUMMARY.md, 22-02-SUMMARY.md, 22-03-SUMMARY.md]
 started: 2026-03-26T23:30:00Z
@@ -78,26 +78,56 @@ blocked: 0
   reason: "User reported: Not enough dense"
   severity: minor
   test: 2
-  artifacts: []
-  missing: []
+  root_cause: "Math.round(f) on line 63 collapses sub-frame samples to integers, and key={dot.frame} on line 186 causes Preact to deduplicate ~75% of dots. Sub-frame sampling computes correctly but results are destroyed before rendering."
+  artifacts:
+    - path: "Application/src/components/canvas/MotionPath.tsx"
+      issue: "Line 63: Math.round(f) collapses sub-frame values; Line 186: key={dot.frame} deduplicates dots with same integer frame"
+  missing:
+    - "Store raw fractional frame value (or use sequential index for keys)"
+    - "Change key={dot.frame} to key={index} for unique Preact keys"
+    - "Adjust currentDot lookup to handle fractional frames (Math.round or nearest)"
+  debug_session: ".planning/debug/motion-path-dots-not-dense.md"
 - truth: "Adding to indicator is readable on dark background"
   status: failed
   reason: "User reported: Adding to: [Sequence Name] is in blue, not lisible on dark background — change to yellow/orange"
   severity: cosmetic
   test: 3
-  artifacts: []
-  missing: []
+  root_cause: "Both AddLayerMenu (line 76) and AddFxMenu (line 124) use text-(--color-accent) which is blue (#2D5BE3) — unreadable on dark background"
+  artifacts:
+    - path: "Application/src/components/layer/AddLayerMenu.tsx"
+      issue: "Line 76: blue accent color for Adding to indicator"
+    - path: "Application/src/components/timeline/AddFxMenu.tsx"
+      issue: "Line 124: blue accent color for Adding to indicator"
+  missing:
+    - "Change text-(--color-accent) to text-[#F59E0B] (amber) or text-[#F97316] (orange)"
+  debug_session: ".planning/debug/isolation-add-layer-wrong-target.md"
 - truth: "Layer creation adds layer to timeline aligned with selected layer from In to Out time, not to key photo sequence layers"
   status: failed
   reason: "User reported: when adding layer it adds to Sequence/key photo layers instead of timeline. Purpose was to add on timeline exactly on selected layer from In to Out time, aligned vertically with sequences. Should not add to key photo sequence layers."
   severity: blocker
   test: 3
-  artifacts: []
-  missing: []
+  root_cause: "addLayerToSequence() pushes layers into sequence's internal layers[] array (sub-layers), not onto the timeline. Should create a NEW timeline-level sequence (kind=fx or content-overlay) with inFrame/outFrame matching the isolated content sequence's frame range from trackLayouts."
+  artifacts:
+    - path: "Application/src/stores/sequenceStore.ts"
+      issue: "Line 643-662: addLayerToSequence adds to internal layers[] — wrong target for isolation-mode"
+    - path: "Application/src/components/layer/AddLayerMenu.tsx"
+      issue: "Routes to addLayerToSequence when isolated — should create timeline-level sequence"
+    - path: "Application/src/components/views/ImportedView.tsx"
+      issue: "Lines 95-108, 161-174, 229-244: all handlers route to addLayerToSequence when targetSequenceId set"
+  missing:
+    - "Replace addLayerToSequence calls with createFxSequence/createContentOverlaySequence with computed inFrame/outFrame"
+    - "Compute isolated sequence frame range from trackLayouts"
+    - "Repurpose targetSequenceId semantic from 'add inside' to 'align with'"
+  debug_session: ".planning/debug/isolation-add-layer-wrong-target.md"
 - truth: "Timeline Add FX menu adds FX/paint/content layer to timeline aligned with isolated sequence, not to key photo sequence layers"
   status: failed
   reason: "User reported: Same issue as test 3 — it adds FX/paint/content to Sequence key photo layer instead of on timeline aligned with isolated Sequence(s)"
   severity: blocker
   test: 4
-  artifacts: []
-  missing: []
+  root_cause: "Same root cause as test 3 — AddFxMenu lines 60-64 and 103-104 call addLayerToSequence when isolated, pushing into internal layers[] instead of creating timeline-level sequences"
+  artifacts:
+    - path: "Application/src/components/timeline/AddFxMenu.tsx"
+      issue: "Lines 60-64, 103-104: handleAddFxLayer and handleAddPaintLayer route to addLayerToSequence — should route to createFxSequence with computed inFrame/outFrame"
+  missing:
+    - "Route to createFxSequence with inFrame/outFrame from isolated sequence's trackLayouts range"
+  debug_session: ".planning/debug/isolation-add-layer-wrong-target.md"
