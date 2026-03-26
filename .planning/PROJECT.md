@@ -82,7 +82,30 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
-(No active requirements — planning next milestone)
+- [ ] Compositing FX paint via luma matte extraction (paint over photos without alpha)
+- [ ] Paper/canvas texture on paint layer (shader or tiled textures from Krita)
+- [ ] Duplicate stroke with Alt+move on same frame in roto paint edit mode
+- [ ] Non-uniform scale for paint layer's strokes
+- [ ] Reorder/clean Paint properties panel (space optimization, better buttons)
+- [ ] Sequence-scoped layer creation (add layer only on isolated sequence if selected)
+- [ ] Denser motion path interpolation visual (more dots for short sequences)
+- [ ] Bezier/spline stroke path editing in roto paint
+- [ ] Stroke list panel in roto paint edit mode (drag-and-drop, delete, selection, hide)
+
+## Current Milestone: v0.6.0 Various Enhancements
+
+**Goal:** Improve paint compositing, add paper textures, stroke management, bezier path editing, and several UX refinements across paint and motion editing workflows.
+
+**Target features:**
+- Compositing FX paint via luma matte extraction
+- Paper/canvas texture on paint layer
+- Duplicate stroke with Alt+move in roto paint edit mode
+- Non-uniform scale for paint layer's strokes
+- Reorder/clean Paint properties panel
+- Sequence-scoped layer creation
+- Denser motion path interpolation visual
+- Bezier/spline stroke path editing in roto paint
+- Stroke list panel in roto paint edit mode
 
 ## Latest Milestone: v0.5.0 Motion Blur & Paint Styles (Shipped 2026-03-26)
 
@@ -180,4 +203,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-26 after v0.5.0 milestone*
+*Last updated: 2026-03-26 after v0.6.0 milestone start*

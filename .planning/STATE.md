@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.5.0
-milestone_name: Motion Blur & Paint Styles
-status: v0.5.0 milestone complete
-stopped_at: Milestone v0.5.0 archived
-last_updated: "2026-03-26T18:07:12.281Z"
+milestone: v0.6.0
+milestone_name: Various Enhancements
+status: defining requirements
+stopped_at: null
+last_updated: "2026-03-26"
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -19,12 +19,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Planning next milestone
+**Current focus:** Defining requirements for v0.6.0
 
 ## Current Position
 
-Milestone: v0.5.0 complete
-Next: /gsd:new-milestone
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-26 — Milestone v0.6.0 started
 
 ## Performance Metrics
 
