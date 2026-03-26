@@ -62,29 +62,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COMP-01 | — | Pending |
-| COMP-02 | — | Pending |
-| COMP-03 | — | Pending |
-| COMP-04 | — | Pending |
-| COMP-05 | — | Pending |
-| PINT-01 | — | Pending |
-| PINT-02 | — | Pending |
-| PINT-03 | — | Pending |
-| PINT-04 | — | Pending |
-| STRK-01 | — | Pending |
-| STRK-02 | — | Pending |
-| STRK-03 | — | Pending |
-| STRK-04 | — | Pending |
-| STRK-05 | — | Pending |
-| UXP-01 | — | Pending |
-| UXP-02 | — | Pending |
-| UXP-03 | — | Pending |
+| COMP-01 | Phase 25 | Pending |
+| COMP-02 | Phase 25 | Pending |
+| COMP-03 | Phase 25 | Pending |
+| COMP-04 | Phase 25 | Pending |
+| COMP-05 | Phase 25 | Pending |
+| PINT-01 | Phase 23 | Pending |
+| PINT-02 | Phase 23 | Pending |
+| PINT-03 | Phase 26 | Pending |
+| PINT-04 | Phase 26 | Pending |
+| STRK-01 | Phase 24 | Pending |
+| STRK-02 | Phase 24 | Pending |
+| STRK-03 | Phase 24 | Pending |
+| STRK-04 | Phase 24 | Pending |
+| STRK-05 | Phase 24 | Pending |
+| UXP-01 | Phase 22 | Pending |
+| UXP-02 | Phase 22 | Pending |
+| UXP-03 | Phase 22 | Pending |
 
 **Coverage:**
 - v0.6.0 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-26 after initial definition*
+*Last updated: 2026-03-26 after roadmap creation*
