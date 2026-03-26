@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Expressive brush styles (watercolor, ink, charcoal, pencil, marker) applied as a post-drawing FX pass via p5.brush standalone rendering. Users draw flat strokes with pressure/angle/speed, then select strokes and apply FX styles which cache as per-stroke raster images. Paint canvas uses a solid background (white default or user color) to avoid p5.brush transparency issues. Brush style and FX params persist in paint sidecar JSON. Flat brush behavior must not regress.
+Expressive brush styles (watercolor, ink, charcoal, pencil, marker) applied as a post-drawing FX pass via p5.brush standalone rendering. Users draw flat strokes with pressure/angle/speed, then select strokes and apply FX styles. All FX-applied strokes on a frame render together on the same p5.brush canvas (enabling spectral mixing) and the result is cached as a single raster image per frame. Paint canvas uses a solid background (white default or user color) to avoid p5.brush transparency issues. Brush style and FX params persist in paint sidecar JSON. Flat brush behavior must not regress.
 
 </domain>
 
@@ -16,8 +16,8 @@ Expressive brush styles (watercolor, ink, charcoal, pencil, marker) applied as a
 ### Rendering architecture
 - **D-01:** Always draw in flat mode — pressure, angle, speed with live Canvas 2D preview. p5.brush never runs during drawing.
 - **D-02:** FX is applied as a post-process after drawing, not during. User draws flat strokes first, then selects and applies FX styles.
-- **D-03:** Each FX-applied stroke is rendered individually via p5.brush and cached as its own raster image. Playback composites cached images only (`drawImage()` calls), p5.brush never runs during playback.
-- **D-04:** Three stroke states: flat (vector, editable) → FX applied (cached raster per stroke, stroke-level undo) → flattened (merged single raster per frame, fastest playback).
+- **D-03:** All FX-applied strokes on a frame are rendered together on the same p5.brush canvas (enabling Kubelka-Munk spectral mixing when strokes overlap). The result is cached as a single HTMLCanvasElement per frame in `paintStore.frameFxCache`. Playback composites the cached frame image only (`drawImage()` call), p5.brush never runs during playback.
+- **D-04:** Three stroke states: flat (vector, editable) → FX applied (per-frame cache, stroke-level undo triggers frame re-render) → flattened (frame cache IS already the merged result, fastest playback).
 
 ### Select tool
 - **D-05:** New select tool added to paint tools — user can tap/lasso to select one or more flat strokes on the current frame.
@@ -119,7 +119,7 @@ Expressive brush styles (watercolor, ink, charcoal, pencil, marker) applied as a
 
 - **Grain/texture paper background** — procedural noise or texture image as paint background instead of flat solid. Future phase.
 - **Apply stroke to all frames mode** — paint one stroke and have it appear on multiple frames. New capability, separate phase.
-- **Spectral pigment mixing (Kubelka-Munk)** — physically-correct color blending. May not be needed with per-stroke raster caching on solid background. Re-evaluate in future phase if color mixing quality is insufficient.
+- ~~**Spectral pigment mixing (Kubelka-Munk)**~~ — Now implemented via per-frame caching: all FX strokes render on shared p5.brush canvas, enabling spectral mixing (PAINT-06).
 
 </deferred>
 
