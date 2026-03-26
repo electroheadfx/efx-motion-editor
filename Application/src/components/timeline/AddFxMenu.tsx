@@ -7,7 +7,7 @@ import {isolationStore} from '../../stores/isolationStore';
 import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {defaultTransform, createDefaultFxSource} from '../../types/layer';
 import type {LayerType, BlendMode, Layer, LayerSourceData} from '../../types/layer';
-import {totalFrames} from '../../lib/frameMap';
+import {totalFrames, trackLayouts} from '../../lib/frameMap';
 
 /** Popover menu for adding content overlay and FX sequences in the timeline area */
 export function AddLayerMenu() {
@@ -40,6 +40,17 @@ export function AddLayerMenu() {
     }
   }
 
+  // Compute isolated sequence frame range from trackLayouts
+  let isolatedInFrame = 0;
+  let isolatedOutFrame = totalFrames.peek();
+  if (targetSequenceId) {
+    const layout = trackLayouts.value.find(t => t.sequenceId === targetSequenceId);
+    if (layout) {
+      isolatedInFrame = layout.startFrame;
+      isolatedOutFrame = layout.endFrame;
+    }
+  }
+
   const handleAddFxLayer = (type: LayerType, name: string, defaultBlend: BlendMode = 'normal') => {
     setMenuOpen(false);
     const layerId = crypto.randomUUID();
@@ -58,7 +69,7 @@ export function AddLayerMenu() {
     };
 
     if (targetSequenceId) {
-      sequenceStore.addLayerToSequence(targetSequenceId, fxLayer);
+      sequenceStore.createFxSequence(name, fxLayer, totalFrames.peek(), { inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
     } else {
       sequenceStore.createFxSequence(name, fxLayer, totalFrames.peek());
     }
@@ -69,7 +80,7 @@ export function AddLayerMenu() {
   const handleAddContentLayer = (type: 'static-image' | 'image-sequence' | 'video') => {
     setMenuOpen(false);
     if (targetSequenceId) {
-      uiStore.setAddLayerIntent({ type, targetSequenceId });
+      uiStore.setAddLayerIntent({ type, targetSequenceId, isolatedInFrame, isolatedOutFrame });
     } else {
       uiStore.setAddLayerIntent({ type, target: 'content-overlay' });
     }
@@ -101,7 +112,7 @@ export function AddLayerMenu() {
       isBase: false,
     };
     if (targetSequenceId) {
-      sequenceStore.addLayerToSequence(targetSequenceId, paintLayer);
+      sequenceStore.createFxSequence('Paint', paintLayer, totalFrames.peek(), { inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
     } else {
       sequenceStore.createFxSequence('Paint', paintLayer, totalFrames.peek());
     }
@@ -121,7 +132,7 @@ export function AddLayerMenu() {
       {menuOpen && (
         <div class="absolute right-0 bottom-8 z-50 bg-(--color-bg-menu) border border-(--color-border-subtle) rounded-md shadow-xl py-1 min-w-[160px]">
           {hasIsolation && targetSequenceName && (
-            <div class="px-3 py-1 text-[9px] text-(--color-accent) font-medium">
+            <div class="px-3 py-1 text-[9px] text-[#F59E0B] font-medium">
               Adding to: {targetSequenceName}
             </div>
           )}

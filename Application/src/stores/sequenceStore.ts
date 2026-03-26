@@ -170,7 +170,7 @@ export const sequenceStore = {
   // --- FX Sequence CRUD ---
 
   /** Create an FX sequence with a single FX layer, positioned globally on the timeline */
-  createFxSequence(name: string, layer: Layer, totalFrames: number): Sequence {
+  createFxSequence(name: string, layer: Layer, totalFrames: number, opts?: { inFrame?: number; outFrame?: number }): Sequence {
     const before = snapshot();
 
     const seq: Sequence = {
@@ -182,8 +182,8 @@ export const sequenceStore = {
       height: 1080,
       keyPhotos: [],
       layers: [layer],
-      inFrame: 0,
-      outFrame: totalFrames > 0 ? totalFrames : 100,
+      inFrame: opts?.inFrame ?? 0,
+      outFrame: opts?.outFrame ?? (totalFrames > 0 ? totalFrames : 100),
     };
     sequences.value = [...sequences.value, seq];
     markDirty();
@@ -201,7 +201,7 @@ export const sequenceStore = {
   },
 
   /** Create a content overlay sequence with a single content layer, positioned globally on the timeline */
-  createContentOverlaySequence(name: string, layer: Layer, totalFrames: number): Sequence {
+  createContentOverlaySequence(name: string, layer: Layer, totalFrames: number, opts?: { inFrame?: number; outFrame?: number }): Sequence {
     const before = snapshot();
 
     const seq: Sequence = {
@@ -213,8 +213,8 @@ export const sequenceStore = {
       height: 1080,
       keyPhotos: [],
       layers: [layer],
-      inFrame: 0,
-      outFrame: totalFrames > 0 ? totalFrames : 100,
+      inFrame: opts?.inFrame ?? 0,
+      outFrame: opts?.outFrame ?? (totalFrames > 0 ? totalFrames : 100),
     };
     sequences.value = [...sequences.value, seq];
     markDirty();
