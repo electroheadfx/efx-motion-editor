@@ -34,7 +34,9 @@ export function hasMotion(keyframes: Keyframe[]): boolean {
 }
 
 /**
- * Sample one dot per frame between the first and last keyframe.
+ * Sample dots between the first and last keyframe.
+ * For short sequences (< 30 frames span), uses sub-frame sampling at 0.25-frame steps
+ * to produce ~4x denser dots for better visual feedback (per D-11/UXP-03).
  * Returns an array of {x, y, frame} in project-space coordinates.
  */
 export function sampleMotionDots(
@@ -46,15 +48,19 @@ export function sampleMotionDots(
 
   const firstFrame = keyframes[0].frame;
   const lastFrame = keyframes[keyframes.length - 1].frame;
+  const span = lastFrame - firstFrame;
+
+  // Sub-frame sampling for short sequences (per D-11)
+  const step = span < 30 ? 0.25 : 1;
   const dots: {x: number; y: number; frame: number}[] = [];
 
-  for (let frame = firstFrame; frame <= lastFrame; frame++) {
-    const vals = interpolateAt(keyframes, frame);
+  for (let f = firstFrame; f <= lastFrame; f += step) {
+    const vals = interpolateAt(keyframes, f);
     if (vals) {
       dots.push({
         x: vals.x + canvasW / 2,
         y: vals.y + canvasH / 2,
-        frame,
+        frame: Math.round(f),
       });
     }
   }
