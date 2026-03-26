@@ -1,5 +1,20 @@
 /** Paint tool types (per D-04) */
-export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse';
+export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse' | 'select';
+
+/** Per D-04: Three stroke states for FX workflow */
+export type StrokeFxState = 'flat' | 'fx-applied' | 'flattened';
+
+/** Brush style presets */
+export type BrushStyle = 'flat' | 'watercolor' | 'ink' | 'charcoal' | 'pencil' | 'marker';
+
+/** Per-stroke FX parameters */
+export interface BrushFxParams {
+  grain?: number;
+  bleed?: number;
+  scatter?: number;
+  fieldStrength?: number;
+  edgeDarken?: number;
+}
 
 /** A freehand stroke recorded from pointer input (per D-02, D-03) */
 export interface PaintStroke {
@@ -10,6 +25,9 @@ export interface PaintStroke {
   opacity: number;       // 0-1 (per D-03)
   size: number;          // brush diameter in project pixels
   options: PaintStrokeOptions;
+  brushStyle?: BrushStyle;       // FX brush style (default: flat = Canvas2D)
+  brushParams?: BrushFxParams;   // per-stroke FX parameters
+  fxState?: StrokeFxState;       // per D-04: current rendering state (default: 'flat')
 }
 
 /** Options passed to perfect-freehand getStroke() */
@@ -76,3 +94,6 @@ export const DEFAULT_STROKE_OPTIONS: PaintStrokeOptions = {
 };
 export const BRUSH_SIZE_MIN = 1;
 export const BRUSH_SIZE_MAX = 200;
+
+/** Default paint layer background color (per D-11) */
+export const DEFAULT_PAINT_BG_COLOR = '#FFFFFF';

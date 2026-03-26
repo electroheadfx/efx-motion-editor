@@ -1,6 +1,6 @@
 import {signal} from '@preact/signals';
 import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions} from '../types/paint';
-import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX} from '../types/paint';
+import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR} from '../types/paint';
 import {pushAction} from '../lib/history';
 
 // Late-bound callback to mark project dirty without circular import
@@ -23,6 +23,8 @@ const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
 const onionSkinOpacity = signal(0.3);
+const paintBgColor = signal(DEFAULT_PAINT_BG_COLOR);
+const selectedStrokeIds = signal<Set<string>>(new Set());
 
 /** Bumped on every paint data mutation so reactive consumers (Preview) re-render */
 const paintVersion = signal(0);
@@ -34,6 +36,9 @@ const _frames = new Map<string, Map<number, PaintFrame>>();
 
 /** "layerId:frameNum" strings for persistence tracking */
 const _dirtyFrames = new Set<string>();
+
+/** Per-frame FX raster cache. Key: "layerId:frame". Value: HTMLCanvasElement with all FX strokes rendered together via p5.brush. */
+const _frameFxCache = new Map<string, HTMLCanvasElement>();
 
 // --- Helpers ---
 
@@ -70,6 +75,8 @@ export const paintStore = {
   onionSkinPrevRange,
   onionSkinNextRange,
   onionSkinOpacity,
+  paintBgColor,
+  selectedStrokeIds,
 
   // Frame data access
   getFrame(layerId: string, frame: number): PaintFrame | null {
@@ -184,6 +191,30 @@ export const paintStore = {
     return result;
   },
 
+  /** Store a frame-level FX cache canvas (all FX strokes rendered together by p5.brush). */
+  setFrameFxCache(layerId: string, frame: number, canvas: HTMLCanvasElement): void {
+    _frameFxCache.set(`${layerId}:${frame}`, canvas);
+  },
+
+  /** Get the cached frame-level FX canvas, or null if not cached. */
+  getFrameFxCache(layerId: string, frame: number): HTMLCanvasElement | null {
+    return _frameFxCache.get(`${layerId}:${frame}`) ?? null;
+  },
+
+  /** Invalidate the frame-level FX cache (called when any stroke on the frame changes). */
+  invalidateFrameFxCache(layerId: string, frame: number): void {
+    _frameFxCache.delete(`${layerId}:${frame}`);
+  },
+
+  /** Clear all frame FX caches (e.g., on project close). */
+  clearAllFrameFxCaches(): void {
+    _frameFxCache.clear();
+  },
+
+  setPaintBgColor(color: string): void {
+    paintBgColor.value = color;
+  },
+
   /** Load frame data without undo (used by persistence) */
   loadFrame(layerId: string, frame: number, pf: PaintFrame): void {
     let layerFrames = _frames.get(layerId);
@@ -213,6 +244,9 @@ export const paintStore = {
     onionSkinPrevRange.value = 1;
     onionSkinNextRange.value = 0;
     onionSkinOpacity.value = 0.3;
+    paintBgColor.value = DEFAULT_PAINT_BG_COLOR;
+    selectedStrokeIds.value = new Set();
+    _frameFxCache.clear();
   },
 
   // Tool settings

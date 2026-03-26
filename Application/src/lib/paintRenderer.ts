@@ -1,6 +1,7 @@
 import {getStroke} from 'perfect-freehand';
 import {floodFill, hexToRgba} from './paintFloodFill';
 import type {PaintFrame, PaintElement, PaintStroke, PaintShape, PaintFill, PaintStrokeOptions} from '../types/paint';
+import {paintStore} from '../stores/paintStore';
 
 /** Legacy pressure easing presets → curve exponent mapping */
 const LEGACY_EASING_CURVES: Record<string, number> = {
@@ -163,6 +164,75 @@ export function renderPaintFrame(
 ): void {
   for (const element of frame.elements) {
     renderElement(ctx, element, width, height);
+  }
+}
+
+/**
+ * Render paint frame with solid background (per D-11) and frame-level FX cache.
+ *
+ * Rendering order:
+ * 1. Solid background fill (paintBgColor)
+ * 2. Flat strokes via Canvas2D (strokeToPath)
+ * 3. Frame-level FX cache via single drawImage() if available
+ *    (all FX strokes were batch-rendered together by p5.brush for spectral mixing)
+ * 4. Falls back to renderPaintFrame() if no frame cache exists yet
+ *
+ * @param layerId - Optional layer ID for frame cache lookup
+ * @param frameNum - Optional frame number for frame cache lookup
+ */
+export function renderPaintFrameWithBg(
+  ctx: CanvasRenderingContext2D,
+  frame: PaintFrame,
+  width: number,
+  height: number,
+  layerId?: string,
+  frameNum?: number,
+): void {
+  // Solid paint background per D-11 (default white, user-configurable)
+  const bgColor = paintStore.paintBgColor.peek();
+  ctx.save();
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+
+  // Check for frame-level FX cache (all FX strokes pre-rendered together)
+  let hasFrameCache = false;
+  if (layerId !== undefined && frameNum !== undefined) {
+    const fxCache = paintStore.getFrameFxCache(layerId, frameNum);
+    if (fxCache) {
+      // Render flat strokes first (Canvas2D), then overlay the FX cache
+      renderFlatElements(ctx, frame, width, height);
+      ctx.drawImage(fxCache, 0, 0);
+      hasFrameCache = true;
+    }
+  }
+
+  if (!hasFrameCache) {
+    // No frame cache -- render all elements normally (flat via Canvas2D)
+    renderPaintFrame(ctx, frame, width, height);
+  }
+}
+
+/**
+ * Render only flat elements (non-FX strokes, shapes, fills, erasers).
+ * Used when frame-level FX cache handles all FX-applied strokes separately.
+ */
+function renderFlatElements(
+  ctx: CanvasRenderingContext2D,
+  frame: PaintFrame,
+  width: number,
+  height: number,
+): void {
+  for (const el of frame.elements) {
+    // Skip FX-applied strokes -- they're in the frame cache
+    if (el.tool === 'brush') {
+      const stroke = el as PaintStroke;
+      if (stroke.fxState === 'fx-applied' || stroke.fxState === 'flattened') {
+        continue;
+      }
+    }
+    // Render flat strokes, erasers, shapes, fills via existing Canvas2D path
+    renderElement(ctx, el, width, height);
   }
 }
 
