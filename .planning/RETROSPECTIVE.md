@@ -2,6 +2,59 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v0.5.0 — Motion Blur & Paint Styles
+
+**Shipped:** 2026-03-26
+**Phases:** 2 | **Plans:** 8 | **Tasks:** 15
+
+### What Was Built
+- Expressive brush FX rendering via p5.brush with 5 styles (watercolor, ink, charcoal, pencil, marker) and Kubelka-Munk spectral pigment mixing
+- Non-destructive paint FX workflow: draw flat strokes, select, apply style, flatten for performance
+- Per-frame FX cache for correct spectral mixing across overlapping strokes on shared p5.brush canvas
+- Select tool with hit testing for stroke selection and FX application
+- Solid paint background with color picker and renderPaintFrameWithBg compositing
+- Per-layer GLSL velocity motion blur with WebGL2 directional blur shader and triangle filter kernel
+- VelocityCache with seek invalidation for clean playback vs scrub behavior
+- Sub-frame accumulation export pipeline (8-128 samples) with Float32 averaging for cinematic quality
+- Toolbar motion blur toggle with dropdown popover (shutter angle slider, quality tier selector)
+- Keyboard shortcut M for motion blur toggle with paint-mode guard
+- Project persistence .mce v15 with full round-trip for brush FX state and motion blur settings
+- 27 unit tests for motionBlurStore and motionBlurEngine (including VelocityCache)
+
+### What Worked
+- **p5.brush standalone adoption:** Replaced ~2000 lines of broken custom WebGL2 brush renderer with ~200 lines of adapter code — p5.brush's spectral mixing, grain, and flow fields worked out of the box
+- **Per-frame caching architecture:** Rendering all FX strokes together on shared p5.brush canvas enabled correct spectral mixing (blue + yellow = green) without per-stroke complexity
+- **Wave-based parallel execution:** Phase 21's 4 plans executed with Plans 02/03 in parallel worktrees, cutting wall-clock time significantly
+- **Separate WebGL2 context for motion blur:** Isolated glMotionBlur.ts from glBlur.ts and glslRuntime — avoided shared GL state bugs entirely
+- **Export parity through delegation:** exportRenderer delegating to PreviewRenderer's renderPaintFrameWithBg ensured paint FX render identically in preview and export
+- **VelocityCache seek invalidation pattern:** Simple `Math.abs(currentFrame - lastFrame) > 1` check correctly distinguishes playback from scrubbing
+
+### What Was Inefficient
+- **Phase 20 required reimplementation:** Initial custom WebGL2 brush renderer (~2000 LOC) was scrapped and replaced with p5.brush — significant wasted effort in first approach
+- **No milestone audit before completion:** Third consecutive milestone without running `/gsd:audit-milestone` — should establish as standard practice
+- **ROADMAP plan checkboxes inconsistent:** 20-04 and 21-02/03/04 showed unchecked in ROADMAP despite having SUMMARY.md files — tracking gap in plan completion markup
+
+### Patterns Established
+- p5.brush adapter pattern: thin wrapper around standalone p5.brush library for project-specific brush rendering
+- Per-frame FX cache: all styled strokes rendered together for correct spectral mixing, cache invalidated on any stroke change
+- Non-destructive FX workflow: fxState field (flat/fx-applied/flattened) tracks stroke lifecycle without modifying original stroke data
+- VelocityCache with seek detection: frame delta > 1 indicates seek, invalidates cached velocity to prevent artifacts
+- Combined GLSL + sub-frame blur: GLSL velocity blur for speed, sub-frame accumulation for quality — user chooses via export settings
+
+### Key Lessons
+1. **Adopt mature libraries over custom implementations** — p5.brush delivered spectral mixing, grain, and flow fields that the custom renderer couldn't achieve
+2. **Per-frame caching is the right granularity for spectral mixing** — per-stroke caching can't capture cross-stroke color interactions
+3. **Separate WebGL2 contexts prevent state pollution** — worth the memory cost for reliability when multiple GPU features coexist
+4. **Motion blur requires temporal context (velocity)** — VelocityCache pattern cleanly separates frame-to-frame deltas from rendering
+5. **Export parity is easiest when export delegates to preview code** — renderPaintFrameWithBg used by both paths guarantees identical output
+
+### Cost Observations
+- Model mix: ~80% opus, ~15% sonnet, ~5% haiku
+- Sessions: ~4 sessions over 2 days
+- Notable: Phase 20 reimplementation (p5.brush adoption) was the biggest pivot but resulted in dramatically better code quality and fewer lines
+
+---
+
 ## Milestone: v0.4.0 — Canvas & Paint
 
 **Shipped:** 2026-03-25
@@ -215,6 +268,7 @@
 | v0.2.0 | ~30 | 23 | 66 | Decimal sub-phases for UX iteration; quick task system for inline fixes |
 | v0.3.0 | ~15 | 8 | 29 | Wave 0 test scaffolds; gap closure plans; 5 inserted phases for urgent features |
 | v0.4.0 | ~3 | 2 | 9 | Wave parallelization for paint; visual verification checkpoint plan |
+| v0.5.0 | ~4 | 2 | 8 | p5.brush adoption pivot; separate WebGL2 contexts per GPU feature |
 
 ### Cumulative Quality
 
@@ -224,6 +278,7 @@
 | v0.2.0 | 20,428 | 252+ | 28 | 2 (both medium) |
 | v0.3.0 | 31,522 | 350+ | 4 (carried) | 0 new |
 | v0.4.0 | 34,067 | 430+ | 4 (carried) | 0 new |
+| v0.5.0 | 40,066 | 560+ | 4 (carried) | 0 new |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -237,3 +292,5 @@
 8. WebGL2 architecture investments pay compound returns across features (blur, shaders, transitions)
 9. Visual verification plans are essential for drawing/paint features — static analysis misses runtime rendering bugs
 10. Counter signal pattern bridges imperative data structures (Map/Set) with reactive rendering cleanly
+11. Adopt mature libraries over custom implementations when the problem domain is well-understood (p5.brush vs custom WebGL2 renderer)
+12. Separate WebGL2 contexts per GPU feature prevents state pollution and simplifies lifecycle management
