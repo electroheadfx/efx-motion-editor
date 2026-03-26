@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
 status: Ready to execute
-stopped_at: Phase 20 context updated (reimplementation discussion)
-last_updated: "2026-03-26T07:31:14.121Z"
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-03-26T08:25:04.235Z"
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 10
-  completed_plans: 9
+  total_plans: 4
+  completed_plans: 1
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-25)
 ## Current Position
 
 Phase: 20 (paint-brush-fx) — EXECUTING
-Plan: 3 of 10
+Plan: 2 of 4
 
 ## Performance Metrics
 
@@ -53,6 +53,8 @@ Full phase decisions archived in milestones/v0.4.0-ROADMAP.md.
 - [Phase 20]: p5.brush standalone replaces ~2000 lines of broken custom WebGL2 renderer with ~200 lines of adapter code
 - [Phase 20]: Custom our_ink/our_pencil brushes via brush.add() for distinct style character (PAINT-02 edge darkening, PAINT-04 fine grain)
 - [Phase 20]: HTMLCanvasElement | OffscreenCanvas | null union type for fxCanvas; typeof OffscreenCanvas guard for jsdom/SSR
+- [Phase 20]: Per-frame caching (not per-stroke) ensures spectral mixing via shared p5.brush canvas
+- [Phase 20]: renderFrameFx copies to new canvas; shared singleton reused between calls
 
 ### Pending Todos
 
@@ -73,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-26T07:31:14.118Z
-Stopped at: Phase 20 context updated (reimplementation discussion)
-Resume file: .planning/phases/20-paint-brush-fx/20-CONTEXT.md
+Last session: 2026-03-26T08:25:04.233Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: None

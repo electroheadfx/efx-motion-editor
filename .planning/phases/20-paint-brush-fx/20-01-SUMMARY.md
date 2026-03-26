@@ -2,104 +2,111 @@
 phase: 20-paint-brush-fx
 plan: 01
 subsystem: paint
-tags: [brush-style, paint-types, preact-signals, paint-store]
+tags: [p5.brush, spectral-mixing, kubelka-munk, preact-signals, per-frame-cache]
 
 # Dependency graph
 requires: []
 provides:
-  - "BrushStyle union type with 6 styles (flat, watercolor, ink, charcoal, pencil, marker)"
-  - "BrushFxParams interface with 5 optional numeric params"
-  - "Per-style default FX params (DEFAULT_BRUSH_FX_PARAMS) and visible param config (BRUSH_FX_VISIBLE_PARAMS)"
-  - "PaintStroke extended with optional brushStyle/brushParams fields (backward-compatible)"
-  - "paintStore brushStyle and brushFxParams reactive signals with setter methods"
-  - "PaintOverlay stroke commit attaches brushStyle + brushParams to every new stroke"
-affects: [20-02, 20-03, 20-04, 20-05, 20-06, 20-07]
+  - "PaintStroke.fxState field (flat/fx-applied/flattened) for FX workflow state tracking"
+  - "StrokeFxState type for three-state FX lifecycle"
+  - "PaintToolType 'select' for stroke selection"
+  - "paintStore.frameFxCache Map for per-frame raster cache"
+  - "paintStore.paintBgColor signal for solid paint background"
+  - "paintStore.selectedStrokeIds signal for stroke selection"
+  - "renderFrameFx() in brushP5Adapter for per-frame batch rendering with spectral mixing"
+  - "DEFAULT_PAINT_BG_COLOR constant"
+affects: [20-02, 20-03, 20-04]
 
 # Tech tracking
 tech-stack:
   added: []
-  patterns:
-    - "Per-style FX param defaults and visible-param config for UI-driven slider filtering"
-    - "Style switch resets FX params to defaults (setBrushStyle auto-resets brushFxParams)"
+  patterns: [per-frame-fx-cache, stroke-fx-state-machine, batch-spectral-rendering]
 
 key-files:
   created: []
   modified:
-    - "Application/src/types/paint.ts"
-    - "Application/src/stores/paintStore.ts"
-    - "Application/src/components/canvas/PaintOverlay.tsx"
+    - Application/src/types/paint.ts
+    - Application/src/stores/paintStore.ts
+    - Application/src/lib/brushP5Adapter.ts
+    - Application/src/types/paint.test.ts
+    - Application/src/lib/brushFxDefaults.test.ts
 
 key-decisions:
-  - "BrushStyle and BrushFxParams as optional PaintStroke fields for backward compatibility with existing paint sidecar data"
-  - "setBrushStyle auto-resets brushFxParams to per-style defaults -- user always starts with tuned values on style switch"
+  - "Per-frame caching (not per-stroke) ensures spectral mixing via shared p5.brush canvas"
+  - "fxState on PaintStroke tracks flat/fx-applied/flattened lifecycle without per-stroke canvas"
+  - "renderFrameFx copies to new canvas for cache -- shared singleton canvas reused between calls"
 
 patterns-established:
-  - "Per-style config maps (DEFAULT_BRUSH_FX_PARAMS, BRUSH_FX_VISIBLE_PARAMS) for type-safe style-aware UI rendering"
+  - "Per-frame FX cache: Map<'layerId:frame', HTMLCanvasElement> in paintStore"
+  - "Stroke selection via selectedStrokeIds signal with immutable Set updates"
+  - "renderFrameFx filters by fxState==='fx-applied' before batch rendering"
 
-requirements-completed: [PAINT-13, PAINT-11]
+requirements-completed: [PAINT-01, PAINT-06, PAINT-08, PAINT-11, PAINT-13]
 
 # Metrics
-duration: 4min
-completed: 2026-03-25
+duration: 5min
+completed: 2026-03-26
 ---
 
-# Phase 20 Plan 01: Brush Style Data Model Summary
+# Phase 20 Plan 01: Types, Store & Adapter Foundation Summary
 
-**BrushStyle/BrushFxParams type system, paintStore reactive signals, and PaintOverlay stroke-level attachment for 6 brush styles with per-style FX defaults**
+**Extended PaintStroke with fxState field, added per-frame FX cache to paintStore, and renderFrameFx() to brushP5Adapter for Kubelka-Munk spectral batch rendering**
 
 ## Performance
 
-- **Duration:** 4 min
-- **Started:** 2026-03-25T13:06:14Z
-- **Completed:** 2026-03-25T13:10:42Z
+- **Duration:** 5 min
+- **Started:** 2026-03-26T08:17:50Z
+- **Completed:** 2026-03-26T08:23:19Z
 - **Tasks:** 2
-- **Files modified:** 3
+- **Files modified:** 5
 
 ## Accomplishments
-- Extended paint.ts with BrushStyle union (6 styles), BrushFxParams interface (5 params), per-style defaults and visible-param config
-- Added brushStyle and brushFxParams signals to paintStore with setBrushStyle (auto-resets FX params), setBrushFxParams, and updateBrushFxParam methods
-- Wired PaintOverlay stroke commit to attach brushStyle + brushParams to every new stroke at draw time (per D-03)
-- All changes backward-compatible: old projects without brushStyle load correctly, flat brush strokes unaffected
+- PaintStroke type extended with fxState (flat/fx-applied/flattened) for FX lifecycle tracking, plus StrokeFxState type and 'select' in PaintToolType
+- paintStore now has paintBgColor signal, selectedStrokeIds signal with manipulation methods, and frameFxCache Map with get/set/invalidate/clearAll -- all reset-safe
+- brushP5Adapter exports renderFrameFx() that batch-renders all FX-applied strokes on a single p5.brush canvas for spectral mixing, returning a new cached canvas
+- All 19 test stubs filled (12 in paint.test.ts, 7 in brushFxDefaults.test.ts) with real assertions, all passing
 
 ## Task Commits
 
 Each task was committed atomically:
 
-1. **Task 1: Add BrushStyle, BrushFxParams types and extend PaintStroke** - `0d8acc8` (feat)
-2. **Task 2: Add brushStyle/brushFxParams signals to paintStore and wire PaintOverlay** - `e403d70` (feat)
+1. **Task 1: Extend types and store for per-frame FX caching workflow** - `2b47b99` (feat)
+2. **Task 2: Add renderFrameFx() to brushP5Adapter for per-frame batch rendering** - `009d66a` (feat)
 
 ## Files Created/Modified
-- `Application/src/types/paint.ts` - BrushStyle union, BrushFxParams interface, BRUSH_STYLES array, DEFAULT_BRUSH_FX_PARAMS, BRUSH_FX_VISIBLE_PARAMS, PaintStroke optional fields
-- `Application/src/stores/paintStore.ts` - brushStyle/brushFxParams signals, setBrushStyle/setBrushFxParams/updateBrushFxParam methods, reset() updates
-- `Application/src/components/canvas/PaintOverlay.tsx` - Stroke commit block attaches brushStyle and brushParams from paintStore
+- `Application/src/types/paint.ts` - Added StrokeFxState type, 'select' tool, fxState field on PaintStroke, DEFAULT_PAINT_BG_COLOR constant
+- `Application/src/stores/paintStore.ts` - Added paintBgColor, selectedStrokeIds signals, frameFxCache Map with CRUD methods, stroke selection methods, reset additions
+- `Application/src/lib/brushP5Adapter.ts` - Added renderFrameFx() for per-frame batch rendering with spectral mixing
+- `Application/src/types/paint.test.ts` - Replaced 10 it.todo stubs with real test implementations plus 2 new tests
+- `Application/src/lib/brushFxDefaults.test.ts` - Replaced 7 it.todo stubs with real test implementations
 
 ## Decisions Made
-- BrushStyle and BrushFxParams added as optional PaintStroke fields (not required) -- existing sidecar JSON loads without migration, defaults to flat when absent
-- setBrushStyle auto-resets brushFxParams to per-style defaults from DEFAULT_BRUSH_FX_PARAMS -- ensures users always start with tuned values on style switch
+- Per-frame caching (not per-stroke): All FX strokes on a frame render together on one p5.brush canvas before a single brush.render() call, enabling Kubelka-Munk spectral blending (blue+yellow=green)
+- No fxCachedCanvas on PaintStroke: Cache lives at frame level in paintStore._frameFxCache Map, keyed by "layerId:frame"
+- renderFrameFx copies result to new canvas: The shared singleton _canvas is reused between calls, so frame caches get independent canvas copies via drawImage
 
 ## Deviations from Plan
 
 None - plan executed exactly as written.
 
-## Known Stubs
-
-None - all types, signals, and wiring are fully functional.
-
 ## Issues Encountered
+
 None.
 
 ## User Setup Required
+
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- Type system and data model complete for all downstream plans
-- Plans 02-07 can import BrushStyle, BrushFxParams, and use paintStore.brushStyle/brushFxParams signals
-- PaintOverlay stroke commit is wired -- styled strokes will persist via existing sidecar pipeline
+- Types, store, and adapter foundation ready for Plan 02 (select tool and FX application workflow)
+- renderFrameFx() ready to be called from previewRenderer.ts paint layer compositing path
+- frameFxCache ready to receive cached canvases from FX application trigger
+- No blockers or concerns
 
 ## Self-Check: PASSED
 
-All files exist, all commits verified.
+All 5 modified files exist. Both task commits verified (2b47b99, 009d66a). 19/19 tests passing.
 
 ---
 *Phase: 20-paint-brush-fx*
-*Completed: 2026-03-25*
+*Completed: 2026-03-26*
