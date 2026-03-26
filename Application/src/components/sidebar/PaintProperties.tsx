@@ -417,6 +417,30 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
+      {/* Flatten Frame button -- visible in select mode (per D-17) */}
+      {activeTool === 'select' && (
+        <div class="px-1 pt-1">
+          <button
+            class="w-full text-[11px] py-1 px-2 rounded"
+            style={{
+              backgroundColor: 'var(--sidebar-bg-hover)',
+              color: 'var(--sidebar-text-primary)',
+              border: '1px solid var(--sidebar-border)',
+            }}
+            onClick={() => {
+              const layerId = layer.id;
+              const frame = timelineStore.currentFrame.peek();
+              paintStore.flattenFrame(layerId, frame);
+            }}
+          >
+            Flatten Frame
+          </button>
+          <div class="text-[9px] mt-1 opacity-50" style={{color: 'var(--sidebar-text-secondary)'}}>
+            Merge all FX strokes into single image for fastest playback
+          </div>
+        </div>
+      )}
+
       {/* SEQUENCE OVERLAY per D-13, D-14 */}
       <div class="px-1 pt-1">
         <div class="flex items-center gap-2">

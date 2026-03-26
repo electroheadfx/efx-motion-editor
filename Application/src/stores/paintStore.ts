@@ -1,7 +1,9 @@
 import {signal} from '@preact/signals';
-import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams} from '../types/paint';
+import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams, PaintStroke} from '../types/paint';
 import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_PAINT_BG_COLOR} from '../types/paint';
 import {pushAction} from '../lib/history';
+import {renderFrameFx} from '../lib/brushP5Adapter';
+import {projectStore} from './projectStore';
 
 // Late-bound callback to mark project dirty without circular import
 let _markProjectDirty: (() => void) | null = null;
@@ -338,5 +340,85 @@ export const paintStore = {
   /** Clear all frame FX caches (e.g., on project close). */
   clearAllFrameFxCaches(): void {
     _frameFxCache.clear();
+  },
+
+  // --- Flatten / Unflatten (per D-17) ---
+
+  /**
+   * Flatten a frame: re-render all FX strokes together via renderFrameFx,
+   * store as frame cache, and mark strokes as 'flattened'.
+   * Fastest playback: single drawImage() from frame cache.
+   */
+  flattenFrame(layerId: string, frame: number): void {
+    const paintFrame = this.getFrame(layerId, frame);
+    if (!paintFrame || paintFrame.elements.length === 0) return;
+
+    const projW = projectStore.width.peek();
+    const projH = projectStore.height.peek();
+
+    // Collect all brush strokes for renderFrameFx
+    const brushStrokes = paintFrame.elements.filter(
+      (el) => el.tool === 'brush'
+    ) as PaintStroke[];
+
+    // Ensure all styled strokes are marked fx-applied for renderFrameFx to include them
+    for (const s of brushStrokes) {
+      if (s.brushStyle && s.brushStyle !== 'flat' && s.fxState !== 'fx-applied') {
+        s.fxState = 'fx-applied';
+      }
+    }
+
+    // Render all FX strokes together on one p5.brush canvas (spectral mixing)
+    const fxCanvas = renderFrameFx(brushStrokes, projW, projH);
+    if (fxCanvas) {
+      this.setFrameFxCache(layerId, frame, fxCanvas);
+    }
+
+    // Mark all FX strokes as flattened
+    for (const s of brushStrokes) {
+      if (s.brushStyle && s.brushStyle !== 'flat') {
+        s.fxState = 'flattened';
+      }
+    }
+
+    this.markDirty(layerId, frame);
+    paintVersion.value++;
+    _markProjectDirty?.();
+  },
+
+  /**
+   * Unflatten a frame: restore FX strokes to fx-applied state and
+   * re-render the frame cache.
+   */
+  unflattenFrame(layerId: string, frame: number): void {
+    const paintFrame = this.getFrame(layerId, frame);
+    if (!paintFrame) return;
+
+    const projW = projectStore.width.peek();
+    const projH = projectStore.height.peek();
+
+    // Restore FX strokes to fx-applied state
+    const brushStrokes = paintFrame.elements.filter(
+      (el) => el.tool === 'brush'
+    ) as PaintStroke[];
+
+    for (const s of brushStrokes) {
+      if (s.brushStyle && s.brushStyle !== 'flat') {
+        s.fxState = 'fx-applied';
+      } else {
+        s.fxState = 'flat';
+      }
+    }
+
+    // Re-render frame cache with all FX strokes
+    const fxCanvas = renderFrameFx(brushStrokes, projW, projH);
+    if (fxCanvas) {
+      this.setFrameFxCache(layerId, frame, fxCanvas);
+    } else {
+      this.invalidateFrameFxCache(layerId, frame);
+    }
+
+    this.markDirty(layerId, frame);
+    paintVersion.value++;
   },
 };
