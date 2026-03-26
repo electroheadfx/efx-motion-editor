@@ -41,7 +41,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
           {layer.name}
         </div>
         <button
-          class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1"
+          class="text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1"
+          style={{ backgroundColor: '#2D3A6E', color: '#E0E0EE', border: '1px solid #3A4A8A' }}
           onClick={() => paintStore.paintMode.value = false}
           title="Exit paint mode (P)"
         >
@@ -72,10 +73,10 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* Background + Clear Brushes row (per D-01) */}
+      {/* Background Color + Show Sequence image -- 2 columns */}
       <div style={{ padding: '4px 12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {/* BG Color swatch with label */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }}>
+          {/* Col 1: Background Color */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>Background Color</span>
             <div
@@ -83,26 +84,23 @@ export function PaintProperties({layer}: {layer: Layer}) {
               onClick={() => setShowBgColorPicker(true)}
               title="Paint background color"
             />
+            {bgColor !== DEFAULT_PAINT_BG_COLOR && (
+              <button
+                onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
+                style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-secondary)', cursor: 'pointer', border: 'none' }}
+              >
+                Reset
+              </button>
+            )}
           </div>
-          {/* Reset button */}
-          {bgColor !== DEFAULT_PAINT_BG_COLOR && (
-            <button
-              onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
-              style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-secondary)', cursor: 'pointer', border: 'none' }}
-            >
-              Reset
-            </button>
-          )}
-        </div>
-        {/* Show Sequence image -- left-aligned, title before checkbox */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+          {/* Col 2: Show Sequence image */}
           <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
             Show Sequence image
             <input
               type="checkbox"
               checked={paintStore.showSequenceOverlay.value}
               onChange={() => paintStore.toggleSequenceOverlay()}
-              style={{ width: 16, height: 16, accentColor: 'var(--color-accent)' }}
+              style={{ width: 16, height: 16, accentColor: 'var(--color-accent)', backgroundColor: '#4A4A60', borderRadius: '3px' }}
             />
           </label>
         </div>
