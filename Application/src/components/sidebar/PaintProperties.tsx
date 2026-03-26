@@ -75,20 +75,20 @@ export function PaintProperties({layer}: {layer: Layer}) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {/* BG Color swatch with label */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>BG Color</span>
+            <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>Background</span>
             <div
               style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)' }}
               onClick={() => setShowBgColorPicker(true)}
               title="Paint background color"
             />
           </div>
-          {/* Clear Brushes button */}
-          <div>
+          {/* Clear Brushes button -- centered between BG Color and Show Seq BG */}
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
             {confirmClear ? (
               <div class="flex items-center gap-1">
                 <span class="text-[9px]" style={{color: 'var(--sidebar-text-secondary)'}}>Clear?</span>
                 <button
-                  class="text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                  class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
                   style={{backgroundColor: '#DC2626', color: '#FFFFFF', border: 'none'}}
                   onClick={() => {
                     paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek());
@@ -98,8 +98,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
                   Yes
                 </button>
                 <button
-                  class="text-[10px] px-2 py-0.5 rounded cursor-pointer"
-                  style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', border: 'none'}}
+                  class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
                   onClick={() => setConfirmClear(false)}
                 >
                   No
@@ -107,16 +106,14 @@ export function PaintProperties({layer}: {layer: Layer}) {
               </div>
             ) : (
               <button
+                class="paint-action-btn"
                 onClick={() => setConfirmClear(true)}
                 style={{
-                  backgroundColor: '#DC2626',
-                  color: '#FFFFFF',
                   fontSize: '10px',
                   fontWeight: 600,
                   padding: '3px 8px',
                   borderRadius: '4px',
                   cursor: 'pointer',
-                  border: 'none',
                 }}
               >
                 Clear Brushes
@@ -124,7 +121,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
             )}
           </div>
           {/* Show Seq BG checkbox */}
-          <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginLeft: 'auto' }}>
+          <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={paintStore.showSequenceOverlay.value}
@@ -460,6 +457,9 @@ export function PaintProperties({layer}: {layer: Layer}) {
                 </div>
               );
             })()}
+
+            {/* Spacer between style buttons/FX and size controls */}
+            <div style={{ height: '4px' }} />
 
             {/* Size -- full row */}
             <div class="flex items-center gap-2">
