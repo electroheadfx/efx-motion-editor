@@ -322,9 +322,9 @@
 
 /* Paint mode action buttons — orange hover, blue active */
 .paint-action-btn {
-  background-color: var(--sidebar-bg-hover);
+  background-color: var(--sidebar-input-bg);
   color: var(--sidebar-text-primary);
-  border: 1px solid var(--sidebar-border);
+  border: 1px solid var(--sidebar-border-unselected);
 }
 .paint-action-btn:hover {
   background-color: #f59e0b;
