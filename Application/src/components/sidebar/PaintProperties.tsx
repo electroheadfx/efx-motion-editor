@@ -1,4 +1,5 @@
 import {useState} from 'preact/hooks';
+import {ArrowRight} from 'lucide-preact';
 import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 import {paintStore} from '../../stores/paintStore';
@@ -40,11 +41,12 @@ export function PaintProperties({layer}: {layer: Layer}) {
           {layer.name}
         </div>
         <button
-          class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors"
+          class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1"
           onClick={() => paintStore.paintMode.value = false}
           title="Exit paint mode (P)"
         >
           Exit Paint Mode
+          <ArrowRight size={12} />
         </button>
       </div>
 
@@ -82,16 +84,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
               title="Paint background color"
             />
           </div>
-          {/* Show Seq BG checkbox */}
-          <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginLeft: 'auto' }}>
-            <input
-              type="checkbox"
-              checked={paintStore.showSequenceOverlay.value}
-              onChange={() => paintStore.toggleSequenceOverlay()}
-              style={{ width: 12, height: 12 }}
-            />
-            Show Seq BG
-          </label>
           {/* Reset button */}
           {bgColor !== DEFAULT_PAINT_BG_COLOR && (
             <button
@@ -101,6 +93,18 @@ export function PaintProperties({layer}: {layer: Layer}) {
               Reset
             </button>
           )}
+        </div>
+        {/* Show Sequence image -- left-aligned, title before checkbox */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+          <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+            Show Sequence image
+            <input
+              type="checkbox"
+              checked={paintStore.showSequenceOverlay.value}
+              onChange={() => paintStore.toggleSequenceOverlay()}
+              style={{ width: 16, height: 16, accentColor: 'var(--color-accent)' }}
+            />
+          </label>
         </div>
         {/* Sequence overlay opacity slider -- conditional on showSequenceOverlay */}
         {paintStore.showSequenceOverlay.value && (
@@ -161,7 +165,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
               {paintStore.selectedStrokeIds.value.size > 0 ? (
                 <button
                   class="paint-action-btn text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
-                  style={{ color: '#dc2626' }}
                   onClick={() => {
                     const frame = timelineStore.currentFrame.peek();
                     const selected = paintStore.selectedStrokeIds.peek();

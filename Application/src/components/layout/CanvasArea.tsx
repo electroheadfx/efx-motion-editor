@@ -294,16 +294,16 @@ export function CanvasArea() {
       onMouseEnter={() => uiStore.setMouseRegion('canvas')}
       onMouseLeave={() => uiStore.setMouseRegion('other')}
     >
-      {/* Paint toolbar in controls bar when in paint mode */}
-      {isPaintModeActive && (
-        <div class="flex items-center justify-center w-full h-[42px] px-2 shrink-0">
-          <PaintToolbar />
-        </div>
-      )}
-      {/* Preview Controls (zoom, fit, fullscreen) — hidden in paint mode */}
-      <div class="flex items-center justify-center gap-3 w-full h-[42px] px-5 shrink-0"
-        style={isPaintModeActive ? {display: 'none'} : undefined}
-      >
+      {/* Toolbar overlay — absolutely positioned, vertically centered between top edge and canvas */}
+      <div class="absolute top-0 left-0 right-0 z-10 flex items-center justify-center h-[52px] pointer-events-none">
+        {/* Paint toolbar in paint mode */}
+        {isPaintModeActive && (
+          <div class="pointer-events-auto">
+            <PaintToolbar />
+          </div>
+        )}
+        {/* Preview Controls (zoom, fit, fullscreen) — hidden in paint mode */}
+        <div class={`flex items-center gap-3 pointer-events-auto ${isPaintModeActive ? 'hidden' : ''}`}>
         {/* Paint mode toggle button (only active when a paint layer is selected) */}
         <button
           class={`rounded p-1.5 transition-colors ${
@@ -367,6 +367,7 @@ export function CanvasArea() {
         </>)}
         {/* Full-speed indicator */}
         <FullSpeedBadge />
+        </div>
       </div>
       {/* Preview Frame with zoom/pan */}
       <div
