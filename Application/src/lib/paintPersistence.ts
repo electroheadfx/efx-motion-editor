@@ -108,6 +108,9 @@ export async function loadPaintData(projectDir: string, layerIds: string[]): Pro
       console.error(`Failed to load paint data for layer ${layerId} (non-fatal):`, err);
     }
   }
+
+  // Trigger canvas re-render after all FX caches are regenerated
+  paintStore.paintVersion.value++;
 }
 
 /**

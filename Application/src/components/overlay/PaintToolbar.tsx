@@ -1,10 +1,11 @@
 import {useState} from 'preact/hooks';
-import {Pen, Eraser, Pipette, PaintBucket, Minus, Square, Circle} from 'lucide-preact';
+import {Pen, Eraser, Pipette, PaintBucket, Minus, Square, Circle, MousePointer2, Eye, EyeOff} from 'lucide-preact';
 import {paintStore} from '../../stores/paintStore';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 import type {PaintToolType} from '../../types/paint';
 
 const TOOLS: {type: PaintToolType; Icon: typeof Pen; label: string}[] = [
+  {type: 'select', Icon: MousePointer2, label: 'Select'},
   {type: 'brush', Icon: Pen, label: 'Brush'},
   {type: 'eraser', Icon: Eraser, label: 'Eraser'},
   {type: 'eyedropper', Icon: Pipette, label: 'Eyedropper'},
@@ -28,7 +29,7 @@ export function PaintToolbar() {
 
   return (
     <div
-      class="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-2 py-1.5 rounded-lg shadow-xl"
+      class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg"
       style={{
         background: 'var(--color-bg-menu)',
         border: '1px solid var(--color-border-subtle)',
@@ -106,6 +107,23 @@ export function PaintToolbar() {
       >
         {Math.round(brushOpacityVal * 100)}%
       </span>
+
+      {/* Divider */}
+      <div class="w-px h-5 mx-0.5" style={{backgroundColor: 'var(--color-border-subtle)'}} />
+
+      {/* Flat/FX preview toggle */}
+      <button
+        class={`flex items-center justify-center rounded cursor-pointer transition-colors ${
+          paintStore.showFlatPreview.value
+            ? 'bg-amber-500 text-black'
+            : 'text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-border-subtle)'
+        }`}
+        style={{width: '24px', height: '24px', padding: '3px'}}
+        title={paintStore.showFlatPreview.value ? 'Show FX render (F)' : 'Show flat preview (F)'}
+        onClick={() => paintStore.toggleFlatPreview()}
+      >
+        {paintStore.showFlatPreview.value ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
 
       {/* Color Picker Modal */}
       {showColorPicker && (

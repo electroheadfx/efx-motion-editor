@@ -83,6 +83,52 @@ function findStrokeAtPoint(
   return null;
 }
 
+/** Get combined bounding box of all selected strokes */
+function getSelectionBounds(
+  paintFrame: PaintFrame,
+  selected: Set<string>,
+): {minX: number; minY: number; maxX: number; maxY: number; pad: number} | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let maxSize = 0;
+  let count = 0;
+  for (const el of paintFrame.elements) {
+    if (el.tool !== 'brush') continue;
+    if (!selected.has(el.id)) continue;
+    const stroke = el as PaintStroke;
+    if (stroke.size > maxSize) maxSize = stroke.size;
+    for (const [px, py] of stroke.points) {
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
+    }
+    count++;
+  }
+  if (count === 0) return null;
+  const pad = maxSize / 2 + 6;
+  return {minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad, pad};
+}
+
+const HANDLE_SIZE = 6;
+
+/** Check if a point hits a transform handle, returns corner name or null */
+function hitTestHandle(
+  x: number, y: number,
+  bounds: {minX: number; minY: number; maxX: number; maxY: number},
+): string | null {
+  const hs = HANDLE_SIZE + 3;  // hit area slightly larger than visual
+  const corners: [string, number, number][] = [
+    ['tl', bounds.minX, bounds.minY],
+    ['tr', bounds.maxX, bounds.minY],
+    ['bl', bounds.minX, bounds.maxY],
+    ['br', bounds.maxX, bounds.maxY],
+  ];
+  for (const [name, cx, cy] of corners) {
+    if (Math.abs(x - cx) <= hs && Math.abs(y - cy) <= hs) return name;
+  }
+  return null;
+}
+
 /**
  * Re-render all FX-applied strokes on a frame together via p5.brush.
  * All FX strokes go through renderFrameFx() on one canvas for spectral mixing.
@@ -99,12 +145,23 @@ function reRenderFrameFx(
     (el) => el.tool === 'brush'
   ) as PaintStroke[];
 
-  const cached = renderFrameFx(brushStrokes, width, height);
-  if (cached) {
-    paintStore.setFrameFxCache(layerId, frame, cached);
-  } else {
-    paintStore.invalidateFrameFxCache(layerId, frame);
-  }
+  // Show rendering indicator, defer actual render so UI can paint first
+  paintStore.isRenderingFx.value = true;
+  requestAnimationFrame(() => {
+    try {
+      const cached = renderFrameFx(brushStrokes, width, height);
+      if (cached) {
+        paintStore.setFrameFxCache(layerId, frame, cached);
+      } else {
+        paintStore.invalidateFrameFxCache(layerId, frame);
+      }
+      // Trigger re-render of the preview
+      paintStore.markDirty(layerId, frame);
+      paintStore.paintVersion.value++;
+    } finally {
+      paintStore.isRenderingFx.value = false;
+    }
+  });
 }
 
 /** Convert an RGBA pixel to a hex color string */
@@ -129,6 +186,25 @@ export function PaintOverlay({
   const overlayRef = useRef<HTMLDivElement>(null);
   const tempCanvasRef = useRef<HTMLCanvasElement>(null);
   const rafId = useRef(0);
+
+  // --- Refs for select-mode drag ---
+  const isDragging = useRef(false);
+  const dragStart = useRef<{x: number; y: number} | null>(null);
+
+  // --- Refs for path-based eraser ---
+  const isErasing = useRef(false);
+  const erasedStrokeIds = useRef<Set<string>>(new Set());
+
+  // --- Refs for stroke transform (resize/rotate) ---
+  const isTransforming = useRef(false);
+  const transformType = useRef<'scale' | 'rotate' | null>(null);
+  const transformCorner = useRef<string>('');  // 'tl','tr','bl','br'
+  const transformCenter = useRef<{x: number; y: number}>({x: 0, y: 0});
+  const transformStartAngle = useRef(0);
+  const transformStartDist = useRef(1);
+
+  // --- Flag to prevent FX useEffect from firing during style sync ---
+  const isSyncingStyle = useRef(false);
 
   // --- Tablet pen tracking refs ---
   // WebKit (WKWebView) reports pointerType:'mouse' for pen input, so we detect
@@ -242,7 +318,7 @@ export function PaintOverlay({
     const tool = paintStore.activeTool.peek();
     const points = currentPoints.current;
 
-    if ((tool === 'brush' || tool === 'eraser') && points.length > 0) {
+    if (tool === 'brush' && points.length > 0) {
       const options = paintStore.strokeOptions.peek();
       const size = paintStore.brushSize.peek();
 
@@ -254,14 +330,8 @@ export function PaintOverlay({
       const path = strokeToPath(points, size, previewOptions);
       if (path) {
         ctx.save();
-        if (tool === 'eraser') {
-          // Show eraser preview as semi-transparent gray
-          ctx.globalAlpha = 0.4;
-          ctx.fillStyle = '#888888';
-        } else {
-          ctx.globalAlpha = paintStore.brushOpacity.peek();
-          ctx.fillStyle = paintStore.brushColor.peek();
-        }
+        ctx.globalAlpha = paintStore.brushOpacity.peek();
+        ctx.fillStyle = paintStore.brushColor.peek();
         ctx.fill(path);
         ctx.restore();
       }
@@ -316,25 +386,76 @@ export function PaintOverlay({
       const selected = paintStore.selectedStrokeIds.peek();
 
       if (paintFrame && selected.size > 0) {
+        // Draw individual stroke bounding boxes
         for (const el of paintFrame.elements) {
           if (el.tool !== 'brush') continue;
           if (!selected.has(el.id)) continue;
           const stroke = el as PaintStroke;
 
-          // Draw a dashed bounding box around selected stroke
-          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
           for (const [px, py] of stroke.points) {
-            if (px < minX) minX = px;
-            if (py < minY) minY = py;
-            if (px > maxX) maxX = px;
-            if (py > maxY) maxY = py;
+            if (px < sMinX) sMinX = px;
+            if (py < sMinY) sMinY = py;
+            if (px > sMaxX) sMaxX = px;
+            if (py > sMaxY) sMaxY = py;
           }
-          const pad = stroke.size / 2 + 4;
+          const sPad = stroke.size / 2 + 4;
+          ctx.save();
+          ctx.strokeStyle = '#4A90D9';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.globalAlpha = 0.5;
+          ctx.strokeRect(sMinX - sPad, sMinY - sPad, sMaxX - sMinX + sPad * 2, sMaxY - sMinY + sPad * 2);
+          ctx.restore();
+        }
+
+        // Draw combined bounding box with transform handles
+        const bounds = getSelectionBounds(paintFrame, selected);
+        if (bounds) {
+          const {minX, minY, maxX, maxY} = bounds;
+          const bw = maxX - minX;
+          const bh = maxY - minY;
+
+          // Main bounding box
           ctx.save();
           ctx.strokeStyle = '#4A90D9';
           ctx.lineWidth = 1.5;
           ctx.setLineDash([4, 3]);
-          ctx.strokeRect(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2);
+          ctx.strokeRect(minX, minY, bw, bh);
+          ctx.restore();
+
+          // Corner handles (resize)
+          const corners: [number, number][] = [
+            [minX, minY], [maxX, minY],
+            [minX, maxY], [maxX, maxY],
+          ];
+          for (const [cx, cy] of corners) {
+            ctx.save();
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = '#4A90D9';
+            ctx.lineWidth = 1.5;
+            ctx.fillRect(cx - HANDLE_SIZE / 2, cy - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            ctx.strokeRect(cx - HANDLE_SIZE / 2, cy - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            ctx.restore();
+          }
+
+          // Rotate handle (above top center)
+          const rcx = (minX + maxX) / 2;
+          const rcy = minY - 20;
+          ctx.save();
+          ctx.strokeStyle = '#4A90D9';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(rcx, minY);
+          ctx.lineTo(rcx, rcy);
+          ctx.stroke();
+          ctx.fillStyle = 'white';
+          ctx.strokeStyle = '#4A90D9';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(rcx, rcy, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
           ctx.restore();
         }
       }
@@ -352,6 +473,34 @@ export function PaintOverlay({
 
   // --- Select tool handler (per D-05) ---
 
+  /** Sync sidebar style buttons to match the selected stroke's actual style */
+  function syncStyleToSelection() {
+    const selected = paintStore.selectedStrokeIds.peek();
+    if (selected.size === 0) return;
+    const layerId = getSelectedPaintLayerId();
+    if (!layerId) return;
+    const frame = timelineStore.currentFrame.peek();
+    const paintFrame = paintStore.getFrame(layerId, frame);
+    if (!paintFrame) return;
+
+    // Use the first selected stroke's style — set flag to prevent FX useEffect
+    isSyncingStyle.current = true;
+    for (const el of paintFrame.elements) {
+      if (el.tool !== 'brush') continue;
+      if (!selected.has(el.id)) continue;
+      const stroke = el as PaintStroke;
+      paintStore.brushStyle.value = stroke.brushStyle || 'flat';
+      paintStore.setBrushSize(Math.round(stroke.size));
+      paintStore.setBrushColor(stroke.color);
+      if (stroke.brushParams) {
+        paintStore.brushFxParams.value = {...stroke.brushParams};
+      }
+      break;
+    }
+    // Clear flag after microtask (useEffect runs asynchronously)
+    queueMicrotask(() => { isSyncingStyle.current = false; });
+  }
+
   function handleSelectPointerDown(e: PointerEvent) {
     if (e.button !== 0) return;
     const point = getProjectPoint(e);
@@ -362,15 +511,59 @@ export function PaintOverlay({
     const paintFrame = paintStore.getFrame(layerId, frame);
     if (!paintFrame) return;
 
+    const selected = paintStore.selectedStrokeIds.peek();
+
+    // Check transform handles first (only when strokes are selected)
+    if (selected.size > 0) {
+      const bounds = getSelectionBounds(paintFrame, selected);
+      if (bounds) {
+        const cx = (bounds.minX + bounds.maxX) / 2;
+        const cy = (bounds.minY + bounds.maxY) / 2;
+
+        // Check rotate handle (circle above top center)
+        const rcx = cx;
+        const rcy = bounds.minY - 20;
+        if (Math.hypot(point.x - rcx, point.y - rcy) <= 8) {
+          isTransforming.current = true;
+          transformType.current = 'rotate';
+          transformCenter.current = {x: cx, y: cy};
+          transformStartAngle.current = Math.atan2(point.y - cy, point.x - cx);
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          e.preventDefault();
+          return;
+        }
+
+        // Check corner resize handles
+        const corner = hitTestHandle(point.x, point.y, bounds);
+        if (corner) {
+          isTransforming.current = true;
+          transformType.current = 'scale';
+          transformCorner.current = corner;
+          transformCenter.current = {x: cx, y: cy};
+          transformStartDist.current = Math.hypot(point.x - cx, point.y - cy);
+          dragStart.current = {x: point.x, y: point.y};
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          e.preventDefault();
+          return;
+        }
+      }
+    }
+
     const hitStrokeId = findStrokeAtPoint(paintFrame, point.x, point.y);
 
     if (hitStrokeId) {
       if (e.metaKey || e.ctrlKey) {
         paintStore.toggleStrokeSelection(hitStrokeId);
+      } else if (selected.has(hitStrokeId)) {
+        // Clicked on an already-selected stroke — start drag
+        isDragging.current = true;
+        dragStart.current = {x: point.x, y: point.y};
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       } else {
         paintStore.clearSelection();
         paintStore.selectStroke(hitStrokeId);
       }
+      syncStyleToSelection();
     } else {
       paintStore.clearSelection();
     }
@@ -405,7 +598,30 @@ export function PaintOverlay({
     const point = getProjectPoint(e);
     const pressure = isPen ? nativePressure.current : 0.5;
 
-    if (tool === 'brush' || tool === 'eraser') {
+    // Path-based eraser: detect and remove strokes under cursor
+    if (tool === 'eraser') {
+      isErasing.current = true;
+      erasedStrokeIds.current = new Set();
+      const layerId = getSelectedPaintLayerId();
+      if (layerId) {
+        const frame = timelineStore.currentFrame.peek();
+        const paintFrame = paintStore.getFrame(layerId, frame);
+        if (paintFrame) {
+          const hitId = findStrokeAtPoint(paintFrame, point.x, point.y);
+          if (hitId) {
+            paintStore.removeElement(layerId, frame, hitId);
+            erasedStrokeIds.current.add(hitId);
+            paintStore.invalidateFrameFxCache(layerId, frame);
+            paintStore.paintVersion.value++;
+          }
+        }
+      }
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+
+    if (tool === 'brush') {
       isDrawing.current = true;
       currentPoints.current = [[point.x, point.y, pressure]];
       currentElementId.current = crypto.randomUUID();
@@ -487,12 +703,129 @@ export function PaintOverlay({
   }
 
   function handlePointerMove(e: PointerEvent) {
+    // Handle path-based eraser drag
+    if (isErasing.current) {
+      const point = getProjectPoint(e);
+      const layerId = getSelectedPaintLayerId();
+      if (layerId) {
+        const frame = timelineStore.currentFrame.peek();
+        const paintFrame = paintStore.getFrame(layerId, frame);
+        if (paintFrame) {
+          const hitId = findStrokeAtPoint(paintFrame, point.x, point.y);
+          if (hitId && !erasedStrokeIds.current.has(hitId)) {
+            paintStore.removeElement(layerId, frame, hitId);
+            erasedStrokeIds.current.add(hitId);
+            paintStore.invalidateFrameFxCache(layerId, frame);
+            paintStore.paintVersion.value++;
+          }
+        }
+      }
+      return;
+    }
+
+    // Handle stroke transform (resize/rotate)
+    if (isTransforming.current) {
+      const point = getProjectPoint(e);
+      const layerId = getSelectedPaintLayerId();
+      if (!layerId) return;
+      const frame = timelineStore.currentFrame.peek();
+      const paintFrame = paintStore.getFrame(layerId, frame);
+      if (!paintFrame) return;
+
+      const selected = paintStore.selectedStrokeIds.peek();
+      const center = transformCenter.current;
+
+      if (transformType.current === 'rotate') {
+        const newAngle = Math.atan2(point.y - center.y, point.x - center.x);
+        const delta = newAngle - transformStartAngle.current;
+        transformStartAngle.current = newAngle;
+        const cos = Math.cos(delta);
+        const sin = Math.sin(delta);
+
+        for (const el of paintFrame.elements) {
+          if (el.tool !== 'brush') continue;
+          if (!selected.has(el.id)) continue;
+          const stroke = el as PaintStroke;
+          for (let i = 0; i < stroke.points.length; i++) {
+            const dx = stroke.points[i][0] - center.x;
+            const dy = stroke.points[i][1] - center.y;
+            stroke.points[i] = [
+              center.x + dx * cos - dy * sin,
+              center.y + dx * sin + dy * cos,
+              stroke.points[i][2],
+            ];
+          }
+        }
+      } else if (transformType.current === 'scale') {
+        const newDist = Math.hypot(point.x - center.x, point.y - center.y);
+        const scale = newDist / transformStartDist.current;
+        transformStartDist.current = newDist;
+
+        for (const el of paintFrame.elements) {
+          if (el.tool !== 'brush') continue;
+          if (!selected.has(el.id)) continue;
+          const stroke = el as PaintStroke;
+          for (let i = 0; i < stroke.points.length; i++) {
+            stroke.points[i] = [
+              center.x + (stroke.points[i][0] - center.x) * scale,
+              center.y + (stroke.points[i][1] - center.y) * scale,
+              stroke.points[i][2],
+            ];
+          }
+          // Scale brush size proportionally
+          stroke.size = Math.max(1, stroke.size * scale);
+        }
+      }
+
+      paintStore.markDirty(layerId, frame);
+      paintStore.paintVersion.value++;
+      paintStore.invalidateFrameFxCache(layerId, frame);
+      requestPreview();
+      return;
+    }
+
+    // Handle select-mode drag (move selected strokes)
+    if (isDragging.current && dragStart.current) {
+      const point = getProjectPoint(e);
+      const dx = point.x - dragStart.current.x;
+      const dy = point.y - dragStart.current.y;
+      dragStart.current = {x: point.x, y: point.y};
+
+      const layerId = getSelectedPaintLayerId();
+      if (!layerId) return;
+      const frame = timelineStore.currentFrame.peek();
+      const paintFrame = paintStore.getFrame(layerId, frame);
+      if (!paintFrame) return;
+
+      const selected = paintStore.selectedStrokeIds.peek();
+      for (const el of paintFrame.elements) {
+        if (el.tool !== 'brush') continue;
+        if (!selected.has(el.id)) continue;
+        const stroke = el as PaintStroke;
+        // Offset all points
+        for (let i = 0; i < stroke.points.length; i++) {
+          stroke.points[i] = [
+            stroke.points[i][0] + dx,
+            stroke.points[i][1] + dy,
+            stroke.points[i][2],
+          ];
+        }
+      }
+
+      paintStore.markDirty(layerId, frame);
+      paintStore.paintVersion.value++;
+      // Invalidate frame FX cache since stroke positions changed
+      paintStore.invalidateFrameFxCache(layerId, frame);
+      requestPreview();
+      return;
+    }
+
     if (!isDrawing.current) return;
 
     const tool = paintStore.activeTool.peek();
     const isPen = isNativePenActive();
 
-    if (tool === 'brush' || tool === 'eraser') {
+    if (tool === 'brush') {
       // Use coalesced events for higher-resolution position input
       const coalescedPts = getCoalescedPoints(e);
       for (const pt of coalescedPts) {
@@ -519,12 +852,80 @@ export function PaintOverlay({
   }
 
   function handlePointerUp(e: PointerEvent) {
+    // Finalize path-based eraser
+    if (isErasing.current) {
+      isErasing.current = false;
+      const erased = erasedStrokeIds.current.size;
+      erasedStrokeIds.current = new Set();
+      // Re-render FX cache if strokes were erased
+      if (erased > 0) {
+        const layerId = getSelectedPaintLayerId();
+        if (layerId) {
+          const frame = timelineStore.currentFrame.peek();
+          const paintFrame = paintStore.getFrame(layerId, frame);
+          if (paintFrame) {
+            const projW = projectStore.width.peek();
+            const projH = projectStore.height.peek();
+            reRenderFrameFx(paintFrame, layerId, frame, projW, projH);
+          }
+        }
+      }
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch { /* ok */ }
+      return;
+    }
+
+    // Finalize transform (resize/rotate)
+    if (isTransforming.current) {
+      isTransforming.current = false;
+      transformType.current = null;
+      // Re-render FX cache after transform
+      const layerId = getSelectedPaintLayerId();
+      if (layerId) {
+        const frame = timelineStore.currentFrame.peek();
+        const paintFrame = paintStore.getFrame(layerId, frame);
+        if (paintFrame) {
+          const projW = projectStore.width.peek();
+          const projH = projectStore.height.peek();
+          reRenderFrameFx(paintFrame, layerId, frame, projW, projH);
+        }
+      }
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch { /* ok */ }
+      requestPreview();
+      return;
+    }
+
+    // Finalize select-mode drag
+    if (isDragging.current) {
+      isDragging.current = false;
+      dragStart.current = null;
+      // Re-render FX cache after move
+      const layerId = getSelectedPaintLayerId();
+      if (layerId) {
+        const frame = timelineStore.currentFrame.peek();
+        const paintFrame = paintStore.getFrame(layerId, frame);
+        if (paintFrame) {
+          const projW = projectStore.width.peek();
+          const projH = projectStore.height.peek();
+          reRenderFrameFx(paintFrame, layerId, frame, projW, projH);
+        }
+      }
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch { /* ok */ }
+      requestPreview();
+      return;
+    }
+
     const tool = paintStore.activeTool.peek();
     const layerId = getSelectedPaintLayerId();
     const frame = timelineStore.currentFrame.peek();
     const isPen = isNativePenActive();
 
-    if ((tool === 'brush' || tool === 'eraser') && isDrawing.current && layerId) {
+    if (tool === 'brush' && isDrawing.current && layerId) {
       const points = currentPoints.current;
       if (points.length > 0) {
         // Build per-stroke options with device-specific overrides
@@ -582,11 +983,16 @@ export function PaintOverlay({
     avgTilt.current = 0;
     tiltSamples.current = 0;
 
-    // Clear temp canvas
+    // Clear temp canvas and re-render selection indicators if needed
     const canvas = tempCanvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Re-render selection indicators (they live on the temp canvas)
+    if (tool === 'select') {
+      requestPreview();
     }
 
     // Release pointer capture
@@ -599,6 +1005,9 @@ export function PaintOverlay({
 
   // --- FX application via brushStyle change (per D-06, D-08) ---
   useEffect(() => {
+    // Skip if this was triggered by selection sync (not user clicking a style button)
+    if (isSyncingStyle.current) return;
+
     const style = paintStore.brushStyle.value;
     const selected = paintStore.selectedStrokeIds.peek();
     if (selected.size === 0) return;
@@ -656,6 +1065,42 @@ export function PaintOverlay({
     }
   }, [paintStore.brushStyle.value]);
 
+  // --- FX params change (grain, bleed, etc.) — re-apply to selected strokes ---
+  useEffect(() => {
+    if (isSyncingStyle.current) return;
+
+    const params = paintStore.brushFxParams.value;
+    const selected = paintStore.selectedStrokeIds.peek();
+    if (selected.size === 0) return;
+
+    const style = paintStore.brushStyle.peek();
+    if (style === 'flat') return;  // no FX params for flat
+
+    const layerId = getSelectedPaintLayerId();
+    if (!layerId) return;
+    const frame = timelineStore.currentFrame.peek();
+    const paintFrame = paintStore.getFrame(layerId, frame);
+    if (!paintFrame) return;
+
+    let changed = false;
+    for (const el of paintFrame.elements) {
+      if (el.tool !== 'brush') continue;
+      if (!selected.has(el.id)) continue;
+      const stroke = el as PaintStroke;
+      if (stroke.fxState === 'fx-applied') {
+        stroke.brushParams = {...params};
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      const projW = projectStore.width.peek();
+      const projH = projectStore.height.peek();
+      paintStore.invalidateFrameFxCache(layerId, frame);
+      reRenderFrameFx(paintFrame, layerId, frame, projW, projH);
+    }
+  }, [paintStore.brushFxParams.value]);
+
   // --- Delete selected strokes in select mode (per D-07) ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -686,10 +1131,40 @@ export function PaintOverlay({
         e.preventDefault();
       }
 
+      // Select All shortcut (Cmd/Ctrl+A in select mode)
+      if ((e.key === 'a' || e.key === 'A') && (e.metaKey || e.ctrlKey)) {
+        const tool = paintStore.activeTool.peek();
+        if (tool === 'select') {
+          const layerId = getSelectedPaintLayerId();
+          if (layerId) {
+            const frame = timelineStore.currentFrame.peek();
+            const paintFrame = paintStore.getFrame(layerId, frame);
+            if (paintFrame) {
+              paintStore.clearSelection();
+              for (const el of paintFrame.elements) {
+                if (el.tool === 'brush') {
+                  paintStore.selectStroke(el.id);
+                }
+              }
+              requestPreview();
+              e.preventDefault();
+            }
+          }
+        }
+      }
+
       // Overlay toggle shortcut (per D-13)
       if (e.key === 'o' || e.key === 'O') {
         paintStore.toggleSequenceOverlay();
         e.preventDefault();
+      }
+
+      // Flat/FX preview toggle (F key)
+      if (e.key === 'f' || e.key === 'F') {
+        if (!e.metaKey && !e.ctrlKey) {
+          paintStore.toggleFlatPreview();
+          e.preventDefault();
+        }
       }
     };
     window.addEventListener('keydown', handler);

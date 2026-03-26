@@ -172,11 +172,8 @@ export class PreviewRenderer {
           hasDrawable = true;
           break;
         } else if (layer.type === 'paint') {
-          const pf = paintStore.getFrame(layer.id, paintLookupFrame);
-          if (pf && pf.elements.length > 0) {
-            hasDrawable = true;
-            break;
-          }
+          hasDrawable = true;  // Paint layer always has solid bg
+          break;
           continue;
         } else if (isAdjustmentLayer(layer)) {
           // Adjustments only matter if there's content below; continue checking
@@ -273,27 +270,43 @@ export class PreviewRenderer {
       } else if (isAdjustmentLayer(layer)) {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
       } else if (layer.type === 'paint') {
+        // Always render paint layer (solid bg even when no strokes)
         const paintFrame = paintStore.getFrame(layer.id, paintLookupFrame);
-        if (paintFrame && paintFrame.elements.length > 0) {
-          // Render paint to offscreen canvas so eraser's destination-out
-          // only erases paint (not the underlying image).
-          // Paint data is stored in project-space coordinates, so we render
-          // to a project-sized offscreen and then draw it scaled to the
-          // output (logicalW x logicalH). During live preview logicalW ==
-          // projectWidth so no scaling occurs; during export at e.g. 0.5x
-          // the drawImage call scales paint down to match.
-          const projW = projectStore.width.peek();
-          const projH = projectStore.height.peek();
-          const off = document.createElement('canvas');
-          off.width = projW;
-          off.height = projH;
-          const offCtx = off.getContext('2d')!;
+        const projW = projectStore.width.peek();
+        const projH = projectStore.height.peek();
+        const off = document.createElement('canvas');
+        off.width = projW;
+        off.height = projH;
+        const offCtx = off.getContext('2d')!;
+        if (paintFrame) {
           renderPaintFrameWithBg(offCtx, paintFrame, projW, projH, layer.id, paintLookupFrame);
-          ctx.save();
-          ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-          ctx.globalAlpha = effectiveOpacity;
-          ctx.drawImage(off, 0, 0, logicalW, logicalH);
-          ctx.restore();
+        } else {
+          // No paint data — just solid background
+          const bgColor = paintStore.paintBgColor.peek();
+          offCtx.fillStyle = bgColor;
+          offCtx.fillRect(0, 0, projW, projH);
+        }
+        ctx.save();
+        ctx.globalCompositeOperation = blendModeToCompositeOp(
+          paintStore.paintMode.peek() ? 'normal' : layer.blendMode  // Task 12: normal blend in edit mode
+        );
+        ctx.globalAlpha = effectiveOpacity;
+        ctx.drawImage(off, 0, 0, logicalW, logicalH);
+        ctx.restore();
+
+        // Sequence overlay: render sequence frame ON TOP of paint at reduced opacity
+        if (paintStore.showSequenceOverlay.peek() && frames.length > 0 && frame >= 0 && frame < frames.length) {
+          const overlayAlpha = paintStore.sequenceOverlayOpacity.peek();
+          const entry = frames[frame];
+          if (entry?.imageId) {
+            const img = this.imageCache.get(entry.imageId);
+            if (img) {
+              ctx.save();
+              ctx.globalAlpha = overlayAlpha;
+              ctx.drawImage(img, 0, 0, logicalW, logicalH);
+              ctx.restore();
+            }
+          }
         }
       } else {
         // Content layer: check for gradient/solid/transparent frame first (per D-12, D-18, D-19)

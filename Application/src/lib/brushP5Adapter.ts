@@ -98,6 +98,64 @@ function ensureInitialized(width: number, height: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// FX param application helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute weight modifier from grain/scatter params.
+ * Grain: reduces weight for a rougher, more textured look (built-in brush texture shows through).
+ * Scatter: applied via field wiggle in the rendering loop.
+ */
+function grainWeightModifier(params: { grain?: number }): number {
+  const grain = params.grain ?? 0;
+  if (grain < 0.01) return 1.0;
+  // Higher grain = thinner strokes (0.5-1.0x weight), revealing more brush texture
+  return 1.0 - grain * 0.5;
+}
+
+/**
+ * Render a non-watercolor stroke with grain/scatter support.
+ * Scatter: uses multiple slightly offset spline passes for a scattered look.
+ * Grain: modulates weight so built-in brush texture is more visible.
+ */
+function renderStrokeWithParams(
+  brushName: string,
+  stroke: PaintStroke,
+  pts: [number, number, number][],
+  params: { grain?: number; scatter?: number; edgeDarken?: number },
+): void {
+  const baseWeight = compensatedWeight(brushName, stroke.size);
+  const grainMod = grainWeightModifier(params);
+  const edgeMod = (params.edgeDarken ?? 0) > 0.01 ? (1 + params.edgeDarken! * 0.5) : 1;
+  const weight = baseWeight * grainMod * edgeMod;
+  const scatter = params.scatter ?? 0;
+
+  brush.set(brushName, stroke.color, weight);
+
+  if (pts.length < 2) return;
+
+  if (scatter > 0.1) {
+    // Multiple passes with slight offset for scatter effect
+    const passes = Math.min(3, Math.ceil(scatter * 4));
+    const offsetScale = scatter * 8;
+    for (let p = 0; p < passes; p++) {
+      const offsetPts = pts.map(([x, y, pr]) => {
+        const angle = (p / passes) * Math.PI * 2;
+        return [
+          x + Math.cos(angle) * offsetScale * (0.5 + Math.random() * 0.5),
+          y + Math.sin(angle) * offsetScale * (0.5 + Math.random() * 0.5),
+          pr,
+        ] as [number, number, number];
+      });
+      brush.set(brushName, stroke.color, weight * (0.6 + Math.random() * 0.4));
+      brush.spline(offsetPts, 0.5);
+    }
+  } else {
+    brush.spline(pts, 0.5);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Point preparation
 // ---------------------------------------------------------------------------
 
@@ -140,8 +198,8 @@ export function renderStyledStrokes(
   );
   if (styled.length === 0) return null;
 
-  // Cache check — skip expensive re-render if strokes haven't changed
-  const key = styled.map((s) => s.id).join(',');
+  // Cache check — skip expensive re-render if strokes and params haven't changed
+  const key = styled.map((s) => `${s.id}:${s.brushStyle}:${JSON.stringify(s.brushParams ?? {})}`).join(',');
   if (key === _cacheKey && _cachedCanvas) {
     return _cachedCanvas;
   }
@@ -175,10 +233,7 @@ export function renderStyledStrokes(
     if (stroke.brushStyle === 'watercolor') {
       renderWatercolorStroke(stroke, pts);
     } else {
-      brush.set(brushName, stroke.color, compensatedWeight(brushName, stroke.size));
-      if (pts.length >= 2) {
-        brush.spline(pts, 0.5);
-      }
+      renderStrokeWithParams(brushName, stroke, pts, params);
     }
 
     brush.noField();
@@ -207,19 +262,42 @@ function renderWatercolorStroke(
   const bleed = stroke.brushParams?.bleed ?? 0.3;
   const grain = stroke.brushParams?.grain ?? 0.4;
   const opacity = Math.round(stroke.opacity * 50);
+  const halfWidth = (stroke.size ?? 20) / 2;
 
-  // Disable stroke so previous brush state doesn't draw an outline
   brush.noStroke();
 
-  // Filled polygon with watercolor wash — bleed creates the soft edges
   brush.fill(stroke.color, opacity);
-  brush.fillBleed(bleed, 'out');
+  brush.fillBleed(bleed * Math.max(1, halfWidth / 20), 'out');
   brush.fillTexture(grain, 0.5);
 
-  brush.beginShape();
-  for (const pt of pts) {
-    brush.vertex(pt[0], pt[1]);
+  // Build thickened polygon offset by halfWidth on both sides
+  const leftSide: [number, number][] = [];
+  const rightSide: [number, number][] = [];
+
+  for (let i = 0; i < pts.length; i++) {
+    let nx: number, ny: number;
+    if (i === 0) {
+      nx = pts[1][0] - pts[0][0];
+      ny = pts[1][1] - pts[0][1];
+    } else if (i === pts.length - 1) {
+      nx = pts[i][0] - pts[i - 1][0];
+      ny = pts[i][1] - pts[i - 1][1];
+    } else {
+      nx = pts[i + 1][0] - pts[i - 1][0];
+      ny = pts[i + 1][1] - pts[i - 1][1];
+    }
+    const len = Math.sqrt(nx * nx + ny * ny) || 1;
+    const perpX = -ny / len;
+    const perpY = nx / len;
+    const pw = halfWidth * (0.5 + (pts[i][2] ?? 0.5));
+
+    leftSide.push([pts[i][0] + perpX * pw, pts[i][1] + perpY * pw]);
+    rightSide.push([pts[i][0] - perpX * pw, pts[i][1] - perpY * pw]);
   }
+
+  brush.beginShape();
+  for (const [x, y] of leftSide) brush.vertex(x, y);
+  for (let i = rightSide.length - 1; i >= 0; i--) brush.vertex(rightSide[i][0], rightSide[i][1]);
   brush.endShape();
   brush.noFill();
 }
@@ -258,48 +336,62 @@ export function renderFrameFx(
   const halfW = width / 2;
   const halfH = height / 2;
 
-  brush.clear();
-  if (_gl) {
-    _gl.clearColor(0, 0, 0, 0);
-    _gl.clear(_gl.COLOR_BUFFER_BIT);
-  }
-
-  // Draw ALL FX strokes on the same p5.brush canvas (spectral mixing!)
+  // Group consecutive strokes by rendering type (watercolor=fill vs others=stroke).
+  // p5.brush renders fills in a separate pass from strokes, so we need separate
+  // render cycles per group to preserve z-ordering between watercolor and other types.
+  type StrokeGroup = { isWatercolor: boolean; strokes: PaintStroke[] };
+  const groups: StrokeGroup[] = [];
   for (const stroke of fxStrokes) {
-    const brushName = STYLE_MAP[stroke.brushStyle!] || 'marker';
-    const params = stroke.brushParams ?? {};
-    const pts = preparePoints(stroke.points, halfW, halfH, 20);
-
-    brush.seed(strokeSeed(stroke.id));
-
-    if ((params.fieldStrength ?? 0) > 0.01) {
-      brush.field('curved');
-      brush.wiggle(params.fieldStrength!);
-    }
-
-    if (stroke.brushStyle === 'watercolor') {
-      renderWatercolorStroke(stroke, pts);
+    const isWc = stroke.brushStyle === 'watercolor';
+    if (groups.length > 0 && groups[groups.length - 1].isWatercolor === isWc) {
+      groups[groups.length - 1].strokes.push(stroke);
     } else {
-      brush.set(brushName, stroke.color, compensatedWeight(brushName, stroke.size));
-      if (pts.length >= 2) {
-        brush.spline(pts, 0.5);
-      }
+      groups.push({ isWatercolor: isWc, strokes: [stroke] });
     }
-
-    brush.noField();
   }
 
-  // Single render() call -- all strokes processed together in GLSL
-  brush.render();
-  if (_gl) _gl.finish();
-
-  // Copy to a new canvas for frame-level cache (don't return the shared _canvas)
+  // Render each group in its own pass, composite results in order
   const cached = document.createElement('canvas');
   cached.width = width;
   cached.height = height;
   const cCtx = cached.getContext('2d');
-  if (cCtx && _canvas) {
-    cCtx.drawImage(_canvas, 0, 0);
+  if (!cCtx) return null;
+
+  for (const group of groups) {
+    brush.clear();
+    if (_gl) {
+      _gl.clearColor(0, 0, 0, 0);
+      _gl.clear(_gl.COLOR_BUFFER_BIT);
+    }
+
+    for (const stroke of group.strokes) {
+      const brushName = STYLE_MAP[stroke.brushStyle!] || 'marker';
+      const params = stroke.brushParams ?? {};
+      const pts = preparePoints(stroke.points, halfW, halfH, 20);
+
+      brush.seed(strokeSeed(stroke.id));
+
+      if ((params.fieldStrength ?? 0) > 0.01) {
+        brush.field('curved');
+        brush.wiggle(params.fieldStrength!);
+      }
+
+      if (group.isWatercolor) {
+        renderWatercolorStroke(stroke, pts);
+      } else {
+        renderStrokeWithParams(brushName, stroke, pts, params);
+      }
+
+      brush.noField();
+    }
+
+    brush.render();
+    if (_gl) _gl.finish();
+
+    // Composite this group's result onto the accumulated canvas
+    if (_canvas) {
+      cCtx.drawImage(_canvas, 0, 0);
+    }
   }
   return cached;
 }

@@ -26,6 +26,9 @@ const brushFxParams = signal<BrushFxParams>({});
 const paintBgColor = signal(DEFAULT_PAINT_BG_COLOR);
 const selectedStrokeIds = signal<Set<string>>(new Set());
 const showSequenceOverlay = signal(false);
+const sequenceOverlayOpacity = signal(0.3);
+const isRenderingFx = signal(false);
+const showFlatPreview = signal(false);
 const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
@@ -81,6 +84,9 @@ export const paintStore = {
   paintBgColor,
   selectedStrokeIds,
   showSequenceOverlay,
+  sequenceOverlayOpacity,
+  isRenderingFx,
+  showFlatPreview,
   onionSkinEnabled,
   onionSkinPrevRange,
   onionSkinNextRange,
@@ -143,6 +149,58 @@ export const paintStore = {
         paintStore.markDirty(layerId, frame);
       },
     });
+  },
+
+  /** Move selected elements forward (toward top/front) in rendering order */
+  moveElementsForward(layerId: string, frame: number, ids: Set<string>): void {
+    const frameData = _frames.get(layerId)?.get(frame);
+    if (!frameData) return;
+    const els = frameData.elements;
+    for (let i = els.length - 2; i >= 0; i--) {
+      if (ids.has(els[i].id) && !ids.has(els[i + 1].id)) {
+        [els[i], els[i + 1]] = [els[i + 1], els[i]];
+      }
+    }
+    _dirtyFrames.add(`${layerId}:${frame}`);
+    _markProjectDirty?.();
+  },
+
+  /** Move selected elements backward (toward bottom/back) in rendering order */
+  moveElementsBackward(layerId: string, frame: number, ids: Set<string>): void {
+    const frameData = _frames.get(layerId)?.get(frame);
+    if (!frameData) return;
+    const els = frameData.elements;
+    for (let i = 1; i < els.length; i++) {
+      if (ids.has(els[i].id) && !ids.has(els[i - 1].id)) {
+        [els[i - 1], els[i]] = [els[i], els[i - 1]];
+      }
+    }
+    _dirtyFrames.add(`${layerId}:${frame}`);
+    _markProjectDirty?.();
+  },
+
+  /** Move selected elements to the very front */
+  moveElementsToFront(layerId: string, frame: number, ids: Set<string>): void {
+    const frameData = _frames.get(layerId)?.get(frame);
+    if (!frameData) return;
+    const selected = frameData.elements.filter(e => ids.has(e.id));
+    const rest = frameData.elements.filter(e => !ids.has(e.id));
+    frameData.elements.length = 0;
+    frameData.elements.push(...rest, ...selected);
+    _dirtyFrames.add(`${layerId}:${frame}`);
+    _markProjectDirty?.();
+  },
+
+  /** Move selected elements to the very back */
+  moveElementsToBack(layerId: string, frame: number, ids: Set<string>): void {
+    const frameData = _frames.get(layerId)?.get(frame);
+    if (!frameData) return;
+    const selected = frameData.elements.filter(e => ids.has(e.id));
+    const rest = frameData.elements.filter(e => !ids.has(e.id));
+    frameData.elements.length = 0;
+    frameData.elements.push(...selected, ...rest);
+    _dirtyFrames.add(`${layerId}:${frame}`);
+    _markProjectDirty?.();
   },
 
   clearFrame(layerId: string, frame: number): void {
@@ -229,6 +287,9 @@ export const paintStore = {
     paintBgColor.value = DEFAULT_PAINT_BG_COLOR;
     selectedStrokeIds.value = new Set();
     showSequenceOverlay.value = false;
+    sequenceOverlayOpacity.value = 0.3;
+    isRenderingFx.value = false;
+    showFlatPreview.value = false;
     _frameFxCache.clear();
     onionSkinEnabled.value = false;
     onionSkinPrevRange.value = 1;
@@ -279,6 +340,7 @@ export const paintStore = {
 
   setPaintBgColor(color: string): void {
     paintBgColor.value = color;
+    paintVersion.value++;
   },
 
   // --- Sequence overlay (D-13, D-14) ---
@@ -289,6 +351,16 @@ export const paintStore = {
 
   toggleSequenceOverlay(): void {
     showSequenceOverlay.value = !showSequenceOverlay.peek();
+    paintVersion.value++;
+  },
+  setSequenceOverlayOpacity(v: number): void {
+    sequenceOverlayOpacity.value = v;
+    paintVersion.value++;
+  },
+
+  toggleFlatPreview(): void {
+    showFlatPreview.value = !showFlatPreview.peek();
+    paintVersion.value++;
   },
 
   // --- Stroke selection ---
@@ -416,6 +488,28 @@ export const paintStore = {
       this.setFrameFxCache(layerId, frame, fxCanvas);
     } else {
       this.invalidateFrameFxCache(layerId, frame);
+    }
+
+    this.markDirty(layerId, frame);
+    paintVersion.value++;
+  },
+
+  /** Re-render FX cache for a frame (call after modifying stroke params like width/color) */
+  refreshFrameFx(layerId: string, frame: number): void {
+    const paintFrame = this.getFrame(layerId, frame);
+    if (!paintFrame) return;
+
+    const projW = projectStore.width.peek();
+    const projH = projectStore.height.peek();
+
+    const brushStrokes = paintFrame.elements.filter(
+      (el) => el.tool === 'brush'
+    ) as PaintStroke[];
+
+    this.invalidateFrameFxCache(layerId, frame);
+    const fxCanvas = renderFrameFx(brushStrokes, projW, projH);
+    if (fxCanvas) {
+      this.setFrameFxCache(layerId, frame, fxCanvas);
     }
 
     this.markDirty(layerId, frame);

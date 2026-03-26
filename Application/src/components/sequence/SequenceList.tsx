@@ -5,6 +5,8 @@ import {GripVertical, Ellipsis, Clapperboard, Layers} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {isolationStore} from '../../stores/isolationStore';
 import {uiStore} from '../../stores/uiStore';
+import {audioStore} from '../../stores/audioStore';
+import {paintStore} from '../../stores/paintStore';
 import {layerStore} from '../../stores/layerStore';
 import {imageStore} from '../../stores/imageStore';
 import {assetUrl} from '../../lib/ipc';
@@ -146,13 +148,14 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
       uiStore.selectSequence(seq.id);
       sequenceStore.setActive(seq.id);
       sequenceStore.clearKeyPhotoSelection();
+      audioStore.selectedTrackId.value = null;  // clear audio selection
 
       // Auto-select top-most layer (bidirectional sync per Phase 11-04)
       const topLayerId = getTopLayerId(seq);
       if (topLayerId) {
         layerStore.setSelected(topLayerId);
         uiStore.selectLayer(topLayerId);
-      } else {
+      } else if (!paintStore.paintMode.peek()) {
         layerStore.setSelected(null);
         uiStore.selectLayer(null);
       }

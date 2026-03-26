@@ -90,10 +90,25 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'I', description: 'Add keyframe at current frame' },
     ],
   },
+  {
+    title: 'Paint Mode',
+    entries: [
+      { keys: 'P', description: 'Toggle paint edit mode' },
+      { keys: 'F', description: 'Toggle flat/FX preview' },
+      { keys: 'O', description: 'Toggle sequence overlay' },
+      { keys: '\u2318/Ctrl+A', description: 'Select all strokes' },
+      { keys: 'Delete', description: 'Delete selected strokes' },
+      { keys: 'Click', description: 'Select stroke (select tool)' },
+      { keys: '\u2318/Ctrl+Click', description: 'Multi-select strokes' },
+      { keys: 'Drag', description: 'Move selected strokes' },
+      { keys: 'Corner handle', description: 'Resize selected strokes' },
+      { keys: 'Rotate handle', description: 'Rotate selected strokes' },
+    ],
+  },
 ];
 
-/** Total number of tabs: Sections index (0) + 8 group tabs (1-8) */
-const TAB_COUNT = 9;
+/** Total number of tabs: Sections index (0) + group tabs */
+const TAB_COUNT = 1 + SHORTCUT_GROUPS.length;
 
 /** Tab labels: index 0 = Sections, indices 1-7 = group titles */
 const TAB_LABELS = ['Sections', ...SHORTCUT_GROUPS.map((g) => g.title)];

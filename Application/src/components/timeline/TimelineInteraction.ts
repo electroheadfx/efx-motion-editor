@@ -5,6 +5,7 @@ import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
 import {keyframeStore} from '../../stores/keyframeStore';
 import {audioStore} from '../../stores/audioStore';
+import {paintStore} from '../../stores/paintStore';
 import {trackLayouts, fxTrackLayouts, audioTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
 import {snapToBeat} from '../../lib/beatMarkerEngine';
@@ -214,7 +215,7 @@ export class TimelineInteraction {
     const allSeqs = sequenceStore.sequences.peek();
     // Check if the layer belongs to an FX or content-overlay sequence
     const ownerSeq = allSeqs.find(s => s.layers.some(l => l.id === currentLayerId));
-    if (ownerSeq && ownerSeq.kind !== 'content') {
+    if (ownerSeq && ownerSeq.kind !== 'content' && !paintStore.paintMode.peek()) {
       layerStore.setSelected(null);
       uiStore.selectLayer(null);
     }

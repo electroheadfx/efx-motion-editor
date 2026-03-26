@@ -320,6 +320,28 @@
 
 }
 
+/* Paint mode action buttons — orange hover, blue active */
+.paint-action-btn {
+  background-color: var(--sidebar-bg-hover);
+  color: var(--sidebar-text-primary);
+  border: 1px solid var(--sidebar-border);
+}
+.paint-action-btn:hover {
+  background-color: #f59e0b;
+  color: #000;
+  border-color: #f59e0b;
+}
+.paint-action-btn:active {
+  background-color: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+.paint-style-btn-active {
+  background-color: var(--color-accent);
+  color: #fff;
+  border: 1px solid var(--color-accent);
+}
+
 /* Hide native scrollbar for SidebarScrollArea — works in Safari/WKWebView + Chrome */
 [style*="scrollbar-width: none"]::-webkit-scrollbar {
   display: none;

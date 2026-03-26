@@ -13,6 +13,7 @@ import {layerStore} from '../stores/layerStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {canvasStore} from '../stores/canvasStore';
 import {blurStore} from '../stores/blurStore';
+import {paintStore} from '../stores/paintStore';
 import {isolationStore} from '../stores/isolationStore';
 import {soloStore} from '../stores/soloStore';
 import {keyframeStore} from '../stores/keyframeStore';
@@ -26,6 +27,16 @@ import {save, open} from '@tauri-apps/plugin-dialog';
  * Check whether a keyboard shortcut should be suppressed because the user
  * is typing in a form element or contentEditable region.
  */
+/** Returns true when a paint layer is selected and paint tools are active */
+function isPaintEditMode(): boolean {
+  const selId = layerStore.selectedLayerId.peek();
+  if (!selId) return false;
+  const allLayers = layerStore.layers.peek();
+  const overlayLayers = layerStore.overlayLayers.peek();
+  const layer = allLayers.find(l => l.id === selId) ?? overlayLayers.find(l => l.id === selId);
+  return !!(layer && layer.type === 'paint');
+}
+
 function shouldSuppressShortcut(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
   if (!target) return false;
@@ -95,6 +106,23 @@ export async function handleCloseProject(): Promise<void> {
 }
 
 function handleDelete(): void {
+  // Check for paint select mode first — delete strokes, not layers
+  if (paintStore.activeTool.peek() === 'select' && paintStore.selectedStrokeIds.peek().size > 0) {
+    const layerId = layerStore.selectedLayerId.peek();
+    if (layerId) {
+      const frame = timelineStore.currentFrame.peek();
+      const selected = paintStore.selectedStrokeIds.peek();
+      for (const strokeId of selected) {
+        paintStore.removeElement(layerId, frame, strokeId);
+      }
+      paintStore.clearSelection();
+      // Invalidate FX cache and refresh canvas
+      paintStore.invalidateFrameFxCache(layerId, frame);
+      paintStore.paintVersion.value++;
+      return;
+    }
+  }
+
   // Check for selected transition first (FADE-03)
   const selTransition = uiStore.selectedTransition.peek();
   if (selTransition) {
@@ -130,8 +158,9 @@ function handleDelete(): void {
   }
 
   // Delete selected layer if any (FX layers delete via this path)
+  // Skip when in paint mode — don't delete the paint layer
   const selectedLayer = uiStore.selectedLayerId.value;
-  if (selectedLayer) {
+  if (selectedLayer && !paintStore.paintMode.peek()) {
     layerStore.remove(selectedLayer);
     layerStore.setSelected(null);
     uiStore.selectLayer(null);
@@ -389,6 +418,7 @@ export function mountShortcuts(): () => void {
     'KeyF': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       if (isFullscreen.peek()) return;
+      if (isPaintEditMode()) return;  // F is used by paint mode (flat preview toggle)
       e.preventDefault();
       canvasStore.toggleFitLock();
     },
@@ -435,6 +465,11 @@ export function mountShortcuts(): () => void {
       // Priority 1: exit fullscreen
       if (isFullscreen.peek()) {
         exitFullscreen();
+        return;
+      }
+      // Priority 1b: exit paint mode
+      if (paintStore.paintMode.peek()) {
+        paintStore.paintMode.value = false;
         return;
       }
       // Priority 2: clear isolation

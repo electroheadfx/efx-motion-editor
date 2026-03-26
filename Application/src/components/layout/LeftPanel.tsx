@@ -11,6 +11,7 @@ import { TransitionProperties } from '../sidebar/TransitionProperties';
 import { AudioProperties } from '../sidebar/AudioProperties';
 import { PaintProperties } from '../sidebar/PaintProperties';
 import { audioStore } from '../../stores/audioStore';
+import { paintStore } from '../../stores/paintStore';
 import { SequenceList } from '../sequence/SequenceList';
 import { LayerList } from '../layer/LayerList';
 import { AddLayerMenu } from '../layer/AddLayerMenu';
@@ -282,24 +283,29 @@ export function LeftPanel() {
               <TransitionProperties selection={transitionSel} />
             </SidebarScrollArea>
           )}
-          {!transitionSel && selectedAudioTrack && (
-            <SidebarScrollArea>
-              <AudioProperties track={selectedAudioTrack} />
-            </SidebarScrollArea>
-          )}
-          {!transitionSel && !selectedAudioTrack && selectedLayer && isFx && (
+          {!transitionSel && selectedLayer && isFx && (
             <SidebarScrollArea>
               <SidebarFxProperties layer={selectedLayer} fxSequenceId={fxSequenceId} />
             </SidebarScrollArea>
           )}
-          {!transitionSel && !selectedAudioTrack && selectedLayer && !isFx && selectedLayer.type === 'paint' && (
+          {!transitionSel && selectedLayer && !isFx && selectedLayer.type === 'paint' && paintStore.paintMode.value && (
             <SidebarScrollArea>
               <PaintProperties layer={selectedLayer} />
             </SidebarScrollArea>
           )}
-          {!transitionSel && !selectedAudioTrack && selectedLayer && !isFx && selectedLayer.type !== 'paint' && (
+          {!transitionSel && selectedLayer && !isFx && selectedLayer.type === 'paint' && !paintStore.paintMode.value && (
+            <SidebarScrollArea>
+              <SidebarProperties layer={selectedLayer} isContentOverlay={false} />
+            </SidebarScrollArea>
+          )}
+          {!transitionSel && selectedLayer && !isFx && selectedLayer.type !== 'paint' && (
             <SidebarScrollArea>
               <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
+            </SidebarScrollArea>
+          )}
+          {!transitionSel && !selectedLayer && selectedAudioTrack && (
+            <SidebarScrollArea>
+              <AudioProperties track={selectedAudioTrack} />
             </SidebarScrollArea>
           )}
           {!transitionSel && !selectedAudioTrack && !selectedLayer && fallbackLayer && (

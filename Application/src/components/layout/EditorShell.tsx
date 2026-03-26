@@ -17,6 +17,7 @@ import { imageStore } from '../../stores/imageStore';
 import { layerStore } from '../../stores/layerStore';
 import { projectStore } from '../../stores/projectStore';
 import { uiStore } from '../../stores/uiStore';
+import { paintStore } from '../../stores/paintStore';
 import { tempProjectDir } from '../../lib/projectDir';
 
 /** Interactive element selectors that should NOT trigger deselection */
@@ -59,7 +60,8 @@ export function EditorShell() {
     // Click is inside the sidebar -- don't deselect
     if (target.closest('[data-sidebar]')) return;
 
-    // Dead space click -- deselect
+    // Dead space click -- deselect (skip in paint mode)
+    if (paintStore.paintMode.peek()) return;
     layerStore.setSelected(null);
     uiStore.selectLayer(null);
   }, []);

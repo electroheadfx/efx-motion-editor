@@ -195,6 +195,12 @@ export function renderPaintFrameWithBg(
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
 
+  // Flat preview mode: skip FX cache, render everything as flat
+  if (paintStore.showFlatPreview.peek()) {
+    renderPaintFrame(ctx, frame, width, height);
+    return;
+  }
+
   // Check for frame-level FX cache (all FX strokes pre-rendered together)
   let hasFrameCache = false;
   if (layerId !== undefined && frameNum !== undefined) {

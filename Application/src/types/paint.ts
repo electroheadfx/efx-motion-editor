@@ -113,7 +113,7 @@ export const DEFAULT_STROKE_OPTIONS: PaintStrokeOptions = {
   streamline: 0.5,
   simulatePressure: true,  // default true; PaintOverlay overrides to false for pen input
   pressureEasing: 'linear',
-  pressureCurve: 2.0,  // firm by default: soft press = thin, hard press = thick
+  pressureCurve: 3.0,  // firm by default: soft press = thin, hard press = thick
   taperStart: 0,
   taperEnd: 0,
   tiltInfluence: 0.3,

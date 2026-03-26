@@ -3,6 +3,7 @@ import Sortable from 'sortablejs';
 import {GripVertical, Eye, EyeOff, X, Lock} from 'lucide-preact';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
+import {audioStore} from '../../stores/audioStore';
 import type {Layer} from '../../types/layer';
 
 /** SortableJS-powered layer list with drag-and-drop reorder, visibility toggle, delete, and selection */
@@ -98,6 +99,8 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
   const handleSelect = () => {
     layerStore.setSelected(layer.id);
     uiStore.selectLayer(layer.id);
+    // Clear audio selection so properties panel shows layer props
+    audioStore.selectedTrackId.value = null;
   };
 
   const handleToggleVisibility = (e: MouseEvent) => {
