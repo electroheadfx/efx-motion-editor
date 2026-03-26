@@ -22,6 +22,8 @@ import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
 import {paintStore, _setPaintMarkDirtyCallback} from './paintStore';
+import {motionBlurStore} from './motionBlurStore';
+import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
 import {readFile} from '@tauri-apps/plugin-fs';
 
@@ -222,7 +224,7 @@ function buildMceProject(): MceProject {
   );
 
   return {
-    version: 14,
+    version: 15,
     name: name.value,
     fps: fps.value,
     width: width.value,
@@ -258,6 +260,12 @@ function buildMceProject(): MceProject {
       ...(track.beatMarkers.length > 0 ? { beat_markers: track.beatMarkers } : {}),
       ...(track.showBeatMarkers ? { show_beat_markers: track.showBeatMarkers } : {}),
     })),
+    motion_blur: {
+      enabled: motionBlurStore.enabled.peek(),
+      shutter_angle: motionBlurStore.shutterAngle.peek(),
+      preview_quality: motionBlurStore.previewQuality.peek(),
+      export_sub_frames: exportStore.motionBlurSubFrames.peek(),
+    },
   };
 }
 
@@ -483,7 +491,14 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
       });
     }
 
-    // 5. Clear dirty flag (just loaded)
+    // 5. Motion blur settings (v15+, optional for backward compat)
+    const mb = project.motion_blur;
+    motionBlurStore.enabled.value = mb?.enabled ?? false;
+    motionBlurStore.shutterAngle.value = mb?.shutter_angle ?? 180;
+    motionBlurStore.previewQuality.value = (mb?.preview_quality as 'off' | 'low' | 'medium') ?? 'medium';
+    exportStore.setMotionBlurSubFrames(mb?.export_sub_frames ?? 8);
+
+    // 6. Clear dirty flag (just loaded)
     isDirty.value = false;
   });
 
@@ -715,6 +730,7 @@ export const projectStore = {
     imageStore.reset();
     audioStore.reset();
     paintStore.reset();
+    motionBlurStore.reset();
     audioPeaksCache.clear();
     audioEngine.stopAll();
     uiStore.reset();
