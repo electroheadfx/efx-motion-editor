@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.6.0
 milestone_name: Various Enhancements
 status: executing
-stopped_at: Completed 22-04-PLAN.md
-last_updated: "2026-03-26T23:23:39.677Z"
-last_activity: 2026-03-26 -- Phase 22 execution in progress
+stopped_at: Completed 22-05-PLAN.md
+last_updated: "2026-03-26T23:32:09.250Z"
+last_activity: 2026-03-26
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 80
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 ## Current Position
 
 Phase: 22 (foundation-quick-wins) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 22
-Last activity: 2026-03-26 -- Phase 22 execution started
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-03-26
 
 Progress: [########..] 80%
 
@@ -50,6 +50,7 @@ Full phase decisions archived in milestones/v0.5.0-ROADMAP.md.
 
 - [Phase 22]: Added addLayerToSequence method rather than mutating activeSequenceId for isolation-scoped layer creation
 - [Phase 22]: Store raw fractional frame values in sampleMotionDots; only round at consumption points (playhead lookup)
+- [Phase 22]: Create new timeline-level sequences in isolation mode rather than pushing internal sub-layers, with frame range from trackLayouts
 
 ### Pending Todos
 
@@ -66,6 +67,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-26T23:23:39.675Z
-Stopped at: Completed 22-04-PLAN.md
+Last session: 2026-03-26T23:32:09.247Z
+Stopped at: Completed 22-05-PLAN.md
 Resume file: None
