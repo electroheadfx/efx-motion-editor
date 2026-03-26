@@ -16,6 +16,7 @@ import {blurStore} from '../stores/blurStore';
 import {paintStore} from '../stores/paintStore';
 import {isolationStore} from '../stores/isolationStore';
 import {soloStore} from '../stores/soloStore';
+import {motionBlurStore} from '../stores/motionBlurStore';
 import {keyframeStore} from '../stores/keyframeStore';
 import {audioStore} from '../stores/audioStore';
 import {audioEngine} from './audioEngine';
@@ -429,6 +430,15 @@ export function mountShortcuts(): () => void {
       if (isFullscreen.peek()) return;
       e.preventDefault();
       blurStore.toggleBypass();
+    },
+
+    // Motion blur toggle (MBLR-01)
+    'm': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      if (isPaintEditMode()) return;  // M may conflict with paint tools
+      e.preventDefault();
+      motionBlurStore.toggleEnabled();
     },
 
     // Solo toggle (ENH-03)

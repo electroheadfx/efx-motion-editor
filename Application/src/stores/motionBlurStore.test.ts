@@ -65,4 +65,22 @@ describe('motionBlurStore', () => {
     expect(motionBlurStore.shutterAngle.value).toBe(180);
     expect(motionBlurStore.previewQuality.value).toBe('medium');
   });
+
+  it('toggleEnabled twice returns to false', () => {
+    expect(motionBlurStore.enabled.value).toBe(false);
+    motionBlurStore.toggleEnabled();
+    expect(motionBlurStore.enabled.value).toBe(true);
+    motionBlurStore.toggleEnabled();
+    expect(motionBlurStore.enabled.value).toBe(false);
+  });
+
+  it('setShutterAngle clamps to 0 minimum', () => {
+    motionBlurStore.setShutterAngle(-50);
+    expect(motionBlurStore.shutterAngle.value).toBe(0);
+  });
+
+  it('setShutterAngle clamps to 360 maximum', () => {
+    motionBlurStore.setShutterAngle(999);
+    expect(motionBlurStore.shutterAngle.value).toBe(360);
+  });
 });
