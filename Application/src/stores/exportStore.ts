@@ -23,6 +23,10 @@ const progress = signal<ExportProgress>({
   outputPath: null,
 });
 
+const motionBlurEnabled = signal(false);
+const motionBlurShutterAngle = signal(180);
+const motionBlurSubFrames = signal(8);
+
 const cancelled = signal(false);
 
 const settings = computed<ExportSettings>(() => ({
@@ -32,6 +36,11 @@ const settings = computed<ExportSettings>(() => ({
   namingPattern: namingPattern.value,
   videoQuality: videoQuality.value,
   includeAudio: includeAudio.value,
+  motionBlur: {
+    enabled: motionBlurEnabled.value,
+    shutterAngle: motionBlurShutterAngle.value,
+    subFrames: motionBlurSubFrames.value,
+  },
 }));
 
 /** True when export is actively running (rendering or encoding) */
@@ -47,6 +56,9 @@ export const exportStore = {
   namingPattern,
   videoQuality,
   includeAudio,
+  motionBlurEnabled,
+  motionBlurShutterAngle,
+  motionBlurSubFrames,
   progress,
   cancelled,
   settings,
@@ -63,6 +75,9 @@ export const exportStore = {
     configSetExportNamingPattern(pattern);
   },
   setIncludeAudio(v: boolean) { includeAudio.value = v; },
+  setMotionBlurEnabled(v: boolean) { motionBlurEnabled.value = v; },
+  setMotionBlurShutterAngle(v: number) { motionBlurShutterAngle.value = Math.max(0, Math.min(360, v)); },
+  setMotionBlurSubFrames(v: number) { motionBlurSubFrames.value = v; },
   setVideoQuality(q: typeof videoQuality.value) {
     videoQuality.value = q;
     configSetVideoQuality(q as Record<string, unknown>);

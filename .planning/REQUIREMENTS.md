@@ -25,14 +25,14 @@ Requirements for milestone v0.5.0: Motion Blur & Paint Styles. Each maps to road
 
 ### Motion Blur
 
-- [ ] **MBLR-01**: User can toggle motion blur on/off for preview playback
+- [x] **MBLR-01**: User can toggle motion blur on/off for preview playback
 - [ ] **MBLR-02**: User can see per-layer directional blur based on layer movement velocity during preview
-- [ ] **MBLR-03**: User can adjust motion blur strength via shutter angle control (0-360 degrees)
-- [ ] **MBLR-04**: User can configure motion blur preview quality (off/low/medium)
+- [x] **MBLR-03**: User can adjust motion blur strength via shutter angle control (0-360 degrees)
+- [x] **MBLR-04**: User can configure motion blur preview quality (off/low/medium)
 - [ ] **MBLR-05**: User can enable motion blur for export with configurable sub-frame count (4/8/16)
 - [ ] **MBLR-06**: Export renders motion blur using combined GLSL velocity blur + sub-frame accumulation
 - [ ] **MBLR-07**: Motion blur settings persist in project file (.mce format)
-- [ ] **MBLR-08**: Stationary layers are not blurred (velocity threshold skip)
+- [x] **MBLR-08**: Stationary layers are not blurred (velocity threshold skip)
 - [ ] **MBLR-09**: Motion blur preview maintains smooth playback at target fps
 
 ## Future Requirements
@@ -82,14 +82,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PAINT-11 | Phase 20 | Complete |
 | PAINT-12 | Phase 20 | Complete |
 | PAINT-13 | Phase 20 | Complete |
-| MBLR-01 | Phase 21 | Pending |
+| MBLR-01 | Phase 21 | Complete |
 | MBLR-02 | Phase 21 | Pending |
-| MBLR-03 | Phase 21 | Pending |
-| MBLR-04 | Phase 21 | Pending |
+| MBLR-03 | Phase 21 | Complete |
+| MBLR-04 | Phase 21 | Complete |
 | MBLR-05 | Phase 21 | Pending |
 | MBLR-06 | Phase 21 | Pending |
 | MBLR-07 | Phase 21 | Pending |
-| MBLR-08 | Phase 21 | Pending |
+| MBLR-08 | Phase 21 | Complete |
 | MBLR-09 | Phase 21 | Pending |
 
 **Coverage:**

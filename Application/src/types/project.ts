@@ -20,6 +20,12 @@ export interface MceProject {
   sequences: MceSequence[];
   images: MceImageRef[];
   audio_tracks?: MceAudioTrack[];  // Optional for backward compat with v7
+  motion_blur?: {
+    enabled: boolean;
+    shutter_angle: number;        // 0-360 degrees
+    preview_quality: string;       // 'off' | 'low' | 'medium'
+    export_sub_frames: number;     // 4, 8, or 16
+  };
 }
 
 /** Sequence definition within a project file */
