@@ -52,11 +52,12 @@ describe('sampleMotionDots', () => {
     expect(sampleMotionDots([kf(0, {x: 10})], canvasW, canvasH)).toEqual([]);
   });
 
-  it('returns correct number of dots (lastFrame - firstFrame + 1)', () => {
-    const keyframes = [kf(0, {x: 0, y: 0}), kf(10, {x: 100, y: 0})];
+  it('returns correct number of dots for long spans (integer stepping)', () => {
+    // Use span >= 30 to get integer stepping
+    const keyframes = [kf(0, {x: 0, y: 0}), kf(40, {x: 100, y: 0})];
     const dots = sampleMotionDots(keyframes, canvasW, canvasH);
-    // Frames 0 through 10 inclusive = 11 dots
-    expect(dots).toHaveLength(11);
+    // Frames 0 through 40 inclusive = 41 dots
+    expect(dots).toHaveLength(41);
   });
 
   it('correctly converts offset-from-center to project-space', () => {
@@ -66,8 +67,8 @@ describe('sampleMotionDots', () => {
     expect(dots[0].x).toBe(-100 + canvasW / 2);
     expect(dots[0].y).toBe(50 + canvasH / 2);
     // Last dot: x = 200 + 960 = 1160, y = -50 + 540 = 490
-    expect(dots[1].x).toBe(200 + canvasW / 2);
-    expect(dots[1].y).toBe(-50 + canvasH / 2);
+    expect(dots[dots.length - 1].x).toBe(200 + canvasW / 2);
+    expect(dots[dots.length - 1].y).toBe(-50 + canvasH / 2);
   });
 
   it('first dot matches first keyframe, last dot matches last keyframe', () => {
@@ -79,12 +80,13 @@ describe('sampleMotionDots', () => {
     expect(dots[dots.length - 1].y).toBe(200 + canvasH / 2);
   });
 
-  it('with linear easing, dots are evenly spaced', () => {
-    const keyframes = [kf(0, {x: 0, y: 0}, 'linear'), kf(10, {x: 100, y: 0}, 'linear')];
+  it('with linear easing, dots are evenly spaced (long span)', () => {
+    // Use span >= 30 to test integer-step even spacing
+    const keyframes = [kf(0, {x: 0, y: 0}, 'linear'), kf(40, {x: 400, y: 0}, 'linear')];
     const dots = sampleMotionDots(keyframes, canvasW, canvasH);
-    // With linear easing between frame 0 and 10, x should increase by 10 per frame
+    // With linear easing between frame 0 and 40, x should increase by 10 per frame
     const baseX = canvasW / 2;
-    for (let i = 0; i <= 10; i++) {
+    for (let i = 0; i <= 40; i++) {
       expect(dots[i].x).toBeCloseTo(baseX + i * 10, 5);
     }
   });
@@ -96,12 +98,54 @@ describe('sampleMotionDots', () => {
       kf(10, {x: 100, y: 0}, 'linear'),
     ];
     const dots = sampleMotionDots(keyframes, canvasW, canvasH);
-    // Frames 0..10 = 11 dots
-    expect(dots).toHaveLength(11);
+    // Span=10 < 30, so sub-frame: (10/0.25)+1 = 41 dots
+    expect(dots).toHaveLength(41);
     // First dot at x=0+960, last at x=100+960
     expect(dots[0].x).toBe(canvasW / 2);
-    expect(dots[10].x).toBe(100 + canvasW / 2);
-    // Middle dot (frame 5) should be at x=50+960
-    expect(dots[5].x).toBeCloseTo(50 + canvasW / 2, 5);
+    expect(dots[dots.length - 1].x).toBe(100 + canvasW / 2);
+  });
+
+  describe('sub-frame sampling (UXP-03)', () => {
+    it('uses sub-frame steps when span < 30 frames', () => {
+      const keyframes = [kf(0, {x: 0, y: 0}), kf(5, {x: 100, y: 0})];
+      const dots = sampleMotionDots(keyframes, canvasW, canvasH);
+      // span=5, step=0.25, so (5/0.25)+1 = 21 dots
+      expect(dots.length).toBe(21);
+    });
+
+    it('uses integer steps when span >= 30 frames', () => {
+      const keyframes = [kf(0, {x: 0, y: 0}), kf(50, {x: 100, y: 0})];
+      const dots = sampleMotionDots(keyframes, canvasW, canvasH);
+      expect(dots.length).toBe(51);
+    });
+
+    it('sub-frame dots have integer frame property', () => {
+      const keyframes = [kf(0, {x: 0, y: 0}), kf(5, {x: 100, y: 0})];
+      const dots = sampleMotionDots(keyframes, canvasW, canvasH);
+      for (const dot of dots) {
+        expect(dot.frame).toBe(Math.round(dot.frame));
+      }
+    });
+
+    it('first and last dots still match keyframe positions', () => {
+      const keyframes = [kf(0, {x: 10, y: 20}), kf(5, {x: 100, y: 200})];
+      const dots = sampleMotionDots(keyframes, canvasW, canvasH);
+      expect(dots[0].x).toBe(10 + canvasW / 2);
+      expect(dots[0].y).toBe(20 + canvasH / 2);
+      expect(dots[dots.length - 1].x).toBe(100 + canvasW / 2);
+      expect(dots[dots.length - 1].y).toBe(200 + canvasH / 2);
+    });
+
+    it('boundary: span exactly 29 uses sub-frame', () => {
+      const keyframes = [kf(0, {x: 0, y: 0}), kf(29, {x: 100, y: 0})];
+      const dots = sampleMotionDots(keyframes, canvasW, canvasH);
+      expect(dots.length).toBe(Math.floor(29 / 0.25) + 1); // 117
+    });
+
+    it('boundary: span exactly 30 uses integer steps', () => {
+      const keyframes = [kf(0, {x: 0, y: 0}), kf(30, {x: 100, y: 0})];
+      const dots = sampleMotionDots(keyframes, canvasW, canvasH);
+      expect(dots.length).toBe(31);
+    });
   });
 });
