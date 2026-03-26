@@ -215,8 +215,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
               // Use signal value for slider reactivity
               const sliderWidth = paintStore.brushSize.value;
               return (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  {/* Width slider + number field */}
+                <div class="flex flex-col gap-2">
+                  {/* Width -- full row */}
                   <div class="flex items-center gap-2">
                     <span class="text-[10px] w-10 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Width</span>
                     <input
@@ -244,7 +244,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
                       }}
                     />
                   </div>
-                  {/* Color swatch + hex */}
+                  {/* Color -- full row */}
                   <div class="flex items-center gap-2">
                     <span class="text-[10px] w-10 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Color</span>
                     <button
