@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
 status: Ready to execute
-stopped_at: Completed 21-03-PLAN.md
-last_updated: "2026-03-26T16:21:11.810Z"
+stopped_at: Completed 21-04-PLAN.md
+last_updated: "2026-03-26T16:27:11.195Z"
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 8
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-25)
 ## Current Position
 
 Phase: 21 (motion-blur) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Full phase decisions archived in milestones/v0.4.0-ROADMAP.md.
 - [Phase 21]: Separate WebGL2 context for glMotionBlur.ts (not shared) for isolation and simplicity
 - [Phase 21]: Triangle filter weighting in GLSL shader for smooth directional blur falloff
 - [Phase 21]: Accumulator canvas with globalAlpha=1/N for sub-frame blending; temporary motionBlurStore override for export shutter angle (D-11); Math.floor for fractional frame fm[] indexing
+- [Phase 21]: M shortcut guarded with isPaintEditMode() following existing F key pattern
 
 ### Pending Todos
 
@@ -85,6 +86,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-26T16:21:11.807Z
-Stopped at: Completed 21-03-PLAN.md
+Last session: 2026-03-26T16:27:11.191Z
+Stopped at: Completed 21-04-PLAN.md
 Resume file: None
