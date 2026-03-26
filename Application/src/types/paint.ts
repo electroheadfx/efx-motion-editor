@@ -1,5 +1,8 @@
 /** Paint tool types (per D-04) */
-export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse';
+export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse' | 'select';
+
+/** Per D-04: Three stroke states for FX workflow */
+export type StrokeFxState = 'flat' | 'fx-applied' | 'flattened';
 
 /** Brush rendering styles (per D-01) */
 export type BrushStyle = 'flat' | 'watercolor' | 'ink' | 'charcoal' | 'pencil' | 'marker';
@@ -47,6 +50,7 @@ export interface PaintStroke {
   options: PaintStrokeOptions;
   brushStyle?: BrushStyle;      // rendering style (default: 'flat' for backward compat)
   brushParams?: BrushFxParams;  // FX parameters at draw time
+  fxState?: StrokeFxState;      // per D-04: current rendering state (default: 'flat')
 }
 
 /** Options passed to perfect-freehand getStroke() */
@@ -95,6 +99,9 @@ export type PaintElement = PaintStroke | PaintShape | PaintFill;
 export interface PaintFrame {
   elements: PaintElement[];
 }
+
+/** Default solid background color for paint layer (per D-11) */
+export const DEFAULT_PAINT_BG_COLOR = '#FFFFFF';
 
 /** Default brush settings */
 export const DEFAULT_BRUSH_SIZE = 8;
