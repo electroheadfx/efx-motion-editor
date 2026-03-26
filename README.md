@@ -275,9 +275,4 @@ efx-motion-editor/
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
-
-## Commercial Support
-
-Need custom features, integration, or enterprise support for your studio or production pipeline?
-Contact [laurentefx@icloud.com](mailto:laurentefx@icloud.com)
+This project is licensed under the GNU General Public License v2.0 — see [LICENSE](LICENSE) for details.
