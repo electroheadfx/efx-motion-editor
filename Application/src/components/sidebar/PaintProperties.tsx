@@ -70,31 +70,74 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* Background controls -- single row, no section header (per D-01) */}
+      {/* Background + Clear Brushes row (per D-01) */}
       <div style={{ padding: '4px 12px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '8px', alignItems: 'center' }}>
-          {/* Left: Background color swatch + Show Seq BG checkbox */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {/* BG Color swatch with label */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>BG Color</span>
             <div
               style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)' }}
               onClick={() => setShowBgColorPicker(true)}
               title="Paint background color"
             />
-            <label style={{ fontSize: '10px', color: 'var(--sidebar-label)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={paintStore.showSequenceOverlay.value}
-                onChange={() => paintStore.toggleSequenceOverlay()}
-                style={{ width: 12, height: 12 }}
-              />
-              Show Seq BG
-            </label>
           </div>
-          {/* Right: Reset button */}
+          {/* Clear Brushes button */}
+          <div>
+            {confirmClear ? (
+              <div class="flex items-center gap-1">
+                <span class="text-[9px]" style={{color: 'var(--sidebar-text-secondary)'}}>Clear?</span>
+                <button
+                  class="text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                  style={{backgroundColor: '#DC2626', color: '#FFFFFF', border: 'none'}}
+                  onClick={() => {
+                    paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek());
+                    setConfirmClear(false);
+                  }}
+                >
+                  Yes
+                </button>
+                <button
+                  class="text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                  style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', border: 'none'}}
+                  onClick={() => setConfirmClear(false)}
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmClear(true)}
+                style={{
+                  backgroundColor: '#DC2626',
+                  color: '#FFFFFF',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  border: 'none',
+                }}
+              >
+                Clear Brushes
+              </button>
+            )}
+          </div>
+          {/* Show Seq BG checkbox */}
+          <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginLeft: 'auto' }}>
+            <input
+              type="checkbox"
+              checked={paintStore.showSequenceOverlay.value}
+              onChange={() => paintStore.toggleSequenceOverlay()}
+              style={{ width: 12, height: 12 }}
+            />
+            Show Seq BG
+          </label>
+          {/* Reset button */}
           {bgColor !== DEFAULT_PAINT_BG_COLOR && (
             <button
               onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
-              style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-label)', cursor: 'pointer', border: 'none' }}
+              style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-secondary)', cursor: 'pointer', border: 'none' }}
             >
               Reset
             </button>
@@ -418,114 +461,67 @@ export function PaintProperties({layer}: {layer: Layer}) {
               );
             })()}
 
-            {/* D-04: Row 1 -- Size | Color (2-col) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              {/* Size slider + number field */}
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] w-8 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Size</span>
-                <input
-                  type="range"
-                  min={BRUSH_SIZE_MIN}
-                  max={BRUSH_SIZE_MAX}
-                  step={1}
-                  value={brushSizeVal}
-                  class="flex-1 min-w-0 h-1 cursor-pointer"
-                  style={{accentColor: 'var(--color-accent)'}}
-                  onInput={(e) => paintStore.setBrushSize(parseInt((e.target as HTMLInputElement).value, 10))}
-                />
-                <input
-                  type="number"
-                  min={BRUSH_SIZE_MIN}
-                  max={BRUSH_SIZE_MAX}
-                  step={1}
-                  value={brushSizeVal}
-                  class="w-12 text-[11px] rounded px-1.5 py-0.5 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
-                  onInput={(e) => {
-                    const v = parseInt((e.target as HTMLInputElement).value, 10);
-                    if (!isNaN(v)) paintStore.setBrushSize(v);
-                  }}
-                />
-              </div>
-              {/* Color swatch + hex */}
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] w-10 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Color</span>
-                <button
-                  class="w-6 h-6 rounded border cursor-pointer shrink-0"
-                  style={{
-                    backgroundColor: brushColorVal,
-                    borderColor: 'var(--color-border-subtle)',
-                  }}
-                  title="Change brush color"
-                  onClick={() => setShowColorPicker(true)}
-                />
-                <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
-                  {brushColorVal.toUpperCase()}
-                </span>
-              </div>
+            {/* Size -- full row */}
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] w-8 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Size</span>
+              <input
+                type="range"
+                min={BRUSH_SIZE_MIN}
+                max={BRUSH_SIZE_MAX}
+                step={1}
+                value={brushSizeVal}
+                class="flex-1 min-w-0 h-1 cursor-pointer"
+                style={{accentColor: 'var(--color-accent)'}}
+                onInput={(e) => paintStore.setBrushSize(parseInt((e.target as HTMLInputElement).value, 10))}
+              />
+              <input
+                type="number"
+                min={BRUSH_SIZE_MIN}
+                max={BRUSH_SIZE_MAX}
+                step={1}
+                value={brushSizeVal}
+                class="w-12 text-[11px] rounded px-1.5 py-0.5 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
+                onInput={(e) => {
+                  const v = parseInt((e.target as HTMLInputElement).value, 10);
+                  if (!isNaN(v)) paintStore.setBrushSize(v);
+                }}
+              />
             </div>
 
-            {/* D-04: Row 2 -- Opacity | Clear Brushes (2-col) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'end' }}>
-              {/* Opacity slider */}
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] w-12 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Opacity</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={Math.round(brushOpacityVal * 100)}
-                  class="flex-1 min-w-0 h-1 cursor-pointer"
-                  style={{accentColor: 'var(--color-accent)'}}
-                  onInput={(e) => paintStore.setBrushOpacity(parseInt((e.target as HTMLInputElement).value, 10) / 100)}
-                />
-                <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                  {Math.round(brushOpacityVal * 100)}%
-                </span>
-              </div>
-              {/* D-05: Clear Brushes button (red bg, white text) */}
-              <div>
-                {confirmClear ? (
-                  <div class="flex items-center gap-1">
-                    <span class="text-[9px]" style={{color: 'var(--sidebar-text-secondary)'}}>Clear?</span>
-                    <button
-                      class="text-[10px] px-2 py-0.5 rounded cursor-pointer"
-                      style={{backgroundColor: '#DC2626', color: '#FFFFFF', border: 'none'}}
-                      onClick={() => {
-                        paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek());
-                        setConfirmClear(false);
-                      }}
-                    >
-                      Yes
-                    </button>
-                    <button
-                      class="text-[10px] px-2 py-0.5 rounded cursor-pointer"
-                      style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', border: 'none'}}
-                      onClick={() => setConfirmClear(false)}
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setConfirmClear(true)}
-                    style={{
-                      backgroundColor: '#DC2626',
-                      color: '#FFFFFF',
-                      fontSize: '10px',
-                      fontWeight: 600,
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      width: '100%',
-                      border: 'none',
-                    }}
-                  >
-                    Clear Brushes
-                  </button>
-                )}
-              </div>
+            {/* Brush Color -- full row */}
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] w-16 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Brush Color</span>
+              <button
+                class="w-6 h-6 rounded border cursor-pointer shrink-0"
+                style={{
+                  backgroundColor: brushColorVal,
+                  borderColor: 'var(--color-border-subtle)',
+                }}
+                title="Change brush color"
+                onClick={() => setShowColorPicker(true)}
+              />
+              <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
+                {brushColorVal.toUpperCase()}
+              </span>
+            </div>
+
+            {/* Opacity -- full row */}
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] w-12 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Opacity</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(brushOpacityVal * 100)}
+                class="flex-1 min-w-0 h-1 cursor-pointer"
+                style={{accentColor: 'var(--color-accent)'}}
+                onInput={(e) => paintStore.setBrushOpacity(parseInt((e.target as HTMLInputElement).value, 10) / 100)}
+              />
+              <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                {Math.round(brushOpacityVal * 100)}%
+              </span>
             </div>
 
             {/* D-06: Thinning/Smoothing/Streamline sliders (moved from STROKE, no section label) */}
