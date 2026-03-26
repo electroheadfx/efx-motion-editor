@@ -15,7 +15,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showBgColorPicker, setShowBgColorPicker] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [bgCollapsed, setBgCollapsed] = useState(false);
   const [onionCollapsed, setOnionCollapsed] = useState(true);
   const [tabletCollapsed, setTabletCollapsed] = useState(true);
 
@@ -71,108 +70,200 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* PAINT BACKGROUND per D-11, D-12 */}
-      <div>
-        <button
-          class="flex items-center gap-1 cursor-pointer w-full"
-          onClick={() => setBgCollapsed(!bgCollapsed)}
-        >
-          <span
-            class="text-[10px] transition-transform"
-            style={{
-              color: 'var(--sidebar-text-secondary)',
-              transform: bgCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-            }}
-          >
-            &#9660;
-          </span>
-          <SectionLabel text="PAINT BACKGROUND" />
-        </button>
-
-        {!bgCollapsed && (
-          <div class="px-1 mt-1.5 space-y-2">
-            <div class="flex items-center gap-2">
-              <div
-                class="w-5 h-5 rounded border cursor-pointer shrink-0"
-                style={{
-                  backgroundColor: bgColor,
-                  borderColor: 'var(--sidebar-border)',
-                }}
-                onClick={() => setShowBgColorPicker(true)}
-                title="Paint background color"
+      {/* Background controls -- single row, no section header (per D-01) */}
+      <div style={{ padding: '4px 12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '8px', alignItems: 'center' }}>
+          {/* Left: Background color swatch + Show Seq BG checkbox */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div
+              style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)' }}
+              onClick={() => setShowBgColorPicker(true)}
+              title="Paint background color"
+            />
+            <label style={{ fontSize: '10px', color: 'var(--sidebar-label)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={paintStore.showSequenceOverlay.value}
+                onChange={() => paintStore.toggleSequenceOverlay()}
+                style={{ width: 12, height: 12 }}
               />
-              <span class="text-[11px]" style={{color: 'var(--sidebar-text-secondary)'}}>
-                Background
-              </span>
-              {bgColor !== DEFAULT_PAINT_BG_COLOR && (
-                <button
-                  class="text-[10px] ml-auto opacity-60 hover:opacity-100 cursor-pointer"
-                  style={{color: 'var(--sidebar-text-secondary)'}}
-                  onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
-                >
-                  Reset
-                </button>
-              )}
-            </div>
+              Show Seq BG
+            </label>
           </div>
-        )}
-
-        {showBgColorPicker && (
-          <ColorPickerModal
-            color={bgColor}
-            onLiveChange={(c) => paintStore.setPaintBgColor(c)}
-            onCommit={(c) => {
-              paintStore.setPaintBgColor(c);
-              setShowBgColorPicker(false);
-            }}
-            onClose={() => setShowBgColorPicker(false)}
-          />
+          {/* Right: Reset button */}
+          {bgColor !== DEFAULT_PAINT_BG_COLOR && (
+            <button
+              onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
+              style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-label)', cursor: 'pointer', border: 'none' }}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+        {/* Sequence overlay opacity slider -- conditional on showSequenceOverlay */}
+        {paintStore.showSequenceOverlay.value && (
+          <div class="flex items-center gap-2 mt-1.5">
+            <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Opacity</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(paintStore.sequenceOverlayOpacity.value * 100)}
+              class="flex-1 min-w-0 h-1 cursor-pointer"
+              style={{accentColor: 'var(--color-accent)'}}
+              onInput={(e) => paintStore.setSequenceOverlayOpacity(parseInt((e.target as HTMLInputElement).value, 10) / 100)}
+            />
+            <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+              {Math.round(paintStore.sequenceOverlayOpacity.value * 100)}%
+            </span>
+          </div>
         )}
       </div>
 
-      {/* SELECT MODE TOOLS — Select All + style application */}
+      {showBgColorPicker && (
+        <ColorPickerModal
+          color={bgColor}
+          onLiveChange={(c) => paintStore.setPaintBgColor(c)}
+          onCommit={(c) => {
+            paintStore.setPaintBgColor(c);
+            setShowBgColorPicker(false);
+          }}
+          onClose={() => setShowBgColorPicker(false)}
+        />
+      )}
+
+      {/* SELECT MODE TOOLS -- 2-col grouping (per D-08) */}
       {activeTool === 'select' && (
         <div>
           <SectionLabel text="SELECTION" />
           <div class="flex flex-col gap-2 mt-1.5">
-            <button
-              class="paint-action-btn w-full text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
-              onClick={() => {
-                const frame = timelineStore.currentFrame.peek();
-                const paintFrame = paintStore.getFrame(layer.id, frame);
-                if (!paintFrame) return;
-                paintStore.clearSelection();
-                for (const el of paintFrame.elements) {
-                  if (el.tool === 'brush') {
-                    paintStore.selectStroke(el.id);
-                  }
-                }
-              }}
-            >
-              Select All Strokes
-            </button>
-            <div class="text-[9px] opacity-40 px-1" style={{color: 'var(--sidebar-text-secondary)'}}>
-              Cmd/Ctrl+click to multi-select. Drag selected strokes to move.
-            </div>
-            {paintStore.selectedStrokeIds.value.size > 0 && (
+            {/* D-08: Row 1 -- Select All | Delete Selected (2-col) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <button
-                class="paint-action-btn w-full text-[11px] py-1 px-2 rounded cursor-pointer mt-1 transition-colors"
-                style={{ color: '#dc2626' }}
+                class="paint-action-btn text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
                 onClick={() => {
                   const frame = timelineStore.currentFrame.peek();
-                  const selected = paintStore.selectedStrokeIds.peek();
-                  for (const strokeId of selected) {
-                    paintStore.removeElement(layer.id, frame, strokeId);
-                  }
+                  const paintFrame = paintStore.getFrame(layer.id, frame);
+                  if (!paintFrame) return;
                   paintStore.clearSelection();
+                  for (const el of paintFrame.elements) {
+                    if (el.tool === 'brush') {
+                      paintStore.selectStroke(el.id);
+                    }
+                  }
                 }}
               >
-                Delete Selected ({paintStore.selectedStrokeIds.value.size})
+                Select All Strokes
               </button>
-            )}
+              {paintStore.selectedStrokeIds.value.size > 0 ? (
+                <button
+                  class="paint-action-btn text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
+                  style={{ color: '#dc2626' }}
+                  onClick={() => {
+                    const frame = timelineStore.currentFrame.peek();
+                    const selected = paintStore.selectedStrokeIds.peek();
+                    for (const strokeId of selected) {
+                      paintStore.removeElement(layer.id, frame, strokeId);
+                    }
+                    paintStore.clearSelection();
+                  }}
+                >
+                  Delete Selected ({paintStore.selectedStrokeIds.value.size})
+                </button>
+              ) : (
+                <div />
+              )}
+            </div>
+
+            {/* D-08: Row 2 -- Width | Color (2-col, visible when strokes selected) */}
             {paintStore.selectedStrokeIds.value.size > 0 && (() => {
-              const fr = timelineStore.currentFrame.peek();
-              const ids = paintStore.selectedStrokeIds.value;
+              // Read width and color from first selected stroke
+              const frame = timelineStore.currentFrame.peek();
+              const pf = paintStore.getFrame(layer.id, frame);
+              const sel = paintStore.selectedStrokeIds.value;
+              let currentWidth = paintStore.brushSize.value;
+              let currentColor = paintStore.brushColor.value;
+              if (pf) {
+                for (const el of pf.elements) {
+                  if (el.tool === 'brush' && sel.has(el.id)) {
+                    currentWidth = Math.round((el as any).size);
+                    currentColor = (el as any).color || currentColor;
+                    break;
+                  }
+                }
+              }
+              const applyWidth = (newSize: number, andRefreshFx = false) => {
+                if (!pf) return;
+                for (const el of pf.elements) {
+                  if (el.tool !== 'brush') continue;
+                  if (!sel.has(el.id)) continue;
+                  (el as any).size = newSize;
+                }
+                paintStore.setBrushSize(newSize);
+                paintStore.markDirty(layer.id, frame);
+                // Don't invalidate FX cache during drag -- keep showing old FX
+                // Only invalidate + rebuild on release (andRefreshFx=true)
+                if (andRefreshFx) {
+                  paintStore.refreshFrameFx(layer.id, frame);
+                } else {
+                  paintStore.paintVersion.value++;
+                }
+              };
+              // Use signal value for slider reactivity
+              const sliderWidth = paintStore.brushSize.value;
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  {/* Width slider + number field */}
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] w-10 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Width</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={500}
+                      step={1}
+                      value={sliderWidth}
+                      class="flex-1 min-w-0 h-1 cursor-pointer"
+                      style={{accentColor: 'var(--color-accent)'}}
+                      onInput={(e) => applyWidth(parseInt((e.target as HTMLInputElement).value, 10))}
+                      onChange={(e) => applyWidth(parseInt((e.target as HTMLInputElement).value, 10), true)}
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      step={1}
+                      value={sliderWidth}
+                      class="w-12 text-[11px] rounded px-1 py-0.5 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
+                      onInput={(e) => {
+                        const v = parseInt((e.target as HTMLInputElement).value, 10);
+                        if (!isNaN(v) && v > 0) applyWidth(v, true);
+                      }}
+                    />
+                  </div>
+                  {/* Color swatch + hex */}
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] w-10 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Color</span>
+                    <button
+                      class="w-6 h-6 rounded border cursor-pointer shrink-0"
+                      style={{
+                        backgroundColor: currentColor,
+                        borderColor: 'var(--color-border-subtle)',
+                      }}
+                      title="Change stroke color"
+                      onClick={() => setShowColorPicker(true)}
+                    />
+                    <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
+                      {currentColor.toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Reorder buttons */}
+            {paintStore.selectedStrokeIds.value.size > 0 && (() => {
               const doReorder = (action: 'toBack' | 'backward' | 'forward' | 'toFront') => {
                 const currentFrame = timelineStore.currentFrame.peek();
                 const selectedIds = paintStore.selectedStrokeIds.peek();
@@ -203,480 +294,11 @@ export function PaintProperties({layer}: {layer: Layer}) {
                 </div>
               );
             })()}
-            {paintStore.selectedStrokeIds.value.size > 0 && (() => {
-              // Read width and color from first selected stroke
-              const frame = timelineStore.currentFrame.peek();
-              const pf = paintStore.getFrame(layer.id, frame);
-              const sel = paintStore.selectedStrokeIds.value;
-              let currentWidth = paintStore.brushSize.value;
-              let currentColor = paintStore.brushColor.value;
-              if (pf) {
-                for (const el of pf.elements) {
-                  if (el.tool === 'brush' && sel.has(el.id)) {
-                    currentWidth = Math.round((el as any).size);
-                    currentColor = (el as any).color || currentColor;
-                    break;
-                  }
-                }
-              }
-              const applyWidth = (newSize: number, andRefreshFx = false) => {
-                if (!pf) return;
-                for (const el of pf.elements) {
-                  if (el.tool !== 'brush') continue;
-                  if (!sel.has(el.id)) continue;
-                  (el as any).size = newSize;
-                }
-                paintStore.setBrushSize(newSize);
-                paintStore.markDirty(layer.id, frame);
-                // Don't invalidate FX cache during drag — keep showing old FX
-                // Only invalidate + rebuild on release (andRefreshFx=true)
-                if (andRefreshFx) {
-                  paintStore.refreshFrameFx(layer.id, frame);
-                } else {
-                  paintStore.paintVersion.value++;
-                }
-              };
-              // Use signal value for slider reactivity
-              const sliderWidth = paintStore.brushSize.value;
-              return (<>
-                <div class="flex items-center gap-2 mt-1">
-                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Width</span>
-                  <input
-                    type="range"
-                    min={1}
-                    max={500}
-                    step={1}
-                    value={sliderWidth}
-                    class="flex-1 min-w-0 h-1 cursor-pointer"
-                    style={{accentColor: 'var(--color-accent)'}}
-                    onInput={(e) => applyWidth(parseInt((e.target as HTMLInputElement).value, 10))}
-                    onChange={(e) => applyWidth(parseInt((e.target as HTMLInputElement).value, 10), true)}
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    max={500}
-                    step={1}
-                    value={sliderWidth}
-                    class="w-12 text-[11px] rounded px-1 py-0.5 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                    style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
-                    onInput={(e) => {
-                      const v = parseInt((e.target as HTMLInputElement).value, 10);
-                      if (!isNaN(v) && v > 0) applyWidth(v, true);
-                    }}
-                  />
-                </div>
-                <div class="flex items-center gap-2 mt-1">
-                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Color</span>
-                  <button
-                    class="w-6 h-6 rounded border cursor-pointer shrink-0"
-                    style={{
-                      backgroundColor: currentColor,
-                      borderColor: 'var(--color-border-subtle)',
-                    }}
-                    title="Change stroke color"
-                    onClick={() => setShowColorPicker(true)}
-                  />
-                  <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
-                    {currentColor.toUpperCase()}
-                  </span>
-                </div>
-              </>);
-            })()}
           </div>
         </div>
       )}
 
-      {/* BRUSH STYLE — visible for brush tool and select tool */}
-      {(activeTool === 'brush' || activeTool === 'select') && (
-        <div>
-          <SectionLabel text="BRUSH STYLE" />
-          <div class="flex flex-wrap gap-1 mt-1.5">
-            {BRUSH_STYLES.map((style) => {
-              const isActive = paintStore.brushStyle.value === style;
-              return (
-                <button
-                  key={style}
-                  class={`text-[10px] px-2 py-1 rounded cursor-pointer transition-colors ${
-                    isActive ? 'paint-style-btn-active' : 'paint-action-btn'
-                  }`}
-                  onClick={() => {
-                    paintStore.brushStyle.value = style;
-                    paintStore.brushFxParams.value = {...DEFAULT_BRUSH_FX_PARAMS[style]};
-                  }}
-                >
-                  {style.charAt(0).toUpperCase() + style.slice(1)}
-                </button>
-              );
-            })}
-          </div>
-          {activeTool === 'select' && paintStore.selectedStrokeIds.value.size > 0 && (
-            <div class="text-[9px] mt-1.5 px-1 opacity-60" style={{color: 'var(--sidebar-text-secondary)'}}>
-              Click a style to apply FX to {paintStore.selectedStrokeIds.value.size} selected stroke(s)
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* BRUSH FX PARAMS — visible when non-flat style selected */}
-      {(activeTool === 'brush' || activeTool === 'select') && (() => {
-        const style = paintStore.brushStyle.value;
-        const visibleParams = BRUSH_FX_VISIBLE_PARAMS[style] || [];
-        if (visibleParams.length === 0) return null;
-        const params = paintStore.brushFxParams.value;
-        return (
-          <div>
-            <SectionLabel text="BRUSH FX" />
-            <div class="flex flex-col gap-2 mt-1.5">
-              {visibleParams.map((paramKey) => (
-                <div key={paramKey} class="flex items-center gap-2">
-                  <span class="text-[10px] w-16 shrink-0 capitalize" style={{color: 'var(--sidebar-text-secondary)'}}>
-                    {paramKey}
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={params[paramKey] ?? 0}
-                    class="flex-1 min-w-0 h-1 cursor-pointer"
-                    style={{accentColor: 'var(--color-accent)'}}
-                    onInput={(e) => {
-                      paintStore.brushFxParams.value = {
-                        ...paintStore.brushFxParams.value,
-                        [paramKey]: parseFloat((e.target as HTMLInputElement).value),
-                      };
-                    }}
-                  />
-                  <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                    {(params[paramKey] ?? 0).toFixed(2)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Brush Settings */}
-      {showBrushSettings && (
-        <div>
-          <SectionLabel text="BRUSH" />
-          <div class="flex flex-col gap-2 mt-1.5">
-            {/* Size */}
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] w-10 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Size</span>
-              <input
-                type="range"
-                min={BRUSH_SIZE_MIN}
-                max={BRUSH_SIZE_MAX}
-                step={1}
-                value={brushSizeVal}
-                class="flex-1 min-w-0 h-1 cursor-pointer"
-                style={{accentColor: 'var(--color-accent)'}}
-                onInput={(e) => paintStore.setBrushSize(parseInt((e.target as HTMLInputElement).value, 10))}
-              />
-              <input
-                type="number"
-                min={BRUSH_SIZE_MIN}
-                max={BRUSH_SIZE_MAX}
-                step={1}
-                value={brushSizeVal}
-                class="w-12 text-[11px] rounded px-1.5 py-0.5 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
-                onInput={(e) => {
-                  const v = parseInt((e.target as HTMLInputElement).value, 10);
-                  if (!isNaN(v)) paintStore.setBrushSize(v);
-                }}
-              />
-            </div>
-
-            {/* Color */}
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] w-10 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Color</span>
-              <button
-                class="w-6 h-6 rounded border cursor-pointer shrink-0"
-                style={{
-                  backgroundColor: brushColorVal,
-                  borderColor: 'var(--color-border-subtle)',
-                }}
-                title="Change brush color"
-                onClick={() => setShowColorPicker(true)}
-              />
-              <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
-                {brushColorVal.toUpperCase()}
-              </span>
-            </div>
-
-            {/* Opacity */}
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] w-10 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Opacity</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={Math.round(brushOpacityVal * 100)}
-                class="flex-1 min-w-0 h-1 cursor-pointer"
-                style={{accentColor: 'var(--color-accent)'}}
-                onInput={(e) => paintStore.setBrushOpacity(parseInt((e.target as HTMLInputElement).value, 10) / 100)}
-              />
-              <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                {Math.round(brushOpacityVal * 100)}%
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. Stroke Options */}
-      {showStrokeOptions && (
-        <div>
-          <SectionLabel text="STROKE" />
-          <div class="flex flex-col gap-2 mt-1.5">
-            {/* Thinning */}
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Thinning</span>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.1}
-                value={strokeOpts.thinning}
-                class="flex-1 min-w-0 h-1 cursor-pointer"
-                style={{accentColor: 'var(--color-accent)'}}
-                onInput={(e) => {
-                  paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, thinning: parseFloat((e.target as HTMLInputElement).value)};
-                }}
-              />
-              <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                {strokeOpts.thinning.toFixed(1)}
-              </span>
-            </div>
-
-            {/* Smoothing */}
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Smoothing</span>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.1}
-                value={strokeOpts.smoothing}
-                class="flex-1 min-w-0 h-1 cursor-pointer"
-                style={{accentColor: 'var(--color-accent)'}}
-                onInput={(e) => {
-                  paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, smoothing: parseFloat((e.target as HTMLInputElement).value)};
-                }}
-              />
-              <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                {strokeOpts.smoothing.toFixed(1)}
-              </span>
-            </div>
-
-            {/* Streamline */}
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Streamline</span>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.1}
-                value={strokeOpts.streamline}
-                class="flex-1 min-w-0 h-1 cursor-pointer"
-                style={{accentColor: 'var(--color-accent)'}}
-                onInput={(e) => {
-                  paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, streamline: parseFloat((e.target as HTMLInputElement).value)};
-                }}
-              />
-              <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                {strokeOpts.streamline.toFixed(1)}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3b. Tablet / Taper Options (collapsible, always shown for stroke tools) */}
-      {showStrokeOptions && (
-        <div>
-          <button
-            class="flex items-center gap-1 cursor-pointer w-full"
-            onClick={() => setTabletCollapsed(!tabletCollapsed)}
-          >
-            <span
-              class="text-[10px] transition-transform"
-              style={{
-                color: 'var(--sidebar-text-secondary)',
-                transform: tabletCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-              }}
-            >
-              &#9660;
-            </span>
-            <SectionLabel text="TABLET" />
-          </button>
-
-          {!tabletCollapsed && (
-            <div class="flex flex-col gap-2 mt-1.5">
-              {/* Pressure Curve slider: exponent controls how pressure maps to width.
-                  0.5 = gentle (light touch has effect), 1.0 = linear, 2.0+ = firm (hard press needed) */}
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Curve</span>
-                <input
-                  type="range"
-                  min={0.3}
-                  max={4.0}
-                  step={0.1}
-                  value={strokeOpts.pressureCurve ?? 2.0}
-                  class="flex-1 min-w-0 h-1 cursor-pointer"
-                  style={{accentColor: 'var(--color-accent)'}}
-                  onInput={(e) => {
-                    const val = parseFloat((e.target as HTMLInputElement).value);
-                    paintStore.strokeOptions.value = {
-                      ...paintStore.strokeOptions.value,
-                      pressureCurve: val,
-                    };
-                  }}
-                />
-                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                  {(strokeOpts.pressureCurve ?? 2.0).toFixed(1)}
-                </span>
-              </div>
-
-              {/* Tilt Influence */}
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Tilt</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.1}
-                  value={strokeOpts.tiltInfluence}
-                  class="flex-1 min-w-0 h-1 cursor-pointer"
-                  style={{accentColor: 'var(--color-accent)'}}
-                  onInput={(e) => {
-                    paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, tiltInfluence: parseFloat((e.target as HTMLInputElement).value)};
-                  }}
-                />
-                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                  {strokeOpts.tiltInfluence.toFixed(1)}
-                </span>
-              </div>
-
-              {/* Taper Start (available for all input) */}
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Taper In</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={strokeOpts.taperStart}
-                  class="flex-1 min-w-0 h-1 cursor-pointer"
-                  style={{accentColor: 'var(--color-accent)'}}
-                  onInput={(e) => {
-                    paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, taperStart: parseInt((e.target as HTMLInputElement).value, 10)};
-                  }}
-                />
-                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                  {strokeOpts.taperStart}
-                </span>
-              </div>
-
-              {/* Taper End (available for all input) */}
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Taper Out</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={strokeOpts.taperEnd}
-                  class="flex-1 min-w-0 h-1 cursor-pointer"
-                  style={{accentColor: 'var(--color-accent)'}}
-                  onInput={(e) => {
-                    paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, taperEnd: parseInt((e.target as HTMLInputElement).value, 10)};
-                  }}
-                />
-                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                  {strokeOpts.taperEnd}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 4. Shape Options */}
-      {showShapeOptions && (
-        <div>
-          <SectionLabel text="SHAPE" />
-          <div class="flex flex-col gap-2 mt-1.5">
-            {/* Filled checkbox */}
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={shapeFilledVal}
-                class="cursor-pointer"
-                style={{accentColor: 'var(--color-accent)'}}
-                onChange={(e) => {
-                  paintStore.shapeFilled.value = (e.target as HTMLInputElement).checked;
-                }}
-              />
-              <span class="text-[11px]" style={{color: 'var(--sidebar-text-primary)'}}>Filled</span>
-            </label>
-
-            {/* Stroke Width (for outline shapes) */}
-            {!shapeFilledVal && (
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Width</span>
-                <input
-                  type="range"
-                  min={1}
-                  max={20}
-                  step={1}
-                  value={brushSizeVal}
-                  class="flex-1 min-w-0 h-1 cursor-pointer"
-                  style={{accentColor: 'var(--color-accent)'}}
-                  onInput={(e) => paintStore.setBrushSize(parseInt((e.target as HTMLInputElement).value, 10))}
-                />
-                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                  {brushSizeVal}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 5. Fill Options */}
-      {showFillOptions && (
-        <div>
-          <SectionLabel text="FILL" />
-          <div class="flex flex-col gap-2 mt-1.5">
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Tolerance</span>
-              <input
-                type="range"
-                min={0}
-                max={255}
-                step={1}
-                value={fillToleranceVal}
-                class="flex-1 min-w-0 h-1 cursor-pointer"
-                style={{accentColor: 'var(--color-accent)'}}
-                onInput={(e) => {
-                  paintStore.fillTolerance.value = parseInt((e.target as HTMLInputElement).value, 10);
-                }}
-              />
-              <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                {fillToleranceVal}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Flatten Frame button -- visible in select mode (per D-17) */}
+      {/* Flatten Frame + Copy to Next Frame -- visible in select mode */}
       {activeTool === 'select' && (
         <div class="px-1 pt-1">
           <button
@@ -724,46 +346,504 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* SEQUENCE OVERLAY per D-13, D-14 */}
-      <div class="px-1 pt-1">
-        <div class="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={paintStore.showSequenceOverlay.value}
-            onChange={() => paintStore.toggleSequenceOverlay()}
-            class="w-3 h-3"
-          />
-          <span class="text-[11px]" style={{color: 'var(--sidebar-text-secondary)'}}>
-            Show sequence overlay
-          </span>
-          <span class="text-[9px] ml-auto opacity-40" style={{color: 'var(--sidebar-text-secondary)'}}>
-            O
-          </span>
-        </div>
-        <div class="text-[9px] mt-0.5 px-5 opacity-40" style={{color: 'var(--sidebar-text-secondary)'}}>
-          Preview sequence frame underneath paint at reduced opacity
-        </div>
-        {paintStore.showSequenceOverlay.value && (
-          <div class="flex items-center gap-2 mt-1.5 px-5">
-            <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Opacity</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={Math.round(paintStore.sequenceOverlayOpacity.value * 100)}
-              class="flex-1 min-w-0 h-1 cursor-pointer"
-              style={{accentColor: 'var(--color-accent)'}}
-              onInput={(e) => paintStore.setSequenceOverlayOpacity(parseInt((e.target as HTMLInputElement).value, 10) / 100)}
-            />
-            <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-              {Math.round(paintStore.sequenceOverlayOpacity.value * 100)}%
-            </span>
-          </div>
-        )}
-      </div>
+      {/* BRUSH section -- style buttons + FX + size/color + opacity/clear + stroke sliders (per D-03, D-04, D-05, D-06) */}
+      {showBrushSettings && (
+        <div>
+          <SectionLabel text="BRUSH" />
+          <div class="flex flex-col gap-2 mt-1.5">
+            {/* D-03: Style buttons (moved from separate BRUSH STYLE section) */}
+            {(activeTool === 'brush' || activeTool === 'select') && (
+              <>
+                <div class="flex flex-wrap gap-1">
+                  {BRUSH_STYLES.map((style) => {
+                    const isActive = paintStore.brushStyle.value === style;
+                    return (
+                      <button
+                        key={style}
+                        class={`text-[10px] px-2 py-1 rounded cursor-pointer transition-colors ${
+                          isActive ? 'paint-style-btn-active' : 'paint-action-btn'
+                        }`}
+                        onClick={() => {
+                          paintStore.brushStyle.value = style;
+                          paintStore.brushFxParams.value = {...DEFAULT_BRUSH_FX_PARAMS[style]};
+                        }}
+                      >
+                        {style.charAt(0).toUpperCase() + style.slice(1)}
+                      </button>
+                    );
+                  })}
+                </div>
+                {activeTool === 'select' && paintStore.selectedStrokeIds.value.size > 0 && (
+                  <div class="text-[9px] px-1 opacity-60" style={{color: 'var(--sidebar-text-secondary)'}}>
+                    Click a style to apply FX to {paintStore.selectedStrokeIds.value.size} selected stroke(s)
+                  </div>
+                )}
+              </>
+            )}
 
-      {/* 6. Onion Skin */}
+            {/* BRUSH FX PARAMS -- visible when non-flat style selected */}
+            {(activeTool === 'brush' || activeTool === 'select') && (() => {
+              const style = paintStore.brushStyle.value;
+              const visibleParams = BRUSH_FX_VISIBLE_PARAMS[style] || [];
+              if (visibleParams.length === 0) return null;
+              const params = paintStore.brushFxParams.value;
+              return (
+                <div class="flex flex-col gap-2">
+                  {visibleParams.map((paramKey) => (
+                    <div key={paramKey} class="flex items-center gap-2">
+                      <span class="text-[10px] w-16 shrink-0 capitalize" style={{color: 'var(--sidebar-text-secondary)'}}>
+                        {paramKey}
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={params[paramKey] ?? 0}
+                        class="flex-1 min-w-0 h-1 cursor-pointer"
+                        style={{accentColor: 'var(--color-accent)'}}
+                        onInput={(e) => {
+                          paintStore.brushFxParams.value = {
+                            ...paintStore.brushFxParams.value,
+                            [paramKey]: parseFloat((e.target as HTMLInputElement).value),
+                          };
+                        }}
+                      />
+                      <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                        {(params[paramKey] ?? 0).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* D-04: Row 1 -- Size | Color (2-col) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {/* Size slider + number field */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-8 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Size</span>
+                <input
+                  type="range"
+                  min={BRUSH_SIZE_MIN}
+                  max={BRUSH_SIZE_MAX}
+                  step={1}
+                  value={brushSizeVal}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => paintStore.setBrushSize(parseInt((e.target as HTMLInputElement).value, 10))}
+                />
+                <input
+                  type="number"
+                  min={BRUSH_SIZE_MIN}
+                  max={BRUSH_SIZE_MAX}
+                  step={1}
+                  value={brushSizeVal}
+                  class="w-12 text-[11px] rounded px-1.5 py-0.5 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)'}}
+                  onInput={(e) => {
+                    const v = parseInt((e.target as HTMLInputElement).value, 10);
+                    if (!isNaN(v)) paintStore.setBrushSize(v);
+                  }}
+                />
+              </div>
+              {/* Color swatch + hex */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-10 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Color</span>
+                <button
+                  class="w-6 h-6 rounded border cursor-pointer shrink-0"
+                  style={{
+                    backgroundColor: brushColorVal,
+                    borderColor: 'var(--color-border-subtle)',
+                  }}
+                  title="Change brush color"
+                  onClick={() => setShowColorPicker(true)}
+                />
+                <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {brushColorVal.toUpperCase()}
+                </span>
+              </div>
+            </div>
+
+            {/* D-04: Row 2 -- Opacity | Clear Brushes (2-col) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'end' }}>
+              {/* Opacity slider */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-12 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Opacity</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={Math.round(brushOpacityVal * 100)}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => paintStore.setBrushOpacity(parseInt((e.target as HTMLInputElement).value, 10) / 100)}
+                />
+                <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {Math.round(brushOpacityVal * 100)}%
+                </span>
+              </div>
+              {/* D-05: Clear Brushes button (red bg, white text) */}
+              <div>
+                {confirmClear ? (
+                  <div class="flex items-center gap-1">
+                    <span class="text-[9px]" style={{color: 'var(--sidebar-text-secondary)'}}>Clear?</span>
+                    <button
+                      class="text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                      style={{backgroundColor: '#DC2626', color: '#FFFFFF', border: 'none'}}
+                      onClick={() => {
+                        paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek());
+                        setConfirmClear(false);
+                      }}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      class="text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                      style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', border: 'none'}}
+                      onClick={() => setConfirmClear(false)}
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmClear(true)}
+                    style={{
+                      backgroundColor: '#DC2626',
+                      color: '#FFFFFF',
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      width: '100%',
+                      border: 'none',
+                    }}
+                  >
+                    Clear Brushes
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* D-06: Thinning/Smoothing/Streamline sliders (moved from STROKE, no section label) */}
+            {showStrokeOptions && (
+              <>
+                {/* Thinning */}
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Thinning</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={strokeOpts.thinning}
+                    class="flex-1 min-w-0 h-1 cursor-pointer"
+                    style={{accentColor: 'var(--color-accent)'}}
+                    onInput={(e) => {
+                      paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, thinning: parseFloat((e.target as HTMLInputElement).value)};
+                    }}
+                  />
+                  <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                    {strokeOpts.thinning.toFixed(1)}
+                  </span>
+                </div>
+
+                {/* Smoothing */}
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Smoothing</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={strokeOpts.smoothing}
+                    class="flex-1 min-w-0 h-1 cursor-pointer"
+                    style={{accentColor: 'var(--color-accent)'}}
+                    onInput={(e) => {
+                      paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, smoothing: parseFloat((e.target as HTMLInputElement).value)};
+                    }}
+                  />
+                  <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                    {strokeOpts.smoothing.toFixed(1)}
+                  </span>
+                </div>
+
+                {/* Streamline */}
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Streamline</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={strokeOpts.streamline}
+                    class="flex-1 min-w-0 h-1 cursor-pointer"
+                    style={{accentColor: 'var(--color-accent)'}}
+                    onInput={(e) => {
+                      paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, streamline: parseFloat((e.target as HTMLInputElement).value)};
+                    }}
+                  />
+                  <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                    {strokeOpts.streamline.toFixed(1)}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* BRUSH STYLE -- visible for select tool when brush settings are NOT shown (select+shape) */}
+      {!showBrushSettings && (activeTool === 'brush' || activeTool === 'select') && (
+        <div>
+          <SectionLabel text="BRUSH" />
+          <div class="flex flex-col gap-2 mt-1.5">
+            <div class="flex flex-wrap gap-1">
+              {BRUSH_STYLES.map((style) => {
+                const isActive = paintStore.brushStyle.value === style;
+                return (
+                  <button
+                    key={style}
+                    class={`text-[10px] px-2 py-1 rounded cursor-pointer transition-colors ${
+                      isActive ? 'paint-style-btn-active' : 'paint-action-btn'
+                    }`}
+                    onClick={() => {
+                      paintStore.brushStyle.value = style;
+                      paintStore.brushFxParams.value = {...DEFAULT_BRUSH_FX_PARAMS[style]};
+                    }}
+                  >
+                    {style.charAt(0).toUpperCase() + style.slice(1)}
+                  </button>
+                );
+              })}
+            </div>
+            {activeTool === 'select' && paintStore.selectedStrokeIds.value.size > 0 && (
+              <div class="text-[9px] px-1 opacity-60" style={{color: 'var(--sidebar-text-secondary)'}}>
+                Click a style to apply FX to {paintStore.selectedStrokeIds.value.size} selected stroke(s)
+              </div>
+            )}
+            {/* BRUSH FX PARAMS -- visible when non-flat style selected */}
+            {(() => {
+              const style = paintStore.brushStyle.value;
+              const visibleParams = BRUSH_FX_VISIBLE_PARAMS[style] || [];
+              if (visibleParams.length === 0) return null;
+              const params = paintStore.brushFxParams.value;
+              return (
+                <div class="flex flex-col gap-2">
+                  {visibleParams.map((paramKey) => (
+                    <div key={paramKey} class="flex items-center gap-2">
+                      <span class="text-[10px] w-16 shrink-0 capitalize" style={{color: 'var(--sidebar-text-secondary)'}}>
+                        {paramKey}
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={params[paramKey] ?? 0}
+                        class="flex-1 min-w-0 h-1 cursor-pointer"
+                        style={{accentColor: 'var(--color-accent)'}}
+                        onInput={(e) => {
+                          paintStore.brushFxParams.value = {
+                            ...paintStore.brushFxParams.value,
+                            [paramKey]: parseFloat((e.target as HTMLInputElement).value),
+                          };
+                        }}
+                      />
+                      <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                        {(params[paramKey] ?? 0).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* SHAPE options (unchanged, conditional) */}
+      {showShapeOptions && (
+        <div>
+          <SectionLabel text="SHAPE" />
+          <div class="flex flex-col gap-2 mt-1.5">
+            {/* Filled checkbox */}
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={shapeFilledVal}
+                class="cursor-pointer"
+                style={{accentColor: 'var(--color-accent)'}}
+                onChange={(e) => {
+                  paintStore.shapeFilled.value = (e.target as HTMLInputElement).checked;
+                }}
+              />
+              <span class="text-[11px]" style={{color: 'var(--sidebar-text-primary)'}}>Filled</span>
+            </label>
+
+            {/* Stroke Width (for outline shapes) */}
+            {!shapeFilledVal && (
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Width</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={20}
+                  step={1}
+                  value={brushSizeVal}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => paintStore.setBrushSize(parseInt((e.target as HTMLInputElement).value, 10))}
+                />
+                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {brushSizeVal}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* FILL options (unchanged, conditional) */}
+      {showFillOptions && (
+        <div>
+          <SectionLabel text="FILL" />
+          <div class="flex flex-col gap-2 mt-1.5">
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Tolerance</span>
+              <input
+                type="range"
+                min={0}
+                max={255}
+                step={1}
+                value={fillToleranceVal}
+                class="flex-1 min-w-0 h-1 cursor-pointer"
+                style={{accentColor: 'var(--color-accent)'}}
+                onInput={(e) => {
+                  paintStore.fillTolerance.value = parseInt((e.target as HTMLInputElement).value, 10);
+                }}
+              />
+              <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                {fillToleranceVal}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TABLET (collapsible, unchanged -- per D-07) */}
+      {showStrokeOptions && (
+        <div>
+          <button
+            class="flex items-center gap-1 cursor-pointer w-full"
+            onClick={() => setTabletCollapsed(!tabletCollapsed)}
+          >
+            <span
+              class="text-[10px] transition-transform"
+              style={{
+                color: 'var(--sidebar-text-secondary)',
+                transform: tabletCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+              }}
+            >
+              &#9660;
+            </span>
+            <SectionLabel text="TABLET" />
+          </button>
+
+          {!tabletCollapsed && (
+            <div class="flex flex-col gap-2 mt-1.5">
+              {/* Pressure Curve slider */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Curve</span>
+                <input
+                  type="range"
+                  min={0.3}
+                  max={4.0}
+                  step={0.1}
+                  value={strokeOpts.pressureCurve ?? 2.0}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => {
+                    const val = parseFloat((e.target as HTMLInputElement).value);
+                    paintStore.strokeOptions.value = {
+                      ...paintStore.strokeOptions.value,
+                      pressureCurve: val,
+                    };
+                  }}
+                />
+                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {(strokeOpts.pressureCurve ?? 2.0).toFixed(1)}
+                </span>
+              </div>
+
+              {/* Tilt Influence */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Tilt</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={strokeOpts.tiltInfluence}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => {
+                    paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, tiltInfluence: parseFloat((e.target as HTMLInputElement).value)};
+                  }}
+                />
+                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {strokeOpts.tiltInfluence.toFixed(1)}
+                </span>
+              </div>
+
+              {/* Taper Start */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Taper In</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={strokeOpts.taperStart}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => {
+                    paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, taperStart: parseInt((e.target as HTMLInputElement).value, 10)};
+                  }}
+                />
+                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {strokeOpts.taperStart}
+                </span>
+              </div>
+
+              {/* Taper End */}
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Taper Out</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={strokeOpts.taperEnd}
+                  class="flex-1 min-w-0 h-1 cursor-pointer"
+                  style={{accentColor: 'var(--color-accent)'}}
+                  onInput={(e) => {
+                    paintStore.strokeOptions.value = {...paintStore.strokeOptions.value, taperEnd: parseInt((e.target as HTMLInputElement).value, 10)};
+                  }}
+                />
+                <span class="text-[11px] w-6 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {strokeOpts.taperEnd}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ONION SKIN (collapsible, unchanged -- per D-07) */}
       <div>
         <button
           class="flex items-center gap-1 cursor-pointer w-full"
@@ -858,43 +938,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
             </div>
           </div>
         )}
-      </div>
-
-      {/* 7. Actions */}
-      <div style={{paddingTop: '4px'}}>
-        <SectionLabel text="ACTIONS" />
-        <div class="mt-1.5">
-          {confirmClear ? (
-            <div class="flex items-center gap-2">
-              <span class="text-[11px]" style={{color: 'var(--color-text-secondary)'}}>Clear all paint on this frame?</span>
-              <button
-                class="text-[11px] px-2 py-0.5 rounded cursor-pointer"
-                style={{backgroundColor: '#dc2626', color: 'white'}}
-                onClick={() => {
-                  paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek());
-                  setConfirmClear(false);
-                }}
-              >
-                Yes
-              </button>
-              <button
-                class="text-[11px] px-2 py-0.5 rounded cursor-pointer"
-                style={{backgroundColor: 'var(--color-bg-input)', color: 'var(--sidebar-text-primary)'}}
-                onClick={() => setConfirmClear(false)}
-              >
-                No
-              </button>
-            </div>
-          ) : (
-            <button
-              class="text-[11px] px-2 py-1 rounded cursor-pointer transition-colors hover:opacity-80"
-              style={{color: '#dc2626', backgroundColor: 'var(--color-bg-input)'}}
-              onClick={() => setConfirmClear(true)}
-            >
-              Clear Frame
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Color Picker Modal */}
