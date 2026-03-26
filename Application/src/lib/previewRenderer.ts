@@ -11,7 +11,7 @@ import {applyBlur} from './fxBlur';
 import {blurStore} from '../stores/blurStore';
 import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
-import {renderPaintFrame} from './paintRenderer';
+import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
 import {projectStore} from '../stores/projectStore';
 
@@ -288,7 +288,7 @@ export class PreviewRenderer {
           off.width = projW;
           off.height = projH;
           const offCtx = off.getContext('2d')!;
-          renderPaintFrame(offCtx, paintFrame, projW, projH);
+          renderPaintFrameWithBg(offCtx, paintFrame, projW, projH, layer.id, paintLookupFrame);
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
           ctx.globalAlpha = effectiveOpacity;
