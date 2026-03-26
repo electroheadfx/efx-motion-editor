@@ -75,53 +75,15 @@ export function PaintProperties({layer}: {layer: Layer}) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {/* BG Color swatch with label */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>Background</span>
+            <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>Background Color</span>
             <div
               style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)' }}
               onClick={() => setShowBgColorPicker(true)}
               title="Paint background color"
             />
           </div>
-          {/* Clear Brushes button -- centered between BG Color and Show Seq BG */}
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-            {confirmClear ? (
-              <div class="flex items-center gap-1">
-                <span class="text-[9px]" style={{color: 'var(--sidebar-text-secondary)'}}>Clear?</span>
-                <button
-                  class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
-                  style={{backgroundColor: '#DC2626', color: '#FFFFFF', border: 'none'}}
-                  onClick={() => {
-                    paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek());
-                    setConfirmClear(false);
-                  }}
-                >
-                  Yes
-                </button>
-                <button
-                  class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
-                  onClick={() => setConfirmClear(false)}
-                >
-                  No
-                </button>
-              </div>
-            ) : (
-              <button
-                class="paint-action-btn"
-                onClick={() => setConfirmClear(true)}
-                style={{
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Clear Brushes
-              </button>
-            )}
-          </div>
           {/* Show Seq BG checkbox */}
-          <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginLeft: 'auto' }}>
             <input
               type="checkbox"
               checked={paintStore.showSequenceOverlay.value}
@@ -489,22 +451,66 @@ export function PaintProperties({layer}: {layer: Layer}) {
               />
             </div>
 
-            {/* Brush Color -- full row */}
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] w-16 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Brush Color</span>
-              <button
-                class="w-6 h-6 rounded border cursor-pointer shrink-0"
-                style={{
-                  backgroundColor: brushColorVal,
-                  borderColor: 'var(--color-border-subtle)',
-                }}
-                title="Change brush color"
-                onClick={() => setShowColorPicker(true)}
-              />
-              <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
-                {brushColorVal.toUpperCase()}
-              </span>
+            {/* Brush Color | Clear Brushes (2-col) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }}>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] w-16 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Brush Color</span>
+                <button
+                  class="w-6 h-6 rounded border cursor-pointer shrink-0"
+                  style={{
+                    backgroundColor: brushColorVal,
+                    borderColor: 'var(--color-border-subtle)',
+                  }}
+                  title="Change brush color"
+                  onClick={() => setShowColorPicker(true)}
+                />
+                <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
+                  {brushColorVal.toUpperCase()}
+                </span>
+              </div>
+              {/* Clear Brushes button */}
+              <div>
+                {confirmClear ? (
+                  <div class="flex items-center gap-1">
+                    <span class="text-[9px]" style={{color: 'var(--sidebar-text-secondary)'}}>Clear?</span>
+                    <button
+                      class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                      style={{backgroundColor: '#DC2626', color: '#FFFFFF', border: 'none'}}
+                      onClick={() => {
+                        paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek());
+                        setConfirmClear(false);
+                      }}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                      onClick={() => setConfirmClear(false)}
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    class="paint-action-btn"
+                    onClick={() => setConfirmClear(true)}
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      padding: '3px 8px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      width: '100%',
+                    }}
+                  >
+                    Clear Brushes
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Spacer between Brush Color and Opacity */}
+            <div style={{ height: '4px' }} />
 
             {/* Opacity -- full row */}
             <div class="flex items-center gap-2">
