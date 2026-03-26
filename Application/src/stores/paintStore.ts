@@ -64,6 +64,13 @@ function _getOrCreateFrame(layerId: string, frame: number): PaintFrame {
   return paintFrame;
 }
 
+/** Centralized notification: mark frame dirty, bump paintVersion, and notify project */
+function _notifyVisualChange(layerId: string, frame: number): void {
+  _dirtyFrames.add(`${layerId}:${frame}`);
+  paintVersion.value++;
+  _markProjectDirty?.();
+}
+
 // --- Store ---
 
 export const paintStore = {
@@ -107,9 +114,7 @@ export const paintStore = {
   addElement(layerId: string, frame: number, element: PaintElement): void {
     const frameData = _getOrCreateFrame(layerId, frame);
     frameData.elements.push(element);
-    this.markDirty(layerId, frame);
-    paintVersion.value++;
-    _markProjectDirty?.();
+    _notifyVisualChange(layerId, frame);
     pushAction({
       id: crypto.randomUUID(),
       description: `Add paint element to frame ${frame}`,
@@ -132,9 +137,7 @@ export const paintStore = {
     const idx = frameData.elements.findIndex(e => e.id === elementId);
     if (idx === -1) return;
     const removed = frameData.elements.splice(idx, 1)[0];
-    this.markDirty(layerId, frame);
-    paintVersion.value++;
-    _markProjectDirty?.();
+    _notifyVisualChange(layerId, frame);
     pushAction({
       id: crypto.randomUUID(),
       description: `Remove paint element from frame ${frame}`,
@@ -155,52 +158,116 @@ export const paintStore = {
   moveElementsForward(layerId: string, frame: number, ids: Set<string>): void {
     const frameData = _frames.get(layerId)?.get(frame);
     if (!frameData) return;
+    const before = [...frameData.elements];
     const els = frameData.elements;
     for (let i = els.length - 2; i >= 0; i--) {
       if (ids.has(els[i].id) && !ids.has(els[i + 1].id)) {
         [els[i], els[i + 1]] = [els[i + 1], els[i]];
       }
     }
-    _dirtyFrames.add(`${layerId}:${frame}`);
-    _markProjectDirty?.();
+    const after = [...frameData.elements];
+    _notifyVisualChange(layerId, frame);
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Move elements forward on frame ${frame}`,
+      timestamp: Date.now(),
+      undo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...before];
+        _notifyVisualChange(layerId, frame);
+      },
+      redo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...after];
+        _notifyVisualChange(layerId, frame);
+      },
+    });
   },
 
   /** Move selected elements backward (toward bottom/back) in rendering order */
   moveElementsBackward(layerId: string, frame: number, ids: Set<string>): void {
     const frameData = _frames.get(layerId)?.get(frame);
     if (!frameData) return;
+    const before = [...frameData.elements];
     const els = frameData.elements;
     for (let i = 1; i < els.length; i++) {
       if (ids.has(els[i].id) && !ids.has(els[i - 1].id)) {
         [els[i - 1], els[i]] = [els[i], els[i - 1]];
       }
     }
-    _dirtyFrames.add(`${layerId}:${frame}`);
-    _markProjectDirty?.();
+    const after = [...frameData.elements];
+    _notifyVisualChange(layerId, frame);
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Move elements backward on frame ${frame}`,
+      timestamp: Date.now(),
+      undo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...before];
+        _notifyVisualChange(layerId, frame);
+      },
+      redo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...after];
+        _notifyVisualChange(layerId, frame);
+      },
+    });
   },
 
   /** Move selected elements to the very front */
   moveElementsToFront(layerId: string, frame: number, ids: Set<string>): void {
     const frameData = _frames.get(layerId)?.get(frame);
     if (!frameData) return;
+    const before = [...frameData.elements];
     const selected = frameData.elements.filter(e => ids.has(e.id));
     const rest = frameData.elements.filter(e => !ids.has(e.id));
     frameData.elements.length = 0;
     frameData.elements.push(...rest, ...selected);
-    _dirtyFrames.add(`${layerId}:${frame}`);
-    _markProjectDirty?.();
+    const after = [...frameData.elements];
+    _notifyVisualChange(layerId, frame);
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Move elements to front on frame ${frame}`,
+      timestamp: Date.now(),
+      undo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...before];
+        _notifyVisualChange(layerId, frame);
+      },
+      redo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...after];
+        _notifyVisualChange(layerId, frame);
+      },
+    });
   },
 
   /** Move selected elements to the very back */
   moveElementsToBack(layerId: string, frame: number, ids: Set<string>): void {
     const frameData = _frames.get(layerId)?.get(frame);
     if (!frameData) return;
+    const before = [...frameData.elements];
     const selected = frameData.elements.filter(e => ids.has(e.id));
     const rest = frameData.elements.filter(e => !ids.has(e.id));
     frameData.elements.length = 0;
     frameData.elements.push(...selected, ...rest);
-    _dirtyFrames.add(`${layerId}:${frame}`);
-    _markProjectDirty?.();
+    const after = [...frameData.elements];
+    _notifyVisualChange(layerId, frame);
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Move elements to back on frame ${frame}`,
+      timestamp: Date.now(),
+      undo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...before];
+        _notifyVisualChange(layerId, frame);
+      },
+      redo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...after];
+        _notifyVisualChange(layerId, frame);
+      },
+    });
   },
 
   clearFrame(layerId: string, frame: number): void {
@@ -208,9 +275,7 @@ export const paintStore = {
     if (!frameData || frameData.elements.length === 0) return;
     const backup = [...frameData.elements];
     frameData.elements = [];
-    this.markDirty(layerId, frame);
-    paintVersion.value++;
-    _markProjectDirty?.();
+    _notifyVisualChange(layerId, frame);
     pushAction({
       id: crypto.randomUUID(),
       description: `Clear paint frame ${frame}`,
