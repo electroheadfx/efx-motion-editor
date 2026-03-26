@@ -225,6 +225,86 @@ function renderWatercolorStroke(
 }
 
 // ---------------------------------------------------------------------------
+// Per-frame batch rendering for FX workflow
+// ---------------------------------------------------------------------------
+
+/**
+ * Render ALL FX-applied strokes for a frame together on one p5.brush canvas.
+ *
+ * ARCHITECTURE: All strokes are drawn via brush.spline()/fill on the SAME
+ * p5.brush instance before a single brush.render() call. This ensures
+ * overlapping strokes get Kubelka-Munk spectral pigment mixing in the GLSL
+ * shader (PAINT-06: blue + yellow = green, not gray).
+ *
+ * Returns a NEW canvas (copy of the shared _canvas) suitable for caching
+ * as the frame-level FX raster. Returns null if no FX strokes or rendering fails.
+ */
+export function renderFrameFx(
+  strokes: PaintStroke[],
+  width: number,
+  height: number,
+): HTMLCanvasElement | null {
+  if (typeof document === 'undefined') return null;
+
+  // Filter to only FX-applied strokes (non-flat, non-eraser)
+  const fxStrokes = strokes.filter(
+    (s) => s.tool === 'brush' && s.brushStyle && s.brushStyle !== 'flat'
+          && s.fxState === 'fx-applied',
+  );
+  if (fxStrokes.length === 0) return null;
+
+  if (!ensureInitialized(width, height)) return null;
+
+  const halfW = width / 2;
+  const halfH = height / 2;
+
+  brush.clear();
+  if (_gl) {
+    _gl.clearColor(0, 0, 0, 0);
+    _gl.clear(_gl.COLOR_BUFFER_BIT);
+  }
+
+  // Draw ALL FX strokes on the same p5.brush canvas (spectral mixing!)
+  for (const stroke of fxStrokes) {
+    const brushName = STYLE_MAP[stroke.brushStyle!] || 'marker';
+    const params = stroke.brushParams ?? {};
+    const pts = preparePoints(stroke.points, halfW, halfH, 20);
+
+    brush.seed(strokeSeed(stroke.id));
+
+    if ((params.fieldStrength ?? 0) > 0.01) {
+      brush.field('curved');
+      brush.wiggle(params.fieldStrength!);
+    }
+
+    if (stroke.brushStyle === 'watercolor') {
+      renderWatercolorStroke(stroke, pts);
+    } else {
+      brush.set(brushName, stroke.color, compensatedWeight(brushName, stroke.size));
+      if (pts.length >= 2) {
+        brush.spline(pts, 0.5);
+      }
+    }
+
+    brush.noField();
+  }
+
+  // Single render() call -- all strokes processed together in GLSL
+  brush.render();
+  if (_gl) _gl.finish();
+
+  // Copy to a new canvas for frame-level cache (don't return the shared _canvas)
+  const cached = document.createElement('canvas');
+  cached.width = width;
+  cached.height = height;
+  const cCtx = cached.getContext('2d');
+  if (cCtx && _canvas) {
+    cCtx.drawImage(_canvas, 0, 0);
+  }
+  return cached;
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
 
