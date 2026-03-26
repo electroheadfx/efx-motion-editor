@@ -1,205 +1,319 @@
 # Feature Research
 
-**Domain:** Expressive paint brush FX and per-layer motion blur for stop-motion animation editor
-**Researched:** 2026-03-25
-**Confidence:** MEDIUM-HIGH
+**Domain:** Stop-motion editor VFX paint/compositing enhancements (v0.6.0)
+**Researched:** 2026-03-26
+**Confidence:** MEDIUM-HIGH (domain patterns well-established; implementation specifics verified against codebase)
 
 ## Feature Landscape
 
 ### Table Stakes (Users Expect These)
 
-Features that users of expressive brush tools and motion blur in creative/animation software assume exist. Missing any of these makes the feature feel broken or half-baked.
+Features users assume exist once a paint/roto paint system is in place. Missing these = product feels incomplete for the workflow.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Brush style selector UI with visual previews | Every painting app (Procreate, Krita, Rebelle, Photoshop) shows brush previews in a picker. Users must see what they'll get before painting. | LOW | Extends existing PaintProperties panel. Thumbnails can be pre-rendered static images or tiny canvas previews. |
-| Ink brush with clean, confident strokes | Ink is the most common rotoscoping/animation brush. Hand-drawn animators use it 90% of the time. Defined edges, slight thickness variation from pressure. | MEDIUM | Built on existing perfect-freehand pipeline with WebGL2 edge-darkening post-pass. Simplest non-flat style. |
-| Charcoal brush with grainy texture | Expected as a "sketch" tool in any natural media suite. Grainy, soft-edged strokes with paper texture interaction. | MEDIUM | Stamp-based rendering with texture atlas + alpha erosion. Grain intensity tied to pressure. |
-| Watercolor with visible bleed/diffusion | The signature natural media effect. Users expect paint to spread beyond stroke edges with organic randomness. | HIGH | Tyler Hobbs polygon deformation algorithm: 7 recursive deformation rounds on base polygon, then 30-100 semi-transparent layers at ~4% opacity each. Most complex brush style. |
-| Physically-based color mixing (overlapping strokes) | When two paint strokes overlap, users expect subtractive mixing (blue + yellow = green). RGB additive mixing (blue + yellow = gray) breaks immersion instantly. | MEDIUM | Use spectral.js (MIT, v3.0.0) with spectral.glsl for GPU mixing. 37-band Kubelka-Munk reflectance model. The spec already identifies this correctly. |
-| Motion blur toggle in preview toolbar | Users need instant on/off when blur costs performance. Every NLE (Premiere, DaVinci, After Effects) has this. | LOW | Boolean toggle + icon button. Connects to a motionBlur enabled signal. |
-| Shutter angle control for motion blur | Standard in After Effects, DaVinci Resolve, Nuke. Users think in shutter angle (180 degrees = standard film look). | LOW | UI slider 0-360 mapped to strength 0.0-1.0. The spec correctly identifies this mapping. |
-| Motion blur applies per-layer based on keyframe velocity | Users expect stationary layers to stay sharp while moving layers blur. After Effects does this automatically from keyframe data. | MEDIUM | Velocity computed from keyframe deltas between current and previous frame. Already feasible since `interpolateAt()` accepts fractional frames. |
-| Flat brush remains default and unaffected | Existing users must not see any regression. Current perfect-freehand strokes must render identically. | LOW | `brushStyle === 'flat'` skips WebGL2 pipeline entirely. Spec already specifies this fallback. |
-| Export produces same visual output as preview | What you see in preview must match export. Motion blur in export should be at least as good as preview quality. | MEDIUM | GLSL velocity blur used in both paths. Export adds sub-frame accumulation for higher quality. |
+| Stroke list panel in roto paint | Every roto tool (Nuke, Silhouette, Natron) has a stroke/shape list with visibility toggle, reorder, delete. Users cannot manage complex roto work without seeing what strokes exist. | MEDIUM | Nuke shows: name, visible toggle, lock, color, blend mode, lifetime. For EFX-Motion, start simpler: name, visible eye icon, delete button, drag-to-reorder (SortableJS already in project). Selection sync with canvas. |
+| Duplicate stroke with Alt+move | Universal pattern across Figma, Photoshop, Illustrator, After Effects. Alt/Option+drag = duplicate-and-move in one gesture. Users expect this in any tool with selectable objects. | LOW | Already have select-mode drag (PaintOverlay lines 787-821). Alt+drag = deep-clone selected strokes with new IDs, insert into frame, start dragging the clones. ~30 lines of logic. |
+| Paint properties panel cleanup | Current PaintProperties.tsx is 400+ lines of vertically stacked sections with inconsistent collapse states. As features grow, panel must not become unusable. Space optimization is table stakes for professional tools. | LOW-MEDIUM | Consolidate related controls, use icon-only toggle buttons where possible, consistent section collapse behavior. Standard UI housekeeping. |
+| Sequence-scoped layer creation | When a sequence is isolated/solo'd, new layers should belong to that sequence, not the globally active one. Standard After Effects behavior: layers belong to the composition you're working in. | LOW | `sequenceStore.addLayer()` already uses `activeSequenceId`. Fix: when isolation is active, `activeSequenceId` reflects the isolated sequence. Small routing change. |
 
 ### Differentiators (Competitive Advantage)
 
-Features that set this apart from other stop-motion editors. These are not expected by users but create significant value.
+Features that set the product apart from basic paint tools and move toward professional VFX compositing.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Spectral pigment mixing via Kubelka-Munk theory | No other stop-motion editor offers physically-accurate paint mixing. Most tools use RGB blending which produces muddy results. Spectral mixing makes overlapping paint strokes behave like real pigments (blue+yellow=green). | MEDIUM | spectral.js v3.0.0 provides spectral.glsl with `spectral_mix()` for 2-4 color blending on GPU. MIT licensed. The GLSL shader can be embedded directly into the WebGL2 offscreen renderer. |
-| Flow field distortion on brush strokes | Organic, hand-drawn quality without requiring artist skill. Strokes follow vector fields (wobble, spiral, wave patterns) instead of precise cursor paths. Unique for animation tools. | MEDIUM | Grid-based 2D vector field (Perlin noise or preset patterns). Applied per-step during stroke rasterization, deflecting stamp positions. p5.brush demonstrates this technique well. |
-| Combined GLSL + sub-frame motion blur for export | After Effects uses 16 fixed samples. Our combined approach achieves better quality with only 4-8 sub-frames because GLSL fills motion gaps between discrete positions. This is the approach used by high-end compositing tools (Nuke). | MEDIUM | The existing `interpolateAt()` already supports fractional frames. Sub-frame accumulation blends N renders at fractional positions. Each sub-frame also gets GLSL directional blur. |
-| Per-layer motion blur override | Allow disabling motion blur on specific layers (e.g., text overlays, UI elements that should stay sharp). After Effects has this; most simpler tools don't. | LOW | Per-layer boolean `motionBlurEnabled` with default true. UI checkbox in layer properties. |
-| Pencil brush with graphite texture | Sketching is a primary workflow for animation. A pencil that responds to pressure with realistic graphite grain is immediately useful for storyboarding. | MEDIUM | Similar architecture to charcoal but with finer grain texture, lighter default opacity, and narrower pressure-to-width mapping. |
-| Marker brush with flat, saturated fills | Useful for bold coloring in animation. Flat tip with consistent opacity and hard edges. | LOW | Simpler than watercolor -- rectangular stamp with slight angle variation. No bleed or diffusion needed. |
-| Watercolor edge darkening (ink pooling) | Subtle but high-impact visual effect where overlapping transparent regions darken at edges, simulating ink/paint pooling. | LOW | Fragment shader post-pass: darken pixels where alpha > 0.7. Simple and visually striking per the spec. |
-| Grain/texture post-processing pass | Paper texture interaction makes all brush styles feel more organic. Stochastic erosion punches semi-transparent holes simulating paper absorption. | LOW | Single-pass shader with noise texture. Applied after stroke rendering, before compositing back to Canvas 2D. |
-| Adaptive preview quality for motion blur | Auto-reduce sample count when FPS drops below target. Users get smooth playback without manual quality management. | LOW | Monitor frame timing; switch from 8 to 4 samples (or disable) if framerate drops below 20fps. |
+| Luma matte compositing for FX paint | Enables paint layers to composite over photographs without alpha channel. Paint on white background; brightness extracts the matte. This is how traditional VFX roto paint works (Nuke, Silhouette). Transforms paint layer from "opaque overlay" to "compositing element." | MEDIUM | Render paint to offscreen canvas, getImageData(), convert luminance to alpha (ITU-R BT.601: R*0.299 + G*0.587 + B*0.114), putImageData(), composite result. Need threshold/softness controls. |
+| Paper/canvas texture on paint layer | Professional digital painting tools (Rebelle, Krita, Procreate) all have paper textures that interact with paint. Adds physical quality to brush strokes. Differentiates from flat digital look. | MEDIUM | Tiled texture overlay as per-layer post-process. Multiply/overlay blend a grayscale texture image on the paint canvas. User-loadable from `~/.config/efx-motion/papers/*` via Tauri FS. |
+| Non-uniform scale for paint strokes | Current scale is uniform (corner-drag scales proportionally). Non-uniform allows horizontal or vertical stretching independently. Standard in Figma, Photoshop, After Effects for transform operations. | MEDIUM | Add edge-drag handles (midpoints of bounding box edges). Edge handle drag scales one axis only. Must scale stroke points around center with independent X/Y factors. |
+| Bezier/spline stroke path editing | Allows editing the path of an already-drawn stroke by converting it to bezier control points. Standard in Nuke RotoPaint, Illustrator, Figma. Transforms freehand strokes into precise, editable curves. | HIGH | Need: (1) curve fitting algorithm to convert point array to cubic bezier, (2) render control points and tangent handles, (3) handle drag interactions with keyboard modifiers, (4) convert edited bezier back to point array. |
+| Denser motion path interpolation visual | Current `sampleMotionDots()` samples one dot per integer frame. Short sequences produce sparse dots that look angular instead of smooth. | LOW | Change loop step to fractional value (0.25-0.5). `interpolateAt()` already handles fractional frames via polynomial interpolation. Cap max dots for performance. |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem appealing but create problems for this specific product.
-
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Real-time watercolor fluid simulation (Navier-Stokes) | Rebelle uses physics-based fluid simulation for watercolor. Users may expect the same. | Rebelle's simulation requires a dedicated physics engine and runs on native GPU with frame-budget control. Implementing Navier-Stokes in a WebGL2 offscreen pass would consume the entire frame budget at 24fps, killing preview playback. Also conflicts with the vector-data-model (strokes as point arrays) since fluid sim requires pixel-level state. | Tyler Hobbs polygon deformation gives watercolor appearance at a fraction of the cost. Pre-compute deformed polygons once per stroke, cache result. No per-frame simulation needed. |
-| Full velocity buffer for whole-frame motion blur | Single-pass approach blurs the entire composited frame using per-pixel velocity. Seems more efficient (one pass vs N per-layer passes). | Causes artifacts at layer boundaries (color bleeding between layers), requires a separate velocity buffer render target, and cannot cleanly disable blur per-layer. John Chapman's per-object technique specifically calls out silhouette artifacts as a major issue. | Per-layer velocity blur (Strategy A in spec). One shader pass per moving layer. Clean boundaries, no artifacts, trivial per-layer override. |
-| Brush preset import/export | Power users want to share brush configurations between projects or import from other tools. | Premature abstraction. The brush system doesn't exist yet. Designing an import/export format before the parameters stabilize leads to format churn. Procreate's .brush format is proprietary; Krita's .kpp is XML-heavy. | Build brush styles as code-defined presets first. After the parameter space stabilizes (v0.6+), add user-customizable presets with save/load. |
-| Wet-on-wet paint interaction (strokes interact after placement) | Rebelle's signature feature: painting on wet areas causes colors to mix and flow. | Requires per-pixel wetness state that persists and decays over time. Fundamentally incompatible with the vector stroke model (strokes as `[x,y,pressure][]` arrays). Would require a complete rendering architecture change to pixel-based. | Spectral mixing handles overlap at render time. Overlapping strokes mix correctly via Kubelka-Munk compositing. Feels close enough without pixel-level state. |
-| Motion blur on paint layers | Paint strokes are static per-frame (frame-by-frame animation). Motion blur on paint layers would blur hand-drawn content that is intentionally sharp. | Paint layers don't have keyframe transforms -- they're drawn frame-by-frame. There's no velocity vector to compute. Blurring would destroy the hand-drawn aesthetic. | Only apply motion blur to layers with keyframe animation (content + overlay layers). Paint layers are inherently excluded since they lack transform keyframes. |
-| GPU-based real-time Kuwahara filter for painterly post-processing | Visually impressive post-processing that makes any image look like a painting. | This is a post-processing effect on the entire frame, not a brush style. It would conflict with the existing FX/shader pipeline and wouldn't give per-stroke control. Also, it's unrelated to the paint brush FX feature scope. | Could be added as a GLSL shader effect in the existing Shadertoy pipeline (v0.6+). Not a brush feature. |
+| Full vector path editor (Illustrator-style pen tool) | Users see bezier editing and want full pen tool, anchor point operations, path boolean ops | Massive scope creep. This is a motion editor, not a vector illustration tool. Path editing for roto is different from general vector editing. | Scope bezier editing to post-hoc path adjustment of existing freehand strokes only. No pen tool for creating strokes from scratch via bezier. |
+| Real-time paper texture in brush rendering | Users want texture visible while drawing each stroke, not just on final composite | p5.brush renders on WebGL2 canvas. Adding texture interaction during drawing requires shader modification in p5.brush internals (treated as external library). Performance cost per stroke. | Apply paper texture as post-process overlay on the entire paint layer. Texture visible immediately after stroke render completes. Fast, decoupled from brush engine. |
+| Per-stroke paper texture settings | Different textures per stroke like Krita's per-brush texture mode | Exponentially increases UI complexity and storage. Per-frame FX cache renders all strokes together; per-stroke texture breaks batch rendering. | Per-layer paper texture. One texture for the entire paint layer with intensity/scale/blend mode controls. |
+| Luma matte with custom curves/levels | Full luminance curve editor for matte extraction like Nuke's advanced matte tools | Over-engineering for stop-motion paint layers, which are simpler than VFX plate work. | Threshold + softness slider (two parameters). Covers 95% of use cases. Users adjust paint opacity/color to control matte density. |
 
 ## Feature Dependencies
 
 ```
-[BrushStyle field + UI selector]
-    |
-    +--requires--> [WebGL2 offscreen renderer with point stamping]
-    |                   |
-    |                   +--enables--> [Spectral color mixing shader]
-    |                   |                  |
-    |                   |                  +--enhances--> [Watercolor bleed]
-    |                   |                  +--enhances--> [Ink edge darkening]
-    |                   |
-    |                   +--enables--> [Flow field integration]
-    |                   |
-    |                   +--enables--> [Grain/texture post-pass]
-    |                   |
-    |                   +--enables--> [Charcoal brush]
-    |                   |
-    |                   +--enables--> [Pencil brush]
-    |                   |
-    |                   +--enables--> [Marker brush]
-    |
-    +--independent--> [Ink brush (can use Canvas 2D fallback initially)]
+[Luma Matte Compositing]
+    (standalone -- modifies previewRenderer paint layer compositing path)
 
-[GLSL velocity blur engine (glMotionBlur.ts)]
-    |
-    +--enables--> [Preview integration (per-layer blur in renderFrame)]
-    |                  |
-    |                  +--requires--> [Previous-frame velocity cache]
-    |
-    +--enables--> [Sub-frame accumulation (export only)]
-    |                  |
-    |                  +--requires--> [interpolateAt() fractional frames] (ALREADY EXISTS)
-    |
-    +--enables--> [Combined GLSL + sub-frame export pipeline]
+[Paper/Canvas Texture]
+    (standalone -- post-process on paint layer rendering)
 
-[Shutter angle UI control] --independent--> [GLSL velocity blur engine]
+[Stroke List Panel]
+    requires  [existing paintStore element management]
+    enhances  [Duplicate Stroke]
+    enhances  [Bezier Path Editing]
 
-[Per-layer motion blur override] --requires--> [Preview integration]
+[Duplicate Stroke (Alt+move)]
+    requires  [existing select-mode drag infrastructure]
 
-[Adaptive preview quality] --requires--> [Preview integration]
+[Non-Uniform Scale]
+    requires  [existing selection bounds + transform handles]
+    enhances  [existing uniform scale]
+
+[Paint Properties Cleanup]
+    (standalone -- pure UI refactor)
+    enhances  [Stroke List Panel] (panel space freed)
+
+[Bezier/Spline Path Editing]
+    requires  [Stroke List Panel] (need precise stroke selection)
+    requires  [existing select-mode infrastructure]
+
+[Sequence-Scoped Layer Creation]
+    requires  [existing isolationStore + addLayer flow]
+
+[Denser Motion Path]
+    requires  [existing sampleMotionDots + interpolateAt]
 ```
 
 ### Dependency Notes
 
-- **WebGL2 offscreen renderer is the keystone for all brush FX:** Every non-flat brush style depends on it. This must be built first and built well, because everything else layers on top. The existing glBlur.ts and glslRuntime.ts provide proven patterns for lazy-init WebGL2 context management.
-- **Spectral mixing enables watercolor and ink quality but is not strictly required for charcoal/pencil:** Charcoal and pencil could use simpler alpha blending initially, but spectral mixing elevates their overlap behavior. Build spectral mixing early.
-- **Motion blur is fully independent of paint brush FX:** Zero shared dependencies. These two feature tracks can be built in parallel or in any order. The motion blur engine follows the same WebGL2 offscreen pattern as glBlur.ts.
-- **Sub-frame accumulation depends on the existing `interpolateAt()` engine:** Already accepts fractional frame numbers, so no modifications needed. The export renderer's `interpolateLayers()` function already calls `interpolateAt()` -- it just needs to be called N times per output frame.
-- **Flow fields enhance all stamp-based brushes:** Once the grid-based vector field system exists, it can be applied to charcoal, pencil, and watercolor. It's an enhancement layer, not a prerequisite.
+- **Bezier Path Editing requires Stroke List Panel:** Users need precise stroke selection before entering path edit mode. The stroke list provides explicit stroke targeting instead of hit-testing ambiguity on overlapping strokes.
+- **Stroke List Panel enhances Duplicate Stroke:** After Alt+duplicating, the new stroke appears in the list with a visible name, making it easy to track what was created.
+- **Non-Uniform Scale enhances existing uniform scale:** Must coexist. Corner handles = uniform scale (current). Edge handles = non-uniform scale (new). Standard Figma/Photoshop pattern.
+- **Luma Matte and Paper Texture are independent:** Both modify the paint rendering pipeline at different stages. Luma matte affects compositing (how paint composites onto scene). Paper texture affects appearance (how paint looks on its canvas). They compose naturally: paint -> paper texture overlay -> luma matte extraction -> composite onto scene.
 
 ## MVP Definition
 
-### Launch With (v0.5.0 core)
+### Phase 1: Core Paint Workflow (High Value, Lower Risk)
 
-Minimum feature set to ship the milestone with meaningful value.
+Must-build features that directly improve the existing paint workflow.
 
-- [ ] BrushStyle field on PaintStroke + UI selector in PaintProperties -- foundation for all styles
-- [ ] WebGL2 offscreen renderer with point-stamp technique -- the rendering backbone
-- [ ] Spectral color mixing via spectral.glsl -- transforms overlap behavior from broken (RGB) to correct (pigment)
-- [ ] Ink brush style -- most useful for animation workflows, simplest non-flat style
-- [ ] Charcoal brush style -- second most requested, demonstrates texture capability
-- [ ] Grain/texture post-pass -- small effort, big visual impact across all styles
-- [ ] Edge darkening post-pass -- small effort, dramatically improves ink appearance
-- [ ] GLSL velocity motion blur engine (glMotionBlur.ts) -- core blur capability
-- [ ] Motion blur preview integration with toolbar toggle -- users can see it in real time
-- [ ] Shutter angle UI control -- standard professional control
-- [ ] Sub-frame accumulation for export -- high-quality export output
-- [ ] Project-level motion blur settings with .mce persistence -- settings survive save/load
+- [ ] Stroke list panel -- essential for managing complex roto work, unblocks path editing later
+- [ ] Duplicate stroke with Alt+move -- tiny implementation, huge UX win, universally expected
+- [ ] Paint properties panel cleanup -- necessary before adding more controls
+- [ ] Sequence-scoped layer creation -- small fix with large correctness impact
+- [ ] Denser motion path interpolation -- tiny change, visible improvement
 
-### Add After Validation (v0.5.x polish)
+### Phase 2: Compositing & Texture (Medium Value, Medium Risk)
 
-Features to add once core paint FX and motion blur are working correctly.
+Features that upgrade paint from drawing tool to compositing tool.
 
-- [ ] Watercolor bleed (polygon deformation + layered fill) -- most complex brush style, defer until WebGL2 renderer is proven stable
-- [ ] Flow field integration with preset patterns -- enhances all brushes but not essential for v0.5.0
-- [ ] Pencil brush style -- straightforward once charcoal exists (similar architecture, finer grain)
-- [ ] Marker brush style -- simplest stamp-based brush, low priority
-- [ ] Per-layer motion blur override -- useful but edge case for v0.5.0
-- [ ] Adaptive preview quality -- nice-to-have performance optimization
+- [ ] Luma matte compositing -- transforms paint layer utility, requires pixel manipulation
+- [ ] Paper/canvas texture -- adds physical quality, requires Tauri FS for user textures
+- [ ] Non-uniform scale -- enhances existing transform, moderate complexity
 
-### Future Consideration (v0.6+)
+### Phase 3: Advanced Editing (High Value, High Risk)
 
-Features to defer until the brush system matures.
-
-- [ ] User-customizable brush presets with save/load -- wait for parameter space to stabilize
-- [ ] Watercolor wet-on-wet interaction -- requires fundamental architecture change, not feasible in vector model
-- [ ] Motion blur visualization/debug mode (velocity vectors overlay) -- developer tool, not user-facing priority
+- [ ] Bezier/spline stroke path editing -- most complex feature, benefits from stroke list being solid first
 
 ## Feature Prioritization Matrix
 
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| BrushStyle field + UI selector | HIGH | LOW | P1 |
-| WebGL2 offscreen renderer | HIGH | MEDIUM | P1 |
-| Spectral color mixing (Kubelka-Munk) | HIGH | MEDIUM | P1 |
-| Ink brush style | HIGH | MEDIUM | P1 |
-| Charcoal brush style | MEDIUM | MEDIUM | P1 |
-| Edge darkening post-pass | MEDIUM | LOW | P1 |
-| Grain/texture post-pass | MEDIUM | LOW | P1 |
-| GLSL velocity motion blur engine | HIGH | MEDIUM | P1 |
-| Motion blur preview integration | HIGH | MEDIUM | P1 |
-| Shutter angle UI control | MEDIUM | LOW | P1 |
-| Sub-frame accumulation for export | HIGH | MEDIUM | P1 |
-| Motion blur project settings + persistence | HIGH | LOW | P1 |
-| Watercolor bleed simulation | HIGH | HIGH | P2 |
-| Flow field integration | MEDIUM | MEDIUM | P2 |
-| Pencil brush style | MEDIUM | LOW | P2 |
-| Marker brush style | LOW | LOW | P2 |
-| Per-layer motion blur override | LOW | LOW | P2 |
-| Adaptive preview quality | LOW | LOW | P2 |
-| User brush presets | LOW | MEDIUM | P3 |
+| Feature | User Value | Implementation Cost | Risk | Priority |
+|---------|------------|---------------------|------|----------|
+| Stroke list panel | HIGH | MEDIUM | LOW | P1 |
+| Duplicate stroke (Alt+move) | HIGH | LOW | LOW | P1 |
+| Paint properties cleanup | MEDIUM | LOW | LOW | P1 |
+| Sequence-scoped layer creation | MEDIUM | LOW | LOW | P1 |
+| Denser motion path | LOW | LOW | LOW | P1 |
+| Luma matte compositing | HIGH | MEDIUM | MEDIUM | P2 |
+| Paper/canvas texture | MEDIUM | MEDIUM | LOW | P2 |
+| Non-uniform scale | MEDIUM | MEDIUM | LOW | P2 |
+| Bezier/spline path editing | HIGH | HIGH | HIGH | P3 |
 
 **Priority key:**
-- P1: Must have for v0.5.0 launch
-- P2: Should have, add during polish or as follow-up
-- P3: Nice to have, future milestone
+- P1: Quick wins + infrastructure (stroke list unblocks P3)
+- P2: Compositing upgrades that change paint layer's role
+- P3: Complex editing feature, benefits from P1 infrastructure
 
 ## Competitor Feature Analysis
 
-| Feature | After Effects | Procreate | Krita | Rebelle 6 | Our Approach |
-|---------|---------------|-----------|-------|-----------|--------------|
-| Brush styles | Paint tool is basic, not focus | 200+ presets, stamp-based | 10+ engines, highly configurable | Physics-based watercolor/oil | 5-6 styles via WebGL2 point-stamping with spectral mixing |
-| Pigment mixing | N/A (not a paint tool) | No (RGB blending) | Experimental Kubelka-Munk plugin | Yes (Mixbox integration) | Yes (spectral.js / spectral.glsl, MIT) |
-| Watercolor simulation | N/A | Basic wet brush | Wet brush preset | Navier-Stokes fluid sim | Tyler Hobbs polygon deformation (visual approximation, no physics) |
-| Motion blur type | Per-layer velocity + sub-frame (16 samples) | N/A (not animation tool) | N/A (not animation tool) | N/A (not animation tool) | Per-layer GLSL velocity + sub-frame accumulation (4-8 combined) |
-| Shutter angle control | Yes (0-720 degrees + phase) | N/A | N/A | N/A | Yes (0-360 degrees) |
-| Sub-frame accumulation | Yes (16 fixed samples) | N/A | N/A | N/A | Yes (4-16 configurable, combined with GLSL) |
-| Flow fields on brushes | N/A | No | No | Paint flow follows canvas tilt | Yes (grid-based vector fields with presets) |
-| Texture/grain on brushes | N/A | Yes (dual texture system) | Yes (texture brush engine) | Yes (canvas texture interaction) | Yes (stochastic erosion post-pass) |
-| Per-layer blur override | Yes | N/A | N/A | N/A | Yes (planned P2) |
+| Feature | Nuke RotoPaint | Silhouette | Krita | EFX-Motion Approach |
+|---------|---------------|------------|-------|---------------------|
+| Stroke list | Full list: visible, lock, overlay color, blend mode, lifetime. Drag reorder. Groups as folders. Rename. Right-click duplicate. | Tree view with grouping, per-shape attributes. | Layer-based (not per-stroke). | Simplified: name, eye (visible), delete, drag-reorder via SortableJS. Selection syncs with canvas. |
+| Luma matte | Node-based compositing with dedicated luma matte node. Threshold, softness, gain. | Full keying pipeline with ML-assisted mattes. | N/A (painting app). | Per-layer toggle: "Composite via Luma Matte" checkbox. Threshold + softness sliders. In previewRenderer paint path. |
+| Paper texture | N/A (VFX tool). | N/A (VFX tool). | Per-brush texture via pattern overlay. Modes: multiply, subtract, lightness map. Cutoff, strength. | Per-layer post-process. Tiled grayscale texture multiplied/overlaid on paint canvas. Intensity + scale + blend mode. User-loadable from config dir. |
+| Bezier editing | Full bezier and B-spline tools. Click+drag for tangents. Shift for tangent sync. Ctrl to break angle. Cusp/smooth toggle. | X-splines, B-splines, Bezier splines. | Bezier tool for vector layers. | Post-hoc conversion: freehand stroke -> bezier control points. Edit handles to reshape. Simpler than Nuke (editing existing strokes only, not creating from scratch). |
+| Duplicate | Right-click -> Duplicate in stroke list. | Clone tool, copy/paste shapes. | Ctrl+J, Ctrl+C/V. | Alt/Option+drag in select mode. Single gesture duplicate-and-position. |
+| Non-uniform scale | Full transform gizmo per shape/group. | Transform tool with independent axis. | Transform tool with lock aspect ratio toggle. | Edge-drag on selection bounds = single-axis scale. Corner-drag = uniform (existing). |
 
-**Key competitive positioning:** No other stop-motion editor combines spectral pigment mixing with motion blur. After Effects has excellent motion blur but basic painting. Procreate/Krita have excellent painting but no motion/animation blur. Rebelle has the best watercolor simulation but is not an animation tool. This product occupies a unique niche: expressive natural media painting with professional motion blur, specifically for stop-motion animation workflows.
+## Detailed Feature Specifications
+
+### 1. Luma Matte Compositing
+
+**How it works in VFX (HIGH confidence):**
+- Paint is drawn on a solid background (typically white or black)
+- The paint layer's luminance (brightness) is extracted as transparency matte
+- White areas = fully opaque (paint visible). Black areas = fully transparent (underlying image shows through). Gray = partial transparency.
+- Two modes: "Luma" (bright = opaque) and "Inverted Luma" (dark = opaque, for dark paint on white bg)
+
+**Implementation approach:**
+- In `previewRenderer.ts` paint layer compositing (line ~280), after `renderPaintFrameWithBg()` on offscreen canvas, apply luma-to-alpha pixel manipulation before compositing onto main canvas
+- Algorithm: `getImageData()`, loop pixels, `alpha = 0.299*R + 0.587*G + 0.114*B` (ITU-R BT.601), `putImageData()`
+- Inverted mode: `alpha = 255 - luminance` (for dark paint on white background, which is the common case)
+- Controls: enable checkbox, threshold (0-255, clamp low values to transparent), softness (remap range), invert toggle
+- Store as paint layer properties (extend `LayerSourceData` for `type: 'paint'` with optional `lumaMatte?: { enabled: boolean; threshold: number; softness: number; invert: boolean }`)
+- Performance: pixel-by-pixel loop on offscreen canvas per frame. For 1920x1080 = ~8M pixel operations. Profile needed but likely acceptable at 15fps for stop-motion.
+
+**Dependency on existing architecture:** Modifies the paint layer branch in `previewRenderer.ts` (lines 280-303). Also needs parallel change in `exportRenderer.ts` for export consistency.
+
+### 2. Paper/Canvas Texture
+
+**How it works in painting apps (HIGH confidence):**
+- **Krita:** Grayscale pattern images modulate brush alpha. Modes: multiply (soft), subtract (harsh), lightness map (applies texture lightness values to paint). Cutoff controls limit which grayscale ranges affect strokes. Strength slider controls intensity.
+- **Rebelle:** Scanned real paper textures applied as canvas surface. Papers interact with watercolor physics. NanoPixel technology for infinite zoom.
+- **Common approach:** Grayscale height map tiled across canvas, blended with paint via multiply or overlay composite operation.
+
+**Implementation approach:**
+- Post-process on paint layer: after `renderPaintFrameWithBg()`, draw tiled texture image with `globalCompositeOperation = 'multiply'` (or overlay)
+- Tiling: create pattern via `ctx.createPattern(textureImg, 'repeat')`, apply with `fillRect` at configured scale
+- Texture source: load PNG/JPG from `~/.config/efx-motion/papers/` via Tauri `readDir()` + `readFile()`
+- Controls: texture selector (thumbnail grid from discovered files), intensity (0-1 via globalAlpha), scale (50-400%), blend mode (multiply/overlay/soft-light)
+- Bundled defaults: 3-4 textures shipped with app (cold press watercolor, hot press smooth, canvas, kraft paper) as grayscale PNGs
+- p5.brush `grain` parameter already adds per-brush-style texture, but it operates during WebGL2 rendering. Layer-level texture adds independent, controllable surface quality.
+- Paper texture applied BEFORE luma matte extraction (if both enabled): paint -> texture overlay -> luma matte -> composite
+
+**Data model:** Extend paint layer source: `paperTexture?: { path: string; intensity: number; scale: number; blendMode: 'multiply' | 'overlay' | 'soft-light' }`
+
+### 3. Duplicate Stroke with Alt+Move
+
+**How it works universally (HIGH confidence):**
+- Figma: Alt/Option+drag duplicates and moves in one gesture
+- Photoshop: Alt+drag with Move tool duplicates layer/selection
+- After Effects: Alt+drag duplicates layer
+- Industry-standard: modifier key during drag initiation = clone-and-move
+
+**Implementation approach:**
+- In PaintOverlay `handlePointerDown` select-mode section (line ~554): when `e.altKey` is true during drag start on selected strokes:
+  1. Deep-clone each selected stroke: `{ ...stroke, id: crypto.randomUUID(), points: stroke.points.map(p => [...p]) }`
+  2. Insert clones into `paintFrame.elements` array
+  3. Update selection to point at clone IDs (deselect originals)
+  4. Start drag on clones (existing drag logic handles the rest)
+- Undo: single `pushAction` removes all cloned strokes
+- FX cache: invalidate after clone (cloned strokes may have FX styles)
+- Edge case: clone eraser strokes too, not just brush strokes
+
+### 4. Non-Uniform Scale
+
+**How it works in design tools (HIGH confidence):**
+- Figma: side handles scale one axis; corner handles scale both. Shift constrains to uniform.
+- Photoshop Free Transform: handles at midpoints of edges for single-axis, corners for proportional
+- After Effects: separate Scale X and Scale Y properties in transform
+
+**Implementation approach:**
+- Add edge handles (midpoints of selection bounding box edges) alongside existing corner handles
+- Edge handle visual: small rectangles (not circles) to distinguish from corner handles
+- `hitTestHandle()` extended to detect 'top', 'bottom', 'left', 'right' edge handles
+- Drag behavior:
+  - Top/bottom edge handle: compute scaleY only, scaleX = 1
+  - Left/right edge handle: compute scaleX only, scaleY = 1
+  - Apply: `point.x = center.x + (point.x - center.x) * scaleX`; same for Y
+- Brush size: do NOT scale brush size for non-uniform transforms. Stroke points move but brush diameter stays constant. This avoids needing separate sizeX/sizeY on PaintStroke.
+- Existing corner handles keep uniform scale behavior (current code, lines 759-777)
+
+### 5. Paint Properties Panel Cleanup
+
+**Current state (from code review):**
+- 400+ lines of JSX with mixed collapsed/expanded sections
+- Background color, selection tools, FX controls, onion skin, tablet settings all in one scroll
+- Inconsistent button sizing and spacing
+- Many sections only relevant for specific tool modes
+
+**Approach:**
+- Show only tool-relevant controls (brush settings when brush active, selection tools when select active)
+- Icon-only toggle buttons for binary options (filled/outline, onion skin on/off)
+- Consistent collapsible sections with uniform chevron behavior
+- 2-column grids for related controls (size + opacity side by side)
+- Move stroke list panel here or adjacent
+- Extract sub-components for testability
+
+### 6. Sequence-Scoped Layer Creation
+
+**Standard behavior (After Effects model, HIGH confidence):**
+- Layers belong to compositions. Working in a comp = new layers appear in that comp.
+- EFX-Motion equivalent: when a sequence is isolated (solo mode), new layers should target that sequence.
+
+**Implementation approach:**
+- `sequenceStore.addLayer()` uses `activeSequenceId`. Check if `isolationStore.hasIsolation` is true and exactly one sequence is isolated -- if so, target that sequence for addLayer
+- Alternatively: when entering isolation on a sequence, set `activeSequenceId` to match
+- Existing add layer flows (AddLayerMenu, AddFxMenu) all go through `sequenceStore.addLayer()` so the fix is centralized
+
+### 7. Denser Motion Path Interpolation
+
+**Current behavior (from code review):**
+- `sampleMotionDots()` iterates `frame = firstFrame; frame <= lastFrame; frame++`
+- Short sequences (5 frames between keyframes) produce only 5 dots
+- Path appears sparse and angular
+
+**Implementation approach:**
+- Change step: `const step = Math.max(0.25, (lastFrame - firstFrame) / 60)` -- adaptive, ensures ~60 dots max
+- Or simpler: always use `frame += 0.5` for 2x density, cap at 200 dots
+- `interpolateAt()` uses polynomial cubic interpolation -- already handles fractional frames
+- Non-keyframe fractional dots rendered smaller (2px vs 4px) so keyframe markers still stand out
+- Performance: 60-200 SVG circle elements is negligible
+
+### 8. Bezier/Spline Stroke Path Editing
+
+**How it works in Nuke RotoPaint (HIGH confidence):**
+- Click to place bezier control points, click+drag to set tangent handles
+- Shift while moving handles: moves both tangent handles together (keep angle consistent)
+- Ctrl/Cmd while dragging: temporarily breaks tangent angle (creates cusp)
+- Right-click point: cusp/de-smooth or smooth toggle
+- Add points: dedicated tool, click on spline to insert
+- Remove points: right-click point -> delete, or dedicated remove tool
+
+**Implementation approach for EFX-Motion (post-hoc editing, not creation):**
+1. **Curve fitting:** Convert existing `PaintStroke.points[]` to cubic bezier segments using Philip J. Schneider's algorithm (Graphics Gems). Input: point samples with tolerance parameter. Output: array of `{p0, p1, p2, p3}` cubic bezier control points.
+2. **Edit mode entry:** Double-click a selected stroke (or button in stroke list) enters bezier edit mode. Render: filled circles for anchor points (on-curve), hollow circles for handle endpoints (off-curve), thin lines connecting handle to anchor.
+3. **Interactions:**
+   - Drag anchor: moves on-curve point
+   - Drag handle: adjusts tangent direction/length
+   - Alt+drag handle: break tangent symmetry (cusp)
+   - Double-click anchor: toggle smooth/cusp
+   - Click on curve between anchors: add new anchor point (subdivide bezier)
+   - Delete key on selected anchor: remove point, reconnect neighbors
+4. **Reconversion:** After editing, sample the bezier curve at regular intervals to regenerate `points[]` with interpolated pressure values from neighboring original points.
+5. **Scope limits:** Only brush strokes (not shapes/fills). Only adjusts path geometry (not pressure profile -- pressure interpolated from original). No pen tool for creating new strokes via bezier.
+
+**Risk:** Curve fitting quality -- if the bezier approximation visibly deviates from the freehand stroke, users will be frustrated. Need adjustable tolerance. Reconversion (bezier -> points) must produce strokes that render identically to the edited path through perfect-freehand.
+
+### 9. Stroke List Panel
+
+**How Nuke's stroke/shape list works (HIGH confidence):**
+- Columns: visible (eye), lock, overlay color, stroke color, invert, blend mode, motion blur, lifetime
+- Reorder by drag-and-drop
+- Groups as folders for organizing related strokes
+- Double-click to rename (must be unique names)
+- Right-click context menu: copy, cut, paste, duplicate
+- Selection in list syncs with viewport selection
+
+**Implementation approach:**
+- Panel placement: new section in sidebar when in paint edit mode (replaces or augments current selection controls in PaintProperties)
+- Row contents (v1): stroke color dot, auto-generated name, eye toggle, delete button
+- Drag-to-reorder via SortableJS (already used in sidebar for sequence/layer reorder, `forceFallback: true` for Tauri)
+- Click to select (syncs with `paintStore.selectedStrokeIds`). Multi-select with Cmd/Ctrl+click.
+- Auto-naming: "Brush 1", "Eraser 2", etc. (based on tool type and creation order)
+- Compact rows (~24px height) for dense lists
+- Visual indicators: stroke with FX shows style badge (wc/ink/ch/pe/mk)
+
+**Data model changes:** `PaintElement` needs:
+- `name?: string` -- optional display name (auto-generated if absent for backward compat)
+- `visible?: boolean` -- default true for backward compat. When false, skip in `renderPaintFrame()` / `renderFlatElements()`
 
 ## Sources
 
-- [spectral.js v3.0.0](https://github.com/rvanwijnen/spectral.js) -- MIT licensed, Kubelka-Munk pigment mixing with GLSL support (HIGH confidence)
-- [p5.brush](https://github.com/acamposuribe/p5.brush) -- WebGL2 brush rendering library, reference implementation for techniques (HIGH confidence)
-- [Tyler Hobbs - Watercolor Simulation](https://www.tylerxhobbs.com/words/a-guide-to-simulating-watercolor-paint-with-generative-art) -- Polygon deformation algorithm (HIGH confidence)
-- [Mixbox](https://scrtwpns.com/mixbox/) -- Alternative pigment mixing (proprietary license, not recommended) (HIGH confidence)
-- [John Chapman - Per-Object Motion Blur](http://john-chapman-graphics.blogspot.com/2013/01/per-object-motion-blur.html) -- Velocity buffer technique reference (HIGH confidence)
-- [After Effects motion blur](https://www.provideocoalition.com/motion_blur/) -- Shutter angle and sub-frame behavior reference (MEDIUM confidence)
-- [Chris Arasin - Real-Time Paint System](https://chrisarasin.com/paint-system-webgl/) -- WebGL paint system reference (LOW confidence, limited docs)
-- [Maxime Heckel - Painterly Shaders](https://blog.maximeheckel.com/posts/on-crafting-painterly-shaders/) -- Kuwahara filter and anisotropic techniques (MEDIUM confidence)
-- [Krita brush engines](https://docs.krita.org/en/reference_manual/krita_4_preset_bundle.html) -- Natural media brush reference (MEDIUM confidence)
-- [Rebelle 6](https://www.escapemotions.com/products/rebelle/about) -- Physics-based watercolor reference (MEDIUM confidence)
-- [NVIDIA Motion Blur Sample](https://docs.nvidia.com/gameworks/content/gameworkslibrary/graphicssamples/opengl_samples/motionblurgl4gles3advancedsample.htm) -- GLSL motion blur patterns (MEDIUM confidence)
+- [Nuke RotoPaint Stroke/Shape List](https://learn.foundry.com/nuke/content/comp_environment/rotopaint/working_stroke_shape_list.html) -- stroke list UI patterns, columns, hierarchy
+- [Nuke Bezier Tools](https://learn.foundry.com/nuke/content/comp_environment/rotopaint/using_bezier_tools.html) -- bezier editing keyboard modifiers, tangent handle behavior
+- [Nuke Editing Existing Splines](https://learn.foundry.com/nuke/content/comp_environment/rotopaint/editing_existing_splines.html) -- adding/moving/deleting control points
+- [Nuke Stroke Attributes](https://learn.foundry.com/nuke/content/comp_environment/rotopaint/editing_stroke_attrs.html) -- per-stroke properties
+- [Frame.io Mattes Guide](https://workflow.frame.io/guide/mattes) -- luma vs alpha matte fundamentals
+- [Krita Texture Brush Settings](https://docs.krita.org/en/reference_manual/brushes/brush_settings/texture.html) -- texture modes: multiply, subtract, lightness map, strength, cutoff
+- [Rebelle Paper Textures](https://www.escapemotions.com/blog/enhancing-your-digital-paintings-with-textures-in-rebelle) -- scanned paper workflow, NanoPixel technology
+- [Krita-Artists Canvas Texture Discussion](https://krita-artists.org/t/canvas-texture-overlays/40905) -- overlay blend technique for canvas textures
+- [Figma Alt+Drag Duplicate](https://help.figma.com/hc/en-us/articles/4409078832791-Copy-and-paste-objects) -- standard duplicate gesture
+- [Canvas 2D getImageData MDN](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/getImageData) -- pixel manipulation for luma extraction
+- [Canvas 2D setTransform MDN](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/setTransform) -- transform matrix for non-uniform scale
+- [Primer on Bezier Curves](https://pomax.github.io/bezierinfo/) -- comprehensive bezier math reference
+- [Konva Ignore Stroke On Transform](https://konvajs.org/docs/select_and_transform/Ignore_Stroke_On_Transform.html) -- stroke width behavior during non-uniform scale
 
 ---
-*Feature research for: Expressive paint brush FX and per-layer motion blur*
-*Researched: 2026-03-25*
+*Feature research for: EFX-Motion v0.6.0 Various Enhancements*
+*Researched: 2026-03-26*
