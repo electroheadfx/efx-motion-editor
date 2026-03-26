@@ -100,7 +100,7 @@ See: `milestones/v0.5.0-ROADMAP.md` for full details.
 
 ### v0.6.0 Various Enhancements
 
-- [x] **Phase 22: Foundation & Quick Wins** - Fix pre-existing paint bugs, add _notifyVisualChange helper, and deliver three isolated UX improvements (completed 2026-03-26)
+- [ ] **Phase 22: Foundation & Quick Wins** - Fix pre-existing paint bugs, add _notifyVisualChange helper, and deliver three isolated UX improvements (gap closure in progress)
 - [ ] **Phase 23: Stroke Interactions** - Add Alt+duplicate stroke and non-uniform scale transform for paint strokes
 - [ ] **Phase 24: Stroke List Panel** - Build stroke management panel with reorder, delete, select, and visibility toggle
 - [ ] **Phase 25: Paint Compositing Pipeline** - Luma matte extraction and paper/canvas texture overlay for paint layers
@@ -117,11 +117,13 @@ See: `milestones/v0.5.0-ROADMAP.md` for full details.
   2. When a sequence is isolated (soloed), creating a new paint/roto layer adds it only to that sequence
   3. Motion path shows visibly more interpolation dots for sequences with few keyframes, making the path trajectory clearer
   4. Existing stroke move/reorder operations properly trigger visual updates and support undo/redo (pre-existing bug fixes)
-**Plans**: 3 plans
+**Plans**: 5 plans
 Plans:
 - [x] 22-01-PLAN.md -- Fix paintStore moveElements* bugs + sub-frame motion path dots
 - [x] 22-02-PLAN.md -- Isolation-scoped layer creation for both add-layer menus
 - [x] 22-03-PLAN.md -- Paint properties panel reorganization (D-01 through D-08)
+- [ ] 22-04-PLAN.md -- [GAP] Fix motion path sub-frame dot density (rendering deduplication)
+- [ ] 22-05-PLAN.md -- [GAP] Fix isolation-mode layer creation target + indicator color
 **UI hint**: yes
 
 ### Phase 23: Stroke Interactions
@@ -187,7 +189,7 @@ Note: Phase 25 depends on Phase 22 (not 24), so Phases 23-24 and Phase 25 could 
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
 | 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2026-03-26 |
-| 22. Foundation & Quick Wins | v0.6.0 | 3/3 | Complete    | 2026-03-26 |
+| 22. Foundation & Quick Wins | v0.6.0 | 3/5 | Gap closure | - |
 | 23. Stroke Interactions | v0.6.0 | 0/? | Not started | - |
 | 24. Stroke List Panel | v0.6.0 | 0/? | Not started | - |
 | 25. Paint Compositing Pipeline | v0.6.0 | 0/? | Not started | - |
