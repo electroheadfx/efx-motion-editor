@@ -60,7 +60,7 @@ export function sampleMotionDots(
       dots.push({
         x: vals.x + canvasW / 2,
         y: vals.y + canvasH / 2,
-        frame: Math.round(f),
+        frame: f,
       });
     }
   }
@@ -153,7 +153,7 @@ export function MotionPath() {
   const lastKfFrame = keyframes[keyframes.length - 1].frame;
   const currentDot =
     localFrame >= firstKfFrame && localFrame <= lastKfFrame
-      ? dots.find((d) => d.frame === localFrame) ?? null
+      ? dots.find((d) => Math.round(d.frame) === localFrame) ?? null
       : null;
 
   // --- Determine rendering strategy ---
@@ -182,9 +182,9 @@ export function MotionPath() {
           opacity={0.35}
         />
       ) : (
-        dots.map((dot) => (
+        dots.map((dot, index) => (
           <circle
-            key={dot.frame}
+            key={index}
             cx={dot.x}
             cy={dot.y}
             r={dotRadius}
