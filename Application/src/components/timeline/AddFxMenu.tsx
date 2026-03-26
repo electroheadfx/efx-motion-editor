@@ -3,6 +3,7 @@ import {Clapperboard, Sparkles} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
+import {isolationStore} from '../../stores/isolationStore';
 import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {defaultTransform, createDefaultFxSource} from '../../types/layer';
 import type {LayerType, BlendMode, Layer, LayerSourceData} from '../../types/layer';
@@ -25,6 +26,20 @@ export function AddLayerMenu() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
 
+  // Isolation detection (D-09, D-10)
+  const isolatedIds = isolationStore.isolatedSequenceIds.value;
+  const hasIsolation = isolatedIds.size > 0;
+  let targetSequenceId: string | null = null;
+  let targetSequenceName: string | null = null;
+  if (hasIsolation) {
+    const seqs = sequenceStore.sequences.value;
+    const isolatedSeq = seqs.find(s => isolatedIds.has(s.id));
+    if (isolatedSeq) {
+      targetSequenceId = isolatedSeq.id;
+      targetSequenceName = isolatedSeq.name;
+    }
+  }
+
   const handleAddFxLayer = (type: LayerType, name: string, defaultBlend: BlendMode = 'normal') => {
     setMenuOpen(false);
     const layerId = crypto.randomUUID();
@@ -42,14 +57,22 @@ export function AddLayerMenu() {
       isBase: false,
     };
 
-    sequenceStore.createFxSequence(name, fxLayer, totalFrames.peek());
+    if (targetSequenceId) {
+      sequenceStore.addLayerToSequence(targetSequenceId, fxLayer);
+    } else {
+      sequenceStore.createFxSequence(name, fxLayer, totalFrames.peek());
+    }
     layerStore.setSelected(layerId);
     uiStore.selectLayer(layerId);
   };
 
   const handleAddContentLayer = (type: 'static-image' | 'image-sequence' | 'video') => {
     setMenuOpen(false);
-    uiStore.setAddLayerIntent({ type, target: 'content-overlay' });
+    if (targetSequenceId) {
+      uiStore.setAddLayerIntent({ type, targetSequenceId });
+    } else {
+      uiStore.setAddLayerIntent({ type, target: 'content-overlay' });
+    }
     uiStore.setEditorMode('imported');
   };
 
@@ -77,7 +100,11 @@ export function AddLayerMenu() {
       source: { type: 'paint', layerId } as LayerSourceData,
       isBase: false,
     };
-    sequenceStore.createFxSequence('Paint', paintLayer, totalFrames.peek());
+    if (targetSequenceId) {
+      sequenceStore.addLayerToSequence(targetSequenceId, paintLayer);
+    } else {
+      sequenceStore.createFxSequence('Paint', paintLayer, totalFrames.peek());
+    }
     layerStore.setSelected(layerId);
     uiStore.selectLayer(layerId);
   };
@@ -93,6 +120,11 @@ export function AddLayerMenu() {
 
       {menuOpen && (
         <div class="absolute right-0 bottom-8 z-50 bg-(--color-bg-menu) border border-(--color-border-subtle) rounded-md shadow-xl py-1 min-w-[160px]">
+          {hasIsolation && targetSequenceName && (
+            <div class="px-3 py-1 text-[9px] text-(--color-accent) font-medium">
+              Adding to: {targetSequenceName}
+            </div>
+          )}
           {/* Content section */}
           <div class="px-3 py-1 text-[9px] text-(--color-text-dim) font-semibold">CONTENT</div>
           <button

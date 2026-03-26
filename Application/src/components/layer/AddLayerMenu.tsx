@@ -1,5 +1,7 @@
 import {useState, useEffect, useRef} from 'preact/hooks';
 import {uiStore} from '../../stores/uiStore';
+import {isolationStore} from '../../stores/isolationStore';
+import {sequenceStore} from '../../stores/sequenceStore';
 
 /** Simple intent-dispatching menu for adding layers */
 export function AddLayerMenu() {
@@ -18,19 +20,42 @@ export function AddLayerMenu() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
 
+  // Isolation detection (D-09, D-10)
+  const isolatedIds = isolationStore.isolatedSequenceIds.value;
+  const hasIsolation = isolatedIds.size > 0;
+  let targetSequenceId: string | null = null;
+  let targetSequenceName: string | null = null;
+  if (hasIsolation) {
+    const seqs = sequenceStore.sequences.value;
+    const isolatedSeq = seqs.find(s => isolatedIds.has(s.id));
+    if (isolatedSeq) {
+      targetSequenceId = isolatedSeq.id;
+      targetSequenceName = isolatedSeq.name;
+    }
+  }
+
   const handleStaticImage = () => {
     setMenuOpen(false);
-    uiStore.setAddLayerIntent({ type: 'static-image' });
+    uiStore.setAddLayerIntent({
+      type: 'static-image',
+      ...(targetSequenceId ? { targetSequenceId } : {}),
+    });
     uiStore.setEditorMode('imported');
   };
   const handleImageSequence = () => {
     setMenuOpen(false);
-    uiStore.setAddLayerIntent({ type: 'image-sequence' });
+    uiStore.setAddLayerIntent({
+      type: 'image-sequence',
+      ...(targetSequenceId ? { targetSequenceId } : {}),
+    });
     uiStore.setEditorMode('imported');
   };
   const handleVideo = () => {
     setMenuOpen(false);
-    uiStore.setAddLayerIntent({ type: 'video' });
+    uiStore.setAddLayerIntent({
+      type: 'video',
+      ...(targetSequenceId ? { targetSequenceId } : {}),
+    });
     uiStore.setEditorMode('imported');
   };
 
@@ -47,6 +72,11 @@ export function AddLayerMenu() {
 
       {menuOpen && (
         <div class="absolute right-0 top-7 z-50 bg-(--color-bg-menu) border border-(--color-border-subtle) rounded-md shadow-xl py-1 min-w-[160px]">
+          {hasIsolation && targetSequenceName && (
+            <div class="px-3 py-1 text-[9px] text-(--color-accent) font-medium">
+              Adding to: {targetSequenceName}
+            </div>
+          )}
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
             onClick={handleStaticImage}

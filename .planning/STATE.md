@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.6.0
 milestone_name: Various Enhancements
 status: executing
-stopped_at: Completed 22-01-PLAN.md
+stopped_at: Completed 22-02-PLAN.md
 last_updated: "2026-03-26T20:59:21Z"
-last_activity: 2026-03-26 -- Completed plan 22-01 (paint store fixes + motion path density)
+last_activity: 2026-03-26 -- Completed plans 22-01 and 22-02
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 6
+  completed_plans: 2
+  percent: 13
 ---
 
 # Project State
@@ -48,6 +48,8 @@ Progress: [#.........] 6%
 Archived to PROJECT.md Key Decisions table.
 Full phase decisions archived in milestones/v0.5.0-ROADMAP.md.
 
+- [Phase 22]: Added addLayerToSequence method rather than mutating activeSequenceId for isolation-scoped layer creation
+
 ### Pending Todos
 
 None.
@@ -64,5 +66,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-26T20:59:21Z
-Stopped at: Completed 22-01-PLAN.md
-Resume file: .planning/phases/22-foundation-quick-wins/22-01-SUMMARY.md
+Stopped at: Completed 22-02-PLAN.md
+Resume file: .planning/phases/22-foundation-quick-wins/22-02-SUMMARY.md

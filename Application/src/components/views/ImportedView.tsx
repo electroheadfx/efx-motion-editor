@@ -91,6 +91,23 @@ export function ImportedView() {
       return;
     }
 
+    // Isolation-scoped flow: add to specific sequence (D-09)
+    if (currentIntent?.targetSequenceId) {
+      const layer: Layer = {
+        id: layerId, name: filename, type: 'static-image',
+        visible: true, opacity: 1, blendMode: 'normal',
+        transform: defaultTransform(),
+        source: { type: 'static-image', imageId: img.id },
+        isBase: false,
+      };
+      sequenceStore.addLayerToSequence(currentIntent.targetSequenceId, layer);
+      layerStore.setSelected(layerId);
+      uiStore.selectLayer(layerId);
+      uiStore.setAddLayerIntent(null);
+      uiStore.setEditorMode('editor');
+      return;
+    }
+
     // Content overlay flow: create new content-overlay sequence
     if (currentIntent?.target === 'content-overlay') {
       const layer: Layer = {
@@ -135,6 +152,23 @@ export function ImportedView() {
         source: { type: 'video', videoAssetId: video.id },
         name: video.name,
       });
+      uiStore.setAddLayerIntent(null);
+      uiStore.setEditorMode('editor');
+      return;
+    }
+
+    // Isolation-scoped flow: add to specific sequence (D-09)
+    if (currentIntent?.targetSequenceId) {
+      const layer: Layer = {
+        id: layerId, name: video.name, type: 'video',
+        visible: true, opacity: 1, blendMode: 'normal',
+        transform: defaultTransform(),
+        source: { type: 'video', videoAssetId: video.id },
+        isBase: false,
+      };
+      sequenceStore.addLayerToSequence(currentIntent.targetSequenceId, layer);
+      layerStore.setSelected(layerId);
+      uiStore.selectLayer(layerId);
       uiStore.setAddLayerIntent(null);
       uiStore.setEditorMode('editor');
       return;
@@ -185,6 +219,25 @@ export function ImportedView() {
           source: { type: 'image-sequence', imageIds: sortedIds },
           name: `Sequence (${sortedIds.length} images)`,
         });
+        setSelectedIds([]);
+        uiStore.setAddLayerIntent(null);
+        uiStore.setEditorMode('editor');
+        return;
+      }
+
+      // Isolation-scoped flow: add to specific sequence (D-09)
+      if (currentIntent.targetSequenceId) {
+        const layerId = crypto.randomUUID();
+        const layer: Layer = {
+          id: layerId, name: `Sequence (${sortedIds.length} images)`,
+          type: 'image-sequence', visible: true, opacity: 1, blendMode: 'normal',
+          transform: defaultTransform(),
+          source: { type: 'image-sequence', imageIds: sortedIds },
+          isBase: false,
+        };
+        sequenceStore.addLayerToSequence(currentIntent.targetSequenceId, layer);
+        layerStore.setSelected(layerId);
+        uiStore.selectLayer(layerId);
         setSelectedIds([]);
         uiStore.setAddLayerIntent(null);
         uiStore.setEditorMode('editor');

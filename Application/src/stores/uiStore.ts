@@ -9,6 +9,7 @@ export type AddLayerIntent =
       type: 'static-image' | 'image-sequence' | 'video' | 'audio';
       target?: 'content-overlay' | 'audio-track';
       changeSourceFor?: { layerId: string; sequenceId: string };
+      targetSequenceId?: string;  // When set, add layer to this sequence instead of creating new
     };
 
 export type TransitionSelection = {
