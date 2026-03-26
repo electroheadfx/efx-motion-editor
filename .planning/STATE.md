@@ -2,14 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.6.0
 milestone_name: Various Enhancements
-status: ready to plan
-stopped_at: roadmap created
-last_updated: "2026-03-26"
+status: planning
+stopped_at: Completed 22-02-PLAN.md
+last_updated: "2026-03-26T20:57:37.783Z"
+last_activity: 2026-03-26 -- Roadmap created for v0.6.0
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 0
-  completed_plans: 0
+  completed_plans: 1
+  percent: 0
 ---
 
 # Project State
@@ -46,6 +48,8 @@ Progress: [..........] 0%
 Archived to PROJECT.md Key Decisions table.
 Full phase decisions archived in milestones/v0.5.0-ROADMAP.md.
 
+- [Phase 22]: Added addLayerToSequence method rather than mutating activeSequenceId for isolation-scoped layer creation
+
 ### Pending Todos
 
 None.
@@ -61,6 +65,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-26
-Stopped at: Roadmap created for v0.6.0
+Last session: 2026-03-26T20:57:37.780Z
+Stopped at: Completed 22-02-PLAN.md
 Resume file: None

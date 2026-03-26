@@ -33,7 +33,7 @@ Requirements for v0.6.0 Various Enhancements. Each maps to roadmap phases.
 ### UX Polish
 
 - [ ] **UXP-01**: Paint properties panel is reorganized for space optimization with cleaner buttons
-- [ ] **UXP-02**: New roto/paint layer is created only on isolated sequence when one is selected
+- [x] **UXP-02**: New roto/paint layer is created only on isolated sequence when one is selected
 - [ ] **UXP-03**: Motion path shows denser interpolation dots for short sequences
 
 ## Future Requirements
@@ -77,7 +77,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STRK-04 | Phase 24 | Pending |
 | STRK-05 | Phase 24 | Pending |
 | UXP-01 | Phase 22 | Pending |
-| UXP-02 | Phase 22 | Pending |
+| UXP-02 | Phase 22 | Complete |
 | UXP-03 | Phase 22 | Pending |
 
 **Coverage:**
