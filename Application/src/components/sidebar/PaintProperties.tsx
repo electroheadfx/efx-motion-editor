@@ -3,7 +3,7 @@ import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 import {paintStore} from '../../stores/paintStore';
 import {timelineStore} from '../../stores/timelineStore';
-import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX} from '../../types/paint';
+import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR} from '../../types/paint';
 import type {PaintToolType} from '../../types/paint';
 import type {Layer} from '../../types/layer';
 
@@ -13,7 +13,9 @@ const STROKE_TOOLS: PaintToolType[] = ['brush', 'eraser'];
 
 export function PaintProperties({layer}: {layer: Layer}) {
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showBgColorPicker, setShowBgColorPicker] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [bgCollapsed, setBgCollapsed] = useState(false);
   const [onionCollapsed, setOnionCollapsed] = useState(true);
   const [tabletCollapsed, setTabletCollapsed] = useState(true);
 
@@ -24,6 +26,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
   const strokeOpts = paintStore.strokeOptions.value;
   const shapeFilledVal = paintStore.shapeFilled.value;
   const fillToleranceVal = paintStore.fillTolerance.value;
+  const bgColor = paintStore.paintBgColor.value;
 
   const showBrushSettings = BRUSH_TOOLS.includes(activeTool) || SHAPE_TOOLS.includes(activeTool);
   const showStrokeOptions = STROKE_TOOLS.includes(activeTool);
@@ -35,6 +38,65 @@ export function PaintProperties({layer}: {layer: Layer}) {
       {/* Layer name */}
       <div class="text-[12px] font-medium px-1" style={{color: 'var(--sidebar-text-primary)'}}>
         {layer.name}
+      </div>
+
+      {/* PAINT BACKGROUND per D-11, D-12 */}
+      <div>
+        <button
+          class="flex items-center gap-1 cursor-pointer w-full"
+          onClick={() => setBgCollapsed(!bgCollapsed)}
+        >
+          <span
+            class="text-[10px] transition-transform"
+            style={{
+              color: 'var(--sidebar-text-secondary)',
+              transform: bgCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            }}
+          >
+            &#9660;
+          </span>
+          <SectionLabel text="PAINT BACKGROUND" />
+        </button>
+
+        {!bgCollapsed && (
+          <div class="px-1 mt-1.5 space-y-2">
+            <div class="flex items-center gap-2">
+              <div
+                class="w-5 h-5 rounded border cursor-pointer shrink-0"
+                style={{
+                  backgroundColor: bgColor,
+                  borderColor: 'var(--sidebar-border)',
+                }}
+                onClick={() => setShowBgColorPicker(true)}
+                title="Paint background color"
+              />
+              <span class="text-[11px]" style={{color: 'var(--sidebar-text-secondary)'}}>
+                Background
+              </span>
+              {bgColor !== DEFAULT_PAINT_BG_COLOR && (
+                <button
+                  class="text-[10px] ml-auto opacity-60 hover:opacity-100 cursor-pointer"
+                  style={{color: 'var(--sidebar-text-secondary)'}}
+                  onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showBgColorPicker && (
+          <ColorPickerModal
+            color={bgColor}
+            onLiveChange={(c) => paintStore.setPaintBgColor(c)}
+            onCommit={(c) => {
+              paintStore.setPaintBgColor(c);
+              setShowBgColorPicker(false);
+            }}
+            onClose={() => setShowBgColorPicker(false)}
+          />
+        )}
       </div>
 
       {/* Brush Settings */}
