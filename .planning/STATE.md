@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
-status: Phase complete — ready for verification
-stopped_at: Completed 20-04-PLAN.md (Tasks 1-2; Task 3 checkpoint awaiting human-verify)
-last_updated: "2026-03-26T09:00:42.594Z"
+status: Executing Phase 21
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-03-26T16:10:59.965Z"
 progress:
   total_phases: 2
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 5
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 20 — paint-brush-fx
+**Current focus:** Phase 21 — motion-blur
 
 ## Current Position
 
-Phase: 20 (paint-brush-fx) — EXECUTING
-Plan: 4 of 4
+Phase: 21 (motion-blur) — EXECUTING
+Plan: 2 of 4
 
 ## Performance Metrics
 
@@ -61,6 +61,9 @@ Full phase decisions archived in milestones/v0.4.0-ROADMAP.md.
 - [Phase 20]: showSequenceOverlay signal in paintStore (not component-level) for cross-component access
 - [Phase 20]: flattenFrame ensures all styled strokes are marked fx-applied before calling renderFrameFx
 - [Phase 20]: Export parity confirmed: exportRenderer delegates to PreviewRenderer which uses renderPaintFrameWithBg
+- [Phase 21]: VELOCITY_THRESHOLD = 0.5 for stationary layer detection (sum of absolute deltas)
+- [Phase 21]: Separate WebGL2 context for glMotionBlur.ts (not shared) for isolation and simplicity
+- [Phase 21]: Triangle filter weighting in GLSL shader for smooth directional blur falloff
 
 ### Pending Todos
 
@@ -81,6 +84,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-26T09:00:42.592Z
-Stopped at: Completed 20-04-PLAN.md (Tasks 1-2; Task 3 checkpoint awaiting human-verify)
+Last session: 2026-03-26T16:10:59.962Z
+Stopped at: Completed 21-01-PLAN.md
 Resume file: None
