@@ -92,7 +92,7 @@ See: `milestones/v0.4.0-ROADMAP.md` for full details.
 **Milestone Goal:** Add expressive brush rendering (watercolor, ink, charcoal, pencil, marker) to paint layers via WebGL2 with spectral pigment mixing, and per-layer GLSL velocity motion blur with sub-frame accumulation for export.
 
 - [ ] **Phase 20: Paint Brush FX** - Post-process FX workflow: draw flat, select strokes, apply styles via p5.brush, per-stroke raster caching, solid paint background, export parity
-- [x] **Phase 21: Motion Blur** - Per-layer GLSL velocity blur for preview, sub-frame accumulation for export, shutter angle controls, and project persistence (completed 2026-03-26)
+- [ ] **Phase 21: Motion Blur** - Per-layer GLSL velocity blur for preview, sub-frame accumulation for export, shutter angle controls, and project persistence
 
 ## Phase Details
 
@@ -128,9 +128,9 @@ Plans:
 
 Plans:
 - [x] 21-01-PLAN.md — Types, store, WebGL2 GLSL shader, and velocity computation engine
-- [x] 21-02-PLAN.md — Preview renderer integration and toolbar UI controls
-- [x] 21-03-PLAN.md — Export sub-frame accumulation, export dialog, and project persistence
-- [x] 21-04-PLAN.md — Keyboard shortcut, final tests, and visual verification
+- [ ] 21-02-PLAN.md — Preview renderer integration and toolbar UI controls
+- [ ] 21-03-PLAN.md — Export sub-frame accumulation, export dialog, and project persistence
+- [ ] 21-04-PLAN.md — Keyboard shortcut, final tests, and visual verification
 
 ## Progress
 
@@ -144,4 +144,4 @@ Phases execute in numeric order: 20 → 21
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
 | 20. Paint Brush FX | v0.5.0 | 3/4 | In Progress|  |
-| 21. Motion Blur | v0.5.0 | 4/4 | Complete   | 2026-03-26 |
+| 21. Motion Blur | v0.5.0 | 1/4 | In Progress|  |

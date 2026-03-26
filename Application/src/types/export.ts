@@ -18,8 +18,10 @@ export interface ExportSettings {
   motionBlur: {
     enabled: boolean;
     shutterAngle: number;       // 0-360 degrees, default from project
-    subFrames: number;           // 4, 8, or 16
+    subFrames: number;           // 8, 16, 32, 64, or 128
   };
+  /** When true, export only the active sequence instead of the full timeline */
+  selectedSequenceOnly: boolean;
 }
 
 export interface ExportProgress {

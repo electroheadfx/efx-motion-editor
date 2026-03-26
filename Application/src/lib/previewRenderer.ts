@@ -148,6 +148,9 @@ export class PreviewRenderer {
     // Paint layers are keyed by global (absolute) timeline frame, not the
     // sequence-local frame used for content/generator layers.
     const paintLookupFrame = globalFrame ?? frame;
+    // Integer frame index for frames[] array lookups — fractional frames from
+    // export sub-frame accumulation must not be used as array indices.
+    const frameIdx = Math.floor(frame);
     // Sync canvas internal resolution to layout size (excludes CSS transforms like zoom).
     // For offscreen canvases (clientWidth=0), use canvas.width/height directly with dpr=1.
     const layoutW = this.canvas.clientWidth || this.canvas.offsetWidth;
@@ -185,8 +188,8 @@ export class PreviewRenderer {
           continue;
         } else {
           // Content layer: check if current frame is a gradient/solid/transparent entry
-          if (frames.length > 0 && frame >= 0 && frame < frames.length) {
-            const entry = frames[frame];
+          if (frames.length > 0 && frameIdx >= 0 && frameIdx < frames.length) {
+            const entry = frames[frameIdx];
             if (entry && (entry.gradient || entry.solidColor || entry.isTransparent)) {
               hasDrawable = true;
               break;
@@ -300,9 +303,9 @@ export class PreviewRenderer {
         ctx.restore();
 
         // Sequence overlay: render sequence frame ON TOP of paint at reduced opacity
-        if (paintStore.showSequenceOverlay.peek() && frames.length > 0 && frame >= 0 && frame < frames.length) {
+        if (paintStore.showSequenceOverlay.peek() && frames.length > 0 && frameIdx >= 0 && frameIdx < frames.length) {
           const overlayAlpha = paintStore.sequenceOverlayOpacity.peek();
-          const entry = frames[frame];
+          const entry = frames[frameIdx];
           if (entry?.imageId) {
             const img = this.imageCache.get(entry.imageId);
             if (img) {
@@ -316,8 +319,8 @@ export class PreviewRenderer {
       } else {
         // Content layer: check for gradient/solid/transparent frame first (per D-12, D-18, D-19)
         let handledAsSolid = false;
-        if (layer.isBase && frames.length > 0 && frame >= 0 && frame < frames.length) {
-          const entry = frames[frame];
+        if (layer.isBase && frames.length > 0 && frameIdx >= 0 && frameIdx < frames.length) {
+          const entry = frames[frameIdx];
           if (entry?.gradient && !entry?.isTransparent) {
             // D-12: Gradient fill (check before solidColor)
             ctx.save();
@@ -459,18 +462,19 @@ export class PreviewRenderer {
 
       case 'image-sequence': {
         // Base layer: use frameMap to get imageId for current frame
+        const fi = Math.floor(frame);
         if (layer.isBase || layer.source.imageIds.length === 0) {
-          if (frames.length === 0 || frame < 0 || frame >= frames.length) {
+          if (frames.length === 0 || fi < 0 || fi >= frames.length) {
             return null;
           }
-          const entry = frames[frame];
+          const entry = frames[fi];
           if (!entry) return null;
           return this.getImageSource(entry.imageId);
         }
 
         // Overlay image-sequence: cycle through imported images
         const imageIds = layer.source.imageIds;
-        const imageIndex = frame % imageIds.length;
+        const imageIndex = fi % imageIds.length;
         const imageId = imageIds[imageIndex];
         return this.getImageSource(imageId);
       }

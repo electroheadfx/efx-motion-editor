@@ -41,7 +41,7 @@ export const motionBlurStore = {
   /** Get sample count for current quality tier */
   getSamples(): number {
     const q = previewQuality.peek();
-    return q === 'low' ? 4 : q === 'medium' ? 8 : 0;
+    return q === 'low' ? 16 : q === 'medium' ? 32 : 0;
   },
 
   /** Reset signals to defaults */

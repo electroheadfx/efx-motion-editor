@@ -3,6 +3,7 @@ import {exportStore} from '../../stores/exportStore';
 import {projectStore} from '../../stores/projectStore';
 import {audioStore} from '../../stores/audioStore';
 import {motionBlurStore} from '../../stores/motionBlurStore';
+import {sequenceStore} from '../../stores/sequenceStore';
 import type {ExportFormat, ExportResolution} from '../../types/export';
 
 const FORMATS: {value: ExportFormat; label: string; ext: string}[] = [
@@ -34,6 +35,10 @@ export function FormatSelector() {
   const mbEnabled = exportStore.motionBlurEnabled.value;
   const mbShutterAngle = exportStore.motionBlurShutterAngle.value;
   const mbSubFrames = exportStore.motionBlurSubFrames.value;
+  const selectedSeqOnly = exportStore.selectedSequenceOnly.value;
+  const activeSeq = sequenceStore.sequences.value.find(
+    s => s.id === sequenceStore.activeSequenceId.value
+  );
 
   // Default export shutter angle to project preview value (per D-11)
   useEffect(() => {
@@ -66,6 +71,30 @@ export function FormatSelector() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Scope: selected sequence only */}
+      <div class="space-y-2">
+        <label class="text-xs font-semibold text-(--color-text-muted)">Scope</label>
+        <label class="flex items-center gap-2 text-sm text-(--color-text-secondary) cursor-pointer">
+          <input
+            type="checkbox"
+            checked={selectedSeqOnly}
+            onChange={(e) => exportStore.setSelectedSequenceOnly((e.target as HTMLInputElement).checked)}
+            class="accent-(--color-accent)"
+          />
+          Selected sequence only
+        </label>
+        {selectedSeqOnly && activeSeq && (
+          <div class="text-xs text-(--color-text-muted)">
+            Exporting: <span class="font-semibold">{activeSeq.name || 'Sequence'}</span> ({activeSeq.keyPhotos.reduce((sum, kp) => sum + kp.holdFrames, 0)} frames)
+          </div>
+        )}
+        {selectedSeqOnly && !activeSeq && (
+          <div class="text-xs text-(--color-dot-orange)">
+            No sequence selected — will export full timeline
+          </div>
+        )}
       </div>
 
       {/* Resolution multiplier */}
@@ -243,14 +272,14 @@ export function FormatSelector() {
               />
             </div>
 
-            {/* Sub-frame count selector (per D-09: 4/8/16) */}
+            {/* Sample count selector */}
             <div class="space-y-1">
-              <span class="text-sm text-(--color-text-secondary)">Sub-frames</span>
-              <div class="flex gap-2">
-                {[4, 8, 16].map((n) => (
+              <span class="text-sm text-(--color-text-secondary)">Samples</span>
+              <div class="flex gap-1.5">
+                {[8, 16, 32, 64, 128].map((n) => (
                   <button
                     key={n}
-                    class={`flex-1 px-3 py-1.5 rounded-[5px] text-sm transition-colors ${
+                    class={`flex-1 px-2 py-1.5 rounded-[5px] text-sm transition-colors ${
                       mbSubFrames === n
                         ? 'bg-(--color-accent) text-white'
                         : 'bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input)'

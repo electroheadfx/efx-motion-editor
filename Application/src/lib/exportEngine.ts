@@ -58,7 +58,16 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     return;
   }
 
-  const fm = frameMap.peek();
+  let fm = frameMap.peek();
+
+  // Filter to selected sequence only if enabled
+  if (settings.selectedSequenceOnly) {
+    const activeId = sequenceStore.activeSequenceId.peek();
+    if (activeId) {
+      fm = fm.filter(e => e.sequenceId === activeId);
+    }
+  }
+
   const total = fm.length;
   if (total === 0) {
     exportStore.updateProgress({ status: 'error', errorMessage: 'No frames to export (timeline is empty)' });

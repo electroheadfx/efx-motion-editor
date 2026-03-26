@@ -359,33 +359,34 @@ export function renderFrameWithMotionBlur(
   motionBlurStore.shutterAngle.value = shutterAngle;
 
   try {
-    // Create accumulator canvas (per Pitfall 3: clear before loop)
-    const accumulator = document.createElement('canvas');
-    accumulator.width = w;
-    accumulator.height = h;
-    const accumCtx = accumulator.getContext('2d')!;
-    accumCtx.clearRect(0, 0, w, h);
-
-    // Set globalAlpha for equal-weight blending
-    accumCtx.globalAlpha = 1.0 / subFrames;
+    const ctx = canvas.getContext('2d')!;
+    const pixelCount = w * h * 4; // RGBA
+    // Float32 accumulator to avoid both source-over alpha compounding and lighter overflow
+    const accum = new Float32Array(pixelCount);
 
     for (let i = 0; i < subFrames; i++) {
       const t = i / subFrames;
       const subFrame = globalFrame + t;
 
-      // renderGlobalFrame uses interpolateAt() which supports fractional frames (per D-15)
+      // renderGlobalFrame uses interpolateAt() which supports fractional frames
       // Motion blur is applied per-layer inside PreviewRenderer (the renderer has velocityCache)
       renderGlobalFrame(renderer, canvas, subFrame, fm, allSeqs, overlaps, soloActive);
 
-      // Accumulate sub-frame
-      accumCtx.drawImage(canvas, 0, 0);
+      // Read pixels and accumulate in float buffer
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const pixels = imageData.data;
+      for (let p = 0; p < pixelCount; p++) {
+        accum[p] += pixels[p];
+      }
     }
 
-    // Copy accumulator result back to output canvas
-    const outCtx = canvas.getContext('2d')!;
-    outCtx.clearRect(0, 0, w, h);
-    outCtx.globalAlpha = 1.0;
-    outCtx.drawImage(accumulator, 0, 0);
+    // Average and write back to canvas
+    const outData = ctx.createImageData(w, h);
+    const out = outData.data;
+    for (let p = 0; p < pixelCount; p++) {
+      out[p] = Math.round(accum[p] / subFrames);
+    }
+    ctx.putImageData(outData, 0, 0);
   } finally {
     // Restore preview shutter angle regardless of success/failure
     motionBlurStore.shutterAngle.value = savedShutterAngle;

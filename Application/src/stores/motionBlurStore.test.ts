@@ -38,12 +38,12 @@ describe('motionBlurStore', () => {
     expect(motionBlurStore.getStrength()).toBe(0.5);
   });
 
-  it("getSamples() returns 4 for 'low', 8 for 'medium', 0 for 'off'", () => {
+  it("getSamples() returns 16 for 'low', 32 for 'medium', 0 for 'off'", () => {
     motionBlurStore.setPreviewQuality('low');
-    expect(motionBlurStore.getSamples()).toBe(4);
+    expect(motionBlurStore.getSamples()).toBe(16);
 
     motionBlurStore.setPreviewQuality('medium');
-    expect(motionBlurStore.getSamples()).toBe(8);
+    expect(motionBlurStore.getSamples()).toBe(32);
 
     motionBlurStore.setPreviewQuality('off');
     expect(motionBlurStore.getSamples()).toBe(0);

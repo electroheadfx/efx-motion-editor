@@ -154,7 +154,7 @@ export function Toolbar() {
         {showMbPopover && (
           <div
             ref={mbPopoverRef}
-            class="absolute top-full left-0 mt-1 w-56 bg-(--color-bg-panel) border border-(--color-border-subtle) rounded-lg shadow-lg p-3 z-50 space-y-3"
+            class="absolute top-full left-0 mt-1 w-56 bg-(--color-bg-toolbar) border border-(--color-border-subtle) rounded-lg shadow-xl p-3 z-[100] space-y-3"
           >
             {/* Shutter Angle slider (per D-07) */}
             <div class="space-y-1">
@@ -192,7 +192,7 @@ export function Toolbar() {
                     }`}
                     onClick={() => motionBlurStore.setPreviewQuality(q)}
                   >
-                    {q === 'off' ? 'Off' : q === 'low' ? 'Low (4)' : 'Med (8)'}
+                    {q === 'off' ? 'Off' : q === 'low' ? 'Low (16)' : 'Med (32)'}
                   </button>
                 ))}
               </div>
