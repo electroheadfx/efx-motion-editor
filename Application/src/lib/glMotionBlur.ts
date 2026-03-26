@@ -28,7 +28,7 @@ uniform sampler2D iChannel0;
 uniform vec2 iResolution;
 uniform vec2 uVelocity;    // velocity in pixels (dx, dy)
 uniform float uStrength;   // blur strength (0.0 - 1.0) = shutterAngle / 360
-uniform int uSamples;      // 4, 8, or 16
+uniform int uSamples;      // sample count (preview: 16/32, export: 8-128)
 
 in vec2 vUV;
 out vec4 fragColor;
@@ -286,7 +286,7 @@ function ensureResources(
  * @param targetCtx - Target Canvas 2D context to draw the blurred result onto
  * @param velocity - Layer velocity in pixels/frame (dx, dy)
  * @param strength - Blur strength (0.0 - 1.0), typically shutterAngle / 360
- * @param samples - Number of blur samples (4, 8, or 16)
+ * @param samples - Number of blur samples (preview: 16/32, export: 8-128)
  * @param width - Canvas width in pixels
  * @param height - Canvas height in pixels
  * @returns true if GPU blur succeeded, false if caller should skip blur
@@ -339,9 +339,10 @@ export function applyMotionBlur(
   gl.bindVertexArray(res.vao);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-  // Read back from FBO: render FBO texture to screen
+  // Read back from FBO: render FBO texture to screen (passthrough — no blur)
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, width, height);
+  gl.uniform1f(res.uStrength, 0.0); // passthrough: disable blur for readback pass
   gl.bindTexture(gl.TEXTURE_2D, res.texFBO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 

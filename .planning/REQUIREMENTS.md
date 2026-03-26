@@ -28,8 +28,8 @@ Requirements for milestone v0.5.0: Motion Blur & Paint Styles. Each maps to road
 - [x] **MBLR-01**: User can toggle motion blur on/off for preview playback
 - [x] **MBLR-02**: User can see per-layer directional blur based on layer movement velocity during preview
 - [x] **MBLR-03**: User can adjust motion blur strength via shutter angle control (0-360 degrees)
-- [x] **MBLR-04**: User can configure motion blur preview quality (off/low/medium)
-- [x] **MBLR-05**: User can enable motion blur for export with configurable sub-frame count (4/8/16)
+- [x] **MBLR-04**: User can configure motion blur preview quality (off/low=16 samples/medium=32 samples)
+- [x] **MBLR-05**: User can enable motion blur for export with configurable sample count (8/16/32/64/128)
 - [x] **MBLR-06**: Export renders motion blur using combined GLSL velocity blur + sub-frame accumulation
 - [x] **MBLR-07**: Motion blur settings persist in project file (.mce format)
 - [x] **MBLR-08**: Stationary layers are not blurred (velocity threshold skip)
