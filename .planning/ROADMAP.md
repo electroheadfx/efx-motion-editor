@@ -91,28 +91,28 @@ See: `milestones/v0.4.0-ROADMAP.md` for full details.
 
 **Milestone Goal:** Add expressive brush rendering (watercolor, ink, charcoal, pencil, marker) to paint layers via WebGL2 with spectral pigment mixing, and per-layer GLSL velocity motion blur with sub-frame accumulation for export.
 
-- [ ] **Phase 20: Paint Brush FX** - Expressive brush styles with WebGL2 rendering, spectral pigment mixing, watercolor bleed, flow fields, grain/texture, and export integration
+- [ ] **Phase 20: Paint Brush FX** - Post-process FX workflow: draw flat, select strokes, apply styles via p5.brush, per-stroke raster caching, solid paint background, export parity
 - [ ] **Phase 21: Motion Blur** - Per-layer GLSL velocity blur for preview, sub-frame accumulation for export, shutter angle controls, and project persistence
 
 ## Phase Details
 
 ### Phase 20: Paint Brush FX
-**Goal**: Users can draw with expressive brush styles that simulate physical media through WebGL2 rendering, spectral color mixing, and organic stroke effects
+**Goal**: Users draw flat strokes, then select and apply expressive FX styles (watercolor, ink, charcoal, pencil, marker) via p5.brush standalone rendering with per-stroke caching, solid background, and non-destructive workflow
 **Depends on**: Phase 19 (paint layer foundation)
 **Requirements**: PAINT-01, PAINT-02, PAINT-03, PAINT-04, PAINT-05, PAINT-06, PAINT-07, PAINT-08, PAINT-09, PAINT-10, PAINT-11, PAINT-12, PAINT-13
 **Success Criteria** (what must be TRUE):
-  1. User can select any brush style (flat/watercolor/ink/charcoal/pencil/marker) from the PaintProperties panel and draw strokes that visually match the selected medium
+  1. User can draw flat strokes, select them, and apply any FX style that renders via p5.brush with distinct visual character
   2. User can overlap strokes of different colors and see physically-correct pigment mixing (blue + yellow produces green, not gray)
-  3. User can draw with the watercolor brush and see edge bleed, paper texture, and flow field distortion producing organic, non-mechanical stroke paths
+  3. User can apply watercolor style and see edge bleed, paper texture, and flow field distortion producing organic effects
   4. User can export a project containing styled brush strokes and the exported frames render identically to the canvas preview
-  5. User can open a previously saved project and all brush styles and FX parameters are preserved exactly as drawn
-**Plans**: TBD
-**UI hint**: yes
+  5. User can open a previously saved project and all brush styles and FX parameters are preserved exactly as applied
+**Plans**: 4 plans
 
 Plans:
-- [ ] 20-01: TBD
-- [ ] 20-02: TBD
-- [ ] 20-03: TBD
+- [x] 20-01-PLAN.md — Types, store extensions, and per-stroke p5.brush adapter refactor
+- [ ] 20-02-PLAN.md — Solid paint background, renderer update, and UI background controls
+- [ ] 20-03-PLAN.md — Select tool, FX application workflow, style swap, and preview wiring
+- [ ] 20-04-PLAN.md — Flatten, export parity, persistence, and visual verification
 
 ### Phase 21: Motion Blur
 **Goal**: Users can see per-layer directional motion blur during preview playback and export with cinematographic shutter angle controls
@@ -142,5 +142,5 @@ Phases execute in numeric order: 20 → 21
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
-| 20. Paint Brush FX | v0.5.0 | 0/? | Not started | - |
+| 20. Paint Brush FX | v0.5.0 | 1/4 | In Progress|  |
 | 21. Motion Blur | v0.5.0 | 0/? | Not started | - |
