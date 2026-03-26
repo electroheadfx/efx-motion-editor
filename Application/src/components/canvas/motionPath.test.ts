@@ -119,12 +119,21 @@ describe('sampleMotionDots', () => {
       expect(dots.length).toBe(51);
     });
 
-    it('sub-frame dots have integer frame property', () => {
+    it('sub-frame dots have fractional frame values (not collapsed to integers)', () => {
       const keyframes = [kf(0, {x: 0, y: 0}), kf(5, {x: 100, y: 0})];
       const dots = sampleMotionDots(keyframes, canvasW, canvasH);
-      for (const dot of dots) {
-        expect(dot.frame).toBe(Math.round(dot.frame));
-      }
+      // Sub-frame dots should include fractional values like 0.25, 0.5, 0.75
+      const fractionalDots = dots.filter((d) => d.frame !== Math.round(d.frame));
+      expect(fractionalDots.length).toBeGreaterThan(0);
+    });
+
+    it('all sub-frame dots have unique frame values', () => {
+      const keyframes = [kf(0, {x: 0, y: 0}), kf(5, {x: 100, y: 0})];
+      const dots = sampleMotionDots(keyframes, canvasW, canvasH);
+      // span=5, step=0.25, so 21 dots each with a unique frame value
+      const uniqueFrames = new Set(dots.map((d) => d.frame));
+      expect(uniqueFrames.size).toBe(dots.length);
+      expect(uniqueFrames.size).toBe(21);
     });
 
     it('first and last dots still match keyframe positions', () => {
