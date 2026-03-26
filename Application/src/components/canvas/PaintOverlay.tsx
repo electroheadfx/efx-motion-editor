@@ -8,8 +8,9 @@ import {layerStore} from '../../stores/layerStore';
 import {timelineStore} from '../../stores/timelineStore';
 import {clientToCanvas} from './coordinateMapper';
 import {strokeToPath, renderPaintFrame} from '../../lib/paintRenderer';
+import {renderFrameFx} from '../../lib/brushP5Adapter';
 import {floodFill, hexToRgba} from '../../lib/paintFloodFill';
-import type {PaintStroke, PaintShape, PaintFill, PaintToolType, BrushStyle} from '../../types/paint';
+import type {PaintStroke, PaintShape, PaintFill, PaintToolType, BrushStyle, PaintFrame} from '../../types/paint';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,8 +38,72 @@ function cursorForTool(tool: PaintToolType): string {
       return 'crosshair';
     case 'eyedropper':
       return 'crosshair';
+    case 'select':
+      return 'default';
     default:
       return 'crosshair';
+  }
+}
+
+/**
+ * Find the topmost stroke that a point falls on (hit testing for select tool).
+ * Walks elements in reverse order (topmost first).
+ */
+function findStrokeAtPoint(
+  paintFrame: PaintFrame,
+  x: number,
+  y: number,
+): string | null {
+  for (let i = paintFrame.elements.length - 1; i >= 0; i--) {
+    const el = paintFrame.elements[i];
+    if (el.tool !== 'brush') continue;
+    const stroke = el as PaintStroke;
+
+    // Check if point is within stroke bounding box + padding
+    const pad = stroke.size / 2 + 5;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [px, py] of stroke.points) {
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
+    }
+
+    if (x >= minX - pad && x <= maxX + pad && y >= minY - pad && y <= maxY + pad) {
+      // Fine check: distance to any point in the stroke
+      for (const [px, py] of stroke.points) {
+        const dx = x - px;
+        const dy = y - py;
+        if (dx * dx + dy * dy <= pad * pad) {
+          return stroke.id;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Re-render all FX-applied strokes on a frame together via p5.brush.
+ * All FX strokes go through renderFrameFx() on one canvas for spectral mixing.
+ * Result is cached in paintStore.frameFxCache.
+ */
+function reRenderFrameFx(
+  paintFrame: PaintFrame,
+  layerId: string,
+  frame: number,
+  width: number,
+  height: number,
+): void {
+  const brushStrokes = paintFrame.elements.filter(
+    (el) => el.tool === 'brush'
+  ) as PaintStroke[];
+
+  const cached = renderFrameFx(brushStrokes, width, height);
+  if (cached) {
+    paintStore.setFrameFxCache(layerId, frame, cached);
+  } else {
+    paintStore.invalidateFrameFxCache(layerId, frame);
   }
 }
 
@@ -242,6 +307,38 @@ export function PaintOverlay({
 
       ctx.restore();
     }
+
+    // Draw selection indicators for selected strokes
+    const layerId = getSelectedPaintLayerId();
+    if (layerId) {
+      const frame = timelineStore.currentFrame.peek();
+      const paintFrame = paintStore.getFrame(layerId, frame);
+      const selected = paintStore.selectedStrokeIds.peek();
+
+      if (paintFrame && selected.size > 0) {
+        for (const el of paintFrame.elements) {
+          if (el.tool !== 'brush') continue;
+          if (!selected.has(el.id)) continue;
+          const stroke = el as PaintStroke;
+
+          // Draw a dashed bounding box around selected stroke
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const [px, py] of stroke.points) {
+            if (px < minX) minX = px;
+            if (py < minY) minY = py;
+            if (px > maxX) maxX = px;
+            if (py > maxY) maxY = py;
+          }
+          const pad = stroke.size / 2 + 4;
+          ctx.save();
+          ctx.strokeStyle = '#4A90D9';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 3]);
+          ctx.strokeRect(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2);
+          ctx.restore();
+        }
+      }
+    }
   }
 
   /** Request a live preview render gated by rAF */
@@ -251,6 +348,35 @@ export function PaintOverlay({
       rafId.current = 0;
       renderLivePreview();
     });
+  }
+
+  // --- Select tool handler (per D-05) ---
+
+  function handleSelectPointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    const point = getProjectPoint(e);
+    const layerId = getSelectedPaintLayerId();
+    if (!layerId) return;
+
+    const frame = timelineStore.currentFrame.peek();
+    const paintFrame = paintStore.getFrame(layerId, frame);
+    if (!paintFrame) return;
+
+    const hitStrokeId = findStrokeAtPoint(paintFrame, point.x, point.y);
+
+    if (hitStrokeId) {
+      if (e.metaKey || e.ctrlKey) {
+        paintStore.toggleStrokeSelection(hitStrokeId);
+      } else {
+        paintStore.clearSelection();
+        paintStore.selectStroke(hitStrokeId);
+      }
+    } else {
+      paintStore.clearSelection();
+    }
+
+    requestPreview();
+    e.preventDefault();
   }
 
   // --- Pointer event handlers ---
@@ -265,12 +391,19 @@ export function PaintOverlay({
     // Only left button
     if (e.button !== 0) return;
 
+    const tool = paintStore.activeTool.peek();
+
+    // Route select tool (per D-05)
+    if (tool === 'select') {
+      handleSelectPointerDown(e);
+      return;
+    }
+
     // Detect pen via native bridge (WebKit reports pointerType:'mouse' for pen)
     const isPen = isNativePenActive();
 
     const point = getProjectPoint(e);
     const pressure = isPen ? nativePressure.current : 0.5;
-    const tool = paintStore.activeTool.peek();
 
     if (tool === 'brush' || tool === 'eraser') {
       isDrawing.current = true;
@@ -413,8 +546,9 @@ export function PaintOverlay({
           opacity: paintStore.brushOpacity.peek(),
           size: paintStore.brushSize.peek(),
           options: baseOptions,
-          brushStyle: paintStore.brushStyle.peek() as BrushStyle,
-          brushParams: { ...paintStore.brushFxParams.peek() },
+          brushStyle: 'flat' as BrushStyle,  // per D-01: always draw flat
+          brushParams: undefined,  // per D-01: FX params applied post-draw
+          fxState: 'flat',  // per D-04: initial state is flat
         };
         paintStore.addElement(layerId, frame, stroke);
       }
@@ -462,6 +596,120 @@ export function PaintOverlay({
       // Pointer capture may not be active
     }
   }
+
+  // --- FX application via brushStyle change (per D-06, D-08) ---
+  useEffect(() => {
+    const style = paintStore.brushStyle.value;
+    const selected = paintStore.selectedStrokeIds.peek();
+    if (selected.size === 0) return;
+
+    const layerId = getSelectedPaintLayerId();
+    if (!layerId) return;
+    const frame = timelineStore.currentFrame.peek();
+    const paintFrame = paintStore.getFrame(layerId, frame);
+    if (!paintFrame) return;
+
+    const projW = projectStore.width.peek();
+    const projH = projectStore.height.peek();
+
+    if (style === 'flat') {
+      // Rollback selected strokes to flat (per D-10)
+      let changed = false;
+      for (const el of paintFrame.elements) {
+        if (el.tool !== 'brush') continue;
+        if (!selected.has(el.id)) continue;
+        const stroke = el as PaintStroke;
+        if (stroke.fxState === 'fx-applied' || stroke.fxState === 'flattened') {
+          stroke.brushStyle = 'flat';
+          stroke.brushParams = undefined;
+          stroke.fxState = 'flat';
+          changed = true;
+        }
+      }
+      if (changed) {
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        reRenderFrameFx(paintFrame, layerId, frame, projW, projH);
+        paintStore.markDirty(layerId, frame);
+        paintStore.paintVersion.value++;
+      }
+      return;
+    }
+
+    // Apply FX style to selected strokes (per D-08)
+    let changed = false;
+    for (const el of paintFrame.elements) {
+      if (el.tool !== 'brush') continue;
+      if (!selected.has(el.id)) continue;
+      const stroke = el as PaintStroke;
+
+      stroke.brushStyle = style;
+      stroke.brushParams = { ...paintStore.brushFxParams.peek() };
+      stroke.fxState = 'fx-applied';
+      changed = true;
+    }
+
+    if (changed) {
+      // Re-render ALL FX strokes on the frame together (spectral mixing!)
+      reRenderFrameFx(paintFrame, layerId, frame, projW, projH);
+      paintStore.markDirty(layerId, frame);
+      paintStore.paintVersion.value++;
+    }
+  }, [paintStore.brushStyle.value]);
+
+  // --- Delete selected strokes in select mode (per D-07) ---
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const selected = paintStore.selectedStrokeIds.peek();
+        if (selected.size === 0) return;
+        const tool = paintStore.activeTool.peek();
+        if (tool !== 'select') return;
+
+        const layerId = getSelectedPaintLayerId();
+        if (!layerId) return;
+        const frame = timelineStore.currentFrame.peek();
+
+        for (const strokeId of selected) {
+          paintStore.removeElement(layerId, frame, strokeId);
+        }
+        paintStore.clearSelection();
+
+        // Re-render frame cache (remaining FX strokes)
+        const paintFrame = paintStore.getFrame(layerId, frame);
+        if (paintFrame) {
+          const projW = projectStore.width.peek();
+          const projH = projectStore.height.peek();
+          reRenderFrameFx(paintFrame, layerId, frame, projW, projH);
+        }
+
+        requestPreview();
+        e.preventDefault();
+      }
+
+      // Overlay toggle shortcut (per D-13)
+      if (e.key === 'o' || e.key === 'O') {
+        paintStore.toggleSequenceOverlay();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // --- Clear selection when switching away from select tool ---
+  useEffect(() => {
+    const tool = paintStore.activeTool.value;
+    if (tool !== 'select') {
+      paintStore.clearSelection();
+    }
+  }, [paintStore.activeTool.value]);
+
+  // --- Re-render preview when selection changes (show/hide selection indicators) ---
+  useEffect(() => {
+    // Subscribe to selection changes to re-draw indicators
+    void paintStore.selectedStrokeIds.value;
+    renderLivePreview();
+  }, [paintStore.selectedStrokeIds.value]);
 
   // --- Render ---
   const cursor = cursorForTool(paintStore.activeTool.value);

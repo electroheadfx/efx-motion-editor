@@ -417,6 +417,27 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
+      {/* SEQUENCE OVERLAY per D-13, D-14 */}
+      <div class="px-1 pt-1">
+        <div class="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={paintStore.showSequenceOverlay.value}
+            onChange={() => paintStore.toggleSequenceOverlay()}
+            class="w-3 h-3"
+          />
+          <span class="text-[11px]" style={{color: 'var(--sidebar-text-secondary)'}}>
+            Show sequence overlay
+          </span>
+          <span class="text-[9px] ml-auto opacity-40" style={{color: 'var(--sidebar-text-secondary)'}}>
+            O
+          </span>
+        </div>
+        <div class="text-[9px] mt-0.5 px-5 opacity-40" style={{color: 'var(--sidebar-text-secondary)'}}>
+          Preview sequence frame underneath paint at reduced opacity
+        </div>
+      </div>
+
       {/* 6. Onion Skin */}
       <div>
         <button

@@ -23,6 +23,7 @@ const brushStyle = signal<BrushStyle>('flat');
 const brushFxParams = signal<BrushFxParams>({});
 const paintBgColor = signal(DEFAULT_PAINT_BG_COLOR);
 const selectedStrokeIds = signal<Set<string>>(new Set());
+const showSequenceOverlay = signal(false);
 const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
@@ -77,6 +78,7 @@ export const paintStore = {
   brushFxParams,
   paintBgColor,
   selectedStrokeIds,
+  showSequenceOverlay,
   onionSkinEnabled,
   onionSkinPrevRange,
   onionSkinNextRange,
@@ -224,6 +226,7 @@ export const paintStore = {
     brushFxParams.value = {};
     paintBgColor.value = DEFAULT_PAINT_BG_COLOR;
     selectedStrokeIds.value = new Set();
+    showSequenceOverlay.value = false;
     _frameFxCache.clear();
     onionSkinEnabled.value = false;
     onionSkinPrevRange.value = 1;
@@ -274,6 +277,16 @@ export const paintStore = {
 
   setPaintBgColor(color: string): void {
     paintBgColor.value = color;
+  },
+
+  // --- Sequence overlay (D-13, D-14) ---
+
+  setShowSequenceOverlay(show: boolean): void {
+    showSequenceOverlay.value = show;
+  },
+
+  toggleSequenceOverlay(): void {
+    showSequenceOverlay.value = !showSequenceOverlay.peek();
   },
 
   // --- Stroke selection ---
