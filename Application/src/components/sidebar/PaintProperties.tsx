@@ -300,24 +300,11 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* Flatten Frame + Copy to Next Frame -- visible in select mode */}
+      {/* Copy to Next Frame -- visible in select mode (Flatten is auto on exit paint mode) */}
       {activeTool === 'select' && (
         <div class="px-1 pt-1">
           <button
             class="paint-action-btn w-full text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
-            onClick={() => {
-              const layerId = layer.id;
-              const frame = timelineStore.currentFrame.peek();
-              paintStore.flattenFrame(layerId, frame);
-            }}
-          >
-            Flatten Frame
-          </button>
-          <div class="text-[9px] mt-1 opacity-50" style={{color: 'var(--sidebar-text-secondary)'}}>
-            Merge all FX strokes into single image for fastest playback
-          </div>
-          <button
-            class="paint-action-btn w-full text-[11px] py-1 px-2 rounded mt-2 cursor-pointer transition-colors"
             onClick={() => {
               const layerId = layer.id;
               const frame = timelineStore.currentFrame.peek();

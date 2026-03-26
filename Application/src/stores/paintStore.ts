@@ -1,4 +1,4 @@
-import {signal} from '@preact/signals';
+import {signal, effect} from '@preact/signals';
 import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams, PaintStroke} from '../types/paint';
 import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_PAINT_BG_COLOR} from '../types/paint';
 import {pushAction} from '../lib/history';
@@ -581,3 +581,20 @@ export const paintStore = {
     paintVersion.value++;
   },
 };
+
+// Auto-flatten current frame when exiting paint mode
+let _wasPaintMode = false;
+effect(() => {
+  const active = paintMode.value;
+  if (_wasPaintMode && !active) {
+    // Lazy imports to avoid circular dependencies
+    const {layerStore} = require('./layerStore');
+    const {timelineStore} = require('./timelineStore');
+    const layerId = layerStore.selectedLayerId.peek();
+    const frame = timelineStore.currentFrame.peek();
+    if (layerId) {
+      paintStore.flattenFrame(layerId, frame);
+    }
+  }
+  _wasPaintMode = active;
+});
