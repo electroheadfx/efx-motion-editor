@@ -1,111 +1,138 @@
 ---
 phase: 20-paint-brush-fx
 plan: 03
-subsystem: rendering
-tags: [webgl2, spectral-mixing, kubelka-munk, brush-fx, stamp-rendering, framebuffer, glsl]
+subsystem: ui
+tags: [preact, canvas, p5brush, signals, paint, select-tool, fx-application]
 
 # Dependency graph
 requires:
   - phase: 20-01
-    provides: BrushStyle type, BrushFxParams interface, PaintStroke with brushStyle/brushParams fields
+    provides: "Types (StrokeFxState, BrushStyle, BrushFxParams), store signals (selectedStrokeIds, frameFxCache, paintBgColor, brushStyle), renderFrameFx()"
   - phase: 20-02
-    provides: GLSL shader source strings (stamp, composite, grain, edge darken, bleed, scatter)
+    provides: "renderPaintFrameWithBg() with solid background and frame-level FX cache compositing"
 provides:
-  - WebGL2 brush FX rendering pipeline (renderStyledStrokes)
-  - Offscreen canvas with spectral compositing for non-flat brush styles
-  - Stamp-based stroke rasterization along perfect-freehand path
-  - Post-effect passes (grain, edge darken, bleed)
-  - Resource disposal (disposeBrushFx)
-affects: [20-04, 20-05, 20-06, 20-07]
+  - "Select tool with hit testing for stroke selection (D-05)"
+  - "FX application workflow: draw flat, select, apply style (D-01, D-06, D-08)"
+  - "Per-frame batch rendering via renderFrameFx for spectral mixing (PAINT-06)"
+  - "Rollback to flat with full-frame re-render (D-10)"
+  - "Delete selected strokes in select mode (D-07)"
+  - "Sequence overlay toggle with keyboard shortcut O (D-13, D-14)"
+  - "previewRenderer wired to renderPaintFrameWithBg for solid background compositing (D-11)"
+affects: [20-04]
 
 # Tech tracking
 tech-stack:
   added: []
-  patterns: [lazy-init WebGL2 context, framebuffer ping-pong, stamp-based stroke rendering, spectral compositing pipeline]
+  patterns:
+    - "FX application via signal watching (brushStyle change triggers re-render)"
+    - "Per-frame batch rendering: all FX strokes rendered together via single renderFrameFx call"
+    - "Hit testing via bounding box + point distance for stroke selection"
 
 key-files:
-  created:
-    - Application/src/lib/brushFxRenderer.ts
-  modified: []
+  created: []
+  modified:
+    - "Application/src/components/canvas/PaintOverlay.tsx"
+    - "Application/src/components/sidebar/PaintProperties.tsx"
+    - "Application/src/stores/paintStore.ts"
+    - "Application/src/lib/previewRenderer.ts"
 
 key-decisions:
-  - "Combined Task 1 (infrastructure) and Task 2 (rendering) into single cohesive module to avoid partial file states"
-  - "Used raw stroke points as stamp centroids rather than outline-derived centroids for more predictable path behavior"
-  - "Applied sRGB-to-linear gamma decompression (pow 2.2) in hexToGLColor for correct spectral mixing in linear space"
-  - "Post-effect pass targets cycle through available FBOs to avoid overwriting active read textures"
+  - "Flat-only drawing: all strokes created with brushStyle='flat', fxState='flat', no brushParams -- FX applied post-draw via select tool"
+  - "FX application triggers full-frame re-render of ALL FX strokes together (not just newly selected) for spectral mixing correctness"
+  - "showSequenceOverlay signal added to paintStore rather than component-level state for cross-component access"
+  - "Removed unused renderPaintFrame import from previewRenderer (replaced by renderPaintFrameWithBg)"
 
 patterns-established:
-  - "Stamp-based stroke rendering: compute positions along path at size*0.3 intervals, draw textured quads with style-dependent hardness"
-  - "Post-effect chaining: edge darken -> bleed -> grain, each using different FBO targets to avoid read/write conflicts"
+  - "Select tool routing: handlePointerDown checks tool === 'select' before other tool handlers"
+  - "reRenderFrameFx helper: centralized frame-level FX re-render + cache update pattern"
+  - "Selection indicators via setLineDash bounding boxes on temp canvas"
 
-requirements-completed: [PAINT-06]
+requirements-completed: [PAINT-01, PAINT-06, PAINT-08, PAINT-09]
 
 # Metrics
-duration: 4min
-completed: 2026-03-25
+duration: 6min
+completed: 2026-03-26
 ---
 
-# Phase 20 Plan 03: WebGL2 Brush FX Renderer Summary
+# Phase 20 Plan 03: Select Tool, FX Application & Preview Wiring Summary
 
-**WebGL2 offscreen rendering pipeline with stamp-based stroke rasterization, Kubelka-Munk spectral compositing via ping-pong framebuffers, and grain/edge/bleed post-effect passes**
+**Select tool with hit testing, per-frame FX application via renderFrameFx for spectral mixing, sequence overlay toggle, and previewRenderer wired to renderPaintFrameWithBg**
 
 ## Performance
 
-- **Duration:** 4 min
-- **Started:** 2026-03-25T13:19:07Z
-- **Completed:** 2026-03-25T13:23:10Z
+- **Duration:** 6 min
+- **Started:** 2026-03-26T08:39:36Z
+- **Completed:** 2026-03-26T08:45:50Z
 - **Tasks:** 2
-- **Files modified:** 1
+- **Files modified:** 4
 
 ## Accomplishments
-- Built complete WebGL2 brush FX rendering pipeline in a single 776-line module
-- Lazy-init WebGL2 offscreen context following glBlur.ts pattern with context loss recovery
-- Stamp-based stroke rendering with style-dependent hardness (watercolor=0.2, ink=0.7, charcoal=0.3, pencil=0.8, marker=0.9)
-- Spectral compositing via Kubelka-Munk mixing shader with ping-pong framebuffer accumulation
-- Three post-effect passes: edge darkening, watercolor bleed, and paper grain texture
-- renderStyledStrokes() returns HTMLCanvasElement for ctx.drawImage() compositing, null when WebGL2 unavailable
+- Implemented select tool with tap-to-select hit testing and multi-select (Cmd/Ctrl) per D-05
+- Enforced flat-only drawing mode: all strokes created with brushStyle='flat' per D-01
+- FX application via brushStyle signal watching: selected strokes get FX applied, triggering full-frame re-render of ALL FX strokes together for spectral mixing (PAINT-06)
+- Rollback to flat with frame re-render per D-10, delete in select mode per D-07
+- Added sequence overlay toggle with checkbox in PaintProperties and keyboard shortcut O per D-13/D-14
+- Wired previewRenderer to use renderPaintFrameWithBg for solid background compositing per D-11
 
 ## Task Commits
 
 Each task was committed atomically:
 
-1. **Task 1 + Task 2: WebGL2 infrastructure + rendering pipeline** - `df8b636` (feat)
-
-**Plan metadata:** [pending] (docs: complete plan)
-
-_Note: Tasks 1 and 2 were implemented together as a single cohesive module since the infrastructure and rendering logic are tightly coupled._
+1. **Task 1: Implement select tool, FX application with per-frame rendering, and sequence overlay toggle** - `a939cac` (feat)
+2. **Task 2: Wire previewRenderer to use renderPaintFrameWithBg for solid background** - `4a5aee5` (feat)
 
 ## Files Created/Modified
-- `Application/src/lib/brushFxRenderer.ts` - WebGL2 brush FX rendering pipeline with lazy-init context, shader programs, FBO ping-pong, stamp rendering, spectral compositing, and post-effect passes
+- `Application/src/components/canvas/PaintOverlay.tsx` - Select tool handler, hit testing, FX application effect, selection indicators, delete handler, overlay shortcut, flat-only drawing
+- `Application/src/components/sidebar/PaintProperties.tsx` - Sequence overlay toggle checkbox with description
+- `Application/src/stores/paintStore.ts` - showSequenceOverlay signal, toggleSequenceOverlay/setShowSequenceOverlay methods
+- `Application/src/lib/previewRenderer.ts` - Replaced renderPaintFrame with renderPaintFrameWithBg in paint layer branch
 
 ## Decisions Made
-- Combined infrastructure (Task 1) and rendering (Task 2) into single commit since the file must be written as a cohesive whole
-- Used stroke input points as stamp centroids rather than deriving centroids from the outline polygon, providing more predictable stamp placement
-- Applied sRGB-to-linear gamma decompression (pow 2.2) in hexToGLColor for physically-correct spectral mixing
-- Post-effect passes chain through different FBO targets (postFBO, writeAccumFBO) to avoid read/write conflicts on the same texture
+- Enforced flat-only drawing by hardcoding brushStyle='flat' in handlePointerUp rather than relying on store default -- prevents any possibility of drawing with FX style
+- FX application watches paintStore.brushStyle signal via useEffect rather than requiring explicit "Apply" button -- instant feedback per D-08/D-09
+- showSequenceOverlay added to paintStore (not component-level state) so PaintOverlay can read it for rendering and PaintProperties can toggle it
+- Removed unused renderPaintFrame import from previewRenderer to fix TypeScript unused-variable warning (Rule 1 - Bug)
 
 ## Deviations from Plan
 
-None - plan executed exactly as written. The only structural difference is that Tasks 1 and 2 were implemented as a single commit since splitting the file between infrastructure and rendering would create a non-functional intermediate state.
+### Auto-fixed Issues
+
+**1. [Rule 1 - Bug] Removed unused renderPaintFrame import from previewRenderer**
+- **Found during:** Task 2 (previewRenderer wiring)
+- **Issue:** After replacing renderPaintFrame with renderPaintFrameWithBg, the old import became unused causing TS6133 error
+- **Fix:** Removed renderPaintFrame from import statement
+- **Files modified:** Application/src/lib/previewRenderer.ts
+- **Committed in:** 4a5aee5
+
+---
+
+**Total deviations:** 1 auto-fixed (1 bug)
+**Impact on plan:** Trivial cleanup. No scope creep.
 
 ## Issues Encountered
-- TypeScript reports `Cannot find module 'perfect-freehand'` for brushFxRenderer.ts -- this is a pre-existing worktree issue (node_modules not installed). The same error exists for paintRenderer.ts. Not a real compilation problem.
+None
+
+## Known Stubs
+- Sequence overlay rendering: The `showSequenceOverlay` signal is wired and toggleable, but the actual rendering of the sequence frame underneath paint in PaintOverlay is a placeholder -- the exact implementation depends on how sequence frames are accessed in paint layer context. The toggle UI and keyboard shortcut are fully functional. This will be wired when the overlay compositing approach is determined.
 
 ## User Setup Required
-
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- brushFxRenderer.ts is ready for integration with paintRenderer.ts (Plan 04/06)
-- renderStyledStrokes() accepts PaintStroke[] and returns HTMLCanvasElement for drawImage compositing
-- disposeBrushFx() available for cleanup when paint layer is destroyed
+- Select tool, FX application, and preview wiring are complete
+- Plan 04 (brush style selector UI, FX param sliders, keyboard shortcut integration) can proceed
+- All APIs from Plans 01 and 02 are consumed and verified working
 
 ## Self-Check: PASSED
 
-- FOUND: Application/src/lib/brushFxRenderer.ts
-- FOUND: commit df8b636
+- FOUND: Application/src/components/canvas/PaintOverlay.tsx
+- FOUND: Application/src/components/sidebar/PaintProperties.tsx
+- FOUND: Application/src/stores/paintStore.ts
+- FOUND: Application/src/lib/previewRenderer.ts
+- FOUND: commit a939cac
+- FOUND: commit 4a5aee5
 - FOUND: 20-03-SUMMARY.md
 
 ---
 *Phase: 20-paint-brush-fx*
-*Completed: 2026-03-25*
+*Completed: 2026-03-26*
