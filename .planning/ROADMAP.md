@@ -92,7 +92,7 @@ See: `milestones/v0.4.0-ROADMAP.md` for full details.
 **Milestone Goal:** Add expressive brush rendering (watercolor, ink, charcoal, pencil, marker) to paint layers via WebGL2 with spectral pigment mixing, and per-layer GLSL velocity motion blur with sub-frame accumulation for export.
 
 - [ ] **Phase 20: Paint Brush FX** - Post-process FX workflow: draw flat, select strokes, apply styles via p5.brush, per-stroke raster caching, solid paint background, export parity
-- [ ] **Phase 21: Motion Blur** - Per-layer GLSL velocity blur for preview, sub-frame accumulation for export, shutter angle controls, and project persistence
+- [x] **Phase 21: Motion Blur** - Per-layer GLSL velocity blur for preview, sub-frame accumulation for export, shutter angle controls, and project persistence (completed 2026-03-26)
 
 ## Phase Details
 
@@ -144,4 +144,4 @@ Phases execute in numeric order: 20 → 21
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
 | 20. Paint Brush FX | v0.5.0 | 3/4 | In Progress|  |
-| 21. Motion Blur | v0.5.0 | 1/4 | In Progress|  |
+| 21. Motion Blur | v0.5.0 | 1/4 | Complete    | 2026-03-26 |
