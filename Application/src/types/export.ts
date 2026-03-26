@@ -15,6 +15,11 @@ export interface ExportSettings {
     proresProfile: 'proxy' | 'lt' | 'standard' | 'hq'; // default 'hq'
   };
   includeAudio: boolean;  // Default true; false = export video-only. Per D-04
+  motionBlur: {
+    enabled: boolean;
+    shutterAngle: number;       // 0-360 degrees, default from project
+    subFrames: number;           // 4, 8, or 16
+  };
 }
 
 export interface ExportProgress {
