@@ -124,12 +124,13 @@ Plans:
   3. User can export with motion blur enabled and the output uses combined GLSL velocity blur + sub-frame accumulation for higher quality than preview
   4. User can save and reopen a project with motion blur settings fully preserved in the .mce file
   5. Preview playback with motion blur enabled maintains smooth playback at the target frame rate
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 4 plans
 
 Plans:
-- [ ] 21-01: TBD
-- [ ] 21-02: TBD
+- [ ] 21-01-PLAN.md — Types, store, WebGL2 GLSL shader, and velocity computation engine
+- [ ] 21-02-PLAN.md — Preview renderer integration and toolbar UI controls
+- [ ] 21-03-PLAN.md — Export sub-frame accumulation, export dialog, and project persistence
+- [ ] 21-04-PLAN.md — Keyboard shortcut, final tests, and visual verification
 
 ## Progress
 
@@ -143,4 +144,4 @@ Phases execute in numeric order: 20 → 21
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
 | 20. Paint Brush FX | v0.5.0 | 3/4 | In Progress|  |
-| 21. Motion Blur | v0.5.0 | 0/? | Not started | - |
+| 21. Motion Blur | v0.5.0 | 0/4 | Not started | - |
