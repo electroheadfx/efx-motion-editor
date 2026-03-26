@@ -33,25 +33,25 @@ describe('audioWaveform', () => {
       expect(peaks.tier3).toBeInstanceOf(Float32Array);
     });
 
-    it('tier1 has ~200 values (100 min/max pairs)', () => {
+    it('tier1 has ~1000 values (500 min/max pairs)', () => {
       const data = new Float32Array(44100);
       const buffer = mockAudioBuffer([data]);
       const peaks = computeWaveformPeaks(buffer);
-      expect(peaks.tier1.length).toBe(200); // 100 peaks * 2 (min/max)
+      expect(peaks.tier1.length).toBe(1000); // 500 peaks * 2 (min/max)
     });
 
-    it('tier2 has ~4000 values (2000 min/max pairs)', () => {
+    it('tier2 has ~8000 values (4000 min/max pairs)', () => {
       const data = new Float32Array(44100);
       const buffer = mockAudioBuffer([data]);
       const peaks = computeWaveformPeaks(buffer);
-      expect(peaks.tier2.length).toBe(4000); // 2000 peaks * 2
+      expect(peaks.tier2.length).toBe(8000); // 4000 peaks * 2
     });
 
-    it('tier3 has ~16000 values (8000 min/max pairs)', () => {
+    it('tier3 has ~32000 values (16000 min/max pairs)', () => {
       const data = new Float32Array(44100);
       const buffer = mockAudioBuffer([data]);
       const peaks = computeWaveformPeaks(buffer);
-      expect(peaks.tier3.length).toBe(16000); // 8000 peaks * 2
+      expect(peaks.tier3.length).toBe(32000); // 16000 peaks * 2
     });
 
     it('mixes stereo channels to mono (D-03)', () => {
