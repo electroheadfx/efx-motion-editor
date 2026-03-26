@@ -74,12 +74,13 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - [ ] Flow field distortion for organic stroke paths
 - [ ] Grain/texture post-pass and edge darkening effects
 - [ ] Brush style UI selector in PaintProperties panel
-- [ ] GLSL per-layer velocity motion blur for real-time preview
-- [ ] Sub-frame accumulation buffer for high-quality export
-- [ ] Combined GLSL + sub-frame motion blur pipeline for export
-- [ ] Motion blur shutter angle UI control and preview toolbar toggle
-- [ ] Motion blur export settings (sub-frame count, strength)
-- [ ] Project-level motion blur settings with .mce persistence
+- ✓ GLSL per-layer velocity motion blur for real-time preview — Phase 21
+- ✓ Sub-frame accumulation buffer for high-quality export (Float32 averaging, 8-128 samples) — Phase 21
+- ✓ Combined GLSL + sub-frame motion blur pipeline for export — Phase 21
+- ✓ Motion blur shutter angle UI control and preview toolbar toggle — Phase 21
+- ✓ Motion blur export settings (sample count, shutter angle override) — Phase 21
+- ✓ Project-level motion blur settings with .mce v15 persistence — Phase 21
+- ✓ Export selected sequence only option — Phase 21
 
 ## Current Milestone: v0.5.0 Motion Blur & Paint Styles
 
@@ -178,4 +179,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 after v0.5.0 milestone start*
+*Last updated: 2026-03-26 after Phase 21 (Motion Blur) complete*
