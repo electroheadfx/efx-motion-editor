@@ -111,11 +111,17 @@ Import WAV, MP3, AAC, or FLAC audio files. Audio waveform renders on the timelin
 
 ### Paint Layer / Rotopaint
 
-Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perfect-freehand brush engine for smooth, pressure-sensitive strokes. 7 tools: brush, eraser, eyedropper, flood fill, line, rectangle, and ellipse. Onion skinning overlay shows ghosted paint from adjacent frames with configurable range and opacity falloff. Paint data persists as sidecar JSON files alongside the project. Paint layers composite in both the live preview and video export pipelines with full blend mode and opacity support.
+Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perfect-freehand brush engine for smooth, pressure-sensitive strokes. 8 tools: select, brush, eraser (path-based), eyedropper, flood fill, line, rectangle, and ellipse. Onion skinning overlay shows ghosted paint from adjacent frames with configurable range and opacity falloff. Paint data persists as sidecar JSON files alongside the project. Paint layers composite in both the live preview and video export pipelines with full blend mode and opacity support.
+
+**Brush FX Styles** — Post-process FX workflow: draw flat strokes, select them, then apply artistic styles powered by [p5.brush](https://p5-brush.cargo.site/) with Kubelka-Munk spectral pigment mixing (blue + yellow = green, not gray). 6 brush styles: flat, watercolor, ink, charcoal, pencil, and marker. Per-style FX parameters (bleed, grain, scatter, field strength, edge darken) with real-time slider controls. Per-frame batch rendering ensures overlapping strokes get physically-correct spectral blending in a single GLSL pass.
+
+**Select Tool** — Click to select strokes, Cmd/Ctrl+click for multi-select, Cmd+A to select all. Selected strokes can be moved (drag), resized (corner handles), rotated (rotate handle above bounding box), recolored, resized via slider, and reordered (To Back / Backward / Forward / To Front). Apply or change FX styles on selected strokes with instant re-render. Toggle flat/FX preview with F key.
+
+**Paint Mode** — Sticky edit mode (P key or toolbar button) that locks focus to the paint layer. Canvas controls are replaced by a dedicated paint toolbar. Exit via ESC, P key, or "Exit Paint Mode" button. Sequence overlay (O key) shows reference frames underneath paint at configurable opacity. Copy strokes to next frame for animation workflows. Configurable solid paint background color.
 
 **Tablet & Pen Support** — Native macOS tablet pressure bridge via NSEvent. Supports pen pressure sensitivity with easing/taper curves for natural brush dynamics, tilt detection, and coalesced touch events for high-resolution stroke capture at full tablet polling rate. Works with Wacom, Apple Pencil (iPad Sidecar), and other pressure-sensitive input devices.
 
-<!-- Screenshot: Paint overlay with onion skinning -->
+<!-- Screenshot: Paint overlay with brush FX styles -->
 
 ### Canvas Motion Path
 
@@ -176,7 +182,7 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | GPU Effects | WebGL2 (GLSL shaders, GPU blur) |
 | Native Backend | Rust, Tauri 2.0 |
 | Video Export | FFmpeg (auto-provisioned) |
-| Paint Engine | perfect-freehand (pressure-sensitive strokes) |
+| Paint Engine | perfect-freehand (flat strokes), p5.brush (FX styles with spectral mixing) |
 | Project Format | `.mce` v14 (progressive JSON with backward compat v1-v14) |
 
 ## Prerequisites
@@ -236,6 +242,7 @@ efx-motion-editor/
 │   │   │   ├── glBlur.ts        # GPU-accelerated Gaussian blur
 │   │   │   ├── fxGenerators.ts  # CPU FX generators (grain, particles, etc.)
 │   │   │   ├── paintRenderer.ts    # Paint stroke/shape/fill renderer
+│   │   │   ├── brushP5Adapter.ts   # p5.brush FX adapter (spectral mixing, multi-pass)
 │   │   │   ├── paintFloodFill.ts   # Stack-based flood fill algorithm
 │   │   │   ├── paintPersistence.ts # Sidecar file I/O for paint data
 │   │   │   ├── playbackEngine.ts   # rAF playback with delta accumulation
