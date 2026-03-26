@@ -41,8 +41,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
           {layer.name}
         </div>
         <button
-          class="text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1"
-          style={{ backgroundColor: '#2D3A6E', color: '#E0E0EE', border: '1px solid #3A4A8A' }}
+          class="paint-exit-btn text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1"
           onClick={() => paintStore.paintMode.value = false}
           title="Exit paint mode (P)"
         >
@@ -93,15 +92,17 @@ export function PaintProperties({layer}: {layer: Layer}) {
               </button>
             )}
           </div>
-          {/* Col 2: Show Sequence image */}
+          {/* Col 2: Show BG Sequence */}
           <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-            Show Sequence image
-            <input
-              type="checkbox"
-              checked={paintStore.showSequenceOverlay.value}
-              onChange={() => paintStore.toggleSequenceOverlay()}
-              style={{ width: 16, height: 16, accentColor: 'var(--color-accent)', backgroundColor: '#4A4A60', borderRadius: '3px' }}
-            />
+            Show BG Sequence
+            <div style={{ width: 16, height: 16, borderRadius: '3px', backgroundColor: '#4A4A60', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <input
+                type="checkbox"
+                checked={paintStore.showSequenceOverlay.value}
+                onChange={() => paintStore.toggleSequenceOverlay()}
+                style={{ width: 14, height: 14, accentColor: 'var(--color-accent)', margin: 0, cursor: 'pointer' }}
+              />
+            </div>
           </label>
         </div>
         {/* Sequence overlay opacity slider -- conditional on showSequenceOverlay */}

@@ -341,6 +341,16 @@
   color: #fff;
   border: 1px solid var(--color-accent);
 }
+.paint-exit-btn {
+  background-color: #2D3A6E;
+  color: #E0E0EE;
+  border: 1px solid #3A4A8A;
+}
+.paint-exit-btn:hover {
+  background-color: #f59e0b;
+  color: #000;
+  border-color: #f59e0b;
+}
 
 /* Hide native scrollbar for SidebarScrollArea — works in Safari/WKWebView + Chrome */
 [style*="scrollbar-width: none"]::-webkit-scrollbar {
