@@ -1,6 +1,8 @@
+import {useEffect} from 'preact/hooks';
 import {exportStore} from '../../stores/exportStore';
 import {projectStore} from '../../stores/projectStore';
 import {audioStore} from '../../stores/audioStore';
+import {motionBlurStore} from '../../stores/motionBlurStore';
 import type {ExportFormat, ExportResolution} from '../../types/export';
 
 const FORMATS: {value: ExportFormat; label: string; ext: string}[] = [
@@ -29,6 +31,14 @@ export function FormatSelector() {
   const namingPattern = exportStore.namingPattern.value;
   const includeAudio = exportStore.includeAudio.value;
   const hasAudioTracks = audioStore.tracks.value.length > 0;
+  const mbEnabled = exportStore.motionBlurEnabled.value;
+  const mbShutterAngle = exportStore.motionBlurShutterAngle.value;
+  const mbSubFrames = exportStore.motionBlurSubFrames.value;
+
+  // Default export shutter angle to project preview value (per D-11)
+  useEffect(() => {
+    exportStore.setMotionBlurShutterAngle(motionBlurStore.shutterAngle.peek());
+  }, []);
 
   // Generate preview filename from naming pattern
   const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -194,6 +204,70 @@ export function FormatSelector() {
           )}
         </div>
       )}
+
+      {/* Motion Blur section (per D-09) */}
+      <div class="space-y-3">
+        <label class="text-xs font-semibold text-(--color-text-muted)">Motion Blur</label>
+
+        {/* Enable toggle */}
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-(--color-text-secondary)">Enabled</span>
+          <button
+            class={`w-10 h-5 rounded-full transition-colors relative ${
+              mbEnabled ? 'bg-(--color-accent)' : 'bg-(--color-bg-settings)'
+            }`}
+            onClick={() => exportStore.setMotionBlurEnabled(!mbEnabled)}
+          >
+            <div class={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${
+              mbEnabled ? 'translate-x-5' : 'translate-x-0.5'
+            }`} />
+          </button>
+        </div>
+
+        {mbEnabled && (
+          <>
+            {/* Shutter Angle override (per D-11: defaults to project preview value) */}
+            <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-(--color-text-secondary)">Shutter Angle</span>
+                <span class="text-sm text-(--color-text-secondary) font-mono w-12 text-right">{mbShutterAngle}deg</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={360}
+                step={1}
+                value={mbShutterAngle}
+                onInput={(e) => exportStore.setMotionBlurShutterAngle(parseInt((e.target as HTMLInputElement).value, 10))}
+                class="w-full accent-(--color-accent)"
+              />
+            </div>
+
+            {/* Sub-frame count selector (per D-09: 4/8/16) */}
+            <div class="space-y-1">
+              <span class="text-sm text-(--color-text-secondary)">Sub-frames</span>
+              <div class="flex gap-2">
+                {[4, 8, 16].map((n) => (
+                  <button
+                    key={n}
+                    class={`flex-1 px-3 py-1.5 rounded-[5px] text-sm transition-colors ${
+                      mbSubFrames === n
+                        ? 'bg-(--color-accent) text-white'
+                        : 'bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input)'
+                    }`}
+                    onClick={() => exportStore.setMotionBlurSubFrames(n)}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <div class="text-xs text-(--color-text-muted)">
+                Higher = smoother blur, slower export
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

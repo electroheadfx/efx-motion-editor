@@ -127,9 +127,9 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 21-01-PLAN.md — Types, store, WebGL2 GLSL shader, and velocity computation engine
+- [x] 21-01-PLAN.md — Types, store, WebGL2 GLSL shader, and velocity computation engine
 - [ ] 21-02-PLAN.md — Preview renderer integration and toolbar UI controls
-- [ ] 21-03-PLAN.md — Export sub-frame accumulation, export dialog, and project persistence
+- [x] 21-03-PLAN.md — Export sub-frame accumulation, export dialog, and project persistence
 - [ ] 21-04-PLAN.md — Keyboard shortcut, final tests, and visual verification
 
 ## Progress
@@ -144,4 +144,4 @@ Phases execute in numeric order: 20 → 21
 | 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
 | 20. Paint Brush FX | v0.5.0 | 3/4 | In Progress|  |
-| 21. Motion Blur | v0.5.0 | 0/4 | Not started | - |
+| 21. Motion Blur | v0.5.0 | 2/4 | In Progress|  |
