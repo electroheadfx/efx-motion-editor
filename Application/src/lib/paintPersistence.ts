@@ -9,8 +9,10 @@
  */
 
 import {readTextFile, writeTextFile, mkdir, exists, readDir, remove} from '@tauri-apps/plugin-fs';
-import type {PaintFrame} from '../types/paint';
+import type {PaintFrame, PaintStroke} from '../types/paint';
 import {paintStore} from '../stores/paintStore';
+import {renderFrameFx} from './brushP5Adapter';
+import {projectStore} from '../stores/projectStore';
 
 /**
  * Save dirty paint frames to sidecar files.
@@ -73,6 +75,31 @@ export async function loadPaintData(projectDir: string, layerIds: string[]): Pro
           const paintFrame: PaintFrame = JSON.parse(json);
 
           paintStore.loadFrame(layerId, frameNum, paintFrame);
+
+          // Regenerate frame-level FX cache for frames with FX-applied strokes (per PAINT-13)
+          const projW = projectStore.width.peek();
+          const projH = projectStore.height.peek();
+          if (projW > 0 && projH > 0) {
+            const hasFxStrokes = paintFrame.elements.some((el) => {
+              if (el.tool !== 'brush') return false;
+              const s = el as PaintStroke;
+              return s.fxState === 'fx-applied' && s.brushStyle && s.brushStyle !== 'flat';
+            });
+
+            if (hasFxStrokes) {
+              try {
+                const brushStrokes = paintFrame.elements.filter(
+                  (el) => el.tool === 'brush'
+                ) as PaintStroke[];
+                const fxCanvas = renderFrameFx(brushStrokes, projW, projH);
+                if (fxCanvas) {
+                  paintStore.setFrameFxCache(layerId, frameNum, fxCanvas);
+                }
+              } catch (e) {
+                console.warn(`[paintPersistence] Failed to regenerate frame FX cache for ${layerId}:${frameNum}:`, e);
+              }
+            }
+          }
         } catch (fileErr) {
           console.error(`Failed to load paint frame file ${entry.name} for layer ${layerId} (non-fatal):`, fileErr);
         }
