@@ -1,96 +1,93 @@
 ---
 phase: 20-paint-brush-fx
 plan: 04
-subsystem: paint-ui
-tags: [brush-style, paint-properties, svg-thumbnails, collapsible-sections, preact]
+subsystem: paint-persistence
+tags: [flatten, persistence, fxState, frame-cache, renderFrameFx, vitest]
 
 # Dependency graph
 requires:
-  - "20-01: BrushStyle type, BRUSH_STYLES array, BRUSH_FX_VISIBLE_PARAMS config, paintStore setBrushStyle/updateBrushFxParam"
+  - "20-01: PaintStroke fxState/brushStyle types, paintStore frameFxCache API"
+  - "20-02: renderPaintFrameWithBg with frame-level FX cache compositing"
+  - "20-03: PaintOverlay select tool, FX application workflow"
 provides:
-  - "BRUSH STYLE visual selector strip with 6 SVG thumbnails and checkmark on active style"
-  - "BRUSH FX collapsible section with per-style relevant parameter sliders"
-  - "BRUSH_PREVIEW_URLS static SVG data URIs for all 6 brush styles"
-affects: [20-07]
+  - "flattenFrame() and unflattenFrame() in paintStore for fastest playback (D-17)"
+  - "Frame FX cache regeneration on load in paintPersistence (PAINT-13)"
+  - "Flatten Frame button in PaintProperties sidebar (select tool mode)"
+  - "7 filled paintPersistence.test.ts tests (zero it.todo remaining)"
+affects: []
 
 # Tech tracking
 tech-stack:
   added: []
   patterns:
-    - "Inline SVG data URIs for zero-runtime-cost brush preview thumbnails"
-    - "Per-style FX slider filtering via BRUSH_FX_VISIBLE_PARAMS config map"
+    - "Frame-level FX cache regeneration on project load via renderFrameFx"
+    - "Flatten marks strokes as 'flattened' and re-renders frame cache for single drawImage playback"
 
 key-files:
-  created:
-    - "Application/src/lib/brushPreviewData.ts"
+  created: []
   modified:
+    - "Application/src/stores/paintStore.ts"
+    - "Application/src/lib/paintPersistence.ts"
+    - "Application/src/lib/paintPersistence.test.ts"
     - "Application/src/components/sidebar/PaintProperties.tsx"
 
 key-decisions:
-  - "SVG data URIs with per-style filter effects (feTurbulence, feDisplacementMap) for visually distinct brush previews"
-  - "BRUSH FX section placed between BRUSH and STROKE sections for logical grouping"
-  - "Removed unused BrushStyle type import to keep TypeScript clean"
+  - "flattenFrame ensures all styled strokes are marked fx-applied before calling renderFrameFx"
+  - "unflattenFrame re-renders frame cache after restoring fx-applied state (not just invalidating)"
+  - "Export parity confirmed by code inspection: exportRenderer delegates to PreviewRenderer which uses renderPaintFrameWithBg"
 
 patterns-established:
-  - "FX_PARAM_LABELS constant map for user-facing parameter display names"
+  - "Flatten/unflatten as explicit user action (not automatic) per D-17"
 
-requirements-completed: [PAINT-01, PAINT-08]
+requirements-completed: [PAINT-12, PAINT-13]
 
 # Metrics
-duration: 4min
-completed: 2026-03-25
+duration: 5min
+completed: 2026-03-26
 ---
 
-# Phase 20 Plan 04: Brush Style UI Summary
+# Phase 20 Plan 04: Flatten, Export Parity & Persistence Summary
 
-**Procreate-style brush selector strip with 6 SVG thumbnails, checkmark on active style, and per-style BRUSH FX parameter sliders in PaintProperties sidebar**
+**flattenFrame/unflattenFrame methods with per-frame cache rendering via renderFrameFx, persistence fxState round-trip with cache regeneration on load, and Flatten Frame button in select mode**
 
 ## Performance
 
-- **Duration:** 4 min
-- **Started:** 2026-03-25T13:19:09Z
-- **Completed:** 2026-03-25T13:23:05Z
-- **Tasks:** 2
-- **Files modified:** 2
+- **Duration:** 5 min
+- **Started:** 2026-03-26T08:53:19Z
+- **Completed:** 2026-03-26T08:58:40Z
+- **Tasks:** 2 (auto) + 1 (checkpoint:human-verify awaiting approval)
+- **Files modified:** 4
 
 ## Accomplishments
-- 6 inline SVG brush preview thumbnails with style-specific filters (turbulence, grain, displacement)
-- Collapsible BRUSH STYLE section with 3-column grid, accent border and checkmark on selected style
-- Collapsible BRUSH FX section showing only relevant sliders per style (flat hides it entirely)
-- Both sections default to open state per design decisions D-02 and D-06
+- flattenFrame() re-renders all FX strokes via renderFrameFx and marks as 'flattened' for fastest single-drawImage playback (D-17)
+- unflattenFrame() restores fx-applied state with frame cache re-render
+- Persistence regenerates per-frame FX cache on load for frames with fx-applied strokes (PAINT-13)
+- All 7 paintPersistence tests filled and passing (zero it.todo remaining)
+- Export parity confirmed: exportRenderer delegates to PreviewRenderer which uses renderPaintFrameWithBg (PAINT-12)
+- Flatten Frame button visible in PaintProperties when select tool is active
 
 ## Task Commits
 
 Each task was committed atomically:
 
-1. **Task 1: Generate static brush preview thumbnails** - `ccc23d0` (feat)
-2. **Task 2: Add BRUSH STYLE selector strip and BRUSH FX collapsible section** - `2d1a9fd` (feat)
+1. **Task 1: Implement flatten and add Flatten button to PaintProperties** - `34b9221` (feat)
+2. **Task 2: Update persistence to save fxState and regenerate frame FX cache on load** - `2fc4b20` (feat)
+3. **Task 3: Visual verification of complete FX workflow** - checkpoint:human-verify (awaiting)
 
 ## Files Created/Modified
-- `Application/src/lib/brushPreviewData.ts` - Static SVG data URIs for 6 brush style preview thumbnails
-- `Application/src/components/sidebar/PaintProperties.tsx` - BRUSH STYLE selector and BRUSH FX sliders sections
+- `Application/src/stores/paintStore.ts` - Added flattenFrame()/unflattenFrame() methods, renderFrameFx and projectStore imports
+- `Application/src/lib/paintPersistence.ts` - Added frame FX cache regeneration on load via renderFrameFx
+- `Application/src/lib/paintPersistence.test.ts` - 7 real tests replacing todo stubs (serialization, round-trip, backward compat, no fxCachedCanvas)
+- `Application/src/components/sidebar/PaintProperties.tsx` - Added Flatten Frame button in select tool mode
 
 ## Decisions Made
-- Used inline SVG with filter elements (feTurbulence, feDisplacementMap, feComponentTransfer) for visually distinct per-style previews at zero runtime cost
-- Placed BRUSH FX section between BRUSH and STROKE for logical parameter grouping
-- FX_PARAM_LABELS maps technical keys to user-friendly names (fieldStrength -> "Flow", edgeDarken -> "Edge Ink")
+- flattenFrame ensures all styled strokes are marked fx-applied before calling renderFrameFx, so strokes that were drawn flat but later styled get included in the frame render
+- unflattenFrame re-renders the frame cache after restoring fx-applied state (rather than just invalidating), so the visual appearance is maintained immediately
+- Export parity (PAINT-12) confirmed by code inspection without code changes: exportRenderer delegates to PreviewRenderer which calls renderPaintFrameWithBg -- same code path as preview
 
 ## Deviations from Plan
 
-### Auto-fixed Issues
-
-**1. [Rule 1 - Bug] Removed unused BrushStyle type import**
-- **Found during:** Task 2 (TypeScript compilation)
-- **Issue:** BrushStyle was imported as a type but not directly referenced in component code
-- **Fix:** Removed from type import line
-- **Files modified:** Application/src/components/sidebar/PaintProperties.tsx
-- **Verification:** TypeScript compiles clean
-- **Committed in:** 2d1a9fd (Task 2 commit)
-
----
-
-**Total deviations:** 1 auto-fixed (1 bug)
-**Impact on plan:** Trivial import cleanup. No scope creep.
+None - plan executed exactly as written.
 
 ## Issues Encountered
 None
@@ -99,12 +96,11 @@ None
 None - no external service configuration required.
 
 ## Known Stubs
-None - all UI elements are wired to live paintStore signals.
+None - all code is wired to live store signals and real rendering functions.
 
 ## Next Phase Readiness
-- Brush style UI is complete and ready for visual verification
-- FX sliders write to paintStore.brushFxParams which downstream rendering plans (20-05, 20-06) will consume
-- Preview thumbnails are static SVGs; when actual brush rendering is implemented, thumbnails could optionally be upgraded to live previews
+- Task 3 (human-verify checkpoint) awaits visual verification of the complete 12-point FX workflow
+- All automated work is complete -- flatten, persistence, export parity, and tests are implemented and committed
 
 ## Self-Check: PASSED
 
@@ -112,4 +108,4 @@ All files exist, all commits verified.
 
 ---
 *Phase: 20-paint-brush-fx*
-*Completed: 2026-03-25*
+*Completed: 2026-03-26*
