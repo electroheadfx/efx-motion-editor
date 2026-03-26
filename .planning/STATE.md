@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
-status: Milestone complete
+status: Ready to plan
 stopped_at: Completed 21-02-PLAN.md
-last_updated: "2026-03-26T17:33:30.106Z"
+last_updated: "2026-03-26T17:36:42.595Z"
 progress:
   total_phases: 2
   completed_phases: 2
