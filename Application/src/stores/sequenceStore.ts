@@ -639,6 +639,28 @@ export const sequenceStore = {
     });
   },
 
+  /** Add a layer to a specific sequence by ID (used for isolation-scoped creation) */
+  addLayerToSequence(sequenceId: string, layer: Layer) {
+    const seq = sequences.peek().find(s => s.id === sequenceId);
+    if (!seq) return;
+
+    const before = snapshot();
+
+    sequences.value = sequences.value.map((s) =>
+      s.id === sequenceId ? {...s, layers: [...s.layers, layer]} : s,
+    );
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Add layer "${layer.name}" to "${seq.name}"`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
   /** Remove a layer by ID from the active sequence */
   removeLayer(layerId: string) {
     const activeId = activeSequenceId.peek();

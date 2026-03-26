@@ -98,6 +98,53 @@ describe('sequenceStore solid/transparent', () => {
   });
 });
 
+describe('sequenceStore addLayerToSequence (UXP-02)', () => {
+  beforeEach(() => {
+    sequenceStore.reset();
+  });
+
+  it('adds a layer to the specified sequence', () => {
+    const seqId = seedSequence();
+    const layer = {
+      id: 'layer-1',
+      name: 'Test Layer',
+      type: 'paint' as const,
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal' as const,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 },
+      source: { type: 'paint' as const, layerId: 'layer-1' },
+      isBase: false,
+    };
+    sequenceStore.addLayerToSequence(seqId, layer);
+    const seq = sequenceStore.sequences.value.find(s => s.id === seqId)!;
+    expect(seq.layers).toHaveLength(2); // base + new layer
+    expect(seq.layers[1].id).toBe('layer-1');
+    expect(seq.layers[1].name).toBe('Test Layer');
+  });
+
+  it('does nothing if sequence ID does not exist', () => {
+    seedSequence();
+    const before = sequenceStore.sequences.value.map(s => ({ ...s }));
+    const layer = {
+      id: 'layer-1',
+      name: 'Test Layer',
+      type: 'paint' as const,
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal' as const,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 },
+      source: { type: 'paint' as const, layerId: 'layer-1' },
+      isBase: false,
+    };
+    sequenceStore.addLayerToSequence('nonexistent-id', layer);
+    const after = sequenceStore.sequences.value;
+    expect(after).toHaveLength(before.length);
+    // Layers should be unchanged
+    expect(after[0].layers).toHaveLength(before[0].layers.length);
+  });
+});
+
 describe('sequenceStore GL transitions (GLT-05)', () => {
   beforeEach(() => {
     sequenceStore.reset();
