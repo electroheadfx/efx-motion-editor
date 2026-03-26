@@ -1,114 +1,120 @@
 ---
 phase: 20-paint-brush-fx
 plan: 02
-subsystem: rendering
-tags: [glsl, webgl2, spectral-mixing, kubelka-munk, simplex-noise, brush-fx, shaders]
+subsystem: paint
+tags: [canvas2d, webgl2, paint-renderer, p5-brush, fx-cache, color-picker]
 
 # Dependency graph
-requires: []
+requires:
+  - phase: 20-paint-brush-fx plan 01
+    provides: "paintBgColor signal, getFrameFxCache method, StrokeFxState type"
 provides:
-  - GLSL shader source strings for the brush FX rendering pipeline (brushFxShaders.ts)
-  - Spectral pigment mixing via embedded spectral.glsl (38-band Kubelka-Munk)
-  - Simplex 2D noise for procedural paper texture
-  - Post-effect shaders for grain, edge darkening, bleed, and scatter
-  - Build helper functions for shader concatenation
-affects: [20-03, 20-04, 20-05, 20-06]
+  - "renderPaintFrameWithBg() for solid background + frame-level FX cache compositing"
+  - "renderFlatElements() for rendering non-FX elements when cache exists"
+  - "PAINT BACKGROUND color picker section in PaintProperties"
+affects: [20-paint-brush-fx plan 03, 20-paint-brush-fx plan 04, previewRenderer integration]
 
 # Tech tracking
 tech-stack:
-  added: [spectral.glsl (embedded, MIT), ashima/webgl-noise simplex2D (embedded, MIT)]
-  patterns: [shader-source-as-string-constants, build-helper-concatenation-for-glsl-includes]
+  added: []
+  patterns: ["frame-level FX cache compositing via single drawImage()", "solid paint background fill before stroke rendering"]
 
 key-files:
   created:
-    - Application/src/lib/brushFxShaders.ts
-  modified: []
+    - "Application/src/lib/paintRenderer.test.ts"
+  modified:
+    - "Application/src/lib/paintRenderer.ts"
+    - "Application/src/stores/paintStore.ts"
+    - "Application/src/types/paint.ts"
+    - "Application/src/components/sidebar/PaintProperties.tsx"
 
 key-decisions:
-  - "Embedded spectral.glsl verbatim from canonical repo (296 lines) rather than hand-writing spectral math"
-  - "Embedded ashima simplex noise verbatim rather than custom noise implementation"
-  - "Used build helper functions (buildSpectralCompositeSrc, buildGrainPostSrc, etc.) for shader concatenation to avoid duplicating version/precision headers"
-  - "Edge darken shader is self-contained (no noise dependency) while grain, bleed, and scatter require noise prepending"
+  - "Added Plan 01 prerequisite types/signals inline (Rule 3) since parallel execution requires self-contained changes"
+  - "Used existing collapsible section pattern (Tablet/Onion Skin) for PAINT BACKGROUND section"
+  - "ColorPickerModal for bg color uses onLiveChange+onCommit matching brush color picker pattern"
 
 patterns-established:
-  - "Shader body constants (without version/precision) + build*() helpers for concatenated compilation"
-  - "GLSL includes via string concatenation at compile time rather than runtime #include"
+  - "renderPaintFrameWithBg: solid bg fill then flat elements then FX cache overlay"
+  - "renderFlatElements: skip elements with fxState 'fx-applied' or 'flattened'"
 
-requirements-completed: [PAINT-06, PAINT-10]
+requirements-completed: [PAINT-02, PAINT-03, PAINT-04, PAINT-05, PAINT-07, PAINT-10, PAINT-11]
 
 # Metrics
 duration: 7min
-completed: 2026-03-25
+completed: 2026-03-26
 ---
 
-# Phase 20 Plan 02: GLSL Shader Sources Summary
+# Phase 20 Plan 02: Paint Renderer Solid Background & FX Cache Summary
 
-**All GLSL shader source strings for the brush FX pipeline defined as TypeScript constants -- spectral.glsl 38-band Kubelka-Munk mixing, ashima simplex noise, and 5 post-effect shaders with build helpers**
+**renderPaintFrameWithBg() with solid background fill, frame-level FX cache compositing via drawImage, and PAINT BACKGROUND color picker in PaintProperties**
 
 ## Performance
 
 - **Duration:** 7 min
-- **Started:** 2026-03-25T13:06:32Z
-- **Completed:** 2026-03-25T13:13:34Z
+- **Started:** 2026-03-26T08:19:49Z
+- **Completed:** 2026-03-26T08:27:34Z
 - **Tasks:** 2
-- **Files modified:** 1
+- **Files modified:** 5
 
 ## Accomplishments
-- Embedded complete spectral.glsl (296 lines, MIT) from rvanwijnen/spectral.js for physically-correct Kubelka-Munk pigment mixing
-- Embedded complete ashima/webgl-noise simplex 2D noise function for procedural paper texture
-- Defined 10 exports: 3 vertex/stamp shaders, spectral GLSL constant, edge darken shader, simplex noise constant, and 4 build helper functions
-- All shaders follow existing #version 300 es / precision highp float convention matching glBlur.ts and glslRuntime.ts
+- Added `renderPaintFrameWithBg()` export that fills solid background (D-11), renders flat elements, and composites frame-level FX cache via single `drawImage()`
+- Added `renderFlatElements()` internal function that skips FX-applied/flattened strokes when frame cache exists
+- Created PAINT BACKGROUND collapsible section in PaintProperties with color swatch, ColorPickerModal, and reset button
+- All 9 paintRenderer tests passing with zero `it.todo` stubs
 
 ## Task Commits
 
 Each task was committed atomically:
 
-1. **Task 1: Create brushFxShaders.ts with vertex, stamp, and spectral composite shaders** - `74f9629` (feat)
-2. **Task 2: Add post-effect shaders (grain, edge darken, bleed) and simplex noise** - `60c02fa` (feat)
+1. **Task 1: Update paintRenderer for solid background and frame-level FX cache compositing** - `144144f` (feat)
+2. **Task 2: Add paint background color picker to PaintProperties** - `6ac6ae8` (feat)
 
 ## Files Created/Modified
-- `Application/src/lib/brushFxShaders.ts` - All GLSL shader source strings for the brush FX rendering pipeline (10 exports: BRUSH_FX_VERT_SRC, STAMP_VERT_SRC, STAMP_FRAG_SRC, SPECTRAL_GLSL, SIMPLEX_NOISE_GLSL, EDGE_DARKEN_POST_FRAG_SRC, buildSpectralCompositeSrc, buildGrainPostSrc, buildBleedPostSrc, buildScatterStampSrc)
+- `Application/src/lib/paintRenderer.ts` - Added renderPaintFrameWithBg() and renderFlatElements()
+- `Application/src/lib/paintRenderer.test.ts` - 9 tests for routing logic and fxState filtering
+- `Application/src/stores/paintStore.ts` - Added paintBgColor signal, frameFxCache Map, get/set/invalidate methods
+- `Application/src/types/paint.ts` - Added StrokeFxState, BrushStyle, BrushFxParams types, DEFAULT_PAINT_BG_COLOR
+- `Application/src/components/sidebar/PaintProperties.tsx` - PAINT BACKGROUND collapsible section with color picker
 
 ## Decisions Made
-- Embedded spectral.glsl verbatim (296 lines) from the canonical rvanwijnen/spectral.js repository rather than a subset. The latest v3 includes 2-color, 3-color, and 4-color mix overloads with tinting strength parameters -- all included for future flexibility.
-- The plan referenced `spectral_linear_to_concentration` but the actual function in spectral.glsl v3 is `spectral_linear_to_reflectance`. Embedded the canonical source verbatim as required.
-- Edge darken shader (EDGE_DARKEN_POST_FRAG_SRC) is exported as a complete shader string since it has no noise dependency, while grain/bleed/scatter bodies are kept as non-exported constants with build helpers for noise concatenation.
+- Added Plan 01 prerequisite types/signals (paintBgColor, getFrameFxCache, StrokeFxState, BrushStyle, BrushFxParams) directly since parallel execution means Plan 01 changes are not yet merged
+- Used `DEFAULT_PAINT_BG_COLOR` constant for reset comparison instead of hardcoded '#FFFFFF'
+- Matched ColorPickerModal pattern (onLiveChange + onCommit) from existing brush color picker
 
 ## Deviations from Plan
 
 ### Auto-fixed Issues
 
-**1. [Rule 1 - Bug] Fixed transcription typo in spectral.glsl R[19] line**
-- **Found during:** Task 1
-- **Issue:** `R[19] = vec3(...)` instead of `R[19] * vec3(...)` in spectral_reflectance_to_xyz
-- **Fix:** Corrected `=` to `*` to match the canonical source
-- **Files modified:** Application/src/lib/brushFxShaders.ts
-- **Verification:** Compared against canonical source, confirmed correct operator
-- **Committed in:** 74f9629 (Task 1 commit)
+**1. [Rule 3 - Blocking] Added Plan 01 prerequisite types and store signals**
+- **Found during:** Task 1 (paintRenderer update)
+- **Issue:** Plan 02 references paintStore.paintBgColor, paintStore.getFrameFxCache, StrokeFxState, BrushStyle, BrushFxParams, and DEFAULT_PAINT_BG_COLOR which are Plan 01 deliverables not yet in codebase (parallel execution)
+- **Fix:** Added StrokeFxState, BrushStyle, BrushFxParams types and DEFAULT_PAINT_BG_COLOR to paint.ts; Added paintBgColor signal, selectedStrokeIds signal, frameFxCache Map with get/set/invalidate/clearAll methods, setPaintBgColor method, and reset cleanup to paintStore.ts
+- **Files modified:** Application/src/types/paint.ts, Application/src/stores/paintStore.ts
+- **Verification:** TypeScript compiles cleanly, all 9 tests pass
+- **Committed in:** 144144f (Task 1 commit)
 
 ---
 
-**Total deviations:** 1 auto-fixed (1 bug)
-**Impact on plan:** Transcription error caught and fixed before commit. No scope creep.
+**Total deviations:** 1 auto-fixed (1 blocking)
+**Impact on plan:** Prerequisite types/signals added inline for parallel execution. Plan 01 agent will add the same or compatible changes; merge will resolve any overlapping additions. No scope creep.
 
 ## Issues Encountered
-- TypeScript compilation check shows pre-existing errors from missing node_modules in worktree (no `pnpm install`). Verified no errors specific to brushFxShaders.ts by filtering tsc output.
+- Worktree lacked node_modules; resolved by symlinking from main repo's Application/node_modules
+- Pre-existing TypeScript errors in SidebarProperties.tsx (unused `isOnKf`) and glslRuntime.test.ts (unused `expect` import) -- not caused by this plan's changes
 
 ## User Setup Required
+
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- All GLSL shader sources ready for import by brushFxRenderer.ts (plan 20-03)
-- Build helpers handle version/precision concatenation cleanly
-- spectral_mix(color1, color2, factor) overload available for the simple 2-color mixing case used in the composite shader
+- renderPaintFrameWithBg() ready for previewRenderer integration (Plan 03 will wire it)
+- Frame-level FX cache infrastructure in place for brushP5Adapter.renderFrameFx() to populate
+- PAINT BACKGROUND section visible in PaintProperties panel
 
 ## Self-Check: PASSED
 
-- FOUND: Application/src/lib/brushFxShaders.ts
-- FOUND: commit 74f9629
-- FOUND: commit 60c02fa
-- FOUND: 20-02-SUMMARY.md
+All files exist, all commits verified (144144f, 6ac6ae8).
 
 ---
 *Phase: 20-paint-brush-fx*
-*Completed: 2026-03-25*
+*Completed: 2026-03-26*

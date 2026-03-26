@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.5.0
 milestone_name: Motion Blur & Paint Styles
 status: Ready to execute
-stopped_at: Completed 20-01-PLAN.md
-last_updated: "2026-03-26T08:25:04.235Z"
+stopped_at: Completed 20-02-PLAN.md
+last_updated: "2026-03-26T08:29:30.777Z"
 progress:
   total_phases: 2
   completed_phases: 0
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-25)
 ## Current Position
 
 Phase: 20 (paint-brush-fx) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Full phase decisions archived in milestones/v0.4.0-ROADMAP.md.
 - [Phase 20]: HTMLCanvasElement | OffscreenCanvas | null union type for fxCanvas; typeof OffscreenCanvas guard for jsdom/SSR
 - [Phase 20]: Per-frame caching (not per-stroke) ensures spectral mixing via shared p5.brush canvas
 - [Phase 20]: renderFrameFx copies to new canvas; shared singleton reused between calls
+- [Phase 20]: Added Plan 01 prerequisite types/signals inline for parallel execution (Rule 3)
 
 ### Pending Todos
 
@@ -75,6 +76,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-26T08:25:04.233Z
-Stopped at: Completed 20-01-PLAN.md
+Last session: 2026-03-26T08:29:30.774Z
+Stopped at: Completed 20-02-PLAN.md
 Resume file: None

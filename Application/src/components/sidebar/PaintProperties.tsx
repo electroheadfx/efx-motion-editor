@@ -3,31 +3,21 @@ import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 import {paintStore} from '../../stores/paintStore';
 import {timelineStore} from '../../stores/timelineStore';
-import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS} from '../../types/paint';
-import type {PaintToolType, BrushFxParams} from '../../types/paint';
-import {BRUSH_PREVIEW_URLS} from '../../lib/brushPreviewData';
+import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR} from '../../types/paint';
+import type {PaintToolType} from '../../types/paint';
 import type {Layer} from '../../types/layer';
 
 const SHAPE_TOOLS: PaintToolType[] = ['line', 'rect', 'ellipse'];
 const BRUSH_TOOLS: PaintToolType[] = ['brush', 'eraser'];
 const STROKE_TOOLS: PaintToolType[] = ['brush', 'eraser'];
 
-/** Display labels for BrushFxParams keys */
-const FX_PARAM_LABELS: Record<keyof BrushFxParams, string> = {
-  grain: 'Grain',
-  bleed: 'Bleed',
-  scatter: 'Scatter',
-  fieldStrength: 'Flow',
-  edgeDarken: 'Edge Ink',
-};
-
 export function PaintProperties({layer}: {layer: Layer}) {
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showBgColorPicker, setShowBgColorPicker] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [bgCollapsed, setBgCollapsed] = useState(false);
   const [onionCollapsed, setOnionCollapsed] = useState(true);
   const [tabletCollapsed, setTabletCollapsed] = useState(true);
-  const [styleCollapsed, setStyleCollapsed] = useState(false);  // open by default (D-02)
-  const [fxCollapsed, setFxCollapsed] = useState(false);        // open by default (D-06)
 
   const activeTool = paintStore.activeTool.value;
   const brushSizeVal = paintStore.brushSize.value;
@@ -36,8 +26,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
   const strokeOpts = paintStore.strokeOptions.value;
   const shapeFilledVal = paintStore.shapeFilled.value;
   const fillToleranceVal = paintStore.fillTolerance.value;
-  const currentStyle = paintStore.brushStyle.value;
-  const currentFxParams = paintStore.brushFxParams.value;
+  const bgColor = paintStore.paintBgColor.value;
 
   const showBrushSettings = BRUSH_TOOLS.includes(activeTool) || SHAPE_TOOLS.includes(activeTool);
   const showStrokeOptions = STROKE_TOOLS.includes(activeTool);
@@ -51,65 +40,64 @@ export function PaintProperties({layer}: {layer: Layer}) {
         {layer.name}
       </div>
 
-      {/* BRUSH STYLE selector strip (D-01, D-02, D-04) */}
-      {activeTool === 'brush' && (
-        <div>
-          <button
-            class="flex items-center gap-1 cursor-pointer w-full"
-            onClick={() => setStyleCollapsed(!styleCollapsed)}
+      {/* PAINT BACKGROUND per D-11, D-12 */}
+      <div>
+        <button
+          class="flex items-center gap-1 cursor-pointer w-full"
+          onClick={() => setBgCollapsed(!bgCollapsed)}
+        >
+          <span
+            class="text-[10px] transition-transform"
+            style={{
+              color: 'var(--sidebar-text-secondary)',
+              transform: bgCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            }}
           >
-            <span
-              class="text-[10px] transition-transform"
-              style={{
-                color: 'var(--sidebar-text-secondary)',
-                transform: styleCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-              }}
-            >
-              &#9660;
-            </span>
-            <SectionLabel text="BRUSH STYLE" />
-          </button>
+            &#9660;
+          </span>
+          <SectionLabel text="PAINT BACKGROUND" />
+        </button>
 
-          {!styleCollapsed && (
-            <div class="grid grid-cols-3 gap-1.5 mt-1.5">
-              {BRUSH_STYLES.map((style) => (
+        {!bgCollapsed && (
+          <div class="px-1 mt-1.5 space-y-2">
+            <div class="flex items-center gap-2">
+              <div
+                class="w-5 h-5 rounded border cursor-pointer shrink-0"
+                style={{
+                  backgroundColor: bgColor,
+                  borderColor: 'var(--sidebar-border)',
+                }}
+                onClick={() => setShowBgColorPicker(true)}
+                title="Paint background color"
+              />
+              <span class="text-[11px]" style={{color: 'var(--sidebar-text-secondary)'}}>
+                Background
+              </span>
+              {bgColor !== DEFAULT_PAINT_BG_COLOR && (
                 <button
-                  key={style}
-                  class="relative rounded cursor-pointer overflow-hidden border transition-colors"
-                  style={{
-                    borderColor: currentStyle === style ? 'var(--color-accent)' : 'var(--color-border-subtle)',
-                    backgroundColor: 'var(--sidebar-input-bg)',
-                    padding: '2px',
-                  }}
-                  title={style.charAt(0).toUpperCase() + style.slice(1)}
-                  onClick={() => paintStore.setBrushStyle(style)}
+                  class="text-[10px] ml-auto opacity-60 hover:opacity-100 cursor-pointer"
+                  style={{color: 'var(--sidebar-text-secondary)'}}
+                  onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
                 >
-                  <img
-                    src={BRUSH_PREVIEW_URLS[style]}
-                    alt={style}
-                    class="w-full h-8 object-contain"
-                    style={{ opacity: 0.85 }}
-                  />
-                  {currentStyle === style && (
-                    <div
-                      class="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: 'var(--color-accent)' }}
-                    >
-                      <span class="text-[8px] text-white font-bold">&#10003;</span>
-                    </div>
-                  )}
-                  <div
-                    class="text-[9px] text-center mt-0.5"
-                    style={{ color: 'var(--sidebar-text-secondary)' }}
-                  >
-                    {style.charAt(0).toUpperCase() + style.slice(1)}
-                  </div>
+                  Reset
                 </button>
-              ))}
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+
+        {showBgColorPicker && (
+          <ColorPickerModal
+            color={bgColor}
+            onLiveChange={(c) => paintStore.setPaintBgColor(c)}
+            onCommit={(c) => {
+              paintStore.setPaintBgColor(c);
+              setShowBgColorPicker(false);
+            }}
+            onClose={() => setShowBgColorPicker(false)}
+          />
+        )}
+      </div>
 
       {/* Brush Settings */}
       {showBrushSettings && (
@@ -179,54 +167,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
               </span>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* BRUSH FX sliders (D-05, D-06, D-08) — only for non-flat styles with visible params */}
-      {activeTool === 'brush' && currentStyle !== 'flat' && BRUSH_FX_VISIBLE_PARAMS[currentStyle].length > 0 && (
-        <div>
-          <button
-            class="flex items-center gap-1 cursor-pointer w-full"
-            onClick={() => setFxCollapsed(!fxCollapsed)}
-          >
-            <span
-              class="text-[10px] transition-transform"
-              style={{
-                color: 'var(--sidebar-text-secondary)',
-                transform: fxCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-              }}
-            >
-              &#9660;
-            </span>
-            <SectionLabel text="BRUSH FX" />
-          </button>
-
-          {!fxCollapsed && (
-            <div class="flex flex-col gap-2 mt-1.5">
-              {BRUSH_FX_VISIBLE_PARAMS[currentStyle].map((paramKey) => (
-                <div key={paramKey} class="flex items-center gap-2">
-                  <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>
-                    {FX_PARAM_LABELS[paramKey]}
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={currentFxParams[paramKey] ?? 0}
-                    class="flex-1 min-w-0 h-1 cursor-pointer"
-                    style={{accentColor: 'var(--color-accent)'}}
-                    onInput={(e) => {
-                      paintStore.updateBrushFxParam(paramKey, parseFloat((e.target as HTMLInputElement).value));
-                    }}
-                  />
-                  <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                    {((currentFxParams[paramKey] ?? 0) * 100).toFixed(0)}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

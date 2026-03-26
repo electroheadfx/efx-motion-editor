@@ -1,7 +1,7 @@
 import {getStroke} from 'perfect-freehand';
 import {floodFill, hexToRgba} from './paintFloodFill';
 import type {PaintFrame, PaintElement, PaintStroke, PaintShape, PaintFill, PaintStrokeOptions} from '../types/paint';
-import {renderStyledStrokes} from './brushP5Adapter';
+import {paintStore} from '../stores/paintStore';
 
 /** Legacy pressure easing presets → curve exponent mapping */
 const LEGACY_EASING_CURVES: Record<string, number> = {
@@ -146,60 +146,10 @@ function renderShape(ctx: CanvasRenderingContext2D, element: PaintShape): void {
 }
 
 /**
- * Type guard: check if a paint element is a styled (non-flat) brush stroke
- * that should be routed to the p5.brush adapter.
- *
- * Narrowing logic:
- * 1. element.tool is safe on PaintElement (all union members have .tool)
- * 2. tool === 'brush' narrows to PaintStroke (only PaintStroke has 'brush')
- * 3. Then .brushStyle access is type-safe on PaintStroke
- */
-function isStyledStroke(element: PaintElement): element is PaintStroke {
-  // All PaintElement union members have .tool -- no 'in' check needed.
-  // Only PaintStroke has tool === 'brush' (eraser also PaintStroke but returns false).
-  if (element.tool !== 'brush') return false;
-  // After this check, TS narrows element to PaintStroke.
-  // Now .brushStyle is safely accessible (optional field on PaintStroke).
-  return !!element.brushStyle && element.brushStyle !== 'flat';
-}
-
-/**
- * Render accumulated styled strokes via p5.brush adapter and composite onto Canvas 2D.
- */
-function flushStyledStrokes(
-  ctx: CanvasRenderingContext2D,
-  strokes: PaintStroke[],
-  width: number,
-  height: number,
-): void {
-  try {
-    const fxCanvas = renderStyledStrokes(strokes, width, height);
-    if (fxCanvas) {
-      ctx.drawImage(fxCanvas, 0, 0);
-      return;
-    }
-  } catch (e) {
-    // p5.brush error — fall through to Canvas 2D fallback.
-    // MUST NOT propagate: this runs inside a Preact signal effect
-    // and uncaught errors corrupt the signal dependency graph.
-    console.warn('[paintRenderer] brush FX render failed, falling back to flat:', e);
-  }
-  // Fallback: render styled strokes as flat via Canvas 2D
-  for (const stroke of strokes) {
-    renderStroke(ctx, stroke);
-  }
-}
-
-/**
  * Render all paint elements for a single frame to a Canvas 2D context.
  *
  * Elements are rendered in order (first element = bottom, last = top).
- * Flat elements (and erasers) use the existing Canvas 2D path unchanged.
- * Styled brush strokes are batched and rendered via the p5.brush adapter
- * on an OffscreenCanvas, then composited back onto the Canvas 2D context.
- *
- * Z-order is maintained: when a flat element follows styled strokes,
- * the styled batch is flushed before rendering the flat element.
+ * Each element is wrapped in save/restore to isolate alpha and composite changes.
  *
  * @param ctx - The canvas 2D rendering context to draw on
  * @param frame - The PaintFrame containing elements to render
@@ -212,30 +162,77 @@ export function renderPaintFrame(
   width: number,
   height: number,
 ): void {
-  // Separate elements into flat (Canvas 2D) and styled (p5.brush) groups
-  // IMPORTANT: Maintain rendering order! Elements must composite in their
-  // original array order, so we process in order but track styled strokes.
-  const styledStrokes: PaintStroke[] = [];
-
   for (const element of frame.elements) {
-    if (isStyledStroke(element)) {
-      // Collect styled strokes for batch p5.brush rendering
-      styledStrokes.push(element);
-    } else {
-      // Render flat elements inline via Canvas 2D (existing path, unchanged)
-      // Before rendering flat elements, flush any accumulated styled strokes
-      // to maintain correct z-order
-      if (styledStrokes.length > 0) {
-        flushStyledStrokes(ctx, styledStrokes, width, height);
-        styledStrokes.length = 0;
-      }
-      renderElement(ctx, element, width, height);
+    renderElement(ctx, element, width, height);
+  }
+}
+
+/**
+ * Render paint frame with solid background (per D-11) and frame-level FX cache.
+ *
+ * Rendering order:
+ * 1. Solid background fill (paintBgColor)
+ * 2. Flat strokes via Canvas2D (strokeToPath)
+ * 3. Frame-level FX cache via single drawImage() if available
+ *    (all FX strokes were batch-rendered together by p5.brush for spectral mixing)
+ * 4. Falls back to renderPaintFrame() if no frame cache exists yet
+ *
+ * @param layerId - Optional layer ID for frame cache lookup
+ * @param frameNum - Optional frame number for frame cache lookup
+ */
+export function renderPaintFrameWithBg(
+  ctx: CanvasRenderingContext2D,
+  frame: PaintFrame,
+  width: number,
+  height: number,
+  layerId?: string,
+  frameNum?: number,
+): void {
+  // Solid paint background per D-11 (default white, user-configurable)
+  const bgColor = paintStore.paintBgColor.peek();
+  ctx.save();
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+
+  // Check for frame-level FX cache (all FX strokes pre-rendered together)
+  let hasFrameCache = false;
+  if (layerId !== undefined && frameNum !== undefined) {
+    const fxCache = paintStore.getFrameFxCache(layerId, frameNum);
+    if (fxCache) {
+      // Render flat strokes first (Canvas2D), then overlay the FX cache
+      renderFlatElements(ctx, frame, width, height);
+      ctx.drawImage(fxCache, 0, 0);
+      hasFrameCache = true;
     }
   }
 
-  // Flush any remaining styled strokes
-  if (styledStrokes.length > 0) {
-    flushStyledStrokes(ctx, styledStrokes, width, height);
+  if (!hasFrameCache) {
+    // No frame cache -- render all elements normally (flat via Canvas2D)
+    renderPaintFrame(ctx, frame, width, height);
+  }
+}
+
+/**
+ * Render only flat elements (non-FX strokes, shapes, fills, erasers).
+ * Used when frame-level FX cache handles all FX-applied strokes separately.
+ */
+function renderFlatElements(
+  ctx: CanvasRenderingContext2D,
+  frame: PaintFrame,
+  width: number,
+  height: number,
+): void {
+  for (const el of frame.elements) {
+    // Skip FX-applied strokes -- they're in the frame cache
+    if (el.tool === 'brush') {
+      const stroke = el as PaintStroke;
+      if (stroke.fxState === 'fx-applied' || stroke.fxState === 'flattened') {
+        continue;
+      }
+    }
+    // Render flat strokes, erasers, shapes, fills via existing Canvas2D path
+    renderElement(ctx, el, width, height);
   }
 }
 
