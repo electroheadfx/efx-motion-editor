@@ -203,4 +203,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-26 after v0.6.0 milestone start*
+*Last updated: 2026-03-27 after Phase 22 (Foundation & Quick Wins) complete — paint store bugs fixed, motion path density improved, isolation-mode layer creation corrected, paint panel reorganized*
