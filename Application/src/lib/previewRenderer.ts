@@ -1,5 +1,5 @@
 import type {Layer, BlendMode} from '../types/layer';
-import {isGeneratorLayer, isAdjustmentLayer} from '../types/layer';
+import {isGeneratorLayer, isAdjustmentLayer, isFxLayer} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
 import type {GradientData} from '../types/sequence';
 import {imageStore} from '../stores/imageStore';
@@ -14,6 +14,10 @@ import {getShaderById} from './shaderLibrary';
 import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
 import {projectStore} from '../stores/projectStore';
+import {applyMotionBlur} from './glMotionBlur';
+import {motionBlurStore} from '../stores/motionBlurStore';
+import {VelocityCache, isStationary} from './motionBlurEngine';
+import {interpolateAt} from './keyframeEngine';
 
 /**
  * Create a Canvas 2D gradient from GradientData.
@@ -95,6 +99,7 @@ export class PreviewRenderer {
   private videoReadyHandlers: Map<string, () => void>; // layerId -> shared loadeddata/seeked handler
   private offscreenCanvas: HTMLCanvasElement | null = null; // reusable offscreen canvas for video rasterization
   private blurOffscreen: HTMLCanvasElement | null = null; // reusable offscreen canvas for per-layer/generator blur
+  private velocityCache = new VelocityCache();
 
   /** Callback invoked after an image finishes loading (triggers re-render) */
   onImageLoaded: (() => void) | null = null;
@@ -343,8 +348,30 @@ export class PreviewRenderer {
         const source = this.resolveLayerSource(layer, frame, frames, fps);
         if (source !== null) {
           const blurRadius = layer.blur ?? 0;
+
+          // --- Motion blur velocity computation (per D-12, D-13) ---
+          // Only content layers with keyframe animation can have motion blur.
+          // Skip FX, generator, adjustment, and paint layers.
+          // Content layers in this else-branch are already not generator/adjustment/paint
+          // (those are handled by earlier if/else-if blocks), so we only check for FX layers.
+          const wantMotionBlur = motionBlurStore.isEnabled()
+            && motionBlurStore.getSamples() > 0
+            && layer.keyframes && layer.keyframes.length > 0
+            && !isFxLayer(layer);
+
+          let motionVelocity: {dx: number; dy: number} | null = null;
+          if (wantMotionBlur) {
+            const kfValues = interpolateAt(layer.keyframes!, frame);
+            if (kfValues) {
+              const vel = this.velocityCache.computeForLayer(layer.id, kfValues, globalFrame ?? frame);
+              if (vel && !isStationary(vel)) {
+                motionVelocity = { dx: vel.dx, dy: vel.dy };
+              }
+            }
+          }
+
           if (blurRadius > 0 && !blurStore.isBypassed()) {
-            // Content layer with blur: render to offscreen, blur, composite
+            // Content layer with gaussian blur (+ optional motion blur)
             const off = this.getBlurOffscreen(Math.round(logicalW), Math.round(logicalH));
             if (off) {
               off.ctx.clearRect(0, 0, off.canvas.width, off.canvas.height);
@@ -352,8 +379,14 @@ export class PreviewRenderer {
               // Draw content onto offscreen using same aspect-ratio fitting as drawLayer
               this.drawLayerToOffscreen(source, layer, off.ctx, logicalW, logicalH);
               off.ctx.restore();
-              // Apply blur (full RGBA -- content layers have opaque pixels)
+              // Apply gaussian blur (full RGBA -- content layers have opaque pixels)
               this.applyBlurToCanvas(off.canvas, off.ctx, blurRadius, off.canvas.width, off.canvas.height, false);
+              // Apply motion blur on top of gaussian if layer is moving
+              if (motionVelocity) {
+                applyMotionBlur(off.canvas, off.ctx, motionVelocity,
+                  motionBlurStore.getStrength(), motionBlurStore.getSamples(),
+                  off.canvas.width, off.canvas.height);
+              }
               // Composite blurred offscreen onto main canvas
               ctx.save();
               ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
@@ -361,7 +394,25 @@ export class PreviewRenderer {
               ctx.drawImage(off.canvas, 0, 0, logicalW, logicalH);
               ctx.restore();
             }
+          } else if (motionVelocity) {
+            // Motion blur only (no gaussian blur)
+            const off = this.getBlurOffscreen(Math.round(logicalW), Math.round(logicalH));
+            if (off) {
+              off.ctx.clearRect(0, 0, off.canvas.width, off.canvas.height);
+              off.ctx.save();
+              this.drawLayerToOffscreen(source, layer, off.ctx, logicalW, logicalH);
+              off.ctx.restore();
+              applyMotionBlur(off.canvas, off.ctx, motionVelocity,
+                motionBlurStore.getStrength(), motionBlurStore.getSamples(),
+                off.canvas.width, off.canvas.height);
+              ctx.save();
+              ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+              ctx.globalAlpha = effectiveOpacity;
+              ctx.drawImage(off.canvas, 0, 0, logicalW, logicalH);
+              ctx.restore();
+            }
           } else {
+            // Normal rendering (no blur effects)
             this.drawLayer(source, layer, logicalW, logicalH, sequenceOpacity);
           }
         } else if (layer.source.type === 'video') {
