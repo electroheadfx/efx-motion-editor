@@ -3,6 +3,7 @@ import {interpolateAt} from './keyframeEngine';
 import {computeFadeOpacity, computeSolidFadeAlpha, computeCrossDissolveOpacity, computeTransitionProgress} from './transitionEngine';
 import {renderGlslTransition} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
+import {motionBlurStore} from '../stores/motionBlurStore';
 import {isFxLayer} from '../types/layer';
 import type {LayerSourceData} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
@@ -96,19 +97,23 @@ export function renderGlobalFrame(
   overlaps: CrossDissolveOverlap[],
   soloActive: boolean = false,
 ): void {
-  if (globalFrame < 0 || globalFrame >= fm.length) return;
+  // Support fractional globalFrame for sub-frame motion blur accumulation
+  const frameIndex = Math.floor(globalFrame);
+  const fractionalOffset = globalFrame - frameIndex;
 
-  const entry = fm[globalFrame];
+  if (frameIndex < 0 || frameIndex >= fm.length) return;
+
+  const entry = fm[frameIndex];
   if (!entry) return;
 
   const seq = allSeqs.find((s) => s.id === entry.sequenceId);
   if (!seq || seq.kind === 'fx') return;
 
   // Compute sequence start frame and local frame from frameMap
-  let seqStart = globalFrame;
+  let seqStart = frameIndex;
   while (seqStart > 0 && fm[seqStart - 1]?.sequenceId === entry.sequenceId) seqStart--;
   const seqFrames = fm.filter((e) => e.sequenceId === entry.sequenceId);
-  const localFrame = globalFrame - seqStart;
+  const localFrame = frameIndex - seqStart + fractionalOffset;
 
   // === Cross dissolve check (BEFORE normal render) ===
   let handledByCrossDissolve = false;
@@ -320,6 +325,71 @@ export function renderGlobalFrame(
     }
   }
   } // end if (!soloActive)
+}
+
+/**
+ * Render a single frame with motion blur using combined GLSL velocity blur + sub-frame accumulation.
+ * Per D-10/D-14: renders N sub-frames at fractional positions, applies GLSL velocity blur per sub-frame,
+ * then blends via additive compositing with globalAlpha = 1/N.
+ *
+ * The shutterAngle param temporarily overrides motionBlurStore.shutterAngle during the sub-frame
+ * loop so that motionBlurStore.getStrength() (which PreviewRenderer reads inside renderGlobalFrame)
+ * returns the export-specific value rather than the preview value. Per D-11.
+ */
+export function renderFrameWithMotionBlur(
+  renderer: PreviewRenderer,
+  canvas: HTMLCanvasElement,
+  globalFrame: number,
+  fm: FrameEntry[],
+  allSeqs: Sequence[],
+  overlaps: CrossDissolveOverlap[],
+  subFrames: number,
+  shutterAngle: number,
+  soloActive: boolean = false,
+): void {
+  const w = canvas.width;
+  const h = canvas.height;
+
+  // --- Route export shutter angle override through motionBlurStore (per D-11) ---
+  // PreviewRenderer's motion blur pass reads motionBlurStore.getStrength() which
+  // derives from motionBlurStore.shutterAngle.peek(). We temporarily set the
+  // store's shutterAngle to the export override so the GLSL uStrength uniform
+  // receives the correct value during sub-frame rendering.
+  const savedShutterAngle = motionBlurStore.shutterAngle.peek();
+  motionBlurStore.shutterAngle.value = shutterAngle;
+
+  try {
+    // Create accumulator canvas (per Pitfall 3: clear before loop)
+    const accumulator = document.createElement('canvas');
+    accumulator.width = w;
+    accumulator.height = h;
+    const accumCtx = accumulator.getContext('2d')!;
+    accumCtx.clearRect(0, 0, w, h);
+
+    // Set globalAlpha for equal-weight blending
+    accumCtx.globalAlpha = 1.0 / subFrames;
+
+    for (let i = 0; i < subFrames; i++) {
+      const t = i / subFrames;
+      const subFrame = globalFrame + t;
+
+      // renderGlobalFrame uses interpolateAt() which supports fractional frames (per D-15)
+      // Motion blur is applied per-layer inside PreviewRenderer (the renderer has velocityCache)
+      renderGlobalFrame(renderer, canvas, subFrame, fm, allSeqs, overlaps, soloActive);
+
+      // Accumulate sub-frame
+      accumCtx.drawImage(canvas, 0, 0);
+    }
+
+    // Copy accumulator result back to output canvas
+    const outCtx = canvas.getContext('2d')!;
+    outCtx.clearRect(0, 0, w, h);
+    outCtx.globalAlpha = 1.0;
+    outCtx.drawImage(accumulator, 0, 0);
+  } finally {
+    // Restore preview shutter angle regardless of success/failure
+    motionBlurStore.shutterAngle.value = savedShutterAngle;
+  }
 }
 
 /**

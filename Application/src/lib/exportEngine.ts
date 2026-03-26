@@ -1,5 +1,5 @@
 import { PreviewRenderer } from './previewRenderer';
-import { renderGlobalFrame, preloadExportImages } from './exportRenderer';
+import { renderGlobalFrame, renderFrameWithMotionBlur, preloadExportImages } from './exportRenderer';
 import { frameMap, crossDissolveOverlaps } from './frameMap';
 import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
@@ -124,6 +124,12 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     }
     clearInterval(preloadCancelCheck);
 
+    // 4.5. Read motion blur export settings
+    const mbSettings = exportStore.settings.peek().motionBlur;
+    const mbEnabled = mbSettings.enabled;
+    const mbSubFrames = mbSettings.subFrames;
+    const mbShutterAngle = mbSettings.shutterAngle;
+
     // 5. Export loop with yielding and cancel support
     exportStore.updateProgress({ status: 'rendering' });
     const frameTimes: number[] = []; // rolling window for ETA
@@ -140,8 +146,15 @@ export async function startExport(startFromFrame = 0): Promise<void> {
 
       const frameStart = performance.now();
 
-      // Render frame
-      renderGlobalFrame(renderer, canvas, frame, fm, allSeqs, overlaps, soloStore.soloEnabled.peek());
+      // Render frame (with motion blur if enabled)
+      if (mbEnabled) {
+        renderFrameWithMotionBlur(
+          renderer, canvas, frame, fm, allSeqs, overlaps,
+          mbSubFrames, mbShutterAngle, soloStore.soloEnabled.peek()
+        );
+      } else {
+        renderGlobalFrame(renderer, canvas, frame, fm, allSeqs, overlaps, soloStore.soloEnabled.peek());
+      }
 
       // Extract PNG
       const blob = await canvasToBlob(canvas);
