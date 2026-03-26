@@ -91,7 +91,7 @@ export function ImportedView() {
       return;
     }
 
-    // Isolation-scoped flow: add to specific sequence (D-09)
+    // Isolation-scoped flow: create new content-overlay aligned with isolated sequence (D-09)
     if (currentIntent?.targetSequenceId) {
       const layer: Layer = {
         id: layerId, name: filename, type: 'static-image',
@@ -100,7 +100,10 @@ export function ImportedView() {
         source: { type: 'static-image', imageId: img.id },
         isBase: false,
       };
-      sequenceStore.addLayerToSequence(currentIntent.targetSequenceId, layer);
+      sequenceStore.createContentOverlaySequence(filename, layer, totalFrames.peek(), {
+        inFrame: currentIntent.isolatedInFrame ?? 0,
+        outFrame: currentIntent.isolatedOutFrame ?? totalFrames.peek(),
+      });
       layerStore.setSelected(layerId);
       uiStore.selectLayer(layerId);
       uiStore.setAddLayerIntent(null);
@@ -157,7 +160,7 @@ export function ImportedView() {
       return;
     }
 
-    // Isolation-scoped flow: add to specific sequence (D-09)
+    // Isolation-scoped flow: create new content-overlay aligned with isolated sequence (D-09)
     if (currentIntent?.targetSequenceId) {
       const layer: Layer = {
         id: layerId, name: video.name, type: 'video',
@@ -166,7 +169,10 @@ export function ImportedView() {
         source: { type: 'video', videoAssetId: video.id },
         isBase: false,
       };
-      sequenceStore.addLayerToSequence(currentIntent.targetSequenceId, layer);
+      sequenceStore.createContentOverlaySequence(video.name, layer, totalFrames.peek(), {
+        inFrame: currentIntent.isolatedInFrame ?? 0,
+        outFrame: currentIntent.isolatedOutFrame ?? totalFrames.peek(),
+      });
       layerStore.setSelected(layerId);
       uiStore.selectLayer(layerId);
       uiStore.setAddLayerIntent(null);
@@ -225,7 +231,7 @@ export function ImportedView() {
         return;
       }
 
-      // Isolation-scoped flow: add to specific sequence (D-09)
+      // Isolation-scoped flow: create new content-overlay aligned with isolated sequence (D-09)
       if (currentIntent.targetSequenceId) {
         const layerId = crypto.randomUUID();
         const layer: Layer = {
@@ -235,7 +241,10 @@ export function ImportedView() {
           source: { type: 'image-sequence', imageIds: sortedIds },
           isBase: false,
         };
-        sequenceStore.addLayerToSequence(currentIntent.targetSequenceId, layer);
+        sequenceStore.createContentOverlaySequence(layer.name, layer, totalFrames.peek(), {
+          inFrame: currentIntent.isolatedInFrame ?? 0,
+          outFrame: currentIntent.isolatedOutFrame ?? totalFrames.peek(),
+        });
         layerStore.setSelected(layerId);
         uiStore.selectLayer(layerId);
         setSelectedIds([]);

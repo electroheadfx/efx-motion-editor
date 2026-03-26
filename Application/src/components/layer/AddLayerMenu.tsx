@@ -2,6 +2,7 @@ import {useState, useEffect, useRef} from 'preact/hooks';
 import {uiStore} from '../../stores/uiStore';
 import {isolationStore} from '../../stores/isolationStore';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {totalFrames, trackLayouts} from '../../lib/frameMap';
 
 /** Simple intent-dispatching menu for adding layers */
 export function AddLayerMenu() {
@@ -34,11 +35,22 @@ export function AddLayerMenu() {
     }
   }
 
+  // Compute isolated sequence frame range from trackLayouts
+  let isolatedInFrame = 0;
+  let isolatedOutFrame = totalFrames.peek();
+  if (targetSequenceId) {
+    const layout = trackLayouts.value.find(t => t.sequenceId === targetSequenceId);
+    if (layout) {
+      isolatedInFrame = layout.startFrame;
+      isolatedOutFrame = layout.endFrame;
+    }
+  }
+
   const handleStaticImage = () => {
     setMenuOpen(false);
     uiStore.setAddLayerIntent({
       type: 'static-image',
-      ...(targetSequenceId ? { targetSequenceId } : {}),
+      ...(targetSequenceId ? { targetSequenceId, isolatedInFrame, isolatedOutFrame } : {}),
     });
     uiStore.setEditorMode('imported');
   };
@@ -46,7 +58,7 @@ export function AddLayerMenu() {
     setMenuOpen(false);
     uiStore.setAddLayerIntent({
       type: 'image-sequence',
-      ...(targetSequenceId ? { targetSequenceId } : {}),
+      ...(targetSequenceId ? { targetSequenceId, isolatedInFrame, isolatedOutFrame } : {}),
     });
     uiStore.setEditorMode('imported');
   };
@@ -54,7 +66,7 @@ export function AddLayerMenu() {
     setMenuOpen(false);
     uiStore.setAddLayerIntent({
       type: 'video',
-      ...(targetSequenceId ? { targetSequenceId } : {}),
+      ...(targetSequenceId ? { targetSequenceId, isolatedInFrame, isolatedOutFrame } : {}),
     });
     uiStore.setEditorMode('imported');
   };
@@ -73,7 +85,7 @@ export function AddLayerMenu() {
       {menuOpen && (
         <div class="absolute right-0 top-7 z-50 bg-(--color-bg-menu) border border-(--color-border-subtle) rounded-md shadow-xl py-1 min-w-[160px]">
           {hasIsolation && targetSequenceName && (
-            <div class="px-3 py-1 text-[9px] text-(--color-accent) font-medium">
+            <div class="px-3 py-1 text-[9px] text-[#F59E0B] font-medium">
               Adding to: {targetSequenceName}
             </div>
           )}

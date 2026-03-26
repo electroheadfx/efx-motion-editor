@@ -9,7 +9,9 @@ export type AddLayerIntent =
       type: 'static-image' | 'image-sequence' | 'video' | 'audio';
       target?: 'content-overlay' | 'audio-track';
       changeSourceFor?: { layerId: string; sequenceId: string };
-      targetSequenceId?: string;  // When set, add layer to this sequence instead of creating new
+      targetSequenceId?: string;  // When set, create new sequence aligned with isolated sequence
+      isolatedInFrame?: number;   // Start frame of isolated sequence (from trackLayouts)
+      isolatedOutFrame?: number;  // End frame of isolated sequence (from trackLayouts)
     };
 
 export type TransitionSelection = {
