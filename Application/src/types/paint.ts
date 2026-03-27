@@ -80,6 +80,7 @@ export interface PaintShape {
   opacity: number;
   strokeWidth: number;
   filled: boolean;         // true = filled shape, false = outline only
+  rotation?: number;       // rotation angle in radians around shape center
 }
 
 /** A fill region element */

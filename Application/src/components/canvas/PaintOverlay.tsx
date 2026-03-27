@@ -83,11 +83,24 @@ function findElementAtPoint(
     } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
       const shape = el as PaintShape;
       const pad = 5;
+      const rot = shape.rotation || 0;
+      // For rotated shapes, transform the test point into the shape's local space
+      let tx = x, ty = y;
+      if (rot !== 0 && shape.tool !== 'line') {
+        const cx = (shape.x1 + shape.x2) / 2;
+        const cy = (shape.y1 + shape.y2) / 2;
+        const cosR = Math.cos(-rot);
+        const sinR = Math.sin(-rot);
+        const dx = x - cx;
+        const dy = y - cy;
+        tx = cx + dx * cosR - dy * sinR;
+        ty = cy + dx * sinR + dy * cosR;
+      }
       const sMinX = Math.min(shape.x1, shape.x2);
       const sMinY = Math.min(shape.y1, shape.y2);
       const sMaxX = Math.max(shape.x1, shape.x2);
       const sMaxY = Math.max(shape.y1, shape.y2);
-      if (x >= sMinX - pad && x <= sMaxX + pad && y >= sMinY - pad && y <= sMaxY + pad) {
+      if (tx >= sMinX - pad && tx <= sMaxX + pad && ty >= sMinY - pad && ty <= sMaxY + pad) {
         return shape.id;
       }
     } else if (el.tool === 'fill') {
@@ -127,14 +140,38 @@ function getSelectionBounds(
       const shape = el as PaintShape;
       const shapePad = shape.strokeWidth / 2 + 6;
       if (shapePad > maxPad) maxPad = shapePad;
-      const sx1 = Math.min(shape.x1, shape.x2);
-      const sy1 = Math.min(shape.y1, shape.y2);
-      const sx2 = Math.max(shape.x1, shape.x2);
-      const sy2 = Math.max(shape.y1, shape.y2);
-      if (sx1 < minX) minX = sx1;
-      if (sy1 < minY) minY = sy1;
-      if (sx2 > maxX) maxX = sx2;
-      if (sy2 > maxY) maxY = sy2;
+      const rot = shape.rotation || 0;
+      if (rot !== 0 && shape.tool !== 'line') {
+        // Compute axis-aligned bounding box of rotated shape
+        const cx = (shape.x1 + shape.x2) / 2;
+        const cy = (shape.y1 + shape.y2) / 2;
+        const hw = Math.abs(shape.x2 - shape.x1) / 2;
+        const hh = Math.abs(shape.y2 - shape.y1) / 2;
+        const cosR = Math.cos(rot);
+        const sinR = Math.sin(rot);
+        // Rotated corners relative to center
+        const corners = [
+          { x: cx + (-hw * cosR - -hh * sinR), y: cy + (-hw * sinR + -hh * cosR) },
+          { x: cx + ( hw * cosR - -hh * sinR), y: cy + ( hw * sinR + -hh * cosR) },
+          { x: cx + ( hw * cosR -  hh * sinR), y: cy + ( hw * sinR +  hh * cosR) },
+          { x: cx + (-hw * cosR -  hh * sinR), y: cy + (-hw * sinR +  hh * cosR) },
+        ];
+        for (const c of corners) {
+          if (c.x < minX) minX = c.x;
+          if (c.y < minY) minY = c.y;
+          if (c.x > maxX) maxX = c.x;
+          if (c.y > maxY) maxY = c.y;
+        }
+      } else {
+        const sx1 = Math.min(shape.x1, shape.x2);
+        const sy1 = Math.min(shape.y1, shape.y2);
+        const sx2 = Math.max(shape.x1, shape.x2);
+        const sy2 = Math.max(shape.y1, shape.y2);
+        if (sx1 < minX) minX = sx1;
+        if (sy1 < minY) minY = sy1;
+        if (sx2 > maxX) maxX = sx2;
+        if (sy2 > maxY) maxY = sy2;
+      }
     } else if (el.tool === 'fill') {
       const fill = el as PaintFill;
       if (fill.x < minX) minX = fill.x;
@@ -158,12 +195,27 @@ const HANDLE_SIZE = 6;
 function hitTestHandle(
   x: number, y: number,
   bounds: {minX: number; minY: number; maxX: number; maxY: number},
+  zoom: number,
 ): string | null {
-  const hs = HANDLE_SIZE + 3;  // hit area slightly larger than visual
+  const hs = (HANDLE_SIZE + 3) / zoom;  // hit area in project coords, constant screen size
+
+  // Rotation handle — above top center of bounding box (circle + stem)
+  const stemLen = 20 / zoom;
+  const rotCircleR = 10 / zoom;
+  const rcx = (bounds.minX + bounds.maxX) / 2;
+  const rcy = bounds.minY - stemLen;
+  // Hit test: circle at handle center OR anywhere on the stem
+  const dxRot = x - rcx;
+  const dyRot = y - rcy;
+  if (Math.hypot(dxRot, dyRot) <= rotCircleR) return 'rotate';
+  // Stem hit: point is near the vertical line from minY to rcy, within a thin band
+  const stemHitW = 8 / zoom;
+  if (Math.abs(x - rcx) <= stemHitW && y >= rcy && y <= bounds.minY) return 'rotate';
+
   const midX = (bounds.minX + bounds.maxX) / 2;
   const midY = (bounds.minY + bounds.maxY) / 2;
 
-  // Corner handles (uniform scale) — check first (priority over edges at corners)
+  // Corner handles (uniform scale)
   const corners: [string, number, number][] = [
     ['tl', bounds.minX, bounds.minY],
     ['tr', bounds.maxX, bounds.minY],
@@ -188,6 +240,12 @@ function hitTestHandle(
   return null;
 }
 
+// Inline SVG rotation cursor (matches TransformOverlay)
+const ROTATE_CURSOR = (() => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M8 1a7 7 0 0 1 6.93 6H13a5 5 0 1 0-1.46 3.54l1.42 1.42A7 7 0 1 1 8 1z" fill="%23fff" stroke="%23000" stroke-width="0.8"/><path d="M16 7l-3-3v2H13V4l2 0-3-3" fill="%23fff" stroke="%23000" stroke-width="0.8" stroke-linejoin="round"/></svg>`;
+  return `url('data:image/svg+xml,${svg}') 8 8, crosshair`;
+})();
+
 /** Get CSS cursor name for a handle */
 function cursorForHandle(handleName: string): string {
   switch (handleName) {
@@ -195,6 +253,7 @@ function cursorForHandle(handleName: string): string {
     case 'l': case 'r': return 'ew-resize';
     case 'tl': case 'br': return 'nwse-resize';
     case 'tr': case 'bl': return 'nesw-resize';
+    case 'rotate': return ROTATE_CURSOR;
     default: return 'default';
   }
 }
@@ -547,11 +606,18 @@ export function PaintOverlay({
           const bw = maxX - minX;
           const bh = maxY - minY;
 
+          // Scale handle visuals to be constant screen size regardless of zoom
+          const zoom = canvasStore.zoom.peek();
+          const invZ = 1 / zoom;
+          const hs = HANDLE_SIZE * invZ;
+          const edgeR = 5 * invZ;
+          const lw = 1.5 * invZ;
+
           // Main bounding box
           ctx.save();
           ctx.strokeStyle = '#4A90D9';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([4, 3]);
+          ctx.lineWidth = lw;
+          ctx.setLineDash([4 * invZ, 3 * invZ]);
           ctx.strokeRect(minX, minY, bw, bh);
           ctx.restore();
 
@@ -564,14 +630,13 @@ export function PaintOverlay({
             ctx.save();
             ctx.fillStyle = 'white';
             ctx.strokeStyle = '#4A90D9';
-            ctx.lineWidth = 1.5;
-            ctx.fillRect(cx - HANDLE_SIZE / 2, cy - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
-            ctx.strokeRect(cx - HANDLE_SIZE / 2, cy - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            ctx.lineWidth = lw;
+            ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+            ctx.strokeRect(cx - hs / 2, cy - hs / 2, hs, hs);
             ctx.restore();
           }
 
           // Edge midpoint handles (non-uniform scale) — per D-04
-          const EDGE_HANDLE_RADIUS = 5;
           const edgeMidpoints: [number, number][] = [
             [(minX + maxX) / 2, minY],           // top
             [maxX, (minY + maxY) / 2],           // right
@@ -582,29 +647,33 @@ export function PaintOverlay({
             ctx.save();
             ctx.fillStyle = 'white';
             ctx.strokeStyle = '#4A90D9';
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = lw;
             ctx.beginPath();
-            ctx.arc(ex, ey, EDGE_HANDLE_RADIUS, 0, Math.PI * 2);
+            ctx.arc(ex, ey, edgeR, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
             ctx.restore();
           }
 
-          // Rotate handle (above top center)
+          // Rotation handle — above top center of bounding box
+          const rotHandleR = 5 * invZ;
+          const stemLen = 20 * invZ;
           const rcx = (minX + maxX) / 2;
-          const rcy = minY - 20;
+          const rcy = minY - stemLen;
+          // Stem from top-center edge to rotation circle
           ctx.save();
           ctx.strokeStyle = '#4A90D9';
-          ctx.lineWidth = 1;
+          ctx.lineWidth = 1 * invZ;
           ctx.beginPath();
           ctx.moveTo(rcx, minY);
           ctx.lineTo(rcx, rcy);
           ctx.stroke();
+          // Circle
           ctx.fillStyle = 'white';
           ctx.strokeStyle = '#4A90D9';
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = lw;
           ctx.beginPath();
-          ctx.arc(rcx, rcy, 4, 0, Math.PI * 2);
+          ctx.arc(rcx, rcy, rotHandleR, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
           ctx.restore();
@@ -671,10 +740,9 @@ export function PaintOverlay({
         const cx = (bounds.minX + bounds.maxX) / 2;
         const cy = (bounds.minY + bounds.maxY) / 2;
 
-        // Check rotate handle (circle above top center)
-        const rcx = cx;
-        const rcy = bounds.minY - 20;
-        if (Math.hypot(point.x - rcx, point.y - rcy) <= 8) {
+        // Check all handles: corners, edges, and rotation
+        const handle = hitTestHandle(point.x, point.y, bounds, canvasStore.zoom.peek());
+        if (handle === 'rotate') {
           isTransforming.current = true;
           transformType.current = 'rotate';
           transformCenter.current = {x: cx, y: cy};
@@ -683,12 +751,10 @@ export function PaintOverlay({
           transformLayerId.current = layerId;
           transformFrame.current = frame;
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          e.stopPropagation();
           e.preventDefault();
           return;
         }
-
-        // Check corner and edge resize handles
-        const handle = hitTestHandle(point.x, point.y, bounds);
         if (handle) {
           isTransforming.current = true;
           transformType.current = 'scale';
@@ -941,18 +1007,12 @@ export function PaintOverlay({
           if (paintFrame && selected.size > 0) {
             const bounds = getSelectionBounds(paintFrame, selected);
             if (bounds) {
-              const handle = hitTestHandle(point.x, point.y, bounds);
+              const handle = hitTestHandle(point.x, point.y, bounds, canvasStore.zoom.peek());
               const overlay = e.currentTarget as HTMLElement;
               if (handle) {
                 overlay.style.cursor = cursorForHandle(handle);
               } else {
-                const cx = (bounds.minX + bounds.maxX) / 2;
-                const rcy = bounds.minY - 20;
-                if (Math.hypot(point.x - cx, point.y - rcy) <= 8) {
-                  overlay.style.cursor = 'grab';
-                } else {
-                  overlay.style.cursor = 'default';
-                }
+                overlay.style.cursor = 'default';
               }
             }
           }
@@ -1013,7 +1073,8 @@ export function PaintOverlay({
                 stroke.points[i][2],
               ];
             }
-          } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+          } else if (el.tool === 'line') {
+            // Lines: rotate endpoints directly (works correctly)
             const shape = el as PaintShape;
             const dx1 = shape.x1 - center.x;
             const dy1 = shape.y1 - center.y;
@@ -1023,6 +1084,23 @@ export function PaintOverlay({
             const dy2 = shape.y2 - center.y;
             shape.x2 = center.x + dx2 * cos - dy2 * sin;
             shape.y2 = center.y + dx2 * sin + dy2 * cos;
+          } else if (el.tool === 'rect' || el.tool === 'ellipse') {
+            // Rect/ellipse: accumulate rotation angle + orbit center around selection center
+            const shape = el as PaintShape;
+            shape.rotation = (shape.rotation || 0) + delta;
+            // Orbit the shape center around the selection center
+            const scx = (shape.x1 + shape.x2) / 2;
+            const scy = (shape.y1 + shape.y2) / 2;
+            const dx = scx - center.x;
+            const dy = scy - center.y;
+            const newCx = center.x + dx * cos - dy * sin;
+            const newCy = center.y + dx * sin + dy * cos;
+            const halfW = (shape.x2 - shape.x1) / 2;
+            const halfH = (shape.y2 - shape.y1) / 2;
+            shape.x1 = newCx - halfW;
+            shape.y1 = newCy - halfH;
+            shape.x2 = newCx + halfW;
+            shape.y2 = newCy + halfH;
           } else if (el.tool === 'fill') {
             const fill = el as PaintFill;
             const dx = fill.x - center.x;

@@ -97,6 +97,16 @@ function renderShape(ctx: CanvasRenderingContext2D, element: PaintShape): void {
   ctx.save();
   ctx.globalAlpha = element.opacity;
 
+  // Apply rotation around shape center if present
+  const rot = element.rotation || 0;
+  if (rot !== 0) {
+    const cx = (element.x1 + element.x2) / 2;
+    const cy = (element.y1 + element.y2) / 2;
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.translate(-cx, -cy);
+  }
+
   switch (element.tool) {
     case 'line': {
       ctx.beginPath();
