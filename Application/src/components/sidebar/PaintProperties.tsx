@@ -1,10 +1,9 @@
 import {useState} from 'preact/hooks';
 import {ArrowRight} from 'lucide-preact';
 import {SectionLabel} from '../shared/SectionLabel';
-import {ColorPickerModal} from '../shared/ColorPickerModal';
 import {paintStore} from '../../stores/paintStore';
 import {timelineStore} from '../../stores/timelineStore';
-import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_STROKE_OPTIONS} from '../../types/paint';
+import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_STROKE_OPTIONS} from '../../types/paint';
 import type {PaintToolType, PaintStroke, PaintShape, PaintStrokeOptions} from '../../types/paint';
 import type {Layer} from '../../types/layer';
 import {StrokeList} from './StrokeList';
@@ -69,7 +68,6 @@ function shapeToBrushStrokes(shape: PaintShape, brushOptions: PaintStrokeOptions
 
 export function PaintProperties({layer}: {layer: Layer}) {
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showBgColorPicker, setShowBgColorPicker] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [onionCollapsed, setOnionCollapsed] = useState(true);
   const [tabletCollapsed, setTabletCollapsed] = useState(true);
@@ -81,7 +79,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
   const strokeOpts = paintStore.strokeOptions.value;
   const shapeFilledVal = paintStore.shapeFilled.value;
   const fillToleranceVal = paintStore.fillTolerance.value;
-  const bgColor = paintStore.paintBgColor.value;
 
   const showBrushSettings = BRUSH_TOOLS.includes(activeTool) || SHAPE_TOOLS.includes(activeTool);
   const showStrokeOptions = STROKE_TOOLS.includes(activeTool);
@@ -127,71 +124,35 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* Background Color + Show Sequence image -- 2 columns */}
+      {/* Luma Key + Luma Invert -- 2 columns */}
       <div style={{ padding: '4px 12px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }}>
-          {/* Col 1: Background Color */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>Background Color</span>
-            <div
-              style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)' }}
-              onClick={() => setShowBgColorPicker(true)}
-              title="Paint background color"
-            />
-            {bgColor !== DEFAULT_PAINT_BG_COLOR && (
-              <button
-                onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
-                style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-secondary)', cursor: 'pointer', border: 'none' }}
-              >
-                Reset
-              </button>
-            )}
-          </div>
-          {/* Col 2: Show BG Sequence */}
+          {/* Col 1: Luma Key toggle */}
           <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-            Show BG Sequence
+            Luma Key
             <div style={{ width: 16, height: 16, borderRadius: '3px', backgroundColor: '#4A4A60', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <input
                 type="checkbox"
-                checked={paintStore.showSequenceOverlay.value}
-                onChange={() => paintStore.toggleSequenceOverlay()}
+                checked={paintStore.lumaKeyEnabled.value}
+                onChange={() => paintStore.setLumaKeyEnabled(!paintStore.lumaKeyEnabled.peek())}
+                style={{ width: 14, height: 14, accentColor: 'var(--color-accent)', margin: 0, cursor: 'pointer' }}
+              />
+            </div>
+          </label>
+          {/* Col 2: Luma Invert toggle */}
+          <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+            Luma Invert
+            <div style={{ width: 16, height: 16, borderRadius: '3px', backgroundColor: '#4A4A60', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <input
+                type="checkbox"
+                checked={paintStore.lumaInvertEnabled.value}
+                onChange={() => paintStore.setLumaInvertEnabled(!paintStore.lumaInvertEnabled.peek())}
                 style={{ width: 14, height: 14, accentColor: 'var(--color-accent)', margin: 0, cursor: 'pointer' }}
               />
             </div>
           </label>
         </div>
-        {/* Sequence overlay opacity slider -- conditional on showSequenceOverlay */}
-        {paintStore.showSequenceOverlay.value && (
-          <div class="flex items-center gap-2 mt-1.5">
-            <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Opacity</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={Math.round(paintStore.sequenceOverlayOpacity.value * 100)}
-              class="flex-1 min-w-0 h-1 cursor-pointer"
-              style={{accentColor: 'var(--color-accent)'}}
-              onInput={(e) => paintStore.setSequenceOverlayOpacity(parseInt((e.target as HTMLInputElement).value, 10) / 100)}
-            />
-            <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-              {Math.round(paintStore.sequenceOverlayOpacity.value * 100)}%
-            </span>
-          </div>
-        )}
       </div>
-
-      {showBgColorPicker && (
-        <ColorPickerModal
-          color={bgColor}
-          onLiveChange={(c) => paintStore.setPaintBgColor(c)}
-          onCommit={(c) => {
-            paintStore.setPaintBgColor(c);
-            setShowBgColorPicker(false);
-          }}
-          onClose={() => setShowBgColorPicker(false)}
-        />
-      )}
 
       {/* SELECT MODE TOOLS -- 2-col grouping (per D-08) */}
       {activeTool === 'select' && (

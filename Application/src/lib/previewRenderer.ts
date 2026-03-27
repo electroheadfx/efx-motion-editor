@@ -12,6 +12,7 @@ import {blurStore} from '../stores/blurStore';
 import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
 import {renderPaintFrameWithBg} from './paintRenderer';
+import {applyLumaKey} from './lumaKey';
 import {paintStore} from '../stores/paintStore';
 import {projectStore} from '../stores/projectStore';
 import {applyMotionBlur} from './glMotionBlur';
@@ -288,33 +289,45 @@ export class PreviewRenderer {
         const offCtx = off.getContext('2d')!;
         if (paintFrame) {
           renderPaintFrameWithBg(offCtx, paintFrame, projW, projH, layer.id, paintLookupFrame);
-        } else {
-          // No paint data — just solid background
-          const bgColor = paintStore.paintBgColor.peek();
-          offCtx.fillStyle = bgColor;
-          offCtx.fillRect(0, 0, projW, projH);
-        }
-        ctx.save();
-        ctx.globalCompositeOperation = blendModeToCompositeOp(
-          paintStore.paintMode.peek() ? 'normal' : layer.blendMode  // Task 12: normal blend in edit mode
-        );
-        ctx.globalAlpha = effectiveOpacity;
-        ctx.drawImage(off, 0, 0, logicalW, logicalH);
-        ctx.restore();
 
-        // Sequence overlay: render sequence frame ON TOP of paint at reduced opacity
-        if (paintStore.showSequenceOverlay.peek() && frames.length > 0 && frameIdx >= 0 && frameIdx < frames.length) {
-          const overlayAlpha = paintStore.sequenceOverlayOpacity.peek();
-          const entry = frames[frameIdx];
-          if (entry?.imageId) {
-            const img = this.imageCache.get(entry.imageId);
-            if (img) {
-              ctx.save();
-              ctx.globalAlpha = overlayAlpha;
-              ctx.drawImage(img, 0, 0, logicalW, logicalH);
-              ctx.restore();
-            }
+          // Apply luma key if enabled (after rendering strokes to offscreen, before composite)
+          // IMPORTANT: apply on a copy, never on _frameFxCache directly (pitfall 3 in research)
+          if (paintStore.lumaKeyEnabled.peek() || paintStore.lumaInvertEnabled.peek()) {
+            // Create a copy of the offscreen canvas for luma processing
+            const lumaOff = document.createElement('canvas');
+            lumaOff.width = off.width;
+            lumaOff.height = off.height;
+            const lumaCtx = lumaOff.getContext('2d')!;
+            lumaCtx.drawImage(off, 0, 0);
+            applyLumaKey(lumaOff, paintStore.lumaInvertEnabled.peek());
+            // Composite the luma-keyed canvas
+            ctx.save();
+            ctx.globalCompositeOperation = blendModeToCompositeOp(
+              paintStore.paintMode.peek() ? 'normal' : layer.blendMode
+            );
+            ctx.globalAlpha = effectiveOpacity;
+            ctx.drawImage(lumaOff, 0, 0, logicalW, logicalH);
+            ctx.restore();
+          } else {
+            ctx.save();
+            ctx.globalCompositeOperation = blendModeToCompositeOp(
+              paintStore.paintMode.peek() ? 'normal' : layer.blendMode
+            );
+            ctx.globalAlpha = effectiveOpacity;
+            ctx.drawImage(off, 0, 0, logicalW, logicalH);
+            ctx.restore();
           }
+        } else {
+          // No paint data — just solid white background (always white per D-02)
+          offCtx.fillStyle = '#FFFFFF';
+          offCtx.fillRect(0, 0, projW, projH);
+          ctx.save();
+          ctx.globalCompositeOperation = blendModeToCompositeOp(
+            paintStore.paintMode.peek() ? 'normal' : layer.blendMode
+          );
+          ctx.globalAlpha = effectiveOpacity;
+          ctx.drawImage(off, 0, 0, logicalW, logicalH);
+          ctx.restore();
         }
       } else {
         // Content layer: check for gradient/solid/transparent frame first (per D-12, D-18, D-19)
