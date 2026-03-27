@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.6.0
 milestone_name: Various Enhancements
-status: verifying
-stopped_at: Completed 25-01-PLAN.md
-last_updated: "2026-03-27T19:39:33.798Z"
+status: executing
+stopped_at: Completed 25-02-PLAN.md
+last_updated: "2026-03-27T20:17:06.911Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 13
+  completed_plans: 13
   percent: 80
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 
 ## Current Position
 
-Phase: 26
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 25 (paint-compositing-pipeline) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-03-27
 
 Progress: [########..] 80%
@@ -60,6 +60,8 @@ Full phase decisions archived in milestones/v0.5.0-ROADMAP.md.
 - [Phase 25]: Luma key uses ITU-R BT.709 coefficients (0.2126, 0.7152, 0.0722) for perceptual accuracy
 - [Phase 25]: Luma key applied to offscreen canvas COPY, never directly on _frameFxCache (pitfall 3 avoided)
 - [Phase 25]: Auto-flatten effect disabled for non-destructive paint edit (strokes remain editable after exit paint mode)
+- [Phase 25-paint-compositing-pipeline]: Luma key threshold: luma >= 254 → transparent (white BG), else opaque (colored strokes)
+- [Phase 25-paint-compositing-pipeline]: Luma invert threshold: luma < 10 → transparent (near-black strokes), else opaque
 
 ### Pending Todos
 
@@ -80,9 +82,10 @@ None.
 |---|-------------|------|--------|-----------|
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
 | Phase 25 P01 | 12 | 3 tasks | 6 files |
+| Phase 25-paint-compositing-pipeline P25-02 | 5 | 1 tasks | 2 files |
 
 ## Session Continuity
 
-Last session: 2026-03-27T19:35:00.325Z
-Stopped at: Completed 25-01-PLAN.md
+Last session: 2026-03-27T20:17:06.907Z
+Stopped at: Completed 25-02-PLAN.md
 Resume file: None
