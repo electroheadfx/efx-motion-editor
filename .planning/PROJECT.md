@@ -86,6 +86,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - [ ] Paper/canvas texture on paint layer (shader or tiled textures from Krita)
 - ✓ Duplicate stroke with Alt+move on same frame in roto paint edit mode — v0.6.0
 - ✓ Non-uniform scale for paint layer's strokes — v0.6.0
+- ✓ Stroke interactions (move, rotate, scale, undo/redo) with correct hit-testing — v0.6.0
 - [ ] Reorder/clean Paint properties panel (space optimization, better buttons)
 - [ ] Sequence-scoped layer creation (add layer only on isolated sequence if selected)
 - [ ] Denser motion path interpolation visual (more dots for short sequences)
@@ -203,4 +204,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after Phase 22 (Foundation & Quick Wins) complete — paint store bugs fixed, motion path density improved, isolation-mode layer creation corrected, paint panel reorganized*
+*Last updated: 2026-03-27 after Phase 23 (Stroke Interactions) complete — move/rotate/scale/undo/redo gestures with Alt+drag duplicate, non-uniform edge scale, asymmetric padding hit-test fix*
