@@ -134,7 +134,10 @@ Plans:
   1. User can Alt+drag a selected stroke in roto paint edit mode to create a duplicate at the new position
   2. User can scale a selected stroke independently on X and Y axes via edge handles (non-uniform scale)
   3. Both duplicate and scale operations support undo/redo with a single undo entry per gesture
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 23-01-PLAN.md -- Retrofit undo onto existing transforms + generalize element handling
+- [ ] 23-02-PLAN.md -- Alt+drag duplicate + non-uniform edge-handle scale
 **UI hint**: yes
 
 ### Phase 24: Stroke List Panel
@@ -190,7 +193,7 @@ Note: Phase 25 depends on Phase 22 (not 24), so Phases 23-24 and Phase 25 could 
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
 | 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2026-03-26 |
 | 22. Foundation & Quick Wins | v0.6.0 | 5/5 | Complete    | 2026-03-26 |
-| 23. Stroke Interactions | v0.6.0 | 0/? | Not started | - |
+| 23. Stroke Interactions | v0.6.0 | 0/2 | Not started | - |
 | 24. Stroke List Panel | v0.6.0 | 0/? | Not started | - |
 | 25. Paint Compositing Pipeline | v0.6.0 | 0/? | Not started | - |
 | 26. Bezier Path Editing | v0.6.0 | 0/? | Not started | - |
