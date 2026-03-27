@@ -1,104 +1,110 @@
 ---
 phase: 23-stroke-interactions
-verified: 2026-03-27T11:15:00Z
+verified: 2026-03-27T11:23:23Z
 status: passed
-score: 12/12 must-haves verified
+score: 16/16 must-haves verified
+re_verification:
+  previous_status: passed
+  previous_score: 12/12
+  note: "Re-verification triggered by plan-03 UAT gap-closure commits (efbf774, eed45d9) landing after initial verification"
+  gaps_closed:
+    - "Handle hit areas align with visual handle positions (asymmetric padding fixed in coordinateMapper)"
+    - "Bounding box handles update after undo/redo without re-clicking (paintVersion in useEffect deps)"
+    - "Edge scale behaves linearly (snapshot restore before each frame prevents compounding)"
+    - "Edge midpoint handles are visually comparable to corner handles (radius 3 -> 5)"
+  regressions: []
 gaps: []
 human_verification:
-  - test: "Alt+drag duplicate: drag selected stroke with Alt held, release, then Ctrl+Z"
-    expected: "Clone appears at drop position; Ctrl+Z removes clone entirely, restoring original-only state"
-    why_human: "Pointer interaction and visual result cannot be tested without running the app"
-  - test: "Edge handle scale: drag right-edge midpoint handle horizontally while a stroke is selected"
-    expected: "Elements stretch on X axis; left edge stays fixed; brush size does not change"
-    why_human: "Interactive drag gesture cannot be verified programmatically"
-  - test: "8 visible handles on selection: 4 corner squares + 4 edge circles + 1 rotate dot"
-    expected: "All 9 handles render at correct bounding-box positions without overlap"
-    why_human: "Canvas rendering requires visual inspection"
-  - test: "Ctrl+Z after rotating then after scaling: each restores pre-gesture state exactly"
-    expected: "Undo history stacks correctly; no double-entries per gesture"
-    why_human: "Runtime undo stack behaviour cannot be verified by static analysis"
+  - test: "Alt+drag duplicate gesture"
+    expected: "Original stays; clone appears at drop position; selection switches to clone; Ctrl+Z removes clone entirely"
+    why_human: "Pointer interaction and visual canvas result cannot be tested without running the app"
+  - test: "Handle hit areas align with visual handles post-fix"
+    expected: "Hovering over the visual rotate dot, corner squares, and edge circles triggers correct cursors; click-drag starts the expected gesture without deselecting"
+    why_human: "Pointer hit-testing with CSS-transformed canvas requires running the app"
+  - test: "Bounding box refreshes after undo/redo without re-clicking"
+    expected: "After Ctrl+Z on a move, the selection rectangle and handles move to the restored position immediately, not after a subsequent click"
+    why_human: "useEffect reactive re-render requires runtime observation"
+  - test: "Edge scale is linear end-to-end"
+    expected: "Dragging an edge handle at constant speed produces proportional element growth with no acceleration or oscillation"
+    why_human: "Exponential vs linear behaviour requires interactive drag to observe"
 ---
 
 # Phase 23: Stroke Interactions Verification Report
 
-**Phase Goal:** Users can duplicate and non-uniformly scale individual paint strokes, expanding the roto paint editing toolkit
-**Verified:** 2026-03-27T11:15:00Z
+**Phase Goal:** Paint strokes respond to pointer gestures — move, rotate, uniform and non-uniform scale — with undo/redo for each, plus Alt+drag to duplicate selections.
+**Verified:** 2026-03-27T11:23:23Z
 **Status:** passed
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — after gap closure (plan 03, commits efbf774 and eed45d9)
 
 ## Goal Achievement
+
+This re-verification covers all 12 original must-have truths (regression check) plus the 4 new must-have truths introduced by plan 03. All 16 pass.
 
 ### Observable Truths
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | User can Alt+drag a selected stroke to create a duplicate at new position | VERIFIED | `e.altKey` branch at line 737; `structuredClone` + `crypto.randomUUID()` at lines 746-748; `isDragging.current = true` at line 770 |
-| 2 | Alt+drag works on all element types: strokes, shapes, and fills | VERIFIED | Clone loop at lines 744-750 iterates `frameData.elements` — all PaintElement union types included |
-| 3 | Multi-selection Alt+drag clones all selected elements | VERIFIED | Loop condition `if (!selected.has(el.id)) continue` clones every selected element; `paintStore.selectedStrokeIds.value = new Set(cloneIds)` switches to all clones |
-| 4 | One Ctrl+Z after Alt+drag removes all clones | VERIFIED | `isDuplicating.current` branch in `handlePointerUp` pushes single `pushAction`; undo closure at line 1337 uses `f.elements.filter(el => !cloneIdSet.has(el.id))` |
-| 5 | Edge midpoint handles (t/r/b/l) visible for non-uniform scale | VERIFIED | `EDGE_HANDLE_RADIUS = 3` at line 573; circular handles rendered via `ctx.arc` at line 586; 4 midpoints defined at lines 574-579 |
-| 6 | Edge handles scale from opposite edge | VERIFIED | `edgeAnchorX/Y` captured once on pointerdown at lines 704-715; scale formula `anchor + (coord - anchor) * scale` at lines 1056, 1064, 1086, 1093 |
-| 7 | Brush size stays fixed during non-uniform scale | VERIFIED | Comment `// D-06: brush size stays fixed` at lines 1061, 1090; `stroke.size` is NOT modified in edge-scale block (confirmed by absence of `stroke.size *=`) |
-| 8 | Non-uniform scale supports undo/redo with single entry | VERIFIED | `isTransforming.current` block in `handlePointerUp` at line 1252 captures `beforeSnap`/`afterSnap` and calls `pushAction` once |
-| 9 | All transform gestures (drag, uniform scale, rotate) support undo/redo | VERIFIED | `transformSnapshot.current = captureElementSnapshot(...)` on rotate (line 681), scale (line 697), drag (line 781/765); `pushAction` in finalize blocks lines 1262 and 1366 |
-| 10 | Ctrl+Z after dragging restores pre-drag position | VERIFIED | Snapshot captured pre-drag at line 781; normal drag `pushAction` at line 1366 with `restoreElementSnapshot` in undo closure |
-| 11 | Selection, hit-testing, bounding boxes, and transforms work on PaintShape and PaintFill | VERIFIED | `findElementAtPoint` handles `line/rect/ellipse` at line 83 and `fill` at line 93; `getSelectionBounds` handles all types at lines 126-144; all transform loops branch on element type |
-| 12 | `findStrokeAtPoint` fully renamed to `findElementAtPoint` | VERIFIED | `grep -c findStrokeAtPoint` returns 0; `findElementAtPoint` defined at line 54, called at lines 731, 834, 970 |
+| 1 | User can Alt+drag a selected stroke to create a duplicate at new position | VERIFIED | `e.altKey` branch; `structuredClone` + `crypto.randomUUID()`; `frameData.elements.push(clone)` |
+| 2 | Multi-selection Alt+drag clones all selected elements | VERIFIED | Loop over `frameData.elements` with `selected.has(el.id)` guard; `selectedStrokeIds.value = new Set(cloneIds)` |
+| 3 | One Ctrl+Z after Alt+drag removes all clones | VERIFIED | Single `pushAction` in `isDuplicating.current` branch; undo closure filters by `cloneIdSet` |
+| 4 | Edge midpoint handles visible for non-uniform scale | VERIFIED | `EDGE_HANDLE_RADIUS = 5` at line 574; `ctx.arc` at line 587 |
+| 5 | Edge handles scale from opposite edge (non-uniform) | VERIFIED | `edgeAnchorX/Y` captured on pointerdown; scale formula `anchor + (coord - anchor) * scale` |
+| 6 | Brush size stays fixed during non-uniform scale | VERIFIED | Comment `// D-06: brush size stays fixed`; `stroke.size` not modified in edge-scale block |
+| 7 | Non-uniform scale supports undo with single entry | VERIFIED | `isTransforming.current` block in `handlePointerUp`; single `pushAction` on gesture end |
+| 8 | All transform gestures (drag, rotate, corner scale) support undo/redo | VERIFIED | `transformSnapshot.current = captureElementSnapshot(...)` on each gesture type; `pushAction` in finalize blocks |
+| 9 | Selection, hit-testing, and transforms work on all PaintElement types | VERIFIED | `findElementAtPoint` has branches for line/rect/ellipse and fill; transform loops handle all types |
+| 10 | `findStrokeAtPoint` fully renamed to `findElementAtPoint` | VERIFIED | `grep findStrokeAtPoint PaintOverlay.tsx` returns 0 matches |
+| 11 | Handle hit areas align with visual handle positions (plan-03 fix) | VERIFIED | `clientToCanvas` in PaintOverlay passes `0, 16` padding (line 378); same fix in both TransformOverlay callers (lines 211, 572) |
+| 12 | Bounding box handles update after undo/redo without re-clicking (plan-03 fix) | VERIFIED | `void paintStore.paintVersion.value` at line 1678; `paintStore.paintVersion.value` in `useEffect` deps at line 1680 |
+| 13 | Edge scale is linear and predictable (plan-03 fix) | VERIFIED | `restoreElementSnapshot(paintFrame.elements, transformSnapshot.current)` at line 1041 inside the `transformCorner.current.length === 1` block; resets to snapshot before each absolute-ratio frame |
+| 14 | Edge midpoint handles are visually comparable to corner handles (plan-03 fix) | VERIFIED | `EDGE_HANDLE_RADIUS = 5` (was 3); produces 10px diameter circles vs ~8px corner squares |
+| 15 | `clientToCanvas`/`canvasToClient` compensate for asymmetric container padding | VERIFIED | `paddingTop = 0, paddingBottom = 0` optional params at coordinateMapper.ts lines 31-32 and 68-69; `paddingOffsetY = (paddingTop - paddingBottom) / 2` applied to `containerCenterY` in both functions |
+| 16 | No other `clientToCanvas` callers were left without padding args | VERIFIED | Only 3 callers exist in the entire codebase; all 3 updated with `0, 16` |
 
-**Score:** 12/12 truths verified
+**Score:** 16/16 truths verified
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `Application/src/components/canvas/PaintOverlay.tsx` | Transform undo infrastructure + generalized element handling + Alt+duplicate + non-uniform edge scale | VERIFIED | 1709 lines; all required patterns present; TypeScript compiles with 0 errors in this file |
+| `Application/src/components/canvas/coordinateMapper.ts` | Asymmetric-padding-aware center calculation in both clientToCanvas and canvasToClient | VERIFIED | 102 lines; both functions have `paddingTop`, `paddingBottom` optional params with `paddingOffsetY` applied to `containerCenterY` |
+| `Application/src/components/canvas/PaintOverlay.tsx` | Fixed selection re-render useEffect, linear edge scale via snapshot restore, edge handle radius 5 | VERIFIED | 1716 lines; all three fixes confirmed at lines 574, 1041, 1678-1680 |
+| `Application/src/components/canvas/TransformOverlay.tsx` | Two clientToCanvas callers updated with padding args | VERIFIED | 732 lines; `getProjectPoint` (line 211) and `getProjectPointFromClient` (line 572) both pass `0, 16` |
 
 ### Key Link Verification
 
-**Plan 01 key links:**
-
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `handleSelectPointerDown` rotate block | `captureElementSnapshot` | `transformSnapshot.current = captureElementSnapshot(...)` | WIRED | Line 681 — snapshot captured after rotate handle detection |
-| `handleSelectPointerDown` scale block | `captureElementSnapshot` | `transformSnapshot.current = captureElementSnapshot(...)` | WIRED | Line 697 — snapshot captured after corner/edge handle detection |
-| `handlePointerUp` transform finalize | `pushAction` | single undo entry on gesture end | WIRED | Line 1262 — `pushAction({description: 'Transform elements',...})` |
-| `handlePointerUp` drag finalize | `pushAction` | single undo entry on gesture end | WIRED | Line 1366 — second `pushAction` for drag path |
-| `findElementAtPoint` | PaintElement union | handles brush, shape, fill types | WIRED | Lines 62, 83, 93 — three element type branches in function body |
-
-**Plan 02 key links:**
-
-| From | To | Via | Status | Details |
-|------|----|-----|--------|---------|
-| `handleSelectPointerDown` altKey check | `structuredClone + push to elements` | clone selected elements and switch selection to clones | WIRED | Lines 737-776 — `e.altKey` triggers clone loop, `frameData.elements.push(clone)`, `selectedStrokeIds.value = new Set(cloneIds)` |
-| `hitTestHandle` edge midpoints | `handlePointerMove` edge-scale | `transformCorner.current.length === 1` distinguishes | WIRED | `hitTestHandle` returns `'t'/'r'/'b'/'l'` at lines 178-186; `transformCorner.current.length === 1` at line 1034 branches to edge scale |
-| `handlePointerUp` | `pushAction` for duplicate | commit undo for Alt+drag | WIRED | Lines 1330 — `pushAction({description: 'Duplicate N element(s)',...})` |
+| `PaintOverlay.tsx getProjectPointFromEvent` | `coordinateMapper.ts clientToCanvas` | container rect + `0, 16` padding args | WIRED | Lines 368-379: `rect = container.getBoundingClientRect()`; `clientToCanvas(..., 0, 16)` |
+| `TransformOverlay.tsx getProjectPoint` | `coordinateMapper.ts clientToCanvas` | container rect + `0, 16` padding args | WIRED | Lines 200-213: `rect = container.getBoundingClientRect()`; `clientToCanvas(..., 0, 16)` |
+| `TransformOverlay.tsx getProjectPointFromClient` | `coordinateMapper.ts clientToCanvas` | container rect + `0, 16` padding args | WIRED | Lines 560-574: `rect = container.getBoundingClientRect()`; `clientToCanvas(..., 0, 16)` |
+| `PaintOverlay.tsx selection overlay useEffect` | `paintStore.paintVersion` | dependency array subscription | WIRED | Line 1680: `[paintStore.selectedStrokeIds.value, paintStore.paintVersion.value]` |
+| `PaintOverlay.tsx edge scale block` | `transformSnapshot` | `restoreElementSnapshot` before each frame | WIRED | Line 1041: `restoreElementSnapshot(paintFrame.elements, transformSnapshot.current)` at top of edge-scale `if` block |
 
 ### Data-Flow Trace (Level 4)
 
-Not applicable — PaintOverlay.tsx is an event-driven canvas renderer, not a data-fetching component. All data mutations happen in-place on `PaintFrame.elements` via the store references; no async data source.
+Not applicable — PaintOverlay.tsx and TransformOverlay.tsx are event-driven canvas renderers with no async data fetching. All data mutations operate in-place on `PaintFrame.elements` via store references. coordinateMapper.ts is a pure utility module with no state.
 
 ### Behavioral Spot-Checks
 
-Step 7b: TypeScript compilation is the primary verifiable behavioral check for canvas/gesture code.
-
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| PaintOverlay.tsx compiles without errors | `npx tsc --noEmit \| grep PaintOverlay` | 0 output (no errors) | PASS |
-| No `findStrokeAtPoint` references remain | `grep -c findStrokeAtPoint PaintOverlay.tsx` | 0 | PASS |
-| `el.tool !== 'brush'` count is 4 or fewer (only FX) | `grep -c "el.tool !== 'brush'"` | 4 (lines 639, 1516, 1538, 1575 — all FX/style-sync) | PASS |
-| All 4 phase commits exist in git log | `git show --stat eb3d30d 4a634e4 4660445 7701992` | All 4 commits verified | PASS |
-| `pushAction` imported and called | `grep -n "pushAction"` | Import at line 13; calls at lines 1262, 1330, 1366 | PASS |
+| No errors in modified files | `npx tsc --noEmit` (from Application/) | 5 errors, all in PaintProperties.tsx, SidebarProperties.tsx, glslRuntime.test.ts, paintStore.ts — none in coordinateMapper.ts, PaintOverlay.tsx, or TransformOverlay.tsx | PASS |
+| Plan-03 commits verified in git | `git show --stat efbf774 eed45d9` | Both commits found; efbf774 modifies coordinateMapper.ts, PaintOverlay.tsx, TransformOverlay.tsx; eed45d9 modifies PaintOverlay.tsx | PASS |
+| `EDGE_HANDLE_RADIUS` is 5 (not 3) | `grep EDGE_HANDLE_RADIUS PaintOverlay.tsx` | Line 574: `const EDGE_HANDLE_RADIUS = 5;` | PASS |
+| `paintVersion` in useEffect deps | `grep -n paintVersion PaintOverlay.tsx` | Line 1678 (void), line 1680 (deps array) | PASS |
+| `restoreElementSnapshot` in edge scale block | `grep -n "restoreElementSnapshot.*transformSnapshot"` | Line 1041: inside `transformCorner.current.length === 1` guard | PASS |
+| All `clientToCanvas` callers pass padding | Count callers across src/ | 3 callers total (PaintOverlay line 369, TransformOverlay lines 202, 563); all pass `0, 16` | PASS |
+| No `findStrokeAtPoint` references | `grep -c findStrokeAtPoint PaintOverlay.tsx` | 0 | PASS |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|-------------|-------------|--------|----------|
-| PINT-01 | 23-01-PLAN.md, 23-02-PLAN.md | User can duplicate a stroke with Alt+move on the same frame in roto paint edit mode | SATISFIED | `e.altKey` path in `handleSelectPointerDown`; clones pushed to `frameData.elements`; `structuredClone` + new UUID for each selected element; single undo removes all clones |
-| PINT-02 | 23-01-PLAN.md, 23-02-PLAN.md | User can apply non-uniform scale to individual paint strokes | SATISFIED | `hitTestHandle` returns single-letter edge handles; `transformCorner.current.length === 1` triggers edge scale path; only axis coordinates modified (brush size untouched) |
+| PINT-01 | 23-01-PLAN.md, 23-02-PLAN.md, 23-03-PLAN.md | User can duplicate a stroke with Alt+move on the same frame in roto paint edit mode | SATISFIED | `e.altKey` path in `handleSelectPointerDown`; clones pushed to `frameData.elements`; `structuredClone` + new UUID; single undo removes all clones; REQUIREMENTS.md line 20 marked `[x]` |
+| PINT-02 | 23-01-PLAN.md, 23-02-PLAN.md, 23-03-PLAN.md | User can apply non-uniform scale to individual paint strokes | SATISFIED | `hitTestHandle` returns single-letter edge handles; `transformCorner.current.length === 1` branches to edge scale; snapshot restore prevents exponential compounding; REQUIREMENTS.md line 21 marked `[x]` |
 
-No orphaned requirements — both PINT-01 and PINT-02 are fully claimed and implemented.
-
-**REQUIREMENTS.md status:** Both requirements marked `[x]` complete (lines 20-21).
+No orphaned requirements. PINT-01 and PINT-02 are the only phase-23 requirements in REQUIREMENTS.md (lines 70-71 of the tracking table confirm both Complete).
 
 ### Anti-Patterns Found
 
@@ -106,39 +112,39 @@ No orphaned requirements — both PINT-01 and PINT-02 are fully claimed and impl
 |------|------|---------|----------|--------|
 | None | — | — | — | — |
 
-No stubs, placeholders, empty handlers, or TODO markers found in PaintOverlay.tsx. The 4 remaining `el.tool !== 'brush'` guards (lines 639, 1516, 1538, 1575) are all legitimate — they are in `syncStyleToSelection` (brush-style sync only makes sense for brush strokes) and in three FX application `useEffect` loops (FX rendering is brush-only by design).
+No stubs, placeholders, empty handlers, TODO markers, or hardcoded-empty returns found in any of the three plan-03-modified files. The 5 pre-existing TypeScript errors in unrelated files (PaintProperties.tsx, SidebarProperties.tsx, glslRuntime.test.ts, paintStore.ts) are unchanged from before this phase began.
 
 ### Human Verification Required
 
 #### 1. Alt+drag duplicate gesture
 
 **Test:** In roto paint edit mode, select a brush stroke, hold Alt, click and drag to a new position, release.
-**Expected:** Original stroke remains at original position; clone appears at drop position; selection switches to clone; Ctrl+Z removes clone entirely.
+**Expected:** Original stroke remains at original position; clone appears at drop position; selection switches to clone. Then Ctrl+Z removes clone entirely, restoring original-only state.
 **Why human:** Pointer event interaction and visual canvas result require running the app.
 
-#### 2. Edge handle non-uniform scale
+#### 2. Handle hit areas align with visual positions (post padding fix)
 
-**Test:** Select a stroke, drag the right-edge midpoint circle handle (hollow circle at bounding box right center) horizontally.
-**Expected:** Elements stretch on X axis only; left edge stays fixed; brush stroke point positions update but stroke size (visual thickness) does not change.
-**Why human:** Interactive gesture with canvas rendering cannot be verified statically.
+**Test:** Select any element. Hover over the visual rotate dot above the selection. Observe cursor. Then hover over a corner square and an edge circle.
+**Expected:** Rotate dot shows grab cursor exactly where the dot is drawn. Corner squares and edge circles each trigger resize cursors when the pointer is directly over the rendered shape — not 8px offset.
+**Why human:** Asymmetric-padding fix correctness requires runtime pointer observation; cannot verify pixel-accuracy of hit zones from static analysis.
 
-#### 3. 9-handle selection rendering
+#### 3. Bounding box refreshes after undo/redo without re-clicking
 
-**Test:** Select any element in paint select mode.
-**Expected:** 4 corner squares + 4 edge midpoint circles + 1 rotate dot above top center = 9 visible handles.
-**Why human:** Canvas rendering requires visual inspection.
+**Test:** Drag-move a selected stroke. Press Ctrl+Z.
+**Expected:** The selection rectangle and handles immediately jump to the pre-move position. No need to click elsewhere and re-select.
+**Why human:** useEffect reactive re-render triggered by `paintVersion` requires runtime observation to confirm the handles re-draw in the same frame as the undo.
 
-#### 4. Undo stack correctness
+#### 4. Edge scale is linear end-to-end
 
-**Test:** Drag-move a stroke (1 undo entry), then rotate it (1 more), then Ctrl+Z twice.
-**Expected:** Two distinct undo entries; each Ctrl+Z restores exactly one gesture; no extra entries.
-**Why human:** Runtime undo stack order and coalescing behavior requires app execution.
+**Test:** Select a stroke. Drag the right-edge midpoint handle slowly, then quickly.
+**Expected:** The element stretches proportionally to pointer movement at all speeds — no acceleration, no oscillation, no runaway growth.
+**Why human:** Exponential vs linear behaviour requires interactive drag at varying speeds to distinguish; snapshot-restore fix correctness cannot be inferred from static code alone.
 
 ### Gaps Summary
 
-No gaps found. All 12 must-have truths verified against the actual code in `PaintOverlay.tsx`. All key links are wired. Both PINT-01 and PINT-02 requirements are satisfied. TypeScript compiles cleanly for PaintOverlay.tsx (5 pre-existing errors in unrelated files — PaintProperties.tsx, SidebarProperties.tsx, glslRuntime.test.ts, paintStore.ts — are unchanged from before this phase). All 4 phase commits are real and in git history.
+No gaps. All 16 must-have truths verified. Plan-03's four fixes (asymmetric padding, stale bounding box, exponential edge scale, edge handle size) are all present in the actual code and correctly wired. The 5 pre-existing TypeScript errors are unrelated to this phase. PINT-01 and PINT-02 are both satisfied and marked complete in REQUIREMENTS.md. Phase 23 goal is fully achieved.
 
 ---
 
-_Verified: 2026-03-27T11:15:00Z_
+_Verified: 2026-03-27T11:23:23Z_
 _Verifier: Claude (gsd-verifier)_

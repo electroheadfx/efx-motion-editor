@@ -194,7 +194,7 @@ Note: Phase 25 depends on Phase 22 (not 24), so Phases 23-24 and Phase 25 could 
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
 | 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2026-03-26 |
 | 22. Foundation & Quick Wins | v0.6.0 | 5/5 | Complete    | 2026-03-26 |
-| 23. Stroke Interactions | v0.6.0 | 3/3 | Complete   | 2026-03-27 |
+| 23. Stroke Interactions | v0.6.0 | 3/3 | Complete    | 2026-03-27 |
 | 24. Stroke List Panel | v0.6.0 | 0/? | Not started | - |
 | 25. Paint Compositing Pipeline | v0.6.0 | 0/? | Not started | - |
 | 26. Bezier Path Editing | v0.6.0 | 0/? | Not started | - |
