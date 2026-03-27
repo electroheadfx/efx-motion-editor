@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.6.0
 milestone_name: Various Enhancements
-status: All plans executed
-stopped_at: Phase 23 context gathered
-last_updated: "2026-03-27T08:25:32.579Z"
-last_activity: 2026-03-26
+status: executing
+stopped_at: Completed 23-01-PLAN.md
+last_updated: "2026-03-27T09:34:44.637Z"
+last_activity: 2026-03-27
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
   percent: 80
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 22 — foundation-quick-wins
+**Current focus:** Phase 23 — stroke-interactions
 
 ## Current Position
 
-Phase: 23
-Plan: Not started
-Status: All plans executed
-Last activity: 2026-03-26
+Phase: 23 (stroke-interactions) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-03-27
 
 Progress: [########..] 80%
 
@@ -51,6 +51,7 @@ Full phase decisions archived in milestones/v0.5.0-ROADMAP.md.
 - [Phase 22]: Added addLayerToSequence method rather than mutating activeSequenceId for isolation-scoped layer creation
 - [Phase 22]: Store raw fractional frame values in sampleMotionDots; only round at consumption points (playhead lookup)
 - [Phase 22]: Create new timeline-level sequences in isolation mode rather than pushing internal sub-layers, with frame range from trackLayouts
+- [Phase 23]: Snapshot-before/commit-on-release undo pattern for transform gestures: capture deep clone on pointerdown, push single undo entry on pointerup
 
 ### Pending Todos
 
@@ -67,6 +68,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27T08:25:32.575Z
-Stopped at: Phase 23 context gathered
-Resume file: .planning/phases/23-stroke-interactions/23-CONTEXT.md
+Last session: 2026-03-27T09:34:44.635Z
+Stopped at: Completed 23-01-PLAN.md
+Resume file: None
