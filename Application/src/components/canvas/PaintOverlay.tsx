@@ -271,6 +271,11 @@ export function PaintOverlay({
   const transformStartAngle = useRef(0);
   const transformStartDist = useRef(1);
 
+  // --- Ref for transform undo snapshot (D-07) ---
+  const transformSnapshot = useRef<Map<string, PaintElement> | null>(null);
+  const transformLayerId = useRef<string>('');
+  const transformFrame = useRef<number>(0);
+
   // --- Flag to prevent FX useEffect from firing during style sync ---
   const isSyncingStyle = useRef(false);
 
@@ -614,6 +619,9 @@ export function PaintOverlay({
           transformType.current = 'rotate';
           transformCenter.current = {x: cx, y: cy};
           transformStartAngle.current = Math.atan2(point.y - cy, point.x - cx);
+          transformSnapshot.current = captureElementSnapshot(paintFrame.elements, selected);
+          transformLayerId.current = layerId;
+          transformFrame.current = frame;
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           e.preventDefault();
           return;
@@ -628,6 +636,9 @@ export function PaintOverlay({
           transformCenter.current = {x: cx, y: cy};
           transformStartDist.current = Math.hypot(point.x - cx, point.y - cy);
           dragStart.current = {x: point.x, y: point.y};
+          transformSnapshot.current = captureElementSnapshot(paintFrame.elements, selected);
+          transformLayerId.current = layerId;
+          transformFrame.current = frame;
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           e.preventDefault();
           return;
@@ -644,6 +655,9 @@ export function PaintOverlay({
         // Clicked on an already-selected stroke — start drag
         isDragging.current = true;
         dragStart.current = {x: point.x, y: point.y};
+        transformSnapshot.current = captureElementSnapshot(paintFrame.elements, selected);
+        transformLayerId.current = layerId;
+        transformFrame.current = frame;
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       } else {
         paintStore.clearSelection();
@@ -1007,6 +1021,41 @@ export function PaintOverlay({
 
     // Finalize transform (resize/rotate)
     if (isTransforming.current) {
+      // Commit transform undo entry (D-07, D-09)
+      if (transformSnapshot.current && transformSnapshot.current.size > 0) {
+        const snapLayerId = transformLayerId.current;
+        const snapFrame = transformFrame.current;
+        const beforeSnap = transformSnapshot.current;
+        const paintFrameForSnap = paintStore.getFrame(snapLayerId, snapFrame);
+        if (paintFrameForSnap) {
+          const selected = paintStore.selectedStrokeIds.peek();
+          const afterSnap = captureElementSnapshot(paintFrameForSnap.elements, selected);
+          pushAction({
+            id: crypto.randomUUID(),
+            description: 'Transform elements',
+            timestamp: Date.now(),
+            undo: () => {
+              const f = paintStore.getFrame(snapLayerId, snapFrame);
+              if (f) {
+                restoreElementSnapshot(f.elements, beforeSnap);
+                paintStore.markDirty(snapLayerId, snapFrame);
+                paintStore.paintVersion.value++;
+                paintStore.invalidateFrameFxCache(snapLayerId, snapFrame);
+              }
+            },
+            redo: () => {
+              const f = paintStore.getFrame(snapLayerId, snapFrame);
+              if (f) {
+                restoreElementSnapshot(f.elements, afterSnap);
+                paintStore.markDirty(snapLayerId, snapFrame);
+                paintStore.paintVersion.value++;
+                paintStore.invalidateFrameFxCache(snapLayerId, snapFrame);
+              }
+            },
+          });
+        }
+        transformSnapshot.current = null;
+      }
       isTransforming.current = false;
       transformType.current = null;
       // Re-render FX cache after transform
@@ -1029,6 +1078,41 @@ export function PaintOverlay({
 
     // Finalize select-mode drag
     if (isDragging.current) {
+      // Commit drag undo entry (D-07, D-09)
+      if (transformSnapshot.current && transformSnapshot.current.size > 0) {
+        const snapLayerId = transformLayerId.current;
+        const snapFrame = transformFrame.current;
+        const beforeSnap = transformSnapshot.current;
+        const paintFrameForSnap = paintStore.getFrame(snapLayerId, snapFrame);
+        if (paintFrameForSnap) {
+          const selected = paintStore.selectedStrokeIds.peek();
+          const afterSnap = captureElementSnapshot(paintFrameForSnap.elements, selected);
+          pushAction({
+            id: crypto.randomUUID(),
+            description: 'Transform elements',
+            timestamp: Date.now(),
+            undo: () => {
+              const f = paintStore.getFrame(snapLayerId, snapFrame);
+              if (f) {
+                restoreElementSnapshot(f.elements, beforeSnap);
+                paintStore.markDirty(snapLayerId, snapFrame);
+                paintStore.paintVersion.value++;
+                paintStore.invalidateFrameFxCache(snapLayerId, snapFrame);
+              }
+            },
+            redo: () => {
+              const f = paintStore.getFrame(snapLayerId, snapFrame);
+              if (f) {
+                restoreElementSnapshot(f.elements, afterSnap);
+                paintStore.markDirty(snapLayerId, snapFrame);
+                paintStore.paintVersion.value++;
+                paintStore.invalidateFrameFxCache(snapLayerId, snapFrame);
+              }
+            },
+          });
+        }
+        transformSnapshot.current = null;
+      }
       isDragging.current = false;
       dragStart.current = null;
       // Re-render FX cache after move
