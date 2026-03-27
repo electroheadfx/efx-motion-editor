@@ -173,6 +173,7 @@ export function renderPaintFrame(
   height: number,
 ): void {
   for (const element of frame.elements) {
+    if (element.visible === false) continue;  // D-05: skip hidden elements
     renderElement(ctx, element, width, height);
   }
 }
@@ -240,6 +241,7 @@ function renderFlatElements(
   height: number,
 ): void {
   for (const el of frame.elements) {
+    if (el.visible === false) continue;  // D-05: skip hidden elements
     // Skip FX-applied strokes -- they're in the frame cache
     if (el.tool === 'brush') {
       const stroke = el as PaintStroke;

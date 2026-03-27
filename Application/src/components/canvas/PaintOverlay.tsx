@@ -58,6 +58,7 @@ function findElementAtPoint(
 ): string | null {
   for (let i = paintFrame.elements.length - 1; i >= 0; i--) {
     const el = paintFrame.elements[i];
+    if (el.visible === false) continue;  // Can't select what you can't see
 
     if (el.tool === 'brush' || el.tool === 'eraser') {
       const stroke = el as PaintStroke;
@@ -298,7 +299,7 @@ function reRenderFrameFx(
   height: number,
 ): void {
   const brushStrokes = paintFrame.elements.filter(
-    (el) => el.tool === 'brush'
+    (el) => el.tool === 'brush' && el.visible !== false
   ) as PaintStroke[];
 
   // Show rendering indicator, defer actual render so UI can paint first

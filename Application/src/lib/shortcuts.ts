@@ -441,8 +441,15 @@ export function mountShortcuts(): () => void {
       motionBlurStore.toggleEnabled();
     },
 
-    // Solo toggle (ENH-03)
+    // Select tool (paint mode) -- S key
     's': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      paintStore.setTool('select');
+    },
+
+    // Solo toggle -- Alt+S
+    'Alt+s': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
       if (isFullscreen.peek()) return;
       soloStore.toggleSolo();

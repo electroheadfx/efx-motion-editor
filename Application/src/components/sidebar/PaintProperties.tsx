@@ -4,13 +4,68 @@ import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 import {paintStore} from '../../stores/paintStore';
 import {timelineStore} from '../../stores/timelineStore';
-import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS} from '../../types/paint';
-import type {PaintToolType} from '../../types/paint';
+import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_STROKE_OPTIONS} from '../../types/paint';
+import type {PaintToolType, PaintStroke, PaintShape, PaintStrokeOptions} from '../../types/paint';
 import type {Layer} from '../../types/layer';
+import {StrokeList} from './StrokeList';
 
 const SHAPE_TOOLS: PaintToolType[] = ['line', 'rect', 'ellipse'];
 const BRUSH_TOOLS: PaintToolType[] = ['brush', 'eraser'];
 const STROKE_TOOLS: PaintToolType[] = ['brush', 'eraser'];
+
+function shapeToBrushStrokes(shape: PaintShape, brushOptions: PaintStrokeOptions): PaintStroke[] {
+  const {id, tool, x1, y1, x2, y2, color, opacity, strokeWidth} = shape;
+  const newId = () => crypto.randomUUID();
+  const baseStroke = {
+    id: newId(),
+    tool: 'brush' as const,
+    color,
+    opacity,
+    size: strokeWidth,
+    options: brushOptions,
+    brushStyle: 'flat' as const,
+    visible: shape.visible,
+  };
+
+  if (tool === 'line') {
+    return [{
+      ...baseStroke,
+      points: [[x1, y1, 0.5], [x2, y2, 0.5]] as [number, number, number][],
+    }];
+  }
+
+  if (tool === 'rect') {
+    // Trace rectangle outline: top, right, bottom, left
+    const [rx1, ry1, rx2, ry2] = [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
+    const top =    {points: [[rx1, ry1, 0.5], [rx2, ry1, 0.5]] as [number,number,number][]};
+    const right =  {points: [[rx2, ry1, 0.5], [rx2, ry2, 0.5]] as [number,number,number][]};
+    const bottom = {points: [[rx2, ry2, 0.5], [rx1, ry2, 0.5]] as [number,number,number][]};
+    const left =   {points: [[rx1, ry2, 0.5], [rx1, ry1, 0.5]] as [number,number,number][]};
+    return [
+      {...baseStroke, ...top, id: newId()},
+      {...baseStroke, ...right, id: newId()},
+      {...baseStroke, ...bottom, id: newId()},
+      {...baseStroke, ...left, id: newId()},
+    ];
+  }
+
+  if (tool === 'ellipse') {
+    // Sample ~36 points around the ellipse
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    const rx = Math.abs(x2 - x1) / 2;
+    const ry = Math.abs(y2 - y1) / 2;
+    const NUM_POINTS = 36;
+    const points: [number, number, number][] = [];
+    for (let i = 0; i <= NUM_POINTS; i++) {
+      const angle = (i / NUM_POINTS) * Math.PI * 2;
+      points.push([cx + rx * Math.cos(angle), cy + ry * Math.sin(angle), 0.5]);
+    }
+    return [{...baseStroke, points}];
+  }
+
+  return [];
+}
 
 export function PaintProperties({layer}: {layer: Layer}) {
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -153,13 +208,11 @@ export function PaintProperties({layer}: {layer: Layer}) {
                   if (!paintFrame) return;
                   paintStore.clearSelection();
                   for (const el of paintFrame.elements) {
-                    if (el.tool === 'brush') {
-                      paintStore.selectStroke(el.id);
-                    }
+                    paintStore.selectStroke(el.id);
                   }
                 }}
               >
-                Select All Strokes
+                Select All
               </button>
               {paintStore.selectedStrokeIds.value.size > 0 ? (
                 <button
@@ -190,8 +243,12 @@ export function PaintProperties({layer}: {layer: Layer}) {
               let currentColor = paintStore.brushColor.value;
               if (pf) {
                 for (const el of pf.elements) {
-                  if (el.tool === 'brush' && sel.has(el.id)) {
-                    currentWidth = Math.round((el as any).size);
+                  if ((el.tool === 'brush' || el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') && sel.has(el.id)) {
+                    if (el.tool === 'brush') {
+                      currentWidth = Math.round((el as any).size);
+                    } else {
+                      currentWidth = Math.round((el as any).strokeWidth) || currentWidth;
+                    }
                     currentColor = (el as any).color || currentColor;
                     break;
                   }
@@ -200,9 +257,12 @@ export function PaintProperties({layer}: {layer: Layer}) {
               const applyWidth = (newSize: number, andRefreshFx = false) => {
                 if (!pf) return;
                 for (const el of pf.elements) {
-                  if (el.tool !== 'brush') continue;
                   if (!sel.has(el.id)) continue;
-                  (el as any).size = newSize;
+                  if (el.tool === 'brush') {
+                    (el as any).size = newSize;
+                  } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+                    (el as any).strokeWidth = newSize;
+                  }
                 }
                 paintStore.setBrushSize(newSize);
                 paintStore.markDirty(layer.id, frame);
@@ -298,7 +358,60 @@ export function PaintProperties({layer}: {layer: Layer}) {
                 </div>
               );
             })()}
+
+            {/* Convert to Brush -- only when shapes are selected */}
+            {(() => {
+              const frame = timelineStore.currentFrame.peek();
+              const pf = paintStore.getFrame(layer.id, frame);
+              const sel = paintStore.selectedStrokeIds.value;
+              if (!pf) return null;
+              const hasShapes = pf.elements.some(el =>
+                (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') && sel.has(el.id)
+              );
+              if (!hasShapes) return null;
+              return (
+                <button
+                  class="paint-action-btn w-full text-[11px] py-1 px-2 rounded cursor-pointer transition-colors mt-1"
+                  onClick={() => {
+                    const f = timelineStore.currentFrame.peek();
+                    const pf2 = paintStore.getFrame(layer.id, f);
+                    if (!pf2) return;
+                    const sel2 = paintStore.selectedStrokeIds.peek();
+                    const strokeOpts = paintStore.strokeOptions.peek();
+                    const shapes = (pf2.elements.filter(el =>
+                      (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') && sel2.has(el.id)
+                    ) as PaintShape[]);
+                    if (shapes.length === 0) return;
+                    const newStrokes: PaintStroke[] = [];
+                    for (const shape of shapes) {
+                      newStrokes.push(...shapeToBrushStrokes(shape, strokeOpts));
+                    }
+                    // Remove original shapes
+                    for (const shape of shapes) {
+                      paintStore.removeElement(layer.id, f, shape.id);
+                    }
+                    // Add new brush strokes
+                    for (const stroke of newStrokes) {
+                      paintStore.addElement(layer.id, f, stroke);
+                    }
+                    // Select the new strokes
+                    paintStore.clearSelection();
+                    for (const s of newStrokes) {
+                      paintStore.selectStroke(s.id);
+                    }
+                    paintStore.paintVersion.value++;
+                    paintStore.invalidateFrameFxCache(layer.id, f);
+                    paintStore.refreshFrameFx(layer.id, f);
+                  }}
+                >
+                  Convert to Brush
+                </button>
+              );
+            })()}
           </div>
+
+          {/* STROKES section -- moved after SELECTION, before Copy to Next Frame */}
+          <StrokeList layerId={layer.id} />
         </div>
       )}
 
@@ -944,7 +1057,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
               if (pf2) {
                 const sel2 = paintStore.selectedStrokeIds.peek();
                 for (const el of pf2.elements) {
-                  if (el.tool === 'brush' && sel2.has(el.id)) (el as any).color = c;
+                  if ((el.tool === 'brush' || el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') && sel2.has(el.id)) (el as any).color = c;
                 }
                 paintStore.markDirty(layer.id, fr);
                 paintStore.invalidateFrameFxCache(layer.id, fr);

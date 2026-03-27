@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.6.0
 milestone_name: Various Enhancements
 status: executing
-stopped_at: Phase 24 context gathered
-last_updated: "2026-03-27T13:55:46.407Z"
-last_activity: 2026-03-27
+stopped_at: Completed 260327-p4e
+last_updated: "2026-03-27T17:16:24.188Z"
+last_activity: 2026-03-27 - Completed quick task 260327-p4e: I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
+  completed_phases: 3
+  total_plans: 11
+  completed_plans: 11
   percent: 80
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 23 — stroke-interactions
+**Current focus:** Phase 24 — stroke-list-panel
 
 ## Current Position
 
-Phase: 24
+Phase: 25
 Plan: Not started
-Status: Executing Phase 23
+Status: Ready to execute
 Last activity: 2026-03-27
 
 Progress: [########..] 80%
@@ -55,6 +55,8 @@ Full phase decisions archived in milestones/v0.5.0-ROADMAP.md.
 - [Phase 23]: Single undo entry for Alt+drag removes all clones by ID filter; redo uses structuredClone per clone to prevent reference sharing
 - [Phase 23]: Edge anchor captured once on pointerdown (not per-frame) to prevent floating-point drift in non-uniform scale
 - [Phase 23]: Brush size NOT scaled during edge scale (D-06); only stroke.points coordinates transformed
+- [Phase 24]: Visibility stored as optional boolean: undefined = visible (backward compat), false = hidden. Always check === false never === true.
+- [Phase 24]: S key shortcut remapped to select tool in paint mode; Alt+S handles solo toggle
 
 ### Pending Todos
 
@@ -69,8 +71,14 @@ None.
 
 - ~~4 pre-existing bugs in moveElements* (missing paintVersion++ and undo) must be fixed in Phase 22 before subsequent phases.~~ RESOLVED in 22-01.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
+
 ## Session Continuity
 
-Last session: 2026-03-27T13:55:46.404Z
-Stopped at: Phase 24 context gathered
-Resume file: .planning/phases/24-stroke-list-panel/24-CONTEXT.md
+Last session: 2026-03-27T17:16:24.185Z
+Stopped at: Completed 260327-p4e
+Resume file: None

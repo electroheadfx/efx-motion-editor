@@ -145,6 +145,9 @@ export const paintStore = {
       undo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements.splice(idx, 0, removed);
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
@@ -266,6 +269,72 @@ export const paintStore = {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
+      },
+    });
+  },
+
+  reorderElements(layerId: string, frame: number, oldIndex: number, newIndex: number): void {
+    const frameData = _frames.get(layerId)?.get(frame);
+    if (!frameData || oldIndex === newIndex) return;
+    const before = [...frameData.elements];
+    const [moved] = frameData.elements.splice(oldIndex, 1);
+    frameData.elements.splice(newIndex, 0, moved);
+    const after = [...frameData.elements];
+    _notifyVisualChange(layerId, frame);
+    this.invalidateFrameFxCache(layerId, frame);
+    this.refreshFrameFx(layerId, frame);
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Reorder element on frame ${frame}`,
+      timestamp: Date.now(),
+      undo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...before];
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
+      },
+      redo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        f.elements = [...after];
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
+      },
+    });
+  },
+
+  setElementVisibility(layerId: string, frame: number, elementId: string, visible: boolean): void {
+    const frameData = _frames.get(layerId)?.get(frame);
+    if (!frameData) return;
+    const el = frameData.elements.find(e => e.id === elementId);
+    if (!el) return;
+    const prevVisible = el.visible !== false; // undefined = true
+    if (prevVisible === visible) return; // no-op
+    el.visible = visible ? undefined : false; // store undefined for true (backward compat), false for hidden
+    _notifyVisualChange(layerId, frame);
+    this.invalidateFrameFxCache(layerId, frame);
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Toggle element visibility on frame ${frame}`,
+      timestamp: Date.now(),
+      undo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        const target = f.elements.find(e => e.id === elementId);
+        if (target) {
+          target.visible = prevVisible ? undefined : false;
+          _notifyVisualChange(layerId, frame);
+          paintStore.invalidateFrameFxCache(layerId, frame);
+        }
+      },
+      redo: () => {
+        const f = _getOrCreateFrame(layerId, frame);
+        const target = f.elements.find(e => e.id === elementId);
+        if (target) {
+          target.visible = visible ? undefined : false;
+          _notifyVisualChange(layerId, frame);
+          paintStore.invalidateFrameFxCache(layerId, frame);
+        }
       },
     });
   },

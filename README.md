@@ -119,6 +119,8 @@ Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perf
 
 **Paint Mode** — Sticky edit mode (P key or toolbar button) that locks focus to the paint layer. Canvas controls are replaced by a dedicated paint toolbar. Exit via ESC, P key, or "Exit Paint Mode" button. Sequence overlay (O key) shows reference frames underneath paint at configurable opacity. Copy strokes to next frame for animation workflows. Configurable solid paint background color.
 
+**Stroke List Panel** — Dedicated panel within PaintProperties showing all strokes on the current frame. Drag to reorder strokes (updates canvas rendering order immediately), click to select (bidirectional sync with canvas selection), toggle visibility eye icon to hide/show individual strokes, delete with full undo/redo support. Multi-select via Cmd+click, auto-scrolls to keep selected strokes visible. S key activates select tool in paint mode (Alt+S toggles solo overlay).
+
 **Tablet & Pen Support** — Native macOS tablet pressure bridge via NSEvent. Supports pen pressure sensitivity with easing/taper curves for natural brush dynamics, tilt detection, and coalesced touch events for high-resolution stroke capture at full tablet polling rate. Works with Wacom, Apple Pencil (iPad Sidecar), and other pressure-sensitive input devices.
 
 <!-- Screenshot: Paint overlay with brush FX styles -->

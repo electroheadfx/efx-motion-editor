@@ -51,6 +51,7 @@ export interface PaintStroke {
   brushStyle?: BrushStyle;      // rendering style (default: 'flat' for backward compat)
   brushParams?: BrushFxParams;  // FX parameters at draw time
   fxState?: StrokeFxState;      // per D-04: current rendering state (default: 'flat')
+  visible?: boolean;            // D-05: visibility toggle (undefined = visible, false = hidden)
 }
 
 /** Options passed to perfect-freehand getStroke() */
@@ -81,6 +82,7 @@ export interface PaintShape {
   strokeWidth: number;
   filled: boolean;         // true = filled shape, false = outline only
   rotation?: number;       // rotation angle in radians around shape center
+  visible?: boolean;       // D-05: visibility toggle (undefined = visible, false = hidden)
 }
 
 /** A fill region element */
@@ -91,6 +93,7 @@ export interface PaintFill {
   color: string;
   opacity: number;
   tolerance: number;       // color matching tolerance 0-255
+  visible?: boolean;       // D-05: visibility toggle (undefined = visible, false = hidden)
 }
 
 /** Union of all paint element types */

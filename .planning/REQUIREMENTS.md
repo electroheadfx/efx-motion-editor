@@ -24,11 +24,11 @@ Requirements for v0.6.0 Various Enhancements. Each maps to roadmap phases.
 
 ### Stroke Management
 
-- [ ] **STRK-01**: User can see a list of strokes for the current frame in roto paint edit mode
-- [ ] **STRK-02**: User can reorder strokes via drag-and-drop in the stroke list
-- [ ] **STRK-03**: User can delete strokes from the stroke list
-- [ ] **STRK-04**: User can select strokes by clicking in the stroke list
-- [ ] **STRK-05**: User can toggle stroke visibility (hide/show) in the stroke list
+- [x] **STRK-01**: User can see a list of strokes for the current frame in roto paint edit mode
+- [x] **STRK-02**: User can reorder strokes via drag-and-drop in the stroke list
+- [x] **STRK-03**: User can delete strokes from the stroke list
+- [x] **STRK-04**: User can select strokes by clicking in the stroke list
+- [x] **STRK-05**: User can toggle stroke visibility (hide/show) in the stroke list
 
 ### UX Polish
 
@@ -71,11 +71,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PINT-02 | Phase 23 | Complete |
 | PINT-03 | Phase 26 | Pending |
 | PINT-04 | Phase 26 | Pending |
-| STRK-01 | Phase 24 | Pending |
-| STRK-02 | Phase 24 | Pending |
-| STRK-03 | Phase 24 | Pending |
-| STRK-04 | Phase 24 | Pending |
-| STRK-05 | Phase 24 | Pending |
+| STRK-01 | Phase 24 | Complete |
+| STRK-02 | Phase 24 | Complete |
+| STRK-03 | Phase 24 | Complete |
+| STRK-04 | Phase 24 | Complete |
+| STRK-05 | Phase 24 | Complete |
 | UXP-01 | Phase 22 | Complete |
 | UXP-02 | Phase 22 | Complete |
 | UXP-03 | Phase 22 | Complete |
