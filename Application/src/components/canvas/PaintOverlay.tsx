@@ -571,7 +571,7 @@ export function PaintOverlay({
           }
 
           // Edge midpoint handles (non-uniform scale) — per D-04
-          const EDGE_HANDLE_RADIUS = 3;
+          const EDGE_HANDLE_RADIUS = 5;
           const edgeMidpoints: [number, number][] = [
             [(minX + maxX) / 2, minY],           // top
             [maxX, (minY + maxY) / 2],           // right
@@ -1035,6 +1035,11 @@ export function PaintOverlay({
         if (transformCorner.current.length === 1) {
           // Non-uniform edge scale (D-04, D-05, D-06)
           const edge = transformCorner.current;
+
+          // Restore from snapshot before applying absolute scale to prevent exponential compounding
+          if (transformSnapshot.current) {
+            restoreElementSnapshot(paintFrame.elements, transformSnapshot.current);
+          }
 
           for (const el of paintFrame.elements) {
             if (!selected.has(el.id)) continue;
@@ -1668,10 +1673,11 @@ export function PaintOverlay({
 
   // --- Re-render preview when selection changes (show/hide selection indicators) ---
   useEffect(() => {
-    // Subscribe to selection changes to re-draw indicators
+    // Subscribe to selection changes and undo/redo to re-draw indicators
     void paintStore.selectedStrokeIds.value;
+    void paintStore.paintVersion.value;
     renderLivePreview();
-  }, [paintStore.selectedStrokeIds.value]);
+  }, [paintStore.selectedStrokeIds.value, paintStore.paintVersion.value]);
 
   // --- Render ---
   const cursor = cursorForTool(paintStore.activeTool.value);
