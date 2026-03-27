@@ -159,16 +159,18 @@ Plans:
 **UI hint**: yes
 
 ### Phase 25: Paint Compositing Pipeline
-**Goal**: Users can composite paint strokes over photos using luma matte extraction and apply paper/canvas textures for physical media appearance
+**Goal**: Users can composite paint strokes over photos using luma matte extraction. White background = luma key. Luma Invert mode allows black-on-white strokes to become white opaque strokes over photos. Non-destructive: strokes remain editable after exit/re-enter paint mode.
 **Depends on**: Phase 22
-**Requirements**: COMP-01, COMP-02, COMP-03, COMP-04, COMP-05
+**Requirements**: COMP-01 (COMP-02-05 OBSOLETE per D-18, D-19 -- gray background and paper texture removed from scope)
 **Success Criteria** (what must be TRUE):
-  1. User can enable luma matte compositing on a paint layer so strokes blend naturally over the underlying photo instead of appearing as an opaque overlay
-  2. User can paint on a neutral gray background when working in luma matte mode for improved compositing quality
-  3. User can apply a paper/canvas texture to a paint layer that gives strokes a physical media appearance
-  4. User can load paper texture images from ~/.config/efx-motion/papers/ and select them in paint properties
-  5. Luma matte and paper texture settings persist in the project file (.mce v16) and export correctly
-**Plans**: TBD
+  1. User can enable luma matte compositing on a paint layer so white pixels become transparent and the photo shows through
+  2. User can toggle Luma Invert so black strokes on white become white opaque strokes (transparent background)
+  3. Luma key applies live during paint edit (real-time compositing)
+  4. Exiting paint mode does NOT flatten strokes -- they remain editable (non-destructive)
+  5. Re-entering paint mode allows stroke edits with live preview
+**Plans**: 1 plan
+Plans:
+- [x] 25-01-PLAN.md -- Luma key compositing: algorithm + paintStore signals + previewRenderer integration + UI
 
 ### Phase 26: Bezier Path Editing
 **Goal**: Users can edit freehand stroke paths as bezier curves with draggable anchor points for precise shape refinement
@@ -200,5 +202,5 @@ Note: Phase 25 depends on Phase 22 (not 24), so Phases 23-24 and Phase 25 could 
 | 22. Foundation & Quick Wins | v0.6.0 | 5/5 | Complete    | 2026-03-26 |
 | 23. Stroke Interactions | v0.6.0 | 3/3 | Complete    | 2026-03-27 |
 | 24. Stroke List Panel | v0.6.0 | 3/3 | Complete    | 2026-03-27 |
-| 25. Paint Compositing Pipeline | v0.6.0 | 0/? | Not started | - |
+| 25. Paint Compositing Pipeline | v0.6.0 | 1/1 | In progress | - |
 | 26. Bezier Path Editing | v0.6.0 | 0/? | Not started | - |
