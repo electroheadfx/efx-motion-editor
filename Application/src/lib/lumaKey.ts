@@ -34,16 +34,15 @@ export function applyLumaKey(canvas: HTMLCanvasElement, invert: boolean): void {
     const luma = LUMA_WEIGHTS.r * r + LUMA_WEIGHTS.g * g + LUMA_WEIGHTS.b * b;
 
     if (invert) {
-      // Luma Invert: black strokes on white BG → white opaque strokes with transparent BG
-      // White BG (luma=255) → transparent (alpha=0)
-      // Black strokes (luma=0) → opaque (alpha=255)
-      // Formula: alpha = 255 - luma (same as non-invert, but conceptual inversion of what's transparent)
-      data[i + 3] = 255 - luma;
+      // Luma Invert: near-black strokes transparent, white BG opaque
+      // luma < 10 → transparent (alpha=0) - near-black strokes become transparent
+      // luma >= 10 → opaque (alpha=255) - white BG stays opaque
+      data[i + 3] = luma < 10 ? 0 : 255;
     } else {
-      // Luma Key: white BG → transparent, colored strokes → opaque
-      // White BG (luma=255) → transparent (alpha=0)
-      // Black/colored strokes (luma=0-255) → opaque (alpha=255-luma)
-      data[i + 3] = 255 - luma;
+      // Luma Key: white BG transparent, colored strokes opaque
+      // luma >= 254 → transparent (alpha=0) - only pure white BG becomes transparent
+      // luma < 254 → opaque (alpha=255) - all colored strokes remain fully opaque
+      data[i + 3] = luma >= 254 ? 0 : 255;
     }
   }
 
