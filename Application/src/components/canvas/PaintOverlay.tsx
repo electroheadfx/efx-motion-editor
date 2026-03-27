@@ -152,12 +152,18 @@ function getSelectionBounds(
 
 const HANDLE_SIZE = 6;
 
-/** Check if a point hits a transform handle, returns corner name or null */
+/** Check if a point hits a transform handle, returns corner name or null.
+ * Returns 2-letter string for corner handles (uniform scale), 1-letter for edge handles (non-uniform scale).
+ */
 function hitTestHandle(
   x: number, y: number,
   bounds: {minX: number; minY: number; maxX: number; maxY: number},
 ): string | null {
   const hs = HANDLE_SIZE + 3;  // hit area slightly larger than visual
+  const midX = (bounds.minX + bounds.maxX) / 2;
+  const midY = (bounds.minY + bounds.maxY) / 2;
+
+  // Corner handles (uniform scale) — check first (priority over edges at corners)
   const corners: [string, number, number][] = [
     ['tl', bounds.minX, bounds.minY],
     ['tr', bounds.maxX, bounds.minY],
@@ -167,7 +173,30 @@ function hitTestHandle(
   for (const [name, cx, cy] of corners) {
     if (Math.abs(x - cx) <= hs && Math.abs(y - cy) <= hs) return name;
   }
+
+  // Edge midpoint handles (non-uniform scale) — per D-04
+  const edges: [string, number, number][] = [
+    ['t', midX, bounds.minY],
+    ['r', bounds.maxX, midY],
+    ['b', midX, bounds.maxY],
+    ['l', bounds.minX, midY],
+  ];
+  for (const [name, cx, cy] of edges) {
+    if (Math.abs(x - cx) <= hs && Math.abs(y - cy) <= hs) return name;
+  }
+
   return null;
+}
+
+/** Get CSS cursor name for a handle */
+function cursorForHandle(handleName: string): string {
+  switch (handleName) {
+    case 't': case 'b': return 'ns-resize';
+    case 'l': case 'r': return 'ew-resize';
+    case 'tl': case 'br': return 'nwse-resize';
+    case 'tr': case 'bl': return 'nesw-resize';
+    default: return 'default';
+  }
 }
 
 /** Deep-clone selected elements for undo snapshot (D-07) */
@@ -275,6 +304,12 @@ export function PaintOverlay({
   const transformSnapshot = useRef<Map<string, PaintElement> | null>(null);
   const transformLayerId = useRef<string>('');
   const transformFrame = useRef<number>(0);
+
+  // --- Refs for non-uniform edge scale (D-04, D-05) ---
+  const edgeAnchorX = useRef(0);            // fixed X coordinate of opposite edge
+  const edgeAnchorY = useRef(0);            // fixed Y coordinate of opposite edge
+  const edgeOriginalWidth = useRef(1);      // original dimension for scale ratio
+  const edgeOriginalHeight = useRef(1);
 
   // --- Ref for Alt+drag duplicate (D-01) ---
   const isDuplicating = useRef(false);
@@ -534,6 +569,26 @@ export function PaintOverlay({
             ctx.restore();
           }
 
+          // Edge midpoint handles (non-uniform scale) — per D-04
+          const EDGE_HANDLE_RADIUS = 3;
+          const edgeMidpoints: [number, number][] = [
+            [(minX + maxX) / 2, minY],           // top
+            [maxX, (minY + maxY) / 2],           // right
+            [(minX + maxX) / 2, maxY],           // bottom
+            [minX, (minY + maxY) / 2],           // left
+          ];
+          for (const [ex, ey] of edgeMidpoints) {
+            ctx.save();
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = '#4A90D9';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(ex, ey, EDGE_HANDLE_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
+
           // Rotate handle (above top center)
           const rcx = (minX + maxX) / 2;
           const rcy = minY - 20;
@@ -631,18 +686,41 @@ export function PaintOverlay({
           return;
         }
 
-        // Check corner resize handles
-        const corner = hitTestHandle(point.x, point.y, bounds);
-        if (corner) {
+        // Check corner and edge resize handles
+        const handle = hitTestHandle(point.x, point.y, bounds);
+        if (handle) {
           isTransforming.current = true;
           transformType.current = 'scale';
-          transformCorner.current = corner;
-          transformCenter.current = {x: cx, y: cy};
-          transformStartDist.current = Math.hypot(point.x - cx, point.y - cy);
-          dragStart.current = {x: point.x, y: point.y};
+          transformCorner.current = handle;
+
+          // Capture undo snapshot
           transformSnapshot.current = captureElementSnapshot(paintFrame.elements, selected);
           transformLayerId.current = layerId;
           transformFrame.current = frame;
+
+          if (handle.length === 1) {
+            // Edge handle → non-uniform scale (D-04)
+            // Capture opposite-edge anchor and original dimension (D-05)
+            if (handle === 'r') {
+              edgeAnchorX.current = bounds.minX;
+              edgeOriginalWidth.current = bounds.maxX - bounds.minX;
+            } else if (handle === 'l') {
+              edgeAnchorX.current = bounds.maxX;
+              edgeOriginalWidth.current = bounds.maxX - bounds.minX;
+            } else if (handle === 'b') {
+              edgeAnchorY.current = bounds.minY;
+              edgeOriginalHeight.current = bounds.maxY - bounds.minY;
+            } else if (handle === 't') {
+              edgeAnchorY.current = bounds.maxY;
+              edgeOriginalHeight.current = bounds.maxY - bounds.minY;
+            }
+            dragStart.current = {x: point.x, y: point.y};
+          } else {
+            // Corner handle → uniform scale (existing behavior)
+            transformCenter.current = {x: cx, y: cy};
+            transformStartDist.current = Math.hypot(point.x - cx, point.y - cy);
+            dragStart.current = {x: point.x, y: point.y};
+          }
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           e.preventDefault();
           return;
@@ -849,6 +927,38 @@ export function PaintOverlay({
   }
 
   function handlePointerMove(e: PointerEvent) {
+    // Cursor feedback: when select tool is active, show resize cursors over handles
+    if (!isTransforming.current && !isDragging.current && !isErasing.current && !isDrawing.current) {
+      const tool = paintStore.activeTool.peek();
+      if (tool === 'select') {
+        const point = getProjectPoint(e);
+        const layerId = getSelectedPaintLayerId();
+        if (layerId) {
+          const frame = timelineStore.currentFrame.peek();
+          const paintFrame = paintStore.getFrame(layerId, frame);
+          const selected = paintStore.selectedStrokeIds.peek();
+          if (paintFrame && selected.size > 0) {
+            const bounds = getSelectionBounds(paintFrame, selected);
+            if (bounds) {
+              const handle = hitTestHandle(point.x, point.y, bounds);
+              const overlay = e.currentTarget as HTMLElement;
+              if (handle) {
+                overlay.style.cursor = cursorForHandle(handle);
+              } else {
+                const cx = (bounds.minX + bounds.maxX) / 2;
+                const rcy = bounds.minY - 20;
+                if (Math.hypot(point.x - cx, point.y - rcy) <= 8) {
+                  overlay.style.cursor = 'grab';
+                } else {
+                  overlay.style.cursor = 'default';
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Handle path-based eraser drag
     if (isErasing.current) {
       const point = getProjectPoint(e);
@@ -921,35 +1031,108 @@ export function PaintOverlay({
           }
         }
       } else if (transformType.current === 'scale') {
-        const newDist = Math.hypot(point.x - center.x, point.y - center.y);
-        const scale = newDist / transformStartDist.current;
-        transformStartDist.current = newDist;
+        if (transformCorner.current.length === 1) {
+          // Non-uniform edge scale (D-04, D-05, D-06)
+          const edge = transformCorner.current;
 
-        for (const el of paintFrame.elements) {
-          if (!selected.has(el.id)) continue;
+          for (const el of paintFrame.elements) {
+            if (!selected.has(el.id)) continue;
 
-          if (el.tool === 'brush' || el.tool === 'eraser') {
-            const stroke = el as PaintStroke;
-            for (let i = 0; i < stroke.points.length; i++) {
-              stroke.points[i] = [
-                center.x + (stroke.points[i][0] - center.x) * scale,
-                center.y + (stroke.points[i][1] - center.y) * scale,
-                stroke.points[i][2],
-              ];
+            if (edge === 'r' || edge === 'l') {
+              // Horizontal scale — anchor at opposite edge X
+              const anchor = edgeAnchorX.current;
+              const origW = edgeOriginalWidth.current;
+              if (Math.abs(origW) < 0.001) continue;
+              const newW = edge === 'r'
+                ? point.x - anchor
+                : anchor - point.x;
+              const scaleX = newW / origW;
+              if (Math.abs(scaleX) < 0.01) continue;  // prevent collapse
+
+              if (el.tool === 'brush' || el.tool === 'eraser') {
+                const stroke = el as PaintStroke;
+                for (let i = 0; i < stroke.points.length; i++) {
+                  stroke.points[i] = [
+                    anchor + (stroke.points[i][0] - anchor) * scaleX,
+                    stroke.points[i][1],  // Y unchanged
+                    stroke.points[i][2],  // pressure unchanged
+                  ];
+                }
+                // D-06: brush size stays fixed — do NOT scale stroke.size
+              } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+                const shape = el as PaintShape;
+                shape.x1 = anchor + (shape.x1 - anchor) * scaleX;
+                shape.x2 = anchor + (shape.x2 - anchor) * scaleX;
+              } else if (el.tool === 'fill') {
+                const fill = el as PaintFill;
+                fill.x = anchor + (fill.x - anchor) * scaleX;
+              }
+            } else {
+              // Vertical scale — anchor at opposite edge Y
+              const anchor = edgeAnchorY.current;
+              const origH = edgeOriginalHeight.current;
+              if (Math.abs(origH) < 0.001) continue;
+              const newH = edge === 'b'
+                ? point.y - anchor
+                : anchor - point.y;
+              const scaleY = newH / origH;
+              if (Math.abs(scaleY) < 0.01) continue;  // prevent collapse
+
+              if (el.tool === 'brush' || el.tool === 'eraser') {
+                const stroke = el as PaintStroke;
+                for (let i = 0; i < stroke.points.length; i++) {
+                  stroke.points[i] = [
+                    stroke.points[i][0],  // X unchanged
+                    anchor + (stroke.points[i][1] - anchor) * scaleY,
+                    stroke.points[i][2],  // pressure unchanged
+                  ];
+                }
+                // D-06: brush size stays fixed
+              } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+                const shape = el as PaintShape;
+                shape.y1 = anchor + (shape.y1 - anchor) * scaleY;
+                shape.y2 = anchor + (shape.y2 - anchor) * scaleY;
+              } else if (el.tool === 'fill') {
+                const fill = el as PaintFill;
+                fill.y = anchor + (fill.y - anchor) * scaleY;
+              }
             }
-            // Scale brush size proportionally
-            stroke.size = Math.max(1, stroke.size * scale);
-          } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
-            const shape = el as PaintShape;
-            shape.x1 = center.x + (shape.x1 - center.x) * scale;
-            shape.y1 = center.y + (shape.y1 - center.y) * scale;
-            shape.x2 = center.x + (shape.x2 - center.x) * scale;
-            shape.y2 = center.y + (shape.y2 - center.y) * scale;
-            shape.strokeWidth = Math.max(1, shape.strokeWidth * scale);
-          } else if (el.tool === 'fill') {
-            const fill = el as PaintFill;
-            fill.x = center.x + (fill.x - center.x) * scale;
-            fill.y = center.y + (fill.y - center.y) * scale;
+          }
+
+          // Note: edgeAnchorX/Y and edgeOriginalWidth/Height are captured once on pointerdown
+          // and stay fixed throughout the gesture (Pitfall 4 — do NOT recalculate from current bounds)
+        } else {
+          // Uniform corner scale (existing behavior)
+          const newDist = Math.hypot(point.x - center.x, point.y - center.y);
+          const scale = newDist / transformStartDist.current;
+          transformStartDist.current = newDist;
+
+          for (const el of paintFrame.elements) {
+            if (!selected.has(el.id)) continue;
+
+            if (el.tool === 'brush' || el.tool === 'eraser') {
+              const stroke = el as PaintStroke;
+              for (let i = 0; i < stroke.points.length; i++) {
+                stroke.points[i] = [
+                  center.x + (stroke.points[i][0] - center.x) * scale,
+                  center.y + (stroke.points[i][1] - center.y) * scale,
+                  stroke.points[i][2],
+                ];
+              }
+              // Scale brush size proportionally
+              stroke.size = Math.max(1, stroke.size * scale);
+            } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+              const shape = el as PaintShape;
+              shape.x1 = center.x + (shape.x1 - center.x) * scale;
+              shape.y1 = center.y + (shape.y1 - center.y) * scale;
+              shape.x2 = center.x + (shape.x2 - center.x) * scale;
+              shape.y2 = center.y + (shape.y2 - center.y) * scale;
+              shape.strokeWidth = Math.max(1, shape.strokeWidth * scale);
+            } else if (el.tool === 'fill') {
+              const fill = el as PaintFill;
+              fill.x = center.x + (fill.x - center.x) * scale;
+              fill.y = center.y + (fill.y - center.y) * scale;
+            }
           }
         }
       }
