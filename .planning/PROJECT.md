@@ -84,8 +84,8 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 - [ ] Compositing FX paint via luma matte extraction (paint over photos without alpha)
 - [ ] Paper/canvas texture on paint layer (shader or tiled textures from Krita)
-- [ ] Duplicate stroke with Alt+move on same frame in roto paint edit mode
-- [ ] Non-uniform scale for paint layer's strokes
+- ✓ Duplicate stroke with Alt+move on same frame in roto paint edit mode — v0.6.0
+- ✓ Non-uniform scale for paint layer's strokes — v0.6.0
 - [ ] Reorder/clean Paint properties panel (space optimization, better buttons)
 - [ ] Sequence-scoped layer creation (add layer only on isolated sequence if selected)
 - [ ] Denser motion path interpolation visual (more dots for short sequences)
