@@ -134,10 +134,11 @@ describe('lumaKey', () => {
       expect(data[3]).toBe(expectedAlpha); // ~73
     });
 
-    it('blue channel uses correct BT.709 weight (0.0722)', () => {
+    it('blue pixels (0,0,255) → opaque (alpha=255) - threshold approach', () => {
       // Pure blue: RGB(0, 0, 255)
-      // Luma = 0.0722 * 255 = 18.411
-      // Alpha = 255 - 18.411 = 236.589
+      // Luma = 0.0722 * 255 ≈ 18
+      // Threshold approach: luma < 254 → alpha=255 (opaque)
+      // Blue stays fully opaque (NOT semi-transparent like the old buggy formula)
       const data = new Uint8ClampedArray([0, 0, 255, 255]);
       mockGetImageData.mockReturnValue({data});
 
@@ -145,16 +146,75 @@ describe('lumaKey', () => {
 
       applyLumaKey(canvas as any, false);
 
-      const expectedLuma = Math.round(0.0722 * 255);
-      const expectedAlpha = 255 - expectedLuma;
-      expect(data[3]).toBe(expectedAlpha); // ~237
+      // Blue should be fully opaque with threshold approach
+      expect(data[3]).toBe(255);
+    });
+
+    it('gray pixels (128,128,128) → opaque (alpha=255) - threshold approach', () => {
+      // Gray: RGB(128, 128, 128)
+      // Luma = 128 (exact, all weights equal)
+      // Threshold approach: luma < 254 → alpha=255 (opaque)
+      // Gray stays fully opaque (NOT semi-transparent like the old buggy formula)
+      const data = new Uint8ClampedArray([128, 128, 128, 255]);
+      mockGetImageData.mockReturnValue({data});
+
+      const canvas = createMockCanvas(1, 1, mockContext);
+
+      applyLumaKey(canvas as any, false);
+
+      // Gray should be fully opaque with threshold approach
+      expect(data[3]).toBe(255);
+    });
+
+    it('near-white pixels (253,253,253) → opaque (alpha=255) - below threshold', () => {
+      // Near-white: RGB(253, 253, 253)
+      // Luma ≈ 253
+      // Threshold: luma >= 254 → transparent, else opaque
+      // Since 253 < 254, near-white should still be opaque
+      const data = new Uint8ClampedArray([253, 253, 253, 255]);
+      mockGetImageData.mockReturnValue({data});
+
+      const canvas = createMockCanvas(1, 1, mockContext);
+
+      applyLumaKey(canvas as any, false);
+
+      // Near-white (253) is below threshold, so opaque
+      expect(data[3]).toBe(255);
+    });
+
+    it('threshold boundary: luma=254 → transparent (alpha=0)', () => {
+      // Threshold is luma >= 254 for transparency
+      // Pure white (255,255,255) has luma=255, should be transparent
+      const data = new Uint8ClampedArray([255, 255, 255, 255]);
+      mockGetImageData.mockReturnValue({data});
+
+      const canvas = createMockCanvas(1, 1, mockContext);
+
+      applyLumaKey(canvas as any, false);
+
+      // Pure white (luma=255) >= 254 → transparent
+      expect(data[3]).toBe(0);
+    });
+
+    it('threshold boundary: luma=253 → opaque (alpha=255)', () => {
+      // At luma=253 (e.g., very light gray 253,253,253), should be opaque
+      // because threshold is luma >= 254
+      const data = new Uint8ClampedArray([253, 253, 253, 255]);
+      mockGetImageData.mockReturnValue({data});
+
+      const canvas = createMockCanvas(1, 1, mockContext);
+
+      applyLumaKey(canvas as any, false);
+
+      // luma=253 < 254 → opaque
+      expect(data[3]).toBe(255);
     });
   });
 
   describe('Luma Invert (invert=true)', () => {
-    it('white canvas → fully transparent (alpha=0)', () => {
-      // Same formula as luma key: alpha = 255 - luma
-      // White (luma=255) → alpha = 0
+    it('white canvas → fully opaque (alpha=255) - threshold approach', () => {
+      // Luma Invert (invert=true): luma < 10 → transparent, else opaque
+      // White (luma=255) >= 10 → opaque (alpha=255)
       const data = new Uint8ClampedArray([255, 255, 255, 255]);
       mockGetImageData.mockReturnValue({data});
 
@@ -162,11 +222,13 @@ describe('lumaKey', () => {
 
       applyLumaKey(canvas as any, true);
 
-      expect(data[3]).toBe(0);
+      // White (luma=255) >= 10 → opaque
+      expect(data[3]).toBe(255);
     });
 
-    it('black canvas → fully opaque (alpha=255)', () => {
-      // Black (luma=0) → alpha = 255
+    it('near-black canvas → fully transparent (alpha=0) - threshold approach', () => {
+      // Near-black (luma < 10) → transparent
+      // Pure black (0,0,0): luma=0 < 10 → transparent
       const data = new Uint8ClampedArray([0, 0, 0, 255]);
       mockGetImageData.mockReturnValue({data});
 
@@ -174,7 +236,34 @@ describe('lumaKey', () => {
 
       applyLumaKey(canvas as any, true);
 
+      // Black (luma=0) < 10 → transparent
+      expect(data[3]).toBe(0);
+    });
+
+    it('dark gray (10,10,10) → opaque (alpha=255) - at threshold boundary', () => {
+      // Dark gray (10,10,10): luma ≈ 10 >= 10 → opaque
+      const data = new Uint8ClampedArray([10, 10, 10, 255]);
+      mockGetImageData.mockReturnValue({data});
+
+      const canvas = createMockCanvas(1, 1, mockContext);
+
+      applyLumaKey(canvas as any, true);
+
+      // luma=10 >= 10 → opaque
       expect(data[3]).toBe(255);
+    });
+
+    it('near-black (9,9,9) → transparent (alpha=0) - below threshold', () => {
+      // Near-black (9,9,9): luma ≈ 9 < 10 → transparent
+      const data = new Uint8ClampedArray([9, 9, 9, 255]);
+      mockGetImageData.mockReturnValue({data});
+
+      const canvas = createMockCanvas(1, 1, mockContext);
+
+      applyLumaKey(canvas as any, true);
+
+      // luma=9 < 10 → transparent
+      expect(data[3]).toBe(0);
     });
   });
 
