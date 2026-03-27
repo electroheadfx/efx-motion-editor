@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 Phase: 26
 Plan: Not started
 Status: Ready to execute
-Last activity: 2026-03-27
+Last activity: 2026-03-27 - Completed quick task 260327-tqg: Fix Brush color picker modal not opening
 
 Progress: [########..] 80%
 
@@ -81,6 +81,7 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
+| 260327-tqg | Fix Brush color picker modal not opening — ReferenceError: ColorPickerModal not found | 2026-03-27 | f1432c5 | [260327-tqg-fix-brush-color-picker-modal-not-opening](./quick/260327-tqg-fix-brush-color-picker-modal-not-opening/) |
 | Phase 25 P01 | 12 | 3 tasks | 6 files |
 | Phase 25-paint-compositing-pipeline P25-02 | 5 | 1 tasks | 2 files |
 

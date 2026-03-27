@@ -1,6 +1,7 @@
 import {useState} from 'preact/hooks';
 import {ArrowRight} from 'lucide-preact';
 import {SectionLabel} from '../shared/SectionLabel';
+import {ColorPickerModal} from '../shared/ColorPickerModal';
 import {paintStore} from '../../stores/paintStore';
 import {timelineStore} from '../../stores/timelineStore';
 import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_STROKE_OPTIONS} from '../../types/paint';
