@@ -103,7 +103,7 @@ See: `milestones/v0.5.0-ROADMAP.md` for full details.
 - [x] **Phase 22: Foundation & Quick Wins** - Fix pre-existing paint bugs, add _notifyVisualChange helper, and deliver three isolated UX improvements (gap closure in progress) (completed 2026-03-26)
 - [x] **Phase 23: Stroke Interactions** - Add Alt+duplicate stroke and non-uniform scale transform for paint strokes (gap closure in progress) (completed 2026-03-27)
 - [x] **Phase 24: Stroke List Panel** - Build stroke management panel with reorder, delete, select, and visibility toggle (completed 2026-03-27)
-- [ ] **Phase 25: Paint Compositing Pipeline** - Luma matte extraction and paper/canvas texture overlay for paint layers
+- [x] **Phase 25: Paint Compositing Pipeline** - Luma matte extraction and paper/canvas texture overlay for paint layers (completed 2026-03-27)
 - [ ] **Phase 26: Bezier Path Editing** - Post-hoc bezier/spline path editing for existing freehand strokes
 
 ## Phase Details
@@ -202,5 +202,5 @@ Note: Phase 25 depends on Phase 22 (not 24), so Phases 23-24 and Phase 25 could 
 | 22. Foundation & Quick Wins | v0.6.0 | 5/5 | Complete    | 2026-03-26 |
 | 23. Stroke Interactions | v0.6.0 | 3/3 | Complete    | 2026-03-27 |
 | 24. Stroke List Panel | v0.6.0 | 3/3 | Complete    | 2026-03-27 |
-| 25. Paint Compositing Pipeline | v0.6.0 | 1/1 | In progress | - |
+| 25. Paint Compositing Pipeline | v0.6.0 | 1/1 | Complete   | 2026-03-27 |
 | 26. Bezier Path Editing | v0.6.0 | 0/? | Not started | - |

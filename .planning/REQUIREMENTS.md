@@ -9,7 +9,7 @@ Requirements for v0.6.0 Various Enhancements. Each maps to roadmap phases.
 
 ### Paint Compositing
 
-- [ ] **COMP-01**: User can composite FX paint over photos via luma matte extraction (paint without alpha)
+- [x] **COMP-01**: User can composite FX paint over photos via luma matte extraction (paint without alpha)
 - [ ] **COMP-02**: User can paint on a neutral gray background for improved luma matte compositing quality
 - [ ] **COMP-03**: User can apply a paper/canvas texture to paint layer (tiled texture from file)
 - [ ] **COMP-04**: User can load paper textures from ~/.config/efx-motion/papers/* directory
@@ -62,7 +62,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COMP-01 | Phase 25 | Pending |
+| COMP-01 | Phase 25 | Complete |
 | COMP-02 | Phase 25 | Pending |
 | COMP-03 | Phase 25 | Pending |
 | COMP-04 | Phase 25 | Pending |
