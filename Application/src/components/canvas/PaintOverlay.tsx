@@ -276,6 +276,10 @@ export function PaintOverlay({
   const transformLayerId = useRef<string>('');
   const transformFrame = useRef<number>(0);
 
+  // --- Ref for Alt+drag duplicate (D-01) ---
+  const isDuplicating = useRef(false);
+  const duplicateCloneIds = useRef<string[]>([]);
+
   // --- Flag to prevent FX useEffect from firing during style sync ---
   const isSyncingStyle = useRef(false);
 
@@ -652,13 +656,55 @@ export function PaintOverlay({
       if (e.metaKey || e.ctrlKey) {
         paintStore.toggleStrokeSelection(hitStrokeId);
       } else if (selected.has(hitStrokeId)) {
-        // Clicked on an already-selected stroke — start drag
-        isDragging.current = true;
-        dragStart.current = {x: point.x, y: point.y};
-        transformSnapshot.current = captureElementSnapshot(paintFrame.elements, selected);
-        transformLayerId.current = layerId;
-        transformFrame.current = frame;
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        if (e.altKey) {
+          // Alt+drag = duplicate all selected elements (D-01, D-02, D-03)
+          const frameData = paintStore.getFrame(layerId, frame);
+          if (!frameData) return;
+          const clones: PaintElement[] = [];
+          const cloneIds: string[] = [];
+
+          for (const el of frameData.elements) {
+            if (!selected.has(el.id)) continue;
+            const clone = structuredClone(el) as PaintElement;
+            (clone as {id: string}).id = crypto.randomUUID();
+            cloneIds.push((clone as {id: string}).id);
+            clones.push(clone);
+          }
+
+          // Add clones to frame (originals stay at original positions per D-01)
+          for (const clone of clones) {
+            frameData.elements.push(clone);
+          }
+
+          // Switch selection to clones (user drags clones, not originals)
+          paintStore.selectedStrokeIds.value = new Set(cloneIds);
+
+          // Mark as duplicating for undo tracking
+          isDuplicating.current = true;
+          duplicateCloneIds.current = cloneIds;
+
+          // Capture snapshot of clones' initial positions for combined undo
+          transformSnapshot.current = captureElementSnapshot(frameData.elements, new Set(cloneIds));
+          transformLayerId.current = layerId;
+          transformFrame.current = frame;
+
+          // Start drag of clones
+          isDragging.current = true;
+          dragStart.current = {x: point.x, y: point.y};
+
+          paintStore.markDirty(layerId, frame);
+          paintStore.paintVersion.value++;
+          paintStore.invalidateFrameFxCache(layerId, frame);
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        } else {
+          // Normal drag (existing behavior)
+          isDragging.current = true;
+          dragStart.current = {x: point.x, y: point.y};
+          transformSnapshot.current = captureElementSnapshot(paintFrame.elements, selected);
+          transformLayerId.current = layerId;
+          transformFrame.current = frame;
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        }
       } else {
         paintStore.clearSelection();
         paintStore.selectStroke(hitStrokeId);
@@ -1078,10 +1124,57 @@ export function PaintOverlay({
 
     // Finalize select-mode drag
     if (isDragging.current) {
-      // Commit drag undo entry (D-07, D-09)
-      if (transformSnapshot.current && transformSnapshot.current.size > 0) {
-        const snapLayerId = transformLayerId.current;
-        const snapFrame = transformFrame.current;
+      isDragging.current = false;
+      dragStart.current = null;
+
+      const dragLayerId = transformLayerId.current;
+      const dragFrame = transformFrame.current;
+
+      if (isDuplicating.current) {
+        // Alt+drag duplicate: single undo removes all clones (D-03, D-09)
+        isDuplicating.current = false;
+        const cloneIds = [...duplicateCloneIds.current];
+        duplicateCloneIds.current = [];
+
+        const paintFrameForDup = paintStore.getFrame(dragLayerId, dragFrame);
+        if (paintFrameForDup && cloneIds.length > 0) {
+          // Capture final state of clones for redo
+          const cloneIdSet = new Set(cloneIds);
+          const finalClones = paintFrameForDup.elements
+            .filter(el => cloneIdSet.has(el.id))
+            .map(el => structuredClone(el));
+
+          pushAction({
+            id: crypto.randomUUID(),
+            description: `Duplicate ${cloneIds.length} element(s)`,
+            timestamp: Date.now(),
+            undo: () => {
+              const f = paintStore.getFrame(dragLayerId, dragFrame);
+              if (f) {
+                f.elements = f.elements.filter(el => !cloneIdSet.has(el.id));
+                paintStore.markDirty(dragLayerId, dragFrame);
+                paintStore.paintVersion.value++;
+                paintStore.invalidateFrameFxCache(dragLayerId, dragFrame);
+              }
+            },
+            redo: () => {
+              const f = paintStore.getFrame(dragLayerId, dragFrame);
+              if (f) {
+                for (const clone of finalClones) {
+                  f.elements.push(structuredClone(clone));
+                }
+                paintStore.markDirty(dragLayerId, dragFrame);
+                paintStore.paintVersion.value++;
+                paintStore.invalidateFrameFxCache(dragLayerId, dragFrame);
+              }
+            },
+          });
+        }
+        transformSnapshot.current = null;
+      } else if (transformSnapshot.current && transformSnapshot.current.size > 0) {
+        // Normal drag: standard snapshot-based undo (from Plan 01)
+        const snapLayerId = dragLayerId;
+        const snapFrame = dragFrame;
         const beforeSnap = transformSnapshot.current;
         const paintFrameForSnap = paintStore.getFrame(snapLayerId, snapFrame);
         if (paintFrameForSnap) {
@@ -1113,17 +1206,16 @@ export function PaintOverlay({
         }
         transformSnapshot.current = null;
       }
-      isDragging.current = false;
-      dragStart.current = null;
+
       // Re-render FX cache after move
-      const layerId = getSelectedPaintLayerId();
-      if (layerId) {
-        const frame = timelineStore.currentFrame.peek();
-        const paintFrame = paintStore.getFrame(layerId, frame);
-        if (paintFrame) {
+      const layerIdForFx = getSelectedPaintLayerId();
+      if (layerIdForFx) {
+        const frameForFx = timelineStore.currentFrame.peek();
+        const paintFrameForFx = paintStore.getFrame(layerIdForFx, frameForFx);
+        if (paintFrameForFx) {
           const projW = projectStore.width.peek();
           const projH = projectStore.height.peek();
-          reRenderFrameFx(paintFrame, layerId, frame, projW, projH);
+          reRenderFrameFx(paintFrameForFx, layerIdForFx, frameForFx, projW, projH);
         }
       }
       try {
