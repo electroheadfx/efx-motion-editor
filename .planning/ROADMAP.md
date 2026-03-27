@@ -101,7 +101,7 @@ See: `milestones/v0.5.0-ROADMAP.md` for full details.
 ### v0.6.0 Various Enhancements
 
 - [x] **Phase 22: Foundation & Quick Wins** - Fix pre-existing paint bugs, add _notifyVisualChange helper, and deliver three isolated UX improvements (gap closure in progress) (completed 2026-03-26)
-- [ ] **Phase 23: Stroke Interactions** - Add Alt+duplicate stroke and non-uniform scale transform for paint strokes (gap closure in progress)
+- [x] **Phase 23: Stroke Interactions** - Add Alt+duplicate stroke and non-uniform scale transform for paint strokes (gap closure in progress) (completed 2026-03-27)
 - [ ] **Phase 24: Stroke List Panel** - Build stroke management panel with reorder, delete, select, and visibility toggle
 - [ ] **Phase 25: Paint Compositing Pipeline** - Luma matte extraction and paper/canvas texture overlay for paint layers
 - [ ] **Phase 26: Bezier Path Editing** - Post-hoc bezier/spline path editing for existing freehand strokes
@@ -138,7 +138,7 @@ Plans:
 Plans:
 - [x] 23-01-PLAN.md -- Retrofit undo onto existing transforms + generalize element handling
 - [x] 23-02-PLAN.md -- Alt+drag duplicate + non-uniform edge-handle scale
-- [ ] 23-03-PLAN.md -- [GAP] Fix hit-test offset, stale overlay, exponential edge scale, handle size
+- [x] 23-03-PLAN.md -- [GAP] Fix hit-test offset, stale overlay, exponential edge scale, handle size
 **UI hint**: yes
 
 ### Phase 24: Stroke List Panel
@@ -194,7 +194,7 @@ Note: Phase 25 depends on Phase 22 (not 24), so Phases 23-24 and Phase 25 could 
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
 | 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2026-03-26 |
 | 22. Foundation & Quick Wins | v0.6.0 | 5/5 | Complete    | 2026-03-26 |
-| 23. Stroke Interactions | v0.6.0 | 2/3 | Gap closure | - |
+| 23. Stroke Interactions | v0.6.0 | 3/3 | Complete   | 2026-03-27 |
 | 24. Stroke List Panel | v0.6.0 | 0/? | Not started | - |
 | 25. Paint Compositing Pipeline | v0.6.0 | 0/? | Not started | - |
 | 26. Bezier Path Editing | v0.6.0 | 0/? | Not started | - |
