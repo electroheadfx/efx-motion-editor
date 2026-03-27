@@ -375,6 +375,7 @@ export function PaintOverlay({
       canvasStore.panY.peek(),
       projectStore.width.peek(),
       projectStore.height.peek(),
+      0, 16,  // paddingTop=0 (pt-0), paddingBottom=16 (p-4 bottom)
     );
   }
 

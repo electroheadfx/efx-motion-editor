@@ -28,10 +28,14 @@ export function clientToCanvas(
   panY: number,
   projectWidth: number,
   projectHeight: number,
+  paddingTop = 0,
+  paddingBottom = 0,
 ): Point {
   // 1. Client -> container center-relative
   const containerCenterX = containerRect.left + containerRect.width / 2;
-  const containerCenterY = containerRect.top + containerRect.height / 2;
+  // Adjust for asymmetric vertical padding: content center is shifted from border-box center
+  const paddingOffsetY = (paddingTop - paddingBottom) / 2;
+  const containerCenterY = containerRect.top + containerRect.height / 2 + paddingOffsetY;
   const relX = clientX - containerCenterX;
   const relY = clientY - containerCenterY;
 
@@ -61,6 +65,8 @@ export function canvasToClient(
   panY: number,
   projectWidth: number,
   projectHeight: number,
+  paddingTop = 0,
+  paddingBottom = 0,
 ): Point {
   // Inverse of clientToCanvas steps, in reverse order:
   // 4. Project (top-left origin) -> center-relative
@@ -73,7 +79,9 @@ export function canvasToClient(
 
   // 1. Container center-relative -> client
   const containerCenterX = containerRect.left + containerRect.width / 2;
-  const containerCenterY = containerRect.top + containerRect.height / 2;
+  // Adjust for asymmetric vertical padding: content center is shifted from border-box center
+  const paddingOffsetY = (paddingTop - paddingBottom) / 2;
+  const containerCenterY = containerRect.top + containerRect.height / 2 + paddingOffsetY;
 
   return {
     x: containerCenterX + relX,
