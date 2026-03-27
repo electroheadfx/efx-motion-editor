@@ -82,8 +82,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
-- [ ] Compositing FX paint via luma matte extraction (paint over photos without alpha)
-- [ ] Paper/canvas texture on paint layer (shader or tiled textures from Krita)
+- ✓ Compositing FX paint via luma matte extraction (paint over photos without alpha) — v0.6.0
 - ✓ Duplicate stroke with Alt+move on same frame in roto paint edit mode — v0.6.0
 - ✓ Non-uniform scale for paint layer's strokes — v0.6.0
 - ✓ Stroke interactions (move, rotate, scale, undo/redo) with correct hit-testing — v0.6.0
@@ -204,4 +203,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after Phase 23 (Stroke Interactions) complete — move/rotate/scale/undo/redo gestures with Alt+drag duplicate, non-uniform edge scale, asymmetric padding hit-test fix*
+*Last updated: 2026-03-27 after Phase 25 (Luma Key Compositing) complete — luma key/luma invert toggles for paint layers, non-destructive paint editing, ITU-R BT.709 coefficients*
