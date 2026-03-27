@@ -4,7 +4,7 @@ milestone: v0.6.0
 milestone_name: Various Enhancements
 status: verifying
 stopped_at: Completed 25-01-PLAN.md
-last_updated: "2026-03-27T19:35:00.329Z"
+last_updated: "2026-03-27T19:39:33.798Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 5
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 
 ## Current Position
 
-Phase: 25 (paint-compositing-pipeline) — EXECUTING
-Plan: 1 of 1
+Phase: 26
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-03-27
 
