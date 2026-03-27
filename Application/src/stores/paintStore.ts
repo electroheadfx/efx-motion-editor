@@ -34,6 +34,12 @@ const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
 const onionSkinOpacity = signal(0.3);
 
+/** Luma key enabled - white pixels become transparent so photo shows through */
+const lumaKeyEnabled = signal(false);
+
+/** Luma invert enabled - black strokes on white become white opaque strokes */
+const lumaInvertEnabled = signal(false);
+
 /** Bumped on every paint data mutation so reactive consumers (Preview) re-render */
 const paintVersion = signal(0);
 
@@ -98,6 +104,8 @@ export const paintStore = {
   onionSkinPrevRange,
   onionSkinNextRange,
   onionSkinOpacity,
+  lumaKeyEnabled,
+  lumaInvertEnabled,
 
   // Frame data access
   getFrame(layerId: string, frame: number): PaintFrame | null {
@@ -429,6 +437,8 @@ export const paintStore = {
     onionSkinPrevRange.value = 1;
     onionSkinNextRange.value = 0;
     onionSkinOpacity.value = 0.3;
+    lumaKeyEnabled.value = false;
+    lumaInvertEnabled.value = false;
   },
 
   // Tool settings
@@ -494,6 +504,18 @@ export const paintStore = {
 
   toggleFlatPreview(): void {
     showFlatPreview.value = !showFlatPreview.peek();
+    paintVersion.value++;
+  },
+
+  // --- Luma Key (Phase 25) ---
+
+  setLumaKeyEnabled(v: boolean): void {
+    lumaKeyEnabled.value = v;
+    paintVersion.value++;
+  },
+
+  setLumaInvertEnabled(v: boolean): void {
+    lumaInvertEnabled.value = v;
     paintVersion.value++;
   },
 
@@ -651,7 +673,10 @@ export const paintStore = {
   },
 };
 
-// Auto-flatten current frame when exiting paint mode
+// DISABLED per Phase 25: auto-flatten breaks non-destructive paint edit.
+// With frame FX cache, no flatten is needed for fast playback.
+// Strokes remain editable when re-entering paint mode.
+/*
 let _wasPaintMode = false;
 effect(() => {
   const active = paintMode.value;
@@ -667,3 +692,4 @@ effect(() => {
   }
   _wasPaintMode = active;
 });
+*/

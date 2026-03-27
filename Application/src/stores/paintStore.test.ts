@@ -269,3 +269,59 @@ describe('paintStore moveElements* bug fixes (D-12)', () => {
     });
   });
 });
+
+describe('paintStore luma key signals (Phase 25)', () => {
+  beforeEach(() => {
+    paintStore.reset();
+  });
+
+  describe('lumaKeyEnabled', () => {
+    it('defaults to false', () => {
+      expect(paintStore.lumaKeyEnabled.value).toBe(false);
+    });
+
+    it('setLumaKeyEnabled(true) bumps paintVersion', () => {
+      const before = paintStore.paintVersion.value;
+      paintStore.setLumaKeyEnabled(true);
+      expect(paintStore.paintVersion.value).toBe(before + 1);
+    });
+
+    it('setLumaKeyEnabled(false) bumps paintVersion', () => {
+      paintStore.setLumaKeyEnabled(true);
+      const before = paintStore.paintVersion.value;
+      paintStore.setLumaKeyEnabled(false);
+      expect(paintStore.paintVersion.value).toBe(before + 1);
+    });
+
+    it('reset() sets to false', () => {
+      paintStore.setLumaKeyEnabled(true);
+      paintStore.reset();
+      expect(paintStore.lumaKeyEnabled.value).toBe(false);
+    });
+  });
+
+  describe('lumaInvertEnabled', () => {
+    it('defaults to false', () => {
+      expect(paintStore.lumaInvertEnabled.value).toBe(false);
+    });
+
+    it('setLumaInvertEnabled(true) bumps paintVersion', () => {
+      const before = paintStore.paintVersion.value;
+      paintStore.setLumaInvertEnabled(true);
+      expect(paintStore.paintVersion.value).toBe(before + 1);
+    });
+
+    it('setLumaInvertEnabled(false) bumps paintVersion', () => {
+      paintStore.setLumaInvertEnabled(true);
+      const before = paintStore.paintVersion.value;
+      paintStore.setLumaInvertEnabled(false);
+      expect(paintStore.paintVersion.value).toBe(before + 1);
+    });
+
+    it('reset() sets to false', () => {
+      paintStore.setLumaInvertEnabled(true);
+      paintStore.reset();
+      expect(paintStore.lumaInvertEnabled.value).toBe(false);
+    });
+  });
+});
