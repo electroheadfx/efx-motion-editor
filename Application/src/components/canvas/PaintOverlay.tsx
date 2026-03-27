@@ -10,7 +10,8 @@ import {clientToCanvas} from './coordinateMapper';
 import {strokeToPath, renderPaintFrame} from '../../lib/paintRenderer';
 import {renderFrameFx} from '../../lib/brushP5Adapter';
 import {floodFill, hexToRgba} from '../../lib/paintFloodFill';
-import type {PaintStroke, PaintShape, PaintFill, PaintToolType, BrushStyle, PaintFrame} from '../../types/paint';
+import {pushAction} from '../../lib/history';
+import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, BrushStyle, PaintFrame} from '../../types/paint';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,67 +47,107 @@ function cursorForTool(tool: PaintToolType): string {
 }
 
 /**
- * Find the topmost stroke that a point falls on (hit testing for select tool).
+ * Find the topmost element that a point falls on (hit testing for select tool).
  * Walks elements in reverse order (topmost first).
+ * Handles PaintStroke, PaintShape, and PaintFill element types.
  */
-function findStrokeAtPoint(
+function findElementAtPoint(
   paintFrame: PaintFrame,
   x: number,
   y: number,
 ): string | null {
   for (let i = paintFrame.elements.length - 1; i >= 0; i--) {
     const el = paintFrame.elements[i];
-    if (el.tool !== 'brush') continue;
-    const stroke = el as PaintStroke;
 
-    // Check if point is within stroke bounding box + padding
-    const pad = stroke.size / 2 + 5;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [px, py] of stroke.points) {
-      if (px < minX) minX = px;
-      if (py < minY) minY = py;
-      if (px > maxX) maxX = px;
-      if (py > maxY) maxY = py;
-    }
-
-    if (x >= minX - pad && x <= maxX + pad && y >= minY - pad && y <= maxY + pad) {
-      // Fine check: distance to any point in the stroke
+    if (el.tool === 'brush' || el.tool === 'eraser') {
+      const stroke = el as PaintStroke;
+      // Check if point is within stroke bounding box + padding
+      const pad = stroke.size / 2 + 5;
+      let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
       for (const [px, py] of stroke.points) {
-        const dx = x - px;
-        const dy = y - py;
-        if (dx * dx + dy * dy <= pad * pad) {
-          return stroke.id;
+        if (px < sMinX) sMinX = px;
+        if (py < sMinY) sMinY = py;
+        if (px > sMaxX) sMaxX = px;
+        if (py > sMaxY) sMaxY = py;
+      }
+      if (x >= sMinX - pad && x <= sMaxX + pad && y >= sMinY - pad && y <= sMaxY + pad) {
+        // Fine check: distance to any point in the stroke
+        for (const [px, py] of stroke.points) {
+          const dx = x - px;
+          const dy = y - py;
+          if (dx * dx + dy * dy <= pad * pad) {
+            return stroke.id;
+          }
         }
+      }
+    } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+      const shape = el as PaintShape;
+      const pad = 5;
+      const sMinX = Math.min(shape.x1, shape.x2);
+      const sMinY = Math.min(shape.y1, shape.y2);
+      const sMaxX = Math.max(shape.x1, shape.x2);
+      const sMaxY = Math.max(shape.y1, shape.y2);
+      if (x >= sMinX - pad && x <= sMaxX + pad && y >= sMinY - pad && y <= sMaxY + pad) {
+        return shape.id;
+      }
+    } else if (el.tool === 'fill') {
+      const fill = el as PaintFill;
+      const dx = x - fill.x;
+      const dy = y - fill.y;
+      if (dx * dx + dy * dy <= 10 * 10) {
+        return fill.id;
       }
     }
   }
   return null;
 }
 
-/** Get combined bounding box of all selected strokes */
+/** Get combined bounding box of all selected elements */
 function getSelectionBounds(
   paintFrame: PaintFrame,
   selected: Set<string>,
 ): {minX: number; minY: number; maxX: number; maxY: number; pad: number} | null {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  let maxSize = 0;
+  let maxPad = 6;
   let count = 0;
   for (const el of paintFrame.elements) {
-    if (el.tool !== 'brush') continue;
     if (!selected.has(el.id)) continue;
-    const stroke = el as PaintStroke;
-    if (stroke.size > maxSize) maxSize = stroke.size;
-    for (const [px, py] of stroke.points) {
-      if (px < minX) minX = px;
-      if (py < minY) minY = py;
-      if (px > maxX) maxX = px;
-      if (py > maxY) maxY = py;
+
+    if (el.tool === 'brush' || el.tool === 'eraser') {
+      const stroke = el as PaintStroke;
+      const strokePad = stroke.size / 2 + 6;
+      if (strokePad > maxPad) maxPad = strokePad;
+      for (const [px, py] of stroke.points) {
+        if (px < minX) minX = px;
+        if (py < minY) minY = py;
+        if (px > maxX) maxX = px;
+        if (py > maxY) maxY = py;
+      }
+    } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+      const shape = el as PaintShape;
+      const shapePad = shape.strokeWidth / 2 + 6;
+      if (shapePad > maxPad) maxPad = shapePad;
+      const sx1 = Math.min(shape.x1, shape.x2);
+      const sy1 = Math.min(shape.y1, shape.y2);
+      const sx2 = Math.max(shape.x1, shape.x2);
+      const sy2 = Math.max(shape.y1, shape.y2);
+      if (sx1 < minX) minX = sx1;
+      if (sy1 < minY) minY = sy1;
+      if (sx2 > maxX) maxX = sx2;
+      if (sy2 > maxY) maxY = sy2;
+    } else if (el.tool === 'fill') {
+      const fill = el as PaintFill;
+      if (fill.x < minX) minX = fill.x;
+      if (fill.y < minY) minY = fill.y;
+      if (fill.x > maxX) maxX = fill.x;
+      if (fill.y > maxY) maxY = fill.y;
+      if (5 > maxPad) maxPad = 5;
     }
+
     count++;
   }
   if (count === 0) return null;
-  const pad = maxSize / 2 + 6;
-  return {minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad, pad};
+  return {minX: minX - maxPad, minY: minY - maxPad, maxX: maxX + maxPad, maxY: maxY + maxPad, pad: maxPad};
 }
 
 const HANDLE_SIZE = 6;
@@ -127,6 +168,33 @@ function hitTestHandle(
     if (Math.abs(x - cx) <= hs && Math.abs(y - cy) <= hs) return name;
   }
   return null;
+}
+
+/** Deep-clone selected elements for undo snapshot (D-07) */
+function captureElementSnapshot(
+  elements: PaintElement[],
+  ids: Set<string>,
+): Map<string, PaintElement> {
+  const snapshot = new Map<string, PaintElement>();
+  for (const el of elements) {
+    if (ids.has(el.id)) {
+      snapshot.set(el.id, structuredClone(el));
+    }
+  }
+  return snapshot;
+}
+
+/** Restore elements from a snapshot (D-07) */
+function restoreElementSnapshot(
+  elements: PaintElement[],
+  snapshot: Map<string, PaintElement>,
+): void {
+  for (let i = 0; i < elements.length; i++) {
+    const saved = snapshot.get(elements[i].id);
+    if (saved) {
+      elements[i] = structuredClone(saved);
+    }
+  }
 }
 
 /**
@@ -386,20 +454,38 @@ export function PaintOverlay({
       const selected = paintStore.selectedStrokeIds.peek();
 
       if (paintFrame && selected.size > 0) {
-        // Draw individual stroke bounding boxes
+        // Draw individual element bounding boxes
         for (const el of paintFrame.elements) {
-          if (el.tool !== 'brush') continue;
           if (!selected.has(el.id)) continue;
-          const stroke = el as PaintStroke;
 
           let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
-          for (const [px, py] of stroke.points) {
-            if (px < sMinX) sMinX = px;
-            if (py < sMinY) sMinY = py;
-            if (px > sMaxX) sMaxX = px;
-            if (py > sMaxY) sMaxY = py;
+          let sPad = 4;
+
+          if (el.tool === 'brush' || el.tool === 'eraser') {
+            const stroke = el as PaintStroke;
+            for (const [px, py] of stroke.points) {
+              if (px < sMinX) sMinX = px;
+              if (py < sMinY) sMinY = py;
+              if (px > sMaxX) sMaxX = px;
+              if (py > sMaxY) sMaxY = py;
+            }
+            sPad = stroke.size / 2 + 4;
+          } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+            const shape = el as PaintShape;
+            sMinX = Math.min(shape.x1, shape.x2);
+            sMinY = Math.min(shape.y1, shape.y2);
+            sMaxX = Math.max(shape.x1, shape.x2);
+            sMaxY = Math.max(shape.y1, shape.y2);
+            sPad = shape.strokeWidth / 2 + 4;
+          } else if (el.tool === 'fill') {
+            const fill = el as PaintFill;
+            sMinX = fill.x - 10;
+            sMinY = fill.y - 10;
+            sMaxX = fill.x + 10;
+            sMaxY = fill.y + 10;
+            sPad = 0;
           }
-          const sPad = stroke.size / 2 + 4;
+
           ctx.save();
           ctx.strokeStyle = '#4A90D9';
           ctx.lineWidth = 1;
@@ -549,7 +635,7 @@ export function PaintOverlay({
       }
     }
 
-    const hitStrokeId = findStrokeAtPoint(paintFrame, point.x, point.y);
+    const hitStrokeId = findElementAtPoint(paintFrame, point.x, point.y);
 
     if (hitStrokeId) {
       if (e.metaKey || e.ctrlKey) {
@@ -607,7 +693,7 @@ export function PaintOverlay({
         const frame = timelineStore.currentFrame.peek();
         const paintFrame = paintStore.getFrame(layerId, frame);
         if (paintFrame) {
-          const hitId = findStrokeAtPoint(paintFrame, point.x, point.y);
+          const hitId = findElementAtPoint(paintFrame, point.x, point.y);
           if (hitId) {
             paintStore.removeElement(layerId, frame, hitId);
             erasedStrokeIds.current.add(hitId);
@@ -711,7 +797,7 @@ export function PaintOverlay({
         const frame = timelineStore.currentFrame.peek();
         const paintFrame = paintStore.getFrame(layerId, frame);
         if (paintFrame) {
-          const hitId = findStrokeAtPoint(paintFrame, point.x, point.y);
+          const hitId = findElementAtPoint(paintFrame, point.x, point.y);
           if (hitId && !erasedStrokeIds.current.has(hitId)) {
             paintStore.removeElement(layerId, frame, hitId);
             erasedStrokeIds.current.add(hitId);
@@ -743,17 +829,35 @@ export function PaintOverlay({
         const sin = Math.sin(delta);
 
         for (const el of paintFrame.elements) {
-          if (el.tool !== 'brush') continue;
           if (!selected.has(el.id)) continue;
-          const stroke = el as PaintStroke;
-          for (let i = 0; i < stroke.points.length; i++) {
-            const dx = stroke.points[i][0] - center.x;
-            const dy = stroke.points[i][1] - center.y;
-            stroke.points[i] = [
-              center.x + dx * cos - dy * sin,
-              center.y + dx * sin + dy * cos,
-              stroke.points[i][2],
-            ];
+
+          if (el.tool === 'brush' || el.tool === 'eraser') {
+            const stroke = el as PaintStroke;
+            for (let i = 0; i < stroke.points.length; i++) {
+              const dx = stroke.points[i][0] - center.x;
+              const dy = stroke.points[i][1] - center.y;
+              stroke.points[i] = [
+                center.x + dx * cos - dy * sin,
+                center.y + dx * sin + dy * cos,
+                stroke.points[i][2],
+              ];
+            }
+          } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+            const shape = el as PaintShape;
+            const dx1 = shape.x1 - center.x;
+            const dy1 = shape.y1 - center.y;
+            shape.x1 = center.x + dx1 * cos - dy1 * sin;
+            shape.y1 = center.y + dx1 * sin + dy1 * cos;
+            const dx2 = shape.x2 - center.x;
+            const dy2 = shape.y2 - center.y;
+            shape.x2 = center.x + dx2 * cos - dy2 * sin;
+            shape.y2 = center.y + dx2 * sin + dy2 * cos;
+          } else if (el.tool === 'fill') {
+            const fill = el as PaintFill;
+            const dx = fill.x - center.x;
+            const dy = fill.y - center.y;
+            fill.x = center.x + dx * cos - dy * sin;
+            fill.y = center.y + dx * sin + dy * cos;
           }
         }
       } else if (transformType.current === 'scale') {
@@ -762,18 +866,31 @@ export function PaintOverlay({
         transformStartDist.current = newDist;
 
         for (const el of paintFrame.elements) {
-          if (el.tool !== 'brush') continue;
           if (!selected.has(el.id)) continue;
-          const stroke = el as PaintStroke;
-          for (let i = 0; i < stroke.points.length; i++) {
-            stroke.points[i] = [
-              center.x + (stroke.points[i][0] - center.x) * scale,
-              center.y + (stroke.points[i][1] - center.y) * scale,
-              stroke.points[i][2],
-            ];
+
+          if (el.tool === 'brush' || el.tool === 'eraser') {
+            const stroke = el as PaintStroke;
+            for (let i = 0; i < stroke.points.length; i++) {
+              stroke.points[i] = [
+                center.x + (stroke.points[i][0] - center.x) * scale,
+                center.y + (stroke.points[i][1] - center.y) * scale,
+                stroke.points[i][2],
+              ];
+            }
+            // Scale brush size proportionally
+            stroke.size = Math.max(1, stroke.size * scale);
+          } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+            const shape = el as PaintShape;
+            shape.x1 = center.x + (shape.x1 - center.x) * scale;
+            shape.y1 = center.y + (shape.y1 - center.y) * scale;
+            shape.x2 = center.x + (shape.x2 - center.x) * scale;
+            shape.y2 = center.y + (shape.y2 - center.y) * scale;
+            shape.strokeWidth = Math.max(1, shape.strokeWidth * scale);
+          } else if (el.tool === 'fill') {
+            const fill = el as PaintFill;
+            fill.x = center.x + (fill.x - center.x) * scale;
+            fill.y = center.y + (fill.y - center.y) * scale;
           }
-          // Scale brush size proportionally
-          stroke.size = Math.max(1, stroke.size * scale);
         }
       }
 
@@ -799,16 +916,28 @@ export function PaintOverlay({
 
       const selected = paintStore.selectedStrokeIds.peek();
       for (const el of paintFrame.elements) {
-        if (el.tool !== 'brush') continue;
         if (!selected.has(el.id)) continue;
-        const stroke = el as PaintStroke;
-        // Offset all points
-        for (let i = 0; i < stroke.points.length; i++) {
-          stroke.points[i] = [
-            stroke.points[i][0] + dx,
-            stroke.points[i][1] + dy,
-            stroke.points[i][2],
-          ];
+
+        if (el.tool === 'brush' || el.tool === 'eraser') {
+          const stroke = el as PaintStroke;
+          // Offset all points
+          for (let i = 0; i < stroke.points.length; i++) {
+            stroke.points[i] = [
+              stroke.points[i][0] + dx,
+              stroke.points[i][1] + dy,
+              stroke.points[i][2],
+            ];
+          }
+        } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+          const shape = el as PaintShape;
+          shape.x1 += dx;
+          shape.y1 += dy;
+          shape.x2 += dx;
+          shape.y2 += dy;
+        } else if (el.tool === 'fill') {
+          const fill = el as PaintFill;
+          fill.x += dx;
+          fill.y += dy;
         }
       }
 
@@ -1142,9 +1271,7 @@ export function PaintOverlay({
             if (paintFrame) {
               paintStore.clearSelection();
               for (const el of paintFrame.elements) {
-                if (el.tool === 'brush') {
-                  paintStore.selectStroke(el.id);
-                }
+                paintStore.selectStroke(el.id);
               }
               requestPreview();
               e.preventDefault();
