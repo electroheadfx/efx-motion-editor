@@ -27,3 +27,4 @@ Application/src-tauri/gen/
 .Mockup
 SPECS
 .claude/pnpm-lock.yaml
+.collaborator
