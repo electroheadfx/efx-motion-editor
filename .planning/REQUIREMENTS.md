@@ -19,8 +19,8 @@ Requirements for v0.6.0 Various Enhancements. Each maps to roadmap phases.
 
 - [x] **PINT-01**: User can duplicate a stroke with Alt+move on the same frame in roto paint edit mode
 - [x] **PINT-02**: User can apply non-uniform scale to individual paint strokes
-- [ ] **PINT-03**: User can edit stroke paths as bezier/spline curves in roto paint edit mode
-- [ ] **PINT-04**: User can add, move, and delete bezier control points on existing strokes
+- [x] **PINT-03**: User can edit stroke paths as bezier/spline curves in roto paint edit mode
+- [x] **PINT-04**: User can add, move, and delete bezier control points on existing strokes
 
 ### Stroke Management
 
@@ -69,8 +69,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COMP-05 | Phase 25 | Pending |
 | PINT-01 | Phase 23 | Complete |
 | PINT-02 | Phase 23 | Complete |
-| PINT-03 | Phase 25 | Pending |
-| PINT-04 | Phase 25 | Pending |
+| PINT-03 | Phase 26 | Complete |
+| PINT-04 | Phase 26 | Complete |
 | STRK-01 | Phase 24 | Complete |
 | STRK-02 | Phase 24 | Complete |
 | STRK-03 | Phase 24 | Complete |

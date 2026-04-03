@@ -1,5 +1,5 @@
 /** Paint tool types (per D-04) */
-export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse' | 'select';
+export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse' | 'select' | 'pen';
 
 /** Per D-04: Three stroke states for FX workflow */
 export type StrokeFxState = 'flat' | 'fx-applied' | 'flattened';
@@ -39,6 +39,16 @@ export const BRUSH_FX_VISIBLE_PARAMS: Record<BrushStyle, (keyof BrushFxParams)[]
   marker: [],
 };
 
+/** Bezier anchor point for post-hoc path editing (Phase 25, D-07) */
+export interface BezierAnchor {
+  x: number;           // anchor point position
+  y: number;
+  pressure: number;    // preserved from original stroke (D-05)
+  handleIn: { x: number; y: number } | null;   // control point toward previous anchor (absolute coords)
+  handleOut: { x: number; y: number } | null;   // control point toward next anchor (absolute coords)
+  cornerMode?: boolean; // true = broken tangent via Alt+drag (D-08), false/undefined = smooth
+}
+
 /** A freehand stroke recorded from pointer input (per D-02, D-03) */
 export interface PaintStroke {
   id: string;
@@ -52,6 +62,8 @@ export interface PaintStroke {
   brushParams?: BrushFxParams;  // FX parameters at draw time
   fxState?: StrokeFxState;      // per D-04: current rendering state (default: 'flat')
   visible?: boolean;            // D-05: visibility toggle (undefined = visible, false = hidden)
+  anchors?: BezierAnchor[];    // D-07: when present, replaces points for rendering
+  closedPath?: boolean;        // true for converted closed shapes (rect, ellipse)
 }
 
 /** Options passed to perfect-freehand getStroke() */
