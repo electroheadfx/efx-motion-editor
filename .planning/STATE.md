@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Pure Monorepo & Paint Engine Swap
-status: active
-stopped_at: Roadmap created
-last_updated: "2026-04-03T00:00:00.000Z"
+status: executing
+stopped_at: Completed 26-02-PLAN.md
+last_updated: "2026-04-03T14:50:01.637Z"
 last_activity: 2026-04-03
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 2
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 26 -- Monorepo Scaffold
+**Current focus:** Phase 26 — monorepo-scaffold
 
 ## Current Position
 
-Phase: 26 of 32 (Monorepo Scaffold)
-Plan: --
-Status: Ready to plan
-Last activity: 2026-04-03 -- Roadmap created for v0.7.0
+Phase: 26 (monorepo-scaffold) — EXECUTING
+Plan: 3 of 3
+Status: Ready to execute
+Last activity: 2026-04-03
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -48,6 +48,9 @@ Progress: [░░░░░░░░░░] 0%
 Archived to PROJECT.md Key Decisions table.
 Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 
+- [Phase 26-monorepo-scaffold]: Isolated git mv commit for 100% rename detection and --follow history preservation
+- [Phase 26-monorepo-scaffold]: Consolidated pnpm.overrides and packageManager at workspace root; removed redundant onlyBuiltDependencies from paint package
+
 ### Research Flags
 
 - **Phase 27 (Engine API):** Headless constructor pattern needs design against engine internals (OffscreenCanvas vs HTMLCanvasElement, paper texture injection, state reset between calls)
@@ -66,9 +69,11 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
+| Phase 26-monorepo-scaffold P01 | 1min | 2 tasks | 253 files |
+| Phase 26-monorepo-scaffold P02 | 4min | 2 tasks | 135 files |
 
 ## Session Continuity
 
-Last session: 2026-04-03
-Stopped at: Roadmap created for v0.7.0 -- 7 phases (26-32), 30 requirements mapped
-Resume file: N/A
+Last session: 2026-04-03T14:50:01.635Z
+Stopped at: Completed 26-02-PLAN.md
+Resume file: None
