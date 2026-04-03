@@ -4,7 +4,7 @@ milestone: v0.6.0
 milestone_name: Various Enhancements
 status: executing
 stopped_at: Phase 25 context gathered
-last_updated: "2026-04-03T07:04:25.264Z"
+last_updated: "2026-04-03T07:37:51.957Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 4
@@ -79,6 +79,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27T18:51:36.038Z
+Last session: 2026-04-03T07:37:51.954Z
 Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-paint-compositing-pipeline/25-CONTEXT.md
+Resume file: .planning/phases/25-bezier-path-editing/25-CONTEXT.md
