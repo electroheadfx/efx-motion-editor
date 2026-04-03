@@ -14,7 +14,7 @@ import {pushAction} from '../../lib/history';
 import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, BrushStyle, PaintFrame, BezierAnchor} from '../../types/paint';
 import {
   hitTestAnchor, findNearestSegment, insertAnchorOnSegment,
-  deleteAnchor, updateCoupledHandle, dragSegment,
+  deleteAnchor, updateCoupledHandle, dragSegment, sampleBezierPath,
 } from '../../lib/bezierPath';
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ function cursorForTool(tool: PaintToolType): string {
     case 'select':
       return 'default';
     case 'pen':
-      return "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19l7-7 3 3-7 7-3-3z'/%3E%3Cpath d='M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z'/%3E%3Cpath d='M2 2l7.586 7.586'/%3E%3Ccircle cx='11' cy='11' r='2'/%3E%3C/svg%3E\") 2 22, auto";
+      return 'crosshair';
     default:
       return 'crosshair';
   }
@@ -100,11 +100,13 @@ function findElementAtPoint(
         }
       }
       if (x >= sMinX - pad && x <= sMaxX + pad && y >= sMinY - pad && y <= sMaxY + pad) {
-        // Fine check: distance to any point in the stroke (use anchors if available)
+        // Fine check: distance to points along the stroke path
         if (stroke.anchors) {
-          for (const a of stroke.anchors) {
-            const dx = x - a.x;
-            const dy = y - a.y;
+          // For bezier strokes, sample the path and check against sampled points
+          const sampled = sampleBezierPath(stroke.anchors, 4.0, stroke.closedPath);
+          for (const [sx, sy] of sampled) {
+            const dx = x - sx;
+            const dy = y - sy;
             if (dx * dx + dy * dy <= pad * pad) {
               return stroke.id;
             }
@@ -2246,6 +2248,35 @@ export function PaintOverlay({
     renderLivePreview();
   }, [paintStore.selectedStrokeIds.value, paintStore.paintVersion.value]);
 
+  // --- Double-click: enter pen edit mode on the clicked stroke ---
+  function handleDoubleClick(e: MouseEvent) {
+    const tool = paintStore.activeTool.peek();
+    if (tool !== 'pen') return;
+
+    const point = getProjectPoint(e as unknown as PointerEvent);
+    const layerId = getSelectedPaintLayerId();
+    if (!layerId) return;
+    const frame = timelineStore.currentFrame.peek();
+    const paintFrame = paintStore.getFrame(layerId, frame);
+    if (!paintFrame) return;
+
+    const hitId = findElementAtPoint(paintFrame, point.x, point.y);
+    if (hitId) {
+      const hitEl = paintFrame.elements.find(el => el.id === hitId);
+      if (hitEl) {
+        if (hitEl.tool === 'line' || hitEl.tool === 'rect' || hitEl.tool === 'ellipse') {
+          paintStore.convertShapeToBezier(layerId, frame, hitId);
+        } else if ((hitEl.tool === 'brush' || hitEl.tool === 'eraser') && !(hitEl as PaintStroke).anchors) {
+          paintStore.convertToBezier(layerId, frame, hitId);
+        }
+        penEditStrokeId.current = hitId;
+        penSelectedAnchorIdx.current = null;
+        paintStore.selectedStrokeIds.value = new Set([hitId]);
+        requestPreview();
+      }
+    }
+  }
+
   // --- Render ---
   const cursor = cursorForTool(paintStore.activeTool.value);
 
@@ -2263,6 +2294,7 @@ export function PaintOverlay({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onDblClick={handleDoubleClick}
     >
       {/* Temporary canvas for live stroke preview */}
       <canvas
