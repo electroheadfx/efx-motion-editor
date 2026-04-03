@@ -1,5 +1,6 @@
 import {getStroke} from 'perfect-freehand';
 import {floodFill, hexToRgba} from './paintFloodFill';
+import {sampleBezierPath} from './bezierPath';
 import type {PaintFrame, PaintElement, PaintStroke, PaintShape, PaintFill, PaintStrokeOptions} from '../types/paint';
 import {paintStore} from '../stores/paintStore';
 
@@ -74,7 +75,11 @@ export function strokeToPath(
  * Render a single PaintStroke element (brush or eraser) to a canvas context.
  */
 function renderStroke(ctx: CanvasRenderingContext2D, element: PaintStroke): void {
-  const path = strokeToPath(element.points, element.size, element.options);
+  // If stroke has bezier anchors, re-sample to points for perfect-freehand rendering
+  const points = element.anchors
+    ? sampleBezierPath(element.anchors, 2.0, element.closedPath)
+    : element.points;
+  const path = strokeToPath(points, element.size, element.options);
   if (!path) return;
 
   ctx.save();
