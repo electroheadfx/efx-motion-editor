@@ -651,6 +651,11 @@ export const paintStore = {
     paintVersion.value++;
   },
 
+  /** Expose _notifyVisualChange for external bezier editing undo/redo callbacks (Phase 25) */
+  _notifyVisualChange(layerId: string, frame: number): void {
+    _notifyVisualChange(layerId, frame);
+  },
+
   // --- Bezier conversion methods (Phase 25) ---
 
   /** Convert a PaintStroke's freehand points to bezier anchors (D-04).

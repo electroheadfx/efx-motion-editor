@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.6.0
 milestone_name: Various Enhancements
 status: executing
-stopped_at: Completed 25-02-PLAN.md
-last_updated: "2026-04-03T08:31:30.330Z"
-last_activity: 2026-04-03
+stopped_at: Phase 25 context gathered
+last_updated: "2026-04-03T08:19:24.557Z"
+last_activity: 2026-04-03 -- Phase 25 execution started
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 14
-  completed_plans: 13
-  percent: 100
+  completed_plans: 11
+  percent: 80
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 24 — stroke-list-panel
+**Current focus:** Phase 25 — bezier-path-editing
 
 ## Current Position
 
 Phase: 25 (bezier-path-editing) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-04-03
+Plan: 1 of 3
+Status: Executing Phase 25
+Last activity: 2026-04-03 -- Phase 25 execution started
 
-Progress: [##########] 100%
+Progress: [########..] 80%
 
 ## Performance Metrics
 
@@ -57,8 +57,6 @@ Full phase decisions archived in milestones/v0.5.0-ROADMAP.md.
 - [Phase 23]: Brush size NOT scaled during edge scale (D-06); only stroke.points coordinates transformed
 - [Phase 24]: Visibility stored as optional boolean: undefined = visible (backward compat), false = hidden. Always check === false never === true.
 - [Phase 24]: S key shortcut remapped to select tool in paint mode; Alt+S handles solo toggle
-- [Phase 25]: BezierAnchor uses absolute coordinates for handleIn/handleOut (not relative offsets) for simpler drag math
-- [Phase 25]: Persistence needs no code changes for bezier anchors -- JSON.stringify/parse handles optional fields automatically
 
 ### Pending Todos
 
@@ -78,11 +76,9 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
-| Phase 25 P01 | 3min | 2 tasks | 6 files |
-| Phase 25 P02 | 4min | 2 tasks | 4 files |
 
 ## Session Continuity
 
-Last session: 2026-04-03T08:31:30.326Z
-Stopped at: Completed 25-02-PLAN.md
-Resume file: None
+Last session: 2026-04-03T07:37:51.954Z
+Stopped at: Phase 25 context gathered
+Resume file: .planning/phases/25-bezier-path-editing/25-CONTEXT.md

@@ -448,6 +448,14 @@ export function mountShortcuts(): () => void {
       paintStore.setTool('select');
     },
 
+    // Pen tool (paint mode) -- P key
+    'p': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      if (!isPaintEditMode()) return;
+      paintStore.setTool('pen');
+    },
+
     // Solo toggle -- Alt+S
     'Alt+s': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;

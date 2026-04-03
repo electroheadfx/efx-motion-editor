@@ -11,7 +11,11 @@ import {strokeToPath, renderPaintFrame} from '../../lib/paintRenderer';
 import {renderFrameFx} from '../../lib/brushP5Adapter';
 import {floodFill, hexToRgba} from '../../lib/paintFloodFill';
 import {pushAction} from '../../lib/history';
-import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, BrushStyle, PaintFrame} from '../../types/paint';
+import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, BrushStyle, PaintFrame, BezierAnchor} from '../../types/paint';
+import {
+  hitTestAnchor, findNearestSegment, insertAnchorOnSegment,
+  deleteAnchor, updateCoupledHandle, dragSegment,
+} from '../../lib/bezierPath';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -382,6 +386,79 @@ function rgbaToHex(r: number, g: number, b: number): string {
   return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
 }
 
+/** Draw bezier editing overlay: path line, handle lines/dots, anchor squares (D-09) */
+function drawBezierOverlay(
+  ctx: CanvasRenderingContext2D,
+  anchors: BezierAnchor[],
+  selectedAnchorIdx: number | null,
+  zoom: number,
+  closedPath: boolean = false,
+): void {
+  const anchorSize = 4 / zoom;
+  const handleRadius = 3 / zoom;
+  const lineWidth = 1 / zoom;
+
+  // Draw path segments (thin blue line)
+  ctx.save();
+  ctx.strokeStyle = '#4A90D9';
+  ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  if (anchors.length > 0) {
+    ctx.moveTo(anchors[0].x, anchors[0].y);
+    const segCount = closedPath ? anchors.length : anchors.length - 1;
+    for (let i = 0; i < segCount; i++) {
+      const a = anchors[i];
+      const b = anchors[(i + 1) % anchors.length];
+      const cp1 = a.handleOut ?? { x: a.x, y: a.y };
+      const cp2 = b.handleIn ?? { x: b.x, y: b.y };
+      ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, b.x, b.y);
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // Draw handles and anchor points
+  for (let i = 0; i < anchors.length; i++) {
+    const a = anchors[i];
+    const isSelected = i === selectedAnchorIdx;
+
+    // Handle lines + circles
+    ctx.save();
+    ctx.strokeStyle = '#4A90D9';
+    ctx.fillStyle = '#4A90D9';
+    ctx.lineWidth = lineWidth;
+
+    if (a.handleIn) {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(a.handleIn.x, a.handleIn.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(a.handleIn.x, a.handleIn.y, handleRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (a.handleOut) {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(a.handleOut.x, a.handleOut.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(a.handleOut.x, a.handleOut.y, handleRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Square anchor point
+    ctx.save();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.fillStyle = isSelected ? '#4A90D9' : 'transparent';
+    ctx.lineWidth = lineWidth;
+    ctx.strokeRect(a.x - anchorSize, a.y - anchorSize, anchorSize * 2, anchorSize * 2);
+    ctx.fillRect(a.x - anchorSize, a.y - anchorSize, anchorSize * 2, anchorSize * 2);
+    ctx.restore();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -430,6 +507,14 @@ export function PaintOverlay({
   // --- Ref for Alt+drag duplicate (D-01) ---
   const isDuplicating = useRef(false);
   const duplicateCloneIds = useRef<string[]>([]);
+
+  // --- Pen tool state refs (Phase 25 Plan 03) ---
+  const penEditStrokeId = useRef<string | null>(null);
+  const penSelectedAnchorIdx = useRef<number | null>(null);
+  const penDragType = useRef<'anchor' | 'handleIn' | 'handleOut' | 'segment' | null>(null);
+  const penDragSegmentIdx = useRef<number>(0);
+  const penDragSegmentT = useRef<number>(0);
+  const penAnchorSnapshot = useRef<BezierAnchor[] | null>(null);
 
   // --- Flag to prevent FX useEffect from firing during style sync ---
   const isSyncingStyle = useRef(false);
@@ -736,6 +821,18 @@ export function PaintOverlay({
           ctx.restore();
         }
       }
+
+      // Draw bezier editing overlay when pen tool is active (outside selected.size check)
+      const activeTool = paintStore.activeTool.peek();
+      if (activeTool === 'pen' && penEditStrokeId.current && paintFrame) {
+        const editEl = paintFrame.elements.find(el => el.id === penEditStrokeId.current);
+        if (editEl && (editEl.tool === 'brush' || editEl.tool === 'eraser')) {
+          const stroke = editEl as PaintStroke;
+          if (stroke.anchors) {
+            drawBezierOverlay(ctx, stroke.anchors, penSelectedAnchorIdx.current, canvasStore.zoom.peek(), stroke.closedPath);
+          }
+        }
+      }
     }
   }
 
@@ -940,8 +1037,100 @@ export function PaintOverlay({
       return;
     }
 
-    // Pen tool interactions handled in Plan 03
+    // Pen tool interactions (Phase 25 Plan 03)
     if (tool === 'pen') {
+      const point = getProjectPoint(e);
+      const layerId = getSelectedPaintLayerId();
+      if (!layerId) return;
+      const frame = timelineStore.currentFrame.peek();
+      const paintFrame = paintStore.getFrame(layerId, frame);
+      if (!paintFrame) return;
+
+      // If already editing a stroke, check for anchor/handle/segment hit
+      if (penEditStrokeId.current) {
+        const editEl = paintFrame.elements.find(el => el.id === penEditStrokeId.current);
+        if (editEl && (editEl.tool === 'brush' || editEl.tool === 'eraser')) {
+          const stroke = editEl as PaintStroke;
+          if (stroke.anchors) {
+            const zoom = canvasStore.zoom.peek();
+            const hitRadius = 8 / zoom;
+
+            // 1. Hit test anchors and handles
+            const anchorHit = hitTestAnchor(stroke.anchors, {x: point.x, y: point.y}, hitRadius);
+            if (anchorHit) {
+              penSelectedAnchorIdx.current = anchorHit.anchorIndex;
+              penDragType.current = anchorHit.part;
+              penAnchorSnapshot.current = structuredClone(stroke.anchors);
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              e.preventDefault();
+              requestPreview();
+              return;
+            }
+
+            // 2. Hit test path segments for insertion (D-11) or segment drag (D-10)
+            const segHit = findNearestSegment(stroke.anchors, {x: point.x, y: point.y}, stroke.closedPath);
+            if (segHit && segHit.distance < hitRadius) {
+              if (e.metaKey || e.ctrlKey) {
+                // Ctrl/Cmd+click on segment = insert new anchor (D-11)
+                penAnchorSnapshot.current = structuredClone(stroke.anchors);
+                stroke.anchors = insertAnchorOnSegment(stroke.anchors, segHit.segmentIndex, segHit.t);
+                penSelectedAnchorIdx.current = segHit.segmentIndex + 1;
+                paintStore.paintVersion.value++;
+                // Push undo for point insertion
+                const afterInsert = structuredClone(stroke.anchors);
+                const undoLayerId = layerId;
+                const undoFrame = frame;
+                pushAction({
+                  id: crypto.randomUUID(),
+                  description: 'Insert bezier anchor',
+                  timestamp: Date.now(),
+                  undo: () => { stroke.anchors = structuredClone(penAnchorSnapshot.current!); paintStore._notifyVisualChange(undoLayerId, undoFrame); },
+                  redo: () => { stroke.anchors = structuredClone(afterInsert); paintStore._notifyVisualChange(undoLayerId, undoFrame); },
+                });
+                e.preventDefault();
+                requestPreview();
+                return;
+              }
+              // Segment drag (D-10)
+              penDragType.current = 'segment';
+              penDragSegmentIdx.current = segHit.segmentIndex;
+              penDragSegmentT.current = segHit.t;
+              penAnchorSnapshot.current = structuredClone(stroke.anchors);
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              e.preventDefault();
+              return;
+            }
+
+            // 3. Click on empty space: deselect anchor
+            penSelectedAnchorIdx.current = null;
+          }
+        }
+      }
+
+      // Check if clicking an element (D-02)
+      const hitId = findElementAtPoint(paintFrame, point.x, point.y);
+      if (hitId) {
+        const hitEl = paintFrame.elements.find(el => el.id === hitId);
+        if (hitEl) {
+          // Convert shape to bezier if needed (D-03)
+          if (hitEl.tool === 'line' || hitEl.tool === 'rect' || hitEl.tool === 'ellipse') {
+            paintStore.convertShapeToBezier(layerId, frame, hitId);
+          }
+          // Convert freehand stroke to bezier if needed (D-04)
+          if ((hitEl.tool === 'brush' || hitEl.tool === 'eraser') && !(hitEl as PaintStroke).anchors) {
+            paintStore.convertToBezier(layerId, frame, hitId);
+          }
+          penEditStrokeId.current = hitId;
+          penSelectedAnchorIdx.current = null;
+          paintStore.selectedStrokeIds.value = new Set([hitId]);
+        }
+      } else {
+        // Click on empty space with no active edit: exit pen edit
+        penEditStrokeId.current = null;
+        penSelectedAnchorIdx.current = null;
+      }
+      e.preventDefault();
+      requestPreview();
       return;
     }
 
@@ -1080,6 +1269,49 @@ export function PaintOverlay({
           }
         }
       }
+    }
+
+    // Handle pen tool drag (anchor/handle/segment)
+    if (paintStore.activeTool.peek() === 'pen' && penDragType.current && penEditStrokeId.current) {
+      const point = getProjectPoint(e);
+      const layerId = getSelectedPaintLayerId();
+      if (!layerId) return;
+      const frame = timelineStore.currentFrame.peek();
+      const paintFrame = paintStore.getFrame(layerId, frame);
+      if (!paintFrame) return;
+      const editEl = paintFrame.elements.find(el => el.id === penEditStrokeId.current);
+      if (!editEl || (editEl.tool !== 'brush' && editEl.tool !== 'eraser')) return;
+      const stroke = editEl as PaintStroke;
+      if (!stroke.anchors) return;
+
+      if (penDragType.current === 'anchor') {
+        const anchor = stroke.anchors[penSelectedAnchorIdx.current!];
+        if (anchor) {
+          const dx = point.x - anchor.x;
+          const dy = point.y - anchor.y;
+          anchor.x = point.x;
+          anchor.y = point.y;
+          if (anchor.handleIn) { anchor.handleIn.x += dx; anchor.handleIn.y += dy; }
+          if (anchor.handleOut) { anchor.handleOut.x += dx; anchor.handleOut.y += dy; }
+        }
+      } else if (penDragType.current === 'handleIn' || penDragType.current === 'handleOut') {
+        const anchor = stroke.anchors[penSelectedAnchorIdx.current!];
+        if (anchor) {
+          updateCoupledHandle(anchor, penDragType.current === 'handleIn' ? 'in' : 'out', {x: point.x, y: point.y}, e.altKey);
+        }
+      } else if (penDragType.current === 'segment') {
+        const segIdx = penDragSegmentIdx.current;
+        const anchorA = stroke.anchors[segIdx];
+        const anchorBIdx = segIdx + 1 < stroke.anchors.length ? segIdx + 1 : 0;
+        const anchorB = stroke.anchors[anchorBIdx];
+        if (anchorA && anchorB) {
+          dragSegment(anchorA, anchorB, penDragSegmentT.current, {x: point.x, y: point.y});
+        }
+      }
+
+      paintStore.paintVersion.value++;
+      requestPreview();
+      return;
     }
 
     // Handle path-based eraser drag
@@ -1370,6 +1602,42 @@ export function PaintOverlay({
   }
 
   function handlePointerUp(e: PointerEvent) {
+    // Finalize pen tool drag (push single undo entry per D-13)
+    if (paintStore.activeTool.peek() === 'pen' && penDragType.current && penAnchorSnapshot.current) {
+      const layerId = getSelectedPaintLayerId();
+      const frame = timelineStore.currentFrame.peek();
+      if (layerId) {
+        const paintFrame = paintStore.getFrame(layerId, frame);
+        if (paintFrame) {
+          const editEl = paintFrame.elements.find(el => el.id === penEditStrokeId.current);
+          if (editEl && (editEl.tool === 'brush' || editEl.tool === 'eraser')) {
+            const stroke = editEl as PaintStroke;
+            if (stroke.anchors) {
+              const snapshotBefore = penAnchorSnapshot.current;
+              const snapshotAfter = structuredClone(stroke.anchors);
+              const undoLayerId = layerId;
+              const undoFrame = frame;
+              pushAction({
+                id: crypto.randomUUID(),
+                description: 'Edit bezier path',
+                timestamp: Date.now(),
+                undo: () => { stroke.anchors = structuredClone(snapshotBefore); paintStore._notifyVisualChange(undoLayerId, undoFrame); },
+                redo: () => { stroke.anchors = structuredClone(snapshotAfter); paintStore._notifyVisualChange(undoLayerId, undoFrame); },
+              });
+              paintStore._notifyVisualChange(layerId, frame);
+            }
+          }
+        }
+      }
+      penDragType.current = null;
+      penAnchorSnapshot.current = null;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch { /* ok */ }
+      requestPreview();
+      return;
+    }
+
     // Finalize path-based eraser
     if (isErasing.current) {
       isErasing.current = false;
@@ -1739,9 +2007,43 @@ export function PaintOverlay({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        const tool = paintStore.activeTool.peek();
+
+        // Pen tool: delete selected anchor (D-12)
+        if (tool === 'pen' && penEditStrokeId.current && penSelectedAnchorIdx.current !== null) {
+          const layerId = getSelectedPaintLayerId();
+          if (!layerId) return;
+          const frame = timelineStore.currentFrame.peek();
+          const paintFrame = paintStore.getFrame(layerId, frame);
+          if (!paintFrame) return;
+          const editEl = paintFrame.elements.find(el => el.id === penEditStrokeId.current);
+          if (editEl && (editEl.tool === 'brush' || editEl.tool === 'eraser')) {
+            const stroke = editEl as PaintStroke;
+            if (stroke.anchors && stroke.anchors.length > 2) {
+              const snapshot = structuredClone(stroke.anchors);
+              stroke.anchors = deleteAnchor(stroke.anchors, penSelectedAnchorIdx.current);
+              penSelectedAnchorIdx.current = null;
+              const afterDelete = structuredClone(stroke.anchors);
+              const undoLayerId = layerId;
+              const undoFrame = frame;
+              pushAction({
+                id: crypto.randomUUID(),
+                description: 'Delete bezier anchor',
+                timestamp: Date.now(),
+                undo: () => { stroke.anchors = structuredClone(snapshot); paintStore._notifyVisualChange(undoLayerId, undoFrame); },
+                redo: () => { stroke.anchors = structuredClone(afterDelete); paintStore._notifyVisualChange(undoLayerId, undoFrame); },
+              });
+              paintStore._notifyVisualChange(layerId, frame);
+              requestPreview();
+            }
+          }
+          e.preventDefault();
+          return;
+        }
+
+        // Select tool: delete selected strokes
         const selected = paintStore.selectedStrokeIds.peek();
         if (selected.size === 0) return;
-        const tool = paintStore.activeTool.peek();
         if (tool !== 'select') return;
 
         const layerId = getSelectedPaintLayerId();
@@ -1803,13 +2105,47 @@ export function PaintOverlay({
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // --- Clear selection when switching away from select tool ---
+  // --- Clear selection when switching away from select/pen tool ---
   useEffect(() => {
     const tool = paintStore.activeTool.value;
-    if (tool !== 'select') {
+    if (tool !== 'select' && tool !== 'pen') {
       paintStore.clearSelection();
     }
+    // Clear pen edit state when switching away from pen tool
+    if (tool !== 'pen') {
+      penEditStrokeId.current = null;
+      penSelectedAnchorIdx.current = null;
+      penDragType.current = null;
+    }
   }, [paintStore.activeTool.value]);
+
+  // --- Selection sync for pen tool (D-02) ---
+  useEffect(() => {
+    const tool = paintStore.activeTool.value;
+    const selectedIds = paintStore.selectedStrokeIds.value;
+    if (tool !== 'pen' || selectedIds.size !== 1) return;
+
+    const newId = [...selectedIds][0];
+    if (newId === penEditStrokeId.current) return;
+
+    const layerId = getSelectedPaintLayerId();
+    if (!layerId) return;
+    const frame = timelineStore.currentFrame.peek();
+    const paintFrame = paintStore.getFrame(layerId, frame);
+    if (!paintFrame) return;
+
+    const el = paintFrame.elements.find(e => e.id === newId);
+    if (el) {
+      if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
+        paintStore.convertShapeToBezier(layerId, frame, newId);
+      } else if ((el.tool === 'brush' || el.tool === 'eraser') && !(el as PaintStroke).anchors) {
+        paintStore.convertToBezier(layerId, frame, newId);
+      }
+      penEditStrokeId.current = newId;
+      penSelectedAnchorIdx.current = null;
+      requestPreview();
+    }
+  }, [paintStore.activeTool.value, paintStore.selectedStrokeIds.value]);
 
   // --- Re-render preview when selection changes (show/hide selection indicators) ---
   useEffect(() => {
