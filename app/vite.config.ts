@@ -65,7 +65,7 @@ export default defineConfig({
   // p5.brush standalone uses WebGL2 internally with complex module-scoped state.
   // esbuild pre-bundling breaks its internal variable scoping (ReferenceError: v).
   optimizeDeps: {
-    exclude: ['p5.brush'],
+    exclude: ['p5.brush', '@efxlab/efx-physic-paint'],
   },
   build: {
     target: 'safari13',
