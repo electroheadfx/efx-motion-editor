@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.6.0
-milestone_name: Various Enhancements
-status: complete
-stopped_at: Milestone complete
-last_updated: "2026-04-03T12:30:00.000Z"
+milestone: v0.7.0
+milestone_name: Pure Monorepo & Paint Engine Swap
+status: active
+stopped_at: Defining requirements
+last_updated: "2026-04-03T00:00:00.000Z"
 last_activity: 2026-04-03
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 14
-  completed_plans: 14
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,16 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Planning next milestone
+**Current focus:** Defining requirements for v0.7.0
 
 ## Current Position
 
-Phase: Complete
-Plan: N/A
-Status: v0.6.0 shipped
-Last activity: 2026-04-03
-
-Progress: [##########] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-03 — Milestone v0.7.0 started
 
 ## Performance Metrics
 
@@ -69,5 +67,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-03
-Stopped at: Milestone v0.6.0 complete
-Resume file: N/A — start next milestone with /gsd:new-milestone
+Stopped at: Milestone v0.7.0 started — defining requirements
+Resume file: N/A

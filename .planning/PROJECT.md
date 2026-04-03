@@ -91,9 +91,27 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
-- [ ] Compositing FX paint via luma matte extraction (paint over photos without alpha)
-- [ ] Paper/canvas texture on paint layer (shader or tiled textures from Krita)
-- [ ] Dedicated bezier pen tool (draw new bezier strokes, not just post-hoc editing)
+- [ ] pnpm monorepo scaffold with `app/` and `packages/efx-physic-paint/`
+- [ ] Replace `perfect-freehand` + `p5.brush` with `@efxlab/efx-physic-paint` physics brush engine
+- [ ] Connect existing paint features to new engine API (strokes, FX styles, eraser, onion skinning)
+- [ ] Paper/canvas texture support via `efx-physic-paint`
+- [ ] Transparency layer support via `efx-physic-paint`
+- [ ] New JSON brush format integration
+- [ ] Brush caching, re-render, and physics integration
+- [ ] Adapt `efx-physic-paint` API for editor-specific requirements
+
+## Current Milestone: v0.7.0 Pure Monorepo & Paint Engine Swap
+
+**Goal:** Convert to pnpm monorepo with `efx-physic-paint` as a workspace package, then replace the `perfect-freehand` + `p5.brush` painting engine with the new physics-based paint engine.
+
+**Target features:**
+- Monorepo scaffold: root `package.json`, `pnpm-workspace.yaml`, lockfile migration, rename `Application/` to `app/`, copy `efx-physic-paint` into `packages/`
+- Replace `perfect-freehand` + `p5.brush` with `@efxlab/efx-physic-paint` brush engine (physics, transparency, animation support)
+- Connect existing paint features (stroke rendering, FX brush styles, eraser, onion skinning) to the new engine API
+- Paper/canvas texture support and transparency layers via `efx-physic-paint`
+- Brush caching, re-render, and physics integration
+- New JSON brush format support
+- Adapt `efx-physic-paint` API where needed for editor-specific requirements
 
 ## Latest Milestone: v0.6.0 Various Enhancements (Shipped 2026-04-03)
 
@@ -116,6 +134,8 @@ Shipped v0.6.0 with ~40,688 LOC TypeScript across 107 commits since v0.5.0 (8 da
 Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm, p5.brush (standalone), fit-curve, bezier-js.
 Architecture: 13 reactive signal stores, Rust image pipeline, Canvas 2D PreviewRenderer with multi-layer compositing (including paint layers with per-frame FX cache and bezier-aware rendering), WebGL2 GPU blur/GLSL runtime/motion blur, p5.brush adapter for spectral pigment mixing, bezierPath.ts math module (10 pure functions for curve conversion, sampling, editing), StrokeList component with SortableJS, PaintOverlay with pen tool bezier interaction system, perfect-freehand brush engine, paint sidecar JSON persistence, sub-frame accumulation export pipeline, command-pattern undo/redo engine with snapshot-before/commit-on-release pattern for all transform gestures, tinykeys keyboard shortcuts, exportRenderer with FFmpeg encoding.
 Project format: .mce v15 with backward compatibility (v1 through v15).
+
+v0.7.0 context: `efx-physic-paint` (v0.1.0) is a standalone physics-based paint engine at `~/Dev/efx-physic-paint`. It supports physics brush rendering, transparency, animation, and a JSON brush format — but has no bezier editing. It will be copied into `packages/efx-physic-paint/` as a workspace package. `Application/` will be renamed to `app/`. The `perfect-freehand` + `p5.brush` stack will be replaced by the new engine. Bezier path editing (fit-curve, bezier-js) remains in the editor.
 
 Known technical debt:
 - S key shortcut lacks isPaintEditMode() guard (low severity) — from v0.6.0
@@ -201,4 +221,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after v0.6.0 milestone — stroke management, bezier path editing, paint workflow UX improvements*
+*Last updated: 2026-04-03 after starting v0.7.0 milestone — monorepo & paint engine swap*
