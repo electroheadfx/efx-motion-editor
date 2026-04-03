@@ -53,7 +53,7 @@ function findNearestPressure(
 
 export function pointsToBezierAnchors(
   points: [number, number, number][],
-  tolerance: number = 4.0,
+  tolerance: number = 12.0,
 ): BezierAnchor[] {
   if (points.length < 2) {
     return points.map(([x, y, p]) => ({

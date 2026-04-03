@@ -46,7 +46,7 @@ function cursorForTool(tool: PaintToolType): string {
     case 'select':
       return 'default';
     case 'pen':
-      return 'default';
+      return "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19l7-7 3 3-7 7-3-3z'/%3E%3Cpath d='M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z'/%3E%3Cpath d='M2 2l7.586 7.586'/%3E%3Ccircle cx='11' cy='11' r='2'/%3E%3C/svg%3E\") 2 22, auto";
     default:
       return 'crosshair';
   }
@@ -699,7 +699,10 @@ export function PaintOverlay({
       const paintFrame = paintStore.getFrame(layerId, frame);
       const selected = paintStore.selectedStrokeIds.peek();
 
-      if (paintFrame && selected.size > 0) {
+      const activeTool = paintStore.activeTool.peek();
+      const isPenEditing = activeTool === 'pen' && penEditStrokeId.current;
+
+      if (paintFrame && selected.size > 0 && !isPenEditing) {
         // Draw individual element bounding boxes
         for (const el of paintFrame.elements) {
           if (!selected.has(el.id)) continue;
@@ -823,7 +826,6 @@ export function PaintOverlay({
       }
 
       // Draw bezier editing overlay when pen tool is active (outside selected.size check)
-      const activeTool = paintStore.activeTool.peek();
       if (activeTool === 'pen' && penEditStrokeId.current && paintFrame) {
         const editEl = paintFrame.elements.find(el => el.id === penEditStrokeId.current);
         if (editEl && (editEl.tool === 'brush' || editEl.tool === 'eraser')) {
@@ -1268,6 +1270,34 @@ export function PaintOverlay({
             }
           }
         }
+      } else if (tool === 'pen' && penEditStrokeId.current) {
+        // Show pen+ cursor when Cmd is held near a path segment (add point affordance)
+        const overlay = e.currentTarget as HTMLElement;
+        if (e.metaKey || e.ctrlKey) {
+          const point = getProjectPoint(e);
+          const layerId = getSelectedPaintLayerId();
+          if (layerId) {
+            const frame = timelineStore.currentFrame.peek();
+            const paintFrame = paintStore.getFrame(layerId, frame);
+            if (paintFrame) {
+              const editEl = paintFrame.elements.find(el => el.id === penEditStrokeId.current);
+              if (editEl && (editEl.tool === 'brush' || editEl.tool === 'eraser')) {
+                const stroke = editEl as PaintStroke;
+                if (stroke.anchors) {
+                  const zoom = canvasStore.zoom.peek();
+                  const segHit = findNearestSegment(stroke.anchors, {x: point.x, y: point.y}, stroke.closedPath);
+                  if (segHit && segHit.distance < 8 / zoom) {
+                    overlay.style.cursor = 'copy';  // pen+ cursor
+                  } else {
+                    overlay.style.cursor = cursorForTool('pen');
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          overlay.style.cursor = cursorForTool('pen');
+        }
       }
     }
 
@@ -1367,6 +1397,27 @@ export function PaintOverlay({
                 stroke.points[i][2],
               ];
             }
+            // Also rotate bezier anchors if present
+            if (stroke.anchors) {
+              for (const a of stroke.anchors) {
+                const adx = a.x - center.x;
+                const ady = a.y - center.y;
+                a.x = center.x + adx * cos - ady * sin;
+                a.y = center.y + adx * sin + ady * cos;
+                if (a.handleIn) {
+                  const hdx = a.handleIn.x - center.x;
+                  const hdy = a.handleIn.y - center.y;
+                  a.handleIn.x = center.x + hdx * cos - hdy * sin;
+                  a.handleIn.y = center.y + hdx * sin + hdy * cos;
+                }
+                if (a.handleOut) {
+                  const hdx = a.handleOut.x - center.x;
+                  const hdy = a.handleOut.y - center.y;
+                  a.handleOut.x = center.x + hdx * cos - hdy * sin;
+                  a.handleOut.y = center.y + hdx * sin + hdy * cos;
+                }
+              }
+            }
           } else if (el.tool === 'line') {
             // Lines: rotate endpoints directly (works correctly)
             const shape = el as PaintShape;
@@ -1436,6 +1487,14 @@ export function PaintOverlay({
                     stroke.points[i][2],  // pressure unchanged
                   ];
                 }
+                // Also scale bezier anchors if present
+                if (stroke.anchors) {
+                  for (const a of stroke.anchors) {
+                    a.x = anchor + (a.x - anchor) * scaleX;
+                    if (a.handleIn) a.handleIn.x = anchor + (a.handleIn.x - anchor) * scaleX;
+                    if (a.handleOut) a.handleOut.x = anchor + (a.handleOut.x - anchor) * scaleX;
+                  }
+                }
                 // D-06: brush size stays fixed — do NOT scale stroke.size
               } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
                 const shape = el as PaintShape;
@@ -1464,6 +1523,14 @@ export function PaintOverlay({
                     anchor + (stroke.points[i][1] - anchor) * scaleY,
                     stroke.points[i][2],  // pressure unchanged
                   ];
+                }
+                // Also scale bezier anchors if present
+                if (stroke.anchors) {
+                  for (const a of stroke.anchors) {
+                    a.y = anchor + (a.y - anchor) * scaleY;
+                    if (a.handleIn) a.handleIn.y = anchor + (a.handleIn.y - anchor) * scaleY;
+                    if (a.handleOut) a.handleOut.y = anchor + (a.handleOut.y - anchor) * scaleY;
+                  }
                 }
                 // D-06: brush size stays fixed
               } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
@@ -1496,6 +1563,21 @@ export function PaintOverlay({
                   center.y + (stroke.points[i][1] - center.y) * scale,
                   stroke.points[i][2],
                 ];
+              }
+              // Also scale bezier anchors if present
+              if (stroke.anchors) {
+                for (const a of stroke.anchors) {
+                  a.x = center.x + (a.x - center.x) * scale;
+                  a.y = center.y + (a.y - center.y) * scale;
+                  if (a.handleIn) {
+                    a.handleIn.x = center.x + (a.handleIn.x - center.x) * scale;
+                    a.handleIn.y = center.y + (a.handleIn.y - center.y) * scale;
+                  }
+                  if (a.handleOut) {
+                    a.handleOut.x = center.x + (a.handleOut.x - center.x) * scale;
+                    a.handleOut.y = center.y + (a.handleOut.y - center.y) * scale;
+                  }
+                }
               }
               // Scale brush size proportionally
               stroke.size = Math.max(1, stroke.size * scale);
@@ -1548,6 +1630,15 @@ export function PaintOverlay({
               stroke.points[i][1] + dy,
               stroke.points[i][2],
             ];
+          }
+          // Also offset bezier anchors if present
+          if (stroke.anchors) {
+            for (const a of stroke.anchors) {
+              a.x += dx;
+              a.y += dy;
+              if (a.handleIn) { a.handleIn.x += dx; a.handleIn.y += dy; }
+              if (a.handleOut) { a.handleOut.x += dx; a.handleOut.y += dy; }
+            }
           }
         } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
           const shape = el as PaintShape;
