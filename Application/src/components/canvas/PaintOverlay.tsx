@@ -2251,7 +2251,7 @@ export function PaintOverlay({
   // --- Double-click: enter pen edit mode on the clicked stroke ---
   function handleDoubleClick(e: MouseEvent) {
     const tool = paintStore.activeTool.peek();
-    if (tool !== 'pen') return;
+    if (tool !== 'pen' && tool !== 'select') return;
 
     const point = getProjectPoint(e as unknown as PointerEvent);
     const layerId = getSelectedPaintLayerId();
@@ -2264,6 +2264,10 @@ export function PaintOverlay({
     if (hitId) {
       const hitEl = paintFrame.elements.find(el => el.id === hitId);
       if (hitEl) {
+        // Switch to pen tool if in select mode
+        if (tool === 'select') {
+          paintStore.activeTool.value = 'pen';
+        }
         if (hitEl.tool === 'line' || hitEl.tool === 'rect' || hitEl.tool === 'ellipse') {
           paintStore.convertShapeToBezier(layerId, frame, hitId);
         } else if ((hitEl.tool === 'brush' || hitEl.tool === 'eraser') && !(hitEl as PaintStroke).anchors) {

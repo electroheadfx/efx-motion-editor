@@ -1,7 +1,7 @@
 import {useRef, useEffect} from 'preact/hooks';
 import {useSignal} from '@preact/signals';
 import Sortable from 'sortablejs';
-import {GripVertical, Eye, EyeOff, X} from 'lucide-preact';
+import {GripVertical, Eye, EyeOff, X, PenTool} from 'lucide-preact';
 import {paintStore} from '../../stores/paintStore';
 import {timelineStore} from '../../stores/timelineStore';
 import {CollapsibleSection} from './CollapsibleSection';
@@ -111,6 +111,12 @@ export function StrokeList({layerId}: StrokeListProps) {
     paintStore.refreshFrameFx(layerId, frame);
   };
 
+  const handleEditPath = (elementId: string) => {
+    paintStore.clearSelection();
+    paintStore.selectStroke(elementId);
+    paintStore.activeTool.value = 'pen';
+  };
+
   return (
     <CollapsibleSection
       title={`STROKES (${totalElements})`}
@@ -172,6 +178,21 @@ export function StrokeList({layerId}: StrokeListProps) {
                 >
                   {getElementLabel(el, labelIndex)}
                 </span>
+
+                {/* Edit path button */}
+                {(el.tool === 'brush' || el.tool === 'eraser' || el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') && (
+                  <button
+                    class="w-4 h-4 flex items-center justify-center rounded shrink-0 opacity-0 group-hover/row:opacity-100"
+                    style={{color: 'var(--sidebar-text-secondary)'}}
+                    title="Edit path"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditPath(el.id);
+                    }}
+                  >
+                    <PenTool size={11} />
+                  </button>
+                )}
 
                 {/* Delete button */}
                 <button
