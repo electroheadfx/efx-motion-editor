@@ -69,8 +69,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COMP-05 | Phase 25 | Pending |
 | PINT-01 | Phase 23 | Complete |
 | PINT-02 | Phase 23 | Complete |
-| PINT-03 | Phase 26 | Pending |
-| PINT-04 | Phase 26 | Pending |
+| PINT-03 | Phase 25 | Pending |
+| PINT-04 | Phase 25 | Pending |
 | STRK-01 | Phase 24 | Complete |
 | STRK-02 | Phase 24 | Complete |
 | STRK-03 | Phase 24 | Complete |
