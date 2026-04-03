@@ -4,10 +4,10 @@ milestone: v0.6.0
 milestone_name: Various Enhancements
 status: executing
 stopped_at: Phase 25 context gathered
-last_updated: "2026-03-27T18:51:36.042Z"
+last_updated: "2026-04-03T07:04:25.264Z"
 last_activity: 2026-03-27
 progress:
-  total_phases: 5
+  total_phases: 4
   completed_phases: 3
   total_plans: 11
   completed_plans: 11

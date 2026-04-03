@@ -8,9 +8,9 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 
 - ✅ **v0.1.0** — Phases 1-7 (shipped 2019-03-11)
 - ✅ **v0.2.0 Pipeline Complete** — Phases 8-14 (shipped 2019-03-21)
-- ✅ **v0.3.0 Audio & Polish** — Phases 15-17 (shipped 2026-03-24)
-- ✅ **v0.4.0 Canvas & Paint** — Phases 18-19 (shipped 2026-03-25)
-- ✅ **v0.5.0 Motion Blur & Paint Styles** — Phases 20-21 (shipped 2026-03-26)
+- ✅ **v0.3.0 Audio & Polish** — Phases 15-17 (shipped 2025-03-24)
+- ✅ **v0.4.0 Canvas & Paint** — Phases 18-19 (shipped 2025-03-25)
+- ✅ **v0.5.0 Motion Blur & Paint Styles** — Phases 20-21 (shipped 2025-03-26)
 - **v0.6.0 Various Enhancements** — Phases 22-26 (in progress)
 
 ## Phases
@@ -63,36 +63,36 @@ See: `milestones/v0.2.0-ROADMAP.md` for full details.
 </details>
 
 <details>
-<summary>v0.3.0 Audio & Polish (Phases 15-17) — SHIPPED 2026-03-24</summary>
+<summary>v0.3.0 Audio & Polish (Phases 15-17) — SHIPPED 2025-03-24</summary>
 
 - [x] Phase 15: Audio Import & Waveform (4/4 plans) — completed 2019-03-21
-- [x] Phase 15.1: Media In-Use & Safe Removal (2/2 plans) — completed 2026-03-22
-- [x] Phase 15.2: Solid Sequence (4/4 plans) — completed 2026-03-22
-- [x] Phase 15.3: GLSL Shadertoys (1/1 plan) — completed 2026-03-22
-- [x] Phase 15.4: GL Transition (4/4 plans) — completed 2026-03-23
-- [x] Phase 16: Audio Export & Beat Sync (6/6 plans) — completed 2026-03-23
-- [x] Phase 17: Enhancements (6/6 plans) — completed 2026-03-24
-- [x] Phase 17.1: Adaptive Sidebar (2/2 plans) — completed 2026-03-24
+- [x] Phase 15.1: Media In-Use & Safe Removal (2/2 plans) — completed 2025-03-22
+- [x] Phase 15.2: Solid Sequence (4/4 plans) — completed 2025-03-22
+- [x] Phase 15.3: GLSL Shadertoys (1/1 plan) — completed 2025-03-22
+- [x] Phase 15.4: GL Transition (4/4 plans) — completed 2025-03-23
+- [x] Phase 16: Audio Export & Beat Sync (6/6 plans) — completed 2025-03-23
+- [x] Phase 17: Enhancements (6/6 plans) — completed 2025-03-24
+- [x] Phase 17.1: Adaptive Sidebar (2/2 plans) — completed 2025-03-24
 
 See: `milestones/v0.3.0-ROADMAP.md` for full details.
 
 </details>
 
 <details>
-<summary>v0.4.0 Canvas & Paint (Phases 18-19) — SHIPPED 2026-03-25</summary>
+<summary>v0.4.0 Canvas & Paint (Phases 18-19) — SHIPPED 2025-03-25</summary>
 
-- [x] Phase 18: Canvas Motion Path (3/3 plans) — completed 2026-03-24
-- [x] Phase 19: Add Paint Layer Rotopaint (6/6 plans) — completed 2026-03-24
+- [x] Phase 18: Canvas Motion Path (3/3 plans) — completed 2025-03-24
+- [x] Phase 19: Add Paint Layer Rotopaint (6/6 plans) — completed 2025-03-24
 
 See: `milestones/v0.4.0-ROADMAP.md` for full details.
 
 </details>
 
 <details>
-<summary>v0.5.0 Motion Blur & Paint Styles (Phases 20-21) — SHIPPED 2026-03-26</summary>
+<summary>v0.5.0 Motion Blur & Paint Styles (Phases 20-21) — SHIPPED 2025-03-26</summary>
 
-- [x] Phase 20: Paint Brush FX (4/4 plans) — completed 2026-03-26
-- [x] Phase 21: Motion Blur (4/4 plans) — completed 2026-03-26
+- [x] Phase 20: Paint Brush FX (4/4 plans) — completed 2025-03-26
+- [x] Phase 21: Motion Blur (4/4 plans) — completed 2025-03-26
 
 See: `milestones/v0.5.0-ROADMAP.md` for full details.
 
@@ -100,11 +100,10 @@ See: `milestones/v0.5.0-ROADMAP.md` for full details.
 
 ### v0.6.0 Various Enhancements
 
-- [x] **Phase 22: Foundation & Quick Wins** - Fix pre-existing paint bugs, add _notifyVisualChange helper, and deliver three isolated UX improvements (gap closure in progress) (completed 2026-03-26)
-- [x] **Phase 23: Stroke Interactions** - Add Alt+duplicate stroke and non-uniform scale transform for paint strokes (gap closure in progress) (completed 2026-03-27)
-- [x] **Phase 24: Stroke List Panel** - Build stroke management panel with reorder, delete, select, and visibility toggle (completed 2026-03-27)
-- [ ] **Phase 25: Paint Compositing Pipeline** - Luma matte extraction and paper/canvas texture overlay for paint layers
-- [ ] **Phase 26: Bezier Path Editing** - Post-hoc bezier/spline path editing for existing freehand strokes
+- [x] **Phase 22: Foundation & Quick Wins** - Fix pre-existing paint bugs, add _notifyVisualChange helper, and deliver three isolated UX improvements (gap closure in progress) (completed 2025-03-26)
+- [x] **Phase 23: Stroke Interactions** - Add Alt+duplicate stroke and non-uniform scale transform for paint strokes (gap closure in progress) (completed 2025-03-27)
+- [x] **Phase 24: Stroke List Panel** - Build stroke management panel with reorder, delete, select, and visibility toggle (completed 2025-03-27)
+- [ ] **Phase 25: Bezier Path Editing** - Post-hoc bezier/spline path editing for existing freehand strokes
 
 ## Phase Details
 
@@ -158,21 +157,7 @@ Plans:
 - [x] 24-03-PLAN.md -- [GAP] Fix S-key shortcut, STROKES padding/order, undo delete refresh
 **UI hint**: yes
 
-### Phase 25: Paint Compositing Pipeline
-**Goal**: Users can composite paint strokes over photos using luma matte extraction. White background = luma key. Luma Invert mode allows black-on-white strokes to become white opaque strokes over photos. Non-destructive: strokes remain editable after exit/re-enter paint mode.
-**Depends on**: Phase 22
-**Requirements**: COMP-01 (COMP-02-05 OBSOLETE per D-18, D-19 -- gray background and paper texture removed from scope)
-**Success Criteria** (what must be TRUE):
-  1. User can enable luma matte compositing on a paint layer so white pixels become transparent and the photo shows through
-  2. User can toggle Luma Invert so black strokes on white become white opaque strokes (transparent background)
-  3. Luma key applies live during paint edit (real-time compositing)
-  4. Exiting paint mode does NOT flatten strokes -- they remain editable (non-destructive)
-  5. Re-entering paint mode allows stroke edits with live preview
-**Plans**: 1 plan
-Plans:
-- [x] 25-01-PLAN.md -- Luma key compositing: algorithm + paintStore signals + previewRenderer integration + UI
-
-### Phase 26: Bezier Path Editing
+### Phase 25: Bezier Path Editing
 **Goal**: Users can edit freehand stroke paths as bezier curves with draggable anchor points for precise shape refinement
 **Depends on**: Phase 23, Phase 24
 **Requirements**: PINT-03, PINT-04
@@ -196,11 +181,10 @@ Note: Phase 25 depends on Phase 22 (not 24), so Phases 23-24 and Phase 25 could 
 |-------|-----------|----------------|--------|-----------|
 | 1-7 | v0.1.0 | 45/45 | Complete | 2019-03-11 |
 | 8-14 (23 phases) | v0.2.0 | 66/66 | Complete | 2019-03-21 |
-| 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2026-03-24 |
-| 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2026-03-25 |
-| 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2026-03-26 |
-| 22. Foundation & Quick Wins | v0.6.0 | 5/5 | Complete    | 2026-03-26 |
-| 23. Stroke Interactions | v0.6.0 | 3/3 | Complete    | 2026-03-27 |
-| 24. Stroke List Panel | v0.6.0 | 3/3 | Complete    | 2026-03-27 |
-| 25. Paint Compositing Pipeline | v0.6.0 | 1/1 | In progress | - |
-| 26. Bezier Path Editing | v0.6.0 | 0/? | Not started | - |
+| 15-17 (8 phases) | v0.3.0 | 29/29 | Complete | 2025-03-24 |
+| 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2025-03-25 |
+| 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2025-03-26 |
+| 22. Foundation & Quick Wins | v0.6.0 | 5/5 | Complete    | 2025-03-26 |
+| 23. Stroke Interactions | v0.6.0 | 3/3 | Complete    | 2025-03-27 |
+| 24. Stroke List Panel | v0.6.0 | 3/3 | Complete    | 2025-03-27 |
+| 25. Bezier Path Editing | v0.6.0 | 0/? | Not started | - |
