@@ -320,6 +320,115 @@ git log --follow app/src/stores/paintStore.ts  # Must show pre-rename history
 
 **Missing dependencies:** None. All tools available.
 
+## Validation Architecture
+
+### Test Framework
+| Property | Value |
+|----------|-------|
+| Framework | vitest (via `Application/vitest.config.ts`, ~30 test files) |
+| Config file | `app/vitest.config.ts` (after rename from `Application/vitest.config.ts`) |
+| Quick run command | `cd app && pnpm vitest run --reporter=verbose` |
+| Full suite command | `cd app && pnpm vitest run` |
+
+### Phase Requirements to Validation Map
+
+| Req ID | Behavior | Test Type | Automated Command | Notes |
+|--------|----------|-----------|-------------------|-------|
+| MONO-01 | Workspace config exists and is valid | smoke | `test -f pnpm-workspace.yaml && test -f package.json && test -f pnpm-lock.yaml` | Check 3 files exist at root |
+| MONO-02 | Git history preserved after rename | smoke | `git log --follow --oneline app/src/stores/paintStore.ts \| head -5` | Output must show commits from BEFORE the rename commit |
+| MONO-03 | Paint package exists with correct structure | smoke | `test -f packages/efx-physic-paint/package.json && test -f packages/efx-physic-paint/tsup.config.ts && test -d packages/efx-physic-paint/src` | Verify keepers present |
+| MONO-03 | Paint package cleaned (no demo/planning files) | smoke | `test ! -d packages/efx-physic-paint/.planning && test ! -f packages/efx-physic-paint/vite.config.ts && test ! -f packages/efx-physic-paint/index.html` | Verify unwanted files removed |
+| MONO-04 | Workspace dependency resolves via symlink | smoke | `ls -la app/node_modules/@efxlab/efx-physic-paint` | Output must show symlink arrow (`->`) pointing to `../../packages/efx-physic-paint` |
+| MONO-04 | Paint package builds successfully | smoke | `pnpm --filter @efxlab/efx-physic-paint build` | Exit code 0, dist/ populated |
+| MONO-05 | Dev server starts | smoke/manual | `timeout 15 pnpm dev 2>&1 \| grep -q "Local:"` | Vite prints "Local: http://localhost:..." on success; timeout prevents hang |
+| MONO-05 | Tauri build produces .app | manual | `pnpm --filter efx-motion-editor build` then check `app/src-tauri/target/release/bundle/` | User runs manually -- takes several minutes |
+| MONO-05 | Existing editor tests pass | unit | `cd app && pnpm vitest run` | All ~30 existing test files must pass |
+| MONO-06 | Overrides in root package.json | smoke | `node -e "const p=require('./package.json'); console.log(!!p.pnpm?.overrides)"` | Must print `true` |
+| MONO-06 | Overrides NOT in app/package.json | smoke | `node -e "const p=require('./app/package.json'); console.log(!p.pnpm?.overrides)"` | Must print `true` (overrides removed from app) |
+| MONO-06 | Vite excludes paint package | smoke | `grep -q 'efx-physic-paint' app/vite.config.ts` | Paint package in optimizeDeps.exclude |
+
+### Success Criteria Verification Script
+
+The planner should create a validation script (or inline verification task) that runs these checks in sequence. Each check maps to a success criterion from the phase description:
+
+```bash
+#!/bin/bash
+# Phase 26 validation -- run from workspace root
+set -e
+
+echo "=== SC-1: pnpm dev starts editor ==="
+# Start dev server, wait for Vite "ready" message, then kill
+timeout 20 pnpm dev 2>&1 | grep -m1 "Local:" && echo "PASS: Dev server started" || echo "FAIL: Dev server did not start"
+
+echo "=== SC-2: Paint package builds ==="
+pnpm --filter @efxlab/efx-physic-paint build
+echo "PASS: Paint build succeeded"
+
+echo "=== SC-3: Import compiles ==="
+# TypeScript compilation check -- create temp file, compile, remove
+cat > /tmp/efx-import-check.ts << 'TSEOF'
+import type { EfxPaintEngine } from '@efxlab/efx-physic-paint'
+const _check: EfxPaintEngine | null = null
+TSEOF
+cd app && npx tsc --noEmit --esModuleInterop --moduleResolution bundler /tmp/efx-import-check.ts 2>&1 && echo "PASS: Import compiles" || echo "FAIL: Import does not compile"
+cd ..
+
+echo "=== SC-4: Frozen lockfile install ==="
+# Simulate clean clone install
+pnpm install --frozen-lockfile
+echo "PASS: Frozen lockfile install succeeded"
+
+echo "=== SC-5: Git history preserved ==="
+HISTORY_COUNT=$(git log --follow --oneline app/src/stores/paintStore.ts | wc -l)
+if [ "$HISTORY_COUNT" -gt 5 ]; then
+  echo "PASS: Git history preserved ($HISTORY_COUNT commits)"
+else
+  echo "FAIL: Git history may be broken (only $HISTORY_COUNT commits)"
+fi
+
+echo "=== SC-6: Existing tests pass ==="
+cd app && pnpm vitest run
+echo "PASS: All tests pass"
+```
+
+### Git History Preservation -- Detailed Verification
+
+The rename is the highest-risk operation. Three verification approaches, in order of rigor:
+
+1. **Quick check (per-task):** `git log --follow --oneline app/src/stores/paintStore.ts | head -5` -- must show commits from before the rename
+2. **Thorough check (per-wave):** Compare pre-rename history depth vs post-rename:
+   ```bash
+   # Before rename (on parent commit):
+   git log --oneline Application/src/stores/paintStore.ts | wc -l
+   # After rename:
+   git log --follow --oneline app/src/stores/paintStore.ts | wc -l
+   # Counts should be equal
+   ```
+3. **Diff-stat check:** The rename commit itself should show ONLY renames with 100% similarity:
+   ```bash
+   git diff --stat --diff-filter=R HEAD~1 HEAD
+   # Every line should show "=> app/" renames, nothing else
+   git diff --summary HEAD~1 HEAD | grep -c "rename"
+   # Should match total file count in Application/
+   ```
+
+### Workspace Resolution -- Detailed Verification
+
+After `pnpm install`, the workspace must be wired correctly:
+
+1. **Symlink exists:** `ls -la app/node_modules/@efxlab/efx-physic-paint` shows symlink
+2. **pnpm list confirms workspace protocol:** `pnpm --filter efx-motion-editor list @efxlab/efx-physic-paint` shows `link:` or `workspace:` resolution
+3. **No phantom packages:** `pnpm why @efxlab/efx-physic-paint` resolves to the local workspace package, not an npm registry version
+4. **Lockfile is clean:** `pnpm install --frozen-lockfile` passes (proves lockfile is self-consistent)
+
+### Sampling Rate
+- **Per task commit:** Quick validation relevant to the task (e.g., after rename task: check git history; after workspace config task: check `pnpm install`)
+- **Per wave merge:** Run full validation script above
+- **Phase gate:** All success criteria pass, existing vitest suite green, `pnpm install --frozen-lockfile` clean
+
+### Wave 0 Gaps
+- None -- existing test infrastructure (vitest with ~30 tests in `Application/src/`) covers editor functionality. No new test files needed for this infrastructure phase. Validation is entirely smoke/integration checks run via shell commands.
+
 ## Sources
 
 ### Primary (HIGH confidence)
@@ -342,6 +451,7 @@ git log --follow app/src/stores/paintStore.ts  # Must show pre-rename history
 - Standard stack: HIGH -- all tools already in use, no new dependencies
 - Architecture: HIGH -- well-established pnpm workspace pattern with 2 packages
 - Pitfalls: HIGH -- verified against actual project config files and known pnpm v10 issues
+- Validation: HIGH -- all checks use standard CLI tools already available; vitest suite pre-existing
 
 **Research date:** 2026-04-03
 **Valid until:** 2026-05-03 (stable tooling, unlikely to change)
