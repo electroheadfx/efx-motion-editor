@@ -139,10 +139,10 @@ See: `milestones/v0.6.0-ROADMAP.md` for full details.
   3. `import { EfxPaintEngine } from '@efxlab/efx-physic-paint'` compiles in the editor
   4. `pnpm install --frozen-lockfile` passes from a clean clone
   5. `git log --follow app/src/stores/paintStore.ts` shows full pre-rename history
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 Plans:
 - [x] 26-01-PLAN.md — Rename Application/ to app/ with git history preservation
-- [ ] 26-02-PLAN.md — Workspace config, paint package, dependency wiring
+- [x] 26-02-PLAN.md — Workspace config, paint package, dependency wiring
 - [ ] 26-03-PLAN.md — Full verification suite and human checkpoint
 
 ### Phase 27: Engine API Adaptations
@@ -229,7 +229,7 @@ Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2025-03-25 |
 | 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2025-03-26 |
 | 22-25 (4 phases) | v0.6.0 | 14/14 | Complete | 2026-04-03 |
-| 26. Monorepo Scaffold | v0.7.0 | 1/3 | In Progress|  |
+| 26. Monorepo Scaffold | v0.7.0 | 2/3 | In Progress|  |
 | 27. Engine API Adaptations | v0.7.0 | 0/? | Not started | - |
 | 28. Adapter & Type Bridge | v0.7.0 | 0/? | Not started | - |
 | 29. Input & Tool Reconnection | v0.7.0 | 0/? | Not started | - |

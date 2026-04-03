@@ -7,12 +7,12 @@
 
 ### Monorepo Infrastructure
 
-- [ ] **MONO-01**: Repository uses pnpm workspace with root `package.json`, `pnpm-workspace.yaml`, and single lockfile at root
+- [x] **MONO-01**: Repository uses pnpm workspace with root `package.json`, `pnpm-workspace.yaml`, and single lockfile at root
 - [x] **MONO-02**: `Application/` renamed to `app/` with git history preserved via isolated `git mv` commit
-- [ ] **MONO-03**: `efx-physic-paint` source copied into `packages/efx-physic-paint/` as publishable workspace package
-- [ ] **MONO-04**: `@efxlab/efx-physic-paint` resolves via `workspace:*` in `app/package.json`
+- [x] **MONO-03**: `efx-physic-paint` source copied into `packages/efx-physic-paint/` as publishable workspace package
+- [x] **MONO-04**: `@efxlab/efx-physic-paint` resolves via `workspace:*` in `app/package.json`
 - [ ] **MONO-05**: `pnpm dev` starts editor identically to v0.6.0; `pnpm tauri build` produces working `.app`
-- [ ] **MONO-06**: pnpm overrides moved to workspace root; Vite `optimizeDeps.exclude` configured for paint package
+- [x] **MONO-06**: pnpm overrides moved to workspace root; Vite `optimizeDeps.exclude` configured for paint package
 
 ### Engine Integration
 
@@ -72,12 +72,12 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MONO-01 | Phase 26 | Pending |
+| MONO-01 | Phase 26 | Complete |
 | MONO-02 | Phase 26 | Complete |
-| MONO-03 | Phase 26 | Pending |
-| MONO-04 | Phase 26 | Pending |
+| MONO-03 | Phase 26 | Complete |
+| MONO-04 | Phase 26 | Complete |
 | MONO-05 | Phase 26 | Pending |
-| MONO-06 | Phase 26 | Pending |
+| MONO-06 | Phase 26 | Complete |
 | ENGN-01 | Phase 27 | Pending |
 | ENGN-02 | Phase 27 | Pending |
 | ENGN-03 | Phase 28 | Pending |
