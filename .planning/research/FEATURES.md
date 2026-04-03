@@ -1,319 +1,244 @@
 # Feature Research
 
-**Domain:** Stop-motion editor VFX paint/compositing enhancements (v0.6.0)
-**Researched:** 2026-03-26
-**Confidence:** MEDIUM-HIGH (domain patterns well-established; implementation specifics verified against codebase)
+**Domain:** Physics paint engine integration and monorepo migration for stop-motion editor
+**Researched:** 2026-04-03
+**Confidence:** HIGH (both codebases fully reviewed; engine capabilities verified against source)
 
 ## Feature Landscape
 
 ### Table Stakes (Users Expect These)
 
-Features users assume exist once a paint/roto paint system is in place. Missing these = product feels incomplete for the workflow.
+Features that MUST work after the engine swap. Missing any of these = regression from v0.6.0. These are not new features; they are existing capabilities that must survive the migration.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Stroke list panel in roto paint | Every roto tool (Nuke, Silhouette, Natron) has a stroke/shape list with visibility toggle, reorder, delete. Users cannot manage complex roto work without seeing what strokes exist. | MEDIUM | Nuke shows: name, visible toggle, lock, color, blend mode, lifetime. For EFX-Motion, start simpler: name, visible eye icon, delete button, drag-to-reorder (SortableJS already in project). Selection sync with canvas. |
-| Duplicate stroke with Alt+move | Universal pattern across Figma, Photoshop, Illustrator, After Effects. Alt/Option+drag = duplicate-and-move in one gesture. Users expect this in any tool with selectable objects. | LOW | Already have select-mode drag (PaintOverlay lines 787-821). Alt+drag = deep-clone selected strokes with new IDs, insert into frame, start dragging the clones. ~30 lines of logic. |
-| Paint properties panel cleanup | Current PaintProperties.tsx is 400+ lines of vertically stacked sections with inconsistent collapse states. As features grow, panel must not become unusable. Space optimization is table stakes for professional tools. | LOW-MEDIUM | Consolidate related controls, use icon-only toggle buttons where possible, consistent section collapse behavior. Standard UI housekeeping. |
-| Sequence-scoped layer creation | When a sequence is isolated/solo'd, new layers should belong to that sequence, not the globally active one. Standard After Effects behavior: layers belong to the composition you're working in. | LOW | `sequenceStore.addLayer()` already uses `activeSequenceId`. Fix: when isolation is active, `activeSequenceId` reflects the isolated sequence. Small routing change. |
+| Freehand brush rendering with pressure | Core drawing tool since v0.4.0. Users draw strokes with tablet pressure. Must produce output at least as good as perfect-freehand. | MEDIUM | efx-physic-paint `renderPaintStroke()` uses its own point processing (smooth, resample, ribbon, deform) with pressure/tilt. Different algorithm than perfect-freehand but richer: wet paint buffers, Beer-Lambert compositing, paper grain modulation. Must map editor's `[x, y, pressure]` point format to engine's `PenPoint {x, y, p, tx, ty, tw, spd}`. |
+| Eraser tool | One of the 7 drawing tools. Users erase strokes or parts of strokes. | LOW | efx-physic-paint has `applyEraseStroke()` with `eraseStrength` parameter. Maps directly. |
+| Color selection and rendering | Users pick hex colors and paint with them. | LOW | Engine has `setColorHex(hex)`. Direct mapping. |
+| Brush size and opacity controls | Users adjust brush diameter and opacity via sliders in PaintProperties panel. | LOW | Engine has `setBrushSize(1-80)`, `setBrushOpacity(10-100)`. Note: engine range is 1-80 for size vs editor's 1-200 (`BRUSH_SIZE_MAX`). May need engine-side range extension or editor-side clamping. |
+| Stroke persistence via sidecar JSON | Paint data saved as `paint/{uuid}/frame-NNN.json`. Must survive format migration. | HIGH | Current sidecar stores `PaintElement[]` with `PaintStroke.points` as `[x, y, pressure][]` plus `PaintStrokeOptions` (perfect-freehand params: thinning, smoothing, streamline, simulatePressure, pressureCurve, taper). New engine uses `PenPoint[]` with `BrushOpts` (size, opacity, pressure, waterAmount, dryAmount, edgeDetail, pickup, antiAlias). Need migration layer: load old format, convert to new, save in new format. Backward compat for .mce v15 files containing old paint data. |
+| Onion skinning | Ghosted previous/next frames during paint mode. | MEDIUM | Currently renders via offscreen canvas with reduced opacity. Engine swap doesn't break this if we can render a frame's strokes to an offscreen canvas. efx-physic-paint's `renderAllStrokes()` and `renderPartialStrokes()` render to its internal dual canvas. Need a way to extract rendered frame as ImageData or canvas for compositing as onion skin ghost. `getCanvas()` and `getDisplayCanvas()` provide this. |
+| Shape tools (line, rect, ellipse) | Part of the 7 tools. Users draw geometric shapes. | LOW-MEDIUM | efx-physic-paint only has `paint` and `erase` tools (`ToolType = 'paint' | 'erase'`). Shapes are NOT in the engine. Must keep editor's existing shape rendering code separate from engine. Shapes never went through perfect-freehand anyway; they use Canvas 2D primitives directly. |
+| Flood fill tool | Users click to fill a region with color. | LOW | Editor's `paintFloodFill.ts` is engine-independent (pixel-level flood fill on a canvas). Keep as-is. |
+| Eyedropper tool | Users pick colors from canvas. | LOW | Editor-level feature, engine-independent. Keep as-is. |
+| Bezier path editing | Edit stroke paths as bezier curves with anchor/handle manipulation (shipped v0.6.0). | MEDIUM | fit-curve and bezier-js remain in the editor (milestone spec confirms: "Bezier path editing remains in the editor"). The issue is conversion: bezier anchors -> sampled points -> engine rendering. Currently anchors get re-sampled to `[x, y, pressure][]` via `sampleBezierPath()` then fed to perfect-freehand. Same flow works with new engine: sample to points, convert to `PenPoint[]`, feed to engine's `renderPaintStroke()`. |
+| Stroke management (reorder, visibility, multi-select) | Shipped v0.6.0. StrokeList with SortableJS drag-reorder, visibility toggles, selection sync. | LOW | Editor-level feature. The stroke list manages `PaintElement[]` in `paintStore`. Engine swap is transparent to this layer. |
+| FX brush styles (watercolor, ink, charcoal, pencil, marker) | Shipped v0.5.0 via p5.brush. Users apply styles to strokes. | HIGH | This is the core replacement. p5.brush used spectral pigment mixing (Kubelka-Munk) with 5 style presets. efx-physic-paint does NOT have named style presets. Instead it has continuous physics parameters: waterAmount, dryAmount, edgeDetail, pickup, physicsStrength, viscosity, embossStrength. Must create preset mappings that produce visually comparable results to p5.brush styles. The "flat" style maps to low waterAmount, high dryAmount. "Watercolor" maps to high waterAmount, low dryAmount, physics enabled. This is the riskiest mapping. |
+| Non-destructive FX workflow (draw flat, select, apply style) | Shipped v0.5.0. Users draw strokes flat, then apply brush styles after. | MEDIUM | Conceptually the same: store strokes with base points, re-render with physics params applied. But efx-physic-paint's physics is real-time simulation (wet buffers, drying, fluid solver), not post-hoc image processing like p5.brush. Applying style means re-rendering the stroke through the physics engine. Must ensure deterministic results for the same stroke+params. |
+| Per-frame FX cache | Shipped v0.5.0. Cached rendered frames avoid re-rendering unchanged strokes. | MEDIUM | efx-physic-paint renders to its own dual canvas (dry + display overlay). Cache must store the final composited frame. Use `getCanvas()` / `getDisplayCanvas()` to capture ImageData after rendering. Invalidation logic stays in editor. |
+| Alt+drag duplicate | Shipped v0.6.0. Duplicate stroke while dragging. | LOW | Editor-level interaction. Engine-independent. |
+| Non-uniform scale transforms | Shipped v0.6.0. Scale strokes independently on X/Y axes. | LOW | Editor-level point manipulation. Engine-independent. |
+| Select tool with hit-testing | Users click to select strokes on canvas. | LOW | Editor-level feature using stroke bounding boxes. Engine-independent. |
+| Pen tool (bezier point-by-point) | Shipped v0.6.0 via PaintOverlay pen interaction system. | LOW | Editor-level interaction. Creates bezier anchors, engine renders the sampled points. |
+| 15/24 fps preview playback | Paint layers composite into the real-time preview at project fps. | MEDIUM | efx-physic-paint's physics simulation runs at 60fps internally (physics interval). For preview, we need to render a single completed frame (all strokes dry) without running real-time physics. Use `renderAllStrokes()` which replays and force-dries, then capture canvas. Performance budget: must complete per-frame render in <16ms for 60fps preview. |
 
 ### Differentiators (Competitive Advantage)
 
-Features that set the product apart from basic paint tools and move toward professional VFX compositing.
+New capabilities that efx-physic-paint brings beyond what p5.brush + perfect-freehand offered.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Luma matte compositing for FX paint | Enables paint layers to composite over photographs without alpha channel. Paint on white background; brightness extracts the matte. This is how traditional VFX roto paint works (Nuke, Silhouette). Transforms paint layer from "opaque overlay" to "compositing element." | MEDIUM | Render paint to offscreen canvas, getImageData(), convert luminance to alpha (ITU-R BT.601: R*0.299 + G*0.587 + B*0.114), putImageData(), composite result. Need threshold/softness controls. |
-| Paper/canvas texture on paint layer | Professional digital painting tools (Rebelle, Krita, Procreate) all have paper textures that interact with paint. Adds physical quality to brush strokes. Differentiates from flat digital look. | MEDIUM | Tiled texture overlay as per-layer post-process. Multiply/overlay blend a grayscale texture image on the paint canvas. User-loadable from `~/.config/efx-motion/papers/*` via Tauri FS. |
-| Non-uniform scale for paint strokes | Current scale is uniform (corner-drag scales proportionally). Non-uniform allows horizontal or vertical stretching independently. Standard in Figma, Photoshop, After Effects for transform operations. | MEDIUM | Add edge-drag handles (midpoints of bounding box edges). Edge handle drag scales one axis only. Must scale stroke points around center with independent X/Y factors. |
-| Bezier/spline stroke path editing | Allows editing the path of an already-drawn stroke by converting it to bezier control points. Standard in Nuke RotoPaint, Illustrator, Figma. Transforms freehand strokes into precise, editable curves. | HIGH | Need: (1) curve fitting algorithm to convert point array to cubic bezier, (2) render control points and tangent handles, (3) handle drag interactions with keyboard modifiers, (4) convert edited bezier back to point array. |
-| Denser motion path interpolation visual | Current `sampleMotionDots()` samples one dot per integer frame. Short sequences produce sparse dots that look angular instead of smooth. | LOW | Change loop step to fractional value (0.25-0.5). `interpolateAt()` already handles fractional frames via polynomial interpolation. Cap max dots for performance. |
+| Physics-based wet paint simulation | Real fluid dynamics via Stam stable fluids solver. Paint flows, pools at edges, diffuses based on water content. Fundamentally different from p5.brush's post-hoc spectral mixing -- this is real-time physically-based simulation. | LOW (engine has it) | Already implemented in efx-physic-paint's `fluids.ts` (Stam solver with Navier-Stokes), `diffusion.ts` (orchestration), `drying.ts` (evaporation LUT). Editor needs UI controls for physicsStrength, viscosity, localSpreadStrength, and buttons to start/stop physics. |
+| Paper/canvas texture interaction | Paper heightmap modulates paint deposit and drying. Paint settles in paper valleys, creates granulation on rough surfaces. Physical paper-paint interaction, not just overlay. | LOW (engine has it) | Engine loads paper texture images, extracts heightmaps, uses `sampleH()` for per-pixel modulation. Papers configured via `PaperConfig[]` in engine constructor. Editor needs: paper selector UI, bundled paper texture images, Tauri FS for user papers. |
+| Transparency / transparent background | Draw on transparent canvas (BgMode = 'transparent'). Enables compositing paint directly onto scene without luma matte workaround. | LOW (engine has it) | Engine's `BgMode` includes 'transparent'. The milestone spec explicitly lists this as a target feature. Compositing onto the scene in `previewRenderer.ts` becomes simpler: just composite the engine's display canvas with globalAlpha. No luma matte needed for basic compositing. |
+| Paint drying simulation | Wet paint dries over time via exponential LUT-based evaporation. DrySpeed controls rate. Wet paint can be re-activated by physics. Creates temporal interaction between strokes. | LOW (engine has it) | `dryStep()` in `drying.ts`. Natural drying runs on a 100ms interval. `forceDryAll()` for immediate bake. For frame-by-frame animation, each frame likely needs forced dry after rendering (strokes are temporal per frame). |
+| Wet-on-wet paint mixing | New strokes interact with still-wet previous strokes. Color pickup (`pickup` param) lifts underlying color. Physical mixing model, not spectral. | LOW (engine has it) | `renderPaintStroke()` reads existing wet buffer values and mixes via `mixSubtractive()`. This is a differentiator over p5.brush where strokes rendered independently on a shared WebGL2 canvas with spectral mixing. Here, the physics buffer mediates mixing. |
+| Emboss / paper grain surface effect | Paper grain creates visible 3D surface texture on dried paint via emboss shader. Adjustable strength and stack depth. | LOW (engine has it) | Engine's `embossStrength` and `embossStack` parameters. Visible in dry canvas rendering. |
+| Blow / directional force on wet paint | Per-pixel directional force vectors push wet paint. Simulates blowing on wet watercolor. | LOW (engine has it) | `blowDX/blowDY` Float32Arrays with `BLOW_DECAY`. Could be exposed as a tool or gesture (e.g., pointer drag while holding a modifier key). Deferred to v0.7.x. |
+| Animation playback (stroke replay) | AnimationPlayer replays strokes as progressive frame-by-frame animation. Maps stroke timestamps to frames, renders point-by-point. | MEDIUM | `AnimationPlayer` class wraps engine, distributes strokes across frames proportionally by timestamp. Fires `onFrame(frameIndex, canvas)` callback per frame. This is different from the editor's frame-by-frame animation model (each frame has independent strokes). Could be exposed as a "paint reveal" preview mode within a single frame. Not directly used for timeline animation -- the editor already has its own frame model. |
+| JSON brush format / project serialization | Engine serializes all strokes + settings as a compact JSON `SerializedProject`. Version 2 format with compressed point arrays `[x, y, p, tx, ty, tw, spd]`. | MEDIUM | Editor currently stores paint data per-frame as `PaintFrame { elements: PaintElement[] }` in sidecar JSON. Engine's `SerializedProject` stores all strokes globally. Must adapt: editor manages per-frame scope; engine's serialize/load used for per-frame data. Store `BrushOpts` per stroke instead of `PaintStrokeOptions`. |
+| Anti-aliasing passes for wet edges | Configurable edge feathering on wet paint (0-3 levels, 2/4/6 passes). Soft brush edges without GPU shaders. | LOW (engine has it) | `featherWetEdges()` in `wet-layer.ts`. Expose as UI control. |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Full vector path editor (Illustrator-style pen tool) | Users see bezier editing and want full pen tool, anchor point operations, path boolean ops | Massive scope creep. This is a motion editor, not a vector illustration tool. Path editing for roto is different from general vector editing. | Scope bezier editing to post-hoc path adjustment of existing freehand strokes only. No pen tool for creating strokes from scratch via bezier. |
-| Real-time paper texture in brush rendering | Users want texture visible while drawing each stroke, not just on final composite | p5.brush renders on WebGL2 canvas. Adding texture interaction during drawing requires shader modification in p5.brush internals (treated as external library). Performance cost per stroke. | Apply paper texture as post-process overlay on the entire paint layer. Texture visible immediately after stroke render completes. Fast, decoupled from brush engine. |
-| Per-stroke paper texture settings | Different textures per stroke like Krita's per-brush texture mode | Exponentially increases UI complexity and storage. Per-frame FX cache renders all strokes together; per-stroke texture breaks batch rendering. | Per-layer paper texture. One texture for the entire paint layer with intensity/scale/blend mode controls. |
-| Luma matte with custom curves/levels | Full luminance curve editor for matte extraction like Nuke's advanced matte tools | Over-engineering for stop-motion paint layers, which are simpler than VFX plate work. | Threshold + softness slider (two parameters). Covers 95% of use cases. Users adjust paint opacity/color to control matte density. |
+| Real-time physics during timeline playback | Users see physics simulation and want it during playback across frames | Physics simulation is stateful and non-deterministic (depends on timing). Frame-by-frame animation needs reproducible per-frame results. Running physics during playback would give different results on each play. | Force-dry after rendering each frame's strokes. Physics applied explicitly per-frame during drawing, baked before save. |
+| Per-stroke physics parameters | Different waterAmount/viscosity per stroke, like Krita's per-brush texture | Engine's physics operates on a shared wet buffer. All wet paint on canvas interacts. Per-stroke physics would require isolated wet layers per stroke, multiplying memory (6x Float32Arrays per stroke). | Per-frame physics settings. All strokes in a frame share the same physics context. Users adjust physics before drawing. Store settings in frame metadata. |
+| Spectral pigment mixing (Kubelka-Munk) preservation | Users may miss p5.brush's spectral mixing which was physically more accurate for pigment blending | efx-physic-paint uses subtractive RGB mixing (`mixSubtractive` in color.ts), not spectral. Implementing Kubelka-Munk requires wavelength-domain color representation (4+ channels per pixel instead of 3), doubling memory. The benefit over subtractive mixing is subtle for most use cases. | Accept subtractive mixing. efx-physic-paint's wet buffer mixing with Beer-Lambert compositing produces convincing results. The physics simulation (flow, drying, paper interaction) more than compensates for less accurate color mixing. |
+| Backward compatibility with p5.brush rendered output | Users want existing saved files to render identically after engine swap | Different rendering algorithms produce different visual output. Pixel-perfect backward compat is impossible. | Preserve stroke data (points, color, size, opacity). Re-render through new engine. Accept visual differences. Document migration in release notes. Old .mce files load; strokes re-render with new engine. |
+| Multiple physics engines selectable per layer | "Use p5.brush for some layers, efx-physic-paint for others" | Two rendering engines = double maintenance, double the rendering code, incompatible buffer formats, confusing UX. | Clean break: efx-physic-paint replaces p5.brush entirely. Simpler, maintainable. The engine covers all use cases p5.brush handled plus adds physics. |
+| Exposing full engine UI (all sliders from demo) | The engine demo has 10+ sliders for fine-grained control | Overwhelming for stop-motion workflow. Users want presets, not fluid dynamics parameters. | Create named brush presets (like the existing BrushStyle names) that map to engine parameter combinations. Expose only key controls: size, opacity, waterAmount, drySpeed. Advanced: physics strength, viscosity behind expandable section. |
 
 ## Feature Dependencies
 
 ```
-[Luma Matte Compositing]
-    (standalone -- modifies previewRenderer paint layer compositing path)
+[Monorepo Scaffold]
+    └──requires──> pnpm workspace setup, lockfile migration
+    └──enables──> [Engine Integration]
 
-[Paper/Canvas Texture]
-    (standalone -- post-process on paint layer rendering)
+[Engine Integration (core)]
+    └──requires──> [Monorepo Scaffold]
+    └──requires──> Adapter layer: editor PaintStroke <-> engine PenPoint/BrushOpts
+    └──enables──> [All paint rendering features]
 
-[Stroke List Panel]
-    requires  [existing paintStore element management]
-    enhances  [Duplicate Stroke]
-    enhances  [Bezier Path Editing]
+[Stroke Format Migration]
+    └──requires──> [Engine Integration]
+    └──enables──> [Sidecar persistence with new format]
 
-[Duplicate Stroke (Alt+move)]
-    requires  [existing select-mode drag infrastructure]
+[Brush Style Preset Mapping]
+    └──requires──> [Engine Integration]
+    └──maps──> p5.brush styles -> engine BrushOpts combinations
 
-[Non-Uniform Scale]
-    requires  [existing selection bounds + transform handles]
-    enhances  [existing uniform scale]
+[Paper Texture UI]
+    └──requires──> [Engine Integration]
+    └──requires──> Paper texture images (bundled + user-loadable via Tauri FS)
 
-[Paint Properties Cleanup]
-    (standalone -- pure UI refactor)
-    enhances  [Stroke List Panel] (panel space freed)
+[Transparency Layer Support]
+    └──requires──> [Engine Integration]
+    └──modifies──> previewRenderer.ts paint compositing path
 
-[Bezier/Spline Path Editing]
-    requires  [Stroke List Panel] (need precise stroke selection)
-    requires  [existing select-mode infrastructure]
+[Onion Skinning Reconnection]
+    └──requires──> [Engine Integration]
+    └──uses──> engine.getCanvas() / getDisplayCanvas()
 
-[Sequence-Scoped Layer Creation]
-    requires  [existing isolationStore + addLayer flow]
+[FX Cache Reconnection]
+    └──requires──> [Engine Integration]
+    └──requires──> [Brush Style Preset Mapping]
 
-[Denser Motion Path]
-    requires  [existing sampleMotionDots + interpolateAt]
+[Physics UI Controls]
+    └──requires──> [Engine Integration]
+    └──enhances──> PaintProperties panel
+
+[Non-destructive FX Workflow Reconnection]
+    └──requires──> [Engine Integration]
+    └──requires──> [Brush Style Preset Mapping]
+    └──requires──> Deterministic re-render through engine
 ```
 
 ### Dependency Notes
 
-- **Bezier Path Editing requires Stroke List Panel:** Users need precise stroke selection before entering path edit mode. The stroke list provides explicit stroke targeting instead of hit-testing ambiguity on overlapping strokes.
-- **Stroke List Panel enhances Duplicate Stroke:** After Alt+duplicating, the new stroke appears in the list with a visible name, making it easy to track what was created.
-- **Non-Uniform Scale enhances existing uniform scale:** Must coexist. Corner handles = uniform scale (current). Edge handles = non-uniform scale (new). Standard Figma/Photoshop pattern.
-- **Luma Matte and Paper Texture are independent:** Both modify the paint rendering pipeline at different stages. Luma matte affects compositing (how paint composites onto scene). Paper texture affects appearance (how paint looks on its canvas). They compose naturally: paint -> paper texture overlay -> luma matte extraction -> composite onto scene.
+- **Engine Integration requires Monorepo Scaffold:** The engine is imported as `@efxlab/efx-physic-paint` workspace package. Must be linked before any code changes.
+- **Brush Style Preset Mapping is the riskiest dependency:** All FX-related features (cache, non-destructive workflow, style UI) depend on having convincing preset mappings from the old 6 BrushStyle names to new engine params. Must be validated visually early.
+- **Transparency and Paper Texture are independent of each other:** Both modify how the paint layer renders/composites but at different stages. Paper texture affects paint appearance. Transparency affects compositing onto the scene.
+- **Shape/fill tools are independent of engine swap:** They use Canvas 2D primitives directly, not the brush engine. No migration needed.
+- **Bezier editing is independent of engine swap:** fit-curve and bezier-js stay in the editor. The only touchpoint is that sampled bezier points feed into the engine instead of perfect-freehand.
 
 ## MVP Definition
 
-### Phase 1: Core Paint Workflow (High Value, Lower Risk)
+### Phase 1: Monorepo Scaffold
 
-Must-build features that directly improve the existing paint workflow.
+Infrastructure. No user-visible changes.
 
-- [ ] Stroke list panel -- essential for managing complex roto work, unblocks path editing later
-- [ ] Duplicate stroke with Alt+move -- tiny implementation, huge UX win, universally expected
-- [ ] Paint properties panel cleanup -- necessary before adding more controls
-- [ ] Sequence-scoped layer creation -- small fix with large correctness impact
-- [ ] Denser motion path interpolation -- tiny change, visible improvement
+- [ ] pnpm workspace root with `pnpm-workspace.yaml` -- enables engine as workspace dependency
+- [ ] Copy efx-physic-paint into `packages/` -- engine source available
+- [ ] Lockfile migration to root -- pnpm workspaces requirement
+- [ ] Vite config for workspace package -- optimizeDeps exclude
+- [ ] Verify `import { EfxPaintEngine } from '@efxlab/efx-physic-paint'` compiles
 
-### Phase 2: Compositing & Texture (Medium Value, Medium Risk)
+### Phase 2: Engine Swap Core
 
-Features that upgrade paint from drawing tool to compositing tool.
+Replace rendering pipeline. Preserve all user-facing behavior.
 
-- [ ] Luma matte compositing -- transforms paint layer utility, requires pixel manipulation
-- [ ] Paper/canvas texture -- adds physical quality, requires Tauri FS for user textures
-- [ ] Non-uniform scale -- enhances existing transform, moderate complexity
+- [ ] Adapter layer: convert editor `PaintStroke` to engine `PenPoint[] + BrushOpts` -- bridge between data models
+- [ ] Replace perfect-freehand `getStroke()` calls with engine rendering -- core swap
+- [ ] Replace p5.brush adapter with engine-based FX rendering -- style migration
+- [ ] Brush style preset mapping: 6 BrushStyle names -> BrushOpts combinations -- visual parity
+- [ ] Reconnect eraser tool to engine's `applyEraseStroke()` -- tool parity
+- [ ] Reconnect onion skinning via engine canvas capture -- preview parity
+- [ ] Reconnect FX cache with engine-rendered output -- performance parity
+- [ ] Sidecar format migration: read old format, write new -- backward compat
 
-### Phase 3: Advanced Editing (High Value, High Risk)
+### Phase 3: New Capabilities
 
-- [ ] Bezier/spline stroke path editing -- most complex feature, benefits from stroke list being solid first
+Expose efx-physic-paint features not available in the old stack.
+
+- [ ] Paper texture support with UI selector -- new differentiator
+- [ ] Transparency layer support in compositing -- simplifies paint-over-photo workflow
+- [ ] Physics UI controls (waterAmount, drySpeed, physicsStrength) -- expose engine power
+- [ ] Brush caching and re-render optimization -- performance for complex frames
+
+### Defer to v0.7.x or Later
+
+- [ ] Blow/directional force tool -- interesting but not essential for engine swap milestone
+- [ ] AnimationPlayer integration (stroke replay within frame) -- niche feature
+- [ ] Custom user brush presets via JSON -- needs UX design for brush management
+- [ ] Wet-on-wet mixing UI controls (pickup parameter) -- advanced, needs tuning
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Risk | Priority |
 |---------|------------|---------------------|------|----------|
-| Stroke list panel | HIGH | MEDIUM | LOW | P1 |
-| Duplicate stroke (Alt+move) | HIGH | LOW | LOW | P1 |
-| Paint properties cleanup | MEDIUM | LOW | LOW | P1 |
-| Sequence-scoped layer creation | MEDIUM | LOW | LOW | P1 |
-| Denser motion path | LOW | LOW | LOW | P1 |
-| Luma matte compositing | HIGH | MEDIUM | MEDIUM | P2 |
-| Paper/canvas texture | MEDIUM | MEDIUM | LOW | P2 |
-| Non-uniform scale | MEDIUM | MEDIUM | LOW | P2 |
-| Bezier/spline path editing | HIGH | HIGH | HIGH | P3 |
+| Monorepo scaffold | LOW (infra) | LOW | LOW | P1 |
+| Engine adapter layer | HIGH | MEDIUM | MEDIUM | P1 |
+| Replace perfect-freehand rendering | HIGH | HIGH | HIGH | P1 |
+| Replace p5.brush FX rendering | HIGH | HIGH | HIGH | P1 |
+| Brush style preset mapping | HIGH | MEDIUM | HIGH | P1 |
+| Eraser reconnection | HIGH | LOW | LOW | P1 |
+| Sidecar format migration | HIGH | MEDIUM | MEDIUM | P1 |
+| Onion skinning reconnection | MEDIUM | MEDIUM | LOW | P1 |
+| FX cache reconnection | MEDIUM | MEDIUM | LOW | P1 |
+| Paper texture support | MEDIUM | LOW | LOW | P2 |
+| Transparency layer support | HIGH | LOW | LOW | P2 |
+| Physics UI controls | MEDIUM | LOW | LOW | P2 |
+| Brush caching / re-render | MEDIUM | MEDIUM | MEDIUM | P2 |
+| Non-destructive FX reconnection | MEDIUM | MEDIUM | MEDIUM | P2 |
 
 **Priority key:**
-- P1: Quick wins + infrastructure (stroke list unblocks P3)
-- P2: Compositing upgrades that change paint layer's role
-- P3: Complex editing feature, benefits from P1 infrastructure
+- P1: Must complete for engine swap -- regression without these
+- P2: New capabilities enabled by the engine -- the "why" of the swap
+
+## Existing Editor Features Preservation Matrix
+
+Explicit mapping of what changes vs what stays untouched.
+
+| Editor Feature | Depends on Engine? | Migration Action |
+|----------------|-------------------|------------------|
+| Brush stroke rendering | YES (perfect-freehand) | Replace with efx-physic-paint |
+| FX brush styles | YES (p5.brush) | Replace with engine preset mapping |
+| Eraser tool | YES (partial) | Swap to engine's erase function |
+| Shape tools (line/rect/ellipse) | NO | Keep as-is (Canvas 2D primitives) |
+| Flood fill | NO | Keep as-is (paintFloodFill.ts) |
+| Eyedropper | NO | Keep as-is |
+| Select tool / hit-testing | NO | Keep as-is |
+| Bezier path editing | NO (fit-curve/bezier-js) | Keep as-is; sampled points feed new engine |
+| Pen tool interaction | NO | Keep as-is |
+| Stroke list / SortableJS | NO | Keep as-is |
+| Alt+drag duplicate | NO | Keep as-is |
+| Non-uniform scale | NO | Keep as-is |
+| Onion skinning | PARTIAL | Reconnect: use engine canvas output |
+| FX cache | PARTIAL | Reconnect: cache engine canvas output |
+| Sidecar JSON persistence | YES (data format) | Migrate format; backward compat reader |
+| PaintProperties panel | PARTIAL | Update controls to match engine params |
+| paintStore signals | NO | Keep as-is; adapter converts at render time |
+| Undo/redo | NO | Keep as-is (editor's command pattern) |
 
 ## Competitor Feature Analysis
 
-| Feature | Nuke RotoPaint | Silhouette | Krita | EFX-Motion Approach |
-|---------|---------------|------------|-------|---------------------|
-| Stroke list | Full list: visible, lock, overlay color, blend mode, lifetime. Drag reorder. Groups as folders. Rename. Right-click duplicate. | Tree view with grouping, per-shape attributes. | Layer-based (not per-stroke). | Simplified: name, eye (visible), delete, drag-reorder via SortableJS. Selection syncs with canvas. |
-| Luma matte | Node-based compositing with dedicated luma matte node. Threshold, softness, gain. | Full keying pipeline with ML-assisted mattes. | N/A (painting app). | Per-layer toggle: "Composite via Luma Matte" checkbox. Threshold + softness sliders. In previewRenderer paint path. |
-| Paper texture | N/A (VFX tool). | N/A (VFX tool). | Per-brush texture via pattern overlay. Modes: multiply, subtract, lightness map. Cutoff, strength. | Per-layer post-process. Tiled grayscale texture multiplied/overlaid on paint canvas. Intensity + scale + blend mode. User-loadable from config dir. |
-| Bezier editing | Full bezier and B-spline tools. Click+drag for tangents. Shift for tangent sync. Ctrl to break angle. Cusp/smooth toggle. | X-splines, B-splines, Bezier splines. | Bezier tool for vector layers. | Post-hoc conversion: freehand stroke -> bezier control points. Edit handles to reshape. Simpler than Nuke (editing existing strokes only, not creating from scratch). |
-| Duplicate | Right-click -> Duplicate in stroke list. | Clone tool, copy/paste shapes. | Ctrl+J, Ctrl+C/V. | Alt/Option+drag in select mode. Single gesture duplicate-and-position. |
-| Non-uniform scale | Full transform gizmo per shape/group. | Transform tool with independent axis. | Transform tool with lock aspect ratio toggle. | Edge-drag on selection bounds = single-axis scale. Corner-drag = uniform (existing). |
+| Feature | p5.brush (current) | efx-physic-paint (replacement) | Rebelle 7 | Krita |
+|---------|-------------------|-------------------------------|-----------|-------|
+| Color mixing | Spectral (Kubelka-Munk) -- physically accurate pigment mixing | Subtractive RGB + wet buffer interaction | Spectral | RGB (some spectral plugins) |
+| Paper interaction | None (post-process overlay only) | Physics-based: heightmap modulates deposit, drying, grain | Full physical paper simulation (NanoPixel) | Texture overlay per-brush |
+| Wet paint flow | None (static rendering) | Stam stable fluids solver, edge darkening, diffusion | Wet paint simulation | Basic smudge |
+| Drying | None (instant render) | LUT-based exponential evaporation, natural drying timer | Simulated drying with timeline | None |
+| Transparency | None (renders on opaque WebGL2 canvas) | Full transparent background support | Yes | Yes |
+| Animation | None | AnimationPlayer with progressive stroke replay | Painting process video | Frame-by-frame animation |
+| Serialization | None (editor manages) | JSON v2 format with compact point arrays | .reb proprietary | .kra (zip archive) |
+| Named brush presets | External (brush.add for variants) | None (continuous parameters) | Extensive preset library | Extensive preset library |
+| Performance | WebGL2 (fast rendering, one pass) | Canvas 2D with per-pixel wet buffers (slower for large canvases) | GPU-accelerated | CPU with some OpenGL |
 
-## Detailed Feature Specifications
+## Key Risk: Visual Regression on Style Mapping
 
-### 1. Luma Matte Compositing
+The highest-risk feature is mapping the 6 BrushStyle presets to efx-physic-paint parameters. Current p5.brush styles each use a built-in brush type with tuned parameters:
 
-**How it works in VFX (HIGH confidence):**
-- Paint is drawn on a solid background (typically white or black)
-- The paint layer's luminance (brightness) is extracted as transparency matte
-- White areas = fully opaque (paint visible). Black areas = fully transparent (underlying image shows through). Gray = partial transparency.
-- Two modes: "Luma" (bright = opaque) and "Inverted Luma" (dark = opaque, for dark paint on white bg)
+| BrushStyle | p5.brush Preset | efx-physic-paint Equivalent (proposed) |
+|------------|----------------|---------------------------------------|
+| flat | Direct canvas fill | waterAmount: 0, dryAmount: 100, edgeDetail: 0, antiAlias: 0 |
+| watercolor | marker + bleed/grain/fieldStrength | waterAmount: 60-80, dryAmount: 20, edgeDetail: 30, physicsMode: 'local', viscosity: 0.0001 |
+| ink | pen + edgeDarken/fieldStrength | waterAmount: 10, dryAmount: 80, edgeDetail: 60, pickup: 0, opacity: 100, antiAlias: 2 |
+| charcoal | charcoal preset | waterAmount: 0, dryAmount: 100, edgeDetail: 80, paper grain: high embossStrength |
+| pencil | HB preset | waterAmount: 0, dryAmount: 100, edgeDetail: 40, size: small, paper grain: medium |
+| marker | marker preset | waterAmount: 5, dryAmount: 90, edgeDetail: 0, opacity: 80, antiAlias: 1, size: large |
 
-**Implementation approach:**
-- In `previewRenderer.ts` paint layer compositing (line ~280), after `renderPaintFrameWithBg()` on offscreen canvas, apply luma-to-alpha pixel manipulation before compositing onto main canvas
-- Algorithm: `getImageData()`, loop pixels, `alpha = 0.299*R + 0.587*G + 0.114*B` (ITU-R BT.601), `putImageData()`
-- Inverted mode: `alpha = 255 - luminance` (for dark paint on white background, which is the common case)
-- Controls: enable checkbox, threshold (0-255, clamp low values to transparent), softness (remap range), invert toggle
-- Store as paint layer properties (extend `LayerSourceData` for `type: 'paint'` with optional `lumaMatte?: { enabled: boolean; threshold: number; softness: number; invert: boolean }`)
-- Performance: pixel-by-pixel loop on offscreen canvas per frame. For 1920x1080 = ~8M pixel operations. Profile needed but likely acceptable at 15fps for stop-motion.
-
-**Dependency on existing architecture:** Modifies the paint layer branch in `previewRenderer.ts` (lines 280-303). Also needs parallel change in `exportRenderer.ts` for export consistency.
-
-### 2. Paper/Canvas Texture
-
-**How it works in painting apps (HIGH confidence):**
-- **Krita:** Grayscale pattern images modulate brush alpha. Modes: multiply (soft), subtract (harsh), lightness map (applies texture lightness values to paint). Cutoff controls limit which grayscale ranges affect strokes. Strength slider controls intensity.
-- **Rebelle:** Scanned real paper textures applied as canvas surface. Papers interact with watercolor physics. NanoPixel technology for infinite zoom.
-- **Common approach:** Grayscale height map tiled across canvas, blended with paint via multiply or overlay composite operation.
-
-**Implementation approach:**
-- Post-process on paint layer: after `renderPaintFrameWithBg()`, draw tiled texture image with `globalCompositeOperation = 'multiply'` (or overlay)
-- Tiling: create pattern via `ctx.createPattern(textureImg, 'repeat')`, apply with `fillRect` at configured scale
-- Texture source: load PNG/JPG from `~/.config/efx-motion/papers/` via Tauri `readDir()` + `readFile()`
-- Controls: texture selector (thumbnail grid from discovered files), intensity (0-1 via globalAlpha), scale (50-400%), blend mode (multiply/overlay/soft-light)
-- Bundled defaults: 3-4 textures shipped with app (cold press watercolor, hot press smooth, canvas, kraft paper) as grayscale PNGs
-- p5.brush `grain` parameter already adds per-brush-style texture, but it operates during WebGL2 rendering. Layer-level texture adds independent, controllable surface quality.
-- Paper texture applied BEFORE luma matte extraction (if both enabled): paint -> texture overlay -> luma matte -> composite
-
-**Data model:** Extend paint layer source: `paperTexture?: { path: string; intensity: number; scale: number; blendMode: 'multiply' | 'overlay' | 'soft-light' }`
-
-### 3. Duplicate Stroke with Alt+Move
-
-**How it works universally (HIGH confidence):**
-- Figma: Alt/Option+drag duplicates and moves in one gesture
-- Photoshop: Alt+drag with Move tool duplicates layer/selection
-- After Effects: Alt+drag duplicates layer
-- Industry-standard: modifier key during drag initiation = clone-and-move
-
-**Implementation approach:**
-- In PaintOverlay `handlePointerDown` select-mode section (line ~554): when `e.altKey` is true during drag start on selected strokes:
-  1. Deep-clone each selected stroke: `{ ...stroke, id: crypto.randomUUID(), points: stroke.points.map(p => [...p]) }`
-  2. Insert clones into `paintFrame.elements` array
-  3. Update selection to point at clone IDs (deselect originals)
-  4. Start drag on clones (existing drag logic handles the rest)
-- Undo: single `pushAction` removes all cloned strokes
-- FX cache: invalidate after clone (cloned strokes may have FX styles)
-- Edge case: clone eraser strokes too, not just brush strokes
-
-### 4. Non-Uniform Scale
-
-**How it works in design tools (HIGH confidence):**
-- Figma: side handles scale one axis; corner handles scale both. Shift constrains to uniform.
-- Photoshop Free Transform: handles at midpoints of edges for single-axis, corners for proportional
-- After Effects: separate Scale X and Scale Y properties in transform
-
-**Implementation approach:**
-- Add edge handles (midpoints of selection bounding box edges) alongside existing corner handles
-- Edge handle visual: small rectangles (not circles) to distinguish from corner handles
-- `hitTestHandle()` extended to detect 'top', 'bottom', 'left', 'right' edge handles
-- Drag behavior:
-  - Top/bottom edge handle: compute scaleY only, scaleX = 1
-  - Left/right edge handle: compute scaleX only, scaleY = 1
-  - Apply: `point.x = center.x + (point.x - center.x) * scaleX`; same for Y
-- Brush size: do NOT scale brush size for non-uniform transforms. Stroke points move but brush diameter stays constant. This avoids needing separate sizeX/sizeY on PaintStroke.
-- Existing corner handles keep uniform scale behavior (current code, lines 759-777)
-
-### 5. Paint Properties Panel Cleanup
-
-**Current state (from code review):**
-- 400+ lines of JSX with mixed collapsed/expanded sections
-- Background color, selection tools, FX controls, onion skin, tablet settings all in one scroll
-- Inconsistent button sizing and spacing
-- Many sections only relevant for specific tool modes
-
-**Approach:**
-- Show only tool-relevant controls (brush settings when brush active, selection tools when select active)
-- Icon-only toggle buttons for binary options (filled/outline, onion skin on/off)
-- Consistent collapsible sections with uniform chevron behavior
-- 2-column grids for related controls (size + opacity side by side)
-- Move stroke list panel here or adjacent
-- Extract sub-components for testability
-
-### 6. Sequence-Scoped Layer Creation
-
-**Standard behavior (After Effects model, HIGH confidence):**
-- Layers belong to compositions. Working in a comp = new layers appear in that comp.
-- EFX-Motion equivalent: when a sequence is isolated (solo mode), new layers should target that sequence.
-
-**Implementation approach:**
-- `sequenceStore.addLayer()` uses `activeSequenceId`. Check if `isolationStore.hasIsolation` is true and exactly one sequence is isolated -- if so, target that sequence for addLayer
-- Alternatively: when entering isolation on a sequence, set `activeSequenceId` to match
-- Existing add layer flows (AddLayerMenu, AddFxMenu) all go through `sequenceStore.addLayer()` so the fix is centralized
-
-### 7. Denser Motion Path Interpolation
-
-**Current behavior (from code review):**
-- `sampleMotionDots()` iterates `frame = firstFrame; frame <= lastFrame; frame++`
-- Short sequences (5 frames between keyframes) produce only 5 dots
-- Path appears sparse and angular
-
-**Implementation approach:**
-- Change step: `const step = Math.max(0.25, (lastFrame - firstFrame) / 60)` -- adaptive, ensures ~60 dots max
-- Or simpler: always use `frame += 0.5` for 2x density, cap at 200 dots
-- `interpolateAt()` uses polynomial cubic interpolation -- already handles fractional frames
-- Non-keyframe fractional dots rendered smaller (2px vs 4px) so keyframe markers still stand out
-- Performance: 60-200 SVG circle elements is negligible
-
-### 8. Bezier/Spline Stroke Path Editing
-
-**How it works in Nuke RotoPaint (HIGH confidence):**
-- Click to place bezier control points, click+drag to set tangent handles
-- Shift while moving handles: moves both tangent handles together (keep angle consistent)
-- Ctrl/Cmd while dragging: temporarily breaks tangent angle (creates cusp)
-- Right-click point: cusp/de-smooth or smooth toggle
-- Add points: dedicated tool, click on spline to insert
-- Remove points: right-click point -> delete, or dedicated remove tool
-
-**Implementation approach for EFX-Motion (post-hoc editing, not creation):**
-1. **Curve fitting:** Convert existing `PaintStroke.points[]` to cubic bezier segments using Philip J. Schneider's algorithm (Graphics Gems). Input: point samples with tolerance parameter. Output: array of `{p0, p1, p2, p3}` cubic bezier control points.
-2. **Edit mode entry:** Double-click a selected stroke (or button in stroke list) enters bezier edit mode. Render: filled circles for anchor points (on-curve), hollow circles for handle endpoints (off-curve), thin lines connecting handle to anchor.
-3. **Interactions:**
-   - Drag anchor: moves on-curve point
-   - Drag handle: adjusts tangent direction/length
-   - Alt+drag handle: break tangent symmetry (cusp)
-   - Double-click anchor: toggle smooth/cusp
-   - Click on curve between anchors: add new anchor point (subdivide bezier)
-   - Delete key on selected anchor: remove point, reconnect neighbors
-4. **Reconversion:** After editing, sample the bezier curve at regular intervals to regenerate `points[]` with interpolated pressure values from neighboring original points.
-5. **Scope limits:** Only brush strokes (not shapes/fills). Only adjusts path geometry (not pressure profile -- pressure interpolated from original). No pen tool for creating new strokes via bezier.
-
-**Risk:** Curve fitting quality -- if the bezier approximation visibly deviates from the freehand stroke, users will be frustrated. Need adjustable tolerance. Reconversion (bezier -> points) must produce strokes that render identically to the edited path through perfect-freehand.
-
-### 9. Stroke List Panel
-
-**How Nuke's stroke/shape list works (HIGH confidence):**
-- Columns: visible (eye), lock, overlay color, stroke color, invert, blend mode, motion blur, lifetime
-- Reorder by drag-and-drop
-- Groups as folders for organizing related strokes
-- Double-click to rename (must be unique names)
-- Right-click context menu: copy, cut, paste, duplicate
-- Selection in list syncs with viewport selection
-
-**Implementation approach:**
-- Panel placement: new section in sidebar when in paint edit mode (replaces or augments current selection controls in PaintProperties)
-- Row contents (v1): stroke color dot, auto-generated name, eye toggle, delete button
-- Drag-to-reorder via SortableJS (already used in sidebar for sequence/layer reorder, `forceFallback: true` for Tauri)
-- Click to select (syncs with `paintStore.selectedStrokeIds`). Multi-select with Cmd/Ctrl+click.
-- Auto-naming: "Brush 1", "Eraser 2", etc. (based on tool type and creation order)
-- Compact rows (~24px height) for dense lists
-- Visual indicators: stroke with FX shows style badge (wc/ink/ch/pe/mk)
-
-**Data model changes:** `PaintElement` needs:
-- `name?: string` -- optional display name (auto-generated if absent for backward compat)
-- `visible?: boolean` -- default true for backward compat. When false, skip in `renderPaintFrame()` / `renderFlatElements()`
+These mappings are LOW confidence -- they need visual tuning against p5.brush reference output. Plan for an iterative visual comparison phase.
 
 ## Sources
 
-- [Nuke RotoPaint Stroke/Shape List](https://learn.foundry.com/nuke/content/comp_environment/rotopaint/working_stroke_shape_list.html) -- stroke list UI patterns, columns, hierarchy
-- [Nuke Bezier Tools](https://learn.foundry.com/nuke/content/comp_environment/rotopaint/using_bezier_tools.html) -- bezier editing keyboard modifiers, tangent handle behavior
-- [Nuke Editing Existing Splines](https://learn.foundry.com/nuke/content/comp_environment/rotopaint/editing_existing_splines.html) -- adding/moving/deleting control points
-- [Nuke Stroke Attributes](https://learn.foundry.com/nuke/content/comp_environment/rotopaint/editing_stroke_attrs.html) -- per-stroke properties
-- [Frame.io Mattes Guide](https://workflow.frame.io/guide/mattes) -- luma vs alpha matte fundamentals
-- [Krita Texture Brush Settings](https://docs.krita.org/en/reference_manual/brushes/brush_settings/texture.html) -- texture modes: multiply, subtract, lightness map, strength, cutoff
-- [Rebelle Paper Textures](https://www.escapemotions.com/blog/enhancing-your-digital-paintings-with-textures-in-rebelle) -- scanned paper workflow, NanoPixel technology
-- [Krita-Artists Canvas Texture Discussion](https://krita-artists.org/t/canvas-texture-overlays/40905) -- overlay blend technique for canvas textures
-- [Figma Alt+Drag Duplicate](https://help.figma.com/hc/en-us/articles/4409078832791-Copy-and-paste-objects) -- standard duplicate gesture
-- [Canvas 2D getImageData MDN](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/getImageData) -- pixel manipulation for luma extraction
-- [Canvas 2D setTransform MDN](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/setTransform) -- transform matrix for non-uniform scale
-- [Primer on Bezier Curves](https://pomax.github.io/bezierinfo/) -- comprehensive bezier math reference
-- [Konva Ignore Stroke On Transform](https://konvajs.org/docs/select_and_transform/Ignore_Stroke_On_Transform.html) -- stroke width behavior during non-uniform scale
+- efx-physic-paint source code: `~/Dev/efx-physic-paint/src/` -- full engine review (types.ts, EfxPaintEngine.ts, compositor.ts, paper.ts, diffusion.ts, fluids.ts, drying.ts, paint.ts, erase.ts, AnimationPlayer.ts, preact.tsx)
+- efx-motion-editor paint architecture: `Application/src/types/paint.ts`, `Application/src/lib/paintRenderer.ts`, `Application/src/lib/brushP5Adapter.ts`, `Application/src/stores/paintStore.ts`
+- Milestone spec: `SPECS/milestone-v0.7.0-plan.md`
+- PROJECT.md: `.planning/PROJECT.md`
 
 ---
-*Feature research for: EFX-Motion v0.6.0 Various Enhancements*
-*Researched: 2026-03-26*
+*Feature research for: EFX-Motion v0.7.0 Physics Paint Engine Integration*
+*Researched: 2026-04-03*

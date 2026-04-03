@@ -1,339 +1,343 @@
 # Pitfalls Research
 
-**Domain:** v0.6.0 Various Enhancements -- Adding luma matte compositing, paper textures, stroke management, bezier path editing, and UX refinements to existing Canvas 2D + p5.brush + paintStore system (Tauri 2.0 + Preact Signals)
-**Researched:** 2026-03-26
-**Confidence:** HIGH (based on direct codebase analysis + verified Canvas 2D API behavior)
+**Domain:** pnpm monorepo migration + paint engine replacement for Tauri/Vite desktop app
+**Researched:** 2026-04-03
+**Confidence:** HIGH (most pitfalls derived from codebase inspection + verified community reports)
 
 ## Critical Pitfalls
 
-### Pitfall 1: Luma Matte Pixel Manipulation Destroys Color Fidelity via Premultiplied Alpha
+### Pitfall 1: Tauri `beforeDevCommand` CWD confusion after monorepo restructure
 
 **What goes wrong:**
-The luma matte extraction spec calls for `getImageData()` on the paint canvas, computing `alpha = 255 - luma`, writing the alpha channel, then `putImageData()` back. Canvas 2D internally stores pixel data as premultiplied alpha. The `getImageData()` -> modify -> `putImageData()` round-trip is lossy: RGB values are quantized when alpha is low. Light-colored paint strokes (the exact case luma matte is meant to help with) will have low derived alpha values, causing their RGB to be destroyed or shifted when read back. A pastel blue stroke at alpha=10 might come back as a completely different color.
+After moving to monorepo, `tauri dev` executes `beforeDevCommand: "pnpm dev"` from the `src-tauri/` directory as CWD. The lockfile now lives at the workspace root, not alongside `app/package.json`. pnpm may fail to find the workspace context, or Tauri may not connect to the Vite dev server because the command resolves against the wrong directory. The `frontendDist: "../dist"` path in `tauri.conf.json` is relative to `src-tauri/` -- this still works after rename (Application -> app) but the `beforeDevCommand` and `beforeBuildCommand` might not if they assume a local lockfile.
 
 **Why it happens:**
-Canvas spec explicitly states: "pixels that have just been set using putImageData() might be returned to an equivalent getImageData() as different values." This is not a bug -- it is the specified behavior. The smaller the alpha, the coarser the RGB quantization. At alpha=1, only RGB values 0 and 255 survive. At alpha=0, all RGB is lost entirely.
+Tauri CLI sets CWD to the `src-tauri/` parent directory (i.e., `app/`) before running `beforeDevCommand`. With pnpm workspaces, `pnpm dev` in `app/` works because pnpm walks up to find `pnpm-workspace.yaml` at the repo root. BUT if the lockfile is stale or missing from root, or if `app/` still has its own `pnpm-lock.yaml`, pnpm gets confused about which workspace it belongs to.
 
 **How to avoid:**
-1. **Do the luma matte on an offscreen canvas, never round-trip through putImageData on the main canvas.** Create an offscreen canvas, render paint frame to it, extract ImageData, compute luma alpha, write to a second offscreen canvas via putImageData, then composite that second canvas onto the main renderer using `ctx.drawImage()`. The drawImage path uses the GPU compositing pipeline which avoids the premultiplication round-trip loss.
-2. **Un-premultiply BEFORE writing alpha.** The spec recommends: `color = paintPixel / (1.0 - alpha)` to recover pure pigment. Do this division in the pixel loop to compensate for the premultiplication that putImageData will apply.
-3. **Clamp alpha minimum to avoid extreme quantization.** If `luma > 250` (near-white), set alpha to 0 rather than 5 -- the tiny alpha values cause the worst color loss and the visual contribution is negligible anyway.
-4. **Cache the luma matte result.** The pixel loop over full-resolution ImageData is expensive (e.g., 1920x1080 = 8.3M channel operations). Cache alongside `_frameFxCache` and invalidate on the same triggers.
+1. Delete `app/pnpm-lock.yaml` entirely -- there must be exactly ONE lockfile at the workspace root.
+2. Keep `beforeDevCommand: "pnpm dev"` as-is -- pnpm will walk up to the workspace root. Alternatively, update to `pnpm --filter efx-motion-editor dev` and run Tauri from the workspace root.
+3. After monorepo setup, run `pnpm tauri dev` from workspace root and verify Vite starts on port 5173 before Tauri connects.
+4. Verify `frontendDist: "../dist"` still resolves correctly (it's relative to `src-tauri/`, so the Application -> app rename does not affect it).
 
 **Warning signs:**
-- Pastel or light-colored strokes appear darker or shift hue after compositing
-- Semi-transparent paint regions look "banded" or posterized
-- Colors differ between paint edit mode (solid bg) and composited preview
+Tauri window shows blank white screen or "connection refused" on dev. Build fails with "no lockfile found" or "ERR_PNPM_OUTDATED_LOCKFILE".
 
 **Phase to address:**
-Luma Matte Compositing phase -- must be the first pixel manipulation implemented, since paper textures will composite on top of this result.
+Monorepo scaffold phase -- verify `tauri dev` + `tauri build` work before touching any paint code.
 
 ---
 
-### Pitfall 2: Missing paintVersion Increment on Visual Changes (Existing Bug + New Features)
+### Pitfall 2: Lockfile move produces stale lockfile with wrong importer paths
 
 **What goes wrong:**
-The preview canvas only re-renders when `paintStore.paintVersion` signal increments. Any code path that changes visual state without bumping this counter produces invisible changes -- the data mutates but the canvas shows stale content. This already happens in the existing codebase: `moveElementsForward`, `moveElementsBackward`, `moveElementsToFront`, and `moveElementsToBack` all mutate the elements array order but **never call `paintVersion.value++`**. The stroke list panel, duplicate stroke, non-uniform scale, and bezier editing features will all create new visual-mutation code paths that must each bump the counter.
+Moving `Application/pnpm-lock.yaml` to the workspace root does not automatically update the internal importer path references. The lockfile stores importers keyed by relative path (e.g., `.` for the app package). When the workspace root becomes the new CWD, the lockfile expects the importer at `.` but the app is now at `app/`. Running `pnpm install` either silently regenerates the entire lockfile (massive diff, potential version drift) or fails on `--frozen-lockfile` in CI.
 
 **Why it happens:**
-`paintStore` uses a non-reactive `Map<string, Map<number, PaintFrame>>` for paint data (by design -- making Maps reactive would be expensive). The `paintVersion` counter is the explicit reactivity trigger. It is easy to mutate data and forget the counter bump, especially in helper functions that don't directly interact with the rendering pipeline.
+pnpm lockfiles store importer paths relative to the lockfile location. Moving the lockfile without regenerating it creates a mismatch between the lockfile's internal model and the actual workspace layout.
 
 **How to avoid:**
-1. **Audit every new function in paintStore.** Before marking a feature complete, grep for all mutations to `frameData.elements` or stroke properties and verify each has a `paintVersion.value++`.
-2. **Fix the existing bug first.** Add `paintVersion.value++` to all four `moveElements*` methods before building the stroke list panel that will expose them.
-3. **Consider a helper.** Create a `_notifyVisualChange(layerId, frame)` helper that does `markDirty + paintVersion++ + invalidateFrameFxCache` in one call, reducing the chance of forgetting any of the three.
-4. **For bezier editing:** Every control point drag must bump paintVersion on each pointer move, not just on pointer up (users expect live preview during drag).
+1. Do NOT move the old lockfile. Delete `Application/pnpm-lock.yaml` entirely.
+2. Create `pnpm-workspace.yaml` and root `package.json` first.
+3. Run `pnpm install` from the workspace root to generate a fresh lockfile.
+4. Commit the new lockfile as part of the monorepo scaffold commit.
+5. Accept that dependency versions may shift slightly -- review the new lockfile diff for unexpected changes. Pin critical versions (Motion Canvas 4.0.0) in the root overrides.
 
 **Warning signs:**
-- Stroke reorder in the list panel doesn't update the canvas
-- Duplicated stroke appears only after switching frames and back
-- Bezier handle drag has no visual feedback until mouse release
-- Non-uniform scale preview is frozen during transform
+Lockfile diff is thousands of lines of churn. `pnpm install` takes unusually long. Dependency versions drift from what was pinned.
 
 **Phase to address:**
-Every single phase in this milestone. Consider creating the `_notifyVisualChange` helper as the very first task.
+Monorepo scaffold phase -- the commit should be: create workspace files, delete old lockfile, `pnpm install`, commit fresh lockfile.
 
 ---
 
-### Pitfall 3: Missing Undo Support on Stroke Reorder (Existing Gap Exposed by Stroke List Panel)
+### Pitfall 3: `git mv Application app` loses blame/history for 40k+ LOC if combined with other changes
 
 **What goes wrong:**
-The stroke list panel will let users drag-reorder strokes via SortableJS. The existing `moveElementsForward/Backward/ToFront/ToBack` methods do not call `pushAction()` -- they have no undo support. A user reorders strokes, realizes it was wrong, presses Cmd+Z, and instead undoes the *previous* paint operation (a stroke draw or delete), leaving the reorder stuck. This is a confusing, destructive UX failure.
+Git infers renames via content similarity heuristics during `git log --follow` and `git diff -M`. Renaming `Application/` to `app/` in the same commit as other changes (modifying package.json files, adding `packages/efx-physic-paint/` with hundreds of new files) causes Git to fail the similarity threshold and treat every file as delete+create. This permanently breaks `git log --follow` and `git blame` for all 100+ source files.
 
 **Why it happens:**
-The four `moveElements*` methods were added as utility functions called from PaintProperties buttons. They were likely intended as quick helpers and undo was deferred. The stroke list panel makes reordering a primary interaction, elevating this gap from minor to critical.
+Git's rename detection compares file content between commits. When a rename commit also modifies file contents, the similarity score drops below the default 50% threshold. Adding hundreds of new files (the paint library) further overwhelms the rename detection limit (default: 400 files checked).
 
 **How to avoid:**
-1. **Add `pushAction` to all four `moveElements*` methods** with proper undo/redo closures that snapshot the element order before mutation and restore it on undo.
-2. **For SortableJS drag reorder in the stroke list:** create a new `reorderElements(layerId, frame, fromIndex, toIndex)` method that also pushes an undo action. Don't reuse the existing methods for drag -- they do pair-wise swaps which are wrong for arbitrary index-to-index reorder.
-3. **Test undo after every stroke list interaction:** reorder, delete, duplicate, hide/show.
+1. Rename `Application/` to `app/` in a **dedicated commit** with `git mv Application app` and NOTHING else -- no file edits, no new files, no lockfile changes.
+2. In subsequent commits, add workspace files, copy the paint library, update configs.
+3. Verify with `git log --follow app/src/stores/paintStore.ts` -- it should show full history before the rename.
+4. Consider bumping Git's rename detection limit: `git config diff.renameLimit 999` for this repo.
 
 **Warning signs:**
-- Cmd+Z after reorder undoes wrong operation
-- Multiple rapid reorders stack up as individual non-undoable mutations
-- Redo stack gets corrupted (the pointer-based history system truncates on new push)
+`git log app/src/main.tsx` shows only 1 commit (the rename). `git blame app/src/stores/paintStore.ts` shows the entire file attributed to the rename commit.
 
 **Phase to address:**
-Stroke List Panel phase -- fix existing methods first, then build the panel.
+Monorepo scaffold phase -- the rename must be the very first commit of the milestone, isolated from all other changes.
 
 ---
 
-### Pitfall 4: SortableJS in Stroke List Panel Conflicts with Existing SortableJS Instances
+### Pitfall 4: Vite HMR does not detect workspace package changes (tsup rebuilds are invisible)
 
 **What goes wrong:**
-The app already uses SortableJS with `forceFallback: true` in three places: SequenceList, LayerList, and KeyPhotoStrip. Adding a fourth SortableJS instance in the stroke list panel creates potential conflicts: (a) nested SortableJS containers can intercept each other's drag events if the DOM hierarchy overlaps, (b) `forceFallback: true` creates a cloned ghost element that can interfere with Tauri's pointer event handling across multiple active instances, (c) the stroke list will be inside the sidebar which already contains LayerList with its own Sortable.
+Vite only watches files inside its project root (the directory containing `vite.config.ts`, i.e., `app/`). Changes to `packages/efx-physic-paint/src/` do not trigger HMR, even when `tsup --watch` rebuilds `dist/`. The developer modifies paint engine code, sees tsup rebuild succeed, but the editor shows stale behavior. They waste time debugging why changes are not reflected.
 
 **Why it happens:**
-SortableJS uses document-level event listeners for drag tracking. When multiple Sortable instances exist in nested containers, pointer events can bubble to the wrong handler. The existing `forceFallback: true` setting (needed to bypass Tauri's native HTML5 DnD interception) makes this worse because the fallback mode creates a floating DOM clone that receives pointer events.
+Vite's file watcher (chokidar) is scoped to the project root. Workspace symlinks point to the paint package's `dist/` directory, but Vite's pre-bundling cache (`node_modules/.vite/`) holds a cached copy. Even with `optimizeDeps.exclude`, Vite may not detect changes to files resolved through symlinks outside its watched tree.
 
 **How to avoid:**
-1. **Use `group: { name: 'strokes' }` with a unique group name** to isolate the stroke list's drag operations from other Sortable instances.
-2. **Set `filter: '.no-drag'`** on the parent LayerList Sortable to prevent it from intercepting drags that originate in the stroke list child container.
-3. **Ensure the stroke list Sortable is destroyed on unmount.** Use a `useEffect` cleanup to call `sortable.destroy()` -- leaked instances cause ghost event listeners.
-4. **Test the interaction matrix:** drag in stroke list while sidebar is showing layers, drag layer while stroke list is visible, etc.
+1. Add `@efxlab/efx-physic-paint` to `optimizeDeps.exclude` (already planned) -- this prevents Vite from caching the pre-bundled version.
+2. For development, consider aliasing imports to the paint package's source `.ts` files instead of built `.mjs`:
+   ```ts
+   resolve: {
+     alias: {
+       '@efxlab/efx-physic-paint': path.resolve(__dirname, '../packages/efx-physic-paint/src/index.ts')
+     }
+   }
+   ```
+   This gives true HMR but requires the paint lib's TypeScript to be Vite-compatible (no enums, no namespaces -- it uses neither, so this is safe).
+3. If using `dist/` builds only: Vite issue #13014 confirms this is a known gap. The workaround is to manually restart Vite or use a Vite plugin that watches external directories.
+4. Verify the dev workflow (`pnpm dev:paint` in terminal 1, `pnpm dev` in terminal 2) actually propagates changes before starting engine swap work.
 
 **Warning signs:**
-- Dragging a stroke in the list also starts a layer reorder
-- Ghost clone appears at wrong position or doesn't disappear
-- Stroke list drag works in isolation but breaks when sidebar sections are expanded
+Changes to paint engine code require manual Vite restart. Console shows old errors after code is fixed in the paint library.
 
 **Phase to address:**
-Stroke List Panel phase.
+Monorepo scaffold phase -- verify the two-terminal dev workflow works before starting engine swap work.
 
 ---
 
-### Pitfall 5: Bezier/Spline Editing Creates Unbounded Undo History from Continuous Drag
+### Pitfall 5: PaintStroke type divergence between editor and efx-physic-paint
 
 **What goes wrong:**
-When a user drags a bezier control point, each `pointermove` event updates the point position and should bump `paintVersion` for live preview. If each move also pushes a separate undo action, a 1-second drag generates 60+ undo entries. Pressing Cmd+Z would undo one pixel of movement at a time instead of the entire drag operation.
+The editor's `PaintStroke.points` is `[number, number, number][]` (x, y, pressure tuples). The efx-physic-paint `PenPoint` is `{x, y, p, tx, ty, tw, spd}` -- a 7-field object with tilt, twist, and speed. The editor's `PaintStrokeOptions` (thinning, smoothing, streamline, simulatePressure, taperStart, taperEnd) has zero overlap with efx-physic-paint's `BrushOpts` (waterAmount, dryAmount, edgeDetail, pickup, eraseStrength, antiAlias). Both libraries also export a type named `PaintStroke` with completely different shapes, causing import conflicts. Naively importing both produces confusing type errors across 26+ files.
 
 **Why it happens:**
-The existing code already handles this pattern for stroke drag/move (isDragging in PaintOverlay), but it does so by directly mutating point arrays during drag and NOT pushing any undo action at all -- the drag is completely non-undoable. Bezier editing needs to do better: live preview during drag, but a single undo entry for the entire drag gesture.
+The two engines model brush rendering completely differently. perfect-freehand is a geometric stroke outline library (points in, SVG path out). efx-physic-paint is a pixel-level physics simulation (deposits wet paint on canvas buffers). The data models are fundamentally incompatible.
 
 **How to avoid:**
-1. **Use the existing `startCoalescing()` / `stopCoalescing()` API from history.ts.** Call `startCoalescing()` on pointerdown when a bezier handle is grabbed, push an initial undo action that snapshots the pre-drag state, then during pointermove just mutate + paintVersion++ without pushing. Call `stopCoalescing()` on pointerup.
-2. **Alternatively, snapshot on pointerdown, mutate freely during drag, and push a single undo action on pointerup** that stores the before/after state. This is simpler and matches how the existing transform code works (it just lacks the undo push on pointerup -- another existing gap).
-3. **Don't forget to push undo for the EXISTING stroke drag/move and transform operations.** These are currently non-undoable. Fixing them while implementing bezier editing avoids inconsistent undo behavior.
+1. Create an adapter layer (`paintEngineAdapter.ts`) that translates between editor types and engine types. The editor's `PaintStroke` type (from `types/paint.ts`) remains the canonical format for persistence and undo/redo.
+2. For rendering: convert `[x, y, pressure][]` to `PenPoint[]` at render time (fill tilt/twist/speed with defaults: `tx: 0, ty: 0, tw: 0, spd: 1`).
+3. For new strokes: capture full `PenPoint` data during drawing but persist in editor format for backward compatibility.
+4. Use TypeScript import aliasing to avoid the naming conflict: `import { PaintStroke as PhysicStroke } from '@efxlab/efx-physic-paint'`.
+5. Add a discriminator field to new strokes (e.g., `engine: 'physic'`) so the adapter knows which rendering path to use.
 
 **Warning signs:**
-- Cmd+Z after dragging a bezier handle does nothing (no undo was pushed)
-- Cmd+Z steps through individual sub-pixel movements instead of undoing the whole drag
-- Multiple Cmd+Z required to undo what feels like one operation
+TypeScript compile errors cascade through 26+ files referencing paint types. Import autocompletion picks the wrong `PaintStroke` type. Existing project files fail to render after the swap.
 
 **Phase to address:**
-Bezier/Spline Stroke Path Editing phase. Also retroactively fix stroke drag/transform undo in the same phase.
+Engine swap phase -- adapter layer must be the first thing built, before any rendering integration.
 
 ---
 
-### Pitfall 6: Non-Uniform Scale Breaks perfect-freehand Stroke Rendering
+### Pitfall 6: Sidecar paint data becomes unrenderable or silently corrupted
 
 **What goes wrong:**
-The existing uniform scale in PaintOverlay scales all point coordinates by the same factor and also scales `stroke.size`. Non-uniform scale (different X and Y scale factors) cannot simply scale point coordinates and brush size -- perfect-freehand generates stroke outlines based on a single `size` parameter and assumes circular tips. Applying `scaleX=2, scaleY=1` to the points but keeping `size` unchanged produces strokes that look squished rather than stretched, because the outline calculation doesn't know about the aspect ratio change.
+Existing projects have paint sidecar files (`paint/{layer-uuid}/frame-NNN.json`) containing strokes with perfect-freehand parameters (thinning, smoothing, streamline, etc.). If the new engine cannot render these strokes, users lose all their paint work when opening old projects. If the migration is partial (some frames render, some crash), saves may overwrite the old format with partially-converted data, and there is no rollback.
 
 **Why it happens:**
-`perfect-freehand`'s `getStroke()` takes a scalar `size`, not a vector. The outline algorithm generates equidistant perpendicular offsets from the centerline. Non-uniform scaling of input points changes the centerline shape but the perpendicular offsets remain isotropic.
+`paintPersistence.ts` reads/writes `PaintFrame` objects via `JSON.stringify/parse`. If `PaintFrame.elements` now expects new-engine fields but old files lack them, the deserializer either drops strokes silently or the renderer crashes on missing properties.
 
 **How to avoid:**
-1. **Apply non-uniform scale as a canvas transform, not a point mutation.** Instead of modifying `stroke.points[i]` directly, store `scaleX` and `scaleY` as stroke metadata and apply `ctx.scale(scaleX, scaleY)` before rendering. This correctly stretches the entire rendered output including the outline thickness.
-2. **If storing per-stroke transform metadata**, update the PaintStroke type with an optional `transform?: { scaleX: number; scaleY: number; rotation: number; translateX: number; translateY: number }` field. This is cleaner than baking transforms into points.
-3. **For the p5.brush FX pipeline**: the per-stroke transform must be passed to `renderFrameFx()` so the p5.brush canvas also applies it. p5.brush's `brush.push()` and `brush.pop()` manage transform state.
-4. **Hit testing must account for the transform.** `findStrokeAtPoint()` currently checks raw point coordinates. With per-stroke transforms, the test point must be inverse-transformed before distance checks.
+1. Keep backward-compatible reading: the adapter must render BOTH old-format strokes (with `PaintStrokeOptions`) and new-format strokes (with `BrushOpts`). Detect format by presence/absence of the `engine: 'physic'` discriminator.
+2. Never auto-migrate sidecar files on load. Old strokes stay in old format until explicitly re-drawn by the user.
+3. The `elements` array already supports mixed types (`PaintElement = PaintStroke | PaintShape | PaintFill`) -- add a new union variant for new-engine strokes rather than modifying `PaintStroke`.
+4. Before removing perfect-freehand rendering code, test with at least 3 existing projects that have paint data.
+5. If a .mce format version bump is needed, write a migration that handles the case where sidecar files are in old format (the migration should be no-op for sidecars -- only the main .mce metadata changes).
 
 **Warning signs:**
-- Strokes look distorted after non-uniform scale (outline thickness wrong)
-- FX strokes (watercolor, ink) don't match the flat stroke's transform
-- Select tool can't click on transformed strokes (hit test misaligned)
-- Undo after non-uniform scale produces visual artifacts
+Opening an old project shows blank paint layers. Console shows JSON parse errors or "undefined is not a function" in paint rendering. Undo/redo breaks because snapshot format changed mid-session.
 
 **Phase to address:**
-Non-Uniform Scale phase. Must coordinate with Bezier Editing phase if both modify stroke data representation.
+Engine swap phase -- backward compatibility must be verified with existing projects before any new rendering code ships.
 
 ---
 
-### Pitfall 7: Paper Texture Compositing Order Conflicts with Luma Matte
+### Pitfall 7: Duplicate Preact instances from tsup bundling + Vite pre-bundling
 
 **What goes wrong:**
-Paper texture and luma matte compositing both operate on the paint layer's pixel output. If paper texture is applied BEFORE luma matte extraction, the texture's white/light areas inflate the luminance values, causing the matte to make the paint more transparent than intended (texture white = alpha 0). If applied AFTER, the texture correctly modifies only the visible paint but may introduce white fringe around semi-transparent matte edges.
+The paint library's `tsup.config.ts` externalizes `['preact', 'preact/hooks']` (confirmed). But if Vite's pre-bundling step re-bundles the paint library's imports (because `@efxlab/efx-physic-paint` is not in `optimizeDeps.exclude`), it can resolve a second copy of Preact. Two Preact instances means two separate signal graphs -- signals created in paint components do not react in editor components. The app appears to work but state updates are silently lost.
 
 **Why it happens:**
-Both operations transform the paint canvas pixels in ways that interact with each other. The compositing order is not obvious and there is no single "correct" answer -- it depends on the desired artistic effect.
+pnpm symlinks can create resolution paths where Vite's dependency optimizer finds Preact through two different filesystem paths (one in `app/node_modules/preact`, another via `packages/efx-physic-paint/node_modules/preact`). Even with workspace hoisting, pnpm's strict resolution may create phantom duplicates.
 
 **How to avoid:**
-1. **Apply luma matte first, then paper texture.** The matte extracts alpha from the raw paint. Then apply paper texture as a multiply blend (or other blend mode) on the already-matted result. This preserves the matte's alpha channel while adding surface texture to the visible paint.
-2. **Paper texture should NOT modify the alpha channel.** Apply it to RGB only, using `multiply` or `overlay` composite operation. If the texture image has its own alpha, composite it onto the paint RGB before the matte extraction, not after.
-3. **Provide a toggle for texture compositing order** in the properties panel if artists want texture-before-matte for specific effects.
-4. **Cache at the right level.** The FX cache currently stores the p5.brush output. Luma matte and paper texture should be applied downstream of the FX cache, in `previewRenderer.ts` at the paint layer compositing step. Don't bake them into the FX cache -- they should be re-applicable without re-rendering all brush FX.
+1. Add `@efxlab/efx-physic-paint` to Vite's `optimizeDeps.exclude` (planned).
+2. Add `resolve.dedupe: ['preact', 'preact/hooks', '@preact/signals']` to `vite.config.ts` to force single-instance resolution.
+3. After setup, verify in browser DevTools console: `window.__PREACT_DEVTOOLS__` should show exactly one Preact instance. Or simpler: add `console.log('preact loaded', import.meta.url)` temporarily to check for duplicate loads.
+4. The paint library's Preact is a `peerDependency` with `optional: true` -- for workspace usage, ensure the editor's Preact satisfies it. The version ranges are compatible (editor: `^10.28.4`, paint: `>=10.0.0`).
 
 **Warning signs:**
-- Paper texture makes strokes invisible (texture white overrides matte alpha)
-- Visible "halo" of texture pattern around matte edges
-- Changing paper texture requires full FX re-render (should be instant)
+Paint engine Preact components render but don't update when editor signals change. `useSignal()` in paint code creates orphaned signal nodes. Two "preact" entries in Vite's dep optimization log.
 
 **Phase to address:**
-Paper Texture phase must come AFTER or concurrent with Luma Matte phase. The compositing pipeline design must account for both.
+Monorepo scaffold phase -- verify single-instance resolution before any feature work.
 
 ---
 
-### Pitfall 8: Alt+Drag Duplicate Stroke Creates Ghost References in Undo History
+### Pitfall 8: p5.brush removal breaks the entire FX pipeline (not just rendering)
 
 **What goes wrong:**
-Alt+drag to duplicate a stroke needs to: (1) deep-clone the selected strokes with new IDs, (2) add them to the frame, (3) select the clones (deselecting originals), (4) begin dragging the clones. If the undo action for the duplicate references the clone objects by reference and the drag then mutates those objects' points in-place, undoing the duplicate removes the elements but the undo closure for the drag still holds references to the now-removed elements. Subsequent redo of the drag tries to mutate objects that no longer exist in the frame's elements array.
+`brushP5Adapter.ts` is not a thin wrapper -- it implements spectral pigment mixing (Kubelka-Munk), watercolor bleed simulation, paper texture grain, flow field distortion, and per-frame FX caching. Removing p5.brush without replacing ALL of these capabilities leaves: `renderFrameFx()` undefined (breaks `previewRenderer.ts` and `exportRenderer.ts`), FX cache producing blank frames, and all brush styles except 'flat' non-functional. The cascade affects 26 files.
 
 **Why it happens:**
-The existing drag code mutates `stroke.points[i]` in-place during pointermove. The undo system's closures capture references to these same stroke objects. After undo of the add, the stroke is removed from `frameData.elements` but the undo closure for the drag still references the detached object.
+p5.brush integration touches: `brushP5Adapter.ts` (the adapter), `paintRenderer.ts` (compositing), `previewRenderer.ts` (preview), `exportRenderer.ts` (export), `PaintOverlay.tsx` (drawing), `PaintProperties.tsx` (style selection), `paintStore.ts` (FX cache), `OnionSkinOverlay.tsx` (onion skin rendering), and the type definitions. It is an entire rendering subsystem, not a single library call.
 
 **How to avoid:**
-1. **Duplicate + drag must be a single compound undo action.** On pointerdown with Alt held: snapshot the frame state, clone strokes, add to frame, begin drag. On pointerup: push ONE undo action that restores the entire frame to the pre-duplicate snapshot. This avoids the two-action reference problem entirely.
-2. **Deep-clone with `structuredClone()` for the undo snapshot**, not reference copies. The existing `pushAction` undo closures in `addElement` use `filter(e => e.id !== element.id)` which works for add/remove, but drag mutations are in-place and need snapshot-based undo.
-3. **Generate new IDs with `crypto.randomUUID()` for clones** (already the pattern used elsewhere).
-4. **Invalidate FX cache after clone creation** -- new strokes with FX need re-rendering.
+1. Map each p5.brush capability to its efx-physic-paint equivalent BEFORE removing any code:
+   - Spectral mixing (Kubelka-Munk) -> efx-physic-paint wet paint physics (different model but similar visual result)
+   - Watercolor bleed -> efx-physic-paint diffusion + fluid solver
+   - Paper texture grain -> efx-physic-paint paper configuration (`PaperConfig`)
+   - Per-stroke rendering -> efx-physic-paint `EfxPaintEngine` stroke replay
+2. Build a new adapter (`paintPhysicAdapter.ts`) that exports the same interface as `brushP5Adapter.ts` -- specifically `renderFrameFx(layerId, frame, elements, width, height): ImageData | null`.
+3. Keep both adapters alive during development. Use a runtime flag or per-stroke `engine` field to route rendering.
+4. Only remove p5.brush after all 6 brush styles render correctly through the new engine AND export produces matching output.
+5. The FX cache invalidation logic stays the same -- only the rendering backend changes.
 
 **Warning signs:**
-- Undo after Alt+drag removes original strokes instead of clones
-- Redo after undo shows strokes at wrong positions
-- FX cache shows stale rendering after duplicate (missing invalidation)
+Brush styles other than 'flat' render as solid blobs. Watercolor bleed produces hard edges. Export renders differ from preview. Onion skin shows blank frames.
 
 **Phase to address:**
-Duplicate Stroke (Alt+Move) phase.
+Engine swap phase -- build new adapter first, keep p5.brush as fallback, remove only after confirmed feature parity.
 
 ---
 
-### Pitfall 9: Keyboard Shortcut Conflicts in Paint Edit Mode
+### Pitfall 9: Eraser tool compositing model incompatibility
 
 **What goes wrong:**
-New features add new keyboard shortcuts that conflict with existing paint mode shortcuts. The `isPaintEditMode()` guard in `shortcuts.ts` currently only guards `F` (fit toggle, conflicts with flat preview) and `M` (motion blur, potential paint conflict). New features may add: `B` for bezier tool, `V` for select tool, `A` for select-all, `D` for duplicate, `H` for hide stroke -- all of which are common shortcuts that may conflict with existing global bindings or each other.
+The editor implements eraser via Canvas 2D `globalCompositeOperation = 'destination-out'` on an offscreen canvas (`paintRenderer.ts`). efx-physic-paint has its own `'erase'` tool that works at the pixel buffer level (modifying wet buffer alpha directly). If both systems try to handle erasing, strokes either erase twice (double transparency) or not at all. The offscreen canvas compositing in `OnionSkinOverlay.tsx` also depends on the current eraser compositing model.
 
 **Why it happens:**
-`isPaintEditMode()` checks if a paint layer is selected, NOT if paint mode is active. This means global shortcuts are suppressed even when just viewing a paint layer in the sidebar, before entering paint mode. The check should arguably be `paintStore.paintMode.peek()` instead. Additionally, new tool-specific shortcuts (bezier handles, stroke list) add more keys that need guarding.
+The eraser is not just a rendering concern -- it interacts with compositing order, undo/redo snapshots, onion skin rendering, and the FX cache. The two engines have fundamentally different eraser models (Canvas 2D compositing vs. pixel buffer mutation).
 
 **How to avoid:**
-1. **Audit ALL new keyboard shortcuts against the existing shortcut map** in `shortcuts.ts` and `ShortcutsOverlay.tsx`. There are 30+ existing bindings.
-2. **Guard new shortcuts with `isPaintEditMode()`** or a more specific `isPaintToolActive(toolName)` check.
-3. **For the stroke list panel:** if it uses keyboard shortcuts (Delete for remove, arrows for navigation), those MUST check whether the stroke list panel is focused/active vs. the timeline/canvas having focus. Otherwise Delete could delete strokes when the user meant to delete a keyframe.
-4. **Consider a focus-based shortcut scope** rather than global guards. The current approach of checking mode flags in every handler doesn't scale.
+1. Decide early: erasing handled by efx-physic-paint's native erase tool (preferred -- participates in wet paint physics), or by the editor's Canvas 2D compositing (simpler but loses physics interaction).
+2. If using the engine's eraser: update `paintRenderer.ts` to NOT apply `destination-out` for new-engine strokes. Let the engine composite erase strokes internally.
+3. Keep the old eraser rendering path for legacy strokes (backward compatibility).
+4. The undo model changes: with the old eraser, undo just removes the eraser stroke from `elements[]`. With the engine's eraser, undo must either replay all strokes from scratch or snapshot the engine's pixel buffers before the erase. Test eraser + undo thoroughly.
 
 **Warning signs:**
-- Pressing a key in the stroke list triggers a global shortcut (e.g., Delete removes a layer)
-- Pressing a paint tool shortcut while typing in a stroke rename field
-- JKL shuttle controls activate while dragging bezier handles
+Eraser strokes appear as black marks instead of transparent. Undoing an eraser does not restore the erased paint. Eraser works in preview but fails in export.
 
 **Phase to address:**
-Every phase that adds keyboard interactions. Particularly critical for Stroke List Panel and Bezier Editing phases.
+Engine swap phase -- eraser integration should be a dedicated sub-task, not folded into general stroke rendering.
+
+---
+
+### Pitfall 10: pnpm overrides in workspace package are silently ignored
+
+**What goes wrong:**
+The editor's `app/package.json` has `pnpm.overrides` forcing `@efxlab/motion-canvas-core: "4.0.0"`, `preact: "^10.28.4"`, and `@preact/signals: "^2.8.1"`. In a pnpm workspace, overrides defined in a workspace member's `package.json` are **not applied** -- they must be in the workspace root `package.json` or `pnpm-workspace.yaml`. The Motion Canvas packages have `workspace:*` references in their internal dependencies that were previously resolved by these overrides. Without them, `pnpm install` may pull wrong versions or fail.
+
+**Why it happens:**
+pnpm workspace resolution rules: the root `package.json` (or `pnpm-workspace.yaml` `overrides` field) is the only place overrides are respected. Child package overrides are ignored for workspace-wide resolution.
+
+**How to avoid:**
+1. Move the entire `pnpm.overrides` block from `app/package.json` to the root `package.json`.
+2. After `pnpm install`, verify: `pnpm ls @efxlab/motion-canvas-core --filter efx-motion-editor` shows exactly `4.0.0`.
+3. Keep the overrides in `app/package.json` as well (they are harmless and serve as documentation), but the root overrides are what actually takes effect.
+4. Also move the `packageManager` field to root `package.json` (already planned in the spec).
+
+**Warning signs:**
+Vite fails with "Cannot find module @efxlab/motion-canvas-core" or wrong version. The `fix-preact-optimize-conflict` Vite plugin stops working. Motion Canvas player renders blank canvas.
+
+**Phase to address:**
+Monorepo scaffold phase -- verify all existing functionality works before adding new packages.
 
 ## Technical Debt Patterns
 
-Shortcuts that seem reasonable but create long-term problems.
-
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Mutating stroke.points in-place during drag | Fast, no allocation | Undo system can't snapshot; reference-sharing bugs between undo closures | Never -- use snapshot-on-pointerdown + restore-on-undo |
-| Baking luma matte into the FX cache | One fewer compositing step | Forces full p5.brush re-render when toggling matte on/off | Never -- keep matte downstream of FX cache |
-| Skipping `paintVersion++` during pointermove for performance | Fewer signal notifications | Canvas freezes during drag; users think app is broken | Never -- batch with `requestAnimationFrame` if too frequent |
-| Loading paper textures synchronously from disk via Tauri FS | Simple code path | Blocks main thread; textures can be large (4K+ images) | Never -- async load with loading indicator |
-| Storing per-stroke transform in the points array (baked) | No schema change | Irreversible; can't adjust transform later; breaks undo | Only for "flatten transform" as an explicit user action |
+| Aliasing paint source TS instead of built dist | True HMR, faster dev loop | Paint lib must be Vite-compatible TS, publishes untested build artifact | Development only, CI/build must use dist |
+| Keeping both p5.brush and efx-physic-paint in deps | Gradual migration, fallback rendering | Bundle size doubles (~200KB extra), two rendering paths to maintain | During migration only, remove p5.brush within same milestone |
+| Storing legacy and new stroke formats in same PaintFrame | No sidecar migration needed | Runtime type-checking overhead, adapter complexity | Acceptable long-term -- mixed union arrays are idiomatic TypeScript |
+| Skipping .mce format version bump for engine swap | Fewer migration edge cases | Implicit format change not tracked in version number | Acceptable IF only sidecar data changes (no MceProject field changes) |
+| Not deleting `p5.brush` type declarations after removal | Fewer files to touch | Stale types confuse future contributors | Never -- clean up `p5brush.d.ts` when removing the library |
 
 ## Integration Gotchas
 
-Common mistakes when connecting to existing subsystems.
-
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| paintStore.paintVersion | Forgetting to bump after visual mutation | Create `_notifyVisualChange(layerId, frame)` helper that does markDirty + paintVersion++ + invalidateFrameFxCache in one call |
-| history.pushAction | Pushing during pointermove (60 entries/sec) | Use startCoalescing/stopCoalescing or snapshot-on-down + single-push-on-up |
-| SortableJS (stroke list) | Not calling `.destroy()` on component unmount | useEffect cleanup; leaked instances cause phantom drag events |
-| p5.brush FX cache | Adding new stroke without invalidating | Call `invalidateFrameFxCache(layerId, frame)` after ANY stroke mutation (add, remove, clone, reorder, transform) |
-| isPaintEditMode() guard | Not guarding new shortcuts | Every new single-key shortcut in paint-related features must check this |
-| Tauri FS (paper textures) | Sync reads from `~/.config/efx-motion/papers/*` | Use `readDir` + `readFile` via Tauri async FS API; cache loaded textures as `HTMLImageElement` |
-| previewRenderer paint layer section | Not applying luma matte before drawImage | Insert matte extraction step between renderPaintFrameWithBg and ctx.drawImage in the `layer.type === 'paint'` branch |
-| selectedStrokeIds signal | Setting to same Set reference (Preact Signals won't notify) | Always create `new Set(...)` when modifying; never mutate existing Set |
+| tsup watch + Vite HMR | Expecting automatic HMR propagation from tsup dist rebuilds | Alias to source files for dev, or accept manual Vite restart |
+| pnpm workspace + Tauri CLI | Running `tauri dev` from workspace root fails to find `src-tauri/` | Use root script: `"tauri": "pnpm --filter efx-motion-editor tauri"`, or cd into `app/` first |
+| EfxPaintEngine Canvas context | Assuming the engine shares the editor's Canvas 2D context | The engine manages its own internal canvases and buffers; extract results via `getImageData()` or `toDataURL()` |
+| Preact signals across package boundary | Creating signals inside the paint library that should react in editor | Paint library should be signal-agnostic (accept callbacks/plain values); signals stay in editor stores |
+| Undo/redo with engine buffer state | Snapshotting only the stroke list, not the engine's wet paint buffers | Either replay all strokes from scratch on undo (slow but correct) or snapshot engine canvas alongside stroke data |
+| efx-physic-paint Vite version mismatch | Paint lib devDependency is Vite 8, editor uses Vite 5 | This is fine -- tsup builds the library, Vite version only matters for the paint lib's demo app. But do NOT hoist Vite to workspace root. |
+| `pnpm --filter` for paint lib builds | Using `pnpm build` in root runs both packages but editor build depends on paint dist existing | Root build script must chain: `pnpm --filter @efxlab/efx-physic-paint build && pnpm --filter efx-motion-editor build` (already in spec) |
 
 ## Performance Traps
 
-Patterns that work at small scale but fail as usage grows.
-
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| getImageData/putImageData per frame for luma matte | Jittery playback, dropped frames | Cache matte result per frame; invalidate only on paint change | >720p at 24fps (8.3M ops/frame at 1080p) |
-| Paper texture loaded from disk every frame | Visible hitching during playback | Load once into HTMLImageElement cache; reuse across frames | Any resolution with disk I/O latency |
-| Re-rendering all FX strokes when one stroke moves | Multi-second delay after drag | Only invalidate FX cache if moved stroke has FX style; flat strokes don't need FX re-render | >10 FX strokes per frame |
-| Stroke list panel re-rendering entire list on paintVersion change | Sidebar becomes sluggish | Use memo/shouldComponentUpdate on individual stroke list items; only re-render changed items | >20 strokes per frame |
-| Bezier handle drag triggering full preview render chain | Laggy handle movement | requestAnimationFrame throttle on preview; render only the paint overlay during drag, not the full compositor | Any frame with FX layers or motion blur |
-| SortableJS DOM sync on every stroke reorder | Visible flicker in list | Use SortableJS onEnd (not onSort/onChange); batch DOM updates | >15 strokes in list |
+| Re-creating EfxPaintEngine per frame | Preview stutters, high GC pressure, Float32Array allocation spikes | Create engine once per paint layer lifecycle, reuse across frames with `clear()` | Immediately at 15fps playback |
+| Full stroke replay on every frame navigation | Multi-second delay when scrubbing timeline | Cache rendered bitmaps per frame (existing FX cache pattern), invalidate only dirty frames | >10 strokes per frame |
+| Float32Array allocation in physics solver | Memory spikes, GC pauses during painting | Pre-allocate WetBuffers, TmpBuffers, FluidBuffers at engine init; reuse via `fill(0)` | Canvas > 2000x2000 (each buffer = W*H*4 bytes * ~10 buffers = 160MB at 2K) |
+| Serializing WetBuffers to sidecar JSON | 50MB+ JSON files, save takes seconds, JSON.stringify OOM | NEVER persist wet buffers -- persist only stroke data, re-render from strokes on load | Any resolution with >5 strokes |
+| Running physics simulation during playback | CPU pegged at 100%, dropped frames | Physics simulation is for painting interaction only; playback should use cached/pre-rendered frames | Any fps during playback |
 
 ## UX Pitfalls
 
-Common user experience mistakes in this domain.
-
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Alt+drag duplicates on first pixel of movement | Accidental duplicates when Alt is held for other reasons | Require minimum 3px drag threshold before committing duplicate |
-| Stroke list shows internal IDs instead of names | Unusable list for identifying strokes | Auto-name strokes by tool + number (e.g., "Brush 1", "Ink 3") |
-| Bezier handles visible on all strokes at once | Visual clutter, impossible to edit specific stroke | Show handles only on selected stroke; dim or hide unselected |
-| Paper texture preview not shown in properties panel | Users can't see what texture looks like before applying | Show small thumbnail preview next to texture name in picker |
-| Non-uniform scale doesn't show axis constraints | Users can't tell which axis they're scaling | Show different cursor for horizontal vs vertical scale handles |
-| Delete key in stroke list deletes wrong thing | Key photo, transition, or layer gets deleted instead of stroke | Route Delete through stroke list focus state before falling through to handleDelete() cascade in shortcuts.ts |
-| Luma matte toggle has no visual feedback | Users don't know if matte is active or not | Show indicator in paint layer badge/icon; preview difference when toggling |
-| Sequence-scoped layer creation is invisible | Users don't realize layer was added only to isolated sequence | Show sequence name in confirmation toast; highlight target sequence |
+| Brush parameter names change (thinning/smoothing -> waterAmount/dryAmount) | User's muscle memory broken, existing UI labels meaningless | Map old concepts to new engine params in the UI layer; keep user-facing names intuitive (e.g., "wetness" not "waterAmount") |
+| Paper texture not loading (async image fetch for PaperConfig.url) | Paint layer renders without texture, strokes look different from expected | Pre-load paper textures during project open; show loading state; cache in memory |
+| Physics simulation visible during fast drawing | Wet paint spreads while user is still drawing, feels sluggish or unpredictable | Defer diffusion/fluid simulation to stroke-end (pointerup), or reduce simulation frequency during active drawing |
+| Transparency default changes compositing behavior | Existing projects with white-background paint layers look different when composited over photos | Default new engine to opaque white background (matching current `DEFAULT_PAINT_BG_COLOR = '#FFFFFF'`); transparency is opt-in |
+| Missing brush styles during migration | Users try watercolor/ink/charcoal and get fallback flat rendering | Show clear "style not yet available in new engine" message rather than silent degradation |
 
 ## "Looks Done But Isn't" Checklist
 
-Things that appear complete but are missing critical pieces.
-
-- [ ] **Luma matte:** Often missing un-premultiply step -- verify pastel colors survive round-trip by checking specific RGB values before/after
-- [ ] **Luma matte:** Often missing export pipeline integration -- verify luma matte is applied in exportRenderer.ts, not just previewRenderer.ts
-- [ ] **Paper texture:** Often missing Retina/HiDPI scaling -- verify texture tiles correctly at 2x DPI (common: texture appears half-size on Retina)
-- [ ] **Paper texture:** Often missing cache invalidation when user changes texture file -- verify switching textures updates preview immediately
-- [ ] **Stroke list panel:** Often missing synchronization with canvas selection -- verify clicking stroke in list selects it on canvas AND clicking on canvas selects it in list
-- [ ] **Stroke list panel:** Often missing FX cache invalidation after SortableJS reorder -- verify stroke order change triggers re-render of FX strokes
-- [ ] **Alt+drag duplicate:** Often missing FX state clone -- verify duplicated FX stroke retains style and fxState, not just points
-- [ ] **Non-uniform scale:** Often missing p5.brush FX rendering -- verify FX strokes render with correct transform (not just flat strokes)
-- [ ] **Bezier editing:** Often missing persistence -- verify bezier control points are saved in paint sidecar JSON and survive project reload
-- [ ] **Sequence-scoped creation:** Often missing undo -- verify Cmd+Z after sequence-scoped layer add removes the layer from the correct sequence
-- [ ] **All features:** Verify paintVersion is bumped on every visual change (automated: grep for element mutations without paintVersion++)
+- [ ] **Monorepo scaffold:** `pnpm tauri build` produces a working .app bundle -- dev mode working does NOT guarantee production build (asset protocol paths, CSP, frontendDist resolution)
+- [ ] **Monorepo scaffold:** `pnpm install --frozen-lockfile` passes from a clean clone (CI scenario)
+- [ ] **Engine swap:** All 6 brush styles (flat, watercolor, ink, charcoal, pencil, marker) render through new engine -- "flat works" is not done
+- [ ] **Engine swap:** Opening a v0.6.0 project with paint data renders ALL existing strokes -- test with real projects, not just empty ones
+- [ ] **Eraser tool:** Eraser works in preview AND export -- Canvas 2D compositing vs engine erasing may diverge between render paths
+- [ ] **Onion skinning:** Previous/next frame paint renders with correct opacity through new engine -- onion skin uses offscreen canvas compositing
+- [ ] **FX cache invalidation:** Changing a stroke triggers re-render of only that frame's cache, not all frames
+- [ ] **Bezier path editing:** Anchors/handles still work after engine swap -- bezier rendering is editor-side (fit-curve/bezier-js), not engine-side, but output must feed into new engine
+- [ ] **Export pipeline:** PNG sequence export with motion blur sub-frame accumulation produces correct output with new engine -- `exportRenderer.ts` has its own paint compositing path separate from `previewRenderer.ts`
+- [ ] **JSON brush format:** New brush presets load from JSON and render correctly; brush parameter changes persist across save/load
+- [ ] **Paper textures:** Paper images load from `PaperConfig.url`, render as expected, and survive project save/reopen
 
 ## Recovery Strategies
 
-When pitfalls occur despite prevention, how to recover.
-
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Premultiplied alpha color loss in matte | LOW | Switch from getImageData/putImageData to offscreen canvas + drawImage pipeline; no data model change needed |
-| Missing paintVersion bumps | LOW | Add `_notifyVisualChange` helper; find-and-replace direct mutations; 15-minute fix per callsite |
-| Undo history corruption from compound operations | MEDIUM | Refactor affected operations to use snapshot-based undo (structuredClone frame state); requires testing all undo paths |
-| SortableJS conflict between panels | LOW | Add group isolation and filter rules; test matrix of drag interactions; 30-minute fix |
-| Non-uniform scale baked into points (can't undo) | HIGH | Must migrate all existing stroke data to add transform metadata; write migration for saved projects; multi-hour effort |
-| Paper texture compositing order wrong | MEDIUM | Reorder compositing steps in previewRenderer; may need to adjust FX cache boundaries; 1-2 hour refactor |
+| Git history lost on rename | HIGH | Cannot recover after push without `git filter-repo`. Must redo rename in isolated commit. |
+| Lockfile corruption | LOW | Delete `pnpm-lock.yaml`, run `pnpm install`, commit fresh lockfile. Minor version drift possible. |
+| Duplicate Preact instances | MEDIUM | Add `resolve.dedupe: ['preact']` to Vite config. Restart dev server to clear module cache. |
+| Old strokes unrenderable | HIGH | If adapter not built, all paint data in existing projects is inaccessible. Must keep old rendering path as fallback. |
+| Stale FX cache after engine swap | LOW | Add engine version key to cache; invalidate all caches on engine change. |
+| Tauri build broken by path changes | MEDIUM | Revert `tauri.conf.json` changes; verify `frontendDist` and `beforeDevCommand`. Usually a 10-minute fix once identified. |
+| pnpm overrides not applied | LOW | Move overrides to root package.json, run `pnpm install`, verify with `pnpm ls`. |
+| Physics buffers OOM at high resolution | MEDIUM | Cap engine resolution to canvas viewport size; do NOT create engine at project resolution (e.g., 4K). Scale up on export only. |
 
 ## Pitfall-to-Phase Mapping
 
-How roadmap phases should address these pitfalls.
-
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Premultiplied alpha color loss | Luma Matte Compositing | Automated test: set known RGB+alpha via putImageData, read back, verify within tolerance |
-| Missing paintVersion (existing bug) | First task of first phase | Grep audit: every `frameData.elements` mutation has corresponding paintVersion++ |
-| Missing undo on reorder (existing bug) | Stroke List Panel (or earlier) | Manual test: reorder via buttons, Cmd+Z restores original order |
-| SortableJS instance conflicts | Stroke List Panel | Manual test: drag stroke while layer list visible; drag layer while stroke list visible |
-| Bezier drag undo flooding | Bezier Path Editing | Manual test: drag handle, Cmd+Z undoes entire drag in one step |
-| Non-uniform scale outline distortion | Non-Uniform Scale | Visual test: compare uniform vs non-uniform scaled stroke at same dimensions |
-| Paper + luma matte compositing order | Paper Texture (after Luma Matte) | Visual test: light strokes visible with both texture and matte enabled |
-| Alt+drag ghost references | Duplicate Stroke | Test sequence: Alt+drag, Cmd+Z, Cmd+Shift+Z -- no errors, correct visual state |
-| Keyboard shortcut conflicts | All phases with new shortcuts | Automated: enumerate all tinykeys bindings, verify no conflicts with isPaintEditMode guard |
+| Tauri CWD / path resolution | Monorepo scaffold | `pnpm tauri dev` starts successfully; Vite connects on :5173 |
+| Lockfile stale references | Monorepo scaffold | Fresh `pnpm install` from clean state; `--frozen-lockfile` passes |
+| Git history loss on rename | Monorepo scaffold (commit 1) | `git log --follow app/src/main.tsx` shows full pre-rename history |
+| Vite HMR with workspace packages | Monorepo scaffold | Edit paint engine source file, see change reflected in editor without restart |
+| PaintStroke type incompatibility | Engine swap (adapter layer) | TypeScript compiles with zero type errors after adapter is in place |
+| Sidecar data backward compat | Engine swap (backward compat) | v0.6.0 project opens and renders all paint strokes correctly |
+| Duplicate Preact instances | Monorepo scaffold | Single Preact instance verified in DevTools network/module tab |
+| p5.brush removal cascade | Engine swap (incremental) | All 6 brush styles render; FX cache produces correct bitmaps |
+| Eraser compositing conflict | Engine swap (eraser sub-task) | Eraser + undo/redo works in both preview and export |
+| pnpm overrides ignored in child | Monorepo scaffold | `pnpm ls @efxlab/motion-canvas-core` shows 4.0.0 |
 
 ## Sources
 
-- Direct codebase analysis of `paintStore.ts` (lines 155-204: moveElements* lack paintVersion++ and pushAction)
-- Direct codebase analysis of `shortcuts.ts` (lines 32-39: isPaintEditMode guard; lines 422, 439: existing guards)
-- Direct codebase analysis of `previewRenderer.ts` (lines 280-303: paint layer compositing pipeline)
-- Direct codebase analysis of `paintRenderer.ts` (lines 249-253: getImageData/putImageData for flood fill)
-- Direct codebase analysis of `PaintOverlay.tsx` (lines 787-821: in-place point mutation during drag, no undo push)
-- [Canvas getImageData premultiplied alpha quantization](https://dev.to/yoya/canvas-getimagedata-premultiplied-alpha-150b) -- HIGH confidence
-- [WHATWG HTML spec issue #5365: ImageData alpha premultiplication](https://github.com/whatwg/html/issues/5365) -- HIGH confidence
-- [MDN: putImageData lossy round-trip documentation](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/putImageData) -- HIGH confidence
-- [SortableJS nested instances issue #1303](https://github.com/SortableJS/Sortable/issues/1303) -- MEDIUM confidence
-- SPECS/FX-Paint-Compositing.md (project spec for luma matte approach)
-- Project memory: "Always bump paintVersion" and "Guard shortcuts in paint mode"
+- [Vite monorepo HMR issue #6479](https://github.com/vitejs/vite/issues/6479) -- symlink + HMR incompatibility
+- [Vite linked package HMR issue #13014](https://github.com/vitejs/vite/issues/13014) -- pnpm linked packages not triggering HMR
+- [Vite monorepo discussion #7155](https://github.com/vitejs/vite/discussions/7155) -- watching local dependency changes
+- [pnpm workspace docs](https://pnpm.io/workspaces) -- lockfile and override behavior
+- [Tauri monorepo discussion #7368](https://github.com/orgs/tauri-apps/discussions/7368) -- Tauri 2 monorepo integration patterns
+- [Tauri CLI pnpm workspace detection bug #12706](https://github.com/tauri-apps/tauri/issues/12706)
+- [Git rename best practices](https://medium.com/@rajsek/proper-way-to-rename-a-directory-in-git-repository-5bdec4c9cfd0)
+- [Adapter pattern for library migration](https://dev.to/rogeliogamez92/using-the-adapter-pattern-to-migrate-to-a-new-library-434a)
+- [pnpm peer dependency issues #3558](https://github.com/pnpm/pnpm/issues/3558) -- workspace peer deps behavior
+- Codebase inspection: `Application/src/types/paint.ts`, `Application/src/lib/brushP5Adapter.ts`, `Application/src/lib/paintPersistence.ts`, `Application/src/lib/paintRenderer.ts`, `Application/vite.config.ts`, `Application/src-tauri/tauri.conf.json`, `Application/src-tauri/Cargo.toml`
+- efx-physic-paint inspection: `src/types.ts` (PenPoint, BrushOpts, PaintStroke, WetBuffers, EngineState), `src/index.ts`, `tsup.config.ts`, `package.json`
 
 ---
-*Pitfalls research for: v0.6.0 Various Enhancements (luma matte, paper textures, stroke management, bezier editing, UX refinements)*
-*Researched: 2026-03-26*
+*Pitfalls research for: pnpm monorepo migration + paint engine replacement (efx-motion-editor v0.7.0)*
+*Researched: 2026-04-03*
