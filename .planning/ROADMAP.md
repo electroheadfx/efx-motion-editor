@@ -167,7 +167,11 @@ Plans:
   3. User can add new control points and delete existing ones to refine path detail
   4. Bezier edits support undo/redo with one undo entry per drag gesture (no undo flooding)
   5. Edited anchor points persist across project save/load via paint sidecar JSON
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 25-01-PLAN.md -- Install fit-curve/bezier-js, define BezierAnchor types, create bezierPath.ts math module
+- [ ] 25-02-PLAN.md -- Bezier-aware rendering, persistence, pen tool button, store conversion methods
+- [ ] 25-03-PLAN.md -- Pen tool interaction system: overlay, anchor/handle/segment editing, undo, shortcuts
 **UI hint**: yes
 
 ## Progress
@@ -187,4 +191,4 @@ Note: Phase 25 depends on Phase 22 (not 24), so Phases 23-24 and Phase 25 could 
 | 22. Foundation & Quick Wins | v0.6.0 | 5/5 | Complete    | 2025-03-26 |
 | 23. Stroke Interactions | v0.6.0 | 3/3 | Complete    | 2025-03-27 |
 | 24. Stroke List Panel | v0.6.0 | 3/3 | Complete    | 2025-03-27 |
-| 25. Bezier Path Editing | v0.6.0 | 0/? | Not started | - |
+| 25. Bezier Path Editing | v0.6.0 | 0/3 | Not started | - |
