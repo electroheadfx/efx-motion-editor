@@ -1,6 +1,6 @@
 # EFX Motion Editor
 
-A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame, apply **Hollywood-grade per-layer motion blur** with GLSL velocity shaders and sub-frame accumulation, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
+A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame with **bezier path editing** for precise shape refinement, apply **Hollywood-grade per-layer motion blur** with GLSL velocity shaders and sub-frame accumulation, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
 
 <!-- Screenshot: Main editor view -->
 
@@ -115,7 +115,9 @@ Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perf
 
 **Brush FX Styles** — Post-process FX workflow: draw flat strokes, select them, then apply artistic styles powered by [p5.brush](https://p5-brush.cargo.site/) with Kubelka-Munk spectral pigment mixing (blue + yellow = green, not gray). 6 brush styles: flat, watercolor, ink, charcoal, pencil, and marker. Per-style FX parameters (bleed, grain, scatter, field strength, edge darken) with real-time slider controls. Per-frame batch rendering ensures overlapping strokes get physically-correct spectral blending in a single GLSL pass.
 
-**Select Tool** — Click to select strokes, Cmd/Ctrl+click for multi-select, Cmd+A to select all. Selected elements can be moved (drag), resized (corner/edge handles for uniform/non-uniform scale), rotated (rotate handle above bounding box with custom cursor), recolored, resized via slider, and reordered (To Back / Backward / Forward / To Front). Rotation works on all element types: brush strokes rotate point-by-point, geometry shapes (rect, ellipse) rotate visually via canvas transform with proper hit-testing. Apply or change FX styles on selected strokes with instant re-render. Toggle flat/FX preview with F key.
+**Select Tool** — Click to select strokes, Cmd/Ctrl+click for multi-select, Cmd+A to select all. Selected elements can be moved (drag), resized (corner/edge handles for uniform/non-uniform scale), rotated (rotate handle above bounding box with custom cursor), recolored, resized via slider, and reordered (To Back / Backward / Forward / To Front). Alt+drag to duplicate any selected stroke. Rotation works on all element types: brush strokes rotate point-by-point, geometry shapes (rect, ellipse) rotate visually via canvas transform with proper hit-testing. Apply or change FX styles on selected strokes with instant re-render. Toggle flat/FX preview with F key.
+
+**Bezier Path Editing** — Convert freehand strokes to editable bezier curves with the pen tool. Drag anchor points and control handles to reshape stroke paths with real-time visual feedback. Add new control points by clicking on path segments, delete points with Backspace. Progressive simplify button reduces path complexity incrementally. Supports smooth and corner anchor types with handle breaking. All bezier edits support undo/redo with one entry per drag gesture. Edited anchors persist across project save/load via paint sidecar JSON.
 
 **Paint Mode** — Sticky edit mode (P key or toolbar button) that locks focus to the paint layer. Canvas controls are replaced by a dedicated paint toolbar. Exit via ESC, P key, or "Exit Paint Mode" button. Sequence overlay (O key) shows reference frames underneath paint at configurable opacity. Copy strokes to next frame for animation workflows. Configurable solid paint background color.
 
@@ -198,7 +200,7 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | GPU Effects | WebGL2 (GLSL shaders, GPU blur, per-layer motion blur) |
 | Native Backend | Rust, Tauri 2.0 |
 | Video Export | FFmpeg (auto-provisioned) |
-| Paint Engine | perfect-freehand (flat strokes), p5.brush (FX styles with spectral mixing) |
+| Paint Engine | perfect-freehand (flat strokes), p5.brush (FX styles with spectral mixing), fit-curve + bezier-js (path editing) |
 | Project Format | `.mce` v15 (progressive JSON with backward compat v1-v15) |
 
 ## Prerequisites
@@ -244,7 +246,7 @@ efx-motion-editor/
 │   │   │   ├── shader-browser/  # GLSL shader browser window
 │   │   │   ├── overlay/         # Shortcuts overlay, fullscreen
 │   │   │   └── shared/          # NumericInput, ColorPickerModal, SectionLabel
-│   │   ├── stores/              # Reactive state (12 Preact Signal stores)
+│   │   ├── stores/              # Reactive state (13 Preact Signal stores)
 │   │   ├── lib/                 # Core logic
 │   │   │   ├── shaders/         # GLSL shader library
 │   │   │   │   ├── generators/  # 10 procedural generator shaders
@@ -262,6 +264,7 @@ efx-motion-editor/
 │   │   │   ├── paintRenderer.ts    # Paint stroke/shape/fill renderer
 │   │   │   ├── brushP5Adapter.ts   # p5.brush FX adapter (spectral mixing, multi-pass)
 │   │   │   ├── paintFloodFill.ts   # Stack-based flood fill algorithm
+│   │   │   ├── bezierPath.ts       # Bezier curve math (fit-curve conversion, sampling, editing)
 │   │   │   ├── paintPersistence.ts # Sidecar file I/O for paint data
 │   │   │   ├── playbackEngine.ts   # rAF playback with delta accumulation
 │   │   │   └── ...
