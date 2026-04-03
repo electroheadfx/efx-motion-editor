@@ -61,7 +61,7 @@ Built-in generator effects (film grain, particles, lines, dots, vignette) and ad
 | Indefinite | Abstract fractal cloud tunnel with warm volumetric glow |
 | Zippy Zaps | Electric fractal lightning with vibrant color cycling |
 
-The shader library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](Application/src/lib/shaders/SHADER-SPEC.md) for how to add new shaders.
+The shader library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](app/src/lib/shaders/SHADER-SPEC.md) for how to add new shaders.
 
 <!-- Screenshot: GLSL shader browser with animated previews -->
 
@@ -200,7 +200,8 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | GPU Effects | WebGL2 (GLSL shaders, GPU blur, per-layer motion blur) |
 | Native Backend | Rust, Tauri 2.0 |
 | Video Export | FFmpeg (auto-provisioned) |
-| Paint Engine | perfect-freehand (flat strokes), p5.brush (FX styles with spectral mixing), fit-curve + bezier-js (path editing) |
+| Paint Engine | @efxlab/efx-physic-paint (spectral pigment mixing via p5.brush), perfect-freehand (flat strokes), fit-curve + bezier-js (path editing) |
+| Monorepo | pnpm workspaces, tsup (package builds) |
 | Project Format | `.mce` v15 (progressive JSON with backward compat v1-v15) |
 
 ## Prerequisites
@@ -215,67 +216,78 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 ```bash
 # Clone the repository
 git clone https://github.com/your-username/efx-motion-editor.git
-cd efx-motion-editor/Application
+cd efx-motion-editor
 
-# Install dependencies
+# Install dependencies (from workspace root)
 pnpm install
 
+# Build the paint engine
+pnpm --filter @efxlab/efx-physic-paint build
+
 # Run in development mode
+cd app
 pnpm tauri dev
 ```
 
 ## Building for Production
 
 ```bash
-cd Application
+cd app
 pnpm tauri build
 ```
 
-The built application will be available in `Application/src-tauri/target/release/`.
+The built application will be available in `app/src-tauri/target/release/`.
 
 ## Project Structure
 
 ```
-efx-motion-editor/
-├── Application/
-│   ├── src/                     # Frontend (Preact + TypeScript)
-│   │   ├── components/          # UI components
-│   │   │   ├── layout/          # EditorShell, LeftPanel, TimelinePanel, CanvasArea
-│   │   │   ├── timeline/        # TimelineCanvas, TimelineRenderer, AddFxMenu
-│   │   │   ├── sidebar/         # Properties panels, FX controls, keyframe nav
-│   │   │   ├── shader-browser/  # GLSL shader browser window
-│   │   │   ├── overlay/         # Shortcuts overlay, fullscreen
-│   │   │   └── shared/          # NumericInput, ColorPickerModal, SectionLabel
-│   │   ├── stores/              # Reactive state (13 Preact Signal stores)
-│   │   ├── lib/                 # Core logic
-│   │   │   ├── shaders/         # GLSL shader library
-│   │   │   │   ├── generators/  # 10 procedural generator shaders
-│   │   │   │   ├── fx-image/    # 7 image filter shaders
-│   │   │   │   ├── transitions/ # 18 GL transition shaders
+efx-motion-editor/                # pnpm workspace root
+├── app/                          # Main Tauri application (formerly Application/)
+│   ├── src/                      # Frontend (Preact + TypeScript)
+│   │   ├── components/           # UI components
+│   │   │   ├── layout/           # EditorShell, LeftPanel, TimelinePanel, CanvasArea
+│   │   │   ├── timeline/         # TimelineCanvas, TimelineRenderer, AddFxMenu
+│   │   │   ├── sidebar/          # Properties panels, FX controls, keyframe nav
+│   │   │   ├── shader-browser/   # GLSL shader browser window
+│   │   │   ├── overlay/          # Shortcuts overlay, fullscreen
+│   │   │   └── shared/           # NumericInput, ColorPickerModal, SectionLabel
+│   │   ├── stores/               # Reactive state (13 Preact Signal stores)
+│   │   ├── lib/                  # Core logic
+│   │   │   ├── shaders/          # GLSL shader library
+│   │   │   │   ├── generators/   # 10 procedural generator shaders
+│   │   │   │   ├── fx-image/     # 7 image filter shaders
+│   │   │   │   ├── transitions/  # 18 GL transition shaders
 │   │   │   │   └── SHADER-SPEC.md
-│   │   │   ├── glslRuntime.ts   # WebGL2 shader rendering engine
-│   │   │   ├── shaderLibrary.ts # Shader registry and types
-│   │   │   ├── previewRenderer.ts  # Canvas 2D compositing engine
-│   │   │   ├── exportRenderer.ts   # Export pipeline
-│   │   │   ├── glBlur.ts        # GPU-accelerated Gaussian blur
-│   │   │   ├── glMotionBlur.ts  # WebGL2 GLSL directional motion blur
-│   │   │   ├── motionBlurEngine.ts # Velocity computation & sub-frame accumulation
-│   │   │   ├── fxGenerators.ts  # CPU FX generators (grain, particles, etc.)
-│   │   │   ├── paintRenderer.ts    # Paint stroke/shape/fill renderer
-│   │   │   ├── brushP5Adapter.ts   # p5.brush FX adapter (spectral mixing, multi-pass)
-│   │   │   ├── paintFloodFill.ts   # Stack-based flood fill algorithm
-│   │   │   ├── bezierPath.ts       # Bezier curve math (fit-curve conversion, sampling, editing)
-│   │   │   ├── paintPersistence.ts # Sidecar file I/O for paint data
-│   │   │   ├── playbackEngine.ts   # rAF playback with delta accumulation
+│   │   │   ├── glslRuntime.ts    # WebGL2 shader rendering engine
+│   │   │   ├── shaderLibrary.ts  # Shader registry and types
+│   │   │   ├── previewRenderer.ts   # Canvas 2D compositing engine
+│   │   │   ├── exportRenderer.ts    # Export pipeline
+│   │   │   ├── glBlur.ts         # GPU-accelerated Gaussian blur
+│   │   │   ├── glMotionBlur.ts   # WebGL2 GLSL directional motion blur
+│   │   │   ├── motionBlurEngine.ts  # Velocity computation & sub-frame accumulation
+│   │   │   ├── fxGenerators.ts   # CPU FX generators (grain, particles, etc.)
+│   │   │   ├── paintRenderer.ts     # Paint stroke/shape/fill renderer
+│   │   │   ├── brushP5Adapter.ts    # p5.brush FX adapter (spectral mixing, multi-pass)
+│   │   │   ├── paintFloodFill.ts    # Stack-based flood fill algorithm
+│   │   │   ├── bezierPath.ts        # Bezier curve math (fit-curve conversion, sampling, editing)
+│   │   │   ├── paintPersistence.ts  # Sidecar file I/O for paint data
+│   │   │   ├── playbackEngine.ts    # rAF playback with delta accumulation
 │   │   │   └── ...
-│   │   ├── types/               # TypeScript type definitions
-│   │   └── scenes/              # Motion Canvas preview scene
-│   └── src-tauri/               # Native backend (Rust + Tauri 2.0)
+│   │   ├── types/                # TypeScript type definitions
+│   │   └── scenes/               # Motion Canvas preview scene
+│   └── src-tauri/                # Native backend (Rust + Tauri 2.0)
 │       └── src/
-│           ├── commands/        # IPC command handlers
-│           ├── models/          # Data structures (project format)
-│           └── services/        # File I/O, image processing, thumbnails
-└── .planning/                   # GSD project planning
+│           ├── commands/         # IPC command handlers
+│           ├── models/           # Data structures (project format)
+│           └── services/         # File I/O, image processing, thumbnails
+├── packages/
+│   └── efx-physic-paint/         # @efxlab/efx-physic-paint — spectral pigment mixing engine
+│       ├── src/                  # Brush, core, engine, render, animation, util modules
+│       ├── tsup.config.ts        # Build config (ESM + CJS)
+│       └── package.json
+├── package.json                  # Workspace root (scripts, overrides, packageManager)
+├── pnpm-workspace.yaml           # Workspace definition (app, packages/*)
+└── .planning/                    # GSD project planning
 ```
 
 ## License
