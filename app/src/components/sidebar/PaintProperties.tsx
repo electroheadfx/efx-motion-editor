@@ -4,7 +4,7 @@ import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 import {paintStore} from '../../stores/paintStore';
 import {timelineStore} from '../../stores/timelineStore';
-import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_STROKE_OPTIONS} from '../../types/paint';
+import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS} from '../../types/paint';
 import type {PaintToolType, PaintStroke, PaintShape, PaintStrokeOptions} from '../../types/paint';
 import type {Layer} from '../../types/layer';
 import {StrokeList} from './StrokeList';
@@ -14,7 +14,7 @@ const BRUSH_TOOLS: PaintToolType[] = ['brush', 'eraser'];
 const STROKE_TOOLS: PaintToolType[] = ['brush', 'eraser'];
 
 function shapeToBrushStrokes(shape: PaintShape, brushOptions: PaintStrokeOptions): PaintStroke[] {
-  const {id, tool, x1, y1, x2, y2, color, opacity, strokeWidth} = shape;
+  const {tool, x1, y1, x2, y2, color, opacity, strokeWidth} = shape;
   const newId = () => crypto.randomUUID();
   const baseStroke = {
     id: newId(),

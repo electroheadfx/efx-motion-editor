@@ -29,8 +29,6 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
   const hasKeyframes = !isFxLayer(layer) && !layer.isBase
     && layer.keyframes && layer.keyframes.length > 0;
   const showKfValues = hasKeyframes && kfDisplayValues;
-  const isOnKf = keyframeStore.isOnKeyframe.value;
-
   // Unified keyframe edit routing: all edits (on-keyframe and between-keyframe) write
   // directly to layer.keyframes via upsertKeyframeValues, which flows through
   // sequenceStore.sequences -> Preview.tsx re-render. No dead-end transientOverrides path.

@@ -28,7 +28,7 @@ export function StrokeList({layerId}: StrokeListProps) {
   const selectionAnchor = useRef<number>(-1);
 
   const frame = timelineStore.currentFrame.value;
-  const _pv = paintStore.paintVersion.value; // subscribe to re-renders
+  paintStore.paintVersion.value; // subscribe to re-renders
   const paintFrame = paintStore.getFrame(layerId, frame);
   const elements = paintFrame?.elements ?? [];
   const selectedIds = paintStore.selectedStrokeIds.value;

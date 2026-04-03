@@ -80,7 +80,7 @@ export function PaintToolbar() {
               title={`Simplify path (${anchorCount} points)`}
               onClick={() => {
                 const before = structuredClone(stroke.anchors);
-                const newCount = paintStore.simplifyBezier(layerId, frame, selectedId);
+                paintStore.simplifyBezier(layerId, frame, selectedId);
                 const after = structuredClone(stroke.anchors);
                 pushAction({
                   id: crypto.randomUUID(),
