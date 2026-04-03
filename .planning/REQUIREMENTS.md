@@ -1,0 +1,113 @@
+# Requirements: EFX-Motion Editor v0.7.0
+
+**Defined:** 2026-04-03
+**Core Value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
+
+## v0.7.0 Requirements
+
+### Monorepo Infrastructure
+
+- [ ] **MONO-01**: Repository uses pnpm workspace with root `package.json`, `pnpm-workspace.yaml`, and single lockfile at root
+- [ ] **MONO-02**: `Application/` renamed to `app/` with git history preserved via isolated `git mv` commit
+- [ ] **MONO-03**: `efx-physic-paint` source copied into `packages/efx-physic-paint/` as publishable workspace package
+- [ ] **MONO-04**: `@efxlab/efx-physic-paint` resolves via `workspace:*` in `app/package.json`
+- [ ] **MONO-05**: `pnpm dev` starts editor identically to v0.6.0; `pnpm tauri build` produces working `.app`
+- [ ] **MONO-06**: pnpm overrides moved to workspace root; Vite `optimizeDeps.exclude` configured for paint package
+
+### Engine Integration
+
+- [ ] **ENGN-01**: `EfxPaintEngine` supports headless construction (offscreen canvases, no DOM container, no pointer events)
+- [ ] **ENGN-02**: Engine exposes `renderFromStrokes()` batch API for rendering stroke arrays to canvas
+- [ ] **ENGN-03**: `efxPaintAdapter.ts` wraps headless engine for editor compositing pipeline (replaces `brushP5Adapter.ts`)
+- [ ] **ENGN-04**: Stroke format converter bridges editor's `PaintStroke` to engine's stroke format
+- [ ] **ENGN-05**: Per-frame FX cache with aggressive caching — engine rendering is not real-time, all frames pre-rendered and cached for playback and animation propagation
+- [ ] **ENGN-06**: Old v0.6.0 project strokes render via existing Canvas 2D flat brush path; default brush preset for new strokes is **flat**
+
+### Paint Tools
+
+- [ ] **PAINT-01**: User can draw freehand strokes with pressure sensitivity via physics engine
+- [ ] **PAINT-02**: User can erase strokes via engine's native `applyEraseStroke()` API
+- [ ] **PAINT-03**: 6 brush style presets with concrete parameter mappings:
+  - **ink**: size 3, opacity 100, detail 6, pickup 0, grain hard, physics global/dry
+  - **pencil**: same as ink, size 6
+  - **marker**: size 6, opacity 70, detail 0, pickup 0, grain soft, physics local
+  - **charcoal**: size 10, opacity 100, detail 10, pickup 5, grain med, physics global
+  - **flat**: size 10, opacity 100, detail 4, pickup 0, grain none, physics global
+  - **watercolor**: size 5, opacity 70, detail 4, pickup 5, grain med, physics local
+- [ ] **PAINT-04**: PaintOverlay records full PenPoint data (x, y, pressure, tilt, twist, speed) for physics input
+- [ ] **PAINT-05**: Onion skinning works via adapter canvas capture
+- [ ] **PAINT-06**: Color, brush size, and opacity controls map to engine API
+- [ ] **PAINT-07**: Blow/directional force tool for interactive paint manipulation
+- [ ] **PAINT-08**: AnimationPlayer stroke replay integration with editor frame model
+- [ ] **PAINT-09**: Custom user brush presets via JSON format (save/load)
+- [ ] **PAINT-10**: Per-stroke physics parameter isolation (independent wet layers)
+- [ ] **PAINT-11**: Multi-frame stroke operations (strokes spanning multiple frames)
+- [ ] **PAINT-12**: Stroke grouping/nesting hierarchy
+
+### New Capabilities
+
+- [ ] **NCAP-01**: User can set paint layer to transparent background mode for compositing over photos
+- [ ] **NCAP-02**: User can select paper/canvas texture with physics-based heightmap interaction (paper grain selector UI)
+- [ ] **NCAP-03**: PaintProperties panel exposes physics controls (grain level, physics mode local/global, dry mode, detail, pickup)
+
+### Persistence & Compatibility
+
+- [ ] **PERS-01**: Paint sidecar JSON format updated for new engine stroke data with backward-compatible reader
+- [ ] **PERS-02**: `.mce` project format bumped with new paint/paper/transparency fields
+- [ ] **PERS-03**: `perfect-freehand` and `p5.brush` removed from dependencies after parity confirmed
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Bezier editing in paint engine | Engine v0.1.0 has no bezier support; stays editor-side (fit-curve, bezier-js) |
+| Live camera tethering | Different product category (Dragonframe owns this) |
+| Plugin/extension system | Requires stable internal APIs; premature |
+| AI-powered features | Distraction from core value |
+| Real-time collaboration | Desktop app with local files; stop-motion is solo/small-team |
+| Windows/Linux builds | macOS only |
+| Node-based compositing | Layer-based approach more intuitive for target users |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| MONO-01 | — | Pending |
+| MONO-02 | — | Pending |
+| MONO-03 | — | Pending |
+| MONO-04 | — | Pending |
+| MONO-05 | — | Pending |
+| MONO-06 | — | Pending |
+| ENGN-01 | — | Pending |
+| ENGN-02 | — | Pending |
+| ENGN-03 | — | Pending |
+| ENGN-04 | — | Pending |
+| ENGN-05 | — | Pending |
+| ENGN-06 | — | Pending |
+| PAINT-01 | — | Pending |
+| PAINT-02 | — | Pending |
+| PAINT-03 | — | Pending |
+| PAINT-04 | — | Pending |
+| PAINT-05 | — | Pending |
+| PAINT-06 | — | Pending |
+| PAINT-07 | — | Pending |
+| PAINT-08 | — | Pending |
+| PAINT-09 | — | Pending |
+| PAINT-10 | — | Pending |
+| PAINT-11 | — | Pending |
+| PAINT-12 | — | Pending |
+| NCAP-01 | — | Pending |
+| NCAP-02 | — | Pending |
+| NCAP-03 | — | Pending |
+| PERS-01 | — | Pending |
+| PERS-02 | — | Pending |
+| PERS-03 | — | Pending |
+
+**Coverage:**
+- v0.7.0 requirements: 30 total
+- Mapped to phases: 0
+- Unmapped: 30 ⚠️
+
+---
+*Requirements defined: 2026-04-03*
+*Last updated: 2026-04-03 after initial definition*
