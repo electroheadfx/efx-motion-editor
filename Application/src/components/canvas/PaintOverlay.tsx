@@ -41,6 +41,8 @@ function cursorForTool(tool: PaintToolType): string {
       return 'crosshair';
     case 'select':
       return 'default';
+    case 'pen':
+      return 'default';
     default:
       return 'crosshair';
   }
@@ -65,19 +67,51 @@ function findElementAtPoint(
       // Check if point is within stroke bounding box + padding
       const pad = stroke.size / 2 + 5;
       let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
-      for (const [px, py] of stroke.points) {
-        if (px < sMinX) sMinX = px;
-        if (py < sMinY) sMinY = py;
-        if (px > sMaxX) sMaxX = px;
-        if (py > sMaxY) sMaxY = py;
+      if (stroke.anchors) {
+        // Bezier-edited stroke: bounds from anchor positions (including handles)
+        for (const a of stroke.anchors) {
+          if (a.x < sMinX) sMinX = a.x;
+          if (a.y < sMinY) sMinY = a.y;
+          if (a.x > sMaxX) sMaxX = a.x;
+          if (a.y > sMaxY) sMaxY = a.y;
+          if (a.handleIn) {
+            if (a.handleIn.x < sMinX) sMinX = a.handleIn.x;
+            if (a.handleIn.y < sMinY) sMinY = a.handleIn.y;
+            if (a.handleIn.x > sMaxX) sMaxX = a.handleIn.x;
+            if (a.handleIn.y > sMaxY) sMaxY = a.handleIn.y;
+          }
+          if (a.handleOut) {
+            if (a.handleOut.x < sMinX) sMinX = a.handleOut.x;
+            if (a.handleOut.y < sMinY) sMinY = a.handleOut.y;
+            if (a.handleOut.x > sMaxX) sMaxX = a.handleOut.x;
+            if (a.handleOut.y > sMaxY) sMaxY = a.handleOut.y;
+          }
+        }
+      } else {
+        for (const [px, py] of stroke.points) {
+          if (px < sMinX) sMinX = px;
+          if (py < sMinY) sMinY = py;
+          if (px > sMaxX) sMaxX = px;
+          if (py > sMaxY) sMaxY = py;
+        }
       }
       if (x >= sMinX - pad && x <= sMaxX + pad && y >= sMinY - pad && y <= sMaxY + pad) {
-        // Fine check: distance to any point in the stroke
-        for (const [px, py] of stroke.points) {
-          const dx = x - px;
-          const dy = y - py;
-          if (dx * dx + dy * dy <= pad * pad) {
-            return stroke.id;
+        // Fine check: distance to any point in the stroke (use anchors if available)
+        if (stroke.anchors) {
+          for (const a of stroke.anchors) {
+            const dx = x - a.x;
+            const dy = y - a.y;
+            if (dx * dx + dy * dy <= pad * pad) {
+              return stroke.id;
+            }
+          }
+        } else {
+          for (const [px, py] of stroke.points) {
+            const dx = x - px;
+            const dy = y - py;
+            if (dx * dx + dy * dy <= pad * pad) {
+              return stroke.id;
+            }
           }
         }
       }
@@ -131,11 +165,33 @@ function getSelectionBounds(
       const stroke = el as PaintStroke;
       const strokePad = stroke.size / 2 + 6;
       if (strokePad > maxPad) maxPad = strokePad;
-      for (const [px, py] of stroke.points) {
-        if (px < minX) minX = px;
-        if (py < minY) minY = py;
-        if (px > maxX) maxX = px;
-        if (py > maxY) maxY = py;
+      if (stroke.anchors) {
+        // Bezier-edited stroke: bounds from anchor positions (including handles)
+        for (const a of stroke.anchors) {
+          if (a.x < minX) minX = a.x;
+          if (a.y < minY) minY = a.y;
+          if (a.x > maxX) maxX = a.x;
+          if (a.y > maxY) maxY = a.y;
+          if (a.handleIn) {
+            if (a.handleIn.x < minX) minX = a.handleIn.x;
+            if (a.handleIn.y < minY) minY = a.handleIn.y;
+            if (a.handleIn.x > maxX) maxX = a.handleIn.x;
+            if (a.handleIn.y > maxY) maxY = a.handleIn.y;
+          }
+          if (a.handleOut) {
+            if (a.handleOut.x < minX) minX = a.handleOut.x;
+            if (a.handleOut.y < minY) minY = a.handleOut.y;
+            if (a.handleOut.x > maxX) maxX = a.handleOut.x;
+            if (a.handleOut.y > maxY) maxY = a.handleOut.y;
+          }
+        }
+      } else {
+        for (const [px, py] of stroke.points) {
+          if (px < minX) minX = px;
+          if (py < minY) minY = py;
+          if (px > maxX) maxX = px;
+          if (py > maxY) maxY = py;
+        }
       }
     } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
       const shape = el as PaintShape;
@@ -881,6 +937,11 @@ export function PaintOverlay({
     // Route select tool (per D-05)
     if (tool === 'select') {
       handleSelectPointerDown(e);
+      return;
+    }
+
+    // Pen tool interactions handled in Plan 03
+    if (tool === 'pen') {
       return;
     }
 

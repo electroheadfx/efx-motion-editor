@@ -1,11 +1,12 @@
 import {useState} from 'preact/hooks';
-import {Pen, Eraser, Pipette, PaintBucket, Minus, Square, Circle, MousePointer2, Eye, EyeOff} from 'lucide-preact';
+import {Pen, Eraser, Pipette, PaintBucket, Minus, Square, Circle, MousePointer2, Eye, EyeOff, PenTool} from 'lucide-preact';
 import {paintStore} from '../../stores/paintStore';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 import type {PaintToolType} from '../../types/paint';
 
 const TOOLS: {type: PaintToolType; Icon: typeof Pen; label: string}[] = [
   {type: 'select', Icon: MousePointer2, label: 'Select'},
+  {type: 'pen', Icon: PenTool, label: 'Pen (Edit Path)'},
   {type: 'brush', Icon: Pen, label: 'Brush'},
   {type: 'eraser', Icon: Eraser, label: 'Eraser'},
   {type: 'eyedropper', Icon: Pipette, label: 'Eyedropper'},

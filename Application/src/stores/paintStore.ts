@@ -1,6 +1,7 @@
 import {signal, effect} from '@preact/signals';
-import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams, PaintStroke} from '../types/paint';
+import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams, PaintStroke, PaintShape} from '../types/paint';
 import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_PAINT_BG_COLOR} from '../types/paint';
+import {pointsToBezierAnchors, shapeToAnchors} from '../lib/bezierPath';
 import {pushAction} from '../lib/history';
 import {renderFrameFx} from '../lib/brushP5Adapter';
 import {projectStore} from './projectStore';
@@ -648,6 +649,49 @@ export const paintStore = {
 
     this.markDirty(layerId, frame);
     paintVersion.value++;
+  },
+
+  // --- Bezier conversion methods (Phase 25) ---
+
+  /** Convert a PaintStroke's freehand points to bezier anchors (D-04).
+   * Called when pen tool first activates on a stroke that has no anchors yet. */
+  convertToBezier(layerId: string, frame: number, elementId: string): void {
+    const f = _getOrCreateFrame(layerId, frame);
+    const idx = f.elements.findIndex(el => el.id === elementId);
+    if (idx < 0) return;
+    const el = f.elements[idx];
+    if (el.tool !== 'brush' && el.tool !== 'eraser') return;
+    const stroke = el as PaintStroke;
+    if (stroke.anchors) return; // already converted
+    stroke.anchors = pointsToBezierAnchors(stroke.points);
+    _notifyVisualChange(layerId, frame);
+  },
+
+  /** Convert a PaintShape to a PaintStroke with bezier anchors (D-03, D-06).
+   * One-way conversion: shape loses identity, becomes a stroke with bezier data. */
+  convertShapeToBezier(layerId: string, frame: number, elementId: string): void {
+    const f = _getOrCreateFrame(layerId, frame);
+    const idx = f.elements.findIndex(el => el.id === elementId);
+    if (idx < 0) return;
+    const el = f.elements[idx];
+    if (el.tool !== 'line' && el.tool !== 'rect' && el.tool !== 'ellipse') return;
+    const shape = el as PaintShape;
+    const { anchors, closedPath } = shapeToAnchors(shape);
+    // Create a PaintStroke that replaces the shape
+    const newStroke: PaintStroke = {
+      id: shape.id,  // preserve ID for selection continuity
+      tool: 'brush',
+      points: [],    // empty -- rendering uses anchors
+      color: shape.color,
+      opacity: shape.opacity,
+      size: shape.strokeWidth || 2,
+      options: { ...DEFAULT_STROKE_OPTIONS },
+      anchors,
+      closedPath,
+      visible: shape.visible,
+    };
+    f.elements[idx] = newStroke;
+    _notifyVisualChange(layerId, frame);
   },
 };
 
