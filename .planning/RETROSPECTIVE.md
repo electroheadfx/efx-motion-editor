@@ -2,6 +2,55 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v0.6.0 — Various Enhancements
+
+**Shipped:** 2026-04-03
+**Phases:** 4 | **Plans:** 14 | **Tasks:** 28
+
+### What Was Built
+- Paint store stabilization: fixed moveElements* bugs, added _notifyVisualChange helper, snapshot-based undo/redo for all transform gestures
+- Alt+drag duplicate for all paint element types and non-uniform edge-handle scale with 4 circular midpoint handles
+- StrokeList panel with SortableJS drag reorder, visibility toggles, delete, multi-select (Cmd+click/Shift+click), bidirectional canvas-list sync
+- Bezier path editing: fit-curve freehand-to-bezier conversion, bezierPath.ts math module (10 pure functions), interactive pen tool overlay
+- Anchor/handle dragging, add/delete control points, segment click-to-add, progressive simplify button
+- Paint properties panel reorganized with 2-col grids, auto-flatten on exit, isolation-scoped layer creation
+- Motion path sub-frame dot density fix (4x denser dots for short sequences)
+
+### What Worked
+- **Snapshot-before/commit-on-release undo pattern:** Single pushAction on pointerup for move/rotate/scale/duplicate — clean, reusable across all transform gestures
+- **_notifyVisualChange helper:** DRY pattern for dirty+paintVersion+markProjectDirty triple used across all phases — prevented the bug class that plagued pre-v0.6.0 paint operations
+- **fit-curve + bezier-js libraries:** Mature math libraries eliminated need for custom curve fitting — freehand-to-bezier conversion worked well
+- **Gap closure plans working as designed:** 3 gap closure plans (22-04, 22-05, 23-03, 24-03) caught and fixed issues that UAT verification surfaced — total of ~10 bug fixes
+- **Milestone audit run before completion:** First time running audit proactively — caught 2 documentation issues and confirmed 12/12 requirements satisfied
+- **Progressive simplify over auto-simplify:** User feedback led to reverting automatic simplification in favor of explicit button — validated through real usage
+
+### What Was Inefficient
+- **Phase 25 had a long gap (2025-03-27 → 2026-04-03):** Context window reset required full re-research; the 25-CONTEXT.md helped but still cost time re-building mental model
+- **ROADMAP documentation inconsistencies:** 25-03-PLAN checkbox left unchecked despite completion; traceability table mapped PINT-03/04 to "Phase 26" instead of 25 — caught by audit
+- **Nyquist validation not run for any phase:** 4/4 phases missing VALIDATION.md — Nyquist compliance continues to be deprioritized
+- **Scope reduction from original v0.6.0 plan:** COMP-01-05 (luma matte, paper textures) canceled — original 6-phase milestone became 4 phases
+
+### Patterns Established
+- Snapshot-before/commit-on-release: deep clone on pointerdown, single pushAction on pointerup — universal transform undo pattern
+- Edge anchor captured once on pointerdown: prevents floating-point drift from per-frame recomputation during non-uniform scale
+- Visibility as optional boolean: undefined = visible, false = hidden — backward compatible without migration
+- BezierAnchor type model: in/out handles + smooth flag matching industry standard (Illustrator/Figma anchor model)
+- Progressive simplify: user-controlled detail reduction via repeated clicks rather than automatic threshold
+
+### Key Lessons
+1. **Run milestone audit before completion** — first proactive audit caught documentation issues and confirmed full coverage; establishes this as standard practice
+2. **Long gaps between phases require context restoration** — 25-CONTEXT.md was valuable but context windows should include session continuity data
+3. **Scope reduction is healthy** — canceling COMP-01-05 kept the milestone focused on what was achievable and valuable
+4. **S key shortcut conflict is a recurring pattern** — global shortcuts need isPaintEditMode() guards; this has been flagged multiple times as tech debt
+5. **fit-curve/bezier-js adoption validates "use libraries" lesson** — third consecutive library adoption success (SortableJS, p5.brush, fit-curve)
+
+### Cost Observations
+- Model mix: ~75% opus, ~20% sonnet, ~5% haiku
+- Sessions: ~8 sessions over 8 days (including long gap for Phase 25)
+- Notable: Gap closure plans continue to average <5 min each; Phase 22 had 2 gap plans, Phase 23 had 1, Phase 24 had 1
+
+---
+
 ## Milestone: v0.5.0 — Motion Blur & Paint Styles
 
 **Shipped:** 2026-03-26
@@ -269,6 +318,7 @@
 | v0.3.0 | ~15 | 8 | 29 | Wave 0 test scaffolds; gap closure plans; 5 inserted phases for urgent features |
 | v0.4.0 | ~3 | 2 | 9 | Wave parallelization for paint; visual verification checkpoint plan |
 | v0.5.0 | ~4 | 2 | 8 | p5.brush adoption pivot; separate WebGL2 contexts per GPU feature |
+| v0.6.0 | ~8 | 4 | 14 | First proactive milestone audit; scope reduction (COMP-01-05 canceled); long gap context restoration |
 
 ### Cumulative Quality
 
@@ -279,6 +329,7 @@
 | v0.3.0 | 31,522 | 350+ | 4 (carried) | 0 new |
 | v0.4.0 | 34,067 | 430+ | 4 (carried) | 0 new |
 | v0.5.0 | 40,066 | 560+ | 4 (carried) | 0 new |
+| v0.6.0 | 40,688 | 660+ | 5 (1 new + 4 carried) | 0 new |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -294,3 +345,5 @@
 10. Counter signal pattern bridges imperative data structures (Map/Set) with reactive rendering cleanly
 11. Adopt mature libraries over custom implementations when the problem domain is well-understood (p5.brush vs custom WebGL2 renderer)
 12. Separate WebGL2 contexts per GPU feature prevents state pollution and simplifies lifecycle management
+13. Run milestone audit proactively before completion — catches documentation inconsistencies and confirms requirement coverage
+14. Scope reduction is healthy — canceling features keeps milestones focused on achievable, validated work

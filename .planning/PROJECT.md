@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos, paint/rotopaint) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks) and GLSL shader effects (17 Shadertoy + 18 GL transitions), add fade/cross-dissolve/GL transitions, import audio with waveform visualization and beat-synced editing, draw frame-by-frame with pressure-sensitive brush/shape/fill tools and onion skinning with expressive brush FX (watercolor, ink, charcoal, pencil, marker) via p5.brush with spectral pigment mixing, edit keyframe positions directly on canvas via motion path, apply per-layer GLSL velocity motion blur with shutter angle controls, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1) with audio and motion blur sub-frame accumulation. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 added audio with beat sync, GLSL shader effects/transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar; v0.4.0 added canvas motion path editing and frame-by-frame paint/rotopaint layers; v0.5.0 added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export.
+A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos, paint/rotopaint) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks) and GLSL shader effects (17 Shadertoy + 18 GL transitions), add fade/cross-dissolve/GL transitions, import audio with waveform visualization and beat-synced editing, draw frame-by-frame with pressure-sensitive brush/shape/fill tools and onion skinning with expressive brush FX (watercolor, ink, charcoal, pencil, marker) via p5.brush with spectral pigment mixing, manage strokes with drag-reorder, visibility toggles, and multi-select, edit stroke paths as bezier curves with interactive anchor/handle manipulation, edit keyframe positions directly on canvas via motion path, apply per-layer GLSL velocity motion blur with shutter angle controls, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1) with audio and motion blur sub-frame accumulation. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 added audio with beat sync, GLSL shader effects/transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar; v0.4.0 added canvas motion path editing and frame-by-frame paint/rotopaint layers; v0.5.0 added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export; v0.6.0 added stroke management, bezier path editing, and paint workflow UX improvements.
 
 ## Core Value
 
@@ -79,38 +79,25 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Motion blur export settings (sample count, shutter angle override) — v0.5.0
 - ✓ Project-level motion blur settings with .mce v15 persistence — v0.5.0
 - ✓ Export selected sequence only option — v0.5.0
+- ✓ Alt+drag duplicate stroke in roto paint edit mode — v0.6.0
+- ✓ Non-uniform scale for paint layer strokes — v0.6.0
+- ✓ Stroke interactions (move, rotate, scale, undo/redo) with correct hit-testing — v0.6.0
+- ✓ Paint properties panel reorganized with space optimization and cleaner buttons — v0.6.0
+- ✓ Isolation-scoped layer creation (add layer only on isolated sequence) — v0.6.0
+- ✓ Denser motion path interpolation dots for short sequences — v0.6.0
+- ✓ Bezier/spline stroke path editing with anchor/handle manipulation — v0.6.0
+- ✓ Add, move, and delete bezier control points on existing strokes — v0.6.0
+- ✓ Stroke list panel with drag-reorder, delete, selection sync, and visibility toggle — v0.6.0
 
 ### Active
 
 - [ ] Compositing FX paint via luma matte extraction (paint over photos without alpha)
 - [ ] Paper/canvas texture on paint layer (shader or tiled textures from Krita)
-- ✓ Duplicate stroke with Alt+move on same frame in roto paint edit mode — v0.6.0
-- ✓ Non-uniform scale for paint layer's strokes — v0.6.0
-- ✓ Stroke interactions (move, rotate, scale, undo/redo) with correct hit-testing — v0.6.0
-- [ ] Reorder/clean Paint properties panel (space optimization, better buttons)
-- [ ] Sequence-scoped layer creation (add layer only on isolated sequence if selected)
-- [ ] Denser motion path interpolation visual (more dots for short sequences)
-- [ ] Bezier/spline stroke path editing in roto paint
-- [ ] Stroke list panel in roto paint edit mode (drag-and-drop, delete, selection, hide)
+- [ ] Dedicated bezier pen tool (draw new bezier strokes, not just post-hoc editing)
 
-## Current Milestone: v0.6.0 Various Enhancements
+## Latest Milestone: v0.6.0 Various Enhancements (Shipped 2026-04-03)
 
-**Goal:** Improve paint compositing, add paper textures, stroke management, bezier path editing, and several UX refinements across paint and motion editing workflows.
-
-**Target features:**
-- Compositing FX paint via luma matte extraction
-- Paper/canvas texture on paint layer
-- Duplicate stroke with Alt+move in roto paint edit mode
-- Non-uniform scale for paint layer's strokes
-- Reorder/clean Paint properties panel
-- Sequence-scoped layer creation
-- Denser motion path interpolation visual
-- Bezier/spline stroke path editing in roto paint
-- Stroke list panel in roto paint edit mode
-
-## Latest Milestone: v0.5.0 Motion Blur & Paint Styles (Shipped 2026-03-26)
-
-2 phases, 8 plans over 2 days. See `.planning/MILESTONES.md` for details.
+4 phases, 14 plans over 8 days. See `.planning/MILESTONES.md` for details.
 
 ### Out of Scope
 
@@ -120,19 +107,22 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - Real-time collaboration — desktop app with local files; stop-motion is typically solo/small-team
 - Windows/Linux builds — macOS only; native title bar, file dialogs, macOS conventions
 - Node-based compositing — layer-based approach is more intuitive for target users
+- Multi-frame stroke operations — single-frame scope sufficient for current workflows
+- Stroke grouping/nesting — flat list sufficient; hierarchy adds complexity without clear benefit
 
 ## Context
 
-Shipped v0.5.0 with 40,066 LOC (37,810 TypeScript + 2,256 Rust) across ~116 commits since v0.4.0.
-Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm, p5.brush (standalone).
-Architecture: 13 reactive signal stores (project, sequence, layer, keyframe, timeline, canvas, ui, blur, isolation, export, audio, solo, paint, motionBlur), Rust image pipeline with thumbnail generation, Canvas 2D PreviewRenderer with multi-layer compositing (including paint layers with per-frame FX cache), WebGL2 GPU blur (glBlur.ts) with CPU fallback, WebGL2 GLSL runtime (glslRuntime) for shader effects and GL transitions, WebGL2 GLSL motion blur (glMotionBlur.ts) with VelocityCache and triangle filter kernel, p5.brush adapter (brushP5Adapter.ts) for spectral pigment mixing and brush FX rendering, FX generator system with seeded PRNG, keyframe interpolation engine with polynomial cubic easing and unified upsert routing, PlaybackEngine with rAF delta accumulation and full-speed mode, Web Audio engine with fade scheduling and waveform peak extraction, BPM detector with onset autocorrelation, OfflineAudioContext pre-render for export, perfect-freehand brush engine with pressure/tilt support, paint sidecar JSON persistence via Tauri FS, sub-frame accumulation export pipeline for motion blur, command-pattern undo/redo engine, tinykeys keyboard shortcuts, exportRenderer with yielding frame loop and FFmpeg video/audio encoding.
+Shipped v0.6.0 with ~40,688 LOC TypeScript across 107 commits since v0.5.0 (8 days).
+Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm, p5.brush (standalone), fit-curve, bezier-js.
+Architecture: 13 reactive signal stores, Rust image pipeline, Canvas 2D PreviewRenderer with multi-layer compositing (including paint layers with per-frame FX cache and bezier-aware rendering), WebGL2 GPU blur/GLSL runtime/motion blur, p5.brush adapter for spectral pigment mixing, bezierPath.ts math module (10 pure functions for curve conversion, sampling, editing), StrokeList component with SortableJS, PaintOverlay with pen tool bezier interaction system, perfect-freehand brush engine, paint sidecar JSON persistence, sub-frame accumulation export pipeline, command-pattern undo/redo engine with snapshot-before/commit-on-release pattern for all transform gestures, tinykeys keyboard shortcuts, exportRenderer with FFmpeg encoding.
 Project format: .mce v15 with backward compatibility (v1 through v15).
 
 Known technical debt:
+- S key shortcut lacks isPaintEditMode() guard (low severity) — from v0.6.0
 - 2 medium-severity export edge cases (content-overlay image preload, FX generator frame offset) — carried from v0.2.0
 - Coalescing API partially resolved (motion path drag uses startCoalescing/stopCoalescing) — most UI interactions still unwired (carried from v0.1.0)
 - canUndo/canRedo signals exported but no UI consumes them for button disabling — carried from v0.1.0
-- 3 pre-existing audioWaveform test failures (unrelated to v0.5.0 work)
+- 3 pre-existing audioWaveform test failures (unrelated to v0.6.0 work)
 
 ## Constraints
 
@@ -173,6 +163,13 @@ Known technical debt:
 | Progressive .mce format v8→v13 | Each phase bumps version with serde(default) backward compat | ✓ Good — seamless loading of any version |
 | spawn_blocking for FFmpeg encoding | Keeps blocking I/O isolated from Tauri main thread | ✓ Good — fixed UAT export hang |
 | Shared signal (motionPathCircles) for cross-component coordinate exchange | Simpler than prop drilling; matches signal-based architecture | ✓ Good — MotionPath→TransformOverlay communication clean |
+| Snapshot-before/commit-on-release undo for transform gestures | Deep clone on pointerdown, single pushAction on pointerup | ✓ Good — clean undo for move, rotate, scale, duplicate |
+| Edge anchor captured once on pointerdown for non-uniform scale | Prevents floating-point drift from per-frame recomputation | ✓ Good — stable scaling with no cumulative error |
+| Visibility as optional boolean (undefined=visible, false=hidden) | Backward compatible; no migration needed for existing paint data | ✓ Good — existing strokes render correctly without field |
+| S key remapped to select tool in paint mode (Alt+S for solo) | S key more useful for tool switching; solo toggle less frequent | ✓ Good — matches other tool shortcut patterns |
+| fit-curve + bezier-js for freehand-to-bezier conversion | Mature libraries; fit-curve gives Douglas-Peucker fitting, bezier-js provides cubic math | ✓ Good — accurate path fitting with minimal code |
+| BezierAnchor type with in/out handles and smooth flag | Mirrors industry-standard anchor model (Illustrator, Figma) | ✓ Good — intuitive handle manipulation, corner/smooth toggle |
+| Progressive simplify button over automatic simplification | User controls detail level explicitly; auto-simplify removed too much | ✓ Good — reverted auto-simplify after user feedback |
 | Unified keyframe upsert path (upsertKeyframeValues/Transform) | Eliminates dead-end transientOverrides routing | ✓ Good — sidebar and canvas drag edits both flow through keyframes |
 | Map<string, Map<number, PaintFrame>> for paint storage | Efficient sparse frame data; per-layer per-frame isolation | ✓ Good — clean API, dirty tracking via Set<string> keys |
 | paintVersion counter signal for reactivity | Non-reactive Map storage + explicit signal bump = controlled re-renders | ✓ Good — solved disappearing strokes without making all Maps reactive |
@@ -204,4 +201,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after Phase 23 (Stroke Interactions) complete — move/rotate/scale/undo/redo gestures with Alt+drag duplicate, non-uniform edge scale, asymmetric padding hit-test fix*
+*Last updated: 2026-04-03 after v0.6.0 milestone — stroke management, bezier path editing, paint workflow UX improvements*

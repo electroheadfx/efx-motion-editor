@@ -1,5 +1,34 @@
 # Milestones
 
+## v0.6.0 Various Enhancements (Shipped: 2026-04-03)
+
+**Phases:** 4 (Phases 22-25) | **Plans:** 14 | **Tasks:** 28
+**Lines of code:** 40,688 TypeScript (+15,167 / -827 net)
+**Timeline:** 8 days (2026-03-26 → 2026-04-03) | **Commits:** 107
+**Git range:** `feat(22-01)` → `feat(25-03)` | **Tag:** v0.6.0
+
+**Delivered:** Stroke management with drag-reorder, visibility toggles, and multi-select; bezier path editing with fit-curve conversion and interactive anchor/handle manipulation; Alt+drag duplicate and non-uniform scale transforms; paint panel reorganization and UX polish across paint and motion workflows.
+
+**Key accomplishments:**
+
+1. Paint store stabilization: fixed moveElements* bugs, added _notifyVisualChange helper, snapshot-based undo/redo for all transform gestures (move, rotate, scale)
+2. Alt+drag duplicate for all paint element types and non-uniform edge-handle scale with 4 circular midpoint handles — both with single-entry undo/redo
+3. StrokeList panel with SortableJS drag reorder, visibility toggles, delete, multi-select (Cmd+click/Shift+click), and bidirectional canvas-list selection sync
+4. Bezier path editing: fit-curve freehand-to-bezier conversion, interactive anchor/handle dragging, add/delete control points, pen tool overlay with progressive simplification
+5. Paint properties panel reorganized with 2-col grid layouts, auto-flatten on exit paint mode, and isolation-scoped layer creation
+6. Motion path sub-frame dot density fix (4x denser dots for short sequences)
+
+**Technical debt carried forward:**
+
+- S key shortcut lacks isPaintEditMode() guard (low severity)
+- Coalescing API still partially wired (carried from v0.1.0)
+- canUndo/canRedo signals unused for button state (carried from v0.1.0)
+- 2 medium-severity export edge cases (carried from v0.2.0)
+
+**Archives:** `milestones/v0.6.0-ROADMAP.md`, `milestones/v0.6.0-REQUIREMENTS.md`, `milestones/v0.6.0-MILESTONE-AUDIT.md`
+
+---
+
 ## v0.5.0 Motion Blur & Paint Styles (Shipped: 2026-03-26)
 
 **Phases completed:** 2 phases, 8 plans, 15 tasks
