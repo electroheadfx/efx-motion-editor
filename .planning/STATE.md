@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Pure Monorepo & Paint Engine Swap
 status: active
-stopped_at: Defining requirements
+stopped_at: Roadmap created
 last_updated: "2026-04-03T00:00:00.000Z"
 last_activity: 2026-04-03
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Defining requirements for v0.7.0
+**Current focus:** Phase 26 -- Monorepo Scaffold
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-03 — Milestone v0.7.0 started
+Phase: 26 of 32 (Monorepo Scaffold)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-04-03 -- Roadmap created for v0.7.0
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -46,17 +48,18 @@ Last activity: 2026-04-03 — Milestone v0.7.0 started
 Archived to PROJECT.md Key Decisions table.
 Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 
-### Pending Todos
-
-None.
-
 ### Research Flags
+
+- **Phase 27 (Engine API):** Headless constructor pattern needs design against engine internals (OffscreenCanvas vs HTMLCanvasElement, paper texture injection, state reset between calls)
+- **Phase 29 (Brush Style Mapping):** Proposed BrushOpts parameter values for 6 brush styles are LOW confidence -- plan for iterative visual comparison
+
+### Pending Todos
 
 None.
 
 ### Blockers/Concerns
 
-None.
+- PAINT-11 (multi-frame ops) and PAINT-12 (stroke groups) are listed in PROJECT.md Out of Scope but included as v0.7.0 requirements -- needs user decision during Phase 31 planning
 
 ### Quick Tasks Completed
 
@@ -67,5 +70,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-03
-Stopped at: Milestone v0.7.0 started — defining requirements
+Stopped at: Roadmap created for v0.7.0 -- 7 phases (26-32), 30 requirements mapped
 Resume file: N/A

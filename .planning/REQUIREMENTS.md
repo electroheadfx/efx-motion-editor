@@ -1,7 +1,7 @@
 # Requirements: EFX-Motion Editor v0.7.0
 
 **Defined:** 2026-04-03
-**Core Value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
+**Core Value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
 
 ## v0.7.0 Requirements
 
@@ -20,7 +20,7 @@
 - [ ] **ENGN-02**: Engine exposes `renderFromStrokes()` batch API for rendering stroke arrays to canvas
 - [ ] **ENGN-03**: `efxPaintAdapter.ts` wraps headless engine for editor compositing pipeline (replaces `brushP5Adapter.ts`)
 - [ ] **ENGN-04**: Stroke format converter bridges editor's `PaintStroke` to engine's stroke format
-- [ ] **ENGN-05**: Per-frame FX cache with aggressive caching — engine rendering is not real-time, all frames pre-rendered and cached for playback and animation propagation
+- [ ] **ENGN-05**: Per-frame FX cache with aggressive caching -- engine rendering is not real-time, all frames pre-rendered and cached for playback and animation propagation
 - [ ] **ENGN-06**: Old v0.6.0 project strokes render via existing Canvas 2D flat brush path; default brush preset for new strokes is **flat**
 
 ### Paint Tools
@@ -72,42 +72,42 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MONO-01 | — | Pending |
-| MONO-02 | — | Pending |
-| MONO-03 | — | Pending |
-| MONO-04 | — | Pending |
-| MONO-05 | — | Pending |
-| MONO-06 | — | Pending |
-| ENGN-01 | — | Pending |
-| ENGN-02 | — | Pending |
-| ENGN-03 | — | Pending |
-| ENGN-04 | — | Pending |
-| ENGN-05 | — | Pending |
-| ENGN-06 | — | Pending |
-| PAINT-01 | — | Pending |
-| PAINT-02 | — | Pending |
-| PAINT-03 | — | Pending |
-| PAINT-04 | — | Pending |
-| PAINT-05 | — | Pending |
-| PAINT-06 | — | Pending |
-| PAINT-07 | — | Pending |
-| PAINT-08 | — | Pending |
-| PAINT-09 | — | Pending |
-| PAINT-10 | — | Pending |
-| PAINT-11 | — | Pending |
-| PAINT-12 | — | Pending |
-| NCAP-01 | — | Pending |
-| NCAP-02 | — | Pending |
-| NCAP-03 | — | Pending |
-| PERS-01 | — | Pending |
-| PERS-02 | — | Pending |
-| PERS-03 | — | Pending |
+| MONO-01 | Phase 26 | Pending |
+| MONO-02 | Phase 26 | Pending |
+| MONO-03 | Phase 26 | Pending |
+| MONO-04 | Phase 26 | Pending |
+| MONO-05 | Phase 26 | Pending |
+| MONO-06 | Phase 26 | Pending |
+| ENGN-01 | Phase 27 | Pending |
+| ENGN-02 | Phase 27 | Pending |
+| ENGN-03 | Phase 28 | Pending |
+| ENGN-04 | Phase 28 | Pending |
+| ENGN-05 | Phase 28 | Pending |
+| ENGN-06 | Phase 28 | Pending |
+| PAINT-01 | Phase 29 | Pending |
+| PAINT-02 | Phase 29 | Pending |
+| PAINT-03 | Phase 29 | Pending |
+| PAINT-04 | Phase 29 | Pending |
+| PAINT-05 | Phase 29 | Pending |
+| PAINT-06 | Phase 29 | Pending |
+| PAINT-07 | Phase 31 | Pending |
+| PAINT-08 | Phase 31 | Pending |
+| PAINT-09 | Phase 31 | Pending |
+| PAINT-10 | Phase 31 | Pending |
+| PAINT-11 | Phase 31 | Pending |
+| PAINT-12 | Phase 31 | Pending |
+| NCAP-01 | Phase 30 | Pending |
+| NCAP-02 | Phase 30 | Pending |
+| NCAP-03 | Phase 30 | Pending |
+| PERS-01 | Phase 30 | Pending |
+| PERS-02 | Phase 30 | Pending |
+| PERS-03 | Phase 32 | Pending |
 
 **Coverage:**
 - v0.7.0 requirements: 30 total
-- Mapped to phases: 0
-- Unmapped: 30 ⚠️
+- Mapped to phases: 30
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-03 after initial definition*
+*Last updated: 2026-04-03 after roadmap creation*
