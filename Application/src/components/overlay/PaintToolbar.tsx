@@ -1,8 +1,11 @@
 import {useState} from 'preact/hooks';
-import {Pen, Eraser, Pipette, PaintBucket, Minus, Square, Circle, MousePointer2, Eye, EyeOff, PenTool} from 'lucide-preact';
+import {Pen, Eraser, Pipette, PaintBucket, Minus, Square, Circle, MousePointer2, Eye, EyeOff, PenTool, Spline} from 'lucide-preact';
 import {paintStore} from '../../stores/paintStore';
+import {timelineStore} from '../../stores/timelineStore';
+import {layerStore} from '../../stores/layerStore';
+import {pushAction} from '../../lib/history';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
-import type {PaintToolType} from '../../types/paint';
+import type {PaintToolType, PaintStroke} from '../../types/paint';
 
 const TOOLS: {type: PaintToolType; Icon: typeof Pen; label: string}[] = [
   {type: 'select', Icon: MousePointer2, label: 'Select'},
@@ -55,6 +58,45 @@ export function PaintToolbar() {
           </button>
         );
       })}
+
+      {/* Simplify button — visible when pen tool is editing a stroke */}
+      {activeTool === 'pen' && paintStore.selectedStrokeIds.value.size === 1 && (() => {
+        const selectedId = [...paintStore.selectedStrokeIds.value][0];
+        const layerId = layerStore.selectedLayerId.value;
+        if (!layerId) return null;
+        const frame = timelineStore.currentFrame.value;
+        const pf = paintStore.getFrame(layerId, frame);
+        if (!pf) return null;
+        const el = pf.elements.filter(e => e.id === selectedId)[0];
+        if (!el || (el.tool !== 'brush' && el.tool !== 'eraser')) return null;
+        const stroke = el as PaintStroke;
+        if (!stroke.anchors) return null;
+        const anchorCount = stroke.anchors.length;
+        return (
+          <>
+            <div class="w-px h-5 mx-0.5" style={{backgroundColor: 'var(--color-border-subtle)'}} />
+            <button
+              class="flex items-center gap-1 px-1.5 h-6 rounded text-[10px] cursor-pointer transition-colors text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-border-subtle)"
+              title={`Simplify path (${anchorCount} points)`}
+              onClick={() => {
+                const before = structuredClone(stroke.anchors);
+                const newCount = paintStore.simplifyBezier(layerId, frame, selectedId);
+                const after = structuredClone(stroke.anchors);
+                pushAction({
+                  id: crypto.randomUUID(),
+                  description: 'Simplify bezier path',
+                  timestamp: Date.now(),
+                  undo: () => { stroke.anchors = structuredClone(before); paintStore._notifyVisualChange(layerId, frame); },
+                  redo: () => { stroke.anchors = structuredClone(after); paintStore._notifyVisualChange(layerId, frame); },
+                });
+              }}
+            >
+              <Spline size={12} />
+              <span>{anchorCount}pts</span>
+            </button>
+          </>
+        );
+      })()}
 
       {/* Divider */}
       <div class="w-px h-5 mx-0.5" style={{backgroundColor: 'var(--color-border-subtle)'}} />

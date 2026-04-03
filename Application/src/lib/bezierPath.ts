@@ -53,7 +53,7 @@ function findNearestPressure(
 
 export function pointsToBezierAnchors(
   points: [number, number, number][],
-  tolerance: number = 50.0,
+  tolerance: number = 4.0,
 ): BezierAnchor[] {
   if (points.length < 2) {
     return points.map(([x, y, p]) => ({
@@ -68,15 +68,14 @@ export function pointsToBezierAnchors(
   let currentTolerance = tolerance;
   let segments: number[][][] = [];
   let attempts = 0;
-  const maxAnchors = 20;
 
-  // Fit with tolerance clamping: retry if too many or too few anchors
+  // Fit with tolerance clamping: retry if too many anchors
   while (attempts < 5) {
     segments = fitCurve(positions, currentTolerance);
     const anchorCount = segments.length + 1;
 
-    if (anchorCount > maxAnchors) {
-      // Too many anchors — increase tolerance aggressively
+    if (anchorCount > 80) {
+      // Way too many anchors — increase tolerance
       currentTolerance *= 2.0;
       attempts++;
       continue;

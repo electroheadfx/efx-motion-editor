@@ -668,8 +668,31 @@ export const paintStore = {
     if (el.tool !== 'brush' && el.tool !== 'eraser') return;
     const stroke = el as PaintStroke;
     if (stroke.anchors) return; // already converted
-    stroke.anchors = pointsToBezierAnchors(stroke.points);
+    stroke.anchors = pointsToBezierAnchors(stroke.points, 4.0);
     _notifyVisualChange(layerId, frame);
+  },
+
+  /** Re-fit a stroke's bezier anchors with a higher tolerance to reduce anchor count.
+   * Each call increases tolerance, producing fewer anchors. Returns the new count. */
+  _simplifyTolerance: new Map<string, number>(),
+  simplifyBezier(layerId: string, frame: number, elementId: string): number {
+    const f = _getOrCreateFrame(layerId, frame);
+    const idx = f.elements.findIndex(el => el.id === elementId);
+    if (idx < 0) return 0;
+    const el = f.elements[idx];
+    if (el.tool !== 'brush' && el.tool !== 'eraser') return 0;
+    const stroke = el as PaintStroke;
+    if (!stroke.anchors || stroke.points.length < 2) return stroke.anchors?.length ?? 0;
+    // Progressive: each click doubles the tolerance from last used
+    const prevTol = this._simplifyTolerance.get(elementId) ?? 4.0;
+    const newTol = prevTol * 2.5;
+    this._simplifyTolerance.set(elementId, newTol);
+    const prevCount = stroke.anchors.length;
+    stroke.anchors = pointsToBezierAnchors(stroke.points, newTol);
+    // If no change (already minimal), don't notify
+    if (stroke.anchors.length >= prevCount && stroke.anchors.length <= 2) return stroke.anchors.length;
+    _notifyVisualChange(layerId, frame);
+    return stroke.anchors.length;
   },
 
   /** Convert a PaintShape to a PaintStroke with bezier anchors (D-03, D-06).
