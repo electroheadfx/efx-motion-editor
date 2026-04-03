@@ -1,0 +1,64 @@
+{
+  "name": "@efxlab/efx-physic-paint",
+  "version": "0.1.0",
+  "license": "GPL-2.0-only",
+  "description": "Natural-media paint simulation with wet/dry physics, stable fluids, and paper texture interaction",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/efxlab/efx-motion-editor.git",
+    "directory": "packages/efx-physic-paint"
+  },
+  "author": "Laurent Marques <laurentefx@icloud.com>",
+  "homepage": "https://github.com/efxlab/efx-physic-paint#readme",
+  "bugs": {
+    "url": "https://github.com/efxlab/efx-physic-paint/issues"
+  },
+  "keywords": ["physics", "paint", "simulation", "canvas", "webgl"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    },
+    "./preact": {
+      "types": "./dist/preact.d.ts",
+      "import": "./dist/preact.mjs"
+    },
+    "./animation": {
+      "types": "./dist/animation.d.ts",
+      "import": "./dist/animation.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "preact": ">=10.0.0"
+  },
+  "peerDependenciesMeta": {
+    "preact": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev:watch": "tsup --watch",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "~5.9.3",
+    "preact": "^10.29.0",
+    "@types/node": "^24.12.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
