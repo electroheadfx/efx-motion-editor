@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.6.0
 milestone_name: Various Enhancements
-status: completed
-stopped_at: Completed 25-01-PLAN.md
-last_updated: "2026-04-03T08:24:49.024Z"
-last_activity: 2026-04-03 -- Completed 25-01 bezier data model and math utilities
+status: executing
+stopped_at: Completed 25-02-PLAN.md
+last_updated: "2026-04-03T08:31:30.330Z"
+last_activity: 2026-04-03
 progress:
-  total_phases: 5
+  total_phases: 4
   completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 14
+  completed_plans: 13
   percent: 100
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 ## Current Position
 
 Phase: 25 (bezier-path-editing) — EXECUTING
-Plan: 2 of 3
-Status: Completed Plan 01
-Last activity: 2026-04-03 -- Completed 25-01 bezier data model and math utilities
+Plan: 3 of 3
+Status: Ready to execute
+Last activity: 2026-04-03
 
 Progress: [##########] 100%
 
@@ -58,6 +58,7 @@ Full phase decisions archived in milestones/v0.5.0-ROADMAP.md.
 - [Phase 24]: Visibility stored as optional boolean: undefined = visible (backward compat), false = hidden. Always check === false never === true.
 - [Phase 24]: S key shortcut remapped to select tool in paint mode; Alt+S handles solo toggle
 - [Phase 25]: BezierAnchor uses absolute coordinates for handleIn/handleOut (not relative offsets) for simpler drag math
+- [Phase 25]: Persistence needs no code changes for bezier anchors -- JSON.stringify/parse handles optional fields automatically
 
 ### Pending Todos
 
@@ -78,9 +79,10 @@ None.
 |---|-------------|------|--------|-----------|
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
 | Phase 25 P01 | 3min | 2 tasks | 6 files |
+| Phase 25 P02 | 4min | 2 tasks | 4 files |
 
 ## Session Continuity
 
-Last session: 2026-04-03T08:24:49.021Z
-Stopped at: Completed 25-01-PLAN.md
+Last session: 2026-04-03T08:31:30.326Z
+Stopped at: Completed 25-02-PLAN.md
 Resume file: None
