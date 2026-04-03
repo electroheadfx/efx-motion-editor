@@ -10,11 +10,12 @@ node_modules/
 *.tsbuildinfo
 
 # Build output
-Application/dist/
+app/dist/
+packages/*/dist/
 
 # Tauri
-Application/src-tauri/target/
-Application/src-tauri/gen/
+app/src-tauri/target/
+app/src-tauri/gen/
 
 # OS
 .DS_Store
