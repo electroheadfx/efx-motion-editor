@@ -120,9 +120,9 @@ See: `milestones/v0.6.0-ROADMAP.md` for full details.
 - Decimal phases (27.1, 27.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 26: Monorepo Scaffold** - Convert to pnpm workspace with app/ and packages/efx-physic-paint/ (completed 2026-04-03)
-- [ ] **Phase 27: Engine API Adaptations** - Add headless constructor and batch render API to efx-physic-paint
-- [ ] **Phase 28: Adapter & Type Bridge** - Build efxPaintAdapter.ts with stroke format conversion and frame caching
-- [ ] **Phase 29: Input & Tool Reconnection** - Wire drawing, eraser, brush presets, onion skinning through new engine
+- [x] **Phase 27: Engine API Adaptations** - FAILED: batch renderFromStrokes approach produces inferior visual quality (2026-04-04)
+- [x] **Phase 28: Adapter & Type Bridge** - FAILED: adapter architecture depends on broken batch rendering strategy (2026-04-04)
+- [x] **Phase 29: Input & Tool Reconnection** - FAILED: engine output has no physics/grain, O(n²) re-render perf, forceDryAll kills paint mixing (2026-04-04)
 - [ ] **Phase 30: UI, Paper & Transparency** - Surface new engine capabilities and finalize persistence
 - [ ] **Phase 31: Advanced Paint Features** - Blow tool, animation replay, custom presets, per-stroke isolation, multi-frame ops, stroke groups
 - [ ] **Phase 32: Cleanup & Removal** - Remove perfect-freehand, p5.brush, and all dead code
@@ -230,9 +230,9 @@ Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
 | 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2025-03-26 |
 | 22-25 (4 phases) | v0.6.0 | 14/14 | Complete | 2026-04-03 |
 | 26. Monorepo Scaffold | v0.7.0 | 3/3 | Complete   | 2026-04-03 |
-| 27. Engine API Adaptations | v0.7.0 | 0/? | Not started | - |
-| 28. Adapter & Type Bridge | v0.7.0 | 0/? | Not started | - |
-| 29. Input & Tool Reconnection | v0.7.0 | 0/? | Not started | - |
+| 27. Engine API Adaptations | v0.7.0 | - | FAILED   | 2026-04-04 |
+| 28. Adapter & Type Bridge | v0.7.0 | - | FAILED   | 2026-04-04 |
+| 29. Input & Tool Reconnection | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 30. UI, Paper & Transparency | v0.7.0 | 0/? | Not started | - |
 | 31. Advanced Paint Features | v0.7.0 | 0/? | Not started | - |
 | 32. Cleanup & Removal | v0.7.0 | 0/? | Not started | - |
