@@ -2,7 +2,7 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-32) converts to a pnpm monorepo and replaces perfect-freehand + p5.brush with the efx-physic-paint physics engine, adding paper textures, transparency, and advanced paint capabilities.
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-33) converts to a pnpm monorepo, enhances the current paint engine (perfect-freehand + p5.brush), and adds small improvements and fixes. v0.8.0 (Phase 34+) will add efx-physic-paint as a standalone window with transport to the editor.
 
 ## Milestones
 
@@ -12,7 +12,8 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - ✅ **v0.4.0 Canvas & Paint** — Phases 18-19 (shipped 2025-03-25)
 - ✅ **v0.5.0 Motion Blur & Paint Styles** — Phases 20-21 (shipped 2025-03-26)
 - ✅ **v0.6.0 Various Enhancements** — Phases 22-25 (shipped 2026-04-03)
-- 🚧 **v0.7.0 Pure Monorepo & Paint Engine Swap** — Phases 26-32 (in progress)
+- 🚧 **v0.7.0 Monorepo & Paint Enhancements** — Phases 26-33 (in progress)
+- 📋 **v0.8.0 Standalone Physics Paint** — Phase 34+ (planned)
 
 ## Phases
 
@@ -111,9 +112,9 @@ See: `milestones/v0.6.0-ROADMAP.md` for full details.
 
 </details>
 
-### 🚧 v0.7.0 Pure Monorepo & Paint Engine Swap (In Progress)
+### 🚧 v0.7.0 Monorepo & Paint Enhancements (In Progress)
 
-**Milestone Goal:** Convert to pnpm monorepo with efx-physic-paint as a workspace package, replace perfect-freehand + p5.brush with the physics engine, and surface new capabilities (paper textures, transparency, advanced paint tools).
+**Milestone Goal:** Convert to pnpm monorepo with efx-physic-paint as a workspace package, enhance the current paint engine (perfect-freehand + p5.brush), and add small improvements and fixes.
 
 **Phase Numbering:**
 - Integer phases (26, 27, ...): Planned milestone work
@@ -123,9 +124,10 @@ See: `milestones/v0.6.0-ROADMAP.md` for full details.
 - [x] **Phase 27: Engine API Adaptations** - FAILED: batch renderFromStrokes approach produces inferior visual quality (2026-04-04)
 - [x] **Phase 28: Adapter & Type Bridge** - FAILED: adapter architecture depends on broken batch rendering strategy (2026-04-04)
 - [x] **Phase 29: Input & Tool Reconnection** - FAILED: engine output has no physics/grain, O(n²) re-render perf, forceDryAll kills paint mixing (2026-04-04)
-- [ ] **Phase 30: UI, Paper & Transparency** - Surface new engine capabilities and finalize persistence
-- [ ] **Phase 31: Advanced Paint Features** - Blow tool, animation replay, custom presets, per-stroke isolation, multi-frame ops, stroke groups
-- [ ] **Phase 32: Cleanup & Removal** - Remove perfect-freehand, p5.brush, and all dead code
+- [x] **Phase 30: UI, Paper & Transparency** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
+- [x] **Phase 31: Advanced Paint Features** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
+- [x] **Phase 32: Cleanup & Removal** - FAILED: cannot remove engines that are still in use (2026-04-04)
+- [ ] **Phase 33: Enhance Current Engine** - Small improvements and fixes to perfect-freehand + p5.brush paint layers
 
 ## Phase Details
 
@@ -179,47 +181,27 @@ Plans:
 **Plans**: TBD
 **UI hint**: yes
 
-### Phase 30: UI, Paper & Transparency
-**Goal**: User can access new engine capabilities (paper textures, transparency, physics controls) with updated persistence
-**Depends on**: Phase 29
-**Requirements**: NCAP-01, NCAP-02, NCAP-03, PERS-01, PERS-02
-**Success Criteria** (what must be TRUE):
-  1. User can toggle paint layer to transparent background for compositing over photos
-  2. User can select a paper/canvas texture that physically modulates paint deposit
-  3. PaintProperties panel exposes physics controls (grain, physics mode, dry mode, detail, pickup)
-  4. Paint sidecar JSON loads old v0.6.0 format and saves in new engine format without data loss
-  5. Project saves and reopens with paper, transparency, and physics settings preserved
-**Plans**: TBD
-**UI hint**: yes
+### Phase 30: UI, Paper & Transparency — FAILED
+Depended on adapter approach from phases 27-29.
 
-### Phase 31: Advanced Paint Features
-**Goal**: User can access advanced paint capabilities enabled by the physics engine
-**Depends on**: Phase 30
-**Requirements**: PAINT-07, PAINT-08, PAINT-09, PAINT-10, PAINT-11, PAINT-12
-**Success Criteria** (what must be TRUE):
-  1. User can blow/push wet paint with a directional force tool
-  2. User can replay stroke animation within the editor frame model
-  3. User can save and load custom brush presets as JSON files
-  4. User can paint strokes with independent physics parameters (isolated wet layers)
-  5. User can create strokes that span multiple frames
-  6. User can group strokes into a hierarchy for batch operations
-**Plans**: TBD
-**UI hint**: yes
+### Phase 31: Advanced Paint Features — FAILED
+Depended on adapter approach from phases 27-29.
 
-### Phase 32: Cleanup & Removal
-**Goal**: Codebase has a single rendering path with no dead dependencies or stale code
-**Depends on**: Phase 31
-**Requirements**: PERS-03
+### Phase 32: Cleanup & Removal — FAILED
+Cannot remove engines that are still in use.
+
+### Phase 33: Enhance Current Engine
+**Goal**: Current paint engine (perfect-freehand + p5.brush) receives small improvements and fixes
+**Depends on**: Phase 26
+**Requirements**: TBD (to be defined during discuss phase)
 **Success Criteria** (what must be TRUE):
-  1. `perfect-freehand` and `p5.brush` are removed from dependencies
-  2. `brushP5Adapter.ts`, `p5brush.d.ts`, and all FX duality types (BrushStyle, StrokeFxState, BrushFxParams) are deleted
-  3. `pnpm build` succeeds and export pipeline produces correct output
+  TBD
 **Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
+Phases execute in numeric order: 26 -> 33 (27-32 failed)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -233,6 +215,7 @@ Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32
 | 27. Engine API Adaptations | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 28. Adapter & Type Bridge | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 29. Input & Tool Reconnection | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 30. UI, Paper & Transparency | v0.7.0 | 0/? | Not started | - |
-| 31. Advanced Paint Features | v0.7.0 | 0/? | Not started | - |
-| 32. Cleanup & Removal | v0.7.0 | 0/? | Not started | - |
+| 30. UI, Paper & Transparency | v0.7.0 | - | FAILED   | 2026-04-04 |
+| 31. Advanced Paint Features | v0.7.0 | - | FAILED   | 2026-04-04 |
+| 32. Cleanup & Removal | v0.7.0 | - | FAILED   | 2026-04-04 |
+| 33. Enhance Current Engine | v0.7.0 | 0/? | Not started | - |

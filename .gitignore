@@ -28,4 +28,6 @@ app/src-tauri/gen/
 .Mockup
 SPECS
 .claude/pnpm-lock.yaml
+.claude/projects/
+.claude/worktrees/
 .collaborator
