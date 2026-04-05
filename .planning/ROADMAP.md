@@ -204,7 +204,7 @@ Cannot remove engines that are still in use.
   7. Modal color picker: no buttons, no overlay, positioned near mouse
   8. Selected FX strokes show wireframe overlay for easy grab
   9. Stroke draw-reveal animation distributes points across frames by speed
-**Plans:** 10/11 plans
+**Plans:** 11/11 plans complete
 Plans:
 - [x] 33-01-PLAN.md — Bug fixes (undo rendering, FX brush style) and UX quick wins
 - [x] 33-02-PLAN.md — Brush preferences persistence and circle cursor
@@ -216,7 +216,7 @@ Plans:
 - [x] 33-08-PLAN.md — Gap closure: fix color picker re-render loop + blend mode override
 - [x] 33-09-PLAN.md — Gap closure: FX cache invalidation, mode persistence, FX white bg
 - [x] 33-10-PLAN.md — Gap closure: cursor position, pulsate animation, modal dialog, multi-animate
-- [ ] 33-11-PLAN.md — Gap closure: move inline color picker to canvas side
+- [x] 33-11-PLAN.md — Gap closure: move inline color picker to canvas side
 
 ## Progress
 
@@ -238,4 +238,4 @@ Phases execute in numeric order: 26 -> 33 (27-32 failed)
 | 30. UI, Paper & Transparency | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 31. Advanced Paint Features | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 32. Cleanup & Removal | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 33. Enhance Current Engine | v0.7.0 | 10/11 | In Progress|  |
+| 33. Enhance Current Engine | v0.7.0 | 11/11 | Complete   | 2026-04-05 |

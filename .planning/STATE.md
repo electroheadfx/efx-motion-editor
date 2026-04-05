@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Monorepo & Paint Enhancements
 status: executing
-stopped_at: Completed 33-10-PLAN.md
-last_updated: "2026-04-05T11:59:29.921Z"
+stopped_at: Completed 33-11-PLAN.md
+last_updated: "2026-04-05T12:29:52.733Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 8
-  completed_phases: 1
-  total_plans: 13
-  completed_plans: 11
+  completed_phases: 2
+  total_plans: 14
+  completed_plans: 14
   percent: 0
 ---
 
@@ -52,6 +52,7 @@ Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 - [Phase 26-monorepo-scaffold]: Consolidated pnpm.overrides and packageManager at workspace root; removed redundant onlyBuiltDependencies from paint package
 - [Phase 33]: FX wireframe uses dashed blue line matching selection scheme; hit testing uses bounding box for FX strokes
 - [Phase 33]: Use containerRef for cursor position alignment with paint coordinate system
+- [Phase 33]: Moved picker visibility from local useState to paintStore shared signal for cross-component control
 
 ### Research Flags
 
@@ -75,9 +76,10 @@ None.
 | Phase 26-monorepo-scaffold P02 | 4min | 2 tasks | 135 files |
 | Phase 33 P06 | 2min | 1 tasks | 1 files |
 | Phase 33 P10 | 4min | 2 tasks | 4 files |
+| Phase 33 P11 | 3min | 2 tasks | 3 files |
 
 ## Session Continuity
 
-Last session: 2026-04-05T11:59:29.918Z
-Stopped at: Completed 33-10-PLAN.md
+Last session: 2026-04-05T12:29:52.731Z
+Stopped at: Completed 33-11-PLAN.md
 Resume file: None
