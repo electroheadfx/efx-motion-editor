@@ -2,33 +2,39 @@
 
 ## v0.7.0 Monorepo & Paint Enhancements (Shipped: 2026-04-05)
 
-**Phases completed:** 2 phases, 23 plans, 40 tasks
+**Phases:** 2 completed (26, 33) + 6 failed/abandoned (27-32) | **Plans:** 23 | **Tasks:** 40
+**Lines of code:** 40,014 TypeScript (+40,609 / -1,950 net, 459 files changed)
+**Timeline:** 3 days (2026-04-03 → 2026-04-05) | **Commits:** 138
+**Git range:** `docs: start milestone v0.7.0` → `feat: v0.7.0 Monorepo & Paint Enhancements` | **Tag:** v0.7.0
+
+**Delivered:** Converted to pnpm monorepo with app/ + packages/efx-physic-paint/, and overhauled the paint engine with a 3-mode system (flat/FX/physical-placeholder), inline 4-mode color picker with swatches, FX stroke wireframe overlay, stroke draw-reveal animation, circle cursor overlay, and brush persistence. Phases 27-32 (engine adapter approach) were abandoned — efx-physic-paint deferred to v0.8.0 as a standalone window.
 
 **Key accomplishments:**
 
-- Renamed Application/ to app/ via isolated git mv with full --follow history, moved lockfile to workspace root, updated .gitignore for monorepo paths
-- 1. [Rule 1 - Bug] Removed redundant pnpm.onlyBuiltDependencies from paint package.json
-- Full monorepo verification suite — 8 automated checks passed, dev server and Tauri build confirmed working
-- Fixed all undo/redo rendering bugs with _notifyVisualChange + FX cache invalidation, enabled immediate FX brush drawing, and implemented 4 UX quick wins (auto-enter paint mode, no-confirm clear, orange exit button, sidebar reorder)
-- Brush color/size persist via LazyStore with #203769/35px defaults, plus circle cursor overlay that scales with zoom
-- Realtime color picker without Apply/Cancel buttons, no dark overlay, positioned near mouse click with bounds clamping
-- 3-mode paint system with flat/FX exclusivity, conversion dialogs, transparent flat background, and layer blend/opacity controls in paint edit mode
-- 4-mode inline color picker (Box HSV/TSL/RVB/CMYK) with HEX input, recent + favorite swatches persisted via LazyStore
-- Dashed wireframe path and bounding box overlay for selected FX strokes with expanded bounding-box hit testing
-- Speed-based stroke animation distributing points across frames with inverse distance weighting and atomic single-Cmd+Z undo
-- Fixed infinite re-render loop in InlineColorPicker via useRef guard and restored blend mode functionality in paint edit mode
-- FX cache invalidation on clearFrame/color change, color-aware cache keys, activePaintMode with persistence, and mode-aware white/transparent background
-- Fixed cursor position offset with high-contrast visibility, strengthened exit button pulsate, modal conversion dialog with dark overlay, and multi-stroke animation support
-- InlineColorPicker relocated from sidebar to canvas-adjacent panel with shared paintStore signal for cross-component visibility control
-- Per-layer paint mode with brushStyle reset on mode switch, frame content inference, and flat-to-FX stroke batch conversion
-- Exit Paint Mode button pulsate animation replaced with glow-only effect (orange-to-red background + box-shadow), scale bounce removed
-- Await initFromPreferences before render so brush color/size persist across restart
-- paintVersion bump after FX cache refresh in setBrushColor triggers immediate preview re-render without requiring pointer movement
-- Fixed circle cursor centering by calculating cursorPos relative to overlayRef instead of containerRef
-- Auto-set white bg on FX mode switch with per-frame bgColor persistence in paint sidecar JSON
-- Removed createPortal and fixed positioning from InlineColorPicker so it renders inside the CanvasArea 260px flex container
-- CSS linear-gradient backgrounds on TSL/RVB/CMYK slider tracks with rAF-throttled drag for smooth interaction
-- Simplified brush stroke hit testing to bbox-only selection and verified wireframe renders for all brush types
+1. pnpm monorepo scaffold: Application/ → app/ with git history preserved, workspace root lockfile, efx-physic-paint as `packages/efx-physic-paint/` workspace package
+2. Paint undo/redo overhaul: _notifyVisualChange + FX cache invalidation fixes all rendering bugs; immediate FX brush drawing without pointer movement required
+3. 3-mode paint system (flat/FX/physical-placeholder) with per-frame mode exclusivity, conversion dialogs, and transparent flat background
+4. Inline 4-mode color picker (Box/TSL/RVB/CMYK) with HEX input, recent colors, and favorite swatches persisted via LazyStore; canvas-adjacent 260px panel
+5. FX stroke wireframe overlay: dashed path + bounding box for selected strokes with bbox-only hit testing
+6. Stroke draw-reveal animation: speed-based point distribution across frame range with inverse distance weighting and atomic single-Cmd+Z undo
+
+**Known Gaps (requirements not completed):**
+
+- MONO-05: `pnpm tauri build` not verified post-monorepo (dev server confirmed working)
+- ENGN-01 through ENGN-06: Engine headless API — deferred to v0.8.0
+- ECUR-01, 05, 06, 08, 11, 12: Minor UX improvements — deferred to v0.8.0
+- PAINT-01 through PAINT-12: Physics paint tools — deferred to v0.8.0
+- NCAP-01 through NCAP-03: New paint capabilities — deferred to v0.8.0
+- PERS-01 through PERS-03: Persistence/compatibility for new engine — deferred to v0.8.0
+
+**Technical debt carried forward:**
+
+- S key shortcut lacks isPaintEditMode() guard (low severity, flagged since v0.6.0)
+- Coalescing API still partially wired (carried from v0.1.0)
+- canUndo/canRedo signals unused for button state (carried from v0.1.0)
+- 2 medium-severity export edge cases (carried from v0.2.0)
+
+**Archives:** `milestones/v0.7.0-ROADMAP.md`, `milestones/v0.7.0-REQUIREMENTS.md`
 
 ---
 

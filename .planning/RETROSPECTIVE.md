@@ -2,6 +2,53 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v0.7.0 — Monorepo & Paint Enhancements
+
+**Shipped:** 2026-04-05
+**Phases:** 2 completed (26, 33) | **Plans:** 23 | **Tasks:** 40
+
+### What Was Built
+- pnpm monorepo: Application/ → app/ with full git history, workspace root lockfile, efx-physic-paint as workspace package
+- Paint undo/redo overhaul: _notifyVisualChange + FX cache invalidation fixes all rendering bugs; immediate FX brush drawing
+- 3-mode paint system (flat/FX/physical-placeholder) with per-frame mode exclusivity and conversion dialogs
+- Inline 4-mode color picker (Box/TSL/RVB/CMYK) with HEX input, recent + favorite swatches, canvas-adjacent 260px panel
+- FX stroke wireframe overlay: dashed path + bounding box for selected strokes with bbox-only hit testing
+- Stroke draw-reveal animation: speed-based point distribution with inverse distance weighting, single-Cmd+Z undo
+- Circle cursor overlay scaling with zoom; brush color/size persisted via LazyStore with session restore
+
+### What Worked
+- **Abandoning the adapter approach early:** Phases 27-32 failed but the decision to cut losses and do Phase 33 (enhance current engine) was correct — shipped valuable paint improvements instead of zero
+- **Phase 33 with 20 micro-plans:** Very fine granularity worked well for iterative paint fixes — each plan small enough to complete in a single session, failures isolated
+- **paintVersion reactivity pattern:** Explicit bump in .then() after FX cache refresh ensured re-render without pointer movement — clean solution, reusable across the codebase
+- **LazyStore for preferences:** brush color/size/mode persistence with zero boilerplate — unified approach for all paint state that needs cross-session survival
+- **useRef guard for InlineColorPicker:** Simple pattern to prevent infinite re-render loops in signal-driven components; applicable across the codebase
+
+### What Was Inefficient
+- **Phases 27-32 failure:** 6 phases planned and attempted but abandoned — the adapter approach was architecturally wrong (batch rendering kills physics quality, O(n²) complexity). Research phase underestimated how incompatible headless rendering is with physics engine requirements
+- **REQUIREMENTS.md had 30+ deferred requirements:** Over-scoped milestone requirements that never had a real chance of shipping — future milestones should scope requirements to phases that are actually planned
+- **InlineColorPicker position thrash:** Multiple plans dedicated to positioning/layout — should have resolved UI placement in the first plan rather than iterating across 5+ fix commits
+- **No Nyquist validation:** Phase 26 and 33 missing VALIDATION.md — continues to be deprioritized despite being flagged each milestone
+
+### Patterns Established
+- Micro-plan approach for iterative bug fixing: 20 plans in Phase 33 each < 5 min — effective for UI polish work
+- Per-frame bgColor inference: check fxStrokes presence → determine appropriate background → persist in sidecar JSON
+- bbox-only hit testing: removed fine proximity check in favor of bounding-box selection — simpler and more predictable
+- activePaintMode with persistence: store the active mode in LazyStore, not just in-memory signal
+
+### Key Lessons
+1. **Over-ambitious requirements inflate milestones** — 43 requirements for v0.7.0, only 12 shipped. Scope requirements to phases actually planned, not theoretical future phases
+2. **Adapter approach for physics engines is architecturally wrong** — batch rendering destroys quality; the right approach (v0.8.0) is standalone window + transport protocol, not a headless adapter
+3. **When architecture fails, cut losses fast** — 6 phases abandoned was costly but right. Early signals (Phase 27 hitting fundamental API incompatibilities) should have triggered earlier pivot
+4. **Fine-grained plans enable parallel execution** — Phase 33's 20 micro-plans allowed rapid iteration and isolation of failures; much better than monolithic plans
+5. **Position complex UI components early** — InlineColorPicker required 10+ fix commits for layout/positioning; a single dedicated layout plan upfront would have been faster
+
+### Cost Observations
+- Model mix: ~80% sonnet, ~20% opus (Phase 33 micro-plans ran mostly on sonnet)
+- Sessions: ~4 sessions over 3 active days (discounting Phase 27-32 failure period)
+- Notable: Phase 33's 20 plans completed in 2 days — micro-plan approach highly efficient for iterative work
+
+---
+
 ## Milestone: v0.6.0 — Various Enhancements
 
 **Shipped:** 2026-04-03
