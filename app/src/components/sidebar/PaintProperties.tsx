@@ -70,6 +70,7 @@ function shapeToBrushStrokes(shape: PaintShape, brushOptions: PaintStrokeOptions
 export function PaintProperties({layer}: {layer: Layer}) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showBgColorPicker, setShowBgColorPicker] = useState(false);
+  const [colorPickerPos, setColorPickerPos] = useState({x: 0, y: 0});
   const [confirmClear, setConfirmClear] = useState(false);
   const [onionCollapsed, setOnionCollapsed] = useState(true);
   const [tabletCollapsed, setTabletCollapsed] = useState(true);
@@ -135,7 +136,10 @@ export function PaintProperties({layer}: {layer: Layer}) {
             <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>Background Color</span>
             <div
               style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)' }}
-              onClick={() => setShowBgColorPicker(true)}
+              onClick={(e: MouseEvent) => {
+                setColorPickerPos({x: e.clientX, y: e.clientY});
+                setShowBgColorPicker(true);
+              }}
               title="Paint background color"
             />
             {bgColor !== DEFAULT_PAINT_BG_COLOR && (
@@ -184,6 +188,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
       {showBgColorPicker && (
         <ColorPickerModal
           color={bgColor}
+          mouseX={colorPickerPos.x}
+          mouseY={colorPickerPos.y}
           onLiveChange={(c) => paintStore.setPaintBgColor(c)}
           onCommit={(c) => {
             paintStore.setPaintBgColor(c);
@@ -316,7 +322,10 @@ export function PaintProperties({layer}: {layer: Layer}) {
                         borderColor: 'var(--color-border-subtle)',
                       }}
                       title="Change stroke color"
-                      onClick={() => setShowColorPicker(true)}
+                      onClick={(e: MouseEvent) => {
+                        setColorPickerPos({x: e.clientX, y: e.clientY});
+                        setShowColorPicker(true);
+                      }}
                     />
                     <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
                       {currentColor.toUpperCase()}
@@ -564,7 +573,10 @@ export function PaintProperties({layer}: {layer: Layer}) {
                     borderColor: 'var(--color-border-subtle)',
                   }}
                   title="Change brush color"
-                  onClick={() => setShowColorPicker(true)}
+                  onClick={(e: MouseEvent) => {
+                    setColorPickerPos({x: e.clientX, y: e.clientY});
+                    setShowColorPicker(true);
+                  }}
                 />
                 <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
                   {brushColorVal.toUpperCase()}
@@ -1048,6 +1060,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
       {showColorPicker && (
         <ColorPickerModal
           color={brushColorVal}
+          mouseX={colorPickerPos.x}
+          mouseY={colorPickerPos.y}
           onLiveChange={(c) => {
             paintStore.setBrushColor(c);
             // Also update selected strokes live

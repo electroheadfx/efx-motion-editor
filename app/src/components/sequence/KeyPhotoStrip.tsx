@@ -339,6 +339,7 @@ function KeyPhotoCard({
 }: KeyPhotoCardProps) {
   const [framesPopoverOpen, setFramesPopoverOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerPos, setPickerPos] = useState({x: 0, y: 0});
   const framesBtnRef = useRef<HTMLButtonElement>(null);
   const isSolidEntry = !!solidColor || !!isTransparent || !!gradient;
   const image = !isSolidEntry ? imageStore.getById(imageId) : undefined;
@@ -422,8 +423,9 @@ function KeyPhotoCard({
       {isSolidEntry && !isTransparent && (
         <button
           class="absolute bottom-0.5 left-0.5 w-3.5 h-3.5 flex items-center justify-center bg-[#00000080] hover:bg-[#000000AA] rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-          onClick={(e) => {
+          onClick={(e: MouseEvent) => {
             e.stopPropagation();
+            setPickerPos({x: e.clientX, y: e.clientY});
             setPickerOpen(!pickerOpen);
           }}
           title="Pick color"
@@ -435,6 +437,8 @@ function KeyPhotoCard({
       {pickerOpen && (
         <ColorPickerModal
           color={solidColor || '#000000'}
+          mouseX={pickerPos.x}
+          mouseY={pickerPos.y}
           onLiveChange={(c) => {
             sequenceStore.updateKeySolidColorLive(sequenceId, keyPhotoId, c);
           }}

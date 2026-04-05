@@ -285,6 +285,7 @@ function ShaderDetail({
 }) {
   const [params, setParams] = useState<Record<string, number>>(() => getDefaultParams(shader));
   const [openColorGroup, setOpenColorGroup] = useState<string | null>(null);
+  const [colorPickerPos, setColorPickerPos] = useState({x: 0, y: 0});
   const previewRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const startTime = useRef(performance.now());
@@ -432,12 +433,17 @@ function ShaderDetail({
                   <div
                     class="w-6 h-6 rounded cursor-pointer border border-(--color-border-subtle)"
                     style={{ backgroundColor: hex }}
-                    onClick={() => setOpenColorGroup(openColorGroup === p.colorGroup ? null : p.colorGroup!)}
+                    onClick={(e: MouseEvent) => {
+                      setColorPickerPos({x: e.clientX, y: e.clientY});
+                      setOpenColorGroup(openColorGroup === p.colorGroup ? null : p.colorGroup!);
+                    }}
                     title={`Pick ${p.label.toLowerCase()} color`}
                   />
                   {openColorGroup === p.colorGroup && (
                     <ColorPickerModal
                       color={hex}
+                      mouseX={colorPickerPos.x}
+                      mouseY={colorPickerPos.y}
                       onCommit={(c) => {
                         const [cr, cg, cb] = hexToRgb(c);
                         updateParams({ [groupParams[0].key]: cr, [groupParams[1].key]: cg, [groupParams[2].key]: cb });

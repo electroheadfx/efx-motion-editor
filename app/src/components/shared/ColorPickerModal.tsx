@@ -102,6 +102,9 @@ export interface ColorPickerModalProps {
   onLiveChange?: (color: string) => void;
   onCommit: (color: string) => void;
   onClose: () => void;
+  // Position near mouse (optional — falls back to centered)
+  mouseX?: number;
+  mouseY?: number;
   // Gradient mode props (all optional for backward compat)
   gradient?: GradientData;
   onGradientChange?: (gradient: GradientData) => void;
@@ -111,6 +114,7 @@ export interface ColorPickerModalProps {
 
 export function ColorPickerModal({
   color, onLiveChange, onCommit, onClose,
+  mouseX, mouseY,
   gradient, onGradientChange, onGradientLiveChange, showGradientMode,
 }: ColorPickerModalProps) {
   const rgba = hexToRgba(color);
@@ -367,7 +371,19 @@ export function ColorPickerModal({
     }`;
 
   const isGradientMode = fillMode === 'gradient';
-  const modalWidth = isGradientMode ? '340px' : '300px';
+  const MODAL_WIDTH_NUM = isGradientMode ? 340 : 300;
+  const MODAL_HEIGHT = 420;
+  const MARGIN = 12;
+  const modalWidth = `${MODAL_WIDTH_NUM}px`;
+
+  // Calculate clamped position near mouse, or center as fallback
+  const left = mouseX != null
+    ? Math.min(Math.max(mouseX, MARGIN), window.innerWidth - MODAL_WIDTH_NUM - MARGIN)
+    : (window.innerWidth - MODAL_WIDTH_NUM) / 2;
+
+  const top = mouseY != null
+    ? Math.min(Math.max(mouseY, MARGIN), window.innerHeight - MODAL_HEIGHT - MARGIN)
+    : (window.innerHeight - MODAL_HEIGHT) / 2;
 
   // Close handler: commit current color then close
   const handleClose = useCallback(() => {
@@ -395,10 +411,13 @@ export function ColorPickerModal({
         onClick={handleClose}
       />
 
-      {/* Modal */}
+      {/* Modal — positioned near mouse click, clamped to window bounds */}
       <div
-        class="relative rounded-xl shadow-2xl p-5 flex flex-col gap-4"
+        class="rounded-xl shadow-2xl p-5 flex flex-col gap-4"
         style={{
+          position: 'fixed',
+          left: `${left}px`,
+          top: `${top}px`,
           width: modalWidth,
           backgroundColor: 'var(--sidebar-panel-bg)',
           border: '1px solid var(--sidebar-border-unselected)',

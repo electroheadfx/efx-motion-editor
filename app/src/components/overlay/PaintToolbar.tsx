@@ -30,6 +30,7 @@ export function PaintToolbar() {
   const brushColorVal = paintStore.brushColor.value;
   const brushOpacityVal = paintStore.brushOpacity.value;
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [pickerPos, setPickerPos] = useState({x: 0, y: 0});
 
   return (
     <div
@@ -139,7 +140,10 @@ export function PaintToolbar() {
           borderColor: 'var(--color-border-subtle)',
         }}
         title="Brush color"
-        onClick={() => setShowColorPicker(true)}
+        onClick={(e: MouseEvent) => {
+          setPickerPos({x: e.clientX, y: e.clientY});
+          setShowColorPicker(true);
+        }}
       />
 
       {/* Opacity display */}
@@ -172,6 +176,8 @@ export function PaintToolbar() {
       {showColorPicker && (
         <ColorPickerModal
           color={brushColorVal}
+          mouseX={pickerPos.x}
+          mouseY={pickerPos.y}
           onLiveChange={(c) => paintStore.setBrushColor(c)}
           onCommit={(c) => {
             paintStore.setBrushColor(c);
