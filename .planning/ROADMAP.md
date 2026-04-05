@@ -112,7 +112,7 @@ See: `milestones/v0.6.0-ROADMAP.md` for full details.
 
 </details>
 
-### 🚧 v0.7.0 Monorepo & Paint Enhancements (In Progress)
+### v0.7.0 Monorepo & Paint Enhancements (In Progress)
 
 **Milestone Goal:** Convert to pnpm monorepo with efx-physic-paint as a workspace package, enhance the current paint engine (perfect-freehand + p5.brush), and add small improvements and fixes.
 
@@ -123,7 +123,7 @@ See: `milestones/v0.6.0-ROADMAP.md` for full details.
 - [x] **Phase 26: Monorepo Scaffold** - Convert to pnpm workspace with app/ and packages/efx-physic-paint/ (completed 2026-04-03)
 - [x] **Phase 27: Engine API Adaptations** - FAILED: batch renderFromStrokes approach produces inferior visual quality (2026-04-04)
 - [x] **Phase 28: Adapter & Type Bridge** - FAILED: adapter architecture depends on broken batch rendering strategy (2026-04-04)
-- [x] **Phase 29: Input & Tool Reconnection** - FAILED: engine output has no physics/grain, O(n²) re-render perf, forceDryAll kills paint mixing (2026-04-04)
+- [x] **Phase 29: Input & Tool Reconnection** - FAILED: engine output has no physics/grain, O(n2) re-render perf, forceDryAll kills paint mixing (2026-04-04)
 - [x] **Phase 30: UI, Paper & Transparency** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
 - [x] **Phase 31: Advanced Paint Features** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
 - [x] **Phase 32: Cleanup & Removal** - FAILED: cannot remove engines that are still in use (2026-04-04)
@@ -191,12 +191,28 @@ Depended on adapter approach from phases 27-29.
 Cannot remove engines that are still in use.
 
 ### Phase 33: Enhance Current Engine
-**Goal**: Current paint engine (perfect-freehand + p5.brush) receives small improvements and fixes
+**Goal**: Current paint engine (perfect-freehand + p5.brush) receives bug fixes, UX improvements, paint mode system, inline color picker, and stroke animation
 **Depends on**: Phase 26
-**Requirements**: TBD (to be defined during discuss phase)
+**Requirements**: ECUR-01, ECUR-02, ECUR-03, ECUR-04, ECUR-05, ECUR-06, ECUR-07, ECUR-08, ECUR-09, ECUR-10, ECUR-11, ECUR-12, ECUR-13
 **Success Criteria** (what must be TRUE):
-  TBD
-**Plans**: TBD
+  1. Cmd+Z after any paint operation immediately re-renders canvas with correct visual state (flat and FX)
+  2. FX brush style selection actually applies during drawing
+  3. Brush color/size persist across sessions, defaulting to #203769/35px
+  4. Circle cursor at brush size scales with zoom
+  5. 3-mode paint system (flat/FX/physical-placeholder) with per-frame exclusivity
+  6. Inline color picker with 4 modes (Box/TSL/RVB/CMYK) and persistent swatches
+  7. Modal color picker: no buttons, no overlay, positioned near mouse
+  8. Selected FX strokes show wireframe overlay for easy grab
+  9. Stroke draw-reveal animation distributes points across frames by speed
+**Plans:** 7 plans
+Plans:
+- [ ] 33-01-PLAN.md — Bug fixes (undo rendering, FX brush style) and UX quick wins
+- [ ] 33-02-PLAN.md — Brush preferences persistence and circle cursor
+- [ ] 33-03-PLAN.md — Modal color picker improvements (no buttons, no overlay, near mouse)
+- [ ] 33-04-PLAN.md — Paint mode system (flat/FX/physical with conversion dialogs)
+- [ ] 33-05-PLAN.md — Inline color picker with 4 modes and swatches
+- [ ] 33-06-PLAN.md — FX stroke selection wireframe overlay
+- [ ] 33-07-PLAN.md — Stroke draw-reveal animation
 
 ## Progress
 
@@ -218,4 +234,4 @@ Phases execute in numeric order: 26 -> 33 (27-32 failed)
 | 30. UI, Paper & Transparency | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 31. Advanced Paint Features | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 32. Cleanup & Removal | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 33. Enhance Current Engine | v0.7.0 | 0/? | Not started | - |
+| 33. Enhance Current Engine | v0.7.0 | 0/7 | Not started | - |
