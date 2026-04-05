@@ -221,6 +221,7 @@ function VignetteSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSec
 
 function ColorGradeSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSectionKfProps) {
   const [tintPickerOpen, setTintPickerOpen] = useState(false);
+  const [tintPickerPos, setTintPickerPos] = useState({x: 0, y: 0});
   const source = layer.source as Extract<LayerSourceData, { type: 'adjustment-color-grade' }>;
   const v = (field: string, fallback: number) => fxValues ? (fxValues[field] ?? fallback) : fallback;
 
@@ -281,12 +282,17 @@ function ColorGradeSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxS
           <div
             class="w-6 h-6 rounded cursor-pointer border border-(--color-border-subtle)"
             style={{ backgroundColor: source.tintColor || '#000000' }}
-            onClick={() => setTintPickerOpen(true)}
+            onClick={(e: MouseEvent) => {
+              setTintPickerPos({x: e.clientX, y: e.clientY});
+              setTintPickerOpen(true);
+            }}
             title="Pick tint color"
           />
           {tintPickerOpen && (
             <ColorPickerModal
               color={source.tintColor || '#000000'}
+              mouseX={tintPickerPos.x}
+              mouseY={tintPickerPos.y}
               onCommit={(c) => handleParamChange('tintColor', c)}
               onClose={() => setTintPickerOpen(false)}
             />
@@ -351,6 +357,7 @@ function GlslPreviewModal({
   const startTime = useRef(performance.now());
   const source = layer.source as { params: Record<string, number> };
   const [modalColorGroup, setModalColorGroup] = useState<string | null>(null);
+  const [modalColorPos, setModalColorPos] = useState({x: 0, y: 0});
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -449,11 +456,16 @@ function GlslPreviewModal({
                     <div
                       class="w-7 h-7 rounded cursor-pointer border border-(--color-border-subtle)"
                       style={{ backgroundColor: hex }}
-                      onClick={() => setModalColorGroup(modalColorGroup === p.colorGroup ? null : p.colorGroup!)}
+                      onClick={(e: MouseEvent) => {
+                        setModalColorPos({x: e.clientX, y: e.clientY});
+                        setModalColorGroup(modalColorGroup === p.colorGroup ? null : p.colorGroup!);
+                      }}
                     />
                     {modalColorGroup === p.colorGroup && (
                       <ColorPickerModal
                         color={hex}
+                        mouseX={modalColorPos.x}
+                        mouseY={modalColorPos.y}
                         onCommit={(c) => {
                           const [r, g, b] = hexToRgb(c);
                           onParamsChange({ [gp[0].key]: r, [gp[1].key]: g, [gp[2].key]: b });
@@ -527,6 +539,7 @@ function modeLabelForValue(val: number): string {
 
 function GlslSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSectionKfProps) {
   const [openColorGroup, setOpenColorGroup] = useState<string | null>(null);
+  const [glslColorPos, setGlslColorPos] = useState({x: 0, y: 0});
   const source = layer.source as { shaderId: string; params: Record<string, number> };
   const shaderDef = getShaderById(source.shaderId);
   if (!shaderDef) return <div class="text-[10px] text-(--color-text-muted)">Unknown shader: {source.shaderId}</div>;
@@ -618,12 +631,17 @@ function GlslSection({ layer, onFxEdit, fxValues }: { layer: Layer } & FxSection
                     <div
                       class="w-6 h-6 rounded cursor-pointer border border-(--color-border-subtle)"
                       style={{ backgroundColor: item.hex }}
-                      onClick={() => setOpenColorGroup(openColorGroup === item.group ? null : item.group)}
+                      onClick={(e: MouseEvent) => {
+                        setGlslColorPos({x: e.clientX, y: e.clientY});
+                        setOpenColorGroup(openColorGroup === item.group ? null : item.group);
+                      }}
                       title={`Pick ${item.label.toLowerCase()} color`}
                     />
                     {openColorGroup === item.group && (
                       <ColorPickerModal
                         color={item.hex}
+                        mouseX={glslColorPos.x}
+                        mouseY={glslColorPos.y}
                         onCommit={(c) => {
                           const [r, g, b] = hexToRgb(c);
                           editGlslParams({ [item.groupParams[0].key]: r, [item.groupParams[1].key]: g, [item.groupParams[2].key]: b });
