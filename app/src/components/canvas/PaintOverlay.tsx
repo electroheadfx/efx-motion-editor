@@ -11,7 +11,7 @@ import {strokeToPath, renderPaintFrame} from '../../lib/paintRenderer';
 import {renderFrameFx} from '../../lib/brushP5Adapter';
 import {floodFill, hexToRgba} from '../../lib/paintFloodFill';
 import {pushAction} from '../../lib/history';
-import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, BrushStyle, PaintFrame, BezierAnchor} from '../../types/paint';
+import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, BrushStyle, StrokeFxState, PaintFrame, BezierAnchor} from '../../types/paint';
 import {
   hitTestAnchor, findNearestSegment, insertAnchorOnSegment,
   deleteAnchor, updateCoupledHandle, dragSegment, sampleBezierPath,
@@ -1942,11 +1942,16 @@ export function PaintOverlay({
           opacity: paintStore.brushOpacity.peek(),
           size: paintStore.brushSize.peek(),
           options: baseOptions,
-          brushStyle: 'flat' as BrushStyle,  // per D-01: always draw flat
-          brushParams: undefined,  // per D-01: FX params applied post-draw
-          fxState: 'flat',  // per D-04: initial state is flat
+          brushStyle: paintStore.brushStyle.peek(),  // D-33: use current brush style
+          brushParams: paintStore.brushStyle.peek() !== 'flat' ? {...paintStore.brushFxParams.peek()} : undefined,
+          fxState: paintStore.brushStyle.peek() !== 'flat' ? 'fx-applied' as StrokeFxState : 'flat',
         };
         paintStore.addElement(layerId, frame, stroke);
+        // D-33: trigger FX rendering immediately when drawing with a non-flat style
+        if (stroke.brushStyle !== 'flat') {
+          paintStore.invalidateFrameFxCache(layerId, frame);
+          paintStore.refreshFrameFx(layerId, frame);
+        }
       }
     } else if ((tool === 'line' || tool === 'rect' || tool === 'ellipse') && shapeStart.current && layerId) {
       const start = shapeStart.current;
