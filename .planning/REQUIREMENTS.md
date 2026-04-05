@@ -26,7 +26,7 @@
 ### Enhanced Current Engine
 
 - [ ] **ECUR-01**: `Cmd+Z` after any paint operation (draw, clear, undo in FX mode) immediately re-renders canvas with correct visual state for both flat and FX strokes
-- [ ] **ECUR-02**: Selecting an FX brush style (watercolor, ink, charcoal, pencil, marker) in FX mode actually paints in that style during drawing — no manual reselection required
+- [x] **ECUR-02**: Selecting an FX brush style (watercolor, ink, charcoal, pencil, marker) in FX mode actually paints in that style during drawing — no manual reselection required
 - [x] **ECUR-03**: Brush color and size persist across sessions in app preferences, defaulting to `#203769` at 35px
 - [x] **ECUR-04**: Paint brush shows a circle cursor at the current brush pixel size, scaling with canvas zoom (Photoshop behavior)
 - [ ] **ECUR-05**: Creating a new paint layer auto-switches to paint edit mode (equivalent to pressing `[p]`)
@@ -101,7 +101,7 @@
 | ENGN-05 | Phase 28 | Pending |
 | ENGN-06 | Phase 28 | Pending |
 | ECUR-01 | Phase 33 | Pending |
-| ECUR-02 | Phase 33 | Pending |
+| ECUR-02 | Phase 33 | Complete |
 | ECUR-03 | Phase 33 | Complete |
 | ECUR-04 | Phase 33 | Complete |
 | ECUR-05 | Phase 33 | Pending |
