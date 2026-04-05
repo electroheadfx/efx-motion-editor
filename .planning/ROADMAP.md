@@ -127,7 +127,7 @@ See: `milestones/v0.6.0-ROADMAP.md` for full details.
 - [x] **Phase 30: UI, Paper & Transparency** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
 - [x] **Phase 31: Advanced Paint Features** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
 - [x] **Phase 32: Cleanup & Removal** - FAILED: cannot remove engines that are still in use (2026-04-04)
-- [ ] **Phase 33: Enhance Current Engine** - Small improvements and fixes to perfect-freehand + p5.brush paint layers
+- [x] **Phase 33: Enhance Current Engine** - Small improvements and fixes to perfect-freehand + p5.brush paint layers (completed 2026-04-05)
 
 ## Phase Details
 
@@ -204,7 +204,7 @@ Cannot remove engines that are still in use.
   7. Modal color picker: no buttons, no overlay, positioned near mouse
   8. Selected FX strokes show wireframe overlay for easy grab
   9. Stroke draw-reveal animation distributes points across frames by speed
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans complete
 Plans:
 - [x] 33-01-PLAN.md — Bug fixes (undo rendering, FX brush style) and UX quick wins
 - [x] 33-02-PLAN.md — Brush preferences persistence and circle cursor
@@ -234,4 +234,4 @@ Phases execute in numeric order: 26 -> 33 (27-32 failed)
 | 30. UI, Paper & Transparency | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 31. Advanced Paint Features | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 32. Cleanup & Removal | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 33. Enhance Current Engine | v0.7.0 | 6/7 | In Progress|  |
+| 33. Enhance Current Engine | v0.7.0 | 6/7 | Complete    | 2026-04-05 |
