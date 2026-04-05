@@ -34,19 +34,31 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
   const draggingCanvas = useRef(false);
   const draggingHue = useRef(false);
 
+  // Guard to distinguish external prop changes from internal user interactions
+  const isExternalUpdate = useRef(false);
+  const prevColorRef = useRef(color);
+  const prevOpacityRef = useRef(opacity);
+
   // Load swatches on mount
   useEffect(() => {
     loadRecentColors().then(setRecentColors);
     loadFavoriteColors().then(setFavoriteColors);
   }, []);
 
-  // Sync from external color prop changes
+  // Sync from external color prop changes (only when prop actually changes from outside)
   useEffect(() => {
+    if (prevColorRef.current === color && prevOpacityRef.current === opacity) return;
+    prevColorRef.current = color;
+    prevOpacityRef.current = opacity;
+
+    isExternalUpdate.current = true;
     const r = hexToRgba(color);
     const h = rgbToHsv(r.r, r.g, r.b);
     setHue(h.h); setSat(h.s); setVal(h.v);
     setAlpha(opacity);
     setHexInput(color);
+    // Reset flag after microtask (after React batches state updates)
+    queueMicrotask(() => { isExternalUpdate.current = false; });
   }, [color, opacity]);
 
   // Derive current color
@@ -55,10 +67,12 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
   const currentHsl = rgbToHsl(currentRgb.r, currentRgb.g, currentRgb.b);
   const currentCmyk = rgbToCmyk(currentRgb.r, currentRgb.g, currentRgb.b);
 
-  // Fire onChange on every interaction
+  // Fire onChange only on USER interactions (not external prop sync)
   useEffect(() => {
-    setHexInput(currentHex);
-    onChange(currentHex, alpha);
+    if (isExternalUpdate.current) return; // Skip if this was triggered by prop sync
+    const hex = rgbaToHex(hsvToRgb(hue, sat, val).r, hsvToRgb(hue, sat, val).g, hsvToRgb(hue, sat, val).b);
+    setHexInput(hex);
+    onChange(hex, alpha);
   }, [hue, sat, val, alpha]);
 
   // Draw HSV square
