@@ -2,11 +2,13 @@ import {useState} from 'preact/hooks';
 import {ArrowRight} from 'lucide-preact';
 import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
+import {PaintModeSelector} from './PaintModeSelector';
 import {paintStore} from '../../stores/paintStore';
+import {layerStore} from '../../stores/layerStore';
 import {timelineStore} from '../../stores/timelineStore';
 import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS} from '../../types/paint';
 import type {PaintToolType, PaintStroke, PaintShape, PaintStrokeOptions} from '../../types/paint';
-import type {Layer} from '../../types/layer';
+import type {Layer, BlendMode} from '../../types/layer';
 import {StrokeList} from './StrokeList';
 
 const SHAPE_TOOLS: PaintToolType[] = ['line', 'rect', 'ellipse'];
@@ -117,6 +119,50 @@ export function PaintProperties({layer}: {layer: Layer}) {
         `}</style>
       </div>
 
+      {/* Paint Mode Selector (D-21) */}
+      <div class="px-1">
+        <PaintModeSelector layerId={layer.id} frame={timelineStore.currentFrame.value} />
+      </div>
+
+      {/* Layer Blend Mode & Opacity (D-29) */}
+      <div class="px-1">
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] w-12 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Blend</span>
+          <select
+            class="flex-1 text-[10px] rounded px-1 py-0.5 outline-none cursor-pointer"
+            style={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', border: 'none'}}
+            value={layer.blendMode}
+            onChange={(e) => {
+              layerStore.updateLayer(layer.id, {blendMode: (e.target as HTMLSelectElement).value as BlendMode});
+            }}
+          >
+            <option value="normal">Normal</option>
+            <option value="screen">Screen</option>
+            <option value="multiply">Multiply</option>
+            <option value="overlay">Overlay</option>
+            <option value="add">Add</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2 mt-1">
+          <span class="text-[10px] w-12 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Layer Op</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round(layer.opacity * 100)}
+            class="flex-1 min-w-0 h-1 cursor-pointer"
+            style={{accentColor: 'var(--color-accent)'}}
+            onInput={(e) => {
+              layerStore.updateLayer(layer.id, {opacity: parseInt((e.target as HTMLInputElement).value, 10) / 100});
+            }}
+          />
+          <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+            {Math.round(layer.opacity * 100)}%
+          </span>
+        </div>
+      </div>
+
       {/* Rendering indicator */}
       {paintStore.isRenderingFx.value && (
         <div class="flex items-center gap-2 px-1 py-1 rounded text-[10px]"
@@ -125,8 +171,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* Flat preview mode indicator */}
-      {paintStore.showFlatPreview.value && (
+      {/* Flat preview mode indicator (D-30: only in FX mode) */}
+      {paintStore.activePaintMode.value === 'fx-paint' && paintStore.showFlatPreview.value && (
         <div class="flex items-center justify-between px-1 py-1 rounded text-[10px]"
           style={{backgroundColor: '#f59e0b', color: '#000'}}>
           <span>Flat preview mode</span>
@@ -139,29 +185,31 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* Background Color + Show Sequence image -- 2 columns */}
+      {/* Background Color + Show Sequence image -- mode-aware (D-18, D-31) */}
       <div style={{ padding: '4px 12px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }}>
-          {/* Col 1: Background Color */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>Background Color</span>
-            <div
-              style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)' }}
-              onClick={(e: MouseEvent) => {
-                setColorPickerPos({x: e.clientX, y: e.clientY});
-                setShowBgColorPicker(true);
-              }}
-              title="Paint background color"
-            />
-            {bgColor !== DEFAULT_PAINT_BG_COLOR && (
-              <button
-                onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
-                style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-secondary)', cursor: 'pointer', border: 'none' }}
-              >
-                Reset
-              </button>
-            )}
-          </div>
+          {/* Col 1: Background Color -- hidden in FX mode (always white per p5.brush) */}
+          {paintStore.activePaintMode.value !== 'fx-paint' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>Background Color</span>
+              <div
+                style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)', backgroundImage: bgColor === 'transparent' ? 'linear-gradient(45deg, #888 25%, transparent 25%), linear-gradient(-45deg, #888 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #888 75%), linear-gradient(-45deg, transparent 75%, #888 75%)' : undefined, backgroundSize: bgColor === 'transparent' ? '8px 8px' : undefined, backgroundPosition: bgColor === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : undefined }}
+                onClick={(e: MouseEvent) => {
+                  setColorPickerPos({x: e.clientX, y: e.clientY});
+                  setShowBgColorPicker(true);
+                }}
+                title="Paint background color"
+              />
+              {bgColor !== DEFAULT_PAINT_BG_COLOR && (
+                <button
+                  onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
+                  style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-secondary)', cursor: 'pointer', border: 'none' }}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
           {/* Col 2: Show BG Sequence */}
           <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
             Show BG Sequence
@@ -478,11 +526,11 @@ export function PaintProperties({layer}: {layer: Layer}) {
         <div>
           <SectionLabel text="BRUSH" />
           <div class="flex flex-col gap-2 mt-1.5">
-            {/* D-03: Style buttons (moved from separate BRUSH STYLE section) */}
-            {(activeTool === 'brush' || activeTool === 'select') && (
+            {/* D-03/D-22: Style buttons -- only visible in FX paint mode */}
+            {paintStore.activePaintMode.value === 'fx-paint' && (activeTool === 'brush' || activeTool === 'select') && (
               <>
                 <div class="flex flex-wrap gap-1">
-                  {BRUSH_STYLES.map((style) => {
+                  {BRUSH_STYLES.filter(s => s !== 'flat').map((style) => {
                     const isActive = paintStore.brushStyle.value === style;
                     return (
                       <button
@@ -508,8 +556,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
               </>
             )}
 
-            {/* BRUSH FX PARAMS -- visible when non-flat style selected */}
-            {(activeTool === 'brush' || activeTool === 'select') && (() => {
+            {/* BRUSH FX PARAMS -- visible when non-flat style selected in FX mode */}
+            {paintStore.activePaintMode.value === 'fx-paint' && (activeTool === 'brush' || activeTool === 'select') && (() => {
               const style = paintStore.brushStyle.value;
               const visibleParams = BRUSH_FX_VISIBLE_PARAMS[style] || [];
               if (visibleParams.length === 0) return null;
@@ -704,8 +752,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* BRUSH STYLE -- visible for select tool when brush settings are NOT shown (select+shape) */}
-      {!showBrushSettings && (activeTool === 'brush' || activeTool === 'select') && (
+      {/* BRUSH STYLE -- visible for select tool in FX mode when brush settings are NOT shown (select+shape) */}
+      {paintStore.activePaintMode.value === 'fx-paint' && !showBrushSettings && (activeTool === 'brush' || activeTool === 'select') && (
         <div>
           <SectionLabel text="BRUSH" />
           <div class="flex flex-col gap-2 mt-1.5">

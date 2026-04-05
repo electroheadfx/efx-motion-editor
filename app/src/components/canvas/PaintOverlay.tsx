@@ -1954,6 +1954,7 @@ export function PaintOverlay({
           opacity: paintStore.brushOpacity.peek(),
           size: paintStore.brushSize.peek(),
           options: baseOptions,
+          mode: paintStore.activePaintMode.peek(),  // D-24: stamp mode at creation
           brushStyle: paintStore.brushStyle.peek(),  // D-33: use current brush style
           brushParams: paintStore.brushStyle.peek() !== 'flat' ? {...paintStore.brushFxParams.peek()} : undefined,
           fxState: paintStore.brushStyle.peek() !== 'flat' ? 'fx-applied' as StrokeFxState : 'flat',
