@@ -96,6 +96,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Modal color picker: no buttons, no overlay, positioned near mouse — v0.7.0 Phase 33
 - ✓ FX stroke wireframe overlay for selection visibility — v0.7.0 Phase 33
 - ✓ Stroke draw-reveal animation with speed-based distribution — v0.7.0 Phase 33
+- ✓ Inline color picker positioned adjacent to canvas (left panel, 260px) — v0.7.0 Phase 33
 
 ### Active
 
