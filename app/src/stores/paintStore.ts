@@ -109,7 +109,7 @@ export const paintStore = {
 
   /** Load persisted brush preferences (color, size) on app startup. */
   async initFromPreferences(): Promise<void> {
-    const { loadBrushPreferences, loadPaintMode } = await import('../lib/paintPreferences');
+    const { loadBrushPreferences } = await import('../lib/paintPreferences');
     const prefs = await loadBrushPreferences();
     brushColor.value = prefs.color;
     brushSize.value = prefs.size;

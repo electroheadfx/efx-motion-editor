@@ -16,8 +16,8 @@ import {paintStore} from './stores/paintStore';
 initTempProjectDir().then(async () => {
   const { initTheme } = await import('./lib/themeManager');
   await initTheme();
+  await paintStore.initFromPreferences(); // Load saved brush prefs BEFORE render
   render(<App />, document.getElementById('app')!);
-  paintStore.initFromPreferences(); // Fire-and-forget: load saved brush prefs
   startAutoSave();
   mountShortcuts(); // Mount keyboard shortcuts globally
 
