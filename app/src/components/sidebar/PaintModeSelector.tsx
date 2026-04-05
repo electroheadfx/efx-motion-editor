@@ -1,4 +1,5 @@
 import {useState} from 'preact/hooks';
+import {createPortal} from 'preact/compat';
 import {paintStore} from '../../stores/paintStore';
 import type {PaintMode, BrushStyle, PaintStroke} from '../../types/paint';
 
@@ -117,61 +118,77 @@ export function PaintModeSelector({layerId, frame}: PaintModeSelectorProps) {
         })}
       </div>
 
-      {/* Conversion dialog */}
-      {showConvertDialog && (
+      {/* Conversion dialog (modal with dark overlay) */}
+      {showConvertDialog && createPortal(
         <div
-          class="rounded p-3 text-[11px] space-y-2"
-          style={{
-            backgroundColor: 'var(--sidebar-bg)',
-            border: '1px solid var(--color-accent)',
-          }}
+          class="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          onClick={() => setShowConvertDialog(null)}
         >
-          {showConvertDialog.to === 'fx-paint' ? (
-            <>
-              <div style={{color: 'var(--sidebar-text-primary)'}}>
-                Choose FX style to convert strokes:
-              </div>
-              <div class="flex flex-wrap gap-1">
-                {FX_STYLES.map((style) => (
-                  <button
-                    key={style}
-                    class={`text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors ${
-                      selectedFxStyle === style ? 'paint-style-btn-active' : 'paint-action-btn'
-                    }`}
-                    onClick={() => setSelectedFxStyle(style)}
-                  >
-                    {style.charAt(0).toUpperCase() + style.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div style={{color: 'var(--sidebar-text-primary)'}}>
-              Convert all strokes to flat?
-            </div>
-          )}
+          <div
+            class="rounded-lg p-4 text-[11px] space-y-3 shadow-2xl max-w-xs"
+            style={{
+              backgroundColor: 'var(--sidebar-panel-bg)',
+              border: '1px solid var(--color-accent)',
+            }}
+            onClick={(e: MouseEvent) => e.stopPropagation()}
+          >
+            {showConvertDialog.to === 'fx-paint' ? (
+              <>
+                <div class="font-medium text-[12px]" style={{color: 'var(--sidebar-text-primary)'}}>
+                  Convert to FX Paint
+                </div>
+                <div style={{color: 'var(--sidebar-text-secondary)'}}>
+                  Choose FX style to convert strokes:
+                </div>
+                <div class="flex flex-wrap gap-1">
+                  {FX_STYLES.map((style) => (
+                    <button
+                      key={style}
+                      class={`text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors ${
+                        selectedFxStyle === style ? 'paint-style-btn-active' : 'paint-action-btn'
+                      }`}
+                      onClick={() => setSelectedFxStyle(style)}
+                    >
+                      {style.charAt(0).toUpperCase() + style.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div class="font-medium text-[12px]" style={{color: 'var(--sidebar-text-primary)'}}>
+                  Convert to Flat Paint
+                </div>
+                <div style={{color: 'var(--sidebar-text-secondary)'}}>
+                  Convert all strokes to flat?
+                </div>
+              </>
+            )}
 
-          <div class="flex gap-2">
-            <button
-              class="paint-action-btn flex-1 text-[10px] py-1 rounded cursor-pointer transition-colors"
-              onClick={() => handleConvert(false)}
-            >
-              Current Frame
-            </button>
-            <button
-              class="paint-action-btn flex-1 text-[10px] py-1 rounded cursor-pointer transition-colors"
-              onClick={() => handleConvert(true)}
-            >
-              All Frames
-            </button>
-            <button
-              class="paint-action-btn text-[10px] py-1 px-2 rounded cursor-pointer transition-colors"
-              onClick={() => setShowConvertDialog(null)}
-            >
-              Cancel
-            </button>
+            <div class="flex gap-2 pt-1">
+              <button
+                class="paint-action-btn flex-1 text-[10px] py-1.5 rounded cursor-pointer transition-colors"
+                onClick={() => handleConvert(false)}
+              >
+                Current Frame
+              </button>
+              <button
+                class="paint-action-btn flex-1 text-[10px] py-1.5 rounded cursor-pointer transition-colors"
+                onClick={() => handleConvert(true)}
+              >
+                All Frames
+              </button>
+              <button
+                class="paint-action-btn text-[10px] py-1.5 px-2 rounded cursor-pointer transition-colors"
+                onClick={() => setShowConvertDialog(null)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

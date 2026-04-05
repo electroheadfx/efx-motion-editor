@@ -215,7 +215,7 @@ Plans:
 - [x] 33-07-PLAN.md — Stroke draw-reveal animation
 - [x] 33-08-PLAN.md — Gap closure: fix color picker re-render loop + blend mode override
 - [ ] 33-09-PLAN.md — Gap closure: FX cache invalidation, mode persistence, FX white bg
-- [ ] 33-10-PLAN.md — Gap closure: cursor position, pulsate animation, modal dialog, multi-animate
+- [x] 33-10-PLAN.md — Gap closure: cursor position, pulsate animation, modal dialog, multi-animate
 
 ## Progress
 

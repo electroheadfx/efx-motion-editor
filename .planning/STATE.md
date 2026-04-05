@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Monorepo & Paint Enhancements
-status: planning
-stopped_at: Completed 33-09-PLAN.md
-last_updated: "2026-04-05T12:00:37.134Z"
-last_activity: 2026-04-04
+status: executing
+stopped_at: Completed 33-10-PLAN.md
+last_updated: "2026-04-05T11:59:29.921Z"
+last_activity: 2026-04-05
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 4
+  total_plans: 13
+  completed_plans: 11
   percent: 0
 ---
 
@@ -21,13 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Replanning — Phases 27-29 failed, need new engine integration strategy
+**Current focus:** Phase 33 — enhance-current-engine
 
 ## Current Position
 
-Phase: 26 complete, 27-29 FAILED
-Status: Replanning engine integration approach
-Last activity: 2026-04-04
+Phase: 33
+Plan: Not started
+Status: Executing Phase 33
+Last activity: 2026-04-05
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -49,7 +50,8 @@ Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 
 - [Phase 26-monorepo-scaffold]: Isolated git mv commit for 100% rename detection and --follow history preservation
 - [Phase 26-monorepo-scaffold]: Consolidated pnpm.overrides and packageManager at workspace root; removed redundant onlyBuiltDependencies from paint package
-- [Phase 33]: activePaintMode as separate signal from brushStyle for pipeline vs stroke-level control
+- [Phase 33]: FX wireframe uses dashed blue line matching selection scheme; hit testing uses bounding box for FX strokes
+- [Phase 33]: Use containerRef for cursor position alignment with paint coordinate system
 
 ### Research Flags
 
@@ -71,10 +73,11 @@ None.
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
 | Phase 26-monorepo-scaffold P01 | 1min | 2 tasks | 253 files |
 | Phase 26-monorepo-scaffold P02 | 4min | 2 tasks | 135 files |
-| Phase 33 P09 | 5min | 2 tasks | 4 files |
+| Phase 33 P06 | 2min | 1 tasks | 1 files |
+| Phase 33 P10 | 4min | 2 tasks | 4 files |
 
 ## Session Continuity
 
-Last session: 2026-04-05T12:00:37.132Z
-Stopped at: Completed 33-09-PLAN.md
+Last session: 2026-04-05T11:59:29.918Z
+Stopped at: Completed 33-10-PLAN.md
 Resume file: None

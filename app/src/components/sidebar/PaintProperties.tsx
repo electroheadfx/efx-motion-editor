@@ -118,8 +118,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </button>
         <style>{`
           @keyframes pulsate {
-            0%, 100% { background-color: #f97316; }
-            50% { background-color: #ea580c; }
+            0%, 100% { background-color: #f97316; transform: scale(1); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+            50% { background-color: #dc2626; transform: scale(1.05); box-shadow: 0 0 12px 4px rgba(249, 115, 22, 0.6); }
           }
         `}</style>
       </div>
@@ -523,9 +523,9 @@ export function PaintProperties({layer}: {layer: Layer}) {
           <button
             class="paint-action-btn flex-1 text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
             onClick={() => setShowAnimateDialog(true)}
-            disabled={paintStore.selectedStrokeIds.value.size !== 1}
-            title="Animate selected stroke (draw reveal)"
-            style={{opacity: paintStore.selectedStrokeIds.value.size !== 1 ? 0.4 : 1}}
+            disabled={paintStore.selectedStrokeIds.value.size === 0}
+            title="Animate selected stroke(s) (draw reveal)"
+            style={{opacity: paintStore.selectedStrokeIds.value.size === 0 ? 0.4 : 1}}
           >
             Animate
           </button>
@@ -557,12 +557,17 @@ export function PaintProperties({layer}: {layer: Layer}) {
           setShowAnimateDialog(false);
 
           const currentFrame = timelineStore.currentFrame.peek();
-          const selectedId = [...paintStore.selectedStrokeIds.value][0];
+          const selectedIds = [...paintStore.selectedStrokeIds.value];
+          if (selectedIds.length === 0) return;
+
           const pf = paintStore.getFrame(layer.id, currentFrame);
           if (!pf) return;
 
-          const stroke = pf.elements.find(e => e.id === selectedId) as PaintStroke;
-          if (!stroke || !('points' in stroke)) return;
+          // Get all selected strokes
+          const strokes = selectedIds
+            .map(id => pf.elements.find(e => e.id === id) as PaintStroke)
+            .filter(s => s && 'points' in s);
+          if (strokes.length === 0) return;
 
           // Calculate target frame range using real timeline data
           const endFrame = getAnimationEndFrame(layer.id, currentFrame, target);
@@ -571,9 +576,12 @@ export function PaintProperties({layer}: {layer: Layer}) {
           const targetFrameCount = endFrame - currentFrame + 1;
           if (targetFrameCount < 2) return;
 
-          // Generate animated stroke frames
+          // Generate animated stroke frames for ALL strokes
           const { distributeStrokeBySpeed } = await import('../../lib/strokeAnimation');
-          const frameStrokes = distributeStrokeBySpeed(stroke, targetFrameCount);
+          const allStrokeFrames = strokes.map(stroke => ({
+            id: stroke.id,
+            frames: distributeStrokeBySpeed(stroke, targetFrameCount),
+          }));
 
           // --- ATOMIC BATCH UNDO ---
           // Snapshot before-state for ALL affected frames
@@ -583,18 +591,20 @@ export function PaintProperties({layer}: {layer: Layer}) {
             beforeSnapshots.set(f, existing ? existing.elements.map(e => ({...e})) : []);
           }
 
-          // Apply: remove original stroke from current frame
+          // Apply: remove original strokes from current frame
           const currentElements = pf.elements;
-          const strokeIdx = currentElements.findIndex(e => e.id === selectedId);
-          if (strokeIdx !== -1) {
-            currentElements.splice(strokeIdx, 1);
+          for (const stroke of strokes) {
+            const idx = currentElements.findIndex(e => e.id === stroke.id);
+            if (idx !== -1) currentElements.splice(idx, 1);
           }
 
-          // Add progressive strokes to each frame using _getOrCreateFrame + direct push
-          for (let i = 0; i < frameStrokes.length; i++) {
-            const targetFrame = currentFrame + i;
-            const frame = paintStore._getOrCreateFrame(layer.id, targetFrame);
-            frame.elements.push(frameStrokes[i]);
+          // Add progressive strokes for each animation to each frame
+          for (const { frames: strokeFrames } of allStrokeFrames) {
+            for (let i = 0; i < strokeFrames.length; i++) {
+              const targetFrame = currentFrame + i;
+              const frame = paintStore._getOrCreateFrame(layer.id, targetFrame);
+              frame.elements.push(strokeFrames[i]);
+            }
           }
 
           // Notify visual changes for all affected frames
@@ -608,9 +618,10 @@ export function PaintProperties({layer}: {layer: Layer}) {
 
           // Push SINGLE undo action that restores ALL frames atomically
           const layerId = layer.id;
+          const selectedIdsCopy = [...selectedIds];
           pushAction({
             id: crypto.randomUUID(),
-            description: `Animate stroke across ${targetFrameCount} frames`,
+            description: `Animate ${strokes.length} stroke(s) across ${targetFrameCount} frames`,
             timestamp: Date.now(),
             undo: () => {
               // Restore all frames to their before-state
@@ -625,16 +636,18 @@ export function PaintProperties({layer}: {layer: Layer}) {
               paintStore.paintVersion.value++;
             },
             redo: () => {
-              // Re-apply: remove original, add animated strokes
+              // Re-apply: remove originals, add animated strokes
               const pf = paintStore._getOrCreateFrame(layerId, currentFrame);
-              pf.elements = pf.elements.filter(e => e.id !== selectedId);
-              for (let i = 0; i < frameStrokes.length; i++) {
-                const targetFrame = currentFrame + i;
-                const frame = paintStore._getOrCreateFrame(layerId, targetFrame);
-                frame.elements.push(frameStrokes[i]);
-                paintStore.markDirty(layerId, targetFrame);
-                paintStore.invalidateFrameFxCache(layerId, targetFrame);
-                paintStore.refreshFrameFx(layerId, targetFrame);
+              pf.elements = pf.elements.filter(e => !selectedIdsCopy.includes(e.id));
+              for (const { frames: strokeFrames } of allStrokeFrames) {
+                for (let i = 0; i < strokeFrames.length; i++) {
+                  const targetFrame = currentFrame + i;
+                  const frame = paintStore._getOrCreateFrame(layerId, targetFrame);
+                  frame.elements.push(strokeFrames[i]);
+                  paintStore.markDirty(layerId, targetFrame);
+                  paintStore.invalidateFrameFxCache(layerId, targetFrame);
+                  paintStore.refreshFrameFx(layerId, targetFrame);
+                }
               }
               // CRITICAL: Bump paintVersion so canvas re-renders after redo
               paintStore.paintVersion.value++;
