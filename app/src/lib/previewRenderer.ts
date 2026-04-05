@@ -295,9 +295,7 @@ export class PreviewRenderer {
           offCtx.fillRect(0, 0, projW, projH);
         }
         ctx.save();
-        ctx.globalCompositeOperation = blendModeToCompositeOp(
-          paintStore.paintMode.peek() ? 'normal' : layer.blendMode  // Task 12: normal blend in edit mode
-        );
+        ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
         ctx.globalAlpha = effectiveOpacity;
         ctx.drawImage(off, 0, 0, logicalW, logicalH);
         ctx.restore();
