@@ -366,8 +366,8 @@ export function CanvasArea() {
       <div class="flex flex-1 w-full min-h-0">
         {/* Inline color picker panel - vertically centered left of canvas */}
         {isPaintModeActive && paintStore.showInlineColorPicker.value && (
-          <div class="shrink-0 relative" style={{ width: '235px' }}>
-            <div class="color-picker-panel overflow-y-auto absolute" style={{ top: '50%', transform: 'translateY(-50%)', width: '235px', height: '500px', maxHeight: 'calc(100% - 32px)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
+          <div class="shrink-0 relative" style={{ width: '235px', height: '100%' }}>
+            <div class="color-picker-panel overflow-y-auto absolute left-0" style={{ top: '50%', transform: 'translateY(-50%)', width: '235px', height: '500px', maxHeight: 'calc(100% - 32px)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
               <style>{`
                 .color-picker-panel::-webkit-scrollbar { width: 4px; }
                 .color-picker-panel::-webkit-scrollbar-track { background: transparent; }
