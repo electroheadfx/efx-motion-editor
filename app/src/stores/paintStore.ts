@@ -118,22 +118,6 @@ export const paintStore = {
     return _frames.get(layerId)?.get(frame) ?? null;
   },
 
-  /** Infer frame mode from existing strokes. Empty frame = null (accepts any mode). */
-  getFrameMode(layerId: string, frame: number): PaintMode | null {
-    const pf = this.getFrame(layerId, frame);
-    if (!pf || pf.elements.length === 0) return null;
-    // Find first stroke with a mode
-    for (const el of pf.elements) {
-      if ('tool' in el && (el.tool === 'brush' || el.tool === 'eraser')) {
-        const stroke = el as PaintStroke;
-        if (stroke.mode === 'fx-paint') return 'fx-paint';
-        // strokes without mode field are legacy flat
-        return 'flat';
-      }
-    }
-    return 'flat';  // shapes and fills are always flat
-  },
-
   setFrame(layerId: string, frame: number, pf: PaintFrame): void {
     _getOrCreateFrame(layerId, frame);
     _frames.get(layerId)!.set(frame, pf);
