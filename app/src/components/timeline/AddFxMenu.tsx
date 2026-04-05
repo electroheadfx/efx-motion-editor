@@ -5,6 +5,7 @@ import {layerStore} from '../../stores/layerStore';
 import {paintStore} from '../../stores/paintStore';
 import {uiStore} from '../../stores/uiStore';
 import {isolationStore} from '../../stores/isolationStore';
+import {timelineStore} from '../../stores/timelineStore';
 import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {defaultTransform, createDefaultFxSource} from '../../types/layer';
 import type {LayerType, BlendMode, Layer, LayerSourceData} from '../../types/layer';
@@ -119,10 +120,16 @@ export function AddLayerMenu() {
     }
     layerStore.setSelected(layerId);
     uiStore.selectLayer(layerId);
-    // D-01: Auto-enter paint mode when creating a paint layer
+
+    // Enter paint mode
     if (!paintStore.paintMode.peek()) {
       paintStore.togglePaintMode();
     }
+
+    // Infer paint mode from frame content (empty frame = flat default)
+    const currentFrame = timelineStore.currentFrame.peek();
+    const frameMode = paintStore.getFrameMode(layerId, currentFrame);
+    paintStore.setActivePaintMode(frameMode ?? 'flat');
   };
 
   return (

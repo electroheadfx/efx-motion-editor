@@ -24,6 +24,8 @@ const tabletDetected = signal(false);
 const livePressure = signal(0);  // real-time pressure readout from pen
 const brushStyle = signal<BrushStyle>('flat');
 const brushFxParams = signal<BrushFxParams>({});
+/** Per-layer active paint mode (flat or FX) -- inferred from frame, not persisted globally */
+const activePaintMode = signal<PaintMode>('flat');
 const paintBgColor = signal(DEFAULT_PAINT_BG_COLOR);
 const selectedStrokeIds = signal<Set<string>>(new Set());
 const showSequenceOverlay = signal(false);
@@ -91,6 +93,7 @@ export const paintStore = {
   livePressure,
   brushStyle,
   brushFxParams,
+  activePaintMode,
   paintBgColor,
   selectedStrokeIds,
   showSequenceOverlay,
@@ -494,6 +497,7 @@ export const paintStore = {
     activePaintMode.value = 'flat';
     brushStyle.value = 'flat';
     brushFxParams.value = {};
+    activePaintMode.value = 'flat';
     paintBgColor.value = DEFAULT_PAINT_BG_COLOR;
     selectedStrokeIds.value = new Set();
     showSequenceOverlay.value = false;
@@ -519,6 +523,36 @@ export const paintStore = {
 
   toggleInlineColorPicker(): void {
     showInlineColorPicker.value = !showInlineColorPicker.value;
+  },
+
+  /** Set the active paint mode and reset brush tool to match.
+   * Mode is per-layer (inferred from frame content), NOT persisted globally. */
+  setActivePaintMode(mode: PaintMode): void {
+    activePaintMode.value = mode;
+    // Reset brush tool to match new mode
+    if (mode === 'flat') {
+      brushStyle.value = 'flat';
+      brushFxParams.value = {};
+    } else if (mode === 'fx-paint') {
+      // If currently flat, switch to default FX style
+      if (brushStyle.peek() === 'flat') {
+        brushStyle.value = 'watercolor';
+        brushFxParams.value = { ...DEFAULT_BRUSH_FX_PARAMS['watercolor'] };
+      }
+      // If already an FX style, keep it
+    }
+    // Do NOT persist global mode -- mode is per-layer, inferred from frame
+  },
+
+  /** Infer paint mode from frame content: if any stroke has a non-flat brushStyle, it's FX.
+   * Returns null if frame has no strokes (caller decides default). */
+  getFrameMode(layerId: string, frame: number): PaintMode | null {
+    const paintFrame = _frames.get(layerId)?.get(frame);
+    if (!paintFrame || paintFrame.elements.length === 0) return null;
+    const hasNonFlatStroke = paintFrame.elements.some(
+      (el) => el.tool === 'brush' && (el as PaintStroke).brushStyle && (el as PaintStroke).brushStyle !== 'flat'
+    );
+    return hasNonFlatStroke ? 'fx-paint' : 'flat';
   },
 
   setTool(tool: PaintToolType): void {

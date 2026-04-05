@@ -4,15 +4,8 @@ export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' 
 /** Per D-04: Three stroke states for FX workflow */
 export type StrokeFxState = 'flat' | 'fx-applied' | 'flattened';
 
-/** Paint rendering mode per D-21 */
-export type PaintMode = 'flat' | 'fx-paint' | 'physic-paint';
-
-/** Map from PaintMode to allowed BrushStyles */
-export const MODE_BRUSH_STYLES: Record<PaintMode, BrushStyle[]> = {
-  'flat': ['flat'],
-  'fx-paint': ['watercolor', 'ink', 'charcoal', 'pencil', 'marker'],
-  'physic-paint': [],  // placeholder, no styles yet
-};
+/** Per-layer paint mode: flat (perfect-freehand only) or FX (p5.brush styles) */
+export type PaintMode = 'flat' | 'fx-paint';
 
 /** Brush rendering styles (per D-01) */
 export type BrushStyle = 'flat' | 'watercolor' | 'ink' | 'charcoal' | 'pencil' | 'marker';

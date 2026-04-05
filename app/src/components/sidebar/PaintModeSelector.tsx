@@ -1,194 +1,104 @@
-import {useState} from 'preact/hooks';
-import {createPortal} from 'preact/compat';
 import {paintStore} from '../../stores/paintStore';
-import type {PaintMode, BrushStyle, PaintStroke} from '../../types/paint';
+import {layerStore} from '../../stores/layerStore';
+import {timelineStore} from '../../stores/timelineStore';
+import type {PaintStroke, PaintMode, BrushStyle} from '../../types/paint';
+import {DEFAULT_BRUSH_FX_PARAMS} from '../../types/paint';
 
-interface PaintModeSelectorProps {
-  layerId: string;
-  frame: number;
+/**
+ * Convert all strokes in a frame between flat and FX modes.
+ * Updates each stroke's brushStyle, brushParams, and fxState in-place.
+ */
+function convertFrame(
+  layerId: string,
+  targetFrame: number,
+  from: PaintMode,
+  to: PaintMode,
+  selectedFxStyle: BrushStyle
+): void {
+  const paintFrame = paintStore.getFrame(layerId, targetFrame);
+  if (!paintFrame) return;
+
+  for (const el of paintFrame.elements) {
+    if (el.tool !== 'brush') continue;
+    const stroke = el as PaintStroke;
+
+    if (from === 'flat' && to === 'fx-paint') {
+      // Flat -> FX: apply selected FX style to all flat strokes
+      stroke.brushStyle = selectedFxStyle;
+      stroke.brushParams = { ...DEFAULT_BRUSH_FX_PARAMS[selectedFxStyle] };
+      stroke.fxState = 'fx-applied';
+    } else if (from === 'fx-paint' && to === 'flat') {
+      // FX -> Flat: revert to flat rendering
+      stroke.brushStyle = 'flat';
+      stroke.brushParams = {};
+      stroke.fxState = 'flat';
+    }
+  }
+
+  // Ensure persistence and cache regeneration
+  paintStore.markDirty(layerId, targetFrame);
+  paintStore._notifyVisualChange(layerId, targetFrame);
+  paintStore.invalidateFrameFxCache(layerId, targetFrame);
+  paintStore.refreshFrameFx(layerId, targetFrame);
+  paintStore.paintVersion.value++;
 }
 
-const MODE_LABELS: Record<PaintMode, string> = {
-  'flat': 'Paint',
-  'fx-paint': 'FX Paint',
-  'physic-paint': 'Physical',
-};
+/**
+ * Handle a full mode conversion: convert strokes, set active mode, set brush tool.
+ */
+export function handleConvert(from: PaintMode, to: PaintMode, selectedFxStyle: BrushStyle): void {
+  const layerId = layerStore.selectedLayerId.peek();
+  if (!layerId) return;
+  const frame = timelineStore.currentFrame.peek();
 
-const FX_STYLES: BrushStyle[] = ['watercolor', 'ink', 'charcoal', 'pencil', 'marker'];
+  // Convert strokes first (before setActivePaintMode resets brush)
+  convertFrame(layerId, frame, from, to, selectedFxStyle);
 
-export function PaintModeSelector({layerId, frame}: PaintModeSelectorProps) {
-  const activeMode = paintStore.activePaintMode.value;
-  const [showConvertDialog, setShowConvertDialog] = useState<{
-    from: PaintMode;
-    to: PaintMode;
-  } | null>(null);
-  const [selectedFxStyle, setSelectedFxStyle] = useState<BrushStyle>('watercolor');
+  // Set active mode (resets brush tool to match)
+  paintStore.setActivePaintMode(to);
 
-  function handleModeSwitch(newMode: PaintMode) {
-    if (newMode === activeMode) return;
-    if (newMode === 'physic-paint') return; // grayed out placeholder
-
-    const frameMode = paintStore.getFrameMode(layerId, frame);
-
-    // D-28: Empty frame -- switch immediately
-    if (frameMode === null) {
-      paintStore.setActivePaintMode(newMode);
-      return;
-    }
-
-    // D-26/D-27: Frame has strokes -- show conversion dialog
-    if (frameMode !== newMode) {
-      setShowConvertDialog({from: frameMode, to: newMode});
-    } else {
-      // Frame already in target mode, just switch
-      paintStore.setActivePaintMode(newMode);
-    }
+  // If converting TO fx-paint, also set brush to the selected FX style
+  if (to === 'fx-paint') {
+    paintStore.setBrushStyle(selectedFxStyle);
   }
+}
 
-  function convertFrame(targetFrame: number, _from: PaintMode, to: PaintMode) {
-    const pf = paintStore.getFrame(layerId, targetFrame);
-    if (!pf) return;
+/** PaintModeSelector UI component: shows current mode and convert button */
+export function PaintModeSelector() {
+  const currentMode = paintStore.activePaintMode.value;
+  const currentBrushStyle = paintStore.brushStyle.value;
 
-    for (const el of pf.elements) {
-      if ('tool' in el && (el.tool === 'brush' || el.tool === 'eraser')) {
-        const stroke = el as PaintStroke;
-        if (to === 'fx-paint') {
-          // Flat to FX
-          stroke.brushStyle = selectedFxStyle;
-          stroke.mode = 'fx-paint';
-          stroke.fxState = 'flat';
-        } else if (to === 'flat') {
-          // FX to flat
-          stroke.brushStyle = 'flat';
-          stroke.mode = 'flat';
-          stroke.fxState = undefined;
-          stroke.brushParams = undefined;
-        }
-      }
-    }
+  // Determine a sensible default FX style for conversion
+  const defaultFxStyle: BrushStyle = (currentBrushStyle !== 'flat') ? currentBrushStyle : 'watercolor';
 
-    paintStore._notifyVisualChange(layerId, targetFrame);
-    paintStore.invalidateFrameFxCache(layerId, targetFrame);
-    paintStore.refreshFrameFx(layerId, targetFrame);
-  }
-
-  function handleConvert(allFrames: boolean) {
-    if (!showConvertDialog) return;
-    const {from, to} = showConvertDialog;
-
-    if (allFrames) {
-      const frameNumbers = paintStore.getLayerFrameNumbers(layerId);
-      for (const fn of frameNumbers) {
-        convertFrame(fn, from, to);
-      }
-    } else {
-      convertFrame(frame, from, to);
-    }
-
-    paintStore.setActivePaintMode(to);
-    setShowConvertDialog(null);
-  }
-
-  const modes: PaintMode[] = ['flat', 'fx-paint', 'physic-paint'];
+  const canConvertToFx = currentMode === 'flat';
+  const canConvertToFlat = currentMode === 'fx-paint';
 
   return (
-    <div class="flex flex-col gap-2">
-      {/* Mode toggle buttons */}
-      <div class="flex gap-1">
-        {modes.map((mode) => {
-          const isActive = mode === activeMode;
-          const isDisabled = mode === 'physic-paint';
-          return (
-            <button
-              key={mode}
-              class={`flex-1 text-[10px] py-1.5 px-1 rounded cursor-pointer transition-colors ${
-                isActive ? 'paint-style-btn-active' : 'paint-action-btn'
-              }`}
-              style={isDisabled ? {
-                opacity: 0.4,
-                cursor: 'not-allowed',
-                pointerEvents: 'auto',
-              } : undefined}
-              onClick={() => handleModeSwitch(mode)}
-              title={isDisabled ? 'Physical paint (coming soon)' : `Switch to ${MODE_LABELS[mode]} mode`}
-            >
-              {MODE_LABELS[mode]}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Conversion dialog (modal with dark overlay) */}
-      {showConvertDialog && createPortal(
-        <div
-          class="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
-          onClick={() => setShowConvertDialog(null)}
+    <div class="flex items-center gap-2 py-1">
+      <span class="text-[10px] shrink-0" style={{ color: 'var(--sidebar-text-secondary)' }}>
+        Mode:
+      </span>
+      <span class="text-[10px] font-medium" style={{ color: 'var(--sidebar-text-primary)' }}>
+        {currentMode === 'flat' ? 'Flat' : 'FX Paint'}
+      </span>
+      {canConvertToFx && (
+        <button
+          class="text-[9px] px-1.5 py-0.5 rounded paint-action-btn cursor-pointer"
+          onClick={() => handleConvert('flat', 'fx-paint', defaultFxStyle)}
+          title="Convert flat strokes to FX style"
         >
-          <div
-            class="rounded-lg p-4 text-[11px] space-y-3 shadow-2xl max-w-xs"
-            style={{
-              backgroundColor: 'var(--sidebar-panel-bg)',
-              border: '1px solid var(--color-accent)',
-            }}
-            onClick={(e: MouseEvent) => e.stopPropagation()}
-          >
-            {showConvertDialog.to === 'fx-paint' ? (
-              <>
-                <div class="font-medium text-[12px]" style={{color: 'var(--sidebar-text-primary)'}}>
-                  Convert to FX Paint
-                </div>
-                <div style={{color: 'var(--sidebar-text-secondary)'}}>
-                  Choose FX style to convert strokes:
-                </div>
-                <div class="flex flex-wrap gap-1">
-                  {FX_STYLES.map((style) => (
-                    <button
-                      key={style}
-                      class={`text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors ${
-                        selectedFxStyle === style ? 'paint-style-btn-active' : 'paint-action-btn'
-                      }`}
-                      onClick={() => setSelectedFxStyle(style)}
-                    >
-                      {style.charAt(0).toUpperCase() + style.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <div class="font-medium text-[12px]" style={{color: 'var(--sidebar-text-primary)'}}>
-                  Convert to Flat Paint
-                </div>
-                <div style={{color: 'var(--sidebar-text-secondary)'}}>
-                  Convert all strokes to flat?
-                </div>
-              </>
-            )}
-
-            <div class="flex gap-2 pt-1">
-              <button
-                class="paint-action-btn flex-1 text-[10px] py-1.5 rounded cursor-pointer transition-colors"
-                onClick={() => handleConvert(false)}
-              >
-                Current Frame
-              </button>
-              <button
-                class="paint-action-btn flex-1 text-[10px] py-1.5 rounded cursor-pointer transition-colors"
-                onClick={() => handleConvert(true)}
-              >
-                All Frames
-              </button>
-              <button
-                class="paint-action-btn text-[10px] py-1.5 px-2 rounded cursor-pointer transition-colors"
-                onClick={() => setShowConvertDialog(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
+          Convert to FX
+        </button>
+      )}
+      {canConvertToFlat && (
+        <button
+          class="text-[9px] px-1.5 py-0.5 rounded paint-action-btn cursor-pointer"
+          onClick={() => handleConvert('fx-paint', 'flat', 'flat')}
+          title="Convert FX strokes back to flat"
+        >
+          Convert to Flat
+        </button>
       )}
     </div>
   );
