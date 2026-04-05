@@ -364,9 +364,16 @@ export function CanvasArea() {
       </div>
       {/* Canvas row: optional color picker + canvas */}
       <div class="flex flex-1 w-full min-h-0">
-        {/* Inline color picker panel - left of canvas */}
+        {/* Inline color picker panel - vertically centered left of canvas */}
         {isPaintModeActive && paintStore.showInlineColorPicker.value && (
-          <div class="shrink-0 overflow-y-auto mb-4" style={{ width: '235px', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
+          <div class="shrink-0 flex items-center py-4">
+            <div class="color-picker-panel overflow-y-auto" style={{ width: '235px', maxHeight: '100%', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
+              <style>{`
+                .color-picker-panel::-webkit-scrollbar { width: 4px; }
+                .color-picker-panel::-webkit-scrollbar-track { background: transparent; }
+                .color-picker-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+                .color-picker-panel::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35); }
+              `}</style>
             <InlineColorPicker
               color={paintStore.brushColor.value}
               opacity={paintStore.brushOpacity.value}
@@ -396,6 +403,7 @@ export function CanvasArea() {
               }}
               onClose={() => { paintStore.showInlineColorPicker.value = false; }}
             />
+            </div>
           </div>
         )}
         {/* Preview Frame with zoom/pan */}
