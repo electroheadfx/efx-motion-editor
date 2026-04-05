@@ -90,13 +90,20 @@ export function PaintProperties({layer}: {layer: Layer}) {
 
   return (
     <div class="px-3 py-2 space-y-3">
+      <style>{`
+        @keyframes pulsate {
+          0%, 100% { background-color: #f97316; box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+          50% { background-color: #dc2626; box-shadow: 0 0 12px 4px rgba(249, 115, 22, 0.6); }
+        }
+      `}</style>
       {/* Layer name + exit paint mode */}
       <div class="flex items-center justify-between px-1">
         <div class="text-[12px] font-medium" style={{color: 'var(--sidebar-text-primary)'}}>
           {layer.name}
         </div>
         <button
-          class="paint-exit-btn text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1"
+          class="paint-exit-btn text-[10px] px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
+          style={{animation: 'pulsate 2s ease-in-out infinite'}}
           onClick={() => paintStore.paintMode.value = false}
           title="Exit paint mode (P)"
         >
