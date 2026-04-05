@@ -2,7 +2,7 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-33) converts to a pnpm monorepo, enhances the current paint engine (perfect-freehand + p5.brush), and adds small improvements and fixes. v0.8.0 (Phase 34+) will add efx-physic-paint as a standalone window with transport to the editor.
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-33) converted to a pnpm monorepo and enhanced the current paint engine with a 3-mode system, inline color picker, wireframe overlay, and stroke animation. v0.8.0 (Phase 34+) will add efx-physic-paint as a standalone window with transport to the editor.
 
 ## Milestones
 
@@ -12,7 +12,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - ✅ **v0.4.0 Canvas & Paint** — Phases 18-19 (shipped 2025-03-25)
 - ✅ **v0.5.0 Motion Blur & Paint Styles** — Phases 20-21 (shipped 2025-03-26)
 - ✅ **v0.6.0 Various Enhancements** — Phases 22-25 (shipped 2026-04-03)
-- 🚧 **v0.7.0 Monorepo & Paint Enhancements** — Phases 26-33 (in progress)
+- ✅ **v0.7.0 Monorepo & Paint Enhancements** — Phases 26-33 (shipped 2026-04-05)
 - 📋 **v0.8.0 Standalone Physics Paint** — Phase 34+ (planned)
 
 ## Phases
@@ -112,96 +112,18 @@ See: `milestones/v0.6.0-ROADMAP.md` for full details.
 
 </details>
 
-### 🚧 v0.7.0 Monorepo & Paint Enhancements (In Progress)
+<details>
+<summary>v0.7.0 Monorepo & Paint Enhancements (Phases 26-33) — SHIPPED 2026-04-05</summary>
 
-**Milestone Goal:** Convert to pnpm monorepo with efx-physic-paint as a workspace package, enhance the current paint engine (perfect-freehand + p5.brush), and add small improvements and fixes.
+- [x] Phase 26: Monorepo Scaffold (3/3 plans) — completed 2026-04-03
+- [x] Phase 27-32: Engine Integration — FAILED (adapter approach abandoned)
+- [x] Phase 33: Enhance Current Engine (20/20 plans) — completed 2026-04-05
 
-**Phase Numbering:**
-- Integer phases (26, 27, ...): Planned milestone work
-- Decimal phases (27.1, 27.2): Urgent insertions (marked with INSERTED)
+See: `milestones/v0.7.0-ROADMAP.md` for full details.
 
-- [x] **Phase 26: Monorepo Scaffold** - Convert to pnpm workspace with app/ and packages/efx-physic-paint/ (completed 2026-04-03)
-- [x] **Phase 27: Engine API Adaptations** - FAILED: batch renderFromStrokes approach produces inferior visual quality (2026-04-04)
-- [x] **Phase 28: Adapter & Type Bridge** - FAILED: adapter architecture depends on broken batch rendering strategy (2026-04-04)
-- [x] **Phase 29: Input & Tool Reconnection** - FAILED: engine output has no physics/grain, O(n²) re-render perf, forceDryAll kills paint mixing (2026-04-04)
-- [x] **Phase 30: UI, Paper & Transparency** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
-- [x] **Phase 31: Advanced Paint Features** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
-- [x] **Phase 32: Cleanup & Removal** - FAILED: cannot remove engines that are still in use (2026-04-04)
-- [ ] **Phase 33: Enhance Current Engine** - Small improvements and fixes to perfect-freehand + p5.brush paint layers
-
-## Phase Details
-
-### Phase 26: Monorepo Scaffold
-**Goal**: Developer can work on editor and paint engine in a single workspace with shared tooling
-**Depends on**: Nothing (first phase of v0.7.0)
-**Requirements**: MONO-01, MONO-02, MONO-03, MONO-04, MONO-05, MONO-06
-**Success Criteria** (what must be TRUE):
-  1. `pnpm dev` from workspace root starts the editor identically to v0.6.0
-  2. `pnpm tauri build` from workspace root produces a working .app bundle
-  3. `import { EfxPaintEngine } from '@efxlab/efx-physic-paint'` compiles in the editor
-  4. `pnpm install --frozen-lockfile` passes from a clean clone
-  5. `git log --follow app/src/stores/paintStore.ts` shows full pre-rename history
-**Plans:** 3/3 plans complete
-Plans:
-- [x] 26-01-PLAN.md — Rename Application/ to app/ with git history preservation
-- [x] 26-02-PLAN.md — Workspace config, paint package, dependency wiring
-- [x] 26-03-PLAN.md — Full verification suite and human checkpoint
-
-### Phase 27: Engine API Adaptations
-**Goal**: Paint engine can render strokes headlessly without DOM, pointer events, or render loop
-**Depends on**: Phase 26
-**Requirements**: ENGN-01, ENGN-02
-**Success Criteria** (what must be TRUE):
-  1. EfxPaintEngine constructs with offscreen canvases and no DOM container
-  2. `renderFromStrokes()` accepts a stroke array and returns a correct HTMLCanvasElement
-  3. Engine produces correct alpha output in transparent background mode
-**Plans**: TBD
-
-### Phase 28: Adapter & Type Bridge
-**Goal**: Editor's compositing pipeline renders paint strokes through the physics engine with full backward compatibility
-**Depends on**: Phase 27
-**Requirements**: ENGN-03, ENGN-04, ENGN-05, ENGN-06
-**Success Criteria** (what must be TRUE):
-  1. New paint strokes render through efxPaintAdapter.ts in preview and export
-  2. Opening a v0.6.0 project with paint data renders all existing strokes correctly via legacy fallback
-  3. Per-frame cache stores engine output and invalidates only on stroke changes
-  4. Preview playback at 15/24 fps does not stutter on frames with cached paint
-**Plans**: TBD
-
-### Phase 29: Input & Tool Reconnection
-**Goal**: User can draw, erase, and apply brush styles through the new physics engine end-to-end
-**Depends on**: Phase 28
-**Requirements**: PAINT-01, PAINT-02, PAINT-03, PAINT-04, PAINT-05, PAINT-06
-**Success Criteria** (what must be TRUE):
-  1. User can draw freehand strokes with pressure sensitivity producing physics-based output
-  2. Eraser tool removes paint via engine's native erase API with correct undo/redo
-  3. All 6 brush presets (flat, ink, pencil, marker, charcoal, watercolor) render with visually distinct results
-  4. PaintOverlay captures full PenPoint data (x, y, pressure, tilt, twist, speed) for physics input
-  5. Onion skinning displays previous/next frames via adapter canvas capture
-**Plans**: TBD
-**UI hint**: yes
-
-### Phase 30: UI, Paper & Transparency — FAILED
-Depended on adapter approach from phases 27-29.
-
-### Phase 31: Advanced Paint Features — FAILED
-Depended on adapter approach from phases 27-29.
-
-### Phase 32: Cleanup & Removal — FAILED
-Cannot remove engines that are still in use.
-
-### Phase 33: Enhance Current Engine
-**Goal**: Current paint engine (perfect-freehand + p5.brush) receives small improvements and fixes
-**Depends on**: Phase 26
-**Requirements**: TBD (to be defined during discuss phase)
-**Success Criteria** (what must be TRUE):
-  TBD
-**Plans**: TBD
+</details>
 
 ## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 26 -> 33 (27-32 failed)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -211,11 +133,4 @@ Phases execute in numeric order: 26 -> 33 (27-32 failed)
 | 18-19 (2 phases) | v0.4.0 | 9/9 | Complete | 2025-03-25 |
 | 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2025-03-26 |
 | 22-25 (4 phases) | v0.6.0 | 14/14 | Complete | 2026-04-03 |
-| 26. Monorepo Scaffold | v0.7.0 | 3/3 | Complete   | 2026-04-03 |
-| 27. Engine API Adaptations | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 28. Adapter & Type Bridge | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 29. Input & Tool Reconnection | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 30. UI, Paper & Transparency | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 31. Advanced Paint Features | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 32. Cleanup & Removal | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 33. Enhance Current Engine | v0.7.0 | 0/? | Not started | - |
+| 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |

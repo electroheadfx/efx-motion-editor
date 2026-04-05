@@ -1,5 +1,5 @@
 import {signal, effect} from '@preact/signals';
-import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams, PaintStroke, PaintShape} from '../types/paint';
+import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams, PaintStroke, PaintShape, PaintMode} from '../types/paint';
 import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_PAINT_BG_COLOR} from '../types/paint';
 import {pointsToBezierAnchors, shapeToAnchors} from '../lib/bezierPath';
 import {pushAction} from '../lib/history';
@@ -24,16 +24,17 @@ const tabletDetected = signal(false);
 const livePressure = signal(0);  // real-time pressure readout from pen
 const brushStyle = signal<BrushStyle>('flat');
 const brushFxParams = signal<BrushFxParams>({});
+/** Per-layer active paint mode (flat or FX) -- inferred from frame, not persisted globally */
+const activePaintMode = signal<PaintMode>('flat');
 const paintBgColor = signal(DEFAULT_PAINT_BG_COLOR);
 const selectedStrokeIds = signal<Set<string>>(new Set());
-const showSequenceOverlay = signal(false);
-const sequenceOverlayOpacity = signal(0.3);
 const isRenderingFx = signal(false);
 const showFlatPreview = signal(false);
 const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
 const onionSkinOpacity = signal(0.3);
+const showInlineColorPicker = signal(false);
 
 /** Bumped on every paint data mutation so reactive consumers (Preview) re-render */
 const paintVersion = signal(0);
@@ -89,20 +90,33 @@ export const paintStore = {
   livePressure,
   brushStyle,
   brushFxParams,
+  activePaintMode,
   paintBgColor,
   selectedStrokeIds,
-  showSequenceOverlay,
-  sequenceOverlayOpacity,
   isRenderingFx,
   showFlatPreview,
   onionSkinEnabled,
   onionSkinPrevRange,
   onionSkinNextRange,
   onionSkinOpacity,
+  showInlineColorPicker,
+
+  /** Load persisted brush preferences (color, size) on app startup. */
+  async initFromPreferences(): Promise<void> {
+    const { loadBrushPreferences } = await import('../lib/paintPreferences');
+    const prefs = await loadBrushPreferences();
+    brushColor.value = prefs.color;
+    brushSize.value = prefs.size;
+  },
 
   // Frame data access
   getFrame(layerId: string, frame: number): PaintFrame | null {
     return _frames.get(layerId)?.get(frame) ?? null;
+  },
+
+  getFrameNumbers(layerId: string): number[] {
+    const m = _frames.get(layerId);
+    return m ? [...m.keys()] : [];
   },
 
   setFrame(layerId: string, frame: number, pf: PaintFrame): void {
@@ -113,6 +127,10 @@ export const paintStore = {
   },
 
   addElement(layerId: string, frame: number, element: PaintElement): void {
+    // Stamp mode on strokes (D-24)
+    if ('tool' in element && (element.tool === 'brush' || element.tool === 'eraser')) {
+      (element as PaintStroke).mode = activePaintMode.peek();
+    }
     const frameData = _getOrCreateFrame(layerId, frame);
     frameData.elements.push(element);
     _notifyVisualChange(layerId, frame);
@@ -123,11 +141,16 @@ export const paintStore = {
       undo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = f.elements.filter(e => e.id !== element.id);
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements.push(element);
-        paintStore.markDirty(layerId, frame);
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -153,7 +176,9 @@ export const paintStore = {
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = f.elements.filter(e => e.id !== elementId);
-        paintStore.markDirty(layerId, frame);
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -179,11 +204,15 @@ export const paintStore = {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -209,11 +238,15 @@ export const paintStore = {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -237,11 +270,15 @@ export const paintStore = {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -265,11 +302,15 @@ export const paintStore = {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -346,6 +387,8 @@ export const paintStore = {
     const backup = [...frameData.elements];
     frameData.elements = [];
     _notifyVisualChange(layerId, frame);
+    paintStore.invalidateFrameFxCache(layerId, frame);
+    paintStore.refreshFrameFx(layerId, frame);
     pushAction({
       id: crypto.randomUUID(),
       description: `Clear paint frame ${frame}`,
@@ -353,11 +396,16 @@ export const paintStore = {
       undo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...backup];
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [];
-        paintStore.markDirty(layerId, frame);
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -417,12 +465,11 @@ export const paintStore = {
     fillTolerance.value = 10;
     tabletDetected.value = false;
     livePressure.value = 0;
+    activePaintMode.value = 'flat';
     brushStyle.value = 'flat';
     brushFxParams.value = {};
     paintBgColor.value = DEFAULT_PAINT_BG_COLOR;
     selectedStrokeIds.value = new Set();
-    showSequenceOverlay.value = false;
-    sequenceOverlayOpacity.value = 0.3;
     isRenderingFx.value = false;
     showFlatPreview.value = false;
     _frameFxCache.clear();
@@ -435,6 +482,58 @@ export const paintStore = {
   // Tool settings
   togglePaintMode(): void {
     paintMode.value = !paintMode.value;
+    if (paintMode.value) {
+      // Entering paint mode — detect FX vs flat from frame content
+      Promise.all([
+        import('./layerStore'),
+        import('./timelineStore'),
+      ]).then(([{layerStore: ls}, {timelineStore: ts}]) => {
+        const layerId = ls.selectedLayerId.peek();
+        if (layerId) {
+          const frame = ts.currentFrame.peek();
+          const frameMode = paintStore.getFrameMode(layerId, frame);
+          paintStore.setActivePaintMode(frameMode ?? 'flat');
+        }
+      });
+    } else {
+      showInlineColorPicker.value = false;
+    }
+  },
+
+  toggleInlineColorPicker(): void {
+    showInlineColorPicker.value = !showInlineColorPicker.value;
+  },
+
+  /** Set the active paint mode and reset brush tool to match.
+   * Mode is per-layer (inferred from frame content), NOT persisted globally. */
+  setActivePaintMode(mode: PaintMode): void {
+    activePaintMode.value = mode;
+    // Reset brush tool to match new mode
+    if (mode === 'flat') {
+      brushStyle.value = 'flat';
+      brushFxParams.value = {};
+    }
+    // FX mode: white bg + ensure brush is an FX style
+    if (mode === 'fx-paint') {
+      paintBgColor.value = '#ffffff';
+      if (brushStyle.peek() === 'flat') {
+        brushStyle.value = 'watercolor';
+        brushFxParams.value = { ...DEFAULT_BRUSH_FX_PARAMS['watercolor'] };
+      }
+    }
+
+    // Do NOT persist global mode -- mode is per-layer, inferred from frame
+  },
+
+  /** Infer paint mode from frame content: if any stroke has a non-flat brushStyle, it's FX.
+   * Returns null if frame has no strokes (caller decides default). */
+  getFrameMode(layerId: string, frame: number): PaintMode | null {
+    const paintFrame = _frames.get(layerId)?.get(frame);
+    if (!paintFrame || paintFrame.elements.length === 0) return null;
+    const hasNonFlatStroke = paintFrame.elements.some(
+      (el) => el.tool === 'brush' && (el as PaintStroke).brushStyle && (el as PaintStroke).brushStyle !== 'flat'
+    );
+    return hasNonFlatStroke ? 'fx-paint' : 'flat';
   },
 
   setTool(tool: PaintToolType): void {
@@ -443,10 +542,28 @@ export const paintStore = {
 
   setBrushSize(size: number): void {
     brushSize.value = Math.max(BRUSH_SIZE_MIN, Math.min(BRUSH_SIZE_MAX, size));
+    import('../lib/paintPreferences').then(m => m.saveBrushSize(brushSize.value));
   },
+
 
   setBrushColor(color: string): void {
     brushColor.value = color;
+    import('../lib/paintPreferences').then(m => m.saveBrushColor(color));
+    // Refresh FX canvas when color changes in FX mode
+    if (activePaintMode.peek() === 'fx-paint' && paintMode.peek()) {
+      Promise.all([
+        import('./layerStore'),
+        import('./timelineStore'),
+      ]).then(([{layerStore: ls}, {timelineStore: ts}]) => {
+        const layerId = ls.selectedLayerId.peek();
+        if (layerId) {
+          const frame = ts.currentFrame.peek();
+          paintStore.invalidateFrameFxCache(layerId, frame);
+          paintStore.refreshFrameFx(layerId, frame);
+          paintVersion.value++;  // Trigger preview re-render after FX cache refresh
+        }
+      });
+    }
   },
 
   setBrushOpacity(opacity: number): void {
@@ -478,20 +595,6 @@ export const paintStore = {
     paintVersion.value++;
   },
 
-  // --- Sequence overlay (D-13, D-14) ---
-
-  setShowSequenceOverlay(show: boolean): void {
-    showSequenceOverlay.value = show;
-  },
-
-  toggleSequenceOverlay(): void {
-    showSequenceOverlay.value = !showSequenceOverlay.peek();
-    paintVersion.value++;
-  },
-  setSequenceOverlayOpacity(v: number): void {
-    sequenceOverlayOpacity.value = v;
-    paintVersion.value++;
-  },
 
   toggleFlatPreview(): void {
     showFlatPreview.value = !showFlatPreview.peek();
@@ -634,21 +737,30 @@ export const paintStore = {
     const paintFrame = this.getFrame(layerId, frame);
     if (!paintFrame) return;
 
-    const projW = projectStore.width.peek();
-    const projH = projectStore.height.peek();
-
-    const brushStrokes = paintFrame.elements.filter(
-      (el) => el.tool === 'brush'
-    ) as PaintStroke[];
-
     this.invalidateFrameFxCache(layerId, frame);
-    const fxCanvas = renderFrameFx(brushStrokes, projW, projH);
-    if (fxCanvas) {
-      this.setFrameFxCache(layerId, frame, fxCanvas);
+
+    // Skip expensive p5.brush render when flat preview is active
+    if (!showFlatPreview.peek()) {
+      const projW = projectStore.width.peek();
+      const projH = projectStore.height.peek();
+
+      const brushStrokes = paintFrame.elements.filter(
+        (el) => el.tool === 'brush'
+      ) as PaintStroke[];
+
+      const fxCanvas = renderFrameFx(brushStrokes, projW, projH);
+      if (fxCanvas) {
+        this.setFrameFxCache(layerId, frame, fxCanvas);
+      }
     }
 
     this.markDirty(layerId, frame);
     paintVersion.value++;
+  },
+
+  /** Expose _getOrCreateFrame for external batch mutations (e.g., stroke animation) */
+  _getOrCreateFrame(layerId: string, frame: number): PaintFrame {
+    return _getOrCreateFrame(layerId, frame);
   },
 
   /** Expose _notifyVisualChange for external bezier editing undo/redo callbacks (Phase 25) */

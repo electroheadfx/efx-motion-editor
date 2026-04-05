@@ -1,4 +1,4 @@
-import {useRef, useEffect} from 'preact/hooks';
+import {useRef, useEffect, useState, useCallback} from 'preact/hooks';
 import {useSignal} from '@preact/signals';
 import Sortable from 'sortablejs';
 import {GripVertical, Eye, EyeOff, X, PenTool} from 'lucide-preact';
@@ -36,6 +36,36 @@ export function StrokeList({layerId}: StrokeListProps) {
   const displayElements = [...elements].reverse();
   const totalElements = elements.length;
   const strokesCollapsed = useSignal(false);
+
+  // Custom scrollbar state
+  const [thumbTop, setThumbTop] = useState(0);
+  const [thumbHeight, setThumbHeight] = useState(0);
+  const [isScrollable, setIsScrollable] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+
+  const updateThumb = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const scrollable = scrollHeight > clientHeight + 1;
+    setIsScrollable(scrollable);
+    if (!scrollable) return;
+    const ratio = clientHeight / scrollHeight;
+    const th = Math.max(24, ratio * clientHeight);
+    setThumbHeight(th);
+    const scrollRange = scrollHeight - clientHeight;
+    const thumbRange = clientHeight - th;
+    setThumbTop(scrollRange > 0 ? (scrollTop / scrollRange) * thumbRange : 0);
+  }, []);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(updateThumb);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [updateThumb, totalElements]);
 
   // SortableJS integration
   useEffect(() => {
@@ -127,7 +157,12 @@ export function StrokeList({layerId}: StrokeListProps) {
           No strokes on this frame
         </div>
       ) : (
-        <div ref={listRef} class="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+        <div
+          class="relative max-h-48"
+          onMouseEnter={() => setIsHovering(true)}
+          onMouseLeave={() => setIsHovering(false)}
+        >
+        <div ref={listRef} class="flex flex-col gap-0.5 max-h-48 overflow-y-auto" style={{ scrollbarWidth: 'none' }} onScroll={updateThumb}>
           {displayElements.map((el, i) => {
             const isSelected = selectedIds.has(el.id);
             const isHidden = el.visible === false;
@@ -208,6 +243,20 @@ export function StrokeList({layerId}: StrokeListProps) {
               </div>
             );
           })}
+        </div>
+        {isScrollable && (
+          <div
+            class="absolute right-0 top-0 pointer-events-none transition-opacity duration-150"
+            style={{
+              width: '4px',
+              height: `${thumbHeight}px`,
+              transform: `translateY(${thumbTop}px)`,
+              backgroundColor: 'var(--sidebar-scrollbar-thumb)',
+              borderRadius: '2px',
+              opacity: isHovering ? 0.7 : 0,
+            }}
+          />
+        )}
         </div>
       )}
     </CollapsibleSection>

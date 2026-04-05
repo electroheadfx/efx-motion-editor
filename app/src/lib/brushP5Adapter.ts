@@ -199,7 +199,7 @@ export function renderStyledStrokes(
   if (styled.length === 0) return null;
 
   // Cache check — skip expensive re-render if strokes and params haven't changed
-  const key = styled.map((s) => `${s.id}:${s.brushStyle}:${JSON.stringify(s.brushParams ?? {})}`).join(',');
+  const key = styled.map((s) => `${s.id}:${s.brushStyle}:${s.color}:${JSON.stringify(s.brushParams ?? {})}`).join(',');
   if (key === _cacheKey && _cachedCanvas) {
     return _cachedCanvas;
   }

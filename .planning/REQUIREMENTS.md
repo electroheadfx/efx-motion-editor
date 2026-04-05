@@ -23,6 +23,22 @@
 - [ ] **ENGN-05**: Per-frame FX cache with aggressive caching -- engine rendering is not real-time, all frames pre-rendered and cached for playback and animation propagation
 - [ ] **ENGN-06**: Old v0.6.0 project strokes render via existing Canvas 2D flat brush path; default brush preset for new strokes is **flat**
 
+### Enhanced Current Engine
+
+- [ ] **ECUR-01**: `Cmd+Z` after any paint operation (draw, clear, undo in FX mode) immediately re-renders canvas with correct visual state for both flat and FX strokes
+- [x] **ECUR-02**: Selecting an FX brush style (watercolor, ink, charcoal, pencil, marker) in FX mode actually paints in that style during drawing — no manual reselection required
+- [x] **ECUR-03**: Brush color and size persist across sessions in app preferences, defaulting to `#203769` at 35px
+- [x] **ECUR-04**: Paint brush shows a circle cursor at the current brush pixel size, scaling with canvas zoom (Photoshop behavior)
+- [ ] **ECUR-05**: Creating a new paint layer auto-switches to paint edit mode (equivalent to pressing `[p]`)
+- [ ] **ECUR-06**: "Clear Brush" button deletes all strokes on current frame; `Cmd+Z` properly undoes clear and re-renders
+- [x] **ECUR-07**: "Exit Paint Mode" button is larger and styled in orange with CSS pulsate color animation
+- [ ] **ECUR-08**: STROKES panel moves before SELECTION panel in sidebar ordering
+- [x] **ECUR-09**: Three brush modes in UI (Paint flat, FX Paint, Physical Paint grayed-out placeholder) with per-frame mutual exclusivity and conversion dialogs
+- [x] **ECUR-10**: Inline color picker on canvas side with 4 modes (Box/TSL/RVB/CMYK), HEX input, auto-apply, recent colors + saved favorites in persistent swatches
+- [ ] **ECUR-11**: Modal color picker removes Apply/Cancel buttons (realtime apply), removes dark overlay, opens near mouse position clamped to window bounds
+- [ ] **ECUR-12**: Selected FX stroke shows visible wireframe/path overlay for easy grab; transform bounding box for move within selection bounds
+- [x] **ECUR-13**: Stroke draw-reveal animation distributes selected stroke's points across target frame range using speed-based distribution (slow drawing = more frames, fast = fewer); single atomic undo
+
 ### Paint Tools
 
 - [ ] **PAINT-01**: User can draw freehand strokes with pressure sensitivity via physics engine
@@ -84,6 +100,19 @@
 | ENGN-04 | Phase 28 | Pending |
 | ENGN-05 | Phase 28 | Pending |
 | ENGN-06 | Phase 28 | Pending |
+| ECUR-01 | Phase 33 | Pending |
+| ECUR-02 | Phase 33 | Complete |
+| ECUR-03 | Phase 33 | Complete |
+| ECUR-04 | Phase 33 | Complete |
+| ECUR-05 | Phase 33 | Pending |
+| ECUR-06 | Phase 33 | Pending |
+| ECUR-07 | Phase 33 | Complete |
+| ECUR-08 | Phase 33 | Pending |
+| ECUR-09 | Phase 33 | Complete |
+| ECUR-10 | Phase 33 | Complete |
+| ECUR-11 | Phase 33 | Pending |
+| ECUR-12 | Phase 33 | Pending |
+| ECUR-13 | Phase 33 | Complete |
 | PAINT-01 | Phase 29 | Pending |
 | PAINT-02 | Phase 29 | Pending |
 | PAINT-03 | Phase 29 | Pending |
@@ -104,10 +133,10 @@
 | PERS-03 | Phase 32 | Pending |
 
 **Coverage:**
-- v0.7.0 requirements: 30 total
-- Mapped to phases: 30
+- v0.7.0 requirements: 43 total
+- Mapped to phases: 43
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-03 after roadmap creation*
+*Last updated: 2026-04-05 after adding ECUR requirements for Phase 33*

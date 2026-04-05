@@ -59,6 +59,7 @@ export interface MceLayer {
   is_base: boolean;
   order: number;
   blur?: number;  // Per-layer blur radius (0-1), optional for backward compat
+  paint_bg_color?: string;  // Per-paint-layer background color (transparent default)
   keyframes?: MceKeyframe[];  // Animation keyframes, optional for backward compat with v5 files
 }
 

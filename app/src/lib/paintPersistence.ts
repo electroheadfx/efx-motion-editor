@@ -128,7 +128,7 @@ export async function cleanupOrphanedPaintFiles(projectDir: string, activeLayerI
 
     for (const entry of entries) {
       const dirName = entry.name;
-      if (!dirName) continue;
+      if (!dirName || dirName === '.DS_Store') continue;
 
       // If this directory is not for an active paint layer, remove it
       if (!activeSet.has(dirName)) {

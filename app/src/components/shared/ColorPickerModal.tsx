@@ -4,93 +4,10 @@ import {X} from 'lucide-preact';
 import type {GradientData, GradientStop} from '../../types/sequence';
 import {createDefaultGradient} from '../../types/sequence';
 import {GradientBar, buildGradientCSS} from './GradientBar';
+import {hexToRgba, rgbaToHex, rgbToHsl, hslToRgb, rgbToHsv, hsvToRgb} from '../../lib/colorUtils';
 
-// === Color conversion utilities ===
-
-export function hexToRgba(hex: string): {r: number; g: number; b: number; a: number} {
-  const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})?$/i);
-  if (!m) return {r: 0, g: 0, b: 0, a: 1};
-  return {
-    r: parseInt(m[1], 16),
-    g: parseInt(m[2], 16),
-    b: parseInt(m[3], 16),
-    a: m[4] !== undefined ? parseInt(m[4], 16) / 255 : 1,
-  };
-}
-
-export function rgbaToHex(r: number, g: number, b: number, _a?: number): string {
-  const toHex = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-export function rgbToHsl(r: number, g: number, b: number): {h: number; s: number; l: number} {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  if (max === min) return {h: 0, s: 0, l};
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h = 0;
-  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-  else if (max === g) h = ((b - r) / d + 2) / 6;
-  else h = ((r - g) / d + 4) / 6;
-  return {h, s, l};
-}
-
-export function hslToRgb(h: number, s: number, l: number): {r: number; g: number; b: number} {
-  if (s === 0) {
-    const v = Math.round(l * 255);
-    return {r: v, g: v, b: v};
-  }
-  const hue2rgb = (p: number, q: number, t: number) => {
-    if (t < 0) t += 1;
-    if (t > 1) t -= 1;
-    if (t < 1/6) return p + (q - p) * 6 * t;
-    if (t < 1/2) return q;
-    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-    return p;
-  };
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  return {
-    r: Math.round(hue2rgb(p, q, h + 1/3) * 255),
-    g: Math.round(hue2rgb(p, q, h) * 255),
-    b: Math.round(hue2rgb(p, q, h - 1/3) * 255),
-  };
-}
-
-export function rgbToHsv(r: number, g: number, b: number): {h: number; s: number; v: number} {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const v = max;
-  const d = max - min;
-  const s = max === 0 ? 0 : d / max;
-  let h = 0;
-  if (max !== min) {
-    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-    else if (max === g) h = ((b - r) / d + 2) / 6;
-    else h = ((r - g) / d + 4) / 6;
-  }
-  return {h, s, v};
-}
-
-export function hsvToRgb(h: number, s: number, v: number): {r: number; g: number; b: number} {
-  const i = Math.floor(h * 6);
-  const f = h * 6 - i;
-  const p = v * (1 - s);
-  const q = v * (1 - f * s);
-  const t = v * (1 - (1 - f) * s);
-  let r = 0, g = 0, b = 0;
-  switch (i % 6) {
-    case 0: r = v; g = t; b = p; break;
-    case 1: r = q; g = v; b = p; break;
-    case 2: r = p; g = v; b = t; break;
-    case 3: r = p; g = q; b = v; break;
-    case 4: r = t; g = p; b = v; break;
-    case 5: r = v; g = p; b = q; break;
-  }
-  return {r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255)};
-}
+// Re-export color utilities for backward compatibility
+export {hexToRgba, rgbaToHex, rgbToHsl, hslToRgb, rgbToHsv, hsvToRgb} from '../../lib/colorUtils';
 
 // === ColorPickerModal component ===
 
@@ -102,6 +19,9 @@ export interface ColorPickerModalProps {
   onLiveChange?: (color: string) => void;
   onCommit: (color: string) => void;
   onClose: () => void;
+  // Position near mouse (optional — falls back to centered)
+  mouseX?: number;
+  mouseY?: number;
   // Gradient mode props (all optional for backward compat)
   gradient?: GradientData;
   onGradientChange?: (gradient: GradientData) => void;
@@ -111,10 +31,9 @@ export interface ColorPickerModalProps {
 
 export function ColorPickerModal({
   color, onLiveChange, onCommit, onClose,
+  mouseX, mouseY,
   gradient, onGradientChange, onGradientLiveChange, showGradientMode,
 }: ColorPickerModalProps) {
-  const initialColor = useRef(color);
-  const initialGradient = useRef(gradient);
   const rgba = hexToRgba(color);
   const hsv = rgbToHsv(rgba.r, rgba.g, rgba.b);
   const hsl = rgbToHsl(rgba.r, rgba.g, rgba.b);
@@ -191,20 +110,22 @@ export function ColorPickerModal({
     if (onGradientLiveChange) onGradientLiveChange(newGradient);
   }, [currentHex, fillMode, selectedStopIndex]);
 
-  // Close on Escape
+  // Close on Escape — commits current color (no cancel/revert)
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        if (fillMode === 'solid' && onLiveChange) onLiveChange(initialColor.current);
-        if (fillMode === 'gradient' && onGradientLiveChange && initialGradient.current) {
-          onGradientLiveChange(initialGradient.current);
+        // Commit current state and close
+        if (fillMode === 'gradient') {
+          if (onGradientChange) onGradientChange(gradientState);
+        } else {
+          onCommit(currentHex);
         }
         onClose();
       }
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose, onLiveChange, onGradientLiveChange, fillMode]);
+  }, [onClose, onCommit, onGradientChange, fillMode, currentHex, gradientState]);
 
   // Color area interaction (saturation-X, value-Y)
   const handleAreaPointer = useCallback((e: PointerEvent) => {
@@ -285,23 +206,6 @@ export function ColorPickerModal({
       setHue(hsv2.h); setSat(hsv2.s); setVal(hsv2.v);
     }
   }, [hInput, sInput, lInput]);
-
-  const handleApply = useCallback(() => {
-    if (fillMode === 'gradient') {
-      if (onGradientChange) onGradientChange(gradientState);
-    } else {
-      onCommit(currentHex);
-    }
-    onClose();
-  }, [currentHex, onCommit, onClose, fillMode, gradientState, onGradientChange]);
-
-  const handleCancel = useCallback(() => {
-    if (fillMode === 'solid' && onLiveChange) onLiveChange(initialColor.current);
-    if (fillMode === 'gradient' && onGradientLiveChange && initialGradient.current) {
-      onGradientLiveChange(initialGradient.current);
-    }
-    onClose();
-  }, [onLiveChange, onClose, onGradientLiveChange, fillMode]);
 
   // Handle fill mode switch
   const handleFillModeSwitch = useCallback((newMode: FillMode) => {
@@ -384,24 +288,57 @@ export function ColorPickerModal({
     }`;
 
   const isGradientMode = fillMode === 'gradient';
-  const modalWidth = isGradientMode ? '340px' : '300px';
+  const MODAL_WIDTH_NUM = isGradientMode ? 340 : 300;
+  const MODAL_HEIGHT = 420;
+  const MARGIN = 12;
+  const modalWidth = `${MODAL_WIDTH_NUM}px`;
+
+  // Calculate clamped position near mouse, or center as fallback
+  const left = mouseX != null
+    ? Math.min(Math.max(mouseX, MARGIN), window.innerWidth - MODAL_WIDTH_NUM - MARGIN)
+    : (window.innerWidth - MODAL_WIDTH_NUM) / 2;
+
+  const top = mouseY != null
+    ? Math.min(Math.max(mouseY, MARGIN), window.innerHeight - MODAL_HEIGHT - MARGIN)
+    : (window.innerHeight - MODAL_HEIGHT) / 2;
+
+  // Close handler: commit current color then close
+  const handleClose = useCallback(() => {
+    if (fillMode === 'gradient') {
+      if (onGradientChange) onGradientChange(gradientState);
+    } else {
+      onCommit(currentHex);
+    }
+    onClose();
+  }, [currentHex, onCommit, onClose, fillMode, gradientState, onGradientChange]);
 
   return createPortal(
     <div
-      class="fixed inset-0 flex items-center justify-center z-50"
-      onClick={handleCancel}
+      class="fixed inset-0 z-50"
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {/* Backdrop */}
-      <div class="absolute inset-0 bg-black/50" />
-
-      {/* Modal */}
+      {/* Transparent click-catcher backdrop (no dark overlay) */}
       <div
-        class="relative rounded-xl shadow-2xl p-5 flex flex-col gap-4"
         style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 999,
+          background: 'transparent',
+        }}
+        onClick={handleClose}
+      />
+
+      {/* Modal — positioned near mouse click, clamped to window bounds */}
+      <div
+        class="rounded-xl shadow-2xl p-5 flex flex-col gap-4"
+        style={{
+          position: 'fixed',
+          left: `${left}px`,
+          top: `${top}px`,
           width: modalWidth,
           backgroundColor: 'var(--sidebar-panel-bg)',
           border: '1px solid var(--sidebar-border-unselected)',
+          zIndex: 1000,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -410,7 +347,7 @@ export function ColorPickerModal({
           <span class="text-xs font-semibold" style={{color: 'var(--sidebar-text-primary)'}}>Color Picker</span>
           <button
             class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#ffffff15] transition-colors cursor-pointer"
-            onClick={handleCancel}
+            onClick={handleClose}
             title="Close"
           >
             <X size={12} style={{color: 'var(--sidebar-text-secondary)'}} />
@@ -601,13 +538,10 @@ export function ColorPickerModal({
           />
         </div>
 
-        {/* Color preview + current/initial (solid mode only) */}
+        {/* Color preview (solid mode only) */}
         {!isGradientMode && (
           <div class="flex gap-2 items-center">
-            <div class="flex rounded overflow-hidden" style={{width: '48px', height: '24px'}}>
-              <div style={{flex: 1, backgroundColor: currentHex}} title="Current" />
-              <div style={{flex: 1, backgroundColor: initialColor.current}} title="Original" />
-            </div>
+            <div class="rounded" style={{width: '24px', height: '24px', backgroundColor: currentHex}} />
             <span class="text-[10px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>{currentHex.toUpperCase()}</span>
           </div>
         )}
@@ -689,23 +623,6 @@ export function ColorPickerModal({
           </div>
         )}
 
-        {/* Action buttons */}
-        <div class="flex items-center justify-end gap-2 pt-1">
-          <button
-            class="h-7 rounded-md px-3 text-[11px] cursor-pointer transition-colors hover:bg-[#ffffff10]"
-            style={{color: 'var(--sidebar-text-secondary)'}}
-            onClick={handleCancel}
-          >
-            Cancel
-          </button>
-          <button
-            class="h-7 rounded-md px-4 text-[11px] font-medium text-white cursor-pointer transition-colors hover:brightness-110"
-            style={{backgroundColor: 'var(--color-accent)'}}
-            onClick={handleApply}
-          >
-            Apply
-          </button>
-        </div>
       </div>
     </div>,
     document.body,

@@ -15,6 +15,7 @@ interface TransitionPropertiesProps {
 
 export function TransitionProperties({ selection }: TransitionPropertiesProps) {
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [colorPickerPos, setColorPickerPos] = useState({x: 0, y: 0});
   const allSeqs = sequenceStore.sequences.value;
   const seq = allSeqs.find(s => s.id === selection.sequenceId);
   if (!seq) return null;
@@ -106,11 +107,16 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
                       backgroundColor: `rgb(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)})`,
                       borderColor: 'var(--color-border-subtle)',
                     }}
-                    onClick={() => setColorPickerOpen(true)}
+                    onClick={(e: MouseEvent) => {
+                      setColorPickerPos({x: e.clientX, y: e.clientY});
+                      setColorPickerOpen(true);
+                    }}
                   />
                   {colorPickerOpen && (
                     <ColorPickerModal
                       color={`#${Math.round(r*255).toString(16).padStart(2,'0')}${Math.round(g*255).toString(16).padStart(2,'0')}${Math.round(b*255).toString(16).padStart(2,'0')}`}
+                      mouseX={colorPickerPos.x}
+                      mouseY={colorPickerPos.y}
                       onCommit={(hex) => {
                         const rr = parseInt(hex.slice(1,3), 16) / 255;
                         const gg = parseInt(hex.slice(3,5), 16) / 255;
@@ -261,12 +267,17 @@ export function TransitionProperties({ selection }: TransitionPropertiesProps) {
                 <div
                   class="w-6 h-6 rounded cursor-pointer shrink-0 border border-(--sidebar-border-unselected)"
                   style={{ backgroundColor: transition.color || '#000000' }}
-                  onClick={() => setColorPickerOpen(true)}
+                  onClick={(e: MouseEvent) => {
+                    setColorPickerPos({x: e.clientX, y: e.clientY});
+                    setColorPickerOpen(true);
+                  }}
                   title="Pick color"
                 />
                 {colorPickerOpen && (
                   <ColorPickerModal
                     color={transition.color || '#000000'}
+                    mouseX={colorPickerPos.x}
+                    mouseY={colorPickerPos.y}
                     onCommit={(c) => {
                       sequenceStore.updateTransition(selection.sequenceId, selType, { color: c });
                     }}

@@ -4,6 +4,9 @@ export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' 
 /** Per D-04: Three stroke states for FX workflow */
 export type StrokeFxState = 'flat' | 'fx-applied' | 'flattened';
 
+/** Per-layer paint mode: flat (perfect-freehand only) or FX (p5.brush styles) */
+export type PaintMode = 'flat' | 'fx-paint';
+
 /** Brush rendering styles (per D-01) */
 export type BrushStyle = 'flat' | 'watercolor' | 'ink' | 'charcoal' | 'pencil' | 'marker';
 
@@ -58,6 +61,7 @@ export interface PaintStroke {
   opacity: number;       // 0-1 (per D-03)
   size: number;          // brush diameter in project pixels
   options: PaintStrokeOptions;
+  mode?: PaintMode;             // 'flat' | 'fx-paint' (future: 'physic-paint'). Default: 'flat' for backward compat
   brushStyle?: BrushStyle;      // rendering style (default: 'flat' for backward compat)
   brushParams?: BrushFxParams;  // FX parameters at draw time
   fxState?: StrokeFxState;      // per D-04: current rendering state (default: 'flat')
@@ -114,14 +118,15 @@ export type PaintElement = PaintStroke | PaintShape | PaintFill;
 /** All paint data for a single timeline frame (per D-06, D-07) */
 export interface PaintFrame {
   elements: PaintElement[];
+  bgColor?: string;  // Per-frame background color (transparent default, user-settable)
 }
 
-/** Default solid background color for paint layer (per D-11) */
-export const DEFAULT_PAINT_BG_COLOR = '#FFFFFF';
+/** Default solid background color for paint layer (per D-17: transparent for flat mode) */
+export const DEFAULT_PAINT_BG_COLOR = 'transparent';
 
 /** Default brush settings */
-export const DEFAULT_BRUSH_SIZE = 8;
-export const DEFAULT_BRUSH_COLOR = '#FFFFFF';
+export const DEFAULT_BRUSH_SIZE = 35;
+export const DEFAULT_BRUSH_COLOR = '#5B8BD4';
 export const DEFAULT_BRUSH_OPACITY = 1.0;
 export const DEFAULT_STROKE_OPTIONS: PaintStrokeOptions = {
   thinning: 0.5,

@@ -203,13 +203,18 @@ export function renderPaintFrameWithBg(
   height: number,
   layerId?: string,
   frameNum?: number,
+  overrideBgColor?: string,
 ): void {
-  // Solid paint background per D-11 (default white, user-configurable)
-  const bgColor = paintStore.paintBgColor.peek();
-  ctx.save();
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, width, height);
-  ctx.restore();
+  // Background: use override (from layer property) or fall back to signal (live editing)
+  const bgColor = overrideBgColor ?? paintStore.paintBgColor.peek();
+  if (bgColor === 'transparent') {
+    ctx.clearRect(0, 0, width, height);
+  } else {
+    ctx.save();
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
 
   // Flat preview mode: skip FX cache, render everything as flat
   if (paintStore.showFlatPreview.peek()) {

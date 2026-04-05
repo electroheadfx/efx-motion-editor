@@ -9,6 +9,7 @@ import {PaintOverlay} from '../canvas/PaintOverlay';
 import {MotionPath} from '../canvas/MotionPath';
 import {OnionSkinOverlay} from '../canvas/OnionSkinOverlay';
 import {PaintToolbar} from '../overlay/PaintToolbar';
+import {InlineColorPicker} from '../sidebar/InlineColorPicker';
 import {timelineStore} from '../../stores/timelineStore';
 import {canvasStore} from '../../stores/canvasStore';
 import {paintStore} from '../../stores/paintStore';
@@ -361,47 +362,87 @@ export function CanvasArea() {
         </>)}
         <FullSpeedBadge />
       </div>
-      {/* Preview Frame with zoom/pan */}
-      <div
-        ref={containerRef}
-        class="flex items-center justify-center flex-1 w-full min-h-0 p-4 pt-0 overflow-hidden"
-        onWheel={handleWheel}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        style={{cursor: cursorStyle}}
-      >
+      {/* Canvas row: optional color picker + canvas */}
+      <div class="flex flex-1 w-full min-h-0">
+        {/* Inline color picker panel - vertically centered left of canvas */}
+        {isPaintModeActive && paintStore.showInlineColorPicker.value && (
+          <div class="shrink-0" style={{ width: '235px' }}>
+            {/* Absolutely positioned within the canvas outer div (which has position:relative) */}
+            <div class="absolute left-0 flex flex-col overflow-hidden" style={{ top: '50%', transform: 'translateY(-50%)', width: '235px', height: '450px', maxHeight: 'calc(100% - 32px)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
+            <InlineColorPicker
+              color={paintStore.brushColor.value}
+              opacity={paintStore.brushOpacity.value}
+              onChange={(color: string, opacity: number) => {
+                paintStore.setBrushColor(color);
+                paintStore.setBrushOpacity(opacity);
+                // Live-update selected strokes
+                const sel = paintStore.selectedStrokeIds.peek();
+                if (paintStore.activeTool.peek() === 'select' && sel.size > 0) {
+                  const layerId = layerStore.selectedLayerId.peek();
+                  const fr = timelineStore.currentFrame.peek();
+                  if (layerId) {
+                    const pf = paintStore.getFrame(layerId, fr);
+                    if (pf) {
+                      for (const el of pf.elements) {
+                        if ((el.tool === 'brush' || el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') && sel.has(el.id)) {
+                          (el as any).color = color;
+                          (el as any).opacity = opacity;
+                        }
+                      }
+                      paintStore.markDirty(layerId, fr);
+                      paintStore.invalidateFrameFxCache(layerId, fr);
+                      paintStore.paintVersion.value++;
+                    }
+                  }
+                }
+              }}
+              onClose={() => { paintStore.showInlineColorPicker.value = false; }}
+            />
+            </div>
+          </div>
+        )}
+        {/* Preview Frame with zoom/pan */}
         <div
-          style={{
-            width: `${projectStore.width.value}px`,
-            height: `${projectStore.height.value}px`,
-            transform: `scale(${canvasStore.zoom.value}) translate(${canvasStore.panX.value}px, ${canvasStore.panY.value}px)`,
-            transformOrigin: 'center center',
-          }}
-          data-canvas-area
-          class={`relative rounded bg-black overflow-visible shrink-0 border-2 ${
-            isPaintModeActive ? 'border-(--color-accent)' : 'border-transparent'
-          }`}
+          ref={containerRef}
+          class="flex items-center justify-center flex-1 min-h-0 p-4 pt-0 overflow-hidden"
+          onWheel={handleWheel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          style={{cursor: cursorStyle}}
         >
-          <Preview />
-          <MotionPath />
-          {isPaintModeActive && paintStore.onionSkinEnabled.value && (
-            <OnionSkinOverlay />
-          )}
-          {isPaintModeActive ? (
-            <PaintOverlay
-              containerRef={containerRef}
-              isSpaceHeld={isSpaceHeld}
-              onPanStart={startPan}
-            />
-          ) : (
-            <TransformOverlay
-              containerRef={containerRef}
-              getSourceDimensions={getSourceDimensionsForLayer}
-              isSpaceHeld={isSpaceHeld}
-              onPanStart={startPan}
-            />
-          )}
+          <div
+            style={{
+              width: `${projectStore.width.value}px`,
+              height: `${projectStore.height.value}px`,
+              transform: `scale(${canvasStore.zoom.value}) translate(${canvasStore.panX.value}px, ${canvasStore.panY.value}px)`,
+              transformOrigin: 'center center',
+            }}
+            data-canvas-area
+            class={`relative rounded bg-black overflow-visible shrink-0 border-2 ${
+              isPaintModeActive ? 'border-(--color-accent)' : 'border-transparent'
+            }`}
+          >
+            <Preview />
+            <MotionPath />
+            {isPaintModeActive && paintStore.onionSkinEnabled.value && (
+              <OnionSkinOverlay />
+            )}
+            {isPaintModeActive ? (
+              <PaintOverlay
+                containerRef={containerRef}
+                isSpaceHeld={isSpaceHeld}
+                onPanStart={startPan}
+              />
+            ) : (
+              <TransformOverlay
+                containerRef={containerRef}
+                getSourceDimensions={getSourceDimensionsForLayer}
+                isSpaceHeld={isSpaceHeld}
+                onPanStart={startPan}
+              />
+            )}
+          </div>
         </div>
       </div>
       {/* Paint toolbar now renders in the controls bar above */}

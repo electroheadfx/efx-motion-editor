@@ -1,17 +1,24 @@
-import {useState} from 'preact/hooks';
-import {ArrowRight} from 'lucide-preact';
+import {useState, useEffect} from 'preact/hooks';
+import {ArrowRight, ChevronDown} from 'lucide-preact';
 import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
+import {PaintModeSelector, FxBrushConvertBar} from './PaintModeSelector';
 import {paintStore} from '../../stores/paintStore';
+import {layerStore} from '../../stores/layerStore';
 import {timelineStore} from '../../stores/timelineStore';
-import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS} from '../../types/paint';
-import type {PaintToolType, PaintStroke, PaintShape, PaintStrokeOptions} from '../../types/paint';
-import type {Layer} from '../../types/layer';
+import {sequenceStore} from '../../stores/sequenceStore';
+import {fxTrackLayouts, trackLayouts} from '../../lib/frameMap';
+import {pushAction} from '../../lib/history';
+import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_FX_VISIBLE_PARAMS} from '../../types/paint';
+import type {PaintToolType, PaintStroke, PaintShape, PaintStrokeOptions, PaintElement} from '../../types/paint';
+import type {Layer, BlendMode} from '../../types/layer';
 import {StrokeList} from './StrokeList';
 
 const SHAPE_TOOLS: PaintToolType[] = ['line', 'rect', 'ellipse'];
 const BRUSH_TOOLS: PaintToolType[] = ['brush', 'eraser'];
 const STROKE_TOOLS: PaintToolType[] = ['brush', 'eraser'];
+const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
+function capitalize(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 function shapeToBrushStrokes(shape: PaintShape, brushOptions: PaintStrokeOptions): PaintStroke[] {
   const {tool, x1, y1, x2, y2, color, opacity, strokeWidth} = shape;
@@ -68,11 +75,16 @@ function shapeToBrushStrokes(shape: PaintShape, brushOptions: PaintStrokeOptions
 }
 
 export function PaintProperties({layer}: {layer: Layer}) {
-  const [showColorPicker, setShowColorPicker] = useState(false);
   const [showBgColorPicker, setShowBgColorPicker] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
+  const [colorPickerPos, setColorPickerPos] = useState({x: 0, y: 0});
   const [onionCollapsed, setOnionCollapsed] = useState(true);
   const [tabletCollapsed, setTabletCollapsed] = useState(true);
+  const [showAnimateDialog, setShowAnimateDialog] = useState(false);
+
+  // Sync paintStore signal from layer's persisted bgColor on mount / layer change
+  useEffect(() => {
+    paintStore.setPaintBgColor(layer.paintBgColor ?? 'transparent');
+  }, [layer.id, layer.paintBgColor]);
 
   const activeTool = paintStore.activeTool.value;
   const brushSizeVal = paintStore.brushSize.value;
@@ -81,7 +93,11 @@ export function PaintProperties({layer}: {layer: Layer}) {
   const strokeOpts = paintStore.strokeOptions.value;
   const shapeFilledVal = paintStore.shapeFilled.value;
   const fillToleranceVal = paintStore.fillTolerance.value;
-  const bgColor = paintStore.paintBgColor.value;
+  const bgColor = layer.paintBgColor ?? 'transparent';
+  const setBgColor = (c: string) => {
+    layerStore.updateLayer(layer.id, { paintBgColor: c });
+    paintStore.setPaintBgColor(c);
+  };
 
   const showBrushSettings = BRUSH_TOOLS.includes(activeTool) || SHAPE_TOOLS.includes(activeTool);
   const showStrokeOptions = STROKE_TOOLS.includes(activeTool);
@@ -90,19 +106,72 @@ export function PaintProperties({layer}: {layer: Layer}) {
 
   return (
     <div class="px-3 py-2 space-y-3">
-      {/* Layer name + exit paint mode */}
+      <style>{`
+        @keyframes pulsate {
+          0%, 100% { background-color: #f97316; box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+          50% { background-color: #dc2626; box-shadow: 0 0 12px 4px rgba(249, 115, 22, 0.6); }
+        }
+      `}</style>
+      {/* Mode selector + exit paint mode */}
       <div class="flex items-center justify-between px-1">
-        <div class="text-[12px] font-medium" style={{color: 'var(--sidebar-text-primary)'}}>
-          {layer.name}
-        </div>
+        <PaintModeSelector />
         <button
-          class="paint-exit-btn text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1"
-          onClick={() => paintStore.paintMode.value = false}
+          class="paint-exit-btn text-[10px] px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
+          onClick={() => { paintStore.paintMode.value = false; }}
           title="Exit paint mode (P)"
+          style={{
+            backgroundColor: '#f97316',
+            color: '#ffffff',
+            border: 'none',
+            animation: 'pulsate 2s ease-in-out infinite',
+          }}
         >
           Exit Paint Mode
           <ArrowRight size={12} />
         </button>
+        <style>{`
+          @keyframes pulsate {
+            0%, 100% { background-color: #f97316; box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+            50% { background-color: #dc2626; box-shadow: 0 0 12px 4px rgba(249, 115, 22, 0.6); }
+          }
+        `}</style>
+      </div>
+
+      {/* Layer Blend Mode & Opacity — single row, matches editor properties */}
+      <div class="flex items-center gap-3">
+        <div class="relative shrink-0" style={{ width: '90px' }}>
+          <select
+            class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer appearance-none pr-5"
+            style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
+            value={layer.blendMode}
+            onChange={(e) => {
+              layerStore.updateLayer(layer.id, {blendMode: (e.target as HTMLSelectElement).value as BlendMode});
+            }}
+          >
+            {BLEND_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {capitalize(mode)}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={10} class="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--sidebar-text-secondary)' }} />
+        </div>
+        <div class="flex items-center gap-1.5 flex-1 min-w-0">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round(layer.opacity * 100)}
+            class="flex-1 min-w-0 h-1 accent-(--color-accent) cursor-pointer"
+            onInput={(e) => {
+              layerStore.updateLayer(layer.id, {opacity: parseInt((e.target as HTMLInputElement).value, 10) / 100});
+            }}
+          />
+          <span class="text-[11px] w-8 text-right shrink-0" style={{ color: 'var(--sidebar-text-primary)' }}>
+            {Math.round(layer.opacity * 100)}%
+          </span>
+        </div>
       </div>
 
       {/* Rendering indicator */}
@@ -113,8 +182,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* Flat preview mode indicator */}
-      {paintStore.showFlatPreview.value && (
+      {/* Flat preview mode indicator (D-30: only in FX mode) */}
+      {paintStore.activePaintMode.value === 'fx-paint' && paintStore.showFlatPreview.value && (
         <div class="flex items-center justify-between px-1 py-1 rounded text-[10px]"
           style={{backgroundColor: '#f59e0b', color: '#000'}}>
           <span>Flat preview mode</span>
@@ -127,70 +196,48 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* Background Color + Show Sequence image -- 2 columns */}
-      <div style={{ padding: '4px 12px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }}>
-          {/* Col 1: Background Color */}
+      {/* Background Color -- hidden in FX mode (always white per p5.brush) */}
+      {paintStore.activePaintMode.value !== 'fx-paint' && (
+        <div style={{ padding: '4px 12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)' }}>Background Color</span>
             <div
-              style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)' }}
-              onClick={() => setShowBgColorPicker(true)}
+              style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor, cursor: 'pointer', border: '1px solid var(--color-border-subtle)', backgroundImage: bgColor === 'transparent' ? 'linear-gradient(45deg, #888 25%, transparent 25%), linear-gradient(-45deg, #888 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #888 75%), linear-gradient(-45deg, transparent 75%, #888 75%)' : undefined, backgroundSize: bgColor === 'transparent' ? '8px 8px' : undefined, backgroundPosition: bgColor === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : undefined }}
+              onClick={(e: MouseEvent) => {
+                setColorPickerPos({x: e.clientX, y: e.clientY});
+                setShowBgColorPicker(true);
+              }}
               title="Paint background color"
             />
             {bgColor !== DEFAULT_PAINT_BG_COLOR && (
               <button
-                onClick={() => paintStore.setPaintBgColor(DEFAULT_PAINT_BG_COLOR)}
+                onClick={() => setBgColor(DEFAULT_PAINT_BG_COLOR)}
                 style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-secondary)', cursor: 'pointer', border: 'none' }}
               >
                 Reset
               </button>
             )}
           </div>
-          {/* Col 2: Show BG Sequence */}
-          <label style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-            Show BG Sequence
-            <div style={{ width: 16, height: 16, borderRadius: '3px', backgroundColor: '#4A4A60', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <input
-                type="checkbox"
-                checked={paintStore.showSequenceOverlay.value}
-                onChange={() => paintStore.toggleSequenceOverlay()}
-                style={{ width: 14, height: 14, accentColor: 'var(--color-accent)', margin: 0, cursor: 'pointer' }}
-              />
-            </div>
-          </label>
         </div>
-        {/* Sequence overlay opacity slider -- conditional on showSequenceOverlay */}
-        {paintStore.showSequenceOverlay.value && (
-          <div class="flex items-center gap-2 mt-1.5">
-            <span class="text-[10px] w-14 shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>Opacity</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={Math.round(paintStore.sequenceOverlayOpacity.value * 100)}
-              class="flex-1 min-w-0 h-1 cursor-pointer"
-              style={{accentColor: 'var(--color-accent)'}}
-              onInput={(e) => paintStore.setSequenceOverlayOpacity(parseInt((e.target as HTMLInputElement).value, 10) / 100)}
-            />
-            <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-              {Math.round(paintStore.sequenceOverlayOpacity.value * 100)}%
-            </span>
-          </div>
-        )}
-      </div>
+      )}
 
       {showBgColorPicker && (
         <ColorPickerModal
           color={bgColor}
-          onLiveChange={(c) => paintStore.setPaintBgColor(c)}
+          mouseX={colorPickerPos.x}
+          mouseY={colorPickerPos.y}
+          onLiveChange={(c) => setBgColor(c)}
           onCommit={(c) => {
-            paintStore.setPaintBgColor(c);
+            setBgColor(c);
             setShowBgColorPicker(false);
           }}
           onClose={() => setShowBgColorPicker(false)}
         />
+      )}
+
+      {/* STROKES section -- D-20: before SELECTION */}
+      {activeTool === 'select' && (
+        <StrokeList layerId={layer.id} />
       )}
 
       {/* SELECT MODE TOOLS -- 2-col grouping (per D-08) */}
@@ -224,6 +271,8 @@ export function PaintProperties({layer}: {layer: Layer}) {
                       paintStore.removeElement(layer.id, frame, strokeId);
                     }
                     paintStore.clearSelection();
+                    paintStore.invalidateFrameFxCache(layer.id, frame);
+                    paintStore.refreshFrameFx(layer.id, frame);
                   }}
                 >
                   Delete Selected ({paintStore.selectedStrokeIds.value.size})
@@ -232,6 +281,48 @@ export function PaintProperties({layer}: {layer: Layer}) {
                 <div />
               )}
             </div>
+
+            {/* FX brush convert + params — only when strokes selected in FX mode */}
+            {paintStore.activePaintMode.value === 'fx-paint' && paintStore.selectedStrokeIds.value.size > 0 && (
+              <>
+                <FxBrushConvertBar selectedOnly />
+                {(() => {
+                  const style = paintStore.brushStyle.value;
+                  const visibleParams = BRUSH_FX_VISIBLE_PARAMS[style] || [];
+                  if (visibleParams.length === 0) return null;
+                  const params = paintStore.brushFxParams.value;
+                  return (
+                    <div class="flex flex-col gap-2">
+                      {visibleParams.map((paramKey) => (
+                        <div key={paramKey} class="flex items-center gap-2">
+                          <span class="text-[10px] w-16 shrink-0 capitalize" style={{color: 'var(--sidebar-text-secondary)'}}>
+                            {paramKey}
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={params[paramKey] ?? 0}
+                            class="flex-1 min-w-0 h-1 cursor-pointer"
+                            style={{accentColor: 'var(--color-accent)'}}
+                            onInput={(e) => {
+                              paintStore.brushFxParams.value = {
+                                ...paintStore.brushFxParams.value,
+                                [paramKey]: parseFloat((e.target as HTMLInputElement).value),
+                              };
+                            }}
+                          />
+                          <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
+                            {(params[paramKey] ?? 0).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </>
+            )}
 
             {/* D-08: Row 2 -- Width | Color (2-col, visible when strokes selected) */}
             {paintStore.selectedStrokeIds.value.size > 0 && (() => {
@@ -316,7 +407,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
                         borderColor: 'var(--color-border-subtle)',
                       }}
                       title="Change stroke color"
-                      onClick={() => setShowColorPicker(true)}
+                      onClick={() => paintStore.toggleInlineColorPicker()}
                     />
                     <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
                       {currentColor.toUpperCase()}
@@ -410,16 +501,14 @@ export function PaintProperties({layer}: {layer: Layer}) {
             })()}
           </div>
 
-          {/* STROKES section -- moved after SELECTION, before Copy to Next Frame */}
-          <StrokeList layerId={layer.id} />
         </div>
       )}
 
-      {/* Copy to Next Frame -- visible in select mode (Flatten is auto on exit paint mode) */}
+      {/* Copy to Next Frame + Animate -- visible in select mode */}
       {activeTool === 'select' && (
-        <div class="px-1 pt-1">
+        <div class="px-1 pt-1 flex gap-2">
           <button
-            class="paint-action-btn w-full text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
+            class="paint-action-btn flex-1 text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
             onClick={() => {
               const layerId = layer.id;
               const frame = timelineStore.currentFrame.peek();
@@ -447,46 +536,203 @@ export function PaintProperties({layer}: {layer: Layer}) {
           >
             Copy to Next Frame
           </button>
+          <button
+            class="paint-action-btn flex-1 text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
+            onClick={() => setShowAnimateDialog(true)}
+            disabled={paintStore.selectedStrokeIds.value.size === 0}
+            title="Animate selected stroke(s) (draw reveal)"
+            style={{opacity: paintStore.selectedStrokeIds.value.size === 0 ? 0.4 : 1}}
+          >
+            Animate
+          </button>
         </div>
       )}
+
+      {/* Animate stroke dialog */}
+      {showAnimateDialog && (() => {
+        function getAnimationEndFrame(layerId: string, currentFrame: number, target: 'layer' | 'sequence'): number | null {
+          const parentSeq = sequenceStore.sequences.value.find(
+            s => s.layers.some(l => l.id === layerId)
+          );
+          if (!parentSeq) return null;
+
+          if (target === 'layer') {
+            const fxLayout = fxTrackLayouts.value.find(t => t.sequenceId === parentSeq.id);
+            if (!fxLayout) return null;
+            return fxLayout.outFrame - 1; // outFrame is exclusive
+          } else {
+            const contentTrack = trackLayouts.value.find(
+              t => t.startFrame <= currentFrame && t.endFrame > currentFrame
+            );
+            if (!contentTrack) return null;
+            return contentTrack.endFrame - 1; // endFrame is exclusive
+          }
+        }
+
+        async function handleAnimate(target: 'layer' | 'sequence') {
+          setShowAnimateDialog(false);
+
+          const currentFrame = timelineStore.currentFrame.peek();
+          const selectedIds = [...paintStore.selectedStrokeIds.value];
+          if (selectedIds.length === 0) return;
+
+          const pf = paintStore.getFrame(layer.id, currentFrame);
+          if (!pf) return;
+
+          // Get all selected strokes
+          const strokes = selectedIds
+            .map(id => pf.elements.find(e => e.id === id) as PaintStroke)
+            .filter(s => s && 'points' in s);
+          if (strokes.length === 0) return;
+
+          // Calculate target frame range using real timeline data
+          const endFrame = getAnimationEndFrame(layer.id, currentFrame, target);
+          if (endFrame === null || endFrame <= currentFrame) return;
+
+          const targetFrameCount = endFrame - currentFrame + 1;
+          if (targetFrameCount < 2) return;
+
+          // Generate animated stroke frames for ALL strokes
+          const { distributeStrokeBySpeed } = await import('../../lib/strokeAnimation');
+          const allStrokeFrames = strokes.map(stroke => ({
+            id: stroke.id,
+            frames: distributeStrokeBySpeed(stroke, targetFrameCount),
+          }));
+
+          // --- ATOMIC BATCH UNDO ---
+          // Snapshot before-state for ALL affected frames
+          const beforeSnapshots = new Map<number, PaintElement[]>();
+          for (let f = currentFrame; f <= endFrame; f++) {
+            const existing = paintStore.getFrame(layer.id, f);
+            beforeSnapshots.set(f, existing ? existing.elements.map(e => ({...e})) : []);
+          }
+
+          // Apply: remove original strokes from current frame
+          const currentElements = pf.elements;
+          for (const stroke of strokes) {
+            const idx = currentElements.findIndex(e => e.id === stroke.id);
+            if (idx !== -1) currentElements.splice(idx, 1);
+          }
+
+          // Add progressive strokes for each animation to each frame
+          for (const { frames: strokeFrames } of allStrokeFrames) {
+            for (let i = 0; i < strokeFrames.length; i++) {
+              const targetFrame = currentFrame + i;
+              const frame = paintStore._getOrCreateFrame(layer.id, targetFrame);
+              frame.elements.push(strokeFrames[i]);
+            }
+          }
+
+          // Notify visual changes for all affected frames
+          for (let f = currentFrame; f <= endFrame; f++) {
+            paintStore.markDirty(layer.id, f);
+            paintStore.invalidateFrameFxCache(layer.id, f);
+            paintStore.refreshFrameFx(layer.id, f);
+          }
+          // CRITICAL: Bump paintVersion so canvas re-renders (markDirty does NOT do this)
+          paintStore.paintVersion.value++;
+
+          // Push SINGLE undo action that restores ALL frames atomically
+          const layerId = layer.id;
+          const selectedIdsCopy = [...selectedIds];
+          pushAction({
+            id: crypto.randomUUID(),
+            description: `Animate ${strokes.length} stroke(s) across ${targetFrameCount} frames`,
+            timestamp: Date.now(),
+            undo: () => {
+              // Restore all frames to their before-state
+              for (const [f, elements] of beforeSnapshots) {
+                const frame = paintStore._getOrCreateFrame(layerId, f);
+                frame.elements = [...elements];
+                paintStore.markDirty(layerId, f);
+                paintStore.invalidateFrameFxCache(layerId, f);
+                paintStore.refreshFrameFx(layerId, f);
+              }
+              // CRITICAL: Bump paintVersion so canvas re-renders after undo
+              paintStore.paintVersion.value++;
+            },
+            redo: () => {
+              // Re-apply: remove originals, add animated strokes
+              const pf = paintStore._getOrCreateFrame(layerId, currentFrame);
+              pf.elements = pf.elements.filter(e => !selectedIdsCopy.includes(e.id));
+              for (const { frames: strokeFrames } of allStrokeFrames) {
+                for (let i = 0; i < strokeFrames.length; i++) {
+                  const targetFrame = currentFrame + i;
+                  const frame = paintStore._getOrCreateFrame(layerId, targetFrame);
+                  frame.elements.push(strokeFrames[i]);
+                  paintStore.markDirty(layerId, targetFrame);
+                  paintStore.invalidateFrameFxCache(layerId, targetFrame);
+                  paintStore.refreshFrameFx(layerId, targetFrame);
+                }
+              }
+              // CRITICAL: Bump paintVersion so canvas re-renders after redo
+              paintStore.paintVersion.value++;
+            },
+          });
+
+          paintStore.selectedStrokeIds.value = new Set();
+        }
+
+        return (
+          <div
+            style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) setShowAnimateDialog(false); }}
+          >
+            <div style={{
+              backgroundColor: 'var(--sidebar-bg)', borderRadius: '8px',
+              padding: '16px', minWidth: '280px', maxWidth: '360px',
+              border: '1px solid var(--color-border-subtle)',
+            }}>
+              <h3 style={{fontSize: '13px', fontWeight: 600, color: 'var(--sidebar-text-primary)', marginBottom: '8px'}}>
+                Animate Stroke (Draw Reveal)
+              </h3>
+              <p style={{fontSize: '11px', color: 'var(--sidebar-text-secondary)', marginBottom: '12px'}}>
+                Distribute stroke points across frames:
+              </p>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                <button
+                  class="paint-action-btn text-[11px] py-2 px-3 rounded cursor-pointer transition-colors"
+                  onClick={() => handleAnimate('layer')}
+                >
+                  Current frame to end of layer
+                </button>
+                <button
+                  class="paint-action-btn text-[11px] py-2 px-3 rounded cursor-pointer transition-colors"
+                  onClick={() => handleAnimate('sequence')}
+                >
+                  Current frame to end of sequence
+                </button>
+              </div>
+              <div style={{marginTop: '12px', textAlign: 'right'}}>
+                <button
+                  class="text-[11px] py-1 px-3 rounded cursor-pointer"
+                  style={{color: 'var(--sidebar-text-secondary)', backgroundColor: 'transparent', border: 'none'}}
+                  onClick={() => setShowAnimateDialog(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* BRUSH section -- style buttons + FX + size/color + opacity/clear + stroke sliders (per D-03, D-04, D-05, D-06) */}
       {showBrushSettings && (
         <div>
           <SectionLabel text="BRUSH" />
           <div class="flex flex-col gap-2 mt-1.5">
-            {/* D-03: Style buttons (moved from separate BRUSH STYLE section) */}
-            {(activeTool === 'brush' || activeTool === 'select') && (
-              <>
-                <div class="flex flex-wrap gap-1">
-                  {BRUSH_STYLES.map((style) => {
-                    const isActive = paintStore.brushStyle.value === style;
-                    return (
-                      <button
-                        key={style}
-                        class={`text-[10px] px-2 py-1 rounded cursor-pointer transition-colors ${
-                          isActive ? 'paint-style-btn-active' : 'paint-action-btn'
-                        }`}
-                        onClick={() => {
-                          paintStore.brushStyle.value = style;
-                          paintStore.brushFxParams.value = {...DEFAULT_BRUSH_FX_PARAMS[style]};
-                        }}
-                      >
-                        {style.charAt(0).toUpperCase() + style.slice(1)}
-                      </button>
-                    );
-                  })}
-                </div>
-                {activeTool === 'select' && paintStore.selectedStrokeIds.value.size > 0 && (
-                  <div class="text-[9px] px-1 opacity-60" style={{color: 'var(--sidebar-text-secondary)'}}>
-                    Click a style to apply FX to {paintStore.selectedStrokeIds.value.size} selected stroke(s)
-                  </div>
-                )}
-              </>
+            {/* FX brush convert bar — scope toggles + style buttons (brush tool only; select tool has it in SELECTION section) */}
+            {paintStore.activePaintMode.value === 'fx-paint' && activeTool !== 'select' && (
+              <FxBrushConvertBar />
             )}
 
-            {/* BRUSH FX PARAMS -- visible when non-flat style selected */}
-            {(activeTool === 'brush' || activeTool === 'select') && (() => {
+            {/* BRUSH FX PARAMS -- visible when non-flat style selected in FX mode (brush tool only) */}
+            {paintStore.activePaintMode.value === 'fx-paint' && activeTool !== 'select' && (() => {
               const style = paintStore.brushStyle.value;
               const visibleParams = BRUSH_FX_VISIBLE_PARAMS[style] || [];
               if (visibleParams.length === 0) return null;
@@ -564,50 +810,28 @@ export function PaintProperties({layer}: {layer: Layer}) {
                     borderColor: 'var(--color-border-subtle)',
                   }}
                   title="Change brush color"
-                  onClick={() => setShowColorPicker(true)}
+                  onClick={() => paintStore.toggleInlineColorPicker()}
                 />
                 <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
                   {brushColorVal.toUpperCase()}
                 </span>
               </div>
-              {/* Clear Brushes button */}
+              {/* Clear Brushes button -- D-03: no confirmation */}
               <div>
-                {confirmClear ? (
-                  <div class="flex items-center gap-1">
-                    <span class="text-[9px]" style={{color: 'var(--sidebar-text-secondary)'}}>Clear?</span>
-                    <button
-                      class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
-                      style={{backgroundColor: '#DC2626', color: '#FFFFFF', border: 'none'}}
-                      onClick={() => {
-                        paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek());
-                        setConfirmClear(false);
-                      }}
-                    >
-                      Yes
-                    </button>
-                    <button
-                      class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
-                      onClick={() => setConfirmClear(false)}
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    class="paint-action-btn"
-                    onClick={() => setConfirmClear(true)}
-                    style={{
-                      fontSize: '10px',
-                      fontWeight: 600,
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      width: '100%',
-                    }}
-                  >
-                    Clear Brushes
-                  </button>
-                )}
+                <button
+                  class="paint-action-btn"
+                  onClick={() => paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek())}
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    width: '100%',
+                  }}
+                >
+                  Clear Brushes
+                </button>
               </div>
             </div>
 
@@ -700,74 +924,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* BRUSH STYLE -- visible for select tool when brush settings are NOT shown (select+shape) */}
-      {!showBrushSettings && (activeTool === 'brush' || activeTool === 'select') && (
-        <div>
-          <SectionLabel text="BRUSH" />
-          <div class="flex flex-col gap-2 mt-1.5">
-            <div class="flex flex-wrap gap-1">
-              {BRUSH_STYLES.map((style) => {
-                const isActive = paintStore.brushStyle.value === style;
-                return (
-                  <button
-                    key={style}
-                    class={`text-[10px] px-2 py-1 rounded cursor-pointer transition-colors ${
-                      isActive ? 'paint-style-btn-active' : 'paint-action-btn'
-                    }`}
-                    onClick={() => {
-                      paintStore.brushStyle.value = style;
-                      paintStore.brushFxParams.value = {...DEFAULT_BRUSH_FX_PARAMS[style]};
-                    }}
-                  >
-                    {style.charAt(0).toUpperCase() + style.slice(1)}
-                  </button>
-                );
-              })}
-            </div>
-            {activeTool === 'select' && paintStore.selectedStrokeIds.value.size > 0 && (
-              <div class="text-[9px] px-1 opacity-60" style={{color: 'var(--sidebar-text-secondary)'}}>
-                Click a style to apply FX to {paintStore.selectedStrokeIds.value.size} selected stroke(s)
-              </div>
-            )}
-            {/* BRUSH FX PARAMS -- visible when non-flat style selected */}
-            {(() => {
-              const style = paintStore.brushStyle.value;
-              const visibleParams = BRUSH_FX_VISIBLE_PARAMS[style] || [];
-              if (visibleParams.length === 0) return null;
-              const params = paintStore.brushFxParams.value;
-              return (
-                <div class="flex flex-col gap-2">
-                  {visibleParams.map((paramKey) => (
-                    <div key={paramKey} class="flex items-center gap-2">
-                      <span class="text-[10px] w-16 shrink-0 capitalize" style={{color: 'var(--sidebar-text-secondary)'}}>
-                        {paramKey}
-                      </span>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={params[paramKey] ?? 0}
-                        class="flex-1 min-w-0 h-1 cursor-pointer"
-                        style={{accentColor: 'var(--color-accent)'}}
-                        onInput={(e) => {
-                          paintStore.brushFxParams.value = {
-                            ...paintStore.brushFxParams.value,
-                            [paramKey]: parseFloat((e.target as HTMLInputElement).value),
-                          };
-                        }}
-                      />
-                      <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-                        {(params[paramKey] ?? 0).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
 
       {/* SHAPE options (unchanged, conditional) */}
       {showShapeOptions && (
@@ -1044,37 +1200,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
         )}
       </div>
 
-      {/* Color Picker Modal */}
-      {showColorPicker && (
-        <ColorPickerModal
-          color={brushColorVal}
-          onLiveChange={(c) => {
-            paintStore.setBrushColor(c);
-            // Also update selected strokes live
-            if (activeTool === 'select' && paintStore.selectedStrokeIds.peek().size > 0) {
-              const fr = timelineStore.currentFrame.peek();
-              const pf2 = paintStore.getFrame(layer.id, fr);
-              if (pf2) {
-                const sel2 = paintStore.selectedStrokeIds.peek();
-                for (const el of pf2.elements) {
-                  if ((el.tool === 'brush' || el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') && sel2.has(el.id)) (el as any).color = c;
-                }
-                paintStore.markDirty(layer.id, fr);
-                paintStore.invalidateFrameFxCache(layer.id, fr);
-                paintStore.paintVersion.value++;
-              }
-            }
-          }}
-          onCommit={(c) => {
-            paintStore.setBrushColor(c);
-            if (activeTool === 'select' && paintStore.selectedStrokeIds.peek().size > 0) {
-              paintStore.refreshFrameFx(layer.id, timelineStore.currentFrame.peek());
-            }
-            setShowColorPicker(false);
-          }}
-          onClose={() => setShowColorPicker(false)}
-        />
-      )}
     </div>
   );
 }

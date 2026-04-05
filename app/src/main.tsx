@@ -10,11 +10,13 @@ import {undo, redo} from './lib/history';
 import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
+import {paintStore} from './stores/paintStore';
 
 // Resolve temp project dir from Tauri's app data path before rendering
 initTempProjectDir().then(async () => {
   const { initTheme } = await import('./lib/themeManager');
   await initTheme();
+  await paintStore.initFromPreferences(); // Load saved brush prefs BEFORE render
   render(<App />, document.getElementById('app')!);
   startAutoSave();
   mountShortcuts(); // Mount keyboard shortcuts globally

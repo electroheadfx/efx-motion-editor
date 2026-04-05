@@ -1,5 +1,37 @@
 # Milestones
 
+## v0.7.0 Monorepo & Paint Enhancements (Shipped: 2026-04-05)
+
+**Phases completed:** 2 phases, 23 plans, 40 tasks
+
+**Key accomplishments:**
+
+- Renamed Application/ to app/ via isolated git mv with full --follow history, moved lockfile to workspace root, updated .gitignore for monorepo paths
+- 1. [Rule 1 - Bug] Removed redundant pnpm.onlyBuiltDependencies from paint package.json
+- Full monorepo verification suite — 8 automated checks passed, dev server and Tauri build confirmed working
+- Fixed all undo/redo rendering bugs with _notifyVisualChange + FX cache invalidation, enabled immediate FX brush drawing, and implemented 4 UX quick wins (auto-enter paint mode, no-confirm clear, orange exit button, sidebar reorder)
+- Brush color/size persist via LazyStore with #203769/35px defaults, plus circle cursor overlay that scales with zoom
+- Realtime color picker without Apply/Cancel buttons, no dark overlay, positioned near mouse click with bounds clamping
+- 3-mode paint system with flat/FX exclusivity, conversion dialogs, transparent flat background, and layer blend/opacity controls in paint edit mode
+- 4-mode inline color picker (Box HSV/TSL/RVB/CMYK) with HEX input, recent + favorite swatches persisted via LazyStore
+- Dashed wireframe path and bounding box overlay for selected FX strokes with expanded bounding-box hit testing
+- Speed-based stroke animation distributing points across frames with inverse distance weighting and atomic single-Cmd+Z undo
+- Fixed infinite re-render loop in InlineColorPicker via useRef guard and restored blend mode functionality in paint edit mode
+- FX cache invalidation on clearFrame/color change, color-aware cache keys, activePaintMode with persistence, and mode-aware white/transparent background
+- Fixed cursor position offset with high-contrast visibility, strengthened exit button pulsate, modal conversion dialog with dark overlay, and multi-stroke animation support
+- InlineColorPicker relocated from sidebar to canvas-adjacent panel with shared paintStore signal for cross-component visibility control
+- Per-layer paint mode with brushStyle reset on mode switch, frame content inference, and flat-to-FX stroke batch conversion
+- Exit Paint Mode button pulsate animation replaced with glow-only effect (orange-to-red background + box-shadow), scale bounce removed
+- Await initFromPreferences before render so brush color/size persist across restart
+- paintVersion bump after FX cache refresh in setBrushColor triggers immediate preview re-render without requiring pointer movement
+- Fixed circle cursor centering by calculating cursorPos relative to overlayRef instead of containerRef
+- Auto-set white bg on FX mode switch with per-frame bgColor persistence in paint sidecar JSON
+- Removed createPortal and fixed positioning from InlineColorPicker so it renders inside the CanvasArea 260px flex container
+- CSS linear-gradient backgrounds on TSL/RVB/CMYK slider tracks with rAF-throttled drag for smooth interaction
+- Simplified brush stroke hit testing to bbox-only selection and verified wireframe renders for all brush types
+
+---
+
 ## v0.6.0 Various Enhancements (Shipped: 2026-04-03)
 
 **Phases:** 4 (Phases 22-25) | **Plans:** 14 | **Tasks:** 28

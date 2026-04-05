@@ -1,8 +1,9 @@
-import {useRef, useEffect} from 'preact/hooks';
+import {useRef, useEffect, useState} from 'preact/hooks';
 import type {RefObject} from 'preact';
 import {listen} from '@tauri-apps/api/event';
 import {paintStore} from '../../stores/paintStore';
 import {canvasStore} from '../../stores/canvasStore';
+import {PaintCursor} from './PaintCursor';
 import {projectStore} from '../../stores/projectStore';
 import {layerStore} from '../../stores/layerStore';
 import {timelineStore} from '../../stores/timelineStore';
@@ -11,10 +12,10 @@ import {strokeToPath, renderPaintFrame} from '../../lib/paintRenderer';
 import {renderFrameFx} from '../../lib/brushP5Adapter';
 import {floodFill, hexToRgba} from '../../lib/paintFloodFill';
 import {pushAction} from '../../lib/history';
-import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, BrushStyle, PaintFrame, BezierAnchor} from '../../types/paint';
+import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, StrokeFxState, PaintFrame, BezierAnchor} from '../../types/paint';
 import {
   hitTestAnchor, findNearestSegment, insertAnchorOnSegment,
-  deleteAnchor, updateCoupledHandle, dragSegment, sampleBezierPath,
+  deleteAnchor, updateCoupledHandle, dragSegment,
 } from '../../lib/bezierPath';
 
 // ---------------------------------------------------------------------------
@@ -100,26 +101,8 @@ function findElementAtPoint(
         }
       }
       if (x >= sMinX - pad && x <= sMaxX + pad && y >= sMinY - pad && y <= sMaxY + pad) {
-        // Fine check: distance to points along the stroke path
-        if (stroke.anchors) {
-          // For bezier strokes, sample the path and check against sampled points
-          const sampled = sampleBezierPath(stroke.anchors, 4.0, stroke.closedPath);
-          for (const [sx, sy] of sampled) {
-            const dx = x - sx;
-            const dy = y - sy;
-            if (dx * dx + dy * dy <= pad * pad) {
-              return stroke.id;
-            }
-          }
-        } else {
-          for (const [px, py] of stroke.points) {
-            const dx = x - px;
-            const dy = y - py;
-            if (dx * dx + dy * dy <= pad * pad) {
-              return stroke.id;
-            }
-          }
-        }
+        // Accept bounding box hit for all brush strokes (flat and FX)
+        return stroke.id;
       }
     } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
       const shape = el as PaintShape;
@@ -360,6 +343,14 @@ function reRenderFrameFx(
   width: number,
   height: number,
 ): void {
+  // Skip expensive p5.brush render when flat preview is active
+  if (paintStore.showFlatPreview.peek()) {
+    paintStore.invalidateFrameFxCache(layerId, frame);
+    paintStore.markDirty(layerId, frame);
+    paintStore.paintVersion.value++;
+    return;
+  }
+
   const brushStrokes = paintFrame.elements.filter(
     (el) => el.tool === 'brush' && el.visible !== false
   ) as PaintStroke[];
@@ -386,6 +377,63 @@ function reRenderFrameFx(
 /** Convert an RGBA pixel to a hex color string */
 function rgbaToHex(r: number, g: number, b: number): string {
   return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+}
+
+/** Render a thin dashed wireframe path overlay for a selected FX stroke (D-35).
+ * FX strokes render with artistic effects (watercolor bleed, ink spread) making the
+ * actual rendered area unpredictable. This wireframe gives users a clear selection target. */
+function renderFxWireframe(ctx: CanvasRenderingContext2D, stroke: PaintStroke, zoom: number): void {
+  if (stroke.points.length < 2 && (!stroke.anchors || stroke.anchors.length < 2)) return;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(100, 180, 255, 0.8)';  // light blue wireframe
+  ctx.lineWidth = 1.5 / zoom;  // constant screen-space width
+  ctx.setLineDash([4 / zoom, 4 / zoom]);  // dashed line
+
+  ctx.beginPath();
+  // Use anchors if available (bezier path), otherwise use raw points
+  if (stroke.anchors && stroke.anchors.length > 0) {
+    ctx.moveTo(stroke.anchors[0].x, stroke.anchors[0].y);
+    const segCount = stroke.closedPath ? stroke.anchors.length : stroke.anchors.length - 1;
+    for (let i = 0; i < segCount; i++) {
+      const prev = stroke.anchors[i];
+      const curr = stroke.anchors[(i + 1) % stroke.anchors.length];
+      if (prev.handleOut && curr.handleIn) {
+        ctx.bezierCurveTo(prev.handleOut.x, prev.handleOut.y, curr.handleIn.x, curr.handleIn.y, curr.x, curr.y);
+      } else {
+        ctx.lineTo(curr.x, curr.y);
+      }
+    }
+  } else {
+    ctx.moveTo(stroke.points[0][0], stroke.points[0][1]);
+    for (let i = 1; i < stroke.points.length; i++) {
+      ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Render a dashed bounding box rectangle around a selected FX stroke (D-35). */
+function renderFxStrokeBounds(ctx: CanvasRenderingContext2D, stroke: PaintStroke, zoom: number): void {
+  const points = stroke.anchors?.map(a => [a.x, a.y]) ?? stroke.points.map(p => [p[0], p[1]]);
+  if (points.length === 0) return;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of points) {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+
+  const pad = 8 / zoom;  // padding around bounds
+  ctx.save();
+  ctx.strokeStyle = 'rgba(100, 180, 255, 0.6)';
+  ctx.lineWidth = 1 / zoom;
+  ctx.setLineDash([3 / zoom, 3 / zoom]);
+  ctx.strokeRect(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2);
+  ctx.restore();
 }
 
 /** Draw bezier editing overlay: path line, handle lines/dots, anchor squares (D-09) */
@@ -530,6 +578,10 @@ export function PaintOverlay({
   const lastNativeEventTime = useRef(0);  // timestamp of last native tablet event
   const avgTilt = useRef(0);
   const tiltSamples = useRef(0);
+
+  // --- Circle cursor state ---
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
+  const [cursorVisible, setCursorVisible] = useState(false);
 
   // --- Clean up rAF on unmount ---
   useEffect(() => {
@@ -737,13 +789,21 @@ export function PaintOverlay({
             sPad = 0;
           }
 
-          ctx.save();
-          ctx.strokeStyle = '#4A90D9';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([3, 3]);
-          ctx.globalAlpha = 0.5;
-          ctx.strokeRect(sMinX - sPad, sMinY - sPad, sMaxX - sMinX + sPad * 2, sMaxY - sMinY + sPad * 2);
-          ctx.restore();
+          // For FX strokes, render wireframe path + bounds instead of simple bbox
+          if ((el.tool === 'brush') && (el as PaintStroke).brushStyle && (el as PaintStroke).brushStyle !== 'flat') {
+            const fxStroke = el as PaintStroke;
+            const zoom = canvasStore.zoom.peek();
+            renderFxWireframe(ctx, fxStroke, zoom);
+            renderFxStrokeBounds(ctx, fxStroke, zoom);
+          } else {
+            ctx.save();
+            ctx.strokeStyle = '#4A90D9';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.globalAlpha = 0.5;
+            ctx.strokeRect(sMinX - sPad, sMinY - sPad, sMaxX - sMinX + sPad * 2, sMaxY - sMinY + sPad * 2);
+            ctx.restore();
+          }
         }
 
         // Draw combined bounding box with transform handles
@@ -1249,6 +1309,20 @@ export function PaintOverlay({
   }
 
   function handlePointerMove(e: PointerEvent) {
+    // Update circle cursor position
+    // overlayRef is inside a parent with transform: scale(zoom) translate(pan),
+    // so getBoundingClientRect() returns zoomed/panned coords. We must divide
+    // by zoom to get the pre-transform coordinate space that CSS absolute positioning uses.
+    const overlay = overlayRef.current;
+    if (overlay) {
+      const rect = overlay.getBoundingClientRect();
+      const zoom = canvasStore.zoom.peek();
+      setCursorPos({
+        x: (e.clientX - rect.left) / zoom,
+        y: (e.clientY - rect.top) / zoom,
+      });
+    }
+
     // Cursor feedback: when select tool is active, show resize cursors over handles
     if (!isTransforming.current && !isDragging.current && !isErasing.current && !isDrawing.current) {
       const tool = paintStore.activeTool.peek();
@@ -1942,11 +2016,17 @@ export function PaintOverlay({
           opacity: paintStore.brushOpacity.peek(),
           size: paintStore.brushSize.peek(),
           options: baseOptions,
-          brushStyle: 'flat' as BrushStyle,  // per D-01: always draw flat
-          brushParams: undefined,  // per D-01: FX params applied post-draw
-          fxState: 'flat',  // per D-04: initial state is flat
+          mode: paintStore.activePaintMode.peek(),  // D-24: stamp mode at creation
+          brushStyle: paintStore.brushStyle.peek(),  // D-33: use current brush style
+          brushParams: paintStore.brushStyle.peek() !== 'flat' ? {...paintStore.brushFxParams.peek()} : undefined,
+          fxState: paintStore.brushStyle.peek() !== 'flat' ? 'fx-applied' as StrokeFxState : 'flat',
         };
         paintStore.addElement(layerId, frame, stroke);
+        // D-33: trigger FX rendering immediately when drawing with a non-flat style
+        if (stroke.brushStyle !== 'flat') {
+          paintStore.invalidateFrameFxCache(layerId, frame);
+          paintStore.refreshFrameFx(layerId, frame);
+        }
       }
     } else if ((tool === 'line' || tool === 'rect' || tool === 'ellipse') && shapeStart.current && layerId) {
       const start = shapeStart.current;
@@ -2180,11 +2260,6 @@ export function PaintOverlay({
         }
       }
 
-      // Overlay toggle shortcut (per D-13)
-      if (e.key === 'o' || e.key === 'O') {
-        paintStore.toggleSequenceOverlay();
-        e.preventDefault();
-      }
 
       // Flat/FX preview toggle (F key)
       if (e.key === 'f' || e.key === 'F') {
@@ -2240,6 +2315,14 @@ export function PaintOverlay({
     }
   }, [paintStore.activeTool.value, paintStore.selectedStrokeIds.value]);
 
+  // Re-render preview when paint data changes externally (e.g., color change in FX mode)
+  useEffect(() => {
+    const _v = paintStore.paintVersion.value; // subscribe to changes
+    if (_v > 0 && paintStore.paintMode.peek()) {
+      requestPreview();
+    }
+  }, [paintStore.paintVersion.value]);
+
   // --- Re-render preview when selection changes (show/hide selection indicators) ---
   useEffect(() => {
     // Subscribe to selection changes and undo/redo to re-draw indicators
@@ -2282,7 +2365,10 @@ export function PaintOverlay({
   }
 
   // --- Render ---
-  const cursor = cursorForTool(paintStore.activeTool.value);
+  const tool = paintStore.activeTool.value;
+  const isBrushOrEraser = tool === 'brush' || tool === 'eraser';
+  const showCircleCursor = paintStore.paintMode.value && isBrushOrEraser;
+  const cursor = showCircleCursor ? 'none' : cursorForTool(tool);
 
   return (
     <div
@@ -2298,6 +2384,8 @@ export function PaintOverlay({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerEnter={() => setCursorVisible(true)}
+      onPointerLeave={() => setCursorVisible(false)}
       onDblClick={handleDoubleClick}
     >
       {/* Temporary canvas for live stroke preview */}
@@ -2313,6 +2401,12 @@ export function PaintOverlay({
           height: '100%',
           pointerEvents: 'none',
         }}
+      />
+      <PaintCursor
+        screenX={cursorPos.x}
+        screenY={cursorPos.y}
+        zoom={canvasStore.zoom.value}
+        visible={showCircleCursor && cursorVisible}
       />
     </div>
   );

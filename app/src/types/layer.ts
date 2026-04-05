@@ -42,6 +42,7 @@ export interface Layer {
   source: LayerSourceData;
   isBase?: boolean;  // true for auto-generated base layer (non-deletable)
   blur?: number;  // per-layer blur radius (normalized 0-1, default 0)
+  paintBgColor?: string;  // per-paint-layer background color (transparent default)
   keyframes?: Keyframe[];  // Animation keyframes (sequence-local frame offsets)
 }
 
