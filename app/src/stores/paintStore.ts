@@ -104,9 +104,9 @@ export const paintStore = {
   onionSkinOpacity,
   showInlineColorPicker,
 
-  /** Load persisted brush preferences (color, size) on app startup. Fire-and-forget. */
+  /** Load persisted brush preferences (color, size) on app startup. */
   async initFromPreferences(): Promise<void> {
-    const { loadBrushPreferences } = await import('../lib/paintPreferences');
+    const { loadBrushPreferences, loadPaintMode } = await import('../lib/paintPreferences');
     const prefs = await loadBrushPreferences();
     brushColor.value = prefs.color;
     brushSize.value = prefs.size;
@@ -142,6 +142,7 @@ export const paintStore = {
     } else if (mode === 'fx-paint' && brushStyle.value === 'flat') {
       brushStyle.value = 'watercolor';  // default FX style
     }
+    import('../lib/paintPreferences').then(m => m.savePaintMode(mode));
   },
 
   setFrame(layerId: string, frame: number, pf: PaintFrame): void {
@@ -529,24 +530,6 @@ export const paintStore = {
     import('../lib/paintPreferences').then(m => m.saveBrushSize(brushSize.value));
   },
 
-  setActivePaintMode(mode: PaintMode): void {
-    activePaintMode.value = mode;
-    import('../lib/paintPreferences').then(m => m.savePaintMode(mode));
-  },
-
-  /** Initialize paint preferences from persisted storage */
-  initFromPreferences(): void {
-    import('../lib/paintPreferences').then(async (m) => {
-      const prefs = await m.loadBrushPreferences();
-      brushColor.value = prefs.color;
-      brushSize.value = prefs.size;
-      // Restore paint mode
-      const mode = await m.loadPaintMode();
-      if (mode === 'flat' || mode === 'fx-paint') {
-        activePaintMode.value = mode as PaintMode;
-      }
-    });
-  },
 
   setBrushColor(color: string): void {
     brushColor.value = color;
