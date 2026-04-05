@@ -1,8 +1,9 @@
-import {useRef, useEffect} from 'preact/hooks';
+import {useRef, useEffect, useState} from 'preact/hooks';
 import type {RefObject} from 'preact';
 import {listen} from '@tauri-apps/api/event';
 import {paintStore} from '../../stores/paintStore';
 import {canvasStore} from '../../stores/canvasStore';
+import {PaintCursor} from './PaintCursor';
 import {projectStore} from '../../stores/projectStore';
 import {layerStore} from '../../stores/layerStore';
 import {timelineStore} from '../../stores/timelineStore';
@@ -530,6 +531,10 @@ export function PaintOverlay({
   const lastNativeEventTime = useRef(0);  // timestamp of last native tablet event
   const avgTilt = useRef(0);
   const tiltSamples = useRef(0);
+
+  // --- Circle cursor state ---
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
+  const [cursorVisible, setCursorVisible] = useState(false);
 
   // --- Clean up rAF on unmount ---
   useEffect(() => {
@@ -1249,6 +1254,13 @@ export function PaintOverlay({
   }
 
   function handlePointerMove(e: PointerEvent) {
+    // Update circle cursor position (relative to overlay container)
+    const overlayEl = overlayRef.current;
+    if (overlayEl) {
+      const rect = overlayEl.getBoundingClientRect();
+      setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    }
+
     // Cursor feedback: when select tool is active, show resize cursors over handles
     if (!isTransforming.current && !isDragging.current && !isErasing.current && !isDrawing.current) {
       const tool = paintStore.activeTool.peek();
@@ -2287,7 +2299,10 @@ export function PaintOverlay({
   }
 
   // --- Render ---
-  const cursor = cursorForTool(paintStore.activeTool.value);
+  const tool = paintStore.activeTool.value;
+  const isBrushOrEraser = tool === 'brush' || tool === 'eraser';
+  const showCircleCursor = paintStore.paintMode.value && isBrushOrEraser;
+  const cursor = showCircleCursor ? 'none' : cursorForTool(tool);
 
   return (
     <div
@@ -2303,6 +2318,8 @@ export function PaintOverlay({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerEnter={() => setCursorVisible(true)}
+      onPointerLeave={() => setCursorVisible(false)}
       onDblClick={handleDoubleClick}
     >
       {/* Temporary canvas for live stroke preview */}
@@ -2318,6 +2335,12 @@ export function PaintOverlay({
           height: '100%',
           pointerEvents: 'none',
         }}
+      />
+      <PaintCursor
+        screenX={cursorPos.x}
+        screenY={cursorPos.y}
+        zoom={canvasStore.zoom.value}
+        visible={showCircleCursor && cursorVisible}
       />
     </div>
   );
