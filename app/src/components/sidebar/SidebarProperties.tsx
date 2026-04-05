@@ -90,24 +90,29 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
         }}
       />
 
-      {/* Edit Brush button for paint layers */}
+      {/* Edit Brush row for paint layers — mirrors paint mode header */}
       {layer.type === 'paint' && !paintStore.paintMode.value && (
-        <button
-          class="text-[10px] px-4 py-2 rounded cursor-pointer flex items-center gap-1 font-semibold w-full justify-center"
-          onClick={() => {
-            layerStore.setSelected(layer.id);
-            paintStore.togglePaintMode();
-          }}
-          title="Edit Brush (P)"
-          style={{
-            backgroundColor: '#f97316',
-            color: '#ffffff',
-            border: 'none',
-          }}
-        >
-          Edit Brush
-          <ArrowRight size={12} />
-        </button>
+        <div class="flex items-center justify-between px-1">
+          <div class="text-[12px] font-medium" style={{color: 'var(--sidebar-text-primary)'}}>
+            Paint
+          </div>
+          <button
+            class="text-[10px] px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
+            onClick={() => {
+              layerStore.setSelected(layer.id);
+              paintStore.togglePaintMode();
+            }}
+            title="Edit Brush (P)"
+            style={{
+              backgroundColor: '#f97316',
+              color: '#ffffff',
+              border: 'none',
+            }}
+          >
+            Edit Brush
+            <ArrowRight size={12} />
+          </button>
+        </div>
       )}
 
       {/* Change Source button for content overlay layers */}
