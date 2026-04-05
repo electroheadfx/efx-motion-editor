@@ -37,7 +37,7 @@
 - [x] **ECUR-10**: Inline color picker on canvas side with 4 modes (Box/TSL/RVB/CMYK), HEX input, auto-apply, recent colors + saved favorites in persistent swatches
 - [ ] **ECUR-11**: Modal color picker removes Apply/Cancel buttons (realtime apply), removes dark overlay, opens near mouse position clamped to window bounds
 - [ ] **ECUR-12**: Selected FX stroke shows visible wireframe/path overlay for easy grab; transform bounding box for move within selection bounds
-- [ ] **ECUR-13**: Stroke draw-reveal animation distributes selected stroke's points across target frame range using speed-based distribution (slow drawing = more frames, fast = fewer); single atomic undo
+- [x] **ECUR-13**: Stroke draw-reveal animation distributes selected stroke's points across target frame range using speed-based distribution (slow drawing = more frames, fast = fewer); single atomic undo
 
 ### Paint Tools
 
@@ -112,7 +112,7 @@
 | ECUR-10 | Phase 33 | Complete |
 | ECUR-11 | Phase 33 | Pending |
 | ECUR-12 | Phase 33 | Pending |
-| ECUR-13 | Phase 33 | Pending |
+| ECUR-13 | Phase 33 | Complete |
 | PAINT-01 | Phase 29 | Pending |
 | PAINT-02 | Phase 29 | Pending |
 | PAINT-03 | Phase 29 | Pending |
