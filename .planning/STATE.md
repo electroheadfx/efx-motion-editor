@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Monorepo & Paint Enhancements
 status: planning
-stopped_at: Completed 33-12-PLAN.md
-last_updated: "2026-04-05T14:07:15.487Z"
+stopped_at: Completed 33-13-PLAN.md
+last_updated: "2026-04-05T14:05:09.375Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 3
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -21,14 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 33 — enhance-current-engine
+**Current focus:** Replanning — Phases 27-29 failed, need new engine integration strategy
 
 ## Current Position
 
-Phase: 33 (enhance-current-engine) — EXECUTING
-Plan: 2 of 20
-Status: Ready to execute
-Last activity: 2026-04-05
+Phase: 26 complete, 27-29 FAILED
+Status: Replanning engine integration approach
+Last activity: 2026-04-04
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -50,8 +49,7 @@ Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 
 - [Phase 26-monorepo-scaffold]: Isolated git mv commit for 100% rename detection and --follow history preservation
 - [Phase 26-monorepo-scaffold]: Consolidated pnpm.overrides and packageManager at workspace root; removed redundant onlyBuiltDependencies from paint package
-- [Phase 33]: PaintMode is per-layer inferred from frame content, not persisted globally
-- [Phase 33]: setActivePaintMode resets brushStyle to match mode; convertFrame batch-updates strokes on flat-to-FX switch
+- [Phase 33]: Inline style tag for component-scoped @keyframes pulsate in PaintProperties
 
 ### Research Flags
 
@@ -73,10 +71,10 @@ None.
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
 | Phase 26-monorepo-scaffold P01 | 1min | 2 tasks | 253 files |
 | Phase 26-monorepo-scaffold P02 | 4min | 2 tasks | 135 files |
-| Phase 33 P12 | 3min | 2 tasks | 4 files |
+| Phase 33 P13 | 2min | 1 tasks | 1 files |
 
 ## Session Continuity
 
-Last session: 2026-04-05T14:07:15.485Z
-Stopped at: Completed 33-12-PLAN.md
+Last session: 2026-04-05T14:05:09.372Z
+Stopped at: Completed 33-13-PLAN.md
 Resume file: None
