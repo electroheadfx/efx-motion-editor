@@ -219,12 +219,12 @@ Plans:
 - [x] 33-11-PLAN.md — Gap closure: move inline color picker to canvas side
 - [x] 33-12-PLAN.md — UAT gap closure: per-layer paint mode + brush reset + conversion
 - [x] 33-13-PLAN.md — UAT gap closure: exit button pulsate animation (remove scale)
-- [x] 33-14-PLAN.md — UAT gap closure: brush preferences persistence (await init)
+- [ ] 33-14-PLAN.md — UAT gap closure: brush preferences persistence (await init)
 - [ ] 33-15-PLAN.md — UAT gap closure: FX canvas refresh on color change
 - [x] 33-16-PLAN.md — UAT gap closure: circle cursor centering
 - [ ] 33-17-PLAN.md — UAT gap closure: FX white background persistence
 - [x] 33-18-PLAN.md — UAT gap closure: inline color picker positioning (remove portal)
-- [ ] 33-19-PLAN.md — UAT gap closure: TSL/RVB/CMYK gradient sliders
+- [x] 33-19-PLAN.md — UAT gap closure: TSL/RVB/CMYK gradient sliders
 - [ ] 33-20-PLAN.md — UAT gap closure: flat stroke wireframe overlay
 
 ## Progress
