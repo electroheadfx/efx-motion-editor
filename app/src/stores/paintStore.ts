@@ -579,6 +579,7 @@ export const paintStore = {
           const frame = ts.currentFrame.peek();
           paintStore.invalidateFrameFxCache(layerId, frame);
           paintStore.refreshFrameFx(layerId, frame);
+          paintVersion.value++;  // Trigger preview re-render after FX cache refresh
         }
       });
     }
