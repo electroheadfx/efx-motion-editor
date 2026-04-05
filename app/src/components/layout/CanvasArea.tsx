@@ -366,8 +366,9 @@ export function CanvasArea() {
       <div class="flex flex-1 w-full min-h-0">
         {/* Inline color picker panel - vertically centered left of canvas */}
         {isPaintModeActive && paintStore.showInlineColorPicker.value && (
-          <div class="shrink-0 flex items-center self-stretch">
-            <div class="color-picker-panel overflow-y-auto" style={{ width: '235px', height: '500px', maxHeight: 'calc(100% - 32px)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
+          <div class="shrink-0 flex flex-col" style={{ width: '235px' }}>
+            <div class="flex-1" />
+            <div class="color-picker-panel overflow-y-auto" style={{ height: '500px', maxHeight: 'calc(100% - 32px)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
               <style>{`
                 .color-picker-panel::-webkit-scrollbar { width: 4px; }
                 .color-picker-panel::-webkit-scrollbar-track { background: transparent; }
@@ -404,6 +405,7 @@ export function CanvasArea() {
               onClose={() => { paintStore.showInlineColorPicker.value = false; }}
             />
             </div>
+            <div class="flex-1" />
           </div>
         )}
         {/* Preview Frame with zoom/pan */}
