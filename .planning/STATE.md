@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Monorepo & Paint Enhancements
 status: executing
-stopped_at: Completed 33-11-PLAN.md
-last_updated: "2026-04-05T12:35:38.739Z"
+stopped_at: Completed 33-18-PLAN.md
+last_updated: "2026-04-05T14:04:01.188Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 8
-  completed_phases: 2
-  total_plans: 14
-  completed_plans: 14
+  completed_phases: 1
+  total_plans: 23
+  completed_plans: 15
   percent: 0
 ---
 
@@ -53,6 +53,7 @@ Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 - [Phase 33]: FX wireframe uses dashed blue line matching selection scheme; hit testing uses bounding box for FX strokes
 - [Phase 33]: Use containerRef for cursor position alignment with paint coordinate system
 - [Phase 33]: Moved picker visibility from local useState to paintStore shared signal for cross-component control
+- [Phase 33]: Removed createPortal in favor of normal child rendering inside existing 260px CanvasArea container
 
 ### Research Flags
 
@@ -77,9 +78,10 @@ None.
 | Phase 33 P06 | 2min | 1 tasks | 1 files |
 | Phase 33 P10 | 4min | 2 tasks | 4 files |
 | Phase 33 P11 | 3min | 2 tasks | 3 files |
+| Phase 33 P18 | 2min | 1 tasks | 1 files |
 
 ## Session Continuity
 
-Last session: 2026-04-05T12:29:52.731Z
-Stopped at: Completed 33-11-PLAN.md
+Last session: 2026-04-05T14:04:01.185Z
+Stopped at: Completed 33-18-PLAN.md
 Resume file: None
