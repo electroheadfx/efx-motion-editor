@@ -722,6 +722,11 @@ export const paintStore = {
     paintVersion.value++;
   },
 
+  /** Expose _getOrCreateFrame for external batch mutations (e.g., stroke animation) */
+  _getOrCreateFrame(layerId: string, frame: number): PaintFrame {
+    return _getOrCreateFrame(layerId, frame);
+  },
+
   /** Expose _notifyVisualChange for external bezier editing undo/redo callbacks (Phase 25) */
   _notifyVisualChange(layerId: string, frame: number): void {
     _notifyVisualChange(layerId, frame);

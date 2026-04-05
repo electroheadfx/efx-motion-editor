@@ -7,8 +7,11 @@ import {InlineColorPicker} from './InlineColorPicker';
 import {paintStore} from '../../stores/paintStore';
 import {layerStore} from '../../stores/layerStore';
 import {timelineStore} from '../../stores/timelineStore';
+import {sequenceStore} from '../../stores/sequenceStore';
+import {fxTrackLayouts, trackLayouts} from '../../lib/frameMap';
+import {pushAction} from '../../lib/history';
 import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS} from '../../types/paint';
-import type {PaintToolType, PaintStroke, PaintShape, PaintStrokeOptions} from '../../types/paint';
+import type {PaintToolType, PaintStroke, PaintShape, PaintStrokeOptions, PaintElement} from '../../types/paint';
 import type {Layer, BlendMode} from '../../types/layer';
 import {StrokeList} from './StrokeList';
 
@@ -76,6 +79,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
   const [showInlinePicker, setShowInlinePicker] = useState(false);
   const [onionCollapsed, setOnionCollapsed] = useState(true);
   const [tabletCollapsed, setTabletCollapsed] = useState(true);
+  const [showAnimateDialog, setShowAnimateDialog] = useState(false);
 
   const activeTool = paintStore.activeTool.value;
   const brushSizeVal = paintStore.brushSize.value;
@@ -484,11 +488,11 @@ export function PaintProperties({layer}: {layer: Layer}) {
         </div>
       )}
 
-      {/* Copy to Next Frame -- visible in select mode (Flatten is auto on exit paint mode) */}
+      {/* Copy to Next Frame + Animate -- visible in select mode */}
       {activeTool === 'select' && (
-        <div class="px-1 pt-1">
+        <div class="px-1 pt-1 flex gap-2">
           <button
-            class="paint-action-btn w-full text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
+            class="paint-action-btn flex-1 text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
             onClick={() => {
               const layerId = layer.id;
               const frame = timelineStore.currentFrame.peek();
@@ -516,8 +520,177 @@ export function PaintProperties({layer}: {layer: Layer}) {
           >
             Copy to Next Frame
           </button>
+          <button
+            class="paint-action-btn flex-1 text-[11px] py-1 px-2 rounded cursor-pointer transition-colors"
+            onClick={() => setShowAnimateDialog(true)}
+            disabled={paintStore.selectedStrokeIds.value.size !== 1}
+            title="Animate selected stroke (draw reveal)"
+            style={{opacity: paintStore.selectedStrokeIds.value.size !== 1 ? 0.4 : 1}}
+          >
+            Animate
+          </button>
         </div>
       )}
+
+      {/* Animate stroke dialog */}
+      {showAnimateDialog && (() => {
+        function getAnimationEndFrame(layerId: string, currentFrame: number, target: 'layer' | 'sequence'): number | null {
+          const parentSeq = sequenceStore.sequences.value.find(
+            s => s.layers.some(l => l.id === layerId)
+          );
+          if (!parentSeq) return null;
+
+          if (target === 'layer') {
+            const fxLayout = fxTrackLayouts.value.find(t => t.sequenceId === parentSeq.id);
+            if (!fxLayout) return null;
+            return fxLayout.outFrame - 1; // outFrame is exclusive
+          } else {
+            const contentTrack = trackLayouts.value.find(
+              t => t.startFrame <= currentFrame && t.endFrame > currentFrame
+            );
+            if (!contentTrack) return null;
+            return contentTrack.endFrame - 1; // endFrame is exclusive
+          }
+        }
+
+        async function handleAnimate(target: 'layer' | 'sequence') {
+          setShowAnimateDialog(false);
+
+          const currentFrame = timelineStore.currentFrame.peek();
+          const selectedId = [...paintStore.selectedStrokeIds.value][0];
+          const pf = paintStore.getFrame(layer.id, currentFrame);
+          if (!pf) return;
+
+          const stroke = pf.elements.find(e => e.id === selectedId) as PaintStroke;
+          if (!stroke || !('points' in stroke)) return;
+
+          // Calculate target frame range using real timeline data
+          const endFrame = getAnimationEndFrame(layer.id, currentFrame, target);
+          if (endFrame === null || endFrame <= currentFrame) return;
+
+          const targetFrameCount = endFrame - currentFrame + 1;
+          if (targetFrameCount < 2) return;
+
+          // Generate animated stroke frames
+          const { distributeStrokeBySpeed } = await import('../../lib/strokeAnimation');
+          const frameStrokes = distributeStrokeBySpeed(stroke, targetFrameCount);
+
+          // --- ATOMIC BATCH UNDO ---
+          // Snapshot before-state for ALL affected frames
+          const beforeSnapshots = new Map<number, PaintElement[]>();
+          for (let f = currentFrame; f <= endFrame; f++) {
+            const existing = paintStore.getFrame(layer.id, f);
+            beforeSnapshots.set(f, existing ? existing.elements.map(e => ({...e})) : []);
+          }
+
+          // Apply: remove original stroke from current frame
+          const currentElements = pf.elements;
+          const strokeIdx = currentElements.findIndex(e => e.id === selectedId);
+          if (strokeIdx !== -1) {
+            currentElements.splice(strokeIdx, 1);
+          }
+
+          // Add progressive strokes to each frame using _getOrCreateFrame + direct push
+          for (let i = 0; i < frameStrokes.length; i++) {
+            const targetFrame = currentFrame + i;
+            const frame = paintStore._getOrCreateFrame(layer.id, targetFrame);
+            frame.elements.push(frameStrokes[i]);
+          }
+
+          // Notify visual changes for all affected frames
+          for (let f = currentFrame; f <= endFrame; f++) {
+            paintStore.markDirty(layer.id, f);
+            paintStore.invalidateFrameFxCache(layer.id, f);
+            paintStore.refreshFrameFx(layer.id, f);
+          }
+          // CRITICAL: Bump paintVersion so canvas re-renders (markDirty does NOT do this)
+          paintStore.paintVersion.value++;
+
+          // Push SINGLE undo action that restores ALL frames atomically
+          const layerId = layer.id;
+          pushAction({
+            id: crypto.randomUUID(),
+            description: `Animate stroke across ${targetFrameCount} frames`,
+            timestamp: Date.now(),
+            undo: () => {
+              // Restore all frames to their before-state
+              for (const [f, elements] of beforeSnapshots) {
+                const frame = paintStore._getOrCreateFrame(layerId, f);
+                frame.elements = [...elements];
+                paintStore.markDirty(layerId, f);
+                paintStore.invalidateFrameFxCache(layerId, f);
+                paintStore.refreshFrameFx(layerId, f);
+              }
+              // CRITICAL: Bump paintVersion so canvas re-renders after undo
+              paintStore.paintVersion.value++;
+            },
+            redo: () => {
+              // Re-apply: remove original, add animated strokes
+              const pf = paintStore._getOrCreateFrame(layerId, currentFrame);
+              pf.elements = pf.elements.filter(e => e.id !== selectedId);
+              for (let i = 0; i < frameStrokes.length; i++) {
+                const targetFrame = currentFrame + i;
+                const frame = paintStore._getOrCreateFrame(layerId, targetFrame);
+                frame.elements.push(frameStrokes[i]);
+                paintStore.markDirty(layerId, targetFrame);
+                paintStore.invalidateFrameFxCache(layerId, targetFrame);
+                paintStore.refreshFrameFx(layerId, targetFrame);
+              }
+              // CRITICAL: Bump paintVersion so canvas re-renders after redo
+              paintStore.paintVersion.value++;
+            },
+          });
+
+          paintStore.selectedStrokeIds.value = new Set();
+        }
+
+        return (
+          <div
+            style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) setShowAnimateDialog(false); }}
+          >
+            <div style={{
+              backgroundColor: 'var(--sidebar-bg)', borderRadius: '8px',
+              padding: '16px', minWidth: '280px', maxWidth: '360px',
+              border: '1px solid var(--color-border-subtle)',
+            }}>
+              <h3 style={{fontSize: '13px', fontWeight: 600, color: 'var(--sidebar-text-primary)', marginBottom: '8px'}}>
+                Animate Stroke (Draw Reveal)
+              </h3>
+              <p style={{fontSize: '11px', color: 'var(--sidebar-text-secondary)', marginBottom: '12px'}}>
+                Distribute stroke points across frames:
+              </p>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                <button
+                  class="paint-action-btn text-[11px] py-2 px-3 rounded cursor-pointer transition-colors"
+                  onClick={() => handleAnimate('layer')}
+                >
+                  Current frame to end of layer
+                </button>
+                <button
+                  class="paint-action-btn text-[11px] py-2 px-3 rounded cursor-pointer transition-colors"
+                  onClick={() => handleAnimate('sequence')}
+                >
+                  Current frame to end of sequence
+                </button>
+              </div>
+              <div style={{marginTop: '12px', textAlign: 'right'}}>
+                <button
+                  class="text-[11px] py-1 px-3 rounded cursor-pointer"
+                  style={{color: 'var(--sidebar-text-secondary)', backgroundColor: 'transparent', border: 'none'}}
+                  onClick={() => setShowAnimateDialog(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* BRUSH section -- style buttons + FX + size/color + opacity/clear + stroke sliders (per D-03, D-04, D-05, D-06) */}
       {showBrushSettings && (
