@@ -15,7 +15,7 @@ import {pushAction} from '../../lib/history';
 import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, StrokeFxState, PaintFrame, BezierAnchor} from '../../types/paint';
 import {
   hitTestAnchor, findNearestSegment, insertAnchorOnSegment,
-  deleteAnchor, updateCoupledHandle, dragSegment, sampleBezierPath,
+  deleteAnchor, updateCoupledHandle, dragSegment,
 } from '../../lib/bezierPath';
 
 // ---------------------------------------------------------------------------
@@ -101,30 +101,8 @@ function findElementAtPoint(
         }
       }
       if (x >= sMinX - pad && x <= sMaxX + pad && y >= sMinY - pad && y <= sMaxY + pad) {
-        // For FX strokes, accept bounding box hit (D-35: artistic effects make exact path unreliable)
-        if (stroke.brushStyle && stroke.brushStyle !== 'flat') {
-          return stroke.id;
-        }
-        // Fine check: distance to points along the stroke path
-        if (stroke.anchors) {
-          // For bezier strokes, sample the path and check against sampled points
-          const sampled = sampleBezierPath(stroke.anchors, 4.0, stroke.closedPath);
-          for (const [sx, sy] of sampled) {
-            const dx = x - sx;
-            const dy = y - sy;
-            if (dx * dx + dy * dy <= pad * pad) {
-              return stroke.id;
-            }
-          }
-        } else {
-          for (const [px, py] of stroke.points) {
-            const dx = x - px;
-            const dy = y - py;
-            if (dx * dx + dy * dy <= pad * pad) {
-              return stroke.id;
-            }
-          }
-        }
+        // Accept bounding box hit for all brush strokes (flat and FX)
+        return stroke.id;
       }
     } else if (el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') {
       const shape = el as PaintShape;

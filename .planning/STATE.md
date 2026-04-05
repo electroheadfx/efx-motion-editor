@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Monorepo & Paint Enhancements
-status: executing
-stopped_at: Completed 33-19-PLAN.md
-last_updated: "2026-04-05T16:04:02.506Z"
-last_activity: 2026-04-05
+status: planning
+stopped_at: Completed 33-20-PLAN.md
+last_updated: "2026-04-05T16:05:02.786Z"
+last_activity: 2026-04-04
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 23
-  completed_plans: 19
+  total_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -21,14 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-03)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 33 — enhance-current-engine
+**Current focus:** Replanning — Phases 27-29 failed, need new engine integration strategy
 
 ## Current Position
 
-Phase: 33
-Plan: Not started
-Status: Executing Phase 33
-Last activity: 2026-04-05
+Phase: 26 complete, 27-29 FAILED
+Status: Replanning engine integration approach
+Last activity: 2026-04-04
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -50,11 +49,7 @@ Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 
 - [Phase 26-monorepo-scaffold]: Isolated git mv commit for 100% rename detection and --follow history preservation
 - [Phase 26-monorepo-scaffold]: Consolidated pnpm.overrides and packageManager at workspace root; removed redundant onlyBuiltDependencies from paint package
-- [Phase 33]: FX wireframe uses dashed blue line matching selection scheme; hit testing uses bounding box for FX strokes
-- [Phase 33]: Use containerRef for cursor position alignment with paint coordinate system
-- [Phase 33]: Moved picker visibility from local useState to paintStore shared signal for cross-component control
-- [Phase 33]: Removed createPortal in favor of normal child rendering inside existing 260px CanvasArea container
-- [Phase 33]: All alpha sliders across all color modes get gradient backgrounds for visual consistency
+- [Phase 33]: Bbox-only hit testing: removed fine-check proximity in favor of bounding-box-only selection for all brush strokes
 
 ### Research Flags
 
@@ -76,14 +71,10 @@ None.
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
 | Phase 26-monorepo-scaffold P01 | 1min | 2 tasks | 253 files |
 | Phase 26-monorepo-scaffold P02 | 4min | 2 tasks | 135 files |
-| Phase 33 P06 | 2min | 1 tasks | 1 files |
-| Phase 33 P10 | 4min | 2 tasks | 4 files |
-| Phase 33 P11 | 3min | 2 tasks | 3 files |
-| Phase 33 P18 | 2min | 1 tasks | 1 files |
-| Phase 33 P19 | 2min | 1 tasks | 1 files |
+| Phase 33 P20 | 3min | 1 tasks | 1 files |
 
 ## Session Continuity
 
-Last session: 2026-04-05T16:04:01.201Z
-Stopped at: Completed 33-19-PLAN.md
+Last session: 2026-04-05T16:05:02.783Z
+Stopped at: Completed 33-20-PLAN.md
 Resume file: None
