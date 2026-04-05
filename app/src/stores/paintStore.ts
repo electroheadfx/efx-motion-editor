@@ -35,6 +35,7 @@ const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
 const onionSkinOpacity = signal(0.3);
+const showInlineColorPicker = signal(false);
 
 /** Bumped on every paint data mutation so reactive consumers (Preview) re-render */
 const paintVersion = signal(0);
@@ -101,6 +102,7 @@ export const paintStore = {
   onionSkinPrevRange,
   onionSkinNextRange,
   onionSkinOpacity,
+  showInlineColorPicker,
 
   /** Load persisted brush preferences (color, size) on app startup. Fire-and-forget. */
   async initFromPreferences(): Promise<void> {
@@ -508,6 +510,14 @@ export const paintStore = {
   // Tool settings
   togglePaintMode(): void {
     paintMode.value = !paintMode.value;
+    // Close inline color picker when exiting paint mode
+    if (!paintMode.value) {
+      showInlineColorPicker.value = false;
+    }
+  },
+
+  toggleInlineColorPicker(): void {
+    showInlineColorPicker.value = !showInlineColorPicker.value;
   },
 
   setTool(tool: PaintToolType): void {
