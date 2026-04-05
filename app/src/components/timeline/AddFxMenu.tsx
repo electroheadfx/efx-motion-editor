@@ -2,6 +2,7 @@ import {useState, useEffect, useRef} from 'preact/hooks';
 import {Clapperboard, Sparkles} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
+import {paintStore} from '../../stores/paintStore';
 import {uiStore} from '../../stores/uiStore';
 import {isolationStore} from '../../stores/isolationStore';
 import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
@@ -118,6 +119,10 @@ export function AddLayerMenu() {
     }
     layerStore.setSelected(layerId);
     uiStore.selectLayer(layerId);
+    // D-01: Auto-enter paint mode when creating a paint layer
+    if (!paintStore.paintMode.peek()) {
+      paintStore.togglePaintMode();
+    }
   };
 
   return (
