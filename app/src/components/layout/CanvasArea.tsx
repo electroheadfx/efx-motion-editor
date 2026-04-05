@@ -366,7 +366,7 @@ export function CanvasArea() {
       <div class="flex flex-1 w-full min-h-0">
         {/* Inline color picker panel - vertically centered left of canvas */}
         {isPaintModeActive && paintStore.showInlineColorPicker.value && (
-          <div style={{ width: '235px', marginTop: 'auto', marginBottom: 'auto', maxHeight: 'calc(100% - 32px)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
+          <div class="shrink-0" style={{ width: '235px', alignSelf: 'center', maxHeight: 'calc(100% - 32px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
             <InlineColorPicker
               color={paintStore.brushColor.value}
               opacity={paintStore.brushOpacity.value}
