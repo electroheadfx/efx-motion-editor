@@ -1,18 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.7.0
-milestone_name: Pure Monorepo & Paint Engine Swap
+milestone_name: Monorepo & Paint Enhancements
 status: planning
-stopped_at: Phases 27-29 FAILED — need new strategy for engine integration
-last_updated: "2026-04-04T12:00:00.000Z"
+stopped_at: Completed 33-06-PLAN.md
+last_updated: "2026-04-05T10:11:33.690Z"
 last_activity: 2026-04-04
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 1
-  failed_phases: 3
   total_plans: 3
-  completed_plans: 3
-  percent: 14
+  completed_plans: 4
+  percent: 0
 ---
 
 # Project State
@@ -50,6 +49,7 @@ Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 
 - [Phase 26-monorepo-scaffold]: Isolated git mv commit for 100% rename detection and --follow history preservation
 - [Phase 26-monorepo-scaffold]: Consolidated pnpm.overrides and packageManager at workspace root; removed redundant onlyBuiltDependencies from paint package
+- [Phase 33]: FX wireframe uses dashed blue line matching selection scheme; hit testing uses bounding box for FX strokes
 
 ### Research Flags
 
@@ -71,9 +71,10 @@ None.
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
 | Phase 26-monorepo-scaffold P01 | 1min | 2 tasks | 253 files |
 | Phase 26-monorepo-scaffold P02 | 4min | 2 tasks | 135 files |
+| Phase 33 P06 | 2min | 1 tasks | 1 files |
 
 ## Session Continuity
 
-Last session: 2026-04-03T14:50:01.635Z
-Stopped at: Completed 26-02-PLAN.md
+Last session: 2026-04-05T10:11:33.687Z
+Stopped at: Completed 33-06-PLAN.md
 Resume file: None
