@@ -2305,6 +2305,14 @@ export function PaintOverlay({
     }
   }, [paintStore.activeTool.value, paintStore.selectedStrokeIds.value]);
 
+  // Re-render preview when paint data changes externally (e.g., color change in FX mode)
+  useEffect(() => {
+    const _v = paintStore.paintVersion.value; // subscribe to changes
+    if (_v > 0 && paintStore.paintMode.peek()) {
+      requestPreview();
+    }
+  }, [paintStore.paintVersion.value]);
+
   // --- Re-render preview when selection changes (show/hide selection indicators) ---
   useEffect(() => {
     // Subscribe to selection changes and undo/redo to re-draw indicators
