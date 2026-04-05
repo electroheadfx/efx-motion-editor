@@ -12,7 +12,7 @@ import {strokeToPath, renderPaintFrame} from '../../lib/paintRenderer';
 import {renderFrameFx} from '../../lib/brushP5Adapter';
 import {floodFill, hexToRgba} from '../../lib/paintFloodFill';
 import {pushAction} from '../../lib/history';
-import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, BrushStyle, StrokeFxState, PaintFrame, BezierAnchor} from '../../types/paint';
+import type {PaintStroke, PaintShape, PaintFill, PaintElement, PaintToolType, StrokeFxState, PaintFrame, BezierAnchor} from '../../types/paint';
 import {
   hitTestAnchor, findNearestSegment, insertAnchorOnSegment,
   deleteAnchor, updateCoupledHandle, dragSegment, sampleBezierPath,
