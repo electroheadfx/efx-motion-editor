@@ -101,6 +101,10 @@ function findElementAtPoint(
         }
       }
       if (x >= sMinX - pad && x <= sMaxX + pad && y >= sMinY - pad && y <= sMaxY + pad) {
+        // For FX strokes, accept bounding box hit (D-35: artistic effects make exact path unreliable)
+        if (stroke.brushStyle && stroke.brushStyle !== 'flat') {
+          return stroke.id;
+        }
         // Fine check: distance to points along the stroke path
         if (stroke.anchors) {
           // For bezier strokes, sample the path and check against sampled points
@@ -387,6 +391,63 @@ function reRenderFrameFx(
 /** Convert an RGBA pixel to a hex color string */
 function rgbaToHex(r: number, g: number, b: number): string {
   return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+}
+
+/** Render a thin dashed wireframe path overlay for a selected FX stroke (D-35).
+ * FX strokes render with artistic effects (watercolor bleed, ink spread) making the
+ * actual rendered area unpredictable. This wireframe gives users a clear selection target. */
+function renderFxWireframe(ctx: CanvasRenderingContext2D, stroke: PaintStroke, zoom: number): void {
+  if (stroke.points.length < 2 && (!stroke.anchors || stroke.anchors.length < 2)) return;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(100, 180, 255, 0.8)';  // light blue wireframe
+  ctx.lineWidth = 1.5 / zoom;  // constant screen-space width
+  ctx.setLineDash([4 / zoom, 4 / zoom]);  // dashed line
+
+  ctx.beginPath();
+  // Use anchors if available (bezier path), otherwise use raw points
+  if (stroke.anchors && stroke.anchors.length > 0) {
+    ctx.moveTo(stroke.anchors[0].x, stroke.anchors[0].y);
+    const segCount = stroke.closedPath ? stroke.anchors.length : stroke.anchors.length - 1;
+    for (let i = 0; i < segCount; i++) {
+      const prev = stroke.anchors[i];
+      const curr = stroke.anchors[(i + 1) % stroke.anchors.length];
+      if (prev.handleOut && curr.handleIn) {
+        ctx.bezierCurveTo(prev.handleOut.x, prev.handleOut.y, curr.handleIn.x, curr.handleIn.y, curr.x, curr.y);
+      } else {
+        ctx.lineTo(curr.x, curr.y);
+      }
+    }
+  } else {
+    ctx.moveTo(stroke.points[0][0], stroke.points[0][1]);
+    for (let i = 1; i < stroke.points.length; i++) {
+      ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Render a dashed bounding box rectangle around a selected FX stroke (D-35). */
+function renderFxStrokeBounds(ctx: CanvasRenderingContext2D, stroke: PaintStroke, zoom: number): void {
+  const points = stroke.anchors?.map(a => [a.x, a.y]) ?? stroke.points.map(p => [p[0], p[1]]);
+  if (points.length === 0) return;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of points) {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+
+  const pad = 8 / zoom;  // padding around bounds
+  ctx.save();
+  ctx.strokeStyle = 'rgba(100, 180, 255, 0.6)';
+  ctx.lineWidth = 1 / zoom;
+  ctx.setLineDash([3 / zoom, 3 / zoom]);
+  ctx.strokeRect(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2);
+  ctx.restore();
 }
 
 /** Draw bezier editing overlay: path line, handle lines/dots, anchor squares (D-09) */
@@ -742,13 +803,21 @@ export function PaintOverlay({
             sPad = 0;
           }
 
-          ctx.save();
-          ctx.strokeStyle = '#4A90D9';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([3, 3]);
-          ctx.globalAlpha = 0.5;
-          ctx.strokeRect(sMinX - sPad, sMinY - sPad, sMaxX - sMinX + sPad * 2, sMaxY - sMinY + sPad * 2);
-          ctx.restore();
+          // For FX strokes, render wireframe path + bounds instead of simple bbox
+          if ((el.tool === 'brush') && (el as PaintStroke).brushStyle && (el as PaintStroke).brushStyle !== 'flat') {
+            const fxStroke = el as PaintStroke;
+            const zoom = canvasStore.zoom.peek();
+            renderFxWireframe(ctx, fxStroke, zoom);
+            renderFxStrokeBounds(ctx, fxStroke, zoom);
+          } else {
+            ctx.save();
+            ctx.strokeStyle = '#4A90D9';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.globalAlpha = 0.5;
+            ctx.strokeRect(sMinX - sPad, sMinY - sPad, sMaxX - sMinX + sPad * 2, sMaxY - sMinY + sPad * 2);
+            ctx.restore();
+          }
         }
 
         // Draw combined bounding box with transform handles
