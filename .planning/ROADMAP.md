@@ -223,7 +223,7 @@ Plans:
 - [ ] 33-15-PLAN.md — UAT gap closure: FX canvas refresh on color change
 - [x] 33-16-PLAN.md — UAT gap closure: circle cursor centering
 - [ ] 33-17-PLAN.md — UAT gap closure: FX white background persistence
-- [ ] 33-18-PLAN.md — UAT gap closure: inline color picker positioning (remove portal)
+- [x] 33-18-PLAN.md — UAT gap closure: inline color picker positioning (remove portal)
 - [ ] 33-19-PLAN.md — UAT gap closure: TSL/RVB/CMYK gradient sliders
 - [ ] 33-20-PLAN.md — UAT gap closure: flat stroke wireframe overlay
 

@@ -1,5 +1,4 @@
 import {useState, useEffect, useRef, useCallback} from 'preact/hooks';
-import {createPortal} from 'preact/compat';
 import {X, Plus} from 'lucide-preact';
 import {
   hexToRgba, rgbaToHex, rgbToHsl, hslToRgb,
@@ -334,17 +333,14 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
     setHue(hsv.h); setSat(hsv.s); setVal(hsv.v);
   };
 
-  return createPortal(
+  return (
     <div
-      class="fixed flex flex-col gap-2 rounded-xl shadow-2xl p-3 z-40"
+      class="flex flex-col gap-2 p-3"
       style={{
-        width: '260px',
-        left: '60px',
-        top: '80px',
+        width: '100%',
         backgroundColor: 'var(--sidebar-panel-bg)',
-        border: '1px solid var(--sidebar-border-unselected)',
-        maxHeight: 'calc(100vh - 100px)',
         overflowY: 'auto',
+        height: '100%',
       }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
@@ -480,7 +476,6 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
       <div>
         {renderSwatches(favoriteColors, 'Favorites', true)}
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }
