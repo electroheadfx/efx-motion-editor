@@ -1,5 +1,5 @@
 import {useState} from 'preact/hooks';
-import {ArrowRight, Pen} from 'lucide-preact';
+import {ArrowRight} from 'lucide-preact';
 import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
 import {PaintModeSelector} from './PaintModeSelector';
@@ -101,40 +101,25 @@ export function PaintProperties({layer}: {layer: Layer}) {
           50% { background-color: #dc2626; box-shadow: 0 0 12px 4px rgba(249, 115, 22, 0.6); }
         }
       `}</style>
-      {/* Paint header + edit brush / exit paint mode */}
+      {/* Layer name + exit paint mode */}
       <div class="flex items-center justify-between px-1">
         <div class="text-[12px] font-medium" style={{color: 'var(--sidebar-text-primary)'}}>
-          Paint
+          {layer.name}
         </div>
-        <div class="flex items-center gap-1.5">
-          <button
-            class="text-[10px] px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
-            onClick={() => paintStore.setTool('brush')}
-            title="Edit Brush (B)"
-            style={{
-              backgroundColor: paintStore.activeTool.value === 'brush' ? 'var(--color-accent)' : 'var(--sidebar-input-bg)',
-              color: paintStore.activeTool.value === 'brush' ? '#ffffff' : 'var(--sidebar-text-primary)',
-              border: 'none',
-            }}
-          >
-            <Pen size={12} />
-            Edit Brush
-          </button>
-          <button
-            class="paint-exit-btn text-[10px] px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
-            onClick={() => paintStore.paintMode.value = false}
-            title="Exit paint mode (P)"
-            style={{
-              backgroundColor: '#f97316',
-              color: '#ffffff',
-              border: 'none',
-              animation: 'pulsate 2s ease-in-out infinite',
-            }}
-          >
-            Exit Paint Mode
-            <ArrowRight size={12} />
-          </button>
-        </div>
+        <button
+          class="paint-exit-btn text-[10px] px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
+          onClick={() => paintStore.paintMode.value = false}
+          title="Exit paint mode (P)"
+          style={{
+            backgroundColor: '#f97316',
+            color: '#ffffff',
+            border: 'none',
+            animation: 'pulsate 2s ease-in-out infinite',
+          }}
+        >
+          Exit Paint Mode
+          <ArrowRight size={12} />
+        </button>
         <style>{`
           @keyframes pulsate {
             0%, 100% { background-color: #f97316; box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }

@@ -1,9 +1,10 @@
 import { useEffect } from 'preact/hooks';
-import { ChevronDown } from 'lucide-preact';
+import { ChevronDown, ArrowRight } from 'lucide-preact';
 import { NumericInput } from '../shared/NumericInput';
 import { SectionLabel } from '../shared/SectionLabel';
 import { KeyframeNavBar } from './KeyframeNavBar';
 import { InlineInterpolation } from './InlineInterpolation';
+import { paintStore } from '../../stores/paintStore';
 import { layerStore } from '../../stores/layerStore';
 import { keyframeStore } from '../../stores/keyframeStore';
 import { timelineStore } from '../../stores/timelineStore';
@@ -88,6 +89,26 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
           }
         }}
       />
+
+      {/* Edit Brush button for paint layers */}
+      {layer.type === 'paint' && !paintStore.paintMode.value && (
+        <button
+          class="text-[10px] px-4 py-2 rounded cursor-pointer flex items-center gap-1 font-semibold w-full justify-center"
+          onClick={() => {
+            layerStore.setSelected(layer.id);
+            paintStore.togglePaintMode();
+          }}
+          title="Edit Brush (P)"
+          style={{
+            backgroundColor: '#f97316',
+            color: '#ffffff',
+            border: 'none',
+          }}
+        >
+          Edit Brush
+          <ArrowRight size={12} />
+        </button>
+      )}
 
       {/* Change Source button for content overlay layers */}
       {isContentOverlay && (
