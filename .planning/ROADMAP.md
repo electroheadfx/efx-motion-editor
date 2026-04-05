@@ -204,7 +204,7 @@ Cannot remove engines that are still in use.
   7. Modal color picker: no buttons, no overlay, positioned near mouse
   8. Selected FX strokes show wireframe overlay for easy grab
   9. Stroke draw-reveal animation distributes points across frames by speed
-**Plans:** 12/20 plans executed
+**Plans:** 16/20 plans executed
 Plans:
 - [x] 33-01-PLAN.md — Bug fixes (undo rendering, FX brush style) and UX quick wins
 - [x] 33-02-PLAN.md — Brush preferences persistence and circle cursor
@@ -217,14 +217,14 @@ Plans:
 - [x] 33-09-PLAN.md — Gap closure: FX cache invalidation, mode persistence, FX white bg
 - [x] 33-10-PLAN.md — Gap closure: cursor position, pulsate animation, modal dialog, multi-animate
 - [x] 33-11-PLAN.md — Gap closure: move inline color picker to canvas side
-- [ ] 33-12-PLAN.md — UAT gap closure: per-layer paint mode + brush reset + conversion
-- [ ] 33-13-PLAN.md — UAT gap closure: exit button pulsate animation (remove scale)
+- [x] 33-12-PLAN.md — UAT gap closure: per-layer paint mode + brush reset + conversion
+- [x] 33-13-PLAN.md — UAT gap closure: exit button pulsate animation (remove scale)
 - [ ] 33-14-PLAN.md — UAT gap closure: brush preferences persistence (await init)
 - [ ] 33-15-PLAN.md — UAT gap closure: FX canvas refresh on color change
 - [x] 33-16-PLAN.md — UAT gap closure: circle cursor centering
 - [ ] 33-17-PLAN.md — UAT gap closure: FX white background persistence
 - [x] 33-18-PLAN.md — UAT gap closure: inline color picker positioning (remove portal)
-- [ ] 33-19-PLAN.md — UAT gap closure: TSL/RVB/CMYK gradient sliders
+- [x] 33-19-PLAN.md — UAT gap closure: TSL/RVB/CMYK gradient sliders
 - [ ] 33-20-PLAN.md — UAT gap closure: flat stroke wireframe overlay
 
 ## Progress
@@ -247,4 +247,4 @@ Phases execute in numeric order: 26 -> 33 (27-32 failed)
 | 30. UI, Paper & Transparency | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 31. Advanced Paint Features | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 32. Cleanup & Removal | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 33. Enhance Current Engine | v0.7.0 | 12/20 | In Progress|  |
+| 33. Enhance Current Engine | v0.7.0 | 16/20 | In Progress|  |
