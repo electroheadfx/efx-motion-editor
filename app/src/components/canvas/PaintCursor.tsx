@@ -11,10 +11,9 @@ export function PaintCursor({ screenX, screenY, zoom, visible }: PaintCursorProp
   if (!visible) return null;
 
   const brushSize = paintStore.brushSize.value;
-  const diameter = brushSize * zoom;
-
-  // Minimum 4px so cursor is always visible even at tiny brush sizes
-  const displayDiameter = Math.max(diameter, 4);
+  // Position is in pre-transform space (parent has CSS scale(zoom)),
+  // so use raw brushSize — the parent transform handles visual scaling.
+  const displayDiameter = Math.max(brushSize, 4);
 
   return (
     <div

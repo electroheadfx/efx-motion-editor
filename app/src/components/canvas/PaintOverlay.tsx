@@ -1301,11 +1301,18 @@ export function PaintOverlay({
   }
 
   function handlePointerMove(e: PointerEvent) {
-    // Update circle cursor position (relative to overlayRef since PaintCursor renders inside it)
+    // Update circle cursor position
+    // overlayRef is inside a parent with transform: scale(zoom) translate(pan),
+    // so getBoundingClientRect() returns zoomed/panned coords. We must divide
+    // by zoom to get the pre-transform coordinate space that CSS absolute positioning uses.
     const overlay = overlayRef.current;
     if (overlay) {
       const rect = overlay.getBoundingClientRect();
-      setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      const zoom = canvasStore.zoom.peek();
+      setCursorPos({
+        x: (e.clientX - rect.left) / zoom,
+        y: (e.clientY - rect.top) / zoom,
+      });
     }
 
     // Cursor feedback: when select tool is active, show resize cursors over handles
