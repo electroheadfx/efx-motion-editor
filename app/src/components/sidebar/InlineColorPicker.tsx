@@ -1,6 +1,6 @@
 import {useState, useEffect, useRef, useCallback} from 'preact/hooks';
 import {createPortal} from 'preact/compat';
-import {X, Plus, Star} from 'lucide-preact';
+import {X, Plus} from 'lucide-preact';
 import {
   hexToRgba, rgbaToHex, rgbToHsl, hslToRgb,
   rgbToHsv, hsvToRgb, rgbToCmyk, cmykToRgb,
@@ -175,11 +175,6 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
     }
   }, [hexInput, currentHex, addToRecent]);
 
-  // Slider change helper
-  const handleSliderChange = useCallback((setter: (v: number) => void, value: number) => {
-    setter(value);
-  }, []);
-
   // Apply color from swatch
   const applyFromSwatch = useCallback((c: string) => {
     const rgb = hexToRgba(c);
@@ -231,8 +226,6 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
 
   const modeButtonClass = (m: ColorMode) =>
     `px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ${mode === m ? 'bg-(--color-accent) text-white font-medium' : 'text-(--sidebar-text-secondary) hover:text-(--sidebar-text-primary)'}`;
-
-  const hueRgb = hsvToRgb(hue, 1, 1);
 
   // Render a labeled slider row
   const renderSlider = (label: string, value: number, min: number, max: number, step: number, onInput: (v: number) => void, unit?: string) => (

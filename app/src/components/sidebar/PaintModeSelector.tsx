@@ -44,7 +44,7 @@ export function PaintModeSelector({layerId, frame}: PaintModeSelectorProps) {
     }
   }
 
-  function convertFrame(targetFrame: number, from: PaintMode, to: PaintMode) {
+  function convertFrame(targetFrame: number, _from: PaintMode, to: PaintMode) {
     const pf = paintStore.getFrame(layerId, targetFrame);
     if (!pf) return;
 
