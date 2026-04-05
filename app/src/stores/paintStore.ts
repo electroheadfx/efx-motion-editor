@@ -450,6 +450,26 @@ export const paintStore = {
 
   setBrushSize(size: number): void {
     brushSize.value = Math.max(BRUSH_SIZE_MIN, Math.min(BRUSH_SIZE_MAX, size));
+    import('../lib/paintPreferences').then(m => m.saveBrushSize(size));
+  },
+
+  setActivePaintMode(mode: 'flat' | 'fx-paint'): void {
+    activePaintMode.value = mode;
+    import('../lib/paintPreferences').then(m => m.savePaintMode(mode));
+  },
+
+  /** Initialize paint preferences from persisted storage */
+  initFromPreferences(): void {
+    import('../lib/paintPreferences').then(async (m) => {
+      const prefs = await m.loadBrushPreferences();
+      brushColor.value = prefs.color;
+      brushSize.value = prefs.size;
+      // Restore paint mode
+      const mode = await m.loadPaintMode();
+      if (mode === 'flat' || mode === 'fx-paint') {
+        activePaintMode.value = mode;
+      }
+    });
   },
 
   setBrushColor(color: string): void {

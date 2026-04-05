@@ -204,12 +204,17 @@ export function renderPaintFrameWithBg(
   layerId?: string,
   frameNum?: number,
 ): void {
-  // Solid paint background per D-11 (default white, user-configurable)
-  const bgColor = paintStore.paintBgColor.peek();
-  ctx.save();
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, width, height);
-  ctx.restore();
+  // Mode-aware background: FX mode always white (D-31), flat mode uses stored paintBgColor
+  const currentMode = paintStore.activePaintMode.peek();
+  const bgColor = currentMode === 'fx-paint' ? '#ffffff' : paintStore.paintBgColor.peek();
+  if (bgColor === 'transparent') {
+    ctx.clearRect(0, 0, width, height);
+  } else {
+    ctx.save();
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
 
   // Flat preview mode: skip FX cache, render everything as flat
   if (paintStore.showFlatPreview.peek()) {
