@@ -123,11 +123,16 @@ export const paintStore = {
       undo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = f.elements.filter(e => e.id !== element.id);
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements.push(element);
-        paintStore.markDirty(layerId, frame);
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -153,7 +158,9 @@ export const paintStore = {
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = f.elements.filter(e => e.id !== elementId);
-        paintStore.markDirty(layerId, frame);
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -179,11 +186,15 @@ export const paintStore = {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -209,11 +220,15 @@ export const paintStore = {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -237,11 +252,15 @@ export const paintStore = {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -265,11 +284,15 @@ export const paintStore = {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -353,11 +376,15 @@ export const paintStore = {
       undo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...backup];
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [];
-        paintStore.markDirty(layerId, frame);
+        _notifyVisualChange(layerId, frame);
+        paintStore.invalidateFrameFxCache(layerId, frame);
       },
     });
   },

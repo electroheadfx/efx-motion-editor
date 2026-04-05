@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Monorepo & Paint Enhancements
 status: planning
-stopped_at: Phase 33 context gathered
-last_updated: "2026-04-05T09:04:44.226Z"
+stopped_at: Completed 33-01-PLAN.md
+last_updated: "2026-04-05T09:50:52.918Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 8
@@ -49,6 +49,7 @@ Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 
 - [Phase 26-monorepo-scaffold]: Isolated git mv commit for 100% rename detection and --follow history preservation
 - [Phase 26-monorepo-scaffold]: Consolidated pnpm.overrides and packageManager at workspace root; removed redundant onlyBuiltDependencies from paint package
+- [Phase 33]: Strokes capture brushStyle at creation time instead of always flat; all undo/redo closures get FX cache invalidation
 
 ### Research Flags
 
@@ -70,9 +71,10 @@ None.
 | 260327-p4e | I Can't change object color (rectangle, ellipse, line) and I Can't convert object color (rectangle, ellipse, line) to FX brush | 2026-03-27 | 25b02b0 | [260327-p4e-i-can-t-change-object-color-rectangle-el](./quick/260327-p4e-i-can-t-change-object-color-rectangle-el/) |
 | Phase 26-monorepo-scaffold P01 | 1min | 2 tasks | 253 files |
 | Phase 26-monorepo-scaffold P02 | 4min | 2 tasks | 135 files |
+| Phase 33 P01 | 5min | 3 tasks | 4 files |
 
 ## Session Continuity
 
-Last session: 2026-04-05T09:04:44.224Z
-Stopped at: Phase 33 context gathered
-Resume file: .planning/phases/33-enhance-current-engine/33-CONTEXT.md
+Last session: 2026-04-05T09:50:52.915Z
+Stopped at: Completed 33-01-PLAN.md
+Resume file: None

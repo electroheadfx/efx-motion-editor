@@ -70,7 +70,6 @@ function shapeToBrushStrokes(shape: PaintShape, brushOptions: PaintStrokeOptions
 export function PaintProperties({layer}: {layer: Layer}) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showBgColorPicker, setShowBgColorPicker] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [onionCollapsed, setOnionCollapsed] = useState(true);
   const [tabletCollapsed, setTabletCollapsed] = useState(true);
 
@@ -96,13 +95,25 @@ export function PaintProperties({layer}: {layer: Layer}) {
           {layer.name}
         </div>
         <button
-          class="paint-exit-btn text-[10px] px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1"
+          class="text-[10px] px-4 py-2 rounded cursor-pointer flex items-center gap-1 font-semibold"
           onClick={() => paintStore.paintMode.value = false}
           title="Exit paint mode (P)"
+          style={{
+            backgroundColor: '#f97316',
+            color: '#ffffff',
+            border: 'none',
+            animation: 'pulsate 2s ease-in-out infinite',
+          }}
         >
           Exit Paint Mode
           <ArrowRight size={12} />
         </button>
+        <style>{`
+          @keyframes pulsate {
+            0%, 100% { background-color: #f97316; }
+            50% { background-color: #ea580c; }
+          }
+        `}</style>
       </div>
 
       {/* Rendering indicator */}
@@ -191,6 +202,11 @@ export function PaintProperties({layer}: {layer: Layer}) {
           }}
           onClose={() => setShowBgColorPicker(false)}
         />
+      )}
+
+      {/* STROKES section -- D-20: before SELECTION */}
+      {activeTool === 'select' && (
+        <StrokeList layerId={layer.id} />
       )}
 
       {/* SELECT MODE TOOLS -- 2-col grouping (per D-08) */}
@@ -410,8 +426,6 @@ export function PaintProperties({layer}: {layer: Layer}) {
             })()}
           </div>
 
-          {/* STROKES section -- moved after SELECTION, before Copy to Next Frame */}
-          <StrokeList layerId={layer.id} />
         </div>
       )}
 
@@ -570,44 +584,22 @@ export function PaintProperties({layer}: {layer: Layer}) {
                   {brushColorVal.toUpperCase()}
                 </span>
               </div>
-              {/* Clear Brushes button */}
+              {/* Clear Brushes button -- D-03: no confirmation */}
               <div>
-                {confirmClear ? (
-                  <div class="flex items-center gap-1">
-                    <span class="text-[9px]" style={{color: 'var(--sidebar-text-secondary)'}}>Clear?</span>
-                    <button
-                      class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
-                      style={{backgroundColor: '#DC2626', color: '#FFFFFF', border: 'none'}}
-                      onClick={() => {
-                        paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek());
-                        setConfirmClear(false);
-                      }}
-                    >
-                      Yes
-                    </button>
-                    <button
-                      class="paint-action-btn text-[10px] px-2 py-0.5 rounded cursor-pointer"
-                      onClick={() => setConfirmClear(false)}
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    class="paint-action-btn"
-                    onClick={() => setConfirmClear(true)}
-                    style={{
-                      fontSize: '10px',
-                      fontWeight: 600,
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      width: '100%',
-                    }}
-                  >
-                    Clear Brushes
-                  </button>
-                )}
+                <button
+                  class="paint-action-btn"
+                  onClick={() => paintStore.clearFrame(layer.id, timelineStore.currentFrame.peek())}
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    width: '100%',
+                  }}
+                >
+                  Clear Brushes
+                </button>
               </div>
             </div>
 
