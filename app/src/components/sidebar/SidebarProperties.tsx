@@ -69,32 +69,11 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
 
   return (
     <div class="px-3 py-2 space-y-3">
-      {/* Editable layer name */}
-      <input
-        type="text"
-        value={layer.name}
-        class="w-full text-[12px] font-medium px-2 py-1 rounded outline-none"
-        style={{ backgroundColor: 'var(--color-bg-input)', color: 'var(--sidebar-text-primary)' }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        }}
-        onChange={(e) => {
-          const newName = (e.target as HTMLInputElement).value;
-          layerStore.updateLayer(layer.id, { name: newName });
-          // Also update the parent sequence name so timeline header stays in sync
-          const seqs = sequenceStore.sequences.peek();
-          const parentSeq = seqs.find(s => s.layers.some(l => l.id === layer.id));
-          if (parentSeq && (parentSeq.kind === 'fx' || parentSeq.kind === 'content-overlay')) {
-            sequenceStore.renameSequence(parentSeq.id, newName);
-          }
-        }}
-      />
-
-      {/* Edit Brush row for paint layers — mirrors paint mode header */}
-      {layer.type === 'paint' && !paintStore.paintMode.value && (
+      {/* Paint layer: name + Edit Brush button in one row. Other layers: editable name input */}
+      {layer.type === 'paint' && !paintStore.paintMode.value ? (
         <div class="flex items-center justify-between px-1">
           <div class="text-[12px] font-medium" style={{color: 'var(--sidebar-text-primary)'}}>
-            Paint
+            {layer.name}
           </div>
           <button
             class="text-[10px] px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
@@ -113,6 +92,25 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
             <ArrowRight size={12} />
           </button>
         </div>
+      ) : (
+        <input
+          type="text"
+          value={layer.name}
+          class="w-full text-[12px] font-medium px-2 py-1 rounded outline-none"
+          style={{ backgroundColor: 'var(--color-bg-input)', color: 'var(--sidebar-text-primary)' }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+          onChange={(e) => {
+            const newName = (e.target as HTMLInputElement).value;
+            layerStore.updateLayer(layer.id, { name: newName });
+            const seqs = sequenceStore.sequences.peek();
+            const parentSeq = seqs.find(s => s.layers.some(l => l.id === layer.id));
+            if (parentSeq && (parentSeq.kind === 'fx' || parentSeq.kind === 'content-overlay')) {
+              sequenceStore.renameSequence(parentSeq.id, newName);
+            }
+          }}
+        />
       )}
 
       {/* Change Source button for content overlay layers */}
