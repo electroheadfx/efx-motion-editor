@@ -32,6 +32,7 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
   const hueRef = useRef<HTMLDivElement>(null);
   const draggingCanvas = useRef(false);
   const draggingHue = useRef(false);
+  const rafSlider = useRef(0);
 
   // Guard to distinguish external prop changes from internal user interactions
   const isExternalUpdate = useRef(false);
@@ -241,7 +242,7 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
     `px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ${mode === m ? 'bg-(--color-accent) text-white font-medium' : 'text-(--sidebar-text-secondary) hover:text-(--sidebar-text-primary)'}`;
 
   // Render a labeled slider row
-  const renderSlider = (label: string, value: number, min: number, max: number, step: number, onInput: (v: number) => void, unit?: string) => (
+  const renderSlider = (label: string, value: number, min: number, max: number, step: number, onInput: (v: number) => void, unit?: string, gradient?: string) => (
     <div class="flex items-center gap-2">
       <span class="text-[9px] w-5 shrink-0" style={{color: 'var(--sidebar-text-secondary)', fontWeight: 500}}>{label}</span>
       <input
@@ -250,9 +251,18 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
         max={max}
         step={step}
         value={value}
-        class="flex-1 min-w-0 h-1 cursor-pointer"
-        style={{accentColor: 'var(--color-accent)'}}
-        onInput={(e) => onInput(parseFloat((e.target as HTMLInputElement).value))}
+        class={`flex-1 min-w-0 cursor-pointer${gradient ? ' color-slider-gradient' : ' h-1'}`}
+        style={{
+          ...(gradient ? { background: gradient, borderRadius: '4px', WebkitAppearance: 'none' as any, height: '8px' } : { accentColor: 'var(--color-accent)' }),
+        }}
+        onInput={(e) => {
+          const v = parseFloat((e.target as HTMLInputElement).value);
+          if (rafSlider.current) cancelAnimationFrame(rafSlider.current);
+          rafSlider.current = requestAnimationFrame(() => {
+            onInput(v);
+            rafSlider.current = 0;
+          });
+        }}
       />
       <input
         type="number"
@@ -346,6 +356,24 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
+      <style>{`
+        .color-slider-gradient::-webkit-slider-runnable-track {
+          height: 8px;
+          border-radius: 4px;
+        }
+        .color-slider-gradient::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: white;
+          border: 2px solid rgba(0,0,0,0.3);
+          margin-top: -2px;
+          cursor: pointer;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+      `}</style>
+
       {/* Header: Mode tabs + close */}
       <div class="flex items-center justify-between gap-1">
         <div class="flex gap-0.5">
@@ -416,35 +444,63 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
           </div>
 
           {/* Alpha slider */}
-          {renderSlider('A', Math.round(alpha * 100), 0, 100, 1, (v) => setAlpha(v / 100), '%')}
+          {renderSlider('A', Math.round(alpha * 100), 0, 100, 1, (v) => setAlpha(v / 100), '%',
+            `linear-gradient(to right, transparent, ${currentHex})`
+          )}
         </div>
       )}
 
       {mode === 'TSL' && (
         <div class="flex flex-col gap-1.5">
-          {renderSlider('H', Math.round(currentHsl.h * 360), 0, 360, 1, (v) => setFromTsl(v, Math.round(currentHsl.s * 100), Math.round(currentHsl.l * 100)))}
-          {renderSlider('S', Math.round(currentHsl.s * 100), 0, 100, 1, (v) => setFromTsl(Math.round(currentHsl.h * 360), v, Math.round(currentHsl.l * 100)), '%')}
-          {renderSlider('L', Math.round(currentHsl.l * 100), 0, 100, 1, (v) => setFromTsl(Math.round(currentHsl.h * 360), Math.round(currentHsl.s * 100), v), '%')}
-          {renderSlider('A', Math.round(alpha * 100), 0, 100, 1, (v) => setAlpha(v / 100), '%')}
+          {renderSlider('H', Math.round(currentHsl.h * 360), 0, 360, 1, (v) => setFromTsl(v, Math.round(currentHsl.s * 100), Math.round(currentHsl.l * 100)), undefined,
+            'linear-gradient(to right, hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))'
+          )}
+          {renderSlider('S', Math.round(currentHsl.s * 100), 0, 100, 1, (v) => setFromTsl(Math.round(currentHsl.h * 360), v, Math.round(currentHsl.l * 100)), '%',
+            `linear-gradient(to right, hsl(${Math.round(currentHsl.h * 360)},0%,${Math.round(currentHsl.l * 100)}%), hsl(${Math.round(currentHsl.h * 360)},100%,${Math.round(currentHsl.l * 100)}%))`
+          )}
+          {renderSlider('L', Math.round(currentHsl.l * 100), 0, 100, 1, (v) => setFromTsl(Math.round(currentHsl.h * 360), Math.round(currentHsl.s * 100), v), '%',
+            `linear-gradient(to right, hsl(${Math.round(currentHsl.h * 360)},${Math.round(currentHsl.s * 100)}%,0%), hsl(${Math.round(currentHsl.h * 360)},${Math.round(currentHsl.s * 100)}%,50%), hsl(${Math.round(currentHsl.h * 360)},${Math.round(currentHsl.s * 100)}%,100%))`
+          )}
+          {renderSlider('A', Math.round(alpha * 100), 0, 100, 1, (v) => setAlpha(v / 100), '%',
+            `linear-gradient(to right, transparent, ${currentHex})`
+          )}
         </div>
       )}
 
       {mode === 'RVB' && (
         <div class="flex flex-col gap-1.5">
-          {renderSlider('R', currentRgb.r, 0, 255, 1, (v) => setFromRvb(v, currentRgb.g, currentRgb.b))}
-          {renderSlider('G', currentRgb.g, 0, 255, 1, (v) => setFromRvb(currentRgb.r, v, currentRgb.b))}
-          {renderSlider('B', currentRgb.b, 0, 255, 1, (v) => setFromRvb(currentRgb.r, currentRgb.g, v))}
-          {renderSlider('A', Math.round(alpha * 100), 0, 100, 1, (v) => setAlpha(v / 100), '%')}
+          {renderSlider('R', currentRgb.r, 0, 255, 1, (v) => setFromRvb(v, currentRgb.g, currentRgb.b), undefined,
+            `linear-gradient(to right, rgb(0,${currentRgb.g},${currentRgb.b}), rgb(255,${currentRgb.g},${currentRgb.b}))`
+          )}
+          {renderSlider('G', currentRgb.g, 0, 255, 1, (v) => setFromRvb(currentRgb.r, v, currentRgb.b), undefined,
+            `linear-gradient(to right, rgb(${currentRgb.r},0,${currentRgb.b}), rgb(${currentRgb.r},255,${currentRgb.b}))`
+          )}
+          {renderSlider('B', currentRgb.b, 0, 255, 1, (v) => setFromRvb(currentRgb.r, currentRgb.g, v), undefined,
+            `linear-gradient(to right, rgb(${currentRgb.r},${currentRgb.g},0), rgb(${currentRgb.r},${currentRgb.g},255))`
+          )}
+          {renderSlider('A', Math.round(alpha * 100), 0, 100, 1, (v) => setAlpha(v / 100), '%',
+            `linear-gradient(to right, transparent, ${currentHex})`
+          )}
         </div>
       )}
 
       {mode === 'CMYK' && (
         <div class="flex flex-col gap-1.5">
-          {renderSlider('C', Math.round(currentCmyk.c * 100), 0, 100, 1, (v) => setFromCmyk(v, Math.round(currentCmyk.m * 100), Math.round(currentCmyk.y * 100), Math.round(currentCmyk.k * 100)), '%')}
-          {renderSlider('M', Math.round(currentCmyk.m * 100), 0, 100, 1, (v) => setFromCmyk(Math.round(currentCmyk.c * 100), v, Math.round(currentCmyk.y * 100), Math.round(currentCmyk.k * 100)), '%')}
-          {renderSlider('Y', Math.round(currentCmyk.y * 100), 0, 100, 1, (v) => setFromCmyk(Math.round(currentCmyk.c * 100), Math.round(currentCmyk.m * 100), v, Math.round(currentCmyk.k * 100)), '%')}
-          {renderSlider('K', Math.round(currentCmyk.k * 100), 0, 100, 1, (v) => setFromCmyk(Math.round(currentCmyk.c * 100), Math.round(currentCmyk.m * 100), Math.round(currentCmyk.y * 100), v), '%')}
-          {renderSlider('A', Math.round(alpha * 100), 0, 100, 1, (v) => setAlpha(v / 100), '%')}
+          {renderSlider('C', Math.round(currentCmyk.c * 100), 0, 100, 1, (v) => setFromCmyk(v, Math.round(currentCmyk.m * 100), Math.round(currentCmyk.y * 100), Math.round(currentCmyk.k * 100)), '%',
+            'linear-gradient(to right, white, cyan)'
+          )}
+          {renderSlider('M', Math.round(currentCmyk.m * 100), 0, 100, 1, (v) => setFromCmyk(Math.round(currentCmyk.c * 100), v, Math.round(currentCmyk.y * 100), Math.round(currentCmyk.k * 100)), '%',
+            'linear-gradient(to right, white, magenta)'
+          )}
+          {renderSlider('Y', Math.round(currentCmyk.y * 100), 0, 100, 1, (v) => setFromCmyk(Math.round(currentCmyk.c * 100), Math.round(currentCmyk.m * 100), v, Math.round(currentCmyk.k * 100)), '%',
+            'linear-gradient(to right, white, yellow)'
+          )}
+          {renderSlider('K', Math.round(currentCmyk.k * 100), 0, 100, 1, (v) => setFromCmyk(Math.round(currentCmyk.c * 100), Math.round(currentCmyk.m * 100), Math.round(currentCmyk.y * 100), v), '%',
+            'linear-gradient(to right, white, black)'
+          )}
+          {renderSlider('A', Math.round(alpha * 100), 0, 100, 1, (v) => setAlpha(v / 100), '%',
+            `linear-gradient(to right, transparent, ${currentHex})`
+          )}
         </div>
       )}
 
