@@ -1,5 +1,5 @@
 import { useEffect } from 'preact/hooks';
-import { ChevronDown, ArrowRight } from 'lucide-preact';
+import { ChevronDown, ArrowRight, Paintbrush } from 'lucide-preact';
 import { NumericInput } from '../shared/NumericInput';
 import { SectionLabel } from '../shared/SectionLabel';
 import { KeyframeNavBar } from './KeyframeNavBar';
@@ -88,6 +88,7 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
               border: 'none',
             }}
           >
+            <Paintbrush size={12} />
             Edit Brush
             <ArrowRight size={12} />
           </button>
