@@ -2,6 +2,7 @@ import {useState} from 'preact/hooks';
 import {ArrowRight} from 'lucide-preact';
 import {SectionLabel} from '../shared/SectionLabel';
 import {ColorPickerModal} from '../shared/ColorPickerModal';
+import {InlineColorPicker} from './InlineColorPicker';
 import {paintStore} from '../../stores/paintStore';
 import {timelineStore} from '../../stores/timelineStore';
 import {BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_PAINT_BG_COLOR, BRUSH_STYLES, BRUSH_FX_VISIBLE_PARAMS, DEFAULT_BRUSH_FX_PARAMS} from '../../types/paint';
@@ -68,9 +69,9 @@ function shapeToBrushStrokes(shape: PaintShape, brushOptions: PaintStrokeOptions
 }
 
 export function PaintProperties({layer}: {layer: Layer}) {
-  const [showColorPicker, setShowColorPicker] = useState(false);
   const [showBgColorPicker, setShowBgColorPicker] = useState(false);
   const [colorPickerPos, setColorPickerPos] = useState({x: 0, y: 0});
+  const [showInlinePicker, setShowInlinePicker] = useState(false);
   const [onionCollapsed, setOnionCollapsed] = useState(true);
   const [tabletCollapsed, setTabletCollapsed] = useState(true);
 
@@ -338,10 +339,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
                         borderColor: 'var(--color-border-subtle)',
                       }}
                       title="Change stroke color"
-                      onClick={(e: MouseEvent) => {
-                        setColorPickerPos({x: e.clientX, y: e.clientY});
-                        setShowColorPicker(true);
-                      }}
+                      onClick={() => setShowInlinePicker(!showInlinePicker)}
                     />
                     <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
                       {currentColor.toUpperCase()}
@@ -587,10 +585,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
                     borderColor: 'var(--color-border-subtle)',
                   }}
                   title="Change brush color"
-                  onClick={(e: MouseEvent) => {
-                    setColorPickerPos({x: e.clientX, y: e.clientY});
-                    setShowColorPicker(true);
-                  }}
+                  onClick={() => setShowInlinePicker(!showInlinePicker)}
                 />
                 <span class="text-[11px] font-mono" style={{color: 'var(--sidebar-text-primary)'}}>
                   {brushColorVal.toUpperCase()}
@@ -1048,14 +1043,14 @@ export function PaintProperties({layer}: {layer: Layer}) {
         )}
       </div>
 
-      {/* Color Picker Modal */}
-      {showColorPicker && (
-        <ColorPickerModal
+      {/* Inline Color Picker (replaces modal for brush color) */}
+      {showInlinePicker && (
+        <InlineColorPicker
           color={brushColorVal}
-          mouseX={colorPickerPos.x}
-          mouseY={colorPickerPos.y}
-          onLiveChange={(c) => {
-            paintStore.setBrushColor(c);
+          opacity={brushOpacityVal}
+          onChange={(color, opacity) => {
+            paintStore.setBrushColor(color);
+            paintStore.setBrushOpacity(opacity);
             // Also update selected strokes live
             if (activeTool === 'select' && paintStore.selectedStrokeIds.peek().size > 0) {
               const fr = timelineStore.currentFrame.peek();
@@ -1063,7 +1058,10 @@ export function PaintProperties({layer}: {layer: Layer}) {
               if (pf2) {
                 const sel2 = paintStore.selectedStrokeIds.peek();
                 for (const el of pf2.elements) {
-                  if ((el.tool === 'brush' || el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') && sel2.has(el.id)) (el as any).color = c;
+                  if ((el.tool === 'brush' || el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse') && sel2.has(el.id)) {
+                    (el as any).color = color;
+                    (el as any).opacity = opacity;
+                  }
                 }
                 paintStore.markDirty(layer.id, fr);
                 paintStore.invalidateFrameFxCache(layer.id, fr);
@@ -1071,14 +1069,7 @@ export function PaintProperties({layer}: {layer: Layer}) {
               }
             }
           }}
-          onCommit={(c) => {
-            paintStore.setBrushColor(c);
-            if (activeTool === 'select' && paintStore.selectedStrokeIds.peek().size > 0) {
-              paintStore.refreshFrameFx(layer.id, timelineStore.currentFrame.peek());
-            }
-            setShowColorPicker(false);
-          }}
-          onClose={() => setShowColorPicker(false)}
+          onClose={() => setShowInlinePicker(false)}
         />
       )}
     </div>

@@ -20,3 +20,19 @@ export async function saveBrushColor(color: string): Promise<void> {
 export async function saveBrushSize(size: number): Promise<void> {
   await store.set('brushSize', size);
 }
+
+export async function loadRecentColors(): Promise<string[]> {
+  return (await store.get<string[]>('recentColors')) ?? [];
+}
+
+export async function saveRecentColors(colors: string[]): Promise<void> {
+  await store.set('recentColors', colors.slice(0, 16));
+}
+
+export async function loadFavoriteColors(): Promise<string[]> {
+  return (await store.get<string[]>('favoriteColors')) ?? [];
+}
+
+export async function saveFavoriteColors(colors: string[]): Promise<void> {
+  await store.set('favoriteColors', colors);
+}
