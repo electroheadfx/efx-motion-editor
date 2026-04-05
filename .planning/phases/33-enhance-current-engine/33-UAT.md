@@ -120,7 +120,7 @@ blocked: 0
   reason: "User reported: yes it works but in FX paint, the canvas is not refreshed, it show brushes but they was deleted, I need to paint for refresh canvas and see the brushes was deleted"
   severity: major
   test: 4
-  root_cause: ""
+  root_cause: "paintStore.clearFrame() calls _notifyVisualChange but missing invalidateFrameFxCache + refreshFrameFx after immediate execution (line ~412). Redo callback also missing refreshFrameFx."
   artifacts: []
   missing: []
   debug_session: ""
@@ -130,7 +130,7 @@ blocked: 0
   reason: "User reported: make a orange pulsate animation stronger, its too subtle actually"
   severity: cosmetic
   test: 5
-  root_cause: ""
+  root_cause: "CSS pulsate animation keyframes use too subtle opacity/scale values. Increase amplitude in PaintProperties.tsx."
   artifacts: []
   missing: []
   debug_session: ""
@@ -140,7 +140,7 @@ blocked: 0
   reason: "User reported: when I change brush color in FX paint mode, canvas is not refreshed, color change show canvas in Flat paint mode, I need to move a brush to refresh the render. Quit and relaunch the app doesn't restore color/size, and it not restore the Paint mode, if I created a paint in FX mode and re-open it goes in Flat/paint mode instead of FX mode."
   severity: major
   test: 7
-  root_cause: ""
+  root_cause: "Three issues: (1) setBrushColor() missing invalidateFrameFxCache+refreshFrameFx — FX canvas not refreshed on color change. (2) FX cache key in brushP5Adapter.ts:202 doesn't include stroke color — stale cache reused. (3) paintPreferences.ts only persists color/size, not activePaintMode — mode lost on restart. initFromPreferences() doesn't restore mode."
   artifacts: []
   missing: []
   debug_session: ""
@@ -150,7 +150,7 @@ blocked: 0
   reason: "User reported: yes but the circle is subtle and its difficult to see it on image background. There is a big issue, the circle is not at the right position of paint. when I paint the circle position is offseted from the zone where I paint"
   severity: major
   test: 8
-  root_cause: ""
+  root_cause: "Coordinate mismatch: PaintCursor uses screen-space coords (overlayRef getBoundingClientRect) while paint uses project-space via clientToCanvas() with zoom/pan/padding inversions (containerRef). Cursor must use same transform chain. Also needs better visibility (thicker border, outline, or invert blend)."
   artifacts: []
   missing: []
   debug_session: ""
@@ -160,7 +160,7 @@ blocked: 0
   reason: "User reported: yes for mode selectors, but dialog conversion should to be modal with dark background because it need to see the choice and not allow to click anywhere without this answer, its a warming dialog"
   severity: minor
   test: 11
-  root_cause: ""
+  root_cause: "PaintModeSelector conversion dialog uses transparent click-catcher. Needs dark bg-black/50 overlay to block interaction and visually signal warning modal."
   artifacts: []
   missing: []
   debug_session: ""
@@ -170,7 +170,7 @@ blocked: 0
   reason: "User reported: Yes but in FX mode, the background is transparent, it should to be white."
   severity: major
   test: 12
-  root_cause: ""
+  root_cause: "renderPaintFrameWithBg() in paintRenderer.ts uses paintBgColor uniformly for all modes. FX mode (p5.brush) needs white background but gets transparent. Need mode check: fx-paint forces #ffffff, flat uses stored paintBgColor."
   artifacts: []
   missing: []
   debug_session: ""
@@ -180,7 +180,7 @@ blocked: 0
   reason: "User reported: No work at all"
   severity: blocker
   test: 13
-  root_cause: ""
+  root_cause: "previewRenderer.ts:299 intentionally forces blendMode to 'normal' when paintMode is active (comment: 'Task 12: normal blend in edit mode'). Need to remove this override so user-selected blend mode applies during paint edit. Opacity actually works (globalAlpha applied at line 301)."
   artifacts: []
   missing: []
   debug_session: ""
@@ -190,7 +190,7 @@ blocked: 0
   reason: "User reported: inline brush color picker should to be near the canvas not in sidebar, the canvas resize a bit to give the place for color picker Like the mini palette at top. TSL, RVB, CMYK should to be visual like TSL. TSL, RVB, CMYK no work, there is an endless re-rendering issue, the slider no work I need to close for solve this problem"
   severity: blocker
   test: 14
-  root_cause: ""
+  root_cause: "Infinite re-render loop: circular dependency between prop sync useEffect (line ~44-50) and onChange useEffect (line ~59-62). External color prop change triggers HSV state update, which triggers onChange, which updates parent, which sends new prop — loop. Fix: add useRef to track external vs internal changes, only fire onChange on user interactions. Position: currently in sidebar portal, user wants it near canvas like mini palette."
   artifacts: []
   missing: []
   debug_session: ""
@@ -200,7 +200,7 @@ blocked: 0
   reason: "User reported: it has an endless re-rendering issue when I select a recent or predefined swatches and change color. In final I can't anymore change color, I am forced to close the inline picker color"
   severity: blocker
   test: 15
-  root_cause: ""
+  root_cause: "Same infinite re-render as test 14. Swatch click → applyFromSwatch sets HSV state → onChange effect fires → parent updates → prop sync effect fires → loop. Fix is shared with test 14 (decouple prop sync from onChange)."
   artifacts: []
   missing: []
   debug_session: ""
@@ -210,7 +210,7 @@ blocked: 0
   reason: "User reported: work, but I would like to apply to all brushes too. When I select all the animate button is inactive"
   severity: minor
   test: 18
-  root_cause: ""
+  root_cause: "PaintProperties.tsx:526 has disabled={selectedStrokeIds.size !== 1} — only allows exactly 1 stroke. handleAnimate() at line ~556 assumes single selection (takes first ID). Need to change condition to === 0 and loop through all selected strokes."
   artifacts: []
   missing: []
   debug_session: ""
