@@ -127,7 +127,7 @@ See: `milestones/v0.6.0-ROADMAP.md` for full details.
 - [x] **Phase 30: UI, Paper & Transparency** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
 - [x] **Phase 31: Advanced Paint Features** - FAILED: depends on adapter approach from phases 27-29 (2026-04-04)
 - [x] **Phase 32: Cleanup & Removal** - FAILED: cannot remove engines that are still in use (2026-04-04)
-- [ ] **Phase 33: Enhance Current Engine** - Small improvements and fixes to perfect-freehand + p5.brush paint layers (UAT gap closure in progress)
+- [x] **Phase 33: Enhance Current Engine** - Small improvements and fixes to perfect-freehand + p5.brush paint layers (UAT gap closure in progress) (completed 2026-04-05)
 
 ## Phase Details
 
@@ -204,7 +204,7 @@ Cannot remove engines that are still in use.
   7. Modal color picker: no buttons, no overlay, positioned near mouse
   8. Selected FX strokes show wireframe overlay for easy grab
   9. Stroke draw-reveal animation distributes points across frames by speed
-**Plans:** 19/20 plans executed
+**Plans:** 20/20 plans complete
 Plans:
 - [x] 33-01-PLAN.md — Bug fixes (undo rendering, FX brush style) and UX quick wins
 - [x] 33-02-PLAN.md — Brush preferences persistence and circle cursor
@@ -222,7 +222,7 @@ Plans:
 - [x] 33-14-PLAN.md — UAT gap closure: brush preferences persistence (await init)
 - [x] 33-15-PLAN.md — UAT gap closure: FX canvas refresh on color change
 - [x] 33-16-PLAN.md — UAT gap closure: circle cursor centering
-- [ ] 33-17-PLAN.md — UAT gap closure: FX white background persistence
+- [x] 33-17-PLAN.md — UAT gap closure: FX white background persistence
 - [x] 33-18-PLAN.md — UAT gap closure: inline color picker positioning (remove portal)
 - [x] 33-19-PLAN.md — UAT gap closure: TSL/RVB/CMYK gradient sliders
 - [x] 33-20-PLAN.md — UAT gap closure: flat stroke wireframe overlay
@@ -247,4 +247,4 @@ Phases execute in numeric order: 26 -> 33 (27-32 failed)
 | 30. UI, Paper & Transparency | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 31. Advanced Paint Features | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 32. Cleanup & Removal | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 33. Enhance Current Engine | v0.7.0 | 19/20 | In Progress|  |
+| 33. Enhance Current Engine | v0.7.0 | 20/20 | Complete   | 2026-04-05 |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Monorepo & Paint Enhancements
 status: planning
-stopped_at: Completed 33-15-PLAN.md
-last_updated: "2026-04-05T16:11:03.725Z"
+stopped_at: Completed 33-17-PLAN.md
+last_updated: "2026-04-05T16:17:44.410Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 23
-  completed_plans: 22
+  completed_plans: 23
   percent: 0
 ---
 
@@ -51,6 +51,7 @@ Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 - [Phase 26-monorepo-scaffold]: Consolidated pnpm.overrides and packageManager at workspace root; removed redundant onlyBuiltDependencies from paint package
 - [Phase 33]: Bbox-only hit testing: removed fine-check proximity in favor of bounding-box-only selection for all brush strokes
 - [Phase 33-enhance-current-engine]: Explicit paintVersion bump in setBrushColor .then() block after refreshFrameFx for guaranteed FX re-render reactivity
+- [Phase 33-enhance-current-engine]: bgColor inferred from FX stroke presence during save; fallback inference on load checks both fxState and brushStyle
 
 ### Research Flags
 
@@ -74,9 +75,10 @@ None.
 | Phase 26-monorepo-scaffold P02 | 4min | 2 tasks | 135 files |
 | Phase 33 P20 | 3min | 1 tasks | 1 files |
 | Phase 33-enhance-current-engine P15 | 3min | 2 tasks | 2 files |
+| Phase 33-enhance-current-engine P17 | 4min | 1 tasks | 3 files |
 
 ## Session Continuity
 
-Last session: 2026-04-05T16:11:03.722Z
-Stopped at: Completed 33-15-PLAN.md
+Last session: 2026-04-05T16:17:44.406Z
+Stopped at: Completed 33-17-PLAN.md
 Resume file: None
