@@ -32,6 +32,27 @@ export function PaintToolbar() {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [pickerPos, setPickerPos] = useState({x: 0, y: 0});
 
+  const applyColorToSelected = (color: string, andRefreshFx = false) => {
+    const sel = paintStore.selectedStrokeIds.peek();
+    if (paintStore.activeTool.peek() !== 'select' || sel.size === 0) return;
+    const layerId = layerStore.selectedLayerId.peek();
+    const fr = timelineStore.currentFrame.peek();
+    if (!layerId) return;
+    const pf = paintStore.getFrame(layerId, fr);
+    if (!pf) return;
+    for (const el of pf.elements) {
+      if (sel.has(el.id) && (el.tool === 'brush' || el.tool === 'line' || el.tool === 'rect' || el.tool === 'ellipse')) {
+        (el as any).color = color;
+      }
+    }
+    paintStore.markDirty(layerId, fr);
+    if (andRefreshFx) {
+      paintStore.invalidateFrameFxCache(layerId, fr);
+      paintStore.refreshFrameFx(layerId, fr);
+    }
+    paintStore.paintVersion.value++;
+  };
+
   return (
     <div
       class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg"
@@ -178,9 +199,13 @@ export function PaintToolbar() {
           color={brushColorVal}
           mouseX={pickerPos.x}
           mouseY={pickerPos.y}
-          onLiveChange={(c) => paintStore.setBrushColor(c)}
+          onLiveChange={(c) => {
+            paintStore.setBrushColor(c);
+            applyColorToSelected(c);
+          }}
           onCommit={(c) => {
             paintStore.setBrushColor(c);
+            applyColorToSelected(c, true);
             setShowColorPicker(false);
           }}
           onClose={() => setShowColorPicker(false)}

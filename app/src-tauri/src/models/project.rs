@@ -140,6 +140,8 @@ pub struct MceLayer {
     pub order: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blur: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paint_bg_color: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keyframes: Vec<MceKeyframe>,
 }

@@ -118,7 +118,7 @@ export type PaintElement = PaintStroke | PaintShape | PaintFill;
 /** All paint data for a single timeline frame (per D-06, D-07) */
 export interface PaintFrame {
   elements: PaintElement[];
-  bgColor?: string;  // Per-frame background color (white for FX, transparent for flat)
+  bgColor?: string;  // Per-frame background color (transparent default, user-settable)
 }
 
 /** Default solid background color for paint layer (per D-17: transparent for flat mode) */
@@ -126,7 +126,7 @@ export const DEFAULT_PAINT_BG_COLOR = 'transparent';
 
 /** Default brush settings */
 export const DEFAULT_BRUSH_SIZE = 35;
-export const DEFAULT_BRUSH_COLOR = '#203769';
+export const DEFAULT_BRUSH_COLOR = '#5B8BD4';
 export const DEFAULT_BRUSH_OPACITY = 1.0;
 export const DEFAULT_STROKE_OPTIONS: PaintStrokeOptions = {
   thinning: 0.5,

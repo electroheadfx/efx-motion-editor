@@ -109,7 +109,7 @@ describe('BrushStyle type system', () => {
     expect(states).toContain('flattened');
   });
 
-  it('DEFAULT_PAINT_BG_COLOR equals #FFFFFF', () => {
-    expect(DEFAULT_PAINT_BG_COLOR).toBe('#FFFFFF');
+  it('DEFAULT_PAINT_BG_COLOR equals transparent', () => {
+    expect(DEFAULT_PAINT_BG_COLOR).toBe('transparent');
   });
 });

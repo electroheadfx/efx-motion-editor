@@ -172,7 +172,8 @@ export function LeftPanel() {
         padding: '8px 16px 8px 12px',
       }}
     >
-      {/* SEQUENCES/LAYERS adaptive panel */}
+      {/* SEQUENCES/LAYERS adaptive panel — hidden in paint edit mode */}
+      {!paintStore.paintMode.value && (
       <div
         class="flex flex-col overflow-hidden"
         style={{
@@ -260,8 +261,11 @@ export function LeftPanel() {
           </CollapsibleSection>
         )}
       </div>
+      )}
 
-      <PanelResizer onResize={handleSeqPropResize} onResizeEnd={persistFlex} />
+      {!paintStore.paintMode.value && (
+        <PanelResizer onResize={handleSeqPropResize} onResizeEnd={persistFlex} />
+      )}
 
       {/* PROPERTIES panel */}
       <div

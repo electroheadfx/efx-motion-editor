@@ -8,7 +8,7 @@ export interface BrushPreferences {
 }
 
 export async function loadBrushPreferences(): Promise<BrushPreferences> {
-  const color = await store.get<string>('brushColor') ?? '#203769';
+  const color = await store.get<string>('brushColor') ?? '#5B8BD4';
   const size = await store.get<number>('brushSize') ?? 35;
   return { color, size };
 }

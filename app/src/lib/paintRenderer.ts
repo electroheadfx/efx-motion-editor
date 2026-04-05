@@ -203,10 +203,10 @@ export function renderPaintFrameWithBg(
   height: number,
   layerId?: string,
   frameNum?: number,
+  overrideBgColor?: string,
 ): void {
-  // Mode-aware background: FX mode always white (D-31), flat mode uses stored paintBgColor
-  const currentMode = paintStore.activePaintMode.peek();
-  const bgColor = currentMode === 'fx-paint' ? '#ffffff' : paintStore.paintBgColor.peek();
+  // Background: use override (from layer property) or fall back to signal (live editing)
+  const bgColor = overrideBgColor ?? paintStore.paintBgColor.peek();
   if (bgColor === 'transparent') {
     ctx.clearRect(0, 0, width, height);
   } else {

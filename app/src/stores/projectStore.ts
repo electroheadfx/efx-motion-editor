@@ -203,6 +203,7 @@ function buildMceProject(): MceProject {
         is_base: layer.isBase ?? false,
         order: layerIndex,
         ...(layer.blur != null && layer.blur > 0 ? { blur: layer.blur } : {}),
+        ...(layer.paintBgColor ? { paint_bg_color: layer.paintBgColor } : {}),
         ...(layer.keyframes && layer.keyframes.length > 0 ? {
           keyframes: layer.keyframes.map(kf => ({
             frame: kf.frame,
@@ -337,6 +338,7 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
                   })(),
                   isBase: ml.is_base,
                   ...(ml.blur != null ? { blur: ml.blur } : {}),
+                  ...(ml.paint_bg_color ? { paintBgColor: ml.paint_bg_color } : {}),
                   ...(ml.keyframes && ml.keyframes.length > 0 ? {
                     keyframes: ml.keyframes.map(mkf => ({
                       frame: mkf.frame,

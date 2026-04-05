@@ -32,14 +32,6 @@ export async function savePaintData(projectDir: string): Promise<void> {
 
       const frameData = paintStore.getFrame(layerId, frame);
       if (frameData && frameData.elements.length > 0) {
-        // Persist bgColor for FX frames
-        const hasAnFxStroke = frameData.elements.some((el: any) => {
-          if (el.tool !== 'brush') return false;
-          return el.brushStyle && el.brushStyle !== 'flat';
-        });
-        if (hasAnFxStroke) {
-          frameData.bgColor = '#ffffff';
-        }
         await writeTextFile(filePath, JSON.stringify(frameData));
       } else {
         // Frame is empty or null -- remove the file if it exists
@@ -83,20 +75,6 @@ export async function loadPaintData(projectDir: string, layerIds: string[]): Pro
           const paintFrame: PaintFrame = JSON.parse(json);
 
           paintStore.loadFrame(layerId, frameNum, paintFrame);
-
-          // Restore per-frame bgColor
-          if (paintFrame.bgColor) {
-            paintStore.setPaintBgColor(paintFrame.bgColor);
-          } else {
-            // Fallback: infer from FX strokes
-            const hasFxStrokes = paintFrame.elements.some((el: any) => {
-              if (el.tool !== 'brush') return false;
-              return (el.fxState === 'fx-applied' || (el.brushStyle && el.brushStyle !== 'flat'));
-            });
-            if (hasFxStrokes) {
-              paintStore.setPaintBgColor('#ffffff');
-            }
-          }
 
           // Regenerate frame-level FX cache for frames with FX-applied strokes (per PAINT-13)
           const projW = projectStore.width.peek();
@@ -150,7 +128,7 @@ export async function cleanupOrphanedPaintFiles(projectDir: string, activeLayerI
 
     for (const entry of entries) {
       const dirName = entry.name;
-      if (!dirName) continue;
+      if (!dirName || dirName === '.DS_Store') continue;
 
       // If this directory is not for an active paint layer, remove it
       if (!activeSet.has(dirName)) {

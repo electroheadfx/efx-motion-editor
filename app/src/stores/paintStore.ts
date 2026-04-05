@@ -28,8 +28,6 @@ const brushFxParams = signal<BrushFxParams>({});
 const activePaintMode = signal<PaintMode>('flat');
 const paintBgColor = signal(DEFAULT_PAINT_BG_COLOR);
 const selectedStrokeIds = signal<Set<string>>(new Set());
-const showSequenceOverlay = signal(false);
-const sequenceOverlayOpacity = signal(0.3);
 const isRenderingFx = signal(false);
 const showFlatPreview = signal(false);
 const onionSkinEnabled = signal(false);
@@ -95,8 +93,6 @@ export const paintStore = {
   activePaintMode,
   paintBgColor,
   selectedStrokeIds,
-  showSequenceOverlay,
-  sequenceOverlayOpacity,
   isRenderingFx,
   showFlatPreview,
   onionSkinEnabled,
@@ -116,6 +112,11 @@ export const paintStore = {
   // Frame data access
   getFrame(layerId: string, frame: number): PaintFrame | null {
     return _frames.get(layerId)?.get(frame) ?? null;
+  },
+
+  getFrameNumbers(layerId: string): number[] {
+    const m = _frames.get(layerId);
+    return m ? [...m.keys()] : [];
   },
 
   setFrame(layerId: string, frame: number, pf: PaintFrame): void {
@@ -469,8 +470,6 @@ export const paintStore = {
     brushFxParams.value = {};
     paintBgColor.value = DEFAULT_PAINT_BG_COLOR;
     selectedStrokeIds.value = new Set();
-    showSequenceOverlay.value = false;
-    sequenceOverlayOpacity.value = 0.3;
     isRenderingFx.value = false;
     showFlatPreview.value = false;
     _frameFxCache.clear();
@@ -483,8 +482,20 @@ export const paintStore = {
   // Tool settings
   togglePaintMode(): void {
     paintMode.value = !paintMode.value;
-    // Close inline color picker when exiting paint mode
-    if (!paintMode.value) {
+    if (paintMode.value) {
+      // Entering paint mode — detect FX vs flat from frame content
+      Promise.all([
+        import('./layerStore'),
+        import('./timelineStore'),
+      ]).then(([{layerStore: ls}, {timelineStore: ts}]) => {
+        const layerId = ls.selectedLayerId.peek();
+        if (layerId) {
+          const frame = ts.currentFrame.peek();
+          const frameMode = paintStore.getFrameMode(layerId, frame);
+          paintStore.setActivePaintMode(frameMode ?? 'flat');
+        }
+      });
+    } else {
       showInlineColorPicker.value = false;
     }
   },
@@ -501,20 +512,16 @@ export const paintStore = {
     if (mode === 'flat') {
       brushStyle.value = 'flat';
       brushFxParams.value = {};
-    } else if (mode === 'fx-paint') {
-      // If currently flat, switch to default FX style
+    }
+    // FX mode: white bg + ensure brush is an FX style
+    if (mode === 'fx-paint') {
+      paintBgColor.value = '#ffffff';
       if (brushStyle.peek() === 'flat') {
         brushStyle.value = 'watercolor';
         brushFxParams.value = { ...DEFAULT_BRUSH_FX_PARAMS['watercolor'] };
       }
-      // If already an FX style, keep it
     }
-    // Auto-set background color for mode
-    if (mode === 'fx-paint') {
-      paintBgColor.value = '#ffffff';
-    } else if (mode === 'flat') {
-      paintBgColor.value = 'transparent';
-    }
+
     // Do NOT persist global mode -- mode is per-layer, inferred from frame
   },
 
@@ -588,20 +595,6 @@ export const paintStore = {
     paintVersion.value++;
   },
 
-  // --- Sequence overlay (D-13, D-14) ---
-
-  setShowSequenceOverlay(show: boolean): void {
-    showSequenceOverlay.value = show;
-  },
-
-  toggleSequenceOverlay(): void {
-    showSequenceOverlay.value = !showSequenceOverlay.peek();
-    paintVersion.value++;
-  },
-  setSequenceOverlayOpacity(v: number): void {
-    sequenceOverlayOpacity.value = v;
-    paintVersion.value++;
-  },
 
   toggleFlatPreview(): void {
     showFlatPreview.value = !showFlatPreview.peek();
@@ -744,17 +737,21 @@ export const paintStore = {
     const paintFrame = this.getFrame(layerId, frame);
     if (!paintFrame) return;
 
-    const projW = projectStore.width.peek();
-    const projH = projectStore.height.peek();
-
-    const brushStrokes = paintFrame.elements.filter(
-      (el) => el.tool === 'brush'
-    ) as PaintStroke[];
-
     this.invalidateFrameFxCache(layerId, frame);
-    const fxCanvas = renderFrameFx(brushStrokes, projW, projH);
-    if (fxCanvas) {
-      this.setFrameFxCache(layerId, frame, fxCanvas);
+
+    // Skip expensive p5.brush render when flat preview is active
+    if (!showFlatPreview.peek()) {
+      const projW = projectStore.width.peek();
+      const projH = projectStore.height.peek();
+
+      const brushStrokes = paintFrame.elements.filter(
+        (el) => el.tool === 'brush'
+      ) as PaintStroke[];
+
+      const fxCanvas = renderFrameFx(brushStrokes, projW, projH);
+      if (fxCanvas) {
+        this.setFrameFxCache(layerId, frame, fxCanvas);
+      }
     }
 
     this.markDirty(layerId, frame);

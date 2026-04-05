@@ -343,6 +343,14 @@ function reRenderFrameFx(
   width: number,
   height: number,
 ): void {
+  // Skip expensive p5.brush render when flat preview is active
+  if (paintStore.showFlatPreview.peek()) {
+    paintStore.invalidateFrameFxCache(layerId, frame);
+    paintStore.markDirty(layerId, frame);
+    paintStore.paintVersion.value++;
+    return;
+  }
+
   const brushStrokes = paintFrame.elements.filter(
     (el) => el.tool === 'brush' && el.visible !== false
   ) as PaintStroke[];
@@ -2252,11 +2260,6 @@ export function PaintOverlay({
         }
       }
 
-      // Overlay toggle shortcut (per D-13)
-      if (e.key === 'o' || e.key === 'O') {
-        paintStore.toggleSequenceOverlay();
-        e.preventDefault();
-      }
 
       // Flat/FX preview toggle (F key)
       if (e.key === 'f' || e.key === 'F') {

@@ -287,12 +287,17 @@ export class PreviewRenderer {
         off.height = projH;
         const offCtx = off.getContext('2d')!;
         if (paintFrame) {
-          renderPaintFrameWithBg(offCtx, paintFrame, projW, projH, layer.id, paintLookupFrame);
+          // FX frames need white bg (p5.brush); flat frames use layer's persisted bgColor
+          const hasFx = paintFrame.elements.some((el: any) => el.brushStyle && el.brushStyle !== 'flat');
+          const frameBg = hasFx ? '#ffffff' : (layer.paintBgColor ?? 'transparent');
+          renderPaintFrameWithBg(offCtx, paintFrame, projW, projH, layer.id, paintLookupFrame, frameBg);
         } else {
-          // No paint data — just solid background
-          const bgColor = paintStore.paintBgColor.peek();
-          offCtx.fillStyle = bgColor;
-          offCtx.fillRect(0, 0, projW, projH);
+          // No paint data — use layer's persisted bgColor (transparent default)
+          const bgColor = layer.paintBgColor ?? 'transparent';
+          if (bgColor !== 'transparent') {
+            offCtx.fillStyle = bgColor;
+            offCtx.fillRect(0, 0, projW, projH);
+          }
         }
         ctx.save();
         ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
@@ -300,20 +305,6 @@ export class PreviewRenderer {
         ctx.drawImage(off, 0, 0, logicalW, logicalH);
         ctx.restore();
 
-        // Sequence overlay: render sequence frame ON TOP of paint at reduced opacity
-        if (paintStore.showSequenceOverlay.peek() && frames.length > 0 && frameIdx >= 0 && frameIdx < frames.length) {
-          const overlayAlpha = paintStore.sequenceOverlayOpacity.peek();
-          const entry = frames[frameIdx];
-          if (entry?.imageId) {
-            const img = this.imageCache.get(entry.imageId);
-            if (img) {
-              ctx.save();
-              ctx.globalAlpha = overlayAlpha;
-              ctx.drawImage(img, 0, 0, logicalW, logicalH);
-              ctx.restore();
-            }
-          }
-        }
       } else {
         // Content layer: check for gradient/solid/transparent frame first (per D-12, D-18, D-19)
         let handledAsSolid = false;
