@@ -4,6 +4,9 @@ export type PaintToolType = 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' 
 /** Per D-04: Three stroke states for FX workflow */
 export type StrokeFxState = 'flat' | 'fx-applied' | 'flattened';
 
+/** Per-layer paint mode: flat (perfect-freehand only) or FX (p5.brush styles) */
+export type PaintMode = 'flat' | 'fx-paint';
+
 /** Brush rendering styles (per D-01) */
 export type BrushStyle = 'flat' | 'watercolor' | 'ink' | 'charcoal' | 'pencil' | 'marker';
 
