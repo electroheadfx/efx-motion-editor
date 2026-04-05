@@ -76,21 +76,14 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
             {layer.name}
           </div>
           <button
-            class="text-[10px] px-2 py-0.5 rounded cursor-pointer flex items-center gap-1"
+            class="rounded p-1.5 cursor-pointer transition-colors bg-(--color-bg-input) hover:bg-(--color-border-subtle) text-(--color-text-secondary) hover:text-(--color-text-primary)"
             onClick={() => {
               layerStore.setSelected(layer.id);
               paintStore.togglePaintMode();
             }}
             title="Edit Brush (P)"
-            style={{
-              backgroundColor: '#f97316',
-              color: '#ffffff',
-              border: 'none',
-            }}
           >
-            <Paintbrush size={12} />
-            Edit Brush
-            <ArrowRight size={12} />
+            <Paintbrush size={14} />
           </button>
         </div>
       ) : (
