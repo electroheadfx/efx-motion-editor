@@ -100,6 +100,14 @@ export const paintStore = {
   onionSkinNextRange,
   onionSkinOpacity,
 
+  /** Load persisted brush preferences (color, size) on app startup. Fire-and-forget. */
+  async initFromPreferences(): Promise<void> {
+    const { loadBrushPreferences } = await import('../lib/paintPreferences');
+    const prefs = await loadBrushPreferences();
+    brushColor.value = prefs.color;
+    brushSize.value = prefs.size;
+  },
+
   // Frame data access
   getFrame(layerId: string, frame: number): PaintFrame | null {
     return _frames.get(layerId)?.get(frame) ?? null;
@@ -443,10 +451,12 @@ export const paintStore = {
 
   setBrushSize(size: number): void {
     brushSize.value = Math.max(BRUSH_SIZE_MIN, Math.min(BRUSH_SIZE_MAX, size));
+    import('../lib/paintPreferences').then(m => m.saveBrushSize(brushSize.value));
   },
 
   setBrushColor(color: string): void {
     brushColor.value = color;
+    import('../lib/paintPreferences').then(m => m.saveBrushColor(color));
   },
 
   setBrushOpacity(opacity: number): void {

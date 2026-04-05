@@ -120,8 +120,8 @@ export interface PaintFrame {
 export const DEFAULT_PAINT_BG_COLOR = '#FFFFFF';
 
 /** Default brush settings */
-export const DEFAULT_BRUSH_SIZE = 8;
-export const DEFAULT_BRUSH_COLOR = '#FFFFFF';
+export const DEFAULT_BRUSH_SIZE = 35;
+export const DEFAULT_BRUSH_COLOR = '#203769';
 export const DEFAULT_BRUSH_OPACITY = 1.0;
 export const DEFAULT_STROKE_OPTIONS: PaintStrokeOptions = {
   thinning: 0.5,
