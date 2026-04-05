@@ -34,7 +34,7 @@
 - [ ] **ECUR-07**: "Exit Paint Mode" button is larger and styled in orange with CSS pulsate color animation
 - [ ] **ECUR-08**: STROKES panel moves before SELECTION panel in sidebar ordering
 - [ ] **ECUR-09**: Three brush modes in UI (Paint flat, FX Paint, Physical Paint grayed-out placeholder) with per-frame mutual exclusivity and conversion dialogs
-- [ ] **ECUR-10**: Inline color picker on canvas side with 4 modes (Box/TSL/RVB/CMYK), HEX input, auto-apply, recent colors + saved favorites in persistent swatches
+- [x] **ECUR-10**: Inline color picker on canvas side with 4 modes (Box/TSL/RVB/CMYK), HEX input, auto-apply, recent colors + saved favorites in persistent swatches
 - [ ] **ECUR-11**: Modal color picker removes Apply/Cancel buttons (realtime apply), removes dark overlay, opens near mouse position clamped to window bounds
 - [ ] **ECUR-12**: Selected FX stroke shows visible wireframe/path overlay for easy grab; transform bounding box for move within selection bounds
 - [ ] **ECUR-13**: Stroke draw-reveal animation distributes selected stroke's points across target frame range using speed-based distribution (slow drawing = more frames, fast = fewer); single atomic undo
@@ -109,7 +109,7 @@
 | ECUR-07 | Phase 33 | Pending |
 | ECUR-08 | Phase 33 | Pending |
 | ECUR-09 | Phase 33 | Pending |
-| ECUR-10 | Phase 33 | Pending |
+| ECUR-10 | Phase 33 | Complete |
 | ECUR-11 | Phase 33 | Pending |
 | ECUR-12 | Phase 33 | Pending |
 | ECUR-13 | Phase 33 | Pending |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Monorepo & Paint Enhancements
 status: planning
-stopped_at: Completed 33-03-PLAN.md
-last_updated: "2026-04-05T09:52:49.657Z"
+stopped_at: Completed 33-05-PLAN.md
+last_updated: "2026-04-05T10:03:14.638Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 4
+  total_plans: 10
+  completed_plans: 7
   percent: 0
 ---
 
@@ -50,6 +50,7 @@ Full phase decisions archived in milestones/v0.6.0-ROADMAP.md.
 - [Phase 26-monorepo-scaffold]: Isolated git mv commit for 100% rename detection and --follow history preservation
 - [Phase 26-monorepo-scaffold]: Consolidated pnpm.overrides and packageManager at workspace root; removed redundant onlyBuiltDependencies from paint package
 - [Phase 33]: Keep onCommit/onLiveChange API; remove Apply/Cancel; click-outside commits current color
+- [Phase 33]: Re-export color utils from ColorPickerModal for backward compatibility with existing importers
 
 ### Research Flags
 
@@ -72,9 +73,10 @@ None.
 | Phase 26-monorepo-scaffold P01 | 1min | 2 tasks | 253 files |
 | Phase 26-monorepo-scaffold P02 | 4min | 2 tasks | 135 files |
 | Phase 33 P03 | 7min | 2 tasks | 7 files |
+| Phase 33 P05 | 5min | 2 tasks | 5 files |
 
 ## Session Continuity
 
-Last session: 2026-04-05T09:52:49.654Z
-Stopped at: Completed 33-03-PLAN.md
+Last session: 2026-04-05T10:03:14.636Z
+Stopped at: Completed 33-05-PLAN.md
 Resume file: None
