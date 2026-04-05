@@ -204,8 +204,9 @@ export function renderPaintFrameWithBg(
   layerId?: string,
   frameNum?: number,
 ): void {
-  // Paint background per D-17: transparent for flat mode, user-configurable
-  const bgColor = paintStore.paintBgColor.peek();
+  // Mode-aware background: FX mode always white (D-31), flat mode uses stored paintBgColor
+  const currentMode = paintStore.activePaintMode.peek();
+  const bgColor = currentMode === 'fx-paint' ? '#ffffff' : paintStore.paintBgColor.peek();
   if (bgColor === 'transparent') {
     ctx.clearRect(0, 0, width, height);
   } else {

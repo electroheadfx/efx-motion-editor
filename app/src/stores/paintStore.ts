@@ -410,6 +410,8 @@ export const paintStore = {
     const backup = [...frameData.elements];
     frameData.elements = [];
     _notifyVisualChange(layerId, frame);
+    paintStore.invalidateFrameFxCache(layerId, frame);
+    paintStore.refreshFrameFx(layerId, frame);
     pushAction({
       id: crypto.randomUUID(),
       description: `Clear paint frame ${frame}`,
@@ -426,6 +428,7 @@ export const paintStore = {
         f.elements = [];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -494,6 +497,7 @@ export const paintStore = {
     sequenceOverlayOpacity.value = 0.3;
     isRenderingFx.value = false;
     showFlatPreview.value = false;
+    activePaintMode.value = 'flat';
     _frameFxCache.clear();
     onionSkinEnabled.value = false;
     onionSkinPrevRange.value = 1;
@@ -515,9 +519,42 @@ export const paintStore = {
     import('../lib/paintPreferences').then(m => m.saveBrushSize(brushSize.value));
   },
 
+  setActivePaintMode(mode: PaintMode): void {
+    activePaintMode.value = mode;
+    import('../lib/paintPreferences').then(m => m.savePaintMode(mode));
+  },
+
+  /** Initialize paint preferences from persisted storage */
+  initFromPreferences(): void {
+    import('../lib/paintPreferences').then(async (m) => {
+      const prefs = await m.loadBrushPreferences();
+      brushColor.value = prefs.color;
+      brushSize.value = prefs.size;
+      // Restore paint mode
+      const mode = await m.loadPaintMode();
+      if (mode === 'flat' || mode === 'fx-paint') {
+        activePaintMode.value = mode as PaintMode;
+      }
+    });
+  },
+
   setBrushColor(color: string): void {
     brushColor.value = color;
     import('../lib/paintPreferences').then(m => m.saveBrushColor(color));
+    // Refresh FX canvas when color changes in FX mode
+    if (activePaintMode.peek() === 'fx-paint' && paintMode.peek()) {
+      Promise.all([
+        import('./layerStore'),
+        import('./timelineStore'),
+      ]).then(([{layerStore: ls}, {timelineStore: ts}]) => {
+        const layerId = ls.selectedLayerId.peek();
+        if (layerId) {
+          const frame = ts.currentFrame.peek();
+          paintStore.invalidateFrameFxCache(layerId, frame);
+          paintStore.refreshFrameFx(layerId, frame);
+        }
+      });
+    }
   },
 
   setBrushOpacity(opacity: number): void {
