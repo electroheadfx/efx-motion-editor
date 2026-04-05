@@ -1,5 +1,5 @@
 import {signal, effect} from '@preact/signals';
-import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams, PaintStroke, PaintShape} from '../types/paint';
+import type {PaintElement, PaintFrame, PaintToolType, PaintStrokeOptions, BrushStyle, BrushFxParams, PaintStroke, PaintShape, PaintMode} from '../types/paint';
 import {DEFAULT_BRUSH_SIZE, DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_OPACITY, DEFAULT_STROKE_OPTIONS, BRUSH_SIZE_MIN, BRUSH_SIZE_MAX, DEFAULT_BRUSH_FX_PARAMS, DEFAULT_PAINT_BG_COLOR} from '../types/paint';
 import {pointsToBezierAnchors, shapeToAnchors} from '../lib/bezierPath';
 import {pushAction} from '../lib/history';
@@ -30,6 +30,7 @@ const showSequenceOverlay = signal(false);
 const sequenceOverlayOpacity = signal(0.3);
 const isRenderingFx = signal(false);
 const showFlatPreview = signal(false);
+const activePaintMode = signal<PaintMode>('flat');
 const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
@@ -95,6 +96,7 @@ export const paintStore = {
   sequenceOverlayOpacity,
   isRenderingFx,
   showFlatPreview,
+  activePaintMode,
   onionSkinEnabled,
   onionSkinPrevRange,
   onionSkinNextRange,
@@ -105,6 +107,33 @@ export const paintStore = {
     return _frames.get(layerId)?.get(frame) ?? null;
   },
 
+  /** Infer frame mode from existing strokes. Empty frame = null (accepts any mode). */
+  getFrameMode(layerId: string, frame: number): PaintMode | null {
+    const pf = this.getFrame(layerId, frame);
+    if (!pf || pf.elements.length === 0) return null;
+    // Find first stroke with a mode
+    for (const el of pf.elements) {
+      if ('tool' in el && (el.tool === 'brush' || el.tool === 'eraser')) {
+        const stroke = el as PaintStroke;
+        if (stroke.mode === 'fx-paint') return 'fx-paint';
+        // strokes without mode field are legacy flat
+        return 'flat';
+      }
+    }
+    return 'flat';  // shapes and fills are always flat
+  },
+
+  /** Set the active paint mode and sync brush style */
+  setActivePaintMode(mode: PaintMode): void {
+    activePaintMode.value = mode;
+    // Sync brushStyle with mode
+    if (mode === 'flat') {
+      brushStyle.value = 'flat';
+    } else if (mode === 'fx-paint' && brushStyle.value === 'flat') {
+      brushStyle.value = 'watercolor';  // default FX style
+    }
+  },
+
   setFrame(layerId: string, frame: number, pf: PaintFrame): void {
     _getOrCreateFrame(layerId, frame);
     _frames.get(layerId)!.set(frame, pf);
@@ -113,6 +142,10 @@ export const paintStore = {
   },
 
   addElement(layerId: string, frame: number, element: PaintElement): void {
+    // Stamp mode on strokes (D-24)
+    if ('tool' in element && (element.tool === 'brush' || element.tool === 'eraser')) {
+      (element as PaintStroke).mode = activePaintMode.peek();
+    }
     const frameData = _getOrCreateFrame(layerId, frame);
     frameData.elements.push(element);
     _notifyVisualChange(layerId, frame);
@@ -417,6 +450,7 @@ export const paintStore = {
     fillTolerance.value = 10;
     tabletDetected.value = false;
     livePressure.value = 0;
+    activePaintMode.value = 'flat';
     brushStyle.value = 'flat';
     brushFxParams.value = {};
     paintBgColor.value = DEFAULT_PAINT_BG_COLOR;
