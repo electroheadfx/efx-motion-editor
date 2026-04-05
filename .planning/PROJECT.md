@@ -88,6 +88,14 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Bezier/spline stroke path editing with anchor/handle manipulation — v0.6.0
 - ✓ Add, move, and delete bezier control points on existing strokes — v0.6.0
 - ✓ Stroke list panel with drag-reorder, delete, selection sync, and visibility toggle — v0.6.0
+- ✓ Paint undo/redo FX cache invalidation and visual refresh for all operations — v0.7.0 Phase 33
+- ✓ Brush preferences persistence (color, size) with session restore — v0.7.0 Phase 33
+- ✓ Circle cursor overlay at brush size with zoom scaling — v0.7.0 Phase 33
+- ✓ 3-mode paint system (flat/FX/physical-placeholder) with per-frame mode exclusivity — v0.7.0 Phase 33
+- ✓ Inline color picker with 4 modes (Box/TSL/RVB/CMYK) and swatches — v0.7.0 Phase 33
+- ✓ Modal color picker: no buttons, no overlay, positioned near mouse — v0.7.0 Phase 33
+- ✓ FX stroke wireframe overlay for selection visibility — v0.7.0 Phase 33
+- ✓ Stroke draw-reveal animation with speed-based distribution — v0.7.0 Phase 33
 
 ### Active
 
