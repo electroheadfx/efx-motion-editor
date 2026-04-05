@@ -204,7 +204,7 @@ Cannot remove engines that are still in use.
   7. Modal color picker: no buttons, no overlay, positioned near mouse
   8. Selected FX strokes show wireframe overlay for easy grab
   9. Stroke draw-reveal animation distributes points across frames by speed
-**Plans:** 20 plans (11 complete + 9 gap closure)
+**Plans:** 12/20 plans executed
 Plans:
 - [x] 33-01-PLAN.md — Bug fixes (undo rendering, FX brush style) and UX quick wins
 - [x] 33-02-PLAN.md — Brush preferences persistence and circle cursor
@@ -221,7 +221,7 @@ Plans:
 - [ ] 33-13-PLAN.md — UAT gap closure: exit button pulsate animation (remove scale)
 - [ ] 33-14-PLAN.md — UAT gap closure: brush preferences persistence (await init)
 - [ ] 33-15-PLAN.md — UAT gap closure: FX canvas refresh on color change
-- [ ] 33-16-PLAN.md — UAT gap closure: circle cursor centering
+- [x] 33-16-PLAN.md — UAT gap closure: circle cursor centering
 - [ ] 33-17-PLAN.md — UAT gap closure: FX white background persistence
 - [ ] 33-18-PLAN.md — UAT gap closure: inline color picker positioning (remove portal)
 - [ ] 33-19-PLAN.md — UAT gap closure: TSL/RVB/CMYK gradient sliders
@@ -247,4 +247,4 @@ Phases execute in numeric order: 26 -> 33 (27-32 failed)
 | 30. UI, Paper & Transparency | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 31. Advanced Paint Features | v0.7.0 | - | FAILED   | 2026-04-04 |
 | 32. Cleanup & Removal | v0.7.0 | - | FAILED   | 2026-04-04 |
-| 33. Enhance Current Engine | v0.7.0 | 11/20 | UAT Gap Closure | - |
+| 33. Enhance Current Engine | v0.7.0 | 12/20 | In Progress|  |
