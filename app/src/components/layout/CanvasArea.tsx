@@ -366,14 +366,7 @@ export function CanvasArea() {
       <div class="flex flex-1 w-full min-h-0">
         {/* Inline color picker panel - vertically centered left of canvas */}
         {isPaintModeActive && paintStore.showInlineColorPicker.value && (
-          <div class="shrink-0 relative" style={{ width: '235px', height: '100%' }}>
-            <div class="color-picker-panel overflow-y-auto absolute left-0" style={{ top: '50%', transform: 'translateY(-50%)', width: '235px', height: '500px', maxHeight: 'calc(100% - 32px)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
-              <style>{`
-                .color-picker-panel::-webkit-scrollbar { width: 4px; }
-                .color-picker-panel::-webkit-scrollbar-track { background: transparent; }
-                .color-picker-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
-                .color-picker-panel::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35); }
-              `}</style>
+          <div style={{ width: '235px', marginTop: 'auto', marginBottom: 'auto', maxHeight: 'calc(100% - 32px)', backgroundColor: 'var(--sidebar-bg)', borderRight: '1px solid var(--color-border-subtle)', borderBottom: '1px solid var(--color-border-subtle)', borderTop: '1px solid var(--color-border-subtle)', borderTopRightRadius: '8px', borderBottomRightRadius: '8px' }}>
             <InlineColorPicker
               color={paintStore.brushColor.value}
               opacity={paintStore.brushOpacity.value}
@@ -403,7 +396,6 @@ export function CanvasArea() {
               }}
               onClose={() => { paintStore.showInlineColorPicker.value = false; }}
             />
-            </div>
           </div>
         )}
         {/* Preview Frame with zoom/pan */}

@@ -349,7 +349,7 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
       style={{
         width: '100%',
         backgroundColor: 'var(--sidebar-panel-bg)',
-        overflowY: 'auto',
+        overflow: 'hidden',
         height: '100%',
       }}
       onClick={(e) => e.stopPropagation()}
@@ -525,11 +525,15 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
         />
       </div>
 
-      {/* Swatches separator */}
-      <div style={{borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '2px', paddingTop: '4px'}}>
+      {/* Swatches — scrollable if not enough space */}
+      <div class="swatch-scroll" style={{borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '2px', paddingTop: '4px', flex: '1 1 0', minHeight: '60px', overflowY: 'auto'}}>
+        <style>{`
+          .swatch-scroll::-webkit-scrollbar { width: 4px; }
+          .swatch-scroll::-webkit-scrollbar-track { background: transparent; }
+          .swatch-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+          .swatch-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35); }
+        `}</style>
         {renderSwatches(recentColors, 'Recent', false)}
-      </div>
-      <div>
         {renderSwatches(favoriteColors, 'Favorites', true)}
       </div>
     </div>
