@@ -1323,10 +1323,10 @@ export function PaintOverlay({
   }
 
   function handlePointerMove(e: PointerEvent) {
-    // Update circle cursor position (relative to container for coordinate alignment with paint)
-    const container = containerRef.current;
-    if (container) {
-      const rect = container.getBoundingClientRect();
+    // Update circle cursor position (relative to overlayRef since PaintCursor renders inside it)
+    const overlay = overlayRef.current;
+    if (overlay) {
+      const rect = overlay.getBoundingClientRect();
       setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     }
 
