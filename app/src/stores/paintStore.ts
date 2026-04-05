@@ -32,7 +32,6 @@ const showSequenceOverlay = signal(false);
 const sequenceOverlayOpacity = signal(0.3);
 const isRenderingFx = signal(false);
 const showFlatPreview = signal(false);
-const activePaintMode = signal<PaintMode>('flat');
 const onionSkinEnabled = signal(false);
 const onionSkinPrevRange = signal(1);
 const onionSkinNextRange = signal(0);
@@ -100,7 +99,6 @@ export const paintStore = {
   sequenceOverlayOpacity,
   isRenderingFx,
   showFlatPreview,
-  activePaintMode,
   onionSkinEnabled,
   onionSkinPrevRange,
   onionSkinNextRange,
@@ -134,18 +132,6 @@ export const paintStore = {
       }
     }
     return 'flat';  // shapes and fills are always flat
-  },
-
-  /** Set the active paint mode and sync brush style */
-  setActivePaintMode(mode: PaintMode): void {
-    activePaintMode.value = mode;
-    // Sync brushStyle with mode
-    if (mode === 'flat') {
-      brushStyle.value = 'flat';
-    } else if (mode === 'fx-paint' && brushStyle.value === 'flat') {
-      brushStyle.value = 'watercolor';  // default FX style
-    }
-    import('../lib/paintPreferences').then(m => m.savePaintMode(mode));
   },
 
   setFrame(layerId: string, frame: number, pf: PaintFrame): void {
@@ -497,14 +483,12 @@ export const paintStore = {
     activePaintMode.value = 'flat';
     brushStyle.value = 'flat';
     brushFxParams.value = {};
-    activePaintMode.value = 'flat';
     paintBgColor.value = DEFAULT_PAINT_BG_COLOR;
     selectedStrokeIds.value = new Set();
     showSequenceOverlay.value = false;
     sequenceOverlayOpacity.value = 0.3;
     isRenderingFx.value = false;
     showFlatPreview.value = false;
-    activePaintMode.value = 'flat';
     _frameFxCache.clear();
     onionSkinEnabled.value = false;
     onionSkinPrevRange.value = 1;
@@ -540,6 +524,12 @@ export const paintStore = {
         brushFxParams.value = { ...DEFAULT_BRUSH_FX_PARAMS['watercolor'] };
       }
       // If already an FX style, keep it
+    }
+    // Auto-set background color for mode
+    if (mode === 'fx-paint') {
+      paintBgColor.value = '#ffffff';
+    } else if (mode === 'flat') {
+      paintBgColor.value = 'transparent';
     }
     // Do NOT persist global mode -- mode is per-layer, inferred from frame
   },

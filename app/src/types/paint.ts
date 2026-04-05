@@ -118,6 +118,7 @@ export type PaintElement = PaintStroke | PaintShape | PaintFill;
 /** All paint data for a single timeline frame (per D-06, D-07) */
 export interface PaintFrame {
   elements: PaintElement[];
+  bgColor?: string;  // Per-frame background color (white for FX, transparent for flat)
 }
 
 /** Default solid background color for paint layer (per D-17: transparent for flat mode) */
