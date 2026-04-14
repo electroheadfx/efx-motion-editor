@@ -356,6 +356,27 @@ Store the agent task_id. The workflow can now start discussing the next phase wh
 Skill(skill="gsd-execute-phase", args="${PHASE_NUM} --no-transition")
 ```
 
+**3c.5. Code Review and Fix**
+
+Auto-invoke code review and fix chain. Autonomous mode chains both review and fix (unlike execute-phase/quick which only suggest fix).
+
+**Config gate:**
+```bash
+CODE_REVIEW_ENABLED=$(node "/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.code_review 2>/dev/null || echo "true")
+```
+If `"false"`: display "Code review skipped (workflow.code_review=false)" and proceed to 3d.
+
+```
+Skill(skill="gsd:code-review", args="${PHASE_NUM}")
+```
+
+Parse status from REVIEW.md frontmatter. If "clean" or "skipped": proceed to 3d. If findings found: auto-invoke:
+```
+Skill(skill="gsd:code-review-fix", args="${PHASE_NUM} --auto")
+```
+
+**Error handling:** If either Skill fails, catch the error, display as non-blocking, and proceed to 3d.
+
 **3d. Post-Execution Routing**
 
 **If `INTERACTIVE` is set:** Wait for the execute agent to complete before reading verification results.
@@ -391,6 +412,8 @@ Proceed to iterate step.
 
 Read the human_verification section from VERIFICATION.md to get the count and items requiring manual testing.
 
+
+**Text mode (`workflow.text_mode: true` in config or `--text` flag):** Set `TEXT_MODE=true` if `--text` is present in `$ARGUMENTS` OR `text_mode` from init JSON is `true`. When TEXT_MODE is active, replace every `AskUserQuestion` call with a plain-text numbered list and ask the user to type their choice number. This is required for non-Claude runtimes (OpenAI Codex, Gemini CLI, etc.) where `AskUserQuestion` is not available.
 Display the items, then ask user via AskUserQuestion:
 - **question:** "Phase ${PHASE_NUM} has items needing manual verification. Validate now or continue to next phase?"
 - **options:** "Validate now" / "Continue without validation"
@@ -784,7 +807,7 @@ Decisions captured: {count} across {area_count} areas
  Completed through phase ${TO_PHASE} as requested.
  Remaining phases were not executed.
 
- Resume with: /gsd:autonomous --from ${next_incomplete_phase}
+ Resume with: /gsd-autonomous --from ${next_incomplete_phase}
 ```
 
 Proceed directly to lifecycle step (which handles partial completion — skips audit/complete/cleanup since not all phases are done). Exit cleanly.
