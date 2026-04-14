@@ -4,7 +4,10 @@
   "scripts": {
     "dev": "pnpm --filter efx-motion-editor dev",
     "build": "pnpm --filter @efxlab/efx-physic-paint build && pnpm --filter efx-motion-editor build",
-    "dev:paint": "pnpm --filter @efxlab/efx-physic-paint dev:watch"
+    "dev:paint": "pnpm --filter @efxlab/efx-physic-paint dev:watch",
+    "repomix": "npx repomix@latest --config repomix.config.json",
+    "repomix:skill": "npx repomix@latest --skill-generate",
+    "repomix:skill-remote": "npx repomix@latest --remote"
   },
   "pnpm": {
     "overrides": {

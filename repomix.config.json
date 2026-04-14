@@ -1,0 +1,27 @@
+{
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml"
+  },
+  "ignore": {
+    "customPatterns": [
+      "src-tauri/target/**",
+      "src-tauri/icons/**",
+      "dist/**",
+      "coverage/**",
+      ".planning/**",
+      ".claude/**",
+      "RESEARCH/**",
+      ".vscode/**",
+      ".github/**",
+      "**/*.woff2",
+      "**/*.icns",
+      "**/*.ico",
+      "**/*.png",
+      "pnpm-lock.yaml",
+      "package-lock.json",
+      "**/*.test.ts",
+      "**/*.test.tsx"
+    ]
+  }
+}

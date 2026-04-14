@@ -30,4 +30,4 @@ SPECS
 .claude/pnpm-lock.yaml
 .claude/projects/
 .claude/worktrees/
-.collaborator
+repomix-output.xml
