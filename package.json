@@ -5,8 +5,13 @@
     "dev": "pnpm --filter efx-motion-editor dev",
     "build": "pnpm --filter @efxlab/efx-physic-paint build && pnpm --filter efx-motion-editor build",
     "dev:paint": "pnpm --filter @efxlab/efx-physic-paint dev:watch",
-    "repomix": "npx repomix@latest --config repomix.config.json",
-    "repomix:skill": "npx repomix@latest --skill-generate",
+    "repomix": "npx repomix@latest --config repomix.config.json --compress -o repomix-output.codex.xml",
+    "repomix:check": "npx repomix@latest --config repomix.config.json --compress --top-files-len 20 --token-count-tree 1000 -o repomix-output.codex.xml",
+    "repomix:full": "npx repomix@latest --config repomix.config.json -o repomix-output.full.xml",
+    "repomix:full:split": "npx repomix@latest --config repomix.config.json --split-output 5mb -o repomix-output.full.xml",
+    "repomix:skill:claude": "npx repomix@latest --config repomix.config.json --skill-generate repomix-reference-efx-motion-editor --skill-output .claude/skills/repomix-reference-efx-motion-editor --compress --force",
+    "repomix:skill:codex": "npx repomix@latest --config repomix.config.json --skill-generate repomix-reference-efx-motion-editor --skill-output .agents/skills/repomix-reference-efx-motion-editor --compress --force",
+    "repomix:skill": "npm run repomix:skill:claude && npm run repomix:skill:codex",
     "repomix:skill-remote": "npx repomix@latest --remote"
   },
   "pnpm": {

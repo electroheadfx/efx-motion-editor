@@ -1,29 +1,64 @@
 {
   "output": {
     "filePath": "repomix-output.xml",
-    "style": "xml"
+    "style": "xml",
+    "removeComments": true,
+    "removeEmptyLines": true,
+    "truncateBase64": true
   },
   "ignore": {
     "customPatterns": [
       "src-tauri/target/**",
       "src-tauri/icons/**",
       "dist/**",
+      "**/node_modules/**",
+      "**/dist/**",
       "coverage/**",
       ".planning/**",
       ".claude/**",
+      ".codex/**",
       "RESEARCH/**",
       ".vscode/**",
       ".github/**",
       "SPECS/**",
+
       "**/*.woff2",
       "**/*.icns",
       "**/*.ico",
       "**/*.png",
       "**/*.pen",
+      "**/*.jpg",
+      "**/*.jpeg",
+      "**/*.webp",
+      "**/*.gif",
+      "**/*.svg",
+      "**/*.pdf",
+
       "pnpm-lock.yaml",
       "package-lock.json",
+      "yarn.lock",
+      "bun.lockb",
+
       "**/*.test.ts",
-      "**/*.test.tsx"
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "**/__tests__/**",
+      "**/__mocks__/**",
+
+      "**/*.snap",
+      "**/*.map",
+      "**/*.log",
+
+      "**/.next/**",
+      "**/.turbo/**",
+      "**/storybook-static/**",
+
+      "LICENSE",
+      "**/LICENSE",
+      "**/LICENSE.md",
+
+      "app/src/lib/shaders/**"
     ]
   }
 }

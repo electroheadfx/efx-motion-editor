@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "repomix-explorer": {
+      "source": "yamadashy/repomix",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/repomix-explorer/SKILL.md",
+      "computedHash": "13eb769ba1b7446d46304e02ae77ea416eb49def9b651954957808d181ec9298"
+    }
+  }
+}
