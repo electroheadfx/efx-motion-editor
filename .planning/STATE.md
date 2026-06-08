@@ -4,12 +4,12 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
 stopped_at: Phase 35 UI-SPEC approved
-last_updated: "2026-06-08T15:17:58.269Z"
-last_activity: 2026-06-08 -- Phase 35 planning complete
+last_updated: "2026-06-08T15:20:55.625Z"
+last_activity: 2026-06-08 -- Phase 35 execution started
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 3
+  total_plans: 8
   completed_plans: 3
   percent: 25
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 34 — standalone-demo-shell
+**Current focus:** Phase 35 — interactive-physics-paint-controls
 
 ## Current Position
 
-Phase: 35
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-08 -- Phase 35 planning complete
+Phase: 35 (interactive-physics-paint-controls) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 35
+Last activity: 2026-06-08 -- Phase 35 execution started
 
 Progress: [██████████] 100%
 
