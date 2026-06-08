@@ -100,7 +100,19 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
-- [ ] efx-physic-paint as standalone window with transport to editor (v0.8.0)
+- [ ] efx-physic-paint is runnable and testable as a standalone interactive physics paint app/window before editor integration — v0.8.0
+- [ ] Standalone physics paint can produce inspectable/exportable still or frame-sequence output suitable for later cached compositing in EFX Motion Editor — v0.8.0
+- [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
+
+## Current Milestone: v0.8.0 Standalone Physics Paint
+
+**Goal:** Make `packages/efx-physic-paint` runnable and testable as a standalone interactive physics paint app/window, proving the engine works before integrating it into EFX Motion Editor.
+
+**Target features:**
+- Runnable pnpm/Vite dev command for a standalone physics paint surface.
+- Live interactive canvas exposing core physics paint tools and brush controls.
+- Inspect/save/export capability for paint output or frame sequences so later editor integration can consume cached results.
+- Architecture notes for the future editor transport path from standalone paint output into EFX Motion Editor frame/layer cache.
 
 ## Latest Milestone: v0.7.0 Monorepo & Paint Enhancements (Shipped 2026-04-05)
 
@@ -212,4 +224,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-05 after Phase 33 complete — paint engine enhanced with bug fixes, 3-mode system, inline color picker, wireframe overlay, stroke animation*
+*Last updated: 2026-06-08 after starting milestone v0.8.0 — standalone physics paint milestone scoped before editor integration*

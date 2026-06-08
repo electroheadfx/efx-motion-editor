@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-status: planning_next
-stopped_at: v0.7.0 milestone complete
-last_updated: "2026-04-05T22:00:00.000Z"
-last_activity: 2026-04-05
+status: planning
+last_updated: "2026-06-08T09:11:53.951Z"
+last_activity: 2026-06-08
 progress:
   total_phases: 0
   completed_phases: 0
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Milestone v0.7.0 complete. Next: `/gsd:new-milestone` to define v0.8.0.
-Last activity: 2026-04-05
-
-Progress: [██████████] v0.7.0 SHIPPED
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-08 — Milestone v0.8.0 started
 
 ## Performance Metrics
 
@@ -46,6 +45,7 @@ Progress: [██████████] v0.7.0 SHIPPED
 All v0.7.0 decisions archived to PROJECT.md and milestones/v0.7.0-ROADMAP.md.
 
 Key decisions for v0.8.0 context:
+
 - efx-physic-paint as standalone window + transport protocol (NOT headless adapter)
 - Standalone window approach preserves physics quality and avoids O(n²) batch rendering
 
