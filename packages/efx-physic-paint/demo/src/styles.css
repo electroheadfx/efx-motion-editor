@@ -67,7 +67,8 @@ body {
   background-position: 0 0, 10px 10px;
 }
 
-.demo-error {
+.demo-error,
+.toolbar-error {
   margin: 12px 0 0;
   padding: 10px 12px;
   border: 1px solid rgba(255, 99, 99, 0.42);
@@ -75,6 +76,11 @@ body {
   color: #ff9d9d;
   background: rgba(70, 18, 18, 0.7);
   font-size: 13px;
+}
+
+.toolbar-error {
+  max-width: 280px;
+  margin: 0;
 }
 
 .tb {

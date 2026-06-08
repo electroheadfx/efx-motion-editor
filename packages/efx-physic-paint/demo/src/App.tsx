@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact'
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint'
-import { AnimationPlayer } from '../../src/animation/AnimationPlayer'
+import { AnimationPlayer } from '@efxlab/efx-physic-paint/animation'
 import { Toolbar } from './Toolbar'
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount standalone paint demo: canvas wrapper did not create a canvas'

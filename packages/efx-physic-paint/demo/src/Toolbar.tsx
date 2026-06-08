@@ -10,6 +10,24 @@ interface Props {
   animTotal?: number
 }
 
+const clampNumber = (value: number, min: number, max: number, fallback: number) => {
+  if (!Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, value))
+}
+
+function isSerializedProject(value: unknown): value is Parameters<EfxPaintEngine['load']>[0] {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      (value as { version?: unknown }).version === 2 &&
+      typeof (value as { width?: unknown }).width === 'number' &&
+      typeof (value as { height?: unknown }).height === 'number' &&
+      Array.isArray((value as { strokes?: unknown }).strokes) &&
+      typeof (value as { settings?: unknown }).settings === 'object' &&
+      (value as { settings?: unknown }).settings !== null,
+  )
+}
+
 function Slider(props: {
   label: string
   id: string
@@ -53,6 +71,7 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
   const [spreadStr, setSpreadStr] = useState(50)
   const [frameCount, setFrameCount] = useState(120)
   const [fps, setFps] = useState(24)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -142,9 +161,15 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
     const reader = new FileReader()
     reader.onload = () => {
       try {
-        engine.load(JSON.parse(reader.result as string))
+        const parsed = JSON.parse(String(reader.result ?? ''))
+        if (!isSerializedProject(parsed)) {
+          throw new Error('Invalid project file: missing serialized paint project fields')
+        }
+        engine.load(parsed)
+        setLoadError(null)
       } catch (err) {
         console.error('Failed to load project:', err)
+        setLoadError(err instanceof Error ? err.message : 'Failed to load project')
       }
     }
     reader.readAsText(file)
@@ -277,12 +302,12 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
         <label>Animation</label>
         <div class="row compact-row">
           <label>Frames</label>
-          <input type="number" value={frameCount} min={10} max={600} onInput={(e) => setFrameCount(Number((e.target as HTMLInputElement).value))} />
+          <input type="number" value={frameCount} min={10} max={600} onInput={(e) => setFrameCount(clampNumber(Number((e.target as HTMLInputElement).value), 10, 600, 120))} />
           <label>FPS</label>
-          <input type="number" value={fps} min={1} max={60} onInput={(e) => setFps(Number((e.target as HTMLInputElement).value))} />
+          <input type="number" value={fps} min={1} max={60} onInput={(e) => setFps(clampNumber(Number((e.target as HTMLInputElement).value), 1, 60, 24))} />
         </div>
         <div class="row compact-row">
-          <button onClick={isPlaying ? onStop : () => onPlay?.(frameCount, fps)}>
+          <button onClick={isPlaying ? onStop : () => onPlay?.(clampNumber(frameCount, 10, 600, 120), clampNumber(fps, 1, 60, 24))}>
             {isPlaying ? 'Stop' : 'Play'}
           </button>
           {isPlaying && <span class="v">{(animFrame ?? 0) + 1} / {animTotal ?? 0}</span>}
@@ -293,6 +318,7 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
       <button onClick={onSave}>Save</button>
       <button onClick={onLoad}>Load</button>
       <input type="file" ref={fileRef} accept=".json" style={{ display: 'none' }} onChange={onFileChange} />
+      {loadError ? <div class="toolbar-error">{loadError}</div> : null}
       <div class="sep" />
       <button onClick={() => engine.undo()}>Undo</button>
       <button onClick={() => engine.clear()}>Clear</button>

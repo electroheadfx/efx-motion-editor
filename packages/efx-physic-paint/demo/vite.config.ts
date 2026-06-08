@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@efxlab/efx-physic-paint/preact': fileURLToPath(new URL('../src/preact.tsx', import.meta.url)),
+      '@efxlab/efx-physic-paint/animation': fileURLToPath(new URL('../src/animation/index.ts', import.meta.url)),
     },
   },
 })
