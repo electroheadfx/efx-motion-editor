@@ -12,6 +12,7 @@ node_modules/
 # Build output
 app/dist/
 packages/*/dist/
+packages/*/demo/dist/
 
 # Tauri
 app/src-tauri/target/
