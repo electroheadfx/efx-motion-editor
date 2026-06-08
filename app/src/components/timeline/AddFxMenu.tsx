@@ -132,6 +132,29 @@ export function AddLayerMenu() {
     paintStore.setActivePaintMode(frameMode ?? 'flat');
   };
 
+  const handleAddPhysicPaintLayer = () => {
+    setMenuOpen(false);
+    const layerId = crypto.randomUUID();
+    const physicPaintLayer: Layer = {
+      id: layerId,
+      name: 'Physic Paint',
+      type: 'physic-paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'physic-paint', layerId } as LayerSourceData,
+      isBase: false,
+    };
+    if (targetSequenceId) {
+      sequenceStore.createFxSequence('Physic Paint', physicPaintLayer, totalFrames.peek(), { inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
+    } else {
+      sequenceStore.createFxSequence('Physic Paint', physicPaintLayer, totalFrames.peek());
+    }
+    layerStore.setSelected(layerId);
+    uiStore.selectLayer(layerId);
+  };
+
   return (
     <div class="relative" ref={menuRef}>
       <button
@@ -179,6 +202,13 @@ export function AddLayerMenu() {
           >
             <span class="w-2 h-2 rounded-sm bg-[#E91E63] shrink-0" />
             Paint / Rotopaint
+          </button>
+          <button
+            class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
+            onClick={handleAddPhysicPaintLayer}
+          >
+            <span class="w-2 h-2 rounded-sm bg-(--color-accent) shrink-0" />
+            Physic Paint
           </button>
 
           <div class="border-t border-(--color-border-subtle) my-1" />
