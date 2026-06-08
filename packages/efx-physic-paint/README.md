@@ -27,16 +27,16 @@ npm install @efxlab/efx-physic-paint
 ```ts
 import { EfxPaintEngine } from '@efxlab/efx-physic-paint'
 
-const canvas = document.querySelector('canvas')!
-const engine = new EfxPaintEngine(canvas, {
+const container = document.querySelector('#paint') as HTMLElement
+const engine = new EfxPaintEngine(container, {
   width: 1000,
   height: 650,
-  paperPath: '/img/paper_1.jpg',
+  papers: [{ name: 'canvas1', url: '/img/paper_1.jpg' }],
+  defaultPaper: 'canvas1',
 })
 
-engine.onEngineReady(() => {
-  console.log('Ready to paint')
-})
+await engine.init()
+console.log('Ready to paint')
 ```
 
 ## Preact Component
@@ -49,10 +49,10 @@ function App() {
     <EfxPaintCanvas
       width={1000}
       height={650}
-      paperPath="/img/paper_1.jpg"
-      onEngine={(engine) => {
+      papers={[{ name: 'canvas1', url: '/img/paper_1.jpg' }]}
+      defaultPaper="canvas1"
+      onEngineReady={(engine) => {
         engine.setTool('paint')
-        engine.setBrushSize(20)
       }}
     />
   )
