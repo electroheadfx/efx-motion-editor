@@ -1,6 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'preact/hooks'
 import type { EfxPaintEngine, ToolType, BgMode } from '@efxlab/efx-physic-paint'
 
+export interface ToolbarSettings {
+  tool: ToolType
+  color: string
+  size: number
+  opacity: number
+  physicsMode: 'local' | null
+}
+
 interface Props {
   engine: EfxPaintEngine
   onPlay?: (frameCount: number, fps: number) => void
@@ -8,7 +16,11 @@ interface Props {
   isPlaying?: boolean
   animFrame?: number
   animTotal?: number
+  onSettingsChange?: (settings: ToolbarSettings) => void
+  onError?: (message: string | null) => void
 }
+
+const INVALID_STATE_COPY = 'Could not load physics paint state. Choose a valid saved state JSON file.'
 
 const clampNumber = (value: number, min: number, max: number, fallback: number) => {
   if (!Number.isFinite(value)) return fallback
@@ -54,7 +66,7 @@ function Slider(props: {
   )
 }
 
-export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTotal }: Props) {
+export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTotal, onSettingsChange, onError }: Props) {
   const [tool, setToolState] = useState<ToolType>('paint')
   const [size, setSize] = useState(6)
   const [opacity, setOpacity] = useState(100)
@@ -85,6 +97,10 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
     engine.setPhysicsMode(physMode)
     engine.setLocalSpreadStrength(spreadStr)
   }, [engine])
+
+  useEffect(() => {
+    onSettingsChange?.({ tool, color, size, opacity, physicsMode: physMode })
+  }, [color, onSettingsChange, opacity, physMode, size, tool])
 
   const selectTool = useCallback((t: ToolType) => {
     setToolState(t)
@@ -145,7 +161,7 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `efx-paint-${Date.now()}.json`
+    a.download = `efx-paint-state-${Date.now()}.json`
     a.click()
     URL.revokeObjectURL(url)
   }, [engine])
@@ -163,18 +179,20 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
       try {
         const parsed = JSON.parse(String(reader.result ?? ''))
         if (!isSerializedProject(parsed)) {
-          throw new Error('Invalid project file: missing serialized paint project fields')
+          throw new Error(INVALID_STATE_COPY)
         }
         engine.load(parsed)
         setLoadError(null)
+        onError?.(null)
       } catch (err) {
         console.error('Failed to load project:', err)
-        setLoadError(err instanceof Error ? err.message : 'Failed to load project')
+        setLoadError(INVALID_STATE_COPY)
+        onError?.(INVALID_STATE_COPY)
       }
     }
     reader.readAsText(file)
     ;(e.target as HTMLInputElement).value = ''
-  }, [engine])
+  }, [engine, onError])
 
   const bgStyles: Record<string, Record<string, string>> = {
     transparent: { background: 'repeating-conic-gradient(#ccc 0% 25%,#fff 0% 50%) 0 0/8px 8px' },
@@ -315,13 +333,13 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
       </div>
       <div class="sep" />
 
-      <button onClick={onSave}>Save</button>
-      <button onClick={onLoad}>Load</button>
+      <button onClick={onSave}>Save state</button>
+      <button onClick={onLoad} title="Loading a state file replaces the current standalone canvas.">Load state</button>
       <input type="file" ref={fileRef} accept=".json" style={{ display: 'none' }} onChange={onFileChange} />
       {loadError ? <div class="toolbar-error">{loadError}</div> : null}
       <div class="sep" />
       <button onClick={() => engine.undo()}>Undo</button>
-      <button onClick={() => engine.clear()}>Clear</button>
+      <button class="destructive" title="Clears the current standalone canvas" onClick={() => engine.clear()}>Clear</button>
     </div>
   )
 }
