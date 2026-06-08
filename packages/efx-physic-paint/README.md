@@ -93,12 +93,36 @@ player.play()
 
 ## Development
 
+Run package workflows with pnpm from the repository root.
+
 ```bash
 pnpm install
-pnpm dev        # Start demo app on localhost:5173
-pnpm build      # Build library
-pnpm check      # Type check
+
+# Standalone browser demo for packages/efx-physic-paint.
+pnpm dev:paint
+
+# Package-local equivalent of the root demo command.
+pnpm --filter @efxlab/efx-physic-paint demo:dev
+
+# Build-smoke the standalone Vite demo without starting a dev server.
+pnpm --filter @efxlab/efx-physic-paint demo:build
+
+# Build the library dist and type outputs.
+pnpm --filter @efxlab/efx-physic-paint build
+
+# Type-check the package source.
+pnpm --filter @efxlab/efx-physic-paint check
 ```
+
+`pnpm dev:paint` launches the standalone physics paint browser demo for `packages/efx-physic-paint`. The demo includes the original-style toolbar/settings controls and paper texture assets ported into the package demo, but it remains a package-local standalone demo.
+
+Workflow boundaries:
+
+- root `pnpm dev` runs the app Vite frontend.
+- The app Tauri command runs the desktop app workflow from `app/`.
+- root `pnpm dev:paint` runs the standalone physics paint browser demo.
+
+The standalone demo uses the public package surface and is not an editor paint-layer integration. Vite demo/HMR is separate from the package `build`/`check` workflow and from library outputs; demo files are not package exports or `tsup` entries.
 
 ## License
 
