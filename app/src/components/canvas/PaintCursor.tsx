@@ -7,7 +7,7 @@ interface PaintCursorProps {
   visible: boolean; // only show when painting tool active and cursor is over canvas
 }
 
-export function PaintCursor({ screenX, screenY, zoom, visible }: PaintCursorProps) {
+export function PaintCursor({ screenX, screenY, visible }: PaintCursorProps) {
   if (!visible) return null;
 
   const brushSize = paintStore.brushSize.value;

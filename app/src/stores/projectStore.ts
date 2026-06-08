@@ -22,6 +22,7 @@ import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
 import {paintStore, _setPaintMarkDirtyCallback} from './paintStore';
+import {_setPhysicPaintMarkDirtyCallback} from './physicPaintStore';
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
@@ -766,3 +767,7 @@ _setAudioMarkDirtyCallback(() => projectStore.markDirty());
 // Wire paintStore's markDirty callback to projectStore
 // This ensures auto-save fires when the user paints
 _setPaintMarkDirtyCallback(() => projectStore.markDirty());
+
+// Wire physicPaintStore's markDirty callback to projectStore
+// This ensures auto-save notices rendered physics paint output changes
+_setPhysicPaintMarkDirtyCallback(() => projectStore.markDirty());

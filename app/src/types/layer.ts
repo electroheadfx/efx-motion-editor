@@ -11,7 +11,8 @@ export type LayerType =
   | 'adjustment-color-grade'
   | 'adjustment-blur'
   | 'adjustment-glsl'
-  | 'paint';
+  | 'paint'
+  | 'physic-paint';
 
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add';
 
@@ -29,7 +30,8 @@ export type LayerSourceData =
   | { type: 'adjustment-blur'; radius: number }
   | { type: 'generator-glsl'; shaderId: string; params: Record<string, number> }
   | { type: 'adjustment-glsl'; shaderId: string; params: Record<string, number> }
-  | { type: 'paint'; layerId: string };
+  | { type: 'paint'; layerId: string }
+  | { type: 'physic-paint'; layerId: string };
 
 export interface Layer {
   id: string;

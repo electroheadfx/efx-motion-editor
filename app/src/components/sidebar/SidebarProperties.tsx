@@ -1,5 +1,5 @@
 import { useEffect } from 'preact/hooks';
-import { ChevronDown, ArrowRight, Paintbrush } from 'lucide-preact';
+import { ChevronDown, Paintbrush } from 'lucide-preact';
 import { NumericInput } from '../shared/NumericInput';
 import { SectionLabel } from '../shared/SectionLabel';
 import { KeyframeNavBar } from './KeyframeNavBar';

@@ -1,0 +1,70 @@
+import { describe, expect, it } from 'vitest';
+import {
+  PHYSIC_PAINT_DEFAULT_APPLY_FRAMES,
+  PHYSIC_PAINT_MAX_APPLY_FRAMES,
+  clampPhysicPaintFrameCount,
+  isPhysicPaintApplyPayload,
+  isPhysicPaintLaunchContext,
+} from './physicPaint';
+
+const renderedFrame = {
+  frameIndex: 0,
+  appFrame: 12,
+  dataUrl: 'data:image/png;base64,aGVsbG8=',
+  width: 1000,
+  height: 650,
+};
+
+describe('physic paint payload contracts', () => {
+  it('clamps apply frame counts to the UI range', () => {
+    expect(clampPhysicPaintFrameCount(3.8)).toBe(3);
+    expect(clampPhysicPaintFrameCount(0)).toBe(1);
+    expect(clampPhysicPaintFrameCount(9999)).toBe(PHYSIC_PAINT_MAX_APPLY_FRAMES);
+    expect(clampPhysicPaintFrameCount('bad')).toBe(PHYSIC_PAINT_DEFAULT_APPLY_FRAMES);
+  });
+
+  it('accepts launch contexts with layer and frame context', () => {
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4 })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: -1 })).toBe(false);
+  });
+
+  it('accepts rendered-output still and sequence payloads', () => {
+    expect(isPhysicPaintApplyPayload({
+      kind: 'apply-canvas',
+      operationId: 'op-1',
+      layerId: 'layer-1',
+      startFrame: 12,
+      renderedFrame,
+    })).toBe(true);
+
+    expect(isPhysicPaintApplyPayload({
+      kind: 'apply-play-canvas',
+      operationId: 'op-2',
+      layerId: 'layer-1',
+      startFrame: 12,
+      frameCount: 1,
+      frames: [renderedFrame],
+    })).toBe(true);
+  });
+
+  it('rejects editable engine internals in apply payloads', () => {
+    expect(isPhysicPaintApplyPayload({
+      kind: 'apply-canvas',
+      operationId: 'op-1',
+      layerId: 'layer-1',
+      startFrame: 12,
+      renderedFrame,
+      strokes: [],
+    })).toBe(false);
+
+    expect(isPhysicPaintApplyPayload({
+      kind: 'apply-play-canvas',
+      operationId: 'op-2',
+      layerId: 'layer-1',
+      startFrame: 12,
+      frameCount: 1,
+      frames: [renderedFrame],
+      engine: {},
+    })).toBe(false);
+  });
+});
