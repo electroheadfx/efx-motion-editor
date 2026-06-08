@@ -172,7 +172,25 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
   4. User can see engine readiness, canvas/session state, active settings, and errors while testing.
   5. User can verify efx-physic-paint is an additional physics paint tool and does not replace perfect-freehand basic paint or p5.brush FX paint.
 
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+**Wave 1**
+
+- [ ] 35-01-PLAN.md — Define physic-paint layer contracts and rendered-output store.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 35-02-PLAN.md — Add editor physic-paint layer entry point and open-canvas button.
+- [ ] 35-03-PLAN.md — Upgrade standalone controls, diagnostics, and apply actions.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 35-04-PLAN.md — Wire rendered apply-back into editor state and preview.
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 35-05-PLAN.md — Polish feedback copy and run live UAT checkpoint.
+
 **UI hint**: yes
 
 ### Phase 36: Session Persistence and Output Proof
