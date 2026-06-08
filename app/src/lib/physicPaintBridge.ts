@@ -1,9 +1,18 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintLaunchContext } from '../types/physicPaint';
-import { isPhysicPaintLaunchContext } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../types/physicPaint';
+import { isPhysicPaintApplyPayload, isPhysicPaintLaunchContext } from '../types/physicPaint';
+import { layerStore } from '../stores/layerStore';
+import { physicPaintStore } from '../stores/physicPaintStore';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
+/**
+ * Standalone sends rendered-output-only PhysicPaintApplyPayload here; the app
+ * validates/applies it and returns PhysicPaintApplyResult on
+ * PHYSIC_PAINT_APPLY_RESULT_EVENT with the same operationId.
+ */
+export const PHYSIC_PAINT_APPLY_EVENT = 'physic-paint:apply';
+export const PHYSIC_PAINT_APPLY_RESULT_EVENT = 'physic-paint:apply-result';
 
 const PHYSIC_PAINT_WINDOW_LABEL = 'efx-physic-paint';
 const PHYSIC_PAINT_FALLBACK_PATH = '/physics-paint';
@@ -33,6 +42,111 @@ interface TauriWindowInstance {
 
 interface TauriEventApi {
   emitTo?: (target: string, event: string, payload?: unknown) => Promise<void>;
+  emit?: (event: string, payload?: unknown) => Promise<void>;
+  listen?: (event: string, handler: (event: { payload: unknown }) => void) => Promise<() => void>;
+}
+
+const APPLY_ERROR = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
+const deliveredOperationIds = new Set<string>();
+
+export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResult {
+  const base = resultBase(payload);
+  if (!isPhysicPaintApplyPayload(payload)) {
+    return failureResult(base, 'Invalid physics paint apply payload');
+  }
+
+  const targetLayer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find(layer => layer.id === payload.layerId);
+  if (!targetLayer) {
+    return failureResult(payload, `Unknown physics paint layer: ${payload.layerId}`);
+  }
+  if (targetLayer.type !== 'physic-paint' || targetLayer.source.type !== 'physic-paint' || targetLayer.source.layerId !== payload.layerId) {
+    return failureResult(payload, 'Target layer is not a physic-paint rendered-output layer');
+  }
+  if (!Number.isInteger(payload.startFrame) || payload.startFrame < 0) {
+    return failureResult(payload, 'Invalid physics paint start frame');
+  }
+
+  try {
+    if (deliveredOperationIds.has(payload.operationId)) {
+      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.frames.length);
+    }
+
+    const result = payload.kind === 'apply-canvas'
+      ? physicPaintStore.applyCanvas(payload)
+      : physicPaintStore.applySequence(payload);
+    if (result.ok) deliveredOperationIds.add(payload.operationId);
+    return result.ok ? result : { ...result, error: `${APPLY_ERROR} ${result.error ?? ''}`.trim() };
+  } catch (error) {
+    return failureResult(payload, `${APPLY_ERROR} ${String(error)}`);
+  }
+}
+
+export async function installPhysicPaintApplyListener(onResult?: (result: PhysicPaintApplyResult) => void): Promise<() => void> {
+  const handlePayload = (payload: unknown, source?: Pick<Window, 'postMessage'> | null) => {
+    const result = applyPhysicPaintPayload(payload);
+    onResult?.(result);
+    sendBrowserApplyResult(result, source);
+    return result;
+  };
+
+  if (isTauriRuntime()) {
+    try {
+      const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
+      const unlisten = await eventApi.listen?.(PHYSIC_PAINT_APPLY_EVENT, async (event) => {
+        const result = applyPhysicPaintPayload(event.payload);
+        onResult?.(result);
+        await eventApi.emit?.(PHYSIC_PAINT_APPLY_RESULT_EVENT, result);
+        await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_APPLY_RESULT_EVENT, result);
+        sendBrowserApplyResult(result);
+      });
+      if (unlisten) return unlisten;
+    } catch (error) {
+      console.warn('[physicPaintBridge] Falling back to browser apply listener:', error);
+    }
+  }
+
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+    return () => {};
+  }
+
+  const listener = (event: Event) => {
+    const customEvent = event as CustomEvent;
+    handlePayload(customEvent.detail, undefined);
+  };
+  window.addEventListener(PHYSIC_PAINT_APPLY_EVENT, listener);
+  return () => window.removeEventListener(PHYSIC_PAINT_APPLY_EVENT, listener);
+}
+
+function sendBrowserApplyResult(result: PhysicPaintApplyResult, source?: Pick<Window, 'postMessage'> | null): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent?.(new CustomEvent(PHYSIC_PAINT_APPLY_RESULT_EVENT, { detail: result }));
+  source?.postMessage?.({ type: PHYSIC_PAINT_APPLY_RESULT_EVENT, payload: result }, '*');
+  window.opener?.postMessage?.({ type: PHYSIC_PAINT_APPLY_RESULT_EVENT, payload: result }, '*');
+}
+
+function resultBase(payload: unknown): Pick<PhysicPaintApplyResult, 'operationId' | 'kind' | 'layerId' | 'startFrame'> {
+  const record = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+  return {
+    operationId: typeof record.operationId === 'string' ? record.operationId : 'unknown-operation',
+    kind: record.kind === 'apply-play-canvas' ? 'apply-play-canvas' : 'apply-canvas',
+    layerId: typeof record.layerId === 'string' ? record.layerId : 'unknown-layer',
+    startFrame: typeof record.startFrame === 'number' && Number.isFinite(record.startFrame) ? Math.max(0, Math.trunc(record.startFrame)) : 0,
+  };
+}
+
+function failureResult(payload: Pick<PhysicPaintApplyResult, 'operationId' | 'kind' | 'layerId' | 'startFrame'>, error: string): PhysicPaintApplyResult {
+  return { ...payload, appliedFrameCount: 0, ok: false, error };
+}
+
+function successResult(payload: PhysicPaintApplyPayload, appliedFrameCount: number): PhysicPaintApplyResult {
+  return {
+    operationId: payload.operationId,
+    kind: payload.kind,
+    layerId: payload.layerId,
+    startFrame: payload.startFrame,
+    appliedFrameCount,
+    ok: true,
+  };
 }
 
 export function createPhysicPaintLaunchContext(
