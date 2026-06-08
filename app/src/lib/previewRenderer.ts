@@ -13,6 +13,8 @@ import {renderGlslGenerator, renderGlslFxImage} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
 import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
+import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
+import type {PhysicPaintRenderedFrame} from '../types/physicPaint';
 import {projectStore} from '../stores/projectStore';
 import {applyMotionBlur} from './glMotionBlur';
 import {motionBlurStore} from '../stores/motionBlurStore';
@@ -225,6 +227,8 @@ export class PreviewRenderer {
 
       // Effective opacity: layer opacity * sequence-level fade opacity
       const effectiveOpacity = layer.opacity * sequenceOpacity;
+      // Subscribe callers that render inside signal effects to physics paint mutations.
+      void physicPaintVersion.value;
 
       if (isGeneratorLayer(layer)) {
         const blurRadius = layer.blur ?? 0;
@@ -277,6 +281,16 @@ export class PreviewRenderer {
         }
       } else if (isAdjustmentLayer(layer)) {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
+      } else if (layer.type === 'physic-paint') {
+        const renderedFrame = physicPaintStore.getFrame(layer.id, paintLookupFrame);
+        const source = renderedFrame ? this.getPhysicPaintImageSource(layer.id, paintLookupFrame, renderedFrame) : null;
+        if (source) {
+          ctx.save();
+          ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+          ctx.globalAlpha = effectiveOpacity;
+          ctx.drawImage(source, 0, 0, logicalW, logicalH);
+          ctx.restore();
+        }
       } else if (layer.type === 'paint') {
         // Always render paint layer (solid bg even when no strokes)
         const paintFrame = paintStore.getFrame(layer.id, paintLookupFrame);
@@ -475,6 +489,29 @@ export class PreviewRenderer {
       default:
         return null;
     }
+  }
+
+  private getPhysicPaintImageSource(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame): HTMLImageElement | null {
+    const cacheKey = `physic-paint:${layerId}:${frame}:${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`;
+    const cached = this.imageCache.get(cacheKey);
+    if (cached) return cached;
+    if (this.loadingImages.has(cacheKey) || this.failedImages.has(cacheKey)) return null;
+
+    this.loadingImages.add(cacheKey);
+    const img = new Image();
+    img.onload = () => {
+      this.loadingImages.delete(cacheKey);
+      this.imageCache.set(cacheKey, img);
+      this.onImageLoaded?.();
+    };
+    img.onerror = () => {
+      this.loadingImages.delete(cacheKey);
+      this.failedImages.add(cacheKey);
+      console.warn(`[PreviewRenderer] Failed to load physics paint frame: ${layerId}@${frame}`);
+      this.onImageLoaded?.();
+    };
+    img.src = renderedFrame.dataUrl;
+    return null;
   }
 
   /** Check if an image is already cached (for debug logging) */

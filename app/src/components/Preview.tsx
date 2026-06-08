@@ -4,6 +4,7 @@ import {timelineStore} from '../stores/timelineStore';
 import {sequenceStore} from '../stores/sequenceStore';
 import {blurStore} from '../stores/blurStore';
 import {paintStore} from '../stores/paintStore';
+import {physicPaintVersion} from '../stores/physicPaintStore';
 import {soloStore} from '../stores/soloStore';
 import {frameMap, crossDissolveOverlaps} from '../lib/frameMap';
 import {PreviewRenderer} from '../lib/previewRenderer';
@@ -57,6 +58,8 @@ export function Preview() {
       void blurStore.bypassBlur.value;
       // Subscribe to paint data mutations so strokes appear after drawing.
       void paintStore.paintVersion.value;
+      // Subscribe to physics paint rendered-output mutations so apply-back appears.
+      void physicPaintVersion.value;
 
       renderFromFrameMap(globalFrame);
     });
