@@ -1,8 +1,55 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
-import { createPhysicPaintLaunchContext, openPhysicPaintCanvas, PHYSIC_PAINT_LAUNCH_EVENT } from './physicPaintBridge';
+import { layerStore } from '../stores/layerStore';
+import { physicPaintStore } from '../stores/physicPaintStore';
+import type { PhysicPaintApplyPayload } from '../types/physicPaint';
+import {
+  applyPhysicPaintPayload,
+  createPhysicPaintLaunchContext,
+  installPhysicPaintApplyListener,
+  openPhysicPaintCanvas,
+  PHYSIC_PAINT_APPLY_EVENT,
+  PHYSIC_PAINT_APPLY_RESULT_EVENT,
+  PHYSIC_PAINT_LAUNCH_EVENT,
+} from './physicPaintBridge';
 
 const originalWindow = globalThis.window;
+
+const makeFrame = (frameIndex: number, appFrame: number) => ({
+  frameIndex,
+  appFrame,
+  dataUrl: `data:image/png;base64,${btoa(`frame-${frameIndex}`)}`,
+  width: 1000,
+  height: 650,
+});
+
+function applyCanvasPayload(overrides: Partial<PhysicPaintApplyPayload> = {}): PhysicPaintApplyPayload {
+  return {
+    kind: 'apply-canvas',
+    operationId: 'apply-still-1',
+    layerId: 'phys-layer-1',
+    startFrame: 8,
+    renderedFrame: makeFrame(0, 8),
+    ...overrides,
+  } as PhysicPaintApplyPayload;
+}
+
+function applySequencePayload(overrides: Partial<PhysicPaintApplyPayload> = {}): PhysicPaintApplyPayload {
+  return {
+    kind: 'apply-play-canvas',
+    operationId: 'apply-seq-1',
+    layerId: 'phys-layer-1',
+    startFrame: 10,
+    frameCount: 3,
+    frames: [makeFrame(0, 10), makeFrame(1, 11), makeFrame(2, 12)],
+    ...overrides,
+  } as PhysicPaintApplyPayload;
+}
+
+function mockLayers(layers: Layer[]): void {
+  vi.spyOn(layerStore.layers, 'peek').mockReturnValue(layers);
+  vi.spyOn(layerStore.overlayLayers, 'peek').mockReturnValue([]);
+}
 
 function physicLayer(overrides: Partial<Layer> = {}): Layer {
   return {
@@ -20,9 +67,13 @@ function physicLayer(overrides: Partial<Layer> = {}): Layer {
 
 describe('physicPaintBridge', () => {
   beforeEach(() => {
+    physicPaintStore.reset();
     Object.defineProperty(globalThis, 'window', {
       value: {
         open: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
         location: { origin: 'http://localhost:1420' },
       },
       writable: true,
@@ -83,5 +134,129 @@ describe('physicPaintBridge', () => {
 
   it('exports the launch event name for the Tauri path', () => {
     expect(PHYSIC_PAINT_LAUNCH_EVENT).toBe('physic-paint:launch');
+  });
+
+  it('applies a still payload at the start frame and returns operation-matched success', () => {
+    mockLayers([physicLayer()]);
+
+    const result = applyPhysicPaintPayload(applyCanvasPayload());
+
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'apply-still-1',
+      kind: 'apply-canvas',
+      layerId: 'phys-layer-1',
+      startFrame: 8,
+      appliedFrameCount: 1,
+    });
+    expect(physicPaintStore.getFrame('phys-layer-1', 8)?.frameIndex).toBe(0);
+    expect(physicPaintStore.getFrame('phys-layer-1', 9)).toBeNull();
+  });
+
+  it('applies a generated sequence beginning at the captured app start frame', () => {
+    mockLayers([physicLayer()]);
+
+    const result = applyPhysicPaintPayload(applySequencePayload());
+
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'apply-seq-1',
+      kind: 'apply-play-canvas',
+      layerId: 'phys-layer-1',
+      startFrame: 10,
+      appliedFrameCount: 3,
+    });
+    expect(physicPaintStore.getFrame('phys-layer-1', 10)?.frameIndex).toBe(0);
+    expect(physicPaintStore.getFrame('phys-layer-1', 11)?.frameIndex).toBe(1);
+    expect(physicPaintStore.getFrame('phys-layer-1', 12)?.frameIndex).toBe(2);
+    expect(physicPaintStore.getFrame('phys-layer-1', 13)).toBeNull();
+  });
+
+  it('fails closed for invalid payloads before mutating the rendered store', () => {
+    mockLayers([physicLayer()]);
+    const applyCanvas = vi.spyOn(physicPaintStore, 'applyCanvas');
+    const applySequence = vi.spyOn(physicPaintStore, 'applySequence');
+
+    const result = applyPhysicPaintPayload({
+      kind: 'apply-canvas',
+      operationId: 'bad-op',
+      layerId: 'phys-layer-1',
+      startFrame: 8,
+      renderedFrame: { ...makeFrame(0, 99), appFrame: 99 },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.operationId).toBe('bad-op');
+    expect(result.appliedFrameCount).toBe(0);
+    expect(physicPaintStore.getFrame('phys-layer-1', 8)).toBeNull();
+    expect(applyCanvas).not.toHaveBeenCalled();
+    expect(applySequence).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for unknown and non-physic-paint target layers', () => {
+    mockLayers([physicLayer({ id: 'paint-layer', type: 'paint', source: { type: 'paint', layerId: 'paint-layer' } })]);
+
+    const unknown = applyPhysicPaintPayload(applyCanvasPayload({ layerId: 'missing-layer' }));
+    const wrongType = applyPhysicPaintPayload(applyCanvasPayload({ layerId: 'paint-layer' }));
+
+    expect(unknown.ok).toBe(false);
+    expect(unknown.error).toContain('Unknown');
+    expect(wrongType.ok).toBe(false);
+    expect(wrongType.error).toContain('physic-paint');
+    expect(physicPaintStore.hasOutput('missing-layer')).toBe(false);
+    expect(physicPaintStore.hasOutput('paint-layer')).toBe(false);
+  });
+
+  it('rejects editable engine internals before store mutation', () => {
+    mockLayers([physicLayer()]);
+    const applyCanvas = vi.spyOn(physicPaintStore, 'applyCanvas');
+
+    const result = applyPhysicPaintPayload({ ...applyCanvasPayload(), strokes: [] });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Invalid');
+    expect(applyCanvas).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates duplicate successful delivery for the same operation id', () => {
+    mockLayers([physicLayer()]);
+    const applyCanvas = vi.spyOn(physicPaintStore, 'applyCanvas');
+    const payload = applyCanvasPayload({ operationId: 'dedupe-op' });
+
+    const first = applyPhysicPaintPayload(payload);
+    const second = applyPhysicPaintPayload(payload);
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(second.appliedFrameCount).toBe(1);
+    expect(applyCanvas).toHaveBeenCalledTimes(1);
+  });
+
+  it('installs browser fallback listener that dispatches exactly one apply-result event', async () => {
+    mockLayers([physicLayer()]);
+    let listener: ((event: CustomEvent) => void) | undefined;
+    vi.spyOn(window, 'addEventListener').mockImplementation((event, cb) => {
+      if (event === PHYSIC_PAINT_APPLY_EVENT) listener = cb as (event: CustomEvent) => void;
+    });
+    const remove = vi.spyOn(window, 'removeEventListener');
+    const dispatch = vi.spyOn(window, 'dispatchEvent').mockReturnValue(true);
+
+    const cleanup = await installPhysicPaintApplyListener();
+    listener?.(new CustomEvent(PHYSIC_PAINT_APPLY_EVENT, { detail: applyCanvasPayload({ operationId: 'listener-op' }) }));
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const resultEvent = dispatch.mock.calls[0][0] as CustomEvent;
+    expect(resultEvent.type).toBe(PHYSIC_PAINT_APPLY_RESULT_EVENT);
+    expect(resultEvent.detail).toMatchObject({
+      ok: true,
+      operationId: 'listener-op',
+      kind: 'apply-canvas',
+      layerId: 'phys-layer-1',
+      startFrame: 8,
+      appliedFrameCount: 1,
+    });
+
+    cleanup();
+    expect(remove).toHaveBeenCalledWith(PHYSIC_PAINT_APPLY_EVENT, expect.any(Function));
   });
 });
