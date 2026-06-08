@@ -9,9 +9,9 @@ Requirements for the Standalone Physics Paint milestone. This milestone proves `
 
 ### Runnable Standalone Demo
 
-- [ ] **RUN-01**: User can start standalone physics paint from the repo root with a documented pnpm command.
-- [ ] **RUN-02**: User can iterate on the standalone demo with Vite/Preact HMR while the library build remains separate.
-- [ ] **RUN-03**: User can follow README instructions that match the actual package scripts.
+- [x] **RUN-01**: User can start standalone physics paint from the repo root with a documented pnpm command.
+- [x] **RUN-02**: User can iterate on the standalone demo with Vite/Preact HMR while the library build remains separate.
+- [x] **RUN-03**: User can follow README instructions that match the actual package scripts.
 
 ### Interactive Physics Paint Testing
 
@@ -66,9 +66,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RUN-01 | Phase 34 | Pending |
-| RUN-02 | Phase 34 | Pending |
-| RUN-03 | Phase 34 | Pending |
+| RUN-01 | Phase 34 | Complete |
+| RUN-02 | Phase 34 | Complete |
+| RUN-03 | Phase 34 | Complete |
 | PAINT-01 | Phase 35 | Pending |
 | PAINT-02 | Phase 35 | Pending |
 | PAINT-03 | Phase 35 | Pending |
