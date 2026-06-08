@@ -66,27 +66,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RUN-01 | TBD | Pending |
-| RUN-02 | TBD | Pending |
-| RUN-03 | TBD | Pending |
-| PAINT-01 | TBD | Pending |
-| PAINT-02 | TBD | Pending |
-| PAINT-03 | TBD | Pending |
-| PAINT-04 | TBD | Pending |
-| DIAG-01 | TBD | Pending |
-| SAVE-01 | TBD | Pending |
-| SAVE-02 | TBD | Pending |
-| OUT-01 | TBD | Pending |
-| OUT-02 | TBD | Pending |
-| SEAM-01 | TBD | Pending |
-| SEAM-02 | TBD | Pending |
-| TEST-01 | TBD | Pending |
+| RUN-01 | Phase 34 | Pending |
+| RUN-02 | Phase 34 | Pending |
+| RUN-03 | Phase 34 | Pending |
+| PAINT-01 | Phase 35 | Pending |
+| PAINT-02 | Phase 35 | Pending |
+| PAINT-03 | Phase 35 | Pending |
+| PAINT-04 | Phase 35 | Pending |
+| DIAG-01 | Phase 35 | Pending |
+| SAVE-01 | Phase 36 | Pending |
+| SAVE-02 | Phase 36 | Pending |
+| OUT-01 | Phase 36 | Pending |
+| OUT-02 | Phase 36 | Pending |
+| SEAM-01 | Phase 37 | Pending |
+| SEAM-02 | Phase 37 | Pending |
+| TEST-01 | Phase 37 | Pending |
 
 **Coverage:**
 - v0.8.0 requirements: 15 total
-- Mapped to phases: 0
-- Unmapped: 15 ⚠
+- Mapped to phases: 15
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-08*
-*Last updated: 2026-06-08 after v0.8.0 standalone physics paint scoping*
+*Last updated: 2026-06-08 after v0.8.0 roadmap creation*

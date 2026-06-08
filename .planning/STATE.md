@@ -1,12 +1,12 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: '1.0'
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: planning
-last_updated: "2026-06-08T09:11:53.951Z"
+last_updated: "2026-06-08T00:00:00.000Z"
 last_activity: 2026-06-08
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,52 +17,72 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-05)
+See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Planning next milestone — v0.8.0 Standalone Physics Paint
+**Current focus:** Phase 34: Standalone Demo Shell
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-06-08 — Milestone v0.8.0 started
+Phase: 34 of 37 (Standalone Demo Shell)
+Plan: TBD
+Status: Ready to plan
+Last activity: 2026-06-08 — Roadmap created for v0.8.0 Standalone Physics Paint
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
-**Velocity (v0.7.0):**
+**Velocity:**
+- Total plans completed: 0 for v0.8.0
+- Average duration: N/A
+- Total execution time: 0.0 hours
 
-- Total plans completed: 23
-- Phases: 2 (26, 33) + 6 failed/abandoned (27-32)
-- Timeline: 3 days (2026-04-03 → 2026-04-05)
-- Commits: 138
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| 34. Standalone Demo Shell | 0 | TBD | - |
+| 35. Interactive Physics Paint Controls | 0 | TBD | - |
+| 36. Session Persistence and Output Proof | 0 | TBD | - |
+| 37. Future Integration Contract and Validation | 0 | TBD | - |
+
+**Recent Trend:**
+- Last 5 plans: N/A
+- Trend: N/A
+
+*Updated after each plan completion*
 
 ## Accumulated Context
 
 ### Decisions
 
-All v0.7.0 decisions archived to PROJECT.md and milestones/v0.7.0-ROADMAP.md.
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
 
-Key decisions for v0.8.0 context:
-
-- efx-physic-paint as standalone window + transport protocol (NOT headless adapter)
-- Standalone window approach preserves physics quality and avoids O(n²) batch rendering
-
-### Research Flags
-
-None — clean state for v0.8.0 planning.
+- v0.8.0: efx-physic-paint must be proven as a standalone interactive physics paint app/window before editor integration.
+- v0.8.0: Physics paint is an additional tool; it does not replace perfect-freehand basic paint or p5.brush FX paint.
+- v0.8.0: Failed headless adapter/batch replay remains excluded; future integration seam is typed/contract-only in this milestone.
 
 ### Pending Todos
 
-None.
+None yet.
 
 ### Blockers/Concerns
 
-None — milestone shipped cleanly.
+None yet.
+
+## Deferred Items
+
+Items acknowledged and carried forward from previous milestone close:
+
+| Category | Item | Status | Deferred At |
+|----------|------|--------|-------------|
+| Editor integration | EFX editor layer integration, Tauri child-window IPC, `.mce` persistence, cached compositing | Deferred to future milestone | v0.8.0 scope |
+| Architecture | Headless batch adapter replay / editor-driven renderFromStrokes / forceDryAll path | Excluded | v0.7.0 failure post-mortem |
 
 ## Session Continuity
 
-Last session: 2026-04-05
-Stopped at: v0.7.0 milestone complete
+Last session: 2026-06-08
+Stopped at: v0.8.0 roadmap created; ready to plan Phase 34
 Resume file: None

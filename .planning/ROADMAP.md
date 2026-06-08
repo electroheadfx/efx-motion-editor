@@ -2,7 +2,7 @@
 
 ## Overview
 
-EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-33) converted to a pnpm monorepo and enhanced the current paint engine with a 3-mode system, inline color picker, wireframe overlay, and stroke animation. v0.8.0 (Phase 34+) will add efx-physic-paint as a standalone window with transport to the editor.
+EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v0.1.0 (Phases 1-7) shipped the complete editing experience. v0.2.0 (Phases 8-14) extended the editor with keyframe animation, GPU blur, content overlays, transitions, and multi-format export. v0.3.0 (Phases 15-17) added audio import with waveforms and beat sync, GLSL shader effects and transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar. v0.4.0 (Phases 18-19) added After Effects-style canvas motion path editing and frame-by-frame paint/rotopaint layers with onion skinning. v0.5.0 (Phases 20-21) added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export. v0.6.0 (Phases 22-25) added stroke management, bezier path editing, and paint workflow UX improvements. v0.7.0 (Phases 26-33) converted to a pnpm monorepo and enhanced the current paint engine with a 3-mode system, inline color picker, wireframe overlay, and stroke animation. v0.8.0 (Phases 34-37) makes `packages/efx-physic-paint` runnable and testable as a standalone interactive physics paint app/window before any EFX Motion Editor integration.
 
 ## Milestones
 
@@ -13,7 +13,7 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - ✅ **v0.5.0 Motion Blur & Paint Styles** — Phases 20-21 (shipped 2025-03-26)
 - ✅ **v0.6.0 Various Enhancements** — Phases 22-25 (shipped 2026-04-03)
 - ✅ **v0.7.0 Monorepo & Paint Enhancements** — Phases 26-33 (shipped 2026-04-05)
-- 📋 **v0.8.0 Standalone Physics Paint** — Phase 34+ (planned)
+- 📋 **v0.8.0 Standalone Physics Paint** — Phases 34-37 (planned)
 
 ## Phases
 
@@ -123,7 +123,67 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 
 </details>
 
+### v0.8.0 Standalone Physics Paint (Planned)
+
+- [ ] **Phase 34: Standalone Demo Shell** - Users can launch and iterate on a package-local physics paint demo from repo-root pnpm scripts.
+- [ ] **Phase 35: Interactive Physics Paint Controls** - Users can test the real physics paint engine with live canvas input, paint/erase tools, settings, and diagnostics.
+- [ ] **Phase 36: Session Persistence and Output Proof** - Users can save, reload, inspect, and export standalone physics paint output for future cached compositing.
+- [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
+
+## Phase Details
+
+### Phase 34: Standalone Demo Shell
+**Goal**: Users can launch and iterate on a standalone physics paint demo without coupling it to the EFX Motion Editor runtime.
+**Depends on**: Phase 33
+**Requirements**: RUN-01, RUN-02, RUN-03
+**Success Criteria** (what must be TRUE):
+  1. User can start the standalone physics paint demo from the repository root with a documented pnpm command.
+  2. User can edit the package-local Vite/Preact demo and see browser HMR while keeping the library build path separate.
+  3. User can follow package README instructions that match the actual root and package scripts.
+  4. User can identify that this demo runs `packages/efx-physic-paint` standalone, not as an editor paint-layer integration.
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 35: Interactive Physics Paint Controls
+**Goal**: Users can validate efx-physic-paint as a separate live physics paint tool with observable interactive behavior and diagnostics.
+**Depends on**: Phase 34
+**Requirements**: PAINT-01, PAINT-02, PAINT-03, PAINT-04, DIAG-01
+**Success Criteria** (what must be TRUE):
+  1. User can paint on a live physics canvas using the local `@efxlab/efx-physic-paint` package.
+  2. User can switch between paint and erase tools that call the real engine APIs.
+  3. User can change core paint settings such as color, brush size, opacity, and available physics controls and see the live canvas respond.
+  4. User can see engine readiness, canvas/session state, active settings, and errors while testing.
+  5. User can verify efx-physic-paint is an additional physics paint tool and does not replace perfect-freehand basic paint or p5.brush FX paint.
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 36: Session Persistence and Output Proof
+**Goal**: Users can preserve standalone physics paint sessions and produce inspectable rendered output suitable for later cached editor compositing.
+**Depends on**: Phase 35
+**Requirements**: SAVE-01, SAVE-02, OUT-01, OUT-02
+**Success Criteria** (what must be TRUE):
+  1. User can save the current standalone paint session as JSON.
+  2. User can reload saved JSON and continue testing the same paint session.
+  3. User can export the current rendered physics paint result as a PNG or still image.
+  4. User can produce a frame-sequence or cache-manifest proof from the live engine for future editor consumption.
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 37: Future Integration Contract and Validation
+**Goal**: Developers can validate the standalone milestone and prepare the future editor seam without implementing editor integration now.
+**Depends on**: Phase 36
+**Requirements**: SEAM-01, SEAM-02, TEST-01
+**Success Criteria** (what must be TRUE):
+  1. Developer has typed contracts for future transport/cache messages without Tauri child-window IPC or editor runtime integration.
+  2. Developer has architecture notes explaining how later EFX Motion Editor integration will consume rendered standalone outputs as cached frames.
+  3. Browser/manual smoke tests prove the standalone demo runs, accepts pointer input, and exports output.
+  4. Developer can confirm no headless adapter, editor-driven `renderFromStrokes`, `forceDryAll`, `.mce` persistence, or existing paint-engine replacement was added in this milestone.
+**Plans**: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 34 → 35 → 36 → 37
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -134,3 +194,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 | 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2025-03-26 |
 | 22-25 (4 phases) | v0.6.0 | 14/14 | Complete | 2026-04-03 |
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
+| 34. Standalone Demo Shell | v0.8.0 | 0/TBD | Not started | - |
+| 35. Interactive Physics Paint Controls | v0.8.0 | 0/TBD | Not started | - |
+| 36. Session Persistence and Output Proof | v0.8.0 | 0/TBD | Not started | - |
+| 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
