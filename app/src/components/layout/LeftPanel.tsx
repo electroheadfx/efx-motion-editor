@@ -10,6 +10,7 @@ import { SidebarFxProperties } from '../sidebar/SidebarFxProperties';
 import { TransitionProperties } from '../sidebar/TransitionProperties';
 import { AudioProperties } from '../sidebar/AudioProperties';
 import { PaintProperties } from '../sidebar/PaintProperties';
+import { PhysicPaintProperties } from '../sidebar/PhysicPaintProperties';
 import { audioStore } from '../../stores/audioStore';
 import { paintStore } from '../../stores/paintStore';
 import { SequenceList } from '../sequence/SequenceList';
@@ -292,6 +293,11 @@ export function LeftPanel() {
               <SidebarFxProperties layer={selectedLayer} fxSequenceId={fxSequenceId} />
             </SidebarScrollArea>
           )}
+          {!transitionSel && selectedLayer && selectedLayer.type === 'physic-paint' && (
+            <SidebarScrollArea>
+              <PhysicPaintProperties layer={selectedLayer} />
+            </SidebarScrollArea>
+          )}
           {!transitionSel && selectedLayer && !isFx && selectedLayer.type === 'paint' && paintStore.paintMode.value && (
             <SidebarScrollArea>
               <PaintProperties layer={selectedLayer} />
@@ -302,7 +308,7 @@ export function LeftPanel() {
               <SidebarProperties layer={selectedLayer} isContentOverlay={false} />
             </SidebarScrollArea>
           )}
-          {!transitionSel && selectedLayer && !isFx && selectedLayer.type !== 'paint' && (
+          {!transitionSel && selectedLayer && !isFx && selectedLayer.type !== 'paint' && selectedLayer.type !== 'physic-paint' && (
             <SidebarScrollArea>
               <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
             </SidebarScrollArea>
