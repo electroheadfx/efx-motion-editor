@@ -113,6 +113,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - Live interactive canvas exposing core physics paint tools and brush controls.
 - Inspect/save/export capability for paint output or frame sequences so later editor integration can consume cached results.
 - Architecture notes for the future editor transport path from standalone paint output into EFX Motion Editor frame/layer cache.
+- Explicit non-replacement boundary: perfect-freehand remains the fast/direct paint path and p5.brush remains the FX brush path; efx-physic-paint is an additional physics paint tool.
 
 ## Latest Milestone: v0.7.0 Monorepo & Paint Enhancements (Shipped 2026-04-05)
 
