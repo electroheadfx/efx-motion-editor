@@ -1,13 +1,14 @@
 ---
-name: gsd:new-project
+name: gsd-new-project
 description: Initialize a new project with deep context gathering and PROJECT.md
 argument-hint: "[--auto]"
 allowed-tools:
   - Read
   - Bash
   - Write
-  - Task
+  - Agent
   - AskUserQuestion
+requires: [config, phase, plan-phase]
 ---
 <runtime_note>
 **Copilot (VS Code):** Use `vscode_askquestions` wherever this workflow calls `AskUserQuestion`. They are equivalent — `vscode_askquestions` is the VS Code Copilot implementation of the same interactive question API.
@@ -33,14 +34,14 @@ Initialize a new project through unified flow: questioning → research (optiona
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/new-project.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/questioning.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/ui-brand.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/templates/project.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/templates/requirements.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/new-project.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/questioning.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/ui-brand.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/templates/project.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/templates/requirements.md
 </execution_context>
 
 <process>
-Execute the new-project workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/new-project.md end-to-end.
+Execute end-to-end.
 Preserve all workflow gates (validation, approvals, commits, routing).
 </process>

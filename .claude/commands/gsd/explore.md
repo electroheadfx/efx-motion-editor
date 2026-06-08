@@ -1,5 +1,5 @@
 ---
-name: gsd:explore
+name: gsd-explore
 description: Socratic ideation and idea routing — think through ideas before committing to plans
 allowed-tools:
   - Read
@@ -7,7 +7,7 @@ allowed-tools:
   - Bash
   - Grep
   - Glob
-  - Task
+  - Agent
   - AskUserQuestion
 ---
 <objective>
@@ -19,9 +19,9 @@ Accepts an optional topic argument: `/gsd-explore authentication strategy`
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/explore.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/explore.md
 </execution_context>
 
 <process>
-Execute the explore workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/explore.md end-to-end.
+Execute end-to-end.
 </process>

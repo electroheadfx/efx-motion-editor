@@ -156,7 +156,7 @@ Each finding starts with:
 ### {ID}: {Title}
 ```
 
-Where ID matches: `CR-\d+` (Critical), `WR-\d+` (Warning), or `IN-\d+` (Info)
+Where ID matches: `CR-\d+` or `BL-\d+` (Critical-tier-equivalent), `WR-\d+` (Warning), or `IN-\d+` (Info)
 
 **Required Fields:**
 
@@ -390,7 +390,7 @@ Read `./AGENTS.md` and check for `.codex/skills/` or `.agents/skills/` (as descr
 
 For each finding, extract:
 - `id`: Finding identifier (e.g., CR-01, WR-03, IN-12)
-- `severity`: Critical (CR-*), Warning (WR-*), Info (IN-*)
+- `severity`: Critical (CR-* or BL-*), Warning (WR-*), Info (IN-*)
 - `title`: Issue title from `### ` heading
 - `file`: Primary file path from **File:** line
 - `files`: ALL file paths referenced in finding (including in Fix section) — for multi-file fixes
@@ -399,11 +399,11 @@ For each finding, extract:
 - `fix`: Full fix content from **Fix:** section (may be multi-line, may contain code fences)
 
 **2. Filter by fix_scope:**
-- If `fix_scope == "critical_warning"`: include only CR-* and WR-* findings
-- If `fix_scope == "all"`: include CR-*, WR-*, and IN-* findings
+- If `fix_scope == "critical_warning"`: include only CR-*, BL-*, and WR-* findings
+- If `fix_scope == "all"`: include CR-*, BL-*, WR-*, and IN-* findings
 
 **3. Sort findings by severity:**
-- Critical first, then Warning, then Info
+- Critical (CR-* and BL-*) first, then Warning, then Info
 - Within same severity, maintain document order
 
 **4. Count findings in scope:**
@@ -457,9 +457,9 @@ For each finding in sorted order:
 
 **If verification passed:**
 
-Use `gsd-sdk query commit` with conventional format (message first, then every staged file path):
+Use `gsd-tools query commit` with conventional format (message first, then every staged file path):
 ```bash
-gsd-sdk query commit \
+gsd-tools query commit \
   "fix({padded_phase}): {finding_id} {short_description}" \
   --files \
   {all_modified_files}
@@ -471,7 +471,7 @@ Examples:
 
 **Multiple files:** List ALL modified files after the message (space-separated):
 ```bash
-gsd-sdk query commit "fix(02): CR-01 ..." --files \
+gsd-tools query commit "fix(02): CR-01 ..." --files \
   src/api/auth.ts src/types/user.ts tests/auth.test.ts
 ```
 

@@ -1,5 +1,5 @@
 ---
-name: gsd:map-codebase
+name: gsd-map-codebase
 description: Analyze codebase with parallel mapper agents to produce .planning/codebase/ documents
 argument-hint: "[--fast [--focus tech|arch|quality|concerns]] [--query <term>|status|diff|refresh] [area]"
 allowed-tools:
@@ -8,7 +8,8 @@ allowed-tools:
   - Glob
   - Grep
   - Write
-  - Task
+  - Agent
+requires: [config, new-project, plan-phase]
 ---
 
 <objective>
@@ -20,7 +21,7 @@ Output: .planning/codebase/ folder with 7 structured documents about the codebas
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/map-codebase.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/map-codebase.md
 </execution_context>
 
 <flags>

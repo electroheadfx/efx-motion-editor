@@ -1,6 +1,6 @@
 ---
 type: prompt
-name: gsd:forensics
+name: gsd-forensics
 description: Post-mortem investigation for failed GSD workflows — diagnoses what went wrong.
 argument-hint: "[problem description]"
 allowed-tools:
@@ -9,6 +9,7 @@ allowed-tools:
   - Bash
   - Grep
   - Glob
+requires: [phase, progress, update]
 ---
 
 <objective>
@@ -19,7 +20,7 @@ Output: Forensic report saved to `.planning/forensics/`, presented inline, with 
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/forensics.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/forensics.md
 </execution_context>
 
 <context>
@@ -36,7 +37,7 @@ Output: Forensic report saved to `.planning/forensics/`, presented inline, with 
 </context>
 
 <process>
-Read and execute the forensics workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/forensics.md end-to-end.
+Execute end-to-end.
 </process>
 
 <success_criteria>

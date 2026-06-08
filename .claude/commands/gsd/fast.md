@@ -1,5 +1,5 @@
 ---
-name: gsd:fast
+name: gsd-fast
 description: Execute a trivial task inline — no subagents, no planning overhead
 argument-hint: "[task description]"
 allowed-tools:
@@ -9,6 +9,7 @@ allowed-tools:
   - Bash
   - Grep
   - Glob
+requires: [config, quick]
 ---
 
 <objective>
@@ -22,9 +23,9 @@ you could describe in one sentence and execute in under 2 minutes.
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/fast.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/fast.md
 </execution_context>
 
 <process>
-Execute the fast workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/fast.md end-to-end.
+Execute end-to-end.
 </process>

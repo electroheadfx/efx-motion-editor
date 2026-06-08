@@ -1,5 +1,5 @@
 ---
-name: gsd:health
+name: gsd-health
 description: Diagnose planning directory health and optionally repair issues
 argument-hint: "[--repair] [--context]"
 allowed-tools:
@@ -7,11 +7,12 @@ allowed-tools:
   - Bash
   - Write
   - AskUserQuestion
+requires: [thread]
 ---
 <objective>
 Validate `.planning/` directory integrity and report actionable issues. Checks for missing files, invalid configurations, inconsistent state, and orphaned plans.
 
-`--context` runs an orthogonal check: the running session's context utilization. The workflow asks for the model's tokensUsed + contextWindow, calls `gsd-sdk query validate.context`, and renders one of three states:
+`--context` runs an orthogonal check: the running session's context utilization. The workflow asks for the model's tokensUsed + contextWindow, calls `gsd-tools query validate.context`, and renders one of three states:
 
 | Utilization | State    | Action                                                |
 |-------------|----------|-------------------------------------------------------|
@@ -21,10 +22,10 @@ Validate `.planning/` directory integrity and report actionable issues. Checks f
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/health.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/health.md
 </execution_context>
 
 <process>
-Execute the health workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/health.md end-to-end.
+Execute end-to-end.
 Parse `--repair` and `--context` flags from arguments and pass to workflow.
 </process>

@@ -1,13 +1,14 @@
 ---
-name: gsd:review
+name: gsd-review
 description: Request cross-AI peer review of phase plans from external AI CLIs
-argument-hint: "--phase N [--gemini] [--claude] [--codex] [--opencode] [--qwen] [--cursor] [--all]"
+argument-hint: "--phase N [--gemini] [--claude] [--codex] [--opencode] [--qwen] [--cursor] [--agy] [--all]"
 allowed-tools:
   - Read
   - Write
   - Bash
   - Glob
   - Grep
+requires: [config, phase, plan-phase]
 ---
 
 <objective>
@@ -19,7 +20,7 @@ planning via /gsd-plan-phase --reviews.
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/review.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/review.md
 </execution_context>
 
 <context>
@@ -32,9 +33,10 @@ Phase number: extracted from $ARGUMENTS (required)
 - `--opencode` — Include OpenCode review (uses model from user's OpenCode config)
 - `--qwen` — Include Qwen Code review (Alibaba Qwen models)
 - `--cursor` — Include Cursor agent review
+- `--agy` / `--antigravity` — Include Antigravity CLI review
 - `--all` — Include all available CLIs
 </context>
 
 <process>
-Execute the review workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/review.md end-to-end.
+Execute end-to-end.
 </process>

@@ -1,5 +1,5 @@
 ---
-name: gsd:phase
+name: gsd-phase
 description: CRUD for phases in ROADMAP.md — add, insert, remove, or edit phases
 argument-hint: "[--insert | --remove | --edit] <phase-name-or-number>"
 allowed-tools:
@@ -31,10 +31,10 @@ Mode routing:
 </routing>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/add-phase.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/insert-phase.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/remove-phase.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/edit-phase.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/add-phase.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/insert-phase.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/remove-phase.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/edit-phase.md
 </execution_context>
 
 <context>

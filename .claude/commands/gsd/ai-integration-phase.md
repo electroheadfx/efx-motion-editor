@@ -1,5 +1,5 @@
 ---
-name: gsd:ai-integration-phase
+name: gsd-ai-integration-phase
 description: Generate an AI-SPEC.md design contract for phases that involve building AI systems.
 argument-hint: "[phase number]"
 allowed-tools:
@@ -8,11 +8,12 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - Task
+  - Agent
   - WebFetch
   - WebSearch
   - AskUserQuestion
   - mcp__context7__*
+requires: [phase]
 ---
 <objective>
 Create an AI design contract (AI-SPEC.md) for a phase involving AI system development.
@@ -21,9 +22,9 @@ Flow: Select Framework → Research Docs → Research Domain → Design Eval Str
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/ai-integration-phase.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/ai-frameworks.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/ai-evals.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/ai-integration-phase.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/ai-frameworks.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/ai-evals.md
 </execution_context>
 
 <context>
@@ -31,6 +32,6 @@ Phase number: $ARGUMENTS — optional, auto-detects next unplanned phase if omit
 </context>
 
 <process>
-Execute @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/ai-integration-phase.md end-to-end.
+Execute end-to-end.
 Preserve all workflow gates.
 </process>

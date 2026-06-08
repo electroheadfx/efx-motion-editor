@@ -1,5 +1,5 @@
 ---
-name: gsd:extract-learnings
+name: gsd-extract-learnings
 description: Extract decisions, lessons, patterns, and surprises from completed phase artifacts
 argument-hint: <phase-number>
 allowed-tools:
@@ -10,13 +10,14 @@ allowed-tools:
   - Glob
   - Agent
 type: prompt
+requires: [phase]
 ---
 <objective>
 Extract structured learnings from completed phase artifacts (PLAN.md, SUMMARY.md, VERIFICATION.md, UAT.md, STATE.md) into a LEARNINGS.md file that captures decisions, lessons learned, patterns discovered, and surprises encountered.
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/extract_learnings.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/extract-learnings.md
 </execution_context>
 
-Execute the extract-learnings workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/extract_learnings.md end-to-end.
+Execute the extract-learnings workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/extract-learnings.md end-to-end.

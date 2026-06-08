@@ -1,5 +1,5 @@
 ---
-name: gsd:inbox
+name: gsd-inbox
 description: Triage and review open GitHub issues and PRs against project templates and contribution guidelines.
 argument-hint: "[--issues] [--prs] [--label] [--close-incomplete] [--repo owner/repo]"
 allowed-tools:
@@ -9,6 +9,7 @@ allowed-tools:
   - Grep
   - Glob
   - AskUserQuestion
+requires: [review]
 ---
 <objective>
 One-command triage of the project's GitHub inbox. Fetches all open issues and PRs,
@@ -20,7 +21,7 @@ and optionally applies labels or closes non-compliant submissions.
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/inbox.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/inbox.md
 </execution_context>
 
 <context>
@@ -33,6 +34,6 @@ and optionally applies labels or closes non-compliant submissions.
 </context>
 
 <process>
-Execute the inbox workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/inbox.md end-to-end.
+Execute end-to-end.
 Parse flags from arguments and pass to workflow.
 </process>

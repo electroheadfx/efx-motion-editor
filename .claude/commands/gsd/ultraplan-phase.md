@@ -1,5 +1,5 @@
 ---
-name: gsd:ultraplan-phase
+name: gsd-ultraplan-phase
 description: "[BETA] Offload plan phase to Claude Code's ultraplan cloud; review in browser and import back."
 argument-hint: "[phase-number]"
 allowed-tools:
@@ -7,6 +7,7 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
+requires: [import, phase, plan-phase]
 ---
 
 <objective>
@@ -20,8 +21,8 @@ Requirements: Claude Code v2.1.91+, claude.ai account, GitHub repository.
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/ultraplan-phase.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/ui-brand.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/ultraplan-phase.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/ui-brand.md
 </execution_context>
 
 <context>

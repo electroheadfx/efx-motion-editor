@@ -1,5 +1,5 @@
 ---
-name: gsd:eval-review
+name: gsd-eval-review
 description: Audit an executed AI phase's evaluation coverage and produce an EVAL-REVIEW.md remediation plan.
 argument-hint: "[phase number]"
 allowed-tools:
@@ -8,8 +8,9 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - Task
+  - Agent
   - AskUserQuestion
+requires: [phase]
 ---
 <objective>
 Conduct a retroactive evaluation coverage audit of a completed AI phase.
@@ -18,8 +19,8 @@ Produces EVAL-REVIEW.md with score, verdict, gaps, and remediation plan.
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/eval-review.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/ai-evals.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/eval-review.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/ai-evals.md
 </execution_context>
 
 <context>
@@ -27,6 +28,6 @@ Phase: $ARGUMENTS — optional, defaults to last completed phase.
 </context>
 
 <process>
-Execute @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/eval-review.md end-to-end.
+Execute end-to-end.
 Preserve all workflow gates.
 </process>

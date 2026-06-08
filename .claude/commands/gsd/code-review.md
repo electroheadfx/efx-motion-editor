@@ -1,5 +1,5 @@
 ---
-name: gsd:code-review
+name: gsd-code-review
 description: Review source files changed during a phase for bugs, security issues, and code quality problems
 argument-hint: "<phase-number> [--depth=quick|standard|deep] [--files file1,file2,...] [--fix [--all] [--auto]]"
 allowed-tools:
@@ -8,7 +8,8 @@ allowed-tools:
   - Glob
   - Grep
   - Write
-  - Task
+  - Agent
+requires: [config, import, phase, quick, review]
 ---
 <objective>
 Review source files changed during a phase for bugs, security vulnerabilities, and code quality problems.
@@ -30,7 +31,7 @@ Output: {padded_phase}-REVIEW.md in phase directory + inline summary of findings
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/code-review.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/code-review.md
 </execution_context>
 
 <context>
@@ -40,13 +41,13 @@ Optional flags parsed from $ARGUMENTS:
 - `--depth=VALUE` — Depth override (quick|standard|deep). If provided, overrides workflow.code_review_depth config.
 - `--files=file1,file2,...` — Explicit file list override. Has highest precedence for file scoping per D-08. When provided, workflow skips SUMMARY.md extraction and git diff fallback entirely.
 
-Context files (CLAUDE.md, SUMMARY.md, phase state) are resolved inside the workflow via `gsd-sdk query init.phase-op` and delegated to agent via `<files_to_read>` blocks.
+Context files (CLAUDE.md, SUMMARY.md, phase state) are resolved inside the workflow via `gsd-tools query init.phase-op` and delegated to agent via `<files_to_read>` blocks.
 </context>
 
 <process>
 This command is a thin dispatch layer. It parses arguments and delegates to the workflow.
 
-Execute the code-review workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/code-review.md end-to-end.
+Execute end-to-end.
 
 The workflow (not this command) enforces these gates:
 - Phase validation (before config gate)

@@ -27,7 +27,7 @@ Multi-select workaround:
 - Codex has no `multiSelect`. Use sequential single-selects, or present a numbered freeform list asking the user to enter comma-separated numbers.
 
 Execute mode fallback:
-- When `request_user_input` is rejected or unavailable, you MUST stop and present the questions as a plain-text numbered list, then wait for the user's reply. Do NOT pick a default and continue (#3018).
+- When `request_user_input` is rejected or unavailable, activate TEXT_MODE: append `--text` to `{{GSD_ARGS}}` so the workflow's built-in text-mode branching takes over. Present every `AskUserQuestion` call as a plain-text numbered list, then stop and wait for the user's reply. Do NOT pick a default and continue (#3018 / #3808).
 - You may only proceed without a user answer when one of these is true:
   (a) the invocation included an explicit non-interactive flag (`--auto` or `--all`),
   (b) the user has explicitly approved a specific default for this question, or
@@ -39,16 +39,28 @@ GSD workflows use `Task(...)` (Claude Code syntax). Translate to Codex collabora
 
 Direct mapping:
 - `Task(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
+- `Agent(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Task(model="...")` → omit. `spawn_agent` has no inline `model` parameter;
   GSD embeds the resolved per-agent model directly into each agent's `.toml`
   at install time so `model_overrides` from `.planning/config.json` and
   `~/.gsd/defaults.json` are honored automatically by Codex's agent router.
+- Resolved `reasoning_effort="low|medium|high|xhigh"` (`xhigh` is a GSD/Codex tier, not a generic runtime enum) → pass `reasoning_effort`
+  to `spawn_agent` when the runtime/tool supports it. Omit missing, empty,
+  inherited, or unsupported values; do not invent one-off effort literals in
+  workflow prose.
 - `fork_context: false` by default — GSD agents load their own context via `<files_to_read>` blocks
+- `Task(isolation="worktree")` / `Agent(isolation="worktree")` → no direct Codex mapping.
+  Codex `spawn_agent` does not create or bind a git worktree automatically.
+  Workflows that require this isolation must fail closed or use an explicit
+  manual worktree protocol before spawning (#3360).
 
 Spawn restriction:
 - Codex restricts `spawn_agent` to cases where the user has explicitly
   requested sub-agents. When automatic spawning is not permitted, do the
   work inline in the current agent rather than attempting to force a spawn.
+- In some Codex sessions, multi-agent tooling can be deferred. If `spawn_agent`
+  is not currently visible, discover tools first via `tool_search` before
+  defaulting to inline execution.
 
 Parallel fan-out:
 - Spawn multiple agents → collect agent IDs → `wait(ids)` for all to complete
@@ -62,15 +74,14 @@ Result parsing:
 Import external plan files into the GSD planning system with conflict detection against PROJECT.md decisions.
 
 - **--from**: Import an external plan file, detect conflicts, write as GSD PLAN.md, validate via gsd-plan-checker.
-
-Future: `--prd` mode for PRD extraction is planned for a follow-up PR.
+- **--from-gsd2**: Reverse-migrate a GSD-2 project (`.gsd/` directory) back to GSD v1 (`.planning/`) format. Runs `gsd-tools.cjs from-gsd2`. Pass `--path <dir>` to migrate a project at a different path.
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.codex/get-shit-done/workflows/import.md
-@/Users/lmarques/Dev/efx-motion-editor/.codex/get-shit-done/references/ui-brand.md
-@/Users/lmarques/Dev/efx-motion-editor/.codex/get-shit-done/references/gate-prompts.md
-@/Users/lmarques/Dev/efx-motion-editor/.codex/get-shit-done/references/doc-conflict-engine.md
+@/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/workflows/import.md
+@/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/references/ui-brand.md
+@/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/references/gate-prompts.md
+@/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/references/doc-conflict-engine.md
 </execution_context>
 
 <context>
@@ -78,5 +89,10 @@ Future: `--prd` mode for PRD extraction is planned for a follow-up PR.
 </context>
 
 <process>
-Execute the import workflow end-to-end.
+If `--from-gsd2` is in {{GSD_ARGS}}:
+Run: `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" from-gsd2`
+Pass `--path <dir>` if provided. Present the migration result to the user.
+Stop here (do not run the standard import workflow).
+
+Otherwise, execute the import workflow end-to-end.
 </process>

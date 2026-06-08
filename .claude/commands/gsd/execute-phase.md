@@ -1,5 +1,5 @@
 ---
-name: gsd:execute-phase
+name: gsd-execute-phase
 description: Execute all plans in a phase with wave-based parallelization
 argument-hint: "<phase-number> [--wave N] [--gaps-only] [--interactive] [--tdd]"
 allowed-tools:
@@ -9,9 +9,10 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
-  - Task
+  - Agent
   - TodoWrite
   - AskUserQuestion
+requires: [phase, verify-work]
 ---
 <objective>
 Execute all plans in a phase using wave-based parallel execution.
@@ -31,8 +32,8 @@ Context budget: ~15% orchestrator, 100% fresh per subagent.
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/execute-phase.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/ui-brand.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/execute-phase.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/ui-brand.md
 </execution_context>
 
 <runtime_note>
@@ -54,10 +55,10 @@ Phase: $ARGUMENTS
 - If none of these tokens appear, run the standard full-phase execution flow with no flag-specific filtering
 - Do not infer that a flag is active just because it is documented in this prompt
 
-Context files are resolved inside the workflow via `gsd-sdk query init.execute-phase` and per-subagent `<files_to_read>` blocks.
+Context files are resolved inside the workflow via `gsd-tools query init.execute-phase` and per-subagent `<files_to_read>` blocks.
 </context>
 
 <process>
-Execute the execute-phase workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/execute-phase.md end-to-end.
+Execute end-to-end.
 Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
 </process>

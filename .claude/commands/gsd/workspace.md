@@ -1,5 +1,5 @@
 ---
-name: gsd:workspace
+name: gsd-workspace
 description: Manage GSD workspaces — create, list, or remove isolated workspace environments
 argument-hint: "[--new | --list | --remove] [name]"
 allowed-tools:
@@ -29,10 +29,10 @@ Mode routing:
 </routing>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/new-workspace.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/list-workspaces.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/remove-workspace.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/ui-brand.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/new-workspace.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/list-workspaces.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/remove-workspace.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/ui-brand.md
 </execution_context>
 
 <context>

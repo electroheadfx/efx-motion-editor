@@ -1,6 +1,6 @@
 ---
 type: prompt
-name: gsd:milestone-summary
+name: gsd-milestone-summary
 description: Generate a comprehensive project summary from milestone artifacts for team onboarding and review
 argument-hint: "[version]"
 allowed-tools:
@@ -19,7 +19,7 @@ Output: MILESTONE_SUMMARY written to `.planning/reports/`, presented inline, opt
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/milestone-summary.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/milestone-summary.md
 </execution_context>
 
 <context>
@@ -37,7 +37,7 @@ Output: MILESTONE_SUMMARY written to `.planning/reports/`, presented inline, opt
 </context>
 
 <process>
-Read and execute the milestone-summary workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/milestone-summary.md end-to-end.
+Execute end-to-end.
 </process>
 
 <success_criteria>

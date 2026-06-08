@@ -1,6 +1,6 @@
 ---
 type: prompt
-name: gsd:audit-fix
+name: gsd-audit-fix
 description: Autonomous audit-to-fix pipeline — find issues, classify, fix, test, commit
 argument-hint: "--source <audit-uat> [--severity <medium|high|all>] [--max N] [--dry-run]"
 allowed-tools:
@@ -12,6 +12,7 @@ allowed-tools:
   - Glob
   - Agent
   - AskUserQuestion
+requires: [audit-uat]
 ---
 <objective>
 Run an audit, classify findings as auto-fixable vs manual-only, then autonomously fix
@@ -25,9 +26,9 @@ Flags:
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/audit-fix.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/audit-fix.md
 </execution_context>
 
 <process>
-Execute the audit-fix workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/audit-fix.md end-to-end.
+Execute end-to-end.
 </process>

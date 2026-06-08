@@ -27,7 +27,7 @@ Multi-select workaround:
 - Codex has no `multiSelect`. Use sequential single-selects, or present a numbered freeform list asking the user to enter comma-separated numbers.
 
 Execute mode fallback:
-- When `request_user_input` is rejected or unavailable, you MUST stop and present the questions as a plain-text numbered list, then wait for the user's reply. Do NOT pick a default and continue (#3018).
+- When `request_user_input` is rejected or unavailable, activate TEXT_MODE: append `--text` to `{{GSD_ARGS}}` so the workflow's built-in text-mode branching takes over. Present every `AskUserQuestion` call as a plain-text numbered list, then stop and wait for the user's reply. Do NOT pick a default and continue (#3018 / #3808).
 - You may only proceed without a user answer when one of these is true:
   (a) the invocation included an explicit non-interactive flag (`--auto` or `--all`),
   (b) the user has explicitly approved a specific default for this question, or
@@ -39,16 +39,28 @@ GSD workflows use `Task(...)` (Claude Code syntax). Translate to Codex collabora
 
 Direct mapping:
 - `Task(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
+- `Agent(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Task(model="...")` → omit. `spawn_agent` has no inline `model` parameter;
   GSD embeds the resolved per-agent model directly into each agent's `.toml`
   at install time so `model_overrides` from `.planning/config.json` and
   `~/.gsd/defaults.json` are honored automatically by Codex's agent router.
+- Resolved `reasoning_effort="low|medium|high|xhigh"` (`xhigh` is a GSD/Codex tier, not a generic runtime enum) → pass `reasoning_effort`
+  to `spawn_agent` when the runtime/tool supports it. Omit missing, empty,
+  inherited, or unsupported values; do not invent one-off effort literals in
+  workflow prose.
 - `fork_context: false` by default — GSD agents load their own context via `<files_to_read>` blocks
+- `Task(isolation="worktree")` / `Agent(isolation="worktree")` → no direct Codex mapping.
+  Codex `spawn_agent` does not create or bind a git worktree automatically.
+  Workflows that require this isolation must fail closed or use an explicit
+  manual worktree protocol before spawning (#3360).
 
 Spawn restriction:
 - Codex restricts `spawn_agent` to cases where the user has explicitly
   requested sub-agents. When automatic spawning is not permitted, do the
   work inline in the current agent rather than attempting to force a spawn.
+- In some Codex sessions, multi-agent tooling can be deferred. If `spawn_agent`
+  is not currently visible, discover tools first via `tool_search` before
+  defaulting to inline execution.
 
 Parallel fan-out:
 - Spawn multiple agents → collect agent IDs → `wait(ids)` for all to complete
@@ -70,21 +82,23 @@ Three modes:
 
 <flags>
 - **--next**: Detect current project state and automatically invoke the next logical GSD workflow step. Scans all prior phases for incomplete work before routing. `--next --force` bypasses safety gates.
+- **--next --auto**: Like `--next`, but after the determined step completes, automatically re-invokes `$gsd-progress --next --auto` to continue chaining steps until completion or a blocking decision. Enables hands-free plan→execute→verify→complete progression.
 - **--do "..."**: Smart dispatcher — match freeform intent to the best GSD command using routing rules, confirm the match, then hand off.
 - **--forensic**: Run 6-check integrity audit after the standard progress report.
 - **(no flag)**: Standard progress check + intelligent routing (Routes A through F).
 </flags>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.codex/get-shit-done/workflows/progress.md
-@/Users/lmarques/Dev/efx-motion-editor/.codex/get-shit-done/workflows/next.md
-@/Users/lmarques/Dev/efx-motion-editor/.codex/get-shit-done/workflows/do.md
-@/Users/lmarques/Dev/efx-motion-editor/.codex/get-shit-done/references/ui-brand.md
+@/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/workflows/progress.md
+@/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/workflows/next.md
+@/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/workflows/do.md
+@/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/references/ui-brand.md
 </execution_context>
 
 <process>
-Parse the first token of {{GSD_ARGS}}:
-- If it is `--next`: strip the flag, execute the next workflow (passing remaining args e.g. --force).
+Arguments provided: "{{GSD_ARGS}}"
+Parse the first token from the provided arguments:
+- If it is `--next`: strip the flag, execute the next workflow (passing remaining args e.g. --force, --auto).
 - If it is `--do`: strip the flag, pass remainder as freeform intent to the do workflow.
 - Otherwise: execute the progress workflow end-to-end (pass --forensic through if present).
 

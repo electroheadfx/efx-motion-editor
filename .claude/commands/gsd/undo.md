@@ -1,5 +1,5 @@
 ---
-name: gsd:undo
+name: gsd-undo
 description: "Safe git revert. Roll back phase or plan commits using the phase manifest with dependency checks."
 argument-hint: "--last N | --phase NN | --plan NN-MM"
 allowed-tools:
@@ -8,6 +8,7 @@ allowed-tools:
   - Glob
   - Grep
   - AskUserQuestion
+requires: [phase]
 ---
 
 <objective>
@@ -20,9 +21,9 @@ Three modes:
 </objective>
 
 <execution_context>
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/undo.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/ui-brand.md
-@/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/references/gate-prompts.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/workflows/undo.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/ui-brand.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/gate-prompts.md
 </execution_context>
 
 <context>
@@ -30,5 +31,5 @@ $ARGUMENTS
 </context>
 
 <process>
-Execute the undo workflow from @/Users/lmarques/Dev/efx-motion-editor/.claude/get-shit-done/workflows/undo.md end-to-end.
+Execute end-to-end.
 </process>
