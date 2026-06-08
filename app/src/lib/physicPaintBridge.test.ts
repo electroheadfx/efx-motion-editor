@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
 import { createPhysicPaintLaunchContext, openPhysicPaintCanvas, PHYSIC_PAINT_LAUNCH_EVENT } from './physicPaintBridge';
+
+const originalWindow = globalThis.window;
 
 function physicLayer(overrides: Partial<Layer> = {}): Layer {
   return {
@@ -17,6 +19,26 @@ function physicLayer(overrides: Partial<Layer> = {}): Layer {
 }
 
 describe('physicPaintBridge', () => {
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
+
   it('creates launch context with layer, frame, operation, and canvas dimensions', () => {
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 12, { width: 1920, height: 1080 });
 
