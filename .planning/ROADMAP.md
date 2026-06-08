@@ -218,7 +218,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 20-21 (2 phases) | v0.5.0 | 8/8 | Complete | 2025-03-26 |
 | 22-25 (4 phases) | v0.6.0 | 14/14 | Complete | 2026-04-03 |
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
-| 34. Standalone Demo Shell | v0.8.0 | 3/3 | Complete   | 2026-06-08 |
+| 34. Standalone Demo Shell | v0.8.0 | 3/3 | Complete    | 2026-06-08 |
 | 35. Interactive Physics Paint Controls | v0.8.0 | 0/TBD | Not started | - |
 | 36. Session Persistence and Output Proof | v0.8.0 | 0/TBD | Not started | - |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
