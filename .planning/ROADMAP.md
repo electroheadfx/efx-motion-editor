@@ -180,8 +180,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 35-02-PLAN.md — Add editor physic-paint layer entry point and open-canvas button.
-- [ ] 35-03-PLAN.md — Upgrade standalone controls, diagnostics, and apply actions.
+- [x] 35-02-PLAN.md — Add editor physic-paint layer entry point and open-canvas button.
+- [x] 35-03-PLAN.md — Upgrade standalone controls, diagnostics, and apply actions.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -237,6 +237,6 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 22-25 (4 phases) | v0.6.0 | 14/14 | Complete | 2026-04-03 |
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34. Standalone Demo Shell | v0.8.0 | 3/3 | Complete    | 2026-06-08 |
-| 35. Interactive Physics Paint Controls | v0.8.0 | 1/5 | In Progress|  |
+| 35. Interactive Physics Paint Controls | v0.8.0 | 3/5 | In Progress|  |
 | 36. Session Persistence and Output Proof | v0.8.0 | 0/TBD | Not started | - |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
