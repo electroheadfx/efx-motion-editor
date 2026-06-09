@@ -53,13 +53,19 @@ type DeferredStrokeFinalization = {
   points: PenPoint[]
   color: string | null
   opts: BrushOpts
+  hasPenInput: boolean
 }
 
 type StrokeApplicationOptions = {
   startNaturalDrying?: boolean
+  hasPenInput?: boolean
 }
 
-const STROKE_FINALIZATION_QUIET_MS = 120
+const STROKE_FINALIZATION_INPUT_GRACE_MS = 600
+const STROKE_FINALIZATION_RETRY_MS = 80
+const STROKE_FINALIZATION_DRAIN_MS = 16
+const STROKE_FINALIZATION_MAX_DEFER_MS = 1400
+const ACTIVE_DRAWING_QUEUED_PREVIEW_LIMIT = 3
 
 /**
  * EfxPaintEngine — the facade class that ties all modules together.
@@ -124,6 +130,7 @@ export class EfxPaintEngine {
   private undoStack: UndoSnapshot[] = []
   private pendingStrokeFinalizations: DeferredStrokeFinalization[] = []
   private strokeFinalizationScheduled: boolean = false
+  private strokeFinalizationQueuedAt: number = 0
 
   // --- Pointer State ---
   private rawPts: PenPoint[] = []
@@ -599,6 +606,7 @@ export class EfxPaintEngine {
   clear(): void {
     this.pendingStrokeFinalizations = []
     this.strokeFinalizationScheduled = false
+    this.strokeFinalizationQueuedAt = 0
     this.stopNaturalDrying()
     this.allActions = []
     this.undoStack = []
@@ -630,6 +638,7 @@ export class EfxPaintEngine {
   load(json: SerializedProject): void {
     this.pendingStrokeFinalizations = []
     this.strokeFinalizationScheduled = false
+    this.strokeFinalizationQueuedAt = 0
     this.loadProjectData(json)
   }
 
@@ -641,6 +650,7 @@ export class EfxPaintEngine {
     // Clear intervals
     this.pendingStrokeFinalizations = []
     this.strokeFinalizationScheduled = false
+    this.strokeFinalizationQueuedAt = 0
     this.stopNaturalDrying()
     if (this.physicsInterval !== null) {
       clearInterval(this.physicsInterval)
@@ -727,7 +737,7 @@ export class EfxPaintEngine {
       // Slice points to the requested count (progressive rendering per D-02)
       const pts = pointCount >= a.points.length ? a.points : a.points.slice(0, pointCount)
       const completeStroke = pointCount >= a.points.length
-      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false })
+      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a) })
       if (completeStroke) this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
     }
 
@@ -755,12 +765,16 @@ export class EfxPaintEngine {
     compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn)
 
     // Draw queued stroke outlines until their full render finalizes.
-    for (const pending of this.pendingStrokeFinalizations) {
+    const queuedPreviews = this.state.drawing
+      ? this.pendingStrokeFinalizations.slice(-ACTIVE_DRAWING_QUEUED_PREVIEW_LIMIT)
+      : this.pendingStrokeFinalizations
+    for (const pending of queuedPreviews) {
       drawStrokePreview(displayCtx, {
         pts: pending.points,
         color: pending.tool === 'paint' && pending.color ? pending.color : pending.tool === 'erase' ? '#ff4444' : '#888888',
         radius: pending.opts.size,
         opacity: pending.tool === 'paint' ? pending.opts.opacity / 100 : 0.3,
+        hasPenInput: pending.hasPenInput,
       })
     }
 
@@ -799,23 +813,27 @@ export class EfxPaintEngine {
     if (this.undoStack.length > 25) this.undoStack.shift()
   }
 
-  private scheduleStrokeFinalization(): void {
+  private scheduleStrokeFinalization(delayMs: number = STROKE_FINALIZATION_INPUT_GRACE_MS): void {
     if (this.strokeFinalizationScheduled || this.pendingStrokeFinalizations.length === 0) return
     this.strokeFinalizationScheduled = true
 
-    const runWhenQuiet = () => {
+    window.setTimeout(() => {
       this.strokeFinalizationScheduled = false
       if (this.destroyed) return
-      const quietFor = performance.now() - this.lastPointerInputTime
-      if (this.state.drawing || quietFor < STROKE_FINALIZATION_QUIET_MS) {
-        this.scheduleStrokeFinalization()
+      const now = performance.now()
+      const inputGraceElapsed = now - this.lastPointerInputTime >= STROKE_FINALIZATION_INPUT_GRACE_MS
+      const maxDeferElapsed = now - this.strokeFinalizationQueuedAt >= STROKE_FINALIZATION_MAX_DEFER_MS
+      if (this.state.drawing || (!inputGraceElapsed && !maxDeferElapsed)) {
+        this.scheduleStrokeFinalization(STROKE_FINALIZATION_RETRY_MS)
         return
       }
       this.finalizeNextPendingStroke()
-      if (this.pendingStrokeFinalizations.length > 0) this.scheduleStrokeFinalization()
-    }
-
-    window.setTimeout(runWhenQuiet, STROKE_FINALIZATION_QUIET_MS)
+      if (this.pendingStrokeFinalizations.length > 0) {
+        this.scheduleStrokeFinalization(STROKE_FINALIZATION_DRAIN_MS)
+      } else {
+        this.strokeFinalizationQueuedAt = 0
+      }
+    }, delayMs)
   }
 
   private flushPendingStrokeFinalizations(): void {
@@ -823,6 +841,7 @@ export class EfxPaintEngine {
       this.finalizeNextPendingStroke()
     }
     this.strokeFinalizationScheduled = false
+    this.strokeFinalizationQueuedAt = 0
   }
 
   private finalizeNextPendingStroke(): void {
@@ -896,8 +915,12 @@ export class EfxPaintEngine {
     forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
   }
 
-  private applyFinalizedStroke({ tool, points, color, opts }: DeferredStrokeFinalization): void {
-    this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true })
+  private applyFinalizedStroke({ tool, points, color, opts, hasPenInput }: DeferredStrokeFinalization): void {
+    this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true, hasPenInput })
+  }
+
+  private strokeHasPenInput(stroke: PaintStroke): boolean {
+    return stroke.hasPenInput ?? stroke.points.some(p => p.p !== 0.5)
   }
 
   private applyStrokeToEngine(
@@ -910,6 +933,7 @@ export class EfxPaintEngine {
     if (points.length === 0) return
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
+    const hasPenInput = options.hasPenInput ?? this.state.hasPenInput
 
     if (tool === 'paint' && color) {
       this.prepareWetLayerForStroke(points[0], opts)
@@ -919,7 +943,7 @@ export class EfxPaintEngine {
         this.drying.dryPos, this.lastStrokeMask,
         this.paperHeight,
         this.width, this.height,
-        this.state.hasPenInput, this.state.wetPaper,
+        hasPenInput, this.state.wetPaper,
         this.state.embossStrength, this.state.embossStack,
         opts.waterAmount / 100,
         sampleHFn,
@@ -993,7 +1017,7 @@ export class EfxPaintEngine {
         points, opts,
         this.dualCanvas.dryCtx, this.wet,
         this.width, this.height,
-        this.state.hasPenInput,
+        hasPenInput,
         this.state.embossStrength,
         this.paperHeight,
         this.state.bgMode,
@@ -1034,13 +1058,13 @@ export class EfxPaintEngine {
   }
 
   private onPointerMove(e: PointerEvent): void {
-    this.lastPointerInputTime = performance.now()
     // Always update cursor position
     const r = this.dualCanvas.dryCanvas.getBoundingClientRect()
     this.cursorX = (e.clientX - r.left) * (this.width / r.width)
     this.cursorY = (e.clientY - r.top) * (this.height / r.height)
 
     if (!this.state.drawing) return
+    this.lastPointerInputTime = performance.now()
     e.preventDefault()
 
     // Handle coalesced events for smooth strokes
@@ -1060,6 +1084,7 @@ export class EfxPaintEngine {
         color: this.state.tool === 'paint' ? this.color : this.state.tool === 'erase' ? '#ff4444' : '#888888',
         radius: this.state.brushOpts.size,
         opacity: this.state.tool === 'paint' ? this.state.brushOpts.opacity / 100 : 0.3,
+        hasPenInput: this.state.hasPenInput,
       }
     }
   }
@@ -1078,6 +1103,7 @@ export class EfxPaintEngine {
 
     const opts = { ...this.state.brushOpts }
     const points = this.rawPts.map(p => ({ x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: p.spd }))
+    const hasPenInput = this.state.hasPenInput
     const colorlessTools: string[] = ['erase']
     const color = colorlessTools.includes(this.state.tool) ? null : this.color
 
@@ -1087,13 +1113,16 @@ export class EfxPaintEngine {
       color,
       params: opts,
       timestamp: Date.now(),
+      hasPenInput,
     })
 
+    if (this.pendingStrokeFinalizations.length === 0) this.strokeFinalizationQueuedAt = performance.now()
     this.pendingStrokeFinalizations.push({
       tool: this.state.tool,
       points,
       color,
       opts,
+      hasPenInput,
     })
     this.rawPts = []
     this.scheduleStrokeFinalization()
@@ -1158,7 +1187,7 @@ export class EfxPaintEngine {
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 
     for (const a of this.allActions) {
-      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false })
+      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a) })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
     }
 
@@ -1203,6 +1232,7 @@ export class EfxPaintEngine {
         color: s.color,
         params: { ...s.params },
         time: s.timestamp,
+        hasPenInput: this.strokeHasPenInput(s),
         diffusionFrames: s.diffusionFrames || 0,
       })),
       settings: {
@@ -1235,6 +1265,7 @@ export class EfxPaintEngine {
       color: s.color,
       params: s.params as unknown as BrushOpts,
       timestamp: s.time,
+      hasPenInput: s.hasPenInput,
       diffusionFrames: s.diffusionFrames || 0,
     }))
 

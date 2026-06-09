@@ -178,6 +178,7 @@ export interface StrokePreview {
   color: string
   radius: number
   opacity: number
+  hasPenInput?: boolean
 }
 
 /**
@@ -198,7 +199,7 @@ export function drawStrokePreview(
   const curve = resample(sm, Math.max(3, preview.radius * 0.25))
   if (curve.length < 3) return
 
-  const base = ribbon(curve, preview.radius, 0.8)
+  const base = ribbon(curve, preview.radius, 0.8, preview.hasPenInput ?? false)
   if (!base || base.length < 3) return
 
   displayCtx.save()

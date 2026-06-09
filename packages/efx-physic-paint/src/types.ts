@@ -163,6 +163,7 @@ export interface PaintStroke {
   color: string | null      // '#rrggbb' or null
   params: BrushOpts
   timestamp: number
+  hasPenInput?: boolean
   diffusionFrames?: number  // v2 format: frames of diffusion since last stroke
 }
 
@@ -178,6 +179,7 @@ export interface SerializedProject {
     color: string | null
     params: Record<string, number>
     time: number
+    hasPenInput?: boolean
     diffusionFrames?: number
   }>
   settings: {
