@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
+import { projectStore } from '../stores/projectStore';
+import { sequenceStore } from '../stores/sequenceStore';
 import type { PhysicPaintApplyPayload } from '../types/physicPaint';
 import {
   applyPhysicPaintPayload,
@@ -82,7 +84,12 @@ describe('physicPaintBridge', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.doUnmock('@tauri-apps/api/core');
+    vi.resetModules();
+    projectStore.closeProject();
     Object.defineProperty(globalThis, 'window', {
       value: originalWindow,
       writable: true,
@@ -134,6 +141,85 @@ describe('physicPaintBridge', () => {
 
   it('exports the launch event name for the Tauri path', () => {
     expect(PHYSIC_PAINT_LAUNCH_EVENT).toBe('physic-paint:launch');
+  });
+
+  it('does not fall back to browser open when native Tauri window command fails', async () => {
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        ...window,
+        open: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+    vi.doMock('@tauri-apps/api/core', () => ({
+      isTauri: () => true,
+      invoke: vi.fn().mockRejectedValue(new Error('permission denied')),
+    }));
+    const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+
+    const result = await openCanvas({ layer: physicLayer(), frame: 4 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('permission denied');
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it('opens Tauri physics paint through the native command', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      label: 'efx-physic-paint',
+      visibleBefore: false,
+      minimizedBefore: false,
+      visible: true,
+      minimized: false,
+    });
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        ...window,
+        open: vi.fn(),
+        location: { origin: 'http://localhost:5173' },
+      },
+      writable: true,
+      configurable: true,
+    });
+    vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
+    const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+
+    const result = await openCanvas({ layer: physicLayer(), frame: 4 });
+
+    expect(result.ok).toBe(true);
+    expect(invoke).toHaveBeenCalledWith('open_physics_paint_window', {
+      context: expect.objectContaining({ layerId: 'phys-layer-1', startFrame: 4 }),
+    });
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it('reports native launch failure when the Tauri window remains hidden', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      label: 'efx-physic-paint',
+      visibleBefore: false,
+      minimizedBefore: false,
+      visible: false,
+      minimized: false,
+    });
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        ...window,
+        open: vi.fn(),
+        location: { origin: 'http://localhost:5173' },
+      },
+      writable: true,
+      configurable: true,
+    });
+    vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
+    const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+
+    const result = await openCanvas({ layer: physicLayer(), frame: 4 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('did not become visible');
+    expect(window.open).not.toHaveBeenCalled();
   });
 
   it('applies a still payload at the start frame and returns operation-matched success', () => {
@@ -205,6 +291,44 @@ describe('physicPaintBridge', () => {
     expect(wrongType.error).toContain('physic-paint');
     expect(physicPaintStore.hasOutput('missing-layer')).toBe(false);
     expect(physicPaintStore.hasOutput('paint-layer')).toBe(false);
+  });
+
+  it('persists and hydrates physic-paint source layer ids for apply validation', () => {
+    const layer = physicLayer({ id: 'hydrated-phys-layer', source: { type: 'physic-paint', layerId: 'hydrated-phys-layer' } });
+    sequenceStore.add({
+      id: 'seq-physic-paint',
+      kind: 'fx',
+      name: 'Physics paint sequence',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 24,
+    });
+
+    const serialized = projectStore.buildMceProject();
+    const serializedLayer = serialized.sequences[0].layers?.[0];
+    expect(serializedLayer?.source).toMatchObject({
+      type: 'physic-paint',
+      layer_id: 'hydrated-phys-layer',
+    });
+
+    projectStore.closeProject();
+    projectStore.hydrateFromMce(serialized, '/tmp/efx-physic-paint-test');
+    const hydratedLayer = sequenceStore.sequences.peek()[0]?.layers[0];
+    expect(hydratedLayer?.source).toEqual({ type: 'physic-paint', layerId: 'hydrated-phys-layer' });
+
+    mockLayers([hydratedLayer as Layer]);
+    const result = applyPhysicPaintPayload(applyCanvasPayload({ layerId: 'hydrated-phys-layer' }));
+
+    expect(result.ok).toBe(true);
+    expect(result).toMatchObject({
+      operationId: 'apply-still-1',
+      layerId: 'hydrated-phys-layer',
+      appliedFrameCount: 1,
+    });
   });
 
   it('rejects editable engine internals before store mutation', () => {

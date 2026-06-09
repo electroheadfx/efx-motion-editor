@@ -115,7 +115,7 @@ export interface MceLayerSource {
   // GLSL shaders (generator-glsl / adjustment-glsl)
   shader_id?: string;
   params?: Record<string, number>;
-  // Paint layer
+  // Paint and physic-paint layer identity
   layer_id?: string;
 }
 
