@@ -55,6 +55,10 @@ type DeferredStrokeFinalization = {
   opts: BrushOpts
 }
 
+type StrokeApplicationOptions = {
+  startNaturalDrying?: boolean
+}
+
 const STROKE_FINALIZATION_QUIET_MS = 120
 
 /**
@@ -659,6 +663,7 @@ export class EfxPaintEngine {
 
   /** Get the display canvas (overlay with wet compositing) */
   getDisplayCanvas(): HTMLCanvasElement {
+    this.renderVisibleWetLayer()
     return this.dualCanvas.displayCanvas
   }
 
@@ -670,6 +675,8 @@ export class EfxPaintEngine {
    * makes remaining wet paint look faded on transparent app layers.
    */
   exportCompositeCanvas(): HTMLCanvasElement {
+    this.flushPendingStrokeFinalizations()
+    this.renderVisibleWetLayer()
     const canvas = document.createElement('canvas')
     canvas.width = this.width
     canvas.height = this.height
@@ -712,59 +719,19 @@ export class EfxPaintEngine {
   /** Render strokes up to specified point counts — used by AnimationPlayer for progressive frame rendering (per D-02) */
   renderPartialStrokes(strokeData: Array<{ stroke: PaintStroke; pointCount: number }>): void {
     this.flushPendingStrokeFinalizations()
-    // Clear canvas to background (clearRect needed for transparent bg — drawImage won't erase existing pixels)
-    this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
-    this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
-    this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
-    clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
-    this.fluid.u.fill(0); this.fluid.v.fill(0)
-    this.fluid.u0.fill(0); this.fluid.v0.fill(0)
-    this.fluid.p.fill(0); this.fluid.div.fill(0)
+    this.resetReplaySurface(true)
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 
     for (const { stroke: a, pointCount } of strokeData) {
       // Slice points to the requested count (progressive rendering per D-02)
       const pts = pointCount >= a.points.length ? a.points : a.points.slice(0, pointCount)
-      const opts = a.params
-      const color = a.color
-
-      if (a.tool === 'paint' && color) {
-        renderPaintStroke(
-          pts, color, opts,
-          this.dualCanvas.dryCtx, this.wet, this.savedWet,
-          this.drying.dryPos, this.lastStrokeMask,
-          this.paperHeight,
-          this.width, this.height,
-          this.state.hasPenInput, this.state.wetPaper,
-          this.state.embossStrength, this.state.embossStack,
-          opts.waterAmount / 100,
-          sampleHFn,
-        )
-      } else if (a.tool === 'erase') {
-        applyEraseStroke(
-          pts, opts,
-          this.dualCanvas.dryCtx, this.wet,
-          this.width, this.height,
-          this.state.hasPenInput,
-          this.state.embossStrength,
-          this.paperHeight,
-          this.state.bgMode,
-          this.bgData,
-        )
-      }
-      if (pointCount >= a.points.length) {
-        this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
-      }
-
-      // Force dry after each stroke (same pattern as redrawAll — no physics ticks)
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+      const completeStroke = pointCount >= a.points.length
+      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false })
+      if (completeStroke) this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
     }
 
-    // Composite wet layer for display (so getDisplayCanvas shows current frame)
-    const displayCtx = this.dualCanvas.displayCtx
-    displayCtx.clearRect(0, 0, this.width, this.height)
-    compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn)
+    this.renderVisibleWetLayer()
   }
 
   // ================================================================
@@ -866,6 +833,30 @@ export class EfxPaintEngine {
     this.applyFinalizedStroke(pending)
   }
 
+  private renderVisibleWetLayer(): void {
+    const displayCtx = this.dualCanvas.displayCtx
+    displayCtx.clearRect(0, 0, this.width, this.height)
+    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
+    compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn)
+  }
+
+  private resetReplaySurface(usePutImageData: boolean = false): void {
+    this.stopNaturalDrying()
+    this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
+    if (usePutImageData) {
+      const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
+      this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
+    } else {
+      this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
+      this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
+    }
+    clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
+    this.fluid.u.fill(0); this.fluid.v.fill(0)
+    this.fluid.u0.fill(0); this.fluid.v0.fill(0)
+    this.fluid.p.fill(0); this.fluid.div.fill(0)
+    this.renderVisibleWetLayer()
+  }
+
   private prepareWetLayerForStroke(pt: PenPoint, opts: BrushOpts): void {
     if (this.state.physicsMode === 'local') {
       const keepR = (opts.size || 24) * 3 + 40
@@ -906,6 +897,18 @@ export class EfxPaintEngine {
   }
 
   private applyFinalizedStroke({ tool, points, color, opts }: DeferredStrokeFinalization): void {
+    this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true })
+  }
+
+  private applyStrokeToEngine(
+    tool: ToolType,
+    points: PenPoint[],
+    color: string | null,
+    opts: BrushOpts,
+    options: StrokeApplicationOptions = {},
+  ): void {
+    if (points.length === 0) return
+
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 
     if (tool === 'paint' && color) {
@@ -981,7 +984,7 @@ export class EfxPaintEngine {
       // Bake to canvas — in local mode, keep wet for stroke interaction
       if (this.state.physicsMode !== 'local') {
         forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
-      } else {
+      } else if (options.startNaturalDrying) {
         // Start natural drying timer (research: paint dries over time via evaporation)
         this.startNaturalDrying()
       }
@@ -1150,49 +1153,16 @@ export class EfxPaintEngine {
   // ================================================================
 
   private redrawAll(): void {
-    this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
-    this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
-    clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
-    this.fluid.u.fill(0); this.fluid.v.fill(0)
-    this.fluid.u0.fill(0); this.fluid.v0.fill(0)
-    this.fluid.p.fill(0); this.fluid.div.fill(0)
+    this.resetReplaySurface()
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 
     for (const a of this.allActions) {
-      const pts = a.points
-      const opts = a.params
-      const color = a.color
-
-      if (a.tool === 'paint' && color) {
-        renderPaintStroke(
-          pts, color, opts,
-          this.dualCanvas.dryCtx, this.wet, this.savedWet,
-          this.drying.dryPos, this.lastStrokeMask,
-          this.paperHeight,
-          this.width, this.height,
-          this.state.hasPenInput, this.state.wetPaper,
-          this.state.embossStrength, this.state.embossStack,
-          opts.waterAmount / 100,
-          sampleHFn,
-        )
-      } else if (a.tool === 'erase') {
-        applyEraseStroke(
-          pts, opts,
-          this.dualCanvas.dryCtx, this.wet,
-          this.width, this.height,
-          this.state.hasPenInput,
-          this.state.embossStrength,
-          this.paperHeight,
-          this.state.bgMode,
-          this.bgData,
-        )
-      }
+      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
-
-      // Force dry after each stroke (replicates drying between strokes)
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
     }
+
+    this.renderVisibleWetLayer()
   }
 
   private replayDiffusion(frames: number, sampleHFn: (x: number, y: number) => number): void {
@@ -1208,80 +1178,6 @@ export class EfxPaintEngine {
         i, sampleHFn, this.paperHeight,
       )
     }
-  }
-
-  /** Animated stroke replay — renders strokes one by one with yields for visual feedback.
-   *  Used by load() so the user sees each stroke appear. */
-  private replayAnimated(strokes: PaintStroke[]): void {
-    this.allActions = strokes
-
-    // Clear canvas
-    this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
-    const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
-    this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
-    clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
-    this.fluid.u.fill(0); this.fluid.v.fill(0)
-    this.fluid.u0.fill(0); this.fluid.v0.fill(0)
-    this.fluid.p.fill(0); this.fluid.div.fill(0)
-
-    if (strokes.length === 0) return
-
-    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
-    let idx = 0
-
-    const replayNext = () => {
-      if (idx >= strokes.length || this.destroyed) return
-
-      const a = strokes[idx]
-      idx++
-
-      if (a.tool === 'paint' && a.color) {
-        renderPaintStroke(
-          a.points, a.color, a.params,
-          this.dualCanvas.dryCtx, this.wet, this.savedWet,
-          this.drying.dryPos, this.lastStrokeMask,
-          this.paperHeight,
-          this.width, this.height,
-          this.state.hasPenInput, this.state.wetPaper,
-          this.state.embossStrength, this.state.embossStack,
-          a.params.waterAmount / 100,
-          sampleHFn,
-        )
-        // Save to savedWet (matches live painting flow in onPointerUp)
-        for (let i = 0; i < this.size; i++) {
-          if (this.wet.alpha[i] > 1) {
-            if (this.wet.alpha[i] > this.savedWet.alpha[i]) {
-              const blend = this.wet.alpha[i] / (this.savedWet.alpha[i] + this.wet.alpha[i])
-              this.savedWet.r[i] = lerp(this.savedWet.r[i], this.wet.r[i], blend)
-              this.savedWet.g[i] = lerp(this.savedWet.g[i], this.wet.g[i], blend)
-              this.savedWet.b[i] = lerp(this.savedWet.b[i], this.wet.b[i], blend)
-              this.savedWet.alpha[i] = Math.max(this.savedWet.alpha[i], this.wet.alpha[i])
-            }
-            const existingOp = this.savedWet.strokeOpacity[i]
-            const newOp = this.wet.strokeOpacity[i]
-            this.savedWet.strokeOpacity[i] = existingOp + newOp * (1 - existingOp)
-          }
-        }
-      } else if (a.tool === 'erase') {
-        applyEraseStroke(
-          a.points, a.params,
-          this.dualCanvas.dryCtx, this.wet,
-          this.width, this.height,
-          this.state.hasPenInput,
-          this.state.embossStrength,
-          this.paperHeight,
-          this.state.bgMode,
-          this.bgData,
-        )
-      }
-
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
-
-      // Yield for canvas repaint, then next stroke
-      setTimeout(replayNext, 1)
-    }
-
-    replayNext()
   }
 
   // ================================================================
