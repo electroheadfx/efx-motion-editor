@@ -81,9 +81,20 @@ body {
   line-height: 1.5;
 }
 
-.toolbar-error {
+.toolbar-error,
+.toolbar-status {
   max-width: 280px;
   margin: 0;
+}
+
+.toolbar-status {
+  padding: 8px 12px;
+  border: 1px solid rgba(106, 182, 255, 0.42);
+  border-radius: 8px;
+  color: #9ed0ff;
+  background: rgba(18, 40, 70, 0.7);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .tb {

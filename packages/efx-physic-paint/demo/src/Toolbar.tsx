@@ -21,6 +21,9 @@ interface Props {
 }
 
 const INVALID_STATE_COPY = 'Could not load physics paint state. Choose a valid saved state JSON file.'
+const SAVE_CANCELLED_COPY = 'Save state cancelled.'
+const SAVE_SUCCESS_COPY = 'Physics paint editable state saved.'
+const SAVE_ERROR_COPY = 'Could not save physics paint state. Choose a writable JSON destination.'
 
 const clampNumber = (value: number, min: number, max: number, fallback: number) => {
   if (!Number.isFinite(value)) return fallback
@@ -84,6 +87,7 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
   const [frameCount, setFrameCount] = useState(120)
   const [fps, setFps] = useState(24)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -155,16 +159,57 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
     engine.stopPhysics()
   }, [engine])
 
-  const onSave = useCallback(() => {
+  const onSave = useCallback(async () => {
     const data = engine.save()
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `efx-paint-state-${Date.now()}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [engine])
+    const serialized = JSON.stringify(data, null, 2)
+    const filename = `efx-paint-state-${Date.now()}.json`
+    setSaveFeedback(null)
+
+    try {
+      if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
+        const dialogModule = '@tauri-apps/plugin-dialog'
+        const fsModule = '@tauri-apps/plugin-fs'
+        const [{ save }, { writeTextFile }] = await Promise.all([
+          import(/* @vite-ignore */ dialogModule) as Promise<{ save: (options: { defaultPath: string; filters: { name: string; extensions: string[] }[] }) => Promise<string | null> }>,
+          import(/* @vite-ignore */ fsModule) as Promise<{ writeTextFile: (path: string, contents: string) => Promise<void> }>,
+        ])
+        const selectedPath = await save({
+          defaultPath: filename,
+          filters: [{ name: 'Physics paint state', extensions: ['json'] }],
+        })
+        if (!selectedPath) {
+          setSaveFeedback({ type: 'info', message: SAVE_CANCELLED_COPY })
+          onError?.(null)
+          return
+        }
+        await writeTextFile(selectedPath, serialized)
+        setSaveFeedback({ type: 'success', message: SAVE_SUCCESS_COPY })
+        onError?.(null)
+        return
+      }
+    } catch (err) {
+      console.error('Failed to save physics paint state:', err)
+      setSaveFeedback({ type: 'error', message: SAVE_ERROR_COPY })
+      onError?.(SAVE_ERROR_COPY)
+      return
+    }
+
+    try {
+      const blob = new Blob([serialized], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      setSaveFeedback({ type: 'success', message: SAVE_SUCCESS_COPY })
+      onError?.(null)
+    } catch (err) {
+      console.error('Failed to save physics paint state:', err)
+      setSaveFeedback({ type: 'error', message: SAVE_ERROR_COPY })
+      onError?.(SAVE_ERROR_COPY)
+    }
+  }, [engine, onError])
 
   const onLoad = useCallback(() => {
     fileRef.current?.click()
@@ -336,6 +381,7 @@ export function Toolbar({ engine, onPlay, onStop, isPlaying, animFrame, animTota
       <button onClick={onSave}>Save state</button>
       <button onClick={onLoad} title="Loading a state file replaces the current standalone canvas.">Load state</button>
       <input type="file" ref={fileRef} accept=".json" style={{ display: 'none' }} onChange={onFileChange} />
+      {saveFeedback ? <div class={saveFeedback.type === 'error' ? 'toolbar-error' : 'toolbar-status'}>{saveFeedback.message}</div> : null}
       {loadError ? <div class="toolbar-error">{loadError}</div> : null}
       <div class="sep" />
       <button onClick={() => engine.undo()}>Undo</button>

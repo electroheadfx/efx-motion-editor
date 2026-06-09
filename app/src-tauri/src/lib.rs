@@ -10,6 +10,113 @@ use percent_encoding::percent_decode_str;
 use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::Emitter;
 
+#[derive(serde::Deserialize, serde::Serialize)]
+struct PhysicsPaintLaunchContext {
+    #[serde(rename = "operationId")]
+    operation_id: String,
+    #[serde(rename = "layerId")]
+    layer_id: String,
+    #[serde(rename = "layerName")]
+    layer_name: Option<String>,
+    #[serde(rename = "startFrame")]
+    start_frame: u32,
+    width: Option<u32>,
+    height: Option<u32>,
+}
+
+#[derive(serde::Serialize)]
+struct PhysicsPaintWindowLaunchResult {
+    label: String,
+    #[serde(rename = "visibleBefore")]
+    visible_before: bool,
+    #[serde(rename = "minimizedBefore")]
+    minimized_before: bool,
+    visible: bool,
+    minimized: bool,
+}
+
+#[tauri::command]
+async fn open_physics_paint_window(app: tauri::AppHandle, context: PhysicsPaintLaunchContext) -> Result<PhysicsPaintWindowLaunchResult, String> {
+    use tauri::{Emitter, Manager};
+
+    let label = "efx-physic-paint";
+    println!(
+        "[physics-paint] launch requested label={} layer={} frame={}",
+        label, context.layer_id, context.start_frame
+    );
+
+    let url = physics_paint_url(&context);
+    let window = if let Some(window) = app.get_webview_window(label) {
+        window
+    } else {
+        tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(url.into()))
+            .title("EFX Physics Paint")
+            .inner_size(1280.0, 900.0)
+            .min_inner_size(960.0, 640.0)
+            .resizable(true)
+            .visible(true)
+            .focused(true)
+            .center()
+            .build()
+            .map_err(|error| format!("Could not create physics paint window: {error}"))?
+    };
+
+    let visible_before = window.is_visible().map_err(|error| format!("Could not inspect physics paint window visibility: {error}"))?;
+    let minimized_before = window.is_minimized().map_err(|error| format!("Could not inspect physics paint window minimized state: {error}"))?;
+    println!(
+        "[physics-paint] window ready label={} visible_before={} minimized_before={}",
+        label, visible_before, minimized_before
+    );
+
+    if minimized_before {
+        window.unminimize().map_err(|error| format!("Could not unminimize physics paint window: {error}"))?;
+    }
+    window.show().map_err(|error| format!("Could not show physics paint window: {error}"))?;
+    window.center().map_err(|error| format!("Could not center physics paint window: {error}"))?;
+    window.set_focus().map_err(|error| format!("Could not focus physics paint window: {error}"))?;
+    window.emit("physic-paint:launch", &context).map_err(|error| format!("Could not send physics paint launch context: {error}"))?;
+
+    let visible = window.is_visible().map_err(|error| format!("Could not verify physics paint window visibility: {error}"))?;
+    let minimized = window.is_minimized().map_err(|error| format!("Could not verify physics paint window minimized state: {error}"))?;
+    println!(
+        "[physics-paint] launch completed label={} visible={} minimized={}",
+        label, visible, minimized
+    );
+    if !visible || minimized {
+        return Err(format!("Physics paint window was opened but is not visible (visible={visible}, minimized={minimized})"));
+    }
+
+    Ok(PhysicsPaintWindowLaunchResult {
+        label: label.to_string(),
+        visible_before,
+        minimized_before,
+        visible,
+        minimized,
+    })
+}
+
+fn physics_paint_url(context: &PhysicsPaintLaunchContext) -> String {
+    let mut url = format!(
+        "/physics-paint?operationId={}&layerId={}&startFrame={}",
+        percent_encoding::utf8_percent_encode(&context.operation_id, percent_encoding::NON_ALPHANUMERIC),
+        percent_encoding::utf8_percent_encode(&context.layer_id, percent_encoding::NON_ALPHANUMERIC),
+        context.start_frame
+    );
+    if let Some(layer_name) = &context.layer_name {
+        url.push_str("&layerName=");
+        url.push_str(&percent_encoding::utf8_percent_encode(layer_name, percent_encoding::NON_ALPHANUMERIC).to_string());
+    }
+    if let Some(width) = context.width {
+        url.push_str("&width=");
+        url.push_str(&width.to_string());
+    }
+    if let Some(height) = context.height {
+        url.push_str("&height=");
+        url.push_str(&height.to_string());
+    }
+    url
+}
+
 #[cfg(target_os = "macos")]
 use services::tablet;
 
@@ -337,6 +444,7 @@ pub fn run() {
             export::export_encode_video,
             export::export_cleanup_pngs,
             export::export_cleanup_file,
+            open_physics_paint_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

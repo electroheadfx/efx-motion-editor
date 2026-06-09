@@ -28,22 +28,23 @@ export interface PhysicPaintOpenRequest {
   canvas?: PhysicPaintCanvasSize | null;
 }
 
-interface TauriWebviewWindow {
-  new (label: string, options: Record<string, unknown>): TauriWindowInstance;
-  getByLabel?: (label: string) => Promise<TauriWindowInstance | null> | TauriWindowInstance | null;
-}
-
-interface TauriWindowInstance {
-  setFocus?: () => Promise<void> | void;
-  show?: () => Promise<void> | void;
-  emit?: (event: string, payload?: unknown) => Promise<void> | void;
-  once?: (event: string, handler: (event: unknown) => void) => Promise<() => void> | (() => void) | void;
-}
-
 interface TauriEventApi {
   emitTo?: (target: string, event: string, payload?: unknown) => Promise<void>;
   emit?: (event: string, payload?: unknown) => Promise<void>;
   listen?: (event: string, handler: (event: { payload: unknown }) => void) => Promise<() => void>;
+}
+
+interface TauriCoreApi {
+  isTauri?: () => boolean;
+  invoke?: <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
+}
+
+interface TauriPhysicsPaintLaunchResult {
+  label: string;
+  visibleBefore: boolean;
+  minimizedBefore: boolean;
+  visible: boolean;
+  minimized: boolean;
 }
 
 const APPLY_ERROR = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
@@ -174,8 +175,14 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
       return { ok: false, error: 'Invalid physics paint launch context' };
     }
 
-    const tauriResult = await tryOpenTauriPhysicPaintWindow(context);
-    if (tauriResult.ok) return { ok: true, data: context };
+    const tauriRuntime = await detectTauriRuntime();
+    console.info('[physicPaintBridge] launch branch', tauriRuntime ? 'tauri-native-command' : 'browser-fallback', context);
+    if (tauriRuntime) {
+      const tauriResult = await tryOpenTauriPhysicPaintWindow(context);
+      if (!tauriResult.ok) return tauriResult;
+      console.info('[physicPaintBridge] native launch result', tauriResult.data);
+      return { ok: true, data: context };
+    }
 
     const browserResult = openBrowserFallback(context);
     if (!browserResult.ok) return browserResult;
@@ -200,46 +207,34 @@ function validateOpenRequest(request: PhysicPaintOpenRequest): Result<{ layer: L
   return { ok: true, data: { layer, frame: Math.trunc(frame) } };
 }
 
-async function tryOpenTauriPhysicPaintWindow(context: PhysicPaintLaunchContext): Promise<Result<null>> {
-  if (!isTauriRuntime()) {
-    return { ok: false, error: 'Tauri runtime unavailable' };
-  }
-
+async function tryOpenTauriPhysicPaintWindow(context: PhysicPaintLaunchContext): Promise<Result<TauriPhysicsPaintLaunchResult>> {
   try {
-    const [{ WebviewWindow }, eventApi] = await Promise.all([
-      import('@tauri-apps/api/webviewWindow') as Promise<{ WebviewWindow: TauriWebviewWindow }>,
-      import('@tauri-apps/api/event') as Promise<TauriEventApi>,
-    ]);
-
-    const existing = await WebviewWindow.getByLabel?.(PHYSIC_PAINT_WINDOW_LABEL);
-    if (existing) {
-      await existing.show?.();
-      await existing.setFocus?.();
-      await existing.emit?.(PHYSIC_PAINT_LAUNCH_EVENT, context);
-      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_LAUNCH_EVENT, context);
-      return { ok: true, data: null };
+    const core = await import('@tauri-apps/api/core') as TauriCoreApi;
+    if (!core.invoke) return { ok: false, error: 'Tauri invoke API unavailable' };
+    const result = await core.invoke<TauriPhysicsPaintLaunchResult>('open_physics_paint_window', { context });
+    if (!isTauriPhysicsPaintLaunchResult(result)) {
+      return { ok: false, error: `Physics paint native command returned an invalid result: ${JSON.stringify(result)}` };
     }
-
-    const url = buildPhysicsPaintUrl(context);
-    const win = new WebviewWindow(PHYSIC_PAINT_WINDOW_LABEL, {
-      url,
-      title: 'EFX Physics Paint',
-      width: 1280,
-      height: 900,
-      minWidth: 960,
-      minHeight: 640,
-      focus: true,
-    });
-
-    await win.once?.('tauri://created', async () => {
-      await win.emit?.(PHYSIC_PAINT_LAUNCH_EVENT, context);
-      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_LAUNCH_EVENT, context);
-    });
-
-    return { ok: true, data: null };
+    if (!result.visible || result.minimized) {
+      return { ok: false, error: `Physics paint window did not become visible (visible=${result.visible}, minimized=${result.minimized})` };
+    }
+    return { ok: true, data: result };
   } catch (error) {
     return { ok: false, error: String(error) };
   }
+}
+
+function isTauriPhysicsPaintLaunchResult(value: unknown): value is TauriPhysicsPaintLaunchResult {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      typeof (value as TauriPhysicsPaintLaunchResult).label === 'string' &&
+      typeof (value as TauriPhysicsPaintLaunchResult).visibleBefore === 'boolean' &&
+      typeof (value as TauriPhysicsPaintLaunchResult).minimizedBefore === 'boolean' &&
+      typeof (value as TauriPhysicsPaintLaunchResult).visible === 'boolean' &&
+      typeof (value as TauriPhysicsPaintLaunchResult).minimized === 'boolean',
+  );
 }
 
 function openBrowserFallback(context: PhysicPaintLaunchContext): Result<null> {
@@ -265,8 +260,20 @@ function buildPhysicsPaintUrl(context: PhysicPaintLaunchContext): string {
   return `${baseUrl.pathname}${baseUrl.search}`;
 }
 
+async function detectTauriRuntime(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  try {
+    const core = await import('@tauri-apps/api/core') as TauriCoreApi;
+    if (core.isTauri?.()) return true;
+  } catch {
+    // Fall back to injected globals below.
+  }
+  return '__TAURI_INTERNALS__' in window || '__TAURI__' in window || 'isTauri' in window;
+}
+
 function isTauriRuntime(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  return typeof window !== 'undefined'
+    && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window || 'isTauri' in window);
 }
 
 function isFinitePositiveNumber(value: unknown): value is number {

@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "pnpm --filter efx-motion-editor dev",
     "build": "pnpm --filter @efxlab/efx-physic-paint build && pnpm --filter efx-motion-editor build",
+    "tauri": "pnpm --dir app tauri",
     "dev:paint": "pnpm --filter @efxlab/efx-physic-paint demo:dev",
     "repomix": "npx repomix@latest --config repomix.config.json --compress -o repomix-output.codex.xml",
     "repomix:check": "npx repomix@latest --config repomix.config.json --compress --top-files-len 20 --token-count-tree 1000 -o repomix-output.codex.xml",

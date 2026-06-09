@@ -11,62 +11,72 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
+import {installPhysicPaintApplyListener} from './lib/physicPaintBridge';
 
-// Resolve temp project dir from Tauri's app data path before rendering
-initTempProjectDir().then(async () => {
-  const { initTheme } = await import('./lib/themeManager');
-  await initTheme();
-  await paintStore.initFromPreferences(); // Load saved brush prefs BEFORE render
-  render(<App />, document.getElementById('app')!);
-  startAutoSave();
-  mountShortcuts(); // Mount keyboard shortcuts globally
+const root = document.getElementById('app')!;
 
-  // Listen for undo/redo events emitted by the native macOS menu.
-  // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu
-  // accelerators before keydown reaches the webview, so these menu event
-  // listeners are the sole path for undo/redo on that platform.
-  listen('menu:undo', () => { undo(); });
-  listen('menu:redo', () => { redo(); });
-
-  // Listen for zoom events emitted by the native macOS View menu.
-  // Zoom in/out now use bare = / - keys via tinykeys (no Cmd modifier),
-  // so the menu items have no accelerator. These listeners handle the
-  // click path when users select Zoom In / Zoom Out from the View menu.
-  // Fit to Window (Cmd+0) still uses a native accelerator.
-  listen('menu:zoom-in', () => {
-    if (uiStore.mouseRegion.peek() === 'timeline') {
-      timelineStore.zoomIn();
-    } else {
-      canvasStore.zoomIn();
-    }
+if (window.location.pathname === '/physics-paint') {
+  import('./components/physic-paint/PhysicsPaintStudio').then(({ PhysicsPaintStudio }) => {
+    render(<PhysicsPaintStudio />, root);
   });
-  listen('menu:zoom-out', () => {
-    if (uiStore.mouseRegion.peek() === 'timeline') {
-      timelineStore.zoomOut();
-    } else {
-      canvasStore.zoomOut();
-    }
+} else {
+  // Resolve temp project dir from Tauri's app data path before rendering
+  initTempProjectDir().then(async () => {
+    const { initTheme } = await import('./lib/themeManager');
+    await initTheme();
+    await paintStore.initFromPreferences(); // Load saved brush prefs BEFORE render
+    render(<App />, root);
+    startAutoSave();
+    mountShortcuts(); // Mount keyboard shortcuts globally
+    await installPhysicPaintApplyListener();
+
+    // Listen for undo/redo events emitted by the native macOS menu.
+    // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu
+    // accelerators before keydown reaches the webview, so these menu event
+    // listeners are the sole path for undo/redo on that platform.
+    listen('menu:undo', () => { undo(); });
+    listen('menu:redo', () => { redo(); });
+
+    // Listen for zoom events emitted by the native macOS View menu.
+    // Zoom in/out now use bare = / - keys via tinykeys (no Cmd modifier),
+    // so the menu items have no accelerator. These listeners handle the
+    // click path when users select Zoom In / Zoom Out from the View menu.
+    // Fit to Window (Cmd+0) still uses a native accelerator.
+    listen('menu:zoom-in', () => {
+      if (uiStore.mouseRegion.peek() === 'timeline') {
+        timelineStore.zoomIn();
+      } else {
+        canvasStore.zoomIn();
+      }
+    });
+    listen('menu:zoom-out', () => {
+      if (uiStore.mouseRegion.peek() === 'timeline') {
+        timelineStore.zoomOut();
+      } else {
+        canvasStore.zoomOut();
+      }
+    });
+    listen('menu:fit-to-window', () => { canvasStore.fitToWindow(); });
+
+    // Listen for File menu events emitted by the native macOS File menu.
+    // On macOS, Cmd+N/O/S/W are intercepted by the native menu accelerators
+    // before keydown reaches the webview, so these listeners are the sole path
+    // for file operations on that platform (same pattern as Edit > Undo/Redo).
+    listen('menu:new-project', () => { handleNewProject(); });
+    listen('menu:open-project', () => { handleOpenProject(); });
+    listen('menu:save-project', () => { handleSave(); });
+
+    listen('menu:close-project', () => { handleCloseProject(); });
+
+    listen('menu:export', () => { uiStore.setEditorMode('export'); });
+
+    // Guard window close: show unsaved-changes dialog and prevent close on Cancel
+    getCurrentWindow().onCloseRequested(async (event) => {
+      const { guardUnsavedChanges } = await import('./lib/unsavedGuard');
+      const result = await guardUnsavedChanges();
+      if (result === 'cancelled') {
+        event.preventDefault();
+      }
+    });
   });
-  listen('menu:fit-to-window', () => { canvasStore.fitToWindow(); });
-
-  // Listen for File menu events emitted by the native macOS File menu.
-  // On macOS, Cmd+N/O/S/W are intercepted by the native menu accelerators
-  // before keydown reaches the webview, so these listeners are the sole path
-  // for file operations on that platform (same pattern as Edit > Undo/Redo).
-  listen('menu:new-project', () => { handleNewProject(); });
-  listen('menu:open-project', () => { handleOpenProject(); });
-  listen('menu:save-project', () => { handleSave(); });
-
-  listen('menu:close-project', () => { handleCloseProject(); });
-
-  listen('menu:export', () => { uiStore.setEditorMode('export'); });
-
-  // Guard window close: show unsaved-changes dialog and prevent close on Cancel
-  getCurrentWindow().onCloseRequested(async (event) => {
-    const { guardUnsavedChanges } = await import('./lib/unsavedGuard');
-    const result = await guardUnsavedChanges();
-    if (result === 'cancelled') {
-      event.preventDefault();
-    }
-  });
-});
+}

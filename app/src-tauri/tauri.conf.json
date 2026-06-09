@@ -15,6 +15,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "EFX Motion Editor",
         "width": 1440,
         "height": 900,

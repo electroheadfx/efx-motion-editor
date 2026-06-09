@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 
 export interface PhysicsPaintStudioToolbarSettings {
   tool: ToolType;
@@ -21,6 +23,9 @@ interface PhysicsPaintStudioToolbarProps {
 }
 
 const INVALID_STATE_COPY = 'Could not load physics paint state. Choose a valid saved state JSON file.';
+const SAVE_CANCELLED_COPY = 'Save state cancelled.';
+const SAVE_SUCCESS_COPY = 'Physics paint editable state saved.';
+const SAVE_ERROR_COPY = 'Could not save physics paint state. Choose a writable JSON destination.';
 
 const clampNumber = (value: number, min: number, max: number, fallback: number) => {
   if (!Number.isFinite(value)) return fallback;
@@ -93,6 +98,7 @@ export function PhysicsPaintStudioToolbar({
   const [frameCount, setFrameCount] = useState(120);
   const [fps, setFps] = useState(24);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -164,16 +170,51 @@ export function PhysicsPaintStudioToolbar({
     engine.stopPhysics();
   }, [engine]);
 
-  const onSave = useCallback(() => {
+  const onSave = useCallback(async () => {
     const data = engine.save();
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `efx-paint-state-${Date.now()}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }, [engine]);
+    const serialized = JSON.stringify(data, null, 2);
+    const filename = `efx-paint-state-${Date.now()}.json`;
+    setSaveFeedback(null);
+
+    try {
+      if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
+        const selectedPath = await save({
+          defaultPath: filename,
+          filters: [{ name: 'Physics paint state', extensions: ['json'] }],
+        });
+        if (!selectedPath) {
+          setSaveFeedback({ type: 'info', message: SAVE_CANCELLED_COPY });
+          onError?.(null);
+          return;
+        }
+        await writeTextFile(selectedPath, serialized);
+        setSaveFeedback({ type: 'success', message: SAVE_SUCCESS_COPY });
+        onError?.(null);
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to save physics paint state:', error);
+      setSaveFeedback({ type: 'error', message: SAVE_ERROR_COPY });
+      onError?.(SAVE_ERROR_COPY);
+      return;
+    }
+
+    try {
+      const blob = new Blob([serialized], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setSaveFeedback({ type: 'success', message: SAVE_SUCCESS_COPY });
+      onError?.(null);
+    } catch (error) {
+      console.error('Failed to save physics paint state:', error);
+      setSaveFeedback({ type: 'error', message: SAVE_ERROR_COPY });
+      onError?.(SAVE_ERROR_COPY);
+    }
+  }, [engine, onError]);
 
   const onLoad = useCallback(() => {
     fileRef.current?.click();
@@ -343,6 +384,7 @@ export function PhysicsPaintStudioToolbar({
       <button onClick={onSave}>Save state</button>
       <button onClick={onLoad} title="Loading a state file replaces the current canvas.">Load state</button>
       <input type="file" ref={fileRef} accept=".json" style={{ display: 'none' }} onChange={onFileChange} />
+      {saveFeedback ? <div class={saveFeedback.type === 'error' ? 'toolbar-error' : 'toolbar-status'}>{saveFeedback.message}</div> : null}
       {loadError ? <div class="toolbar-error">{loadError}</div> : null}
       <div class="sep" />
       <button onClick={() => engine.undo()}>Undo</button>
