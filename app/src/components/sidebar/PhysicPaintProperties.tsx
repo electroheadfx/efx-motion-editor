@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { Layer } from '../../types/layer';
+import type { PhysicPaintApplyResult } from '../../types/physicPaint';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { sequenceStore } from '../../stores/sequenceStore';
 import { timelineStore } from '../../stores/timelineStore';
-import { openPhysicPaintCanvas } from '../../lib/physicPaintBridge';
+import { openPhysicPaintCanvas, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
 import { SectionLabel } from '../shared/SectionLabel';
 
 interface PhysicPaintPropertiesProps {
@@ -26,6 +27,26 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     return activeSequenceId ? sequenceStore.sequences.value.find((seq) => seq.id === activeSequenceId) ?? null : null;
   }, [sequenceStore.activeSequenceId.value, sequenceStore.sequences.value]);
 
+  useEffect(() => {
+    const handleApplyResult = (event: Event) => {
+      const result = (event as CustomEvent<PhysicPaintApplyResult>).detail;
+      if (!result || result.layerId !== layer.id) return;
+
+      if (!result.ok) {
+        setErrorMessage(result.error || 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.');
+        return;
+      }
+
+      setErrorMessage(null);
+      setStatusMessage(result.kind === 'apply-play-canvas'
+        ? `Applied ${result.appliedFrameCount} frames starting at frame ${result.startFrame}`
+        : `Applied to frame ${result.startFrame}`);
+    };
+
+    window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleApplyResult);
+    return () => window.removeEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleApplyResult);
+  }, [layer.id]);
+
   const handleOpenCanvas = async () => {
     if (!validContext || isOpening) return;
 
@@ -33,12 +54,14 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     setStatusMessage(null);
     setErrorMessage(null);
 
+    console.info('[PhysicPaintProperties] open canvas clicked', { layerId: layer.id, frame: currentFrame });
     const result = await openPhysicPaintCanvas({
       layer,
       frame: currentFrame,
       canvas: activeSequence ? { width: activeSequence.width, height: activeSequence.height } : undefined,
     });
 
+    console.info('[PhysicPaintProperties] open canvas result', result);
     setIsOpening(false);
     if (result.ok) {
       setStatusMessage(`Opened physics paint canvas for frame ${result.data.startFrame}.`);
@@ -70,9 +93,14 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
       <div class="space-y-2">
         <SectionLabel text="Rendered Output" />
         {hasOutput ? (
-          <div class="rounded px-2 py-2 text-[11px] flex items-center gap-2" style={{ backgroundColor: 'rgba(76, 175, 112, 0.14)', color: 'var(--sidebar-dot-green)' }}>
-            <span class="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--sidebar-dot-green)' }} />
-            Physics paint output is available for this layer.
+          <div class="space-y-1">
+            <div class="rounded px-2 py-2 text-[11px] flex items-center gap-2" style={{ backgroundColor: 'rgba(76, 175, 112, 0.14)', color: 'var(--sidebar-dot-green)' }}>
+              <span class="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--sidebar-dot-green)' }} />
+              Physics paint output is available for this layer.
+            </div>
+            <div class="text-[11px] leading-5" style={{ color: '#f59e0b' }}>
+              This frame already has physics paint output. Applying will replace it.
+            </div>
           </div>
         ) : (
           <div class="rounded px-2 py-2 space-y-1" style={{ backgroundColor: 'var(--sidebar-input-bg)' }}>

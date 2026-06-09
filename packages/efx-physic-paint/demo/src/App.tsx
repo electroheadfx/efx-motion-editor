@@ -25,9 +25,11 @@ interface LaunchContext {
 }
 
 interface RenderedFramePayload {
-  frame: number
-  generatedFrameIndex: number
+  frameIndex: number
+  appFrame: number
   dataUrl: string
+  width?: number
+  height?: number
 }
 
 interface PhysicPaintApplyPayload {
@@ -35,8 +37,9 @@ interface PhysicPaintApplyPayload {
   kind: ApplyKind
   layerId: string
   startFrame: number
+  renderedFrame?: RenderedFramePayload
   frameCount?: number
-  frames: RenderedFramePayload[]
+  frames?: RenderedFramePayload[]
 }
 
 interface PhysicPaintApplyResult {
@@ -293,13 +296,19 @@ export function App() {
       setLastError(null)
       const operationId = `${launchContext.operationId}:canvas:${Date.now()}`
       activeOperationIdRef.current = operationId
-      const dataUrl = engine.getDisplayCanvas().toDataURL('image/png')
+      const canvas = engine.getDisplayCanvas()
       const payload: PhysicPaintApplyPayload = {
         operationId,
         kind: 'apply-canvas',
         layerId: launchContext.layerId,
         startFrame: launchContext.startFrame,
-        frames: [{ frame: launchContext.startFrame, generatedFrameIndex: 0, dataUrl }],
+        renderedFrame: {
+          frameIndex: 0,
+          appFrame: launchContext.startFrame,
+          dataUrl: canvas.toDataURL('image/png'),
+          width: canvas.width,
+          height: canvas.height,
+        },
       }
       await sendPhysicPaintApplyPayload(payload, bridgeMode)
       setApplyStatus('success')
@@ -338,9 +347,11 @@ export function App() {
             setAnimFrame(frameIndex)
             const i = frameIndex
             captured.push({
-              frame: launchContext.startFrame + i,
-              generatedFrameIndex: i,
+              frameIndex: i,
+              appFrame: launchContext.startFrame + i,
               dataUrl: canvas.toDataURL('image/png'),
+              width: canvas.width,
+              height: canvas.height,
             })
           },
           onComplete: () => {
