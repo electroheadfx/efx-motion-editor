@@ -1,9 +1,11 @@
+import type { SerializedProject } from '@efxlab/efx-physic-paint';
+
 export const PHYSIC_PAINT_MAX_APPLY_FRAMES = 600;
 export const PHYSIC_PAINT_DEFAULT_APPLY_FRAMES = 120;
 
 const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
-const FORBIDDEN_APPLY_FIELDS = new Set(['strokes', 'engine', 'SerializedProject', 'project', 'internals']);
+const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals']);
 
 export type PhysicPaintApplyKind = 'apply-canvas' | 'apply-play-canvas';
 
@@ -14,6 +16,7 @@ export interface PhysicPaintLaunchContext {
   layerName?: string;
   width?: number;
   height?: number;
+  editableState?: SerializedProject;
 }
 
 export interface PhysicPaintRenderedFrame {
@@ -33,6 +36,7 @@ export interface PhysicPaintApplyCanvasPayload {
   layerId: string;
   startFrame: number;
   renderedFrame: PhysicPaintRenderedFrame;
+  editableState: SerializedProject;
 }
 
 export interface PhysicPaintApplyPlayCanvasPayload {
@@ -42,6 +46,7 @@ export interface PhysicPaintApplyPlayCanvasPayload {
   startFrame: number;
   frameCount: number;
   frames: PhysicPaintRenderedFrame[];
+  editableState: SerializedProject;
 }
 
 export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintApplyPlayCanvasPayload;
@@ -84,7 +89,8 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     isNonNegativeInteger(value.startFrame) &&
     optionalNumber(value.width) &&
     optionalNumber(value.height) &&
-    (value.layerName === undefined || typeof value.layerName === 'string')
+    (value.layerName === undefined || typeof value.layerName === 'string') &&
+    (value.editableState === undefined || isSerializedProject(value.editableState))
   );
 }
 
@@ -92,6 +98,8 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   if (!isRecord(value) || containsForbiddenApplyField(value)) return false;
 
   if (!isBaseApplyPayload(value)) return false;
+
+  if (!isSerializedProject(value.editableState)) return false;
 
   if (value.kind === 'apply-canvas') {
     return isPhysicPaintRenderedFrame(value.renderedFrame, value.startFrame, 0);
@@ -138,6 +146,26 @@ function containsForbiddenApplyField(value: Record<string, unknown>): boolean {
     if (FORBIDDEN_APPLY_FIELDS.has(key)) return true;
   }
   return false;
+}
+
+function isSerializedProject(value: unknown): value is SerializedProject {
+  if (!isRecord(value)) return false;
+  if (value.version !== 2) return false;
+  if (typeof value.width !== 'number' || !Number.isFinite(value.width) || value.width <= 0) return false;
+  if (typeof value.height !== 'number' || !Number.isFinite(value.height) || value.height <= 0) return false;
+  if (!Array.isArray(value.strokes)) return false;
+  if (!isRecord(value.settings)) return false;
+  return value.strokes.every(isSerializedStroke);
+}
+
+function isSerializedStroke(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (typeof value.tool !== 'string') return false;
+  if (!Array.isArray(value.pts)) return false;
+  if (value.color !== null && typeof value.color !== 'string') return false;
+  if (!isRecord(value.params)) return false;
+  if (typeof value.time !== 'number' || !Number.isFinite(value.time)) return false;
+  return value.pts.every((point) => Array.isArray(point) && point.length === 7 && point.every((entry) => typeof entry === 'number' && Number.isFinite(entry)));
 }
 
 function isRenderedPngDataUrl(value: unknown): value is string {

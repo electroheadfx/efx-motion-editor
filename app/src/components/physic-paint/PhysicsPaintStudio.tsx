@@ -29,6 +29,7 @@ interface PhysicPaintApplyPayload {
   kind: ApplyKind;
   layerId: string;
   startFrame: number;
+  editableState: ReturnType<EfxPaintEngine['save']>;
   renderedFrame?: RenderedFramePayload;
   frameCount?: number;
   frames?: RenderedFramePayload[];
@@ -111,6 +112,17 @@ async function detectBridgeMode(): Promise<BridgeMode> {
   return 'Unavailable';
 }
 
+async function closePhysicsPaintWindow(): Promise<void> {
+  try {
+    const windowApi = await import('@tauri-apps/api/window');
+    await windowApi.getCurrentWindow?.().close?.();
+    return;
+  } catch {
+    // Browser fallback below.
+  }
+  window.close();
+}
+
 async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPayload, bridgeMode: BridgeMode): Promise<void> {
   if (bridgeMode === 'Tauri') {
     const eventApi = await import('@tauri-apps/api/event');
@@ -136,7 +148,7 @@ async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPayload, bri
   throw new Error('App bridge is not connected');
 }
 
-function CanvasMountProbe(props: { width: number; height: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void }) {
+function CanvasMountProbe(props: { width: number; height: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: (input: { pressure: number; tiltX?: number; tiltY?: number }) => void) => void }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
 
@@ -162,6 +174,7 @@ function CanvasMountProbe(props: { width: number; height: number; onEngineReady:
         ]}
         defaultPaper="canvas1"
         class="paint-canvas"
+        onNativePenInputReady={props.onNativePenInputReady}
         onEngineReady={(engine) => {
           engine.setTool('paint');
           setMountError(null);
@@ -196,12 +209,41 @@ export function PhysicsPaintStudio() {
   const playerRef = useRef<AnimationPlayer | null>(null);
   const activeOperationIdRef = useRef<string | null>(null);
   const applyTimeoutRef = useRef<number | null>(null);
+  const nativePenInputHandlerRef = useRef<((input: { pressure: number; tiltX?: number; tiltY?: number }) => void) | null>(null);
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
 
   useEffect(() => {
     detectBridgeMode().then(setBridgeMode).catch(() => setBridgeMode('Unavailable'));
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    const installTabletPressureListener = async () => {
+      try {
+        const eventApi = await import('@tauri-apps/api/event');
+        if (typeof eventApi.listen !== 'function') return;
+        unlisten = await eventApi.listen<{ pressure: number; tilt_x: number; tilt_y: number }>('tablet:pressure', (event) => {
+          nativePenInputHandlerRef.current?.({
+            pressure: event.payload.pressure,
+            tiltX: event.payload.tilt_x,
+            tiltY: event.payload.tilt_y,
+          });
+        });
+        if (disposed) unlisten?.();
+      } catch (error) {
+        console.warn('[PhysicsPaintStudio] native tablet pressure listener unavailable', error);
+      }
+    };
+
+    void installTabletPressureListener();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -240,11 +282,19 @@ export function PhysicsPaintStudio() {
   useEffect(() => {
     if (!engine) return;
     playerRef.current = new AnimationPlayer(engine);
+    if (launchContext?.editableState) {
+      try {
+        engine.load(launchContext.editableState);
+      } catch (error) {
+        console.error('[PhysicsPaintStudio] failed to restore editable state', error);
+        setLastError('Could not restore the previous physics paint state for this layer.');
+      }
+    }
     return () => {
       playerRef.current?.stop();
       playerRef.current = null;
     };
-  }, [engine]);
+  }, [engine, launchContext?.editableState]);
 
   useEffect(() => {
     return () => {
@@ -272,6 +322,7 @@ export function PhysicsPaintStudio() {
 
     setApplyStatus('success');
     setLastError(null);
+    void closePhysicsPaintWindow();
     if ((detail.kind ?? 'apply-canvas') === 'apply-play-canvas') {
       const count = detail.appliedFrameCount ?? detail.count ?? detail.frameCount ?? framesToApply;
       const frame = detail.startFrame ?? launchContext?.startFrame ?? 0;
@@ -368,12 +419,13 @@ export function PhysicsPaintStudio() {
       setLastError(null);
       const operationId = `${launchContext.operationId}:canvas:${Date.now()}`;
       activeOperationIdRef.current = operationId;
-      const canvas = engine.getDisplayCanvas();
+      const canvas = engine.exportCompositeCanvas();
       const payload: PhysicPaintApplyPayload = {
         operationId,
         kind: 'apply-canvas',
         layerId: launchContext.layerId,
         startFrame: launchContext.startFrame,
+        editableState: engine.save(),
         renderedFrame: {
           frameIndex: 0,
           appFrame: launchContext.startFrame,
@@ -439,6 +491,7 @@ export function PhysicsPaintStudio() {
         startFrame: launchContext.startFrame,
         frameCount,
         frames,
+        editableState: engine.save(),
       }, bridgeMode);
       startApplyTimeout(operationId);
     } catch (error) {
@@ -472,7 +525,15 @@ export function PhysicsPaintStudio() {
         <h1>EFX Physics Paint Studio</h1>
         <p class="demo-status">Tauri app route / library integration</p>
       </header>
-      <CanvasMountProbe width={canvasWidth} height={canvasHeight} onEngineReady={setEngine} onCanvasMounted={setCanvasMounted} />
+      <CanvasMountProbe
+        width={canvasWidth}
+        height={canvasHeight}
+        onEngineReady={setEngine}
+        onCanvasMounted={setCanvasMounted}
+        onNativePenInputReady={(handler) => {
+          nativePenInputHandlerRef.current = handler;
+        }}
+      />
       {engine && (
         <PhysicsPaintStudioToolbar
           engine={engine}

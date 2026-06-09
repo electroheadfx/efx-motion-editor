@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { Layer } from '../../types/layer';
 import type { PhysicPaintApplyResult } from '../../types/physicPaint';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
-import { sequenceStore } from '../../stores/sequenceStore';
 import { timelineStore } from '../../stores/timelineStore';
 import { openPhysicPaintCanvas, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
 import { SectionLabel } from '../shared/SectionLabel';
@@ -20,17 +19,13 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
   physicPaintVersion.value;
 
   const currentFrame = timelineStore.currentFrame.value;
+  const sourceLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const validContext = layer.type === 'physic-paint' && layer.source.type === 'physic-paint' && Number.isInteger(currentFrame) && currentFrame >= 0;
-  const hasOutput = validContext ? physicPaintStore.hasOutput(layer.id) : false;
-  const activeSequence = useMemo(() => {
-    const activeSequenceId = sequenceStore.activeSequenceId.value;
-    return activeSequenceId ? sequenceStore.sequences.value.find((seq) => seq.id === activeSequenceId) ?? null : null;
-  }, [sequenceStore.activeSequenceId.value, sequenceStore.sequences.value]);
-
+  const hasOutput = validContext ? physicPaintStore.hasOutput(sourceLayerId) : false;
   useEffect(() => {
     const handleApplyResult = (event: Event) => {
       const result = (event as CustomEvent<PhysicPaintApplyResult>).detail;
-      if (!result || result.layerId !== layer.id) return;
+      if (!result || result.layerId !== sourceLayerId) return;
 
       if (!result.ok) {
         setErrorMessage(result.error || 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.');
@@ -45,7 +40,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
 
     window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleApplyResult);
     return () => window.removeEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleApplyResult);
-  }, [layer.id]);
+  }, [sourceLayerId]);
 
   const handleOpenCanvas = async () => {
     if (!validContext || isOpening) return;
@@ -58,7 +53,6 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     const result = await openPhysicPaintCanvas({
       layer,
       frame: currentFrame,
-      canvas: activeSequence ? { width: activeSequence.width, height: activeSequence.height } : undefined,
     });
 
     console.info('[PhysicPaintProperties] open canvas result', result);

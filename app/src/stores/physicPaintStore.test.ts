@@ -2,6 +2,21 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { clampPhysicPaintFrameCount } from '../types/physicPaint';
 import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback } from './physicPaintStore';
 
+const editableState = {
+  version: 2 as const,
+  width: 1000,
+  height: 650,
+  strokes: [{
+    tool: 'paint',
+    pts: [[1, 2, 0.5, 0, 0, 0, 0] as [number, number, number, number, number, number, number]],
+    color: '#103c65',
+    params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 },
+    time: 123,
+    diffusionFrames: 0,
+  }],
+  settings: { bgMode: 'canvas1', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+};
+
 const makeFrame = (frameIndex: number, appFrame: number) => ({
   frameIndex,
   appFrame,
@@ -24,12 +39,14 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 8,
       renderedFrame: makeFrame(0, 8),
+      editableState,
     });
 
     expect(result.ok).toBe(true);
     expect(result.appliedFrameCount).toBe(1);
     expect(physicPaintStore.getFrame('layer-1', 8)?.dataUrl).toContain('data:image/png');
     expect(physicPaintStore.getFrame('layer-1', 9)).toBeNull();
+    expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
     expect(physicPaintVersion.value).toBe(before + 1);
   });
 
@@ -41,6 +58,7 @@ describe('physicPaintStore', () => {
       startFrame: 10,
       frameCount: 3,
       frames: [makeFrame(0, 10), makeFrame(1, 11), makeFrame(2, 12)],
+      editableState,
     });
 
     expect(result.ok).toBe(true);
@@ -61,6 +79,26 @@ describe('physicPaintStore', () => {
 
     expect(physicPaintVersion.value).toBe(before + 2);
     expect(dirtyCount).toBe(2);
+  });
+
+  it('serializes and hydrates rendered output by layer and app frame', () => {
+    physicPaintStore.setFrame('layer-1', 12, makeFrame(0, 12));
+    physicPaintStore.setFrame('layer-1', 10, makeFrame(0, 10));
+    physicPaintStore.setFrame('layer-2', 4, makeFrame(0, 4));
+
+    const outputs = physicPaintStore.toMceOutputs();
+
+    expect(outputs).toEqual([
+      { layer_id: 'layer-1', frames: [expect.objectContaining({ appFrame: 10 }), expect.objectContaining({ appFrame: 12 })] },
+      { layer_id: 'layer-2', frames: [expect.objectContaining({ appFrame: 4 })] },
+    ]);
+
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(outputs);
+
+    expect(physicPaintStore.getFrame('layer-1', 10)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getFrame('layer-1', 12)?.appFrame).toBe(12);
+    expect(physicPaintStore.getFrame('layer-2', 4)?.width).toBe(1000);
   });
 
   it('uses typed helpers to clamp invalid frame counts', () => {

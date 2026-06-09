@@ -41,6 +41,15 @@ pub fn install_tablet_monitor(app_handle: AppHandle) {
                       | (1 << 6)   // NSEventTypeLeftMouseDragged
                       | (1 << 23); // NSEventTypeTabletPoint
 
+        // Native tablet packets can arrive much faster than the WebView paint loop.
+        // Forwarding every packet through Tauri floods the JS event queue and makes
+        // rapid consecutive strokes wait behind stale pressure events. PointerEvent
+        // coalescing still carries stroke geometry; pressure only needs fresh values
+        // at roughly display cadence.
+        let last_emit = std::cell::Cell::new(
+            std::time::Instant::now() - std::time::Duration::from_millis(8),
+        );
+
         let block = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
             let _ = unsafe {
                 objc_catch(AssertUnwindSafe(|| {
@@ -49,6 +58,12 @@ pub fn install_tablet_monitor(app_handle: AppHandle) {
                     // subtype 1 = NSEventSubtypeTabletPoint (has pressure/tilt)
                     let subtype = event_ref.subtype().0;
                     if subtype == 1 {
+                        let now = std::time::Instant::now();
+                        if now.duration_since(last_emit.get()) < std::time::Duration::from_millis(8) {
+                            return;
+                        }
+                        last_emit.set(now);
+
                         let pressure = event_ref.pressure() as f64;
                         let tilt = event_ref.tilt();
 

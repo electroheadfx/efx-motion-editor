@@ -22,6 +22,7 @@ import type {
   FluidConfig,
   PaintStroke,
   SerializedProject,
+  NativePenInput,
 } from '../types'
 import {
   DEFAULT_WIDTH,
@@ -40,6 +41,21 @@ import { applyEraseStroke } from '../brush/erase'
 import { compositeWetLayer } from '../render/compositor'
 import { setupDualCanvas, drawBg, drawBrushCursor, drawStrokePreview } from '../render/canvas'
 import type { StrokePreview, DualCanvas } from '../render/canvas'
+
+type UndoSnapshot = {
+  canvas: ImageData
+  wet: { r: Float32Array; g: Float32Array; b: Float32Array; a: Float32Array; w: Float32Array; dp: Float32Array; so: Float32Array }
+  saved: { r: Float32Array; g: Float32Array; b: Float32Array; a: Float32Array; so: Float32Array }
+}
+
+type DeferredStrokeFinalization = {
+  tool: ToolType
+  points: PenPoint[]
+  color: string | null
+  opts: BrushOpts
+}
+
+const STROKE_FINALIZATION_QUIET_MS = 120
 
 /**
  * EfxPaintEngine — the facade class that ties all modules together.
@@ -101,7 +117,9 @@ export class EfxPaintEngine {
 
   // --- Stroke Recording ---
   private allActions: PaintStroke[] = []
-  private undoStack: Array<{ canvas: ImageData; wet: { r: Float32Array; g: Float32Array; b: Float32Array; a: Float32Array; w: Float32Array; dp: Float32Array; so: Float32Array }; saved: { r: Float32Array; g: Float32Array; b: Float32Array; a: Float32Array; so: Float32Array } }> = []
+  private undoStack: UndoSnapshot[] = []
+  private pendingStrokeFinalizations: DeferredStrokeFinalization[] = []
+  private strokeFinalizationScheduled: boolean = false
 
   // --- Pointer State ---
   private rawPts: PenPoint[] = []
@@ -121,6 +139,9 @@ export class EfxPaintEngine {
   private destroyed: boolean = false
   private inputLocked: boolean = false
   private animationMode: boolean = false
+  private nativePenInput: NativePenInput | null = null
+  private lastNativePenInputTime: number = 0
+  private lastPointerInputTime: number = 0
 
   // --- Bound Event Handlers (for removeEventListener) ---
   private readonly boundPointerDown: (e: PointerEvent) => void
@@ -280,6 +301,16 @@ export class EfxPaintEngine {
     this.state.brushOpts.pressure = clamp(pressure, 10, 100)
   }
 
+  /** Inject native pen input for hosts where PointerEvent.pressure is fixed at 0.5. */
+  updateNativePenInput(input: NativePenInput): void {
+    this.nativePenInput = {
+      pressure: clamp(input.pressure, 0, 1),
+      tiltX: input.tiltX ?? 0,
+      tiltY: input.tiltY ?? 0,
+    }
+    this.lastNativePenInputTime = performance.now()
+  }
+
   /** Set water amount (0-100) */
   setWaterAmount(amount: number): void {
     this.state.brushOpts.waterAmount = clamp(amount, 0, 100)
@@ -311,21 +342,25 @@ export class EfxPaintEngine {
 
   /** Set physics strength (0-100) — maps to internal 0-1 range */
   setPhysicsStrength(strength: number): void {
+    this.flushPendingStrokeFinalizations()
     this.state.physicsStrength = clamp(strength, 0, 100) / 100
   }
 
   /** Set fluid viscosity. Low=watery (0.0001), high=thick (0.01). Per D-13 */
   setViscosity(v: number): void {
+    this.flushPendingStrokeFinalizations()
     this.fluidConfig.viscosity = Math.max(0.00001, Math.min(0.1, v))
   }
 
   /** Set physics mode: 'local' (auto during painting) or null (manual only). Per D-07 */
   setPhysicsMode(mode: 'local' | null): void {
+    this.flushPendingStrokeFinalizations()
     this.state.physicsMode = mode
   }
 
   /** Set local spread strength (0-100). Per D-11 */
   setLocalSpreadStrength(strength: number): void {
+    this.flushPendingStrokeFinalizations()
     this.state.localSpreadStrength = clamp(strength, 0, 100)
   }
 
@@ -336,6 +371,7 @@ export class EfxPaintEngine {
 
   /** Change background mode and replay strokes */
   setBgMode(mode: BgMode): void {
+    this.flushPendingStrokeFinalizations()
     this.state.bgMode = mode
     // Replay strokes on new background
     const savedStrokes = this.allActions.filter(s => s.tool !== 'physics' as string)
@@ -353,6 +389,7 @@ export class EfxPaintEngine {
 
   /** Set paper grain for physics (key matches PaperConfig.name) */
   setPaperGrain(key: string): void {
+    this.flushPendingStrokeFinalizations()
     this.currentPaperKey = key
     const tex = this.paperTextures.get(key)
     if (tex) {
@@ -369,16 +406,19 @@ export class EfxPaintEngine {
 
   /** Set emboss strength (0-1) */
   setEmbossStrength(strength: number): void {
+    this.flushPendingStrokeFinalizations()
     this.state.embossStrength = clamp(strength, 0, 1)
   }
 
   /** Toggle wet/dry paper mode */
   setWetPaper(wet: boolean): void {
+    this.flushPendingStrokeFinalizations()
     this.state.wetPaper = wet
   }
 
   /** Start physics simulation */
   startPhysics(mode: 'local' | 'last' | 'all'): void {
+    this.flushPendingStrokeFinalizations()
     if (this.state.physicsRunning) return
     this.savedPhysicsMode = this.state.physicsMode
     this.state.physicsMode = mode
@@ -484,6 +524,7 @@ export class EfxPaintEngine {
 
   /** Force-dry all wet paint immediately */
   forceDry(): void {
+    this.flushPendingStrokeFinalizations()
     this.stopNaturalDrying()
     forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
     // Clear savedWet — dried paint is permanent, won't be lifted by future physics
@@ -527,6 +568,7 @@ export class EfxPaintEngine {
 
   /** Undo last stroke */
   undo(): void {
+    this.flushPendingStrokeFinalizations()
     if (this.undoStack.length === 0) return
     const snap = this.undoStack.pop()!
     this.dualCanvas.dryCtx.putImageData(snap.canvas, 0, 0)
@@ -551,6 +593,8 @@ export class EfxPaintEngine {
 
   /** Clear the canvas and all strokes */
   clear(): void {
+    this.pendingStrokeFinalizations = []
+    this.strokeFinalizationScheduled = false
     this.stopNaturalDrying()
     this.allActions = []
     this.undoStack = []
@@ -574,11 +618,14 @@ export class EfxPaintEngine {
 
   /** Serialize the project for saving */
   save(): SerializedProject {
+    this.flushPendingStrokeFinalizations()
     return this.serializeProject()
   }
 
   /** Load a serialized project */
   load(json: SerializedProject): void {
+    this.pendingStrokeFinalizations = []
+    this.strokeFinalizationScheduled = false
     this.loadProjectData(json)
   }
 
@@ -588,6 +635,8 @@ export class EfxPaintEngine {
     // Cancel render loop
     if (this.rafId) cancelAnimationFrame(this.rafId)
     // Clear intervals
+    this.pendingStrokeFinalizations = []
+    this.strokeFinalizationScheduled = false
     this.stopNaturalDrying()
     if (this.physicsInterval !== null) {
       clearInterval(this.physicsInterval)
@@ -604,12 +653,31 @@ export class EfxPaintEngine {
 
   /** Get the dry canvas (for external screenshot/capture) */
   getCanvas(): HTMLCanvasElement {
+    this.flushPendingStrokeFinalizations()
     return this.dualCanvas.dryCanvas
   }
 
   /** Get the display canvas (overlay with wet compositing) */
   getDisplayCanvas(): HTMLCanvasElement {
     return this.dualCanvas.displayCanvas
+  }
+
+  /**
+   * Export the user-visible painting as a single canvas.
+   * The engine renders into two canvases: dry/background pixels on the dry
+   * canvas and wet/preview pixels on the display overlay. Applying or
+   * playback-exporting only the display canvas drops already-dried strokes and
+   * makes remaining wet paint look faded on transparent app layers.
+   */
+  exportCompositeCanvas(): HTMLCanvasElement {
+    const canvas = document.createElement('canvas')
+    canvas.width = this.width
+    canvas.height = this.height
+    const ctx = canvas.getContext('2d')!
+    ctx.clearRect(0, 0, this.width, this.height)
+    ctx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
+    ctx.drawImage(this.dualCanvas.displayCanvas, 0, 0)
+    return canvas
   }
 
   // ================================================================
@@ -632,6 +700,7 @@ export class EfxPaintEngine {
 
   /** Render all strokes synchronously — public wrapper around redrawAll() */
   renderAllStrokes(): void {
+    this.flushPendingStrokeFinalizations()
     this.redrawAll()
   }
 
@@ -642,6 +711,7 @@ export class EfxPaintEngine {
 
   /** Render strokes up to specified point counts — used by AnimationPlayer for progressive frame rendering (per D-02) */
   renderPartialStrokes(strokeData: Array<{ stroke: PaintStroke; pointCount: number }>): void {
+    this.flushPendingStrokeFinalizations()
     // Clear canvas to background (clearRect needed for transparent bg — drawImage won't erase existing pixels)
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
     this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
@@ -683,6 +753,10 @@ export class EfxPaintEngine {
           this.bgData,
         )
       }
+      if (pointCount >= a.points.length) {
+        this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
+      }
+
       // Force dry after each stroke (same pattern as redrawAll — no physics ticks)
       forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
     }
@@ -713,6 +787,16 @@ export class EfxPaintEngine {
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
     compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn)
 
+    // Draw queued stroke outlines until their full render finalizes.
+    for (const pending of this.pendingStrokeFinalizations) {
+      drawStrokePreview(displayCtx, {
+        pts: pending.points,
+        color: pending.tool === 'paint' && pending.color ? pending.color : pending.tool === 'erase' ? '#ff4444' : '#888888',
+        radius: pending.opts.size,
+        opacity: pending.tool === 'paint' ? pending.opts.opacity / 100 : 0.3,
+      })
+    }
+
     // Draw stroke preview
     drawStrokePreview(displayCtx, this.previewStroke)
 
@@ -723,60 +807,10 @@ export class EfxPaintEngine {
   }
 
   // ================================================================
-  //  PRIVATE — Pointer Events
+  //  PRIVATE — Deferred Stroke Finalization
   // ================================================================
 
-  private onPointerDown(e: PointerEvent): void {
-    if (this.inputLocked) return
-    e.preventDefault()
-    this.dualCanvas.dryCanvas.setPointerCapture(e.pointerId)
-    this.state.drawing = true
-    this.lastPointerTime = performance.now()
-    this.rawPts = [this.extractPenPoint(e)]
-
-    // Force-dry before paint/erase strokes
-    if (this.state.tool === 'paint') {
-      if (this.state.physicsMode === 'local') {
-        // Local mode: bake DISTANT paint, keep NEARBY paint wet for interaction
-        const pt = this.rawPts[0]
-        const keepR = (this.state.brushOpts.size || 24) * 3 + 40
-        const keepR2 = keepR * keepR
-        const id = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
-        const d = id.data
-        let changed = false
-        for (let i = 0; i < this.size; i++) {
-          if (this.wet.alpha[i] < 1) continue
-          const x = i % this.width, y = (i / this.width) | 0
-          const dx = x - pt.x, dy = y - pt.y
-          if (dx * dx + dy * dy > keepR2) {
-            // Far from pointer → bake to dry canvas
-            const densityAlpha = Math.min(1, this.wet.alpha[i] / 800)
-            const pixelOpacity = this.wet.strokeOpacity[i]
-            const sa = densityAlpha * pixelOpacity
-            if (sa > 0.005) {
-              const pi = i * 4, ma = d[pi + 3] / 255
-              const oa = Math.min(1, ma + sa * (1 - ma))
-              const bt = sa / Math.max(0.005, oa)
-              d[pi]     = Math.round(clamp(lerp(d[pi],     this.wet.r[i], bt), 0, 255))
-              d[pi + 1] = Math.round(clamp(lerp(d[pi + 1], this.wet.g[i], bt), 0, 255))
-              d[pi + 2] = Math.round(clamp(lerp(d[pi + 2], this.wet.b[i], bt), 0, 255))
-              d[pi + 3] = Math.round(clamp(oa * 255, 0, 255))
-              changed = true
-            }
-            this.wet.alpha[i] = 0; this.wet.wetness[i] = 0
-            this.wet.r[i] = 0; this.wet.g[i] = 0; this.wet.b[i] = 0
-            this.wet.strokeOpacity[i] = 0
-            this.drying.dryPos[i] = 0
-          }
-        }
-        if (changed) this.dualCanvas.dryCtx.putImageData(id, 0, 0)
-        this.stopNaturalDrying()
-      } else {
-        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
-      }
-    }
-
-    // Snapshot for undo
+  private pushUndoSnapshot(): void {
     const snap = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
     const wetSnap = {
       r: new Float32Array(this.wet.r),
@@ -798,7 +832,206 @@ export class EfxPaintEngine {
     if (this.undoStack.length > 25) this.undoStack.shift()
   }
 
+  private scheduleStrokeFinalization(): void {
+    if (this.strokeFinalizationScheduled || this.pendingStrokeFinalizations.length === 0) return
+    this.strokeFinalizationScheduled = true
+
+    const runWhenQuiet = () => {
+      this.strokeFinalizationScheduled = false
+      if (this.destroyed) return
+      const quietFor = performance.now() - this.lastPointerInputTime
+      if (this.state.drawing || quietFor < STROKE_FINALIZATION_QUIET_MS) {
+        this.scheduleStrokeFinalization()
+        return
+      }
+      this.finalizeNextPendingStroke()
+      if (this.pendingStrokeFinalizations.length > 0) this.scheduleStrokeFinalization()
+    }
+
+    window.setTimeout(runWhenQuiet, STROKE_FINALIZATION_QUIET_MS)
+  }
+
+  private flushPendingStrokeFinalizations(): void {
+    while (this.pendingStrokeFinalizations.length > 0) {
+      this.finalizeNextPendingStroke()
+    }
+    this.strokeFinalizationScheduled = false
+  }
+
+  private finalizeNextPendingStroke(): void {
+    const pending = this.pendingStrokeFinalizations.shift()
+    if (!pending) return
+
+    this.pushUndoSnapshot()
+    this.applyFinalizedStroke(pending)
+  }
+
+  private prepareWetLayerForStroke(pt: PenPoint, opts: BrushOpts): void {
+    if (this.state.physicsMode === 'local') {
+      const keepR = (opts.size || 24) * 3 + 40
+      const keepR2 = keepR * keepR
+      const id = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
+      const d = id.data
+      let changed = false
+      for (let i = 0; i < this.size; i++) {
+        if (this.wet.alpha[i] < 1) continue
+        const x = i % this.width, y = (i / this.width) | 0
+        const dx = x - pt.x, dy = y - pt.y
+        if (dx * dx + dy * dy > keepR2) {
+          const densityAlpha = Math.min(1, this.wet.alpha[i] / 800)
+          const pixelOpacity = this.wet.strokeOpacity[i]
+          const sa = densityAlpha * pixelOpacity
+          if (sa > 0.005) {
+            const pi = i * 4, ma = d[pi + 3] / 255
+            const oa = Math.min(1, ma + sa * (1 - ma))
+            const bt = sa / Math.max(0.005, oa)
+            d[pi] = Math.round(clamp(lerp(d[pi], this.wet.r[i], bt), 0, 255))
+            d[pi + 1] = Math.round(clamp(lerp(d[pi + 1], this.wet.g[i], bt), 0, 255))
+            d[pi + 2] = Math.round(clamp(lerp(d[pi + 2], this.wet.b[i], bt), 0, 255))
+            d[pi + 3] = Math.round(clamp(oa * 255, 0, 255))
+            changed = true
+          }
+          this.wet.alpha[i] = 0; this.wet.wetness[i] = 0
+          this.wet.r[i] = 0; this.wet.g[i] = 0; this.wet.b[i] = 0
+          this.wet.strokeOpacity[i] = 0
+          this.drying.dryPos[i] = 0
+        }
+      }
+      if (changed) this.dualCanvas.dryCtx.putImageData(id, 0, 0)
+      this.stopNaturalDrying()
+      return
+    }
+
+    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+  }
+
+  private applyFinalizedStroke({ tool, points, color, opts }: DeferredStrokeFinalization): void {
+    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
+
+    if (tool === 'paint' && color) {
+      this.prepareWetLayerForStroke(points[0], opts)
+      renderPaintStroke(
+        points, color, opts,
+        this.dualCanvas.dryCtx, this.wet, this.savedWet,
+        this.drying.dryPos, this.lastStrokeMask,
+        this.paperHeight,
+        this.width, this.height,
+        this.state.hasPenInput, this.state.wetPaper,
+        this.state.embossStrength, this.state.embossStack,
+        opts.waterAmount / 100,
+        sampleHFn,
+      )
+      // Edge feathering on wet layer for anti-aliased brush edges
+      if (opts.antiAlias > 0) {
+        const brushR = opts.size || 24
+        const strokeBounds = curveBounds(points, brushR + 10, this.width, this.height)
+        // Passes: soft=2, med=4, high=6
+        const featherPasses = opts.antiAlias * 2
+        featherWetEdges(this.wet,
+          { x0: strokeBounds.x0, y0: strokeBounds.y0, x1: strokeBounds.x0 + strokeBounds.w, y1: strokeBounds.y0 + strokeBounds.h },
+          this.width, this.height, featherPasses)
+      }
+      // Save clean wet layer (accumulate with previously saved data)
+      this.lastStrokeMask.fill(0)
+      for (let i = 0; i < this.size; i++) {
+        if (this.wet.alpha[i] > 1) {
+          if (this.wet.alpha[i] > this.savedWet.alpha[i]) {
+            const blend = this.wet.alpha[i] / (this.savedWet.alpha[i] + this.wet.alpha[i])
+            this.savedWet.r[i] = lerp(this.savedWet.r[i], this.wet.r[i], blend)
+            this.savedWet.g[i] = lerp(this.savedWet.g[i], this.wet.g[i], blend)
+            this.savedWet.b[i] = lerp(this.savedWet.b[i], this.wet.b[i], blend)
+            this.savedWet.alpha[i] = Math.max(this.savedWet.alpha[i], this.wet.alpha[i])
+          }
+          // Porter-Duff accumulate strokeOpacity across strokes
+          const existingOp = this.savedWet.strokeOpacity[i]
+          const newOp = this.wet.strokeOpacity[i]
+          this.savedWet.strokeOpacity[i] = existingOp + newOp * (1 - existingOp)
+          this.lastStrokeMask[i] = 1
+        }
+      }
+
+      // D-05/D-07: Local physics -- run Stam solver on stroke bbox
+      if (this.state.physicsMode === 'local' && points.length > 0) {
+        const brushR = opts.size || 24
+        let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
+        for (const p of points) {
+          sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
+          sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
+        }
+        // D-06: margin and ticks scale with brush size, water, and spread
+        const waterFrac = opts.waterAmount / 100
+        const spreadFrac = this.state.localSpreadStrength / 100
+        const spreadCurve = spreadFrac * spreadFrac
+        const waterCurve = waterFrac * waterFrac
+        const margin = Math.ceil(2 + waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4)
+        const bx0 = Math.max(0, Math.floor(sx0 - brushR - margin))
+        const by0 = Math.max(0, Math.floor(sy0 - brushR - margin))
+        const bx1 = Math.min(this.width - 1, Math.ceil(sx1 + brushR + margin))
+        const by1 = Math.min(this.height - 1, Math.ceil(sy1 + brushR + margin))
+
+        const localBounds = { x0: bx0, y0: by0, x1: bx1, y1: by1 }
+        const ticks = Math.max(1, Math.ceil(spreadCurve * 10))
+        localFluidPhysicsStep(
+          this.wet, this.fluidConfig,
+          this.width, this.height,
+          localBounds, ticks,
+        )
+      }
+
+      // Bake to canvas — in local mode, keep wet for stroke interaction
+      if (this.state.physicsMode !== 'local') {
+        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+      } else {
+        // Start natural drying timer (research: paint dries over time via evaporation)
+        this.startNaturalDrying()
+      }
+    } else if (tool === 'erase') {
+      applyEraseStroke(
+        points, opts,
+        this.dualCanvas.dryCtx, this.wet,
+        this.width, this.height,
+        this.state.hasPenInput,
+        this.state.embossStrength,
+        this.paperHeight,
+        this.state.bgMode,
+        this.bgData,
+      )
+      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+    }
+
+    // Compute last stroke bounding box for physics "Last" mode
+    if (points.length > 0) {
+      let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
+      for (const p of points) {
+        sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
+        sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
+      }
+      const brushR = opts.size || 24
+      this.lastStrokeBounds = {
+        x0: Math.floor(sx0 - brushR),
+        y0: Math.floor(sy0 - brushR),
+        x1: Math.ceil(sx1 + brushR),
+        y1: Math.ceil(sy1 + brushR),
+      }
+    }
+  }
+
+  // ================================================================
+  //  PRIVATE — Pointer Events
+  // ================================================================
+
+  private onPointerDown(e: PointerEvent): void {
+    if (this.inputLocked) return
+    e.preventDefault()
+    this.lastPointerInputTime = performance.now()
+    this.dualCanvas.dryCanvas.setPointerCapture(e.pointerId)
+    this.state.drawing = true
+    this.lastPointerTime = performance.now()
+    this.rawPts = [this.extractPenPoint(e)]
+  }
+
   private onPointerMove(e: PointerEvent): void {
+    this.lastPointerInputTime = performance.now()
     // Always update cursor position
     const r = this.dualCanvas.dryCanvas.getBoundingClientRect()
     this.cursorX = (e.clientX - r.left) * (this.width / r.width)
@@ -830,137 +1063,37 @@ export class EfxPaintEngine {
 
   private onPointerUp(e: PointerEvent): void {
     if (!this.state.drawing) return
+    this.lastPointerInputTime = performance.now()
     this.state.drawing = false
     this.previewStroke = null
     this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
 
     if (this.rawPts.length < 3) {
-      // Not enough points for a stroke — undo the snapshot we pushed
-      if (this.undoStack.length > 0) this.undoStack.pop()
+      this.rawPts = []
       return
     }
 
     const opts = { ...this.state.brushOpts }
-    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
-
-    if (this.state.tool === 'paint') {
-      renderPaintStroke(
-        this.rawPts, this.color, opts,
-        this.dualCanvas.dryCtx, this.wet, this.savedWet,
-        this.drying.dryPos, this.lastStrokeMask,
-        this.paperHeight,
-        this.width, this.height,
-        this.state.hasPenInput, this.state.wetPaper,
-        this.state.embossStrength, this.state.embossStack,
-        this.state.brushOpts.waterAmount / 100,
-        sampleHFn,
-      )
-      // Edge feathering on wet layer for anti-aliased brush edges
-      if (opts.antiAlias > 0) {
-        const brushR = opts.size || 24
-        const strokeBounds = curveBounds(this.rawPts, brushR + 10, this.width, this.height)
-        // Passes: soft=2, med=4, high=6
-        const featherPasses = opts.antiAlias * 2
-        featherWetEdges(this.wet,
-          { x0: strokeBounds.x0, y0: strokeBounds.y0, x1: strokeBounds.x0 + strokeBounds.w, y1: strokeBounds.y0 + strokeBounds.h },
-          this.width, this.height, featherPasses)
-      }
-      // Save clean wet layer (accumulate with previously saved data)
-      this.lastStrokeMask.fill(0)
-      for (let i = 0; i < this.size; i++) {
-        if (this.wet.alpha[i] > 1) {
-          if (this.wet.alpha[i] > this.savedWet.alpha[i]) {
-            const blend = this.wet.alpha[i] / (this.savedWet.alpha[i] + this.wet.alpha[i])
-            this.savedWet.r[i] = lerp(this.savedWet.r[i], this.wet.r[i], blend)
-            this.savedWet.g[i] = lerp(this.savedWet.g[i], this.wet.g[i], blend)
-            this.savedWet.b[i] = lerp(this.savedWet.b[i], this.wet.b[i], blend)
-            this.savedWet.alpha[i] = Math.max(this.savedWet.alpha[i], this.wet.alpha[i])
-          }
-          // Porter-Duff accumulate strokeOpacity across strokes
-          const existingOp = this.savedWet.strokeOpacity[i]
-          const newOp = this.wet.strokeOpacity[i]
-          this.savedWet.strokeOpacity[i] = existingOp + newOp * (1 - existingOp)
-          this.lastStrokeMask[i] = 1
-        }
-      }
-
-      // D-05/D-07: Local physics -- run Stam solver on stroke bbox
-      if (this.state.physicsMode === 'local' && this.rawPts.length > 0) {
-        const brushR = opts.size || 24
-        let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
-        for (const p of this.rawPts) {
-          sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
-          sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
-        }
-        // D-06: margin and ticks scale with brush size, water, and spread
-        const waterFrac = this.state.brushOpts.waterAmount / 100
-        const spreadFrac = this.state.localSpreadStrength / 100
-        const spreadCurve = spreadFrac * spreadFrac
-        const waterCurve = waterFrac * waterFrac
-        const margin = Math.ceil(2 + waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4)
-        const bx0 = Math.max(0, Math.floor(sx0 - brushR - margin))
-        const by0 = Math.max(0, Math.floor(sy0 - brushR - margin))
-        const bx1 = Math.min(this.width - 1, Math.ceil(sx1 + brushR + margin))
-        const by1 = Math.min(this.height - 1, Math.ceil(sy1 + brushR + margin))
-
-        const localBounds = { x0: bx0, y0: by0, x1: bx1, y1: by1 }
-        const ticks = Math.max(1, Math.ceil(spreadCurve * 10))
-        localFluidPhysicsStep(
-          this.wet, this.fluidConfig,
-          this.width, this.height,
-          localBounds, ticks,
-        )
-      }
-
-      // Bake to canvas — in local mode, keep wet for stroke interaction
-      if (this.state.physicsMode !== 'local') {
-        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
-      } else {
-        // Start natural drying timer (research: paint dries over time via evaporation)
-        this.startNaturalDrying()
-      }
-    } else if (this.state.tool === 'erase') {
-      applyEraseStroke(
-        this.rawPts, opts,
-        this.dualCanvas.dryCtx, this.wet,
-        this.width, this.height,
-        this.state.hasPenInput,
-        this.state.embossStrength,
-        this.paperHeight,
-        this.state.bgMode,
-        this.bgData,
-      )
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
-    }
-
-    // Record stroke for replay
+    const points = this.rawPts.map(p => ({ x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: p.spd }))
     const colorlessTools: string[] = ['erase']
-    const stroke: PaintStroke = {
+    const color = colorlessTools.includes(this.state.tool) ? null : this.color
+
+    this.allActions.push({
       tool: this.state.tool,
-      points: this.rawPts.map(p => ({ x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: p.spd })),
-      color: colorlessTools.includes(this.state.tool) ? null : this.color,
+      points: points.map(p => ({ ...p })),
+      color,
       params: opts,
       timestamp: Date.now(),
-    }
-    this.allActions.push(stroke)
+    })
 
-    // Compute last stroke bounding box for physics "Last" mode
-    if (this.rawPts.length > 0) {
-      let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
-      for (const p of this.rawPts) {
-        sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
-        sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
-      }
-      const brushR = opts.size || 24
-      this.lastStrokeBounds = {
-        x0: Math.floor(sx0 - brushR),
-        y0: Math.floor(sy0 - brushR),
-        x1: Math.ceil(sx1 + brushR),
-        y1: Math.ceil(sy1 + brushR),
-      }
-    }
-
+    this.pendingStrokeFinalizations.push({
+      tool: this.state.tool,
+      points,
+      color,
+      opts,
+    })
     this.rawPts = []
+    this.scheduleStrokeFinalization()
   }
 
   private onPointerLeave(e: PointerEvent): void {
@@ -978,7 +1111,15 @@ export class EfxPaintEngine {
     const y = (e.clientY - r.top) * sy
 
     let pressure = e.pressure || 0
-    if (e.pointerType === 'pen') {
+    let tiltX = e.tiltX || 0
+    let tiltY = e.tiltY || 0
+    const nativePenActive = this.lastNativePenInputTime > 0 && (now - this.lastNativePenInputTime) < 300
+    if (nativePenActive && this.nativePenInput) {
+      this.state.hasPenInput = true
+      pressure = this.nativePenInput.pressure
+      tiltX = this.nativePenInput.tiltX ?? 0
+      tiltY = this.nativePenInput.tiltY ?? 0
+    } else if (e.pointerType === 'pen') {
       this.state.hasPenInput = true
       pressure = clamp(pressure, 0, 1)
     } else {
@@ -997,8 +1138,8 @@ export class EfxPaintEngine {
     return {
       x, y,
       p: pressure,
-      tx: e.tiltX || 0,
-      ty: e.tiltY || 0,
+      tx: tiltX,
+      ty: tiltY,
       tw: e.twist || 0,
       spd: speed,
     }
@@ -1047,8 +1188,25 @@ export class EfxPaintEngine {
           this.bgData,
         )
       }
+      this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
+
       // Force dry after each stroke (replicates drying between strokes)
       forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+    }
+  }
+
+  private replayDiffusion(frames: number, sampleHFn: (x: number, y: number) => number): void {
+    const count = Math.max(0, Math.min(600, Math.trunc(frames)))
+    for (let i = 0; i < count; i++) {
+      physicsStep(
+        this.wet, this.drying, this.dualCanvas.dryCtx,
+        this.fluid, this.fluidConfig,
+        this.blowDX, this.blowDY,
+        this.width, this.height,
+        this.state.physicsStrength, this.state.drySpeed,
+        this.state.physicsMode, this.lastStrokeBounds,
+        i, sampleHFn, this.paperHeight,
+      )
     }
   }
 
@@ -1187,8 +1345,9 @@ export class EfxPaintEngine {
     // Clear undo stack (loaded state is new baseline)
     this.undoStack = []
 
-    // Animated replay — strokes appear one by one
-    this.replayAnimated(this.allActions)
+    // Restore synchronously so loaded state is immediately available for apply/export.
+    // Animated replay made apply race against setTimeout-delayed stroke restoration.
+    this.redrawAll()
   }
 
   // ================================================================

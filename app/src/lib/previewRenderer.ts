@@ -282,8 +282,9 @@ export class PreviewRenderer {
       } else if (isAdjustmentLayer(layer)) {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
       } else if (layer.type === 'physic-paint') {
-        const renderedFrame = physicPaintStore.getFrame(layer.id, paintLookupFrame);
-        const source = renderedFrame ? this.getPhysicPaintImageSource(layer.id, paintLookupFrame, renderedFrame) : null;
+        const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+        const renderedFrame = physicPaintStore.getFrame(paintLayerId, paintLookupFrame);
+        const source = renderedFrame ? this.getPhysicPaintImageSource(paintLayerId, paintLookupFrame, renderedFrame) : null;
         if (source) {
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);

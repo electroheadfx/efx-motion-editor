@@ -17,6 +17,21 @@ import {
 
 const originalWindow = globalThis.window;
 
+const editableState = {
+  version: 2 as const,
+  width: 1000,
+  height: 650,
+  strokes: [{
+    tool: 'paint',
+    pts: [[1, 2, 0.5, 0, 0, 0, 0] as [number, number, number, number, number, number, number]],
+    color: '#103c65',
+    params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 },
+    time: 123,
+    diffusionFrames: 0,
+  }],
+  settings: { bgMode: 'canvas1', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+};
+
 const makeFrame = (frameIndex: number, appFrame: number) => ({
   frameIndex,
   appFrame,
@@ -32,6 +47,7 @@ function applyCanvasPayload(overrides: Partial<PhysicPaintApplyPayload> = {}): P
     layerId: 'phys-layer-1',
     startFrame: 8,
     renderedFrame: makeFrame(0, 8),
+    editableState,
     ...overrides,
   } as PhysicPaintApplyPayload;
 }
@@ -44,6 +60,7 @@ function applySequencePayload(overrides: Partial<PhysicPaintApplyPayload> = {}):
     startFrame: 10,
     frameCount: 3,
     frames: [makeFrame(0, 10), makeFrame(1, 11), makeFrame(2, 12)],
+    editableState,
     ...overrides,
   } as PhysicPaintApplyPayload;
 }
@@ -107,6 +124,19 @@ describe('physicPaintBridge', () => {
       width: 1920,
       height: 1080,
     });
+    expect(context.operationId).toMatch(/^physic-paint-/);
+  });
+
+  it('creates launch context at engine-native dimensions when no canvas is provided', () => {
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 12);
+
+    expect(context).toMatchObject({
+      layerId: 'phys-layer-1',
+      layerName: 'Water smoke',
+      startFrame: 12,
+    });
+    expect(context.width).toBeUndefined();
+    expect(context.height).toBeUndefined();
     expect(context.operationId).toMatch(/^physic-paint-/);
   });
 
@@ -237,6 +267,7 @@ describe('physicPaintBridge', () => {
     });
     expect(physicPaintStore.getFrame('phys-layer-1', 8)?.frameIndex).toBe(0);
     expect(physicPaintStore.getFrame('phys-layer-1', 9)).toBeNull();
+    expect(physicPaintStore.getEditableState('phys-layer-1')?.strokes).toHaveLength(1);
   });
 
   it('applies a generated sequence beginning at the captured app start frame', () => {
@@ -256,6 +287,16 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getFrame('phys-layer-1', 11)?.frameIndex).toBe(1);
     expect(physicPaintStore.getFrame('phys-layer-1', 12)?.frameIndex).toBe(2);
     expect(physicPaintStore.getFrame('phys-layer-1', 13)).toBeNull();
+  });
+
+  it('routes apply payloads by physic-paint source id when the rendered layer id differs', () => {
+    mockLayers([physicLayer({ id: 'render-layer-1', source: { type: 'physic-paint', layerId: 'phys-source-1' } })]);
+
+    const result = applyPhysicPaintPayload(applySequencePayload({ operationId: 'apply-source-id-seq', layerId: 'phys-source-1' }));
+
+    expect(result).toMatchObject({ ok: true, layerId: 'phys-source-1', appliedFrameCount: 3 });
+    expect(physicPaintStore.getFrame('phys-source-1', 10)?.frameIndex).toBe(0);
+    expect(physicPaintStore.getEditableState('phys-source-1')?.strokes).toHaveLength(1);
   });
 
   it('fails closed for invalid payloads before mutating the rendered store', () => {
@@ -288,7 +329,7 @@ describe('physicPaintBridge', () => {
     expect(unknown.ok).toBe(false);
     expect(unknown.error).toContain('Unknown');
     expect(wrongType.ok).toBe(false);
-    expect(wrongType.error).toContain('physic-paint');
+    expect(wrongType.error).toContain('Unknown');
     expect(physicPaintStore.hasOutput('missing-layer')).toBe(false);
     expect(physicPaintStore.hasOutput('paint-layer')).toBe(false);
   });
@@ -308,17 +349,24 @@ describe('physicPaintBridge', () => {
       outFrame: 24,
     });
 
+    physicPaintStore.applyCanvas(applyCanvasPayload({ layerId: 'hydrated-phys-layer', startFrame: 12, renderedFrame: makeFrame(0, 12) }) as Extract<PhysicPaintApplyPayload, { kind: 'apply-canvas' }>);
+
     const serialized = projectStore.buildMceProject();
     const serializedLayer = serialized.sequences[0].layers?.[0];
     expect(serializedLayer?.source).toMatchObject({
       type: 'physic-paint',
       layer_id: 'hydrated-phys-layer',
     });
+    expect(serialized.physic_paint_outputs).toEqual([
+      { layer_id: 'hydrated-phys-layer', frames: [expect.objectContaining({ appFrame: 12 })], editable_state: expect.objectContaining({ strokes: expect.any(Array) }) },
+    ]);
 
     projectStore.closeProject();
     projectStore.hydrateFromMce(serialized, '/tmp/efx-physic-paint-test');
     const hydratedLayer = sequenceStore.sequences.peek()[0]?.layers[0];
     expect(hydratedLayer?.source).toEqual({ type: 'physic-paint', layerId: 'hydrated-phys-layer' });
+    expect(physicPaintStore.getFrame('hydrated-phys-layer', 12)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getEditableState('hydrated-phys-layer')?.strokes).toHaveLength(1);
 
     mockLayers([hydratedLayer as Layer]);
     const result = applyPhysicPaintPayload(applyCanvasPayload({ layerId: 'hydrated-phys-layer' }));
@@ -331,11 +379,11 @@ describe('physicPaintBridge', () => {
     });
   });
 
-  it('rejects editable engine internals before store mutation', () => {
+  it('rejects engine internals before store mutation', () => {
     mockLayers([physicLayer()]);
     const applyCanvas = vi.spyOn(physicPaintStore, 'applyCanvas');
 
-    const result = applyPhysicPaintPayload({ ...applyCanvasPayload(), strokes: [] });
+    const result = applyPhysicPaintPayload({ ...applyCanvasPayload(), engine: {} });
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain('Invalid');

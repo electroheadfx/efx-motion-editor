@@ -174,6 +174,21 @@ mod tests {
                 format: "jpg".into(),
             }],
             audio_tracks: vec![],
+            physic_paint_outputs: vec![crate::models::project::McePhysicPaintOutput {
+                layer_id: "phys-layer-1".into(),
+                frames: vec![serde_json::json!({
+                    "frameIndex": 0,
+                    "appFrame": 12,
+                    "dataUrl": "data:image/png;base64,abc"
+                })],
+                editable_state: Some(serde_json::json!({
+                    "version": 2,
+                    "width": 1000,
+                    "height": 650,
+                    "settings": {},
+                    "strokes": []
+                })),
+            }],
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -188,6 +203,10 @@ mod tests {
         assert_eq!(loaded.images[0].id, "img-1");
         // After open, paths remain relative (frontend resolves to absolute using project root)
         assert_eq!(loaded.images[0].relative_path, "images/photo_abc12345.jpg");
+        assert_eq!(loaded.physic_paint_outputs.len(), 1);
+        assert_eq!(loaded.physic_paint_outputs[0].layer_id, "phys-layer-1");
+        assert_eq!(loaded.physic_paint_outputs[0].frames[0]["appFrame"], 12);
+        assert!(loaded.physic_paint_outputs[0].editable_state.is_some());
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
@@ -219,6 +238,7 @@ mod tests {
             sequences: vec![],
             images: vec![],
             audio_tracks: vec![],
+            physic_paint_outputs: vec![],
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -241,7 +261,9 @@ mod tests {
         MceLayerTransform {
             x: 0.0,
             y: 0.0,
-            scale: 1.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            scale: None,
             rotation: 0.0,
             crop_top: 0.0,
             crop_right: 0.0,
@@ -278,6 +300,10 @@ mod tests {
             tint_color: None,
             preset: None,
             fade_blend: None,
+            radius: None,
+            shader_id: None,
+            params: None,
+            layer_id: None,
         }
     }
 
@@ -307,11 +333,18 @@ mod tests {
                 source: default_source(),
                 is_base: true,
                 order: 0,
+                blur: None,
+                paint_bg_color: None,
+                keyframes: vec![],
             }],
             kind: Some("content".into()),
             in_frame: None,
             out_frame: None,
             visible: None,
+            fade_in: None,
+            fade_out: None,
+            cross_dissolve: None,
+            gl_transition: None,
         };
 
         let grain_seq = MceSequence {
@@ -341,11 +374,18 @@ mod tests {
                 },
                 is_base: false,
                 order: 0,
+                blur: None,
+                paint_bg_color: None,
+                keyframes: vec![],
             }],
             kind: Some("fx".into()),
             in_frame: Some(0),
             out_frame: Some(100),
             visible: None,
+            fade_in: None,
+            fade_out: None,
+            cross_dissolve: None,
+            gl_transition: None,
         };
 
         let colorgrade_seq = MceSequence {
@@ -378,11 +418,18 @@ mod tests {
                 },
                 is_base: false,
                 order: 0,
+                blur: None,
+                paint_bg_color: None,
+                keyframes: vec![],
             }],
             kind: Some("fx".into()),
             in_frame: Some(10),
             out_frame: Some(90),
             visible: Some(true),
+            fade_in: None,
+            fade_out: None,
+            cross_dissolve: None,
+            gl_transition: None,
         };
 
         let project = MceProject {
@@ -396,6 +443,7 @@ mod tests {
             sequences: vec![content_seq, grain_seq, colorgrade_seq],
             images: vec![],
             audio_tracks: vec![],
+            physic_paint_outputs: vec![],
         };
 
         // Save

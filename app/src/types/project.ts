@@ -1,4 +1,5 @@
 import type {MceAudioTrack} from './audio';
+import type {PhysicPaintRenderedFrame} from './physicPaint';
 
 /** Legacy type -- used by project_get_default */
 export interface ProjectData {
@@ -26,6 +27,13 @@ export interface MceProject {
     preview_quality: string;       // 'off' | 'low' | 'medium'
     export_sub_frames: number;     // 4, 8, or 16
   };
+  physic_paint_outputs?: McePhysicPaintOutput[];
+}
+
+export interface McePhysicPaintOutput {
+  layer_id: string;
+  frames: PhysicPaintRenderedFrame[];
+  editable_state?: import('@efxlab/efx-physic-paint').SerializedProject;
 }
 
 /** Sequence definition within a project file */

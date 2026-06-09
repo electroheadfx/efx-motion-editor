@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Legacy type -- kept for project_get_default backward compatibility
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +24,16 @@ pub struct MceProject {
     pub images: Vec<MceImageRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_tracks: Vec<MceAudioTrack>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub physic_paint_outputs: Vec<McePhysicPaintOutput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McePhysicPaintOutput {
+    pub layer_id: String,
+    pub frames: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editable_state: Option<Value>,
 }
 
 /// Audio track in project file (Phase 15)

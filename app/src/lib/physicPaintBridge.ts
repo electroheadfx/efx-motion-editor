@@ -56,12 +56,11 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
     return failureResult(base, 'Invalid physics paint apply payload');
   }
 
-  const targetLayer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find(layer => layer.id === payload.layerId);
+  const targetLayer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find(layer =>
+    layer.type === 'physic-paint' && layer.source.type === 'physic-paint' && layer.source.layerId === payload.layerId,
+  );
   if (!targetLayer) {
     return failureResult(payload, `Unknown physics paint layer: ${payload.layerId}`);
-  }
-  if (targetLayer.type !== 'physic-paint' || targetLayer.source.type !== 'physic-paint' || targetLayer.source.layerId !== payload.layerId) {
-    return failureResult(payload, 'Target layer is not a physic-paint rendered-output layer');
   }
   if (!Number.isInteger(payload.startFrame) || payload.startFrame < 0) {
     return failureResult(payload, 'Invalid physics paint start frame');
@@ -155,13 +154,16 @@ export function createPhysicPaintLaunchContext(
   frame: number,
   canvas?: PhysicPaintCanvasSize | null,
 ): PhysicPaintLaunchContext {
+  const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+  const editableState = physicPaintStore.getEditableState(layerId);
   return {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
-    layerId: layer.id,
+    layerId,
     layerName: layer.name,
     startFrame: Math.max(0, Math.trunc(frame)),
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
+    ...(editableState ? { editableState } : {}),
   };
 }
 

@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 import tailwindcss from '@tailwindcss/vite';
@@ -50,6 +51,13 @@ export default defineConfig({
       },
     },
   ],
+  resolve: {
+    alias: {
+      '@efxlab/efx-physic-paint/preact': fileURLToPath(new URL('../packages/efx-physic-paint/src/preact.tsx', import.meta.url)),
+      '@efxlab/efx-physic-paint/animation': fileURLToPath(new URL('../packages/efx-physic-paint/src/animation/index.ts', import.meta.url)),
+      '@efxlab/efx-physic-paint': fileURLToPath(new URL('../packages/efx-physic-paint/src/index.ts', import.meta.url)),
+    },
+  },
   // Tauri-specific config
   clearScreen: false,
   server: {

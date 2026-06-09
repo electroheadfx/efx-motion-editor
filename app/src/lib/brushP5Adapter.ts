@@ -324,10 +324,10 @@ export function renderFrameFx(
 ): HTMLCanvasElement | null {
   if (typeof document === 'undefined') return null;
 
-  // Filter to only FX-applied strokes (non-flat, non-eraser)
+  // Filter to renderable FX strokes (non-flat, non-eraser)
   const fxStrokes = strokes.filter(
     (s) => s.tool === 'brush' && s.brushStyle && s.brushStyle !== 'flat'
-          && s.fxState === 'fx-applied',
+          && (s.fxState === 'fx-applied' || s.fxState === 'flattened'),
   );
   if (fxStrokes.length === 0) return null;
 

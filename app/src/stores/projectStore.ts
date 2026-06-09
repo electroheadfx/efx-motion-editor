@@ -22,7 +22,7 @@ import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
 import {paintStore, _setPaintMarkDirtyCallback} from './paintStore';
-import {_setPhysicPaintMarkDirtyCallback} from './physicPaintStore';
+import {physicPaintStore, _setPhysicPaintMarkDirtyCallback} from './physicPaintStore';
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
@@ -268,6 +268,7 @@ function buildMceProject(): MceProject {
       preview_quality: motionBlurStore.previewQuality.peek(),
       export_sub_frames: exportStore.motionBlurSubFrames.peek(),
     },
+    physic_paint_outputs: physicPaintStore.toMceOutputs(),
   };
 }
 
@@ -501,7 +502,10 @@ function hydrateFromMce(project: MceProject, projectRoot: string) {
     motionBlurStore.previewQuality.value = (mb?.preview_quality as 'off' | 'low' | 'medium') ?? 'medium';
     exportStore.setMotionBlurSubFrames(mb?.export_sub_frames ?? 8);
 
-    // 6. Clear dirty flag (just loaded)
+    // 6. Rendered physics paint outputs (inline PNG frames keyed by layer/frame)
+    physicPaintStore.loadFromMceOutputs(project.physic_paint_outputs);
+
+    // 7. Clear dirty flag (just loaded)
     isDirty.value = false;
   });
 
@@ -733,6 +737,7 @@ export const projectStore = {
     imageStore.reset();
     audioStore.reset();
     paintStore.reset();
+    physicPaintStore.reset();
     motionBlurStore.reset();
     audioPeaksCache.clear();
     audioEngine.stopAll();

@@ -40,6 +40,13 @@ export interface EngineConfig {
   defaultPaper?: string    // key to auto-select
 }
 
+/** Native tablet sample injected by host apps when PointerEvent.pressure is unavailable. */
+export interface NativePenInput {
+  pressure: number         // pressure 0-1
+  tiltX?: number           // tilt X degrees
+  tiltY?: number           // tilt Y degrees
+}
+
 // === TOOL TYPES ===
 // v3 has only paint and erase active (D-12)
 

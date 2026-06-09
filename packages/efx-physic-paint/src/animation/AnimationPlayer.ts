@@ -125,9 +125,9 @@ export class AnimationPlayer {
       // Drift correction
       this.lastFrameTime = timestamp - ((timestamp - this.lastFrameTime) % frameDuration)
 
-      // Render and fire callback
+      // Render and fire callback with the full visible output (dry + wet overlay)
       this.renderFrame(this.currentFrame)
-      this.config.onFrame?.(this.currentFrame, this.engine.getDisplayCanvas())
+      this.config.onFrame?.(this.currentFrame, this.engine.exportCompositeCanvas())
 
       this.currentFrame++
 

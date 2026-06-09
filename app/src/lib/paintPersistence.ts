@@ -83,7 +83,7 @@ export async function loadPaintData(projectDir: string, layerIds: string[]): Pro
             const hasFxStrokes = paintFrame.elements.some((el) => {
               if (el.tool !== 'brush') return false;
               const s = el as PaintStroke;
-              return s.fxState === 'fx-applied' && s.brushStyle && s.brushStyle !== 'flat';
+              return (s.fxState === 'fx-applied' || s.fxState === 'flattened') && s.brushStyle && s.brushStyle !== 'flat';
             });
 
             if (hasFxStrokes) {

@@ -7,13 +7,14 @@
 import { useRef, useEffect } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import { EfxPaintEngine } from './engine/EfxPaintEngine'
-import type { EngineConfig } from './types'
+import type { EngineConfig, NativePenInput } from './types'
 
 export interface EfxPaintCanvasProps extends EngineConfig {
   width?: number
   height?: number
   class?: string
   onEngineReady?: (engine: EfxPaintEngine) => void
+  onNativePenInputReady?: (handler: (input: NativePenInput) => void) => void
 }
 
 /**
@@ -42,6 +43,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
       defaultPaper: props.defaultPaper,
     })
     engineRef.current = engine
+    props.onNativePenInputReady?.((input) => engine.updateNativePenInput(input))
 
     // Await async init (paper texture loading) before signaling ready
     engine.init().then(() => {

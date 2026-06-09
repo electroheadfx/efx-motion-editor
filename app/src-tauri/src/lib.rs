@@ -7,6 +7,7 @@ use commands::export;
 use commands::image;
 use commands::project;
 use percent_encoding::percent_decode_str;
+use serde_json::Value;
 use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::Emitter;
 
@@ -16,12 +17,16 @@ struct PhysicsPaintLaunchContext {
     operation_id: String,
     #[serde(rename = "layerId")]
     layer_id: String,
-    #[serde(rename = "layerName")]
+    #[serde(rename = "layerName", skip_serializing_if = "Option::is_none")]
     layer_name: Option<String>,
     #[serde(rename = "startFrame")]
     start_frame: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     height: Option<u32>,
+    #[serde(rename = "editableState", skip_serializing_if = "Option::is_none")]
+    editable_state: Option<Value>,
 }
 
 #[derive(serde::Serialize)]
@@ -100,7 +105,7 @@ fn physics_paint_url(context: &PhysicsPaintLaunchContext) -> String {
         "/physics-paint?operationId={}&layerId={}&startFrame={}",
         percent_encoding::utf8_percent_encode(&context.operation_id, percent_encoding::NON_ALPHANUMERIC),
         percent_encoding::utf8_percent_encode(&context.layer_id, percent_encoding::NON_ALPHANUMERIC),
-        context.start_frame
+        context.start_frame,
     );
     if let Some(layer_name) = &context.layer_name {
         url.push_str("&layerName=");
@@ -448,4 +453,36 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn physics_paint_url_excludes_large_editable_state() {
+        let context = PhysicsPaintLaunchContext {
+            operation_id: "op-1".into(),
+            layer_id: "layer-1".into(),
+            layer_name: Some("Layer".into()),
+            start_frame: 12,
+            width: Some(1000),
+            height: Some(650),
+            editable_state: Some(serde_json::json!({
+                "version": 2,
+                "width": 1000,
+                "height": 650,
+                "settings": {},
+                "strokes": [{ "pts": [[1, 2, 0.5, 0, 0, 0, 0]] }]
+            })),
+        };
+
+        let url = physics_paint_url(&context);
+
+        assert!(url.starts_with("/physics-paint?operationId="));
+        assert!(url.contains("layerId=layer%2D1"));
+        assert!(url.contains("startFrame=12"));
+        assert!(!url.contains("editableState"));
+        assert!(!url.contains("strokes"));
+    }
 }

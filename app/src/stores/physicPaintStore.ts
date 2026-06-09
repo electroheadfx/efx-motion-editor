@@ -8,6 +8,7 @@ export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectD
 export const physicPaintVersion = signal(0);
 
 const _frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
+const _editableStates = new Map<string, PhysicPaintApplyPayload['editableState']>();
 
 function _getOrCreateLayer(layerId: string): Map<number, PhysicPaintRenderedFrame> {
   let layerFrames = _frames.get(layerId);
@@ -40,8 +41,46 @@ export const physicPaintStore = {
     return _frames.get(layerId)?.get(frame) ?? null;
   },
 
+  getEditableState(layerId: string): PhysicPaintApplyPayload['editableState'] | null {
+    const state = _editableStates.get(layerId);
+    return state ? structuredClone(state) : null;
+  },
+
   getFrames(layerId: string): Map<number, PhysicPaintRenderedFrame> {
     return new Map(_frames.get(layerId) ?? []);
+  },
+
+  toMceOutputs(): Array<{ layer_id: string; frames: PhysicPaintRenderedFrame[]; editable_state?: PhysicPaintApplyPayload['editableState'] }> {
+    const layerIds = new Set([..._frames.keys(), ..._editableStates.keys()]);
+    return Array.from(layerIds)
+      .map((layerId) => {
+        const frames = _frames.get(layerId) ?? new Map<number, PhysicPaintRenderedFrame>();
+        return {
+          layer_id: layerId,
+          frames: Array.from(frames.entries())
+            .sort(([a], [b]) => a - b)
+            .map(([frame, renderedFrame]) => ({ ...renderedFrame, appFrame: frame })),
+          ...(_editableStates.has(layerId) ? { editable_state: structuredClone(_editableStates.get(layerId)!) } : {}),
+        };
+      })
+      .filter(output => output.frames.length > 0 || output.editable_state);
+  },
+
+  loadFromMceOutputs(outputs: Array<{ layer_id: string; frames: PhysicPaintRenderedFrame[]; editable_state?: PhysicPaintApplyPayload['editableState'] }> | null | undefined): void {
+    _frames.clear();
+    _editableStates.clear();
+    for (const output of outputs ?? []) {
+      if (!output || typeof output.layer_id !== 'string' || !Array.isArray(output.frames)) continue;
+      const layerFrames = _getOrCreateLayer(output.layer_id);
+      for (const renderedFrame of output.frames) {
+        if (!renderedFrame || !Number.isInteger(renderedFrame.appFrame) || renderedFrame.appFrame < 0) continue;
+        if (typeof renderedFrame.dataUrl !== 'string' || !renderedFrame.dataUrl.startsWith('data:image/png')) continue;
+        layerFrames.set(renderedFrame.appFrame, { ...renderedFrame });
+      }
+      if (layerFrames.size === 0) _frames.delete(output.layer_id);
+      if (output.editable_state) _editableStates.set(output.layer_id, structuredClone(output.editable_state));
+    }
+    physicPaintVersion.value++;
   },
 
   setFrame(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame): void {
@@ -58,6 +97,7 @@ export const physicPaintStore = {
       return _errorResult(payload, 'Expected apply-canvas payload');
     }
 
+    _editableStates.set(payload.layerId, structuredClone(payload.editableState));
     this.setFrame(payload.layerId, payload.startFrame, payload.renderedFrame);
     return {
       operationId: payload.operationId,
@@ -82,6 +122,7 @@ export const physicPaintStore = {
       const appFrame = payload.startFrame + index;
       layerFrames.set(appFrame, { ...renderedFrame, appFrame });
     });
+    _editableStates.set(payload.layerId, structuredClone(payload.editableState));
     _notifyVisualChange();
 
     return {
@@ -99,14 +140,16 @@ export const physicPaintStore = {
   },
 
   clearLayer(layerId: string): void {
-    if (!_frames.has(layerId)) return;
+    if (!_frames.has(layerId) && !_editableStates.has(layerId)) return;
     _frames.delete(layerId);
+    _editableStates.delete(layerId);
     _notifyVisualChange();
   },
 
   reset(): void {
-    if (_frames.size === 0) return;
+    if (_frames.size === 0 && _editableStates.size === 0) return;
     _frames.clear();
+    _editableStates.clear();
     _notifyVisualChange();
   },
 };

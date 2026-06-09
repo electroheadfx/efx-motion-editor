@@ -49,6 +49,7 @@ pub fn project_create(
         sequences: vec![],
         images: vec![],
         audio_tracks: vec![],
+        physic_paint_outputs: vec![],
     })
 }
 
