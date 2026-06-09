@@ -153,6 +153,7 @@ function projectManagedHookCommand({ absoluteRunner, scriptPath, runtime = 'gene
 const MANAGED_HOOK_BASENAMES_BY_SURFACE = {
     'settings-json': new Set([
         'gsd-check-update.js',
+        'gsd-config-reload.js',
         'gsd-statusline.js',
         'gsd-context-monitor.js',
         'gsd-prompt-guard.js',
@@ -168,6 +169,7 @@ const MANAGED_HOOK_BASENAMES_BY_SURFACE = {
 const MANAGED_HOOK_COMMAND_BASENAMES_BY_SURFACE = {
     'settings-json': new Set([
         'gsd-check-update.js',
+        'gsd-config-reload.js',
         'gsd-statusline.js',
         'gsd-context-monitor.js',
         'gsd-prompt-guard.js',
@@ -188,6 +190,10 @@ const MANAGED_HOOK_COMMAND_BASENAMES_BY_SURFACE = {
         // reconcileCodexHooksJsonSessionStart can replace stale node-runner commands
         // with the .cmd shim on reinstall (and vice-versa on cross-platform moves).
         'gsd-check-update.cmd',
+        // #772: context-monitor is now registered for Codex SubagentStart/Stop/PostToolUse.
+        'gsd-context-monitor.js',
+        // #772: Windows .cmd shim for gsd-context-monitor — same #3426 pattern.
+        'gsd-context-monitor.cmd',
     ]),
 };
 const LEGACY_MANAGED_HOOK_ALIASES_BY_SURFACE = {
@@ -381,6 +387,7 @@ function execGit(args, opts = {}) {
         encoding: 'utf-8',
         stdio: 'pipe',
         timeout: opts.timeout ?? 10_000,
+        windowsHide: true,
     });
     return _spawnResult(result, 'git');
 }
@@ -391,6 +398,7 @@ function execNpm(args, opts = {}) {
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: opts.timeout ?? 15_000,
+        windowsHide: true,
     });
     return _spawnResult(result, 'npm');
 }
@@ -401,6 +409,7 @@ function execTool(program, args, opts = {}) {
         encoding: 'utf-8',
         stdio: 'pipe',
         timeout: opts.timeout ?? 30_000,
+        windowsHide: true,
     });
     return _spawnResult(result, program);
 }

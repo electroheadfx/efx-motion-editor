@@ -90,11 +90,21 @@ function buildRoadmapPhaseVariants(roadmapContent) {
     const roadmapPhaseVariants = new Set();
     // Matches both legacy numeric (Phase 1:), decimal (Phase 2.1:), milestone-prefixed (Phase 2-01:),
     // and bracket-prefixed (### [GSD] Phase 2-01:) headings.
-    const phasePattern = /#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+([\w][\w.-]*(?:-[\w.-]+)*)\s*:/gi;
+    const phasePattern = /#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+([\w][\w.-]*)\s*:/gi;
     let m;
     while ((m = phasePattern.exec(roadmapContent)) !== null) {
         roadmapPhases.add(m[1]);
         for (const variant of phaseVariants(m[1]))
+            roadmapPhaseVariants.add(variant);
+    }
+    // Also matches checklist-style entries (checked or unchecked):
+    //   - [x] **Phase 01: name**   - [X] **Phase 2-01: name**   - [ ] **Phase 3: name**
+    // This is a supported ROADMAP format (parallel to buildNotStartedPhaseVariants).
+    const checklistPattern = /-\s*\[[ xX]\]\s*\*{0,2}Phase\s+([\w][\w.-]*)\s*:/gi;
+    let cm;
+    while ((cm = checklistPattern.exec(roadmapContent)) !== null) {
+        roadmapPhases.add(cm[1]);
+        for (const variant of phaseVariants(cm[1]))
             roadmapPhaseVariants.add(variant);
     }
     return { roadmapPhases, roadmapPhaseVariants };
@@ -102,7 +112,7 @@ function buildRoadmapPhaseVariants(roadmapContent) {
 function buildNotStartedPhaseVariants(roadmapContent) {
     const notStartedPhases = new Set();
     // Also matches milestone-prefixed and bracket-prefixed checklist items.
-    const uncheckedPattern = /-\s*\[\s\]\s*\*{0,2}Phase\s+([\w][\w.-]*(?:-[\w.-]+)*)[:\s*]/gi;
+    const uncheckedPattern = /-\s*\[\s\]\s*\*{0,2}Phase\s+([\w][\w.-]*)[:\s*]/gi;
     let um;
     while ((um = uncheckedPattern.exec(roadmapContent)) !== null) {
         for (const variant of phaseVariants(um[1]))

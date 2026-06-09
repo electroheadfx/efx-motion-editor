@@ -239,6 +239,7 @@ function recentCommitMessages(projectDir) {
             cwd: projectDir,
             encoding: 'utf-8',
             maxBuffer: 4 * 1024 * 1024,
+            windowsHide: true,
         });
     }
     catch {

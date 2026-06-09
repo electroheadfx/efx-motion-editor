@@ -20,7 +20,7 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const core = require("./core.cjs");
-const { toPosixPath, readSubdirectories } = core;
+const { readSubdirectories } = core;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const planScan = require("./plan-scan.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports

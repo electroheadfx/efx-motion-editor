@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.3.1
+// gsd-hook-version: 1.4.1
 // GSD Worktree Path Guard — PreToolUse hook
 // Blocks Edit/Write/MultiEdit tool calls that target absolute paths outside the worktree root.
 //
@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const SPAWNOPT = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 };
+const SPAWNOPT = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000, windowsHide: true };
 
 function git(args, cwd) {
   return spawnSync('git', args, { ...SPAWNOPT, cwd });

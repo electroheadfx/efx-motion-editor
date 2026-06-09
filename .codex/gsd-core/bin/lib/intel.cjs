@@ -59,7 +59,7 @@ function isIntelEnabled(planningDir) {
             return true;
         return false;
     }
-    catch (_e) {
+    catch {
         return false;
     }
 }
@@ -86,7 +86,7 @@ function safeReadJson(filePath) {
             return null;
         return JSON.parse(raw);
     }
-    catch (_e) {
+    catch {
         return null;
     }
 }
@@ -101,7 +101,7 @@ function hashFile(filePath) {
             return null;
         return node_crypto_1.default.createHash('sha256').update(content).digest('hex');
     }
-    catch (_e) {
+    catch {
         return null;
     }
 }
@@ -146,23 +146,6 @@ function matchesInValue(value, lowerTerm) {
         return Object.values(value).some(v => matchesInValue(v, lowerTerm));
     }
     return false;
-}
-/**
- * Search for a term in arch.md text content.
- * Returns matching lines.
- */
-function searchArchMd(filePath, term) {
-    try {
-        const content = (0, shell_command_projection_cjs_1.platformReadSync)(filePath);
-        if (content === null)
-            return [];
-        const lowerTerm = term.toLowerCase();
-        const lines = content.split(/\r?\n/);
-        return lines.filter(line => line.toLowerCase().includes(lowerTerm));
-    }
-    catch (_e) {
-        return [];
-    }
 }
 /**
  * Query intel files for a search term.

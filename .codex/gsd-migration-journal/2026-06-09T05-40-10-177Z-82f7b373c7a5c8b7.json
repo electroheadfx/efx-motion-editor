@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "appliedAt": "2026-06-09T05:40:10.177Z",
+  "appliedMigrationIds": [
+    "2026-05-11-codex-legacy-hooks-json"
+  ],
+  "actions": [
+    {
+      "migrationId": "2026-05-11-codex-legacy-hooks-json",
+      "migrationChecksum": "sha256:5ce55294aa02f25758f604a569c899a6d2d060299189f5f447f68d8033157058",
+      "type": "rewrite-json",
+      "relPath": "hooks.json",
+      "reason": "legacy Codex hooks.json GSD registration retired by installer migration",
+      "classification": "unknown",
+      "originalHash": null,
+      "currentHash": "7374d8d2ef5bb89daeb57b9f2159841b2fffcbfe220c3a5e951d7165cc34d3a9",
+      "deleteIfEmpty": true,
+      "rollbackRelPath": "gsd-migration-journal/2026-06-09T05-40-10-177Z-82f7b373c7a5c8b7-rollback/hooks.json",
+      "status": "removed"
+    }
+  ]
+}

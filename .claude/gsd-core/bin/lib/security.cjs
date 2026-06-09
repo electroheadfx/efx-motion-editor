@@ -24,6 +24,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MARKDOWN_LINK_PATTERNS = exports.INJECTION_PATTERNS = void 0;
 exports.validatePath = validatePath;
+exports.loadTrustedGlobalRoots = loadTrustedGlobalRoots;
 exports.requireSafePath = requireSafePath;
 exports.scanForInjection = scanForInjection;
 exports.sanitizeForPrompt = sanitizeForPrompt;
@@ -35,6 +36,7 @@ exports.validateFieldName = validateFieldName;
 exports.validatePromptStructure = validatePromptStructure;
 exports.scanEntropyAnomalies = scanEntropyAnomalies;
 const node_fs_1 = __importDefault(require("node:fs"));
+const node_os_1 = __importDefault(require("node:os"));
 const node_path_1 = __importDefault(require("node:path"));
 // ─── Path Traversal Prevention ──────────────────────────────────────────────
 /**
@@ -91,6 +93,77 @@ function validatePath(filePath, baseDir, opts = {}) {
         };
     }
     return { safe: true, resolved: resolvedPath };
+}
+/**
+ * Load the opt-in trusted global roots allowlist from config.
+ *
+ * Reads `config.agent_skills_security.trusted_global_roots` (an array of
+ * path strings). Each entry is canonicalized via realpathSync: non-strings
+ * are dropped, leading `~/` is expanded to `os.homedir()`, entries that are
+ * not absolute after expansion are dropped (project-relative paths are
+ * rejected as a security boundary), and entries that do not exist on disk are
+ * dropped (a non-existent root is not trustworthy). The canonical realpath is
+ * used for all subsequent checks and as the stored value — this closes the
+ * case-insensitive bypass on macOS APFS (`/users/alice` vs `/Users/alice`)
+ * and ensures trust doesn't drift across re-invocations if a root is
+ * re-created at a different target. Results are de-duplicated by canonical path.
+ */
+function loadTrustedGlobalRoots(config) {
+    const roots = config?.['agent_skills_security'];
+    const raw = roots?.['trusted_global_roots'];
+    if (!Array.isArray(raw))
+        return [];
+    // Compute canonical homedir once for case-insensitive-safe comparison.
+    let realHome;
+    try {
+        realHome = node_fs_1.default.realpathSync(node_os_1.default.homedir());
+    }
+    catch {
+        realHome = node_os_1.default.homedir();
+    }
+    const seen = new Set();
+    const result = [];
+    for (const entry of raw) {
+        if (typeof entry !== 'string')
+            continue;
+        let expanded;
+        if (entry === '~') {
+            expanded = node_os_1.default.homedir();
+        }
+        else if (entry.startsWith('~/')) {
+            expanded = node_path_1.default.join(node_os_1.default.homedir(), entry.slice(2));
+        }
+        else {
+            expanded = entry;
+        }
+        if (!node_path_1.default.isAbsolute(expanded))
+            continue; // reject project-relative
+        // Canonicalize: resolve symlinks and normalise case. If the path doesn't
+        // exist or can't be read, skip it — a non-existent root is not trustworthy.
+        let real;
+        try {
+            real = node_fs_1.default.realpathSync(expanded);
+        }
+        catch {
+            continue; // non-existent or unreadable — skip
+        }
+        // Reject dangerously broad roots: filesystem root (e.g. '/' or 'C:\' or UNC '\\server\share').
+        // Normalize both sides by stripping trailing path separators before comparing so that
+        // Windows UNC shares (where path.parse().root includes a trailing separator) are caught.
+        const stripTrailingSep = (p) => p.replace(/[\\/]+$/, '');
+        if (stripTrailingSep(node_path_1.default.parse(real).root) === stripTrailingSep(real))
+            continue;
+        // Reject homedir itself (canonical compare closes case-insensitive bypass).
+        // Apply stripTrailingSep for robustness on platforms where realpathSync may
+        // or may not include a trailing separator on the homedir path.
+        if (stripTrailingSep(real) === stripTrailingSep(realHome))
+            continue;
+        if (seen.has(real))
+            continue;
+        seen.add(real);
+        result.push(real);
+    }
+    return result;
 }
 /**
  * Validate a file path and throw on traversal attempt.

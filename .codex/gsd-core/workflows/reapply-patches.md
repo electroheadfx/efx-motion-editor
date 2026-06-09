@@ -24,12 +24,12 @@ PATCHES_DIR=""
 
 # Env overrides first — covers custom config directories used with --config-dir
 if [ -n "$KILO_CONFIG_DIR" ]; then
-  candidate="$(expand_home "$KILO_CONFIG_DIR")$gsd-local-patches"
+  candidate="$(expand_home "$KILO_CONFIG_DIR")/gsd-local-patches"
   if [ -d "$candidate" ]; then
     PATCHES_DIR="$candidate"
   fi
 elif [ -n "$KILO_CONFIG" ]; then
-  candidate="$(dirname "$(expand_home "$KILO_CONFIG")")$gsd-local-patches"
+  candidate="$(dirname "$(expand_home "$KILO_CONFIG")")/gsd-local-patches"
   if [ -d "$candidate" ]; then
     PATCHES_DIR="$candidate"
   fi
@@ -41,12 +41,12 @@ elif [ -n "$XDG_CONFIG_HOME" ]; then
 fi
 
 if [ -z "$PATCHES_DIR" ] && [ -n "$OPENCODE_CONFIG_DIR" ]; then
-  candidate="$(expand_home "$OPENCODE_CONFIG_DIR")$gsd-local-patches"
+  candidate="$(expand_home "$OPENCODE_CONFIG_DIR")/gsd-local-patches"
   if [ -d "$candidate" ]; then
     PATCHES_DIR="$candidate"
   fi
 elif [ -z "$PATCHES_DIR" ] && [ -n "$OPENCODE_CONFIG" ]; then
-  candidate="$(dirname "$(expand_home "$OPENCODE_CONFIG")")$gsd-local-patches"
+  candidate="$(dirname "$(expand_home "$OPENCODE_CONFIG")")/gsd-local-patches"
   if [ -d "$candidate" ]; then
     PATCHES_DIR="$candidate"
   fi
@@ -58,21 +58,21 @@ elif [ -z "$PATCHES_DIR" ] && [ -n "$XDG_CONFIG_HOME" ]; then
 fi
 
 if [ -z "$PATCHES_DIR" ] && [ -n "$GEMINI_CONFIG_DIR" ]; then
-  candidate="$(expand_home "$GEMINI_CONFIG_DIR")$gsd-local-patches"
+  candidate="$(expand_home "$GEMINI_CONFIG_DIR")/gsd-local-patches"
   if [ -d "$candidate" ]; then
     PATCHES_DIR="$candidate"
   fi
 fi
 
 if [ -z "$PATCHES_DIR" ] && [ -n "$CODEX_HOME" ]; then
-  candidate="$(expand_home "$CODEX_HOME")$gsd-local-patches"
+  candidate="$(expand_home "$CODEX_HOME")/gsd-local-patches"
   if [ -d "$candidate" ]; then
     PATCHES_DIR="$candidate"
   fi
 fi
 
 if [ -z "$PATCHES_DIR" ] && [ -n "$CLAUDE_CONFIG_DIR" ]; then
-  candidate="$(expand_home "$CLAUDE_CONFIG_DIR")$gsd-local-patches"
+  candidate="$(expand_home "$CLAUDE_CONFIG_DIR")/gsd-local-patches"
   if [ -d "$candidate" ]; then
     PATCHES_DIR="$candidate"
   fi
@@ -275,10 +275,10 @@ Two layered gates. Both must pass before proceeding to cleanup.
 
 Run the deterministic verifier script. Do NOT rely solely on the free-text `verified: yes/no` Hunk Verification Table from Step 4 — bug #2969 traced repeated false-positive `verified: yes` reports to that table being filled in without an actual content-presence check. The script performs the check structurally and exits non-zero on any miss.
 
-Run the verifier as a child process (the gsd-tools binary directory is not required — the script ships under `gsd-core/bin/` in the source repo and is installed to `${GSD_HOME}$gsd-core/bin/`; it is also exposed via the SDK at `sdk/dist/cli.js verify-reapply` when present):
+Run the verifier as a child process (the gsd-tools binary directory is not required — the script ships under `gsd-core/bin/` in the source repo and is installed to `${GSD_HOME}/gsd-core/bin/`; it is also exposed via the SDK at `sdk/dist/cli.js verify-reapply` when present):
 
 ```bash
-PRISTINE_DIR="${CONFIG_DIR}$gsd-pristine"
+PRISTINE_DIR="${CONFIG_DIR}/gsd-pristine"
 
 # Build args as a bash array so paths with spaces survive expansion intact
 # (string-concat + unquoted expansion would split incorrectly on whitespace).
@@ -295,7 +295,7 @@ VERIFY_ARGS+=(--json)
 # Node warnings, deprecation notices, or stack traces do not corrupt the
 # JSON parse downstream. Stderr is preserved on the controlling terminal
 # for operator visibility.
-VERIFY_OUTPUT="$(node "${GSD_HOME}$gsd-core/bin/verify-reapply-patches.cjs" "${VERIFY_ARGS[@]}")"
+VERIFY_OUTPUT="$(node "${GSD_HOME}/gsd-core/bin/verify-reapply-patches.cjs" "${VERIFY_ARGS[@]}")"
 VERIFY_STATUS=$?
 ```
 

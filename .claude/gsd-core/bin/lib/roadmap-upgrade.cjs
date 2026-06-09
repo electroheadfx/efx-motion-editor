@@ -25,8 +25,6 @@ const MIGRATED_PHASE_HEADING_RE = /^#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+\d+-\d{2}
 // Matches milestone section headings: ## v1.0, ## Roadmap v2.0, ## ✅ v1.0, ## [GSD] v1.0, etc.
 // The optional bracket-token prefix (e.g., [GSD]) must be tested before the emoji group.
 const MILESTONE_HEADING_RE = /^##\s+(?:\[[^\]]+\]\s+|Roadmap\s+|[✅🚧]\s*)?v(\d+)\.(\d+)(?:\s|:)/iu;
-// Matches checklist phase references: - [ ] **Phase N:** or - [x] **Phase N:**  (also decimal)
-const CHECKLIST_PHASE_RE = /^(\s*-\s*\[[ x]\]\s*\*{0,2})Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:/gi;
 // ─── Pure computation helpers ─────────────────────────────────────────────────
 /**
  * Parse the ROADMAP.md content and build a list of phase entries with their
@@ -125,19 +123,6 @@ function buildNewDirName(oldDirName, newId, projectCode) {
     const paddedMilestone = String(milestoneInt).padStart(2, '0');
     const newBase = slug ? `${paddedMilestone}-${subStr}-${slug}` : `${paddedMilestone}-${subStr}`;
     return projectCode ? `${projectCode}-${newBase}` : newBase;
-}
-/**
- * Read project_code from config.json if present.
- */
-function readProjectCode(configPath) {
-    try {
-        const raw = node_fs_1.default.readFileSync(configPath, 'utf8');
-        const parsed = JSON.parse(raw);
-        return typeof parsed['project_code'] === 'string' ? parsed['project_code'] : null;
-    }
-    catch {
-        return null;
-    }
 }
 // ─── computeMigrationPlan ─────────────────────────────────────────────────────
 /**
@@ -390,7 +375,7 @@ function applyMigration(cwd, plan, options = {}) {
     // ── Real run: verify clean working tree ───────────────────────────────────
     let gitStatus;
     try {
-        gitStatus = (0, node_child_process_1.execSync)('git status --porcelain', { cwd, encoding: 'utf8' });
+        gitStatus = (0, node_child_process_1.execSync)('git status --porcelain', { cwd, encoding: 'utf8', windowsHide: true });
     }
     catch (err) {
         throw new Error(`git status failed: ${err.message}`);
@@ -401,7 +386,7 @@ function applyMigration(cwd, plan, options = {}) {
     // Capture HEAD sha for rollback
     let headSha;
     try {
-        headSha = (0, node_child_process_1.execSync)('git rev-parse HEAD', { cwd, encoding: 'utf8' }).trim();
+        headSha = (0, node_child_process_1.execSync)('git rev-parse HEAD', { cwd, encoding: 'utf8', windowsHide: true }).trim();
     }
     catch (err) {
         throw new Error(`git rev-parse HEAD failed: ${err.message}`);
@@ -475,8 +460,8 @@ function applyMigration(cwd, plan, options = {}) {
     catch (err) {
         // Rollback via git reset --hard + git clean
         try {
-            (0, node_child_process_1.execSync)(`git reset --hard ${headSha}`, { cwd, stdio: 'pipe' });
-            (0, node_child_process_1.execSync)('git clean -fd .planning/phases/', { cwd, stdio: 'pipe' });
+            (0, node_child_process_1.execSync)(`git reset --hard ${headSha}`, { cwd, stdio: 'pipe', windowsHide: true });
+            (0, node_child_process_1.execSync)('git clean -fd .planning/phases/', { cwd, stdio: 'pipe', windowsHide: true });
         }
         catch {
             // Swallow rollback errors — surface original error

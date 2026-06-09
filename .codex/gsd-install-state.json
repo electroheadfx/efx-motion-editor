@@ -6,6 +6,12 @@
       "appliedAt": "2026-06-08T08:24:22.441Z",
       "journal": "gsd-migration-journal/2026-06-08T08-24-22-441Z-a487dfb4eff411b5.json",
       "checksum": "sha256:4ec58d35b30dbf39cc56e3972146086d8d31861ecd800cf0b37a7aa94fe74c2a"
+    },
+    {
+      "id": "2026-05-11-codex-legacy-hooks-json",
+      "appliedAt": "2026-06-09T05:40:10.177Z",
+      "journal": "gsd-migration-journal/2026-06-09T05-40-10-177Z-82f7b373c7a5c8b7.json",
+      "checksum": "sha256:5ce55294aa02f25758f604a569c899a6d2d060299189f5f447f68d8033157058"
     }
   ]
 }

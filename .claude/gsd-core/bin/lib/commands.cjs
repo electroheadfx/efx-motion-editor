@@ -14,7 +14,7 @@ const node_path_1 = __importDefault(require("node:path"));
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const core = require("./core.cjs");
-const { loadConfig, isGitIgnored, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, resolveEffortInternal, resolveFastModeInternal, resolveEffortForTier, stripShippedMilestones: _stripShippedMilestones, extractCurrentMilestone, toPosixPath, output, error, findPhaseInternal, extractOneLinerFromBody, getRoadmapPhaseInternal, extractPhaseToken, resolveGranularityInternal, } = core;
+const { loadConfig, isGitIgnored, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, resolveModelInternal, resolveEffortInternal, resolveFastModeInternal, resolveEffortForTier, stripShippedMilestones: _stripShippedMilestones, extractCurrentMilestone, toPosixPath, output, error, findPhaseInternal, extractOneLinerFromBody, getRoadmapPhaseInternal, extractPhaseToken, resolveGranularityInternal, assertValidGranularityOverride, } = core;
 const model_catalog_cjs_1 = require("./model-catalog.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const planningWorkspace = require("./planning-workspace.cjs");
@@ -244,11 +244,12 @@ function cmdResolveModel(cwd, agentType, raw) {
         : { model, profile, effort, unknown_agent: true };
     output(result, raw, model);
 }
-function cmdResolveGranularity(cwd, phaseType, raw) {
+function cmdResolveGranularity(cwd, phaseType, raw, override) {
     if (!phaseType) {
         error('phase-type required');
     }
-    const granularity = resolveGranularityInternal(cwd, phaseType);
+    assertValidGranularityOverride(override, error);
+    const granularity = resolveGranularityInternal(cwd, phaseType, override);
     const result = (VALID_PHASE_TYPES).has(phaseType)
         ? { granularity, phase_type: phaseType }
         : { granularity, phase_type: phaseType, unknown_phase_type: true };
@@ -431,7 +432,7 @@ function cmdCommit(cwd, message, files, raw, amend, noVerify) {
                 const phaseInfo = findPhaseInternal(cwd, phaseNum);
                 if (phaseInfo) {
                     branchName = config['phase_branch_template']
-                        .replace('{phase}', phaseInfo['phase_number'])
+                        .replace('{phase}', normalizePhaseName(phaseInfo['phase_number']))
                         .replace('{slug}', phaseInfo['phase_slug'] || 'phase');
                 }
             }
@@ -1016,7 +1017,7 @@ function cmdStats(cwd, format, raw) {
         const roadmapContent = extractCurrentMilestone(roadmapRaw, cwd);
         // Matches both plain numeric (Phase 1:) and milestone-prefixed (Phase 2-01:) headings.
         // Also tolerates optional [bracket-token] scope prefix on phase headings.
-        const headingPattern = /#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+([\w][\w.-]*(?:-[\w.-]+)*)\s*:\s*([^\n]+)/gi;
+        const headingPattern = /#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+([\w][\w.-]*)\s*:\s*([^\n]+)/gi;
         let match;
         while ((match = headingPattern.exec(roadmapContent)) !== null) {
             const key = normalizePhaseName(match[1]);

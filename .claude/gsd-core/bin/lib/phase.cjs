@@ -550,7 +550,7 @@ function cmdPhaseAdd(cwd, description, raw, customId) {
         let _newPhaseId;
         let _dirName;
         if (customId || config.phase_naming === 'custom') {
-            _newPhaseId = customId || slug.toUpperCase().replace(/-/g, '-');
+            _newPhaseId = customId || slug.toUpperCase();
             if (!_newPhaseId)
                 error('--id required when phase_naming is "custom"');
             _dirName = `${prefix}${_newPhaseId}-${slug}`;
@@ -658,7 +658,7 @@ function cmdPhaseAddBatch(cwd, descriptions, raw) {
             let newPhaseId;
             let dirName;
             if (config.phase_naming === 'custom') {
-                newPhaseId = slug.toUpperCase().replace(/-/g, '-');
+                newPhaseId = slug.toUpperCase();
                 dirName = `${prefix}${newPhaseId}-${slug}`;
             }
             else {
@@ -913,7 +913,7 @@ function updateRoadmapAfterPhaseRemoval(roadmapPath, targetPhase, isDecimal, rem
             content = content.replace(/(#{2,4}\s*Phase\s+)(\d+(?:\.\d+)?)(\s*:)/gi, (_match, prefix, num, suffix) => `${prefix}${decrementRoadmapPhaseToken(num, removedInt)}${suffix}`);
             content = content.replace(/(-\s*\[[ x]\]\s*.*?Phase\s+)(\d+)(\s*:|\s+)/gi, (_match, prefix, num, suffix) => `${prefix}${decrementRoadmapPhaseNumber(num, removedInt)}${suffix}`);
             content = content.replace(/(\|\s*)(\d+)(\.\s)/g, (_match, prefix, num, suffix) => `${prefix}${decrementRoadmapPhaseNumber(num, removedInt)}${suffix}`);
-            content = content.replace(/(?<![0-9-])(\d{2})-(\d{2})(?=(?:(?:-[A-Za-z][A-Za-z0-9-]*)*-(?:PLAN|SUMMARY)\.md)|(?![0-9-]))/g, (_match, phaseNum, planNum) => `${decrementRoadmapPaddedPhaseNumber(phaseNum, removedInt)}-${planNum}`);
+            content = content.replace(/(?<![0-9-])(\d{2})-(\d{2})(?=(?:(?:-[A-Za-z][A-Za-z0-9-]*)?-(?:PLAN|SUMMARY)\.md)|(?![0-9-]))/g, (_match, phaseNum, planNum) => `${decrementRoadmapPaddedPhaseNumber(phaseNum, removedInt)}-${planNum}`);
             content = content.replace(/(\*\*Depends on\*\*\s*:\s*Phase\s+)(\d+(?:\.\d+)?)\b/gi, (_match, prefix, num) => `${prefix}${decrementRoadmapPhaseToken(num, removedInt)}`);
             content = content.replace(/(Depends on:\*\*\s*Phase\s+)(\d+(?:\.\d+)?)\b/gi, (_match, prefix, num) => `${prefix}${decrementRoadmapPhaseToken(num, removedInt)}`);
         }

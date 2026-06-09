@@ -28,7 +28,7 @@ const security_cjs_1 = require("./security.cjs");
 const runtime_homes_cjs_1 = require("./runtime-homes.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- frontmatter.cjs is an export= CommonJS module
 const frontmatterMod = require("./frontmatter.cjs");
-const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, gitWorktreeInfoInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, normalizePhaseName, toPosixPath, output, error, checkAgentsInstalled, phaseTokenMatches, } = core;
+const { loadConfig, resolveModelInternal, resolveGranularityInternal, assertValidGranularityOverride, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, gitWorktreeInfoInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, normalizePhaseName, toPosixPath, output, error, checkAgentsInstalled, phaseTokenMatches, } = core;
 const { planningPaths, planningDir, planningRoot, findContextMdIn, } = planningWorkspace;
 const { determinePhaseStatus } = commandsMod;
 const { extractFrontmatter } = frontmatterMod;
@@ -208,7 +208,7 @@ function cmdInitExecutePhase(cwd, phase, raw, options = {}) {
         branch_name: config.branching_strategy === 'phase' && phaseInfo
             ? config.phase_branch_template
                 .replace('{project}', config.project_code || '')
-                .replace('{phase}', phaseInfo['phase_number'])
+                .replace('{phase}', normalizePhaseName(phaseInfo['phase_number']))
                 .replace('{slug}', phaseInfo['phase_slug'] || 'phase')
             : config.branching_strategy === 'milestone'
                 ? config.milestone_branch_template
@@ -297,11 +297,15 @@ function cmdInitPlanPhase(cwd, phase, raw, options = {}) {
             expectedPhaseDirPlan = toPosixPath(node_path_1.default.relative(cwd, node_path_1.default.join(planningPaths(cwd).phases, dirName)));
         }
     }
+    const granularityOverride = options['granularity'];
+    assertValidGranularityOverride(granularityOverride, error);
+    const granularity = resolveGranularityInternal(cwd, 'planning', granularityOverride || undefined);
     const result = {
         researcher_model: resolveModelInternal(cwd, 'gsd-phase-researcher'),
         planner_model: resolveModelInternal(cwd, 'gsd-planner'),
         checker_model: resolveModelInternal(cwd, 'gsd-plan-checker'),
         tdd_mode: options['tdd'] || config.tdd_mode || false,
+        granularity,
         research_enabled: config.research,
         plan_checker_enabled: config.plan_checker,
         nyquist_validation_enabled: config.nyquist_validation,
@@ -1521,6 +1525,11 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
         skillPaths = [skillPaths];
     if (!Array.isArray(skillPaths) || skillPaths.length === 0)
         return '';
+    // Hoist trusted roots computation before the loop: loadTrustedGlobalRoots does
+    // realpathSync I/O and should run at most once per call, not once per failing skill.
+    // It returns [] cheaply when no roots are configured, so the realpath cost only
+    // occurs when the caller has actually set trusted_global_roots.
+    const trustedGlobalRoots = (0, security_cjs_1.loadTrustedGlobalRoots)(config);
     const validPaths = [];
     for (const skillPath of skillPaths) {
         if (typeof skillPath !== 'string')
@@ -1548,8 +1557,15 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
             }
             const pathCheck = (0, security_cjs_1.validatePath)(globalSkillMd, globalSkillsBase, { allowAbsolute: true });
             if (!pathCheck['safe']) {
-                process.stderr.write(`[agent-skills] WARNING: Global skill "${skillName}" failed path check (symlink escape?) — skipping\n`);
-                continue;
+                const acceptedViaTrustedRoot = trustedGlobalRoots.some((root) => {
+                    const rootCheck = (0, security_cjs_1.validatePath)(globalSkillMd, root, { allowAbsolute: true });
+                    return Boolean(rootCheck['safe']);
+                });
+                if (!acceptedViaTrustedRoot) {
+                    process.stderr.write(`[agent-skills] WARNING: Global skill "${skillName}" failed path check (symlink escape?) — skipping\n`);
+                    continue;
+                }
+                process.stderr.write(`[agent-skills] NOTE: Global skill "${skillName}" accepted via trusted_global_roots (resolves outside the default skills dir)\n`);
             }
             validPaths.push({ ref: `${globalSkillDir}/SKILL.md`, display: displayPath });
             continue;

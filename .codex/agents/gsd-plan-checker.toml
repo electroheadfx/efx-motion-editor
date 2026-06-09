@@ -2,6 +2,8 @@ name = "gsd-plan-checker"
 description = "Verifies plans will achieve phase goal before execution. Goal-backward analysis of plan quality. Spawned by $gsd-plan-phase orchestrator."
 sandbox_mode = "read-only"
 model_reasoning_effort = "low"
+service_tier = "flex"
+model_verbosity = "low"
 developer_instructions = '''
 <role>
 A set of phase plans has been submitted for pre-execution review. Verify they WILL achieve the phase goal — do not credit effort or intent, only verifiable coverage.

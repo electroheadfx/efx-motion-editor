@@ -2,6 +2,8 @@ name = "gsd-intel-updater"
 description = "Analyzes codebase and writes structured intel files to .planning/intel/."
 sandbox_mode = "read-only"
 model_reasoning_effort = "low"
+service_tier = "flex"
+model_verbosity = "low"
 developer_instructions = '''
 <required_reading>
 CRITICAL: If your spawn prompt contains a required_reading block,

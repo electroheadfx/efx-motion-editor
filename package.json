@@ -23,5 +23,8 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "dependencies": {
+    "@opengsd/gsd-core": "^1.4.1"
   }
 }

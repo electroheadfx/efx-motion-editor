@@ -35,7 +35,7 @@ function isGraphifyEnabled(planningDir) {
             return true;
         return false;
     }
-    catch (_e) {
+    catch {
         return false;
     }
 }
@@ -157,7 +157,7 @@ function safeReadJson(filePath) {
             return null;
         return JSON.parse(node_fs_1.default.readFileSync(filePath, 'utf8'));
     }
-    catch (_e) {
+    catch {
         return null;
     }
 }

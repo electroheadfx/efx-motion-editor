@@ -189,7 +189,7 @@ function createHub({ cjsRegistry, manifest, logger } = {}) {
         }
         // err variant: already has kind + typed payload
         // Double-cast through unknown to satisfy strict index-signature check.
-        return hubResult; // eslint-disable-line @typescript-eslint/no-unsafe-return
+        return hubResult;
     }
     /**
      * Emit a DispatchEvent to the injected logger.
