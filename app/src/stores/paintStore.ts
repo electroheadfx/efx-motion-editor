@@ -205,14 +205,12 @@ export const paintStore = {
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -239,14 +237,12 @@ export const paintStore = {
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -271,14 +267,12 @@ export const paintStore = {
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -303,14 +297,12 @@ export const paintStore = {
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
@@ -334,14 +326,12 @@ export const paintStore = {
         f.elements = [...before];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
       redo: () => {
         const f = _getOrCreateFrame(layerId, frame);
         f.elements = [...after];
         _notifyVisualChange(layerId, frame);
         paintStore.invalidateFrameFxCache(layerId, frame);
-        paintStore.refreshFrameFx(layerId, frame);
       },
     });
   },
