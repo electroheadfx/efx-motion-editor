@@ -252,40 +252,69 @@ export function PhysicsPaintStudio() {
     };
   }, []);
 
+  const handleApplyResult = useCallback((detail: PhysicPaintApplyResult | null | undefined) => {
+    if (!detail || detail.operationId !== activeOperationIdRef.current) return;
+    if (applyTimeoutRef.current) {
+      window.clearTimeout(applyTimeoutRef.current);
+      applyTimeoutRef.current = null;
+    }
+    activeOperationIdRef.current = null;
+
+    const ok = detail.ok ?? detail.success ?? false;
+    if (!ok) {
+      const message = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
+      const diagnostic = detail.detail || detail.error;
+      setApplyStatus('error');
+      setApplyMessage(diagnostic ? `${message} ${diagnostic}` : message);
+      setLastError(diagnostic ? `${message} ${diagnostic}` : message);
+      return;
+    }
+
+    setApplyStatus('success');
+    setLastError(null);
+    if ((detail.kind ?? 'apply-canvas') === 'apply-play-canvas') {
+      const count = detail.appliedFrameCount ?? detail.count ?? detail.frameCount ?? framesToApply;
+      const frame = detail.startFrame ?? launchContext?.startFrame ?? 0;
+      setApplyMessage(`Applied ${count} frames starting at frame ${frame}`);
+    } else {
+      const frame = detail.frame ?? detail.startFrame ?? launchContext?.startFrame ?? 0;
+      setApplyMessage(`Applied to frame ${frame}`);
+    }
+  }, [framesToApply, launchContext?.startFrame]);
+
   useEffect(() => {
     const handleResult = (event: Event) => {
-      const detail = (event as CustomEvent<PhysicPaintApplyResult>).detail;
-      if (!detail || detail.operationId !== activeOperationIdRef.current) return;
-      if (applyTimeoutRef.current) {
-        window.clearTimeout(applyTimeoutRef.current);
-        applyTimeoutRef.current = null;
-      }
-
-      const ok = detail.ok ?? detail.success ?? false;
-      if (!ok) {
-        const message = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
-        const diagnostic = detail.detail || detail.error;
-        setApplyStatus('error');
-        setApplyMessage(diagnostic ? `${message} ${diagnostic}` : message);
-        setLastError(diagnostic ? `${message} ${diagnostic}` : message);
-        return;
-      }
-
-      setApplyStatus('success');
-      setLastError(null);
-      if ((detail.kind ?? 'apply-canvas') === 'apply-play-canvas') {
-        const count = detail.appliedFrameCount ?? detail.count ?? detail.frameCount ?? framesToApply;
-        const frame = detail.startFrame ?? launchContext?.startFrame ?? 0;
-        setApplyMessage(`Applied ${count} frames starting at frame ${frame}`);
-      } else {
-        const frame = detail.frame ?? detail.startFrame ?? launchContext?.startFrame ?? 0;
-        setApplyMessage(`Applied to frame ${frame}`);
-      }
+      handleApplyResult((event as CustomEvent<PhysicPaintApplyResult>).detail);
     };
 
     window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleResult);
     return () => window.removeEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleResult);
-  }, [framesToApply, launchContext?.startFrame]);
+  }, [handleApplyResult]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    const installApplyResultListener = async () => {
+      if (bridgeMode !== 'Tauri') return;
+      try {
+        const eventApi = await import('@tauri-apps/api/event');
+        if (typeof eventApi.listen !== 'function') return;
+        unlisten = await eventApi.listen(PHYSIC_PAINT_APPLY_RESULT_EVENT, (event) => {
+          handleApplyResult(event.payload as PhysicPaintApplyResult);
+        });
+        if (disposed) unlisten?.();
+      } catch (error) {
+        console.warn('[PhysicsPaintStudio] Tauri apply-result listener unavailable', error);
+      }
+    };
+
+    void installApplyResultListener();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [bridgeMode, handleApplyResult]);
 
   const missingConditions = useMemo(() => {
     const missing: string[] = [];
