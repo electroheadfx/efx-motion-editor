@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
-import { save } from '@tauri-apps/plugin-dialog';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
 
 export interface PhysicsPaintStudioToolbarSettings {
   tool: ToolType;
@@ -178,6 +176,12 @@ export function PhysicsPaintStudioToolbar({
 
     try {
       if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
+        const dialogModule = '@tauri-apps/plugin-dialog';
+        const fsModule = '@tauri-apps/plugin-fs';
+        const [{ save }, { writeTextFile }] = await Promise.all([
+          import(/* @vite-ignore */ dialogModule) as Promise<{ save: (options: { defaultPath: string; filters: { name: string; extensions: string[] }[] }) => Promise<string | null> }>,
+          import(/* @vite-ignore */ fsModule) as Promise<{ writeTextFile: (path: string, contents: string) => Promise<void> }>,
+        ]);
         const selectedPath = await save({
           defaultPath: filename,
           filters: [{ name: 'Physics paint state', extensions: ['json'] }],
