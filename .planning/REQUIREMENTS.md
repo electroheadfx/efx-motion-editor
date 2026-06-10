@@ -15,11 +15,11 @@ Requirements for the Standalone Physics Paint milestone. This milestone proves `
 
 ### Interactive Physics Paint Testing
 
-- [ ] **PAINT-01**: User can paint on a live physics canvas using the local `@efxlab/efx-physic-paint` package.
-- [ ] **PAINT-02**: User can change core paint settings such as color, brush size, opacity, and available physics controls.
-- [ ] **PAINT-03**: User can use at least paint and erase tools through the real engine APIs.
-- [ ] **PAINT-04**: User can test efx-physic-paint as a separate physics paint tool without replacing perfect-freehand basic paint or p5.brush FX paint.
-- [ ] **DIAG-01**: User can see engine readiness, canvas/session state, active settings, and errors while testing.
+- [x] **PAINT-01**: User can paint on a live physics canvas using the local `@efxlab/efx-physic-paint` package.
+- [x] **PAINT-02**: User can change core paint settings such as color, brush size, opacity, and available physics controls.
+- [x] **PAINT-03**: User can use at least paint and erase tools through the real engine APIs.
+- [x] **PAINT-04**: User can test efx-physic-paint as a separate physics paint tool without replacing perfect-freehand basic paint or p5.brush FX paint.
+- [x] **DIAG-01**: User can see engine readiness, canvas/session state, active settings, and errors while testing.
 
 ### Standalone Persistence and Output
 
@@ -69,11 +69,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RUN-01 | Phase 34 | Complete |
 | RUN-02 | Phase 34 | Complete |
 | RUN-03 | Phase 34 | Complete |
-| PAINT-01 | Phase 35 | Pending |
-| PAINT-02 | Phase 35 | Pending |
-| PAINT-03 | Phase 35 | Pending |
-| PAINT-04 | Phase 35 | Pending |
-| DIAG-01 | Phase 35 | Pending |
+| PAINT-01 | Phase 35 | Complete |
+| PAINT-02 | Phase 35 | Complete |
+| PAINT-03 | Phase 35 | Complete |
+| PAINT-04 | Phase 35 | Complete |
+| DIAG-01 | Phase 35 | Complete |
 | SAVE-01 | Phase 36 | Pending |
 | SAVE-02 | Phase 36 | Pending |
 | OUT-01 | Phase 36 | Pending |
@@ -83,6 +83,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-01 | Phase 37 | Pending |
 
 **Coverage:**
+
 - v0.8.0 requirements: 15 total
 - Mapped to phases: 15
 - Unmapped: 0
