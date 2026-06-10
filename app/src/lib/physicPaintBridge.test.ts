@@ -355,6 +355,22 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getFrame('hydrated-runtime-layer', 8)?.dataUrl).toContain('data:image/png');
   });
 
+  it('reuses serialized physics paint outputs until rendered output changes', () => {
+    physicPaintStore.applySequence(applySequencePayload());
+
+    const first = physicPaintStore.toMceOutputs();
+    const second = physicPaintStore.toMceOutputs();
+
+    expect(second).toBe(first);
+    expect(physicPaintStore._debugCachedSerializationRevision()).toBe(physicPaintStore._debugSerializationRevision());
+
+    physicPaintStore.applyCanvas(applyCanvasPayload({ startFrame: 20, renderedFrame: makeFrame(0, 20) }));
+    const third = physicPaintStore.toMceOutputs();
+
+    expect(third).not.toBe(first);
+    expect(third[0].frames).toEqual(expect.arrayContaining([expect.objectContaining({ appFrame: 20 })]));
+  });
+
   it('persists and hydrates physic-paint source layer ids for apply validation', () => {
     const layer = physicLayer({ id: 'hydrated-phys-layer', source: { type: 'physic-paint', layerId: 'hydrated-phys-layer' } });
     sequenceStore.add({

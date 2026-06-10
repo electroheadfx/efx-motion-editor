@@ -5,7 +5,7 @@ status: consistent
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-06-08
-updated: 2026-06-08
+updated: 2026-06-10
 ---
 
 # Phase 35 — Validation Strategy
@@ -49,6 +49,10 @@ updated: 2026-06-08
 | 35-04-T2 | 35-04 | 3 | PAINT-04 | T-35-13, T-35-14 | Preview draws only physics rendered outputs for `physic-paint` layers and preserves existing paint paths | typecheck | `pnpm --dir app typecheck` | Plan-defined files | pending |
 | 35-05-T1 | 35-05 | 4 | PAINT-01, PAINT-02, PAINT-03, PAINT-04, DIAG-01 | T-35-16, T-35-20 | Final copy/result loop remains visible and operationId-matched | typecheck/package check/build | `pnpm --dir app typecheck && pnpm --filter @efxlab/efx-physic-paint check && pnpm --filter @efxlab/efx-physic-paint demo:build` | Plan-defined files | pending |
 | 35-05-T2 | 35-05 | 4 | PAINT-01, PAINT-02, PAINT-03, PAINT-04, DIAG-01 | T-35-15, T-35-17 | Live UAT verifies editor-to-standalone-to-editor workflow without Claude running the server | full suite + human UAT | `pnpm --dir app typecheck && pnpm --dir app test --run && pnpm --filter @efxlab/efx-physic-paint check && pnpm --filter @efxlab/efx-physic-paint demo:build` | Plan-defined files | pending |
+| 35-07-T1 | 35-07 | 6 | PAINT-01, PAINT-02, PAINT-03, PAINT-04, DIAG-01 | T-35-G07-02, T-35-G07-03 | Hydrated `physic-paint` layer identity is persisted/normalized and valid rendered-output apply payloads are accepted while invalid targets remain rejected | unit/typecheck | `pnpm --dir app test --run src/lib/physicPaintBridge.test.ts && pnpm --dir app typecheck` | `app/src/lib/physicPaintBridge.test.ts` | pending |
+| 35-07-T2 | 35-07 | 6 | PAINT-04, DIAG-01 | T-35-G07-07 | Physic Paint Properties exposes blend mode and opacity controls that update layer values consumed by preview compositing | typecheck | `pnpm --dir app typecheck` | `app/src/components/sidebar/PhysicPaintProperties.tsx` | pending |
+| 35-07-T3 | 35-07 | 6 | PAINT-01, PAINT-02, PAINT-03, PAINT-04, DIAG-01 | T-35-G07-01, T-35-G07-06 | Native Tauri apply-result events are operationId-matched and routed into standalone completion without removing browser/dev fallback | typecheck/package check/build | `pnpm --dir app typecheck && pnpm --filter @efxlab/efx-physic-paint check && pnpm --filter @efxlab/efx-physic-paint demo:build` | Plan-defined files | pending |
+| 35-07-T4 | 35-07 | 6 | PAINT-01, PAINT-02, PAINT-03, PAINT-04, DIAG-01 | T-35-G07-04, T-35-G07-05 | Save state writes editable physics paint JSON through user-selected Tauri path or reports visible browser fallback/cancel/error feedback | typecheck/package check/build | `pnpm --dir app typecheck && pnpm --filter @efxlab/efx-physic-paint check && pnpm --filter @efxlab/efx-physic-paint demo:build` | Plan-defined files | pending |
 
 *Status: pending · green · red · flaky*
 
@@ -60,6 +64,7 @@ No separate Wave 0 scaffold is required. Concrete tests are created inside the r
 
 - Plan 35-01 Task 2 creates `app/src/stores/physicPaintStore.test.ts` for rendered-output store behavior.
 - Plan 35-04 Task 1 creates `app/src/lib/physicPaintBridge.test.ts` for app-side bridge result feedback, operationId matching, listener result dispatch, and invalid payload rejection.
+- Plan 35-07 Task 1 extends `app/src/lib/physicPaintBridge.test.ts` for hydrated physic-paint source identity and valid apply acceptance.
 
 All implementation tasks include `<verify><automated>...</automated></verify>` commands, so the plan set is Nyquist-compliant.
 
@@ -82,4 +87,4 @@ All implementation tasks include `<verify><automated>...</automated></verify>` c
 - [x] Feedback latency target declared for app checks; package build used as wave/end gate
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** validation contract consistent with plans 35-01 through 35-05; execution status pending
+**Approval:** validation contract consistent with plans 35-01 through 35-07; execution status pending

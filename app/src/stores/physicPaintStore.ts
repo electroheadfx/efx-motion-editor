@@ -7,8 +7,21 @@ export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectD
 
 export const physicPaintVersion = signal(0);
 
+type PhysicPaintMceOutput = {
+  layer_id: string;
+  frames: PhysicPaintRenderedFrame[];
+  editable_state?: PhysicPaintApplyPayload['editableState'];
+};
+
 const _frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
 const _editableStates = new Map<string, PhysicPaintApplyPayload['editableState']>();
+let _serializationRevision = 0;
+let _cachedSerializationRevision = -1;
+let _cachedMceOutputs: PhysicPaintMceOutput[] = [];
+
+function _invalidateSerializationCache(): void {
+  _serializationRevision++;
+}
 
 function _getOrCreateLayer(layerId: string): Map<number, PhysicPaintRenderedFrame> {
   let layerFrames = _frames.get(layerId);
@@ -20,6 +33,7 @@ function _getOrCreateLayer(layerId: string): Map<number, PhysicPaintRenderedFram
 }
 
 function _notifyVisualChange(): void {
+  _invalidateSerializationCache();
   physicPaintVersion.value++;
   _markProjectDirty?.();
 }
@@ -50,9 +64,13 @@ export const physicPaintStore = {
     return new Map(_frames.get(layerId) ?? []);
   },
 
-  toMceOutputs(): Array<{ layer_id: string; frames: PhysicPaintRenderedFrame[]; editable_state?: PhysicPaintApplyPayload['editableState'] }> {
+  toMceOutputs(): PhysicPaintMceOutput[] {
+    if (_cachedSerializationRevision === _serializationRevision) {
+      return _cachedMceOutputs;
+    }
+
     const layerIds = new Set([..._frames.keys(), ..._editableStates.keys()]);
-    return Array.from(layerIds)
+    const outputs = Array.from(layerIds)
       .map((layerId) => {
         const frames = _frames.get(layerId) ?? new Map<number, PhysicPaintRenderedFrame>();
         return {
@@ -64,6 +82,10 @@ export const physicPaintStore = {
         };
       })
       .filter(output => output.frames.length > 0 || output.editable_state);
+
+    _cachedMceOutputs = outputs;
+    _cachedSerializationRevision = _serializationRevision;
+    return _cachedMceOutputs;
   },
 
   loadFromMceOutputs(outputs: Array<{ layer_id: string; frames: PhysicPaintRenderedFrame[]; editable_state?: PhysicPaintApplyPayload['editableState'] }> | null | undefined): void {
@@ -80,6 +102,7 @@ export const physicPaintStore = {
       if (layerFrames.size === 0) _frames.delete(output.layer_id);
       if (output.editable_state) _editableStates.set(output.layer_id, structuredClone(output.editable_state));
     }
+    _invalidateSerializationCache();
     physicPaintVersion.value++;
   },
 
@@ -151,5 +174,17 @@ export const physicPaintStore = {
     _frames.clear();
     _editableStates.clear();
     _notifyVisualChange();
+  },
+
+  _debugSerializationRevision(): number {
+    return _serializationRevision;
+  },
+
+  _debugCachedSerializationRevision(): number {
+    return _cachedSerializationRevision;
+  },
+
+  _debugInvalidateSerializationCache(): void {
+    _invalidateSerializationCache();
   },
 };

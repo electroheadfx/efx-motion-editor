@@ -4,6 +4,7 @@ import type { BlendMode, Layer } from '../../types/layer';
 import type { PhysicPaintApplyResult } from '../../types/physicPaint';
 import { layerStore } from '../../stores/layerStore';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
+import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { timelineStore } from '../../stores/timelineStore';
 import { openPhysicPaintCanvas, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
 import { SectionLabel } from '../shared/SectionLabel';
@@ -101,7 +102,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
               style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
               value={layer.blendMode}
               onChange={(event) => {
-                layerStore.updateLayer(layer.id, {
+                layerStore.updateLayerVisual(layer.id, {
                   blendMode: (event.target as HTMLSelectElement).value as BlendMode,
                 });
               }}
@@ -120,8 +121,10 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
               step={1}
               value={Math.round(layer.opacity * 100)}
               class="flex-1 min-w-0 h-1 accent-(--color-accent) cursor-pointer"
+              onPointerDown={startCoalescing}
+              onPointerUp={stopCoalescing}
               onInput={(event) => {
-                layerStore.updateLayer(layer.id, {
+                layerStore.updateLayerVisual(layer.id, {
                   opacity: parseInt((event.target as HTMLInputElement).value, 10) / 100,
                 });
               }}

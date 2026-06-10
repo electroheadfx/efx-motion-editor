@@ -46,6 +46,10 @@ export const layerStore = {
     sequenceStore.updateLayer(id, updates);
   },
 
+  updateLayerVisual(id: string, updates: Pick<Partial<Layer>, 'blendMode' | 'opacity'>) {
+    sequenceStore.updateLayerVisual(id, updates);
+  },
+
   /** Reorder layers (oldIndex/newIndex in the layers array) */
   reorder(fromIndex: number, toIndex: number) {
     // Prevent moving base layer (always index 0) or moving anything below it

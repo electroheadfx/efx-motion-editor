@@ -3,7 +3,7 @@ status: diagnosed
 phase: 35-interactive-physics-paint-controls
 source: 35-01-SUMMARY.md, 35-02-SUMMARY.md, 35-03-SUMMARY.md, 35-04-SUMMARY.md, 35-05-PLAN.md, 35-UI-SPEC.md
 started: 2026-06-09T11:31:00Z
-updated: 2026-06-09T12:00:00Z
+updated: 2026-06-10T12:00:05Z
 ---
 
 ## Current Test
@@ -26,48 +26,38 @@ result: pass
 
 ### 4. Save and Load Editable State
 expected: The standalone persistence controls are labelled `Save state` and `Load state`. Saving downloads or saves editable physics paint state JSON, loading valid state replaces the standalone canvas state, and loading an invalid file shows the required invalid-state-file error copy rather than applying rendered output to the editor.
-result: issue
-reported: "save button doesn't save a file, I see nothing, maybe its for the next release ?"
-severity: major
+result: pass
 
 ### 5. Apply Current Canvas to Editor Frame
 expected: Clicking `[apply canvas]` sends rendered physics paint output back to the editor for the captured current frame. The editor preview visibly updates on that frame, the standalone receives matching apply-result feedback, and success copy says `Applied to frame {frame}`.
-result: issue
-reported: "apply canvas out an error: \"Could not apply physics paint output. The main editor did not return an apply result.\""
-severity: blocker
+result: pass
 
 ### 6. Apply Play Canvas Sequence
 expected: The standalone shows a `Frames to apply` input with default 120 and valid range 1 to 600. Clicking `[apply play canvas]` applies generated rendered frames starting at the captured app frame, disables apply buttons while applying, shows `Applying physics paint output...`, updates the editor preview across those frames, and success copy says `Applied {count} frames starting at frame {frame}`.
-result: issue
-reported: "apply play canvas : applying (its very slow, maybe a rerender excess ?) [screenshot shows Not ready to apply / Applying physics paint output... / Apply operation is still running], but in end its say the same issue for apply canvas: \"Could not apply physics paint output. The main editor did not return an apply result.\" Additional diagnostic: server says \"RemoteLayerTreeDrawingAreaProxyMac::scheduleDisplayLink(): page has no displayID\""
-severity: blocker
+result: pass
 
 ### 7. Replace Existing Physics Paint Output
 expected: When applying to a frame that already has physics paint output, the app shows non-blocking warning copy `This frame already has physics paint output. Applying will replace it.` Applying again replaces that frame's physics paint output without duplicating or corrupting previous output.
-result: blocked
-blocked_by: other
-reason: "for help from the previous issue (test 6) the server say: \"RemoteLayerTreeDrawingAreaProxyMac::scheduleDisplayLink(): page has no displayID\"; for test 7, it can't apply paint to main app layer because test 6 has an error for transport the data"
+result: pass
 
 ### 8. Error and Not-Ready Feedback
 expected: If the standalone lacks app layer context, canvas readiness, bridge/listener availability, or another required condition, the apply state is visibly not ready with plain-language missing-condition text. Apply errors remain visible with `Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.` until the next successful action or dismissal.
-result: issue
-reported: "I have errors when I apply physics paint canvas. Screenshot shows standalone ready state with \"Could not apply physics paint output. The main editor did not return an apply result.\" and app sidebar error \"Target layer is not a physic-paint rendered-output layer\"."
-severity: blocker
+result: pass
 
 ### 9. Preview Compositing and Timeline Redraw
 expected: Applied physics paint output composites in the editor preview using the layer blend mode and opacity. Moving across frames redraws the correct physics paint output, frames without output draw nothing safely, and existing basic paint and p5.brush FX paint rendering still works.
-result: blocked
-blocked_by: other
-reason: "I can't test and other tests because previous tests fail"
+result: issue
+reported: "I can't test there is No layer blend mode and opacity option in Physic Paint layer PROPERTIES"
+severity: major
 
 ## Summary
 
 total: 9
-passed: 3
-issues: 4
+passed: 8
+issues: 1
 pending: 0
 skipped: 0
-blocked: 2
+blocked: 0
 
 ## Gaps
 
@@ -138,3 +128,21 @@ blocked: 2
     - "Persist/hydrate physic-paint layer_id/layerId in projectStore"
     - "Optionally normalize already-saved physic-paint layers when targetLayer.id matches payload.layerId"
   debug_session: ".planning/debug/phase-35-uat-blockers.md"
+- truth: "Applied physics paint output composites in the editor preview using the layer blend mode and opacity. Moving across frames redraws the correct physics paint output, frames without output draw nothing safely, and existing basic paint and p5.brush FX paint rendering still works."
+  status: failed
+  reason: "User reported: I can't test there is No layer blend mode and opacity option in Physic Paint layer PROPERTIES"
+  severity: major
+  test: 9
+  root_cause: "The preview renderer already composites `physic-paint` output with `layer.blendMode` and effective opacity, but `LeftPanel.tsx` routes selected `physic-paint` layers exclusively to `PhysicPaintProperties`, and that component only renders layer/status/open-canvas sections. It never exposes the common layer blend mode select or opacity slider available in `SidebarProperties` and `PaintProperties`, so the user cannot configure or validate the compositing controls from the Physic Paint layer properties panel."
+  artifacts:
+    - path: "app/src/components/layout/LeftPanel.tsx"
+      issue: "selected `physic-paint` layers bypass common layer property controls and render only `PhysicPaintProperties`"
+    - path: "app/src/components/sidebar/PhysicPaintProperties.tsx"
+      issue: "missing layer blend mode select and opacity slider despite Test 9 requiring user-configurable compositing"
+    - path: "app/src/lib/previewRenderer.ts"
+      issue: "rendering path already uses `layer.blendMode` and effective opacity for `physic-paint`, but no UI exposes those values for this layer type"
+  missing:
+    - "Add Physic Paint layer blend mode and opacity controls to the Properties panel"
+    - "Wire controls to `layerStore.updateLayer` using existing `BlendMode` semantics"
+    - "Keep preview renderer behavior intact and add/extend coverage or source assertions for the compositing control path"
+  debug_session: ".planning/debug/phase-35-uat-physic-paint-compositing-controls.md"

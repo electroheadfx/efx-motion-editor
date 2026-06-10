@@ -714,6 +714,53 @@ export const sequenceStore = {
     });
   },
 
+  updateLayerVisual(layerId: string, updates: Pick<Partial<Layer>, 'blendMode' | 'opacity'>) {
+    const ownerSeq = sequences.peek().find(s => s.layers.some(l => l.id === layerId));
+    if (!ownerSeq) return;
+
+    const beforeLayer = ownerSeq.layers.find(l => l.id === layerId);
+    if (!beforeLayer) return;
+
+    const before = {
+      blendMode: beforeLayer.blendMode,
+      opacity: beforeLayer.opacity,
+    };
+
+    const apply = (visualUpdates: Pick<Partial<Layer>, 'blendMode' | 'opacity'>) => {
+      sequences.value = sequences.peek().map((s) =>
+        s.id === ownerSeq.id
+          ? {
+              ...s,
+              layers: s.layers.map((l) =>
+                l.id === layerId ? {...l, ...visualUpdates} : l,
+              ),
+            }
+          : s,
+      );
+      markDirty();
+    };
+
+    apply(updates);
+
+    const afterLayer = sequences.peek()
+      .find(s => s.id === ownerSeq.id)
+      ?.layers.find(l => l.id === layerId);
+    if (!afterLayer) return;
+
+    const after = {
+      blendMode: afterLayer.blendMode,
+      opacity: afterLayer.opacity,
+    };
+
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Update layer visual settings',
+      timestamp: Date.now(),
+      undo: () => apply(before),
+      redo: () => apply(after),
+    });
+  },
+
   /** Update a layer by ID across ALL sequences (finds owning sequence automatically) */
   updateLayerInSequence(layerId: string, updates: Partial<Layer>) {
     // Find which sequence owns this layer
