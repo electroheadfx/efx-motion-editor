@@ -15,6 +15,14 @@ const renderedFrame = {
   height: 650,
 };
 
+const editableState = {
+  version: 2,
+  width: 1000,
+  height: 650,
+  strokes: [],
+  settings: {},
+};
+
 describe('physic paint payload contracts', () => {
   it('clamps apply frame counts to the UI range', () => {
     expect(clampPhysicPaintFrameCount(3.8)).toBe(3);
@@ -35,6 +43,7 @@ describe('physic paint payload contracts', () => {
       layerId: 'layer-1',
       startFrame: 12,
       renderedFrame,
+      editableState,
     })).toBe(true);
 
     expect(isPhysicPaintApplyPayload({
@@ -44,6 +53,7 @@ describe('physic paint payload contracts', () => {
       startFrame: 12,
       frameCount: 1,
       frames: [renderedFrame],
+      editableState,
     })).toBe(true);
   });
 
