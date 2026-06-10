@@ -56,9 +56,13 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
     return failureResult(base, 'Invalid physics paint apply payload');
   }
 
-  const targetLayer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find(layer =>
-    layer.type === 'physic-paint' && layer.source.type === 'physic-paint' && layer.source.layerId === payload.layerId,
-  );
+  const targetLayer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find(layer => {
+    if (layer.type !== 'physic-paint' || layer.source.type !== 'physic-paint') return false;
+    const sourceLayerId = typeof layer.source.layerId === 'string' && layer.source.layerId.length > 0
+      ? layer.source.layerId
+      : layer.id;
+    return sourceLayerId === payload.layerId || layer.id === payload.layerId;
+  });
   if (!targetLayer) {
     return failureResult(payload, `Unknown physics paint layer: ${payload.layerId}`);
   }

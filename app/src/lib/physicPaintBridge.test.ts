@@ -334,6 +334,27 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.hasOutput('paint-layer')).toBe(false);
   });
 
+  it('accepts hydrated physic-paint layers whose runtime source id falls back to the layer id', () => {
+    const hydratedLayer = physicLayer({
+      id: 'hydrated-runtime-layer',
+      source: { type: 'physic-paint' } as Layer['source'],
+    });
+    mockLayers([hydratedLayer]);
+
+    const result = applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'hydrated-runtime-fallback-op',
+      layerId: 'hydrated-runtime-layer',
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'hydrated-runtime-fallback-op',
+      layerId: 'hydrated-runtime-layer',
+      appliedFrameCount: 1,
+    });
+    expect(physicPaintStore.getFrame('hydrated-runtime-layer', 8)?.dataUrl).toContain('data:image/png');
+  });
+
   it('persists and hydrates physic-paint source layer ids for apply validation', () => {
     const layer = physicLayer({ id: 'hydrated-phys-layer', source: { type: 'physic-paint', layerId: 'hydrated-phys-layer' } });
     sequenceStore.add({
