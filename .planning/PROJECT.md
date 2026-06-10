@@ -97,10 +97,10 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ FX stroke wireframe overlay for selection visibility — v0.7.0 Phase 33
 - ✓ Stroke draw-reveal animation with speed-based distribution — v0.7.0 Phase 33
 - ✓ Inline color picker positioned adjacent to canvas (left panel, 260px) — v0.7.0 Phase 33
+- ✓ efx-physic-paint is runnable and testable as a standalone interactive physics paint app/window before editor integration — v0.8.0 Phase 35
 
 ### Active
 
-- [ ] efx-physic-paint is runnable and testable as a standalone interactive physics paint app/window before editor integration — v0.8.0
 - [ ] Standalone physics paint can produce inspectable/exportable still or frame-sequence output suitable for later cached compositing in EFX Motion Editor — v0.8.0
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
