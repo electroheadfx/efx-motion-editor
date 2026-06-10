@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { Layer } from '../../types/layer';
+import { ChevronDown } from 'lucide-preact';
+import type { BlendMode, Layer } from '../../types/layer';
 import type { PhysicPaintApplyResult } from '../../types/physicPaint';
+import { layerStore } from '../../stores/layerStore';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { timelineStore } from '../../stores/timelineStore';
 import { openPhysicPaintCanvas, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
@@ -8,6 +10,12 @@ import { SectionLabel } from '../shared/SectionLabel';
 
 interface PhysicPaintPropertiesProps {
   layer: Layer;
+}
+
+const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
@@ -80,6 +88,47 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
           <div class="flex items-center justify-between gap-2">
             <span class="text-[11px] font-semibold" style={{ color: 'var(--sidebar-text-secondary)' }}>Current frame</span>
             <span class="text-[11px] tabular-nums">{currentFrame}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <SectionLabel text="Compositing" />
+        <div class="flex items-center gap-3">
+          <div class="relative shrink-0" style={{ width: '90px' }}>
+            <select
+              class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer appearance-none pr-5"
+              style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
+              value={layer.blendMode}
+              onChange={(event) => {
+                layerStore.updateLayer(layer.id, {
+                  blendMode: (event.target as HTMLSelectElement).value as BlendMode,
+                });
+              }}
+            >
+              {BLEND_MODES.map((mode) => (
+                <option key={mode} value={mode}>{capitalize(mode)}</option>
+              ))}
+            </select>
+            <ChevronDown size={10} class="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--sidebar-text-secondary)' }} />
+          </div>
+          <div class="flex items-center gap-1.5 flex-1 min-w-0">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(layer.opacity * 100)}
+              class="flex-1 min-w-0 h-1 accent-(--color-accent) cursor-pointer"
+              onInput={(event) => {
+                layerStore.updateLayer(layer.id, {
+                  opacity: parseInt((event.target as HTMLInputElement).value, 10) / 100,
+                });
+              }}
+            />
+            <span class="text-[11px] w-8 text-right shrink-0" style={{ color: 'var(--sidebar-text-primary)' }}>
+              {Math.round(layer.opacity * 100)}%
+            </span>
           </div>
         </div>
       </div>
