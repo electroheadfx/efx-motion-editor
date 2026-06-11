@@ -77,6 +77,10 @@ None yet.
 
 None yet.
 
+### Roadmap Evolution
+
+- Phase 36 edited: added heavy physics paint package UI rebuild scope alongside session persistence and output proof.
+
 ## Deferred Items
 
 Items acknowledged and carried forward from previous milestone close:

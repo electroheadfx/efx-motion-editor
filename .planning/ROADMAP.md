@@ -193,17 +193,19 @@ Plans:
 
 **UI hint**: yes
 
-### Phase 36: Session Persistence and Output Proof
+### Phase 36: Physics Paint UI Rebuild, Session Persistence, and Output Proof
 
-**Goal**: Users can preserve standalone physics paint sessions and produce inspectable rendered output suitable for later cached editor compositing.
+**Goal**: Users can work in a rebuilt, production-grade physics paint package UI that preserves standalone sessions and produces inspectable rendered output suitable for later cached editor compositing.
 **Depends on**: Phase 35
-**Requirements**: SAVE-01, SAVE-02, OUT-01, OUT-02
+**Requirements**: UI-REBUILD-01, UI-REBUILD-02, SAVE-01, SAVE-02, OUT-01, OUT-02
 **Success Criteria** (what must be TRUE):
 
-  1. User can save the current standalone paint session as JSON.
-  2. User can reload saved JSON and continue testing the same paint session.
-  3. User can export the current rendered physics paint result as a PNG or still image.
-  4. User can produce a frame-sequence or cache-manifest proof from the live engine for future editor consumption.
+  1. User can use a rebuilt physics paint package UI with clear layout, modern controls, and polished interaction states for painting, erasing, tool/settings changes, save/load, and export actions.
+  2. User can save the current standalone paint session as JSON from the rebuilt UI.
+  3. User can reload saved JSON and continue testing the same paint session without losing editable physics paint state.
+  4. User can export the current rendered physics paint result as a PNG or still image from the rebuilt UI.
+  5. User can produce a frame-sequence or cache-manifest proof from the live engine for future editor consumption.
+  6. The rebuilt package UI remains standalone-package-first and does not add editor integration scope beyond rendered-output proof artifacts.
 
 **Plans**: TBD
 **UI hint**: yes
