@@ -57,4 +57,35 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code.slice(code.indexOf('function handlePlayRangeClick'), code.indexOf('function handlePlayRangeClick') + 900)).not.toContain('onConvertPlayToRoto');
     expect(code.slice(code.indexOf('function handlePlayRangeClick'), code.indexOf('function handlePlayRangeClick') + 900)).not.toContain('onClearPlayRange');
   });
+
+  it('implements onion controls, preview overlay classes, and preview suppression copy', () => {
+    const code = source();
+
+    for (const label of [
+      'onionPreviewFrames',
+      'physics-paint-onion-overlay',
+      'physics-paint-onion-prev',
+      'physics-paint-onion-next',
+      'Onion skin hidden during preview',
+      'clampOnionCount',
+    ]) {
+      expect(code).toContain(label);
+    }
+  });
+
+  it('implements destructive confirmation copy and blocks missing Play to Roto frames', () => {
+    const code = source();
+
+    for (const label of [
+      'Clear Play canvas range',
+      'Convert Play to Roto?',
+      'Convert Roto to Play?',
+      'Cleared roto frame',
+      'Save or regenerate Play output before converting it to roto frames.',
+      'onConvertPlayToRoto',
+      'onConvertRotoToPlay',
+    ]) {
+      expect(code).toContain(label);
+    }
+  });
 });
