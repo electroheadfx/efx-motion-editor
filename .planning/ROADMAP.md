@@ -211,9 +211,9 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 36-01-PLAN.md — Define tested workflow-state predicates for Roto/Play modes, destructive confirmations, onion count, and dev export gating.
-- [ ] 36-02-PLAN.md — Extract tested editable JSON Save state / Load state helpers.
-- [ ] 36-03-PLAN.md — Add tested rendered still and PNG+manifest debug export proof helpers.
+- [x] 36-01-PLAN.md — Define tested workflow-state predicates for Roto/Play modes, destructive confirmations, onion count, and dev export gating.
+- [x] 36-02-PLAN.md — Extract tested editable JSON Save state / Load state helpers.
+- [x] 36-03-PLAN.md — Add tested rendered still and PNG+manifest debug export proof helpers.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -263,5 +263,5 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34. Standalone Demo Shell | v0.8.0 | 3/3 | Complete    | 2026-06-08 |
 | 35. Interactive Physics Paint Controls | v0.8.0 | 7/7 | Complete    | 2026-06-10 |
-| 36. Session Persistence and Output Proof | v0.8.0 | 0/TBD | Not started | - |
+| 36. Session Persistence and Output Proof | v0.8.0 | 3/7 | In Progress|  |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
