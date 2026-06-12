@@ -131,7 +131,7 @@ function isBaseApplyPayload(value: Record<string, unknown>): value is Record<str
   );
 }
 
-function isPhysicPaintRenderedFrame(value: unknown, expectedAppFrame?: number, expectedFrameIndex?: number): value is PhysicPaintRenderedFrame {
+export function isPhysicPaintRenderedFrame(value: unknown, expectedAppFrame?: number, expectedFrameIndex?: number): value is PhysicPaintRenderedFrame {
   if (!isRecord(value)) return false;
   if (!isNonNegativeInteger(value.frameIndex)) return false;
   if (!isNonNegativeInteger(value.appFrame)) return false;
