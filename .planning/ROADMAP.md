@@ -207,7 +207,30 @@ Plans:
   5. User can produce a frame-sequence or cache-manifest proof from the live engine for future editor consumption.
   6. The rebuilt package UI remains standalone-package-first and does not add editor integration scope beyond rendered-output proof artifacts.
 
-**Plans**: TBD
+**Plans**: 7 plans
+Plans:
+**Wave 1**
+
+- [ ] 36-01-PLAN.md — Define tested workflow-state predicates for Roto/Play modes, destructive confirmations, onion count, and dev export gating.
+- [ ] 36-02-PLAN.md — Extract tested editable JSON Save state / Load state helpers.
+- [ ] 36-03-PLAN.md — Add tested rendered still and PNG+manifest debug export proof helpers.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 36-04-PLAN.md — Refactor Physics Paint Studio behavior callbacks, project FPS launch context, and no-close Save play handling.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 36-05-PLAN.md — Build top bar, SVG tool rail, right panel, and EFX-style visual regions.
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 36-06-PLAN.md — Build bottom Roto/Play workflow strip, two timeline lanes, onion controls, and confirmation prompts.
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 36-07-PLAN.md — Wire the five-region UI into PhysicsPaintStudio, add contextual shortcuts, and run human visual verification.
+
 **UI hint**: yes
 
 ### Phase 37: Future Integration Contract and Validation

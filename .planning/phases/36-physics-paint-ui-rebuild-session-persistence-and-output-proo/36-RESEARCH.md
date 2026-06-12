@@ -429,22 +429,22 @@ const filePath = await save({
 | A1 | UI phases often invite accidental dev-server runs. | Common Pitfalls | Low; project instruction already forbids running the server. |
 | A2 | Development-mode gating can likely use Vite/Tauri environment checks such as `import.meta.env.DEV`. | Open Questions | Medium; planner should verify current project env conventions before implementation. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Where should project FPS come from inside the standalone Physics Paint route?**
+1. **RESOLVED — Where should project FPS come from inside the standalone Physics Paint route?**
    - What we know: D-07 removes custom FPS and says preview uses current project FPS. [VERIFIED: CONTEXT.md]
    - What's unclear: Current `PhysicPaintLaunchContext` does not include FPS. [VERIFIED: codebase]
-   - Recommendation: Add optional `fps` to launch context or derive from existing sequence context in the bridge, defaulting to 24 only as fallback. [ASSUMED]
+   - Resolution: Add optional `fps` to `PhysicPaintLaunchContext`; populate it from `projectStore.fps.peek()` or equivalent project context in the bridge; use `getPreviewFps(launchContext?.fps)` in Studio. 24 fps is only the internal fallback. [RESOLVED: 36-01, 36-04]
 
-2. **How much of source-lane state should be real in Phase 36?**
+2. **RESOLVED — How much of source-lane state should be real in Phase 36?**
    - What we know: D-20 requires two visible rows; Phase 38 defers true source-lane model. [VERIFIED: CONTEXT.md]
    - What's unclear: Whether timeline lane cells should read only from current output maps or add minimal internal UI state for ghost ranges. [VERIFIED: codebase]
-   - Recommendation: Use existing `physicPaintStore.getFrames(layerId)` for output markers and local UI state for active/ghost play range; avoid new persisted source schema. [ASSUMED]
+   - Resolution: Use existing `physicPaintStore.getFrames(layerId)` and `physicPaintVersion` for available output markers, plus local Studio state for active frame, ghost Play range, latest captured Play frames, onion preview candidates, and conversion confirmations. Do not add Phase 38 persisted source schema. [RESOLVED: 36-06, 36-07]
 
-3. **Exact dev-mode detection for debug export visibility.**
+3. **RESOLVED — Exact dev-mode detection for debug export visibility.**
    - What we know: D-18 requires debug export only in dev/development environment. [VERIFIED: CONTEXT.md]
    - What's unclear: No existing helper was found in researched files. [VERIFIED: codebase]
-   - Recommendation: Planner should add a tiny helper and test it; verify current Vite/Tauri environment behavior before wiring UI. [ASSUMED]
+   - Resolution: Add tested `isPhysicsPaintDevExportEnabled(env)` and wire UI with `import.meta.env`; return true only for `env.DEV === true` or `env.MODE === 'development'`, false for production-like env. [RESOLVED: 36-01, 36-05, 36-07]
 
 ## Environment Availability
 
