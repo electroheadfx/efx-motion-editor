@@ -4,13 +4,13 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
 stopped_at: Phase 36 UI-SPEC approved
-last_updated: "2026-06-12T13:35:58.925Z"
+last_updated: "2026-06-12T13:48:38.930Z"
 last_activity: 2026-06-12
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 17
-  completed_plans: 15
+  completed_plans: 16
   percent: 50
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 36 (physics-paint-ui-rebuild-session-persistence-and-output-proo) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-06-12
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [█████████░] 88%
 - Trend: N/A
 
 *Updated after each plan completion*
+| Phase 36 P06 | 392 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,8 @@ Recent decisions affecting current work:
 - v0.8.0: efx-physic-paint must be proven as a standalone interactive physics paint app/window before editor integration.
 - v0.8.0: Physics paint is an additional tool; it does not replace perfect-freehand basic paint or p5.brush FX paint.
 - v0.8.0: Failed headless adapter/batch replay remains excluded; future integration seam is typed/contract-only in this milestone.
+- [Phase 36]: Workflow strip owns a physics-paint-specific compact lane model rather than importing or cloning the main EFX Motion timeline. — Followed D-09 and keeps the bottom timeline separate from the main editor timeline implementation.
+- [Phase 36]: Play lane click handling remains inspection-only; conversion and clearing are explicit button/dialog flows. — Mitigates timeline-click tampering by keeping destructive callbacks behind explicit confirmations.
 
 ### Pending Todos
 
@@ -92,6 +95,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-12T13:35:58.920Z
+Last session: 2026-06-12T13:47:53.853Z
 Stopped at: Phase 36 UI-SPEC approved
 Resume file: None
