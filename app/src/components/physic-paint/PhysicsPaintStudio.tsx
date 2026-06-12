@@ -1,25 +1,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintLaunchContext } from '../../types/physicPaint';
 import { clampPhysicPaintFrameCount, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
-import { PhysicsPaintStudioToolbar, type PhysicsPaintStudioToolbarSettings } from './PhysicsPaintStudioToolbar';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
-import { getPreviewFps } from './physicsPaintWorkflowState';
+import { clampOnionCount, getPreviewFps, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
+import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
+import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
+import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
+import { PhysicsPaintWorkflowStrip, type PhysicsPaintWorkflowOnionPreviewFrame, type PhysicsPaintWorkflowStripFrameMarker } from './PhysicsPaintWorkflowStrip';
 import './physicsPaintStudio.css';
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
 const DEFAULT_CANVAS_WIDTH = 1000;
 const DEFAULT_CANVAS_HEIGHT = 650;
+const EMPTY_FRAME_COPY = 'No physics paint saved for this frame';
+const EMPTY_FRAME_BODY_COPY = 'Paint on the canvas, then use Save roto frame for the current frame or switch to Play canvas to preview and save a range.';
+const SHELL_ERROR_COPY = 'Physics Paint could not complete this action. Check the message above, keep the window open, and try again after the engine is ready.';
 
 type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyKind = 'apply-canvas' | 'apply-play-canvas';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
-
 type RenderedFramePayload = PhysicPaintRenderedFrame;
+
+type PhysicsPaintStudioSettings = {
+  tool: ToolType;
+  color: string;
+  size: number;
+  opacity: number;
+  background: BgMode;
+  paperGrain: string;
+  grainStrength: number;
+  edgeDetail: number;
+  pickup: number;
+  eraseStrength: number;
+  smoothing: number;
+  spread: number;
+  physicsMode: 'local' | null;
+  activePhysicsAction: 'last' | 'all' | null;
+};
 
 interface PhysicsPaintActionContext {
   engine: EfxPaintEngine;
@@ -89,7 +111,6 @@ function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null
 
   const width = Number(nonEmptyParam(params, 'width', 'w'));
   const height = Number(nonEmptyParam(params, 'height', 'h'));
-
   const fps = Number(nonEmptyParam(params, 'fps'));
 
   return {
@@ -159,6 +180,14 @@ async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPayload, bri
   throw new Error('App bridge is not connected');
 }
 
+function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return true;
+  const tagName = target.tagName.toLowerCase();
+  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return false;
+  if (target.isContentEditable) return false;
+  return !Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
 function CanvasMountProbe(props: { width: number; height: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: (input: { pressure: number; tiltX?: number; tiltY?: number }) => void) => void }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
@@ -198,6 +227,25 @@ function CanvasMountProbe(props: { width: number; height: number; onEngineReady:
   );
 }
 
+function makeInitialSettings(): PhysicsPaintStudioSettings {
+  return {
+    tool: 'paint',
+    color: '#103c65',
+    size: 6,
+    opacity: 100,
+    background: 'canvas1',
+    paperGrain: 'canvas1',
+    grainStrength: 0.45,
+    edgeDetail: 4,
+    pickup: 0,
+    eraseStrength: 50,
+    smoothing: 0,
+    spread: 50,
+    physicsMode: 'local',
+    activePhysicsAction: null,
+  };
+}
+
 export function PhysicsPaintStudio() {
   const [engine, setEngine] = useState<EfxPaintEngine | null>(null);
   const [canvasMounted, setCanvasMounted] = useState(false);
@@ -210,13 +258,13 @@ export function PhysicsPaintStudio() {
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [framesToApply, setFramesToApply] = useState(120);
-  const [settings, setSettings] = useState<PhysicsPaintStudioToolbarSettings>({
-    tool: 'paint',
-    color: '#103c65',
-    size: 6,
-    opacity: 100,
-    physicsMode: 'local',
-  });
+  const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialSettings());
+  const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>('roto');
+  const [onion, setOnion] = useState<PhysicsPaintOnionState>({ enabled: true, previous: true, next: true, count: 1 });
+  const [savedRotoFrames, setSavedRotoFrames] = useState<PhysicsPaintWorkflowStripFrameMarker[]>([]);
+  const [latestPlayFrames, setLatestPlayFrames] = useState<RenderedFramePayload[]>([]);
+  const [shortcutsVisible, setShortcutsVisible] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<AnimationPlayer | null>(null);
   const activeOperationIdRef = useRef<string | null>(null);
   const applyTimeoutRef = useRef<number | null>(null);
@@ -224,6 +272,7 @@ export function PhysicsPaintStudio() {
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
+  const currentFrame = launchContext?.startFrame ?? 0;
   const previewFps = getPreviewFps(launchContext?.fps);
   const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
     if (!engine || !launchContext) return null;
@@ -318,6 +367,153 @@ export function PhysicsPaintStudio() {
     };
   }, []);
 
+  const missingConditions = useMemo(() => {
+    const missing: string[] = [];
+    if (!engine) missing.push('Engine is still initializing');
+    if (!canvasMounted) missing.push('Canvas is still mounting');
+    if (!launchContext) missing.push('No app layer context received');
+    if (bridgeMode === 'Unavailable') missing.push('App bridge is not connected');
+    if (applyStatus === 'applying' || isPlaying) missing.push('Apply operation is still running');
+    return missing;
+  }, [applyStatus, bridgeMode, canvasMounted, engine, isPlaying, launchContext]);
+
+  const readyToApply = missingConditions.length === 0;
+
+  const updateSetting = useCallback(<K extends keyof PhysicsPaintStudioSettings>(key: K, value: PhysicsPaintStudioSettings[K]) => {
+    setSettings((current) => ({ ...current, [key]: value }));
+  }, []);
+
+  const selectTool = useCallback((tool: ToolType, physicsMode: 'local' | null = settings.physicsMode) => {
+    if (!engine) return;
+    engine.setTool(tool);
+    engine.setPhysicsMode(physicsMode);
+    setSettings((current) => ({ ...current, tool, physicsMode }));
+  }, [engine, settings.physicsMode]);
+
+  const setBrushColor = useCallback((color: string, opacity: number) => {
+    if (!engine) return;
+    engine.setColorHex(color);
+    engine.setBrushOpacity(opacity);
+    setSettings((current) => ({ ...current, color, opacity }));
+  }, [engine]);
+
+  const setBrushSize = useCallback((size: number) => {
+    engine?.setBrushSize(size);
+    updateSetting('size', size);
+  }, [engine, updateSetting]);
+
+  const setBrushOpacity = useCallback((opacity: number) => {
+    engine?.setBrushOpacity(opacity);
+    updateSetting('opacity', opacity);
+  }, [engine, updateSetting]);
+
+  const setBackground = useCallback((background: BgMode) => {
+    engine?.setBgMode(background);
+    updateSetting('background', background);
+  }, [engine, updateSetting]);
+
+  const setPaperGrain = useCallback((paperGrain: string) => {
+    engine?.setPaperGrain(paperGrain);
+    updateSetting('paperGrain', paperGrain);
+  }, [engine, updateSetting]);
+
+  const setGrainStrength = useCallback((grainStrength: number) => {
+    engine?.setEmbossStrength(grainStrength);
+    updateSetting('grainStrength', grainStrength);
+  }, [engine, updateSetting]);
+
+  const setEdgeDetail = useCallback((edgeDetail: number) => {
+    engine?.setEdgeDetail(edgeDetail);
+    updateSetting('edgeDetail', edgeDetail);
+  }, [engine, updateSetting]);
+
+  const setPickup = useCallback((pickup: number) => {
+    engine?.setPickup(pickup);
+    updateSetting('pickup', pickup);
+  }, [engine, updateSetting]);
+
+  const setSpread = useCallback((spread: number) => {
+    engine?.setLocalSpreadStrength(spread);
+    updateSetting('spread', spread);
+  }, [engine, updateSetting]);
+
+  const setSmoothing = useCallback((smoothing: number) => {
+    engine?.setAntiAlias(smoothing);
+    updateSetting('smoothing', smoothing);
+  }, [engine, updateSetting]);
+
+  const setEraseStrength = useCallback((eraseStrength: number) => {
+    engine?.setEraseStrength(eraseStrength);
+    updateSetting('eraseStrength', eraseStrength);
+  }, [engine, updateSetting]);
+
+  const startPhysics = useCallback((mode: 'last' | 'all') => {
+    if (!engine) return;
+    setSettings((current) => ({ ...current, activePhysicsAction: mode }));
+    engine.startPhysics(mode);
+  }, [engine]);
+
+  const stopPhysics = useCallback(() => {
+    if (!engine) return;
+    setSettings((current) => ({ ...current, activePhysicsAction: null }));
+    engine.stopPhysics();
+  }, [engine]);
+
+  const undo = useCallback(() => {
+    engine?.undo();
+  }, [engine]);
+
+  const clearActiveSource = useCallback(() => {
+    if (!engine || !launchContext) return;
+    engine.clear();
+    if (workflowMode === 'roto') {
+      setSavedRotoFrames((frames) => frames.filter((frame) => frame.frame !== launchContext.startFrame));
+      setApplyStatus('success');
+      setApplyMessage(`Cleared roto frame ${launchContext.startFrame}.`);
+      return;
+    }
+    setLatestPlayFrames([]);
+    setApplyStatus('success');
+    setApplyMessage(`Cleared Play canvas range ${launchContext.startFrame}–${launchContext.startFrame + clampPhysicPaintFrameCount(framesToApply) - 1}.`);
+  }, [engine, framesToApply, launchContext, workflowMode]);
+
+  const dryPaint = useCallback(() => {
+    engine?.forceDry();
+  }, [engine]);
+
+  const playPreview = useCallback((frameCount: number) => {
+    if (!playerRef.current) return;
+    const safeFrameCount = clampPhysicPaintFrameCount(frameCount);
+    setIsPlaying(true);
+    setAnimTotal(safeFrameCount);
+    setAnimFrame(0);
+    setApplyMessage(`Previewing ${safeFrameCount} frames at ${previewFps} fps.`);
+    playerRef.current.play({
+      frameCount: safeFrameCount,
+      fps: previewFps,
+      onFrame: (frameIndex) => setAnimFrame(frameIndex),
+      onComplete: () => setIsPlaying(false),
+    });
+  }, [previewFps]);
+
+  const stopPreview = useCallback(() => {
+    if (!playerRef.current) return;
+    playerRef.current.stop();
+    setIsPlaying(false);
+  }, []);
+
+  const startApplyTimeout = useCallback((operationId: string) => {
+    if (applyTimeoutRef.current) window.clearTimeout(applyTimeoutRef.current);
+    applyTimeoutRef.current = window.setTimeout(() => {
+      if (activeOperationIdRef.current !== operationId) return;
+      setApplyStatus('error');
+      setApplyMessage('Could not apply physics paint output. The main editor did not return an apply result.');
+      setLastError('The main editor did not return an apply result.');
+      activeOperationIdRef.current = null;
+      applyTimeoutRef.current = null;
+    }, 5000);
+  }, []);
+
   const handleApplyResult = useCallback((detail: PhysicPaintApplyResult | null | undefined) => {
     if (!detail || detail.operationId !== activeOperationIdRef.current) return;
     if (applyTimeoutRef.current) {
@@ -345,7 +541,8 @@ export function PhysicsPaintStudio() {
       setApplyMessage(`Saved play range: ${count} frames from ${frame} to ${endFrame} at ${canvasWidth}×${canvasHeight}.`);
     } else {
       const frame = detail.frame ?? detail.startFrame ?? launchContext?.startFrame ?? 0;
-      setApplyMessage(`Applied to frame ${frame}`);
+      const nextFrame = frame + 1;
+      setApplyMessage(`Saved roto frame ${frame}. Advanced to frame ${nextFrame}.`);
     }
   }, [canvasHeight, canvasWidth, framesToApply, launchContext?.startFrame]);
 
@@ -383,51 +580,6 @@ export function PhysicsPaintStudio() {
     };
   }, [bridgeMode, handleApplyResult]);
 
-  const missingConditions = useMemo(() => {
-    const missing: string[] = [];
-    if (!engine) missing.push('Engine is still initializing');
-    if (!canvasMounted) missing.push('Canvas is still mounting');
-    if (!launchContext) missing.push('No app layer context received');
-    if (bridgeMode === 'Unavailable') missing.push('App bridge is not connected');
-    if (applyStatus === 'applying' || isPlaying) missing.push('Apply operation is still running');
-    return missing;
-  }, [applyStatus, bridgeMode, canvasMounted, engine, isPlaying, launchContext]);
-
-  const readyToApply = missingConditions.length === 0;
-
-  const playPreview = useCallback((frameCount: number) => {
-    if (!playerRef.current) return;
-    const safeFrameCount = clampPhysicPaintFrameCount(frameCount);
-    setIsPlaying(true);
-    setAnimTotal(safeFrameCount);
-    setAnimFrame(0);
-    setApplyMessage(`Previewing ${safeFrameCount} frames at ${previewFps} fps.`);
-    playerRef.current.play({
-      frameCount: safeFrameCount,
-      fps: previewFps,
-      onFrame: (frameIndex) => setAnimFrame(frameIndex),
-      onComplete: () => setIsPlaying(false),
-    });
-  }, [previewFps]);
-
-  const stopPreview = useCallback(() => {
-    if (!playerRef.current) return;
-    playerRef.current.stop();
-    setIsPlaying(false);
-  }, []);
-
-  const startApplyTimeout = useCallback((operationId: string) => {
-    if (applyTimeoutRef.current) window.clearTimeout(applyTimeoutRef.current);
-    applyTimeoutRef.current = window.setTimeout(() => {
-      if (activeOperationIdRef.current !== operationId) return;
-      setApplyStatus('error');
-      setApplyMessage('Could not apply physics paint output. The main editor did not return an apply result.');
-      setLastError('The main editor did not return an apply result.');
-      activeOperationIdRef.current = null;
-      applyTimeoutRef.current = null;
-    }, 5000);
-  }, []);
-
   const saveRotoFrame = useCallback(async () => {
     if (!actionContext || !readyToApply) return null;
     const { engine, launchContext, bridgeMode } = actionContext;
@@ -453,6 +605,10 @@ export function PhysicsPaintStudio() {
           height: canvas.height,
         },
       };
+      setSavedRotoFrames((frames) => [
+        ...frames.filter((frame) => frame.frame !== launchContext.startFrame),
+        { frame: launchContext.startFrame, saved: true, label: `Frame ${launchContext.startFrame}` },
+      ].sort((a, b) => a.frame - b.frame));
       await sendPhysicPaintApplyPayload(payload, bridgeMode);
       startApplyTimeout(operationId);
       return payload;
@@ -514,6 +670,7 @@ export function PhysicsPaintStudio() {
         frames,
         editableState: engine.save(),
       };
+      setLatestPlayFrames(frames);
       await sendPhysicPaintApplyPayload(payload, bridgeMode);
       startApplyTimeout(operationId);
       return payload;
@@ -614,92 +771,288 @@ export function PhysicsPaintStudio() {
     }
   }, [engine, launchContext, previewFps]);
 
-  const diagnostics = [
-    ['Layer', launchContext ? `${launchContext.layerName ? `${launchContext.layerName} / ` : ''}${launchContext.layerId}` : 'No app layer context received'],
-    ['Start frame', launchContext ? String(launchContext.startFrame) : 'Unavailable'],
-    ['Canvas size', `${canvasWidth} × ${canvasHeight}`],
-    ['Engine ready', engine ? 'Ready' : 'Initializing'],
-    ['Canvas mounted', canvasMounted ? 'Mounted' : 'Canvas is still mounting'],
-    ['Active tool', settings.tool],
-    ['Color', settings.color],
-    ['Brush size', String(settings.size)],
-    ['Opacity', `${settings.opacity}%`],
-    ['Physics mode', settings.physicsMode === 'local' ? 'Local' : 'Global/manual'],
-    ['Bridge transport mode', bridgeMode],
-    ['Last error', lastError ?? 'None'],
-  ];
+  const buildOnionPreviewFrames = useCallback((): PhysicsPaintWorkflowOnionPreviewFrame[] => {
+    if (isPlaying) return [];
+    const count = clampOnionCount(onion.count);
+    const frames: PhysicsPaintWorkflowOnionPreviewFrame[] = [];
+    const addFrame = (frame: RenderedFramePayload, source: 'roto' | 'play') => {
+      const distance = Math.abs(frame.appFrame - currentFrame);
+      if (distance < 1 || distance > count) return;
+      frames.push({
+        frame: frame.appFrame,
+        dataUrl: frame.dataUrl,
+        direction: frame.appFrame < currentFrame ? 'previous' : 'next',
+        distance,
+        source,
+      });
+    };
+    latestPlayFrames.forEach((frame) => addFrame(frame, 'play'));
+    return frames.sort((a, b) => b.distance - a.distance);
+  }, [currentFrame, isPlaying, latestPlayFrames, onion.count]);
+
+  const convertPlayToRoto = useCallback(() => {
+    if (!launchContext) return;
+    const frameCount = clampPhysicPaintFrameCount(framesToApply);
+    const expectedFrames = Array.from({ length: frameCount }, (_, index) => launchContext.startFrame + index);
+    const playFramesByAppFrame = new Map(latestPlayFrames.map((frame) => [frame.appFrame, frame]));
+    const hasAllFrames = expectedFrames.every((frame) => playFramesByAppFrame.has(frame));
+    if (!hasAllFrames) {
+      setApplyStatus('error');
+      setApplyMessage(PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE);
+      setLastError(PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE);
+      return;
+    }
+    setSavedRotoFrames((frames) => [
+      ...frames.filter((marker) => !expectedFrames.includes(marker.frame)),
+      ...expectedFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` })),
+    ].sort((a, b) => a.frame - b.frame));
+    setLatestPlayFrames([]);
+    setWorkflowMode('roto');
+    setApplyStatus('success');
+    setApplyMessage(`Converted ${frameCount} Play frames to Roto frames.`);
+  }, [framesToApply, latestPlayFrames, launchContext]);
+
+  const convertRotoToPlay = useCallback(() => {
+    if (!engine || !launchContext) return;
+    const frameCount = clampPhysicPaintFrameCount(framesToApply);
+    const startFrame = launchContext.startFrame;
+    const endFrame = startFrame + frameCount - 1;
+    setSavedRotoFrames((frames) => frames.filter((marker) => marker.frame < startFrame || marker.frame > endFrame));
+    setLatestPlayFrames([]);
+    setWorkflowMode('play');
+    setApplyStatus('success');
+    setApplyMessage(`Converted Roto frames ${startFrame}–${endFrame} to the current Play canvas source.`);
+  }, [engine, framesToApply, launchContext]);
+
+  const handlePhysicsPaintKeyDown = useCallback((event: KeyboardEvent) => {
+    if (!isPhysicsPaintShortcutTarget(event.target)) return;
+    const key = event.key.toLowerCase();
+    const meta = event.metaKey || event.ctrlKey;
+
+    if (meta && key === 'z') {
+      event.preventDefault();
+      undo();
+      return;
+    }
+    if (event.key === 'Escape') {
+      if (isPlaying) {
+        event.preventDefault();
+        stopPreview();
+      }
+      return;
+    }
+    if (meta && key === 's') {
+      event.preventDefault();
+      if (workflowMode === 'play') void savePlay();
+      else void saveRotoFrameAndAdvance();
+      return;
+    }
+    if (event.key === '?' || (event.shiftKey && event.key === '/')) {
+      event.preventDefault();
+      setShortcutsVisible((visible) => !visible);
+      return;
+    }
+
+    if (workflowMode === 'roto') {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        const direction = event.key === 'ArrowLeft' ? -1 : 1;
+        const nextFrame = event.shiftKey
+          ? findAdjacentSavedFrame(savedRotoFrames, currentFrame, direction)
+          : Math.max(0, currentFrame + direction);
+        if (nextFrame !== null) void navigateToSyncedFrame(nextFrame);
+        return;
+      }
+      if (key === 'g') {
+        event.preventDefault();
+        void navigateToSyncedFrame(currentFrame);
+        return;
+      }
+      if (key === 'o') {
+        event.preventDefault();
+        setOnion((current) => ({ ...current, enabled: !current.enabled }));
+        return;
+      }
+      if (event.key === '[' || event.key === ']') {
+        event.preventDefault();
+        setOnion((current) => ({ ...current, count: clampOnionCount(current.count + (event.key === ']' ? 1 : -1)) }));
+        return;
+      }
+      if (meta && event.key === 'Enter') {
+        event.preventDefault();
+        void saveRotoFrameAndAdvance();
+        return;
+      }
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        clearActiveSource();
+        return;
+      }
+    }
+
+    if (workflowMode === 'play' && (event.key === ' ' || event.key === 'Enter')) {
+      event.preventDefault();
+      if (isPlaying) stopPreview();
+      else playPreview(framesToApply);
+    }
+  }, [clearActiveSource, currentFrame, framesToApply, isPlaying, navigateToSyncedFrame, playPreview, savePlay, saveRotoFrameAndAdvance, savedRotoFrames, stopPreview, undo, workflowMode]);
+
+  const onionPreviewFrames = buildOnionPreviewFrames();
+  const missingPlayFramesForConversion = useMemo(() => {
+    if (!launchContext) return true;
+    const frameCount = clampPhysicPaintFrameCount(framesToApply);
+    const playFramesByAppFrame = new Set(latestPlayFrames.map((frame) => frame.appFrame));
+    return Array.from({ length: frameCount }, (_, index) => launchContext.startFrame + index).some((frame) => !playFramesByAppFrame.has(frame));
+  }, [framesToApply, latestPlayFrames, launchContext]);
 
   return (
     <main class="demo-shell">
-      <header class="demo-header">
-        <h1>EFX Physics Paint Studio</h1>
-        <p class="demo-status">Tauri app route / library integration</p>
-      </header>
-      <CanvasMountProbe
-        width={canvasWidth}
-        height={canvasHeight}
-        onEngineReady={setEngine}
-        onCanvasMounted={setCanvasMounted}
-        onNativePenInputReady={(handler) => {
-          nativePenInputHandlerRef.current = handler;
-        }}
-      />
-      {engine && (
-        <PhysicsPaintStudioToolbar
-          engine={engine}
-          onPlay={(frameCount) => playPreview(frameCount)}
-          onStop={stopPreview}
-          isPlaying={isPlaying}
-          animFrame={animFrame}
-          animTotal={animTotal}
-          onSettingsChange={setSettings}
-          onError={(message) => setLastError(message)}
+      <section
+        class="physics-paint-studio physics-paint-layout"
+        aria-label="EFX Physics Paint Studio"
+        tabIndex={0}
+        onKeyDown={(event) => handlePhysicsPaintKeyDown(event as unknown as KeyboardEvent)}
+      >
+        <PhysicsPaintTopBar
+          brushSize={settings.size}
+          opacity={settings.opacity}
+          background={settings.background}
+          paperGrain={settings.paperGrain}
+          grainStrength={settings.grainStrength}
+          ready={readyToApply}
+          error={lastError}
+          applyStatus={applyStatus}
+          applyMessage={applyMessage}
+          devExportEnabled={isPhysicsPaintDevExportEnabled(import.meta.env)}
+          devExportBusy={applyStatus === 'applying'}
+          onBrushSizeChange={setBrushSize}
+          onOpacityChange={setBrushOpacity}
+          onBackgroundChange={setBackground}
+          onPaperGrainChange={setPaperGrain}
+          onGrainStrengthChange={setGrainStrength}
+          onSaveState={saveEditableState}
+          onLoadState={() => fileInputRef.current?.click()}
+          onExportDebugProof={exportDebugProof}
         />
-      )}
-      <section class={`diagnostics-panel ${readyToApply ? 'ready' : 'not-ready'}`} aria-live="polite">
-        <div class="diagnostics-header">
-          <span class={`ready-badge ${readyToApply ? 'ready' : 'not-ready'}`}>
-            {readyToApply ? 'Ready to apply' : 'Not ready to apply'}
-          </span>
-          {applyStatus === 'applying' ? <span class="busy-copy">Applying physics paint output...</span> : null}
-          {applyMessage ? <span class={`apply-feedback ${applyStatus}`}>{applyMessage}</span> : null}
-        </div>
 
-        {!readyToApply ? (
-          <ul class="missing-list">
-            {missingConditions.map((condition) => <li key={condition}>{condition}</li>)}
-          </ul>
+        <PhysicsPaintToolRail
+          activeTool={settings.tool}
+          physicsMode={settings.physicsMode}
+          activePhysicsAction={settings.activePhysicsAction}
+          canUndo={Boolean(engine)}
+          disabled={!engine}
+          onSelectTool={selectTool}
+          onUndo={undo}
+          onClearFrame={clearActiveSource}
+          onPhysicsStart={startPhysics}
+          onPhysicsStop={stopPhysics}
+          onDryPaint={dryPaint}
+        />
+
+        <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
+          <div class="physics-paint-canvas-stack">
+            <CanvasMountProbe
+              width={canvasWidth}
+              height={canvasHeight}
+              onEngineReady={setEngine}
+              onCanvasMounted={setCanvasMounted}
+              onNativePenInputReady={(handler) => {
+                nativePenInputHandlerRef.current = handler;
+              }}
+            />
+            {onion.enabled && onionPreviewFrames.length > 0 ? (
+              <div class="physics-paint-onion-overlay canvas-region" aria-hidden="true">
+                {onionPreviewFrames.map((frame) => (
+                  <img
+                    key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`}
+                    class={`physics-paint-onion-frame ${frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`}
+                    src={frame.dataUrl}
+                    style={{ opacity: Math.max(0.18, 0.62 - frame.distance * 0.14) }}
+                    alt=""
+                  />
+                ))}
+              </div>
+            ) : null}
+            {!lastError && !savedRotoFrames.some((frame) => frame.frame === currentFrame) ? (
+              <div class="physics-paint-empty-state" aria-live="polite">
+                <strong>{EMPTY_FRAME_COPY}</strong>
+                <span>{EMPTY_FRAME_BODY_COPY}</span>
+              </div>
+            ) : null}
+            {lastError ? <div class="physics-paint-shell-error">{SHELL_ERROR_COPY}</div> : null}
+          </div>
+        </section>
+
+        <PhysicsPaintRightPanel
+          activeTool={settings.tool}
+          color={settings.color}
+          opacity={settings.opacity}
+          edgeDetail={settings.edgeDetail}
+          pickup={settings.pickup}
+          spread={settings.spread}
+          smoothing={settings.smoothing}
+          eraseStrength={settings.eraseStrength}
+          physicsMode={settings.physicsMode}
+          onColorChange={setBrushColor}
+          onEdgeDetailChange={setEdgeDetail}
+          onPickupChange={setPickup}
+          onSpreadChange={setSpread}
+          onSmoothingChange={setSmoothing}
+          onEraseStrengthChange={setEraseStrength}
+        />
+
+        <PhysicsPaintWorkflowStrip
+          mode={workflowMode}
+          currentFrame={currentFrame}
+          startFrame={launchContext?.startFrame ?? 0}
+          frameCount={framesToApply}
+          isPlaying={isPlaying}
+          ready={readyToApply}
+          savedRotoFrames={savedRotoFrames}
+          playPublicationSummary={applyStatus === 'success' ? applyMessage : null}
+          statusMessage={isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null)}
+          onion={onion}
+          onionPreviewFrames={onionPreviewFrames}
+          showOnionHiddenDuringPreview={onion.enabled && isPlaying}
+          missingPlayFramesForConversion={missingPlayFramesForConversion}
+          onModeChange={setWorkflowMode}
+          onSaveRotoFrame={saveRotoFrameAndAdvance}
+          onSavePlay={savePlay}
+          onSaveState={saveEditableState}
+          onLoadState={loadEditableState}
+          onPlayPreview={playPreview}
+          onStopPreview={stopPreview}
+          onFrameCountChange={setFramesToApply}
+          onNavigateToSyncedFrame={navigateToSyncedFrame}
+          onInspectPlayFrame={navigateToSyncedFrame}
+          onOnionChange={setOnion}
+          onClearRotoFrame={() => clearActiveSource()}
+          onClearPlayRange={clearActiveSource}
+          onConvertPlayToRoto={convertPlayToRoto}
+          onConvertRotoToPlay={convertRotoToPlay}
+        />
+
+        <input ref={fileInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={loadEditableState} />
+        {shortcutsVisible ? (
+          <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">
+            <strong>Physics Paint shortcuts</strong>
+            <span>Cmd+Z undo · Cmd+S save active workflow · Esc stop preview · ? help</span>
+            <span>Roto: arrows navigate · O onion · [ ] onion count · Cmd+Enter save and next · Delete clear frame</span>
+            <span>Play: Space/Enter preview · Cmd+S save play</span>
+          </aside>
         ) : null}
-
-        <div class="diagnostics-grid">
-          {diagnostics.map(([label, value]) => (
-            <div class="diagnostic-item" key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-            </div>
-          ))}
-        </div>
-
-        <div class="apply-controls">
-          <label for="frames-to-apply">Frames to apply</label>
-          <input
-            id="frames-to-apply"
-            type="number"
-            min={1}
-            max={600}
-            value={framesToApply}
-            onInput={(event) => setFramesToApply(clampPhysicPaintFrameCount(Number((event.target as HTMLInputElement).value)))}
-          />
-          <button class="apply-button" disabled={!readyToApply} onClick={saveRotoFrameAndAdvance}>Save roto frame</button>
-          <button class="apply-button" disabled={!readyToApply} onClick={savePlay}>Save play</button>
-          <button class="apply-button" disabled={!engine} onClick={saveEditableState}>Save state</button>
-          <label class="apply-button" aria-disabled={!engine}>
-            Load state
-            <input type="file" accept=".json" style={{ display: 'none' }} onChange={loadEditableState} disabled={!engine} />
-          </label>
-          <button class="apply-button" disabled={!engine || !launchContext} onClick={exportDebugProof}>Export debug proof</button>
-        </div>
       </section>
     </main>
   );
+}
+
+function findAdjacentSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[], currentFrame: number, direction: -1 | 1): number | null {
+  const sorted = markers
+    .filter((marker) => marker.saved !== false)
+    .map((marker) => marker.frame)
+    .sort((a, b) => a - b);
+  if (direction < 0) {
+    return [...sorted].reverse().find((frame) => frame < currentFrame) ?? null;
+  }
+  return sorted.find((frame) => frame > currentFrame) ?? null;
 }
