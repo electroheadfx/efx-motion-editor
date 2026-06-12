@@ -217,7 +217,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 36-04-PLAN.md — Refactor Physics Paint Studio behavior callbacks, project FPS launch context, and no-close Save play handling.
+- [x] 36-04-PLAN.md — Refactor Physics Paint Studio behavior callbacks, project FPS launch context, and no-close Save play handling.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -263,5 +263,5 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34. Standalone Demo Shell | v0.8.0 | 3/3 | Complete    | 2026-06-08 |
 | 35. Interactive Physics Paint Controls | v0.8.0 | 7/7 | Complete    | 2026-06-10 |
-| 36. Session Persistence and Output Proof | v0.8.0 | 3/7 | In Progress|  |
+| 36. Session Persistence and Output Proof | v0.8.0 | 4/7 | In Progress|  |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |

@@ -23,10 +23,10 @@ Requirements for the Standalone Physics Paint milestone. This milestone proves `
 
 ### Standalone Persistence and Output
 
-- [ ] **SAVE-01**: User can save the standalone paint session as JSON.
-- [ ] **SAVE-02**: User can reload saved JSON and continue testing the same paint session.
-- [ ] **OUT-01**: User can export the current rendered paint result as a PNG or still image.
-- [ ] **OUT-02**: User can produce a frame-sequence or cache-manifest proof from the live engine for future editor consumption.
+- [x] **SAVE-01**: User can save the standalone paint session as JSON.
+- [x] **SAVE-02**: User can reload saved JSON and continue testing the same paint session.
+- [x] **OUT-01**: User can export the current rendered paint result as a PNG or still image.
+- [x] **OUT-02**: User can produce a frame-sequence or cache-manifest proof from the live engine for future editor consumption.
 
 ### Future Integration Seam
 
@@ -74,10 +74,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PAINT-03 | Phase 35 | Complete |
 | PAINT-04 | Phase 35 | Complete |
 | DIAG-01 | Phase 35 | Complete |
-| SAVE-01 | Phase 36 | Pending |
-| SAVE-02 | Phase 36 | Pending |
-| OUT-01 | Phase 36 | Pending |
-| OUT-02 | Phase 36 | Pending |
+| SAVE-01 | Phase 36 | Complete |
+| SAVE-02 | Phase 36 | Complete |
+| OUT-01 | Phase 36 | Complete |
+| OUT-02 | Phase 36 | Complete |
 | SEAM-01 | Phase 37 | Pending |
 | SEAM-02 | Phase 37 | Pending |
 | TEST-01 | Phase 37 | Pending |
