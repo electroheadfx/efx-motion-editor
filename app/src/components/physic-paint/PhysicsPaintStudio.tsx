@@ -3,9 +3,12 @@ import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintLaunchContext } from '../../types/physicPaint';
-import { clampPhysicPaintFrameCount, isPhysicPaintLaunchContext } from '../../types/physicPaint';
+import { clampPhysicPaintFrameCount, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
 import { PhysicsPaintStudioToolbar, type PhysicsPaintStudioToolbarSettings } from './PhysicsPaintStudioToolbar';
+import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
+import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
+import { getPreviewFps } from './physicsPaintWorkflowState';
 import './physicsPaintStudio.css';
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
@@ -16,12 +19,12 @@ type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyKind = 'apply-canvas' | 'apply-play-canvas';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 
-interface RenderedFramePayload {
-  frameIndex: number;
-  appFrame: number;
-  dataUrl: string;
-  width?: number;
-  height?: number;
+type RenderedFramePayload = PhysicPaintRenderedFrame;
+
+interface PhysicsPaintActionContext {
+  engine: EfxPaintEngine;
+  launchContext: PhysicPaintLaunchContext;
+  bridgeMode: BridgeMode;
 }
 
 interface PhysicPaintApplyPayload {
@@ -87,6 +90,8 @@ function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null
   const width = Number(nonEmptyParam(params, 'width', 'w'));
   const height = Number(nonEmptyParam(params, 'height', 'h'));
 
+  const fps = Number(nonEmptyParam(params, 'fps'));
+
   return {
     layerId,
     operationId,
@@ -94,6 +99,7 @@ function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null
     layerName: nonEmptyParam(params, 'layerName', 'name') ?? undefined,
     width: Number.isFinite(width) && width > 0 ? width : undefined,
     height: Number.isFinite(height) && height > 0 ? height : undefined,
+    fps: Number.isFinite(fps) && fps > 0 ? fps : undefined,
   };
 }
 
@@ -112,15 +118,20 @@ async function detectBridgeMode(): Promise<BridgeMode> {
   return 'Unavailable';
 }
 
-async function closePhysicsPaintWindow(): Promise<void> {
-  try {
-    const windowApi = await import('@tauri-apps/api/window');
-    await windowApi.getCurrentWindow?.().close?.();
-    return;
-  } catch {
-    // Browser fallback below.
+async function sendPhysicPaintFrameSyncMessage(frame: number, bridgeMode: BridgeMode): Promise<void> {
+  const message = { type: 'physic-paint:seek-frame' as const, frame };
+  if (bridgeMode === 'Tauri') {
+    try {
+      const eventApi = await import('@tauri-apps/api/event');
+      await eventApi.emit?.('physic-paint:seek-frame', message);
+      await eventApi.emitTo?.('main', 'physic-paint:seek-frame', message);
+      return;
+    } catch {
+      // Browser fallback below keeps development and non-Tauri windows synced.
+    }
   }
-  window.close();
+  window.opener?.postMessage?.(message, '*');
+  window.dispatchEvent?.(new MessageEvent('message', { data: message }));
 }
 
 async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPayload, bridgeMode: BridgeMode): Promise<void> {
@@ -213,6 +224,11 @@ export function PhysicsPaintStudio() {
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
+  const previewFps = getPreviewFps(launchContext?.fps);
+  const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
+    if (!engine || !launchContext) return null;
+    return { engine, launchContext, bridgeMode };
+  }, [bridgeMode, engine, launchContext]);
 
   useEffect(() => {
     detectBridgeMode().then(setBridgeMode).catch(() => setBridgeMode('Unavailable'));
@@ -322,16 +338,16 @@ export function PhysicsPaintStudio() {
 
     setApplyStatus('success');
     setLastError(null);
-    void closePhysicsPaintWindow();
     if ((detail.kind ?? 'apply-canvas') === 'apply-play-canvas') {
       const count = detail.appliedFrameCount ?? detail.count ?? detail.frameCount ?? framesToApply;
       const frame = detail.startFrame ?? launchContext?.startFrame ?? 0;
-      setApplyMessage(`Applied ${count} frames starting at frame ${frame}`);
+      const endFrame = frame + Math.max(0, count - 1);
+      setApplyMessage(`Saved play range: ${count} frames from ${frame} to ${endFrame} at ${canvasWidth}×${canvasHeight}.`);
     } else {
       const frame = detail.frame ?? detail.startFrame ?? launchContext?.startFrame ?? 0;
       setApplyMessage(`Applied to frame ${frame}`);
     }
-  }, [framesToApply, launchContext?.startFrame]);
+  }, [canvasHeight, canvasWidth, framesToApply, launchContext?.startFrame]);
 
   useEffect(() => {
     const handleResult = (event: Event) => {
@@ -379,20 +395,22 @@ export function PhysicsPaintStudio() {
 
   const readyToApply = missingConditions.length === 0;
 
-  const handlePlay = useCallback((frameCount: number, fps: number) => {
+  const playPreview = useCallback((frameCount: number) => {
     if (!playerRef.current) return;
+    const safeFrameCount = clampPhysicPaintFrameCount(frameCount);
     setIsPlaying(true);
-    setAnimTotal(frameCount);
+    setAnimTotal(safeFrameCount);
     setAnimFrame(0);
+    setApplyMessage(`Previewing ${safeFrameCount} frames at ${previewFps} fps.`);
     playerRef.current.play({
-      frameCount,
-      fps,
+      frameCount: safeFrameCount,
+      fps: previewFps,
       onFrame: (frameIndex) => setAnimFrame(frameIndex),
       onComplete: () => setIsPlaying(false),
     });
-  }, []);
+  }, [previewFps]);
 
-  const handleStop = useCallback(() => {
+  const stopPreview = useCallback(() => {
     if (!playerRef.current) return;
     playerRef.current.stop();
     setIsPlaying(false);
@@ -410,8 +428,9 @@ export function PhysicsPaintStudio() {
     }, 5000);
   }, []);
 
-  const applyCanvas = useCallback(async () => {
-    if (!engine || !launchContext || !readyToApply) return;
+  const saveRotoFrame = useCallback(async () => {
+    if (!actionContext || !readyToApply) return null;
+    const { engine, launchContext, bridgeMode } = actionContext;
 
     try {
       setApplyStatus('applying');
@@ -436,18 +455,20 @@ export function PhysicsPaintStudio() {
       };
       await sendPhysicPaintApplyPayload(payload, bridgeMode);
       startApplyTimeout(operationId);
+      return payload;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       const message = `Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. ${detail}`;
       setApplyStatus('error');
       setApplyMessage(message);
       setLastError(message);
+      return null;
     }
-  }, [bridgeMode, engine, launchContext, readyToApply, startApplyTimeout]);
+  }, [actionContext, readyToApply, startApplyTimeout]);
 
-  const applyPlayCanvas = useCallback(async () => {
-    if (!engine || !launchContext || !readyToApply || !playerRef.current) return;
-
+  const savePlay = useCallback(async () => {
+    if (!actionContext || !readyToApply || !playerRef.current) return null;
+    const { engine, launchContext, bridgeMode } = actionContext;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
 
     try {
@@ -465,7 +486,7 @@ export function PhysicsPaintStudio() {
         const timeout = window.setTimeout(() => reject(new Error('Timed out while generating physics paint frames')), Math.max(15000, frameCount * 1000));
         playerRef.current?.play({
           frameCount,
-          fps: 24,
+          fps: previewFps,
           onFrame: (frameIndex: number, canvas: HTMLCanvasElement) => {
             setAnimFrame(frameIndex);
             captured.push({
@@ -484,7 +505,7 @@ export function PhysicsPaintStudio() {
         });
       });
 
-      await sendPhysicPaintApplyPayload({
+      const payload: PhysicPaintApplyPayload = {
         operationId,
         kind: 'apply-play-canvas',
         layerId: launchContext.layerId,
@@ -492,8 +513,10 @@ export function PhysicsPaintStudio() {
         frameCount,
         frames,
         editableState: engine.save(),
-      }, bridgeMode);
+      };
+      await sendPhysicPaintApplyPayload(payload, bridgeMode);
       startApplyTimeout(operationId);
+      return payload;
     } catch (error) {
       setIsPlaying(false);
       const detail = error instanceof Error ? error.message : String(error);
@@ -501,8 +524,95 @@ export function PhysicsPaintStudio() {
       setApplyStatus('error');
       setApplyMessage(message);
       setLastError(message);
+      return null;
     }
-  }, [bridgeMode, engine, framesToApply, launchContext, readyToApply, startApplyTimeout]);
+  }, [actionContext, framesToApply, previewFps, readyToApply, startApplyTimeout]);
+
+  const navigateToSyncedFrame = useCallback(async (frame: number) => {
+    if (!Number.isInteger(frame) || frame < 0) return false;
+    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
+    setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+    return true;
+  }, [bridgeMode]);
+
+  const saveRotoFrameAndAdvance = useCallback(async () => {
+    const payload = await saveRotoFrame();
+    if (!payload?.renderedFrame) return;
+    const nextFrame = payload.startFrame + 1;
+    const synced = await navigateToSyncedFrame(nextFrame);
+    if (synced) {
+      setApplyMessage(`Saved roto frame ${payload.startFrame}. Advanced to frame ${nextFrame}.`);
+    }
+  }, [navigateToSyncedFrame, saveRotoFrame]);
+
+  const saveEditableState = useCallback(async () => {
+    if (!engine) return;
+    try {
+      const message = await downloadPhysicsPaintState(engine.save());
+      setApplyStatus('success');
+      setApplyMessage(message);
+      setLastError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setApplyStatus('error');
+      setApplyMessage(message);
+      setLastError(message);
+    }
+  }, [engine]);
+
+  const loadEditableState = useCallback((event: Event) => {
+    if (!engine) return;
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const state = parsePhysicsPaintStateFile(String(reader.result ?? ''));
+        engine.load(state);
+        setApplyStatus('success');
+        setApplyMessage('Loaded editable JSON state.');
+        setLastError(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setApplyStatus('error');
+        setApplyMessage(message);
+        setLastError(message);
+      }
+    };
+    reader.readAsText(file);
+    (event.target as HTMLInputElement).value = '';
+  }, [engine]);
+
+  const exportDebugProof = useCallback(() => {
+    if (!engine || !launchContext) return;
+    try {
+      const canvas = engine.exportCompositeCanvas();
+      const frame: RenderedFramePayload = {
+        frameIndex: 0,
+        appFrame: launchContext.startFrame,
+        dataUrl: canvas.toDataURL('image/png'),
+        width: canvas.width,
+        height: canvas.height,
+      };
+      const still = buildPhysicsPaintStillExport(frame);
+      const manifest = buildPhysicsPaintDebugManifest({
+        layerId: launchContext.layerId,
+        operationId: `${launchContext.operationId}:debug:${Date.now()}`,
+        startFrame: launchContext.startFrame,
+        frameCount: 1,
+        frames: [frame],
+        fps: previewFps,
+      });
+      setApplyStatus('success');
+      setApplyMessage(`Debug proof ready: ${still.file} and ${manifest.file}.`);
+      setLastError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setApplyStatus('error');
+      setApplyMessage(message);
+      setLastError(message);
+    }
+  }, [engine, launchContext, previewFps]);
 
   const diagnostics = [
     ['Layer', launchContext ? `${launchContext.layerName ? `${launchContext.layerName} / ` : ''}${launchContext.layerId}` : 'No app layer context received'],
@@ -537,8 +647,8 @@ export function PhysicsPaintStudio() {
       {engine && (
         <PhysicsPaintStudioToolbar
           engine={engine}
-          onPlay={handlePlay}
-          onStop={handleStop}
+          onPlay={(frameCount) => playPreview(frameCount)}
+          onStop={stopPreview}
           isPlaying={isPlaying}
           animFrame={animFrame}
           animTotal={animTotal}
@@ -580,8 +690,14 @@ export function PhysicsPaintStudio() {
             value={framesToApply}
             onInput={(event) => setFramesToApply(clampPhysicPaintFrameCount(Number((event.target as HTMLInputElement).value)))}
           />
-          <button class="apply-button" disabled={!readyToApply} onClick={applyCanvas}>[apply canvas]</button>
-          <button class="apply-button" disabled={!readyToApply} onClick={applyPlayCanvas}>[apply play canvas]</button>
+          <button class="apply-button" disabled={!readyToApply} onClick={saveRotoFrameAndAdvance}>Save roto frame</button>
+          <button class="apply-button" disabled={!readyToApply} onClick={savePlay}>Save play</button>
+          <button class="apply-button" disabled={!engine} onClick={saveEditableState}>Save state</button>
+          <label class="apply-button" aria-disabled={!engine}>
+            Load state
+            <input type="file" accept=".json" style={{ display: 'none' }} onChange={loadEditableState} disabled={!engine} />
+          </label>
+          <button class="apply-button" disabled={!engine || !launchContext} onClick={exportDebugProof}>Export debug proof</button>
         </div>
       </section>
     </main>
