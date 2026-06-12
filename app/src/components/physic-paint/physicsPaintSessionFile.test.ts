@@ -14,7 +14,7 @@ const editableState: SerializedProject = {
   width: 1000,
   height: 650,
   strokes: [],
-  settings: {},
+  settings: { bgMode: 'canvas1', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
 };
 
 describe('physicsPaintSessionFile', () => {

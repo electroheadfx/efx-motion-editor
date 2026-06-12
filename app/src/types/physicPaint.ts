@@ -148,7 +148,7 @@ function containsForbiddenApplyField(value: Record<string, unknown>): boolean {
   return false;
 }
 
-function isSerializedProject(value: unknown): value is SerializedProject {
+export function isSerializedProject(value: unknown): value is SerializedProject {
   if (!isRecord(value)) return false;
   if (value.version !== 2) return false;
   if (typeof value.width !== 'number' || !Number.isFinite(value.width) || value.width <= 0) return false;
