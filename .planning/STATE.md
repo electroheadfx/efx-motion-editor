@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
-stopped_at: Phase 35 UI-SPEC approved
-last_updated: "2026-06-10T17:04:33.681Z"
+stopped_at: Phase 36 context gathered
+last_updated: "2026-06-12T10:39:25.252Z"
 last_activity: 2026-06-10
 progress:
   total_phases: 4
@@ -92,6 +92,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-08T14:40:28.473Z
-Stopped at: Phase 35 UI-SPEC approved
-Resume file: .planning/phases/35-interactive-physics-paint-controls/35-UI-SPEC.md
+Last session: 2026-06-12T10:39:25.248Z
+Stopped at: Phase 36 context gathered
+Resume file: .planning/phases/36-physics-paint-ui-rebuild-session-persistence-and-output-proo/36-CONTEXT.md
