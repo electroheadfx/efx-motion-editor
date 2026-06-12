@@ -4,6 +4,7 @@ import {
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
   clampPhysicPaintFrameCount,
   isPhysicPaintApplyPayload,
+  isPhysicPaintFrameSyncMessage,
   isPhysicPaintLaunchContext,
 } from './physicPaint';
 
@@ -31,9 +32,27 @@ describe('physic paint payload contracts', () => {
     expect(clampPhysicPaintFrameCount('bad')).toBe(PHYSIC_PAINT_DEFAULT_APPLY_FRAMES);
   });
 
-  it('accepts launch contexts with layer and frame context', () => {
+  it('accepts launch contexts with positive finite project fps', () => {
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4 })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 24 })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 30 })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 60 })).toBe(true);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: -1 })).toBe(false);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 0 })).toBe(false);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: -24 })).toBe(false);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: Infinity })).toBe(false);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: '24' })).toBe(false);
+  });
+
+  it('validates namespaced frame-sync messages', () => {
+    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 0 })).toBe(true);
+    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 12 })).toBe(true);
+    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame' })).toBe(false);
+    expect(isPhysicPaintFrameSyncMessage({ type: 'other', frame: 12 })).toBe(false);
+    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: -1 })).toBe(false);
+    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 1.5 })).toBe(false);
+    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: Infinity })).toBe(false);
+    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: '12' })).toBe(false);
   });
 
   it('accepts rendered-output still and sequence payloads', () => {

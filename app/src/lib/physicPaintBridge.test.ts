@@ -4,11 +4,14 @@ import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { projectStore } from '../stores/projectStore';
 import { sequenceStore } from '../stores/sequenceStore';
+import { timelineStore } from '../stores/timelineStore';
 import type { PhysicPaintApplyPayload } from '../types/physicPaint';
 import {
   applyPhysicPaintPayload,
   createPhysicPaintLaunchContext,
+  handlePhysicPaintFrameSyncMessage,
   installPhysicPaintApplyListener,
+  installPhysicPaintFrameSyncListener,
   openPhysicPaintCanvas,
   PHYSIC_PAINT_APPLY_EVENT,
   PHYSIC_PAINT_APPLY_RESULT_EVENT,
@@ -467,5 +470,76 @@ describe('physicPaintBridge', () => {
 
     cleanup();
     expect(remove).toHaveBeenCalledWith(PHYSIC_PAINT_APPLY_EVENT, expect.any(Function));
+  });
+
+  it('includes positive finite fps in the encoded browser launch context', async () => {
+    const focus = vi.fn();
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
+
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 4, canvas: { width: 1280, height: 720 }, fps: 30 });
+
+    expect(result.ok).toBe(true);
+    const url = String(open.mock.calls[0][0]);
+    const parsed = new URL(url, 'http://localhost:1420');
+    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
+    expect(context.fps).toBe(30);
+    open.mockRestore();
+  });
+
+  it('omits invalid fps so the standalone route can use its internal fallback', async () => {
+    const focus = vi.fn();
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
+
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 4, fps: 0 });
+
+    expect(result.ok).toBe(true);
+    const url = String(open.mock.calls[0][0]);
+    const parsed = new URL(url, 'http://localhost:1420');
+    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
+    expect(context.fps).toBeUndefined();
+    open.mockRestore();
+  });
+
+  it('handles valid D-26 frame-sync messages by seeking and ensuring visibility', () => {
+    const seek = vi.spyOn(timelineStore, 'seek');
+    const ensureFrameVisible = vi.spyOn(timelineStore, 'ensureFrameVisible');
+
+    const handled = handlePhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 12 });
+
+    expect(handled).toBe(true);
+    expect(seek).toHaveBeenCalledWith(12);
+    expect(ensureFrameVisible).toHaveBeenCalledWith(12);
+  });
+
+  it('rejects invalid D-26 frame-sync frames before mutating the timeline', () => {
+    const seek = vi.spyOn(timelineStore, 'seek');
+    const ensureFrameVisible = vi.spyOn(timelineStore, 'ensureFrameVisible');
+
+    for (const frame of [undefined, -1, 1.5, Infinity, '12']) {
+      expect(handlePhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame })).toBe(false);
+    }
+    expect(handlePhysicPaintFrameSyncMessage({ type: 'other', frame: 12 })).toBe(false);
+
+    expect(seek).not.toHaveBeenCalled();
+    expect(ensureFrameVisible).not.toHaveBeenCalled();
+  });
+
+  it('installs a browser message listener for D-26 frame sync and removes it on cleanup', () => {
+    let listener: ((event: MessageEvent) => void) | undefined;
+    vi.spyOn(window, 'addEventListener').mockImplementation((event, cb) => {
+      if (event === 'message') listener = cb as (event: MessageEvent) => void;
+    });
+    const remove = vi.spyOn(window, 'removeEventListener');
+    const seek = vi.spyOn(timelineStore, 'seek');
+    const ensureFrameVisible = vi.spyOn(timelineStore, 'ensureFrameVisible');
+
+    const cleanup = installPhysicPaintFrameSyncListener(window);
+    listener?.(new MessageEvent('message', { data: { type: 'physic-paint:seek-frame', frame: 7 } }));
+
+    expect(seek).toHaveBeenCalledWith(7);
+    expect(ensureFrameVisible).toHaveBeenCalledWith(7);
+
+    cleanup();
+    expect(remove).toHaveBeenCalledWith('message', expect.any(Function));
   });
 });
