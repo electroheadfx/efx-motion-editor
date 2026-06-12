@@ -22,18 +22,24 @@ export interface PhysicsPaintTopBarProps {
   onExportDebugProof?: () => void;
 }
 
+const PAPER_TEXTURES = {
+  canvas1: '/img/paper_1.jpg',
+  canvas2: '/img/paper_2.jpg',
+  canvas3: '/img/paper_3.jpg',
+} as const;
+
 const BACKGROUND_OPTIONS: { label: string; value: BgMode; swatch: string }[] = [
-  { label: 'Transparent', value: 'transparent', swatch: 'transparent' },
-  { label: 'White', value: 'white', swatch: '#f4efe1' },
-  { label: 'Paper 1', value: 'canvas1', swatch: '#eee7d2' },
-  { label: 'Paper 2', value: 'canvas2', swatch: '#d8cfb7' },
-  { label: 'Paper 3', value: 'canvas3', swatch: '#c8bfa8' },
+  { label: 'Transparent', value: 'transparent', swatch: 'repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 8px 8px' },
+  { label: 'White', value: 'white', swatch: '#fff' },
+  { label: 'Paper 1', value: 'canvas1', swatch: `url(${PAPER_TEXTURES.canvas1}) center / cover` },
+  { label: 'Paper 2', value: 'canvas2', swatch: `url(${PAPER_TEXTURES.canvas2}) center / cover` },
+  { label: 'Paper 3', value: 'canvas3', swatch: `url(${PAPER_TEXTURES.canvas3}) center / cover` },
 ];
 
 const PAPER_GRAIN_OPTIONS = [
-  { label: 'Paper 1', value: 'canvas1', swatch: '#eee7d2' },
-  { label: 'Paper 2', value: 'canvas2', swatch: '#d8cfb7' },
-  { label: 'Paper 3', value: 'canvas3', swatch: '#c8bfa8' },
+  { label: 'Paper 1', value: 'canvas1', swatch: `url(${PAPER_TEXTURES.canvas1}) center / cover` },
+  { label: 'Paper 2', value: 'canvas2', swatch: `url(${PAPER_TEXTURES.canvas2}) center / cover` },
+  { label: 'Paper 3', value: 'canvas3', swatch: `url(${PAPER_TEXTURES.canvas3}) center / cover` },
 ];
 
 const GRAIN_STRENGTH_OPTIONS = [
@@ -128,7 +134,7 @@ export function PhysicsPaintTopBar({
                 aria-label={option.label}
                 onClick={() => onPaperGrainChange(option.value)}
               >
-                <span class="physics-paint-paper-swatch textured" style={{ backgroundColor: option.swatch }} />
+                <span class="physics-paint-paper-swatch textured" style={{ background: option.swatch }} />
               </button>
             ))}
           </div>
