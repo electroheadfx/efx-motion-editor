@@ -1,4 +1,12 @@
 import type { ToolType } from '@efxlab/efx-physic-paint';
+import paintModeNormalIcon from '../../assets/physics-paint-ui/icons/paint-mode-normal.svg';
+import paintModePhysicsIcon from '../../assets/physics-paint-ui/icons/paint-mode-physics.svg';
+import eraserIcon from '../../assets/physics-paint-ui/icons/LineiconsEraser.svg';
+import undoIcon from '../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
+import clearCanvasIcon from '../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
+import physicsLastStrokeIcon from '../../assets/physics-paint-ui/icons/physics-last-stroke.svg';
+import physicsAllActivePaintIcon from '../../assets/physics-paint-ui/icons/physics-all-active-paint.svg';
+import physicsDryPaintIcon from '../../assets/physics-paint-ui/icons/physics-dry-paint.svg';
 
 export type PhysicsPaintRailAction =
   | 'paint'
@@ -18,14 +26,14 @@ export interface PhysicsPaintToolRailItem {
 }
 
 export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
-  { id: 'paint', label: 'Paint', icon: '/SPECS/physics-paint-ui/icons/paint-mode-normal.svg', kind: 'tool' },
-  { id: 'paint-physics', label: 'Paint with physics', icon: '/SPECS/physics-paint-ui/icons/paint-mode-physics.svg', kind: 'tool' },
-  { id: 'erase', label: 'Erase', icon: '/SPECS/physics-paint-ui/icons/LineiconsEraser.svg', kind: 'tool' },
-  { id: 'undo', label: 'Undo', icon: '/SPECS/physics-paint-ui/icons/MaterialSymbolsUndo.svg', kind: 'action' },
-  { id: 'clear-frame', label: 'Clear frame', icon: '/SPECS/physics-paint-ui/icons/clear-canvas-pencil.svg', kind: 'action' },
-  { id: 'physics-last', label: 'Apply physics to last stroke', icon: '/SPECS/physics-paint-ui/icons/physics-last-stroke.svg', kind: 'press-action' },
-  { id: 'physics-all', label: 'Apply physics to all strokes', icon: '/SPECS/physics-paint-ui/icons/physics-all-active-paint.svg', kind: 'press-action' },
-  { id: 'dry', label: 'Dry / freeze paint', icon: '/SPECS/physics-paint-ui/icons/physics-dry-paint.svg', kind: 'action' },
+  { id: 'paint', label: 'Paint', icon: paintModeNormalIcon, kind: 'tool' },
+  { id: 'paint-physics', label: 'Paint with physics', icon: paintModePhysicsIcon, kind: 'tool' },
+  { id: 'erase', label: 'Erase', icon: eraserIcon, kind: 'tool' },
+  { id: 'undo', label: 'Undo', icon: undoIcon, kind: 'action' },
+  { id: 'clear-frame', label: 'Clear frame', icon: clearCanvasIcon, kind: 'action' },
+  { id: 'physics-last', label: 'Apply physics to last stroke', icon: physicsLastStrokeIcon, kind: 'press-action' },
+  { id: 'physics-all', label: 'Apply physics to all strokes', icon: physicsAllActivePaintIcon, kind: 'press-action' },
+  { id: 'dry', label: 'Dry / freeze paint', icon: physicsDryPaintIcon, kind: 'action' },
 ];
 
 export interface PhysicsPaintToolRailProps {

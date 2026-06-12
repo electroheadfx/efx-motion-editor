@@ -18,9 +18,7 @@ import './physicsPaintStudio.css';
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
 const DEFAULT_CANVAS_WIDTH = 1000;
 const DEFAULT_CANVAS_HEIGHT = 650;
-const EMPTY_FRAME_COPY = 'No physics paint saved for this frame';
-const EMPTY_FRAME_BODY_COPY = 'Paint on the canvas, then use Save roto frame for the current frame or switch to Play canvas to preview and save a range.';
-const SHELL_ERROR_COPY = 'Physics Paint could not complete this action. Check the message above, keep the window open, and try again after the engine is ready.';
+const SHELL_ERROR_COPY = 'Physics Paint could not complete this action.';
 
 type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyKind = 'apply-canvas' | 'apply-play-canvas';
@@ -940,8 +938,6 @@ export function PhysicsPaintStudio() {
           onBackgroundChange={setBackground}
           onPaperGrainChange={setPaperGrain}
           onGrainStrengthChange={setGrainStrength}
-          onSaveState={saveEditableState}
-          onLoadState={() => fileInputRef.current?.click()}
           onExportDebugProof={exportDebugProof}
         />
 
@@ -981,12 +977,6 @@ export function PhysicsPaintStudio() {
                     alt=""
                   />
                 ))}
-              </div>
-            ) : null}
-            {!lastError && !savedRotoFrames.some((frame) => frame.frame === currentFrame) ? (
-              <div class="physics-paint-empty-state" aria-live="polite">
-                <strong>{EMPTY_FRAME_COPY}</strong>
-                <span>{EMPTY_FRAME_BODY_COPY}</span>
               </div>
             ) : null}
             {lastError ? <div class="physics-paint-shell-error">{SHELL_ERROR_COPY}</div> : null}

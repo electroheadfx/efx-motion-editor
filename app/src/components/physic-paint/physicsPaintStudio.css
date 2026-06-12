@@ -5,7 +5,7 @@
 body:has(.demo-shell) {
   min-height: 100vh;
   margin: 0;
-  padding: 8px 8px 0;
+  padding: 0;
   background: #0f0f0f;
   color: #ddd;
   font-family: system-ui, sans-serif;
@@ -15,10 +15,10 @@ body:has(.demo-shell) {
 .demo-shell {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
+  align-items: stretch;
+  width: 100vw;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 .demo-header {
@@ -51,10 +51,16 @@ body:has(.demo-shell) {
 .demo-canvas-shell {
   position: relative;
   width: min(100%, 1280px);
+  height: 100%;
 }
 
 .paint-canvas {
-  border-radius: 4px;
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 236px);
+  width: 100%;
+  height: auto;
+  border-radius: 2px;
   overflow: hidden;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
   background-color: #fff;
@@ -406,12 +412,11 @@ button.destructive {
 
 .physics-paint-studio {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  grid-template-columns: 56px minmax(0, 1fr) 280px;
-  width: min(100%, 1440px);
-  min-height: calc(100vh - 8px);
-  border: 1px solid var(--color-border-subtle, #2a3a4a);
-  border-radius: 10px;
+  grid-template-rows: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 52px minmax(0, 1fr) minmax(244px, 282px);
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
   overflow: hidden;
   background: var(--color-bg-root, #0f0f0f);
   color: var(--sidebar-text-primary, #e5edf8);
@@ -420,28 +425,28 @@ button.destructive {
 .physics-paint-topbar {
   grid-column: 1 / -1;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  min-height: 64px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border-subtle, #2a3a4a);
+  gap: 12px;
+  min-height: 52px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: var(--color-bg-toolbar, #1c1c1c);
 }
 
 .physics-paint-topbar-primary {
   display: flex;
   flex: 1 1 auto;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 12px 16px;
+  gap: 8px 12px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .physics-paint-topbar-control {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -458,11 +463,11 @@ button.destructive {
 }
 
 .physics-paint-topbar-slider {
-  min-width: 132px;
+  min-width: 112px;
 }
 
 .physics-paint-topbar-slider input[type="range"] {
-  width: 112px;
+  width: 104px;
   accent-color: var(--color-accent, #2d5be3);
 }
 
@@ -479,7 +484,8 @@ button.destructive {
 }
 
 .physics-paint-segmented-button,
-.physics-paint-text-button {
+.physics-paint-text-button,
+.physics-paint-workflow-segment {
   padding: 6px 8px;
   border: 1px solid var(--color-border-subtle, #2a3a4a);
   border-radius: 6px;
@@ -494,12 +500,14 @@ button.destructive {
 
 .physics-paint-segmented-button:hover:not(:disabled),
 .physics-paint-text-button:hover:not(:disabled),
+.physics-paint-workflow-segment:hover:not(:disabled),
 .physics-paint-icon-button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--color-accent, #2d5be3) 65%, white 10%);
   background: color-mix(in srgb, var(--color-bg-card, #1a1a1a) 80%, var(--color-accent, #2d5be3));
 }
 
 .physics-paint-segmented-button.active,
+.physics-paint-workflow-segment.active,
 .physics-paint-icon-button.active {
   border-color: var(--color-accent, #2d5be3);
   background: color-mix(in srgb, var(--color-accent, #2d5be3) 34%, var(--color-bg-card, #1a1a1a));
@@ -510,12 +518,11 @@ button.destructive {
 .physics-paint-topbar-status {
   display: flex;
   flex: 0 0 auto;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 4px;
-  max-width: 360px;
-  min-width: 220px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 340px;
+  min-width: 0;
 }
 
 .physics-paint-status-pill {
@@ -549,10 +556,14 @@ button.destructive {
 }
 
 .physics-paint-apply-copy {
+  max-width: 220px;
+  overflow: hidden;
   color: var(--sidebar-text-secondary, #7799bb);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.2;
   text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .physics-paint-apply-copy.applying {
@@ -592,8 +603,8 @@ button.destructive {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 12px;
-  border-right: 1px solid var(--color-border-subtle, #2a3a4a);
+  padding: 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   background: var(--color-bg-toolbar, #1c1c1c);
 }
 
@@ -619,6 +630,7 @@ button.destructive {
 
 .physics-paint-icon-button:disabled,
 .physics-paint-segmented-button:disabled,
+.physics-paint-workflow-segment:disabled,
 .physics-paint-text-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -626,6 +638,7 @@ button.destructive {
 
 .physics-paint-icon-button:focus-visible,
 .physics-paint-segmented-button:focus-visible,
+.physics-paint-workflow-segment:focus-visible,
 .physics-paint-text-button:focus-visible,
 .physics-paint-right-panel input:focus-visible,
 .physics-paint-right-panel button:focus-visible {
@@ -641,8 +654,8 @@ button.destructive {
   justify-content: center;
   min-width: 0;
   min-height: 0;
-  padding: 24px;
-  background: var(--color-bg-root, #0f0f0f);
+  padding: 16px;
+  background: #111111;
 }
 
 .physics-paint-right-panel {
@@ -650,10 +663,11 @@ button.destructive {
   grid-column: 3;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
-  padding: 16px;
-  border-left: 1px solid var(--color-border-subtle, #2a3a4a);
+  padding: 12px;
+  overflow-y: auto;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
   background: var(--color-bg-card, #1a1a1a);
   color: var(--sidebar-text-primary, #e5edf8);
 }
@@ -664,37 +678,67 @@ button.destructive {
   gap: 8px;
 }
 
-.physics-paint-color-preview {
+.physics-paint-color-picker {
   position: relative;
-  min-height: 104px;
-  border: 1px solid var(--color-border-subtle, #2a3a4a);
-  border-radius: 10px;
-  overflow: hidden;
-  background:
-    linear-gradient(45deg, rgba(255,255,255,0.08) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.08) 75%),
-    linear-gradient(45deg, rgba(255,255,255,0.08) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.08) 75%),
-    var(--color-bg-root, #0f0f0f);
-  background-position: 0 0, 8px 8px, 0 0;
-  background-size: 16px 16px, 16px 16px, auto;
-}
-
-.physics-paint-color-preview-swatch {
-  position: absolute;
-  inset: 12px;
+  height: 160px;
   border-radius: 8px;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14);
+  overflow: hidden;
+  background: var(--color-bg-root, #0f0f0f);
 }
 
-.physics-paint-color-preview-label {
+.physics-paint-color-box {
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.physics-paint-color-cursor {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
-  padding: 3px 6px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
   border-radius: 999px;
-  background: rgba(0,0,0,0.55);
-  color: #fff;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 2px 5px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.physics-paint-hue-strip {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+
+.physics-paint-hue-cursor {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+}
+
+.physics-paint-test-stroke {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  border-radius: 8px;
+  background: #f4efe1;
+}
+
+.physics-paint-test-stroke span {
+  display: block;
+  width: 124px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: 22px -6px 0 -5px currentColor, -28px 7px 0 -6px currentColor;
+  color: inherit;
+  transform: rotate(-3deg);
 }
 
 .physics-paint-color-input-row {
@@ -766,36 +810,14 @@ button.destructive {
   gap: 6px;
 }
 
-.physics-paint-readout-card {
-  padding: 10px;
-  border: 1px solid var(--color-border-subtle, #2a3a4a);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-bg-root, #0f0f0f) 72%, var(--color-bg-card, #1a1a1a));
-}
-
-.physics-paint-readout-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--sidebar-text-secondary, #7799bb);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.physics-paint-readout-row strong {
-  color: var(--sidebar-text-primary, #e5edf8);
-  font-weight: 600;
-}
-
 .physics-paint-workflow-strip {
   grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-height: 160px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border-subtle, #2a3a4a);
+  gap: 6px;
+  min-height: 134px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: var(--color-bg-toolbar, #1c1c1c);
 }
 
@@ -803,31 +825,33 @@ button.destructive {
 .physics-paint-workflow-actions,
 .physics-paint-workflow-options,
 .physics-paint-workflow-tabs {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .physics-paint-workflow-header {
   justify-content: space-between;
 }
 
-.physics-paint-workflow-tab,
+.physics-paint-workflow-segment,
 .physics-paint-primary-action {
-  min-height: 32px;
-  padding: 6px 12px;
+  min-height: 28px;
+  padding: 5px 10px;
   border: 1px solid var(--color-border-subtle, #2a3a4a);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--color-bg-card, #1a1a1a);
   color: var(--sidebar-text-primary, #e5edf8);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
   text-transform: none;
 }
 
-.physics-paint-workflow-tab.active,
+.physics-paint-workflow-segment.active,
 .physics-paint-primary-action:not(:disabled) {
   border-color: var(--color-accent, #2d5be3);
   background: color-mix(in srgb, var(--color-accent, #2d5be3) 42%, var(--color-bg-card, #1a1a1a));
@@ -870,10 +894,9 @@ button.destructive {
 .physics-paint-timeline {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--color-border-subtle, #2a3a4a);
-  border-radius: 10px;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--color-bg-root, #0f0f0f) 72%, var(--color-bg-card, #1a1a1a));
 }
 
@@ -979,11 +1002,9 @@ button.destructive {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  padding: 8px;
-  border: 1px solid var(--color-border-subtle, #2a3a4a);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  gap: 6px 10px;
+  padding: 0;
+  background: transparent;
 }
 
 .physics-paint-onion-controls label,
@@ -1069,4 +1090,127 @@ button.destructive {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.physics-paint-swatch-button {
+  width: 24px;
+  height: 22px;
+  padding: 2px;
+}
+
+.physics-paint-paper-swatch {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,0.22) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.22) 75%),
+    linear-gradient(45deg, rgba(0,0,0,0.12) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.12) 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 4px 4px;
+}
+
+.physics-paint-paper-swatch.textured {
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.35) 0 1px, transparent 1px),
+    radial-gradient(circle at 70% 65%, rgba(0,0,0,0.15) 0 1px, transparent 1px);
+  background-size: 8px 8px, 10px 10px;
+}
+
+.physics-paint-canvas-stack {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.physics-paint-onion-overlay.canvas-region {
+  inset: 16px;
+}
+
+.physics-paint-shell-error {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 4;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--color-error-text, #ff6666);
+  background: rgba(70, 18, 18, 0.82);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.physics-paint-shortcuts-help {
+  position: fixed;
+  right: 16px;
+  bottom: 150px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 420px;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle, #2a3a4a);
+  border-radius: 8px;
+  background: var(--color-bg-card, #1a1a1a);
+  color: var(--sidebar-text-primary, #e5edf8);
+  font-size: 11px;
+}
+
+.physics-paint-add-swatch {
+  width: 32px;
+  padding-inline: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+@media (max-width: 980px) {
+  .physics-paint-studio {
+    grid-template-columns: 48px minmax(0, 1fr) 220px;
+  }
+
+  .physics-paint-topbar {
+    gap: 8px;
+  }
+
+  .physics-paint-topbar-slider {
+    min-width: 92px;
+  }
+
+  .physics-paint-topbar-slider input[type="range"] {
+    width: 84px;
+  }
+
+  .physics-paint-segmented-button:not(.physics-paint-swatch-button) {
+    padding-inline: 6px;
+  }
+
+  .physics-paint-right-panel {
+    padding: 8px;
+  }
+}
+
+@media (max-width: 760px) {
+  .physics-paint-studio {
+    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+  }
+
+  .physics-paint-right-panel {
+    grid-row: 3;
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+    max-height: 230px;
+  }
+
+  .physics-paint-workflow-strip {
+    grid-row: 4;
+  }
 }

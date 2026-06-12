@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ToolType } from '@efxlab/efx-physic-paint';
-import { hexToRgba, rgbaToHex, rgbToHsv } from '../../lib/colorUtils';
+import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../lib/colorUtils';
 import { loadFavoriteColors, loadRecentColors, saveFavoriteColors, saveRecentColors } from '../../lib/paintPreferences';
 
 export interface PhysicsPaintRightPanelProps {
@@ -89,6 +89,10 @@ export function PhysicsPaintRightPanel({
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
   const previousColorRef = useRef(color);
+  const colorBoxRef = useRef<HTMLCanvasElement>(null);
+  const hueRef = useRef<HTMLDivElement>(null);
+  const draggingColorBox = useRef(false);
+  const draggingHue = useRef(false);
 
   useEffect(() => {
     void loadRecentColors().then(setRecentColors);
@@ -105,6 +109,25 @@ export function PhysicsPaintRightPanel({
   const currentHex = useMemo(() => rgbaToHex(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
   const currentHsv = useMemo(() => rgbToHsv(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
   const opacityAlpha = Math.max(0, Math.min(1, opacity / 100));
+
+  useEffect(() => {
+    const canvas = colorBoxRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+    const hueRgb = hsvToRgb(currentHsv.h, 1, 1);
+    context.fillStyle = `rgb(${hueRgb.r}, ${hueRgb.g}, ${hueRgb.b})`;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    const white = context.createLinearGradient(0, 0, canvas.width, 0);
+    white.addColorStop(0, 'rgba(255,255,255,1)');
+    white.addColorStop(1, 'rgba(255,255,255,0)');
+    context.fillStyle = white;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    const black = context.createLinearGradient(0, 0, 0, canvas.height);
+    black.addColorStop(0, 'rgba(0,0,0,0)');
+    black.addColorStop(1, 'rgba(0,0,0,1)');
+    context.fillStyle = black;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }, [currentHsv.h]);
 
   const rememberRecent = useCallback((nextColor: string) => {
     void loadRecentColors().then((colors) => {
@@ -125,6 +148,28 @@ export function PhysicsPaintRightPanel({
     onColorChange(normalized, nextOpacity);
   }, [currentHex, onColorChange, opacity, rememberRecent]);
 
+  const commitHsv = useCallback((h: number, s: number, v: number) => {
+    const rgb = hsvToRgb(h, s, v);
+    commitColor(rgbaToHex(rgb.r, rgb.g, rgb.b));
+  }, [commitColor]);
+
+  const handleColorBoxPointer = useCallback((event: PointerEvent) => {
+    const canvas = colorBoxRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const s = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const v = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    commitHsv(currentHsv.h, s, v);
+  }, [commitHsv, currentHsv.h]);
+
+  const handleHuePointer = useCallback((event: PointerEvent) => {
+    const slider = hueRef.current;
+    if (!slider) return;
+    const rect = slider.getBoundingClientRect();
+    const h = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    commitHsv(h, currentHsv.s, currentHsv.v);
+  }, [commitHsv, currentHsv.s, currentHsv.v]);
+
   const addFavorite = useCallback(() => {
     void loadFavoriteColors().then((colors) => {
       if (colors.includes(currentHex)) return;
@@ -142,15 +187,43 @@ export function PhysicsPaintRightPanel({
     <aside class="physics-paint-right-panel" aria-label="Physics Paint color and tool options">
       <section class="physics-paint-right-section">
         <div class="physics-paint-section-heading">Brush color</div>
-        <div class="physics-paint-color-preview" aria-label="Lightweight brush color blend preview">
-          <div
-            class="physics-paint-color-preview-swatch"
-            style={{
-              background: `radial-gradient(circle at 36% 32%, rgba(255,255,255,${0.22 * opacityAlpha}), transparent 28%), ${currentHex}`,
-              opacity: String(opacityAlpha),
+        <div class="physics-paint-color-picker" aria-label="Brush color picker">
+          <canvas
+            ref={colorBoxRef}
+            width={232}
+            height={160}
+            class="physics-paint-color-box"
+            onPointerDown={(event) => {
+              draggingColorBox.current = true;
+              (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+              handleColorBoxPointer(event as unknown as PointerEvent);
             }}
+            onPointerMove={(event) => draggingColorBox.current && handleColorBoxPointer(event as unknown as PointerEvent)}
+            onPointerUp={() => { draggingColorBox.current = false; }}
           />
-          <span class="physics-paint-color-preview-label">{Math.round(opacity)}%</span>
+          <span
+            class="physics-paint-color-cursor"
+            style={{ left: `${currentHsv.s * 100}%`, top: `${(1 - currentHsv.v) * 100}%`, backgroundColor: currentHex }}
+          />
+        </div>
+
+        <div
+          ref={hueRef}
+          class="physics-paint-hue-strip"
+          aria-label="Brush hue"
+          onPointerDown={(event) => {
+            draggingHue.current = true;
+            (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+            handleHuePointer(event as unknown as PointerEvent);
+          }}
+          onPointerMove={(event) => draggingHue.current && handleHuePointer(event as unknown as PointerEvent)}
+          onPointerUp={() => { draggingHue.current = false; }}
+        >
+          <span class="physics-paint-hue-cursor" style={{ left: `${currentHsv.h * 100}%` }} />
+        </div>
+
+        <div class="physics-paint-test-stroke" aria-hidden="true">
+          <span style={{ background: currentHex, opacity: String(opacityAlpha) }} />
         </div>
 
         <div class="physics-paint-color-input-row">
@@ -173,7 +246,7 @@ export function PhysicsPaintRightPanel({
               if (event.key === 'Enter') commitColor(hexInput);
             }}
           />
-          <button type="button" class="physics-paint-text-button" onClick={addFavorite}>Save swatch</button>
+          <button type="button" class="physics-paint-text-button physics-paint-add-swatch" onClick={addFavorite}>+</button>
         </div>
 
         <div class="physics-paint-swatch-grid" aria-label="Color palette">
@@ -207,13 +280,6 @@ export function PhysicsPaintRightPanel({
             <SmoothingButton label="High" value={3} active={smoothing === 3} onSelect={onSmoothingChange} />
           </div>
         </div>
-      </section>
-
-      <section class="physics-paint-right-section physics-paint-readout-card">
-        <div class="physics-paint-section-heading">Current mix</div>
-        <div class="physics-paint-readout-row"><span>HEX</span><strong>{currentHex.toUpperCase()}</strong></div>
-        <div class="physics-paint-readout-row"><span>Opacity</span><strong>{Math.round(opacity)}%</strong></div>
-        <div class="physics-paint-readout-row"><span>Hue</span><strong>{Math.round(currentHsv.h * 360)}°</strong></div>
       </section>
     </aside>
   );

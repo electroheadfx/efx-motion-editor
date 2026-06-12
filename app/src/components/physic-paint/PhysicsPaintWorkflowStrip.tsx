@@ -162,7 +162,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       <div class="physics-paint-workflow-header">
         <div class="physics-paint-workflow-tabs" role="tablist" aria-label="Physics Paint source mode">
           <button
-            class={`physics-paint-workflow-tab ${props.mode === 'roto' ? 'active' : ''}`}
+            class={`physics-paint-workflow-segment ${props.mode === 'roto' ? 'active' : ''}`}
             role="tab"
             aria-selected={props.mode === 'roto'}
             onClick={() => props.onModeChange('roto')}
@@ -170,7 +170,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             Roto canvas
           </button>
           <button
-            class={`physics-paint-workflow-tab ${props.mode === 'play' ? 'active' : ''}`}
+            class={`physics-paint-workflow-segment ${props.mode === 'play' ? 'active' : ''}`}
             role="tab"
             aria-selected={props.mode === 'play'}
             onClick={() => props.onModeChange('play')}
@@ -188,9 +188,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           </button>
           <button class="physics-paint-text-button" disabled={!props.isPlaying} onClick={props.onStopPreview}>Stop</button>
           <button class="physics-paint-text-button" onClick={props.onSaveState}>Save state</button>
-          <button class="physics-paint-text-button destructive" disabled={props.mode !== 'play'} onClick={() => setConfirmation('clear-play-range')}>{CLEAR_PLAY_CANVAS_RANGE_LABEL}</button>
-          <button class="physics-paint-text-button destructive" onClick={() => setConfirmation('convert-play-to-roto')}>Convert Play to Roto?</button>
-          <button class="physics-paint-text-button destructive" onClick={() => setConfirmation('convert-roto-to-play')}>Convert Roto to Play?</button>
           <label class="physics-paint-text-button physics-paint-load-state">
             Load state
             <input type="file" accept=".json" onChange={props.onLoadState} />
@@ -212,6 +209,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         {props.mode === 'roto' ? (
           <button class="physics-paint-text-button destructive" onClick={handleClearRotoFrame}>Clear current Roto frame</button>
         ) : null}
+        {props.mode === 'play' ? (
+          <button class="physics-paint-text-button destructive" onClick={() => setConfirmation('clear-play-range')}>Clear Play canvas range</button>
+        ) : null}
         {props.isPlaying ? <span class="physics-paint-preview-status">Preview only — use Save play to publish this range.</span> : null}
         {props.isPlaying && props.showOnionHiddenDuringPreview ? <span class="physics-paint-preview-status">Onion skin hidden during preview</span> : null}
         {status ? <span class="physics-paint-publication-summary">{status}</span> : null}
@@ -226,8 +226,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             Count
             <input type="number" min={1} max={3} value={onionCount} disabled={onionControlsDisabled} onInput={(event) => updateOnion({ count: Number((event.currentTarget as HTMLInputElement).value) })} />
           </label>
-          <span class="physics-paint-onion-legend physics-paint-onion-prev">Previous cyan/blue</span>
-          <span class="physics-paint-onion-legend physics-paint-onion-next">Next orange/yellow</span>
         </div>
       ) : null}
 

@@ -19,29 +19,26 @@ export interface PhysicsPaintTopBarProps {
   onBackgroundChange: (mode: BgMode) => void;
   onPaperGrainChange: (key: string) => void;
   onGrainStrengthChange: (value: number) => void;
-  onSaveState: () => void;
-  onLoadState: () => void;
   onExportDebugProof?: () => void;
 }
 
-const BACKGROUND_OPTIONS: { label: string; value: BgMode }[] = [
-  { label: 'Transparent', value: 'transparent' },
-  { label: 'White', value: 'white' },
-  { label: 'Paper 1', value: 'canvas1' },
-  { label: 'Paper 2', value: 'canvas2' },
-  { label: 'Paper 3', value: 'canvas3' },
+const BACKGROUND_OPTIONS: { label: string; value: BgMode; swatch: string }[] = [
+  { label: 'Transparent', value: 'transparent', swatch: 'transparent' },
+  { label: 'White', value: 'white', swatch: '#f4efe1' },
+  { label: 'Paper 1', value: 'canvas1', swatch: '#eee7d2' },
+  { label: 'Paper 2', value: 'canvas2', swatch: '#d8cfb7' },
+  { label: 'Paper 3', value: 'canvas3', swatch: '#c8bfa8' },
 ];
 
 const PAPER_GRAIN_OPTIONS = [
-  { label: 'Paper 1', value: 'canvas1' },
-  { label: 'Paper 2', value: 'canvas2' },
-  { label: 'Paper 3', value: 'canvas3' },
+  { label: 'Paper 1', value: 'canvas1', swatch: '#eee7d2' },
+  { label: 'Paper 2', value: 'canvas2', swatch: '#d8cfb7' },
+  { label: 'Paper 3', value: 'canvas3', swatch: '#c8bfa8' },
 ];
 
 const GRAIN_STRENGTH_OPTIONS = [
   { label: 'None', value: 0 },
   { label: 'Soft', value: 0.45 },
-  { label: 'Med', value: 0.7 },
   { label: 'Hard', value: 0.95 },
 ];
 
@@ -90,8 +87,6 @@ export function PhysicsPaintTopBar({
   onBackgroundChange,
   onPaperGrainChange,
   onGrainStrengthChange,
-  onSaveState,
-  onLoadState,
   onExportDebugProof,
 }: PhysicsPaintTopBarProps) {
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
@@ -110,10 +105,12 @@ export function PhysicsPaintTopBar({
               <button
                 key={option.value}
                 type="button"
-                class={segmentedButtonClass(background === option.value)}
+                class={`${segmentedButtonClass(background === option.value)} physics-paint-swatch-button`}
+                title={option.label}
+                aria-label={option.label}
                 onClick={() => onBackgroundChange(option.value)}
               >
-                {option.label}
+                <span class="physics-paint-paper-swatch" style={{ background: option.swatch }} />
               </button>
             ))}
           </div>
@@ -126,10 +123,12 @@ export function PhysicsPaintTopBar({
               <button
                 key={option.value}
                 type="button"
-                class={segmentedButtonClass(paperGrain === option.value)}
+                class={`${segmentedButtonClass(paperGrain === option.value)} physics-paint-swatch-button`}
+                title={option.label}
+                aria-label={option.label}
                 onClick={() => onPaperGrainChange(option.value)}
               >
-                {option.label}
+                <span class="physics-paint-paper-swatch textured" style={{ backgroundColor: option.swatch }} />
               </button>
             ))}
           </div>
@@ -157,10 +156,6 @@ export function PhysicsPaintTopBar({
         {applyStatus === 'applying' ? <span class="physics-paint-apply-copy applying">Applying physics paint output...</span> : null}
         {applyMessage ? <span class={`physics-paint-apply-copy ${applyStatus}`}>{applyMessage}</span> : null}
         {error ? <span class="physics-paint-apply-copy error">{error}</span> : null}
-        <div class="physics-paint-topbar-actions">
-          <button type="button" class="physics-paint-text-button" onClick={onSaveState}>Save state</button>
-          <button type="button" class="physics-paint-text-button" onClick={onLoadState}>Load state</button>
-        </div>
         {devExportEnabled ? (
           <details class="physics-paint-dev-export">
             <summary>Dev export</summary>
