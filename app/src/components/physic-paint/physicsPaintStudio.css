@@ -696,3 +696,94 @@ button.destructive {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+
+.physics-paint-color-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.physics-paint-color-chip {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border-subtle, #2a3a4a);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.physics-paint-hex-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border-subtle, #2a3a4a);
+  border-radius: 6px;
+  background: var(--color-bg-root, #0f0f0f);
+  color: var(--sidebar-text-primary, #e5edf8);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.physics-paint-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+
+.physics-paint-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.physics-paint-option-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 8px;
+}
+
+.physics-paint-option-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--color-accent, #2d5be3);
+}
+
+.physics-paint-option-row output {
+  color: var(--sidebar-text-primary, #e5edf8);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.physics-paint-option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.physics-paint-readout-card {
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle, #2a3a4a);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-bg-root, #0f0f0f) 72%, var(--color-bg-card, #1a1a1a));
+}
+
+.physics-paint-readout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--sidebar-text-secondary, #7799bb);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.physics-paint-readout-row strong {
+  color: var(--sidebar-text-primary, #e5edf8);
+  font-weight: 600;
+}
