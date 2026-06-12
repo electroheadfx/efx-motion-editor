@@ -1,9 +1,10 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../types/physicPaint';
-import { isPhysicPaintApplyPayload, isPhysicPaintLaunchContext } from '../types/physicPaint';
+import { isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext } from '../types/physicPaint';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
+import { timelineStore } from '../stores/timelineStore';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 /**
@@ -26,6 +27,7 @@ export interface PhysicPaintOpenRequest {
   layer: Layer | null | undefined;
   frame: number | null | undefined;
   canvas?: PhysicPaintCanvasSize | null;
+  fps?: number | null;
 }
 
 interface TauriEventApi {
@@ -83,6 +85,22 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   } catch (error) {
     return failureResult(payload, `${APPLY_ERROR} ${String(error)}`);
   }
+}
+
+export function handlePhysicPaintFrameSyncMessage(value: unknown): boolean {
+  if (!isPhysicPaintFrameSyncMessage(value)) return false;
+  timelineStore.seek(value.frame);
+  timelineStore.ensureFrameVisible(value.frame);
+  return true;
+}
+
+export function installPhysicPaintFrameSyncListener(target: Window = window): () => void {
+  if (!target || typeof target.addEventListener !== 'function') return () => {};
+  const listener = (event: MessageEvent) => {
+    handlePhysicPaintFrameSyncMessage(event.data);
+  };
+  target.addEventListener('message', listener);
+  return () => target.removeEventListener('message', listener);
 }
 
 export async function installPhysicPaintApplyListener(onResult?: (result: PhysicPaintApplyResult) => void): Promise<() => void> {
@@ -157,6 +175,7 @@ export function createPhysicPaintLaunchContext(
   layer: Layer,
   frame: number,
   canvas?: PhysicPaintCanvasSize | null,
+  fps?: number | null,
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const editableState = physicPaintStore.getEditableState(layerId);
@@ -167,6 +186,7 @@ export function createPhysicPaintLaunchContext(
     startFrame: Math.max(0, Math.trunc(frame)),
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
+    ...(isFinitePositiveNumber(fps) ? { fps } : {}),
     ...(editableState ? { editableState } : {}),
   };
 }
@@ -176,7 +196,7 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
     const validation = validateOpenRequest(request);
     if (!validation.ok) return validation;
 
-    const context = createPhysicPaintLaunchContext(validation.data.layer, validation.data.frame, request.canvas);
+    const context = createPhysicPaintLaunchContext(validation.data.layer, validation.data.frame, request.canvas, request.fps);
     if (!isPhysicPaintLaunchContext(context)) {
       return { ok: false, error: 'Invalid physics paint launch context' };
     }

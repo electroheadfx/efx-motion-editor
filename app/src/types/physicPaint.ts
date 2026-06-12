@@ -16,7 +16,13 @@ export interface PhysicPaintLaunchContext {
   layerName?: string;
   width?: number;
   height?: number;
+  fps?: number;
   editableState?: SerializedProject;
+}
+
+export interface PhysicPaintFrameSyncMessage {
+  type: 'physic-paint:seek-frame';
+  frame: number;
 }
 
 export interface PhysicPaintRenderedFrame {
@@ -89,8 +95,17 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     isNonNegativeInteger(value.startFrame) &&
     optionalNumber(value.width) &&
     optionalNumber(value.height) &&
+    optionalPositiveNumber(value.fps) &&
     (value.layerName === undefined || typeof value.layerName === 'string') &&
     (value.editableState === undefined || isSerializedProject(value.editableState))
+  );
+}
+
+export function isPhysicPaintFrameSyncMessage(value: unknown): value is PhysicPaintFrameSyncMessage {
+  return Boolean(
+    isRecord(value) &&
+      value.type === 'physic-paint:seek-frame' &&
+      isNonNegativeInteger(value.frame)
   );
 }
 
@@ -182,6 +197,10 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function optionalNumber(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function optionalPositiveNumber(value: unknown): boolean {
+  return value === undefined || (typeof value === 'number' && Number.isFinite(value) && value > 0);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

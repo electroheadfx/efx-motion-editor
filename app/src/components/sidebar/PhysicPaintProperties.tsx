@@ -6,6 +6,7 @@ import { layerStore } from '../../stores/layerStore';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { timelineStore } from '../../stores/timelineStore';
+import { projectStore } from '../../stores/projectStore';
 import { openPhysicPaintCanvas, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
 import { SectionLabel } from '../shared/SectionLabel';
 
@@ -62,6 +63,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     const result = await openPhysicPaintCanvas({
       layer,
       frame: currentFrame,
+      fps: projectStore.fps.value,
     });
 
     console.info('[PhysicPaintProperties] open canvas result', result);
