@@ -112,6 +112,23 @@ export const physicPaintStore = {
     _notifyVisualChange();
   },
 
+  setEditableState(layerId: string, editableState: PhysicPaintApplyPayload['editableState']): void {
+    _editableStates.set(layerId, structuredClone(editableState));
+    _notifyVisualChange();
+  },
+
+  removeFrameRange(layerId: string, startFrame: number, frameCount: number): void {
+    if (!Number.isInteger(startFrame) || startFrame < 0 || !Number.isInteger(frameCount) || frameCount < 1) return;
+    const layerFrames = _frames.get(layerId);
+    if (!layerFrames) return;
+    let changed = false;
+    for (let offset = 0; offset < frameCount; offset++) {
+      changed = layerFrames.delete(startFrame + offset) || changed;
+    }
+    if (layerFrames.size === 0) _frames.delete(layerId);
+    if (changed) _notifyVisualChange();
+  },
+
   applyCanvas(payload: PhysicPaintApplyPayload): PhysicPaintApplyResult {
     if (!isPhysicPaintApplyPayload(payload)) {
       return _errorResult(payload, 'Invalid physics paint apply payload');
