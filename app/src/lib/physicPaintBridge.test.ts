@@ -502,46 +502,6 @@ describe('physicPaintBridge', () => {
     }, 'http://localhost:1420');
   });
 
-  it('selects the containing Play script segment with the latest start frame when opening from overlapping editor ranges', async () => {
-    const firstEditableState = { ...editableState, strokes: [{ ...editableState.strokes[0], time: 111 }] };
-    const overlappingEditableState = { ...editableState, strokes: [{ ...editableState.strokes[0], time: 222 }] };
-    const laterEditableState = { ...editableState, strokes: [{ ...editableState.strokes[0], time: 333 }] };
-    physicPaintStore.applySequence({
-      ...applySequencePayload({ operationId: 'play-4-10', startFrame: 4, frameCount: 7, frames: Array.from({ length: 7 }, (_, index) => makeFrame(index, 4 + index)), editableState: firstEditableState }),
-    });
-    physicPaintStore.applySequence({
-      ...applySequencePayload({ operationId: 'play-8-23', startFrame: 8, frameCount: 16, frames: Array.from({ length: 16 }, (_, index) => makeFrame(index, 8 + index)), editableState: overlappingEditableState }),
-    });
-    physicPaintStore.applySequence({
-      ...applySequencePayload({ operationId: 'play-30-34', startFrame: 30, frameCount: 5, frames: Array.from({ length: 5 }, (_, index) => makeFrame(index, 30 + index)), editableState: laterEditableState }),
-    });
-
-    const context = createPhysicPaintLaunchContext(physicLayer(), 9, { width: 1280, height: 720 }, 24);
-
-    expect(context).toMatchObject({
-      workflowMode: 'play',
-      startFrame: 8,
-      playStartFrame: 8,
-      playFrameCount: 16,
-      editableSource: 'play',
-      editableState: expect.objectContaining({ strokes: [expect.objectContaining({ time: 222 })] }),
-    });
-  });
-
-  it('keeps current launch behavior outside saved Play script segments', () => {
-    physicPaintStore.applySequence(applySequencePayload({ startFrame: 18, frameCount: 3, frames: [makeFrame(0, 18), makeFrame(1, 19), makeFrame(2, 20)] }));
-
-    const context = createPhysicPaintLaunchContext(physicLayer(), 4);
-
-    expect(context).toMatchObject({
-      workflowMode: 'play',
-      startFrame: 18,
-      playStartFrame: 18,
-      playFrameCount: 3,
-      editableSource: 'play',
-    });
-  });
-
   it('includes persisted Play workflow metadata in the encoded browser launch context', async () => {
     const focus = vi.fn();
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);

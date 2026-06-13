@@ -4,8 +4,6 @@ import {
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
   clampPhysicPaintFrameCount,
   isPhysicPaintApplyPayload,
-  isPhysicPaintPlayScriptSegment,
-  isPhysicPaintSerializedPlayScriptSegment,
   isPhysicPaintFrameSyncMessage,
   isPhysicPaintLaunchContext,
 } from './physicPaint';
@@ -48,27 +46,6 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'preview' })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'play', playStartFrame: -1 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'play', playFrameCount: 0 })).toBe(false);
-  });
-
-  it('validates Play script segment contracts', () => {
-    expect(isPhysicPaintPlayScriptSegment({
-      id: 'layer-1:4:7',
-      startFrame: 4,
-      endFrame: 10,
-      frameCount: 7,
-      editableSource: 'play',
-      editableState,
-    })).toBe(true);
-    expect(isPhysicPaintSerializedPlayScriptSegment({
-      id: 'layer-1:4:7',
-      start_frame: 4,
-      end_frame: 10,
-      frame_count: 7,
-      editable_source: 'play',
-      editable_state: editableState,
-    })).toBe(true);
-    expect(isPhysicPaintPlayScriptSegment({ id: 'bad', startFrame: 4, endFrame: 9, frameCount: 7, editableSource: 'play', editableState })).toBe(false);
-    expect(isPhysicPaintSerializedPlayScriptSegment({ id: 'bad', start_frame: -1, end_frame: 1, frame_count: 3, editable_source: 'play', editable_state: editableState })).toBe(false);
   });
 
   it('validates namespaced frame-sync messages', () => {

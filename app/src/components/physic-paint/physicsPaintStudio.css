@@ -1358,50 +1358,6 @@ button.destructive {
   left: 0;
 }
 
-.physics-paint-play-range-label {
-  position: absolute;
-  top: -5px;
-  color: #d8dde3;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  line-height: 1;
-  pointer-events: none;
-  transform: translateX(-50%);
-}
-
-.physics-paint-play-range-label.start {
-  transform: translateX(-8%);
-}
-
-.physics-paint-play-range-label.end {
-  transform: translateX(-92%);
-}
-
-.physics-paint-play-scrubber {
-  position: absolute;
-  top: 4px;
-  width: 2px;
-  height: 20px;
-  background: #f5a623;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.38);
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-.physics-paint-play-scrubber span {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  padding: 1px 3px;
-  border-radius: 3px;
-  background: rgba(245, 166, 35, 0.18);
-  color: #f5a623;
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  transform: translateX(-50%);
-}
-
 .physics-paint-onion-overlay {
   position: absolute;
   z-index: 3;
