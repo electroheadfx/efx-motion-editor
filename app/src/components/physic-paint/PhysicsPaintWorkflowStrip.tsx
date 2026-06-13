@@ -17,7 +17,6 @@ const SAVE_ROTO_FRAME_LABEL = 'Save roto frame';
 const SAVE_PLAY_LABEL = 'Save play';
 const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
 const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
-const MISSING_PLAY_TO_ROTO_COPY = 'Save or regenerate Play output before converting it to roto frames.';
 
 export interface PhysicsPaintWorkflowStripFrameMarker {
   frame: number;
@@ -401,7 +400,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           <div class="physics-paint-confirmation-card">
             <h2 id="physics-paint-confirmation-title">{getConfirmationTitle(confirmation)}</h2>
             {confirmation === 'convert-play-to-roto' && props.missingPlayFramesForConversion ? (
-              <p class="physics-paint-confirmation-warning">Missing rendered frames for Play→Roto. {PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE === MISSING_PLAY_TO_ROTO_COPY ? MISSING_PLAY_TO_ROTO_COPY : PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE}</p>
+              <p class="physics-paint-confirmation-warning">Missing rendered frames for Play→Roto. {PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE}</p>
             ) : (
               <p>{getConfirmationCopy(confirmation)}</p>
             )}

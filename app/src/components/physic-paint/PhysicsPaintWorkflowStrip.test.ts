@@ -90,8 +90,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('wires destructive conversion controls to confirmation and callbacks', () => {
     const code = source();
-    const playButtonIndex = code.indexOf('Convert Play to Roto');
-    const rotoButtonIndex = code.indexOf('Convert Roto to Play');
+    const playButtonIndex = code.indexOf('>\n            Convert Play to Roto');
+    const rotoButtonIndex = code.indexOf('>\n            Convert Roto to Play');
     const confirmIndex = code.indexOf('function confirmDestructiveAction');
     const playButtonBlock = code.slice(playButtonIndex - 260, playButtonIndex + 120);
     const rotoButtonBlock = code.slice(rotoButtonIndex - 220, rotoButtonIndex + 120);
@@ -107,7 +107,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain("setConfirmation('convert-roto-to-play')");
     expect(confirmBlock).toContain('props.onConvertPlayToRoto?.()');
     expect(confirmBlock).toContain('props.onConvertRotoToPlay?.()');
-    expect(code).toContain('Save or regenerate Play output before converting it to roto frames.');
+    expect(code).toContain('PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE');
     expect(code).not.toContain('Clear Play canvas range');
   });
 });
