@@ -50,7 +50,7 @@ export interface PhysicsPaintWorkflowStripProps {
   onionPreviewFrames?: PhysicsPaintWorkflowOnionPreviewFrame[];
   showOnionHiddenDuringPreview?: boolean;
   missingPlayFramesForConversion?: boolean;
-  onModeChange: (mode: PhysicsPaintWorkflowMode) => void;
+  onRequestModeChange: (mode: PhysicsPaintWorkflowMode) => void;
   onSaveRotoFrame: () => void;
   onSavePlay: () => void;
   onSaveState: () => void;
@@ -160,11 +160,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onInspectPlayFrame(frame);
   }
 
-  function handleConvertPlayToRoto() {
-    setConfirmation('convert-play-to-roto');
-  }
-
-  function handleConvertRotoToPlay() {
+  function requestWorkflowModeChange(targetMode: PhysicsPaintWorkflowMode) {
+    if (targetMode === props.mode) return;
+    if (targetMode === 'roto') {
+      setConfirmation('convert-play-to-roto');
+      return;
+    }
     setConfirmation('convert-roto-to-play');
   }
 
@@ -242,8 +243,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   function confirmDestructiveAction() {
     if (confirmation === 'convert-play-to-roto') {
       if (!props.missingPlayFramesForConversion) props.onConvertPlayToRoto?.();
+      props.onRequestModeChange('roto');
     } else if (confirmation === 'convert-roto-to-play') {
       props.onConvertRotoToPlay?.();
+      props.onRequestModeChange('play');
     }
     setConfirmation(null);
   }
@@ -256,7 +259,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             class={`physics-paint-workflow-segment ${props.mode === 'roto' ? 'active' : ''}`}
             role="tab"
             aria-selected={props.mode === 'roto'}
-            onClick={() => props.onModeChange('roto')}
+            onClick={() => requestWorkflowModeChange('roto')}
           >
             Roto canvas
           </button>
@@ -264,7 +267,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             class={`physics-paint-workflow-segment ${props.mode === 'play' ? 'active' : ''}`}
             role="tab"
             aria-selected={props.mode === 'play'}
-            onClick={() => props.onModeChange('play')}
+            onClick={() => requestWorkflowModeChange('play')}
           >
             Play canvas
           </button>
@@ -307,22 +310,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         </div>
 
         <div class="physics-paint-state-actions">
-          <button
-            type="button"
-            class="physics-paint-text-button"
-            disabled={props.mode !== 'play' || props.missingPlayFramesForConversion}
-            onClick={handleConvertPlayToRoto}
-          >
-            Convert Play to Roto
-          </button>
-          <button
-            type="button"
-            class="physics-paint-text-button"
-            disabled={props.mode !== 'roto'}
-            onClick={handleConvertRotoToPlay}
-          >
-            Convert Roto to Play
-          </button>
           <button class="physics-paint-text-button" onClick={props.onSaveState}>Save state</button>
           <label class="physics-paint-text-button physics-paint-load-state">
             Load state

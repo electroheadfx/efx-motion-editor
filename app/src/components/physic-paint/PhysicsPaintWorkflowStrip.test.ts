@@ -100,8 +100,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(stateActionsIndex).toBeGreaterThan(-1);
     expect(stateActionsBlock).not.toContain('Convert Play to Roto</button>');
     expect(stateActionsBlock).not.toContain('Convert Roto to Play</button>');
-    expect(tabListBlock).toContain('onRequestModeChange');
+    expect(tabListBlock).toContain('requestWorkflowModeChange');
     expect(tabListBlock).not.toContain('onModeChange');
+    expect(code).toContain('onRequestModeChange');
     expect(code).toContain('function requestWorkflowModeChange');
     expect(code).toContain("if (targetMode === props.mode) return");
     expect(code).toContain("setConfirmation('convert-play-to-roto')");
