@@ -1,7 +1,7 @@
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
 
 export const PHYSIC_PAINT_MAX_APPLY_FRAMES = 600;
-export const PHYSIC_PAINT_DEFAULT_APPLY_FRAMES = 120;
+export const PHYSIC_PAINT_DEFAULT_APPLY_FRAMES = 4;
 
 export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';

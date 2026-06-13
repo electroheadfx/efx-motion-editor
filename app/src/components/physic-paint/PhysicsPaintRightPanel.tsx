@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ToolType } from '@efxlab/efx-physic-paint';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../lib/colorUtils';
-import { loadFavoriteColors, loadRecentColors, saveFavoriteColors, saveRecentColors } from '../../lib/paintPreferences';
+import { loadFavoriteColors, loadRecentColors, saveFavoriteColors } from '../../lib/paintPreferences';
+import { clampOnionCount, type PhysicsPaintOnionState } from './physicsPaintWorkflowState';
 
 export interface PhysicsPaintRightPanelProps {
   activeTool: ToolType;
@@ -13,12 +14,15 @@ export interface PhysicsPaintRightPanelProps {
   smoothing: number;
   eraseStrength: number;
   physicsMode: 'local' | null;
+  onion: PhysicsPaintOnionState;
+  onionDisabled?: boolean;
   onColorChange: (color: string, opacity: number) => void;
   onEdgeDetailChange: (value: number) => void;
   onPickupChange: (value: number) => void;
   onSpreadChange: (value: number) => void;
   onSmoothingChange: (value: number) => void;
   onEraseStrengthChange: (value: number) => void;
+  onOnionChange: (onion: PhysicsPaintOnionState) => void;
 }
 
 const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
@@ -78,16 +82,20 @@ export function PhysicsPaintRightPanel({
   smoothing,
   eraseStrength,
   physicsMode,
+  onion,
+  onionDisabled = false,
   onColorChange,
   onEdgeDetailChange,
   onPickupChange,
   onSpreadChange,
   onSmoothingChange,
   onEraseStrengthChange,
+  onOnionChange,
 }: PhysicsPaintRightPanelProps) {
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
+  const [optionsTab, setOptionsTab] = useState<'tool' | 'onion'>('tool');
   const previousColorRef = useRef(color);
   const colorBoxRef = useRef<HTMLCanvasElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
@@ -108,8 +116,6 @@ export function PhysicsPaintRightPanel({
   const currentRgb = useMemo(() => hexToRgba(color), [color]);
   const currentHex = useMemo(() => rgbaToHex(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
   const currentHsv = useMemo(() => rgbToHsv(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
-  const opacityAlpha = Math.max(0, Math.min(1, opacity / 100));
-
   useEffect(() => {
     const canvas = colorBoxRef.current;
     const context = canvas?.getContext('2d');
@@ -129,14 +135,6 @@ export function PhysicsPaintRightPanel({
     context.fillRect(0, 0, canvas.width, canvas.height);
   }, [currentHsv.h]);
 
-  const rememberRecent = useCallback((nextColor: string) => {
-    void loadRecentColors().then((colors) => {
-      const updated = [nextColor, ...colors.filter((item) => item !== nextColor)].slice(0, 16);
-      void saveRecentColors(updated);
-      setRecentColors(updated);
-    });
-  }, []);
-
   const commitColor = useCallback((nextColor: string, nextOpacity = opacity) => {
     const normalized = normalizeHexInput(nextColor);
     if (!normalized) {
@@ -144,9 +142,8 @@ export function PhysicsPaintRightPanel({
       return;
     }
     setHexInput(normalized);
-    rememberRecent(normalized);
     onColorChange(normalized, nextOpacity);
-  }, [currentHex, onColorChange, opacity, rememberRecent]);
+  }, [currentHex, onColorChange, opacity]);
 
   const commitHsv = useCallback((h: number, s: number, v: number) => {
     const rgb = hsvToRgb(h, s, v);
@@ -183,29 +180,44 @@ export function PhysicsPaintRightPanel({
     .filter((item, index, source) => source.indexOf(item) === index)
     .slice(0, 24);
 
+  const onionCount = clampOnionCount(onion.count);
+  const updateOnion = (next: Partial<PhysicsPaintOnionState>) => {
+    onOnionChange({ ...onion, ...next, count: clampOnionCount(next.count ?? onion.count) });
+  };
+
   return (
     <aside class="physics-paint-right-panel" aria-label="Physics Paint color and tool options">
-      <section class="physics-paint-right-section">
-        <div class="physics-paint-section-heading">Brush color</div>
-        <div class="physics-paint-color-picker" aria-label="Brush color picker">
-          <canvas
-            ref={colorBoxRef}
-            width={232}
-            height={160}
-            class="physics-paint-color-box"
-            onPointerDown={(event) => {
-              draggingColorBox.current = true;
-              (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-              handleColorBoxPointer(event as unknown as PointerEvent);
-            }}
-            onPointerMove={(event) => draggingColorBox.current && handleColorBoxPointer(event as unknown as PointerEvent)}
-            onPointerUp={() => { draggingColorBox.current = false; }}
-          />
-          <span
-            class="physics-paint-color-cursor"
-            style={{ left: `${currentHsv.s * 100}%`, top: `${(1 - currentHsv.v) * 100}%`, backgroundColor: currentHex }}
-          />
+      <section class="physics-paint-right-section physics-paint-single-tab-section">
+        <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Brush color panel">
+          <button
+            type="button"
+            class="physics-paint-options-tab physics-paint-tab-brush active"
+            role="tab"
+            aria-selected="true"
+          >
+            BRUSH COLOR
+          </button>
         </div>
+        <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel" role="tabpanel" aria-label="Brush color">
+          <div class="physics-paint-color-picker" aria-label="Brush color picker">
+            <canvas
+              ref={colorBoxRef}
+              width={232}
+              height={160}
+              class="physics-paint-color-box"
+              onPointerDown={(event) => {
+                draggingColorBox.current = true;
+                (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+                handleColorBoxPointer(event as unknown as PointerEvent);
+              }}
+              onPointerMove={(event) => draggingColorBox.current && handleColorBoxPointer(event as unknown as PointerEvent)}
+              onPointerUp={() => { draggingColorBox.current = false; }}
+            />
+            <span
+              class="physics-paint-color-cursor"
+              style={{ left: `${currentHsv.s * 100}%`, top: `${(1 - currentHsv.v) * 100}%`, backgroundColor: currentHex }}
+            />
+          </div>
 
         <div
           ref={hueRef}
@@ -220,10 +232,6 @@ export function PhysicsPaintRightPanel({
           onPointerUp={() => { draggingHue.current = false; }}
         >
           <span class="physics-paint-hue-cursor" style={{ left: `${currentHsv.h * 100}%` }} />
-        </div>
-
-        <div class="physics-paint-test-stroke" aria-hidden="true">
-          <span style={{ background: currentHex, opacity: String(opacityAlpha) }} />
         </div>
 
         <div class="physics-paint-color-input-row">
@@ -249,37 +257,78 @@ export function PhysicsPaintRightPanel({
           <button type="button" class="physics-paint-text-button physics-paint-add-swatch" onClick={addFavorite}>+</button>
         </div>
 
-        <div class="physics-paint-swatch-grid" aria-label="Color palette">
-          {swatches.map((swatch) => (
-            <button
-              key={swatch}
-              type="button"
-              class="physics-paint-swatch"
-              style={{ backgroundColor: swatch }}
-              title={swatch}
-              aria-label={`Use ${swatch}`}
-              onClick={() => commitColor(swatch)}
-            />
-          ))}
+          <div class="physics-paint-swatch-grid" aria-label="Color palette">
+            {swatches.map((swatch) => (
+              <button
+                key={swatch}
+                type="button"
+                class="physics-paint-swatch"
+                style={{ backgroundColor: swatch }}
+                title={swatch}
+                aria-label={`Use ${swatch}`}
+                onClick={() => commitColor(swatch)}
+              />
+            ))}
+          </div>
         </div>
       </section>
 
-      <section class="physics-paint-right-section">
-        <div class="physics-paint-section-heading">Tool options</div>
-        <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} />
-        {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Pickup" min={0} max={100} value={pickup} onChange={onPickupChange} /> : null}
-        {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} /> : null}
-        {activeTool === 'erase' ? <PanelSlider id="physics-erase-strength" label="Erase strength" min={0} max={100} value={eraseStrength} onChange={onEraseStrengthChange} /> : null}
-
-        <div class="physics-paint-option-group">
-          <span class="physics-paint-right-label">Brush smoothing</span>
-          <div class="physics-paint-segmented-row" role="group" aria-label="Brush smoothing">
-            <SmoothingButton label="Off" value={0} active={smoothing === 0} onSelect={onSmoothingChange} />
-            <SmoothingButton label="Soft" value={1} active={smoothing === 1} onSelect={onSmoothingChange} />
-            <SmoothingButton label="Med" value={2} active={smoothing === 2} onSelect={onSmoothingChange} />
-            <SmoothingButton label="High" value={3} active={smoothing === 3} onSelect={onSmoothingChange} />
-          </div>
+      <section class="physics-paint-right-section physics-paint-options-tabs-section">
+        <div class="physics-paint-options-tabs" role="tablist" aria-label="Physics Paint option panels">
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-tool ${optionsTab === 'tool' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={optionsTab === 'tool'}
+            onClick={() => setOptionsTab('tool')}
+          >
+            TOOL OPTIONS
+          </button>
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-onion ${optionsTab === 'onion' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={optionsTab === 'onion'}
+            onClick={() => setOptionsTab('onion')}
+          >
+            ONION SETTINGS
+          </button>
         </div>
+
+        {optionsTab === 'tool' ? (
+          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Tool options">
+            <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} />
+            {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} /> : null}
+            {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} /> : null}
+            {activeTool === 'erase' ? <PanelSlider id="physics-erase-strength" label="Erase strength" min={0} max={100} value={eraseStrength} onChange={onEraseStrengthChange} /> : null}
+
+            <div class="physics-paint-option-group">
+              <span class="physics-paint-right-label">Brush smoothing</span>
+              <div class="physics-paint-segmented-row" role="group" aria-label="Brush smoothing">
+                <SmoothingButton label="Off" value={0} active={smoothing === 0} onSelect={onSmoothingChange} />
+                <SmoothingButton label="Soft" value={1} active={smoothing === 1} onSelect={onSmoothingChange} />
+                <SmoothingButton label="Med" value={2} active={smoothing === 2} onSelect={onSmoothingChange} />
+                <SmoothingButton label="High" value={3} active={smoothing === 3} onSelect={onSmoothingChange} />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div class={`physics-paint-options-tab-panel physics-paint-options-tab-panel-onion physics-paint-onion-tab-panel${onionDisabled ? ' disabled-control' : ''}`} role="tabpanel" aria-label="Onion skin controls">
+            <label class="physics-paint-onion-toggle-row">
+              <input type="checkbox" checked={onion.enabled} disabled={onionDisabled} onChange={(event) => updateOnion({ enabled: (event.currentTarget as HTMLInputElement).checked })} />
+              <span>Onion skin</span>
+            </label>
+            <div class="physics-paint-onion-toggle-grid">
+              <label><input type="checkbox" checked={onion.previous} disabled={onionDisabled} onChange={(event) => updateOnion({ previous: (event.currentTarget as HTMLInputElement).checked })} /> Previous</label>
+              <label><input type="checkbox" checked={onion.next} disabled={onionDisabled} onChange={(event) => updateOnion({ next: (event.currentTarget as HTMLInputElement).checked })} /> Next</label>
+            </div>
+            <label class="physics-paint-option-row physics-paint-onion-value-row" for="physics-onion-count">
+              <span class="physics-paint-right-label">Onion value</span>
+              <input id="physics-onion-count" type="range" min={1} max={3} value={onionCount} disabled={onionDisabled} onInput={(event) => updateOnion({ count: Number((event.currentTarget as HTMLInputElement).value) })} />
+              <output>{onionCount}</output>
+            </label>
+          </div>
+        )}
       </section>
     </aside>
   );

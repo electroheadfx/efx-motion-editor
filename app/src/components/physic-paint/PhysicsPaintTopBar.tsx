@@ -59,15 +59,17 @@ function TopBarSlider(props: {
   return (
     <label class="physics-paint-topbar-control physics-paint-topbar-slider" for={props.id}>
       <span>{props.label}</span>
-      <input
-        id={props.id}
-        type="range"
-        min={props.min}
-        max={props.max}
-        value={props.value}
-        onInput={(event) => props.onChange(Number((event.target as HTMLInputElement).value))}
-      />
-      <output>{props.value}</output>
+      <div class="physics-paint-topbar-slider-row">
+        <input
+          id={props.id}
+          type="range"
+          min={props.min}
+          max={props.max}
+          value={props.value}
+          onInput={(event) => props.onChange(Number((event.target as HTMLInputElement).value))}
+        />
+        <output>{props.value}</output>
+      </div>
     </label>
   );
 }
@@ -100,6 +102,10 @@ export function PhysicsPaintTopBar({
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
+      <div class="physics-paint-topbar-status" aria-live="polite">
+        <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
+      </div>
+
       <div class="physics-paint-topbar-primary">
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={brushSize} onChange={onBrushSizeChange} />
         <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} />
@@ -157,18 +163,14 @@ export function PhysicsPaintTopBar({
         </div>
       </div>
 
-      <div class="physics-paint-topbar-status" aria-live="polite">
-        <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
-        {applyStatus === 'applying' ? <span class="physics-paint-apply-copy applying">Applying physics paint output...</span> : null}
+      <div class="physics-paint-topbar-meta">
+        {applyStatus === 'applying' ? <span class="physics-paint-apply-copy applying">Applying...</span> : null}
         {applyMessage ? <span class={`physics-paint-apply-copy ${applyStatus}`}>{applyMessage}</span> : null}
         {error ? <span class="physics-paint-apply-copy error">{error}</span> : null}
         {devExportEnabled ? (
-          <details class="physics-paint-dev-export">
-            <summary>Dev export</summary>
-            <button type="button" class="physics-paint-text-button" disabled={devExportBusy || !onExportDebugProof} onClick={onExportDebugProof}>
-              Export PNGs + manifest
-            </button>
-          </details>
+          <button type="button" class="physics-paint-text-button physics-paint-dev-export" disabled={devExportBusy || !onExportDebugProof} onClick={onExportDebugProof}>
+            Export PNGs + manifest
+          </button>
         ) : null}
       </div>
     </header>

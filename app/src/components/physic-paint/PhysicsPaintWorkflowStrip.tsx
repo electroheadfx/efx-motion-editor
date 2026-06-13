@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'preact/hooks';
+import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square } from 'lucide-preact';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   PHYSIC_PAINT_DEFAULT_APPLY_FRAMES,
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
@@ -8,14 +9,12 @@ import {
   getActivePrimaryActionLabel,
   getPlayRangeMarker,
   type PhysicsPaintOnionState,
-  type PhysicsPaintPlayRange,
   type PhysicsPaintWorkflowMode,
 } from './physicsPaintWorkflowState';
 import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
 
 const SAVE_ROTO_FRAME_LABEL = 'Save roto frame';
 const SAVE_PLAY_LABEL = 'Save play';
-const CLEAR_PLAY_CANVAS_RANGE_LABEL = 'Clear Play canvas range';
 const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
 const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
 const MISSING_PLAY_TO_ROTO_COPY = 'Save or regenerate Play output before converting it to roto frames.';
@@ -34,7 +33,7 @@ export interface PhysicsPaintWorkflowOnionPreviewFrame {
   source: 'roto' | 'play';
 }
 
-export type PhysicsPaintWorkflowConfirmation = 'clear-play-range' | 'convert-play-to-roto' | 'convert-roto-to-play';
+export type PhysicsPaintWorkflowConfirmation = 'convert-play-to-roto' | 'convert-roto-to-play';
 
 export interface PhysicsPaintWorkflowStripProps {
   mode: PhysicsPaintWorkflowMode;
@@ -43,6 +42,7 @@ export interface PhysicsPaintWorkflowStripProps {
   frameCount: number;
   isPlaying: boolean;
   ready?: boolean;
+  occupiedRotoFrames?: number[];
   savedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[];
   playPublicationSummary?: string | null;
   statusMessage?: string | null;
@@ -60,18 +60,54 @@ export interface PhysicsPaintWorkflowStripProps {
   onStopPreview: () => void;
   onFrameCountChange: (frameCount: number) => void;
   onNavigateToSyncedFrame: (frame: number) => void;
+  onGoToFirstFrame: () => void;
+  onGoToPreviousFrame: () => void;
+  onGoToNextFrame: () => void;
+  onGoToLastFrame: () => void;
   onInspectPlayFrame: (frame: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
-  onClearRotoFrame?: (frame: number) => void;
-  onClearPlayRange?: () => void;
   onConvertPlayToRoto?: () => void;
   onConvertRotoToPlay?: () => void;
 }
 
-function buildFrameCells(range: PhysicsPaintPlayRange, currentFrame: number): number[] {
-  const visibleCount = Math.min(48, Math.max(range.frameCount, 12));
-  const start = Math.max(0, Math.min(range.startFrame, currentFrame - Math.floor(visibleCount / 2)));
+const VIRTUAL_TIMELINE_FRAME_COUNT = 120;
+const RULER_STEP = 3;
+const PLAY_TIMELINE_TICK_WIDTH = 45;
+const PLAY_TIMELINE_ORIGIN_OFFSET = 4;
+
+function buildFrameCells(currentFrame: number): number[] {
+  const visibleCount = VIRTUAL_TIMELINE_FRAME_COUNT;
+  const maxStart = Math.max(0, currentFrame - Math.floor(visibleCount / 2));
+  const start = Math.max(0, Math.min(maxStart, currentFrame));
   return Array.from({ length: visibleCount }, (_, index) => start + index);
+}
+
+function buildRulerTicks(frameCells: number[]): number[] {
+  return frameCells.filter((frame) => frame % RULER_STEP === 0);
+}
+
+function getPlayRulerStep(frameCount: number): number {
+  if (frameCount <= 6) return 1;
+  if (frameCount <= 12) return 2;
+  if (frameCount <= 24) return 4;
+  return 6;
+}
+
+function buildPlayRuler(frameCount: number): { ticks: number[]; endFrame: number; step: number; frameWidth: number; width: number } {
+  const safeFrameCount = clampPhysicPaintFrameCount(frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES);
+  const step = getPlayRulerStep(safeFrameCount);
+  const endFrame = safeFrameCount <= 6 ? safeFrameCount : Math.ceil((safeFrameCount + step) / step) * step;
+  return {
+    ticks: Array.from({ length: Math.floor(endFrame / step) + 1 }, (_, index) => index * step),
+    endFrame,
+    step,
+    frameWidth: PLAY_TIMELINE_TICK_WIDTH / step,
+    width: Math.max(180, (Math.floor(endFrame / step) + 1) * PLAY_TIMELINE_TICK_WIDTH),
+  };
+}
+
+function isOccupiedFrame(frames: number[] | undefined, frame: number): boolean {
+  return Boolean(frames?.includes(frame));
 }
 
 function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefined, frame: number): boolean {
@@ -79,18 +115,23 @@ function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefine
 }
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
-  const [localStatus, setLocalStatus] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<PhysicsPaintWorkflowConfirmation | null>(null);
+  const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
   const playRange = useMemo(
     () => getPlayRangeMarker(props.startFrame, props.frameCount, props.currentFrame),
     [props.currentFrame, props.frameCount, props.startFrame]
   );
-  const frameCells = useMemo(() => buildFrameCells(playRange, props.currentFrame), [playRange, props.currentFrame]);
-  const primaryActionLabel = getActivePrimaryActionLabel(props.mode) === SAVE_PLAY_LABEL ? SAVE_PLAY_LABEL : SAVE_ROTO_FRAME_LABEL;
+  const frameCells = useMemo(() => buildFrameCells(props.currentFrame), [props.currentFrame]);
+  const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   const safeFrameCount = clampPhysicPaintFrameCount(props.frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES);
-  const status = props.statusMessage ?? localStatus ?? props.sameModeReplacementMessage ?? props.playPublicationSummary;
+  const playRuler = useMemo(() => buildPlayRuler(safeFrameCount), [safeFrameCount]);
+  const rulerTicks = props.mode === 'play' ? playRuler.ticks : rotoRulerTicks;
+  const rulerWidth = props.mode === 'play' ? playRuler.width : 1800;
+  const playStartOffset = PLAY_TIMELINE_ORIGIN_OFFSET;
+  const playEndOffset = playStartOffset + safeFrameCount * playRuler.frameWidth;
+  const primaryActionLabel = getActivePrimaryActionLabel(props.mode) === SAVE_PLAY_LABEL ? SAVE_PLAY_LABEL : SAVE_ROTO_FRAME_LABEL;
   const onionCount = clampOnionCount(props.onion.count);
-  const onionControlsDisabled = props.isPlaying;
   const visibleOnionPreviewFrames = props.isPlaying || !props.onion.enabled
     ? []
     : (props.onionPreviewFrames ?? []).filter(frame => (
@@ -120,19 +161,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onInspectPlayFrame(frame);
   }
 
-  function handleClearRotoFrame() {
-    props.onClearRotoFrame?.(props.currentFrame);
-    setLocalStatus(`Cleared roto frame ${props.currentFrame}.`);
-  }
-
-  function updateOnion(next: Partial<PhysicsPaintOnionState>) {
-    props.onOnionChange({ ...props.onion, ...next, count: clampOnionCount(next.count ?? props.onion.count) });
-  }
-
   function getConfirmationCopy(kind: PhysicsPaintWorkflowConfirmation): string {
-    if (kind === 'clear-play-range') {
-      return `This clears the Play canvas source for frames ${playRange.startFrame}–${playRange.endFrame}. Rendered frames for that range will be replaced or removed. Continue?`;
-    }
     if (kind === 'convert-play-to-roto') {
       return `Convert Play to Roto? This turns ${playRange.frameCount} rendered Play frames into roto frames and deletes the editable Play source for this range.`;
     }
@@ -140,16 +169,71 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }
 
   function getConfirmationTitle(kind: PhysicsPaintWorkflowConfirmation): string {
-    if (kind === 'clear-play-range') return CLEAR_PLAY_CANVAS_RANGE_LABEL;
     if (kind === 'convert-play-to-roto') return CONVERT_PLAY_TO_ROTO_LABEL;
     return CONVERT_ROTO_TO_PLAY_LABEL;
   }
 
+  const updateScrollbar = useCallback(() => {
+    const el = timelineScrollRef.current;
+    if (!el) return;
+    const { clientWidth, scrollLeft, scrollWidth } = el;
+    const visible = scrollWidth > clientWidth + 1;
+    if (!visible) {
+      setScrollbar({ left: 0, width: 0, visible: false });
+      return;
+    }
+    const thumbWidth = Math.max(120, (clientWidth / scrollWidth) * clientWidth);
+    const thumbRange = clientWidth - thumbWidth;
+    const scrollRange = scrollWidth - clientWidth;
+    setScrollbar({
+      left: scrollRange > 0 ? (scrollLeft / scrollRange) * thumbRange : 0,
+      width: thumbWidth,
+      visible,
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = timelineScrollRef.current;
+    if (!el) return;
+    updateScrollbar();
+    const observer = new ResizeObserver(updateScrollbar);
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, [frameCells, props.mode, updateScrollbar]);
+
+  function handleTimelineScrollbarPointerDown(event: PointerEvent) {
+    const el = timelineScrollRef.current;
+    const target = event.currentTarget as HTMLElement;
+    if (!el) return;
+    const rect = target.getBoundingClientRect();
+    const thumbLeft = scrollbar.left;
+    const thumbRight = scrollbar.left + scrollbar.width;
+    const pointerX = event.clientX - rect.left;
+    const thumbOffset = pointerX >= thumbLeft && pointerX <= thumbRight ? pointerX - thumbLeft : scrollbar.width / 2;
+    const scrollFromPointer = (clientX: number) => {
+      const x = Math.max(0, Math.min(rect.width - scrollbar.width, clientX - rect.left - thumbOffset));
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      const maxThumb = rect.width - scrollbar.width;
+      el.scrollLeft = maxThumb > 0 ? (x / maxThumb) * maxScroll : 0;
+      updateScrollbar();
+    };
+    target.setPointerCapture(event.pointerId);
+    scrollFromPointer(event.clientX);
+    const handlePointerMove = (moveEvent: PointerEvent) => scrollFromPointer(moveEvent.clientX);
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture(upEvent.pointerId);
+      target.removeEventListener('pointermove', handlePointerMove);
+      target.removeEventListener('pointerup', handlePointerUp);
+      target.removeEventListener('pointercancel', handlePointerUp);
+    };
+    target.addEventListener('pointermove', handlePointerMove);
+    target.addEventListener('pointerup', handlePointerUp);
+    target.addEventListener('pointercancel', handlePointerUp);
+  }
+
   function confirmDestructiveAction() {
-    if (confirmation === 'clear-play-range') {
-      props.onClearPlayRange?.();
-      setLocalStatus(`Cleared Play canvas range ${playRange.startFrame}–${playRange.endFrame}.`);
-    } else if (confirmation === 'convert-play-to-roto') {
+    if (confirmation === 'convert-play-to-roto') {
       if (!props.missingPlayFramesForConversion) props.onConvertPlayToRoto?.();
     } else if (confirmation === 'convert-roto-to-play') {
       props.onConvertRotoToPlay?.();
@@ -179,14 +263,43 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           </button>
         </div>
 
-        <div class="physics-paint-workflow-actions">
-          <button class="physics-paint-primary-action" disabled={props.ready === false} onClick={handlePrimaryAction}>
-            {primaryActionLabel}
-          </button>
-          <button class="physics-paint-text-button" disabled={props.mode !== 'play'} onClick={() => props.onPlayPreview(safeFrameCount)}>
-            {props.isPlaying ? 'Play' : 'Play'}
-          </button>
-          <button class="physics-paint-text-button" disabled={!props.isPlaying} onClick={props.onStopPreview}>Stop</button>
+        <div class="physics-paint-workflow-animation">
+          {props.mode === 'roto' ? (
+            <div class="physics-paint-mode-controls">
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
+              <output class="physics-paint-current-frame">{props.currentFrame}</output>
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
+            </div>
+          ) : (
+            <div class="physics-paint-mode-controls physics-paint-play-controls">
+              <label class="physics-paint-play-frame-count">
+                <span>Duray</span>
+                <input
+                  type="number"
+                  min={PHYSIC_PAINT_MIN_APPLY_FRAMES}
+                  max={PHYSIC_PAINT_MAX_APPLY_FRAMES}
+                  value={safeFrameCount}
+                  onInput={handleFrameCountInput}
+                  aria-label="Play canvas frame count"
+                />
+              </label>
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
+              <button type="button" class="physics-paint-nav-button" aria-label="Play preview" disabled={props.ready === false} onClick={() => props.onPlayPreview(safeFrameCount)}><Play size={15} /></button>
+              <button type="button" class="physics-paint-nav-button" aria-label="Stop preview" disabled={!props.isPlaying} onClick={props.onStopPreview}><Square size={15} /></button>
+              <button class="physics-paint-primary-action" disabled={props.ready === false} onClick={handlePrimaryAction}>Save play</button>
+            </div>
+          )}
+          {props.mode === 'roto' ? (
+            <button class="physics-paint-primary-action" disabled={props.ready === false} onClick={handlePrimaryAction}>
+              {primaryActionLabel}
+            </button>
+          ) : null}
+        </div>
+
+        <div class="physics-paint-state-actions">
           <button class="physics-paint-text-button" onClick={props.onSaveState}>Save state</button>
           <label class="physics-paint-text-button physics-paint-load-state">
             Load state
@@ -195,77 +308,54 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         </div>
       </div>
 
-      <div class="physics-paint-workflow-options">
-        <label>
-          Frames
-          <input
-            type="number"
-            min={PHYSIC_PAINT_MIN_APPLY_FRAMES}
-            max={PHYSIC_PAINT_MAX_APPLY_FRAMES}
-            value={safeFrameCount}
-            onInput={handleFrameCountInput}
-          />
-        </label>
-        {props.mode === 'roto' ? (
-          <button class="physics-paint-text-button destructive" onClick={handleClearRotoFrame}>Clear current Roto frame</button>
-        ) : null}
-        {props.mode === 'play' ? (
-          <button class="physics-paint-text-button destructive" onClick={() => setConfirmation('clear-play-range')}>Clear Play canvas range</button>
-        ) : null}
-        {props.isPlaying ? <span class="physics-paint-preview-status">Preview only — use Save play to publish this range.</span> : null}
-        {props.isPlaying && props.showOnionHiddenDuringPreview ? <span class="physics-paint-preview-status">Onion skin hidden during preview</span> : null}
-        {status ? <span class="physics-paint-publication-summary">{status}</span> : null}
-      </div>
-
-      {props.mode === 'roto' ? (
-        <div class={`physics-paint-onion-controls ${onionControlsDisabled ? 'disabled-control' : ''}`} aria-label="Onion skin controls">
-          <label><input type="checkbox" checked={props.onion.enabled} disabled={onionControlsDisabled} onChange={(event) => updateOnion({ enabled: (event.currentTarget as HTMLInputElement).checked })} /> Onion skin</label>
-          <label><input type="checkbox" checked={props.onion.previous} disabled={onionControlsDisabled} onChange={(event) => updateOnion({ previous: (event.currentTarget as HTMLInputElement).checked })} /> Previous</label>
-          <label><input type="checkbox" checked={props.onion.next} disabled={onionControlsDisabled} onChange={(event) => updateOnion({ next: (event.currentTarget as HTMLInputElement).checked })} /> Next</label>
-          <label>
-            Count
-            <input type="number" min={1} max={3} value={onionCount} disabled={onionControlsDisabled} onInput={(event) => updateOnion({ count: Number((event.currentTarget as HTMLInputElement).value) })} />
-          </label>
-        </div>
-      ) : null}
-
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
-        <div class={`physics-paint-lane ${props.mode !== 'roto' ? 'disabled-control' : ''}`}>
-          <span class="physics-paint-lane-label">Roto frames</span>
-          <div class="physics-paint-roto-cells" role="row">
-            {frameCells.map(frame => (
-              <button
-                key={frame}
-                class={`physics-paint-roto-cell ${frame === props.currentFrame ? 'current' : ''} ${isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''}`}
-                disabled={props.mode !== 'roto'}
-                aria-label={`Roto frame ${frame}`}
-                onClick={() => props.onNavigateToSyncedFrame(frame)}
-              >
-                <span>{frame}</span>
-              </button>
+        <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" onScroll={updateScrollbar}>
+          <div class="physics-paint-ruler" style={{ width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }} aria-hidden="true">
+            {rulerTicks.map(frame => (
+              <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
             ))}
           </div>
-        </div>
 
-        <div class={`physics-paint-lane ${props.mode !== 'play' ? 'disabled-control' : ''}`}>
-          <span class="physics-paint-lane-label">Play canvas</span>
-          <div class="physics-paint-play-track">
-            <span class="physics-paint-play-start-square" aria-label={`Play canvas starts at frame ${playRange.startFrame}`} />
-            <button
-              class="physics-paint-play-range"
-              disabled={props.mode !== 'play'}
-              onClick={handlePlayRangeClick}
-              aria-label={`Inspect Play canvas frames ${playRange.startFrame} through ${playRange.endFrame}`}
-            >
-              <span class="physics-paint-play-range-fill" />
-              <span class="physics-paint-play-marker" style={{ left: `${playRange.markerRatio * 100}%` }}>
-                {playRange.currentFrame}
-              </span>
-              <span class="physics-paint-play-range-label start">[{playRange.startFrame}]</span>
-              <span class="physics-paint-play-range-label end">[{playRange.endFrame}]</span>
-            </button>
-          </div>
+          {props.mode === 'roto' ? (
+            <div class="physics-paint-lane">
+              <div class="physics-paint-roto-cells" role="row">
+                {frameCells.map(frame => (
+                  <button
+                    key={frame}
+                    class={`physics-paint-roto-cell ${isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied' : ''} ${isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${frame === props.currentFrame ? 'current' : ''}`}
+                    aria-label={`Roto frame ${frame}`}
+                    onClick={() => props.onNavigateToSyncedFrame(frame)}
+                  >
+                    <span>{frame}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div class="physics-paint-lane physics-paint-play-lane" style={{ width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }}>
+              <div class="physics-paint-play-track" style={{ width: `${rulerWidth}px` }}>
+                <button
+                  class="physics-paint-play-range"
+                  style={{ width: `${playEndOffset}px` }}
+                  onClick={handlePlayRangeClick}
+                  aria-label={`Inspect Play canvas frames ${playRange.startFrame} through ${playRange.endFrame}`}
+                >
+                  <span class="physics-paint-play-range-fill" style={{ left: `${playStartOffset}px`, width: `${playEndOffset - playStartOffset}px` }} />
+                  <span class="physics-paint-play-range-point start" style={{ left: `${playStartOffset}px` }} />
+                  <span class="physics-paint-play-range-point end" style={{ left: `${playEndOffset}px` }} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
+        {scrollbar.visible ? (
+          <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
+            <span
+              class="physics-paint-timeline-scrollbar-thumb"
+              style={{ left: `${scrollbar.left}px`, width: `${scrollbar.width}px` }}
+            />
+          </div>
+        ) : null}
       </div>
 
       {visibleOnionPreviewFrames.length > 0 ? (

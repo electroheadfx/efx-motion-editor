@@ -30,7 +30,7 @@ export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
   { id: 'paint-physics', label: 'Paint with physics', icon: paintModePhysicsIcon, kind: 'tool' },
   { id: 'erase', label: 'Erase', icon: eraserIcon, kind: 'tool' },
   { id: 'undo', label: 'Undo', icon: undoIcon, kind: 'action' },
-  { id: 'clear-frame', label: 'Clear frame', icon: clearCanvasIcon, kind: 'action' },
+  { id: 'clear-frame', label: 'Clear current Roto frame', icon: clearCanvasIcon, kind: 'action' },
   { id: 'physics-last', label: 'Apply physics to last stroke', icon: physicsLastStrokeIcon, kind: 'press-action' },
   { id: 'physics-all', label: 'Apply physics to all strokes', icon: physicsAllActivePaintIcon, kind: 'press-action' },
   { id: 'dry', label: 'Dry / freeze paint', icon: physicsDryPaintIcon, kind: 'action' },

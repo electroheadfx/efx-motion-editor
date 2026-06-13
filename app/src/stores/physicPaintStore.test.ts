@@ -104,7 +104,7 @@ describe('physicPaintStore', () => {
   it('uses typed helpers to clamp invalid frame counts', () => {
     expect(clampPhysicPaintFrameCount(-10)).toBe(1);
     expect(clampPhysicPaintFrameCount(1000)).toBe(600);
-    expect(clampPhysicPaintFrameCount(undefined)).toBe(120);
+    expect(clampPhysicPaintFrameCount(undefined)).toBe(4);
   });
 
   it('clears one layer and resets all output with version bumps', () => {
