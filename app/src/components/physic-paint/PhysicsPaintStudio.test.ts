@@ -15,8 +15,10 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).toContain("engine.setBgMode('transparent')");
     expect(text).toContain('return engine.exportCompositeCanvas()');
     expect(text).toContain('engine.load(state)');
-    expect(text).toContain('const canvas = exportTransparentStrokeCanvas(engine)');
-    expect(text).not.toContain('const canvas = engine.exportCompositeCanvas();\n  return {\n    frameIndex: 0,\n    appFrame,\n    dataUrl: canvas.toDataURL');
+    expect(text).toContain('function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload');
+    expect(text).toContain('return buildRotoFrameFromCanvas(engine.exportCompositeCanvas(), appFrame)');
+    expect(text).toContain('function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload');
+    expect(text).toContain('return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame)');
   });
 
   it('clips the onion overlay to measured canvas bounds, not the full canvas stack', () => {
@@ -36,6 +38,15 @@ describe('PhysicsPaintStudio onion preview contract', () => {
 
     expect(css).toContain('mix-blend-mode: multiply');
     expect(css).not.toContain('mix-blend-mode: screen');
+  });
+
+  it('sends paper composite frames to EFX Motion while caching transparent onion previews', () => {
+    const text = source();
+    const saveRotoBlock = text.slice(text.indexOf('const saveRotoFrame = useCallback'), text.indexOf('const savePlay = useCallback'));
+
+    expect(saveRotoBlock).toContain('const renderedFrame = buildRotoOutputFrame(engine, currentFrame)');
+    expect(saveRotoBlock).toContain('rotoPreviewFramesRef.current.set(currentFrame, buildRotoOnionPreviewFrame(engine, currentFrame))');
+    expect(saveRotoBlock).toContain('renderedFrame,');
   });
 
   it('applies onion previous/next toggles and opacity to the canvas overlay', () => {

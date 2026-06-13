@@ -223,8 +223,7 @@ function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElemen
   }
 }
 
-function buildRotoPreviewFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload {
-  const canvas = exportTransparentStrokeCanvas(engine);
+function buildRotoFrameFromCanvas(canvas: HTMLCanvasElement, appFrame: number): RenderedFramePayload {
   return {
     frameIndex: 0,
     appFrame,
@@ -232,6 +231,14 @@ function buildRotoPreviewFrame(engine: EfxPaintEngine, appFrame: number): Render
     width: canvas.width,
     height: canvas.height,
   };
+}
+
+function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload {
+  return buildRotoFrameFromCanvas(engine.exportCompositeCanvas(), appFrame);
+}
+
+function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload {
+  return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame);
 }
 
 function PhysicsPaintCanvasStack(props: { children: ComponentChildren; onionOverlay: ComponentChildren }) {
@@ -555,7 +562,7 @@ export function PhysicsPaintStudio() {
       return false;
     }
     rotoFrameStatesRef.current.set(appFrame, currentState);
-    rotoPreviewFramesRef.current.set(appFrame, buildRotoPreviewFrame(engine, appFrame));
+    rotoPreviewFramesRef.current.set(appFrame, buildRotoOnionPreviewFrame(engine, appFrame));
     setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, appFrame));
     return true;
   }, [currentFrame, engine, launchContext]);
@@ -707,8 +714,8 @@ export function PhysicsPaintStudio() {
     try {
       const editableState = engine.save();
       rotoFrameStatesRef.current.set(currentFrame, editableState);
-      const renderedFrame = buildRotoPreviewFrame(engine, currentFrame);
-      rotoPreviewFramesRef.current.set(currentFrame, renderedFrame);
+      const renderedFrame = buildRotoOutputFrame(engine, currentFrame);
+      rotoPreviewFramesRef.current.set(currentFrame, buildRotoOnionPreviewFrame(engine, currentFrame));
       setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, currentFrame));
       setApplyStatus('applying');
       setApplyMessage('Applying physics paint output...');
