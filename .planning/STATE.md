@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 36 (physics-paint-ui-rebuild-session-persistence-and-output-proo) — EXECUTING
 Plan: 5 of 11
 Status: Ready to execute
-Last activity: 2026-06-13
+Last activity: 2026-06-13 - Completed quick task 260613-p8b: Phase 36 physics paint script range markers and interpolation preview
 
 Progress: [██████████] 100%
 
@@ -81,6 +81,12 @@ None yet.
 ### Blockers/Concerns
 
 None yet.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260613-p8b | Phase 36 physics paint script range markers and interpolation preview | 2026-06-13 | 2e75fee | [260613-p8b-phase-36-when-a-physic-paint-was-created](./quick/260613-p8b-phase-36-when-a-physic-paint-was-created/) |
 
 ### Roadmap Evolution
 
