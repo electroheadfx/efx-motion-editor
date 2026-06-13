@@ -4,12 +4,12 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
 stopped_at: Phase 36.1 context gathered
-last_updated: "2026-06-13T18:50:45.946Z"
-last_activity: 2026-06-13 -- Phase 36.1 planning complete
+last_updated: "2026-06-13T19:04:34.240Z"
+last_activity: 2026-06-13 -- Phase 36.1 execution started
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 21
+  total_plans: 27
   completed_plans: 21
   percent: 60
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.1 — physics paint play script timeline markers and sequential playback
+**Current focus:** Phase 36.1 — when-a-physic-paint-was-created-with-a-play-paint-script-ani
 
 ## Current Position
 
-Phase: 36.1 (physics-paint-play-script-timeline-markers-and-sequential-playback) — NOT PLANNED
-Plan: 5 of 11
-Status: Ready to execute
-Last activity: 2026-06-13 -- Phase 36.1 planning complete
+Phase: 36.1 (when-a-physic-paint-was-created-with-a-play-paint-script-ani) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 36.1
+Last activity: 2026-06-13 -- Phase 36.1 execution started
 
 Progress: [██████████] 100%
 
