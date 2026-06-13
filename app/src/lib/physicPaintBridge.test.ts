@@ -496,9 +496,10 @@ describe('physicPaintBridge', () => {
     }, 'http://localhost:1420');
   });
 
-  it('includes positive finite fps in the encoded browser launch context', async () => {
+  it('includes persisted Play workflow metadata in the encoded browser launch context', async () => {
     const focus = vi.fn();
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
+    physicPaintStore.applySequence(applySequencePayload({ startFrame: 18, frameCount: 3 }));
 
     const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 4, canvas: { width: 1280, height: 720 }, fps: 30 });
 
@@ -507,6 +508,11 @@ describe('physicPaintBridge', () => {
     const parsed = new URL(url, 'http://localhost:1420');
     const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
     expect(context.fps).toBe(30);
+    expect(context.workflowMode).toBe('play');
+    expect(context.startFrame).toBe(18);
+    expect(context.playStartFrame).toBe(18);
+    expect(context.playFrameCount).toBe(3);
+    expect(context.editableSource).toBe('play');
     open.mockRestore();
   });
 

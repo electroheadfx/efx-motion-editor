@@ -50,7 +50,7 @@ describe('physicPaintStore', () => {
     expect(physicPaintVersion.value).toBe(before + 1);
   });
 
-  it('stores sequence frames starting at the app start frame', () => {
+  it('stores sequence frames starting at the app start frame with Play workflow metadata', () => {
     const result = physicPaintStore.applySequence({
       kind: 'apply-play-canvas',
       operationId: 'op-seq',
@@ -67,6 +67,12 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', 11)?.frameIndex).toBe(1);
     expect(physicPaintStore.getFrame('layer-1', 12)?.frameIndex).toBe(2);
     expect(physicPaintStore.getFrame('layer-1', 13)).toBeNull();
+    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({
+      workflowMode: 'play',
+      playStartFrame: 10,
+      playFrameCount: 3,
+      editableSource: 'play',
+    });
   });
 
   it('converts play output into persisted roto frames', () => {
@@ -84,6 +90,7 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', 10)?.frameIndex).toBe(0);
     expect(physicPaintStore.getFrame('layer-1', 11)?.frameIndex).toBe(1);
     expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
+    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({ workflowMode: 'roto', editableSource: 'roto' });
   });
 
   it('converts roto frames into play source state by removing rendered frames', () => {
@@ -105,6 +112,12 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', 11)).toBeNull();
     expect(physicPaintStore.getFrame('layer-1', 12)?.frameIndex).toBe(2);
     expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
+    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({
+      workflowMode: 'play',
+      playStartFrame: 10,
+      playFrameCount: 2,
+      editableSource: 'play',
+    });
   });
 
   it('increments version for each successful mutation and marks dirty', () => {
@@ -137,6 +150,49 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', 10)?.dataUrl).toContain('data:image/png');
     expect(physicPaintStore.getFrame('layer-1', 12)?.appFrame).toBe(12);
     expect(physicPaintStore.getFrame('layer-2', 4)?.width).toBe(1000);
+  });
+
+  it('round-trips Play workflow metadata with rendered frames and editable source state', () => {
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-round-trip',
+      layerId: 'layer-1',
+      startFrame: 24,
+      frameCount: 4,
+      frames: [makeFrame(0, 24), makeFrame(1, 25), makeFrame(2, 26), makeFrame(3, 27)],
+      editableState,
+    });
+
+    const outputs = physicPaintStore.toMceOutputs();
+
+    expect(outputs).toEqual([
+      expect.objectContaining({
+        layer_id: 'layer-1',
+        workflow_mode: 'play',
+        play_start_frame: 24,
+        play_frame_count: 4,
+        editable_source: 'play',
+        editable_state: expect.objectContaining({ strokes: expect.any(Array) }),
+        frames: [
+          expect.objectContaining({ appFrame: 24 }),
+          expect.objectContaining({ appFrame: 25 }),
+          expect.objectContaining({ appFrame: 26 }),
+          expect.objectContaining({ appFrame: 27 }),
+        ],
+      }),
+    ]);
+
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(outputs);
+
+    expect(physicPaintStore.getFrame('layer-1', 27)?.frameIndex).toBe(3);
+    expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
+    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({
+      workflowMode: 'play',
+      playStartFrame: 24,
+      playFrameCount: 4,
+      editableSource: 'play',
+    });
   });
 
   it('uses typed helpers to clamp invalid frame counts', () => {
