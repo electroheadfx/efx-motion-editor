@@ -743,9 +743,15 @@ export function PhysicsPaintStudio() {
   const saveEditableState = useCallback(async () => {
     if (!engine) return;
     try {
-      const message = await downloadPhysicsPaintState(engine.save());
+      const result = await downloadPhysicsPaintState(engine.save());
+      if (result.status === 'cancelled') {
+        setApplyStatus('idle');
+        setApplyMessage(result.message);
+        setLastError(null);
+        return;
+      }
       setApplyStatus('success');
-      setApplyMessage(message);
+      setApplyMessage(result.message);
       setLastError(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

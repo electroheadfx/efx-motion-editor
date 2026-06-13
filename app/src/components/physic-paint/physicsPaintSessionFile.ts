@@ -2,6 +2,7 @@ import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import { isSerializedProject } from '../../types/physicPaint';
 
 export const SAVE_STATE_SUCCESS_COPY = 'Saved editable JSON state.';
+export const SAVE_STATE_CANCELLED_COPY = 'Save state cancelled.';
 export const LOAD_STATE_SUCCESS_COPY = 'Loaded editable JSON state.';
 export const LOAD_STATE_INVALID_COPY = 'This file is not a valid Physics Paint state JSON. Choose a state file exported from Physics Paint.';
 
@@ -11,9 +12,24 @@ export interface PhysicsPaintStateDownloadRequest {
   mimeType: 'application/json';
 }
 
-export interface PhysicsPaintStateDownloadAdapter {
+export interface PhysicsPaintStateBrowserDownloadAdapter {
   save: (request: PhysicsPaintStateDownloadRequest) => Promise<void> | void;
 }
+
+export interface PhysicsPaintStateNativeSaveAdapter {
+  saveDialog: (options: { defaultPath: string; filters: { name: string; extensions: string[] }[] }) => Promise<string | null>;
+  writeTextFile: (path: string, contents: string) => Promise<void> | void;
+}
+
+export type PhysicsPaintStateDownloadAdapter = PhysicsPaintStateBrowserDownloadAdapter | {
+  native?: PhysicsPaintStateNativeSaveAdapter | null;
+  browser: PhysicsPaintStateBrowserDownloadAdapter;
+};
+
+export type PhysicsPaintStateDownloadResult = {
+  status: 'saved' | 'cancelled';
+  message: string;
+};
 
 export function serializePhysicsPaintState(state: SerializedProject): string {
   return JSON.stringify(state, null, 2);
@@ -31,22 +47,64 @@ export function parsePhysicsPaintStateFile(contents: string): SerializedProject 
 
 export async function downloadPhysicsPaintState(
   state: SerializedProject,
-  adapter: PhysicsPaintStateDownloadAdapter = browserPhysicsPaintStateDownloadAdapter,
-): Promise<string> {
-  await adapter.save({
-    filename: makePhysicsPaintStateFilename(),
-    contents: serializePhysicsPaintState(state),
-    mimeType: 'application/json',
-  });
+  adapter?: PhysicsPaintStateDownloadAdapter,
+): Promise<PhysicsPaintStateDownloadResult> {
+  const filename = makePhysicsPaintStateFilename();
+  const contents = serializePhysicsPaintState(state);
+  const resolvedAdapter = adapter ?? await createDefaultPhysicsPaintStateDownloadAdapter();
 
-  return SAVE_STATE_SUCCESS_COPY;
+  if ('browser' in resolvedAdapter) {
+    if (resolvedAdapter.native) {
+      const selectedPath = await resolvedAdapter.native.saveDialog({
+        defaultPath: filename,
+        filters: [{ name: 'Physics paint state', extensions: ['json'] }],
+      });
+      if (!selectedPath) return { status: 'cancelled', message: SAVE_STATE_CANCELLED_COPY };
+      await resolvedAdapter.native.writeTextFile(selectedPath, contents);
+      return { status: 'saved', message: SAVE_STATE_SUCCESS_COPY };
+    }
+
+    await resolvedAdapter.browser.save({ filename, contents, mimeType: 'application/json' });
+    return { status: 'saved', message: SAVE_STATE_SUCCESS_COPY };
+  }
+
+  await resolvedAdapter.save({ filename, contents, mimeType: 'application/json' });
+  return { status: 'saved', message: SAVE_STATE_SUCCESS_COPY };
 }
 
 function makePhysicsPaintStateFilename(): string {
   return `efx-paint-state-${Date.now()}.json`;
 }
 
-const browserPhysicsPaintStateDownloadAdapter: PhysicsPaintStateDownloadAdapter = {
+async function createDefaultPhysicsPaintStateDownloadAdapter(): Promise<PhysicsPaintStateDownloadAdapter> {
+  return {
+    native: await loadTauriNativeSaveAdapter(),
+    browser: browserPhysicsPaintStateDownloadAdapter,
+  };
+}
+
+async function loadTauriNativeSaveAdapter(): Promise<PhysicsPaintStateNativeSaveAdapter | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    const dialogModule = '@tauri-apps/plugin-dialog';
+    const fsModule = '@tauri-apps/plugin-fs';
+    const [{ save }, { writeTextFile }] = await Promise.all([
+      import(/* @vite-ignore */ dialogModule) as Promise<{ save: PhysicsPaintStateNativeSaveAdapter['saveDialog'] }>,
+      import(/* @vite-ignore */ fsModule) as Promise<{ writeTextFile: PhysicsPaintStateNativeSaveAdapter['writeTextFile'] }>,
+    ]);
+    if (typeof save !== 'function' || typeof writeTextFile !== 'function') return null;
+    return { saveDialog: save, writeTextFile };
+  } catch {
+    return null;
+  }
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined'
+    && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window || 'isTauri' in window);
+}
+
+const browserPhysicsPaintStateDownloadAdapter: PhysicsPaintStateBrowserDownloadAdapter = {
   save({ filename, contents, mimeType }) {
     const blob = new Blob([contents], { type: mimeType });
     const url = URL.createObjectURL(blob);
