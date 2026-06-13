@@ -48,16 +48,47 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('<Timeline');
   });
 
-  it('keeps Play lane clicks inspection-only', () => {
+  it('keeps Play lane clicks as local preview without syncing the editor playhead', () => {
     const code = source();
+    const previewIndex = code.indexOf('onPreviewPlayFrame');
     const inspectIndex = code.indexOf('onInspectPlayFrame');
     const convertIndex = code.indexOf('onConvertPlayToRoto');
+    const clickBlock = code.slice(code.indexOf('function handlePlayRangeClick'), code.indexOf('function handlePlayRangeClick') + 1100);
 
+    expect(previewIndex).toBeGreaterThan(-1);
     expect(inspectIndex).toBeGreaterThan(-1);
     expect(convertIndex).toBeGreaterThan(-1);
     expect(code).not.toContain('onClearPlayRange');
     expect(code).toContain('handlePlayRangeClick');
-    expect(code.slice(code.indexOf('function handlePlayRangeClick'), code.indexOf('function handlePlayRangeClick') + 900)).not.toContain('onConvertPlayToRoto');
+    expect(clickBlock).toContain('props.onPreviewPlayFrame');
+    expect(clickBlock).not.toContain('onNavigateToSyncedFrame');
+    expect(clickBlock).not.toContain('onConvertPlayToRoto');
+  });
+
+  it('accepts local Play preview props and renders a separate current preview marker', () => {
+    const code = source();
+
+    for (const contract of [
+      'currentPreviewFrame?: number',
+      'maxPlayFrameCount?: number',
+      'maxPlayFrameCountReason?: string',
+      'onPreviewPlayFrame?: (frame: number) => void',
+      'physics-paint-play-range-point current',
+      'clampedPreviewFrame',
+    ]) {
+      expect(code).toContain(contract);
+    }
+  });
+
+  it('clamps Play frame count input to maxPlayFrameCount and renders max duration messaging', () => {
+    const code = source();
+    const inputBlock = code.slice(code.indexOf('function handleFrameCountInput'), code.indexOf('function handlePlayRangeClick'));
+
+    expect(inputBlock).toContain('getMaxFrameCount');
+    expect(code).toContain('Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, props.maxPlayFrameCount)');
+    expect(code).toContain('Play duration limited to');
+    expect(code).toContain('props.maxPlayFrameCountReason');
+    expect(code).toContain('physics-paint-play-limit-message');
   });
 
   it('keeps onion preview overlays in the workflow strip and moves onion controls to the right panel', () => {

@@ -55,9 +55,13 @@ export interface PhysicsPaintWorkflowStripProps {
   onSavePlay: () => void;
   onSaveState: () => void;
   onLoadState: (event: Event) => void;
+  currentPreviewFrame?: number;
+  maxPlayFrameCount?: number;
+  maxPlayFrameCountReason?: string;
   onPlayPreview: (frameCount: number) => void;
   onStopPreview: () => void;
   onFrameCountChange: (frameCount: number) => void;
+  onPreviewPlayFrame?: (frame: number) => void;
   onNavigateToSyncedFrame: (frame: number) => void;
   onGoToFirstFrame: () => void;
   onGoToPreviousFrame: () => void;
@@ -123,12 +127,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   );
   const frameCells = useMemo(() => buildFrameCells(props.currentFrame), [props.currentFrame]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
-  const safeFrameCount = clampPhysicPaintFrameCount(props.frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES);
+  const getMaxFrameCount = useCallback(() => (
+    props.maxPlayFrameCount !== undefined
+      ? Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, props.maxPlayFrameCount)
+      : PHYSIC_PAINT_MAX_APPLY_FRAMES
+  ), [props.maxPlayFrameCount]);
+  const safeFrameCount = Math.min(clampPhysicPaintFrameCount(props.frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES), getMaxFrameCount());
   const playRuler = useMemo(() => buildPlayRuler(safeFrameCount), [safeFrameCount]);
   const rulerTicks = props.mode === 'play' ? playRuler.ticks : rotoRulerTicks;
   const rulerWidth = props.mode === 'play' ? playRuler.width : 1800;
   const playStartOffset = PLAY_TIMELINE_ORIGIN_OFFSET;
   const playEndOffset = playStartOffset + safeFrameCount * playRuler.frameWidth;
+  const clampedPreviewFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(props.currentPreviewFrame ?? 0)));
+  const playPreviewOffset = playStartOffset + clampedPreviewFrame * playRuler.frameWidth;
+  const playLimitMessage = props.maxPlayFrameCount !== undefined
+    ? props.maxPlayFrameCountReason ?? `Play duration limited to ${props.maxPlayFrameCount} frames before the next saved Play script.`
+    : null;
   const primaryActionLabel = getActivePrimaryActionLabel(props.mode) === SAVE_PLAY_LABEL ? SAVE_PLAY_LABEL : SAVE_ROTO_FRAME_LABEL;
   const onionCount = clampOnionCount(props.onion.count);
   const visibleOnionPreviewFrames = props.isPlaying || !props.onion.enabled
@@ -148,7 +162,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
   function handleFrameCountInput(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
-    props.onFrameCountChange(clampPhysicPaintFrameCount(Number(input.value)));
+    props.onFrameCountChange(Math.min(clampPhysicPaintFrameCount(Number(input.value)), getMaxFrameCount()));
   }
 
   function handlePlayRangeClick(event: MouseEvent) {
@@ -156,7 +170,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     const target = event.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
     const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0;
-    const frame = playRange.startFrame + Math.round(ratio * Math.max(0, playRange.frameCount - 1));
+    const frame = Math.round(ratio * Math.max(0, safeFrameCount - 1));
+    props.onPreviewPlayFrame?.(frame);
     props.onInspectPlayFrame(frame);
   }
 
@@ -289,12 +304,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <input
                   type="number"
                   min={PHYSIC_PAINT_MIN_APPLY_FRAMES}
-                  max={PHYSIC_PAINT_MAX_APPLY_FRAMES}
+                  max={getMaxFrameCount()}
                   value={safeFrameCount}
                   onInput={handleFrameCountInput}
                   aria-label="Play canvas frame count"
                 />
               </label>
+              {playLimitMessage ? <span class="physics-paint-play-limit-message">{playLimitMessage}</span> : null}
               <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Play preview" disabled={props.ready === false} onClick={() => props.onPlayPreview(safeFrameCount)}><Play size={15} /></button>
@@ -352,6 +368,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 >
                   <span class="physics-paint-play-range-fill" style={{ left: `${playStartOffset}px`, width: `${playEndOffset - playStartOffset}px` }} />
                   <span class="physics-paint-play-range-point start" style={{ left: `${playStartOffset}px` }} />
+                  <span class="physics-paint-play-range-point current" style={{ left: `${playPreviewOffset}px` }} aria-label={`Current Play preview frame ${clampedPreviewFrame}`} />
                   <span class="physics-paint-play-range-point end" style={{ left: `${playEndOffset}px` }} />
                 </button>
               </div>
