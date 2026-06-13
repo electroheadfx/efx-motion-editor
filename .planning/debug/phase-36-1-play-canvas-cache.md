@@ -1,5 +1,5 @@
 ---
-status: investigating
+status: testing
 trigger: "Phase 36.1 final human visual verification reported Play canvas cache, timeline, render preview, and stroke-width issues."
 created: "2026-06-13T22:20:00.000Z"
 updated: "2026-06-13T23:37:30.000Z"
