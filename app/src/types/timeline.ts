@@ -2,6 +2,13 @@ import type { LayerType } from './layer';
 import type {WaveformPeaks, FadeCurve} from './audio';
 import type {GlTransition, GradientData} from './sequence';
 
+export interface TimelinePlayScriptMarker {
+  id: string;
+  startFrame: number;
+  frameCount: number;
+  active: boolean;
+}
+
 export interface TimelineState {
   currentFrame: number;
   isPlaying: boolean;
@@ -45,6 +52,7 @@ export interface FxTrackLayout {
   visible: boolean;  // false when FX sequence is hidden (toggled off)
   thumbnailImageId?: string;  // used for thumbnail icon rendering in content overlay range bars
   layerType?: LayerType;      // used to distinguish static-image/image-sequence/video for color and rendering decisions
+  playScriptMarkers?: TimelinePlayScriptMarker[]; // saved Play ranges nested inside physic-paint FX bars
   fadeIn?: { duration: number };
   fadeOut?: { duration: number };
 }
