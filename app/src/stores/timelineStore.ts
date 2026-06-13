@@ -1,5 +1,6 @@
 import {signal, computed, effect} from '@preact/signals';
 import {projectStore} from './projectStore';
+import {currentFrame} from './timelineFrameSignal';
 import {totalFrames as totalFramesSignal, fxTrackLayouts} from '../lib/frameMap';
 
 const ZOOM_MIN = 0.1;
@@ -7,7 +8,6 @@ const ZOOM_MAX = 10;
 const ZOOM_STEP = 1.3;
 const EPSILON = 0.001;
 
-const currentFrame = signal(0);
 const displayFrame = signal(0);
 const isPlaying = signal(false);
 const timelineDragging = signal(false);

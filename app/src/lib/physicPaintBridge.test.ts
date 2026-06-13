@@ -248,7 +248,7 @@ describe('physicPaintBridge', () => {
 
   it('PhysicPaintProperties open action passes the current editor scrubber frame to the bridge', () => {
     const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../components/sidebar/PhysicPaintProperties.tsx'), 'utf8');
-    const openHandlerSource = source.slice(source.indexOf('const handleOpenCanvas'), source.indexOf('return ('));
+    const openHandlerSource = source.slice(source.indexOf('const currentFrame = timelineStore.currentFrame.value'), source.indexOf('};\n\n  return ('));
 
     expect(openHandlerSource).toContain('const currentFrame = timelineStore.currentFrame.value');
     expect(openHandlerSource).toContain('openPhysicPaintCanvas({');

@@ -69,7 +69,7 @@ describe('TimelineRenderer play script marker geometry', () => {
     ]) {
       physicPaintStore.upsertPlayScriptRange('phys-source-1', {
         ...range,
-        editableState: null,
+        editableState: { version: 2, width: 1000, height: 650, strokes: [], settings: { bgMode: 'canvas1', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true } },
         source: 'play',
         cacheStatus: 'cached',
       });
