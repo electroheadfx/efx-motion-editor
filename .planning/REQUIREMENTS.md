@@ -21,6 +21,11 @@ Requirements for the Standalone Physics Paint milestone. This milestone proves `
 - [x] **PAINT-04**: User can test efx-physic-paint as a separate physics paint tool without replacing perfect-freehand basic paint or p5.brush FX paint.
 - [x] **DIAG-01**: User can see engine readiness, canvas/session state, active settings, and errors while testing.
 
+### Physics Paint UI Rebuild
+
+- [x] **UI-REBUILD-01**: User can use a rebuilt physics paint package UI with clear layout, modern controls, and polished interaction states.
+- [x] **UI-REBUILD-02**: Rebuilt UI remains standalone-package-first and does not add editor integration scope beyond rendered-output proof artifacts.
+
 ### Standalone Persistence and Output
 
 - [x] **SAVE-01**: User can save the standalone paint session as JSON.
@@ -74,6 +79,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PAINT-03 | Phase 35 | Complete |
 | PAINT-04 | Phase 35 | Complete |
 | DIAG-01 | Phase 35 | Complete |
+| UI-REBUILD-01 | Phase 36 | Complete |
+| UI-REBUILD-02 | Phase 36 | Complete |
 | SAVE-01 | Phase 36 | Complete |
 | SAVE-02 | Phase 36 | Complete |
 | OUT-01 | Phase 36 | Complete |
@@ -84,8 +91,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 **Coverage:**
 
-- v0.8.0 requirements: 15 total
-- Mapped to phases: 15
+- v0.8.0 requirements: 17 total
+- Mapped to phases: 17
 - Unmapped: 0
 
 ---

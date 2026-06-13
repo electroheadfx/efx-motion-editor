@@ -44,7 +44,8 @@ const PAPER_GRAIN_OPTIONS = [
 
 const GRAIN_STRENGTH_OPTIONS = [
   { label: 'None', value: 0 },
-  { label: 'Soft', value: 0.45 },
+  { label: 'Soft', value: 0.35 },
+  { label: 'Med', value: 0.65 },
   { label: 'Hard', value: 0.95 },
 ];
 
