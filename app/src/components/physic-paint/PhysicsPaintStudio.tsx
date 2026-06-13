@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
@@ -210,8 +211,20 @@ function removeOccupiedRotoFrames(frames: number[], removedFrames: number[]): nu
   return frames.filter((frame) => !removedFrames.includes(frame));
 }
 
+function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement {
+  const state = engine.save();
+  const background = state.settings.bgMode as BgMode;
+  try {
+    engine.setBgMode('transparent');
+    return engine.exportCompositeCanvas();
+  } finally {
+    engine.setBgMode(background);
+    engine.load(state);
+  }
+}
+
 function buildRotoPreviewFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload {
-  const canvas = engine.exportCompositeCanvas();
+  const canvas = exportTransparentStrokeCanvas(engine);
   return {
     frameIndex: 0,
     appFrame,
@@ -219,6 +232,49 @@ function buildRotoPreviewFrame(engine: EfxPaintEngine, appFrame: number): Render
     width: canvas.width,
     height: canvas.height,
   };
+}
+
+function PhysicsPaintCanvasStack(props: { children: ComponentChildren; onionOverlay: ComponentChildren }) {
+  const stackRef = useRef<HTMLDivElement>(null);
+  const [canvasBounds, setCanvasBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const stack = stackRef.current;
+    if (!stack) return;
+    const updateCanvasBounds = () => {
+      const canvas = stack.querySelector('canvas');
+      if (!(canvas instanceof HTMLCanvasElement)) return;
+      const stackRect = stack.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      setCanvasBounds({
+        left: canvasRect.left - stackRect.left,
+        top: canvasRect.top - stackRect.top,
+        width: canvasRect.width,
+        height: canvasRect.height,
+      });
+    };
+    updateCanvasBounds();
+    const resizeObserver = new ResizeObserver(updateCanvasBounds);
+    resizeObserver.observe(stack);
+    const canvas = stack.querySelector('canvas');
+    if (canvas) resizeObserver.observe(canvas);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  return (
+    <div class="physics-paint-canvas-stack" ref={stackRef}>
+      {props.children}
+      {canvasBounds ? (
+        <div
+          class="physics-paint-onion-overlay canvas-region"
+          aria-hidden="true"
+          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+        >
+          {props.onionOverlay}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function makeInitialSettings(): PhysicsPaintStudioSettings {
@@ -1093,7 +1149,17 @@ export function PhysicsPaintStudio() {
         />
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
-          <div class="physics-paint-canvas-stack">
+          <PhysicsPaintCanvasStack
+            onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
+              <img
+                key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`}
+                class={`physics-paint-onion-frame ${frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`}
+                src={frame.dataUrl}
+                style={{ opacity: Math.max(0.18, 0.62 - frame.distance * 0.14) }}
+                alt=""
+              />
+            )) : null}
+          >
             <CanvasMountProbe
               width={canvasWidth}
               height={canvasHeight}
@@ -1103,20 +1169,7 @@ export function PhysicsPaintStudio() {
                 nativePenInputHandlerRef.current = handler;
               }}
             />
-            {onion.enabled && onionPreviewFrames.length > 0 ? (
-              <div class="physics-paint-onion-overlay canvas-region" aria-hidden="true">
-                {onionPreviewFrames.map((frame) => (
-                  <img
-                    key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`}
-                    class={`physics-paint-onion-frame ${frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`}
-                    src={frame.dataUrl}
-                    style={{ opacity: Math.max(0.18, 0.62 - frame.distance * 0.14) }}
-                    alt=""
-                  />
-                ))}
-              </div>
-            ) : null}
-          </div>
+          </PhysicsPaintCanvasStack>
         </section>
 
         {rightPanelCollapsed ? (

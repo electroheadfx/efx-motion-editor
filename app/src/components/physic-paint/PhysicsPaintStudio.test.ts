@@ -5,6 +5,31 @@ import { fileURLToPath } from 'node:url';
 const sourcePath = fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
 
+describe('PhysicsPaintStudio onion preview contract', () => {
+  it('captures transparent stroke previews instead of full paper composite snapshots', () => {
+    const text = source();
+
+    expect(text).toContain('function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement');
+    expect(text).toContain("engine.setBgMode('transparent')");
+    expect(text).toContain('return engine.exportCompositeCanvas()');
+    expect(text).toContain('engine.load(state)');
+    expect(text).toContain('const canvas = exportTransparentStrokeCanvas(engine)');
+    expect(text).not.toContain('const canvas = engine.exportCompositeCanvas();\n  return {\n    frameIndex: 0,\n    appFrame,\n    dataUrl: canvas.toDataURL');
+  });
+
+  it('clips the onion overlay to measured canvas bounds, not the full canvas stack', () => {
+    const text = source();
+
+    expect(text).toContain('function PhysicsPaintCanvasStack');
+    expect(text).toContain('const canvasRect = canvas.getBoundingClientRect()');
+    expect(text).toContain('left: canvasRect.left - stackRect.left');
+    expect(text).toContain('width: canvasRect.width');
+    expect(text).toContain('class="physics-paint-onion-overlay canvas-region"');
+    expect(text).toContain('style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}');
+    expect(text).not.toContain('<div class="physics-paint-onion-overlay canvas-region" aria-hidden="true">');
+  });
+});
+
 describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
   it('initializes workflow mode and Play range from launch context metadata instead of hardcoded Roto defaults', () => {
     const text = source();

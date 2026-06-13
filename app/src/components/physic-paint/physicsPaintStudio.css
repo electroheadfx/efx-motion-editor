@@ -1360,8 +1360,8 @@ button.destructive {
 
 .physics-paint-onion-overlay {
   position: absolute;
-  inset: 0;
   z-index: 3;
+  overflow: hidden;
   pointer-events: none;
   mix-blend-mode: screen;
 }
@@ -1471,7 +1471,7 @@ button.destructive {
 }
 
 .physics-paint-onion-overlay.canvas-region {
-  inset: 16px;
+  inset: auto;
 }
 
 .physics-paint-shortcuts-help {
