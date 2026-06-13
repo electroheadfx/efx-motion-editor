@@ -11,11 +11,24 @@ export type PhysicPaintApplyKind = 'apply-canvas' | 'apply-play-canvas' | 'conve
 export type PhysicPaintWorkflowMode = 'roto' | 'play';
 export type PhysicPaintEditableSource = 'roto' | 'play';
 
+export type PhysicPaintPlayScriptRangeSource = 'play';
+export type PhysicPaintPlayScriptCacheStatus = 'cached' | 'stale' | 'missing';
+
+export interface PhysicPaintPlayScriptRange {
+  id: string;
+  startFrame: number;
+  frameCount: number;
+  editableState: SerializedProject;
+  source?: PhysicPaintPlayScriptRangeSource;
+  cacheStatus?: PhysicPaintPlayScriptCacheStatus;
+}
+
 export interface PhysicPaintWorkflowMetadata {
   workflowMode: PhysicPaintWorkflowMode;
   playStartFrame?: number;
   playFrameCount?: number;
   editableSource?: PhysicPaintEditableSource;
+  playScriptRanges?: PhysicPaintPlayScriptRange[];
 }
 
 export interface PhysicPaintLaunchContext {
@@ -31,6 +44,10 @@ export interface PhysicPaintLaunchContext {
   playFrameCount?: number;
   editableSource?: PhysicPaintEditableSource;
   editableState?: SerializedProject;
+  selectedPlayScriptId?: string;
+  previewFrame?: number;
+  maxPlayFrameCount?: number;
+  maxPlayFrameCountReason?: string;
 }
 
 export interface PhysicPaintFrameSyncMessage {
@@ -137,6 +154,10 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalNonNegativeInteger(value.playStartFrame) &&
     optionalFrameCount(value.playFrameCount) &&
     optionalEditableSource(value.editableSource) &&
+    optionalNonEmptyString(value.selectedPlayScriptId) &&
+    optionalNonNegativeInteger(value.previewFrame) &&
+    optionalFrameCount(value.maxPlayFrameCount) &&
+    (value.maxPlayFrameCountReason === undefined || typeof value.maxPlayFrameCountReason === 'string') &&
     (value.layerName === undefined || typeof value.layerName === 'string') &&
     (value.editableState === undefined || isSerializedProject(value.editableState))
   );
@@ -177,6 +198,44 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   }
 
   return false;
+}
+
+export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPaintPlayScriptRange[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const ranges: PhysicPaintPlayScriptRange[] = [];
+  const ids = new Set<string>();
+
+  for (const candidate of value) {
+    if (!isRecord(candidate)) return null;
+    if (!isNonEmptyString(candidate.id)) return null;
+    if (ids.has(candidate.id)) return null;
+    if (!isNonNegativeInteger(candidate.startFrame)) return null;
+    if (!optionalFrameCount(candidate.frameCount) || candidate.frameCount === undefined) return null;
+    if (!isSerializedProject(candidate.editableState)) return null;
+    if (candidate.source !== undefined && candidate.source !== 'play') return null;
+    if (candidate.cacheStatus !== undefined && candidate.cacheStatus !== 'cached' && candidate.cacheStatus !== 'stale' && candidate.cacheStatus !== 'missing') return null;
+
+    ids.add(candidate.id);
+    ranges.push({
+      id: candidate.id,
+      startFrame: candidate.startFrame,
+      frameCount: candidate.frameCount,
+      editableState: structuredClone(candidate.editableState),
+      ...(candidate.source ? { source: candidate.source } : {}),
+      ...(candidate.cacheStatus ? { cacheStatus: candidate.cacheStatus } : {}),
+    });
+  }
+
+  ranges.sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id));
+
+  let previousEnd = -1;
+  for (const range of ranges) {
+    if (range.startFrame <= previousEnd) return null;
+    previousEnd = range.startFrame + range.frameCount - 1;
+  }
+
+  return ranges;
 }
 
 export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintApplyResult {
@@ -277,6 +336,10 @@ function optionalWorkflowMode(value: unknown): boolean {
 
 function optionalEditableSource(value: unknown): boolean {
   return value === undefined || value === 'roto' || value === 'play';
+}
+
+function optionalNonEmptyString(value: unknown): boolean {
+  return value === undefined || isNonEmptyString(value);
 }
 
 function optionalNonNegativeInteger(value: unknown): boolean {
