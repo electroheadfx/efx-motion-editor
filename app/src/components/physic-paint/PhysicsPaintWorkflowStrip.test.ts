@@ -48,6 +48,20 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('<Timeline');
   });
 
+  it('renders and scrubs Play range markers without starting playback', () => {
+    const code = source();
+    const handlerIndex = code.indexOf('function inspectPlayFrameFromClientX');
+    const handlerBlock = code.slice(handlerIndex, handlerIndex + 2200);
+
+    expect(code).toContain('physics-paint-play-range-label start');
+    expect(code).toContain('physics-paint-play-range-label end');
+    expect(code).toContain('physics-paint-play-scrubber');
+    expect(code).toContain('onPointerDown');
+    expect(handlerBlock).toContain('onInspectPlayFrame');
+    expect(handlerBlock).toContain('Math.min(playRange.endFrame, Math.max(playRange.startFrame');
+    expect(handlerBlock).not.toContain('onPlayPreview');
+  });
+
   it('keeps Play lane clicks inspection-only', () => {
     const code = source();
     const inspectIndex = code.indexOf('onInspectPlayFrame');

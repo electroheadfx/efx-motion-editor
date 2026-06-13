@@ -129,6 +129,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const rulerWidth = props.mode === 'play' ? playRuler.width : 1800;
   const playStartOffset = PLAY_TIMELINE_ORIGIN_OFFSET;
   const playEndOffset = playStartOffset + safeFrameCount * playRuler.frameWidth;
+  const inspectedFrame = Math.min(playRange.endFrame, Math.max(playRange.startFrame, props.currentFrame));
+  const inspectedFrameOffset = playStartOffset + Math.max(0, inspectedFrame - playRange.startFrame) * playRuler.frameWidth;
   const primaryActionLabel = getActivePrimaryActionLabel(props.mode) === SAVE_PLAY_LABEL ? SAVE_PLAY_LABEL : SAVE_ROTO_FRAME_LABEL;
   const onionCount = clampOnionCount(props.onion.count);
   const visibleOnionPreviewFrames = props.isPlaying || !props.onion.enabled
@@ -151,13 +153,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onFrameCountChange(clampPhysicPaintFrameCount(Number(input.value)));
   }
 
-  function handlePlayRangeClick(event: MouseEvent) {
+  function inspectPlayFrameFromClientX(target: HTMLElement, clientX: number) {
+    const rect = target.getBoundingClientRect();
+    const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) : 0;
+    const unclampedFrame = playRange.startFrame + Math.round(ratio * Math.max(0, playRange.frameCount - 1));
+    const frame = Math.min(playRange.endFrame, Math.max(playRange.startFrame, unclampedFrame));
+    props.onInspectPlayFrame(frame);
+  }
+
+  function handlePlayRangePointerDown(event: PointerEvent) {
     if (props.mode !== 'play') return;
     const target = event.currentTarget as HTMLElement;
-    const rect = target.getBoundingClientRect();
-    const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0;
-    const frame = playRange.startFrame + Math.round(ratio * Math.max(0, playRange.frameCount - 1));
-    props.onInspectPlayFrame(frame);
+    target.setPointerCapture(event.pointerId);
+    inspectPlayFrameFromClientX(target, event.clientX);
+    const handlePointerMove = (moveEvent: PointerEvent) => inspectPlayFrameFromClientX(target, moveEvent.clientX);
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture(upEvent.pointerId);
+      target.removeEventListener('pointermove', handlePointerMove);
+      target.removeEventListener('pointerup', handlePointerUp);
+      target.removeEventListener('pointercancel', handlePointerUp);
+    };
+    target.addEventListener('pointermove', handlePointerMove);
+    target.addEventListener('pointerup', handlePointerUp);
+    target.addEventListener('pointercancel', handlePointerUp);
+  }
+
+  function handlePlayRangeClick(event: MouseEvent) {
+    if (props.mode !== 'play') return;
+    inspectPlayFrameFromClientX(event.currentTarget as HTMLElement, event.clientX);
   }
 
   function requestWorkflowModeChange(targetMode: PhysicsPaintWorkflowMode) {
@@ -347,12 +370,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <button
                   class="physics-paint-play-range"
                   style={{ width: `${playEndOffset}px` }}
+                  onPointerDown={(event) => handlePlayRangePointerDown(event as unknown as PointerEvent)}
                   onClick={handlePlayRangeClick}
                   aria-label={`Inspect Play canvas frames ${playRange.startFrame} through ${playRange.endFrame}`}
                 >
                   <span class="physics-paint-play-range-fill" style={{ left: `${playStartOffset}px`, width: `${playEndOffset - playStartOffset}px` }} />
+                  <span class="physics-paint-play-range-label start" style={{ left: `${playStartOffset}px` }}>[{playRange.startFrame}]</span>
+                  <span class="physics-paint-play-range-label end" style={{ left: `${playEndOffset}px` }}>[{playRange.endFrame}]</span>
                   <span class="physics-paint-play-range-point start" style={{ left: `${playStartOffset}px` }} />
                   <span class="physics-paint-play-range-point end" style={{ left: `${playEndOffset}px` }} />
+                  <span class="physics-paint-play-scrubber" style={{ left: `${inspectedFrameOffset}px` }} aria-hidden="true">
+                    <span>{inspectedFrame}</span>
+                  </span>
                 </button>
               </div>
             </div>
