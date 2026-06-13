@@ -392,6 +392,71 @@ export class TimelineRenderer {
   }
 
   /** Draw a single FX sequence as a colored range bar */
+  private drawPhysicPaintPlayScriptMarkers(
+    ctx: CanvasRenderingContext2D,
+    markers: TimelinePlayScriptMarker[],
+    barX: number,
+    barW: number,
+    barY: number,
+    barH: number,
+    frameWidth: number,
+    scrollX: number,
+    canvasWidth: number,
+  ): void {
+    if (markers.length === 0 || barW <= 0) return;
+
+    const colors = getThemeColors();
+    const trackLeft = Math.max(barX, TRACK_HEADER_WIDTH);
+    const trackRight = Math.min(barX + barW, canvasWidth);
+    if (trackRight <= trackLeft) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(trackLeft, barY, trackRight - trackLeft, barH, 3);
+    ctx.clip();
+
+    const rangeH = Math.max(4, Math.min(7, Math.round(barH * 0.34)));
+    const rangeY = barY + Math.round((barH - rangeH) / 2);
+    const centerY = rangeY + rangeH / 2;
+    const endpointRadius = Math.max(2.5, Math.min(4, rangeH * 0.58));
+
+    for (const marker of markers) {
+      if (marker.frameCount <= 0) continue;
+      const { x: markerX, width: markerW } = getTimelinePlayScriptMarkerGeometry(marker, frameWidth, scrollX);
+      const clippedLeft = Math.max(markerX, barX, TRACK_HEADER_WIDTH);
+      const clippedRight = Math.min(markerX + markerW, barX + barW, canvasWidth);
+      const clippedW = Math.max(0, clippedRight - clippedLeft);
+      if (clippedW <= 0) continue;
+
+      const activeStroke = colors.accent;
+      const rangeFill = marker.active ? colors.accent + '66' : 'rgba(255, 255, 255, 0.16)';
+      const endpointFill = marker.active ? colors.accent : 'rgba(255, 255, 255, 0.38)';
+      const outline = marker.active ? 'rgba(255, 255, 255, 0.72)' : 'rgba(255, 255, 255, 0.22)';
+
+      ctx.fillStyle = rangeFill;
+      ctx.beginPath();
+      ctx.roundRect(clippedLeft, rangeY, clippedW, rangeH, rangeH / 2);
+      ctx.fill();
+
+      ctx.strokeStyle = marker.active ? activeStroke : outline;
+      ctx.lineWidth = marker.active ? 1.5 : 1;
+      ctx.stroke();
+
+      for (const endpointX of [markerX, markerX + markerW]) {
+        if (endpointX < trackLeft || endpointX > trackRight) continue;
+        ctx.fillStyle = endpointFill;
+        ctx.beginPath();
+        ctx.arc(endpointX, centerY, endpointRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = outline;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
   private drawFxTrack(
     ctx: CanvasRenderingContext2D,
     fxTrack: FxTrackLayout,
@@ -482,6 +547,20 @@ export class TimelineRenderer {
             }
           }
         }
+      }
+
+      if (fxTrack.layerType === 'physic-paint' && fxTrack.playScriptMarkers && fxTrack.playScriptMarkers.length > 0) {
+        this.drawPhysicPaintPlayScriptMarkers(
+          ctx,
+          fxTrack.playScriptMarkers,
+          barX,
+          barW,
+          barY,
+          barH,
+          frameWidth,
+          scrollX,
+          canvasWidth,
+        );
       }
 
       // Name text inside the bar (shifted right when thumbnail is present)

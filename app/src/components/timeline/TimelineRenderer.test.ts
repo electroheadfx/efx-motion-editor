@@ -47,4 +47,29 @@ describe('TimelineRenderer play script marker source contract', () => {
     expect(markerSource).not.toMatch(/fillText\([^)]*startFrame/);
     expect(markerSource).not.toMatch(/fillText\([^)]*frameCount/);
   });
+
+  it('draws nested polished marker ranges with endpoints and active/subdued styles', () => {
+    const code = source();
+    const markerDrawIndex = code.indexOf('drawPhysicPaintPlayScriptMarkers');
+    const markerDrawSource = code.slice(markerDrawIndex, markerDrawIndex + 2600);
+
+    expect(markerDrawIndex).toBeGreaterThan(-1);
+    expect(markerDrawSource).toContain('ctx.roundRect');
+    expect(markerDrawSource).toContain('ctx.arc');
+    expect(markerDrawSource).toContain('marker.active');
+    expect(markerDrawSource).toContain('colors.accent');
+    expect(markerDrawSource).toContain('rgba(255, 255, 255, 0.38)');
+    expect(markerDrawSource).toContain('Math.max(markerX, barX, TRACK_HEADER_WIDTH)');
+    expect(markerDrawSource).toContain('Math.min(markerX + markerW, barX + barW, canvasWidth)');
+  });
+
+  it('draws play script markers inside physic-paint FX bars without DOM rows or overlays', () => {
+    const code = source();
+    const fxTrackSource = code.slice(code.indexOf('private drawFxTrack'), code.indexOf('/** Draw a Photoshop-style checkerboard'));
+
+    expect(fxTrackSource).toContain("fxTrack.layerType === 'physic-paint'");
+    expect(fxTrackSource).toContain('this.drawPhysicPaintPlayScriptMarkers');
+    expect(code).not.toContain('document.createElement');
+    expect(code).not.toContain('play-script-row');
+  });
 });
