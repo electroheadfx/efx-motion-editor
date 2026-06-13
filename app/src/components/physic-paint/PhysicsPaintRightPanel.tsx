@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { ToolType } from '@efxlab/efx-physic-paint';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../lib/colorUtils';
 import { loadFavoriteColors, loadRecentColors, saveFavoriteColors } from '../../lib/paintPreferences';
-import { clampOnionCount, type PhysicsPaintOnionState } from './physicsPaintWorkflowState';
+import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from './physicsPaintWorkflowState';
 
 export interface PhysicsPaintRightPanelProps {
   activeTool: ToolType;
@@ -181,8 +181,14 @@ export function PhysicsPaintRightPanel({
     .slice(0, 24);
 
   const onionCount = clampOnionCount(onion.count);
+  const onionOpacity = clampOnionOpacity(onion.opacity);
   const updateOnion = (next: Partial<PhysicsPaintOnionState>) => {
-    onOnionChange({ ...onion, ...next, count: clampOnionCount(next.count ?? onion.count) });
+    onOnionChange({
+      ...onion,
+      ...next,
+      count: clampOnionCount(next.count ?? onion.count),
+      opacity: clampOnionOpacity(next.opacity ?? onion.opacity),
+    });
   };
 
   return (
@@ -326,6 +332,11 @@ export function PhysicsPaintRightPanel({
               <span class="physics-paint-right-label">Onion value</span>
               <input id="physics-onion-count" type="range" min={1} max={3} value={onionCount} disabled={onionDisabled} onInput={(event) => updateOnion({ count: Number((event.currentTarget as HTMLInputElement).value) })} />
               <output>{onionCount}</output>
+            </label>
+            <label class="physics-paint-option-row physics-paint-onion-opacity-row" for="physics-onion-opacity">
+              <span class="physics-paint-right-label">Onion opacity</span>
+              <input id="physics-onion-opacity" type="range" min={10} max={100} value={onionOpacity} disabled={onionDisabled} onInput={(event) => updateOnion({ opacity: Number((event.currentTarget as HTMLInputElement).value) })} />
+              <output>{onionOpacity}%</output>
             </label>
           </div>
         )}

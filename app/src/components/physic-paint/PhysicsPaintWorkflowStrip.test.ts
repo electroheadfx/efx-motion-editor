@@ -83,6 +83,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       'Previous',
       'Next',
       'Onion value',
+      'Onion opacity',
+      'physics-onion-opacity',
       'onOnionChange',
     ]) {
       expect(panelCode).toContain(label);

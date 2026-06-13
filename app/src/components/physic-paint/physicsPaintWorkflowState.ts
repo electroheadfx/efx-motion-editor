@@ -20,6 +20,7 @@ export interface PhysicsPaintOnionState {
   previous: boolean;
   next: boolean;
   count: number;
+  opacity: number;
 }
 
 export interface PhysicsPaintPlayRange {
@@ -38,6 +39,15 @@ export function clampOnionCount(value: unknown): number {
   const integer = Math.trunc(numeric);
   if (integer < 1) return 1;
   if (integer > 3) return 3;
+  return integer;
+}
+
+export function clampOnionOpacity(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 60;
+  const integer = Math.trunc(numeric);
+  if (integer < 10) return 10;
+  if (integer > 100) return 100;
   return integer;
 }
 

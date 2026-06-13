@@ -9,7 +9,7 @@ import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT
 import { physicPaintStore } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
-import { clampOnionCount, getPreviewFps, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
+import { clampOnionCount, clampOnionOpacity, getPreviewFps, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
@@ -311,7 +311,7 @@ export function PhysicsPaintStudio() {
   const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialSettings());
   const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>(() => launchContext?.workflowMode ?? 'roto');
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-  const [onion, setOnion] = useState<PhysicsPaintOnionState>({ enabled: true, previous: true, next: true, count: 1 });
+  const [onion, setOnion] = useState<PhysicsPaintOnionState>({ enabled: true, previous: true, next: true, count: 1, opacity: 60 });
   const [savedRotoFrames, setSavedRotoFrames] = useState<PhysicsPaintWorkflowStripFrameMarker[]>([]);
   const [occupiedRotoFrames, setOccupiedRotoFrames] = useState<number[]>([]);
   const [latestPlayFrames, setLatestPlayFrames] = useState<RenderedFramePayload[]>([]);
@@ -1075,7 +1075,10 @@ export function PhysicsPaintStudio() {
     }
   }, [clearActiveSource, currentFrame, framesToApply, isPlaying, navigateToSyncedFrame, playPreview, savePlay, saveRotoFrameAndAdvance, savedRotoFrames, stopPreview, undo, workflowMode]);
 
-  const onionPreviewFrames = buildOnionPreviewFrames();
+  const onionPreviewFrames = buildOnionPreviewFrames().filter((frame) => (
+    (frame.direction === 'previous' && onion.previous) || (frame.direction === 'next' && onion.next)
+  ));
+  const onionOpacity = clampOnionOpacity(onion.opacity) / 100;
   const missingPlayFramesForConversion = useMemo(() => {
     if (!launchContext) return true;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
@@ -1155,7 +1158,7 @@ export function PhysicsPaintStudio() {
                 key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`}
                 class={`physics-paint-onion-frame ${frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`}
                 src={frame.dataUrl}
-                style={{ opacity: Math.max(0.18, 0.62 - frame.distance * 0.14) }}
+                style={{ opacity: Math.max(0.08, onionOpacity - frame.distance * 0.08) }}
                 alt=""
               />
             )) : null}

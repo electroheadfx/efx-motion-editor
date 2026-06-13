@@ -37,6 +37,16 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(css).toContain('mix-blend-mode: multiply');
     expect(css).not.toContain('mix-blend-mode: screen');
   });
+
+  it('applies onion previous/next toggles and opacity to the canvas overlay', () => {
+    const text = source();
+
+    expect(text).toContain('opacity: 60');
+    expect(text).toContain('const onionOpacity = clampOnionOpacity(onion.opacity) / 100');
+    expect(text).toContain("frame.direction === 'previous' && onion.previous");
+    expect(text).toContain("frame.direction === 'next' && onion.next");
+    expect(text).toContain('Math.max(0.08, onionOpacity - frame.distance * 0.08)');
+  });
 });
 
 describe('PhysicsPaintStudio Play relaunch hydration contract', () => {

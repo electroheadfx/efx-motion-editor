@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE,
   clampOnionCount,
+  clampOnionOpacity,
   getActivePrimaryActionLabel,
   getPlayRangeMarker,
   getPreviewFps,
@@ -34,6 +35,14 @@ describe('physicsPaintWorkflowState', () => {
     expect(clampOnionCount(0)).toBe(1);
     expect(clampOnionCount(2.8)).toBe(2);
     expect(clampOnionCount(10)).toBe(3);
+  });
+
+  it('clamps onion opacity to a visible percentage range', () => {
+    expect(clampOnionOpacity(undefined)).toBe(60);
+    expect(clampOnionOpacity(Number.NaN)).toBe(60);
+    expect(clampOnionOpacity(0)).toBe(10);
+    expect(clampOnionOpacity(42.8)).toBe(42);
+    expect(clampOnionOpacity(120)).toBe(100);
   });
 
   it('builds a Play range marker without converting or deleting workflow data (D-23, D-24, D-25, D-28)', () => {
