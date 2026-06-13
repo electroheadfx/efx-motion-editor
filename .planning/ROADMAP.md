@@ -233,6 +233,43 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback
+
+**Goal**: Users can see multiple saved Physics Paint Play script animation ranges as nested markers inside one Physic Paint timeline layer, reopen the correct script from the editor scrubber, preview Play interpolation locally in the standalone window, and render Play scripts sequentially like one artist hand.
+**Depends on**: Phase 36
+**Requirements**: PH36.1-TL, PH36.1-STORE, PH36.1-BRIDGE, PH36.1-PLAY-SCRUB, PH36.1-SEQUENTIAL
+**Success Criteria** (what must be TRUE):
+
+  1. User can see several non-overlapping saved Play script ranges as polished nested markers inside the existing Physic Paint layer bar.
+  2. Marker positions and widths follow the main timeline frame scale, zoom, and horizontal scroll, with the scrubber-contained script highlighted.
+  3. Clicking `[open fx paint canvas]` while the editor scrubber is inside a saved Play range opens that exact script in the standalone Play canvas at the relative preview frame.
+  4. Clicking `[open fx paint canvas]` while the editor scrubber is in a gap opens Roto at the current frame and constrains any new Play script duration to the available no-overlap gap.
+  5. Local Play canvas scrubbing previews in-between frames without moving the main editor playhead and without publishing until `Save play`.
+  6. Existing saved scripts preview cached rendered frames until the user remakes them; `Save play` replaces old cached range frames.
+  7. Play animation renders recorded strokes sequentially with length-weighted allocation, completing the drawing within the chosen duration.
+
+**Plans**: 6 plans
+Plans:
+**Wave 1**
+
+- [ ] 36.1-01-PLAN.md — Define validated multi-range saved Play script contracts, store helpers, persistence, and no-overlap behavior.
+- [ ] 36.1-05-PLAN.md — Replace Play animation timestamp-ratio playback with tested one-hand sequential stroke allocation.
+
+**Wave 2** *(blocked on Wave 1 contract/store completion for Plans 02-03)*
+
+- [ ] 36.1-02-PLAN.md — Resolve scrubber-contained Play launches and gap/Roto max-duration launch contexts.
+- [ ] 36.1-03-PLAN.md — Draw polished nested Play script markers inside Physic Paint timeline bars.
+
+**Wave 3** *(blocked on bridge/store completion)*
+
+- [ ] 36.1-04-PLAN.md — Add standalone Play local scrub preview, max-duration messaging, and cached/live preview switching.
+
+**Wave 4** *(blocked on Waves 2-3 and sequential playback)*
+
+- [ ] 36.1-06-PLAN.md — Thread marker data into live timeline layout, finalize validation, and run user visual verification.
+
+**UI hint**: yes
+
 ### Phase 37: Future Integration Contract and Validation
 
 **Goal**: Developers can validate the standalone milestone and prepare the future editor seam without implementing editor integration now.
