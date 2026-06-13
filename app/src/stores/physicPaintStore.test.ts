@@ -152,6 +152,78 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-2', 4)?.width).toBe(1000);
   });
 
+  it('keeps multiple Play script segments queryable and serializable by containing editor frame', () => {
+    const secondEditableState = { ...editableState, strokes: [{ ...editableState.strokes[0], time: 456 }] };
+
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-first',
+      layerId: 'layer-1',
+      startFrame: 4,
+      frameCount: 7,
+      frames: Array.from({ length: 7 }, (_, index) => makeFrame(index, 4 + index)),
+      editableState,
+    });
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-second',
+      layerId: 'layer-1',
+      startFrame: 30,
+      frameCount: 5,
+      frames: Array.from({ length: 5 }, (_, index) => makeFrame(index, 30 + index)),
+      editableState: secondEditableState,
+    });
+
+    expect(physicPaintStore.getPlayScriptSegments('layer-1')).toEqual([
+      expect.objectContaining({ id: 'layer-1:4:7', startFrame: 4, endFrame: 10, frameCount: 7, editableSource: 'play' }),
+      expect.objectContaining({ id: 'layer-1:30:5', startFrame: 30, endFrame: 34, frameCount: 5, editableSource: 'play' }),
+    ]);
+    expect(physicPaintStore.getPlayScriptSegmentAtFrame('layer-1', 4)?.id).toBe('layer-1:4:7');
+    expect(physicPaintStore.getPlayScriptSegmentAtFrame('layer-1', 10)?.id).toBe('layer-1:4:7');
+    expect(physicPaintStore.getPlayScriptSegmentAtFrame('layer-1', 30)?.id).toBe('layer-1:30:5');
+    expect(physicPaintStore.getPlayScriptSegmentAtFrame('layer-1', 11)).toBeNull();
+
+    const outputs = physicPaintStore.toMceOutputs();
+    expect(outputs[0].play_script_segments).toEqual([
+      expect.objectContaining({ id: 'layer-1:4:7', start_frame: 4, end_frame: 10, frame_count: 7, editable_source: 'play' }),
+      expect.objectContaining({ id: 'layer-1:30:5', start_frame: 30, end_frame: 34, frame_count: 5, editable_source: 'play' }),
+    ]);
+
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(outputs);
+    expect(physicPaintStore.getPlayScriptSegmentAtFrame('layer-1', 32)?.editableState.strokes[0].time).toBe(456);
+  });
+
+  it('records converted Roto ranges as Play script segments and rejects invalid serialized segments', () => {
+    physicPaintStore.setFrame('layer-1', 8, makeFrame(0, 8));
+    const before = physicPaintVersion.value;
+
+    physicPaintStore.convertRotoToPlay({
+      kind: 'convert-roto-to-play',
+      operationId: 'op-convert-script',
+      layerId: 'layer-1',
+      startFrame: 8,
+      frameCount: 2,
+      editableState,
+    });
+
+    expect(physicPaintVersion.value).toBe(before + 1);
+    expect(physicPaintStore.getPlayScriptSegmentAtFrame('layer-1', 9)).toEqual(expect.objectContaining({ startFrame: 8, endFrame: 9, frameCount: 2 }));
+
+    physicPaintStore.loadFromMceOutputs([{
+      layer_id: 'layer-2',
+      frames: [],
+      play_script_segments: [
+        { id: 'bad', start_frame: -1, end_frame: 1, frame_count: 3, editable_source: 'play', editable_state: editableState },
+        { id: 'good', start_frame: 12, end_frame: 13, frame_count: 2, editable_source: 'play', editable_state: editableState },
+      ],
+    }]);
+
+    expect(physicPaintStore.getPlayScriptSegments('layer-2')).toEqual([
+      expect.objectContaining({ id: 'good', startFrame: 12, endFrame: 13, frameCount: 2 }),
+    ]);
+  });
+
   it('round-trips Play workflow metadata with rendered frames and editable source state', () => {
     physicPaintStore.applySequence({
       kind: 'apply-play-canvas',

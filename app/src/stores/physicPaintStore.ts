@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
-import { isPhysicPaintApplyPayload } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayScriptSegment, PhysicPaintRenderedFrame, PhysicPaintSerializedPlayScriptSegment, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
+import { isPhysicPaintApplyPayload, isPhysicPaintSerializedPlayScriptSegment } from '../types/physicPaint';
 
 let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
@@ -11,6 +11,7 @@ type PhysicPaintMceOutput = {
   layer_id: string;
   frames: PhysicPaintRenderedFrame[];
   editable_state?: PhysicPaintApplyPayload['editableState'];
+  play_script_segments?: PhysicPaintSerializedPlayScriptSegment[];
   workflow_mode?: PhysicPaintWorkflowMetadata['workflowMode'];
   play_start_frame?: number;
   play_frame_count?: number;
@@ -26,6 +27,7 @@ type PhysicPaintMceOutputInput = PhysicPaintMceOutput & {
 
 const _frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
 const _editableStates = new Map<string, PhysicPaintApplyPayload['editableState']>();
+const _playScriptSegments = new Map<string, Map<string, PhysicPaintPlayScriptSegment>>();
 const _workflowMetadata = new Map<string, PhysicPaintWorkflowMetadata>();
 let _serializationRevision = 0;
 let _cachedSerializationRevision = -1;
@@ -58,6 +60,63 @@ function _metadataToMce(metadata: PhysicPaintWorkflowMetadata | undefined): Omit
     ...(metadata.playFrameCount !== undefined ? { play_frame_count: metadata.playFrameCount } : {}),
     ...(metadata.editableSource ? { editable_source: metadata.editableSource } : {}),
   };
+}
+
+function _getOrCreatePlayScriptLayer(layerId: string): Map<string, PhysicPaintPlayScriptSegment> {
+  let segments = _playScriptSegments.get(layerId);
+  if (!segments) {
+    segments = new Map();
+    _playScriptSegments.set(layerId, segments);
+  }
+  return segments;
+}
+
+function _makePlayScriptSegmentId(layerId: string, startFrame: number, frameCount: number): string {
+  return `${layerId}:${startFrame}:${frameCount}`;
+}
+
+function _clonePlayScriptSegment(segment: PhysicPaintPlayScriptSegment): PhysicPaintPlayScriptSegment {
+  return { ...segment, editableState: structuredClone(segment.editableState) };
+}
+
+function _upsertPlayScriptSegment(layerId: string, startFrame: number, frameCount: number, editableState: PhysicPaintApplyPayload['editableState']): void {
+  const segment: PhysicPaintPlayScriptSegment = {
+    id: _makePlayScriptSegmentId(layerId, startFrame, frameCount),
+    startFrame,
+    endFrame: startFrame + frameCount - 1,
+    frameCount,
+    editableSource: 'play',
+    editableState: structuredClone(editableState),
+  };
+  _getOrCreatePlayScriptLayer(layerId).set(segment.id, segment);
+}
+
+function _playScriptSegmentToMce(segment: PhysicPaintPlayScriptSegment): PhysicPaintSerializedPlayScriptSegment {
+  return {
+    id: segment.id,
+    start_frame: segment.startFrame,
+    end_frame: segment.endFrame,
+    frame_count: segment.frameCount,
+    editable_source: 'play',
+    editable_state: structuredClone(segment.editableState),
+  };
+}
+
+function _playScriptSegmentFromMce(segment: unknown): PhysicPaintPlayScriptSegment | null {
+  if (!isPhysicPaintSerializedPlayScriptSegment(segment)) return null;
+  return {
+    id: segment.id,
+    startFrame: segment.start_frame,
+    endFrame: segment.end_frame,
+    frameCount: segment.frame_count,
+    editableSource: 'play',
+    editableState: structuredClone(segment.editable_state),
+  };
+}
+
+function _getSortedPlayScriptSegments(layerId: string): PhysicPaintPlayScriptSegment[] {
+  return Array.from(_playScriptSegments.get(layerId)?.values() ?? [])
+    .sort((a, b) => a.startFrame - b.startFrame || a.endFrame - b.endFrame || a.id.localeCompare(b.id));
 }
 
 function _metadataFromMce(output: PhysicPaintMceOutputInput): PhysicPaintWorkflowMetadata | null {
@@ -104,6 +163,18 @@ export const physicPaintStore = {
     return metadata ? { ...metadata } : null;
   },
 
+  getPlayScriptSegments(layerId: string): PhysicPaintPlayScriptSegment[] {
+    return _getSortedPlayScriptSegments(layerId).map(_clonePlayScriptSegment);
+  },
+
+  getPlayScriptSegmentAtFrame(layerId: string, frame: number): PhysicPaintPlayScriptSegment | null {
+    if (!Number.isInteger(frame) || frame < 0) return null;
+    const segment = _getSortedPlayScriptSegments(layerId)
+      .filter(item => item.startFrame <= frame && frame <= item.endFrame)
+      .sort((a, b) => b.startFrame - a.startFrame || b.endFrame - a.endFrame || a.id.localeCompare(b.id))[0];
+    return segment ? _clonePlayScriptSegment(segment) : null;
+  },
+
   getFrames(layerId: string): Map<number, PhysicPaintRenderedFrame> {
     return new Map(_frames.get(layerId) ?? []);
   },
@@ -113,7 +184,7 @@ export const physicPaintStore = {
       return _cachedMceOutputs;
     }
 
-    const layerIds = new Set([..._frames.keys(), ..._editableStates.keys(), ..._workflowMetadata.keys()]);
+    const layerIds = new Set([..._frames.keys(), ..._editableStates.keys(), ..._playScriptSegments.keys(), ..._workflowMetadata.keys()]);
     const outputs = Array.from(layerIds)
       .map((layerId) => {
         const frames = _frames.get(layerId) ?? new Map<number, PhysicPaintRenderedFrame>();
@@ -123,10 +194,11 @@ export const physicPaintStore = {
             .sort(([a], [b]) => a - b)
             .map(([frame, renderedFrame]) => ({ ...renderedFrame, appFrame: frame })),
           ...(_editableStates.has(layerId) ? { editable_state: structuredClone(_editableStates.get(layerId)!) } : {}),
+          ...(_playScriptSegments.has(layerId) ? { play_script_segments: _getSortedPlayScriptSegments(layerId).map(_playScriptSegmentToMce) } : {}),
           ..._metadataToMce(_workflowMetadata.get(layerId)),
         };
       })
-      .filter(output => output.frames.length > 0 || output.editable_state || output.workflow_mode);
+      .filter(output => output.frames.length > 0 || output.editable_state || (output.play_script_segments?.length ?? 0) > 0 || output.workflow_mode);
 
     _cachedMceOutputs = outputs;
     _cachedSerializationRevision = _serializationRevision;
@@ -136,6 +208,7 @@ export const physicPaintStore = {
   loadFromMceOutputs(outputs: PhysicPaintMceOutputInput[] | null | undefined): void {
     _frames.clear();
     _editableStates.clear();
+    _playScriptSegments.clear();
     _workflowMetadata.clear();
     for (const output of outputs ?? []) {
       if (!output || typeof output.layer_id !== 'string' || !Array.isArray(output.frames)) continue;
@@ -147,6 +220,10 @@ export const physicPaintStore = {
       }
       if (layerFrames.size === 0) _frames.delete(output.layer_id);
       if (output.editable_state) _editableStates.set(output.layer_id, structuredClone(output.editable_state));
+      for (const rawSegment of output.play_script_segments ?? []) {
+        const segment = _playScriptSegmentFromMce(rawSegment);
+        if (segment) _getOrCreatePlayScriptLayer(output.layer_id).set(segment.id, segment);
+      }
       const metadata = _metadataFromMce(output);
       if (metadata) _workflowMetadata.set(output.layer_id, metadata);
     }
@@ -212,6 +289,7 @@ export const physicPaintStore = {
       layerFrames.set(appFrame, { ...renderedFrame, appFrame });
     });
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    _upsertPlayScriptSegment(payload.layerId, payload.startFrame, payload.frameCount, payload.editableState);
     _workflowMetadata.set(payload.layerId, {
       workflowMode: 'play',
       playStartFrame: payload.startFrame,
@@ -273,6 +351,7 @@ export const physicPaintStore = {
       if (layerFrames.size === 0) _frames.delete(payload.layerId);
     }
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    _upsertPlayScriptSegment(payload.layerId, payload.startFrame, payload.frameCount, payload.editableState);
     _workflowMetadata.set(payload.layerId, {
       workflowMode: 'play',
       playStartFrame: payload.startFrame,
@@ -296,17 +375,19 @@ export const physicPaintStore = {
   },
 
   clearLayer(layerId: string): void {
-    if (!_frames.has(layerId) && !_editableStates.has(layerId) && !_workflowMetadata.has(layerId)) return;
+    if (!_frames.has(layerId) && !_editableStates.has(layerId) && !_playScriptSegments.has(layerId) && !_workflowMetadata.has(layerId)) return;
     _frames.delete(layerId);
     _editableStates.delete(layerId);
+    _playScriptSegments.delete(layerId);
     _workflowMetadata.delete(layerId);
     _notifyVisualChange();
   },
 
   reset(): void {
-    if (_frames.size === 0 && _editableStates.size === 0 && _workflowMetadata.size === 0) return;
+    if (_frames.size === 0 && _editableStates.size === 0 && _playScriptSegments.size === 0 && _workflowMetadata.size === 0) return;
     _frames.clear();
     _editableStates.clear();
+    _playScriptSegments.clear();
     _workflowMetadata.clear();
     _notifyVisualChange();
   },

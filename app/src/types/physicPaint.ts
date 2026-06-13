@@ -18,6 +18,24 @@ export interface PhysicPaintWorkflowMetadata {
   editableSource?: PhysicPaintEditableSource;
 }
 
+export interface PhysicPaintPlayScriptSegment {
+  id: string;
+  startFrame: number;
+  endFrame: number;
+  frameCount: number;
+  editableSource: 'play';
+  editableState: SerializedProject;
+}
+
+export interface PhysicPaintSerializedPlayScriptSegment {
+  id: string;
+  start_frame: number;
+  end_frame: number;
+  frame_count: number;
+  editable_source: 'play';
+  editable_state: SerializedProject;
+}
+
 export interface PhysicPaintLaunchContext {
   operationId: string;
   layerId: string;
@@ -197,6 +215,36 @@ export function isPhysicPaintApplyResultMessage(value: unknown): value is Physic
     isRecord(value) &&
       value.type === 'physic-paint:apply-result' &&
       isPhysicPaintApplyResult(value.payload)
+  );
+}
+
+export function isPhysicPaintPlayScriptSegment(value: unknown): value is PhysicPaintPlayScriptSegment {
+  if (!isRecord(value)) return false;
+  return (
+    isNonEmptyString(value.id) &&
+    isNonNegativeInteger(value.startFrame) &&
+    isNonNegativeInteger(value.endFrame) &&
+    isNonNegativeInteger(value.frameCount) &&
+    value.frameCount >= PHYSIC_PAINT_MIN_APPLY_FRAMES &&
+    value.frameCount <= PHYSIC_PAINT_MAX_APPLY_FRAMES &&
+    value.endFrame === value.startFrame + value.frameCount - 1 &&
+    value.editableSource === 'play' &&
+    isSerializedProject(value.editableState)
+  );
+}
+
+export function isPhysicPaintSerializedPlayScriptSegment(value: unknown): value is PhysicPaintSerializedPlayScriptSegment {
+  if (!isRecord(value)) return false;
+  return (
+    isNonEmptyString(value.id) &&
+    isNonNegativeInteger(value.start_frame) &&
+    isNonNegativeInteger(value.end_frame) &&
+    isNonNegativeInteger(value.frame_count) &&
+    value.frame_count >= PHYSIC_PAINT_MIN_APPLY_FRAMES &&
+    value.frame_count <= PHYSIC_PAINT_MAX_APPLY_FRAMES &&
+    value.end_frame === value.start_frame + value.frame_count - 1 &&
+    value.editable_source === 'play' &&
+    isSerializedProject(value.editable_state)
   );
 }
 
