@@ -143,6 +143,96 @@ describe('physicPaintBridge', () => {
     expect(context.operationId).toMatch(/^physic-paint-/);
   });
 
+  it('opens the saved Play script containing the scrubber frame with relative preview frame', () => {
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-a',
+      startFrame: 0,
+      frameCount: 5,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 10);
+
+    expect(context).toMatchObject({
+      layerId: 'phys-layer-1',
+      workflowMode: 'play',
+      startFrame: 8,
+      playStartFrame: 8,
+      playFrameCount: 4,
+      selectedPlayScriptId: 'play-b',
+      previewFrame: 2,
+      editableSource: 'play',
+      editableState,
+    });
+    expect(context.maxPlayFrameCount).toBeUndefined();
+  });
+
+  it('opens Roto in a gap with a max Play frame count before the next saved script', () => {
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 5);
+
+    expect(context).toMatchObject({
+      layerId: 'phys-layer-1',
+      workflowMode: 'roto',
+      startFrame: 5,
+      editableSource: 'roto',
+      maxPlayFrameCount: 3,
+    });
+    expect(context.maxPlayFrameCountReason).toContain('before the next saved Play script');
+    expect(context.selectedPlayScriptId).toBeUndefined();
+    expect(context.playStartFrame).toBeUndefined();
+    expect(context.playFrameCount).toBeUndefined();
+  });
+
+  it('opens Roto after the last saved range instead of choosing the nearest Play script', () => {
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-a',
+      startFrame: 0,
+      frameCount: 5,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 14);
+
+    expect(context).toMatchObject({
+      workflowMode: 'roto',
+      startFrame: 14,
+      editableSource: 'roto',
+      maxPlayFrameCount: 600,
+    });
+    expect(context.selectedPlayScriptId).toBeUndefined();
+    expect(context.playStartFrame).toBeUndefined();
+    expect(context.playFrameCount).toBeUndefined();
+  });
+
   it('rejects non physics paint layers before opening a window', async () => {
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
     const result = await openPhysicPaintCanvas({ layer: physicLayer({ type: 'paint', source: { type: 'paint', layerId: 'paint-1' } }), frame: 0 });
@@ -169,6 +259,78 @@ describe('physicPaintBridge', () => {
     expect(url).toContain('/physics-paint');
     expect(url).toContain('context=');
     expect(focus).toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  it('encodes the selected saved script launch context in the browser fallback URL', async () => {
+    const focus = vi.fn();
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 10, canvas: { width: 1280, height: 720 } });
+
+    expect(result.ok).toBe(true);
+    const url = String(open.mock.calls[0][0]);
+    const parsed = new URL(url, 'http://localhost:1420');
+    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
+    expect(context).toMatchObject({
+      workflowMode: 'play',
+      startFrame: 8,
+      playStartFrame: 8,
+      playFrameCount: 4,
+      selectedPlayScriptId: 'play-b',
+      previewFrame: 2,
+      editableSource: 'play',
+    });
+    open.mockRestore();
+  });
+
+  it('encodes gap launch constraints in the browser fallback URL', async () => {
+    const focus = vi.fn();
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 5, canvas: { width: 1280, height: 720 } });
+
+    expect(result.ok).toBe(true);
+    const url = String(open.mock.calls[0][0]);
+    const parsed = new URL(url, 'http://localhost:1420');
+    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
+    expect(context).toMatchObject({
+      workflowMode: 'roto',
+      startFrame: 5,
+      maxPlayFrameCount: 3,
+      editableSource: 'roto',
+    });
+    expect(context.maxPlayFrameCountReason).toContain('before the next saved Play script');
+    expect(context.selectedPlayScriptId).toBeUndefined();
+    open.mockRestore();
+  });
+
+  it('rejects invalid launch contexts before opening a window', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+
+    const result = await openPhysicPaintCanvas({
+      layer: physicLayer({ source: { type: 'physic-paint', layerId: '' } }),
+      frame: 4,
+    });
+
+    expect(result).toEqual({ ok: false, error: 'Invalid physics paint launch context' });
+    expect(open).not.toHaveBeenCalled();
     open.mockRestore();
   });
 
@@ -511,7 +673,7 @@ describe('physicPaintBridge', () => {
       frames: [makeFrame(0, 18), makeFrame(1, 19), makeFrame(2, 20)],
     }));
 
-    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 4, canvas: { width: 1280, height: 720 }, fps: 30 });
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 19, canvas: { width: 1280, height: 720 }, fps: 30 });
 
     expect(result.ok).toBe(true);
     const url = String(open.mock.calls[0][0]);
