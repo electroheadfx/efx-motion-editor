@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
 import { isPhysicPaintApplyPayload } from '../types/physicPaint';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -11,10 +11,22 @@ type PhysicPaintMceOutput = {
   layer_id: string;
   frames: PhysicPaintRenderedFrame[];
   editable_state?: PhysicPaintApplyPayload['editableState'];
+  workflow_mode?: PhysicPaintWorkflowMetadata['workflowMode'];
+  play_start_frame?: number;
+  play_frame_count?: number;
+  editable_source?: PhysicPaintWorkflowMetadata['editableSource'];
+};
+
+type PhysicPaintMceOutputInput = PhysicPaintMceOutput & {
+  workflowMode?: PhysicPaintWorkflowMetadata['workflowMode'];
+  playStartFrame?: number;
+  playFrameCount?: number;
+  editableSource?: PhysicPaintWorkflowMetadata['editableSource'];
 };
 
 const _frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
 const _editableStates = new Map<string, PhysicPaintApplyPayload['editableState']>();
+const _workflowMetadata = new Map<string, PhysicPaintWorkflowMetadata>();
 let _serializationRevision = 0;
 let _cachedSerializationRevision = -1;
 let _cachedMceOutputs: PhysicPaintMceOutput[] = [];
@@ -36,6 +48,33 @@ function _notifyVisualChange(): void {
   _invalidateSerializationCache();
   physicPaintVersion.value++;
   _markProjectDirty?.();
+}
+
+function _metadataToMce(metadata: PhysicPaintWorkflowMetadata | undefined): Omit<PhysicPaintMceOutput, 'layer_id' | 'frames' | 'editable_state'> {
+  if (!metadata) return {};
+  return {
+    workflow_mode: metadata.workflowMode,
+    ...(metadata.playStartFrame !== undefined ? { play_start_frame: metadata.playStartFrame } : {}),
+    ...(metadata.playFrameCount !== undefined ? { play_frame_count: metadata.playFrameCount } : {}),
+    ...(metadata.editableSource ? { editable_source: metadata.editableSource } : {}),
+  };
+}
+
+function _metadataFromMce(output: PhysicPaintMceOutputInput): PhysicPaintWorkflowMetadata | null {
+  const workflowMode = output.workflow_mode ?? output.workflowMode;
+  if (workflowMode !== 'roto' && workflowMode !== 'play') return null;
+  const playStartFrame = output.play_start_frame ?? output.playStartFrame;
+  const playFrameCount = output.play_frame_count ?? output.playFrameCount;
+  const editableSource = output.editable_source ?? output.editableSource;
+  if (playStartFrame !== undefined && (!Number.isInteger(playStartFrame) || playStartFrame < 0)) return null;
+  if (playFrameCount !== undefined && (!Number.isInteger(playFrameCount) || playFrameCount < 1)) return null;
+  if (editableSource !== undefined && editableSource !== 'roto' && editableSource !== 'play') return null;
+  return {
+    workflowMode,
+    ...(playStartFrame !== undefined ? { playStartFrame } : {}),
+    ...(playFrameCount !== undefined ? { playFrameCount } : {}),
+    ...(editableSource ? { editableSource } : {}),
+  };
 }
 
 function _errorResult(payload: Pick<PhysicPaintApplyPayload, 'kind' | 'operationId' | 'layerId' | 'startFrame'>, error: string): PhysicPaintApplyResult {
@@ -60,6 +99,11 @@ export const physicPaintStore = {
     return state ? structuredClone(state) : null;
   },
 
+  getWorkflowMetadata(layerId: string): PhysicPaintWorkflowMetadata | null {
+    const metadata = _workflowMetadata.get(layerId);
+    return metadata ? { ...metadata } : null;
+  },
+
   getFrames(layerId: string): Map<number, PhysicPaintRenderedFrame> {
     return new Map(_frames.get(layerId) ?? []);
   },
@@ -69,7 +113,7 @@ export const physicPaintStore = {
       return _cachedMceOutputs;
     }
 
-    const layerIds = new Set([..._frames.keys(), ..._editableStates.keys()]);
+    const layerIds = new Set([..._frames.keys(), ..._editableStates.keys(), ..._workflowMetadata.keys()]);
     const outputs = Array.from(layerIds)
       .map((layerId) => {
         const frames = _frames.get(layerId) ?? new Map<number, PhysicPaintRenderedFrame>();
@@ -79,18 +123,20 @@ export const physicPaintStore = {
             .sort(([a], [b]) => a - b)
             .map(([frame, renderedFrame]) => ({ ...renderedFrame, appFrame: frame })),
           ...(_editableStates.has(layerId) ? { editable_state: structuredClone(_editableStates.get(layerId)!) } : {}),
+          ..._metadataToMce(_workflowMetadata.get(layerId)),
         };
       })
-      .filter(output => output.frames.length > 0 || output.editable_state);
+      .filter(output => output.frames.length > 0 || output.editable_state || output.workflow_mode);
 
     _cachedMceOutputs = outputs;
     _cachedSerializationRevision = _serializationRevision;
     return _cachedMceOutputs;
   },
 
-  loadFromMceOutputs(outputs: Array<{ layer_id: string; frames: PhysicPaintRenderedFrame[]; editable_state?: PhysicPaintApplyPayload['editableState'] }> | null | undefined): void {
+  loadFromMceOutputs(outputs: PhysicPaintMceOutputInput[] | null | undefined): void {
     _frames.clear();
     _editableStates.clear();
+    _workflowMetadata.clear();
     for (const output of outputs ?? []) {
       if (!output || typeof output.layer_id !== 'string' || !Array.isArray(output.frames)) continue;
       const layerFrames = _getOrCreateLayer(output.layer_id);
@@ -101,6 +147,8 @@ export const physicPaintStore = {
       }
       if (layerFrames.size === 0) _frames.delete(output.layer_id);
       if (output.editable_state) _editableStates.set(output.layer_id, structuredClone(output.editable_state));
+      const metadata = _metadataFromMce(output);
+      if (metadata) _workflowMetadata.set(output.layer_id, metadata);
     }
     _invalidateSerializationCache();
     physicPaintVersion.value++;
@@ -138,6 +186,7 @@ export const physicPaintStore = {
     }
 
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    _workflowMetadata.set(payload.layerId, { workflowMode: 'roto', editableSource: 'roto' });
     this.setFrame(payload.layerId, payload.startFrame, payload.renderedFrame);
     return {
       operationId: payload.operationId,
@@ -163,6 +212,12 @@ export const physicPaintStore = {
       layerFrames.set(appFrame, { ...renderedFrame, appFrame });
     });
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    _workflowMetadata.set(payload.layerId, {
+      workflowMode: 'play',
+      playStartFrame: payload.startFrame,
+      playFrameCount: payload.frameCount,
+      editableSource: 'play',
+    });
     _notifyVisualChange();
 
     return {
@@ -189,6 +244,7 @@ export const physicPaintStore = {
       layerFrames.set(appFrame, { ...renderedFrame, appFrame });
     });
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    _workflowMetadata.set(payload.layerId, { workflowMode: 'roto', editableSource: 'roto' });
     _notifyVisualChange();
 
     return {
@@ -217,6 +273,12 @@ export const physicPaintStore = {
       if (layerFrames.size === 0) _frames.delete(payload.layerId);
     }
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    _workflowMetadata.set(payload.layerId, {
+      workflowMode: 'play',
+      playStartFrame: payload.startFrame,
+      playFrameCount: payload.frameCount,
+      editableSource: 'play',
+    });
     _notifyVisualChange();
 
     return {
@@ -234,16 +296,18 @@ export const physicPaintStore = {
   },
 
   clearLayer(layerId: string): void {
-    if (!_frames.has(layerId) && !_editableStates.has(layerId)) return;
+    if (!_frames.has(layerId) && !_editableStates.has(layerId) && !_workflowMetadata.has(layerId)) return;
     _frames.delete(layerId);
     _editableStates.delete(layerId);
+    _workflowMetadata.delete(layerId);
     _notifyVisualChange();
   },
 
   reset(): void {
-    if (_frames.size === 0 && _editableStates.size === 0) return;
+    if (_frames.size === 0 && _editableStates.size === 0 && _workflowMetadata.size === 0) return;
     _frames.clear();
     _editableStates.clear();
+    _workflowMetadata.clear();
     _notifyVisualChange();
   },
 

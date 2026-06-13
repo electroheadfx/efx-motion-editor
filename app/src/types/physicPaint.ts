@@ -8,6 +8,15 @@ const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals']);
 
 export type PhysicPaintApplyKind = 'apply-canvas' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play';
+export type PhysicPaintWorkflowMode = 'roto' | 'play';
+export type PhysicPaintEditableSource = 'roto' | 'play';
+
+export interface PhysicPaintWorkflowMetadata {
+  workflowMode: PhysicPaintWorkflowMode;
+  playStartFrame?: number;
+  playFrameCount?: number;
+  editableSource?: PhysicPaintEditableSource;
+}
 
 export interface PhysicPaintLaunchContext {
   operationId: string;
@@ -17,6 +26,10 @@ export interface PhysicPaintLaunchContext {
   width?: number;
   height?: number;
   fps?: number;
+  workflowMode?: PhysicPaintWorkflowMode;
+  playStartFrame?: number;
+  playFrameCount?: number;
+  editableSource?: PhysicPaintEditableSource;
   editableState?: SerializedProject;
 }
 
@@ -120,6 +133,10 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalNumber(value.width) &&
     optionalNumber(value.height) &&
     optionalPositiveNumber(value.fps) &&
+    optionalWorkflowMode(value.workflowMode) &&
+    optionalNonNegativeInteger(value.playStartFrame) &&
+    optionalFrameCount(value.playFrameCount) &&
+    optionalEditableSource(value.editableSource) &&
     (value.layerName === undefined || typeof value.layerName === 'string') &&
     (value.editableState === undefined || isSerializedProject(value.editableState))
   );
@@ -252,6 +269,22 @@ function optionalNumber(value: unknown): boolean {
 
 function optionalPositiveNumber(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isFinite(value) && value > 0);
+}
+
+function optionalWorkflowMode(value: unknown): boolean {
+  return value === undefined || value === 'roto' || value === 'play';
+}
+
+function optionalEditableSource(value: unknown): boolean {
+  return value === undefined || value === 'roto' || value === 'play';
+}
+
+function optionalNonNegativeInteger(value: unknown): boolean {
+  return value === undefined || isNonNegativeInteger(value);
+}
+
+function optionalFrameCount(value: unknown): boolean {
+  return value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= PHYSIC_PAINT_MIN_APPLY_FRAMES && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

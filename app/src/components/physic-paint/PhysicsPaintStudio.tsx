@@ -3,7 +3,7 @@ import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../../types/physicPaint';
-import { clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
+import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
@@ -83,6 +83,10 @@ function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null
   const width = Number(nonEmptyParam(params, 'width', 'w'));
   const height = Number(nonEmptyParam(params, 'height', 'h'));
   const fps = Number(nonEmptyParam(params, 'fps'));
+  const workflowMode = nonEmptyParam(params, 'workflowMode');
+  const playStartFrame = Number(nonEmptyParam(params, 'playStartFrame'));
+  const playFrameCount = Number(nonEmptyParam(params, 'playFrameCount'));
+  const editableSource = nonEmptyParam(params, 'editableSource');
 
   return {
     layerId,
@@ -92,6 +96,10 @@ function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null
     width: Number.isFinite(width) && width > 0 ? width : undefined,
     height: Number.isFinite(height) && height > 0 ? height : undefined,
     fps: Number.isFinite(fps) && fps > 0 ? fps : undefined,
+    workflowMode: workflowMode === 'play' ? 'play' : 'roto',
+    playStartFrame: Number.isInteger(playStartFrame) && playStartFrame >= 0 ? playStartFrame : undefined,
+    playFrameCount: Number.isInteger(playFrameCount) && playFrameCount > 0 ? playFrameCount : undefined,
+    editableSource: editableSource === 'play' ? 'play' : editableSource === 'roto' ? 'roto' : undefined,
   };
 }
 
@@ -243,9 +251,9 @@ export function PhysicsPaintStudio() {
   const [lastError, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
-  const [framesToApply, setFramesToApply] = useState(4);
+  const [framesToApply, setFramesToApply] = useState(() => clampPhysicPaintFrameCount(launchContext?.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES));
   const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialSettings());
-  const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>('roto');
+  const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>(() => launchContext?.workflowMode ?? 'roto');
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [onion, setOnion] = useState<PhysicsPaintOnionState>({ enabled: true, previous: true, next: true, count: 1 });
   const [savedRotoFrames, setSavedRotoFrames] = useState<PhysicsPaintWorkflowStripFrameMarker[]>([]);
@@ -264,7 +272,7 @@ export function PhysicsPaintStudio() {
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
-  const currentFrame = launchContext?.startFrame ?? 0;
+  const currentFrame = launchContext?.workflowMode === 'play' && launchContext.playStartFrame !== undefined ? launchContext.playStartFrame : launchContext?.startFrame ?? 0;
   const previewFps = getPreviewFps(launchContext?.fps);
   const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
     if (!engine || !launchContext) return null;
@@ -315,6 +323,8 @@ export function PhysicsPaintStudio() {
           if (isPhysicPaintLaunchContext(event.payload)) {
             console.info('[PhysicsPaintStudio] launch context received', event.payload);
             setLaunchContext(event.payload);
+            setFramesToApply(clampPhysicPaintFrameCount(event.payload.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES));
+            setWorkflowMode(event.payload.workflowMode ?? 'roto');
             setApplyStatus('idle');
             setApplyMessage(null);
             setLastError(null);
@@ -459,19 +469,19 @@ export function PhysicsPaintStudio() {
     if (!engine || !launchContext) return;
     engine.clear();
     if (workflowMode === 'roto') {
-      rotoFrameStatesRef.current.delete(launchContext.startFrame);
-      rotoPreviewFramesRef.current.delete(launchContext.startFrame);
-      setOccupiedRotoFrames((frames) => frames.filter((frame) => frame !== launchContext.startFrame));
-      setSavedRotoFrames((frames) => frames.filter((frame) => frame.frame !== launchContext.startFrame));
+      rotoFrameStatesRef.current.delete(currentFrame);
+      rotoPreviewFramesRef.current.delete(currentFrame);
+      setOccupiedRotoFrames((frames) => frames.filter((frame) => frame !== currentFrame));
+      setSavedRotoFrames((frames) => frames.filter((frame) => frame.frame !== currentFrame));
       setApplyStatus('success');
-      setApplyMessage(`Cleared roto frame ${launchContext.startFrame}.`);
+      setApplyMessage(`Cleared roto frame ${currentFrame}.`);
       return;
     }
     latestPlayFramesRef.current = [];
     setLatestPlayFrames([]);
     setApplyStatus('success');
-    setApplyMessage(`Cleared Play canvas range ${launchContext.startFrame}–${launchContext.startFrame + clampPhysicPaintFrameCount(framesToApply) - 1}.`);
-  }, [engine, framesToApply, launchContext, workflowMode]);
+    setApplyMessage(`Cleared Play canvas range ${currentFrame}–${currentFrame + clampPhysicPaintFrameCount(framesToApply) - 1}.`);
+  }, [currentFrame, engine, framesToApply, launchContext, workflowMode]);
 
   const dryPaint = useCallback(() => {
     engine?.forceDry();
@@ -479,7 +489,7 @@ export function PhysicsPaintStudio() {
 
   const snapshotCurrentRotoFrame = useCallback(() => {
     if (!engine || !launchContext) return false;
-    const appFrame = launchContext.startFrame;
+    const appFrame = currentFrame;
     const currentState = engine.save();
     if (!hasPhysicsPaintContent(currentState)) {
       rotoFrameStatesRef.current.delete(appFrame);
@@ -491,7 +501,7 @@ export function PhysicsPaintStudio() {
     rotoPreviewFramesRef.current.set(appFrame, buildRotoPreviewFrame(engine, appFrame));
     setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, appFrame));
     return true;
-  }, [engine, launchContext]);
+  }, [currentFrame, engine, launchContext]);
 
   const playPreview = useCallback((frameCount: number) => {
     if (!playerRef.current) return;
@@ -589,7 +599,7 @@ export function PhysicsPaintStudio() {
         setApplyMessage(`Saved roto frame ${frame}.`);
       }
     }
-  }, [canvasHeight, canvasWidth, framesToApply, launchContext?.startFrame, navigateToSyncedFrame]);
+  }, [canvasHeight, canvasWidth, navigateToSyncedFrame]);
 
   useEffect(() => {
     const handleResult = (event: Event) => {
@@ -639,10 +649,10 @@ export function PhysicsPaintStudio() {
 
     try {
       const editableState = engine.save();
-      rotoFrameStatesRef.current.set(launchContext.startFrame, editableState);
-      const renderedFrame = buildRotoPreviewFrame(engine, launchContext.startFrame);
-      rotoPreviewFramesRef.current.set(launchContext.startFrame, renderedFrame);
-      setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, launchContext.startFrame));
+      rotoFrameStatesRef.current.set(currentFrame, editableState);
+      const renderedFrame = buildRotoPreviewFrame(engine, currentFrame);
+      rotoPreviewFramesRef.current.set(currentFrame, renderedFrame);
+      setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, currentFrame));
       setApplyStatus('applying');
       setApplyMessage('Applying physics paint output...');
       setLastError(null);
@@ -653,7 +663,7 @@ export function PhysicsPaintStudio() {
         operationId,
         kind: 'apply-canvas',
         layerId: launchContext.layerId,
-        startFrame: launchContext.startFrame,
+        startFrame: currentFrame,
         editableState,
         renderedFrame,
       };
@@ -669,7 +679,7 @@ export function PhysicsPaintStudio() {
       pendingRotoAdvanceRef.current = null;
       return null;
     }
-  }, [actionContext, readyToApply, startApplyTimeout]);
+  }, [actionContext, currentFrame, readyToApply, startApplyTimeout]);
 
   const savePlay = useCallback(async () => {
     if (!actionContext || !readyToApply || !playerRef.current) return null;
@@ -696,7 +706,7 @@ export function PhysicsPaintStudio() {
             setAnimFrame(frameIndex);
             captured.push({
               frameIndex,
-              appFrame: launchContext.startFrame + frameIndex,
+              appFrame: currentFrame + frameIndex,
               dataUrl: canvas.toDataURL('image/png'),
               width: canvas.width,
               height: canvas.height,
@@ -714,7 +724,7 @@ export function PhysicsPaintStudio() {
         operationId,
         kind: 'apply-play-canvas',
         layerId: launchContext.layerId,
-        startFrame: launchContext.startFrame,
+        startFrame: currentFrame,
         frameCount,
         frames,
         editableState: engine.save(),
@@ -733,12 +743,12 @@ export function PhysicsPaintStudio() {
       setLastError(message);
       return null;
     }
-  }, [actionContext, framesToApply, previewFps, readyToApply, startApplyTimeout]);
+  }, [actionContext, currentFrame, framesToApply, previewFps, readyToApply, startApplyTimeout]);
 
   const saveRotoFrameAndAdvance = useCallback(async () => {
     if (!launchContext) return;
-    await saveRotoFrame(launchContext.startFrame + 1);
-  }, [launchContext, saveRotoFrame]);
+    await saveRotoFrame(currentFrame + 1);
+  }, [currentFrame, launchContext, saveRotoFrame]);
 
   const saveEditableState = useCallback(async () => {
     if (!engine) return;
@@ -790,7 +800,7 @@ export function PhysicsPaintStudio() {
       const canvas = engine.exportCompositeCanvas();
       const frame: RenderedFramePayload = {
         frameIndex: 0,
-        appFrame: launchContext.startFrame,
+        appFrame: currentFrame,
         dataUrl: canvas.toDataURL('image/png'),
         width: canvas.width,
         height: canvas.height,
@@ -799,7 +809,7 @@ export function PhysicsPaintStudio() {
       const manifest = buildPhysicsPaintDebugManifest({
         layerId: launchContext.layerId,
         operationId: `${launchContext.operationId}:debug:${Date.now()}`,
-        startFrame: launchContext.startFrame,
+        startFrame: currentFrame,
         frameCount: 1,
         frames: [frame],
         fps: previewFps,
@@ -813,7 +823,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(message);
       setLastError(message);
     }
-  }, [engine, launchContext, previewFps]);
+  }, [currentFrame, engine, launchContext, previewFps]);
 
   const buildOnionPreviewFrames = useCallback((): PhysicsPaintWorkflowOnionPreviewFrame[] => {
     if (isPlaying || !launchContext) return [];
@@ -843,7 +853,7 @@ export function PhysicsPaintStudio() {
     if (!actionContext) return;
     const { engine, launchContext, bridgeMode } = actionContext;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
-    const expectedFrames = Array.from({ length: frameCount }, (_, index) => launchContext.startFrame + index);
+    const expectedFrames = Array.from({ length: frameCount }, (_, index) => currentFrame + index);
     const playFramesByAppFrame = new Map(latestPlayFramesRef.current.map((frame) => [frame.appFrame, frame]));
     const hasAllFrames = expectedFrames.every((frame) => playFramesByAppFrame.has(frame));
     if (!hasAllFrames) {
@@ -858,7 +868,7 @@ export function PhysicsPaintStudio() {
       operationId,
       kind: 'convert-play-to-roto',
       layerId: launchContext.layerId,
-      startFrame: launchContext.startFrame,
+      startFrame: currentFrame,
       frameCount,
       frames,
       editableState: engine.save(),
@@ -890,13 +900,13 @@ export function PhysicsPaintStudio() {
       setApplyMessage(message);
       setLastError(message);
     }
-  }, [actionContext, framesToApply, startApplyTimeout]);
+  }, [actionContext, currentFrame, framesToApply, startApplyTimeout]);
 
   const convertRotoToPlay = useCallback(async () => {
     if (!actionContext) return;
     const { engine, launchContext, bridgeMode } = actionContext;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
-    const startFrame = launchContext.startFrame;
+    const startFrame = currentFrame;
     const endFrame = startFrame + frameCount - 1;
     const operationId = `${launchContext.operationId}:convert-roto-to-play:${Date.now()}`;
     const payload: PhysicPaintApplyPayload = {
@@ -930,7 +940,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(message);
       setLastError(message);
     }
-  }, [actionContext, framesToApply, startApplyTimeout]);
+  }, [actionContext, currentFrame, framesToApply, startApplyTimeout]);
 
   const handlePhysicsPaintKeyDown = useCallback((event: KeyboardEvent) => {
     if (!isPhysicsPaintShortcutTarget(event.target)) return;
@@ -1010,7 +1020,7 @@ export function PhysicsPaintStudio() {
     if (!launchContext) return true;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
     const playFramesByAppFrame = new Set(latestPlayFrames.map((frame) => frame.appFrame));
-    return Array.from({ length: frameCount }, (_, index) => launchContext.startFrame + index).some((frame) => !playFramesByAppFrame.has(frame));
+    return Array.from({ length: frameCount }, (_, index) => currentFrame + index).some((frame) => !playFramesByAppFrame.has(frame));
   }, [framesToApply, latestPlayFrames, launchContext]);
 
   const goToFirstFrame = useCallback(() => {

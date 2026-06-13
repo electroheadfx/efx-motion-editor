@@ -198,14 +198,19 @@ export function createPhysicPaintLaunchContext(
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const editableState = physicPaintStore.getEditableState(layerId);
+  const workflowMetadata = physicPaintStore.getWorkflowMetadata(layerId);
+  const startFrame = workflowMetadata?.workflowMode === 'play' && workflowMetadata.playStartFrame !== undefined
+    ? workflowMetadata.playStartFrame
+    : Math.max(0, Math.trunc(frame));
   return {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
     layerId,
     layerName: layer.name,
-    startFrame: Math.max(0, Math.trunc(frame)),
+    startFrame,
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
     ...(isFinitePositiveNumber(fps) ? { fps } : {}),
+    ...(workflowMetadata ? workflowMetadata : {}),
     ...(editableState ? { editableState } : {}),
   };
 }

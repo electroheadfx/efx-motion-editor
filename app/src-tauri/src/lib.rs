@@ -25,6 +25,16 @@ struct PhysicsPaintLaunchContext {
     width: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     height: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fps: Option<f64>,
+    #[serde(rename = "workflowMode", skip_serializing_if = "Option::is_none")]
+    workflow_mode: Option<String>,
+    #[serde(rename = "playStartFrame", skip_serializing_if = "Option::is_none")]
+    play_start_frame: Option<u32>,
+    #[serde(rename = "playFrameCount", skip_serializing_if = "Option::is_none")]
+    play_frame_count: Option<u32>,
+    #[serde(rename = "editableSource", skip_serializing_if = "Option::is_none")]
+    editable_source: Option<String>,
     #[serde(rename = "editableState", skip_serializing_if = "Option::is_none")]
     editable_state: Option<Value>,
 }
@@ -118,6 +128,26 @@ fn physics_paint_url(context: &PhysicsPaintLaunchContext) -> String {
     if let Some(height) = context.height {
         url.push_str("&height=");
         url.push_str(&height.to_string());
+    }
+    if let Some(fps) = context.fps {
+        url.push_str("&fps=");
+        url.push_str(&fps.to_string());
+    }
+    if let Some(workflow_mode) = &context.workflow_mode {
+        url.push_str("&workflowMode=");
+        url.push_str(&percent_encoding::utf8_percent_encode(workflow_mode, percent_encoding::NON_ALPHANUMERIC).to_string());
+    }
+    if let Some(play_start_frame) = context.play_start_frame {
+        url.push_str("&playStartFrame=");
+        url.push_str(&play_start_frame.to_string());
+    }
+    if let Some(play_frame_count) = context.play_frame_count {
+        url.push_str("&playFrameCount=");
+        url.push_str(&play_frame_count.to_string());
+    }
+    if let Some(editable_source) = &context.editable_source {
+        url.push_str("&editableSource=");
+        url.push_str(&percent_encoding::utf8_percent_encode(editable_source, percent_encoding::NON_ALPHANUMERIC).to_string());
     }
     url
 }
@@ -468,6 +498,11 @@ mod tests {
             start_frame: 12,
             width: Some(1000),
             height: Some(650),
+            fps: Some(24.0),
+            workflow_mode: Some("play".into()),
+            play_start_frame: Some(12),
+            play_frame_count: Some(5),
+            editable_source: Some("play".into()),
             editable_state: Some(serde_json::json!({
                 "version": 2,
                 "width": 1000,

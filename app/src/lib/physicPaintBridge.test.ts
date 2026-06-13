@@ -398,7 +398,13 @@ describe('physicPaintBridge', () => {
       layer_id: 'hydrated-phys-layer',
     });
     expect(serialized.physic_paint_outputs).toEqual([
-      { layer_id: 'hydrated-phys-layer', frames: [expect.objectContaining({ appFrame: 12 })], editable_state: expect.objectContaining({ strokes: expect.any(Array) }) },
+      expect.objectContaining({
+        layer_id: 'hydrated-phys-layer',
+        frames: [expect.objectContaining({ appFrame: 12 })],
+        editable_state: expect.objectContaining({ strokes: expect.any(Array) }),
+        workflow_mode: 'roto',
+        editable_source: 'roto',
+      }),
     ]);
 
     projectStore.closeProject();
@@ -499,7 +505,11 @@ describe('physicPaintBridge', () => {
   it('includes persisted Play workflow metadata in the encoded browser launch context', async () => {
     const focus = vi.fn();
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
-    physicPaintStore.applySequence(applySequencePayload({ startFrame: 18, frameCount: 3 }));
+    physicPaintStore.applySequence(applySequencePayload({
+      startFrame: 18,
+      frameCount: 3,
+      frames: [makeFrame(0, 18), makeFrame(1, 19), makeFrame(2, 20)],
+    }));
 
     const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 4, canvas: { width: 1280, height: 720 }, fps: 30 });
 
