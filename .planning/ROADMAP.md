@@ -262,7 +262,7 @@ Plans:
 
 **Wave 3** *(blocked on bridge/store completion)*
 
-- [ ] 36.1-04-PLAN.md — Add standalone Play local scrub preview, max-duration messaging, and cached/live preview switching.
+- [x] 36.1-04-PLAN.md — Add standalone Play local scrub preview, max-duration messaging, and cached/live preview switching.
 
 **Wave 4** *(blocked on Waves 2-3 and sequential playback)*
 
