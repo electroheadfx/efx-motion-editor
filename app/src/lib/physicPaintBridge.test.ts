@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
@@ -241,6 +244,17 @@ describe('physicPaintBridge', () => {
     if (!result.ok) expect(result.error).toContain('physic-paint');
     expect(open).not.toHaveBeenCalled();
     open.mockRestore();
+  });
+
+  it('PhysicPaintProperties open action passes the current editor scrubber frame to the bridge', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../components/sidebar/PhysicPaintProperties.tsx'), 'utf8');
+    const openHandlerSource = source.slice(source.indexOf('const handleOpenCanvas'), source.indexOf('return ('));
+
+    expect(openHandlerSource).toContain('const currentFrame = timelineStore.currentFrame.value');
+    expect(openHandlerSource).toContain('openPhysicPaintCanvas({');
+    expect(openHandlerSource).toContain('frame: currentFrame');
+    expect(openHandlerSource).not.toContain('playStartFrame');
+    expect(openHandlerSource).not.toContain('layer.startFrame');
   });
 
   it('uses browser fallback with encoded launch context when Tauri APIs are unavailable', async () => {

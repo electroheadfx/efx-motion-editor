@@ -1,11 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Layer } from '../../types/layer';
 
 vi.mock('../../lib/previewRenderer', () => ({
   createCanvasGradient: vi.fn(),
 }));
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+  const { sequenceStore } = await import('../../stores/sequenceStore');
+  const { physicPaintStore } = await import('../../stores/physicPaintStore');
+  sequenceStore.sequences.value = [];
+  sequenceStore.activeSequenceId.value = null;
+  physicPaintStore.reset();
+});
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'TimelineRenderer.ts');
 const source = () => readFileSync(sourcePath, 'utf8');
@@ -21,6 +31,64 @@ describe('TimelineRenderer play script marker geometry', () => {
 
     expect(geometry.x).toBe(8 * 60 - 120 + TRACK_HEADER_WIDTH);
     expect(geometry.width).toBe(4 * 60);
+  });
+
+  it('threads saved Play ranges into one physic-paint FX layout with only the containing range active', async () => {
+    const { defaultTransform } = await import('../../types/layer');
+    const { fxTrackLayouts } = await import('../../lib/frameMap');
+    const { sequenceStore } = await import('../../stores/sequenceStore');
+    const { physicPaintStore } = await import('../../stores/physicPaintStore');
+    const { timelineStore } = await import('../../stores/timelineStore');
+
+    const layer: Layer = {
+      id: 'render-layer-1',
+      name: 'Physics Paint',
+      type: 'physic-paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'physic-paint', layerId: 'phys-source-1' },
+    };
+    sequenceStore.add({
+      id: 'fx-physic-paint',
+      kind: 'fx',
+      name: 'Physics Paint FX',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 40,
+    });
+    for (const range of [
+      { id: 'play-0', startFrame: 0, frameCount: 5 },
+      { id: 'play-8', startFrame: 8, frameCount: 16 },
+      { id: 'play-30', startFrame: 30, frameCount: 5 },
+    ]) {
+      physicPaintStore.upsertPlayScriptRange('phys-source-1', {
+        ...range,
+        editableState: null,
+        source: 'play',
+        cacheStatus: 'cached',
+      });
+    }
+
+    timelineStore.currentFrame.value = 10;
+    expect(fxTrackLayouts.value).toHaveLength(1);
+    expect(fxTrackLayouts.value[0].playScriptMarkers).toEqual([
+      { id: 'play-0', startFrame: 0, frameCount: 5, active: false },
+      { id: 'play-8', startFrame: 8, frameCount: 16, active: true },
+      { id: 'play-30', startFrame: 30, frameCount: 5, active: false },
+    ]);
+
+    timelineStore.currentFrame.value = 6;
+    expect(fxTrackLayouts.value[0].playScriptMarkers).toEqual([
+      { id: 'play-0', startFrame: 0, frameCount: 5, active: false },
+      { id: 'play-8', startFrame: 8, frameCount: 16, active: false },
+      { id: 'play-30', startFrame: 30, frameCount: 5, active: false },
+    ]);
   });
 });
 
