@@ -8,10 +8,11 @@ use commands::image;
 use commands::project;
 use percent_encoding::percent_decode_str;
 use serde_json::Value;
+use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::Emitter;
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 struct PhysicsPaintLaunchContext {
     #[serde(rename = "operationId")]
     operation_id: String,
@@ -39,6 +40,8 @@ struct PhysicsPaintLaunchContext {
     editable_state: Option<Value>,
 }
 
+struct PhysicsPaintLaunchState(Mutex<Option<PhysicsPaintLaunchContext>>);
+
 #[derive(serde::Serialize)]
 struct PhysicsPaintWindowLaunchResult {
     label: String,
@@ -51,7 +54,14 @@ struct PhysicsPaintWindowLaunchResult {
 }
 
 #[tauri::command]
-async fn open_physics_paint_window(app: tauri::AppHandle, context: PhysicsPaintLaunchContext) -> Result<PhysicsPaintWindowLaunchResult, String> {
+async fn get_physics_paint_launch_context(state: tauri::State<'_, PhysicsPaintLaunchState>) -> Result<Option<PhysicsPaintLaunchContext>, String> {
+    state.0.lock()
+        .map(|context| context.clone())
+        .map_err(|error| format!("Could not read physics paint launch context: {error}"))
+}
+
+#[tauri::command]
+async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_, PhysicsPaintLaunchState>, context: PhysicsPaintLaunchContext) -> Result<PhysicsPaintWindowLaunchResult, String> {
     use tauri::{Emitter, Manager};
 
     let label = "efx-physic-paint";
@@ -59,6 +69,11 @@ async fn open_physics_paint_window(app: tauri::AppHandle, context: PhysicsPaintL
         "[physics-paint] launch requested label={} layer={} frame={}",
         label, context.layer_id, context.start_frame
     );
+
+    {
+        let mut launch_context = state.0.lock().map_err(|error| format!("Could not store physics paint launch context: {error}"))?;
+        *launch_context = Some(context.clone());
+    }
 
     let url = physics_paint_url(&context);
     let window = if let Some(window) = app.get_webview_window(label) {
@@ -158,6 +173,7 @@ use services::tablet;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(PhysicsPaintLaunchState(Mutex::new(None)))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -479,6 +495,7 @@ pub fn run() {
             export::export_encode_video,
             export::export_cleanup_pngs,
             export::export_cleanup_file,
+            get_physics_paint_launch_context,
             open_physics_paint_window,
         ])
         .run(tauri::generate_context!())
@@ -519,5 +536,28 @@ mod tests {
         assert!(url.contains("startFrame=12"));
         assert!(!url.contains("editableState"));
         assert!(!url.contains("strokes"));
+    }
+
+    #[test]
+    fn physics_paint_launch_context_is_cloneable_for_fetch_after_mount() {
+        let context = PhysicsPaintLaunchContext {
+            operation_id: "op-2".into(),
+            layer_id: "layer-2".into(),
+            layer_name: None,
+            start_frame: 4,
+            width: None,
+            height: None,
+            fps: None,
+            workflow_mode: Some("play".into()),
+            play_start_frame: Some(4),
+            play_frame_count: Some(3),
+            editable_source: Some("play".into()),
+            editable_state: Some(serde_json::json!({ "version": 2, "strokes": [{ "pts": [[1, 2]] }] })),
+        };
+
+        let cloned = context.clone();
+
+        assert_eq!(cloned.workflow_mode.as_deref(), Some("play"));
+        assert!(cloned.editable_state.is_some());
     }
 }

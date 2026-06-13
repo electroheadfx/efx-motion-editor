@@ -64,11 +64,21 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
   it('initializes workflow mode and Play range from launch context metadata instead of hardcoded Roto defaults', () => {
     const text = source();
 
-    expect(text).toContain('launchContext?.workflowMode ?? \'roto\'');
+    expect(text).toContain("context?.workflowMode === 'play' || context?.editableSource === 'play'");
+    expect(text).toContain('useState<PhysicsPaintWorkflowMode>(() => getLaunchWorkflowMode(launchContext))');
     expect(text).toContain('launchContext?.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES');
     expect(text).toContain('const currentFrame = launchContext?.startFrame ?? 0');
     expect(text).not.toContain("useState<PhysicsPaintWorkflowMode>('roto')");
     expect(text).not.toContain('useState(4)');
+  });
+
+  it('fetches the stored Tauri launch context after mount so editable Play state is not lost on reopen', () => {
+    const text = source();
+
+    expect(text).toContain("coreApi.invoke('get_physics_paint_launch_context')");
+    expect(text).toContain('isPhysicPaintLaunchContext(storedContext)');
+    expect(text).toContain('applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode)');
+    expect(text).toContain('applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode)');
   });
 
   it('accepts saved Play source metadata through the parsed launch context path', () => {

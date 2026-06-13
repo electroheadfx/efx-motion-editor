@@ -61,6 +61,22 @@ const appendParams = (target: URLSearchParams, raw: string) => {
   params.forEach((value, key) => target.set(key, value));
 };
 
+function getLaunchWorkflowMode(context: PhysicPaintLaunchContext | null): PhysicsPaintWorkflowMode {
+  if (context?.workflowMode === 'play' || context?.editableSource === 'play') return 'play';
+  return 'roto';
+}
+
+function applyLaunchContext(
+  context: PhysicPaintLaunchContext,
+  setLaunchContext: (context: PhysicPaintLaunchContext) => void,
+  setFramesToApply: (frameCount: number) => void,
+  setWorkflowMode: (mode: PhysicsPaintWorkflowMode) => void,
+) {
+  setLaunchContext(context);
+  setFramesToApply(clampPhysicPaintFrameCount(context.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES));
+  setWorkflowMode(getLaunchWorkflowMode(context));
+}
+
 function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null {
   const params = new URLSearchParams(location.search);
   appendParams(params, location.hash);
@@ -316,7 +332,7 @@ export function PhysicsPaintStudio() {
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [framesToApply, setFramesToApply] = useState(() => clampPhysicPaintFrameCount(launchContext?.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES));
   const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialSettings());
-  const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>(() => launchContext?.workflowMode ?? 'roto');
+  const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>(() => getLaunchWorkflowMode(launchContext));
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [onion, setOnion] = useState<PhysicsPaintOnionState>({ enabled: true, previous: true, next: true, count: 1, opacity: 60 });
   const [savedRotoFrames, setSavedRotoFrames] = useState<PhysicsPaintWorkflowStripFrameMarker[]>([]);
@@ -381,14 +397,25 @@ export function PhysicsPaintStudio() {
 
     const installLaunchListener = async () => {
       try {
+        const coreApi = await import('@tauri-apps/api/core');
+        if (typeof coreApi.invoke === 'function') {
+          const storedContext = await coreApi.invoke('get_physics_paint_launch_context');
+          if (!disposed && isPhysicPaintLaunchContext(storedContext)) {
+            console.info('[PhysicsPaintStudio] launch context fetched', storedContext);
+            applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode);
+            setApplyStatus('idle');
+            setApplyMessage(null);
+            setLastError(null);
+            activeOperationIdRef.current = null;
+          }
+        }
+
         const eventApi = await import('@tauri-apps/api/event');
         if (typeof eventApi.listen !== 'function') return;
         unlisten = await eventApi.listen(PHYSIC_PAINT_LAUNCH_EVENT, (event) => {
           if (isPhysicPaintLaunchContext(event.payload)) {
             console.info('[PhysicsPaintStudio] launch context received', event.payload);
-            setLaunchContext(event.payload);
-            setFramesToApply(clampPhysicPaintFrameCount(event.payload.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES));
-            setWorkflowMode(event.payload.workflowMode ?? 'roto');
+            applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode);
             setApplyStatus('idle');
             setApplyMessage(null);
             setLastError(null);
