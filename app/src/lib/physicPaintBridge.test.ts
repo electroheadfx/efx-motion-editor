@@ -470,6 +470,30 @@ describe('physicPaintBridge', () => {
 
     cleanup();
     expect(remove).toHaveBeenCalledWith(PHYSIC_PAINT_APPLY_EVENT, expect.any(Function));
+    expect(remove).toHaveBeenCalledWith('message', expect.any(Function));
+  });
+
+  it('replies to browser fallback postMessage apply payloads through the child source', async () => {
+    mockLayers([physicLayer()]);
+    let listener: ((event: MessageEvent) => void) | undefined;
+    const child = { postMessage: vi.fn() };
+    vi.spyOn(window, 'addEventListener').mockImplementation((event, cb) => {
+      if (event === 'message') listener = cb as (event: MessageEvent) => void;
+    });
+    const dispatch = vi.spyOn(window, 'dispatchEvent').mockReturnValue(true);
+
+    await installPhysicPaintApplyListener();
+    listener?.({
+      origin: 'http://localhost:1420',
+      data: { type: PHYSIC_PAINT_APPLY_EVENT, payload: applyCanvasPayload({ operationId: 'message-op' }) },
+      source: child as unknown as MessageEventSource,
+    } as MessageEvent);
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(child.postMessage).toHaveBeenCalledWith({
+      type: PHYSIC_PAINT_APPLY_RESULT_EVENT,
+      payload: expect.objectContaining({ ok: true, operationId: 'message-op', appliedFrameCount: 1 }),
+    }, 'http://localhost:1420');
   });
 
   it('includes positive finite fps in the encoded browser launch context', async () => {

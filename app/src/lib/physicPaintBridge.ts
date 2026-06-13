@@ -131,19 +131,34 @@ export async function installPhysicPaintApplyListener(onResult?: (result: Physic
     return () => {};
   }
 
-  const listener = (event: Event) => {
+  const customEventListener = (event: Event) => {
     const customEvent = event as CustomEvent;
     handlePayload(customEvent.detail, undefined);
   };
-  window.addEventListener(PHYSIC_PAINT_APPLY_EVENT, listener);
-  return () => window.removeEventListener(PHYSIC_PAINT_APPLY_EVENT, listener);
+  const messageListener = (event: MessageEvent) => {
+    if (event.origin !== window.location?.origin) return;
+    const data = event.data;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+    const message = data as { type?: unknown; payload?: unknown };
+    if (message.type !== PHYSIC_PAINT_APPLY_EVENT) return;
+    const source = event.source && 'postMessage' in event.source ? event.source as Pick<Window, 'postMessage'> : undefined;
+    handlePayload(message.payload, source);
+  };
+  window.addEventListener(PHYSIC_PAINT_APPLY_EVENT, customEventListener);
+  window.addEventListener('message', messageListener);
+  return () => {
+    window.removeEventListener(PHYSIC_PAINT_APPLY_EVENT, customEventListener);
+    window.removeEventListener('message', messageListener);
+  };
 }
 
 function sendBrowserApplyResult(result: PhysicPaintApplyResult, source?: Pick<Window, 'postMessage'> | null): void {
   if (typeof window === 'undefined') return;
+  const message = { type: PHYSIC_PAINT_APPLY_RESULT_EVENT, payload: result };
+  const targetOrigin = window.location?.origin ?? '*';
   window.dispatchEvent?.(new CustomEvent(PHYSIC_PAINT_APPLY_RESULT_EVENT, { detail: result }));
-  source?.postMessage?.({ type: PHYSIC_PAINT_APPLY_RESULT_EVENT, payload: result }, '*');
-  window.opener?.postMessage?.({ type: PHYSIC_PAINT_APPLY_RESULT_EVENT, payload: result }, '*');
+  source?.postMessage?.(message, targetOrigin);
+  window.opener?.postMessage?.(message, targetOrigin);
 }
 
 function resultBase(payload: unknown): Pick<PhysicPaintApplyResult, 'operationId' | 'kind' | 'layerId' | 'startFrame'> {

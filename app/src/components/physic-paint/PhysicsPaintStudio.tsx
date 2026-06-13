@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintLaunchContext } from '../../types/physicPaint';
-import { clampPhysicPaintFrameCount, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../../types/physicPaint';
+import { clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
@@ -19,7 +19,6 @@ const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper
 const DEFAULT_CANVAS_WIDTH = 1000;
 const DEFAULT_CANVAS_HEIGHT = 650;
 type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
-type ApplyKind = 'apply-canvas' | 'apply-play-canvas';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type RenderedFramePayload = PhysicPaintRenderedFrame;
 
@@ -44,31 +43,6 @@ interface PhysicsPaintActionContext {
   engine: EfxPaintEngine;
   launchContext: PhysicPaintLaunchContext;
   bridgeMode: BridgeMode;
-}
-
-interface PhysicPaintApplyPayload {
-  operationId: string;
-  kind: ApplyKind;
-  layerId: string;
-  startFrame: number;
-  editableState: ReturnType<EfxPaintEngine['save']>;
-  renderedFrame?: RenderedFramePayload;
-  frameCount?: number;
-  frames?: RenderedFramePayload[];
-}
-
-interface PhysicPaintApplyResult {
-  operationId: string;
-  ok?: boolean;
-  success?: boolean;
-  kind?: ApplyKind;
-  frame?: number;
-  startFrame?: number;
-  count?: number;
-  frameCount?: number;
-  appliedFrameCount?: number;
-  error?: string;
-  detail?: string;
 }
 
 const nonEmptyParam = (params: URLSearchParams, ...keys: string[]) => {
@@ -162,7 +136,7 @@ async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPayload, bri
 
   if (bridgeMode === 'Browser fallback') {
     if (!window.opener) throw new Error('Browser fallback bridge is unavailable');
-    window.opener.dispatchEvent(new CustomEvent(PHYSIC_PAINT_APPLY_EVENT, { detail: payload }));
+    window.opener.postMessage({ type: PHYSIC_PAINT_APPLY_EVENT, payload }, window.location.origin);
     return;
   }
 
@@ -553,11 +527,10 @@ export function PhysicsPaintStudio() {
     }
     activeOperationIdRef.current = null;
 
-    const ok = detail.ok ?? detail.success ?? false;
-    if (!ok) {
+    if (!detail.ok) {
       pendingRotoAdvanceRef.current = null;
       const message = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
-      const diagnostic = detail.detail || detail.error;
+      const diagnostic = detail.error;
       setApplyStatus('error');
       setApplyMessage(diagnostic ? `${message} ${diagnostic}` : message);
       setLastError(diagnostic ? `${message} ${diagnostic}` : message);
@@ -566,13 +539,13 @@ export function PhysicsPaintStudio() {
 
     setApplyStatus('success');
     setLastError(null);
-    if ((detail.kind ?? 'apply-canvas') === 'apply-play-canvas') {
-      const count = detail.appliedFrameCount ?? detail.count ?? detail.frameCount ?? framesToApply;
-      const frame = detail.startFrame ?? launchContext?.startFrame ?? 0;
+    if (detail.kind === 'apply-play-canvas') {
+      const count = detail.appliedFrameCount;
+      const frame = detail.startFrame;
       const endFrame = frame + Math.max(0, count - 1);
       setApplyMessage(`Saved play range: ${count} frames from ${frame} to ${endFrame} at ${canvasWidth}×${canvasHeight}.`);
     } else {
-      const frame = detail.frame ?? detail.startFrame ?? launchContext?.startFrame ?? 0;
+      const frame = detail.startFrame;
       const nextFrame = pendingRotoAdvanceRef.current;
       setSavedRotoFrames((frames) => [
         ...frames.filter((savedFrame) => savedFrame.frame !== frame),
@@ -593,9 +566,17 @@ export function PhysicsPaintStudio() {
     const handleResult = (event: Event) => {
       handleApplyResult((event as CustomEvent<PhysicPaintApplyResult>).detail);
     };
+    const handleMessageResult = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (isPhysicPaintApplyResultMessage(event.data)) handleApplyResult(event.data.payload);
+    };
 
     window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleResult);
-    return () => window.removeEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleResult);
+    window.addEventListener('message', handleMessageResult);
+    return () => {
+      window.removeEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleResult);
+      window.removeEventListener('message', handleMessageResult);
+    };
   }, [handleApplyResult]);
 
   useEffect(() => {
@@ -623,7 +604,7 @@ export function PhysicsPaintStudio() {
     };
   }, [bridgeMode, handleApplyResult]);
 
-  const saveRotoFrame = useCallback(async () => {
+  const saveRotoFrame = useCallback(async (advanceToFrame: number | null = null) => {
     if (!actionContext || !readyToApply) return null;
     const { engine, launchContext, bridgeMode } = actionContext;
 
@@ -635,6 +616,7 @@ export function PhysicsPaintStudio() {
       setLastError(null);
       const operationId = `${launchContext.operationId}:canvas:${Date.now()}`;
       activeOperationIdRef.current = operationId;
+      pendingRotoAdvanceRef.current = advanceToFrame;
       const canvas = engine.exportCompositeCanvas();
       const payload: PhysicPaintApplyPayload = {
         operationId,
@@ -659,6 +641,7 @@ export function PhysicsPaintStudio() {
       setApplyStatus('error');
       setApplyMessage(message);
       setLastError(message);
+      pendingRotoAdvanceRef.current = null;
       return null;
     }
   }, [actionContext, readyToApply, startApplyTimeout]);
@@ -727,10 +710,9 @@ export function PhysicsPaintStudio() {
   }, [actionContext, framesToApply, previewFps, readyToApply, startApplyTimeout]);
 
   const saveRotoFrameAndAdvance = useCallback(async () => {
-    const payload = await saveRotoFrame();
-    if (!payload?.renderedFrame) return;
-    pendingRotoAdvanceRef.current = payload.startFrame + 1;
-  }, [saveRotoFrame]);
+    if (!launchContext) return;
+    await saveRotoFrame(launchContext.startFrame + 1);
+  }, [launchContext, saveRotoFrame]);
 
   const saveEditableState = useCallback(async () => {
     if (!engine) return;

@@ -67,6 +67,11 @@ export interface PhysicPaintApplyResult {
   error?: string;
 }
 
+export interface PhysicPaintApplyResultMessage {
+  type: 'physic-paint:apply-result';
+  payload: PhysicPaintApplyResult;
+}
+
 export interface PhysicPaintReadinessState {
   ready: boolean;
   engineReady: boolean;
@@ -130,6 +135,27 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   }
 
   return false;
+}
+
+export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintApplyResult {
+  if (!isRecord(value)) return false;
+  return (
+    isNonEmptyString(value.operationId) &&
+    (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas') &&
+    isNonEmptyString(value.layerId) &&
+    isNonNegativeInteger(value.startFrame) &&
+    isNonNegativeInteger(value.appliedFrameCount) &&
+    typeof value.ok === 'boolean' &&
+    (value.error === undefined || typeof value.error === 'string')
+  );
+}
+
+export function isPhysicPaintApplyResultMessage(value: unknown): value is PhysicPaintApplyResultMessage {
+  return Boolean(
+    isRecord(value) &&
+      value.type === 'physic-paint:apply-result' &&
+      isPhysicPaintApplyResult(value.payload)
+  );
 }
 
 function isBaseApplyPayload(value: Record<string, unknown>): value is Record<string, unknown> & {

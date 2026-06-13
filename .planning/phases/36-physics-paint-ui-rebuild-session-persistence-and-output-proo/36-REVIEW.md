@@ -1,130 +1,99 @@
 ---
 phase: 36-physics-paint-ui-rebuild-session-persistence-and-output-proo
-reviewed: 2026-06-13T00:00:00Z
+reviewed: 2026-06-13T07:07:08Z
 depth: standard
-files_reviewed: 28
+files_reviewed: 7
 files_reviewed_list:
-  - app/src/assets/physics-paint-ui/icons/LineiconsEraser.svg
-  - app/src/assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg
-  - app/src/assets/physics-paint-ui/icons/clear-canvas-pencil.svg
-  - app/src/assets/physics-paint-ui/icons/paint-mode-normal.svg
-  - app/src/assets/physics-paint-ui/icons/paint-mode-physics.svg
-  - app/src/assets/physics-paint-ui/icons/physics-all-active-paint.svg
-  - app/src/assets/physics-paint-ui/icons/physics-dry-paint.svg
-  - app/src/assets/physics-paint-ui/icons/physics-last-stroke.svg
-  - app/src/components/physic-paint/PhysicsPaintRightPanel.tsx
-  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
-  - app/src/components/physic-paint/PhysicsPaintToolRail.tsx
-  - app/src/components/physic-paint/PhysicsPaintTopBar.tsx
-  - app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts
-  - app/src/components/physic-paint/PhysicsPaintWorkflowStrip.tsx
-  - app/src/components/physic-paint/physicsPaintDevExport.test.ts
-  - app/src/components/physic-paint/physicsPaintDevExport.ts
-  - app/src/components/physic-paint/physicsPaintSessionFile.test.ts
-  - app/src/components/physic-paint/physicsPaintSessionFile.ts
-  - app/src/components/physic-paint/physicsPaintStudio.css
-  - app/src/components/physic-paint/physicsPaintWorkflowState.test.ts
-  - app/src/components/physic-paint/physicsPaintWorkflowState.ts
-  - app/src/components/sidebar/PhysicPaintProperties.tsx
-  - app/src/lib/physicPaintBridge.test.ts
   - app/src/lib/physicPaintBridge.ts
-  - app/src/stores/physicPaintStore.test.ts
+  - app/src/lib/physicPaintBridge.test.ts
+  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
+  - app/src/components/physic-paint/PhysicsPaintWorkflowStrip.tsx
+  - app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts
   - app/src/stores/physicPaintStore.ts
-  - app/src/types/physicPaint.test.ts
-  - app/src/types/physicPaint.ts
+  - app/src/stores/physicPaintStore.test.ts
 findings:
-  critical: 3
+  critical: 2
   warning: 1
   info: 0
-  total: 4
+  total: 3
 status: issues_found
 ---
 # Phase 36: Code Review Report
 
-**Reviewed:** 2026-06-13T00:00:00Z
+**Reviewed:** 2026-06-13T07:07:08Z
 **Depth:** standard
-**Files Reviewed:** 28
+**Files Reviewed:** 7
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the physics-paint UI rebuild, session persistence, bridge, store, types, tests, CSS, and icon assets. The implementation contains several release-blocking correctness defects in the standalone/browser bridge and workflow actions: the documented browser fallback cannot deliver apply payloads, conversion actions are never reachable from the UI, and roto saves optimistically advance even when the editor never applies the payload. One test-quality issue also allows an unreachable workflow to pass source-string contract tests.
+Re-reviewed the Phase 36 review-fix scope after commits `bac7be3`, `9e8e4b7`, `659381f`, `d24894f`, and `abde5d7`, focusing on the prior CR-01, CR-02, CR-03, and WR-01 findings plus regressions introduced by the fixes.
+
+CR-02's workflow buttons are now reachable from the UI, but the bridge and save-and-advance fixes still have release-blocking correctness gaps. The browser fallback now delivers the apply payload to the opener, but the parent cannot deliver the apply result back to the standalone, so saves still time out in that mode. The roto save-and-advance flow also records the pending advance too late for synchronous apply-result delivery. WR-01 is only partially addressed because the conversion test still inspects source strings instead of exercising the component behavior.
+
+## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: Browser fallback opens with `noopener`, then relies on `window.opener` for apply delivery
+### CR-01: Browser fallback still cannot return apply results to the standalone
 
-**File:** `app/src/lib/physicPaintBridge.ts:271` and `app/src/components/physic-paint/PhysicsPaintStudio.tsx:163-174`
-**Issue:** The non-Tauri launch path opens the standalone window with `noopener,noreferrer`, which intentionally severs `window.opener`. The standalone then classifies itself as `Browser fallback` because `window.dispatchEvent` exists, but `sendPhysicPaintApplyPayload` only dispatches the apply event on the standalone window when there is no opener. The main editor listener is installed in the parent window, so the payload is never delivered and the user hits the 5-second apply timeout. This makes the advertised browser/dev fallback incapable of saving stills or play sequences.
-**Fix:** Use a communication mechanism that survives the fallback launch mode. Either keep an opener for same-origin dev fallback or switch both windows to `postMessage`/`BroadcastChannel` with explicit origin checks. For example:
+**File:** `app/src/lib/physicPaintBridge.ts:134-147` and `app/src/components/physic-paint/PhysicsPaintStudio.tsx:163-166`
+
+**Issue:** The CR-01 fix restored opener-based apply delivery by calling `window.opener.dispatchEvent(...)` from the standalone, but the result path is still one-way. In the parent browser fallback listener, `installPhysicPaintApplyListener` receives a `CustomEvent` with no `event.source`, then calls `sendBrowserApplyResult(result, undefined)`. `sendBrowserApplyResult` dispatches the result on the parent window and optionally posts to `source` or `window.opener`; for the parent editor, `window.opener` is normally null and `source` is undefined. The standalone `PhysicsPaintStudio` listens for `PHYSIC_PAINT_APPLY_RESULT_EVENT` in its own window, so it never receives the success/failure result and still hits the 5-second timeout after a successful parent-side apply.
+
+**Fix:** Use a bidirectional transport that preserves the child window as the reply target. For the same-origin fallback, send the payload with `postMessage` and have the parent listener reply to `event.source`; alternatively use a same-origin `BroadcastChannel` for both apply and result messages. For example:
+
 ```ts
-// If using opener-based same-origin fallback, do not sever opener.
-const opened = window.open(
-  buildPhysicsPaintUrl(context),
-  PHYSIC_PAINT_WINDOW_LABEL,
-  'width=1280,height=900'
-);
+// Standalone
+window.opener.postMessage({ type: PHYSIC_PAINT_APPLY_EVENT, payload }, window.location.origin);
 
-// In the standalone, fail closed when no parent transport exists.
-if (bridgeMode === 'Browser fallback') {
-  if (!window.opener) throw new Error('Browser fallback bridge is unavailable');
-  window.opener.dispatchEvent(new CustomEvent(PHYSIC_PAINT_APPLY_EVENT, { detail: payload }));
-  return;
-}
+// Parent
+const listener = (event: MessageEvent) => {
+  if (event.origin !== window.location.origin) return;
+  if (event.data?.type !== PHYSIC_PAINT_APPLY_EVENT) return;
+  const result = applyPhysicPaintPayload(event.data.payload);
+  event.source?.postMessage({ type: PHYSIC_PAINT_APPLY_RESULT_EVENT, payload: result }, event.origin);
+};
 ```
-If `noopener` is required for security, replace the event-dispatch fallback with a same-origin `BroadcastChannel` implemented on both the parent and standalone windows.
 
-### CR-02: Play/Roto conversion callbacks are wired but unreachable
+Then have the standalone consume the `message` result and/or dispatch it locally to `handleApplyResult`.
 
-**File:** `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.tsx:118-241`
-**Issue:** `PhysicsPaintWorkflowStrip` defines confirmation state and receives `onConvertPlayToRoto` / `onConvertRotoToPlay`, but the only references to `setConfirmation` initialize state and cancel/close the dialog. No button or handler ever sets `confirmation` to `convert-play-to-roto` or `convert-roto-to-play`, so the confirmation dialog and both conversion callbacks are dead code. Users cannot perform either conversion despite `PhysicsPaintStudio` passing functional handlers at lines 1115-1116.
-**Fix:** Add explicit conversion controls that set the confirmation state, with disabled states matching the current mode/readiness. For example:
-```tsx
-<button
-  type="button"
-  class="physics-paint-text-button"
-  disabled={props.mode !== 'play'}
-  onClick={() => setConfirmation('convert-play-to-roto')}
->
-  Convert Play to Roto
-</button>
-<button
-  type="button"
-  class="physics-paint-text-button"
-  disabled={props.mode !== 'roto'}
-  onClick={() => setConfirmation('convert-roto-to-play')}
->
-  Convert Roto to Play
-</button>
-```
-Then cover these controls with an interaction test that clicks the button, confirms, and asserts the corresponding callback fires.
+### CR-02: Roto save-and-advance can miss successful apply results and never advance
 
-### CR-03: Roto save advances and marks frames saved before the editor confirms apply success
+**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:626-733`
 
-**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:597-735`
-**Issue:** `saveRotoFrame` marks the current frame as saved and returns a payload immediately after dispatching it, then `saveRotoFrameAndAdvance` navigates to the next frame before `PHYSIC_PAINT_APPLY_RESULT_EVENT` confirms success. If the bridge listener rejects the payload, the Tauri/browser message fails, or the editor times out, the standalone has already cleared/loaded the next frame and reports the original frame as saved locally. This creates incorrect UI state and risks users continuing work under the assumption that the previous frame was committed to the main project.
-**Fix:** Only advance and mark the frame as saved after the matching successful apply result. One approach is to await a per-operation result promise before returning success from `saveRotoFrame`:
+**Issue:** The CR-03 fix defers advancement until `handleApplyResult`, but `saveRotoFrameAndAdvance` sets `pendingRotoAdvanceRef.current` only after `await saveRotoFrame()` returns. `saveRotoFrame` sends the payload before returning, and browser-style event delivery can be synchronous (`dispatchEvent`) or otherwise faster than the caller setting the pending advance. If the matching apply result is handled before line 732, `handleApplyResult` sees `pendingRotoAdvanceRef.current === null`, marks the frame saved, does not navigate, and clears no future trigger. The caller then sets `pendingRotoAdvanceRef.current` after the only result has already been consumed, leaving the UI stuck on the saved frame with stale pending state.
+
+**Fix:** Establish the pending advance before sending the apply payload, or pass the requested advance into `saveRotoFrame` so the operation state is complete before any result can arrive. For example:
+
 ```ts
-const result = await sendPhysicPaintApplyPayloadAndWaitForResult(payload, bridgeMode);
-if (!result.ok) throw new Error(result.error ?? 'Apply failed');
-setSavedRotoFrames((frames) => [
-  ...frames.filter((frame) => frame.frame !== launchContext.startFrame),
-  { frame: launchContext.startFrame, saved: true, label: `Frame ${launchContext.startFrame}` },
-].sort((a, b) => a.frame - b.frame));
-return payload;
+const saveRotoFrame = useCallback(async (advanceToFrame?: number) => {
+  if (!actionContext || !readyToApply) return null;
+  const { launchContext } = actionContext;
+  pendingRotoAdvanceRef.current = advanceToFrame ?? null;
+  // build operationId, set activeOperationIdRef, send payload, start timeout...
+}, [actionContext, readyToApply, startApplyTimeout]);
+
+const saveRotoFrameAndAdvance = useCallback(async () => {
+  if (!launchContext) return;
+  await saveRotoFrame(launchContext.startFrame + 1);
+}, [launchContext, saveRotoFrame]);
 ```
-Alternatively, keep the optimistic local state but do not call `navigateToSyncedFrame(nextFrame)` until `handleApplyResult` receives the matching successful still-apply result.
+
+Also clear `pendingRotoAdvanceRef.current` in the `saveRotoFrame` catch path so failed sends do not leave stale advancement state.
 
 ## Warnings
 
-### WR-01: Source-string tests allow unreachable workflow code to pass
+### WR-01: Conversion coverage still relies on source-string inspection instead of behavior
 
-**File:** `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts:91-104`
-**Issue:** The destructive-conversion test only checks that labels and callback names appear in the source file. It does not verify that conversion controls render, that `setConfirmation` is reachable, or that confirming invokes `onConvertPlayToRoto` / `onConvertRotoToPlay`. This is why the dead conversion workflow in CR-02 passes tests.
-**Fix:** Replace the source-contract assertion with a rendered interaction test using Preact Testing Library (or the project’s UI test helper). Render `PhysicsPaintWorkflowStrip`, click the conversion button, click Continue in the confirmation dialog, and assert the callback was called; also assert missing Play frames disables the Play→Roto confirmation.
+**File:** `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts:91-112`
+
+**Issue:** The previous WR-01 requested replacing the weak source-contract assertion with an interaction test. The updated test is stronger than before, but it still reads `PhysicsPaintWorkflowStrip.tsx` as text and checks snippets. It does not render the component, click the conversion controls, verify the confirmation dialog appears, or assert that `Continue` invokes `onConvertPlayToRoto` / `onConvertRotoToPlay` under real Preact event wiring. This can still pass while the conversion flow is broken by JSX structure, conditional rendering, event propagation, or disabled-state behavior.
+
+**Fix:** Add real component interaction coverage using the project's Preact test setup. Render `PhysicsPaintWorkflowStrip` in play mode, click `Convert Play to Roto`, click `Continue`, and assert `onConvertPlayToRoto` fires; repeat for roto mode and assert missing Play frames disables/prevents the Play-to-Roto callback.
 
 ---
 
-_Reviewed: 2026-06-13T00:00:00Z_
+_Reviewed: 2026-06-13T07:07:08Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
