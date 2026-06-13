@@ -252,8 +252,8 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 36.1-01-PLAN.md — Define validated multi-range saved Play script contracts, store helpers, persistence, and no-overlap behavior.
-- [ ] 36.1-05-PLAN.md — Replace Play animation timestamp-ratio playback with tested one-hand sequential stroke allocation.
+- [x] 36.1-01-PLAN.md — Define validated multi-range saved Play script contracts, store helpers, persistence, and no-overlap behavior.
+- [x] 36.1-05-PLAN.md — Replace Play animation timestamp-ratio playback with tested one-hand sequential stroke allocation.
 
 **Wave 2** *(blocked on Wave 1 contract/store completion for Plans 02-03)*
 
