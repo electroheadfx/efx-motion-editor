@@ -175,6 +175,60 @@ export const physicPaintStore = {
     };
   },
 
+  convertPlayToRoto(payload: PhysicPaintApplyPayload): PhysicPaintApplyResult {
+    if (!isPhysicPaintApplyPayload(payload)) {
+      return _errorResult(payload, 'Invalid physics paint apply payload');
+    }
+    if (payload.kind !== 'convert-play-to-roto') {
+      return _errorResult(payload, 'Expected convert-play-to-roto payload');
+    }
+
+    const layerFrames = _getOrCreateLayer(payload.layerId);
+    payload.frames.forEach((renderedFrame, index) => {
+      const appFrame = payload.startFrame + index;
+      layerFrames.set(appFrame, { ...renderedFrame, appFrame });
+    });
+    _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    _notifyVisualChange();
+
+    return {
+      operationId: payload.operationId,
+      kind: payload.kind,
+      layerId: payload.layerId,
+      startFrame: payload.startFrame,
+      appliedFrameCount: payload.frames.length,
+      ok: true,
+    };
+  },
+
+  convertRotoToPlay(payload: PhysicPaintApplyPayload): PhysicPaintApplyResult {
+    if (!isPhysicPaintApplyPayload(payload)) {
+      return _errorResult(payload, 'Invalid physics paint apply payload');
+    }
+    if (payload.kind !== 'convert-roto-to-play') {
+      return _errorResult(payload, 'Expected convert-roto-to-play payload');
+    }
+
+    const layerFrames = _frames.get(payload.layerId);
+    if (layerFrames) {
+      for (let offset = 0; offset < payload.frameCount; offset++) {
+        layerFrames.delete(payload.startFrame + offset);
+      }
+      if (layerFrames.size === 0) _frames.delete(payload.layerId);
+    }
+    _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    _notifyVisualChange();
+
+    return {
+      operationId: payload.operationId,
+      kind: payload.kind,
+      layerId: payload.layerId,
+      startFrame: payload.startFrame,
+      appliedFrameCount: payload.frameCount,
+      ok: true,
+    };
+  },
+
   hasOutput(layerId: string): boolean {
     return (_frames.get(layerId)?.size ?? 0) > 0;
   },

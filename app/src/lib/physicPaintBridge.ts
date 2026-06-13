@@ -74,12 +74,16 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
 
   try {
     if (deliveredOperationIds.has(payload.operationId)) {
-      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.frames.length);
+      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.frames.length);
     }
 
     const result = payload.kind === 'apply-canvas'
       ? physicPaintStore.applyCanvas(payload)
-      : physicPaintStore.applySequence(payload);
+      : payload.kind === 'apply-play-canvas'
+        ? physicPaintStore.applySequence(payload)
+        : payload.kind === 'convert-play-to-roto'
+          ? physicPaintStore.convertPlayToRoto(payload)
+          : physicPaintStore.convertRotoToPlay(payload);
     if (result.ok) deliveredOperationIds.add(payload.operationId);
     return result.ok ? result : { ...result, error: `${APPLY_ERROR} ${result.error ?? ''}`.trim() };
   } catch (error) {

@@ -544,6 +544,11 @@ export function PhysicsPaintStudio() {
       const frame = detail.startFrame;
       const endFrame = frame + Math.max(0, count - 1);
       setApplyMessage(`Saved play range: ${count} frames from ${frame} to ${endFrame} at ${canvasWidth}×${canvasHeight}.`);
+    } else if (detail.kind === 'convert-play-to-roto') {
+      setApplyMessage(`Converted ${detail.appliedFrameCount} Play frames to Roto frames.`);
+    } else if (detail.kind === 'convert-roto-to-play') {
+      const endFrame = detail.startFrame + Math.max(0, detail.appliedFrameCount - 1);
+      setApplyMessage(`Converted Roto frames ${detail.startFrame}–${endFrame} to the current Play canvas source.`);
     } else {
       const frame = detail.startFrame;
       const nextFrame = pendingRotoAdvanceRef.current;
@@ -805,8 +810,9 @@ export function PhysicsPaintStudio() {
     return frames.sort((a, b) => b.distance - a.distance);
   }, [currentFrame, isPlaying, latestPlayFrames, launchContext, onion.count]);
 
-  const convertPlayToRoto = useCallback(() => {
-    if (!launchContext) return;
+  const convertPlayToRoto = useCallback(async () => {
+    if (!actionContext) return;
+    const { engine, launchContext, bridgeMode } = actionContext;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
     const expectedFrames = Array.from({ length: frameCount }, (_, index) => launchContext.startFrame + index);
     const playFramesByAppFrame = new Map(latestPlayFrames.map((frame) => [frame.appFrame, frame]));
@@ -817,36 +823,83 @@ export function PhysicsPaintStudio() {
       setLastError(PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE);
       return;
     }
-    expectedFrames.forEach((frame) => {
-      const renderedFrame = playFramesByAppFrame.get(frame);
-      if (renderedFrame) physicPaintStore.setFrame(launchContext.layerId, frame, renderedFrame);
-    });
-    setOccupiedRotoFrames((frames) => [...new Set([...frames, ...expectedFrames])].sort((a, b) => a - b));
-    setSavedRotoFrames((frames) => [
-      ...frames.filter((marker) => !expectedFrames.includes(marker.frame)),
-      ...expectedFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` })),
-    ].sort((a, b) => a.frame - b.frame));
-    setLatestPlayFrames([]);
-    setWorkflowMode('roto');
-    setApplyStatus('success');
-    setApplyMessage(`Converted ${frameCount} Play frames to Roto frames.`);
-  }, [framesToApply, latestPlayFrames, launchContext]);
+    const frames = expectedFrames.map((frame) => playFramesByAppFrame.get(frame)!);
+    const operationId = `${launchContext.operationId}:convert-play-to-roto:${Date.now()}`;
+    const payload: PhysicPaintApplyPayload = {
+      operationId,
+      kind: 'convert-play-to-roto',
+      layerId: launchContext.layerId,
+      startFrame: launchContext.startFrame,
+      frameCount,
+      frames,
+      editableState: engine.save(),
+    };
+    try {
+      setApplyStatus('applying');
+      setApplyMessage('Applying physics paint output...');
+      setLastError(null);
+      activeOperationIdRef.current = operationId;
+      await sendPhysicPaintApplyPayload(payload, bridgeMode);
+      startApplyTimeout(operationId);
+      expectedFrames.forEach((frame) => {
+        const renderedFrame = playFramesByAppFrame.get(frame);
+        if (renderedFrame) physicPaintStore.setFrame(launchContext.layerId, frame, renderedFrame);
+      });
+      setOccupiedRotoFrames((frames) => [...new Set([...frames, ...expectedFrames])].sort((a, b) => a - b));
+      setSavedRotoFrames((frames) => [
+        ...frames.filter((marker) => !expectedFrames.includes(marker.frame)),
+        ...expectedFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` })),
+      ].sort((a, b) => a.frame - b.frame));
+      setLatestPlayFrames([]);
+      setWorkflowMode('roto');
+    } catch (error) {
+      activeOperationIdRef.current = null;
+      const detail = error instanceof Error ? error.message : String(error);
+      const message = `Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. ${detail}`;
+      setApplyStatus('error');
+      setApplyMessage(message);
+      setLastError(message);
+    }
+  }, [actionContext, framesToApply, latestPlayFrames, startApplyTimeout]);
 
-  const convertRotoToPlay = useCallback(() => {
-    if (!engine || !launchContext) return;
+  const convertRotoToPlay = useCallback(async () => {
+    if (!actionContext) return;
+    const { engine, launchContext, bridgeMode } = actionContext;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
     const startFrame = launchContext.startFrame;
     const endFrame = startFrame + frameCount - 1;
-    physicPaintStore.setEditableState(launchContext.layerId, engine.save());
-    physicPaintStore.removeFrameRange(launchContext.layerId, startFrame, frameCount);
-    const convertedFrames = Array.from({ length: frameCount }, (_, index) => startFrame + index);
-    setOccupiedRotoFrames((frames) => removeOccupiedRotoFrames(frames, convertedFrames));
-    setSavedRotoFrames((frames) => frames.filter((marker) => marker.frame < startFrame || marker.frame > endFrame));
-    setLatestPlayFrames([]);
-    setWorkflowMode('play');
-    setApplyStatus('success');
-    setApplyMessage(`Converted Roto frames ${startFrame}–${endFrame} to the current Play canvas source.`);
-  }, [engine, framesToApply, launchContext]);
+    const operationId = `${launchContext.operationId}:convert-roto-to-play:${Date.now()}`;
+    const payload: PhysicPaintApplyPayload = {
+      operationId,
+      kind: 'convert-roto-to-play',
+      layerId: launchContext.layerId,
+      startFrame,
+      frameCount,
+      editableState: engine.save(),
+    };
+    try {
+      setApplyStatus('applying');
+      setApplyMessage('Applying physics paint output...');
+      setLastError(null);
+      activeOperationIdRef.current = operationId;
+      await sendPhysicPaintApplyPayload(payload, bridgeMode);
+      startApplyTimeout(operationId);
+      physicPaintStore.setEditableState(launchContext.layerId, payload.editableState);
+      physicPaintStore.removeFrameRange(launchContext.layerId, startFrame, frameCount);
+      const convertedFrames = Array.from({ length: frameCount }, (_, index) => startFrame + index);
+      setOccupiedRotoFrames((frames) => removeOccupiedRotoFrames(frames, convertedFrames));
+      setSavedRotoFrames((frames) => frames.filter((marker) => marker.frame < startFrame || marker.frame > endFrame));
+      setLatestPlayFrames([]);
+      setWorkflowMode('play');
+    } catch (error) {
+      activeOperationIdRef.current = null;
+      const detail = error instanceof Error ? error.message : String(error);
+      const message = `Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. ${detail}`;
+      setApplyStatus('error');
+      setApplyMessage(message);
+      setLastError(message);
+    }
+  }, [actionContext, framesToApply, startApplyTimeout]);
 
   const handlePhysicsPaintKeyDown = useCallback((event: KeyboardEvent) => {
     if (!isPhysicsPaintShortcutTarget(event.target)) return;

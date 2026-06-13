@@ -7,7 +7,7 @@ export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals']);
 
-export type PhysicPaintApplyKind = 'apply-canvas' | 'apply-play-canvas';
+export type PhysicPaintApplyKind = 'apply-canvas' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play';
 
 export interface PhysicPaintLaunchContext {
   operationId: string;
@@ -55,7 +55,26 @@ export interface PhysicPaintApplyPlayCanvasPayload {
   editableState: SerializedProject;
 }
 
-export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintApplyPlayCanvasPayload;
+export interface PhysicPaintConvertPlayToRotoPayload {
+  kind: 'convert-play-to-roto';
+  operationId: string;
+  layerId: string;
+  startFrame: number;
+  frameCount: number;
+  frames: PhysicPaintRenderedFrame[];
+  editableState: SerializedProject;
+}
+
+export interface PhysicPaintConvertRotoToPlayPayload {
+  kind: 'convert-roto-to-play';
+  operationId: string;
+  layerId: string;
+  startFrame: number;
+  frameCount: number;
+  editableState: SerializedProject;
+}
+
+export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintApplyPlayCanvasPayload | PhysicPaintConvertPlayToRotoPayload | PhysicPaintConvertRotoToPlayPayload;
 
 export interface PhysicPaintApplyResult {
   operationId: string;
@@ -125,13 +144,19 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
     return isPhysicPaintRenderedFrame(value.renderedFrame, value.startFrame, 0);
   }
 
-  if (value.kind === 'apply-play-canvas') {
+  if (value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto') {
     const frameCount = value.frameCount;
     const frames = value.frames;
     if (typeof frameCount !== 'number' || !Number.isInteger(frameCount)) return false;
     if (frameCount < PHYSIC_PAINT_MIN_APPLY_FRAMES || frameCount > PHYSIC_PAINT_MAX_APPLY_FRAMES) return false;
     if (!Array.isArray(frames) || frames.length !== frameCount) return false;
     return frames.every((frame, index) => isPhysicPaintRenderedFrame(frame, value.startFrame + index, index));
+  }
+
+  if (value.kind === 'convert-roto-to-play') {
+    const frameCount = value.frameCount;
+    if (typeof frameCount !== 'number' || !Number.isInteger(frameCount)) return false;
+    return frameCount >= PHYSIC_PAINT_MIN_APPLY_FRAMES && frameCount <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
   }
 
   return false;
@@ -141,7 +166,7 @@ export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintAp
   if (!isRecord(value)) return false;
   return (
     isNonEmptyString(value.operationId) &&
-    (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas') &&
+    (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play') &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
     isNonNegativeInteger(value.appliedFrameCount) &&
@@ -165,7 +190,7 @@ function isBaseApplyPayload(value: Record<string, unknown>): value is Record<str
   startFrame: number;
 } {
   return (
-    (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas') &&
+    (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play') &&
     isNonEmptyString(value.operationId) &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame)

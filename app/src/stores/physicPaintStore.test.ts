@@ -69,6 +69,44 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', 13)).toBeNull();
   });
 
+  it('converts play output into persisted roto frames', () => {
+    const result = physicPaintStore.convertPlayToRoto({
+      kind: 'convert-play-to-roto',
+      operationId: 'op-convert-play',
+      layerId: 'layer-1',
+      startFrame: 10,
+      frameCount: 2,
+      frames: [makeFrame(0, 10), makeFrame(1, 11)],
+      editableState,
+    });
+
+    expect(result).toMatchObject({ ok: true, kind: 'convert-play-to-roto', appliedFrameCount: 2 });
+    expect(physicPaintStore.getFrame('layer-1', 10)?.frameIndex).toBe(0);
+    expect(physicPaintStore.getFrame('layer-1', 11)?.frameIndex).toBe(1);
+    expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
+  });
+
+  it('converts roto frames into play source state by removing rendered frames', () => {
+    physicPaintStore.setFrame('layer-1', 10, makeFrame(0, 10));
+    physicPaintStore.setFrame('layer-1', 11, makeFrame(1, 11));
+    physicPaintStore.setFrame('layer-1', 12, makeFrame(2, 12));
+
+    const result = physicPaintStore.convertRotoToPlay({
+      kind: 'convert-roto-to-play',
+      operationId: 'op-convert-roto',
+      layerId: 'layer-1',
+      startFrame: 10,
+      frameCount: 2,
+      editableState,
+    });
+
+    expect(result).toMatchObject({ ok: true, kind: 'convert-roto-to-play', appliedFrameCount: 2 });
+    expect(physicPaintStore.getFrame('layer-1', 10)).toBeNull();
+    expect(physicPaintStore.getFrame('layer-1', 11)).toBeNull();
+    expect(physicPaintStore.getFrame('layer-1', 12)?.frameIndex).toBe(2);
+    expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
+  });
+
   it('increments version for each successful mutation and marks dirty', () => {
     let dirtyCount = 0;
     _setPhysicPaintMarkDirtyCallback(() => { dirtyCount += 1; });

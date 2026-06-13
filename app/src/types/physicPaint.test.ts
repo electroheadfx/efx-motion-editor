@@ -74,6 +74,25 @@ describe('physic paint payload contracts', () => {
       frames: [renderedFrame],
       editableState,
     })).toBe(true);
+
+    expect(isPhysicPaintApplyPayload({
+      kind: 'convert-play-to-roto',
+      operationId: 'op-3',
+      layerId: 'layer-1',
+      startFrame: 12,
+      frameCount: 1,
+      frames: [renderedFrame],
+      editableState,
+    })).toBe(true);
+
+    expect(isPhysicPaintApplyPayload({
+      kind: 'convert-roto-to-play',
+      operationId: 'op-4',
+      layerId: 'layer-1',
+      startFrame: 12,
+      frameCount: 1,
+      editableState,
+    })).toBe(true);
   });
 
   it('rejects editable engine internals in apply payloads', () => {
