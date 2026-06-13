@@ -1,7 +1,7 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../types/physicPaint';
-import { isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext } from '../types/physicPaint';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { timelineStore } from '../stores/timelineStore';
@@ -197,20 +197,37 @@ export function createPhysicPaintLaunchContext(
   fps?: number | null,
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  const editableState = physicPaintStore.getEditableState(layerId);
-  const workflowMetadata = physicPaintStore.getWorkflowMetadata(layerId);
-  const startFrame = workflowMetadata?.workflowMode === 'play' && workflowMetadata.playStartFrame !== undefined
-    ? workflowMetadata.playStartFrame
-    : Math.max(0, Math.trunc(frame));
+  const currentFrame = Math.max(0, Math.trunc(frame));
+  const containingRange = physicPaintStore.findPlayScriptRangeAtFrame(layerId, currentFrame);
+  const editableState = containingRange?.editableState
+    ? structuredClone(containingRange.editableState)
+    : physicPaintStore.getEditableState(layerId);
+  const launchSelection = containingRange
+    ? {
+        workflowMode: 'play' as const,
+        startFrame: containingRange.startFrame,
+        playStartFrame: containingRange.startFrame,
+        playFrameCount: containingRange.frameCount,
+        editableSource: 'play' as const,
+        selectedPlayScriptId: containingRange.id,
+        previewFrame: currentFrame - containingRange.startFrame,
+      }
+    : {
+        workflowMode: 'roto' as const,
+        startFrame: currentFrame,
+        editableSource: 'roto' as const,
+        maxPlayFrameCount: physicPaintStore.getMaxPlayFrameCountFromGap(layerId, currentFrame),
+        maxPlayFrameCountReason: buildMaxPlayFrameCountReason(layerId, currentFrame),
+      };
+
   return {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
     layerId,
     layerName: layer.name,
-    startFrame,
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
     ...(isFinitePositiveNumber(fps) ? { fps } : {}),
-    ...(workflowMetadata ? workflowMetadata : {}),
+    ...launchSelection,
     ...(editableState ? { editableState } : {}),
   };
 }
@@ -285,6 +302,15 @@ function isTauriPhysicsPaintLaunchResult(value: unknown): value is TauriPhysicsP
       typeof (value as TauriPhysicsPaintLaunchResult).visible === 'boolean' &&
       typeof (value as TauriPhysicsPaintLaunchResult).minimized === 'boolean',
   );
+}
+
+function buildMaxPlayFrameCountReason(layerId: string, frame: number): string {
+  const maxPlayFrameCount = physicPaintStore.getMaxPlayFrameCountFromGap(layerId, frame);
+  const nextRange = physicPaintStore.getPlayScriptRanges(layerId).find((range) => range.startFrame > frame);
+  if (nextRange) {
+    return `Limited to ${maxPlayFrameCount} frame${maxPlayFrameCount === 1 ? '' : 's'} before the next saved Play script starts at frame ${nextRange.startFrame}.`;
+  }
+  return `Limited to the maximum allowed Play script duration of ${PHYSIC_PAINT_MAX_APPLY_FRAMES} frames.`;
 }
 
 function openBrowserFallback(context: PhysicPaintLaunchContext): Result<null> {

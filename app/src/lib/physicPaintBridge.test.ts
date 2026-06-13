@@ -601,7 +601,7 @@ describe('physicPaintBridge', () => {
       frames: [makeFrame(0, 18), makeFrame(1, 19), makeFrame(2, 20)],
     }));
 
-    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 4, canvas: { width: 1280, height: 720 }, fps: 30 });
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 19, canvas: { width: 1280, height: 720 }, fps: 30 });
 
     expect(result.ok).toBe(true);
     const url = String(open.mock.calls[0][0]);
