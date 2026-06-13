@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
-stopped_at: "Resumed after crash; applying final Physics Paint UI redline: right sidebar heading color and onion controls relocation"
-last_updated: "2026-06-13T10:49:42.434Z"
+stopped_at: Phase 36.1 context gathered
+last_updated: "2026-06-13T18:07:08.087Z"
 last_activity: 2026-06-13
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 3
   total_plans: 21
   completed_plans: 21
-  percent: 75
+  percent: 60
 ---
 
 # Project State
@@ -21,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36 — physics-paint-ui-rebuild-session-persistence-and-output-proo
+**Current focus:** Phase 36.1 — physics paint play script timeline markers and sequential playback
 
 ## Current Position
 
-Phase: 36 (physics-paint-ui-rebuild-session-persistence-and-output-proo) — EXECUTING
+Phase: 36.1 (physics-paint-play-script-timeline-markers-and-sequential-playback) — NOT PLANNED
 Plan: 5 of 11
 Status: Ready to execute
 Last activity: 2026-06-13
@@ -85,6 +85,7 @@ None yet.
 ### Roadmap Evolution
 
 - Phase 36 edited: added heavy physics paint package UI rebuild scope alongside session persistence and output proof.
+- Phase 36.1 inserted after Phase 36 (URGENT): Physics paint timeline markers for play script segments, selecting/editing the active segment by scrubber position, previewing interpolation inside efx-physics paint, and rendering play paint scripts sequentially like one pencil stroke path instead of parallel hands.
 
 ## Deferred Items
 
@@ -97,6 +98,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-13T10:49:42.429Z
-Stopped at: Resumed after crash; applying final Physics Paint UI redline: right sidebar heading color and onion controls relocation
-Resume file: None
+Last session: 2026-06-13T18:07:08.082Z
+Stopped at: Phase 36.1 context gathered
+Resume file: .planning/phases/36.1-when-a-physic-paint-was-created-with-a-play-paint-script-ani/36.1-CONTEXT.md
