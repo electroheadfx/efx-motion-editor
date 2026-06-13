@@ -161,6 +161,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onInspectPlayFrame(frame);
   }
 
+  function handleConvertPlayToRoto() {
+    setConfirmation('convert-play-to-roto');
+  }
+
+  function handleConvertRotoToPlay() {
+    setConfirmation('convert-roto-to-play');
+  }
+
   function getConfirmationCopy(kind: PhysicsPaintWorkflowConfirmation): string {
     if (kind === 'convert-play-to-roto') {
       return `Convert Play to Roto? This turns ${playRange.frameCount} rendered Play frames into roto frames and deletes the editable Play source for this range.`;
@@ -300,6 +308,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         </div>
 
         <div class="physics-paint-state-actions">
+          <button
+            type="button"
+            class="physics-paint-text-button"
+            disabled={props.mode !== 'play' || props.missingPlayFramesForConversion}
+            onClick={handleConvertPlayToRoto}
+          >
+            Convert Play to Roto
+          </button>
+          <button
+            type="button"
+            class="physics-paint-text-button"
+            disabled={props.mode !== 'roto'}
+            onClick={handleConvertRotoToPlay}
+          >
+            Convert Roto to Play
+          </button>
           <button class="physics-paint-text-button" onClick={props.onSaveState}>Save state</button>
           <label class="physics-paint-text-button physics-paint-load-state">
             Load state
