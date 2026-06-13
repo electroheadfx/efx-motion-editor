@@ -275,7 +275,7 @@ function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number): R
   return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame);
 }
 
-function PhysicsPaintCanvasStack(props: { children: ComponentChildren; onionOverlay: ComponentChildren }) {
+function PhysicsPaintCanvasStack(props: { children: ComponentChildren; cachedPlayPreviewUrl?: string | null; inputDisabled?: boolean; inputDisabledMessage?: string; onionOverlay: ComponentChildren }) {
   const stackRef = useRef<HTMLDivElement>(null);
   const [canvasBounds, setCanvasBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
@@ -303,7 +303,7 @@ function PhysicsPaintCanvasStack(props: { children: ComponentChildren; onionOver
   }, []);
 
   return (
-    <div class="physics-paint-canvas-stack" ref={stackRef}>
+    <div class="physics-paint-canvas-stack" ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined}>
       {props.children}
       {canvasBounds ? (
         <div
@@ -311,6 +311,7 @@ function PhysicsPaintCanvasStack(props: { children: ComponentChildren; onionOver
           aria-hidden="true"
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
+          {props.cachedPlayPreviewUrl ? <img class="physics-paint-cached-play-preview" src={props.cachedPlayPreviewUrl} alt="" /> : null}
           {props.onionOverlay}
         </div>
       ) : null}
@@ -358,6 +359,7 @@ export function PhysicsPaintStudio() {
   const [latestPlayFrames, setLatestPlayFrames] = useState<RenderedFramePayload[]>([]);
   const [playFramesVersion, setPlayFramesVersion] = useState(0);
   const [localPlayPreviewFrame, setLocalPlayPreviewFrame] = useState(() => getLaunchPreviewFrame(launchContext));
+  const [cachedPlayPreviewUrl, setCachedPlayPreviewUrl] = useState<string | null>(null);
   const [savedPlayCacheDirty, setSavedPlayCacheDirty] = useState(false);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -373,6 +375,9 @@ export function PhysicsPaintStudio() {
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
   const currentFrame = launchContext?.startFrame ?? 0;
+  const activePlayFrameCount = clampPhysicPaintFrameCount(launchContext?.playFrameCount ?? framesToApply);
+  const selectedPlayLastPreviewFrame = activePlayFrameCount - 1;
+  const canEditCurrentPlayFrame = workflowMode !== 'play' || !launchContext?.selectedPlayScriptId || localPlayPreviewFrame >= selectedPlayLastPreviewFrame;
   const previewFps = getPreviewFps(launchContext?.fps);
   const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
     if (!engine || !launchContext) return null;
@@ -577,24 +582,22 @@ export function PhysicsPaintStudio() {
   }, [engine]);
 
   function loadCachedPlayPreviewFrame(previewFrame: number): boolean {
-    if (!engine || !launchContext) return false;
-    if (savedPlayCacheDirty) return false;
+    if (!launchContext) return false;
+    if (savedPlayCacheDirty) {
+      setCachedPlayPreviewUrl(null);
+      return false;
+    }
     const playStartFrame = getActivePlayStartFrame(launchContext, currentFrame);
     const cachedFrame = physicPaintStore.getFrame(launchContext.layerId, playStartFrame + previewFrame);
-    if (!cachedFrame) return false;
-    const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = cachedFrame.width ?? canvasWidth;
-      canvas.height = cachedFrame.height ?? canvasHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-      (engine as unknown as { loadImage?: (canvas: HTMLCanvasElement) => void }).loadImage?.(canvas);
-    };
-    image.src = cachedFrame.dataUrl;
-    return true;
+    setCachedPlayPreviewUrl(cachedFrame?.dataUrl ?? null);
+    return Boolean(cachedFrame);
   }
+
+  useEffect(() => {
+    if (workflowMode !== 'play') return;
+    if (savedPlayCacheDirty) return;
+    loadCachedPlayPreviewFrame(localPlayPreviewFrame);
+  }, [engine, launchContext, localPlayPreviewFrame, savedPlayCacheDirty, workflowMode]);
 
   const markSelectedPlayCacheDirty = useCallback(() => {
     if (!launchContext?.selectedPlayScriptId) return;
@@ -615,6 +618,7 @@ export function PhysicsPaintStudio() {
     }
     latestPlayFramesRef.current = [];
     setLatestPlayFrames([]);
+    setCachedPlayPreviewUrl(null);
     setSavedPlayCacheDirty(true);
     markSelectedPlayCacheDirty();
     setApplyStatus('success');
@@ -877,6 +881,7 @@ export function PhysicsPaintStudio() {
       };
       latestPlayFramesRef.current = frames;
       setLatestPlayFrames([]);
+      setCachedPlayPreviewUrl(frames[0]?.dataUrl ?? null);
       setSavedPlayCacheDirty(false);
       setLocalPlayPreviewFrame(0);
       setPlayFramesVersion((version) => version + 1);
@@ -1244,6 +1249,9 @@ export function PhysicsPaintStudio() {
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
           <PhysicsPaintCanvasStack
+            cachedPlayPreviewUrl={cachedPlayPreviewUrl}
+            inputDisabled={!canEditCurrentPlayFrame}
+            inputDisabledMessage="Open the last Play frame to add new strokes"
             onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
               <img
                 key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`}
@@ -1320,6 +1328,7 @@ export function PhysicsPaintStudio() {
           currentPreviewFrame={localPlayPreviewFrame}
           maxPlayFrameCount={launchContext?.maxPlayFrameCount}
           maxPlayFrameCountReason={launchContext?.maxPlayFrameCountReason}
+          playCacheStatus={savedPlayCacheDirty ? 'stale' : 'cached'}
           isPlaying={isPlaying}
           ready={readyToApply}
           occupiedRotoFrames={occupiedRotoFrames}

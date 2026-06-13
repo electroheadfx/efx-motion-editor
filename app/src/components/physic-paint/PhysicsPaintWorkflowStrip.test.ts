@@ -59,25 +59,63 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(inspectIndex).toBeGreaterThan(-1);
     expect(convertIndex).toBeGreaterThan(-1);
     expect(code).not.toContain('onClearPlayRange');
+    const previewBlock = code.slice(code.indexOf('function previewPlayFrame'), code.indexOf('function handlePlayRangeClick'));
+
     expect(code).toContain('handlePlayRangeClick');
-    expect(clickBlock).toContain('props.onPreviewPlayFrame');
+    expect(clickBlock).toContain('previewPlayFrame');
+    expect(previewBlock).toContain('props.onPreviewPlayFrame');
     expect(clickBlock).not.toContain('onNavigateToSyncedFrame');
     expect(clickBlock).not.toContain('onConvertPlayToRoto');
   });
 
-  it('accepts local Play preview props and renders a separate current preview marker', () => {
+  it('accepts local Play preview props and renders a separate vertical current preview marker', () => {
     const code = source();
 
     for (const contract of [
       'currentPreviewFrame?: number',
       'maxPlayFrameCount?: number',
       'maxPlayFrameCountReason?: string',
+      'playCacheStatus?:',
       'onPreviewPlayFrame?: (frame: number) => void',
-      'physics-paint-play-range-point current',
+      'physics-paint-play-current-marker',
       'clampedPreviewFrame',
     ]) {
       expect(code).toContain(contract);
     }
+    expect(code).not.toContain('physics-paint-play-range-point current');
+  });
+
+  it('fits the Play lane to the available width and colors cached ranges distinctly', () => {
+    const code = source();
+
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+
+    expect(code).toContain('const playPreviewPercent');
+    expect(code).toContain('style={{ width: \'100%\', minWidth: \'100%\' }}');
+    expect(css).toContain('grid-template-columns: minmax(0, 1fr)');
+    expect(code).toContain("props.playCacheStatus === 'cached' ? ' cached' : ''");
+    expect(code).toContain('physics-paint-play-range-fill${props.playCacheStatus');
+  });
+
+  it('does not render a standalone Play preview button in Play canvas mode', () => {
+    const code = source();
+    const playControlsIndex = code.indexOf('physics-paint-play-controls');
+    const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 1200);
+
+    expect(playControlsBlock).not.toContain('aria-label="Play preview"');
+    expect(playControlsBlock).not.toContain('<Play');
+    expect(code).not.toContain("import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square }");
+  });
+
+  it('uses local Play preview navigation for Play canvas transport buttons', () => {
+    const code = source();
+    const playControlsIndex = code.indexOf('physics-paint-play-controls');
+    const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 1400);
+
+    expect(playControlsBlock).toContain('onClick={() => previewPlayFrame(0)}');
+    expect(playControlsBlock).toContain('onClick={() => previewPlayFrame(Math.max(0, clampedPreviewFrame - 1))}');
+    expect(playControlsBlock).not.toContain('props.onGoToFirstFrame');
+    expect(playControlsBlock).not.toContain('props.onGoToPreviousFrame');
   });
 
   it('clamps Play frame count input to maxPlayFrameCount and renders max duration messaging', () => {

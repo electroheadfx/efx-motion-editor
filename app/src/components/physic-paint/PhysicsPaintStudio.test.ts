@@ -131,9 +131,33 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('const [savedPlayCacheDirty, setSavedPlayCacheDirty]');
     expect(text).toContain('function loadCachedPlayPreviewFrame');
     expect(text).toContain('physicPaintStore.getFrame(launchContext.layerId, playStartFrame + previewFrame)');
-    expect(text).toContain('if (savedPlayCacheDirty) return false');
+    expect(text).toContain('setCachedPlayPreviewUrl(cachedFrame?.dataUrl ?? null)');
+    expect(text).toContain('if (savedPlayCacheDirty)');
+    expect(text).toContain('setCachedPlayPreviewUrl(null)');
     expect(text).toContain('setSavedPlayCacheDirty(true)');
     expect(text).toContain('markSelectedPlayCacheDirty');
+  });
+
+  it('loads the first cached Play frame when opening a clean saved Play script', () => {
+    const text = source();
+
+    expect(text).toContain('useEffect(() => {');
+    expect(text).toContain("if (workflowMode !== 'play') return");
+    expect(text).toContain('loadCachedPlayPreviewFrame(localPlayPreviewFrame)');
+    expect(text).toContain('cachedPlayPreviewUrl={cachedPlayPreviewUrl}');
+    expect(text).toContain('class="physics-paint-cached-play-preview"');
+    expect(styles()).toContain('.physics-paint-cached-play-preview');
+    expect(text).toContain('savedPlayCacheDirty');
+  });
+
+  it('only enables Play canvas drawing at the last append frame of an existing animation', () => {
+    const text = source();
+
+    expect(text).toContain('const canEditCurrentPlayFrame');
+    expect(text).toContain('const selectedPlayLastPreviewFrame = activePlayFrameCount - 1');
+    expect(text).toContain('localPlayPreviewFrame >= selectedPlayLastPreviewFrame');
+    expect(text).toContain('inputDisabled={!canEditCurrentPlayFrame}');
+    expect(text).toContain('Open the last Play frame to add new strokes');
   });
 
   it('saves Play using selected script range and clears dirty cache status after regenerated frames publish', () => {
@@ -143,6 +167,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(savePlayBlock).toContain('const playStartFrame = getActivePlayStartFrame(launchContext, currentFrame)');
     expect(savePlayBlock).toContain('appFrame: playStartFrame + frameIndex');
     expect(savePlayBlock).toContain('startFrame: playStartFrame');
+    expect(savePlayBlock).toContain('setCachedPlayPreviewUrl(frames[0]?.dataUrl ?? null)');
     expect(savePlayBlock).toContain('setSavedPlayCacheDirty(false)');
     expect(savePlayBlock).toContain('setLocalPlayPreviewFrame(0)');
   });

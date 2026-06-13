@@ -1245,7 +1245,7 @@ button.destructive {
 
 .physics-paint-ruler-tick {
   position: relative;
-  flex: 0 0 45px;
+  flex: 1 1 0;
   align-self: stretch;
   padding-left: 2px;
   color: #eceff2;
@@ -1274,6 +1274,11 @@ button.destructive {
   height: 42px;
   padding: 10px 0;
   background: #37393a;
+}
+
+.physics-paint-play-lane {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 100%;
 }
 
 .physics-paint-lane-label {
@@ -1340,6 +1345,12 @@ button.destructive {
   background: #b9bec4;
 }
 
+.physics-paint-play-range-fill.cached {
+  height: 3px;
+  background: #5bd88f;
+  box-shadow: 0 0 0 1px rgba(91, 216, 143, 0.18), 0 0 10px rgba(91, 216, 143, 0.35);
+}
+
 .physics-paint-play-range-point {
   position: absolute;
   top: 9px;
@@ -1356,6 +1367,17 @@ button.destructive {
 
 .physics-paint-play-range-point.end {
   left: 0;
+}
+
+.physics-paint-play-current-marker {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 999px;
+  background: #f5a623;
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.55), 0 0 10px rgba(245, 166, 35, 0.42);
+  transform: translateX(-50%);
 }
 
 .physics-paint-onion-overlay {
@@ -1470,6 +1492,14 @@ button.destructive {
 
 .physics-paint-onion-overlay.canvas-region {
   inset: auto;
+}
+
+.physics-paint-cached-play-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .physics-paint-shortcuts-help {

@@ -1,4 +1,4 @@
-import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square } from 'lucide-preact';
+import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Square } from 'lucide-preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   PHYSIC_PAINT_DEFAULT_APPLY_FRAMES,
@@ -58,6 +58,7 @@ export interface PhysicsPaintWorkflowStripProps {
   currentPreviewFrame?: number;
   maxPlayFrameCount?: number;
   maxPlayFrameCountReason?: string;
+  playCacheStatus?: 'cached' | 'stale' | 'missing' | null;
   onPlayPreview: (frameCount: number) => void;
   onStopPreview: () => void;
   onFrameCountChange: (frameCount: number) => void;
@@ -76,7 +77,7 @@ export interface PhysicsPaintWorkflowStripProps {
 const VIRTUAL_TIMELINE_FRAME_COUNT = 120;
 const RULER_STEP = 3;
 const PLAY_TIMELINE_TICK_WIDTH = 45;
-const PLAY_TIMELINE_ORIGIN_OFFSET = 4;
+const PLAY_TIMELINE_ORIGIN_PERCENT = 0;
 
 function buildFrameCells(currentFrame: number): number[] {
   const visibleCount = VIRTUAL_TIMELINE_FRAME_COUNT;
@@ -136,10 +137,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const playRuler = useMemo(() => buildPlayRuler(safeFrameCount), [safeFrameCount]);
   const rulerTicks = props.mode === 'play' ? playRuler.ticks : rotoRulerTicks;
   const rulerWidth = props.mode === 'play' ? playRuler.width : 1800;
-  const playStartOffset = PLAY_TIMELINE_ORIGIN_OFFSET;
-  const playEndOffset = playStartOffset + safeFrameCount * playRuler.frameWidth;
+  const playStartPercent = PLAY_TIMELINE_ORIGIN_PERCENT;
+  const playEndPercent = 100;
   const clampedPreviewFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(props.currentPreviewFrame ?? 0)));
-  const playPreviewOffset = playStartOffset + clampedPreviewFrame * playRuler.frameWidth;
+  const playPreviewPercent = safeFrameCount <= 1 ? playStartPercent : (clampedPreviewFrame / (safeFrameCount - 1)) * 100;
   const playLimitMessage = props.maxPlayFrameCount !== undefined
     ? props.maxPlayFrameCountReason ?? `Play duration limited to ${props.maxPlayFrameCount} frames before the next saved Play script.`
     : null;
@@ -165,14 +166,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onFrameCountChange(Math.min(clampPhysicPaintFrameCount(Number(input.value)), getMaxFrameCount()));
   }
 
+  function previewPlayFrame(frame: number) {
+    const nextFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(frame)));
+    props.onPreviewPlayFrame?.(nextFrame);
+    props.onInspectPlayFrame(nextFrame);
+  }
+
   function handlePlayRangeClick(event: MouseEvent) {
     if (props.mode !== 'play') return;
     const target = event.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
     const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0;
-    const frame = Math.round(ratio * Math.max(0, safeFrameCount - 1));
-    props.onPreviewPlayFrame?.(frame);
-    props.onInspectPlayFrame(frame);
+    previewPlayFrame(Math.round(ratio * Math.max(0, safeFrameCount - 1)));
   }
 
   function requestWorkflowModeChange(targetMode: PhysicsPaintWorkflowMode) {
@@ -311,9 +316,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 />
               </label>
               {playLimitMessage ? <span class="physics-paint-play-limit-message">{playLimitMessage}</span> : null}
-              <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
-              <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
-              <button type="button" class="physics-paint-nav-button" aria-label="Play preview" disabled={props.ready === false} onClick={() => props.onPlayPreview(safeFrameCount)}><Play size={15} /></button>
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={() => previewPlayFrame(0)}><ChevronFirst size={15} /></button>
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={() => previewPlayFrame(Math.max(0, clampedPreviewFrame - 1))}><ChevronsLeft size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Stop preview" disabled={!props.isPlaying} onClick={props.onStopPreview}><Square size={15} /></button>
               <button class="physics-paint-primary-action" disabled={props.ready === false} onClick={handlePrimaryAction}>Save play</button>
             </div>
@@ -336,7 +340,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
         <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" onScroll={updateScrollbar}>
-          <div class="physics-paint-ruler" style={{ width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }} aria-hidden="true">
+          <div class="physics-paint-ruler" style={props.mode === 'play' ? { width: '100%', minWidth: '100%' } : { width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }} aria-hidden="true">
             {rulerTicks.map(frame => (
               <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
             ))}
@@ -358,18 +362,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               </div>
             </div>
           ) : (
-            <div class="physics-paint-lane physics-paint-play-lane" style={{ width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }}>
-              <div class="physics-paint-play-track" style={{ width: `${rulerWidth}px` }}>
+            <div class="physics-paint-lane physics-paint-play-lane" style={{ width: '100%', minWidth: '100%' }}>
+              <div class="physics-paint-play-track" style={{ width: '100%', minWidth: '100%' }}>
                 <button
                   class="physics-paint-play-range"
-                  style={{ width: `${playEndOffset}px` }}
+                  style={{ width: '100%', minWidth: '100%' }}
                   onClick={handlePlayRangeClick}
                   aria-label={`Inspect Play canvas frames ${playRange.startFrame} through ${playRange.endFrame}`}
                 >
-                  <span class="physics-paint-play-range-fill" style={{ left: `${playStartOffset}px`, width: `${playEndOffset - playStartOffset}px` }} />
-                  <span class="physics-paint-play-range-point start" style={{ left: `${playStartOffset}px` }} />
-                  <span class="physics-paint-play-range-point current" style={{ left: `${playPreviewOffset}px` }} aria-label={`Current Play preview frame ${clampedPreviewFrame}`} />
-                  <span class="physics-paint-play-range-point end" style={{ left: `${playEndOffset}px` }} />
+                  <span class={`physics-paint-play-range-fill${props.playCacheStatus === 'cached' ? ' cached' : ''}`} style={{ left: `${playStartPercent}%`, width: `${playEndPercent - playStartPercent}%` }} />
+                  <span class="physics-paint-play-range-point start" style={{ left: `${playStartPercent}%` }} />
+                  <span class="physics-paint-play-current-marker" style={{ left: `${playPreviewPercent}%` }} aria-label={`Current Play preview frame ${clampedPreviewFrame}`} />
+                  <span class="physics-paint-play-range-point end" style={{ left: `${playEndPercent}%` }} />
                 </button>
               </div>
             </div>
