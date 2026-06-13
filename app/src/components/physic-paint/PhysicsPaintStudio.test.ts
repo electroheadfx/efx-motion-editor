@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const sourcePath = fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url));
+const stylePath = fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
+const styles = () => readFileSync(stylePath, 'utf8');
 
 describe('PhysicsPaintStudio onion preview contract', () => {
   it('captures transparent stroke previews instead of full paper composite snapshots', () => {
@@ -27,6 +29,13 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).toContain('class="physics-paint-onion-overlay canvas-region"');
     expect(text).toContain('style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}');
     expect(text).not.toContain('<div class="physics-paint-onion-overlay canvas-region" aria-hidden="true">');
+  });
+
+  it('keeps transparent onion strokes visible over paper instead of screening them out', () => {
+    const css = styles();
+
+    expect(css).toContain('mix-blend-mode: multiply');
+    expect(css).not.toContain('mix-blend-mode: screen');
   });
 });
 
