@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
-stopped_at: Phase 36 UI-SPEC approved
-last_updated: "2026-06-12T13:48:38.930Z"
-last_activity: 2026-06-12
+stopped_at: "Resumed after crash; applying final Physics Paint UI redline: right sidebar heading color and onion controls relocation"
+last_updated: "2026-06-13T06:35:40.698Z"
+last_activity: 2026-06-13 -- Phase 36 execution started
 progress:
   total_phases: 4
   completed_phases: 2
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 36 (physics-paint-ui-rebuild-session-persistence-and-output-proo) — EXECUTING
-Plan: 4 of 7
-Status: Ready to execute
-Last activity: 2026-06-12
+Plan: 1 of 7
+Status: Executing Phase 36
+Last activity: 2026-06-13 -- Phase 36 execution started
 
 Progress: [█████████░] 94%
 

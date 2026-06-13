@@ -127,7 +127,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 
 - [x] **Phase 34: Standalone Demo Shell** - Users can launch and iterate on a package-local physics paint demo from repo-root pnpm scripts. (completed 2026-06-08)
 - [x] **Phase 35: Interactive Physics Paint Controls** - Users can test the real physics paint engine with live canvas input, paint/erase tools, settings, and diagnostics. (completed 2026-06-10)
-- [ ] **Phase 36: Session Persistence and Output Proof** - Users can save, reload, inspect, and export standalone physics paint output for future cached compositing.
+- [x] **Phase 36: Session Persistence and Output Proof** - Users can save, reload, inspect, and export standalone physics paint output for future cached compositing. (completed 2026-06-13)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
 
 ## Phase Details
@@ -229,7 +229,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 36-07-PLAN.md — Wire the five-region UI into PhysicsPaintStudio, add contextual shortcuts, and run human visual verification.
+- [x] 36-07-PLAN.md — Wire the five-region UI into PhysicsPaintStudio, add contextual shortcuts, and run human visual verification.
 
 **UI hint**: yes
 
@@ -263,5 +263,5 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 26-33 (8 phases) | v0.7.0 | 23/23 | Complete | 2026-04-05 |
 | 34. Standalone Demo Shell | v0.8.0 | 3/3 | Complete    | 2026-06-08 |
 | 35. Interactive Physics Paint Controls | v0.8.0 | 7/7 | Complete    | 2026-06-10 |
-| 36. Session Persistence and Output Proof | v0.8.0 | 6/7 | In Progress|  |
+| 36. Session Persistence and Output Proof | v0.8.0 | 7/7 | Complete   | 2026-06-13 |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
