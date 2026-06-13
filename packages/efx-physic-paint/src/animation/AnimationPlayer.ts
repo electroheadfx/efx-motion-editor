@@ -1,7 +1,7 @@
 // ============================================================
 //  AnimationPlayer — Frame-based stroke replay engine
 //  Separate class wrapping EfxPaintEngine (per D-07).
-//  Maps stroke timestamps to frames proportionally (D-01),
+//  Allocates strokes sequentially in recorded order,
 //  renders point-by-point progressively (D-02), fires onFrame
 //  callback per frame (D-06), plays once then stops (D-05).
 // ============================================================
@@ -79,29 +79,41 @@ export class AnimationPlayer {
   }
 
   // ================================================================
-  //  PRIVATE — Frame Distribution (per D-01)
+  //  PRIVATE — Frame Distribution
   // ================================================================
 
-  /** Map stroke timestamps to frame ranges proportionally */
+  /** Allocate strokes to contiguous frame ranges in recorded order. */
   private distributeStrokes(strokes: PaintStroke[], totalFrames: number): void {
+    const usableFrames = Math.max(1, Math.trunc(totalFrames))
+
     if (strokes.length === 0) {
       this.frameStrokes = []
       return
     }
 
-    const minTime = strokes[0].timestamp
-    const maxTime = strokes[strokes.length - 1].timestamp
-    const duration = maxTime - minTime || 1 // avoid division by zero for single stroke
+    const weights = strokes.map(stroke => Math.max(1, stroke.points.length))
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+    let allocatedFrames = 0
+    let remainderCarry = 0
 
-    this.frameStrokes = strokes.map(stroke => {
-      const ratio = (stroke.timestamp - minTime) / duration
-      const startFrame = Math.floor(ratio * (totalFrames - 1))
+    this.frameStrokes = strokes.map((stroke, index) => {
+      const weightedExactFrames = (weights[index] / totalWeight) * usableFrames + remainderCarry
+      let frameSpan = Math.max(1, Math.floor(weightedExactFrames))
+      remainderCarry = weightedExactFrames - frameSpan
+
+      if (index === strokes.length - 1) {
+        frameSpan = Math.max(1, usableFrames - allocatedFrames)
+      }
+
+      if (allocatedFrames >= usableFrames && usableFrames < strokes.length) {
+        frameSpan = 1
+      }
+
+      const startFrame = Math.min(usableFrames - 1, allocatedFrames)
+      allocatedFrames += frameSpan
+      const endFrame = Math.min(usableFrames - 1, allocatedFrames - 1)
       const pointCount = stroke.points.length
-
-      // Per D-02 (point-by-point): baseline ~8 points per frame
-      const framesNeeded = Math.max(1, Math.ceil(pointCount / 8))
-      const endFrame = Math.min(totalFrames - 1, startFrame + framesNeeded - 1)
-      const pointsPerFrame = Math.ceil(pointCount / (endFrame - startFrame + 1))
+      const pointsPerFrame = Math.max(1, Math.ceil(pointCount / Math.max(1, endFrame - startFrame + 1)))
 
       return { stroke, startFrame, endFrame, pointsPerFrame }
     })
