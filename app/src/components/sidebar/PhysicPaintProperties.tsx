@@ -32,6 +32,8 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
   const sourceLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const validContext = layer.type === 'physic-paint' && layer.source.type === 'physic-paint' && Number.isInteger(currentFrame) && currentFrame >= 0;
   const hasOutput = validContext ? physicPaintStore.hasOutput(sourceLayerId) : false;
+  const playScriptSegments = validContext ? physicPaintStore.getPlayScriptSegments(sourceLayerId) : [];
+  const activePlayScriptSegment = validContext ? physicPaintStore.getPlayScriptSegmentAtFrame(sourceLayerId, currentFrame) : null;
   useEffect(() => {
     const handleApplyResult = (event: Event) => {
       const result = (event as CustomEvent<PhysicPaintApplyResult>).detail;
@@ -155,6 +157,30 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
             <div class="text-[12px] font-semibold">No physics paint output yet</div>
             <div class="text-[11px] leading-5" style={{ color: 'var(--sidebar-text-secondary)' }}>
               Open the physics paint canvas, paint in the standalone window, then apply the rendered result to this layer.
+            </div>
+          </div>
+        )}
+        {playScriptSegments.length > 0 && (
+          <div class="rounded px-2 py-2 space-y-1" style={{ backgroundColor: 'var(--sidebar-input-bg)' }}>
+            <div class="text-[11px] font-semibold" style={{ color: 'var(--sidebar-text-secondary)' }}>Play scripts</div>
+            <div class="flex flex-wrap gap-1.5" aria-label="Saved Play script ranges">
+              {playScriptSegments.map((segment) => {
+                const active = activePlayScriptSegment?.id === segment.id;
+                const marker = `[${segment.startFrame}]${'-'.repeat(Math.min(12, Math.max(2, segment.frameCount - 1)))}[${segment.endFrame}]`;
+                return (
+                  <span
+                    key={segment.id}
+                    class="rounded px-1.5 py-0.5 text-[10px] font-mono tabular-nums"
+                    style={{
+                      color: active ? '#ffffff' : 'var(--sidebar-text-primary)',
+                      backgroundColor: active ? 'var(--color-accent)' : 'rgba(255,255,255,0.06)',
+                    }}
+                    title={`Play script ${segment.startFrame} to ${segment.endFrame}`}
+                  >
+                    {marker}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}
