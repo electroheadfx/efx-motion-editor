@@ -257,8 +257,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 contract/store completion for Plans 02-03)*
 
-- [ ] 36.1-02-PLAN.md — Resolve scrubber-contained Play launches and gap/Roto max-duration launch contexts.
-- [ ] 36.1-03-PLAN.md — Draw polished nested Play script markers inside Physic Paint timeline bars.
+- [x] 36.1-02-PLAN.md — Resolve scrubber-contained Play launches and gap/Roto max-duration launch contexts.
+- [x] 36.1-03-PLAN.md — Draw polished nested Play script markers inside Physic Paint timeline bars.
 
 **Wave 3** *(blocked on bridge/store completion)*
 
