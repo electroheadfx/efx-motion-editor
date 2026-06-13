@@ -1,4 +1,4 @@
-import type {TrackLayout, FxTrackLayout, AudioTrackLayout} from '../../types/timeline';
+import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMarker} from '../../types/timeline';
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
 import {computeDownbeatFrames} from '../../lib/beatMarkerEngine';
 import {createCanvasGradient} from '../../lib/previewRenderer';
@@ -11,6 +11,25 @@ export const TRACK_HEADER_WIDTH = 80;
 export const RULER_HEIGHT = 24;
 export const FX_TRACK_HEIGHT = 28;
 export const AUDIO_TRACK_HEIGHT = 44;
+
+export type { TimelinePlayScriptMarker } from '../../types/timeline';
+
+export interface TimelinePlayScriptMarkerGeometry {
+  x: number;
+  width: number;
+}
+
+// FxTrackLayout.playScriptMarkers is threaded into this pure renderer by upstream timeline layout code.
+export function getTimelinePlayScriptMarkerGeometry(
+  marker: TimelinePlayScriptMarker,
+  frameWidth: number,
+  scrollX: number,
+): TimelinePlayScriptMarkerGeometry {
+  return {
+    x: marker.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH,
+    width: marker.frameCount * frameWidth,
+  };
+}
 
 // Functional colors -- stay hardcoded (high-visibility, theme-independent)
 const PLAYHEAD_COLOR = '#E55A2B';
