@@ -262,6 +262,78 @@ describe('physicPaintBridge', () => {
     open.mockRestore();
   });
 
+  it('encodes the selected saved script launch context in the browser fallback URL', async () => {
+    const focus = vi.fn();
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 10, canvas: { width: 1280, height: 720 } });
+
+    expect(result.ok).toBe(true);
+    const url = String(open.mock.calls[0][0]);
+    const parsed = new URL(url, 'http://localhost:1420');
+    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
+    expect(context).toMatchObject({
+      workflowMode: 'play',
+      startFrame: 8,
+      playStartFrame: 8,
+      playFrameCount: 4,
+      selectedPlayScriptId: 'play-b',
+      previewFrame: 2,
+      editableSource: 'play',
+    });
+    open.mockRestore();
+  });
+
+  it('encodes gap launch constraints in the browser fallback URL', async () => {
+    const focus = vi.fn();
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 5, canvas: { width: 1280, height: 720 } });
+
+    expect(result.ok).toBe(true);
+    const url = String(open.mock.calls[0][0]);
+    const parsed = new URL(url, 'http://localhost:1420');
+    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
+    expect(context).toMatchObject({
+      workflowMode: 'roto',
+      startFrame: 5,
+      maxPlayFrameCount: 3,
+      editableSource: 'roto',
+    });
+    expect(context.maxPlayFrameCountReason).toContain('before the next saved Play script');
+    expect(context.selectedPlayScriptId).toBeUndefined();
+    open.mockRestore();
+  });
+
+  it('rejects invalid launch contexts before opening a window', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+
+    const result = await openPhysicPaintCanvas({
+      layer: physicLayer({ source: { type: 'physic-paint', layerId: '' } }),
+      frame: 4,
+    });
+
+    expect(result).toEqual({ ok: false, error: 'Invalid physics paint launch context' });
+    expect(open).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
   it('exports the launch event name for the Tauri path', () => {
     expect(PHYSIC_PAINT_LAUNCH_EVENT).toBe('physic-paint:launch');
   });
