@@ -5,8 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const rightPanelSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintRightPanel.tsx');
+const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudio.tsx');
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
+const studioSource = () => readFileSync(studioSourcePath, 'utf8');
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('exports the workflow strip component and props', () => {
@@ -86,6 +88,35 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       expect(panelCode).toContain(label);
     }
     expect(code).not.toContain('Onion skin controls');
+  });
+
+  it('filters onion preview overlays by count, direction toggles, and live preview state', () => {
+    const code = source();
+
+    expect(code).toContain('const visibleOnionPreviewFrames = props.isPlaying || !props.onion.enabled');
+    expect(code).toContain('frame.distance <= onionCount');
+    expect(code).toContain("frame.direction === 'previous' && props.onion.previous");
+    expect(code).toContain("frame.direction === 'next' && props.onion.next");
+    expect(code).toContain('visibleOnionPreviewFrames.map');
+  });
+
+  it('builds canvas onion previews from Roto sources and does not reuse saved Play frames as yellow overlays', () => {
+    const code = studioSource();
+    const builderIndex = code.indexOf('const buildOnionPreviewFrames = useCallback');
+    const builderBlock = code.slice(builderIndex, builderIndex + 1600);
+    const savePlayIndex = code.indexOf('const savePlay = useCallback');
+    const savePlayBlock = code.slice(savePlayIndex, savePlayIndex + 2200);
+
+    expect(code).toContain('rotoFrameStatesRef');
+    expect(code).toContain('rotoPreviewFramesRef');
+    expect(code).toContain('snapshotCurrentRotoFrame');
+    expect(builderBlock).toContain('rotoPreviewFramesRef.current');
+    expect(builderBlock).toContain('physicPaintStore.getFrames');
+    expect(builderBlock).toContain("addFrame(frame, 'roto')");
+    expect(builderBlock).not.toContain('latestPlayFrames.forEach');
+    expect(builderBlock).not.toContain("addFrame(frame, 'play')");
+    expect(savePlayBlock).not.toContain('setLatestPlayFrames(frames);');
+    expect(savePlayBlock).toContain('setLatestPlayFrames([]);');
   });
 
   it('uses workflow tabs as the guarded conversion affordance without standalone conversion buttons', () => {
