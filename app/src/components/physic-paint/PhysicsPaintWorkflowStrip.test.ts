@@ -88,21 +88,22 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('Onion skin controls');
   });
 
-  it('wires destructive conversion controls to confirmation and callbacks', () => {
+  it('uses workflow tabs as the guarded conversion affordance without standalone conversion buttons', () => {
     const code = source();
-    const playButtonIndex = code.indexOf('>\n            Convert Play to Roto');
-    const rotoButtonIndex = code.indexOf('>\n            Convert Roto to Play');
+    const stateActionsIndex = code.indexOf('physics-paint-state-actions');
+    const stateActionsBlock = code.slice(stateActionsIndex, stateActionsIndex + 900);
+    const tabListIndex = code.indexOf('physics-paint-workflow-tabs');
+    const tabListBlock = code.slice(tabListIndex, tabListIndex + 900);
     const confirmIndex = code.indexOf('function confirmDestructiveAction');
-    const playButtonBlock = code.slice(playButtonIndex - 260, playButtonIndex + 120);
-    const rotoButtonBlock = code.slice(rotoButtonIndex - 220, rotoButtonIndex + 120);
     const confirmBlock = code.slice(confirmIndex, confirmIndex + 360);
 
-    expect(playButtonIndex).toBeGreaterThan(-1);
-    expect(rotoButtonIndex).toBeGreaterThan(-1);
-    expect(playButtonBlock).toContain("disabled={props.mode !== 'play' || props.missingPlayFramesForConversion}");
-    expect(playButtonBlock).toContain('onClick={handleConvertPlayToRoto}');
-    expect(rotoButtonBlock).toContain("disabled={props.mode !== 'roto'}");
-    expect(rotoButtonBlock).toContain('onClick={handleConvertRotoToPlay}');
+    expect(stateActionsIndex).toBeGreaterThan(-1);
+    expect(stateActionsBlock).not.toContain('Convert Play to Roto</button>');
+    expect(stateActionsBlock).not.toContain('Convert Roto to Play</button>');
+    expect(tabListBlock).toContain('onRequestModeChange');
+    expect(tabListBlock).not.toContain('onModeChange');
+    expect(code).toContain('function requestWorkflowModeChange');
+    expect(code).toContain("if (targetMode === props.mode) return");
     expect(code).toContain("setConfirmation('convert-play-to-roto')");
     expect(code).toContain("setConfirmation('convert-roto-to-play')");
     expect(confirmBlock).toContain('props.onConvertPlayToRoto?.()');
