@@ -50,6 +50,17 @@ describe('physicPaintStore', () => {
     expect(physicPaintVersion.value).toBe(before + 1);
   });
 
+  it('stores sorted non-overlapping Play script ranges and finds only containing frames', () => {
+    physicPaintStore.upsertPlayScriptRange('layer-1', { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached' });
+    physicPaintStore.upsertPlayScriptRange('layer-1', { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' });
+
+    expect(physicPaintStore.getPlayScriptRanges('layer-1').map((range) => range.id)).toEqual(['play-a', 'play-b']);
+    expect(physicPaintStore.findPlayScriptRangeAtFrame('layer-1', 8)?.id).toBe('play-b');
+    expect(physicPaintStore.findPlayScriptRangeAtFrame('layer-1', 5)).toBeNull();
+    expect(physicPaintStore.getMaxPlayFrameCountFromGap('layer-1', 5)).toBe(3);
+    expect(physicPaintStore.getMaxPlayFrameCountFromGap('layer-1', 7)).toBe(1);
+  });
+
   it('stores sequence frames starting at the app start frame with Play workflow metadata', () => {
     const result = physicPaintStore.applySequence({
       kind: 'apply-play-canvas',
@@ -150,6 +161,68 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', 10)?.dataUrl).toContain('data:image/png');
     expect(physicPaintStore.getFrame('layer-1', 12)?.appFrame).toBe(12);
     expect(physicPaintStore.getFrame('layer-2', 4)?.width).toBe(1000);
+  });
+
+  it('rejects overlapping Play sequence applies without mutating the existing saved range', () => {
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-a',
+      layerId: 'layer-1',
+      startFrame: 0,
+      frameCount: 5,
+      frames: [makeFrame(0, 0), makeFrame(1, 1), makeFrame(2, 2), makeFrame(3, 3), makeFrame(4, 4)],
+      editableState,
+    });
+
+    const result = physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-b',
+      layerId: 'layer-1',
+      startFrame: 4,
+      frameCount: 5,
+      frames: [makeFrame(0, 4), makeFrame(1, 5), makeFrame(2, 6), makeFrame(3, 7), makeFrame(4, 8)],
+      editableState,
+    });
+
+    expect(result).toMatchObject({ ok: false, appliedFrameCount: 0 });
+    expect(result.error).toContain('overlap');
+    expect(physicPaintStore.getPlayScriptRanges('layer-1')).toHaveLength(1);
+    expect(physicPaintStore.getFrame('layer-1', 8)).toBeNull();
+  });
+
+  it('round-trips multiple Play script ranges with rendered frames and per-range editable source state', () => {
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-round-trip-a',
+      layerId: 'layer-1',
+      startFrame: 0,
+      frameCount: 2,
+      frames: [makeFrame(0, 0), makeFrame(1, 1)],
+      editableState,
+    });
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-round-trip-b',
+      layerId: 'layer-1',
+      startFrame: 8,
+      frameCount: 2,
+      frames: [makeFrame(0, 8), makeFrame(1, 9)],
+      editableState,
+    });
+
+    const outputs = physicPaintStore.toMceOutputs();
+    expect(outputs[0]).toEqual(expect.objectContaining({
+      play_script_ranges: [
+        expect.objectContaining({ id: expect.any(String), startFrame: 0, frameCount: 2, editableState: expect.objectContaining({ strokes: expect.any(Array) }) }),
+        expect.objectContaining({ id: expect.any(String), startFrame: 8, frameCount: 2, editableState: expect.objectContaining({ strokes: expect.any(Array) }) }),
+      ],
+    }));
+
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(outputs);
+
+    expect(physicPaintStore.getPlayScriptRanges('layer-1').map((range) => [range.startFrame, range.frameCount])).toEqual([[0, 2], [8, 2]]);
+    expect(physicPaintStore.getFrame('layer-1', 9)?.frameIndex).toBe(1);
   });
 
   it('round-trips Play workflow metadata with rendered frames and editable source state', () => {
