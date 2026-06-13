@@ -273,6 +273,7 @@ export function PhysicsPaintStudio() {
   const activeOperationIdRef = useRef<string | null>(null);
   const applyTimeoutRef = useRef<number | null>(null);
   const nativePenInputHandlerRef = useRef<((input: { pressure: number; tiltX?: number; tiltY?: number }) => void) | null>(null);
+  const pendingRotoAdvanceRef = useRef<number | null>(null);
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
@@ -508,6 +509,29 @@ export function PhysicsPaintStudio() {
     setIsPlaying(false);
   }, []);
 
+  const navigateToSyncedFrame = useCallback(async (frame: number) => {
+    if (!Number.isInteger(frame) || frame < 0) return false;
+    if (engine && launchContext) {
+      const currentState = engine.save();
+      if (hasPhysicsPaintContent(currentState)) {
+        rotoFrameStatesRef.current.set(launchContext.startFrame, currentState);
+        setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, launchContext.startFrame));
+      } else {
+        rotoFrameStatesRef.current.delete(launchContext.startFrame);
+        setOccupiedRotoFrames((frames) => frames.filter((occupiedFrame) => occupiedFrame !== launchContext.startFrame));
+      }
+      const nextState = rotoFrameStatesRef.current.get(frame);
+      if (nextState) {
+        engine.load(nextState);
+      } else {
+        engine.clear();
+      }
+    }
+    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
+    setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+    return true;
+  }, [bridgeMode, engine, launchContext]);
+
   const startApplyTimeout = useCallback((operationId: string) => {
     if (applyTimeoutRef.current) window.clearTimeout(applyTimeoutRef.current);
     applyTimeoutRef.current = window.setTimeout(() => {
@@ -516,6 +540,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage('Could not apply physics paint output. The main editor did not return an apply result.');
       setLastError('The main editor did not return an apply result.');
       activeOperationIdRef.current = null;
+      pendingRotoAdvanceRef.current = null;
       applyTimeoutRef.current = null;
     }, 5000);
   }, []);
@@ -530,6 +555,7 @@ export function PhysicsPaintStudio() {
 
     const ok = detail.ok ?? detail.success ?? false;
     if (!ok) {
+      pendingRotoAdvanceRef.current = null;
       const message = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
       const diagnostic = detail.detail || detail.error;
       setApplyStatus('error');
@@ -547,10 +573,21 @@ export function PhysicsPaintStudio() {
       setApplyMessage(`Saved play range: ${count} frames from ${frame} to ${endFrame} at ${canvasWidth}×${canvasHeight}.`);
     } else {
       const frame = detail.frame ?? detail.startFrame ?? launchContext?.startFrame ?? 0;
-      const nextFrame = frame + 1;
-      setApplyMessage(`Saved roto frame ${frame}. Advanced to frame ${nextFrame}.`);
+      const nextFrame = pendingRotoAdvanceRef.current;
+      setSavedRotoFrames((frames) => [
+        ...frames.filter((savedFrame) => savedFrame.frame !== frame),
+        { frame, saved: true, label: `Frame ${frame}` },
+      ].sort((a, b) => a.frame - b.frame));
+      pendingRotoAdvanceRef.current = null;
+      if (nextFrame !== null) {
+        void navigateToSyncedFrame(nextFrame).then((synced) => {
+          if (synced) setApplyMessage(`Saved roto frame ${frame}. Advanced to frame ${nextFrame}.`);
+        });
+      } else {
+        setApplyMessage(`Saved roto frame ${frame}.`);
+      }
     }
-  }, [canvasHeight, canvasWidth, framesToApply, launchContext?.startFrame]);
+  }, [canvasHeight, canvasWidth, framesToApply, launchContext?.startFrame, navigateToSyncedFrame]);
 
   useEffect(() => {
     const handleResult = (event: Event) => {
@@ -613,10 +650,6 @@ export function PhysicsPaintStudio() {
           height: canvas.height,
         },
       };
-      setSavedRotoFrames((frames) => [
-        ...frames.filter((frame) => frame.frame !== launchContext.startFrame),
-        { frame: launchContext.startFrame, saved: true, label: `Frame ${launchContext.startFrame}` },
-      ].sort((a, b) => a.frame - b.frame));
       await sendPhysicPaintApplyPayload(payload, bridgeMode);
       startApplyTimeout(operationId);
       return payload;
@@ -693,38 +726,11 @@ export function PhysicsPaintStudio() {
     }
   }, [actionContext, framesToApply, previewFps, readyToApply, startApplyTimeout]);
 
-  const navigateToSyncedFrame = useCallback(async (frame: number) => {
-    if (!Number.isInteger(frame) || frame < 0) return false;
-    if (engine && launchContext) {
-      const currentState = engine.save();
-      if (hasPhysicsPaintContent(currentState)) {
-        rotoFrameStatesRef.current.set(launchContext.startFrame, currentState);
-        setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, launchContext.startFrame));
-      } else {
-        rotoFrameStatesRef.current.delete(launchContext.startFrame);
-        setOccupiedRotoFrames((frames) => frames.filter((occupiedFrame) => occupiedFrame !== launchContext.startFrame));
-      }
-      const nextState = rotoFrameStatesRef.current.get(frame);
-      if (nextState) {
-        engine.load(nextState);
-      } else {
-        engine.clear();
-      }
-    }
-    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
-    setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
-    return true;
-  }, [bridgeMode, engine, launchContext]);
-
   const saveRotoFrameAndAdvance = useCallback(async () => {
     const payload = await saveRotoFrame();
     if (!payload?.renderedFrame) return;
-    const nextFrame = payload.startFrame + 1;
-    const synced = await navigateToSyncedFrame(nextFrame);
-    if (synced) {
-      setApplyMessage(`Saved roto frame ${payload.startFrame}. Advanced to frame ${nextFrame}.`);
-    }
-  }, [navigateToSyncedFrame, saveRotoFrame]);
+    pendingRotoAdvanceRef.current = payload.startFrame + 1;
+  }, [saveRotoFrame]);
 
   const saveEditableState = useCallback(async () => {
     if (!engine) return;
