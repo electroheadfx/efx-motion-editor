@@ -211,7 +211,9 @@ export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPain
     if (!isNonEmptyString(candidate.id)) return null;
     if (ids.has(candidate.id)) return null;
     if (!isNonNegativeInteger(candidate.startFrame)) return null;
-    if (!optionalFrameCount(candidate.frameCount) || candidate.frameCount === undefined) return null;
+    const frameCount = candidate.frameCount;
+    if (typeof frameCount !== 'number' || !Number.isInteger(frameCount)) return null;
+    if (frameCount < PHYSIC_PAINT_MIN_APPLY_FRAMES || frameCount > PHYSIC_PAINT_MAX_APPLY_FRAMES) return null;
     if (!isSerializedProject(candidate.editableState)) return null;
     if (candidate.source !== undefined && candidate.source !== 'play') return null;
     if (candidate.cacheStatus !== undefined && candidate.cacheStatus !== 'cached' && candidate.cacheStatus !== 'stale' && candidate.cacheStatus !== 'missing') return null;
@@ -220,7 +222,7 @@ export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPain
     ranges.push({
       id: candidate.id,
       startFrame: candidate.startFrame,
-      frameCount: candidate.frameCount,
+      frameCount,
       editableState: structuredClone(candidate.editableState),
       ...(candidate.source ? { source: candidate.source } : {}),
       ...(candidate.cacheStatus ? { cacheStatus: candidate.cacheStatus } : {}),
