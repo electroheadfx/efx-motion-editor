@@ -268,7 +268,7 @@ function openBrowserFallback(context: PhysicPaintLaunchContext): Result<null> {
     return { ok: false, error: 'No browser window API is available for physics paint canvas' };
   }
 
-  const opened = window.open(buildPhysicsPaintUrl(context), PHYSIC_PAINT_WINDOW_LABEL, 'noopener,noreferrer,width=1280,height=900');
+  const opened = window.open(buildPhysicsPaintUrl(context), PHYSIC_PAINT_WINDOW_LABEL, 'width=1280,height=900');
   if (!opened) {
     return { ok: false, error: 'Physics paint window was blocked or could not be opened' };
   }

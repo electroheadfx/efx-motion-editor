@@ -129,7 +129,7 @@ async function detectBridgeMode(): Promise<BridgeMode> {
     // Browser fallback below is expected outside Tauri.
   }
 
-  if (typeof window !== 'undefined' && (window.opener || typeof window.dispatchEvent === 'function')) {
+  if (typeof window !== 'undefined' && window.opener) {
     return 'Browser fallback';
   }
 
@@ -161,16 +161,8 @@ async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPayload, bri
   }
 
   if (bridgeMode === 'Browser fallback') {
-    const event = new CustomEvent(PHYSIC_PAINT_APPLY_EVENT, { detail: payload });
-    let delivered = false;
-    try {
-      window.opener?.dispatchEvent(event);
-      delivered = Boolean(window.opener);
-    } catch {
-      delivered = false;
-    }
-    window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_APPLY_EVENT, { detail: payload }));
-    if (!delivered && typeof window.dispatchEvent !== 'function') throw new Error('Browser fallback bridge is unavailable');
+    if (!window.opener) throw new Error('Browser fallback bridge is unavailable');
+    window.opener.dispatchEvent(new CustomEvent(PHYSIC_PAINT_APPLY_EVENT, { detail: payload }));
     return;
   }
 
