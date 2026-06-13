@@ -4,7 +4,7 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
 stopped_at: "Resumed after crash; applying final Physics Paint UI redline: right sidebar heading color and onion controls relocation"
-last_updated: "2026-06-13T09:45:05.776Z"
+last_updated: "2026-06-13T09:46:03.119Z"
 last_activity: 2026-06-13
 progress:
   total_phases: 4
@@ -58,6 +58,7 @@ Progress: [█████████░] 90%
 
 *Updated after each plan completion*
 | Phase 36 P06 | 392 | 2 tasks | 3 files |
+| Phase 36 P09 | 6min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,7 @@ Recent decisions affecting current work:
 - v0.8.0: Failed headless adapter/batch replay remains excluded; future integration seam is typed/contract-only in this milestone.
 - [Phase 36]: Workflow strip owns a physics-paint-specific compact lane model rather than importing or cloning the main EFX Motion timeline. — Followed D-09 and keeps the bottom timeline separate from the main editor timeline implementation.
 - [Phase 36]: Play lane click handling remains inspection-only; conversion and clearing are explicit button/dialog flows. — Mitigates timeline-click tampering by keeping destructive callbacks behind explicit confirmations.
+- [Phase 36]: Roto onion overlays use local Roto snapshots and persisted Roto output only, excluding latest Play frames from normal post-save overlay rendering.
 
 ### Pending Todos
 
