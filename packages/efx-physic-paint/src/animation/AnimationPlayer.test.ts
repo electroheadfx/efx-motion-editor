@@ -66,12 +66,13 @@ function installAnimationFrameMock(): void {
 function advanceAnimationFrames(frameCount: number, fps = 12): void {
   const frameDuration = 1000 / fps
 
-  // First rAF initializes AnimationPlayer.lastFrameTime.
-  rafCallback?.(0)
+  // First rAF initializes AnimationPlayer.lastFrameTime. Use a non-zero
+  // timestamp because AnimationPlayer treats 0 as its uninitialized sentinel.
+  rafCallback?.(1)
 
   for (let frame = 0; frame < frameCount; frame += 1) {
     if (!rafCallback) break
-    rafCallback((frame + 1) * frameDuration)
+    rafCallback(1 + ((frame + 1) * frameDuration))
   }
 }
 

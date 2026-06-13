@@ -22,7 +22,7 @@ export interface AnimationState {
   totalFrames: number
 }
 
-/** Internal: a stroke mapped to its frame range (per D-01: timestamp ratio mapping) */
+/** Internal: a stroke mapped to its sequential frame range. */
 export interface FrameStroke {
   stroke: PaintStroke
   startFrame: number
