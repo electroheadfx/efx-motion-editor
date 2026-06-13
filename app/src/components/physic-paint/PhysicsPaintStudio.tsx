@@ -67,7 +67,7 @@ function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null
   const encodedContext = nonEmptyParam(params, 'context');
   if (encodedContext) {
     try {
-      const parsed = JSON.parse(decodeURIComponent(encodedContext));
+      const parsed = JSON.parse(encodedContext);
       if (isPhysicPaintLaunchContext(parsed)) return parsed;
     } catch {
       // Continue with flat query/hash parameters.
@@ -259,6 +259,7 @@ export function PhysicsPaintStudio() {
   const [savedRotoFrames, setSavedRotoFrames] = useState<PhysicsPaintWorkflowStripFrameMarker[]>([]);
   const [occupiedRotoFrames, setOccupiedRotoFrames] = useState<number[]>([]);
   const [latestPlayFrames, setLatestPlayFrames] = useState<RenderedFramePayload[]>([]);
+  const [playFramesVersion, setPlayFramesVersion] = useState(0);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<AnimationPlayer | null>(null);
@@ -272,7 +273,7 @@ export function PhysicsPaintStudio() {
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
-  const currentFrame = launchContext?.workflowMode === 'play' && launchContext.playStartFrame !== undefined ? launchContext.playStartFrame : launchContext?.startFrame ?? 0;
+  const currentFrame = launchContext?.startFrame ?? 0;
   const previewFps = getPreviewFps(launchContext?.fps);
   const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
     if (!engine || !launchContext) return null;
@@ -731,10 +732,13 @@ export function PhysicsPaintStudio() {
       };
       latestPlayFramesRef.current = frames;
       setLatestPlayFrames([]);
+      setPlayFramesVersion((version) => version + 1);
       await sendPhysicPaintApplyPayload(payload, bridgeMode);
       startApplyTimeout(operationId);
       return payload;
     } catch (error) {
+      playerRef.current?.stop();
+      activeOperationIdRef.current = null;
       setIsPlaying(false);
       const detail = error instanceof Error ? error.message : String(error);
       const message = `Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. ${detail}`;
@@ -1019,9 +1023,9 @@ export function PhysicsPaintStudio() {
   const missingPlayFramesForConversion = useMemo(() => {
     if (!launchContext) return true;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
-    const playFramesByAppFrame = new Set(latestPlayFrames.map((frame) => frame.appFrame));
+    const playFramesByAppFrame = new Set(latestPlayFramesRef.current.map((frame) => frame.appFrame));
     return Array.from({ length: frameCount }, (_, index) => currentFrame + index).some((frame) => !playFramesByAppFrame.has(frame));
-  }, [framesToApply, latestPlayFrames, launchContext]);
+  }, [currentFrame, framesToApply, launchContext, playFramesVersion]);
 
   const goToFirstFrame = useCallback(() => {
     void navigateToSyncedFrame(0);
