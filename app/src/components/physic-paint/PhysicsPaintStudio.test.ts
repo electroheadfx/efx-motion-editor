@@ -77,8 +77,8 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
 
     expect(text).toContain("coreApi.invoke('get_physics_paint_launch_context')");
     expect(text).toContain('isPhysicPaintLaunchContext(storedContext)');
-    expect(text).toContain('applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode)');
-    expect(text).toContain('applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode)');
+    expect(text).toContain('applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty)');
+    expect(text).toContain('applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty)');
   });
 
   it('accepts saved Play source metadata through the parsed launch context path', () => {
@@ -101,5 +101,49 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
     expect(text).toContain('setPlayFramesVersion((version) => version + 1)');
     expect(text).toContain('new Set(latestPlayFramesRef.current.map((frame) => frame.appFrame))');
     expect(text).toContain('playFramesVersion');
+  });
+});
+
+describe('PhysicsPaintStudio local Play preview contract', () => {
+  it('initializes local preview frame from saved Play launch context', () => {
+    const text = source();
+
+    expect(text).toContain('const [localPlayPreviewFrame, setLocalPlayPreviewFrame]');
+    expect(text).toContain('const previewFrame = context?.previewFrame');
+    expect(text).toContain('setLocalPlayPreviewFrame?.(getLaunchPreviewFrame(context))');
+    expect(text).toContain('currentPreviewFrame={localPlayPreviewFrame}');
+  });
+
+  it('keeps local Play scrub separate from editor frame sync', () => {
+    const text = source();
+    const localPreviewBlock = text.slice(text.indexOf('const previewLocalPlayFrame = useCallback'), text.indexOf('const startApplyTimeout'));
+
+    expect(localPreviewBlock).toContain('setLocalPlayPreviewFrame');
+    expect(localPreviewBlock).toContain('loadCachedPlayPreviewFrame');
+    expect(localPreviewBlock).not.toContain('sendPhysicPaintFrameSyncMessage');
+    expect(text).toContain('onPreviewPlayFrame={previewLocalPlayFrame}');
+    expect(text).not.toContain('onInspectPlayFrame={navigateToSyncedFrame}');
+  });
+
+  it('uses cached saved Play frames while clean and switches to live preview after clear/remake', () => {
+    const text = source();
+
+    expect(text).toContain('const [savedPlayCacheDirty, setSavedPlayCacheDirty]');
+    expect(text).toContain('function loadCachedPlayPreviewFrame');
+    expect(text).toContain('physicPaintStore.getFrame(launchContext.layerId, playStartFrame + previewFrame)');
+    expect(text).toContain('if (savedPlayCacheDirty) return false');
+    expect(text).toContain('setSavedPlayCacheDirty(true)');
+    expect(text).toContain('markSelectedPlayCacheDirty');
+  });
+
+  it('saves Play using selected script range and clears dirty cache status after regenerated frames publish', () => {
+    const text = source();
+    const savePlayBlock = text.slice(text.indexOf('const savePlay = useCallback'), text.indexOf('const saveRotoFrameAndAdvance'));
+
+    expect(savePlayBlock).toContain('const playStartFrame = getActivePlayStartFrame(launchContext, currentFrame)');
+    expect(savePlayBlock).toContain('appFrame: playStartFrame + frameIndex');
+    expect(savePlayBlock).toContain('startFrame: playStartFrame');
+    expect(savePlayBlock).toContain('setSavedPlayCacheDirty(false)');
+    expect(savePlayBlock).toContain('setLocalPlayPreviewFrame(0)');
   });
 });
