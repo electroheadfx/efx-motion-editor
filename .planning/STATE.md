@@ -95,6 +95,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-12T13:47:53.853Z
-Stopped at: Phase 36 UI-SPEC approved
+Last session: 2026-06-12T21:05:05Z
+Stopped at: Resumed after crash; applying final Physics Paint UI redline: right sidebar heading color and onion controls relocation
 Resume file: None

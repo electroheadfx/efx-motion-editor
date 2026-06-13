@@ -1,6 +1,6 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "node /Users/lmarques/.claude/efx-statusline-ccs-codex.js"
+    "command": "/Users/lmarques/.claude/efx-statusline-ccs-codex.js"
   }
 }
