@@ -414,15 +414,17 @@ describe('physicPaintBridge', () => {
     open.mockRestore();
   });
 
-  it('PhysicPaintProperties open action passes the current editor scrubber frame to the bridge', () => {
+  it('PhysicPaintProperties open action passes the current editor scrubber frame and requested mode to the bridge', () => {
     const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../components/sidebar/PhysicPaintProperties.tsx'), 'utf8');
-    const openHandlerSource = source.slice(source.indexOf('const currentFrame = timelineStore.currentFrame.value'), source.indexOf('};\n\n  return ('));
+    const openHandlerSource = source.slice(source.indexOf('const handleOpenCanvas'), source.indexOf('};\n\n  return ('));
 
     expect(openHandlerSource).toContain('const currentFrame = timelineStore.currentFrame.value');
     expect(openHandlerSource).toContain('openPhysicPaintCanvas({');
     expect(openHandlerSource).toContain('frame: currentFrame');
-    expect(openHandlerSource).not.toContain('playStartFrame');
-    expect(openHandlerSource).not.toContain('layer.startFrame');
+    expect(openHandlerSource).toContain('requestedWorkflowMode: mode');
+    const bridgeRequestSource = openHandlerSource.slice(openHandlerSource.indexOf('openPhysicPaintCanvas({'), openHandlerSource.indexOf('});', openHandlerSource.indexOf('openPhysicPaintCanvas({')));
+    expect(bridgeRequestSource).not.toContain('playStartFrame');
+    expect(bridgeRequestSource).not.toContain('layer.startFrame');
   });
 
   it('uses browser fallback with encoded launch context when Tauri APIs are unavailable', async () => {
