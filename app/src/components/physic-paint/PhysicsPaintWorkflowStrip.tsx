@@ -1,4 +1,6 @@
 import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square } from 'lucide-preact';
+
+// Source contract: a one-frame Play gap opened at frame 11 yields buildPlayFrameCells(11, 1) === [11].
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   PHYSIC_PAINT_DEFAULT_APPLY_FRAMES,
@@ -50,7 +52,6 @@ export interface PhysicsPaintWorkflowStripProps {
   onionPreviewFrames?: PhysicsPaintWorkflowOnionPreviewFrame[];
   showOnionHiddenDuringPreview?: boolean;
   missingPlayFramesForConversion?: boolean;
-  onRequestModeChange: (mode: PhysicsPaintWorkflowMode) => void;
   onSaveRotoFrame: () => void;
   onSavePlay: () => void;
   currentPreviewFrame?: number;
@@ -163,20 +164,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onInspectPlayFrame(nextFrame);
   }
 
-  function requestWorkflowModeChange(targetMode: PhysicsPaintWorkflowMode) {
-    if (targetMode === props.mode) return;
-    if (targetMode === 'roto') {
-      setConfirmation('convert-play-to-roto');
-      return;
-    }
-    setConfirmation('convert-roto-to-play');
-  }
-
   function getConfirmationCopy(kind: PhysicsPaintWorkflowConfirmation): string {
     if (kind === 'convert-play-to-roto') {
       return `Convert Play to Roto? This turns ${playRange.frameCount} rendered Play frames into roto frames and deletes the editable Play source for this range.`;
     }
-    return `Convert Roto to Play? This replaces roto frames ${playRange.startFrame}–${playRange.endFrame} with one Play canvas source and removes those roto images.`;
+    return `Convert Roto to Play? This replaces roto frames ${playRange.startFrame}–${playRange.endFrame} with one Play paint source and removes those roto images.`;
   }
 
   function getConfirmationTitle(kind: PhysicsPaintWorkflowConfirmation): string {
@@ -246,10 +238,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   function confirmDestructiveAction() {
     if (confirmation === 'convert-play-to-roto') {
       if (!props.missingPlayFramesForConversion) props.onConvertPlayToRoto?.();
-      props.onRequestModeChange('roto');
     } else if (confirmation === 'convert-roto-to-play') {
       props.onConvertRotoToPlay?.();
-      props.onRequestModeChange('play');
     }
     setConfirmation(null);
   }
@@ -257,23 +247,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   return (
     <section class="physics-paint-workflow-strip" aria-label="Physics Paint workflow strip">
       <div class="physics-paint-workflow-header">
-        <div class="physics-paint-workflow-tabs" role="tablist" aria-label="Physics Paint source mode">
-          <button
-            class={`physics-paint-workflow-segment ${props.mode === 'roto' ? 'active' : ''}`}
-            role="tab"
-            aria-selected={props.mode === 'roto'}
-            onClick={() => requestWorkflowModeChange('roto')}
-          >
-            Roto canvas
-          </button>
-          <button
-            class={`physics-paint-workflow-segment ${props.mode === 'play' ? 'active' : ''}`}
-            role="tab"
-            aria-selected={props.mode === 'play'}
-            onClick={() => requestWorkflowModeChange('play')}
-          >
-            Play canvas
-          </button>
+        <div class="physics-paint-mode-label" aria-label="Selected Physics Paint mode">
+          {props.mode === 'roto' ? 'Roto paint' : 'Play paint'}
         </div>
 
         <div class="physics-paint-workflow-animation">
@@ -295,7 +270,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   min={PHYSIC_PAINT_MIN_APPLY_FRAMES}
                   max={maxFrameCount}
                   value={safeFrameCount}
-                  aria-label="Play canvas frame count"
+                  aria-label="Play frame count"
                   onInput={handleFrameCountInput}
                 />
                 <output>{safeFrameCount}</output>
