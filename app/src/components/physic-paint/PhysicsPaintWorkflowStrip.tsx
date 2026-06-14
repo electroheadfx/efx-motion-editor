@@ -15,7 +15,7 @@ import {
 import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
 
 const SAVE_ROTO_FRAME_LABEL = 'Save roto frame';
-const RENDER_ACTION_LABEL = 'Preview / Save Play';
+const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
 const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
 const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
@@ -54,6 +54,7 @@ export interface PhysicsPaintWorkflowStripProps {
   missingPlayFramesForConversion?: boolean;
   onSaveRotoFrame: () => void;
   onSavePlay: () => void;
+  onUpdatePlayOptions?: () => void;
   currentPreviewFrame?: number;
   maxPlayFrameCount?: number;
   maxPlayFrameCountReason?: string;
@@ -283,7 +284,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={() => previewPlayFrame(Math.max(0, clampedPreviewFrame - 1))}><ChevronsLeft size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={() => previewPlayFrame(Math.min(safeFrameCount - 1, clampedPreviewFrame + 1))}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={() => previewPlayFrame(safeFrameCount - 1)}><ChevronLast size={15} /></button>
-              <button type="button" class="physics-paint-primary-action" title={RENDER_ACTION_HELP} aria-label="Preview or Save Play" disabled={props.ready === false || props.isPlaying} onClick={renderPlayFrames}>{RENDER_ACTION_LABEL}</button>
+              <button type="button" class="physics-paint-primary-action" title={RENDER_ACTION_HELP} aria-label="Render play" disabled={props.ready === false || props.isPlaying} onClick={renderPlayFrames}>{RENDER_ACTION_LABEL}</button>
+              <button type="button" class="physics-paint-render-action" aria-label="Update Play options" disabled={props.ready === false || props.isPlaying || !props.onUpdatePlayOptions} onClick={props.onUpdatePlayOptions}>Update</button>
               <button type="button" class="physics-paint-nav-button" aria-label="Stop preview" disabled={!props.isPlaying} onClick={props.onStopPreview}><Square size={15} /></button>
             </div>
           )}

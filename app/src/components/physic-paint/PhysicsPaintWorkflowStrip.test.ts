@@ -30,7 +30,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('function requestWorkflowModeChange');
     expect(code).not.toContain('onRequestModeChange');
     expect(code).toContain('Save roto frame');
-    expect(code).toContain('Preview / Save Play');
+    expect(code).toContain('Render play');
+    expect(code).not.toContain('Preview / Save Play');
     expect(code).toContain('Preview cached Play frames, or render and save the Play cache when it is stale.');
     expect(code).toContain('Stop');
     expect(rightPanelSource()).toContain('Save state');
@@ -108,17 +109,21 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('[11]');
   });
 
-  it('uses one Play action to preview cached frames or save stale Play output', () => {
+  it('uses Render play plus a separate Update action for saved Play options', () => {
     const code = source();
     const playControlsIndex = code.indexOf('physics-paint-play-controls');
     const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 3600);
 
-    expect(code).toContain('const RENDER_ACTION_LABEL = \'Preview / Save Play\'');
+    expect(code).toContain('const RENDER_ACTION_LABEL = \'Render play\'');
     expect(code).toContain('const RENDER_ACTION_HELP = \'Preview cached Play frames, or render and save the Play cache when it is stale.\'');
+    expect(code).toContain('onUpdatePlayOptions?: () => void');
     expect(playControlsBlock).toContain('title={RENDER_ACTION_HELP}');
-    expect(playControlsBlock).toContain('aria-label="Preview or Save Play"');
+    expect(playControlsBlock).toContain('aria-label="Render play"');
     expect(playControlsBlock).toContain('>{RENDER_ACTION_LABEL}</button>');
     expect(playControlsBlock).toContain('onClick={renderPlayFrames}');
+    expect(playControlsBlock).toContain('aria-label="Update Play options"');
+    expect(playControlsBlock).toContain('onClick={props.onUpdatePlayOptions}');
+    expect(playControlsBlock).toContain('>Update</button>');
     expect(playControlsBlock).not.toContain('>{SAVE_PLAY_LABEL}</button>');
     expect(playControlsBlock).not.toContain('onClick={props.onSavePlay}');
     expect(code).not.toContain('const SAVE_PLAY_LABEL');

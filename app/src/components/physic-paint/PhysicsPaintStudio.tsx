@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore } from '../../stores/physicPaintStore';
@@ -120,13 +120,15 @@ function applyLaunchContext(
   setLocalPlayPreviewFrame?: (frame: number) => void,
   setSavedPlayCacheDirty?: (dirty: boolean) => void,
   setPlayWiggle?: (wiggle: AnimationWiggleConfig) => void,
+  setSettings?: (settings: PhysicsPaintStudioSettings) => void,
 ) {
   setLaunchContext(context);
   setFramesToApply(clampPhysicPaintFrameCount(context.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES));
   setWorkflowMode(getLaunchWorkflowMode(context));
   setLocalPlayPreviewFrame?.(getLaunchPreviewFrame(context));
   setSavedPlayCacheDirty?.(getLaunchWorkflowMode(context) === 'play' && context.playCacheStatus !== 'cached');
-  setPlayWiggle?.(normalizePlayWiggle(context.playMotion));
+  setPlayWiggle?.(normalizePlayWiggle(context.playRenderOptions?.motion ?? context.playMotion));
+  if (context.playRenderOptions) setSettings?.(applyRenderOptionsSnapshotToSettings(context.playRenderOptions));
 }
 
 function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null {
@@ -374,6 +376,38 @@ function makeInitialSettings(): PhysicsPaintStudioSettings {
   };
 }
 
+function getRenderTool(settings: PhysicsPaintStudioSettings): PhysicPaintPlayRenderOptionsSnapshot['tool'] {
+  if (settings.tool === 'erase') return 'erase';
+  return settings.physicsMode === 'local' ? 'physics-paint' : 'normal-paint';
+}
+
+function buildPlayRenderOptionsSnapshot(settings: PhysicsPaintStudioSettings, motion: AnimationWiggleConfig): PhysicPaintPlayRenderOptionsSnapshot {
+  return {
+    tool: getRenderTool(settings),
+    color: settings.color,
+    opacity: settings.opacity,
+    brushSize: settings.size,
+    background: settings.background,
+    paperGrain: settings.paperGrain,
+    grainStrength: settings.grainStrength,
+    motion: normalizePlayWiggle(motion),
+  };
+}
+
+function applyRenderOptionsSnapshotToSettings(snapshot: PhysicPaintPlayRenderOptionsSnapshot): PhysicsPaintStudioSettings {
+  return {
+    ...makeInitialSettings(),
+    tool: snapshot.tool === 'erase' ? 'erase' : 'paint',
+    physicsMode: snapshot.tool === 'physics-paint' ? 'local' : null,
+    color: snapshot.color,
+    opacity: snapshot.opacity,
+    size: snapshot.brushSize,
+    background: snapshot.background,
+    paperGrain: snapshot.paperGrain,
+    grainStrength: snapshot.grainStrength,
+  };
+}
+
 export function PhysicsPaintStudio() {
   const [engine, setEngine] = useState<EfxPaintEngine | null>(null);
   const [canvasMounted, setCanvasMounted] = useState(false);
@@ -463,7 +497,7 @@ export function PhysicsPaintStudio() {
           const storedContext = await coreApi.invoke('get_physics_paint_launch_context');
           if (!disposed && isPhysicPaintLaunchContext(storedContext)) {
             console.info('[PhysicsPaintStudio] launch context fetched', storedContext);
-            applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle);
+            applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle, setSettings);
             setApplyStatus('idle');
             setApplyMessage(null);
             setLastError(null);
@@ -476,7 +510,7 @@ export function PhysicsPaintStudio() {
         unlisten = await eventApi.listen(PHYSIC_PAINT_LAUNCH_EVENT, (event) => {
           if (isPhysicPaintLaunchContext(event.payload)) {
             console.info('[PhysicsPaintStudio] launch context received', event.payload);
-            applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle);
+            applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle, setSettings);
             setApplyStatus('idle');
             setApplyMessage(null);
             setLastError(null);
@@ -514,6 +548,19 @@ export function PhysicsPaintStudio() {
       playerRef.current = null;
     };
   }, [engine, launchContext?.editableState]);
+
+  useEffect(() => {
+    if (!engine || !launchContext?.playRenderOptions) return;
+    const options = launchContext.playRenderOptions;
+    engine.setTool(options.tool === 'erase' ? 'erase' : 'paint');
+    engine.setPhysicsMode(options.tool === 'physics-paint' ? 'local' : null);
+    engine.setColorHex(options.color);
+    engine.setBrushOpacity(options.opacity);
+    engine.setBrushSize(options.brushSize);
+    engine.setBgMode(options.background);
+    engine.setPaperGrain(options.paperGrain);
+    engine.setEmbossStrength(options.grainStrength);
+  }, [engine, launchContext?.playRenderOptions]);
 
   useEffect(() => {
     return () => {
@@ -869,7 +916,9 @@ export function PhysicsPaintStudio() {
 
     setApplyStatus('success');
     setLastError(null);
-    if (detail.kind === 'apply-play-canvas') {
+    if (detail.kind === 'update-play-render-options') {
+      setApplyMessage(detail.appliedFrameCount > 0 ? 'Play options updated. Cached frames cleared; use Render play.' : 'Play options already up to date.');
+    } else if (detail.kind === 'apply-play-canvas') {
       const count = detail.appliedFrameCount;
       const frame = detail.startFrame;
       const endFrame = frame + Math.max(0, count - 1);
@@ -977,11 +1026,68 @@ export function PhysicsPaintStudio() {
     }
   }, [actionContext, currentFrame, readyToApply, startApplyTimeout]);
 
+  const updateSelectedPlayOptions = useCallback(async () => {
+    if (!actionContext || workflowMode !== 'play') return null;
+    const { launchContext, bridgeMode } = actionContext;
+    const scriptId = launchContext.selectedPlayScriptId;
+    if (!scriptId) {
+      setApplyStatus('error');
+      setApplyMessage('No saved Play script is selected to update.');
+      return null;
+    }
+    const renderOptions = buildPlayRenderOptionsSnapshot(settings, playWiggle);
+    const operationId = `${launchContext.operationId}:update-play-options:${Date.now()}`;
+    const payload: PhysicPaintApplyPayload = {
+      kind: 'update-play-render-options',
+      operationId,
+      layerId: launchContext.layerId,
+      startFrame: getActivePlayStartFrame(launchContext, currentFrame),
+      playScriptId: scriptId,
+      renderOptions,
+    };
+    try {
+      setApplyStatus('applying');
+      setApplyMessage('Updating Play options...');
+      setLastError(null);
+      activeOperationIdRef.current = operationId;
+      await sendPhysicPaintApplyPayload(payload, bridgeMode);
+      startApplyTimeout(operationId);
+      const changed = JSON.stringify(launchContext.playRenderOptions ?? null) !== JSON.stringify(renderOptions);
+      setLaunchContext((current) => current ? {
+        ...withoutRotoGapLimit(current),
+        playRenderOptions: renderOptions,
+        playMotion: renderOptions.motion,
+        playCacheStatus: changed ? 'stale' : current.playCacheStatus,
+        cachedPlayFrames: changed ? [] : current.cachedPlayFrames,
+      } : current);
+      if (changed) {
+        latestPlayFramesRef.current = [];
+        setLatestPlayFrames([]);
+        setCachedPlayPreviewUrl(null);
+        setSavedPlayCacheDirty(true);
+        setPlayFramesVersion((version) => version + 1);
+        setApplyMessage('Play options updated. Cached frames cleared; use Render play.');
+      } else {
+        setApplyMessage('Play options already up to date.');
+      }
+      return payload;
+    } catch (error) {
+      activeOperationIdRef.current = null;
+      const detail = error instanceof Error ? error.message : String(error);
+      const message = `Could not update Play options. ${detail}`;
+      setApplyStatus('error');
+      setApplyMessage(message);
+      setLastError(message);
+      return null;
+    }
+  }, [actionContext, currentFrame, playWiggle, settings, startApplyTimeout, workflowMode]);
+
   const savePlay = useCallback(async () => {
     if (!actionContext || !readyToApply || !playerRef.current) return null;
     const { engine, launchContext, bridgeMode } = actionContext;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
     const playStartFrame = getActivePlayStartFrame(launchContext, currentFrame);
+    const renderOptions = buildPlayRenderOptionsSnapshot(settings, playWiggle);
     capturePendingPlayFrameEdits();
     const editableState = annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current);
     engine.load(editableState);
@@ -1031,6 +1137,7 @@ export function PhysicsPaintStudio() {
         editableState,
         playScriptId: launchContext.selectedPlayScriptId,
         playMotion: playWiggle,
+        renderOptions,
       };
       latestPlayFramesRef.current = frames;
       setLatestPlayFrames(frames);
@@ -1050,6 +1157,7 @@ export function PhysicsPaintStudio() {
         selectedPlayScriptId: current.selectedPlayScriptId ?? `play-${playStartFrame}-${frameCount}`,
         playCacheStatus: 'cached',
         playMotion: playWiggle,
+        playRenderOptions: renderOptions,
         cachedPlayFrames: frames,
         previewFrame: 0,
       } : current);
@@ -1067,7 +1175,7 @@ export function PhysicsPaintStudio() {
       setLastError(message);
       return null;
     }
-  }, [actionContext, capturePendingPlayFrameEdits, currentFrame, framesToApply, playWiggle, previewFps, readyToApply, startApplyTimeout]);
+  }, [actionContext, capturePendingPlayFrameEdits, currentFrame, framesToApply, playWiggle, previewFps, readyToApply, settings, startApplyTimeout]);
 
   const saveRotoFrameAndAdvance = useCallback(async () => {
     if (!launchContext) return;
@@ -1237,6 +1345,7 @@ export function PhysicsPaintStudio() {
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
     const startFrame = currentFrame;
     const endFrame = startFrame + frameCount - 1;
+    const renderOptions = buildPlayRenderOptionsSnapshot(settings, playWiggle);
     const operationId = `${launchContext.operationId}:convert-roto-to-play:${Date.now()}`;
     const payload: PhysicPaintApplyPayload = {
       operationId,
@@ -1247,6 +1356,7 @@ export function PhysicsPaintStudio() {
       editableState: engine.save(),
       playScriptId: launchContext.selectedPlayScriptId,
       playMotion: playWiggle,
+      renderOptions,
     };
     try {
       setApplyStatus('applying');
@@ -1276,6 +1386,7 @@ export function PhysicsPaintStudio() {
         selectedPlayScriptId: current.selectedPlayScriptId ?? `play-${startFrame}-${frameCount}`,
         playCacheStatus: 'stale',
         playMotion: playWiggle,
+        playRenderOptions: renderOptions,
         cachedPlayFrames: [],
         previewFrame: 0,
       } : current);
@@ -1288,7 +1399,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(message);
       setLastError(message);
     }
-  }, [actionContext, currentFrame, framesToApply, playWiggle, startApplyTimeout]);
+  }, [actionContext, currentFrame, framesToApply, playWiggle, settings, startApplyTimeout]);
 
   const handlePhysicsPaintKeyDown = useCallback((event: KeyboardEvent) => {
     if (!isPhysicsPaintShortcutTarget(event.target)) return;
@@ -1544,6 +1655,7 @@ export function PhysicsPaintStudio() {
           missingPlayFramesForConversion={missingPlayFramesForConversion}
           onSaveRotoFrame={saveRotoFrameAndAdvance}
           onSavePlay={savePlay}
+          onUpdatePlayOptions={updateSelectedPlayOptions}
           onFrameCountChange={updatePlayFrameCount}
           onPlayPreview={playPreview}
           onStopPreview={stopPreview}

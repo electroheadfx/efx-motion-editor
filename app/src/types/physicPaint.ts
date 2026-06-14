@@ -69,6 +69,7 @@ export interface PhysicPaintLaunchContext {
   selectedPlayScriptId?: string;
   playCacheStatus?: PhysicPaintPlayScriptCacheStatus;
   playMotion?: PhysicPaintPlayMotionSettings;
+  playRenderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
   previewFrame?: number;
   cachedPlayFrames?: PhysicPaintRenderedFrame[];
   maxPlayFrameCount?: number;
@@ -198,6 +199,7 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalNonEmptyString(value.selectedPlayScriptId) &&
     optionalPlayScriptCacheStatus(value.playCacheStatus) &&
     optionalPlayMotion(value.playMotion) &&
+    optionalPlayRenderOptions(value.playRenderOptions) &&
     optionalNonNegativeInteger(value.previewFrame) &&
     optionalRenderedFrames(value.cachedPlayFrames) &&
     optionalFrameCount(value.maxPlayFrameCount) &&

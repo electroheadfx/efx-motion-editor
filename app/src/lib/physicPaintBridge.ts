@@ -237,6 +237,7 @@ export function createPhysicPaintLaunchContext(
         selectedPlayScriptId: containingRange.id,
         playCacheStatus,
         ...(containingRange.motion ? { playMotion: { ...containingRange.motion } } : {}),
+        ...(containingRange.renderOptions ? { playRenderOptions: structuredClone(containingRange.renderOptions) } : {}),
         previewFrame: currentFrame - containingRange.startFrame,
         cachedPlayFrames,
       }

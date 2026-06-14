@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 const sourcePath = fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url));
 const stylePath = fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url));
+const bridgePath = fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
+const bridgeSource = () => readFileSync(bridgePath, 'utf8');
 
 describe('PhysicsPaintStudio onion preview contract', () => {
   it('captures transparent stroke previews instead of full paper composite snapshots', () => {
@@ -77,8 +79,8 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
 
     expect(text).toContain("coreApi.invoke('get_physics_paint_launch_context')");
     expect(text).toContain('isPhysicPaintLaunchContext(storedContext)');
-    expect(text).toContain('applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle)');
-    expect(text).toContain('applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle)');
+    expect(text).toContain('applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle, setSettings)');
+    expect(text).toContain('applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle, setSettings)');
     expect(text).toContain('setSavedPlayCacheDirty?.(getLaunchWorkflowMode(context) === \'play\' && context.playCacheStatus !== \'cached\')');
   });
 
@@ -197,6 +199,21 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(saveEditableStateBlock).toContain('downloadPhysicsPaintState(editableState)');
   });
 
+  it('updates selected Play options without rendering and clears cached preview only when options changed', () => {
+    const text = source();
+    const updateBlock = text.slice(text.indexOf('const updateSelectedPlayOptions = useCallback'), text.indexOf('const savePlay = useCallback'));
+
+    expect(text).toContain('function buildPlayRenderOptionsSnapshot');
+    expect(bridgeSource()).toContain('playRenderOptions: structuredClone(containingRange.renderOptions)');
+    expect(updateBlock).toContain("kind: 'update-play-render-options'");
+    expect(updateBlock).toContain('buildPlayRenderOptionsSnapshot(settings, playWiggle)');
+    expect(updateBlock).toContain('JSON.stringify(launchContext.playRenderOptions ?? null) !== JSON.stringify(renderOptions)');
+    expect(updateBlock).toContain('setCachedPlayPreviewUrl(null)');
+    expect(updateBlock).toContain('setSavedPlayCacheDirty(true)');
+    expect(updateBlock).not.toContain('playerRef.current?.play');
+    expect(updateBlock).not.toContain('savePlay()');
+  });
+
   it('saves Play using selected script range and clears dirty cache status after regenerated frames publish', () => {
     const text = source();
     const savePlayBlock = text.slice(text.indexOf('const savePlay = useCallback'), text.indexOf('const saveRotoFrameAndAdvance'));
@@ -211,6 +228,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(savePlayBlock).toContain('setLocalPlayPreviewFrame(0)');
     expect(savePlayBlock).toContain('playScriptId: launchContext.selectedPlayScriptId');
     expect(savePlayBlock).toContain('playMotion: playWiggle');
+    expect(savePlayBlock).toContain('renderOptions,');
+    expect(savePlayBlock).toContain('playRenderOptions: renderOptions');
     expect(savePlayBlock).toContain('annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
   });
 });
