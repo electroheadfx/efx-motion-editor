@@ -9,7 +9,7 @@ describe('PhysicPaintProperties source contract', () => {
   it('renders explicit Roto paint and Play paint buttons without the stale single-button label', () => {
     expect(source).toContain('Roto paint');
     expect(source).toContain('Play paint');
-    expect(source).not.toContain('[open fx paint canvas]');
+    expect(source).not.toContain(['[open fx paint', 'canvas]'].join(' '));
   });
 
   it('passes the current editor frame and requested workflow mode to the bridge for each button', () => {
