@@ -10,6 +10,10 @@ import type { EfxPaintEngine } from '../engine/EfxPaintEngine'
 import type { AnimationConfig, AnimationState, FrameStroke } from './types'
 import type { PaintStroke, PenPoint } from '../types'
 
+const STOP_MOTION_HOLD_FRAMES = 2
+const MOVE_AMPLITUDE_PX = 12
+const DEFORM_AMPLITUDE_PX = 8
+
 export class AnimationPlayer {
   private readonly engine: EfxPaintEngine
 
@@ -94,8 +98,12 @@ export class AnimationPlayer {
     if (strokes.length > usableFrames) {
       // More strokes than frames means some strokes must share frames; spread
       // those shared frames across the whole range instead of the final frame.
+      // Explicit Play-frame annotations are user edits and must win over the
+      // automatic recorded-order distribution, otherwise strokes painted while
+      // inspecting a Play frame appear at the end of dense scripts.
       this.frameStrokes = strokes.map((stroke, index) => {
-        const frame = Math.max(0, Math.min(
+        const playFrameAnchor = getPlayFrameAnchor(stroke, usableFrames)
+        const frame = playFrameAnchor ?? Math.max(0, Math.min(
           usableFrames - 1,
           Math.ceil(((index + 1) * usableFrames) / strokes.length) - 1,
         ))
@@ -204,7 +212,7 @@ export class AnimationPlayer {
       const fs = this.frameStrokes[strokeIndex]
       if (fs.endFrame < frameIndex) {
         // Fully rendered — include with all points
-        strokesToRender.push({ stroke: this.applyWiggle(fs.stroke, frameIndex, strokeIndex), pointCount: fs.stroke.points.length })
+        strokesToRender.push({ stroke: this.prepareRenderStroke(fs.stroke, frameIndex, strokeIndex), pointCount: fs.stroke.points.length })
       } else if (fs.startFrame <= frameIndex && fs.endFrame >= frameIndex) {
         // Partially rendered — compute how many points to show
         const framesIntoStroke = frameIndex - fs.startFrame + 1
@@ -212,13 +220,17 @@ export class AnimationPlayer {
           fs.stroke.points.length,
           fs.pointsPerFrame * framesIntoStroke,
         )
-        strokesToRender.push({ stroke: this.applyWiggle(fs.stroke, frameIndex, strokeIndex), pointCount })
+        strokesToRender.push({ stroke: this.prepareRenderStroke(fs.stroke, frameIndex, strokeIndex), pointCount })
       }
       // Skip strokes where startFrame > frameIndex (not yet started)
     }
 
     // Delegate to engine for actual rendering
     this.engine.renderPartialStrokes(strokesToRender)
+  }
+
+  private prepareRenderStroke(stroke: PaintStroke, frameIndex: number, strokeIndex: number): PaintStroke {
+    return this.applyStrokeStyleOverride(this.applyWiggle(stroke, frameIndex, strokeIndex))
   }
 
   private applyWiggle(stroke: PaintStroke, frameIndex: number, strokeIndex: number): PaintStroke {
@@ -229,15 +241,31 @@ export class AnimationPlayer {
     if (deformation === 0 && position === 0) return stroke
 
     const seed = hashStroke(stroke, strokeIndex)
-    const phase = frameIndex * 0.48
-    const positionAmplitude = position * 8
-    const deformationAmplitude = deformation * 3
-    const offsetX = positionAmplitude === 0 ? 0 : Math.sin(seed * 0.017 + phase) * positionAmplitude
-    const offsetY = positionAmplitude === 0 ? 0 : Math.cos(seed * 0.013 + phase * 1.13) * positionAmplitude
+    const poseFrame = quantizeStopMotionFrame(frameIndex)
+    const positionAmplitude = position * MOVE_AMPLITUDE_PX
+    const deformationAmplitude = deformation * DEFORM_AMPLITUDE_PX
+    const offsetX = positionAmplitude === 0 ? 0 : poseNoise(seed, poseFrame, 0) * positionAmplitude
+    const offsetY = positionAmplitude === 0 ? 0 : poseNoise(seed, poseFrame, 1) * positionAmplitude
 
     return {
       ...stroke,
-      points: stroke.points.map((point, pointIndex) => wigglePoint(point, pointIndex, seed, phase, offsetX, offsetY, deformationAmplitude)),
+      points: stroke.points.map((point, pointIndex) => applyStopMotionPose(point, pointIndex, seed, poseFrame, offsetX, offsetY, deformationAmplitude)),
+    }
+  }
+
+  private applyStrokeStyleOverride(stroke: PaintStroke): PaintStroke {
+    const override = this.config?.strokeStyleOverride
+    if (!override) return stroke
+
+    return {
+      ...stroke,
+      tool: override.tool,
+      color: override.color,
+      params: {
+        ...stroke.params,
+        ...override.params,
+      },
+      physicsMode: override.physicsMode ?? null,
     }
   }
 }
@@ -262,11 +290,15 @@ function getPlayFrameAnchor(stroke: PaintStroke, usableFrames: number): number |
   return Math.min(usableFrames - 1, stroke.playFrame)
 }
 
-function wigglePoint(
+function quantizeStopMotionFrame(frameIndex: number): number {
+  return Math.floor(Math.max(0, frameIndex) / STOP_MOTION_HOLD_FRAMES)
+}
+
+function applyStopMotionPose(
   point: PenPoint,
   pointIndex: number,
   seed: number,
-  phase: number,
+  poseFrame: number,
   offsetX: number,
   offsetY: number,
   deformationAmplitude: number,
@@ -275,11 +307,18 @@ function wigglePoint(
     return { ...point, x: point.x + offsetX, y: point.y + offsetY }
   }
 
-  const waveA = seed * 0.011 + pointIndex * 0.71 + phase
-  const waveB = seed * 0.019 + pointIndex * 0.43 + phase * 1.31
+  const deformationX = poseNoise(seed, poseFrame, 11 + pointIndex * 2) * deformationAmplitude
+  const deformationY = poseNoise(seed, poseFrame, 12 + pointIndex * 2) * deformationAmplitude
   return {
     ...point,
-    x: point.x + offsetX + Math.sin(waveA) * deformationAmplitude,
-    y: point.y + offsetY + Math.cos(waveB) * deformationAmplitude,
+    x: point.x + offsetX + deformationX,
+    y: point.y + offsetY + deformationY,
   }
+}
+
+function poseNoise(seed: number, poseFrame: number, channel: number): number {
+  let hash = seed ^ Math.imul(poseFrame + 1, 374761393) ^ Math.imul(channel + 1, 668265263)
+  hash = Math.imul(hash ^ (hash >>> 13), 1274126177)
+  hash ^= hash >>> 16
+  return ((hash >>> 0) / 0xffffffff) * 2 - 1
 }

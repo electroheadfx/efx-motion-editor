@@ -58,6 +58,8 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
   const persistedOutputs: McePhysicPaintOutput[] = [];
 
   for (const output of outputs) {
+    if (!output || typeof output.layer_id !== 'string' || !Array.isArray(output.frames)) continue;
+
     const layerDirName = sanitizeSegment(output.layer_id);
     const layerDir = `${rootDir}/${layerDirName}`;
     await ensureDir(layerDir);
@@ -92,6 +94,8 @@ export async function loadPhysicPaintData(projectDir: string, outputs: McePhysic
   const hydratedOutputs: RuntimePhysicPaintOutput[] = [];
 
   for (const output of outputs) {
+    if (!output || typeof output.layer_id !== 'string' || !Array.isArray(output.frames)) continue;
+
     const frames: PhysicPaintRenderedFrame[] = [];
 
     for (const frame of output.frames) {

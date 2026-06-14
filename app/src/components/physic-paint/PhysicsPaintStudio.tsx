@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
-import { AnimationPlayer, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
+import { AnimationPlayer, type AnimationStrokeStyleOverride, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
@@ -405,6 +405,19 @@ function applyRenderOptionsSnapshotToSettings(snapshot: PhysicPaintPlayRenderOpt
     background: snapshot.background,
     paperGrain: snapshot.paperGrain,
     grainStrength: snapshot.grainStrength,
+  };
+}
+
+function buildPlayStrokeStyleOverride(renderOptions: PhysicPaintPlayRenderOptionsSnapshot): AnimationStrokeStyleOverride {
+  const tool = renderOptions.tool === 'erase' ? 'erase' : 'paint';
+  return {
+    tool,
+    color: tool === 'erase' ? null : renderOptions.color,
+    params: {
+      size: renderOptions.brushSize,
+      opacity: renderOptions.opacity,
+    },
+    physicsMode: renderOptions.tool === 'physics-paint' ? 'local' : null,
   };
 }
 
@@ -1109,6 +1122,7 @@ export function PhysicsPaintStudio() {
           frameCount,
           fps: previewFps,
           wiggle: playWiggle,
+          strokeStyleOverride: buildPlayStrokeStyleOverride(renderOptions),
           onFrame: (frameIndex: number, canvas: HTMLCanvasElement) => {
             setAnimFrame(frameIndex);
             captured.push({

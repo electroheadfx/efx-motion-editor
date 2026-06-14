@@ -73,6 +73,16 @@ describe('physicPaintPersistence', () => {
     });
   });
 
+  it('skips malformed outputs without frames while loading old project data', async () => {
+    const persisted = await savePhysicPaintData('/project', makeOutput());
+    const malformed = { layer_id: 'broken-layer', workflow_mode: 'play' } as never;
+
+    const hydrated = await loadPhysicPaintData('/project', [malformed, ...persisted]);
+
+    expect(hydrated).toHaveLength(1);
+    expect(hydrated?.[0].layer_id).toBe('physic layer/1');
+  });
+
   it('rejects non-PNG runtime frames instead of serializing inline data', async () => {
     const output = makeOutput();
     output[0].frames[0].dataUrl = 'data:text/plain;base64,AQID';

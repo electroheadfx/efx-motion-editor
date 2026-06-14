@@ -194,6 +194,52 @@ describe('AnimationPlayer sequential playback', () => {
     }
   })
 
+  it('applies a render-time stroke style override without mutating source strokes', () => {
+    const sourceStroke = makeStroke('#source', 4, 0)
+    const engine = createEngine([sourceStroke])
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({
+      frameCount: 4,
+      fps: 12,
+      strokeStyleOverride: {
+        tool: 'erase',
+        color: null,
+        params: { size: 3, opacity: 40 },
+        physicsMode: null,
+      },
+    })
+    advanceAnimationFrames(1)
+
+    const renderedStroke = renderCalls(engine)[0]?.[0]?.stroke
+
+    expect(renderedStroke).toMatchObject({
+      tool: 'erase',
+      color: null,
+      params: expect.objectContaining({ size: 3, opacity: 40 }),
+      physicsMode: null,
+    })
+    expect(sourceStroke).toMatchObject({
+      tool: 'paint',
+      color: '#source',
+      params: expect.objectContaining({ size: 8, opacity: 100 }),
+    })
+  })
+
+  it('honors Play-frame annotations even when there are more strokes than frames', () => {
+    const strokes = Array.from({ length: 20 }, (_, index) => makeStroke(`#overflow-${index}`, 4, index))
+    const annotatedStroke = { ...makeStroke('#frame-edit', 4, 21), playFrame: 3 }
+    const engine = createEngine([...strokes, annotatedStroke])
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({ frameCount: 16, fps: 12 })
+    advanceAnimationFrames(18)
+
+    const calls = renderCalls(engine)
+
+    expect(firstFrameFor(calls, '#frame-edit')).toBe(3)
+  })
+
   it('starts frame-annotated strokes at their selected Play frame and keeps drawing them progressively', () => {
     const scheduledStroke = { ...makeStroke('#frame-edit', 8, 2), playFrame: 2 }
     const engine = createEngine([makeStroke('#base', 8, 1), scheduledStroke])
@@ -294,19 +340,40 @@ describe('AnimationPlayer sequential playback', () => {
     expect(firstRenderedStroke).toBe(sourceStrokes[0])
   })
 
-  it('applies deterministic stroke deformation and position wiggle when configured', () => {
+  it('applies deterministic held stop-motion deformation and position poses when configured', () => {
     const engine = createEngine(makeRecordedOrderStrokes())
     const player = new AnimationPlayer(engine as EfxPaintEngine)
 
     player.play({ frameCount: 12, fps: 12, wiggle: { strokeDeformation: 80, strokePosition: 60 } })
+    advanceAnimationFrames(3)
+
+    const calls = renderCalls(engine)
+    const firstPosePoint = firstPointFor(calls[0], '#stroke-1')
+    const heldPosePoint = firstPointFor(calls[1], '#stroke-1')
+    const nextPosePoint = firstPointFor(calls[2], '#stroke-1')
+
+    expect(firstPosePoint).toBeDefined()
+    expect(firstPosePoint).not.toMatchObject({ x: 0, y: 0 })
+    expect(heldPosePoint).toEqual(firstPosePoint)
+    expect(nextPosePoint).not.toEqual(firstPosePoint)
+  })
+
+  it('keeps move as whole-stroke held poses without deforming point spacing', () => {
+    const engine = createEngine([makeStroke('#move-only', 12, 0)])
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({ frameCount: 12, fps: 12, wiggle: { strokeDeformation: 0, strokePosition: 80 } })
     advanceAnimationFrames(1)
 
-    const firstCall = renderCalls(engine)[0]
-    const firstPoint = firstPointFor(firstCall, '#stroke-1')
+    const renderedStroke = renderCalls(engine)[0]?.[0]?.stroke
+    const sourceStroke = vi.mocked(engine.getStrokes).mock.results[0].value[0]
+    const deltaX0 = renderedStroke.points[0].x - sourceStroke.points[0].x
+    const deltaY0 = renderedStroke.points[0].y - sourceStroke.points[0].y
 
-    expect(firstPoint).toBeDefined()
-    expect(firstPoint).not.toMatchObject({ x: 0, y: 0 })
-    expect(firstPoint).toEqual(firstPointFor(firstCall, '#stroke-1'))
+    renderedStroke.points.forEach((point, index) => {
+      expect(point.x - sourceStroke.points[index].x).toBeCloseTo(deltaX0)
+      expect(point.y - sourceStroke.points[index].y).toBeCloseTo(deltaY0)
+    })
   })
 
   it('does not add a public sequential or parallel mode toggle to AnimationConfig', () => {

@@ -5,7 +5,7 @@
 //  progressive point rendering and configurable FPS.
 // ============================================================
 
-import type { PaintStroke } from '../types'
+import type { BrushOpts, PaintStroke, ToolType } from '../types'
 
 /** Optional stroke-motion noise for Play exports/previews. Values are 0-100. */
 export interface AnimationWiggleConfig {
@@ -15,11 +15,19 @@ export interface AnimationWiggleConfig {
   strokePosition: number
 }
 
+export interface AnimationStrokeStyleOverride {
+  tool: ToolType
+  color: string | null
+  params: Partial<BrushOpts>
+  physicsMode?: 'local' | null
+}
+
 /** Configuration for animation playback (per D-03: FPS is configurable, no default) */
 export interface AnimationConfig {
   frameCount: number
   fps: number
   wiggle?: AnimationWiggleConfig
+  strokeStyleOverride?: AnimationStrokeStyleOverride
   onFrame?: (frameIndex: number, canvas: HTMLCanvasElement) => void  // per D-06
   onComplete?: () => void
 }

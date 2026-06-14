@@ -232,6 +232,14 @@ describe('physicPaintStore', () => {
       cacheStatus: 'stale',
       motion: { strokeDeformation: 30, strokePosition: 40 },
       renderOptions: expect.objectContaining({ tool: 'physics-paint', brushSize: 3, background: 'canvas3' }),
+      editableState: expect.objectContaining({
+        settings: editableState.settings,
+        strokes: [expect.objectContaining({
+          tool: 'paint',
+          color: '#103c65',
+          params: expect.objectContaining({ size: 6, opacity: 100 }),
+        })],
+      }),
     }));
     expect(physicPaintVersion.value).toBe(before + 1);
   });
