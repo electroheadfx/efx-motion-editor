@@ -471,6 +471,10 @@ button.destructive {
   min-width: 118px;
 }
 
+.physics-paint-topbar-slider.exact {
+  min-width: 188px;
+}
+
 .physics-paint-topbar-slider-row {
   display: flex;
   align-items: center;
@@ -480,6 +484,24 @@ button.destructive {
 .physics-paint-topbar-slider input[type="range"] {
   width: 86px;
   accent-color: var(--color-accent, #2d5be3);
+}
+
+.physics-paint-topbar-slider.exact input[type="range"] {
+  width: 132px;
+}
+
+.physics-paint-topbar-number {
+  width: 46px;
+  height: 24px;
+  padding: 2px 4px;
+  border: 1px solid #747980;
+  border-radius: 4px;
+  background: #5a5c5f;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .physics-paint-topbar-slider output {
@@ -1616,8 +1638,16 @@ button.destructive {
     min-width: 96px;
   }
 
+  .physics-paint-topbar-slider.exact {
+    min-width: 156px;
+  }
+
   .physics-paint-topbar-slider input[type="range"] {
     width: 62px;
+  }
+
+  .physics-paint-topbar-slider.exact input[type="range"] {
+    width: 102px;
   }
 
   .physics-paint-segmented-button:not(.physics-paint-swatch-button) {

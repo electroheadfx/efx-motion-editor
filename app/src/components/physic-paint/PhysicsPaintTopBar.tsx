@@ -49,6 +49,12 @@ const GRAIN_STRENGTH_OPTIONS = [
   { label: 'Hard', value: 0.95 },
 ];
 
+function clampTopBarValue(value: unknown, min: number, max: number): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return min;
+  return Math.max(min, Math.min(max, Math.trunc(numeric)));
+}
+
 function TopBarSlider(props: {
   id: string;
   label: string;
@@ -56,9 +62,11 @@ function TopBarSlider(props: {
   min: number;
   max: number;
   onChange: (value: number) => void;
+  numericInput?: boolean;
 }) {
+  const updateValue = (value: unknown) => props.onChange(clampTopBarValue(value, props.min, props.max));
   return (
-    <label class="physics-paint-topbar-control physics-paint-topbar-slider" for={props.id}>
+    <label class={`physics-paint-topbar-control physics-paint-topbar-slider${props.numericInput ? ' exact' : ''}`} for={props.id}>
       <span>{props.label}</span>
       <div class="physics-paint-topbar-slider-row">
         <input
@@ -67,9 +75,20 @@ function TopBarSlider(props: {
           min={props.min}
           max={props.max}
           value={props.value}
-          onInput={(event) => props.onChange(Number((event.target as HTMLInputElement).value))}
+          onInput={(event) => updateValue((event.target as HTMLInputElement).value)}
         />
-        <output>{props.value}</output>
+        {props.numericInput ? (
+          <input
+            class="physics-paint-topbar-number"
+            type="number"
+            min={props.min}
+            max={props.max}
+            value={props.value}
+            aria-label={`${props.label} exact value`}
+            onInput={(event) => updateValue((event.target as HTMLInputElement).value)}
+            onBlur={(event) => updateValue((event.target as HTMLInputElement).value)}
+          />
+        ) : <output>{props.value}</output>}
       </div>
     </label>
   );
@@ -108,7 +127,7 @@ export function PhysicsPaintTopBar({
       </div>
 
       <div class="physics-paint-topbar-primary">
-        <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={brushSize} onChange={onBrushSizeChange} />
+        <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={brushSize} onChange={onBrushSizeChange} numericInput />
         <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} />
 
         <div class="physics-paint-topbar-control">

@@ -3,9 +3,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const sourcePath = fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url));
+const topBarPath = fileURLToPath(new URL('./PhysicsPaintTopBar.tsx', import.meta.url));
 const stylePath = fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url));
 const bridgePath = fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
+const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
 const bridgeSource = () => readFileSync(bridgePath, 'utf8');
 
@@ -59,6 +61,22 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).toContain("frame.direction === 'previous' && onion.previous");
     expect(text).toContain("frame.direction === 'next' && onion.next");
     expect(text).toContain('Math.max(0.08, onionOpacity - frame.distance * 0.08)');
+  });
+});
+
+describe('PhysicsPaintStudio top bar controls contract', () => {
+  it('uses a wider brush-size slider with an exact numeric input on the same change path', () => {
+    const topBar = topBarSource();
+    const css = styles();
+
+    expect(topBar).toContain('function clampTopBarValue');
+    expect(topBar).toContain('numericInput?: boolean');
+    expect(topBar).toContain('class="physics-paint-topbar-number"');
+    expect(topBar).toContain('aria-label={`${props.label} exact value`}');
+    expect(topBar).toContain('onInput={(event) => updateValue((event.target as HTMLInputElement).value)}');
+    expect(topBar).toContain('onChange={onBrushSizeChange} numericInput');
+    expect(css).toContain('.physics-paint-topbar-slider.exact');
+    expect(css).toContain('width: 132px');
   });
 });
 
