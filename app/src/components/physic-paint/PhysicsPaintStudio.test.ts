@@ -72,13 +72,14 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
     expect(text).not.toContain('useState(4)');
   });
 
-  it('fetches the stored Tauri launch context after mount so editable Play state is not lost on reopen', () => {
+  it('fetches the stored Tauri launch context after mount so editable Play state and cached frames are not lost on reopen', () => {
     const text = source();
 
     expect(text).toContain("coreApi.invoke('get_physics_paint_launch_context')");
     expect(text).toContain('isPhysicPaintLaunchContext(storedContext)');
     expect(text).toContain('applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle)');
     expect(text).toContain('applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle)');
+    expect(text).toContain('setSavedPlayCacheDirty?.(getLaunchWorkflowMode(context) === \'play\' && context.playCacheStatus !== \'cached\')');
   });
 
   it('accepts saved Play source metadata through the parsed launch context path', () => {

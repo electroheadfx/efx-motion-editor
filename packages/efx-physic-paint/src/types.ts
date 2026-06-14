@@ -166,6 +166,7 @@ export interface PaintStroke {
   hasPenInput?: boolean
   diffusionFrames?: number  // v2 format: frames of diffusion since last stroke
   playFrame?: number        // optional Play-canvas frame where this stroke starts
+  physicsMode?: 'local' | null // per-stroke mode for Play-canvas replay
 }
 
 // === PROJECT SERIALIZATION ===
@@ -183,6 +184,7 @@ export interface SerializedProject {
     hasPenInput?: boolean
     diffusionFrames?: number
     playFrame?: number
+    physicsMode?: 'local' | null
   }>
   settings: {
     bgMode: string

@@ -4,6 +4,7 @@ import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunch
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext } from '../types/physicPaint';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
+import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
@@ -201,12 +202,15 @@ export function createPhysicPaintLaunchContext(
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const currentFrame = Math.max(0, Math.trunc(frame));
   const containingRange = physicPaintStore.findPlayScriptRangeAtFrame(layerId, currentFrame);
-  const maxPlayFrameCount = physicPaintStore.getMaxPlayFrameCountFromGap(layerId, currentFrame);
-  const maxPlayFrameCountReason = buildMaxPlayFrameCountReason(layerId, currentFrame);
+  const maxPlayFrameCount = getMaxPlayFrameCount(layerId, currentFrame, layer);
+  const maxPlayFrameCountReason = buildMaxPlayFrameCountReason(layerId, currentFrame, layer);
   const shouldOpenContainingPlay = Boolean(containingRange && requestedWorkflowMode !== 'roto');
-  const cachedPlayFrames = shouldOpenContainingPlay && containingRange?.cacheStatus === 'cached'
-    ? Array.from({ length: containingRange.frameCount }, (_, index) => physicPaintStore.getFrame(layerId, containingRange.startFrame + index)).filter((frame): frame is NonNullable<typeof frame> => Boolean(frame))
+  const cachedPlayFrames = shouldOpenContainingPlay && containingRange
+    ? collectCompleteCachedPlayFrames(layerId, containingRange)
     : [];
+  const playCacheStatus = shouldOpenContainingPlay && containingRange
+    ? cachedPlayFrames.length === containingRange.frameCount ? 'cached' : 'missing'
+    : undefined;
   const hasCurrentRotoFrame = Boolean(physicPaintStore.getFrame(layerId, currentFrame));
   const editableState = shouldOpenContainingPlay && containingRange?.editableState
     ? structuredClone(containingRange.editableState)
@@ -221,7 +225,7 @@ export function createPhysicPaintLaunchContext(
         playFrameCount: containingRange.frameCount,
         editableSource: 'play' as const,
         selectedPlayScriptId: containingRange.id,
-        playCacheStatus: containingRange.cacheStatus ?? 'missing',
+        playCacheStatus,
         ...(containingRange.motion ? { playMotion: { ...containingRange.motion } } : {}),
         previewFrame: currentFrame - containingRange.startFrame,
         cachedPlayFrames,
@@ -334,12 +338,42 @@ function isTauriPhysicsPaintLaunchResult(value: unknown): value is TauriPhysicsP
   );
 }
 
-function buildMaxPlayFrameCountReason(layerId: string, frame: number): string {
-  const maxPlayFrameCount = physicPaintStore.getMaxPlayFrameCountFromGap(layerId, frame);
+function collectCompleteCachedPlayFrames(layerId: string, range: { startFrame: number; frameCount: number }): NonNullable<ReturnType<typeof physicPaintStore.getFrame>>[] {
+  return Array.from({ length: range.frameCount }, (_, index) => physicPaintStore.getFrame(layerId, range.startFrame + index))
+    .filter((frame): frame is NonNullable<ReturnType<typeof physicPaintStore.getFrame>> => Boolean(frame));
+}
+
+function getTimelineRangeFrameCount(layer: Layer, frame: number): number | null {
+  const sequence = sequenceStore.sequences.peek().find((candidate) => candidate.layers.some((candidateLayer) => candidateLayer.id === layer.id));
+  if (!sequence) return null;
+  const rangeStart = Number.isInteger(sequence.inFrame) && sequence.inFrame !== undefined ? sequence.inFrame : 0;
+  const rangeEnd = Number.isInteger(sequence.outFrame) && sequence.outFrame !== undefined
+    ? sequence.outFrame
+    : sequence.kind === 'content'
+      ? sequence.keyPhotos.reduce((total, photo) => total + Math.max(0, photo.holdFrames), 0)
+      : null;
+  if (rangeEnd === null || rangeEnd <= frame) return null;
+  return Math.max(1, rangeEnd - Math.max(frame, rangeStart));
+}
+
+function getMaxPlayFrameCount(layerId: string, frame: number, layer: Layer): number {
+  const gapLimit = physicPaintStore.getMaxPlayFrameCountFromGap(layerId, frame);
+  const timelineLimit = getTimelineRangeFrameCount(layer, frame);
+  return Math.min(gapLimit, timelineLimit ?? PHYSIC_PAINT_MAX_APPLY_FRAMES);
+}
+
+function buildMaxPlayFrameCountReason(layerId: string, frame: number, layer: Layer): string {
+  const maxPlayFrameCount = getMaxPlayFrameCount(layerId, frame, layer);
+  const gapLimit = physicPaintStore.getMaxPlayFrameCountFromGap(layerId, frame);
+  const timelineLimit = getTimelineRangeFrameCount(layer, frame);
   const nextRange = physicPaintStore.getPlayScriptRanges(layerId).find((range) => range.startFrame > frame);
-  if (nextRange) {
+  if (nextRange && maxPlayFrameCount === gapLimit) {
     if (maxPlayFrameCount === 1) return `Only frame ${frame} is available before the next saved script.`;
     return `Maximum Play duration from this frame: ${maxPlayFrameCount} frame(s), until the next saved script.`;
+  }
+  if (timelineLimit !== null && maxPlayFrameCount === timelineLimit) {
+    if (maxPlayFrameCount === 1) return `Only frame ${frame} is available in this timeline layer range.`;
+    return `Maximum Play duration from this timeline layer range: ${maxPlayFrameCount} frame(s).`;
   }
   return `Limited to the maximum allowed Play script duration of ${PHYSIC_PAINT_MAX_APPLY_FRAMES} frames.`;
 }

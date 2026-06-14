@@ -2,13 +2,14 @@ use crate::models::project::MceProject;
 use std::fs;
 use std::path::Path;
 
-/// Create the project directory with images/, images/.thumbs/, videos/, and paint/ subdirectories.
+/// Create the project directory with images/, images/.thumbs/, videos/, paint/, and cache/ subdirectories.
 pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     let base = Path::new(dir_path);
     let images_dir = base.join("images");
     let thumbs_dir = images_dir.join(".thumbs");
     let videos_dir = base.join("videos");
     let paint_dir = base.join("paint");
+    let physic_paint_cache_dir = base.join("cache").join("physic-paint");
 
     fs::create_dir_all(&thumbs_dir)
         .map_err(|e| format!("Failed to create project directories: {}", e))?;
@@ -18,6 +19,9 @@ pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
 
     fs::create_dir_all(&paint_dir)
         .map_err(|e| format!("Failed to create paint directory: {}", e))?;
+
+    fs::create_dir_all(&physic_paint_cache_dir)
+        .map_err(|e| format!("Failed to create Physics Paint cache directory: {}", e))?;
 
     Ok(())
 }
@@ -146,6 +150,7 @@ mod tests {
         assert!(test_dir.join("images").exists());
         assert!(test_dir.join("images/.thumbs").exists());
         assert!(test_dir.join("paint").exists());
+        assert!(test_dir.join("cache/physic-paint").exists());
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 
@@ -176,17 +181,45 @@ mod tests {
             audio_tracks: vec![],
             physic_paint_outputs: vec![crate::models::project::McePhysicPaintOutput {
                 layer_id: "phys-layer-1".into(),
-                frames: vec![serde_json::json!({
-                    "frameIndex": 0,
-                    "appFrame": 12,
-                    "dataUrl": "data:image/png;base64,abc"
-                })],
+                frames: vec![crate::models::project::McePhysicPaintCachedFrame {
+                    frame_index: 0,
+                    app_frame: 12,
+                    cache_path: "cache/physic-paint/phys-layer-1/frame-000012-0000.png".into(),
+                    width: Some(1000),
+                    height: Some(650),
+                }],
                 editable_state: Some(serde_json::json!({
                     "version": 2,
                     "width": 1000,
                     "height": 650,
                     "settings": {},
                     "strokes": []
+                })),
+                play_script_ranges: vec![serde_json::json!({
+                    "id": "play-12-4",
+                    "startFrame": 12,
+                    "frameCount": 4,
+                    "editableState": {
+                        "version": 2,
+                        "width": 1000,
+                        "height": 650,
+                        "settings": {},
+                        "strokes": []
+                    },
+                    "source": "play",
+                    "cacheStatus": "cached",
+                    "motion": {
+                        "strokeDeformation": 30,
+                        "strokePosition": 40
+                    }
+                })],
+                workflow_mode: Some("play".into()),
+                play_start_frame: Some(12),
+                play_frame_count: Some(4),
+                editable_source: Some("play".into()),
+                play_motion: Some(serde_json::json!({
+                    "strokeDeformation": 30,
+                    "strokePosition": 40
                 })),
             }],
         };
@@ -205,8 +238,17 @@ mod tests {
         assert_eq!(loaded.images[0].relative_path, "images/photo_abc12345.jpg");
         assert_eq!(loaded.physic_paint_outputs.len(), 1);
         assert_eq!(loaded.physic_paint_outputs[0].layer_id, "phys-layer-1");
-        assert_eq!(loaded.physic_paint_outputs[0].frames[0]["appFrame"], 12);
+        assert_eq!(loaded.physic_paint_outputs[0].frames[0].app_frame, 12);
+        assert_eq!(loaded.physic_paint_outputs[0].frames[0].cache_path, "cache/physic-paint/phys-layer-1/frame-000012-0000.png");
         assert!(loaded.physic_paint_outputs[0].editable_state.is_some());
+        assert_eq!(loaded.physic_paint_outputs[0].workflow_mode.as_deref(), Some("play"));
+        assert_eq!(loaded.physic_paint_outputs[0].play_start_frame, Some(12));
+        assert_eq!(loaded.physic_paint_outputs[0].play_frame_count, Some(4));
+        assert_eq!(loaded.physic_paint_outputs[0].editable_source.as_deref(), Some("play"));
+        assert_eq!(loaded.physic_paint_outputs[0].play_script_ranges.len(), 1);
+        assert_eq!(loaded.physic_paint_outputs[0].play_script_ranges[0]["id"], "play-12-4");
+        assert_eq!(loaded.physic_paint_outputs[0].play_script_ranges[0]["motion"]["strokePosition"], 40);
+        assert_eq!(loaded.physic_paint_outputs[0].play_motion.as_ref().unwrap()["strokeDeformation"], 30);
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }

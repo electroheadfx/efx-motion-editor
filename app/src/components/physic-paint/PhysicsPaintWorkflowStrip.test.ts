@@ -30,8 +30,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('function requestWorkflowModeChange');
     expect(code).not.toContain('onRequestModeChange');
     expect(code).toContain('Save roto frame');
-    expect(code).toContain('Save play');
-    expect(code).toContain('Render');
+    expect(code).toContain('Preview / Save Play');
+    expect(code).toContain('Preview cached Play frames, or render and save the Play cache when it is stale.');
     expect(code).toContain('Stop');
     expect(rightPanelSource()).toContain('Save state');
     expect(rightPanelSource()).toContain('Load state');
@@ -108,23 +108,20 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('[11]');
   });
 
-  it('labels render-generation actions as Render and keeps Save play as publishing', () => {
+  it('uses one Play action to preview cached frames or save stale Play output', () => {
     const code = source();
     const playControlsIndex = code.indexOf('physics-paint-play-controls');
     const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 3600);
 
-    expect(code).toContain('const RENDER_ACTION_LABEL = \'Render\'');
-    expect(playControlsBlock).toContain('title="Render cached frames for this script. Watch full playback in EFX Motion."');
-    expect(playControlsBlock).toContain('aria-label="Render"');
+    expect(code).toContain('const RENDER_ACTION_LABEL = \'Preview / Save Play\'');
+    expect(code).toContain('const RENDER_ACTION_HELP = \'Preview cached Play frames, or render and save the Play cache when it is stale.\'');
+    expect(playControlsBlock).toContain('title={RENDER_ACTION_HELP}');
+    expect(playControlsBlock).toContain('aria-label="Preview or Save Play"');
     expect(playControlsBlock).toContain('>{RENDER_ACTION_LABEL}</button>');
-    expect(playControlsBlock).toContain('>{SAVE_PLAY_LABEL}</button>');
     expect(playControlsBlock).toContain('onClick={renderPlayFrames}');
-    expect(playControlsBlock).toContain('onClick={props.onSavePlay}');
-    expect(playControlsBlock).not.toContain('Play cached preview');
-    expect(playControlsBlock).not.toContain('Render and save Play');
-    expect(playControlsBlock).not.toContain('<Play');
-    expect(playControlsBlock).not.toContain('aria-label="Play preview"');
-    expect(playControlsBlock).not.toContain('aria-label="Render and save Play"');
+    expect(playControlsBlock).not.toContain('>{SAVE_PLAY_LABEL}</button>');
+    expect(playControlsBlock).not.toContain('onClick={props.onSavePlay}');
+    expect(code).not.toContain('const SAVE_PLAY_LABEL');
     expect(code).not.toContain('Play, Square');
   });
 

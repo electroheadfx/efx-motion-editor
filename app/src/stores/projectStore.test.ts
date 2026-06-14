@@ -2,7 +2,7 @@ import {describe, it, expect, beforeEach} from 'vitest';
 import {projectStore} from './projectStore';
 import {audioStore} from './audioStore';
 import type {AudioTrack} from '../types/audio';
-import type {MceProject} from '../types/project';
+import type {RuntimeMceProject} from '../types/project';
 
 /** Create a minimal AudioTrack for testing */
 function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
@@ -88,7 +88,7 @@ describe('projectStore audio persistence', () => {
   });
 
   describe('AUDIO-07: hydrateFromMce', () => {
-    function makeMinimalMceProject(overrides: Partial<MceProject> = {}): MceProject {
+    function makeMinimalMceProject(overrides: Partial<RuntimeMceProject> = {}): RuntimeMceProject {
       return {
         version: 8,
         name: 'Test Project',

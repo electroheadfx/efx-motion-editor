@@ -348,6 +348,72 @@ describe('physicPaintBridge', () => {
     expect(context.maxPlayFrameCount).toBeUndefined();
   });
 
+  it('opens saved Play with hydrated cached frames even when persisted range status is stale', () => {
+    physicPaintStore.loadFromMceOutputs([{
+      layer_id: 'phys-layer-1',
+      frames: [makeFrame(0, 18), makeFrame(1, 19), makeFrame(2, 20)],
+      editable_state: editableState,
+      play_script_ranges: [{
+        id: 'play-hydrated-stale',
+        startFrame: 18,
+        frameCount: 3,
+        editableState,
+        source: 'play',
+        cacheStatus: 'stale',
+      }],
+      workflow_mode: 'play',
+      play_start_frame: 18,
+      play_frame_count: 3,
+      editable_source: 'play',
+    }]);
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 19, null, null, 'play');
+
+    expect(context).toMatchObject({
+      requestedWorkflowMode: 'play',
+      workflowMode: 'play',
+      startFrame: 18,
+      playStartFrame: 18,
+      playFrameCount: 3,
+      selectedPlayScriptId: 'play-hydrated-stale',
+      playCacheStatus: 'cached',
+      previewFrame: 1,
+      editableSource: 'play',
+      editableState,
+    });
+    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 18), makeFrame(1, 19), makeFrame(2, 20)]);
+  });
+
+  it('keeps saved Play cache status missing when a hydrated range has incomplete frames', () => {
+    physicPaintStore.loadFromMceOutputs([{
+      layer_id: 'phys-layer-1',
+      frames: [makeFrame(0, 18), makeFrame(2, 20)],
+      editable_state: editableState,
+      play_script_ranges: [{
+        id: 'play-hydrated-incomplete',
+        startFrame: 18,
+        frameCount: 3,
+        editableState,
+        source: 'play',
+        cacheStatus: 'cached',
+      }],
+      workflow_mode: 'play',
+      play_start_frame: 18,
+      play_frame_count: 3,
+      editable_source: 'play',
+    }]);
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 19, null, null, 'play');
+
+    expect(context).toMatchObject({
+      workflowMode: 'play',
+      selectedPlayScriptId: 'play-hydrated-incomplete',
+      playCacheStatus: 'missing',
+      previewFrame: 1,
+    });
+    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 18), makeFrame(2, 20)]);
+  });
+
   it('opens explicit Roto inside a saved range without auto-switching to Play', () => {
     physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
       id: 'play-b',

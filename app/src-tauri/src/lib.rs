@@ -13,6 +13,20 @@ use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::Emitter;
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct PhysicsPaintRenderedFrame {
+    #[serde(rename = "frameIndex")]
+    frame_index: u32,
+    #[serde(rename = "appFrame")]
+    app_frame: u32,
+    #[serde(rename = "dataUrl")]
+    data_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height: Option<u32>,
+}
+
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 struct PhysicsPaintLaunchContext {
     #[serde(rename = "operationId")]
     operation_id: String,
@@ -28,6 +42,8 @@ struct PhysicsPaintLaunchContext {
     height: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fps: Option<f64>,
+    #[serde(rename = "requestedWorkflowMode", skip_serializing_if = "Option::is_none")]
+    requested_workflow_mode: Option<String>,
     #[serde(rename = "workflowMode", skip_serializing_if = "Option::is_none")]
     workflow_mode: Option<String>,
     #[serde(rename = "playStartFrame", skip_serializing_if = "Option::is_none")]
@@ -38,6 +54,20 @@ struct PhysicsPaintLaunchContext {
     editable_source: Option<String>,
     #[serde(rename = "editableState", skip_serializing_if = "Option::is_none")]
     editable_state: Option<Value>,
+    #[serde(rename = "selectedPlayScriptId", skip_serializing_if = "Option::is_none")]
+    selected_play_script_id: Option<String>,
+    #[serde(rename = "playCacheStatus", skip_serializing_if = "Option::is_none")]
+    play_cache_status: Option<String>,
+    #[serde(rename = "playMotion", skip_serializing_if = "Option::is_none")]
+    play_motion: Option<Value>,
+    #[serde(rename = "previewFrame", skip_serializing_if = "Option::is_none")]
+    preview_frame: Option<u32>,
+    #[serde(rename = "cachedPlayFrames", default, skip_serializing_if = "Vec::is_empty")]
+    cached_play_frames: Vec<PhysicsPaintRenderedFrame>,
+    #[serde(rename = "maxPlayFrameCount", skip_serializing_if = "Option::is_none")]
+    max_play_frame_count: Option<u32>,
+    #[serde(rename = "maxPlayFrameCountReason", skip_serializing_if = "Option::is_none")]
+    max_play_frame_count_reason: Option<String>,
 }
 
 struct PhysicsPaintLaunchState(Mutex<Option<PhysicsPaintLaunchContext>>);
@@ -506,9 +536,8 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    #[test]
-    fn physics_paint_url_excludes_large_editable_state() {
-        let context = PhysicsPaintLaunchContext {
+    fn play_launch_context() -> PhysicsPaintLaunchContext {
+        PhysicsPaintLaunchContext {
             operation_id: "op-1".into(),
             layer_id: "layer-1".into(),
             layer_name: Some("Layer".into()),
@@ -516,6 +545,7 @@ mod tests {
             width: Some(1000),
             height: Some(650),
             fps: Some(24.0),
+            requested_workflow_mode: Some("play".into()),
             workflow_mode: Some("play".into()),
             play_start_frame: Some(12),
             play_frame_count: Some(5),
@@ -527,7 +557,25 @@ mod tests {
                 "settings": {},
                 "strokes": [{ "pts": [[1, 2, 0.5, 0, 0, 0, 0]] }]
             })),
-        };
+            selected_play_script_id: Some("play-12-5".into()),
+            play_cache_status: Some("cached".into()),
+            play_motion: Some(serde_json::json!({ "strokeDeformation": 30, "strokePosition": 40 })),
+            preview_frame: Some(1),
+            cached_play_frames: vec![PhysicsPaintRenderedFrame {
+                frame_index: 1,
+                app_frame: 13,
+                data_url: "data:image/png;base64,ZmFrZQ==".into(),
+                width: Some(1000),
+                height: Some(650),
+            }],
+            max_play_frame_count: None,
+            max_play_frame_count_reason: None,
+        }
+    }
+
+    #[test]
+    fn physics_paint_url_excludes_large_editable_state() {
+        let context = play_launch_context();
 
         let url = physics_paint_url(&context);
 
@@ -536,28 +584,20 @@ mod tests {
         assert!(url.contains("startFrame=12"));
         assert!(!url.contains("editableState"));
         assert!(!url.contains("strokes"));
+        assert!(!url.contains("cachedPlayFrames"));
+        assert!(!url.contains("data:image"));
     }
 
     #[test]
     fn physics_paint_launch_context_is_cloneable_for_fetch_after_mount() {
-        let context = PhysicsPaintLaunchContext {
-            operation_id: "op-2".into(),
-            layer_id: "layer-2".into(),
-            layer_name: None,
-            start_frame: 4,
-            width: None,
-            height: None,
-            fps: None,
-            workflow_mode: Some("play".into()),
-            play_start_frame: Some(4),
-            play_frame_count: Some(3),
-            editable_source: Some("play".into()),
-            editable_state: Some(serde_json::json!({ "version": 2, "strokes": [{ "pts": [[1, 2]] }] })),
-        };
-
-        let cloned = context.clone();
+        let cloned = play_launch_context().clone();
 
         assert_eq!(cloned.workflow_mode.as_deref(), Some("play"));
+        assert_eq!(cloned.selected_play_script_id.as_deref(), Some("play-12-5"));
+        assert_eq!(cloned.play_cache_status.as_deref(), Some("cached"));
+        assert_eq!(cloned.preview_frame, Some(1));
+        assert_eq!(cloned.cached_play_frames.len(), 1);
+        assert_eq!(cloned.cached_play_frames[0].app_frame, 13);
         assert!(cloned.editable_state.is_some());
     }
 }

@@ -6,9 +6,13 @@ import { describe, expect, it } from 'vitest';
 const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicPaintProperties.tsx'), 'utf8');
 
 describe('PhysicPaintProperties source contract', () => {
-  it('renders explicit Roto paint and Play paint buttons without the stale single-button label', () => {
-    expect(source).toContain('Roto paint');
-    expect(source).toContain('Play paint');
+  it('renders contextual Roto/Play actions instead of showing every action at once', () => {
+    expect(source).toContain('activePlayRange ? (');
+    expect(source).toContain(') : hasCurrentRotoFrame ? (');
+    expect(source).toContain('Open Play paint for the active script range.');
+    expect(source).toContain('Delete the active Play paint script range.');
+    expect(source).toContain('Open Roto paint at the current editor frame.');
+    expect(source).toContain('Delete the Roto paint frame at the current editor frame.');
     expect(source).not.toContain(['[open fx paint', 'canvas]'].join(' '));
   });
 
@@ -32,10 +36,13 @@ describe('PhysicPaintProperties source contract', () => {
     expect(source).toContain('Opened Play paint range ${startFrame}–${endFrame} at preview frame ${previewFrame}.');
   });
 
-  it('keeps invalid context copy and readable disabled button labels', () => {
+  it('keeps invalid context copy and readable contextual button labels', () => {
     expect(source).toContain('Select a physics paint layer and frame first.');
     expect(source).toContain('disabled:opacity-50 disabled:cursor-not-allowed');
     expect(source).toContain("{openingMode === 'roto' ? 'Opening Roto paint...' : 'Roto paint'}");
     expect(source).toContain("{openingMode === 'play' ? 'Opening Play paint...' : 'Play paint'}");
+    const standaloneCanvasSource = source.slice(source.indexOf('<SectionLabel text=\"Standalone Canvas\" />'));
+    expect(standaloneCanvasSource).not.toContain('Roto paint is disabled while the current frame is inside a Play paint range.');
+    expect(standaloneCanvasSource).not.toContain('Current frame is inside a Play paint range.');
   });
 });

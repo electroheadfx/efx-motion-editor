@@ -15,9 +15,8 @@ import {
 import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
 
 const SAVE_ROTO_FRAME_LABEL = 'Save roto frame';
-const SAVE_PLAY_LABEL = 'Save play';
-const RENDER_ACTION_LABEL = 'Render';
-const RENDER_ACTION_HELP = 'Render cached frames for this script. Watch full playback in EFX Motion.';
+const RENDER_ACTION_LABEL = 'Preview / Save Play';
+const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
 const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
 const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
 
@@ -284,8 +283,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={() => previewPlayFrame(Math.max(0, clampedPreviewFrame - 1))}><ChevronsLeft size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={() => previewPlayFrame(Math.min(safeFrameCount - 1, clampedPreviewFrame + 1))}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={() => previewPlayFrame(safeFrameCount - 1)}><ChevronLast size={15} /></button>
-              <button type="button" class="physics-paint-render-action" title="Render cached frames for this script. Watch full playback in EFX Motion." aria-label="Render" disabled={props.ready === false || props.isPlaying} onClick={renderPlayFrames}>{RENDER_ACTION_LABEL}</button>
-              <button type="button" class="physics-paint-primary-action" disabled={props.ready === false || props.isPlaying} onClick={props.onSavePlay}>{SAVE_PLAY_LABEL}</button>
+              <button type="button" class="physics-paint-primary-action" title={RENDER_ACTION_HELP} aria-label="Preview or Save Play" disabled={props.ready === false || props.isPlaying} onClick={renderPlayFrames}>{RENDER_ACTION_LABEL}</button>
               <button type="button" class="physics-paint-nav-button" aria-label="Stop preview" disabled={!props.isPlaying} onClick={props.onStopPreview}><Square size={15} /></button>
             </div>
           )}

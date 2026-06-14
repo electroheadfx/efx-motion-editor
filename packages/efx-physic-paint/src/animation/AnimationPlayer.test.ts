@@ -105,6 +105,10 @@ function firstFrameFor(calls: RenderedStroke[][], color: string): number {
   return calls.findIndex(call => pointCountFor(call, color) > 0)
 }
 
+function physicsModesFor(call: RenderedStroke[]): Array<'local' | null | undefined> {
+  return call.map(({ stroke }) => stroke.physicsMode)
+}
+
 describe('AnimationPlayer sequential playback', () => {
   beforeEach(() => {
     installAnimationFrameMock()
@@ -258,6 +262,23 @@ describe('AnimationPlayer sequential playback', () => {
     expect(pointCountFor(calls[2], '#frame-edit-a')).toBe(8)
     expect(pointCountFor(calls[2], '#frame-edit-b')).toBe(0)
     expect(pointCountFor(calls[3], '#frame-edit-b')).toBe(8)
+  })
+
+  it('passes recorded stroke tool modes through playback so Normal, Physics, and eraser strokes replay correctly', () => {
+    const normalStroke = { ...makeStroke('#normal', 4, 1), physicsMode: null }
+    const physicsStroke = { ...makeStroke('#physics', 4, 2), physicsMode: 'local' as const }
+    const eraserStroke = { ...makeStroke('#erase', 4, 3), tool: 'erase' as const, color: null, physicsMode: null }
+    const engine = createEngine([normalStroke, physicsStroke, eraserStroke])
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({ frameCount: 6, fps: 12 })
+    advanceAnimationFrames(8)
+
+    const calls = renderCalls(engine)
+
+    expect(calls.some(call => physicsModesFor(call).includes(null))).toBe(true)
+    expect(calls.some(call => physicsModesFor(call).includes('local'))).toBe(true)
+    expect(calls.at(-1)?.map(({ stroke }) => stroke.tool)).toEqual(['paint', 'paint', 'erase'])
   })
 
   it('keeps playback geometry unchanged when wiggle is not configured', () => {

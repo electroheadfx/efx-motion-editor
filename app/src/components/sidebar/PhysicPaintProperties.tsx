@@ -31,6 +31,8 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
   const currentFrame = timelineStore.currentFrame.value;
   const sourceLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const validContext = layer.type === 'physic-paint' && layer.source.type === 'physic-paint' && Number.isInteger(currentFrame) && currentFrame >= 0;
+  const activePlayRange = validContext ? physicPaintStore.findPlayScriptRangeAtFrame(sourceLayerId, currentFrame) : null;
+  const hasCurrentRotoFrame = validContext ? Boolean(physicPaintStore.getFrame(sourceLayerId, currentFrame)) : false;
   const hasOutput = validContext ? physicPaintStore.hasOutput(sourceLayerId) : false;
   useEffect(() => {
     const handleApplyResult = (event: Event) => {
@@ -54,7 +56,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
 
   const handleOpenCanvas = async (mode: PhysicPaintWorkflowMode) => {
     const currentFrame = timelineStore.currentFrame.value;
-    if (!validContext || openingMode) return;
+    if (!validContext || openingMode || (mode === 'roto' && activePlayRange)) return;
 
     setOpeningMode(mode);
     setStatusMessage(mode === 'roto' ? 'Opening Roto paint...' : 'Opening Play paint...');
@@ -84,6 +86,22 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
       setStatusMessage(null);
       setErrorMessage(result.error || 'Physics paint is not ready. Check that the layer, frame, canvas, and app bridge are available, then try again.');
     }
+  };
+
+  const deleteCurrentRotoFrame = () => {
+    if (!validContext || !hasCurrentRotoFrame) return;
+    physicPaintStore.removeFrameRange(sourceLayerId, currentFrame, 1);
+    setErrorMessage(null);
+    setStatusMessage(`Deleted Roto paint frame ${currentFrame}.`);
+  };
+
+  const deleteActivePlayRange = () => {
+    if (!validContext || !activePlayRange) return;
+    physicPaintStore.removeFrameRange(sourceLayerId, activePlayRange.startFrame, activePlayRange.frameCount);
+    physicPaintStore.removePlayScriptRange(sourceLayerId, activePlayRange.id);
+    const endFrame = activePlayRange.startFrame + activePlayRange.frameCount - 1;
+    setErrorMessage(null);
+    setStatusMessage(`Deleted Play paint range ${activePlayRange.startFrame}–${endFrame}.`);
   };
 
   return (
@@ -173,28 +191,76 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
 
       <div class="space-y-2">
         <SectionLabel text="Standalone Canvas" />
-        <div class="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            class="w-full rounded px-3 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}
-            disabled={!validContext || openingMode !== null}
-            title={validContext ? 'Open Roto paint at the current editor frame' : 'Select a physics paint layer and frame first.'}
-            onClick={() => handleOpenCanvas('roto')}
-          >
-            {openingMode === 'roto' ? 'Opening Roto paint...' : 'Roto paint'}
-          </button>
-          <button
-            type="button"
-            class="w-full rounded px-3 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}
-            disabled={!validContext || openingMode !== null}
-            title={validContext ? 'Open Play paint at the current editor frame' : 'Select a physics paint layer and frame first.'}
-            onClick={() => handleOpenCanvas('play')}
-          >
-            {openingMode === 'play' ? 'Opening Play paint...' : 'Play paint'}
-          </button>
-        </div>
+        {activePlayRange ? (
+          <div class="space-y-2">
+            <button
+              type="button"
+              class="w-full rounded px-3 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}
+              disabled={!validContext || openingMode !== null}
+              title="Open Play paint for the active script range."
+              onClick={() => handleOpenCanvas('play')}
+            >
+              {openingMode === 'play' ? 'Opening Play paint...' : 'Play paint'}
+            </button>
+            <button
+              type="button"
+              class="w-full rounded px-3 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--color-error-text)' }}
+              disabled={!validContext}
+              title="Delete the active Play paint script range."
+              onClick={deleteActivePlayRange}
+            >
+              Delete Play
+            </button>
+          </div>
+        ) : hasCurrentRotoFrame ? (
+          <div class="space-y-2">
+            <button
+              type="button"
+              class="w-full rounded px-3 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}
+              disabled={!validContext || openingMode !== null}
+              title="Open Roto paint at the current editor frame."
+              onClick={() => handleOpenCanvas('roto')}
+            >
+              {openingMode === 'roto' ? 'Opening Roto paint...' : 'Roto paint'}
+            </button>
+            <button
+              type="button"
+              class="w-full rounded px-3 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--color-error-text)' }}
+              disabled={!validContext}
+              title="Delete the Roto paint frame at the current editor frame."
+              onClick={deleteCurrentRotoFrame}
+            >
+              Delete Roto
+            </button>
+          </div>
+        ) : (
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="w-full rounded px-3 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}
+              disabled={!validContext || openingMode !== null}
+              title={validContext ? 'Open Roto paint at the current editor frame.' : 'Select a physics paint layer and frame first.'}
+              onClick={() => handleOpenCanvas('roto')}
+            >
+              {openingMode === 'roto' ? 'Opening Roto paint...' : 'Roto paint'}
+            </button>
+            <button
+              type="button"
+              class="w-full rounded px-3 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}
+              disabled={!validContext || openingMode !== null}
+              title={validContext ? 'Open Play paint at the current editor frame.' : 'Select a physics paint layer and frame first.'}
+              onClick={() => handleOpenCanvas('play')}
+            >
+              {openingMode === 'play' ? 'Opening Play paint...' : 'Play paint'}
+            </button>
+          </div>
+        )}
 
         {!validContext && (
           <div class="text-[11px] leading-5" style={{ color: '#f59e0b' }}>

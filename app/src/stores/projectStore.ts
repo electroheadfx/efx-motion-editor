@@ -1,5 +1,5 @@
 import {signal, computed, batch} from '@preact/signals';
-import type {ProjectData, MceProject, MceSequence, MceKeyPhoto, MceLayer} from '../types/project';
+import type {ProjectData, MceProject, RuntimeMceProject, MceSequence, MceKeyPhoto, MceLayer} from '../types/project';
 import type {MceAudioTrack} from '../types/audio';
 import type {AudioTrack, FadeCurve} from '../types/audio';
 import type {Sequence, KeyPhoto, TransitionType, FadeMode} from '../types/sequence';
@@ -26,6 +26,7 @@ import {physicPaintStore, _setPhysicPaintMarkDirtyCallback} from './physicPaintS
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
+import {loadPhysicPaintData, savePhysicPaintData} from '../lib/physicPaintPersistence';
 import {readFile} from '@tauri-apps/plugin-fs';
 
 // --- Signals ---
@@ -52,7 +53,7 @@ const isSaving = signal(false);
 // --- Helpers ---
 
 /** Build MceProject from current store state */
-function buildMceProject(): MceProject {
+function buildMceProject(): RuntimeMceProject {
   const projectRoot = dirPath.value ?? '';
 
   // Convert sequences to MceSequence format
@@ -273,7 +274,7 @@ function buildMceProject(): MceProject {
 }
 
 /** Load MceProject data into all stores */
-function hydrateFromMce(project: MceProject, projectRoot: string) {
+function hydrateFromMce(project: RuntimeMceProject, projectRoot: string) {
   batch(() => {
     // 1. Set projectStore signals
     name.value = project.name;
@@ -623,6 +624,8 @@ export const projectStore = {
 
     isSaving.value = true;
     try {
+      const project = buildMceProject();
+
       // Save paint sidecar files before .mce (per Pitfall 5: write paint files first)
       const currentDir = dirPath.value;
       if (currentDir) {
@@ -639,8 +642,12 @@ export const projectStore = {
         }
       }
 
-      const project = buildMceProject();
-      const result = await ipcProjectSave(project, currentFilePath);
+      const projectForSave: MceProject = {
+        ...project,
+        physic_paint_outputs: await savePhysicPaintData(currentDir ?? currentFilePath.substring(0, currentFilePath.lastIndexOf('/')), project.physic_paint_outputs),
+      };
+
+      const result = await ipcProjectSave(projectForSave, currentFilePath);
       if (!result.ok) {
         throw new Error(result.error);
       }
@@ -692,13 +699,17 @@ export const projectStore = {
 
     // Derive dirPath from filePath's parent
     const projectRoot = openFilePath.substring(0, openFilePath.lastIndexOf('/'));
+    const runtimeProject: RuntimeMceProject = {
+      ...result.data,
+      physic_paint_outputs: await loadPhysicPaintData(projectRoot, result.data.physic_paint_outputs),
+    };
 
     batch(() => {
       filePath.value = openFilePath;
       dirPath.value = projectRoot;
     });
 
-    hydrateFromMce(result.data, projectRoot);
+    hydrateFromMce(runtimeProject, projectRoot);
 
     // Update recent projects
     await addRecentProject({

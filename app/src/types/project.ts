@@ -1,5 +1,5 @@
 import type {MceAudioTrack} from './audio';
-import type {PhysicPaintRenderedFrame} from './physicPaint';
+import type {PhysicPaintPlayMotionSettings, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata} from './physicPaint';
 
 /** Legacy type -- used by project_get_default */
 export interface ProjectData {
@@ -30,11 +30,33 @@ export interface MceProject {
   physic_paint_outputs?: McePhysicPaintOutput[];
 }
 
+export type RuntimeMceProject = Omit<MceProject, 'physic_paint_outputs'> & {
+  physic_paint_outputs?: RuntimePhysicPaintOutput[];
+};
+
+export interface McePhysicPaintCachedFrame {
+  frameIndex: number;
+  appFrame: number;
+  cache_path: string;
+  width?: number;
+  height?: number;
+}
+
 export interface McePhysicPaintOutput {
   layer_id: string;
-  frames: PhysicPaintRenderedFrame[];
+  frames: McePhysicPaintCachedFrame[];
   editable_state?: import('@efxlab/efx-physic-paint').SerializedProject;
+  play_script_ranges?: PhysicPaintPlayScriptRange[];
+  workflow_mode?: PhysicPaintWorkflowMetadata['workflowMode'];
+  play_start_frame?: number;
+  play_frame_count?: number;
+  editable_source?: PhysicPaintWorkflowMetadata['editableSource'];
+  play_motion?: PhysicPaintPlayMotionSettings;
 }
+
+export type RuntimePhysicPaintOutput = Omit<McePhysicPaintOutput, 'frames'> & {
+  frames: PhysicPaintRenderedFrame[];
+};
 
 /** Sequence definition within a project file */
 export interface MceSequence {

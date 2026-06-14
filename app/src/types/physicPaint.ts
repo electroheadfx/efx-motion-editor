@@ -333,6 +333,7 @@ function isSerializedStroke(value: unknown): boolean {
   if (!isRecord(value.params)) return false;
   if (typeof value.time !== 'number' || !Number.isFinite(value.time)) return false;
   if (value.playFrame !== undefined && !isNonNegativeInteger(value.playFrame)) return false;
+  if (value.physicsMode !== undefined && value.physicsMode !== 'local' && value.physicsMode !== null) return false;
   return value.pts.every((point) => Array.isArray(point) && point.length === 7 && point.every((entry) => typeof entry === 'number' && Number.isFinite(entry)));
 }
 

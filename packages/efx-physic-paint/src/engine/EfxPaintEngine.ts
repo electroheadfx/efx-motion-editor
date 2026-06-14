@@ -59,6 +59,7 @@ type DeferredStrokeFinalization = {
 type StrokeApplicationOptions = {
   startNaturalDrying?: boolean
   hasPenInput?: boolean
+  physicsMode?: 'local' | null
 }
 
 const STROKE_FINALIZATION_INPUT_GRACE_MS = 600
@@ -533,6 +534,7 @@ export class EfxPaintEngine {
         params: { ...this.state.brushOpts },
         timestamp: Date.now(),
         diffusionFrames: this.physicsTickCount,
+        physicsMode: this.state.physicsMode === 'local' ? 'local' : null,
       })
     }
   }
@@ -745,7 +747,7 @@ export class EfxPaintEngine {
       // Slice points to the requested count (progressive rendering per D-02)
       const pts = pointCount >= a.points.length ? a.points : a.points.slice(0, pointCount)
       const completeStroke = pointCount >= a.points.length
-      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a) })
+      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode })
       if (completeStroke) this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
     }
 
@@ -943,7 +945,10 @@ export class EfxPaintEngine {
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
     const hasPenInput = options.hasPenInput ?? this.state.hasPenInput
     const renderOpts = { ...opts, size: brushRenderRadius(opts) }
+    const previousPhysicsMode = this.state.physicsMode
+    if (options.physicsMode !== undefined) this.state.physicsMode = options.physicsMode
 
+    try {
     if (tool === 'paint' && color) {
       this.prepareWetLayerForStroke(points[0], opts)
       renderPaintStroke(
@@ -1050,6 +1055,9 @@ export class EfxPaintEngine {
         y1: Math.ceil(sy1 + brushR),
       }
     }
+    } finally {
+      this.state.physicsMode = previousPhysicsMode
+    }
   }
 
   // ================================================================
@@ -1123,6 +1131,7 @@ export class EfxPaintEngine {
       params: opts,
       timestamp: Date.now(),
       hasPenInput,
+      physicsMode: this.state.tool === 'paint' && this.state.physicsMode === 'local' ? 'local' : null,
     })
 
     if (this.pendingStrokeFinalizations.length === 0) this.strokeFinalizationQueuedAt = performance.now()
@@ -1196,7 +1205,7 @@ export class EfxPaintEngine {
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 
     for (const a of this.allActions) {
-      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a) })
+      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn)
     }
 
@@ -1244,6 +1253,7 @@ export class EfxPaintEngine {
         hasPenInput: this.strokeHasPenInput(s),
         diffusionFrames: s.diffusionFrames || 0,
         ...(Number.isInteger(s.playFrame) && s.playFrame !== undefined && s.playFrame >= 0 ? { playFrame: s.playFrame } : {}),
+        ...(s.physicsMode === 'local' ? { physicsMode: 'local' as const } : { physicsMode: null }),
       })),
       settings: {
         bgMode: this.state.bgMode,
@@ -1278,6 +1288,7 @@ export class EfxPaintEngine {
       hasPenInput: s.hasPenInput,
       diffusionFrames: s.diffusionFrames || 0,
       ...(Number.isInteger(s.playFrame) && s.playFrame !== undefined && s.playFrame >= 0 ? { playFrame: s.playFrame } : {}),
+      ...(s.physicsMode === 'local' ? { physicsMode: 'local' as const } : { physicsMode: null }),
     }))
 
     // Clear undo stack (loaded state is new baseline)
