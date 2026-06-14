@@ -25,6 +25,17 @@ const makeFrame = (frameIndex: number, appFrame: number) => ({
   height: 650,
 });
 
+const renderOptions = {
+  tool: 'normal-paint' as const,
+  color: '#103c65',
+  opacity: 100,
+  brushSize: 6,
+  background: 'canvas1' as const,
+  paperGrain: 'canvas1',
+  grainStrength: 0.45,
+  motion: { strokeDeformation: 10, strokePosition: 20 },
+};
+
 describe('physicPaintStore', () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
@@ -176,6 +187,77 @@ describe('physicPaintStore', () => {
       editableSource: 'play',
       playMotion: { strokeDeformation: 30, strokePosition: 40 },
     });
+  });
+
+  it('updates one Play script render options and clears only its cached frames when changed', () => {
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-a',
+      layerId: 'layer-1',
+      startFrame: 0,
+      frameCount: 2,
+      frames: [makeFrame(0, 0), makeFrame(1, 1)],
+      editableState,
+      playMotion: renderOptions.motion,
+      renderOptions,
+    });
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-b',
+      layerId: 'layer-1',
+      startFrame: 8,
+      frameCount: 2,
+      frames: [makeFrame(0, 8), makeFrame(1, 9)],
+      editableState,
+      playMotion: renderOptions.motion,
+      renderOptions,
+    });
+    const scriptId = physicPaintStore.getPlayScriptRanges('layer-1')[0].id;
+    const before = physicPaintVersion.value;
+
+    const result = physicPaintStore.updatePlayScriptRenderOptions('layer-1', scriptId, {
+      ...renderOptions,
+      tool: 'physics-paint',
+      brushSize: 3,
+      background: 'canvas3',
+      motion: { strokeDeformation: 30, strokePosition: 40 },
+    }, 'op-update-options');
+
+    expect(result).toMatchObject({ ok: true, operationId: 'op-update-options', kind: 'update-play-render-options', appliedFrameCount: 2 });
+    expect(physicPaintStore.getFrame('layer-1', 0)).toBeNull();
+    expect(physicPaintStore.getFrame('layer-1', 1)).toBeNull();
+    expect(physicPaintStore.getFrame('layer-1', 8)?.frameIndex).toBe(0);
+    expect(physicPaintStore.getPlayScriptRanges('layer-1')[0]).toEqual(expect.objectContaining({
+      id: scriptId,
+      cacheStatus: 'stale',
+      motion: { strokeDeformation: 30, strokePosition: 40 },
+      renderOptions: expect.objectContaining({ tool: 'physics-paint', brushSize: 3, background: 'canvas3' }),
+    }));
+    expect(physicPaintVersion.value).toBe(before + 1);
+  });
+
+  it('leaves cached Play frames and version unchanged when render options are identical', () => {
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-identical',
+      layerId: 'layer-1',
+      startFrame: 4,
+      frameCount: 2,
+      frames: [makeFrame(0, 4), makeFrame(1, 5)],
+      editableState,
+      playMotion: renderOptions.motion,
+      renderOptions,
+    });
+    const scriptId = physicPaintStore.getPlayScriptRanges('layer-1')[0].id;
+    const before = physicPaintVersion.value;
+
+    const result = physicPaintStore.updatePlayScriptRenderOptions('layer-1', scriptId, renderOptions, 'op-update-identical');
+
+    expect(result).toMatchObject({ ok: true, operationId: 'op-update-identical', appliedFrameCount: 0 });
+    expect(physicPaintStore.getFrame('layer-1', 4)?.frameIndex).toBe(0);
+    expect(physicPaintStore.getFrame('layer-1', 5)?.frameIndex).toBe(1);
+    expect(physicPaintStore.getPlayScriptRanges('layer-1')[0].cacheStatus).toBe('cached');
+    expect(physicPaintVersion.value).toBe(before);
   });
 
   it('increments version for each successful mutation and marks dirty', () => {

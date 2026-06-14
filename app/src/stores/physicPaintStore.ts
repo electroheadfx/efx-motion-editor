@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -93,6 +93,28 @@ function _isValidPlayMotion(value: PhysicPaintPlayMotionSettings | undefined): v
   );
 }
 
+function _playRenderOptionsEqual(a: PhysicPaintPlayRenderOptionsSnapshot | undefined, b: PhysicPaintPlayRenderOptionsSnapshot): boolean {
+  return Boolean(a) &&
+    a.tool === b.tool &&
+    a.color === b.color &&
+    a.opacity === b.opacity &&
+    a.brushSize === b.brushSize &&
+    a.background === b.background &&
+    a.paperGrain === b.paperGrain &&
+    a.grainStrength === b.grainStrength &&
+    a.motion.strokeDeformation === b.motion.strokeDeformation &&
+    a.motion.strokePosition === b.motion.strokePosition;
+}
+
+function _clearCachedFramesForRange(layerId: string, range: Pick<PhysicPaintPlayScriptRange, 'startFrame' | 'frameCount'>): void {
+  const layerFrames = _frames.get(layerId);
+  if (!layerFrames) return;
+  for (let offset = 0; offset < range.frameCount; offset++) {
+    layerFrames.delete(range.startFrame + offset);
+  }
+  if (layerFrames.size === 0) _frames.delete(layerId);
+}
+
 function _makePlayScriptRangeFromPayload(
   payload: Extract<PhysicPaintApplyPayload, { kind: 'apply-play-canvas' | 'convert-roto-to-play' }>,
   cacheStatus: PhysicPaintPlayScriptRange['cacheStatus'],
@@ -110,6 +132,7 @@ function _makePlayScriptRangeFromPayload(
     source: 'play',
     cacheStatus,
     ...(payload.playMotion ? { motion: { ...payload.playMotion } } : {}),
+    ...(payload.renderOptions ? { renderOptions: structuredClone(payload.renderOptions) } : {}),
   };
   const overlap = currentRanges
     .filter((existing) => existing.id !== replacing?.id)
@@ -205,6 +228,70 @@ export const physicPaintStore = {
     }
     _notifyVisualChange();
     return true;
+  },
+
+  updatePlayScriptRenderOptions(layerId: string, scriptId: string, renderOptions: PhysicPaintPlayRenderOptionsSnapshot, operationId = `update-render-options:${scriptId}`): PhysicPaintApplyResult {
+    const current = _playScriptRanges.get(layerId) ?? [];
+    const range = current.find((candidate) => candidate.id === scriptId);
+    if (!range) {
+      return {
+        operationId,
+        kind: 'update-play-render-options',
+        layerId,
+        startFrame: 0,
+        appliedFrameCount: 0,
+        ok: false,
+        error: `Unknown Play script: ${scriptId}`,
+      };
+    }
+    if (_playRenderOptionsEqual(range.renderOptions, renderOptions)) {
+      return {
+        operationId,
+        kind: 'update-play-render-options',
+        layerId,
+        startFrame: range.startFrame,
+        appliedFrameCount: 0,
+        ok: true,
+      };
+    }
+    const next = current.map((candidate) => candidate.id === scriptId
+      ? {
+          ...candidate,
+          cacheStatus: 'stale' as const,
+          renderOptions: structuredClone(renderOptions),
+          motion: { ...renderOptions.motion },
+        }
+      : candidate);
+    const normalized = normalizePhysicPaintPlayScriptRanges(next);
+    if (!normalized) {
+      return {
+        operationId,
+        kind: 'update-play-render-options',
+        layerId,
+        startFrame: range.startFrame,
+        appliedFrameCount: 0,
+        ok: false,
+        error: 'Invalid Play render options update',
+      };
+    }
+    _clearCachedFramesForRange(layerId, range);
+    _playScriptRanges.set(layerId, normalized);
+    _workflowMetadata.set(layerId, {
+      workflowMode: 'play',
+      playStartFrame: range.startFrame,
+      playFrameCount: range.frameCount,
+      editableSource: 'play',
+      playMotion: { ...renderOptions.motion },
+    });
+    _notifyVisualChange();
+    return {
+      operationId,
+      kind: 'update-play-render-options',
+      layerId,
+      startFrame: range.startFrame,
+      appliedFrameCount: range.frameCount,
+      ok: true,
+    };
   },
 
   removePlayScriptRange(layerId: string, scriptId: string): boolean {
@@ -398,13 +485,7 @@ export const physicPaintStore = {
       return _errorResult(payload, `Play script range overlap with ${overlap.id}`);
     }
 
-    const layerFrames = _frames.get(payload.layerId);
-    if (layerFrames) {
-      for (let offset = 0; offset < payload.frameCount; offset++) {
-        layerFrames.delete(payload.startFrame + offset);
-      }
-      if (layerFrames.size === 0) _frames.delete(payload.layerId);
-    }
+    _clearCachedFramesForRange(payload.layerId, range);
     _tryUpsertPlayScriptRange(payload.layerId, range);
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
     _workflowMetadata.set(payload.layerId, {

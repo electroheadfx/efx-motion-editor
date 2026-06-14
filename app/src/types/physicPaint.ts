@@ -7,16 +7,29 @@ export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals']);
 
-export type PhysicPaintApplyKind = 'apply-canvas' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play';
+export type PhysicPaintApplyKind = 'apply-canvas' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play' | 'update-play-render-options';
 export type PhysicPaintWorkflowMode = 'roto' | 'play';
 export type PhysicPaintEditableSource = 'roto' | 'play';
 
 export type PhysicPaintPlayScriptRangeSource = 'play';
 export type PhysicPaintPlayScriptCacheStatus = 'cached' | 'stale' | 'missing';
+export type PhysicPaintPlayRenderTool = 'normal-paint' | 'physics-paint' | 'erase';
+export type PhysicPaintPlayBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3' | 'photo';
 
 export interface PhysicPaintPlayMotionSettings {
   strokeDeformation: number;
   strokePosition: number;
+}
+
+export interface PhysicPaintPlayRenderOptionsSnapshot {
+  tool: PhysicPaintPlayRenderTool;
+  color: string;
+  opacity: number;
+  brushSize: number;
+  background: PhysicPaintPlayBackgroundMode;
+  paperGrain: string;
+  grainStrength: number;
+  motion: PhysicPaintPlayMotionSettings;
 }
 
 export interface PhysicPaintPlayScriptRange {
@@ -27,6 +40,7 @@ export interface PhysicPaintPlayScriptRange {
   source?: PhysicPaintPlayScriptRangeSource;
   cacheStatus?: PhysicPaintPlayScriptCacheStatus;
   motion?: PhysicPaintPlayMotionSettings;
+  renderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
 }
 
 export interface PhysicPaintWorkflowMetadata {
@@ -96,6 +110,7 @@ export interface PhysicPaintApplyPlayCanvasPayload {
   editableState: SerializedProject;
   playScriptId?: string;
   playMotion?: PhysicPaintPlayMotionSettings;
+  renderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
 }
 
 export interface PhysicPaintConvertPlayToRotoPayload {
@@ -117,9 +132,19 @@ export interface PhysicPaintConvertRotoToPlayPayload {
   editableState: SerializedProject;
   playScriptId?: string;
   playMotion?: PhysicPaintPlayMotionSettings;
+  renderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
 }
 
-export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintApplyPlayCanvasPayload | PhysicPaintConvertPlayToRotoPayload | PhysicPaintConvertRotoToPlayPayload;
+export interface PhysicPaintUpdatePlayRenderOptionsPayload {
+  kind: 'update-play-render-options';
+  operationId: string;
+  layerId: string;
+  startFrame: number;
+  playScriptId: string;
+  renderOptions: PhysicPaintPlayRenderOptionsSnapshot;
+}
+
+export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintApplyPlayCanvasPayload | PhysicPaintConvertPlayToRotoPayload | PhysicPaintConvertRotoToPlayPayload | PhysicPaintUpdatePlayRenderOptionsPayload;
 
 export interface PhysicPaintApplyResult {
   operationId: string;
@@ -190,10 +215,31 @@ export function isPhysicPaintFrameSyncMessage(value: unknown): value is PhysicPa
   );
 }
 
+export function isPhysicPaintPlayRenderOptionsSnapshot(value: unknown): value is PhysicPaintPlayRenderOptionsSnapshot {
+  if (!isRecord(value)) return false;
+  return (
+    (value.tool === 'normal-paint' || value.tool === 'physics-paint' || value.tool === 'erase') &&
+    isNonEmptyString(value.color) &&
+    isPercentInteger(value.opacity) &&
+    isPositiveInteger(value.brushSize) &&
+    optionalPlayBackgroundMode(value.background) &&
+    isNonEmptyString(value.paperGrain) &&
+    typeof value.grainStrength === 'number' &&
+    Number.isFinite(value.grainStrength) &&
+    value.grainStrength >= 0 &&
+    value.grainStrength <= 1 &&
+    optionalPlayMotion(value.motion)
+  );
+}
+
 export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintApplyPayload {
   if (!isRecord(value) || containsForbiddenApplyField(value)) return false;
 
   if (!isBaseApplyPayload(value)) return false;
+
+  if (value.kind === 'update-play-render-options') {
+    return isNonEmptyString(value.playScriptId) && isPhysicPaintPlayRenderOptionsSnapshot(value.renderOptions);
+  }
 
   if (!isSerializedProject(value.editableState)) return false;
 
@@ -237,6 +283,7 @@ export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPain
     if (candidate.source !== undefined && candidate.source !== 'play') return null;
     if (candidate.cacheStatus !== undefined && candidate.cacheStatus !== 'cached' && candidate.cacheStatus !== 'stale' && candidate.cacheStatus !== 'missing') return null;
     if (!optionalPlayMotion(candidate.motion)) return null;
+    if (!optionalPlayRenderOptions(candidate.renderOptions)) return null;
 
     ids.add(candidate.id);
     ranges.push({
@@ -247,6 +294,7 @@ export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPain
       ...(candidate.source ? { source: candidate.source } : {}),
       ...(candidate.cacheStatus ? { cacheStatus: candidate.cacheStatus } : {}),
       ...(candidate.motion ? { motion: normalizePlayMotion(candidate.motion) } : {}),
+      ...(candidate.renderOptions ? { renderOptions: normalizePlayRenderOptions(candidate.renderOptions) } : {}),
     });
   }
 
@@ -265,7 +313,7 @@ export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintAp
   if (!isRecord(value)) return false;
   return (
     isNonEmptyString(value.operationId) &&
-    (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play') &&
+    (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options') &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
     isNonNegativeInteger(value.appliedFrameCount) &&
@@ -289,12 +337,13 @@ function isBaseApplyPayload(value: Record<string, unknown>): value is Record<str
   startFrame: number;
 } {
   return (
-    (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play') &&
+    (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options') &&
     isNonEmptyString(value.operationId) &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
     optionalNonEmptyString(value.playScriptId) &&
-    optionalPlayMotion(value.playMotion)
+    optionalPlayMotion(value.playMotion) &&
+    optionalPlayRenderOptions(value.renderOptions)
   );
 }
 
@@ -391,6 +440,14 @@ function optionalPlayMotion(value: unknown): value is PhysicPaintPlayMotionSetti
   return isPercentInteger(value.strokeDeformation) && isPercentInteger(value.strokePosition);
 }
 
+function optionalPlayRenderOptions(value: unknown): value is PhysicPaintPlayRenderOptionsSnapshot | undefined {
+  return value === undefined || isPhysicPaintPlayRenderOptionsSnapshot(value);
+}
+
+function optionalPlayBackgroundMode(value: unknown): value is PhysicPaintPlayBackgroundMode {
+  return value === 'transparent' || value === 'white' || value === 'canvas1' || value === 'canvas2' || value === 'canvas3' || value === 'photo';
+}
+
 function normalizePlayMotion(value: PhysicPaintPlayMotionSettings): PhysicPaintPlayMotionSettings {
   return {
     strokeDeformation: clampPercentInteger(value.strokeDeformation),
@@ -398,8 +455,25 @@ function normalizePlayMotion(value: PhysicPaintPlayMotionSettings): PhysicPaintP
   };
 }
 
+function normalizePlayRenderOptions(value: PhysicPaintPlayRenderOptionsSnapshot): PhysicPaintPlayRenderOptionsSnapshot {
+  return {
+    tool: value.tool,
+    color: value.color,
+    opacity: value.opacity,
+    brushSize: value.brushSize,
+    background: value.background,
+    paperGrain: value.paperGrain,
+    grainStrength: value.grainStrength,
+    motion: normalizePlayMotion(value.motion),
+  };
+}
+
 function isPercentInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
 function clampPercentInteger(value: unknown): number {

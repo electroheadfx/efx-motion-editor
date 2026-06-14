@@ -76,7 +76,7 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
 
   try {
     if (deliveredOperationIds.has(payload.operationId)) {
-      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.frames.length);
+      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.kind === 'update-play-render-options' ? 0 : payload.frames.length);
     }
 
     const result = payload.kind === 'apply-canvas'
@@ -85,7 +85,9 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
         ? physicPaintStore.applySequence(payload)
         : payload.kind === 'convert-play-to-roto'
           ? physicPaintStore.convertPlayToRoto(payload)
-          : physicPaintStore.convertRotoToPlay(payload);
+          : payload.kind === 'convert-roto-to-play'
+            ? physicPaintStore.convertRotoToPlay(payload)
+            : physicPaintStore.updatePlayScriptRenderOptions(payload.layerId, payload.playScriptId, payload.renderOptions, payload.operationId);
     if (result.ok) deliveredOperationIds.add(payload.operationId);
     return result.ok ? result : { ...result, error: `${APPLY_ERROR} ${result.error ?? ''}`.trim() };
   } catch (error) {
@@ -171,7 +173,15 @@ function resultBase(payload: unknown): Pick<PhysicPaintApplyResult, 'operationId
   const record = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
   return {
     operationId: typeof record.operationId === 'string' ? record.operationId : 'unknown-operation',
-    kind: record.kind === 'apply-play-canvas' ? 'apply-play-canvas' : 'apply-canvas',
+    kind: record.kind === 'apply-play-canvas'
+      ? 'apply-play-canvas'
+      : record.kind === 'convert-play-to-roto'
+        ? 'convert-play-to-roto'
+        : record.kind === 'convert-roto-to-play'
+          ? 'convert-roto-to-play'
+          : record.kind === 'update-play-render-options'
+            ? 'update-play-render-options'
+            : 'apply-canvas',
     layerId: typeof record.layerId === 'string' ? record.layerId : 'unknown-layer',
     startFrame: typeof record.startFrame === 'number' && Number.isFinite(record.startFrame) ? Math.max(0, Math.trunc(record.startFrame)) : 0,
   };

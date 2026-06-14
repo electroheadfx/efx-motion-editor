@@ -46,6 +46,17 @@ const makeFrame = (frameIndex: number, appFrame: number) => ({
   height: 650,
 });
 
+const renderOptions = {
+  tool: 'normal-paint' as const,
+  color: '#103c65',
+  opacity: 100,
+  brushSize: 6,
+  background: 'canvas1' as const,
+  paperGrain: 'canvas1',
+  grainStrength: 0.45,
+  motion: { strokeDeformation: 10, strokePosition: 20 },
+};
+
 function applyCanvasPayload(overrides: Partial<PhysicPaintApplyPayload> = {}): PhysicPaintApplyPayload {
   return {
     kind: 'apply-canvas',
@@ -706,6 +717,28 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getFrame('phys-layer-1', 11)?.frameIndex).toBe(1);
     expect(physicPaintStore.getFrame('phys-layer-1', 12)?.frameIndex).toBe(2);
     expect(physicPaintStore.getFrame('phys-layer-1', 13)).toBeNull();
+  });
+
+  it('applies metadata-only Play render option updates without generated frames', () => {
+    mockLayers([physicLayer()]);
+    physicPaintStore.applySequence(applySequencePayload({ renderOptions, playMotion: renderOptions.motion }));
+    const scriptId = physicPaintStore.getPlayScriptRanges('phys-layer-1')[0].id;
+
+    const result = applyPhysicPaintPayload({
+      kind: 'update-play-render-options',
+      operationId: 'update-render-options-1',
+      layerId: 'phys-layer-1',
+      startFrame: 10,
+      playScriptId: scriptId,
+      renderOptions: { ...renderOptions, background: 'canvas2', brushSize: 3 },
+    });
+
+    expect(result).toMatchObject({ ok: true, kind: 'update-play-render-options', operationId: 'update-render-options-1' });
+    expect(physicPaintStore.getFrame('phys-layer-1', 10)).toBeNull();
+    expect(physicPaintStore.getPlayScriptRanges('phys-layer-1')[0]).toEqual(expect.objectContaining({
+      cacheStatus: 'stale',
+      renderOptions: expect.objectContaining({ background: 'canvas2', brushSize: 3 }),
+    }));
   });
 
   it('routes apply payloads by physic-paint source id when the rendered layer id differs', () => {

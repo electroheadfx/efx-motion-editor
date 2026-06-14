@@ -25,6 +25,17 @@ const editableState = {
   settings: {},
 };
 
+const renderOptions = {
+  tool: 'physics-paint' as const,
+  color: '#103c65',
+  opacity: 82,
+  brushSize: 6,
+  background: 'canvas2' as const,
+  paperGrain: 'canvas3',
+  grainStrength: 0.65,
+  motion: { strokeDeformation: 15, strokePosition: 25 },
+};
+
 describe('physic paint payload contracts', () => {
   it('clamps apply frame counts to the UI range', () => {
     expect(clampPhysicPaintFrameCount(3.8)).toBe(3);
@@ -64,13 +75,13 @@ describe('physic paint payload contracts', () => {
 
   it('normalizes sorted non-overlapping saved Play script ranges', () => {
     const ranges = normalizePhysicPaintPlayScriptRanges([
-      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached', motion: { strokeDeformation: 15, strokePosition: 25 } },
+      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached', motion: { strokeDeformation: 15, strokePosition: 25 }, renderOptions },
       { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' },
     ]);
 
     expect(ranges).toEqual([
       { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' },
-      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached', motion: { strokeDeformation: 15, strokePosition: 25 } },
+      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached', motion: { strokeDeformation: 15, strokePosition: 25 }, renderOptions },
     ]);
   });
 
@@ -88,6 +99,27 @@ describe('physic paint payload contracts', () => {
     ])).toBeNull();
     expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: 0, frameCount: 5, editableState: { version: 2, width: 100, height: 100, strokes: [{ tool: 'paint' }], settings: {} } }])).toBeNull();
     expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: 0, frameCount: 5, editableState, motion: { strokeDeformation: -1, strokePosition: 0 } }])).toBeNull();
+    expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: 0, frameCount: 5, editableState, renderOptions: { ...renderOptions, brushSize: 0 } }])).toBeNull();
+  });
+
+  it('accepts metadata-only Play render options update payloads', () => {
+    expect(isPhysicPaintApplyPayload({
+      kind: 'update-play-render-options',
+      operationId: 'op-update',
+      layerId: 'layer-1',
+      startFrame: 12,
+      playScriptId: 'play-a',
+      renderOptions,
+    })).toBe(true);
+
+    expect(isPhysicPaintApplyPayload({
+      kind: 'update-play-render-options',
+      operationId: 'op-update',
+      layerId: 'layer-1',
+      startFrame: 12,
+      playScriptId: 'play-a',
+      renderOptions: { ...renderOptions, motion: { strokeDeformation: 101, strokePosition: 0 } },
+    })).toBe(false);
   });
 
   it('validates namespaced frame-sync messages', () => {
