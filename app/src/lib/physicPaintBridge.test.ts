@@ -198,19 +198,105 @@ describe('physicPaintBridge', () => {
       cacheStatus: 'cached',
     });
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 5);
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 5, null, null, 'roto');
 
     expect(context).toMatchObject({
       layerId: 'phys-layer-1',
+      requestedWorkflowMode: 'roto',
       workflowMode: 'roto',
       startFrame: 5,
       editableSource: 'roto',
       maxPlayFrameCount: 3,
     });
-    expect(context.maxPlayFrameCountReason).toContain('before the next saved Play script');
+    expect(context.maxPlayFrameCountReason).toBe('Maximum Play duration from this frame: 3 frame(s), until the next saved script.');
     expect(context.selectedPlayScriptId).toBeUndefined();
     expect(context.playStartFrame).toBeUndefined();
     expect(context.playFrameCount).toBeUndefined();
+  });
+
+  it('opens explicit Roto at frame 11 before a saved script without auto-selecting the nearest range', () => {
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 12,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 11, null, null, 'roto');
+
+    expect(context).toMatchObject({
+      requestedWorkflowMode: 'roto',
+      workflowMode: 'roto',
+      startFrame: 11,
+      editableSource: 'roto',
+      maxPlayFrameCount: 1,
+      maxPlayFrameCountReason: 'Only frame 11 is available before the next saved script.',
+    });
+    expect(context.selectedPlayScriptId).toBeUndefined();
+    expect(context.playStartFrame).toBeUndefined();
+    expect(context.playFrameCount).toBeUndefined();
+  });
+
+  it('opens explicit Play creation at frame 11 before a saved script with a one-frame limit', () => {
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 12,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 11, null, null, 'play');
+
+    expect(context).toMatchObject({
+      requestedWorkflowMode: 'play',
+      workflowMode: 'play',
+      startFrame: 11,
+      playStartFrame: 11,
+      playFrameCount: 1,
+      editableSource: 'play',
+      previewFrame: 0,
+      maxPlayFrameCount: 1,
+      maxPlayFrameCountReason: 'Only frame 11 is available before the next saved script.',
+    });
+    expect(context.selectedPlayScriptId).toBeUndefined();
+  });
+
+  it('opens explicit Play creation at frame 6 with two available frames between saved ranges', () => {
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-a',
+      startFrame: 0,
+      frameCount: 5,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 6, null, null, 'play');
+
+    expect(context).toMatchObject({
+      requestedWorkflowMode: 'play',
+      workflowMode: 'play',
+      startFrame: 6,
+      playStartFrame: 6,
+      playFrameCount: 2,
+      editableSource: 'play',
+      previewFrame: 0,
+      maxPlayFrameCount: 2,
+      maxPlayFrameCountReason: 'Maximum Play duration from this frame: 2 frame(s), until the next saved script.',
+    });
+    expect(context.selectedPlayScriptId).toBeUndefined();
   });
 
   it('opens an empty Roto context outside saved Play ranges without leaking the last editable script', () => {
@@ -231,6 +317,59 @@ describe('physicPaintBridge', () => {
     });
     expect(context.selectedPlayScriptId).toBeUndefined();
     expect(context.editableState).toBeUndefined();
+  });
+
+  it('opens explicit Play inside a saved range with the selected script and relative preview frame', () => {
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 13,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+    physicPaintStore.setFrame('phys-layer-1', 8, makeFrame(0, 8));
+    physicPaintStore.setFrame('phys-layer-1', 11, makeFrame(3, 11));
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 11, null, null, 'play');
+
+    expect(context).toMatchObject({
+      requestedWorkflowMode: 'play',
+      workflowMode: 'play',
+      startFrame: 8,
+      playStartFrame: 8,
+      playFrameCount: 13,
+      selectedPlayScriptId: 'play-b',
+      previewFrame: 3,
+      editableSource: 'play',
+      editableState,
+    });
+    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 8), makeFrame(3, 11)]);
+    expect(context.maxPlayFrameCount).toBeUndefined();
+  });
+
+  it('opens explicit Roto inside a saved range without auto-switching to Play', () => {
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 8,
+      frameCount: 13,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 11, null, null, 'roto');
+
+    expect(context).toMatchObject({
+      requestedWorkflowMode: 'roto',
+      workflowMode: 'roto',
+      startFrame: 11,
+      editableSource: 'roto',
+      maxPlayFrameCount: 0,
+    });
+    expect(context.selectedPlayScriptId).toBeUndefined();
+    expect(context.playStartFrame).toBeUndefined();
+    expect(context.playFrameCount).toBeUndefined();
   });
 
   it('opens Roto after the last saved range instead of choosing the nearest Play script', () => {
@@ -259,6 +398,7 @@ describe('physicPaintBridge', () => {
       editableSource: 'roto',
       maxPlayFrameCount: 600,
     });
+    expect(context.maxPlayFrameCountReason).toBe('Limited to the maximum allowed Play script duration of 600 frames.');
     expect(context.selectedPlayScriptId).toBeUndefined();
     expect(context.playStartFrame).toBeUndefined();
     expect(context.playFrameCount).toBeUndefined();
@@ -317,13 +457,14 @@ describe('physicPaintBridge', () => {
     });
     physicPaintStore.setFrame('phys-layer-1', 8, makeFrame(0, 8));
 
-    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 10, canvas: { width: 1280, height: 720 } });
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 10, canvas: { width: 1280, height: 720 }, requestedWorkflowMode: 'play' });
 
     expect(result.ok).toBe(true);
     const url = String(open.mock.calls[0][0]);
     const parsed = new URL(url, 'http://localhost:1420');
     const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
     expect(context).toMatchObject({
+      requestedWorkflowMode: 'play',
       workflowMode: 'play',
       startFrame: 8,
       playStartFrame: 8,
@@ -348,19 +489,20 @@ describe('physicPaintBridge', () => {
       cacheStatus: 'cached',
     });
 
-    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 5, canvas: { width: 1280, height: 720 } });
+    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 5, canvas: { width: 1280, height: 720 }, requestedWorkflowMode: 'roto' });
 
     expect(result.ok).toBe(true);
     const url = String(open.mock.calls[0][0]);
     const parsed = new URL(url, 'http://localhost:1420');
     const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
     expect(context).toMatchObject({
+      requestedWorkflowMode: 'roto',
       workflowMode: 'roto',
       startFrame: 5,
       maxPlayFrameCount: 3,
       editableSource: 'roto',
     });
-    expect(context.maxPlayFrameCountReason).toContain('before the next saved Play script');
+    expect(context.maxPlayFrameCountReason).toContain('next saved script');
     expect(context.selectedPlayScriptId).toBeUndefined();
     open.mockRestore();
   });
@@ -425,11 +567,11 @@ describe('physicPaintBridge', () => {
     vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
 
-    const result = await openCanvas({ layer: physicLayer(), frame: 4 });
+    const result = await openCanvas({ layer: physicLayer(), frame: 4, requestedWorkflowMode: 'roto' });
 
     expect(result.ok).toBe(true);
     expect(invoke).toHaveBeenCalledWith('open_physics_paint_window', {
-      context: expect.objectContaining({ layerId: 'phys-layer-1', startFrame: 4 }),
+      context: expect.objectContaining({ layerId: 'phys-layer-1', startFrame: 4, requestedWorkflowMode: 'roto' }),
     });
     expect(window.open).not.toHaveBeenCalled();
   });

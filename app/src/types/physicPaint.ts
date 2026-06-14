@@ -46,6 +46,7 @@ export interface PhysicPaintLaunchContext {
   width?: number;
   height?: number;
   fps?: number;
+  requestedWorkflowMode?: PhysicPaintWorkflowMode;
   workflowMode?: PhysicPaintWorkflowMode;
   playStartFrame?: number;
   playFrameCount?: number;
@@ -164,6 +165,7 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalNumber(value.width) &&
     optionalNumber(value.height) &&
     optionalPositiveNumber(value.fps) &&
+    optionalWorkflowMode(value.requestedWorkflowMode) &&
     optionalWorkflowMode(value.workflowMode) &&
     optionalNonNegativeInteger(value.playStartFrame) &&
     optionalFrameCount(value.playFrameCount) &&

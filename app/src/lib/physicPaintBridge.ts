@@ -1,6 +1,6 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintWorkflowMode } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext } from '../types/physicPaint';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
@@ -28,6 +28,7 @@ export interface PhysicPaintOpenRequest {
   frame: number | null | undefined;
   canvas?: PhysicPaintCanvasSize | null;
   fps?: number | null;
+  requestedWorkflowMode?: PhysicPaintWorkflowMode;
 }
 
 interface TauriEventApi {
@@ -195,20 +196,24 @@ export function createPhysicPaintLaunchContext(
   frame: number,
   canvas?: PhysicPaintCanvasSize | null,
   fps?: number | null,
+  requestedWorkflowMode?: PhysicPaintWorkflowMode,
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const currentFrame = Math.max(0, Math.trunc(frame));
   const containingRange = physicPaintStore.findPlayScriptRangeAtFrame(layerId, currentFrame);
-  const cachedPlayFrames = containingRange && containingRange.cacheStatus === 'cached'
+  const maxPlayFrameCount = physicPaintStore.getMaxPlayFrameCountFromGap(layerId, currentFrame);
+  const maxPlayFrameCountReason = buildMaxPlayFrameCountReason(layerId, currentFrame);
+  const shouldOpenContainingPlay = Boolean(containingRange && requestedWorkflowMode !== 'roto');
+  const cachedPlayFrames = shouldOpenContainingPlay && containingRange?.cacheStatus === 'cached'
     ? Array.from({ length: containingRange.frameCount }, (_, index) => physicPaintStore.getFrame(layerId, containingRange.startFrame + index)).filter((frame): frame is NonNullable<typeof frame> => Boolean(frame))
     : [];
   const hasCurrentRotoFrame = Boolean(physicPaintStore.getFrame(layerId, currentFrame));
-  const editableState = containingRange?.editableState
+  const editableState = shouldOpenContainingPlay && containingRange?.editableState
     ? structuredClone(containingRange.editableState)
     : hasCurrentRotoFrame
       ? physicPaintStore.getEditableState(layerId)
       : null;
-  const launchSelection = containingRange
+  const launchSelection = shouldOpenContainingPlay && containingRange
     ? {
         workflowMode: 'play' as const,
         startFrame: containingRange.startFrame,
@@ -221,13 +226,24 @@ export function createPhysicPaintLaunchContext(
         previewFrame: currentFrame - containingRange.startFrame,
         cachedPlayFrames,
       }
-    : {
-        workflowMode: 'roto' as const,
-        startFrame: currentFrame,
-        editableSource: 'roto' as const,
-        maxPlayFrameCount: physicPaintStore.getMaxPlayFrameCountFromGap(layerId, currentFrame),
-        maxPlayFrameCountReason: buildMaxPlayFrameCountReason(layerId, currentFrame),
-      };
+    : requestedWorkflowMode === 'play'
+      ? {
+          workflowMode: 'play' as const,
+          startFrame: currentFrame,
+          playStartFrame: currentFrame,
+          playFrameCount: maxPlayFrameCount,
+          editableSource: 'play' as const,
+          previewFrame: 0,
+          maxPlayFrameCount,
+          maxPlayFrameCountReason,
+        }
+      : {
+          workflowMode: 'roto' as const,
+          startFrame: currentFrame,
+          editableSource: 'roto' as const,
+          maxPlayFrameCount,
+          maxPlayFrameCountReason,
+        };
 
   return {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
@@ -236,6 +252,7 @@ export function createPhysicPaintLaunchContext(
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),
     ...(isFinitePositiveNumber(fps) ? { fps } : {}),
+    ...(requestedWorkflowMode ? { requestedWorkflowMode } : {}),
     ...launchSelection,
     ...(editableState ? { editableState } : {}),
   };
@@ -246,7 +263,7 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
     const validation = validateOpenRequest(request);
     if (!validation.ok) return validation;
 
-    const context = createPhysicPaintLaunchContext(validation.data.layer, validation.data.frame, request.canvas, request.fps);
+    const context = createPhysicPaintLaunchContext(validation.data.layer, validation.data.frame, request.canvas, request.fps, request.requestedWorkflowMode);
     if (!isPhysicPaintLaunchContext(context)) {
       return { ok: false, error: 'Invalid physics paint launch context' };
     }
@@ -278,6 +295,10 @@ function validateOpenRequest(request: PhysicPaintOpenRequest): Result<{ layer: L
   const frame = request.frame;
   if (typeof frame !== 'number' || !Number.isFinite(frame) || frame < 0) {
     return { ok: false, error: 'Select a valid frame before opening the physics paint canvas' };
+  }
+
+  if (request.requestedWorkflowMode !== undefined && request.requestedWorkflowMode !== 'roto' && request.requestedWorkflowMode !== 'play') {
+    return { ok: false, error: 'Invalid physics paint workflow mode' };
   }
 
   return { ok: true, data: { layer, frame: Math.trunc(frame) } };
@@ -317,7 +338,8 @@ function buildMaxPlayFrameCountReason(layerId: string, frame: number): string {
   const maxPlayFrameCount = physicPaintStore.getMaxPlayFrameCountFromGap(layerId, frame);
   const nextRange = physicPaintStore.getPlayScriptRanges(layerId).find((range) => range.startFrame > frame);
   if (nextRange) {
-    return `Limited to ${maxPlayFrameCount} frame${maxPlayFrameCount === 1 ? '' : 's'} before the next saved Play script starts at frame ${nextRange.startFrame}.`;
+    if (maxPlayFrameCount === 1) return `Only frame ${frame} is available before the next saved script.`;
+    return `Maximum Play duration from this frame: ${maxPlayFrameCount} frame(s), until the next saved script.`;
   }
   return `Limited to the maximum allowed Play script duration of ${PHYSIC_PAINT_MAX_APPLY_FRAMES} frames.`;
 }
