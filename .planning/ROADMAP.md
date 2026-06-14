@@ -270,7 +270,7 @@ Plans:
 
 **Wave 5** *(gap closure; blocked on Plan 06 live marker/frameMap validation)*
 
-- [ ] 36.1-07-PLAN.md — Replace editor opening with explicit Roto paint and Play paint launch modes plus gap-constrained Play creation.
+- [x] 36.1-07-PLAN.md — Replace editor opening with explicit Roto paint and Play paint launch modes plus gap-constrained Play creation.
 
 **Wave 6** *(gap closure; blocked on Plan 07 explicit launch modes)*
 
