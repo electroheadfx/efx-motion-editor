@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
-stopped_at: Phase 36.1 context gathered
-last_updated: "2026-06-13T19:04:34.240Z"
+stopped_at: Phase 36.1 UI-SPEC approved
+last_updated: "2026-06-14T09:46:22.891Z"
 last_activity: 2026-06-13 -- Phase 36.1 execution started
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 27
-  completed_plans: 21
+  completed_plans: 26
   percent: 60
 ---
 
@@ -98,6 +98,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-13T18:07:08.082Z
-Stopped at: Phase 36.1 context gathered
-Resume file: .planning/phases/36.1-when-a-physic-paint-was-created-with-a-play-paint-script-ani/36.1-CONTEXT.md
+Last session: 2026-06-14T09:46:22.887Z
+Stopped at: Phase 36.1 UI-SPEC approved
+Resume file: .planning/phases/36.1-when-a-physic-paint-was-created-with-a-play-paint-script-ani/36.1-UI-SPEC.md
