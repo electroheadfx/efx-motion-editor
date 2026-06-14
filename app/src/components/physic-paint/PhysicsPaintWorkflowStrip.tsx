@@ -14,7 +14,6 @@ import {
 } from './physicsPaintWorkflowState';
 import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
 
-const SAVE_ROTO_FRAME_LABEL = 'Save roto frame';
 const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
 const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
@@ -290,8 +289,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             </div>
           )}
           {props.mode === 'roto' ? (
-            <button class="physics-paint-render-action" title={RENDER_ACTION_HELP} aria-label="Render" disabled={props.ready === false} onClick={handlePrimaryAction}>
-              {RENDER_ACTION_LABEL}
+            <button class="physics-paint-render-action" title="Save the current Roto paint frame" aria-label="Save roto frame" disabled={props.ready === false} onClick={handlePrimaryAction}>
+              Save roto frame
             </button>
           ) : null}
         </div>

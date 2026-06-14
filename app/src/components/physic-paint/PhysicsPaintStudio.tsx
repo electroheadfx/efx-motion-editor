@@ -1511,11 +1511,6 @@ export function PhysicsPaintStudio() {
     void navigateToSyncedFrame(Math.max(currentFrame, highestSavedFrame, playEndFrame, framesToApply - 1));
   }, [currentFrame, framesToApply, latestPlayFrames, navigateToSyncedFrame, savedRotoFrames]);
 
-  const requestWorkflowModeChange = useCallback((targetMode: PhysicsPaintWorkflowMode) => {
-    if (targetMode === workflowMode) return;
-    setWorkflowMode(targetMode);
-  }, [workflowMode]);
-
   return (
     <main class="demo-shell">
       <section

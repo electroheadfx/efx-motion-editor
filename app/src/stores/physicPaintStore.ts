@@ -1,4 +1,5 @@
 import { signal } from '@preact/signals';
+import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
 
@@ -10,7 +11,7 @@ export const physicPaintVersion = signal(0);
 type PhysicPaintMceOutput = {
   layer_id: string;
   frames: PhysicPaintRenderedFrame[];
-  editable_state?: PhysicPaintApplyPayload['editableState'];
+  editable_state?: SerializedProject;
   play_script_ranges?: PhysicPaintPlayScriptRange[];
   workflow_mode?: PhysicPaintWorkflowMetadata['workflowMode'];
   play_start_frame?: number;
@@ -28,7 +29,7 @@ type PhysicPaintMceOutputInput = PhysicPaintMceOutput & {
 };
 
 const _frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
-const _editableStates = new Map<string, PhysicPaintApplyPayload['editableState']>();
+const _editableStates = new Map<string, SerializedProject>();
 const _workflowMetadata = new Map<string, PhysicPaintWorkflowMetadata>();
 const _playScriptRanges = new Map<string, PhysicPaintPlayScriptRange[]>();
 let _serializationRevision = 0;
@@ -94,8 +95,8 @@ function _isValidPlayMotion(value: PhysicPaintPlayMotionSettings | undefined): v
 }
 
 function _playRenderOptionsEqual(a: PhysicPaintPlayRenderOptionsSnapshot | undefined, b: PhysicPaintPlayRenderOptionsSnapshot): boolean {
-  return Boolean(a) &&
-    a.tool === b.tool &&
+  if (!a) return false;
+  return a.tool === b.tool &&
     a.color === b.color &&
     a.opacity === b.opacity &&
     a.brushSize === b.brushSize &&
@@ -186,7 +187,7 @@ export const physicPaintStore = {
     return _frames.get(layerId)?.get(frame) ?? null;
   },
 
-  getEditableState(layerId: string): PhysicPaintApplyPayload['editableState'] | null {
+  getEditableState(layerId: string): SerializedProject | null {
     const state = _editableStates.get(layerId);
     return state ? structuredClone(state) : null;
   },
@@ -366,7 +367,7 @@ export const physicPaintStore = {
     _notifyVisualChange();
   },
 
-  setEditableState(layerId: string, editableState: PhysicPaintApplyPayload['editableState']): void {
+  setEditableState(layerId: string, editableState: SerializedProject): void {
     _editableStates.set(layerId, structuredClone(editableState));
     _notifyVisualChange();
   },
