@@ -274,7 +274,7 @@ Plans:
 
 **Wave 6** *(gap closure; blocked on Plan 07 explicit launch modes)*
 
-- [ ] 36.1-08-PLAN.md — Remove standalone Roto/Play tabs, lock opened mode, and replace icon-only render controls with text Render actions.
+- [x] 36.1-08-PLAN.md — Remove standalone Roto/Play tabs, lock opened mode, and replace icon-only render controls with text Render actions.
 
 **Wave 7** *(gap closure; blocked on Plan 08 mode/render UX)*
 
