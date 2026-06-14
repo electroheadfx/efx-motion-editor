@@ -266,7 +266,7 @@ Plans:
 
 **Wave 4** *(blocked on Waves 2-3 and sequential playback)*
 
-- [ ] 36.1-06-PLAN.md — Thread marker data into live timeline layout, finalize validation, and run user visual verification.
+- [x] 36.1-06-PLAN.md — Thread marker data into live timeline layout, finalize validation, and run user visual verification.
 
 **Wave 5** *(gap closure; blocked on Plan 06 live marker/frameMap validation)*
 
