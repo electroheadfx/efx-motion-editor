@@ -248,7 +248,7 @@ Plans:
   6. Existing saved scripts preview cached rendered frames until the user remakes them; `Save play` replaces old cached range frames.
   7. Play animation renders recorded strokes sequentially with length-weighted allocation, completing the drawing within the chosen duration.
 
-**Plans**: 6 plans
+**Plans**: 9 plans
 Plans:
 **Wave 1**
 
@@ -267,6 +267,18 @@ Plans:
 **Wave 4** *(blocked on Waves 2-3 and sequential playback)*
 
 - [ ] 36.1-06-PLAN.md — Thread marker data into live timeline layout, finalize validation, and run user visual verification.
+
+**Wave 5** *(gap closure; blocked on Plan 06 live marker/frameMap validation)*
+
+- [ ] 36.1-07-PLAN.md — Replace editor opening with explicit Roto paint and Play paint launch modes plus gap-constrained Play creation.
+
+**Wave 6** *(gap closure; blocked on Plan 07 explicit launch modes)*
+
+- [ ] 36.1-08-PLAN.md — Remove standalone Roto/Play tabs, lock opened mode, and replace icon-only render controls with text Render actions.
+
+**Wave 7** *(gap closure; blocked on Plan 08 mode/render UX)*
+
+- [ ] 36.1-09-PLAN.md — Fix cached saved-script reopen, standalone clear/remake editor updates, and EFX Motion saved-script deletion.
 
 **UI hint**: yes
 
