@@ -4,13 +4,13 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
 stopped_at: Phase 36.1 UI-SPEC approved
-last_updated: "2026-06-14T10:15:38.157Z"
-last_activity: 2026-06-13 -- Phase 36.1 execution started
+last_updated: "2026-06-14T10:45:25.783Z"
+last_activity: 2026-06-14 -- Phase 36.1 execution started
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 27
-  completed_plans: 26
+  total_plans: 30
+  completed_plans: 27
   percent: 60
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 36.1 (when-a-physic-paint-was-created-with-a-play-paint-script-ani) — EXECUTING
-Plan: 1 of 6
-Status: Ready to execute
-Last activity: 2026-06-13 -- Phase 36.1 execution started
+Plan: 1 of 9
+Status: Executing Phase 36.1
+Last activity: 2026-06-14 -- Phase 36.1 execution started
 
 Progress: [██████████] 100%
 
