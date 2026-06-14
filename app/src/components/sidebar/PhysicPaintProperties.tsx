@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { ChevronDown } from 'lucide-preact';
 import type { BlendMode, Layer } from '../../types/layer';
-import type { PhysicPaintApplyResult } from '../../types/physicPaint';
+import type { PhysicPaintApplyResult, PhysicPaintWorkflowMode } from '../../types/physicPaint';
 import { layerStore } from '../../stores/layerStore';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
@@ -23,7 +23,7 @@ function capitalize(value: string): string {
 export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isOpening, setIsOpening] = useState(false);
+  const [openingMode, setOpeningMode] = useState<PhysicPaintWorkflowMode | null>(null);
 
   // Subscribe to explicit rendered-output invalidation while keeping Map storage non-reactive.
   physicPaintVersion.value;
@@ -52,25 +52,36 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     return () => window.removeEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleApplyResult);
   }, [sourceLayerId]);
 
-  const handleOpenCanvas = async () => {
-    if (!validContext || isOpening) return;
+  const handleOpenCanvas = async (mode: PhysicPaintWorkflowMode) => {
+    const currentFrame = timelineStore.currentFrame.value;
+    if (!validContext || openingMode) return;
 
-    setIsOpening(true);
-    setStatusMessage(null);
+    setOpeningMode(mode);
+    setStatusMessage(mode === 'roto' ? 'Opening Roto paint...' : 'Opening Play paint...');
     setErrorMessage(null);
 
-    console.info('[PhysicPaintProperties] open canvas clicked', { layerId: layer.id, frame: currentFrame });
+    console.info('[PhysicPaintProperties] open canvas clicked', { layerId: layer.id, frame: currentFrame, requestedWorkflowMode: mode });
     const result = await openPhysicPaintCanvas({
       layer,
       frame: currentFrame,
       fps: projectStore.fps.value,
+      requestedWorkflowMode: mode,
     });
 
     console.info('[PhysicPaintProperties] open canvas result', result);
-    setIsOpening(false);
+    setOpeningMode(null);
     if (result.ok) {
-      setStatusMessage(`Opened physics paint canvas for frame ${result.data.startFrame}.`);
+      if (mode === 'roto') {
+        setStatusMessage(`Opened Roto paint at frame ${result.data.startFrame}.`);
+      } else {
+        const startFrame = result.data.playStartFrame ?? result.data.startFrame;
+        const frameCount = result.data.playFrameCount ?? 1;
+        const endFrame = startFrame + frameCount - 1;
+        const previewFrame = result.data.previewFrame ?? 0;
+        setStatusMessage(`Opened Play paint range ${startFrame}–${endFrame} at preview frame ${previewFrame}.`);
+      }
     } else {
+      setStatusMessage(null);
       setErrorMessage(result.error || 'Physics paint is not ready. Check that the layer, frame, canvas, and app bridge are available, then try again.');
     }
   };
@@ -162,16 +173,28 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
 
       <div class="space-y-2">
         <SectionLabel text="Standalone Canvas" />
-        <button
-          type="button"
-          class="w-full rounded px-3 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}
-          disabled={!validContext || isOpening}
-          title={validContext ? 'Open the standalone physics paint canvas' : 'Select a physics paint layer and frame first.'}
-          onClick={handleOpenCanvas}
-        >
-          {isOpening ? 'Opening physics paint canvas...' : '[open fx paint canvas]'}
-        </button>
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            class="w-full rounded px-3 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}
+            disabled={!validContext || openingMode !== null}
+            title={validContext ? 'Open Roto paint at the current editor frame' : 'Select a physics paint layer and frame first.'}
+            onClick={() => handleOpenCanvas('roto')}
+          >
+            {openingMode === 'roto' ? 'Opening Roto paint...' : 'Roto paint'}
+          </button>
+          <button
+            type="button"
+            class="w-full rounded px-3 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}
+            disabled={!validContext || openingMode !== null}
+            title={validContext ? 'Open Play paint at the current editor frame' : 'Select a physics paint layer and frame first.'}
+            onClick={() => handleOpenCanvas('play')}
+          >
+            {openingMode === 'play' ? 'Opening Play paint...' : 'Play paint'}
+          </button>
+        </div>
 
         {!validContext && (
           <div class="text-[11px] leading-5" style={{ color: '#f59e0b' }}>
