@@ -1529,8 +1529,8 @@ export function PhysicsPaintStudio() {
           startFrame={launchContext?.startFrame ?? 0}
           frameCount={framesToApply}
           currentPreviewFrame={localPlayPreviewFrame}
-          maxPlayFrameCount={workflowMode === 'play' ? undefined : launchContext?.maxPlayFrameCount}
-          maxPlayFrameCountReason={workflowMode === 'play' ? undefined : launchContext?.maxPlayFrameCountReason}
+          maxPlayFrameCount={launchContext?.maxPlayFrameCount}
+          maxPlayFrameCountReason={launchContext?.maxPlayFrameCountReason}
           playCacheStatus={currentPlayCacheStatus}
           isPlaying={isPlaying}
           ready={readyToApply}
@@ -1542,7 +1542,6 @@ export function PhysicsPaintStudio() {
           onionPreviewFrames={onionPreviewFrames}
           showOnionHiddenDuringPreview={onion.enabled && isPlaying}
           missingPlayFramesForConversion={missingPlayFramesForConversion}
-          onRequestModeChange={requestWorkflowModeChange}
           onSaveRotoFrame={saveRotoFrameAndAdvance}
           onSavePlay={savePlay}
           onFrameCountChange={updatePlayFrameCount}

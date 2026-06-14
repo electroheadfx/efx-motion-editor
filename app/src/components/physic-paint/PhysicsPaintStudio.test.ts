@@ -143,15 +143,17 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('markSelectedPlayCacheDirty');
   });
 
-  it('does not let stale Roto gap limits pin Play duration to the default range', () => {
+  it('passes launch gap limits into the fixed Play mode so frame 11 can clamp to one visible cell', () => {
     const text = source();
     const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
 
     expect(text).toContain('function withoutRotoGapLimit');
     expect(text).toContain('delete next.maxPlayFrameCount');
     expect(text).toContain('...withoutRotoGapLimit(current)');
-    expect(workflowStripBlock).toContain("maxPlayFrameCount={workflowMode === 'play' ? undefined : launchContext?.maxPlayFrameCount}");
-    expect(workflowStripBlock).toContain("maxPlayFrameCountReason={workflowMode === 'play' ? undefined : launchContext?.maxPlayFrameCountReason}");
+    expect(workflowStripBlock).toContain('maxPlayFrameCount={launchContext?.maxPlayFrameCount}');
+    expect(workflowStripBlock).toContain('maxPlayFrameCountReason={launchContext?.maxPlayFrameCountReason}');
+    expect(workflowStripBlock).toContain('startFrame={launchContext?.startFrame ?? 0}');
+    expect(workflowStripBlock).not.toContain("maxPlayFrameCount={workflowMode === 'play' ? undefined");
   });
 
   it('uses Play keyboard transport to render/apply stale Play scripts instead of only previewing live canvas', () => {

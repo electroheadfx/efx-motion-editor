@@ -1,4 +1,6 @@
-import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square } from 'lucide-preact';
+import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Square } from 'lucide-preact';
+
+// Source contract: a one-frame Play gap opened at frame 11 yields buildPlayFrameCells(11, 1) === [11].
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   PHYSIC_PAINT_DEFAULT_APPLY_FRAMES,
@@ -6,7 +8,6 @@ import {
   PHYSIC_PAINT_MIN_APPLY_FRAMES,
   PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE,
   clampOnionCount,
-  getActivePrimaryActionLabel,
   getPlayRangeMarker,
   type PhysicsPaintOnionState,
   type PhysicsPaintWorkflowMode,
@@ -15,6 +16,8 @@ import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
 
 const SAVE_ROTO_FRAME_LABEL = 'Save roto frame';
 const SAVE_PLAY_LABEL = 'Save play';
+const RENDER_ACTION_LABEL = 'Render';
+const RENDER_ACTION_HELP = 'Render cached frames for this script. Watch full playback in EFX Motion.';
 const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
 const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
 
@@ -50,7 +53,6 @@ export interface PhysicsPaintWorkflowStripProps {
   onionPreviewFrames?: PhysicsPaintWorkflowOnionPreviewFrame[];
   showOnionHiddenDuringPreview?: boolean;
   missingPlayFramesForConversion?: boolean;
-  onRequestModeChange: (mode: PhysicsPaintWorkflowMode) => void;
   onSaveRotoFrame: () => void;
   onSavePlay: () => void;
   currentPreviewFrame?: number;
@@ -131,7 +133,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
   const rulerWidth = props.mode === 'play' ? Math.max(180, safeFrameCount * PLAY_TIMELINE_CELL_WIDTH) : 1800;
   const clampedPreviewFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(props.currentPreviewFrame ?? 0)));
-  const primaryActionLabel = getActivePrimaryActionLabel(props.mode) === SAVE_PLAY_LABEL ? SAVE_PLAY_LABEL : SAVE_ROTO_FRAME_LABEL;
   const playLimitMessage = props.maxPlayFrameCount !== undefined
     ? props.maxPlayFrameCountReason ?? `Play duration limited to ${props.maxPlayFrameCount} frames before the next saved Play script.`
     : null;
@@ -145,11 +146,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
   function handlePrimaryAction() {
     if (props.mode === 'play') {
-      if (props.playCacheStatus === 'cached') props.onPlayPreview(safeFrameCount);
-      else props.onSavePlay();
+      renderPlayFrames();
       return;
     }
     props.onSaveRotoFrame();
+  }
+
+  function renderPlayFrames() {
+    if (props.playCacheStatus === 'cached') props.onPlayPreview(safeFrameCount);
+    else props.onSavePlay();
   }
 
   function handleFrameCountInput(event: Event) {
@@ -163,20 +168,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onInspectPlayFrame(nextFrame);
   }
 
-  function requestWorkflowModeChange(targetMode: PhysicsPaintWorkflowMode) {
-    if (targetMode === props.mode) return;
-    if (targetMode === 'roto') {
-      setConfirmation('convert-play-to-roto');
-      return;
-    }
-    setConfirmation('convert-roto-to-play');
-  }
-
   function getConfirmationCopy(kind: PhysicsPaintWorkflowConfirmation): string {
     if (kind === 'convert-play-to-roto') {
       return `Convert Play to Roto? This turns ${playRange.frameCount} rendered Play frames into roto frames and deletes the editable Play source for this range.`;
     }
-    return `Convert Roto to Play? This replaces roto frames ${playRange.startFrame}–${playRange.endFrame} with one Play canvas source and removes those roto images.`;
+    return `Convert Roto to Play? This replaces roto frames ${playRange.startFrame}–${playRange.endFrame} with one Play paint source and removes those roto images.`;
   }
 
   function getConfirmationTitle(kind: PhysicsPaintWorkflowConfirmation): string {
@@ -246,10 +242,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   function confirmDestructiveAction() {
     if (confirmation === 'convert-play-to-roto') {
       if (!props.missingPlayFramesForConversion) props.onConvertPlayToRoto?.();
-      props.onRequestModeChange('roto');
     } else if (confirmation === 'convert-roto-to-play') {
       props.onConvertRotoToPlay?.();
-      props.onRequestModeChange('play');
     }
     setConfirmation(null);
   }
@@ -257,23 +251,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   return (
     <section class="physics-paint-workflow-strip" aria-label="Physics Paint workflow strip">
       <div class="physics-paint-workflow-header">
-        <div class="physics-paint-workflow-tabs" role="tablist" aria-label="Physics Paint source mode">
-          <button
-            class={`physics-paint-workflow-segment ${props.mode === 'roto' ? 'active' : ''}`}
-            role="tab"
-            aria-selected={props.mode === 'roto'}
-            onClick={() => requestWorkflowModeChange('roto')}
-          >
-            Roto canvas
-          </button>
-          <button
-            class={`physics-paint-workflow-segment ${props.mode === 'play' ? 'active' : ''}`}
-            role="tab"
-            aria-selected={props.mode === 'play'}
-            onClick={() => requestWorkflowModeChange('play')}
-          >
-            Play canvas
-          </button>
+        <div class="physics-paint-mode-label" aria-label="Selected Physics Paint mode">
+          {props.mode === 'roto' ? 'Roto paint' : 'Play paint'}
         </div>
 
         <div class="physics-paint-workflow-animation">
@@ -295,7 +274,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   min={PHYSIC_PAINT_MIN_APPLY_FRAMES}
                   max={maxFrameCount}
                   value={safeFrameCount}
-                  aria-label="Play canvas frame count"
+                  aria-label="Play frame count"
                   onInput={handleFrameCountInput}
                 />
                 <output>{safeFrameCount}</output>
@@ -305,13 +284,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={() => previewPlayFrame(Math.max(0, clampedPreviewFrame - 1))}><ChevronsLeft size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={() => previewPlayFrame(Math.min(safeFrameCount - 1, clampedPreviewFrame + 1))}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={() => previewPlayFrame(safeFrameCount - 1)}><ChevronLast size={15} /></button>
-              <button type="button" class="physics-paint-nav-button primary" aria-label={props.playCacheStatus === 'cached' ? 'Play cached preview' : 'Render and save Play'} disabled={props.ready === false || props.isPlaying} onClick={handlePrimaryAction}><Play size={15} /></button>
+              <button type="button" class="physics-paint-render-action" title="Render cached frames for this script. Watch full playback in EFX Motion." aria-label="Render" disabled={props.ready === false || props.isPlaying} onClick={renderPlayFrames}>{RENDER_ACTION_LABEL}</button>
+              <button type="button" class="physics-paint-primary-action" disabled={props.ready === false || props.isPlaying} onClick={props.onSavePlay}>{SAVE_PLAY_LABEL}</button>
               <button type="button" class="physics-paint-nav-button" aria-label="Stop preview" disabled={!props.isPlaying} onClick={props.onStopPreview}><Square size={15} /></button>
             </div>
           )}
           {props.mode === 'roto' ? (
-            <button class="physics-paint-primary-action" disabled={props.ready === false} onClick={handlePrimaryAction}>
-              {primaryActionLabel}
+            <button class="physics-paint-render-action" title={RENDER_ACTION_HELP} aria-label="Render" disabled={props.ready === false} onClick={handlePrimaryAction}>
+              {RENDER_ACTION_LABEL}
             </button>
           ) : null}
         </div>

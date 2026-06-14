@@ -1133,7 +1133,8 @@ button.destructive {
 }
 
 .physics-paint-workflow-segment,
-.physics-paint-primary-action {
+.physics-paint-primary-action,
+.physics-paint-render-action {
   min-height: 28px;
   padding: 5px 10px;
   border: 1px solid var(--color-border-subtle, #2a3a4a);
@@ -1190,10 +1191,21 @@ button.destructive {
 }
 
 .physics-paint-workflow-animation .physics-paint-workflow-segment.active,
-.physics-paint-primary-action:not(:disabled) {
+.physics-paint-primary-action:not(:disabled),
+.physics-paint-render-action:not(:disabled) {
   border-color: var(--color-accent, #2d5be3);
   background: color-mix(in srgb, var(--color-accent, #2d5be3) 42%, var(--color-bg-card, #1a1a1a));
   color: #fff;
+}
+
+.physics-paint-render-action {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.physics-paint-render-action + .physics-paint-primary-action {
+  margin-left: 4px;
+  font-size: 11px;
 }
 
 .physics-paint-load-state {

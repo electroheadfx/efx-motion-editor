@@ -18,19 +18,21 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('export function PhysicsPaintWorkflowStrip');
   });
 
-  it('renders Roto and Play workflow tabs, primary actions, and lane labels', () => {
+  it('renders a locked standalone mode label instead of Roto and Play workflow tabs', () => {
     const code = source();
 
-    for (const label of [
-      'Roto canvas',
-      'Play canvas',
-      'Save roto frame',
-      'Save play',
-      'Play',
-      'Stop',
-    ]) {
-      expect(code).toContain(label);
-    }
+    expect(code).toContain("props.mode === 'roto' ? 'Roto paint' : 'Play paint'");
+    expect(code).toContain('physics-paint-mode-label');
+    expect(code).not.toContain('role="tablist"');
+    expect(code).not.toContain('role="tab"');
+    expect(code).not.toContain('Roto canvas');
+    expect(code).not.toContain('Play canvas');
+    expect(code).not.toContain('function requestWorkflowModeChange');
+    expect(code).not.toContain('onRequestModeChange');
+    expect(code).toContain('Save roto frame');
+    expect(code).toContain('Save play');
+    expect(code).toContain('Render');
+    expect(code).toContain('Stop');
     expect(rightPanelSource()).toContain('Save state');
     expect(rightPanelSource()).toContain('Load state');
   });
@@ -60,7 +62,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(inspectIndex).toBeGreaterThan(-1);
     expect(convertIndex).toBeGreaterThan(-1);
     expect(code).not.toContain('onClearPlayRange');
-    const previewBlock = code.slice(code.indexOf('function previewPlayFrame'), code.indexOf('function requestWorkflowModeChange'));
+    const previewBlock = code.slice(code.indexOf('function previewPlayFrame'), code.indexOf('function getConfirmationCopy'));
 
     expect(code).toContain('playFrameCells.map');
     expect(playCellsBlock).toContain('previewPlayFrame(index)');
@@ -95,20 +97,35 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('buildPlayFrameCells(props.startFrame, safeFrameCount)');
     expect(code).toContain("props.playCacheStatus === 'cached' ? 'cached' : ''");
     expect(code).toContain('physics-paint-play-cells');
+    expect(code).toContain('buildPlayFrameCells(11, 1)');
     expect(css).toContain('.physics-paint-play-cell.cached');
   });
 
-  it('uses the Play icon as the render/save action and does not render a text Save play button', () => {
+  it('documents one-frame Play gap cells as the launch frame only', () => {
+    const code = source();
+
+    expect(code).toContain('buildPlayFrameCells(11, 1)');
+    expect(code).toContain('[11]');
+  });
+
+  it('labels render-generation actions as Render and keeps Save play as publishing', () => {
     const code = source();
     const playControlsIndex = code.indexOf('physics-paint-play-controls');
     const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 3600);
 
-    expect(playControlsBlock).toContain("props.playCacheStatus === 'cached' ? 'Play cached preview' : 'Render and save Play'");
-    expect(playControlsBlock).toContain('<Play');
-    expect(playControlsBlock).toContain('onClick={handlePrimaryAction}');
-    expect(playControlsBlock).not.toContain('>Save play</button>');
+    expect(code).toContain('const RENDER_ACTION_LABEL = \'Render\'');
+    expect(playControlsBlock).toContain('title="Render cached frames for this script. Watch full playback in EFX Motion."');
+    expect(playControlsBlock).toContain('aria-label="Render"');
+    expect(playControlsBlock).toContain('>{RENDER_ACTION_LABEL}</button>');
+    expect(playControlsBlock).toContain('>{SAVE_PLAY_LABEL}</button>');
+    expect(playControlsBlock).toContain('onClick={renderPlayFrames}');
+    expect(playControlsBlock).toContain('onClick={props.onSavePlay}');
+    expect(playControlsBlock).not.toContain('Play cached preview');
+    expect(playControlsBlock).not.toContain('Render and save Play');
+    expect(playControlsBlock).not.toContain('<Play');
     expect(playControlsBlock).not.toContain('aria-label="Play preview"');
-    expect(code).toContain("import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square }");
+    expect(playControlsBlock).not.toContain('aria-label="Render and save Play"');
+    expect(code).not.toContain('Play, Square');
   });
 
   it('uses local Play preview navigation for Play canvas transport buttons', () => {
@@ -217,25 +234,19 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(savePlayBlock).toContain('setLatestPlayFrames(frames)');
   });
 
-  it('uses workflow tabs as the guarded conversion affordance without standalone conversion buttons', () => {
+  it('removes the in-window mode switch while retaining guarded conversion helpers only for explicit flows', () => {
     const code = source();
     const stateActionsIndex = code.indexOf('physics-paint-state-actions');
     const stateActionsBlock = code.slice(stateActionsIndex, stateActionsIndex + 900);
-    const tabListIndex = code.indexOf('physics-paint-workflow-tabs');
-    const tabListBlock = code.slice(tabListIndex, tabListIndex + 900);
     const confirmIndex = code.indexOf('function confirmDestructiveAction');
     const confirmBlock = code.slice(confirmIndex, confirmIndex + 360);
 
     expect(stateActionsIndex).toBeGreaterThan(-1);
     expect(stateActionsBlock).not.toContain('Convert Play to Roto</button>');
     expect(stateActionsBlock).not.toContain('Convert Roto to Play</button>');
-    expect(tabListBlock).toContain('requestWorkflowModeChange');
-    expect(tabListBlock).not.toContain('onModeChange');
-    expect(code).toContain('onRequestModeChange');
-    expect(code).toContain('function requestWorkflowModeChange');
-    expect(code).toContain("if (targetMode === props.mode) return");
-    expect(code).toContain("setConfirmation('convert-play-to-roto')");
-    expect(code).toContain("setConfirmation('convert-roto-to-play')");
+    expect(code).not.toContain('physics-paint-workflow-tabs');
+    expect(code).not.toContain('requestWorkflowModeChange');
+    expect(code).not.toContain('onRequestModeChange');
     expect(confirmBlock).toContain('props.onConvertPlayToRoto?.()');
     expect(confirmBlock).toContain('props.onConvertRotoToPlay?.()');
     expect(code).toContain('PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE');
