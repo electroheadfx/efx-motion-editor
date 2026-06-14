@@ -31,6 +31,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('onRequestModeChange');
     expect(code).toContain('Save roto frame');
     expect(code).toContain('Save play');
+    expect(code).toContain('Render');
     expect(code).toContain('Stop');
     expect(rightPanelSource()).toContain('Save state');
     expect(rightPanelSource()).toContain('Load state');
@@ -107,17 +108,24 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('[11]');
   });
 
-  it('uses the Play icon as the render/save action and does not render a text Save play button', () => {
+  it('labels render-generation actions as Render and keeps Save play as publishing', () => {
     const code = source();
     const playControlsIndex = code.indexOf('physics-paint-play-controls');
     const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 3600);
 
-    expect(playControlsBlock).toContain("props.playCacheStatus === 'cached' ? 'Play cached preview' : 'Render and save Play'");
-    expect(playControlsBlock).toContain('<Play');
-    expect(playControlsBlock).toContain('onClick={handlePrimaryAction}');
-    expect(playControlsBlock).not.toContain('>Save play</button>');
+    expect(code).toContain('const RENDER_ACTION_LABEL = \'Render\'');
+    expect(playControlsBlock).toContain('title="Render cached frames for this script. Watch full playback in EFX Motion."');
+    expect(playControlsBlock).toContain('aria-label="Render"');
+    expect(playControlsBlock).toContain('>{RENDER_ACTION_LABEL}</button>');
+    expect(playControlsBlock).toContain('>{SAVE_PLAY_LABEL}</button>');
+    expect(playControlsBlock).toContain('onClick={renderPlayFrames}');
+    expect(playControlsBlock).toContain('onClick={props.onSavePlay}');
+    expect(playControlsBlock).not.toContain('Play cached preview');
+    expect(playControlsBlock).not.toContain('Render and save Play');
+    expect(playControlsBlock).not.toContain('<Play');
     expect(playControlsBlock).not.toContain('aria-label="Play preview"');
-    expect(code).toContain("import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square }");
+    expect(playControlsBlock).not.toContain('aria-label="Render and save Play"');
+    expect(code).not.toContain('Play, Square');
   });
 
   it('uses local Play preview navigation for Play canvas transport buttons', () => {
