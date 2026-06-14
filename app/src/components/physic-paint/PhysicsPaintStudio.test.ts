@@ -77,8 +77,8 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
 
     expect(text).toContain("coreApi.invoke('get_physics_paint_launch_context')");
     expect(text).toContain('isPhysicPaintLaunchContext(storedContext)');
-    expect(text).toContain('applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty)');
-    expect(text).toContain('applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty)');
+    expect(text).toContain('applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle)');
+    expect(text).toContain('applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle)');
   });
 
   it('accepts saved Play source metadata through the parsed launch context path', () => {
@@ -97,7 +97,7 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
 
     expect(text).toContain('const [playFramesVersion, setPlayFramesVersion] = useState(0)');
     expect(text).toContain('latestPlayFramesRef.current = frames');
-    expect(text).toContain('setLatestPlayFrames([])');
+    expect(text).toContain('setLatestPlayFrames(frames)');
     expect(text).toContain('setPlayFramesVersion((version) => version + 1)');
     expect(text).toContain('new Set(latestPlayFramesRef.current.map((frame) => frame.appFrame))');
     expect(text).toContain('playFramesVersion');
@@ -130,12 +130,38 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 
     expect(text).toContain('const [savedPlayCacheDirty, setSavedPlayCacheDirty]');
     expect(text).toContain('function loadCachedPlayPreviewFrame');
-    expect(text).toContain('physicPaintStore.getFrame(launchContext.layerId, playStartFrame + previewFrame)');
+    expect(text).toContain('function getCachedPlayFramesForRange');
+    expect(text).toContain('const cachedPreviewTimerRef = useRef<number | null>(null)');
+    expect(text).toContain('Previewing cached ${safeFrameCount} frames at ${previewFps} fps.');
+    expect(text).toContain('latestPlayFramesRef.current.find((frame) => frame.appFrame === appFrame)');
+    expect(text).toContain('launchContext.cachedPlayFrames?.find((frame) => frame.appFrame === appFrame)');
+    expect(text).toContain('physicPaintStore.getFrame(launchContext.layerId, appFrame)');
     expect(text).toContain('setCachedPlayPreviewUrl(cachedFrame?.dataUrl ?? null)');
     expect(text).toContain('if (savedPlayCacheDirty)');
     expect(text).toContain('setCachedPlayPreviewUrl(null)');
     expect(text).toContain('setSavedPlayCacheDirty(true)');
     expect(text).toContain('markSelectedPlayCacheDirty');
+  });
+
+  it('does not let stale Roto gap limits pin Play duration to the default range', () => {
+    const text = source();
+    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+
+    expect(text).toContain('function withoutRotoGapLimit');
+    expect(text).toContain('delete next.maxPlayFrameCount');
+    expect(text).toContain('...withoutRotoGapLimit(current)');
+    expect(workflowStripBlock).toContain("maxPlayFrameCount={workflowMode === 'play' ? undefined : launchContext?.maxPlayFrameCount}");
+    expect(workflowStripBlock).toContain("maxPlayFrameCountReason={workflowMode === 'play' ? undefined : launchContext?.maxPlayFrameCountReason}");
+  });
+
+  it('uses Play keyboard transport to render/apply stale Play scripts instead of only previewing live canvas', () => {
+    const text = source();
+    const keyBlock = text.slice(text.indexOf('const handlePhysicsPaintKeyDown = useCallback'), text.indexOf('const onionPreviewFrames'));
+
+    expect(keyBlock).toContain("workflowMode === 'play' && (event.key === ' ' || event.key === 'Enter')");
+    expect(keyBlock).toContain("!savedPlayCacheDirty && getCachedPlayFramesForRange(framesToApply)");
+    expect(keyBlock).toContain('playPreview(framesToApply)');
+    expect(keyBlock).toContain('else void savePlay()');
   });
 
   it('loads the first cached Play frame when opening a clean saved Play script', () => {
@@ -150,14 +176,22 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('savedPlayCacheDirty');
   });
 
-  it('only enables Play canvas drawing at the last append frame of an existing animation', () => {
+  it('allows Play canvas drawing on selected frames and marks cached scripts stale', () => {
     const text = source();
+    const saveEditableStateBlock = text.slice(text.indexOf('const saveEditableState = useCallback'), text.indexOf('const loadEditableState = useCallback'));
 
-    expect(text).toContain('const canEditCurrentPlayFrame');
-    expect(text).toContain('const selectedPlayLastPreviewFrame = activePlayFrameCount - 1');
-    expect(text).toContain('localPlayPreviewFrame >= selectedPlayLastPreviewFrame');
-    expect(text).toContain('inputDisabled={!canEditCurrentPlayFrame}');
-    expect(text).toContain('Open the last Play frame to add new strokes');
+    expect(text).toContain('function annotatePlayFrameStrokes');
+    expect(text).toContain('const playFrameEditAssignmentsRef = useRef<Map<number, number>>(new Map())');
+    expect(text).toContain('const beginPlayFrameEdit = useCallback');
+    expect(text).toContain('playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount }');
+    expect(text).toContain('engine.getStrokeCount()');
+    expect(text).not.toContain('engine.save().strokes.length');
+    expect(text).toContain('setSavedPlayCacheDirty(true)');
+    expect(text).toContain('onInputIntent={beginPlayFrameEdit}');
+    expect(text).not.toContain('inputDisabled={!canEditCurrentPlayFrame}');
+    expect(saveEditableStateBlock).toContain('capturePendingPlayFrameEdits()');
+    expect(saveEditableStateBlock).toContain('annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
+    expect(saveEditableStateBlock).toContain('downloadPhysicsPaintState(editableState)');
   });
 
   it('saves Play using selected script range and clears dirty cache status after regenerated frames publish', () => {
@@ -167,8 +201,13 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(savePlayBlock).toContain('const playStartFrame = getActivePlayStartFrame(launchContext, currentFrame)');
     expect(savePlayBlock).toContain('appFrame: playStartFrame + frameIndex');
     expect(savePlayBlock).toContain('startFrame: playStartFrame');
+    expect(savePlayBlock).toContain('latestPlayFramesRef.current = frames');
+    expect(savePlayBlock).toContain('setLatestPlayFrames(frames)');
     expect(savePlayBlock).toContain('setCachedPlayPreviewUrl(frames[0]?.dataUrl ?? null)');
     expect(savePlayBlock).toContain('setSavedPlayCacheDirty(false)');
     expect(savePlayBlock).toContain('setLocalPlayPreviewFrame(0)');
+    expect(savePlayBlock).toContain('playScriptId: launchContext.selectedPlayScriptId');
+    expect(savePlayBlock).toContain('playMotion: playWiggle');
+    expect(savePlayBlock).toContain('annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
   });
 });

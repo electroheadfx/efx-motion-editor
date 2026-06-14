@@ -39,7 +39,8 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 30 })).toBe(true);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 60 })).toBe(true);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'play', playStartFrame: 12, playFrameCount: 5, editableSource: 'play' })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, selectedPlayScriptId: 'play-a', previewFrame: 2, maxPlayFrameCount: 12, maxPlayFrameCountReason: 'Gap before play-b' })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, selectedPlayScriptId: 'play-a', playCacheStatus: 'cached', playMotion: { strokeDeformation: 20, strokePosition: 30 }, previewFrame: 2, maxPlayFrameCount: 12, maxPlayFrameCountReason: 'Gap before play-b' })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, cachedPlayFrames: [renderedFrame] })).toBe(true);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: -1 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 0 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: -24 })).toBe(false);
@@ -49,22 +50,25 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'play', playStartFrame: -1 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'play', playFrameCount: 0 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, selectedPlayScriptId: '' })).toBe(false);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, playCacheStatus: 'dirty' })).toBe(false);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, playMotion: { strokeDeformation: 101, strokePosition: 0 } })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, previewFrame: -1 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, previewFrame: 1.5 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, maxPlayFrameCount: 0 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, maxPlayFrameCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, maxPlayFrameCountReason: 12 })).toBe(false);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, cachedPlayFrames: [{ ...renderedFrame, dataUrl: 'bad' }] })).toBe(false);
   });
 
   it('normalizes sorted non-overlapping saved Play script ranges', () => {
     const ranges = normalizePhysicPaintPlayScriptRanges([
-      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached' },
+      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached', motion: { strokeDeformation: 15, strokePosition: 25 } },
       { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' },
     ]);
 
     expect(ranges).toEqual([
       { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' },
-      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached' },
+      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached', motion: { strokeDeformation: 15, strokePosition: 25 } },
     ]);
   });
 
@@ -81,6 +85,7 @@ describe('physic paint payload contracts', () => {
       { id: 'play-b', startFrame: 7, frameCount: 2, editableState },
     ])).toBeNull();
     expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: 0, frameCount: 5, editableState: { version: 2, width: 100, height: 100, strokes: [{ tool: 'paint' }], settings: {} } }])).toBeNull();
+    expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: 0, frameCount: 5, editableState, motion: { strokeDeformation: -1, strokePosition: 0 } }])).toBeNull();
   });
 
   it('validates namespaced frame-sync messages', () => {

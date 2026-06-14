@@ -129,6 +129,53 @@ describe('physicPaintStore', () => {
       playFrameCount: 2,
       editableSource: 'play',
     });
+    expect(physicPaintStore.getPlayScriptRanges('layer-1')).toEqual([
+      expect.objectContaining({ id: 'play-10-2', startFrame: 10, frameCount: 2, cacheStatus: 'stale' }),
+    ]);
+  });
+
+  it('persists Play motion settings and replaces a selected script when duration changes', () => {
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-original',
+      layerId: 'layer-1',
+      startFrame: 6,
+      frameCount: 3,
+      frames: [makeFrame(0, 6), makeFrame(1, 7), makeFrame(2, 8)],
+      editableState,
+      playMotion: { strokeDeformation: 10, strokePosition: 20 },
+    });
+
+    const originalId = physicPaintStore.getPlayScriptRanges('layer-1')[0].id;
+    const result = physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-seq-resized',
+      layerId: 'layer-1',
+      startFrame: 6,
+      frameCount: 4,
+      frames: [makeFrame(0, 6), makeFrame(1, 7), makeFrame(2, 8), makeFrame(3, 9)],
+      editableState,
+      playScriptId: originalId,
+      playMotion: { strokeDeformation: 30, strokePosition: 40 },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getPlayScriptRanges('layer-1')).toEqual([
+      expect.objectContaining({
+        id: originalId,
+        startFrame: 6,
+        frameCount: 4,
+        cacheStatus: 'cached',
+        motion: { strokeDeformation: 30, strokePosition: 40 },
+      }),
+    ]);
+    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({
+      workflowMode: 'play',
+      playStartFrame: 6,
+      playFrameCount: 4,
+      editableSource: 'play',
+      playMotion: { strokeDeformation: 30, strokePosition: 40 },
+    });
   });
 
   it('increments version for each successful mutation and marks dirty', () => {

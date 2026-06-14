@@ -28,11 +28,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       'Save play',
       'Play',
       'Stop',
-      'Save state',
-      'Load state',
     ]) {
       expect(code).toContain(label);
     }
+    expect(rightPanelSource()).toContain('Save state');
+    expect(rightPanelSource()).toContain('Load state');
   });
 
   it('owns physics-paint-specific timeline rows without importing the main EFX Motion timeline', () => {
@@ -42,7 +42,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('physics-paint-roto-cell');
     expect(code).toContain('occupiedRotoFrames');
     expect(code).toContain('isOccupiedFrame');
-    expect(code).toContain('physics-paint-play-range');
+    expect(code).toContain('physics-paint-play-cells');
+    expect(code).toContain('buildPlayFrameCells');
     expect(code).toContain('getPlayRangeMarker');
     expect(code).not.toMatch(/from ['"].*Timeline/);
     expect(code).not.toContain('<Timeline');
@@ -53,22 +54,22 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const previewIndex = code.indexOf('onPreviewPlayFrame');
     const inspectIndex = code.indexOf('onInspectPlayFrame');
     const convertIndex = code.indexOf('onConvertPlayToRoto');
-    const clickBlock = code.slice(code.indexOf('function handlePlayRangeClick'), code.indexOf('function handlePlayRangeClick') + 1100);
+    const playCellsBlock = code.slice(code.indexOf('playFrameCells.map'), code.indexOf('playFrameCells.map') + 900);
 
     expect(previewIndex).toBeGreaterThan(-1);
     expect(inspectIndex).toBeGreaterThan(-1);
     expect(convertIndex).toBeGreaterThan(-1);
     expect(code).not.toContain('onClearPlayRange');
-    const previewBlock = code.slice(code.indexOf('function previewPlayFrame'), code.indexOf('function handlePlayRangeClick'));
+    const previewBlock = code.slice(code.indexOf('function previewPlayFrame'), code.indexOf('function requestWorkflowModeChange'));
 
-    expect(code).toContain('handlePlayRangeClick');
-    expect(clickBlock).toContain('previewPlayFrame');
+    expect(code).toContain('playFrameCells.map');
+    expect(playCellsBlock).toContain('previewPlayFrame(index)');
     expect(previewBlock).toContain('props.onPreviewPlayFrame');
-    expect(clickBlock).not.toContain('onNavigateToSyncedFrame');
-    expect(clickBlock).not.toContain('onConvertPlayToRoto');
+    expect(playCellsBlock).not.toContain('onNavigateToSyncedFrame');
+    expect(playCellsBlock).not.toContain('onConvertPlayToRoto');
   });
 
-  it('accepts local Play preview props and renders a separate vertical current preview marker', () => {
+  it('accepts local Play preview props and renders current Play frame cells', () => {
     const code = source();
 
     for (const contract of [
@@ -77,7 +78,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       'maxPlayFrameCountReason?: string',
       'playCacheStatus?:',
       'onPreviewPlayFrame?: (frame: number) => void',
-      'physics-paint-play-current-marker',
+      'physics-paint-play-cell',
       'clampedPreviewFrame',
     ]) {
       expect(code).toContain(contract);
@@ -85,48 +86,74 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('physics-paint-play-range-point current');
   });
 
-  it('fits the Play lane to the available width and colors cached ranges distinctly', () => {
+  it('renders Play as frame cells from the script start and colors cached ranges distinctly', () => {
     const code = source();
 
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
 
-    expect(code).toContain('const playPreviewPercent');
-    expect(code).toContain('style={{ width: \'100%\', minWidth: \'100%\' }}');
-    expect(css).toContain('grid-template-columns: minmax(0, 1fr)');
-    expect(code).toContain("props.playCacheStatus === 'cached' ? ' cached' : ''");
-    expect(code).toContain('physics-paint-play-range-fill${props.playCacheStatus');
+    expect(code).toContain('const PLAY_TIMELINE_CELL_WIDTH');
+    expect(code).toContain('buildPlayFrameCells(props.startFrame, safeFrameCount)');
+    expect(code).toContain("props.playCacheStatus === 'cached' ? 'cached' : ''");
+    expect(code).toContain('physics-paint-play-cells');
+    expect(css).toContain('.physics-paint-play-cell.cached');
   });
 
-  it('does not render a standalone Play preview button in Play canvas mode', () => {
+  it('uses the Play icon as the render/save action and does not render a text Save play button', () => {
     const code = source();
     const playControlsIndex = code.indexOf('physics-paint-play-controls');
-    const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 1200);
+    const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 3600);
 
+    expect(playControlsBlock).toContain("props.playCacheStatus === 'cached' ? 'Play cached preview' : 'Render and save Play'");
+    expect(playControlsBlock).toContain('<Play');
+    expect(playControlsBlock).toContain('onClick={handlePrimaryAction}');
+    expect(playControlsBlock).not.toContain('>Save play</button>');
     expect(playControlsBlock).not.toContain('aria-label="Play preview"');
-    expect(playControlsBlock).not.toContain('<Play');
-    expect(code).not.toContain("import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square }");
+    expect(code).toContain("import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square }");
   });
 
   it('uses local Play preview navigation for Play canvas transport buttons', () => {
     const code = source();
     const playControlsIndex = code.indexOf('physics-paint-play-controls');
-    const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 1400);
+    const playControlsBlock = code.slice(playControlsIndex, playControlsIndex + 3600);
 
+    expect(playControlsBlock).toContain('id="physics-play-duration"');
+    expect(playControlsBlock).toContain('onInput={handleFrameCountInput}');
     expect(playControlsBlock).toContain('onClick={() => previewPlayFrame(0)}');
     expect(playControlsBlock).toContain('onClick={() => previewPlayFrame(Math.max(0, clampedPreviewFrame - 1))}');
+    expect(playControlsBlock).toContain('onClick={() => previewPlayFrame(Math.min(safeFrameCount - 1, clampedPreviewFrame + 1))}');
+    expect(playControlsBlock).toContain('onClick={() => previewPlayFrame(safeFrameCount - 1)}');
     expect(playControlsBlock).not.toContain('props.onGoToFirstFrame');
     expect(playControlsBlock).not.toContain('props.onGoToPreviousFrame');
+    expect(playControlsBlock).not.toContain('props.onGoToNextFrame');
+    expect(playControlsBlock).not.toContain('props.onGoToLastFrame');
   });
 
-  it('clamps Play frame count input to maxPlayFrameCount and renders max duration messaging', () => {
-    const code = source();
-    const inputBlock = code.slice(code.indexOf('function handleFrameCountInput'), code.indexOf('function handlePlayRangeClick'));
+  it('exposes stroke deformation and position wiggle controls for Play animation', () => {
+    const studioCode = studioSource();
+    const panelCode = rightPanelSource();
 
-    expect(inputBlock).toContain('getMaxFrameCount');
+    expect(panelCode).toContain('export interface PhysicsPaintPlayWiggleSettings');
+    expect(panelCode).toContain('MOTION');
+    expect(panelCode).toContain('Deform');
+    expect(panelCode).toContain('Move');
+    expect(panelCode).not.toContain('id="physics-play-duration"');
+    expect(panelCode).toContain("updatePlayWiggle('strokeDeformation'");
+    expect(panelCode).toContain("updatePlayWiggle('strokePosition'");
+    expect(studioCode).toContain('const [playWiggle, setPlayWiggle]');
+    expect(studioCode).toContain('playWiggle={playWiggle}');
+    expect(studioCode).toContain('onPlayWiggleChange={updatePlayWiggle}');
+    expect(studioCode).toContain('wiggle: playWiggle');
+  });
+
+  it('clamps Play frame count input to maxPlayFrameCount in the animation panel', () => {
+    const code = source();
+
+    expect(code).toContain('const maxFrameCount = getMaxFrameCount()');
     expect(code).toContain('Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, props.maxPlayFrameCount)');
     expect(code).toContain('Play duration limited to');
     expect(code).toContain('props.maxPlayFrameCountReason');
     expect(code).toContain('physics-paint-play-limit-message');
+    expect(code).toContain('id="physics-play-duration"');
   });
 
   it('keeps onion preview overlays in the workflow strip and moves onion controls to the right panel', () => {
@@ -146,8 +173,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       'physics-paint-options-tabs',
       'physics-paint-single-tab',
       'BRUSH COLOR',
-      'TOOL OPTIONS',
-      'ONION SETTINGS',
+      'TOOL',
+      'ONION',
+      'MOTION',
       'Onion skin',
       'Previous',
       'Next',
@@ -176,7 +204,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const builderIndex = code.indexOf('const buildOnionPreviewFrames = useCallback');
     const builderBlock = code.slice(builderIndex, builderIndex + 1600);
     const savePlayIndex = code.indexOf('const savePlay = useCallback');
-    const savePlayBlock = code.slice(savePlayIndex, savePlayIndex + 2200);
+    const savePlayBlock = code.slice(savePlayIndex, savePlayIndex + 3600);
 
     expect(code).toContain('rotoFrameStatesRef');
     expect(code).toContain('rotoPreviewFramesRef');
@@ -186,8 +214,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(builderBlock).toContain("addFrame(frame, 'roto')");
     expect(builderBlock).not.toContain('latestPlayFrames.forEach');
     expect(builderBlock).not.toContain("addFrame(frame, 'play')");
-    expect(savePlayBlock).not.toContain('setLatestPlayFrames(frames);');
-    expect(savePlayBlock).toContain('setLatestPlayFrames([]);');
+    expect(savePlayBlock).toContain('setLatestPlayFrames(frames)');
   });
 
   it('uses workflow tabs as the guarded conversion affordance without standalone conversion buttons', () => {

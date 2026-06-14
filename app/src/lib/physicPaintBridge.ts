@@ -199,9 +199,15 @@ export function createPhysicPaintLaunchContext(
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const currentFrame = Math.max(0, Math.trunc(frame));
   const containingRange = physicPaintStore.findPlayScriptRangeAtFrame(layerId, currentFrame);
+  const cachedPlayFrames = containingRange && containingRange.cacheStatus === 'cached'
+    ? Array.from({ length: containingRange.frameCount }, (_, index) => physicPaintStore.getFrame(layerId, containingRange.startFrame + index)).filter((frame): frame is NonNullable<typeof frame> => Boolean(frame))
+    : [];
+  const hasCurrentRotoFrame = Boolean(physicPaintStore.getFrame(layerId, currentFrame));
   const editableState = containingRange?.editableState
     ? structuredClone(containingRange.editableState)
-    : physicPaintStore.getEditableState(layerId);
+    : hasCurrentRotoFrame
+      ? physicPaintStore.getEditableState(layerId)
+      : null;
   const launchSelection = containingRange
     ? {
         workflowMode: 'play' as const,
@@ -210,7 +216,10 @@ export function createPhysicPaintLaunchContext(
         playFrameCount: containingRange.frameCount,
         editableSource: 'play' as const,
         selectedPlayScriptId: containingRange.id,
+        playCacheStatus: containingRange.cacheStatus ?? 'missing',
+        ...(containingRange.motion ? { playMotion: { ...containingRange.motion } } : {}),
         previewFrame: currentFrame - containingRange.startFrame,
+        cachedPlayFrames,
       }
     : {
         workflowMode: 'roto' as const,

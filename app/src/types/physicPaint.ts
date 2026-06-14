@@ -14,6 +14,11 @@ export type PhysicPaintEditableSource = 'roto' | 'play';
 export type PhysicPaintPlayScriptRangeSource = 'play';
 export type PhysicPaintPlayScriptCacheStatus = 'cached' | 'stale' | 'missing';
 
+export interface PhysicPaintPlayMotionSettings {
+  strokeDeformation: number;
+  strokePosition: number;
+}
+
 export interface PhysicPaintPlayScriptRange {
   id: string;
   startFrame: number;
@@ -21,6 +26,7 @@ export interface PhysicPaintPlayScriptRange {
   editableState: SerializedProject;
   source?: PhysicPaintPlayScriptRangeSource;
   cacheStatus?: PhysicPaintPlayScriptCacheStatus;
+  motion?: PhysicPaintPlayMotionSettings;
 }
 
 export interface PhysicPaintWorkflowMetadata {
@@ -29,6 +35,7 @@ export interface PhysicPaintWorkflowMetadata {
   playFrameCount?: number;
   editableSource?: PhysicPaintEditableSource;
   playScriptRanges?: PhysicPaintPlayScriptRange[];
+  playMotion?: PhysicPaintPlayMotionSettings;
 }
 
 export interface PhysicPaintLaunchContext {
@@ -45,7 +52,10 @@ export interface PhysicPaintLaunchContext {
   editableSource?: PhysicPaintEditableSource;
   editableState?: SerializedProject;
   selectedPlayScriptId?: string;
+  playCacheStatus?: PhysicPaintPlayScriptCacheStatus;
+  playMotion?: PhysicPaintPlayMotionSettings;
   previewFrame?: number;
+  cachedPlayFrames?: PhysicPaintRenderedFrame[];
   maxPlayFrameCount?: number;
   maxPlayFrameCountReason?: string;
 }
@@ -83,6 +93,8 @@ export interface PhysicPaintApplyPlayCanvasPayload {
   frameCount: number;
   frames: PhysicPaintRenderedFrame[];
   editableState: SerializedProject;
+  playScriptId?: string;
+  playMotion?: PhysicPaintPlayMotionSettings;
 }
 
 export interface PhysicPaintConvertPlayToRotoPayload {
@@ -102,6 +114,8 @@ export interface PhysicPaintConvertRotoToPlayPayload {
   startFrame: number;
   frameCount: number;
   editableState: SerializedProject;
+  playScriptId?: string;
+  playMotion?: PhysicPaintPlayMotionSettings;
 }
 
 export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintApplyPlayCanvasPayload | PhysicPaintConvertPlayToRotoPayload | PhysicPaintConvertRotoToPlayPayload;
@@ -155,7 +169,10 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalFrameCount(value.playFrameCount) &&
     optionalEditableSource(value.editableSource) &&
     optionalNonEmptyString(value.selectedPlayScriptId) &&
+    optionalPlayScriptCacheStatus(value.playCacheStatus) &&
+    optionalPlayMotion(value.playMotion) &&
     optionalNonNegativeInteger(value.previewFrame) &&
+    optionalRenderedFrames(value.cachedPlayFrames) &&
     optionalFrameCount(value.maxPlayFrameCount) &&
     (value.maxPlayFrameCountReason === undefined || typeof value.maxPlayFrameCountReason === 'string') &&
     (value.layerName === undefined || typeof value.layerName === 'string') &&
@@ -217,6 +234,7 @@ export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPain
     if (!isSerializedProject(candidate.editableState)) return null;
     if (candidate.source !== undefined && candidate.source !== 'play') return null;
     if (candidate.cacheStatus !== undefined && candidate.cacheStatus !== 'cached' && candidate.cacheStatus !== 'stale' && candidate.cacheStatus !== 'missing') return null;
+    if (!optionalPlayMotion(candidate.motion)) return null;
 
     ids.add(candidate.id);
     ranges.push({
@@ -226,6 +244,7 @@ export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPain
       editableState: structuredClone(candidate.editableState),
       ...(candidate.source ? { source: candidate.source } : {}),
       ...(candidate.cacheStatus ? { cacheStatus: candidate.cacheStatus } : {}),
+      ...(candidate.motion ? { motion: normalizePlayMotion(candidate.motion) } : {}),
     });
   }
 
@@ -271,7 +290,9 @@ function isBaseApplyPayload(value: Record<string, unknown>): value is Record<str
     (value.kind === 'apply-canvas' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play') &&
     isNonEmptyString(value.operationId) &&
     isNonEmptyString(value.layerId) &&
-    isNonNegativeInteger(value.startFrame)
+    isNonNegativeInteger(value.startFrame) &&
+    optionalNonEmptyString(value.playScriptId) &&
+    optionalPlayMotion(value.playMotion)
   );
 }
 
@@ -309,6 +330,7 @@ function isSerializedStroke(value: unknown): boolean {
   if (value.color !== null && typeof value.color !== 'string') return false;
   if (!isRecord(value.params)) return false;
   if (typeof value.time !== 'number' || !Number.isFinite(value.time)) return false;
+  if (value.playFrame !== undefined && !isNonNegativeInteger(value.playFrame)) return false;
   return value.pts.every((point) => Array.isArray(point) && point.length === 7 && point.every((entry) => typeof entry === 'number' && Number.isFinite(entry)));
 }
 
@@ -340,6 +362,10 @@ function optionalEditableSource(value: unknown): boolean {
   return value === undefined || value === 'roto' || value === 'play';
 }
 
+function optionalPlayScriptCacheStatus(value: unknown): boolean {
+  return value === undefined || value === 'cached' || value === 'stale' || value === 'missing';
+}
+
 function optionalNonEmptyString(value: unknown): boolean {
   return value === undefined || isNonEmptyString(value);
 }
@@ -348,8 +374,34 @@ function optionalNonNegativeInteger(value: unknown): boolean {
   return value === undefined || isNonNegativeInteger(value);
 }
 
+function optionalRenderedFrames(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.every((frame) => isPhysicPaintRenderedFrame(frame)));
+}
+
 function optionalFrameCount(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= PHYSIC_PAINT_MIN_APPLY_FRAMES && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES);
+}
+
+function optionalPlayMotion(value: unknown): value is PhysicPaintPlayMotionSettings | undefined {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  return isPercentInteger(value.strokeDeformation) && isPercentInteger(value.strokePosition);
+}
+
+function normalizePlayMotion(value: PhysicPaintPlayMotionSettings): PhysicPaintPlayMotionSettings {
+  return {
+    strokeDeformation: clampPercentInteger(value.strokeDeformation),
+    strokePosition: clampPercentInteger(value.strokePosition),
+  };
+}
+
+function isPercentInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100;
+}
+
+function clampPercentInteger(value: unknown): number {
+  if (!isPercentInteger(value)) return 0;
+  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

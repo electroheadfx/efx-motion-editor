@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -16,6 +16,7 @@ type PhysicPaintMceOutput = {
   play_start_frame?: number;
   play_frame_count?: number;
   editable_source?: PhysicPaintWorkflowMetadata['editableSource'];
+  play_motion?: PhysicPaintPlayMotionSettings;
 };
 
 type PhysicPaintMceOutputInput = PhysicPaintMceOutput & {
@@ -23,6 +24,7 @@ type PhysicPaintMceOutputInput = PhysicPaintMceOutput & {
   playStartFrame?: number;
   playFrameCount?: number;
   editableSource?: PhysicPaintWorkflowMetadata['editableSource'];
+  playMotion?: PhysicPaintPlayMotionSettings;
 };
 
 const _frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
@@ -59,6 +61,7 @@ function _metadataToMce(metadata: PhysicPaintWorkflowMetadata | undefined): Omit
     ...(metadata.playStartFrame !== undefined ? { play_start_frame: metadata.playStartFrame } : {}),
     ...(metadata.playFrameCount !== undefined ? { play_frame_count: metadata.playFrameCount } : {}),
     ...(metadata.editableSource ? { editable_source: metadata.editableSource } : {}),
+    ...(metadata.playMotion ? { play_motion: { ...metadata.playMotion } } : {}),
   };
 }
 
@@ -78,6 +81,42 @@ function _makePlayScriptId(startFrame: number, frameCount: number): string {
   return `play-${startFrame}-${frameCount}`;
 }
 
+function _isValidPlayMotion(value: PhysicPaintPlayMotionSettings | undefined): value is PhysicPaintPlayMotionSettings {
+  return Boolean(
+    value &&
+      Number.isInteger(value.strokeDeformation) &&
+      value.strokeDeformation >= 0 &&
+      value.strokeDeformation <= 100 &&
+      Number.isInteger(value.strokePosition) &&
+      value.strokePosition >= 0 &&
+      value.strokePosition <= 100,
+  );
+}
+
+function _makePlayScriptRangeFromPayload(
+  payload: Extract<PhysicPaintApplyPayload, { kind: 'apply-play-canvas' | 'convert-roto-to-play' }>,
+  cacheStatus: PhysicPaintPlayScriptRange['cacheStatus'],
+  currentRanges: PhysicPaintPlayScriptRange[],
+): { range: PhysicPaintPlayScriptRange; overlap: PhysicPaintPlayScriptRange | undefined } {
+  const replacing = currentRanges.find((existing) => (
+    (payload.playScriptId !== undefined && existing.id === payload.playScriptId) ||
+    (existing.startFrame === payload.startFrame && existing.frameCount === payload.frameCount)
+  ));
+  const range: PhysicPaintPlayScriptRange = {
+    id: replacing?.id ?? payload.playScriptId ?? _makePlayScriptId(payload.startFrame, payload.frameCount),
+    startFrame: payload.startFrame,
+    frameCount: payload.frameCount,
+    editableState: structuredClone(payload.editableState),
+    source: 'play',
+    cacheStatus,
+    ...(payload.playMotion ? { motion: { ...payload.playMotion } } : {}),
+  };
+  const overlap = currentRanges
+    .filter((existing) => existing.id !== replacing?.id)
+    .find((existing) => _rangesOverlap(existing, range));
+  return { range, overlap };
+}
+
 function _tryUpsertPlayScriptRange(layerId: string, range: PhysicPaintPlayScriptRange): PhysicPaintPlayScriptRange[] | null {
   const current = _playScriptRanges.get(layerId) ?? [];
   const next = [...current.filter((existing) => existing.id !== range.id), structuredClone(range)];
@@ -93,14 +132,17 @@ function _metadataFromMce(output: PhysicPaintMceOutputInput): PhysicPaintWorkflo
   const playStartFrame = output.play_start_frame ?? output.playStartFrame;
   const playFrameCount = output.play_frame_count ?? output.playFrameCount;
   const editableSource = output.editable_source ?? output.editableSource;
+  const playMotion = output.play_motion ?? output.playMotion;
   if (playStartFrame !== undefined && (!Number.isInteger(playStartFrame) || playStartFrame < 0)) return null;
   if (playFrameCount !== undefined && (!Number.isInteger(playFrameCount) || playFrameCount < 1)) return null;
   if (editableSource !== undefined && editableSource !== 'roto' && editableSource !== 'play') return null;
+  if (playMotion !== undefined && !_isValidPlayMotion(playMotion)) return null;
   return {
     workflowMode,
     ...(playStartFrame !== undefined ? { playStartFrame } : {}),
     ...(playFrameCount !== undefined ? { playFrameCount } : {}),
     ...(editableSource ? { editableSource } : {}),
+    ...(playMotion ? { playMotion: { ...playMotion } } : {}),
   };
 }
 
@@ -158,6 +200,7 @@ export const physicPaintStore = {
         playStartFrame: latest.startFrame,
         playFrameCount: latest.frameCount,
         editableSource: 'play',
+        ...(latest.motion ? { playMotion: { ...latest.motion } } : {}),
       });
     }
     _notifyVisualChange();
@@ -282,19 +325,8 @@ export const physicPaintStore = {
       return _errorResult(payload, 'Expected apply-play-canvas payload');
     }
 
-    const range: PhysicPaintPlayScriptRange = {
-      id: _makePlayScriptId(payload.startFrame, payload.frameCount),
-      startFrame: payload.startFrame,
-      frameCount: payload.frameCount,
-      editableState: structuredClone(payload.editableState),
-      source: 'play',
-      cacheStatus: 'cached',
-    };
     const currentRanges = _playScriptRanges.get(payload.layerId) ?? [];
-    const replacing = currentRanges.find((existing) => existing.startFrame === payload.startFrame && existing.frameCount === payload.frameCount);
-    const overlap = currentRanges
-      .filter((existing) => existing.id !== replacing?.id)
-      .find((existing) => _rangesOverlap(existing, range));
+    const { range, overlap } = _makePlayScriptRangeFromPayload(payload, 'cached', currentRanges);
     if (overlap) {
       return _errorResult(payload, `Play script range overlap with ${overlap.id}`);
     }
@@ -304,7 +336,6 @@ export const physicPaintStore = {
       const appFrame = payload.startFrame + index;
       layerFrames.set(appFrame, { ...renderedFrame, appFrame });
     });
-    if (replacing) range.id = replacing.id;
     _tryUpsertPlayScriptRange(payload.layerId, range);
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
     _workflowMetadata.set(payload.layerId, {
@@ -312,6 +343,7 @@ export const physicPaintStore = {
       playStartFrame: payload.startFrame,
       playFrameCount: payload.frameCount,
       editableSource: 'play',
+      ...(payload.playMotion ? { playMotion: { ...payload.playMotion } } : {}),
     });
     _notifyVisualChange();
 
@@ -360,6 +392,12 @@ export const physicPaintStore = {
       return _errorResult(payload, 'Expected convert-roto-to-play payload');
     }
 
+    const currentRanges = _playScriptRanges.get(payload.layerId) ?? [];
+    const { range, overlap } = _makePlayScriptRangeFromPayload(payload, 'stale', currentRanges);
+    if (overlap) {
+      return _errorResult(payload, `Play script range overlap with ${overlap.id}`);
+    }
+
     const layerFrames = _frames.get(payload.layerId);
     if (layerFrames) {
       for (let offset = 0; offset < payload.frameCount; offset++) {
@@ -367,12 +405,14 @@ export const physicPaintStore = {
       }
       if (layerFrames.size === 0) _frames.delete(payload.layerId);
     }
+    _tryUpsertPlayScriptRange(payload.layerId, range);
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
     _workflowMetadata.set(payload.layerId, {
       workflowMode: 'play',
       playStartFrame: payload.startFrame,
       playFrameCount: payload.frameCount,
       editableSource: 'play',
+      ...(payload.playMotion ? { playMotion: { ...payload.playMotion } } : {}),
     });
     _notifyVisualChange();
 

@@ -7,10 +7,19 @@
 
 import type { PaintStroke } from '../types'
 
+/** Optional stroke-motion noise for Play exports/previews. Values are 0-100. */
+export interface AnimationWiggleConfig {
+  /** Per-point stroke outline deformation during playback. */
+  strokeDeformation: number
+  /** Whole-stroke position drift during playback. */
+  strokePosition: number
+}
+
 /** Configuration for animation playback (per D-03: FPS is configurable, no default) */
 export interface AnimationConfig {
   frameCount: number
   fps: number
+  wiggle?: AnimationWiggleConfig
   onFrame?: (frameIndex: number, canvas: HTMLCanvasElement) => void  // per D-06
   onComplete?: () => void
 }

@@ -1,4 +1,4 @@
-import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Square } from 'lucide-preact';
+import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Square } from 'lucide-preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   PHYSIC_PAINT_DEFAULT_APPLY_FRAMES,
@@ -53,15 +53,13 @@ export interface PhysicsPaintWorkflowStripProps {
   onRequestModeChange: (mode: PhysicsPaintWorkflowMode) => void;
   onSaveRotoFrame: () => void;
   onSavePlay: () => void;
-  onSaveState: () => void;
-  onLoadState: (event: Event) => void;
   currentPreviewFrame?: number;
   maxPlayFrameCount?: number;
   maxPlayFrameCountReason?: string;
   playCacheStatus?: 'cached' | 'stale' | 'missing' | null;
+  onFrameCountChange: (frameCount: number) => void;
   onPlayPreview: (frameCount: number) => void;
   onStopPreview: () => void;
-  onFrameCountChange: (frameCount: number) => void;
   onPreviewPlayFrame?: (frame: number) => void;
   onNavigateToSyncedFrame: (frame: number) => void;
   onGoToFirstFrame: () => void;
@@ -76,8 +74,7 @@ export interface PhysicsPaintWorkflowStripProps {
 
 const VIRTUAL_TIMELINE_FRAME_COUNT = 120;
 const RULER_STEP = 3;
-const PLAY_TIMELINE_TICK_WIDTH = 45;
-const PLAY_TIMELINE_ORIGIN_PERCENT = 0;
+const PLAY_TIMELINE_CELL_WIDTH = 15;
 
 function buildFrameCells(currentFrame: number): number[] {
   const visibleCount = VIRTUAL_TIMELINE_FRAME_COUNT;
@@ -97,17 +94,10 @@ function getPlayRulerStep(frameCount: number): number {
   return 6;
 }
 
-function buildPlayRuler(frameCount: number): { ticks: number[]; endFrame: number; step: number; frameWidth: number; width: number } {
+function buildPlayFrameCells(startFrame: number, frameCount: number): number[] {
+  const safeStartFrame = Number.isInteger(startFrame) && startFrame >= 0 ? startFrame : 0;
   const safeFrameCount = clampPhysicPaintFrameCount(frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES);
-  const step = getPlayRulerStep(safeFrameCount);
-  const endFrame = safeFrameCount <= 6 ? safeFrameCount : Math.ceil((safeFrameCount + step) / step) * step;
-  return {
-    ticks: Array.from({ length: Math.floor(endFrame / step) + 1 }, (_, index) => index * step),
-    endFrame,
-    step,
-    frameWidth: PLAY_TIMELINE_TICK_WIDTH / step,
-    width: Math.max(180, (Math.floor(endFrame / step) + 1) * PLAY_TIMELINE_TICK_WIDTH),
-  };
+  return Array.from({ length: safeFrameCount }, (_, index) => safeStartFrame + index);
 }
 
 function isOccupiedFrame(frames: number[] | undefined, frame: number): boolean {
@@ -133,18 +123,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       ? Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, props.maxPlayFrameCount)
       : PHYSIC_PAINT_MAX_APPLY_FRAMES
   ), [props.maxPlayFrameCount]);
-  const safeFrameCount = Math.min(clampPhysicPaintFrameCount(props.frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES), getMaxFrameCount());
-  const playRuler = useMemo(() => buildPlayRuler(safeFrameCount), [safeFrameCount]);
-  const rulerTicks = props.mode === 'play' ? playRuler.ticks : rotoRulerTicks;
-  const rulerWidth = props.mode === 'play' ? playRuler.width : 1800;
-  const playStartPercent = PLAY_TIMELINE_ORIGIN_PERCENT;
-  const playEndPercent = 100;
+  const maxFrameCount = getMaxFrameCount();
+  const safeFrameCount = Math.min(clampPhysicPaintFrameCount(props.frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES), maxFrameCount);
+  const playFrameCells = useMemo(() => buildPlayFrameCells(props.startFrame, safeFrameCount), [props.startFrame, safeFrameCount]);
+  const playRulerStep = getPlayRulerStep(safeFrameCount);
+  const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
+  const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
+  const rulerWidth = props.mode === 'play' ? Math.max(180, safeFrameCount * PLAY_TIMELINE_CELL_WIDTH) : 1800;
   const clampedPreviewFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(props.currentPreviewFrame ?? 0)));
-  const playPreviewPercent = safeFrameCount <= 1 ? playStartPercent : (clampedPreviewFrame / (safeFrameCount - 1)) * 100;
+  const primaryActionLabel = getActivePrimaryActionLabel(props.mode) === SAVE_PLAY_LABEL ? SAVE_PLAY_LABEL : SAVE_ROTO_FRAME_LABEL;
   const playLimitMessage = props.maxPlayFrameCount !== undefined
     ? props.maxPlayFrameCountReason ?? `Play duration limited to ${props.maxPlayFrameCount} frames before the next saved Play script.`
     : null;
-  const primaryActionLabel = getActivePrimaryActionLabel(props.mode) === SAVE_PLAY_LABEL ? SAVE_PLAY_LABEL : SAVE_ROTO_FRAME_LABEL;
   const onionCount = clampOnionCount(props.onion.count);
   const visibleOnionPreviewFrames = props.isPlaying || !props.onion.enabled
     ? []
@@ -155,29 +145,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
   function handlePrimaryAction() {
     if (props.mode === 'play') {
-      props.onSavePlay();
+      if (props.playCacheStatus === 'cached') props.onPlayPreview(safeFrameCount);
+      else props.onSavePlay();
       return;
     }
     props.onSaveRotoFrame();
   }
 
   function handleFrameCountInput(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    props.onFrameCountChange(Math.min(clampPhysicPaintFrameCount(Number(input.value)), getMaxFrameCount()));
+    const value = Number((event.currentTarget as HTMLInputElement).value);
+    props.onFrameCountChange(Math.min(clampPhysicPaintFrameCount(value), maxFrameCount));
   }
 
   function previewPlayFrame(frame: number) {
     const nextFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(frame)));
     props.onPreviewPlayFrame?.(nextFrame);
     props.onInspectPlayFrame(nextFrame);
-  }
-
-  function handlePlayRangeClick(event: MouseEvent) {
-    if (props.mode !== 'play') return;
-    const target = event.currentTarget as HTMLElement;
-    const rect = target.getBoundingClientRect();
-    const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)) : 0;
-    previewPlayFrame(Math.round(ratio * Math.max(0, safeFrameCount - 1)));
   }
 
   function requestWorkflowModeChange(targetMode: PhysicsPaintWorkflowMode) {
@@ -304,22 +287,26 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             </div>
           ) : (
             <div class="physics-paint-mode-controls physics-paint-play-controls">
-              <label class="physics-paint-play-frame-count">
-                <span>Duray</span>
+              <label class="physics-paint-play-frame-count" for="physics-play-duration">
+                <span>Duration</span>
                 <input
+                  id="physics-play-duration"
                   type="number"
                   min={PHYSIC_PAINT_MIN_APPLY_FRAMES}
-                  max={getMaxFrameCount()}
+                  max={maxFrameCount}
                   value={safeFrameCount}
-                  onInput={handleFrameCountInput}
                   aria-label="Play canvas frame count"
+                  onInput={handleFrameCountInput}
                 />
+                <output>{safeFrameCount}</output>
               </label>
               {playLimitMessage ? <span class="physics-paint-play-limit-message">{playLimitMessage}</span> : null}
               <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={() => previewPlayFrame(0)}><ChevronFirst size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={() => previewPlayFrame(Math.max(0, clampedPreviewFrame - 1))}><ChevronsLeft size={15} /></button>
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={() => previewPlayFrame(Math.min(safeFrameCount - 1, clampedPreviewFrame + 1))}><ChevronsRight size={15} /></button>
+              <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={() => previewPlayFrame(safeFrameCount - 1)}><ChevronLast size={15} /></button>
+              <button type="button" class="physics-paint-nav-button primary" aria-label={props.playCacheStatus === 'cached' ? 'Play cached preview' : 'Render and save Play'} disabled={props.ready === false || props.isPlaying} onClick={handlePrimaryAction}><Play size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Stop preview" disabled={!props.isPlaying} onClick={props.onStopPreview}><Square size={15} /></button>
-              <button class="physics-paint-primary-action" disabled={props.ready === false} onClick={handlePrimaryAction}>Save play</button>
             </div>
           )}
           {props.mode === 'roto' ? (
@@ -329,18 +316,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           ) : null}
         </div>
 
-        <div class="physics-paint-state-actions">
-          <button class="physics-paint-text-button" onClick={props.onSaveState}>Save state</button>
-          <label class="physics-paint-text-button physics-paint-load-state">
-            Load state
-            <input type="file" accept=".json" onChange={props.onLoadState} />
-          </label>
-        </div>
+        <div class="physics-paint-state-actions" aria-hidden="true" />
       </div>
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">
         <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" onScroll={updateScrollbar}>
-          <div class="physics-paint-ruler" style={props.mode === 'play' ? { width: '100%', minWidth: '100%' } : { width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }} aria-hidden="true">
+          <div class="physics-paint-ruler" style={{ width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }} aria-hidden="true">
             {rulerTicks.map(frame => (
               <span key={frame} class="physics-paint-ruler-tick">{frame}</span>
             ))}
@@ -362,19 +343,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               </div>
             </div>
           ) : (
-            <div class="physics-paint-lane physics-paint-play-lane" style={{ width: '100%', minWidth: '100%' }}>
-              <div class="physics-paint-play-track" style={{ width: '100%', minWidth: '100%' }}>
-                <button
-                  class="physics-paint-play-range"
-                  style={{ width: '100%', minWidth: '100%' }}
-                  onClick={handlePlayRangeClick}
-                  aria-label={`Inspect Play canvas frames ${playRange.startFrame} through ${playRange.endFrame}`}
-                >
-                  <span class={`physics-paint-play-range-fill${props.playCacheStatus === 'cached' ? ' cached' : ''}`} style={{ left: `${playStartPercent}%`, width: `${playEndPercent - playStartPercent}%` }} />
-                  <span class="physics-paint-play-range-point start" style={{ left: `${playStartPercent}%` }} />
-                  <span class="physics-paint-play-current-marker" style={{ left: `${playPreviewPercent}%` }} aria-label={`Current Play preview frame ${clampedPreviewFrame}`} />
-                  <span class="physics-paint-play-range-point end" style={{ left: `${playEndPercent}%` }} />
-                </button>
+            <div class="physics-paint-lane physics-paint-play-lane" style={{ width: `${rulerWidth}px`, minWidth: `${rulerWidth}px` }}>
+              <div class="physics-paint-roto-cells physics-paint-play-cells" role="row" style={{ gridTemplateColumns: `repeat(${playFrameCells.length}, 13px)` }}>
+                {playFrameCells.map((frame, index) => (
+                  <button
+                    key={frame}
+                    class={`physics-paint-roto-cell physics-paint-play-cell ${props.playCacheStatus === 'cached' ? 'cached' : ''} ${props.playCacheStatus === 'stale' ? 'stale' : ''} ${index === clampedPreviewFrame ? 'current' : ''}`}
+                    aria-label={`Play frame ${frame}`}
+                    onClick={() => previewPlayFrame(index)}
+                  >
+                    <span>{frame}</span>
+                  </button>
+                ))}
               </div>
             </div>
           )}

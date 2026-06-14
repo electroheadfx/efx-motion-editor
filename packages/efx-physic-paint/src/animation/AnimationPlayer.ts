@@ -8,7 +8,7 @@
 
 import type { EfxPaintEngine } from '../engine/EfxPaintEngine'
 import type { AnimationConfig, AnimationState, FrameStroke } from './types'
-import type { PaintStroke } from '../types'
+import type { PaintStroke, PenPoint } from '../types'
 
 export class AnimationPlayer {
   private readonly engine: EfxPaintEngine
@@ -91,27 +91,58 @@ export class AnimationPlayer {
       return
     }
 
+    if (strokes.length > usableFrames) {
+      // More strokes than frames means some strokes must share frames; spread
+      // those shared frames across the whole range instead of the final frame.
+      this.frameStrokes = strokes.map((stroke, index) => {
+        const frame = Math.max(0, Math.min(
+          usableFrames - 1,
+          Math.ceil(((index + 1) * usableFrames) / strokes.length) - 1,
+        ))
+
+        return {
+          stroke,
+          startFrame: frame,
+          endFrame: frame,
+          pointsPerFrame: Math.max(1, stroke.points.length),
+        }
+      })
+      return
+    }
+
     const weights = strokes.map(stroke => Math.max(1, stroke.points.length))
-    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+    const remainingWeights = new Array<number>(strokes.length)
+    let runningWeight = 0
+    for (let index = strokes.length - 1; index >= 0; index -= 1) {
+      runningWeight += weights[index]
+      remainingWeights[index] = runningWeight
+    }
     let allocatedFrames = 0
-    let remainderCarry = 0
 
     this.frameStrokes = strokes.map((stroke, index) => {
-      const weightedExactFrames = (weights[index] / totalWeight) * usableFrames + remainderCarry
+      const playFrameAnchor = getPlayFrameAnchor(stroke, usableFrames)
+      const remainingStrokeCount = strokes.length - index
+      const latestStartFrame = Math.max(allocatedFrames, usableFrames - remainingStrokeCount)
+      const requestedStartFrame = Math.max(allocatedFrames, playFrameAnchor ?? allocatedFrames)
+      const startFrame = Math.min(
+        usableFrames - 1,
+        Math.min(requestedStartFrame, latestStartFrame),
+      )
+      const remainingFrames = Math.max(1, usableFrames - startFrame)
+      const weightedExactFrames = (weights[index] / Math.max(1, remainingWeights[index])) * remainingFrames
       let frameSpan = Math.max(1, Math.floor(weightedExactFrames))
-      remainderCarry = weightedExactFrames - frameSpan
 
       if (index === strokes.length - 1) {
-        frameSpan = Math.max(1, usableFrames - allocatedFrames)
+        frameSpan = remainingFrames
+      } else {
+        // Reserve at least one frame for each later stroke when the duration allows it.
+        const laterStrokeCount = strokes.length - index - 1
+        const maxSpanBeforeLaterStrokes = Math.max(1, remainingFrames - laterStrokeCount)
+        frameSpan = Math.min(frameSpan, maxSpanBeforeLaterStrokes)
       }
 
-      if (allocatedFrames >= usableFrames && usableFrames < strokes.length) {
-        frameSpan = 1
-      }
-
-      const startFrame = Math.min(usableFrames - 1, allocatedFrames)
-      allocatedFrames += frameSpan
-      const endFrame = Math.min(usableFrames - 1, allocatedFrames - 1)
+      const endFrame = Math.min(usableFrames - 1, startFrame + frameSpan - 1)
+      allocatedFrames = endFrame + 1
       const pointCount = stroke.points.length
       const pointsPerFrame = Math.max(1, Math.ceil(pointCount / Math.max(1, endFrame - startFrame + 1)))
 
@@ -169,10 +200,11 @@ export class AnimationPlayer {
     // Build the strokes-to-render list with point count limits
     const strokesToRender: Array<{ stroke: PaintStroke; pointCount: number }> = []
 
-    for (const fs of this.frameStrokes) {
+    for (let strokeIndex = 0; strokeIndex < this.frameStrokes.length; strokeIndex += 1) {
+      const fs = this.frameStrokes[strokeIndex]
       if (fs.endFrame < frameIndex) {
         // Fully rendered — include with all points
-        strokesToRender.push({ stroke: fs.stroke, pointCount: fs.stroke.points.length })
+        strokesToRender.push({ stroke: this.applyWiggle(fs.stroke, frameIndex, strokeIndex), pointCount: fs.stroke.points.length })
       } else if (fs.startFrame <= frameIndex && fs.endFrame >= frameIndex) {
         // Partially rendered — compute how many points to show
         const framesIntoStroke = frameIndex - fs.startFrame + 1
@@ -180,12 +212,74 @@ export class AnimationPlayer {
           fs.stroke.points.length,
           fs.pointsPerFrame * framesIntoStroke,
         )
-        strokesToRender.push({ stroke: fs.stroke, pointCount })
+        strokesToRender.push({ stroke: this.applyWiggle(fs.stroke, frameIndex, strokeIndex), pointCount })
       }
       // Skip strokes where startFrame > frameIndex (not yet started)
     }
 
     // Delegate to engine for actual rendering
     this.engine.renderPartialStrokes(strokesToRender)
+  }
+
+  private applyWiggle(stroke: PaintStroke, frameIndex: number, strokeIndex: number): PaintStroke {
+    const wiggle = this.config?.wiggle
+    const deformation = clampPercent(wiggle?.strokeDeformation) / 100
+    const position = clampPercent(wiggle?.strokePosition) / 100
+
+    if (deformation === 0 && position === 0) return stroke
+
+    const seed = hashStroke(stroke, strokeIndex)
+    const phase = frameIndex * 0.48
+    const positionAmplitude = position * 8
+    const deformationAmplitude = deformation * 3
+    const offsetX = positionAmplitude === 0 ? 0 : Math.sin(seed * 0.017 + phase) * positionAmplitude
+    const offsetY = positionAmplitude === 0 ? 0 : Math.cos(seed * 0.013 + phase * 1.13) * positionAmplitude
+
+    return {
+      ...stroke,
+      points: stroke.points.map((point, pointIndex) => wigglePoint(point, pointIndex, seed, phase, offsetX, offsetY, deformationAmplitude)),
+    }
+  }
+}
+
+function clampPercent(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
+function hashStroke(stroke: PaintStroke, strokeIndex: number): number {
+  const source = `${strokeIndex}:${stroke.timestamp}:${stroke.color ?? ''}:${stroke.points.length}`
+  let hash = 2166136261
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function getPlayFrameAnchor(stroke: PaintStroke, usableFrames: number): number | null {
+  if (!Number.isInteger(stroke.playFrame) || stroke.playFrame === undefined || stroke.playFrame < 0) return null
+  return Math.min(usableFrames - 1, stroke.playFrame)
+}
+
+function wigglePoint(
+  point: PenPoint,
+  pointIndex: number,
+  seed: number,
+  phase: number,
+  offsetX: number,
+  offsetY: number,
+  deformationAmplitude: number,
+): PenPoint {
+  if (deformationAmplitude === 0) {
+    return { ...point, x: point.x + offsetX, y: point.y + offsetY }
+  }
+
+  const waveA = seed * 0.011 + pointIndex * 0.71 + phase
+  const waveB = seed * 0.019 + pointIndex * 0.43 + phase * 1.31
+  return {
+    ...point,
+    x: point.x + offsetX + Math.sin(waveA) * deformationAmplitude,
+    y: point.y + offsetY + Math.cos(waveB) * deformationAmplitude,
   }
 }

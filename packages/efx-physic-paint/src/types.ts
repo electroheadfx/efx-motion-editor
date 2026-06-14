@@ -165,6 +165,7 @@ export interface PaintStroke {
   timestamp: number
   hasPenInput?: boolean
   diffusionFrames?: number  // v2 format: frames of diffusion since last stroke
+  playFrame?: number        // optional Play-canvas frame where this stroke starts
 }
 
 // === PROJECT SERIALIZATION ===
@@ -181,6 +182,7 @@ export interface SerializedProject {
     time: number
     hasPenInput?: boolean
     diffusionFrames?: number
+    playFrame?: number
   }>
   settings: {
     bgMode: string

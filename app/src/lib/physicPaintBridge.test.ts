@@ -162,7 +162,12 @@ describe('physicPaintBridge', () => {
       editableState,
       source: 'play',
       cacheStatus: 'cached',
+      motion: { strokeDeformation: 12, strokePosition: 34 },
     });
+    physicPaintStore.setFrame('phys-layer-1', 8, makeFrame(0, 8));
+    physicPaintStore.setFrame('phys-layer-1', 9, makeFrame(1, 9));
+    physicPaintStore.setFrame('phys-layer-1', 10, makeFrame(2, 10));
+    physicPaintStore.setFrame('phys-layer-1', 11, makeFrame(3, 11));
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 10);
 
@@ -173,10 +178,13 @@ describe('physicPaintBridge', () => {
       playStartFrame: 8,
       playFrameCount: 4,
       selectedPlayScriptId: 'play-b',
+      playCacheStatus: 'cached',
+      playMotion: { strokeDeformation: 12, strokePosition: 34 },
       previewFrame: 2,
       editableSource: 'play',
       editableState,
     });
+    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 8), makeFrame(1, 9), makeFrame(2, 10), makeFrame(3, 11)]);
     expect(context.maxPlayFrameCount).toBeUndefined();
   });
 
@@ -203,6 +211,26 @@ describe('physicPaintBridge', () => {
     expect(context.selectedPlayScriptId).toBeUndefined();
     expect(context.playStartFrame).toBeUndefined();
     expect(context.playFrameCount).toBeUndefined();
+  });
+
+  it('opens an empty Roto context outside saved Play ranges without leaking the last editable script', () => {
+    physicPaintStore.applySequence(applySequencePayload({
+      startFrame: 6,
+      frameCount: 4,
+      frames: [makeFrame(0, 6), makeFrame(1, 7), makeFrame(2, 8), makeFrame(3, 9)],
+    }));
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 0);
+
+    expect(context).toMatchObject({
+      layerId: 'phys-layer-1',
+      workflowMode: 'roto',
+      startFrame: 0,
+      editableSource: 'roto',
+      maxPlayFrameCount: 6,
+    });
+    expect(context.selectedPlayScriptId).toBeUndefined();
+    expect(context.editableState).toBeUndefined();
   });
 
   it('opens Roto after the last saved range instead of choosing the nearest Play script', () => {
@@ -287,6 +315,7 @@ describe('physicPaintBridge', () => {
       source: 'play',
       cacheStatus: 'cached',
     });
+    physicPaintStore.setFrame('phys-layer-1', 8, makeFrame(0, 8));
 
     const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 10, canvas: { width: 1280, height: 720 } });
 
@@ -303,6 +332,7 @@ describe('physicPaintBridge', () => {
       previewFrame: 2,
       editableSource: 'play',
     });
+    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 8)]);
     open.mockRestore();
   });
 

@@ -4,6 +4,11 @@ import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../lib/colorUtils';
 import { loadFavoriteColors, loadRecentColors, saveFavoriteColors } from '../../lib/paintPreferences';
 import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from './physicsPaintWorkflowState';
 
+export interface PhysicsPaintPlayWiggleSettings {
+  strokeDeformation: number;
+  strokePosition: number;
+}
+
 export interface PhysicsPaintRightPanelProps {
   activeTool: ToolType;
   color: string;
@@ -16,6 +21,7 @@ export interface PhysicsPaintRightPanelProps {
   physicsMode: 'local' | null;
   onion: PhysicsPaintOnionState;
   onionDisabled?: boolean;
+  playWiggle: PhysicsPaintPlayWiggleSettings;
   onColorChange: (color: string, opacity: number) => void;
   onEdgeDetailChange: (value: number) => void;
   onPickupChange: (value: number) => void;
@@ -23,6 +29,9 @@ export interface PhysicsPaintRightPanelProps {
   onSmoothingChange: (value: number) => void;
   onEraseStrengthChange: (value: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
+  onPlayWiggleChange: (wiggle: PhysicsPaintPlayWiggleSettings) => void;
+  onSaveState: () => void;
+  onLoadState: (event: Event) => void;
 }
 
 const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
@@ -60,6 +69,12 @@ function PanelSlider(props: {
   );
 }
 
+function clampWiggleValue(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(100, Math.trunc(numeric)));
+}
+
 function SmoothingButton(props: { label: string; value: number; active: boolean; onSelect: (value: number) => void }) {
   return (
     <button
@@ -84,6 +99,7 @@ export function PhysicsPaintRightPanel({
   physicsMode,
   onion,
   onionDisabled = false,
+  playWiggle,
   onColorChange,
   onEdgeDetailChange,
   onPickupChange,
@@ -91,11 +107,14 @@ export function PhysicsPaintRightPanel({
   onSmoothingChange,
   onEraseStrengthChange,
   onOnionChange,
+  onPlayWiggleChange,
+  onSaveState,
+  onLoadState,
 }: PhysicsPaintRightPanelProps) {
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
-  const [optionsTab, setOptionsTab] = useState<'tool' | 'onion'>('tool');
+  const [optionsTab, setOptionsTab] = useState<'tool' | 'onion' | 'motion'>('tool');
   const previousColorRef = useRef(color);
   const colorBoxRef = useRef<HTMLCanvasElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
@@ -188,6 +207,12 @@ export function PhysicsPaintRightPanel({
       ...next,
       count: clampOnionCount(next.count ?? onion.count),
       opacity: clampOnionOpacity(next.opacity ?? onion.opacity),
+    });
+  };
+  const updatePlayWiggle = (key: keyof PhysicsPaintPlayWiggleSettings, value: unknown) => {
+    onPlayWiggleChange({
+      ...playWiggle,
+      [key]: clampWiggleValue(value),
     });
   };
 
@@ -288,7 +313,7 @@ export function PhysicsPaintRightPanel({
             aria-selected={optionsTab === 'tool'}
             onClick={() => setOptionsTab('tool')}
           >
-            TOOL OPTIONS
+            TOOL
           </button>
           <button
             type="button"
@@ -297,12 +322,21 @@ export function PhysicsPaintRightPanel({
             aria-selected={optionsTab === 'onion'}
             onClick={() => setOptionsTab('onion')}
           >
-            ONION SETTINGS
+            ONION
+          </button>
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-motion ${optionsTab === 'motion' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={optionsTab === 'motion'}
+            onClick={() => setOptionsTab('motion')}
+          >
+            MOTION
           </button>
         </div>
 
         {optionsTab === 'tool' ? (
-          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Tool options">
+          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Tool">
             <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} />
             {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} /> : null}
             {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} /> : null}
@@ -317,8 +351,15 @@ export function PhysicsPaintRightPanel({
                 <SmoothingButton label="High" value={3} active={smoothing === 3} onSelect={onSmoothingChange} />
               </div>
             </div>
+            <div class="physics-paint-option-actions">
+              <button class="physics-paint-text-button" onClick={onSaveState}>Save state</button>
+              <label class="physics-paint-text-button physics-paint-load-state">
+                Load state
+                <input type="file" accept=".json" onChange={onLoadState} />
+              </label>
+            </div>
           </div>
-        ) : (
+        ) : optionsTab === 'onion' ? (
           <div class={`physics-paint-options-tab-panel physics-paint-options-tab-panel-onion physics-paint-onion-tab-panel${onionDisabled ? ' disabled-control' : ''}`} role="tabpanel" aria-label="Onion skin controls">
             <label class="physics-paint-onion-toggle-row">
               <input type="checkbox" checked={onion.enabled} disabled={onionDisabled} onChange={(event) => updateOnion({ enabled: (event.currentTarget as HTMLInputElement).checked })} />
@@ -338,6 +379,11 @@ export function PhysicsPaintRightPanel({
               <input id="physics-onion-opacity" type="range" min={10} max={100} value={onionOpacity} disabled={onionDisabled} onInput={(event) => updateOnion({ opacity: Number((event.currentTarget as HTMLInputElement).value) })} />
               <output>{onionOpacity}%</output>
             </label>
+          </div>
+        ) : (
+          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-motion" role="tabpanel" aria-label="Motion controls">
+            <PanelSlider id="physics-play-deform" label="Deform" min={0} max={100} value={playWiggle.strokeDeformation} onChange={(value) => updatePlayWiggle('strokeDeformation', value)} />
+            <PanelSlider id="physics-play-move" label="Move" min={0} max={100} value={playWiggle.strokePosition} onChange={(value) => updatePlayWiggle('strokePosition', value)} />
           </div>
         )}
       </section>

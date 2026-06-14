@@ -67,6 +67,10 @@ const STROKE_FINALIZATION_DRAIN_MS = 16
 const STROKE_FINALIZATION_MAX_DEFER_MS = 1400
 const ACTIVE_DRAWING_QUEUED_PREVIEW_LIMIT = 3
 
+function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
+  return Math.max(0.5, (opts.size || 24) / 2)
+}
+
 /**
  * EfxPaintEngine — the facade class that ties all modules together.
  * Consumers create an instance, interact via the public API, and call destroy() to clean up.
@@ -710,6 +714,10 @@ export class EfxPaintEngine {
     }))
   }
 
+  getStrokeCount(): number {
+    return this.allActions.length
+  }
+
   /** Lock/unlock pointer input (per D-11: painting disabled during animation) */
   setInputLocked(locked: boolean): void {
     this.inputLocked = locked
@@ -772,7 +780,7 @@ export class EfxPaintEngine {
       drawStrokePreview(displayCtx, {
         pts: pending.points,
         color: pending.tool === 'paint' && pending.color ? pending.color : pending.tool === 'erase' ? '#ff4444' : '#888888',
-        radius: pending.opts.size,
+        radius: brushRenderRadius(pending.opts),
         opacity: pending.tool === 'paint' ? pending.opts.opacity / 100 : 0.3,
         hasPenInput: pending.hasPenInput,
       })
@@ -782,7 +790,7 @@ export class EfxPaintEngine {
     drawStrokePreview(displayCtx, this.previewStroke)
 
     // Draw brush cursor
-    drawBrushCursor(displayCtx, this.cursorX, this.cursorY, this.state.brushOpts.size, this.state.tool, this.width, this.height)
+    drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
 
     this.rafId = requestAnimationFrame(() => this.render())
   }
@@ -878,7 +886,7 @@ export class EfxPaintEngine {
 
   private prepareWetLayerForStroke(pt: PenPoint, opts: BrushOpts): void {
     if (this.state.physicsMode === 'local') {
-      const keepR = (opts.size || 24) * 3 + 40
+      const keepR = brushRenderRadius(opts) * 3 + 40
       const keepR2 = keepR * keepR
       const id = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
       const d = id.data
@@ -934,11 +942,12 @@ export class EfxPaintEngine {
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
     const hasPenInput = options.hasPenInput ?? this.state.hasPenInput
+    const renderOpts = { ...opts, size: brushRenderRadius(opts) }
 
     if (tool === 'paint' && color) {
       this.prepareWetLayerForStroke(points[0], opts)
       renderPaintStroke(
-        points, color, opts,
+        points, color, renderOpts,
         this.dualCanvas.dryCtx, this.wet, this.savedWet,
         this.drying.dryPos, this.lastStrokeMask,
         this.paperHeight,
@@ -950,7 +959,7 @@ export class EfxPaintEngine {
       )
       // Edge feathering on wet layer for anti-aliased brush edges
       if (opts.antiAlias > 0) {
-        const brushR = opts.size || 24
+        const brushR = brushRenderRadius(opts)
         const strokeBounds = curveBounds(points, brushR + 10, this.width, this.height)
         // Passes: soft=2, med=4, high=6
         const featherPasses = opts.antiAlias * 2
@@ -979,7 +988,7 @@ export class EfxPaintEngine {
 
       // D-05/D-07: Local physics -- run Stam solver on stroke bbox
       if (this.state.physicsMode === 'local' && points.length > 0) {
-        const brushR = opts.size || 24
+        const brushR = brushRenderRadius(opts)
         let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
         for (const p of points) {
           sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
@@ -1014,7 +1023,7 @@ export class EfxPaintEngine {
       }
     } else if (tool === 'erase') {
       applyEraseStroke(
-        points, opts,
+        points, renderOpts,
         this.dualCanvas.dryCtx, this.wet,
         this.width, this.height,
         hasPenInput,
@@ -1033,7 +1042,7 @@ export class EfxPaintEngine {
         sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
         sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
       }
-      const brushR = opts.size || 24
+      const brushR = brushRenderRadius(opts)
       this.lastStrokeBounds = {
         x0: Math.floor(sx0 - brushR),
         y0: Math.floor(sy0 - brushR),
@@ -1082,7 +1091,7 @@ export class EfxPaintEngine {
       this.previewStroke = {
         pts: this.rawPts,
         color: this.state.tool === 'paint' ? this.color : this.state.tool === 'erase' ? '#ff4444' : '#888888',
-        radius: this.state.brushOpts.size,
+        radius: brushRenderRadius(this.state.brushOpts),
         opacity: this.state.tool === 'paint' ? this.state.brushOpts.opacity / 100 : 0.3,
         hasPenInput: this.state.hasPenInput,
       }
@@ -1234,6 +1243,7 @@ export class EfxPaintEngine {
         time: s.timestamp,
         hasPenInput: this.strokeHasPenInput(s),
         diffusionFrames: s.diffusionFrames || 0,
+        ...(Number.isInteger(s.playFrame) && s.playFrame !== undefined && s.playFrame >= 0 ? { playFrame: s.playFrame } : {}),
       })),
       settings: {
         bgMode: this.state.bgMode,
@@ -1267,6 +1277,7 @@ export class EfxPaintEngine {
       timestamp: s.time,
       hasPenInput: s.hasPenInput,
       diffusionFrames: s.diffusionFrames || 0,
+      ...(Number.isInteger(s.playFrame) && s.playFrame !== undefined && s.playFrame >= 0 ? { playFrame: s.playFrame } : {}),
     }))
 
     // Clear undo stack (loaded state is new baseline)
