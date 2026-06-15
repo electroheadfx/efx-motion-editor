@@ -282,32 +282,69 @@ function hashStroke(stroke: PaintStroke, strokeIndex: number): number {
 
 function orderStrokesForPlayback(strokes: PaintStroke[], usableFrames: number): Array<{ stroke: PaintStroke; playFrameAnchor: number | null }> {
   const scheduled = strokes.map((stroke, sourceIndex) => ({ stroke, sourceIndex, playFrameAnchor: getPlayFrameAnchor(stroke, usableFrames) }))
-  const anchored = scheduled.filter(({ playFrameAnchor }) => playFrameAnchor !== null)
-  const unanchored = scheduled.filter(({ playFrameAnchor }) => playFrameAnchor === null)
-  const firstInsertedIndex = anchored.findIndex(({ sourceIndex, playFrameAnchor }) => sourceIndex > playFrameAnchor!)
+  const orderedByRecording = [...scheduled].sort(compareAnchoredPlaybackOrder)
 
-  if (firstInsertedIndex === -1) return scheduled.map(({ stroke, playFrameAnchor }) => ({ stroke, playFrameAnchor }))
+  if (!hasSourceOrderInsertion(scheduled)) {
+    return orderedByRecording.map(({ stroke, playFrameAnchor }) => ({ stroke, playFrameAnchor }))
+  }
 
-  const insertedSourceStart = anchored[firstInsertedIndex].sourceIndex
-  const anchoredBase = anchored.filter(({ sourceIndex }) => sourceIndex < insertedSourceStart)
-  if (anchoredBase.length === 0) return scheduled.map(({ stroke, playFrameAnchor }) => ({ stroke, playFrameAnchor }))
+  const insertedSourceStart = getInsertedSourceStart(scheduled)
+  const base = scheduled
+    .filter(({ sourceIndex }) => sourceIndex < insertedSourceStart)
+    .sort(compareAnchoredPlaybackOrder)
+  if (base.length === 0) return orderedByRecording.map(({ stroke, playFrameAnchor }) => ({ stroke, playFrameAnchor }))
 
-  const playbackOrder = [
-    ...anchoredBase.sort((a, b) => a.playFrameAnchor! - b.playFrameAnchor! || a.sourceIndex - b.sourceIndex),
-    ...unanchored.filter(({ sourceIndex }) => sourceIndex < insertedSourceStart),
-  ]
-  const appended = scheduled.filter(({ sourceIndex }) => sourceIndex >= insertedSourceStart)
-    .sort((a, b) => (a.playFrameAnchor ?? usableFrames) - (b.playFrameAnchor ?? usableFrames) || a.sourceIndex - b.sourceIndex)
+  const playbackOrder = [...base]
+  const appended = scheduled
+    .filter(({ sourceIndex }) => sourceIndex >= insertedSourceStart)
+    .sort(comparePlayFrameInsertionOrder)
   const insertedByTarget = new Map<number, number>()
 
   for (const inserted of appended) {
-    const targetIndex = inserted.playFrameAnchor === null ? playbackOrder.length : Math.min(inserted.playFrameAnchor, playbackOrder.length)
+    const targetIndex = getInsertionTargetIndex(inserted, playbackOrder, usableFrames)
     const offset = inserted.playFrameAnchor === null ? 0 : insertedByTarget.get(targetIndex) ?? 0
     playbackOrder.splice(targetIndex + offset, 0, inserted)
     if (inserted.playFrameAnchor !== null) insertedByTarget.set(targetIndex, offset + 1)
   }
 
   return playbackOrder.map(({ stroke }) => ({ stroke, playFrameAnchor: null }))
+}
+
+type ScheduledStroke = { stroke: PaintStroke; sourceIndex: number; playFrameAnchor: number | null }
+
+function hasSourceOrderInsertion(scheduled: ScheduledStroke[]): boolean {
+  return scheduled.some(({ sourceIndex, playFrameAnchor }) => playFrameAnchor !== null && playFrameAnchor > 0 && sourceIndex > playFrameAnchor)
+}
+
+function getInsertedSourceStart(scheduled: ScheduledStroke[]): number {
+  return scheduled.find(({ sourceIndex, playFrameAnchor }) => playFrameAnchor !== null && playFrameAnchor > 0 && sourceIndex > playFrameAnchor)?.sourceIndex ?? scheduled.length
+}
+
+function compareAnchoredPlaybackOrder(a: ScheduledStroke, b: ScheduledStroke): number {
+  return compareStrokeRecordingTime(a, b) || comparePlayFrameAnchor(a, b)
+}
+
+function comparePlayFrameAnchor(a: ScheduledStroke, b: ScheduledStroke): number {
+  const aFrame = a.playFrameAnchor ?? Number.POSITIVE_INFINITY
+  const bFrame = b.playFrameAnchor ?? Number.POSITIVE_INFINITY
+  return aFrame - bFrame
+}
+
+function comparePlayFrameInsertionOrder(a: ScheduledStroke, b: ScheduledStroke): number {
+  return comparePlayFrameAnchor(a, b) || compareStrokeRecordingTime(a, b)
+}
+
+function compareStrokeRecordingTime(a: ScheduledStroke, b: ScheduledStroke): number {
+  const aTime = Number.isFinite(a.stroke.timestamp) ? a.stroke.timestamp : a.sourceIndex
+  const bTime = Number.isFinite(b.stroke.timestamp) ? b.stroke.timestamp : b.sourceIndex
+  return aTime - bTime || a.sourceIndex - b.sourceIndex
+}
+
+function getInsertionTargetIndex(inserted: ScheduledStroke, playbackOrder: ScheduledStroke[], usableFrames: number): number {
+  if (inserted.playFrameAnchor !== null) return Math.min(inserted.playFrameAnchor, playbackOrder.length)
+
+  const timestampTarget = playbackOrder.findIndex(candidate => compareStrokeRecordingTime(inserted, candidate) < 0)
+  return timestampTarget === -1 ? playbackOrder.length : Math.min(timestampTarget, usableFrames)
 }
 
 function getPlayFrameAnchor(stroke: PaintStroke, usableFrames: number): number | null {

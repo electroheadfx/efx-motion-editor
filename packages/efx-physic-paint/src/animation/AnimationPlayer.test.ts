@@ -301,6 +301,77 @@ describe('AnimationPlayer sequential playback', () => {
     expect(firstFrameFor(calls, '#e')).toBeGreaterThan(firstFrameFor(calls, '#o'))
   })
 
+  it('keeps freshly recorded Play scripts sequential when every stroke is captured on frame zero', () => {
+    const recordedStrokes = [
+      { ...makeStroke('#C', 4, 0), playFrame: 0 },
+      { ...makeStroke('#h', 4, 1), playFrame: 0 },
+      { ...makeStroke('#l', 4, 2), playFrame: 0 },
+      { ...makeStroke('#o', 4, 3), playFrame: 0 },
+      { ...makeStroke('#e', 4, 4), playFrame: 0 },
+    ]
+    const engine = createEngine(recordedStrokes)
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({ frameCount: 12, fps: 12 })
+    advanceAnimationFrames(14)
+
+    const calls = renderCalls(engine)
+
+    expect(firstFrameFor(calls, '#C')).toBe(0)
+    expect(firstFrameFor(calls, '#h')).toBeGreaterThan(firstFrameFor(calls, '#C'))
+    expect(firstFrameFor(calls, '#l')).toBeGreaterThan(firstFrameFor(calls, '#h'))
+    expect(firstFrameFor(calls, '#o')).toBeGreaterThan(firstFrameFor(calls, '#l'))
+    expect(firstFrameFor(calls, '#e')).toBeGreaterThan(firstFrameFor(calls, '#o'))
+  })
+
+  it('reconstructs unanchored saved Play scripts whose raw action order has the first stroke last', () => {
+    const recordedStrokes = [
+      makeStroke('#h', 4, 1),
+      makeStroke('#l', 4, 2),
+      makeStroke('#o', 4, 3),
+      makeStroke('#e', 4, 4),
+      makeStroke('#C', 4, 0),
+    ]
+    const engine = createEngine(recordedStrokes)
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({ frameCount: 12, fps: 12 })
+    advanceAnimationFrames(14)
+
+    const calls = renderCalls(engine)
+
+    expect(firstFrameFor(calls, '#C')).toBe(0)
+    expect(firstFrameFor(calls, '#h')).toBeGreaterThan(firstFrameFor(calls, '#C'))
+    expect(firstFrameFor(calls, '#l')).toBeGreaterThan(firstFrameFor(calls, '#h'))
+    expect(firstFrameFor(calls, '#o')).toBeGreaterThan(firstFrameFor(calls, '#l'))
+    expect(firstFrameFor(calls, '#e')).toBeGreaterThan(firstFrameFor(calls, '#o'))
+  })
+
+  it('inserts Play-frame edits into a freshly recorded frame-zero sequence', () => {
+    const recordedStrokes = [
+      { ...makeStroke('#C', 4, 0), playFrame: 0 },
+      { ...makeStroke('#h', 4, 1), playFrame: 0 },
+      { ...makeStroke('#l', 4, 2), playFrame: 0 },
+      { ...makeStroke('#o', 4, 3), playFrame: 0 },
+      { ...makeStroke('#e', 4, 4), playFrame: 0 },
+      { ...makeStroke('#x', 4, 5), playFrame: 3 },
+    ]
+    const engine = createEngine(recordedStrokes)
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({ frameCount: 12, fps: 12 })
+    advanceAnimationFrames(14)
+
+    const calls = renderCalls(engine)
+
+    expect(firstFrameFor(calls, '#C')).toBe(0)
+    expect(firstFrameFor(calls, '#h')).toBeGreaterThan(firstFrameFor(calls, '#C'))
+    expect(firstFrameFor(calls, '#l')).toBeGreaterThan(firstFrameFor(calls, '#h'))
+    expect(firstFrameFor(calls, '#x')).toBeGreaterThan(firstFrameFor(calls, '#l'))
+    expect(firstFrameFor(calls, '#o')).toBeGreaterThan(firstFrameFor(calls, '#x'))
+    expect(firstFrameFor(calls, '#e')).toBeGreaterThan(firstFrameFor(calls, '#o'))
+  })
+
   it('keeps multiple appended strokes on the same Play frame sequential instead of parallel', () => {
     const recordedStrokes = [
       makeStroke('#recorded-0', 4, 0),

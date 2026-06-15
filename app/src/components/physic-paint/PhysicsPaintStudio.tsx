@@ -849,7 +849,6 @@ export function PhysicsPaintStudio() {
       const showNextCachedFrame = () => {
         const cachedFrame = cachedFrames[frameIndex];
         setAnimFrame(frameIndex);
-        setLocalPlayPreviewFrame(frameIndex);
         setCachedPlayPreviewUrl(cachedFrame.dataUrl);
         frameIndex += 1;
         if (frameIndex >= cachedFrames.length) {
