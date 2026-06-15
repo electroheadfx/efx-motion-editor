@@ -4,8 +4,8 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
 stopped_at: Phase 36.1 UI-SPEC approved
-last_updated: "2026-06-14T10:45:25.783Z"
-last_activity: 2026-06-14 -- Completed quick task 260614-ujc: Phase 36.1 script play canvas update options
+last_updated: "2026-06-15T07:32:20.000Z"
+last_activity: 2026-06-15 -- Completed quick task 260615-c4t: solidify phase 36.1
 progress:
   total_phases: 5
   completed_phases: 3
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 Phase: 36.1 (when-a-physic-paint-was-created-with-a-play-paint-script-ani) — EXECUTING
 Plan: 1 of 9
 Status: Executing Phase 36.1
-Last activity: 2026-06-14 -- Completed quick task 260614-ujc: Phase 36.1 script play canvas update options
+Last activity: 2026-06-15 -- Completed quick task 260615-c4t: solidify phase 36.1
 
 Progress: [██████████] 100%
 
@@ -87,6 +87,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260614-ujc | Phase 36.1 script play canvas update options | 2026-06-14 | 34fd228 | [260614-ujc-phase-36-1-i-would-like-to-be-able-with-](./quick/260614-ujc-phase-36-1-i-would-like-to-be-able-with-/) |
+| 260615-c4t | solidify phase 36.1 | 2026-06-15 | 29969ee | [260615-c4t-solidify-phase-36-1-fix-the-version-numb](./quick/260615-c4t-solidify-phase-36-1-fix-the-version-numb/) |
 
 ### Roadmap Evolution
 
