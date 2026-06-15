@@ -31,6 +31,12 @@ export function getTimelinePlayScriptMarkerGeometry(
   };
 }
 
+export function getTimelinePhysicsPaintBarLabel(fxTrack: Pick<FxTrackLayout, 'layerType' | 'sequenceName' | 'playScriptMarkers'>): string {
+  if (fxTrack.layerType !== 'physic-paint') return fxTrack.sequenceName;
+  const activePlayIndex = fxTrack.playScriptMarkers?.findIndex(marker => marker.active) ?? -1;
+  return activePlayIndex >= 0 ? `Play #${activePlayIndex + 2}` : 'Roto #1';
+}
+
 // Functional colors -- stay hardcoded (high-visibility, theme-independent)
 const PLAYHEAD_COLOR = '#E55A2B';
 const PLAYHEAD_TRIANGLE_SIZE = 6;
@@ -571,7 +577,7 @@ export class TimelineRenderer {
         const barNameX = Math.max(clippedLeft + 4 + thumbOffsetX, barX + 4 + thumbOffsetX);
         const barNameMaxW = clippedRight - barNameX - 4;
         if (barNameMaxW > 10) {
-          const barName = this.truncateText(ctx, fxTrack.sequenceName, barNameMaxW);
+          const barName = this.truncateText(ctx, getTimelinePhysicsPaintBarLabel(fxTrack), barNameMaxW);
           ctx.fillText(barName, barNameX, barY + barH / 2);
         }
       }

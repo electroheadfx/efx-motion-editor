@@ -21,6 +21,29 @@ const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'TimelineRen
 const source = () => readFileSync(sourcePath, 'utf8');
 
 describe('TimelineRenderer play script marker geometry', () => {
+  it('labels physics paint FX bars by editable source instead of repeating the layer name', async () => {
+    const { getTimelinePhysicsPaintBarLabel } = await import('./TimelineRenderer');
+
+    expect(getTimelinePhysicsPaintBarLabel({
+      layerType: 'physic-paint',
+      sequenceName: 'Physic Paint',
+      playScriptMarkers: [],
+    })).toBe('Roto #1');
+    expect(getTimelinePhysicsPaintBarLabel({
+      layerType: 'physic-paint',
+      sequenceName: 'Physic Paint',
+      playScriptMarkers: [
+        { id: 'play-0', startFrame: 0, frameCount: 5, active: false },
+        { id: 'play-8', startFrame: 8, frameCount: 16, active: true },
+      ],
+    })).toBe('Play #3');
+    expect(getTimelinePhysicsPaintBarLabel({
+      layerType: 'paint',
+      sequenceName: 'Paint',
+      playScriptMarkers: undefined,
+    })).toBe('Paint');
+  });
+
   it('maps marker frame range through timeline zoom and scroll math', async () => {
     const { TRACK_HEADER_WIDTH, getTimelinePlayScriptMarkerGeometry } = await import('./TimelineRenderer');
     const geometry = getTimelinePlayScriptMarkerGeometry(
