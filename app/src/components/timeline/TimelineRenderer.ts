@@ -32,7 +32,7 @@ export function getTimelinePlayScriptMarkerGeometry(
 }
 
 export function getTimelineFxHeaderLabel(fxTrack: Pick<FxTrackLayout, 'layerType' | 'sequenceName'>): string {
-  return fxTrack.layerType === 'physic-paint' ? 'Physic Paint #1' : fxTrack.sequenceName;
+  return fxTrack.layerType === 'physic-paint' ? 'PPaint #1' : fxTrack.sequenceName;
 }
 
 export function getTimelinePlayScriptLabel(index: number): string {

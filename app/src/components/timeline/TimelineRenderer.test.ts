@@ -27,7 +27,7 @@ describe('TimelineRenderer play script marker geometry', () => {
     expect(getTimelineFxHeaderLabel({
       layerType: 'physic-paint',
       sequenceName: 'Physic Paint',
-    })).toBe('Physic Paint #1');
+    })).toBe('PPaint #1');
     expect(getTimelineFxHeaderLabel({
       layerType: 'paint',
       sequenceName: 'Paint',
