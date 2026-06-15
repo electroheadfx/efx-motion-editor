@@ -278,12 +278,12 @@ describe('AnimationPlayer sequential playback', () => {
 
   it('inserts appended Play-frame strokes into the sequence instead of running them parallel to later strokes', () => {
     const recordedStrokes = [
-      makeStroke('#C', 4, 0),
-      makeStroke('#h', 4, 1),
-      makeStroke('#l', 4, 2),
-      makeStroke('#o', 4, 3),
-      makeStroke('#e', 4, 4),
-      { ...makeStroke('#x', 4, 5), playFrame: 1 },
+      { ...makeStroke('#h', 4, 1), playFrame: 1 },
+      { ...makeStroke('#l', 4, 2), playFrame: 2 },
+      { ...makeStroke('#o', 4, 3), playFrame: 3 },
+      { ...makeStroke('#e', 4, 4), playFrame: 4 },
+      { ...makeStroke('#C', 4, 0), playFrame: 0 },
+      { ...makeStroke('#x', 4, 5), playFrame: 3 },
     ]
     const engine = createEngine(recordedStrokes)
     const player = new AnimationPlayer(engine as EfxPaintEngine)
@@ -294,10 +294,10 @@ describe('AnimationPlayer sequential playback', () => {
     const calls = renderCalls(engine)
 
     expect(firstFrameFor(calls, '#C')).toBe(0)
-    expect(firstFrameFor(calls, '#x')).toBe(1)
-    expect(firstFrameFor(calls, '#h')).toBeGreaterThan(firstFrameFor(calls, '#x'))
+    expect(firstFrameFor(calls, '#h')).toBeGreaterThan(firstFrameFor(calls, '#C'))
     expect(firstFrameFor(calls, '#l')).toBeGreaterThan(firstFrameFor(calls, '#h'))
-    expect(firstFrameFor(calls, '#o')).toBeGreaterThan(firstFrameFor(calls, '#l'))
+    expect(firstFrameFor(calls, '#x')).toBeGreaterThan(firstFrameFor(calls, '#l'))
+    expect(firstFrameFor(calls, '#o')).toBeGreaterThan(firstFrameFor(calls, '#x'))
     expect(firstFrameFor(calls, '#e')).toBeGreaterThan(firstFrameFor(calls, '#o'))
   })
 

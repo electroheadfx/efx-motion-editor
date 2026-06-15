@@ -282,19 +282,32 @@ function hashStroke(stroke: PaintStroke, strokeIndex: number): number {
 
 function orderStrokesForPlayback(strokes: PaintStroke[], usableFrames: number): Array<{ stroke: PaintStroke; playFrameAnchor: number | null }> {
   const scheduled = strokes.map((stroke, sourceIndex) => ({ stroke, sourceIndex, playFrameAnchor: getPlayFrameAnchor(stroke, usableFrames) }))
-  const playbackOrder = scheduled.filter(({ sourceIndex, playFrameAnchor }) => playFrameAnchor === null || sourceIndex <= playFrameAnchor)
-  const insertedStrokes = scheduled.filter(({ sourceIndex, playFrameAnchor }) => playFrameAnchor !== null && sourceIndex > playFrameAnchor)
-    .sort((a, b) => a.playFrameAnchor! - b.playFrameAnchor! || a.sourceIndex - b.sourceIndex)
+  const anchored = scheduled.filter(({ playFrameAnchor }) => playFrameAnchor !== null)
+  const unanchored = scheduled.filter(({ playFrameAnchor }) => playFrameAnchor === null)
+  const firstInsertedIndex = anchored.findIndex(({ sourceIndex, playFrameAnchor }) => sourceIndex > playFrameAnchor!)
+
+  if (firstInsertedIndex === -1) return scheduled.map(({ stroke, playFrameAnchor }) => ({ stroke, playFrameAnchor }))
+
+  const insertedSourceStart = anchored[firstInsertedIndex].sourceIndex
+  const anchoredBase = anchored.filter(({ sourceIndex }) => sourceIndex < insertedSourceStart)
+  if (anchoredBase.length === 0) return scheduled.map(({ stroke, playFrameAnchor }) => ({ stroke, playFrameAnchor }))
+
+  const playbackOrder = [
+    ...anchoredBase.sort((a, b) => a.playFrameAnchor! - b.playFrameAnchor! || a.sourceIndex - b.sourceIndex),
+    ...unanchored.filter(({ sourceIndex }) => sourceIndex < insertedSourceStart),
+  ]
+  const appended = scheduled.filter(({ sourceIndex }) => sourceIndex >= insertedSourceStart)
+    .sort((a, b) => (a.playFrameAnchor ?? usableFrames) - (b.playFrameAnchor ?? usableFrames) || a.sourceIndex - b.sourceIndex)
   const insertedByTarget = new Map<number, number>()
 
-  for (const inserted of insertedStrokes) {
-    const targetIndex = Math.min(inserted.playFrameAnchor!, playbackOrder.length)
-    const offset = insertedByTarget.get(targetIndex) ?? 0
+  for (const inserted of appended) {
+    const targetIndex = inserted.playFrameAnchor === null ? playbackOrder.length : Math.min(inserted.playFrameAnchor, playbackOrder.length)
+    const offset = inserted.playFrameAnchor === null ? 0 : insertedByTarget.get(targetIndex) ?? 0
     playbackOrder.splice(targetIndex + offset, 0, inserted)
-    insertedByTarget.set(targetIndex, offset + 1)
+    if (inserted.playFrameAnchor !== null) insertedByTarget.set(targetIndex, offset + 1)
   }
 
-  return playbackOrder.map(({ stroke, playFrameAnchor }) => ({ stroke, playFrameAnchor }))
+  return playbackOrder.map(({ stroke }) => ({ stroke, playFrameAnchor: null }))
 }
 
 function getPlayFrameAnchor(stroke: PaintStroke, usableFrames: number): number | null {
