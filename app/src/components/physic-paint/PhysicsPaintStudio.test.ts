@@ -6,10 +6,12 @@ const sourcePath = fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta
 const topBarPath = fileURLToPath(new URL('./PhysicsPaintTopBar.tsx', import.meta.url));
 const stylePath = fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url));
 const bridgePath = fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url));
+const enginePath = fileURLToPath(new URL('../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
 const bridgeSource = () => readFileSync(bridgePath, 'utf8');
+const engineSource = () => readFileSync(enginePath, 'utf8');
 
 describe('PhysicsPaintStudio onion preview contract', () => {
   it('captures transparent stroke previews instead of full paper composite snapshots', () => {
@@ -231,17 +233,19 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(saveEditableStateBlock).toContain('downloadPhysicsPaintState(editableState)');
   });
 
-  it('keeps the selected cached Play frame visible when normal brush input begins', () => {
+  it('uses the selected cached Play frame as the edit background without keeping the preview overlay alive', () => {
     const text = source();
-    const previewBlock = text.slice(text.indexOf('const previewLocalPlayFrame = useCallback'), text.indexOf('const startApplyTimeout'));
+    const loadBlock = text.slice(text.indexOf('function loadCachedPlayPreviewFrame'), text.indexOf('function getCachedPlayFramesForRange'));
     const editBlock = text.slice(text.indexOf('const beginPlayFrameEdit = useCallback'), text.indexOf('const showPlayLimitToast'));
 
-    expect(previewBlock).toContain('setLocalPlayPreviewFrame(previewFrame)');
-    expect(previewBlock).toContain('loadCachedPlayPreviewFrame(previewFrame)');
+    expect(text).toContain('type PreviewBackgroundEngine = EfxPaintEngine &');
+    expect(loadBlock).toContain('findCachedPlayPreviewFrame(previewFrame)');
+    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(editBlock).toContain('const cachedFrame = savedPlayCacheDirty ? null : findCachedPlayPreviewFrame(localPlayPreviewFrame)');
+    expect(editBlock).toContain('(engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(editBlock).toContain('if (cachedPlayPreviewUrl) setCachedPlayPreviewUrl(null)');
     expect(editBlock).toContain('playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount }');
     expect(editBlock).toContain('setSavedPlayCacheDirty(true)');
-    expect(editBlock).not.toContain('setCachedPlayPreviewUrl(null)');
-    expect(editBlock).not.toContain('loadCachedPlayPreviewFrame');
   });
 
   it('updates selected Play options without rendering and clears cached preview only when options changed', () => {
@@ -265,8 +269,22 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 
     expect(previewBlock).toContain('capturePendingPlayFrameEdits()');
     expect(previewBlock).toContain('const previewState = annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
+    expect(previewBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
     expect(previewBlock).toContain('engine.load(previewState)');
     expect(previewBlock).toContain('playerRef.current.play');
+  });
+
+  it('keeps the cached edit background out of generated Play frames', () => {
+    const engine = engineSource();
+
+    expect(engine).toContain('setBackgroundImageUrl(dataUrl: string)');
+    const backgroundBlock = engine.slice(engine.indexOf('setBackgroundImageUrl(dataUrl: string)'), engine.indexOf('resetBackground(): void'));
+
+    expect(engine).toContain('const requestId = ++this.previewBackgroundRequestId');
+    expect(engine).toContain('if (requestId !== this.previewBackgroundRequestId || this.destroyed || this.animationMode || this.state.drawing) return');
+    expect(backgroundBlock).not.toContain('this.redrawAll()');
+    expect(engine).toContain('resetBackground(): void');
+    expect(engine).toContain('this.previewBackgroundRequestId += 1');
   });
 
   it('saves Play using selected script range and clears dirty cache status after regenerated frames publish', () => {
@@ -286,6 +304,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(savePlayBlock).toContain('renderOptions,');
     expect(savePlayBlock).toContain('playRenderOptions: renderOptions');
     expect(savePlayBlock).toContain('annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
+    expect(savePlayBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
     expect(savePlayBlock).not.toContain('strokeStyleOverride');
     expect(text).not.toContain('function buildPlayStrokeStyleOverride');
   });

@@ -25,6 +25,10 @@ type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type RenderedFramePayload = PhysicPaintRenderedFrame;
 type SerializedPhysicsPaintProject = ReturnType<EfxPaintEngine['save']>;
+type PreviewBackgroundEngine = EfxPaintEngine & {
+  setBackgroundImageUrl: (dataUrl: string) => void;
+  resetBackground: () => void;
+};
 
 type PhysicsPaintStudioSettings = {
   tool: ToolType;
@@ -702,6 +706,7 @@ export function PhysicsPaintStudio() {
     }
     const cachedFrame = findCachedPlayPreviewFrame(previewFrame);
     setCachedPlayPreviewUrl(cachedFrame?.dataUrl ?? null);
+    if (engine && workflowMode === 'play' && cachedFrame?.dataUrl) (engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl);
     return Boolean(cachedFrame);
   }
 
@@ -741,9 +746,12 @@ export function PhysicsPaintStudio() {
     capturePendingPlayFrameEdits();
     const strokeCount = engine.getStrokeCount();
     playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount };
+    const cachedFrame = savedPlayCacheDirty ? null : findCachedPlayPreviewFrame(localPlayPreviewFrame);
+    if (cachedFrame?.dataUrl) (engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl);
+    if (cachedPlayPreviewUrl) setCachedPlayPreviewUrl(null);
     setSavedPlayCacheDirty(true);
     markSelectedPlayCacheDirty();
-  }, [capturePendingPlayFrameEdits, engine, localPlayPreviewFrame, markSelectedPlayCacheDirty, workflowMode]);
+  }, [cachedPlayPreviewUrl, capturePendingPlayFrameEdits, engine, localPlayPreviewFrame, markSelectedPlayCacheDirty, savedPlayCacheDirty, workflowMode]);
 
   const showPlayLimitToast = useCallback((message: string) => {
     setPlayLimitToast(message);
@@ -867,6 +875,7 @@ export function PhysicsPaintStudio() {
     setApplyMessage(`Previewing ${safeFrameCount} frames at ${previewFps} fps.`);
     capturePendingPlayFrameEdits();
     const previewState = annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current);
+    (engine as PreviewBackgroundEngine).resetBackground();
     engine.load(previewState);
     playerRef.current.play({
       frameCount: safeFrameCount,
@@ -1124,6 +1133,7 @@ export function PhysicsPaintStudio() {
     const renderOptions = buildPlayRenderOptionsSnapshot(settings, playWiggle);
     capturePendingPlayFrameEdits();
     const editableState = annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current);
+    (engine as PreviewBackgroundEngine).resetBackground();
     engine.load(editableState);
 
     try {

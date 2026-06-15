@@ -127,6 +127,7 @@ export class EfxPaintEngine {
 
   // --- Background Data ---
   private bgData: ImageData | null = null
+  private previewBackgroundRequestId: number = 0
 
   // --- Engine State ---
   private state: EngineState
@@ -403,6 +404,32 @@ export class EfxPaintEngine {
     this.fluid.u0.fill(0); this.fluid.v0.fill(0)
     this.fluid.p.fill(0); this.fluid.div.fill(0)
     this.allActions = savedStrokes
+    this.redrawAll()
+  }
+
+  setBackgroundImageUrl(dataUrl: string): void {
+    const requestId = ++this.previewBackgroundRequestId
+    const image = new Image()
+    image.onload = () => {
+      if (requestId !== this.previewBackgroundRequestId || this.destroyed || this.animationMode || this.state.drawing) return
+      this.stopNaturalDrying()
+      this.bgCtx.clearRect(0, 0, this.width, this.height)
+      this.bgCtx.drawImage(image, 0, 0, this.width, this.height)
+      this.bgData = this.bgCtx.getImageData(0, 0, this.width, this.height)
+      this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
+      this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
+      clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
+      this.fluid.u.fill(0); this.fluid.v.fill(0)
+      this.fluid.u0.fill(0); this.fluid.v0.fill(0)
+      this.fluid.p.fill(0); this.fluid.div.fill(0)
+      this.dualCanvas.displayCtx.clearRect(0, 0, this.width, this.height)
+    }
+    image.src = dataUrl
+  }
+
+  resetBackground(): void {
+    this.previewBackgroundRequestId += 1
+    this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
     this.redrawAll()
   }
 
