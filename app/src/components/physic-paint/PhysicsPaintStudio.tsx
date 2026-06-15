@@ -20,6 +20,7 @@ const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper
 const DEFAULT_CANVAS_WIDTH = 1000;
 const DEFAULT_CANVAS_HEIGHT = 650;
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
+const PLAY_LIMIT_TOAST_DISMISS_MS = 5000;
 type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type RenderedFramePayload = PhysicPaintRenderedFrame;
@@ -94,6 +95,7 @@ function getActivePlayStartFrame(context: PhysicPaintLaunchContext, fallbackFram
 }
 
 function withoutRotoGapLimit(context: PhysicPaintLaunchContext): PhysicPaintLaunchContext {
+  if (context.workflowMode === 'play') return context;
   const next = { ...context };
   delete next.maxPlayFrameCount;
   delete next.maxPlayFrameCountReason;
@@ -445,6 +447,7 @@ export function PhysicsPaintStudio() {
   const [localPlayPreviewFrame, setLocalPlayPreviewFrame] = useState(() => getLaunchPreviewFrame(launchContext));
   const [cachedPlayPreviewUrl, setCachedPlayPreviewUrl] = useState<string | null>(null);
   const [savedPlayCacheDirty, setSavedPlayCacheDirty] = useState(false);
+  const [playLimitToast, setPlayLimitToast] = useState<string | null>(null);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const playerRef = useRef<AnimationPlayer | null>(null);
   const rotoFrameStatesRef = useRef<Map<number, ReturnType<EfxPaintEngine['save']>>>(new Map());
@@ -739,8 +742,20 @@ export function PhysicsPaintStudio() {
     markSelectedPlayCacheDirty();
   }, [capturePendingPlayFrameEdits, engine, localPlayPreviewFrame, markSelectedPlayCacheDirty, workflowMode]);
 
+  const showPlayLimitToast = useCallback((message: string) => {
+    setPlayLimitToast(message);
+  }, []);
+
+  useEffect(() => {
+    if (!playLimitToast) return;
+    const timeout = window.setTimeout(() => setPlayLimitToast(null), PLAY_LIMIT_TOAST_DISMISS_MS);
+    return () => window.clearTimeout(timeout);
+  }, [playLimitToast]);
+
   const updatePlayFrameCount = useCallback((frameCount: number) => {
-    const safeFrameCount = clampPhysicPaintFrameCount(frameCount);
+    const limit = launchContext?.maxPlayFrameCount;
+    const safeFrameCount = Math.min(clampPhysicPaintFrameCount(frameCount), limit ?? Number.POSITIVE_INFINITY);
+    if (limit !== undefined && frameCount > limit) showPlayLimitToast(launchContext.maxPlayFrameCountReason ?? `Play duration limited to ${limit} frames.`);
     setFramesToApply(safeFrameCount);
     if (workflowMode !== 'play') return;
     setCachedPlayPreviewUrl(null);
@@ -752,7 +767,7 @@ export function PhysicsPaintStudio() {
       playCacheStatus: 'stale',
       cachedPlayFrames: [],
     } : current);
-  }, [markSelectedPlayCacheDirty, workflowMode]);
+  }, [launchContext?.maxPlayFrameCount, launchContext?.maxPlayFrameCountReason, markSelectedPlayCacheDirty, showPlayLimitToast, workflowMode]);
 
   const updatePlayWiggle = useCallback((wiggle: AnimationWiggleConfig) => {
     const normalized = normalizePlayWiggle(wiggle);
@@ -1568,6 +1583,12 @@ export function PhysicsPaintStudio() {
         />
 
         <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
+          {playLimitToast ? (
+            <div class="physics-paint-canvas-toast" role="status" aria-live="polite">
+              <span>{playLimitToast}</span>
+              <button type="button" aria-label="Dismiss Play duration warning" onClick={() => setPlayLimitToast(null)}>×</button>
+            </div>
+          ) : null}
           <PhysicsPaintCanvasStack
             cachedPlayPreviewUrl={cachedPlayPreviewUrl}
             onInputIntent={beginPlayFrameEdit}
@@ -1652,6 +1673,7 @@ export function PhysicsPaintStudio() {
           maxPlayFrameCount={launchContext?.maxPlayFrameCount}
           maxPlayFrameCountReason={launchContext?.maxPlayFrameCountReason}
           playCacheStatus={currentPlayCacheStatus}
+          onPlayLimit={showPlayLimitToast}
           isPlaying={isPlaying}
           ready={readyToApply}
           occupiedRotoFrames={occupiedRotoFrames}

@@ -171,7 +171,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, props.maxPlayFrameCount)');
     expect(code).toContain('Play duration limited to');
     expect(code).toContain('props.maxPlayFrameCountReason');
-    expect(code).toContain('physics-paint-play-limit-message');
+    expect(code).toContain('props.onPlayLimit?.(playLimitMessage)');
+    expect(code).toContain('max={PHYSIC_PAINT_MAX_APPLY_FRAMES}');
+    expect(code).not.toContain('max={maxFrameCount}');
+    expect(code).not.toContain('physics-paint-play-limit-message');
     expect(code).toContain('id="physics-play-duration"');
   });
 

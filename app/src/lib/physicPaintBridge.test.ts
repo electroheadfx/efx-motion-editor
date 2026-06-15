@@ -359,6 +359,38 @@ describe('physicPaintBridge', () => {
     expect(context.maxPlayFrameCount).toBeUndefined();
   });
 
+  it('opens saved Play with a max duration before the next saved script after reopen', () => {
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-a',
+      startFrame: 0,
+      frameCount: 1,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
+      id: 'play-b',
+      startFrame: 1,
+      frameCount: 4,
+      editableState,
+      source: 'play',
+      cacheStatus: 'cached',
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 0, null, null, 'play');
+
+    expect(context).toMatchObject({
+      requestedWorkflowMode: 'play',
+      workflowMode: 'play',
+      startFrame: 0,
+      playStartFrame: 0,
+      playFrameCount: 1,
+      selectedPlayScriptId: 'play-a',
+      maxPlayFrameCount: 1,
+      maxPlayFrameCountReason: 'Only frame 0 is available before the next saved script.',
+    });
+  });
+
   it('opens saved Play with hydrated cached frames even when persisted range status is stale', () => {
     physicPaintStore.loadFromMceOutputs([{
       layer_id: 'phys-layer-1',
@@ -473,9 +505,9 @@ describe('physicPaintBridge', () => {
       workflowMode: 'roto',
       startFrame: 14,
       editableSource: 'roto',
-      maxPlayFrameCount: 600,
     });
-    expect(context.maxPlayFrameCountReason).toBe('Limited to the maximum allowed Play script duration of 600 frames.');
+    expect(context.maxPlayFrameCount).toBeUndefined();
+    expect(context.maxPlayFrameCountReason).toBeUndefined();
     expect(context.selectedPlayScriptId).toBeUndefined();
     expect(context.playStartFrame).toBeUndefined();
     expect(context.playFrameCount).toBeUndefined();

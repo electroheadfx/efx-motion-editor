@@ -212,9 +212,10 @@ export function createPhysicPaintLaunchContext(
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const currentFrame = Math.max(0, Math.trunc(frame));
   const containingRange = physicPaintStore.findPlayScriptRangeAtFrame(layerId, currentFrame);
-  const maxPlayFrameCount = getMaxPlayFrameCount(layerId, currentFrame, layer);
-  const maxPlayFrameCountReason = buildMaxPlayFrameCountReason(layerId, currentFrame, layer);
   const shouldOpenContainingPlay = Boolean(containingRange && requestedWorkflowMode !== 'roto');
+  const playLimitFrame = shouldOpenContainingPlay && containingRange ? containingRange.startFrame : currentFrame;
+  const ignoredPlayScriptId = shouldOpenContainingPlay && containingRange ? containingRange.id : undefined;
+  const playFrameCountLimit = getPlayFrameCountLimit(layerId, playLimitFrame, layer, ignoredPlayScriptId);
   const cachedPlayFrames = shouldOpenContainingPlay && containingRange
     ? collectCompleteCachedPlayFrames(layerId, containingRange)
     : [];
@@ -240,24 +241,23 @@ export function createPhysicPaintLaunchContext(
         ...(containingRange.renderOptions ? { playRenderOptions: structuredClone(containingRange.renderOptions) } : {}),
         previewFrame: currentFrame - containingRange.startFrame,
         cachedPlayFrames,
+        ...(playFrameCountLimit ? playFrameCountLimit : {}),
       }
     : requestedWorkflowMode === 'play'
       ? {
           workflowMode: 'play' as const,
           startFrame: currentFrame,
           playStartFrame: currentFrame,
-          playFrameCount: maxPlayFrameCount,
+          playFrameCount: playFrameCountLimit?.maxPlayFrameCount ?? PHYSIC_PAINT_MAX_APPLY_FRAMES,
           editableSource: 'play' as const,
           previewFrame: 0,
-          maxPlayFrameCount,
-          maxPlayFrameCountReason,
+          ...(playFrameCountLimit ? playFrameCountLimit : {}),
         }
       : {
           workflowMode: 'roto' as const,
           startFrame: currentFrame,
           editableSource: 'roto' as const,
-          maxPlayFrameCount,
-          maxPlayFrameCountReason,
+          ...(playFrameCountLimit ? playFrameCountLimit : {}),
         };
 
   return {
@@ -367,17 +367,35 @@ function getTimelineRangeFrameCount(layer: Layer, frame: number): number | null 
   return Math.max(1, rangeEnd - Math.max(frame, rangeStart));
 }
 
-function getMaxPlayFrameCount(layerId: string, frame: number, layer: Layer): number {
-  const gapLimit = physicPaintStore.getMaxPlayFrameCountFromGap(layerId, frame);
+function getPlayFrameCountLimit(layerId: string, frame: number, layer: Layer, ignoredPlayScriptId?: string): Pick<PhysicPaintLaunchContext, 'maxPlayFrameCount' | 'maxPlayFrameCountReason'> | null {
+  const maxPlayFrameCount = getMaxPlayFrameCount(layerId, frame, layer, ignoredPlayScriptId);
+  if (maxPlayFrameCount >= PHYSIC_PAINT_MAX_APPLY_FRAMES) return null;
+  return {
+    maxPlayFrameCount,
+    maxPlayFrameCountReason: buildMaxPlayFrameCountReason(layerId, frame, layer, ignoredPlayScriptId),
+  };
+}
+
+function getMaxPlayFrameCount(layerId: string, frame: number, layer: Layer, ignoredPlayScriptId?: string): number {
+  const gapLimit = getMaxPlayFrameCountFromGap(layerId, frame, ignoredPlayScriptId);
   const timelineLimit = getTimelineRangeFrameCount(layer, frame);
   return Math.min(gapLimit, timelineLimit ?? PHYSIC_PAINT_MAX_APPLY_FRAMES);
 }
 
-function buildMaxPlayFrameCountReason(layerId: string, frame: number, layer: Layer): string {
-  const maxPlayFrameCount = getMaxPlayFrameCount(layerId, frame, layer);
-  const gapLimit = physicPaintStore.getMaxPlayFrameCountFromGap(layerId, frame);
+function getMaxPlayFrameCountFromGap(layerId: string, frame: number, ignoredPlayScriptId?: string): number {
+  if (!Number.isInteger(frame) || frame < 0) return PHYSIC_PAINT_MAX_APPLY_FRAMES;
+  const ranges = physicPaintStore.getPlayScriptRanges(layerId).filter((range) => range.id !== ignoredPlayScriptId);
+  const containing = ranges.find((range) => frame >= range.startFrame && frame < range.startFrame + range.frameCount);
+  if (containing) return 0;
+  const next = ranges.find((range) => range.startFrame > frame);
+  return next ? Math.max(0, next.startFrame - frame) : PHYSIC_PAINT_MAX_APPLY_FRAMES;
+}
+
+function buildMaxPlayFrameCountReason(layerId: string, frame: number, layer: Layer, ignoredPlayScriptId?: string): string {
+  const maxPlayFrameCount = getMaxPlayFrameCount(layerId, frame, layer, ignoredPlayScriptId);
+  const gapLimit = getMaxPlayFrameCountFromGap(layerId, frame, ignoredPlayScriptId);
   const timelineLimit = getTimelineRangeFrameCount(layer, frame);
-  const nextRange = physicPaintStore.getPlayScriptRanges(layerId).find((range) => range.startFrame > frame);
+  const nextRange = physicPaintStore.getPlayScriptRanges(layerId).find((range) => range.id !== ignoredPlayScriptId && range.startFrame > frame);
   if (nextRange && maxPlayFrameCount === gapLimit) {
     if (maxPlayFrameCount === 1) return `Only frame ${frame} is available before the next saved script.`;
     return `Maximum Play duration from this frame: ${maxPlayFrameCount} frame(s), until the next saved script.`;

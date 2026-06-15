@@ -169,12 +169,24 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
 
     expect(text).toContain('function withoutRotoGapLimit');
+    expect(text).toContain("if (context.workflowMode === 'play') return context;");
     expect(text).toContain('delete next.maxPlayFrameCount');
     expect(text).toContain('...withoutRotoGapLimit(current)');
     expect(workflowStripBlock).toContain('maxPlayFrameCount={launchContext?.maxPlayFrameCount}');
     expect(workflowStripBlock).toContain('maxPlayFrameCountReason={launchContext?.maxPlayFrameCountReason}');
+    expect(workflowStripBlock).toContain('onPlayLimit={showPlayLimitToast}');
     expect(workflowStripBlock).toContain('startFrame={launchContext?.startFrame ?? 0}');
     expect(workflowStripBlock).not.toContain("maxPlayFrameCount={workflowMode === 'play' ? undefined");
+  });
+
+  it('surfaces Play duration bound warnings as a dismissible top-canvas toast', () => {
+    const text = source();
+
+    expect(text).toContain('const [playLimitToast, setPlayLimitToast]');
+    expect(text).toContain('const showPlayLimitToast = useCallback');
+    expect(text).toContain('PLAY_LIMIT_TOAST_DISMISS_MS');
+    expect(text).toContain('physics-paint-canvas-toast');
+    expect(text).toContain('Dismiss Play duration warning');
   });
 
   it('uses Play keyboard transport to render/apply stale Play scripts instead of only previewing live canvas', () => {

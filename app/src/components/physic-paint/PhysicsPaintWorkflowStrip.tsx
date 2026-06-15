@@ -58,6 +58,7 @@ export interface PhysicsPaintWorkflowStripProps {
   maxPlayFrameCount?: number;
   maxPlayFrameCountReason?: string;
   playCacheStatus?: 'cached' | 'stale' | 'missing' | null;
+  onPlayLimit?: (message: string) => void;
   onFrameCountChange: (frameCount: number) => void;
   onPlayPreview: (frameCount: number) => void;
   onStopPreview: () => void;
@@ -158,7 +159,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
   function handleFrameCountInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
-    props.onFrameCountChange(Math.min(clampPhysicPaintFrameCount(value), maxFrameCount));
+    const clampedFrameCount = Math.min(clampPhysicPaintFrameCount(value), maxFrameCount);
+    if (Number.isFinite(value) && value > maxFrameCount && playLimitMessage) {
+      props.onPlayLimit?.(playLimitMessage);
+    }
+    props.onFrameCountChange(clampedFrameCount);
   }
 
   function previewPlayFrame(frame: number) {
@@ -271,14 +276,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   id="physics-play-duration"
                   type="number"
                   min={PHYSIC_PAINT_MIN_APPLY_FRAMES}
-                  max={maxFrameCount}
+                  max={PHYSIC_PAINT_MAX_APPLY_FRAMES}
                   value={safeFrameCount}
                   aria-label="Play frame count"
                   onInput={handleFrameCountInput}
                 />
                 <output>{safeFrameCount}</output>
               </label>
-              {playLimitMessage ? <span class="physics-paint-play-limit-message">{playLimitMessage}</span> : null}
               <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={() => previewPlayFrame(0)}><ChevronFirst size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={() => previewPlayFrame(Math.max(0, clampedPreviewFrame - 1))}><ChevronsLeft size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={() => previewPlayFrame(Math.min(safeFrameCount - 1, clampedPreviewFrame + 1))}><ChevronsRight size={15} /></button>
