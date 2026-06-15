@@ -57,6 +57,10 @@ export function getActivePrimaryActionLabel(mode: PhysicsPaintWorkflowMode): 'Sa
   return mode === 'play' ? 'Save play' : 'Save roto frame';
 }
 
+export function getPhysicsPaintSourceLabel(mode: PhysicsPaintWorkflowMode): 'Roto #1' | 'Play #2' {
+  return mode === 'play' ? 'Play #2' : 'Roto #1';
+}
+
 export function requiresDestructiveConfirmation(action: PhysicsPaintWorkflowAction, mode: PhysicsPaintWorkflowMode): boolean {
   if (action === 'convert-play-to-roto' || action === 'convert-roto-to-play') return true;
   if (action === 'clear-active-source') return mode === 'play';

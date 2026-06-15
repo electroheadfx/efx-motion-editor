@@ -5,6 +5,7 @@ import {
   clampOnionOpacity,
   getActivePrimaryActionLabel,
   getPhysicsPaintEngineStatusTone,
+  getPhysicsPaintSourceLabel,
   getPlayRangeMarker,
   getPreviewFps,
   isPhysicsPaintDevExportEnabled,
@@ -15,6 +16,11 @@ describe('physicsPaintWorkflowState', () => {
   it('returns active primary action labels for Roto and Play workflow tabs (D-10, D-11, D-12, D-16)', () => {
     expect(getActivePrimaryActionLabel('roto')).toBe('Save roto frame');
     expect(getActivePrimaryActionLabel('play')).toBe('Save play');
+  });
+
+  it('returns numbered source labels for the workflow strip header', () => {
+    expect(getPhysicsPaintSourceLabel('roto')).toBe('Roto #1');
+    expect(getPhysicsPaintSourceLabel('play')).toBe('Play #2');
   });
 
   it('requires confirmation only for destructive clear and conversion actions (D-34 through D-38)', () => {
