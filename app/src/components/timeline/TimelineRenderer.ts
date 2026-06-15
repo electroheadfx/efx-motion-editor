@@ -465,7 +465,7 @@ export class TimelineRenderer {
       const labelX = Math.max(clippedLeft + 4, markerX + 4, trackLeft + 4);
       const labelMaxW = clippedRight - labelX - 4;
       if (labelMaxW >= 18) {
-        ctx.font = '8px system-ui, sans-serif';
+        ctx.font = '600 10px system-ui, sans-serif';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = marker.active ? '#FFFFFF' : 'rgba(255, 255, 255, 0.72)';
         ctx.fillText(this.truncateText(ctx, label, labelMaxW), labelX, barY + barH / 2);
@@ -584,7 +584,7 @@ export class TimelineRenderer {
       // Name text inside the bar (shifted right when thumbnail is present)
       if (clippedW > 30 + thumbOffsetX) {
         ctx.fillStyle = isVisible ? '#CCCCCC' : '#666666';
-        ctx.font = '8px system-ui, sans-serif';
+        ctx.font = '600 10px system-ui, sans-serif';
         ctx.textBaseline = 'middle';
         const barNameX = Math.max(clippedLeft + 4 + thumbOffsetX, barX + 4 + thumbOffsetX);
         const barNameMaxW = clippedRight - barNameX - 4;

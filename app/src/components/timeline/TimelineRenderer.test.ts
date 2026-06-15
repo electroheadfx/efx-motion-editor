@@ -143,6 +143,7 @@ describe('TimelineRenderer play script marker source contract', () => {
     expect(markerDrawSource).toContain('colors.accent');
     expect(markerDrawSource).toContain('rgba(255, 255, 255, 0.38)');
     expect(markerDrawSource).toContain('getTimelinePlayScriptLabel(index)');
+    expect(markerDrawSource).toContain("ctx.font = '600 10px system-ui, sans-serif'");
     expect(markerDrawSource).toContain('ctx.fillText(this.truncateText(ctx, label, labelMaxW)');
     expect(markerDrawSource).toContain('Math.max(markerX, barX, TRACK_HEADER_WIDTH)');
     expect(markerDrawSource).toContain('Math.min(markerX + markerW, barX + barW, canvasWidth)');
@@ -154,6 +155,7 @@ describe('TimelineRenderer play script marker source contract', () => {
 
     expect(fxTrackSource).toContain("fxTrack.layerType === 'physic-paint'");
     expect(fxTrackSource).toContain('this.drawPhysicPaintPlayScriptMarkers');
+    expect(fxTrackSource).toContain("ctx.font = '600 10px system-ui, sans-serif'");
     expect(code).not.toContain('document.createElement');
     expect(code).not.toContain('play-script-row');
   });
