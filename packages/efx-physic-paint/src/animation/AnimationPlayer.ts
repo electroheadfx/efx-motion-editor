@@ -86,7 +86,7 @@ export class AnimationPlayer {
   //  PRIVATE — Frame Distribution
   // ================================================================
 
-  /** Allocate strokes to contiguous frame ranges in recorded order. */
+  /** Allocate strokes to contiguous frame ranges in playback order. */
   private distributeStrokes(strokes: PaintStroke[], totalFrames: number): void {
     const usableFrames = Math.max(1, Math.trunc(totalFrames))
 
@@ -95,19 +95,29 @@ export class AnimationPlayer {
       return
     }
 
-    const weights = strokes.map(stroke => Math.max(1, stroke.points.length))
-    const remainingWeights = new Array<number>(strokes.length)
+    const scheduledStrokes = orderStrokesForPlayback(strokes, usableFrames)
+    if (scheduledStrokes.length > usableFrames) {
+      this.frameStrokes = scheduledStrokes.map(({ stroke, playFrameAnchor }, index) => {
+        const startFrame = playFrameAnchor ?? Math.min(usableFrames - 1, Math.floor((index * (usableFrames + 1)) / scheduledStrokes.length))
+        const endFrame = playFrameAnchor === null ? startFrame : usableFrames - 1
+        const pointsPerFrame = Math.max(1, Math.ceil(stroke.points.length / Math.max(1, endFrame - startFrame + 1)))
+        return { stroke, startFrame, endFrame, pointsPerFrame }
+      })
+      return
+    }
+
+    const weights = scheduledStrokes.map(({ stroke }) => Math.max(1, stroke.points.length))
+    const remainingWeights = new Array<number>(scheduledStrokes.length)
     let runningWeight = 0
-    for (let index = strokes.length - 1; index >= 0; index -= 1) {
+    for (let index = scheduledStrokes.length - 1; index >= 0; index -= 1) {
       runningWeight += weights[index]
       remainingWeights[index] = runningWeight
     }
     let allocatedFrames = 0
     const playFrameCursors = new Map<number, number>()
 
-    this.frameStrokes = strokes.map((stroke, index) => {
-      const playFrameAnchor = getPlayFrameAnchor(stroke, usableFrames)
-      const remainingStrokeCount = strokes.length - index
+    this.frameStrokes = scheduledStrokes.map(({ stroke, playFrameAnchor }, index) => {
+      const remainingStrokeCount = scheduledStrokes.length - index
       const latestStartFrame = playFrameAnchor === null
         ? usableFrames - 1
         : Math.max(0, usableFrames - remainingStrokeCount)
@@ -125,11 +135,10 @@ export class AnimationPlayer {
       const weightedExactFrames = (weights[index] / Math.max(1, remainingWeights[index])) * remainingFrameBudget
       let frameSpan = Math.max(1, Math.floor(weightedExactFrames))
 
-      if (index === strokes.length - 1) {
+      if (index === scheduledStrokes.length - 1) {
         frameSpan = remainingFrames
       } else if (playFrameAnchor !== null) {
-        // Reserve at least one frame for each later stroke when the duration allows it.
-        const laterStrokeCount = strokes.length - index - 1
+        const laterStrokeCount = scheduledStrokes.length - index - 1
         const maxSpanBeforeLaterStrokes = Math.max(1, remainingFrames - laterStrokeCount)
         frameSpan = Math.min(frameSpan, maxSpanBeforeLaterStrokes)
       }
@@ -269,6 +278,23 @@ function hashStroke(stroke: PaintStroke, strokeIndex: number): number {
     hash = Math.imul(hash, 16777619)
   }
   return hash >>> 0
+}
+
+function orderStrokesForPlayback(strokes: PaintStroke[], usableFrames: number): Array<{ stroke: PaintStroke; playFrameAnchor: number | null }> {
+  const scheduled = strokes.map((stroke, sourceIndex) => ({ stroke, sourceIndex, playFrameAnchor: getPlayFrameAnchor(stroke, usableFrames) }))
+  const playbackOrder = scheduled.filter(({ sourceIndex, playFrameAnchor }) => playFrameAnchor === null || sourceIndex <= playFrameAnchor)
+  const insertedStrokes = scheduled.filter(({ sourceIndex, playFrameAnchor }) => playFrameAnchor !== null && sourceIndex > playFrameAnchor)
+    .sort((a, b) => a.playFrameAnchor! - b.playFrameAnchor! || a.sourceIndex - b.sourceIndex)
+  const insertedByTarget = new Map<number, number>()
+
+  for (const inserted of insertedStrokes) {
+    const targetIndex = Math.min(inserted.playFrameAnchor!, playbackOrder.length)
+    const offset = insertedByTarget.get(targetIndex) ?? 0
+    playbackOrder.splice(targetIndex + offset, 0, inserted)
+    insertedByTarget.set(targetIndex, offset + 1)
+  }
+
+  return playbackOrder.map(({ stroke, playFrameAnchor }) => ({ stroke, playFrameAnchor }))
 }
 
 function getPlayFrameAnchor(stroke: PaintStroke, usableFrames: number): number | null {
