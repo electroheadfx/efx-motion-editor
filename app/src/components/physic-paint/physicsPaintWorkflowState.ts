@@ -79,8 +79,8 @@ export function getPhysicsPaintEngineStatusTone({
   return error ? 'error' : 'not-ready';
 }
 
-export function isPhysicsPaintDevExportEnabled(env: { DEV?: boolean; MODE?: string; TAURI_ENV_PLATFORM?: string }): boolean {
-  return env.DEV === true && env.MODE === 'development' && Boolean(env.TAURI_ENV_PLATFORM);
+export function isPhysicsPaintDevExportEnabled(env: { DEV?: boolean; MODE?: string }): boolean {
+  return env.DEV === true || env.MODE === 'development';
 }
 
 export function getPreviewFps(value: unknown): number {

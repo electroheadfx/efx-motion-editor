@@ -79,10 +79,10 @@ describe('physicsPaintWorkflowState', () => {
     expect(getPhysicsPaintEngineStatusTone({ ready: false, error: 'Engine failed' })).toBe('error');
   });
 
-  it('gates dev/debug export to Tauri dev mode only (D-18, D-19)', () => {
-    expect(isPhysicsPaintDevExportEnabled({ DEV: true, MODE: 'development', TAURI_ENV_PLATFORM: 'darwin' })).toBe(true);
-    expect(isPhysicsPaintDevExportEnabled({ DEV: true, MODE: 'development' })).toBe(false);
-    expect(isPhysicsPaintDevExportEnabled({ DEV: false, MODE: 'production', TAURI_ENV_PLATFORM: 'darwin' })).toBe(false);
+  it('gates dev/debug export to dev mode only (D-18, D-19)', () => {
+    expect(isPhysicsPaintDevExportEnabled({ DEV: true })).toBe(true);
+    expect(isPhysicsPaintDevExportEnabled({ MODE: 'development' })).toBe(true);
+    expect(isPhysicsPaintDevExportEnabled({ DEV: false, MODE: 'production' })).toBe(false);
     expect(isPhysicsPaintDevExportEnabled({})).toBe(false);
   });
 
