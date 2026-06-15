@@ -95,29 +95,6 @@ export class AnimationPlayer {
       return
     }
 
-    if (strokes.length > usableFrames) {
-      // More strokes than frames means some strokes must share frames; spread
-      // those shared frames across the whole range instead of the final frame.
-      // Explicit Play-frame annotations are user edits and must win over the
-      // automatic recorded-order distribution, otherwise strokes painted while
-      // inspecting a Play frame appear at the end of dense scripts.
-      this.frameStrokes = strokes.map((stroke, index) => {
-        const playFrameAnchor = getPlayFrameAnchor(stroke, usableFrames)
-        const frame = playFrameAnchor ?? Math.max(0, Math.min(
-          usableFrames - 1,
-          Math.ceil(((index + 1) * usableFrames) / strokes.length) - 1,
-        ))
-
-        return {
-          stroke,
-          startFrame: frame,
-          endFrame: frame,
-          pointsPerFrame: Math.max(1, stroke.points.length),
-        }
-      })
-      return
-    }
-
     const weights = strokes.map(stroke => Math.max(1, stroke.points.length))
     const remainingWeights = new Array<number>(strokes.length)
     let runningWeight = 0
@@ -132,7 +109,7 @@ export class AnimationPlayer {
       const playFrameAnchor = getPlayFrameAnchor(stroke, usableFrames)
       const remainingStrokeCount = strokes.length - index
       const latestStartFrame = playFrameAnchor === null
-        ? Math.max(allocatedFrames, usableFrames - remainingStrokeCount)
+        ? usableFrames - 1
         : Math.max(0, usableFrames - remainingStrokeCount)
       const requestedStartFrame = playFrameAnchor === null
         ? allocatedFrames
@@ -142,12 +119,15 @@ export class AnimationPlayer {
         Math.min(requestedStartFrame, latestStartFrame),
       )
       const remainingFrames = Math.max(1, usableFrames - startFrame)
-      const weightedExactFrames = (weights[index] / Math.max(1, remainingWeights[index])) * remainingFrames
+      const remainingFrameBudget = playFrameAnchor === null
+        ? Math.max(1, usableFrames - allocatedFrames)
+        : remainingFrames
+      const weightedExactFrames = (weights[index] / Math.max(1, remainingWeights[index])) * remainingFrameBudget
       let frameSpan = Math.max(1, Math.floor(weightedExactFrames))
 
       if (index === strokes.length - 1) {
         frameSpan = remainingFrames
-      } else {
+      } else if (playFrameAnchor !== null) {
         // Reserve at least one frame for each later stroke when the duration allows it.
         const laterStrokeCount = strokes.length - index - 1
         const maxSpanBeforeLaterStrokes = Math.max(1, remainingFrames - laterStrokeCount)

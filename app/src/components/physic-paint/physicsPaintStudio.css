@@ -1622,6 +1622,11 @@ button.destructive {
 
 .physics-paint-onion-overlay.canvas-region {
   inset: auto;
+  z-index: 3;
+}
+
+.demo-canvas-shell .paint-canvas canvas + canvas {
+  z-index: 4 !important;
 }
 
 .physics-paint-cached-play-preview {

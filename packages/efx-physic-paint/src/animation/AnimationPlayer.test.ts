@@ -257,6 +257,25 @@ describe('AnimationPlayer sequential playback', () => {
     expect(pointCountFor(calls.at(-1)!, '#frame-edit')).toBe(8)
   })
 
+  it('keeps annotated strokes progressive when the Play script has more strokes than frames', () => {
+    const baseStrokes = Array.from({ length: 6 }, (_, index) => makeStroke(`#base-${index}`, 4, index))
+    const scheduledStroke = { ...makeStroke('#frame-edit', 12, 7), playFrame: 3 }
+    const engine = createEngine([...baseStrokes, scheduledStroke])
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({ frameCount: 5, fps: 12 })
+    advanceAnimationFrames(7)
+
+    const calls = renderCalls(engine)
+
+    expect(pointCountFor(calls[0], '#frame-edit')).toBe(0)
+    expect(pointCountFor(calls[1], '#frame-edit')).toBe(0)
+    expect(pointCountFor(calls[2], '#frame-edit')).toBe(0)
+    expect(pointCountFor(calls[3], '#frame-edit')).toBeGreaterThan(0)
+    expect(pointCountFor(calls[3], '#frame-edit')).toBeLessThan(12)
+    expect(pointCountFor(calls.at(-1)!, '#frame-edit')).toBe(12)
+  })
+
   it('starts appended Play-frame strokes at their annotated frame instead of the animation tail', () => {
     const recordedStrokes = [
       makeStroke('#recorded-0', 4, 0),

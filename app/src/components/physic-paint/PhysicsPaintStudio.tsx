@@ -741,10 +741,10 @@ export function PhysicsPaintStudio() {
     capturePendingPlayFrameEdits();
     const strokeCount = engine.getStrokeCount();
     playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount };
-    setCachedPlayPreviewUrl(null);
+    if (cachedPlayPreviewUrl) setCachedPlayPreviewUrl(null);
     setSavedPlayCacheDirty(true);
     markSelectedPlayCacheDirty();
-  }, [capturePendingPlayFrameEdits, engine, localPlayPreviewFrame, markSelectedPlayCacheDirty, workflowMode]);
+  }, [cachedPlayPreviewUrl, capturePendingPlayFrameEdits, engine, localPlayPreviewFrame, markSelectedPlayCacheDirty, workflowMode]);
 
   const showPlayLimitToast = useCallback((message: string) => {
     setPlayLimitToast(message);
@@ -830,7 +830,7 @@ export function PhysicsPaintStudio() {
   }, [currentFrame, engine, launchContext]);
 
   const playPreview = useCallback((frameCount: number) => {
-    if (!playerRef.current) return;
+    if (!playerRef.current || !engine) return;
     const safeFrameCount = clampPhysicPaintFrameCount(frameCount);
     const cachedFrames = getCachedPlayFramesForRange(safeFrameCount);
     if (cachedFrames) {
@@ -866,6 +866,9 @@ export function PhysicsPaintStudio() {
     setAnimTotal(safeFrameCount);
     setAnimFrame(0);
     setApplyMessage(`Previewing ${safeFrameCount} frames at ${previewFps} fps.`);
+    capturePendingPlayFrameEdits();
+    const previewState = annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current);
+    engine.load(previewState);
     playerRef.current.play({
       frameCount: safeFrameCount,
       fps: previewFps,
@@ -873,7 +876,7 @@ export function PhysicsPaintStudio() {
       onFrame: (frameIndex) => setAnimFrame(frameIndex),
       onComplete: () => setIsPlaying(false),
     });
-  }, [playWiggle, previewFps]);
+  }, [capturePendingPlayFrameEdits, engine, playWiggle, previewFps]);
 
   const stopPreview = useCallback(() => {
     if (cachedPreviewTimerRef.current) {

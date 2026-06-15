@@ -37,9 +37,11 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).not.toContain('<div class="physics-paint-onion-overlay canvas-region" aria-hidden="true">');
   });
 
-  it('keeps transparent onion strokes visible over paper instead of screening them out', () => {
+  it('keeps reference overlays below the live paint cursor and stroke preview', () => {
     const css = styles();
 
+    expect(css).toContain('.physics-paint-onion-overlay.canvas-region {\n  inset: auto;\n  z-index: 3;');
+    expect(css).toContain('.demo-canvas-shell .paint-canvas canvas + canvas {\n  z-index: 4 !important;');
     expect(css).toContain('mix-blend-mode: multiply');
     expect(css).not.toContain('mix-blend-mode: screen');
   });
@@ -242,6 +244,16 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(updateBlock).toContain('setSavedPlayCacheDirty(true)');
     expect(updateBlock).not.toContain('playerRef.current?.play');
     expect(updateBlock).not.toContain('savePlay()');
+  });
+
+  it('previews dirty Play edits with selected-frame annotations before saving', () => {
+    const text = source();
+    const previewBlock = text.slice(text.indexOf('const playPreview = useCallback'), text.indexOf('const stopPreview = useCallback'));
+
+    expect(previewBlock).toContain('capturePendingPlayFrameEdits()');
+    expect(previewBlock).toContain('const previewState = annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
+    expect(previewBlock).toContain('engine.load(previewState)');
+    expect(previewBlock).toContain('playerRef.current.play');
   });
 
   it('saves Play using selected script range and clears dirty cache status after regenerated frames publish', () => {
