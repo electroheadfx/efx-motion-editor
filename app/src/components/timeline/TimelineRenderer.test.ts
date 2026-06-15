@@ -21,13 +21,13 @@ const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'TimelineRen
 const source = () => readFileSync(sourcePath, 'utf8');
 
 describe('TimelineRenderer play script marker geometry', () => {
-  it('labels the physics paint bar as Roto and each Play script marker independently', async () => {
+  it('labels the physics paint bar and each Play script marker independently', async () => {
     const { getTimelinePhysicsPaintBarLabel, getTimelinePlayScriptLabel } = await import('./TimelineRenderer');
 
     expect(getTimelinePhysicsPaintBarLabel({
       layerType: 'physic-paint',
       sequenceName: 'Physic Paint',
-    })).toBe('Roto #1');
+    })).toBe('Physic Paint #1');
     expect(getTimelinePhysicsPaintBarLabel({
       layerType: 'paint',
       sequenceName: 'Paint',
