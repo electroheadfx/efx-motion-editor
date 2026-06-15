@@ -257,6 +257,50 @@ describe('AnimationPlayer sequential playback', () => {
     expect(pointCountFor(calls.at(-1)!, '#frame-edit')).toBe(8)
   })
 
+  it('starts appended Play-frame strokes at their annotated frame instead of the animation tail', () => {
+    const recordedStrokes = [
+      makeStroke('#recorded-0', 4, 0),
+      makeStroke('#recorded-1', 4, 1),
+      makeStroke('#recorded-2', 4, 2),
+      makeStroke('#recorded-3', 4, 3),
+      makeStroke('#recorded-4', 4, 4),
+      { ...makeStroke('#frame-edit', 8, 5), playFrame: 3 },
+    ]
+    const engine = createEngine(recordedStrokes)
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({ frameCount: 10, fps: 12 })
+    advanceAnimationFrames(12)
+
+    const calls = renderCalls(engine)
+
+    expect(firstFrameFor(calls, '#frame-edit')).toBe(3)
+  })
+
+  it('keeps multiple appended strokes on the same Play frame sequential instead of parallel', () => {
+    const recordedStrokes = [
+      makeStroke('#recorded-0', 4, 0),
+      makeStroke('#recorded-1', 4, 1),
+      makeStroke('#recorded-2', 4, 2),
+      makeStroke('#recorded-3', 4, 3),
+      makeStroke('#recorded-4', 4, 4),
+      { ...makeStroke('#frame-edit-a', 8, 5), playFrame: 3 },
+      { ...makeStroke('#frame-edit-b', 8, 6), playFrame: 3 },
+    ]
+    const engine = createEngine(recordedStrokes)
+    const player = new AnimationPlayer(engine as EfxPaintEngine)
+
+    player.play({ frameCount: 12, fps: 12 })
+    advanceAnimationFrames(14)
+
+    const calls = renderCalls(engine)
+    const firstEditFrame = firstFrameFor(calls, '#frame-edit-a')
+    const secondEditFrame = firstFrameFor(calls, '#frame-edit-b')
+
+    expect(firstEditFrame).toBe(3)
+    expect(secondEditFrame).toBeGreaterThan(firstEditFrame)
+  })
+
   it('keeps multiple strokes painted on the same Play frame sequential instead of parallel', () => {
     const firstFrameEdit = { ...makeStroke('#frame-edit-a', 8, 2), playFrame: 2 }
     const secondFrameEdit = { ...makeStroke('#frame-edit-b', 8, 3), playFrame: 2 }

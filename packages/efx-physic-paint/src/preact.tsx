@@ -41,6 +41,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
       height: props.height,
       papers: props.papers,
       defaultPaper: props.defaultPaper,
+      getStrokeMetadata: props.getStrokeMetadata,
     })
     engineRef.current = engine
     props.onNativePenInputReady?.((input) => engine.updateNativePenInput(input))

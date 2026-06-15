@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
-import { AnimationPlayer, type AnimationStrokeStyleOverride, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
+import { AnimationPlayer, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
@@ -234,7 +234,7 @@ function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
   return !Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
-function CanvasMountProbe(props: { width: number; height: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: (input: { pressure: number; tiltX?: number; tiltY?: number }) => void) => void }) {
+function CanvasMountProbe(props: { width: number; height: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: (input: { pressure: number; tiltX?: number; tiltY?: number }) => void) => void; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
 
@@ -261,6 +261,7 @@ function CanvasMountProbe(props: { width: number; height: number; onEngineReady:
         defaultPaper="canvas1"
         class="paint-canvas"
         onNativePenInputReady={props.onNativePenInputReady}
+        getStrokeMetadata={props.getStrokeMetadata}
         onEngineReady={(engine) => {
           engine.setTool('paint');
           setMountError(null);
@@ -410,19 +411,6 @@ function applyRenderOptionsSnapshotToSettings(snapshot: PhysicPaintPlayRenderOpt
   };
 }
 
-function buildPlayStrokeStyleOverride(renderOptions: PhysicPaintPlayRenderOptionsSnapshot): AnimationStrokeStyleOverride {
-  const tool = renderOptions.tool === 'erase' ? 'erase' : 'paint';
-  return {
-    tool,
-    color: tool === 'erase' ? null : renderOptions.color,
-    params: {
-      size: renderOptions.brushSize,
-      opacity: renderOptions.opacity,
-    },
-    physicsMode: renderOptions.tool === 'physics-paint' ? 'local' : null,
-  };
-}
-
 export function PhysicsPaintStudio() {
   const [engine, setEngine] = useState<EfxPaintEngine | null>(null);
   const [canvasMounted, setCanvasMounted] = useState(false);
@@ -456,6 +444,8 @@ export function PhysicsPaintStudio() {
   const cachedPreviewTimerRef = useRef<number | null>(null);
   const playFrameEditBaselineRef = useRef<{ frame: number; strokeCount: number } | null>(null);
   const playFrameEditAssignmentsRef = useRef<Map<number, number>>(new Map());
+  const workflowModeRef = useRef<PhysicsPaintWorkflowMode>(workflowMode);
+  const localPlayPreviewFrameRef = useRef(localPlayPreviewFrame);
   const activeOperationIdRef = useRef<string | null>(null);
   const applyTimeoutRef = useRef<number | null>(null);
   const nativePenInputHandlerRef = useRef<((input: { pressure: number; tiltX?: number; tiltY?: number }) => void) | null>(null);
@@ -469,6 +459,20 @@ export function PhysicsPaintStudio() {
     if (!engine || !launchContext) return null;
     return { engine, launchContext, bridgeMode };
   }, [bridgeMode, engine, launchContext]);
+
+  useEffect(() => {
+    workflowModeRef.current = workflowMode;
+  }, [workflowMode]);
+
+  useEffect(() => {
+    localPlayPreviewFrameRef.current = localPlayPreviewFrame;
+  }, [localPlayPreviewFrame]);
+
+  const getStrokeMetadata = useCallback(() => {
+    if (workflowModeRef.current !== 'play') return null;
+    const playFrame = localPlayPreviewFrameRef.current;
+    return Number.isInteger(playFrame) && playFrame >= 0 ? { playFrame } : null;
+  }, []);
 
   useEffect(() => {
     detectBridgeMode().then(setBridgeMode).catch(() => setBridgeMode('Unavailable'));
@@ -1137,7 +1141,6 @@ export function PhysicsPaintStudio() {
           frameCount,
           fps: previewFps,
           wiggle: playWiggle,
-          strokeStyleOverride: buildPlayStrokeStyleOverride(renderOptions),
           onFrame: (frameIndex: number, canvas: HTMLCanvasElement) => {
             setAnimFrame(frameIndex);
             captured.push({
@@ -1607,6 +1610,7 @@ export function PhysicsPaintStudio() {
               onNativePenInputReady={(handler) => {
                 nativePenInputHandlerRef.current = handler;
               }}
+              getStrokeMetadata={getStrokeMetadata}
             />
           </PhysicsPaintCanvasStack>
         </section>

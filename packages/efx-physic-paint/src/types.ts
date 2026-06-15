@@ -33,11 +33,16 @@ export interface PaperConfig {
 
 // === ENGINE CONFIGURATION ===
 
+export interface StrokeMetadata {
+  playFrame?: number
+}
+
 export interface EngineConfig {
   width?: number           // default 1000
   height?: number          // default 650
   papers: PaperConfig[]
   defaultPaper?: string    // key to auto-select
+  getStrokeMetadata?: () => StrokeMetadata | null | undefined
 }
 
 /** Native tablet sample injected by host apps when PointerEvent.pressure is unavailable. */

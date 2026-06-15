@@ -126,12 +126,17 @@ export class AnimationPlayer {
       remainingWeights[index] = runningWeight
     }
     let allocatedFrames = 0
+    const playFrameCursors = new Map<number, number>()
 
     this.frameStrokes = strokes.map((stroke, index) => {
       const playFrameAnchor = getPlayFrameAnchor(stroke, usableFrames)
       const remainingStrokeCount = strokes.length - index
-      const latestStartFrame = Math.max(allocatedFrames, usableFrames - remainingStrokeCount)
-      const requestedStartFrame = Math.max(allocatedFrames, playFrameAnchor ?? allocatedFrames)
+      const latestStartFrame = playFrameAnchor === null
+        ? Math.max(allocatedFrames, usableFrames - remainingStrokeCount)
+        : Math.max(0, usableFrames - remainingStrokeCount)
+      const requestedStartFrame = playFrameAnchor === null
+        ? allocatedFrames
+        : playFrameCursors.get(playFrameAnchor) ?? playFrameAnchor
       const startFrame = Math.min(
         usableFrames - 1,
         Math.min(requestedStartFrame, latestStartFrame),
@@ -150,7 +155,8 @@ export class AnimationPlayer {
       }
 
       const endFrame = Math.min(usableFrames - 1, startFrame + frameSpan - 1)
-      allocatedFrames = endFrame + 1
+      allocatedFrames = Math.max(allocatedFrames, endFrame + 1)
+      if (playFrameAnchor !== null) playFrameCursors.set(playFrameAnchor, endFrame + 1)
       const pointCount = stroke.points.length
       const pointsPerFrame = Math.max(1, Math.ceil(pointCount / Math.max(1, endFrame - startFrame + 1)))
 

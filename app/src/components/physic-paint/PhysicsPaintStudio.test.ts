@@ -261,5 +261,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(savePlayBlock).toContain('renderOptions,');
     expect(savePlayBlock).toContain('playRenderOptions: renderOptions');
     expect(savePlayBlock).toContain('annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
+    expect(savePlayBlock).not.toContain('strokeStyleOverride');
+    expect(text).not.toContain('function buildPlayStrokeStyleOverride');
   });
 });

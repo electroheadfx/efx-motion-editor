@@ -23,6 +23,7 @@ import type {
   PaintStroke,
   SerializedProject,
   NativePenInput,
+  StrokeMetadata,
 } from '../types'
 import {
   DEFAULT_WIDTH,
@@ -158,6 +159,7 @@ export class EfxPaintEngine {
   private nativePenInput: NativePenInput | null = null
   private lastNativePenInputTime: number = 0
   private lastPointerInputTime: number = 0
+  private readonly getStrokeMetadata?: () => StrokeMetadata | null | undefined
 
   // --- Bound Event Handlers (for removeEventListener) ---
   private readonly boundPointerDown: (e: PointerEvent) => void
@@ -174,6 +176,7 @@ export class EfxPaintEngine {
     this.width = config.width || DEFAULT_WIDTH
     this.height = config.height || DEFAULT_HEIGHT
     this.size = this.width * this.height
+    this.getStrokeMetadata = config.getStrokeMetadata
 
     // Create dual canvases
     this.dualCanvas = setupDualCanvas(container, this.width, this.height)
@@ -1124,6 +1127,7 @@ export class EfxPaintEngine {
     const colorlessTools: string[] = ['erase']
     const color = colorlessTools.includes(this.state.tool) ? null : this.color
 
+    const playFrame = this.getStrokeMetadata?.()?.playFrame
     this.allActions.push({
       tool: this.state.tool,
       points: points.map(p => ({ ...p })),
@@ -1132,6 +1136,7 @@ export class EfxPaintEngine {
       timestamp: Date.now(),
       hasPenInput,
       physicsMode: this.state.tool === 'paint' && this.state.physicsMode === 'local' ? 'local' : null,
+      ...(Number.isInteger(playFrame) && playFrame !== undefined && playFrame >= 0 ? { playFrame } : {}),
     })
 
     if (this.pendingStrokeFinalizations.length === 0) this.strokeFinalizationQueuedAt = performance.now()
