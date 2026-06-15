@@ -5,7 +5,7 @@ milestone_name: Standalone Physics Paint
 status: executing
 stopped_at: Phase 36.1 UI-SPEC approved
 last_updated: "2026-06-15T07:32:20.000Z"
-last_activity: 2026-06-15 -- Completed quick task 260615-c4t: solidify phase 36.1
+last_activity: 2026-06-15 -- Completed quick task 260615-dpz: Phase 36.1 consolidation naming fix
 progress:
   total_phases: 5
   completed_phases: 3
@@ -88,6 +88,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260614-ujc | Phase 36.1 script play canvas update options | 2026-06-14 | 34fd228 | [260614-ujc-phase-36-1-i-would-like-to-be-able-with-](./quick/260614-ujc-phase-36-1-i-would-like-to-be-able-with-/) |
 | 260615-c4t | solidify phase 36.1 | 2026-06-15 | 29969ee | [260615-c4t-solidify-phase-36-1-fix-the-version-numb](./quick/260615-c4t-solidify-phase-36-1-fix-the-version-numb/) |
+| 260615-dpz | Phase 36.1 consolidation naming fix | 2026-06-15 | 410ac50 | [260615-dpz-phase-36-1-consolidation-image-9-there-i](./quick/260615-dpz-phase-36-1-consolidation-image-9-there-i/) |
 
 ### Roadmap Evolution
 
