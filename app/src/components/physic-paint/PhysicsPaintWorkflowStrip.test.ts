@@ -6,9 +6,11 @@ import { describe, expect, it } from 'vitest';
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const rightPanelSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintRightPanel.tsx');
 const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudio.tsx');
+const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowState.ts');
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
 const studioSource = () => readFileSync(studioSourcePath, 'utf8');
+const workflowStateSource = () => readFileSync(workflowStateSourcePath, 'utf8');
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('exports the workflow strip component and props', () => {
@@ -21,7 +23,15 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('renders a locked standalone mode label instead of Roto and Play workflow tabs', () => {
     const code = source();
 
-    expect(code).toContain("props.mode === 'roto' ? 'Roto paint' : 'Play paint'");
+    const stateCode = workflowStateSource();
+
+    expect(code).toContain('getPhysicsPaintSourceLabel');
+    expect(code).toContain('{getPhysicsPaintSourceLabel(props.mode)}');
+    expect(stateCode).toContain('Roto #1');
+    expect(stateCode).toContain('Play #2');
+    expect(code).not.toContain("props.mode === 'roto' ? 'Roto paint' : 'Play paint'");
+    expect(code).not.toContain('Roto paint');
+    expect(code).not.toContain('Play paint');
     expect(code).toContain('physics-paint-mode-label');
     expect(code).not.toContain('role="tablist"');
     expect(code).not.toContain('role="tab"');

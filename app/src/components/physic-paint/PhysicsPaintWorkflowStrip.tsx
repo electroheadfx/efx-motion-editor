@@ -8,6 +8,7 @@ import {
   PHYSIC_PAINT_MIN_APPLY_FRAMES,
   PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE,
   clampOnionCount,
+  getPhysicsPaintSourceLabel,
   getPlayRangeMarker,
   type PhysicsPaintOnionState,
   type PhysicsPaintWorkflowMode,
@@ -256,7 +257,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     <section class="physics-paint-workflow-strip" aria-label="Physics Paint workflow strip">
       <div class="physics-paint-workflow-header">
         <div class="physics-paint-mode-label" aria-label="Selected Physics Paint mode">
-          {props.mode === 'roto' ? 'Roto paint' : 'Play paint'}
+          {getPhysicsPaintSourceLabel(props.mode)}
         </div>
 
         <div class="physics-paint-workflow-animation">
