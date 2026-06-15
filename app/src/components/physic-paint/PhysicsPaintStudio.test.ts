@@ -231,6 +231,19 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(saveEditableStateBlock).toContain('downloadPhysicsPaintState(editableState)');
   });
 
+  it('keeps the selected cached Play frame visible when normal brush input begins', () => {
+    const text = source();
+    const previewBlock = text.slice(text.indexOf('const previewLocalPlayFrame = useCallback'), text.indexOf('const startApplyTimeout'));
+    const editBlock = text.slice(text.indexOf('const beginPlayFrameEdit = useCallback'), text.indexOf('const showPlayLimitToast'));
+
+    expect(previewBlock).toContain('setLocalPlayPreviewFrame(previewFrame)');
+    expect(previewBlock).toContain('loadCachedPlayPreviewFrame(previewFrame)');
+    expect(editBlock).toContain('playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount }');
+    expect(editBlock).toContain('setSavedPlayCacheDirty(true)');
+    expect(editBlock).not.toContain('setCachedPlayPreviewUrl(null)');
+    expect(editBlock).not.toContain('loadCachedPlayPreviewFrame');
+  });
+
   it('updates selected Play options without rendering and clears cached preview only when options changed', () => {
     const text = source();
     const updateBlock = text.slice(text.indexOf('const updateSelectedPlayOptions = useCallback'), text.indexOf('const savePlay = useCallback'));

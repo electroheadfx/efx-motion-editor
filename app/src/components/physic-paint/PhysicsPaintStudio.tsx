@@ -741,10 +741,9 @@ export function PhysicsPaintStudio() {
     capturePendingPlayFrameEdits();
     const strokeCount = engine.getStrokeCount();
     playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount };
-    if (cachedPlayPreviewUrl) setCachedPlayPreviewUrl(null);
     setSavedPlayCacheDirty(true);
     markSelectedPlayCacheDirty();
-  }, [cachedPlayPreviewUrl, capturePendingPlayFrameEdits, engine, localPlayPreviewFrame, markSelectedPlayCacheDirty, workflowMode]);
+  }, [capturePendingPlayFrameEdits, engine, localPlayPreviewFrame, markSelectedPlayCacheDirty, workflowMode]);
 
   const showPlayLimitToast = useCallback((message: string) => {
     setPlayLimitToast(message);
