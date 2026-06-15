@@ -22,13 +22,13 @@ const source = () => readFileSync(sourcePath, 'utf8');
 
 describe('TimelineRenderer play script marker geometry', () => {
   it('labels the physics paint bar and each Play script marker independently', async () => {
-    const { getTimelinePhysicsPaintBarLabel, getTimelinePlayScriptLabel } = await import('./TimelineRenderer');
+    const { getTimelineFxHeaderLabel, getTimelinePlayScriptLabel } = await import('./TimelineRenderer');
 
-    expect(getTimelinePhysicsPaintBarLabel({
+    expect(getTimelineFxHeaderLabel({
       layerType: 'physic-paint',
       sequenceName: 'Physic Paint',
     })).toBe('Physic Paint #1');
-    expect(getTimelinePhysicsPaintBarLabel({
+    expect(getTimelineFxHeaderLabel({
       layerType: 'paint',
       sequenceName: 'Paint',
     })).toBe('Paint');
@@ -157,8 +157,8 @@ describe('TimelineRenderer play script marker source contract', () => {
 
     expect(fxTrackSource).toContain("fxTrack.layerType === 'physic-paint'");
     expect(fxTrackSource).toContain('this.drawPhysicPaintPlayScriptMarkers');
+    expect(fxTrackSource).toContain("fxTrack.layerType !== 'physic-paint'");
     expect(fxTrackSource).toContain("ctx.font = '600 10px system-ui, sans-serif'");
-    expect(fxTrackSource).toContain('ctx.fillText(barName, barNameX, barY + 6)');
     expect(code).not.toContain('document.createElement');
     expect(code).not.toContain('play-script-row');
   });

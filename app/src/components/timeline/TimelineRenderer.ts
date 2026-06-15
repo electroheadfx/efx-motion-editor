@@ -31,7 +31,7 @@ export function getTimelinePlayScriptMarkerGeometry(
   };
 }
 
-export function getTimelinePhysicsPaintBarLabel(fxTrack: Pick<FxTrackLayout, 'layerType' | 'sequenceName'>): string {
+export function getTimelineFxHeaderLabel(fxTrack: Pick<FxTrackLayout, 'layerType' | 'sequenceName'>): string {
   return fxTrack.layerType === 'physic-paint' ? 'Physic Paint #1' : fxTrack.sequenceName;
 }
 
@@ -506,7 +506,7 @@ export class TimelineRenderer {
     ctx.fillStyle = isVisible ? resolvedColor : resolvedColor + '4D'; // 30% opacity when hidden
     ctx.font = '9px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
-    const name = this.truncateText(ctx, fxTrack.sequenceName, TRACK_HEADER_WIDTH - 16);
+    const name = this.truncateText(ctx, getTimelineFxHeaderLabel(fxTrack), TRACK_HEADER_WIDTH - 16);
     // Color dot + name
     const dotX = 6;
     const dotY = y + FX_TRACK_HEIGHT / 2;
@@ -582,14 +582,14 @@ export class TimelineRenderer {
       }
 
       // Name text inside the bar (shifted right when thumbnail is present)
-      if (clippedW > 30 + thumbOffsetX) {
+      if (fxTrack.layerType !== 'physic-paint' && clippedW > 30 + thumbOffsetX) {
         ctx.fillStyle = isVisible ? '#CCCCCC' : '#666666';
         ctx.font = '600 10px system-ui, sans-serif';
         ctx.textBaseline = 'middle';
         const barNameX = Math.max(clippedLeft + 4 + thumbOffsetX, barX + 4 + thumbOffsetX);
         const barNameMaxW = clippedRight - barNameX - 4;
         if (barNameMaxW > 10) {
-          const barName = this.truncateText(ctx, getTimelinePhysicsPaintBarLabel(fxTrack), barNameMaxW);
+          const barName = this.truncateText(ctx, fxTrack.sequenceName, barNameMaxW);
           ctx.fillText(barName, barNameX, barY + 6);
         }
       }
