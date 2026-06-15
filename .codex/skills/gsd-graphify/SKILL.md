@@ -37,7 +37,13 @@ Execute mode fallback:
 ## C. Task() → spawn_agent Mapping
 GSD workflows use `Task(...)` (Claude Code syntax). Translate to Codex collaboration tools:
 
-Direct mapping:
+**Schema detection (required first step):** Codex exposes two `spawn_agent` schemas:
+- **agent_type-capable schema** (e.g. `multi_agent_v2`): `spawn_agent` accepts `agent_type`, `message`, `reasoning_effort`, `fork_context`, etc. — typed GSD agent dispatch is available.
+- **Generic schema** (`multi_agent_v1`): `spawn_agent` accepts only `message`, `items`, `fork_context` — there is **no `agent_type` field**. Typed GSD agent dispatch is unavailable in this session.
+
+Before spawning, inspect the `spawn_agent` tool's visible parameter schema (via `tool_search` or the tool list) to determine which form is active.
+
+Typed mapping (agent_type-capable schema only):
 - `Task(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Agent(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Task(model="...")` → omit. `spawn_agent` has no inline `model` parameter;
@@ -53,6 +59,24 @@ Direct mapping:
   Codex `spawn_agent` does not create or bind a git worktree automatically.
   Workflows that require this isolation must fail closed or use an explicit
   manual worktree protocol before spawning (#3360).
+
+Generic-agent workaround (multi_agent_v1 schema — NO agent_type field):
+When only the generic `multi_agent_v1` schema is available, typed GSD agent dispatch
+(`gsd-planner`, `gsd-executor`, etc.) is NOT possible. This is a known Codex limitation
+(openai/codex#15250). **This workaround is NOT equivalent to typed gsd-planner/gsd-executor
+execution** — GSD agents carry project-aware prompts, audit logging, and workflow context
+that a generic subagent lacks. Use the following fallback:
+1. Resolve your active Codex config root — the directory that contains your `config.toml`.
+   This directory is determined in priority order: `$CODEX_HOME` (if set), the path given
+   by `--config-dir` (if passed on invocation), a local `.codex` directory in the current
+   project (if `--local` was used), or the default global config directory. Read
+   `agents/<agent-name>.toml` relative to that config root to extract the agent's system
+   instructions.
+2. Inject those instructions as a role-preamble into a generic `spawn_agent(message=...)` call.
+3. Label results and logs clearly as "generic-agent workaround" so the orchestrator and user
+   know full typed-agent guarantees are not in effect.
+4. Where typed dispatch is mandatory for correctness (e.g. worktree isolation), fail closed
+   and report the schema limitation rather than silently degrading.
 
 Spawn restriction:
 - Codex restricts `spawn_agent` to cases where the user has explicitly
@@ -72,7 +96,7 @@ Result parsing:
 
 **STOP -- DO NOT READ THIS FILE. You are already reading it. This prompt was injected into your context by Claude Code's command system. Using the Read tool on this file wastes tokens. Begin executing Step 0 immediately.**
 
-**CJS-only (graphify):** `graphify` subcommands are not registered on `gsd-tools query`. Use the `gsd_run` launcher shim (defined in each bash block below) or invoke the binary directly: `node <runtime-home>/gsd-core/bin/gsd-tools.cjs graphify …` where `<runtime-home>` is your runtime's config directory (e.g. `~/.codex`, `~/.hermes`, `~/.cursor`). See `docs/CLI-TOOLS.md` for details. Other tooling may still use `gsd-tools query` where a handler exists.
+**CJS-only (graphify):** `graphify` subcommands are not registered on `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query`. Use the `gsd_run` launcher shim (defined in each bash block below) or invoke the binary directly: `node <runtime-home>/gsd-core/bin/gsd-tools.cjs graphify …` where `<runtime-home>` is your runtime's config directory (e.g. `~/.codex`, `~/.hermes`, `~/.cursor`). See `docs/CLI-TOOLS.md` for details. Other tooling may still use `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query` where a handler exists.
 
 ## Step 0 -- Banner
 
@@ -246,7 +270,7 @@ If the chain succeeds:
 
 ## MVP-Mode Node Rendering
 
-**MVP-mode rendering.** When a phase has `**Mode:** mvp` in ROADMAP.md (resolved via `gsd-tools query roadmap.get-phase --pick mode`), render its graph node with two distinct visual signals:
+**MVP-mode rendering.** When a phase has `**Mode:** mvp` in ROADMAP.md (resolved via `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query roadmap.get-phase --pick mode`), render its graph node with two distinct visual signals:
 
 1. **Distinct fill color.** Use `#22c55e` (green) for MVP-mode phase nodes. Standard phases keep the default fill color. Two-channel signaling (color + label) handles color-blind and grayscale renders.
 2. **`MVP` label suffix.** Append ` (MVP)` to the node's label text. Example: a phase originally labeled `Phase 1: User Auth` renders as `Phase 1: User Auth (MVP)`.
@@ -263,4 +287,4 @@ When the phase mode is null/absent, render with the standard color and label —
 2. DO NOT pass `run_in_background: true` for the build chain -- the operation is fast and must complete in the foreground.
 3. DO NOT modify graph files directly -- always go through `graphify update .` and the snapshot CLI.
 4. DO NOT skip the config gate check.
-5. DO NOT use `gsd-tools config get-value` for the config gate -- it exits on missing keys.
+5. DO NOT use `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" config get-value` for the config gate -- it exits on missing keys.

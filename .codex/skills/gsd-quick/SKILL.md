@@ -37,7 +37,13 @@ Execute mode fallback:
 ## C. Task() → spawn_agent Mapping
 GSD workflows use `Task(...)` (Claude Code syntax). Translate to Codex collaboration tools:
 
-Direct mapping:
+**Schema detection (required first step):** Codex exposes two `spawn_agent` schemas:
+- **agent_type-capable schema** (e.g. `multi_agent_v2`): `spawn_agent` accepts `agent_type`, `message`, `reasoning_effort`, `fork_context`, etc. — typed GSD agent dispatch is available.
+- **Generic schema** (`multi_agent_v1`): `spawn_agent` accepts only `message`, `items`, `fork_context` — there is **no `agent_type` field**. Typed GSD agent dispatch is unavailable in this session.
+
+Before spawning, inspect the `spawn_agent` tool's visible parameter schema (via `tool_search` or the tool list) to determine which form is active.
+
+Typed mapping (agent_type-capable schema only):
 - `Task(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Agent(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Task(model="...")` → omit. `spawn_agent` has no inline `model` parameter;
@@ -53,6 +59,24 @@ Direct mapping:
   Codex `spawn_agent` does not create or bind a git worktree automatically.
   Workflows that require this isolation must fail closed or use an explicit
   manual worktree protocol before spawning (#3360).
+
+Generic-agent workaround (multi_agent_v1 schema — NO agent_type field):
+When only the generic `multi_agent_v1` schema is available, typed GSD agent dispatch
+(`gsd-planner`, `gsd-executor`, etc.) is NOT possible. This is a known Codex limitation
+(openai/codex#15250). **This workaround is NOT equivalent to typed gsd-planner/gsd-executor
+execution** — GSD agents carry project-aware prompts, audit logging, and workflow context
+that a generic subagent lacks. Use the following fallback:
+1. Resolve your active Codex config root — the directory that contains your `config.toml`.
+   This directory is determined in priority order: `$CODEX_HOME` (if set), the path given
+   by `--config-dir` (if passed on invocation), a local `.codex` directory in the current
+   project (if `--local` was used), or the default global config directory. Read
+   `agents/<agent-name>.toml` relative to that config root to extract the agent's system
+   instructions.
+2. Inject those instructions as a role-preamble into a generic `spawn_agent(message=...)` call.
+3. Label results and logs clearly as "generic-agent workaround" so the orchestrator and user
+   know full typed-agent guarantees are not in effect.
+4. Where typed dispatch is mandatory for correctness (e.g. worktree isolation), fail closed
+   and report the schema limitation rather than silently degrading.
 
 Spawn restriction:
 - Codex restricts `spawn_agent` to cases where the user has explicitly
@@ -129,7 +153,7 @@ For each directory found:
 - Check if PLAN.md exists
 - Check if SUMMARY.md exists; if so, read `status` from its frontmatter via:
   ```bash
-  gsd-tools query frontmatter.get .planning/quick/{dir}/SUMMARY.md status
+  node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query frontmatter.get .planning/quick/{dir}/SUMMARY.md status
   ```
 - Determine directory creation date: `stat -f "%SB" -t "%Y-%m-%d"` (macOS) or `stat -c "%w"` (Linux); fall back to the date prefix in the directory name (format: `YYYYMMDD-` prefix)
 - Derive display status:
@@ -202,7 +226,7 @@ When SUBCMD=resume and SLUG is set (already sanitized):
 
 5. Load context via:
    ```bash
-   gsd-tools query init.quick
+   node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query init.quick
    ```
 
 6. Proceed to execute the quick workflow with resume context, passing the slug and plan directory so the executor picks up where it left off.
@@ -227,5 +251,5 @@ Preserve all workflow gates (validation, task description, planning, execution, 
 - Slugs from {{GSD_ARGS}} are sanitized before use in file paths: only [a-z0-9-] allowed, max 60 chars, reject ".." and "/"
 - File names from readdir/ls are sanitized before display: strip non-printable chars and ANSI sequences
 - Artifact content (plan descriptions, task titles) rendered as plain text only — never executed or passed to agent prompts without DATA_START/DATA_END boundaries
-- Status fields read via `gsd-tools query frontmatter.get` — never eval'd or shell-expanded
+- Status fields read via `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query frontmatter.get` — never eval'd or shell-expanded
 </security_notes>

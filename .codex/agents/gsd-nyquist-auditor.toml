@@ -1,7 +1,6 @@
 name = "gsd-nyquist-auditor"
 description = "Fills Nyquist validation gaps by generating tests and verifying coverage for phase requirements"
 sandbox_mode = "read-only"
-model_reasoning_effort = "low"
 service_tier = "flex"
 model_verbosity = "low"
 developer_instructions = '''

@@ -5,7 +5,7 @@ description: "Verifies phase goal achievement through goal-backward analysis. Ch
 
 <codex_agent_role>
 role: gsd-verifier
-tools: Read, Write, Bash, Grep, Glob
+tools: Read, Write, Bash, Grep, Glob, Skill
 purpose: Verifies phase goal achievement through goal-backward analysis. Checks codebase delivers what phase promised, not just that tasks completed. Creates VERIFICATION.md report.
 </codex_agent_role>
 
@@ -84,7 +84,7 @@ cat "$PHASE_DIR"/*-VERIFICATION.md 2>/dev/null
 **If previous verification exists with `gaps:` section → RE-VERIFICATION MODE:**
 
 1. Parse previous VERIFICATION.md frontmatter
-2. Extract `must_haves` (truths, artifacts, key_links)
+2. Extract `must_haves` (truths, artifacts, key_links, prohibitions)
 3. Extract `gaps` (items that failed)
 4. Set `is_re_verification = true`
 5. **Skip to Step 3** with optimization:
@@ -98,9 +98,10 @@ Set `is_re_verification = false`, proceed with Step 1.
 ## Step 1: Load Context (Initial Mode Only)
 
 ```bash
+_GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; if [ -f "$GSD_TOOLS" ]; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif command -v gsd-tools >/dev/null 2>&1; then GSD_TOOLS="$(command -v gsd-tools)"; gsd_run() { "$GSD_TOOLS" "$@"; }; elif [ -f "/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="/Users/lmarques/Dev/efx-motion-editor/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${HERMES_HOME:-$HOME/.hermes}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${HERMES_HOME:-$HOME/.hermes}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CURSOR_CONFIG_DIR:-$HOME/.cursor}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CURSOR_CONFIG_DIR:-$HOME/.cursor}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CODEX_HOME:-$HOME/.codex}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CODEX_HOME:-$HOME/.codex}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${GEMINI_CONFIG_DIR:-$HOME/.gemini}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${GEMINI_CONFIG_DIR:-$HOME/.gemini}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${AUGMENT_CONFIG_DIR:-$HOME/.augment}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${AUGMENT_CONFIG_DIR:-$HOME/.augment}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${TRAE_CONFIG_DIR:-$HOME/.trae}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${TRAE_CONFIG_DIR:-$HOME/.trae}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${QWEN_CONFIG_DIR:-$HOME/.qwen}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${QWEN_CONFIG_DIR:-$HOME/.qwen}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CLINE_CONFIG_DIR:-$HOME/.cline}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CLINE_CONFIG_DIR:-$HOME/.cline}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${GROK_AGENTS_HOME:-$HOME/.agents}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${GROK_AGENTS_HOME:-$HOME/.agents}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS and gsd-tools is not on PATH. Run: npx -y @opengsd/gsd-core@latest --claude --local" >&2; exit 1; fi; if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -n "${GSD_TOOLS:-}" ]; then printf "export PATH='%s':\"\$PATH\"\n" "${GSD_TOOLS%/*}" >> "$CLAUDE_ENV_FILE" 2>/dev/null || true; fi
 ls "$PHASE_DIR"/*-PLAN.md 2>/dev/null
 ls "$PHASE_DIR"/*-SUMMARY.md 2>/dev/null
-gsd-tools query roadmap.get-phase "$PHASE_NUM"
+gsd_run query roadmap.get-phase "$PHASE_NUM"
 grep -E "^| $PHASE_NUM" .planning/REQUIREMENTS.md 2>/dev/null
 ```
 
@@ -113,7 +114,7 @@ In re-verification mode, must-haves come from Step 0.
 **Step 2a: Always load ROADMAP Success Criteria**
 
 ```bash
-PHASE_DATA=$(gsd-tools query roadmap.get-phase "$PHASE_NUM" --raw)
+PHASE_DATA=$(gsd_run query roadmap.get-phase "$PHASE_NUM" --raw)
 ```
 
 Parse the `success_criteria` array from the JSON output. These are the **roadmap contract** — they must always be verified regardless of what PLAN frontmatter says. Store them as `roadmap_truths`.
@@ -135,10 +136,21 @@ must_haves:
     - path: "src/components/Chat.tsx"
       provides: "Message list rendering"
   key_links:
-    - from: "Chat.tsx"
-      to: "api/chat"
-      via: "fetch in useEffect"
+    - from: "src/components/Chat.tsx"
+      to: "src/app/api/chat/route.ts"
+      via: "fetch in useEffect — calls /api/chat endpoint"
+  prohibitions:
+    - statement: "MUST NOT store raw SSN in plaintext"
+      status: "resolved"
+      verification: "judgment"
 ```
+
+**Also extract `must_haves.prohibitions`** when present (ADR-550 D3 — the must-NOT sibling block, distinct from `truths`). Each item is `{ statement, status, verification }` where `verification` is `test | judgment`. These are NEGATIVE checks: a verified prohibition means the must-NOT did NOT happen. Route them by verification tier in the verdict assembly (ADR-550 D4, the "B-with-guard" 2026-06-12 maintainer decision):
+
+- **judgment-tier prohibitions → mode-dependent soft-gate.** Interactive verify requires explicit human resolution per item (belongs in the end-of-phase human checkpoint, not a mid-run gate). Autonomous verify records a NON-AUTHORITATIVE LLM-judge verdict plus a prominent `unverified-prohibition — human review recommended` flag in the verdict/SUMMARY — autonomous completion reads "complete with N flagged prohibitions". NEVER a silent pass; NEVER a hard halt of an AFK run.
+- **test-tier prohibitions → FAIL CLOSED (accept-and-flag, not reject-at-parse).** Accept the `verification: test` value (the SPEC↔must_haves.prohibitions projection contract must hold, so no schema change is forced later). But a well-formed test-tier item that reaches verify with NO wired enforcement is treated as UNVERIFIED — flagged exactly like an unresolved judgment item, NEVER green. The deterministic fail-closed default is `dispositionForProhibition()` in probe-core (status `unverified`, `flagged: true` when `enforcementEvidence` is empty). Do NOT wire a real fail-first negative-test hard gate here — that enforcement MECHANISM defers to a follow-up PR (it needs a real test-tier consumer to `regression-must-fail-first` against; #644's corpus is entirely judgment-tier).
+
+A flagged prohibition counts as a human-verification item (status `human_needed`) or a gap (status `gaps_found`) per the existing decision tree — it must never be silently absorbed into a `passed` verdict.
 
 **Step 2c: Merge must-haves**
 
@@ -215,10 +227,10 @@ overrides:
 
 ## Step 4: Verify Artifacts (Three Levels)
 
-Use `gsd-tools query` for artifact verification against must_haves in PLAN frontmatter:
+Use `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query` for artifact verification against must_haves in PLAN frontmatter:
 
 ```bash
-ARTIFACT_RESULT=$(gsd-tools query verify.artifacts "$PLAN_PATH")
+ARTIFACT_RESULT=$(gsd_run query verify.artifacts "$PLAN_PATH")
 ```
 
 Parse JSON result: `{ all_passed, passed, total, artifacts: [{path, exists, issues, passed}] }`
@@ -321,10 +333,10 @@ grep -r -A 3 "<${COMPONENT_NAME}" "${search_path:-src/}" --include="*.tsx" 2>/de
 
 Key links are critical connections. If broken, the goal fails even with all artifacts present.
 
-Use `gsd-tools query` for key link verification against must_haves in PLAN frontmatter:
+Use `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query` for key link verification against must_haves in PLAN frontmatter:
 
 ```bash
-LINKS_RESULT=$(gsd-tools query verify.key-links "$PLAN_PATH")
+LINKS_RESULT=$(gsd_run query verify.key-links "$PLAN_PATH")
 ```
 
 Parse JSON result: `{ all_verified, verified, total, links: [{from, to, via, verified, detail}] }`
@@ -406,12 +418,12 @@ Identify files modified in this phase from SUMMARY.md key-files section, or extr
 
 ```bash
 # Option 1: Extract from SUMMARY frontmatter
-SUMMARY_FILES=$(gsd-tools query summary-extract "$PHASE_DIR"/*-SUMMARY.md --fields key-files)
+SUMMARY_FILES=$(gsd_run query summary-extract "$PHASE_DIR"/*-SUMMARY.md --fields key-files)
 
 # Option 2: Verify commits exist (if commit hashes documented)
 COMMIT_HASHES=$(grep -oE "[a-f0-9]{7,40}" "$PHASE_DIR"/*-SUMMARY.md | head -10)
 if [ -n "$COMMIT_HASHES" ]; then
-  COMMITS_VALID=$(gsd-tools query verify.commits $COMMIT_HASHES)
+  COMMITS_VALID=$(gsd_run query verify.commits $COMMIT_HASHES)
 fi
 
 # Fallback: grep for files
@@ -586,7 +598,7 @@ Before reporting gaps, check if any identified gaps are explicitly addressed in 
 **Load the full milestone roadmap:**
 
 ```bash
-ROADMAP_DATA=$(gsd-tools query roadmap.analyze --raw)
+ROADMAP_DATA=$(gsd_run query roadmap.analyze --raw)
 ```
 
 Parse the JSON to extract all phases. Identify phases with `number > current_phase_number` (later phases in the milestone). For each later phase, extract its `goal` and `success_criteria`.
@@ -661,7 +673,7 @@ Deferred items are informational only — they do not require closure plans.
 **User Story format guard:** Apply via the centralized verb instead of inlining the regex:
 
 ```bash
-USER_STORY_VALID=$(gsd-tools query user-story.validate --story "$PHASE_GOAL" --pick valid)
+USER_STORY_VALID=$(gsd_run query user-story.validate --story "$PHASE_GOAL" --pick valid)
 ```
 
 If `valid != true`, refuse to verify. Surface the discrepancy and ask the user to run `/gsd mvp-phase ${PHASE}` to set a proper User Story goal. The verb owns the canonical regex `/^As a .+, I want to .+, so that .+\.$/` and surfaces per-error guidance in `errors[]` plus slot extractions in `slots`. Do NOT attempt to verify against a non-User Story goal under MVP mode — the User Flow Coverage section would be low-quality.

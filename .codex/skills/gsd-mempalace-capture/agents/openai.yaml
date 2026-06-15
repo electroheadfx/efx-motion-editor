@@ -1,0 +1,3 @@
+interface:
+  display_name: "mempalace capture"
+  short_description: "File a phase artifact into MemPalace; mirror decision facts into its temporal KG"

@@ -1,8 +1,8 @@
 ---
 name: "gsd-plan-review-convergence"
-description: "Cross-AI plan convergence loop — replan with review feedback until no HIGH concerns remain."
+description: "Cross-AI plan convergence - replan until review concerns are resolved."
 metadata:
-  short-description: "Cross-AI plan convergence loop — replan with review feedback until no HIGH concerns remain."
+  short-description: "Cross-AI plan convergence - replan until review concerns are resolved."
 ---
 
 <codex_skill_adapter>
@@ -37,7 +37,13 @@ Execute mode fallback:
 ## C. Task() → spawn_agent Mapping
 GSD workflows use `Task(...)` (Claude Code syntax). Translate to Codex collaboration tools:
 
-Direct mapping:
+**Schema detection (required first step):** Codex exposes two `spawn_agent` schemas:
+- **agent_type-capable schema** (e.g. `multi_agent_v2`): `spawn_agent` accepts `agent_type`, `message`, `reasoning_effort`, `fork_context`, etc. — typed GSD agent dispatch is available.
+- **Generic schema** (`multi_agent_v1`): `spawn_agent` accepts only `message`, `items`, `fork_context` — there is **no `agent_type` field**. Typed GSD agent dispatch is unavailable in this session.
+
+Before spawning, inspect the `spawn_agent` tool's visible parameter schema (via `tool_search` or the tool list) to determine which form is active.
+
+Typed mapping (agent_type-capable schema only):
 - `Task(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Agent(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Task(model="...")` → omit. `spawn_agent` has no inline `model` parameter;
@@ -53,6 +59,24 @@ Direct mapping:
   Codex `spawn_agent` does not create or bind a git worktree automatically.
   Workflows that require this isolation must fail closed or use an explicit
   manual worktree protocol before spawning (#3360).
+
+Generic-agent workaround (multi_agent_v1 schema — NO agent_type field):
+When only the generic `multi_agent_v1` schema is available, typed GSD agent dispatch
+(`gsd-planner`, `gsd-executor`, etc.) is NOT possible. This is a known Codex limitation
+(openai/codex#15250). **This workaround is NOT equivalent to typed gsd-planner/gsd-executor
+execution** — GSD agents carry project-aware prompts, audit logging, and workflow context
+that a generic subagent lacks. Use the following fallback:
+1. Resolve your active Codex config root — the directory that contains your `config.toml`.
+   This directory is determined in priority order: `$CODEX_HOME` (if set), the path given
+   by `--config-dir` (if passed on invocation), a local `.codex` directory in the current
+   project (if `--local` was used), or the default global config directory. Read
+   `agents/<agent-name>.toml` relative to that config root to extract the agent's system
+   instructions.
+2. Inject those instructions as a role-preamble into a generic `spawn_agent(message=...)` call.
+3. Label results and logs clearly as "generic-agent workaround" so the orchestrator and user
+   know full typed-agent guarantees are not in effect.
+4. Where typed dispatch is mandatory for correctness (e.g. worktree isolation), fail closed
+   and report the schema limitation rather than silently degrading.
 
 Spawn restriction:
 - Codex restricts `spawn_agent` to cases where the user has explicitly
@@ -72,13 +96,13 @@ Result parsing:
 
 <objective>
 Cross-AI plan convergence loop — an outer revision gate around gsd-review and gsd-planner.
-Repeatedly: review plans with external AI CLIs → if HIGH concerns found → replan with --reviews feedback → re-review. Stops when no HIGH concerns remain or max cycles reached.
+Repeatedly: review plans with external AI CLIs → if HIGH or actionable non-HIGH concerns remain → replan with --reviews feedback → re-review. Stops when no unresolved HIGH concerns or actionable MEDIUM/LOW findings remain outside PLAN.md, or when max cycles is reached.
 
-**Flow:** Skill("gsd-plan-phase") → Agent→Skill("gsd-review") → check HIGHs → Skill("gsd-plan-phase --reviews") → Agent→Skill("gsd-review") → ... → Converge or escalate
+**Flow:** Skill("gsd-plan-phase") → Agent→Skill("gsd-review") → check unresolved HIGH + actionable non-HIGH → Skill("gsd-plan-phase --reviews") → Agent→Skill("gsd-review") → ... → Converge or escalate
 
 Replaces gsd-plan-phase's internal gsd-plan-checker with external AI reviewers (codex, gemini, etc.). Plan-phase runs **inline** (bare Skill at depth 0) so it can spawn gsd-planner/gsd-plan-checker at depth 1. Review runs inside an isolated Agent (gsd-review is a Bash leaf — no sub-agents needed). Orchestrator only does loop control.
 
-**Orchestrator role:** Parse arguments, validate phase, run plan-phase inline (Skill at depth 0), spawn an Agent for gsd-review, check HIGHs, stall detection, escalation gate.
+**Orchestrator role:** Parse arguments, validate phase, run plan-phase inline (Skill at depth 0), spawn an Agent for gsd-review, check unresolved HIGH and actionable non-HIGH counts, stall detection, escalation gate.
 </objective>
 
 <execution_context>

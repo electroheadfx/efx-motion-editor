@@ -701,6 +701,7 @@ function reapOrphanWorktrees(repoRoot, deps = {}) {
     const readFileSafe = deps.readFileSafe || defaultReadFileSafe;
     const mtimeSafe = deps.mtimeSafe || defaultMtimeSafe;
     const reapMtimeGuardMs = deps.reapMtimeGuardMs !== undefined ? deps.reapMtimeGuardMs : REAP_MTIME_GUARD_MS;
+    const nowMs = deps.nowMs ?? Date.now();
     const results = [];
     // 1. Discover the .git/worktrees/ admin directory.
     const gitDir = execGit(['rev-parse', '--git-dir'], { cwd: repoRoot });
@@ -803,7 +804,7 @@ function reapOrphanWorktrees(repoRoot, deps = {}) {
         }
         // 4a. Stale-lock guard: skip if lock is too fresh (PID recycling / race).
         const lockMtime = mtimeSafe(lockedFile);
-        if (!lockMtime || Date.now() - lockMtime.getTime() < reapMtimeGuardMs) {
+        if (!lockMtime || nowMs - lockMtime.getTime() < reapMtimeGuardMs) {
             results.push({ path: worktreePath, status: 'skipped', reason: 'lock_too_fresh' });
             continue;
         }

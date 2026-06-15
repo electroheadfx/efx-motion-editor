@@ -182,10 +182,11 @@ function cmdInitExecutePhase(cwd, phase, raw, options = {}) {
         ? reqMatch[1].replace(/[\[\]]/g, '').split(',').map((s) => s.trim()).filter(Boolean).join(', ')
         : null;
     const phase_req_ids = reqExtracted && reqExtracted !== 'TBD' ? reqExtracted : null;
+    const wf = (config.workflow ?? {});
     const result = {
         executor_model: resolveModelInternal(cwd, 'gsd-executor'),
         verifier_model: resolveModelInternal(cwd, 'gsd-verifier'),
-        tdd_mode: options['tdd'] || config.tdd_mode || false,
+        tdd_mode: options['tdd'] || Boolean(wf['tdd_mode']) || false,
         commit_docs: config.commit_docs,
         sub_repos: config.sub_repos,
         parallelization: config.parallelization,
@@ -300,15 +301,16 @@ function cmdInitPlanPhase(cwd, phase, raw, options = {}) {
     const granularityOverride = options['granularity'];
     assertValidGranularityOverride(granularityOverride, error);
     const granularity = resolveGranularityInternal(cwd, 'planning', granularityOverride || undefined);
+    const wf = (config.workflow ?? {});
     const result = {
         researcher_model: resolveModelInternal(cwd, 'gsd-phase-researcher'),
         planner_model: resolveModelInternal(cwd, 'gsd-planner'),
         checker_model: resolveModelInternal(cwd, 'gsd-plan-checker'),
-        tdd_mode: options['tdd'] || config.tdd_mode || false,
+        tdd_mode: options['tdd'] || Boolean(wf['tdd_mode']) || false,
         granularity,
-        research_enabled: config.research,
+        research_enabled: wf['research'],
         plan_checker_enabled: config.plan_checker,
-        nyquist_validation_enabled: config.nyquist_validation,
+        nyquist_validation_enabled: wf['nyquist_validation'],
         commit_docs: config.commit_docs,
         text_mode: config.text_mode,
         auto_advance: !!(config.auto_advance),
@@ -507,12 +509,13 @@ function cmdInitNewMilestone(cwd, raw) {
     catch {
         /* intentionally empty */
     }
+    const wf = (config.workflow ?? {});
     const result = {
         researcher_model: resolveModelInternal(cwd, 'gsd-project-researcher'),
         synthesizer_model: resolveModelInternal(cwd, 'gsd-research-synthesizer'),
         roadmapper_model: resolveModelInternal(cwd, 'gsd-roadmapper'),
         commit_docs: config.commit_docs,
-        research_enabled: config.research,
+        research_enabled: wf['research'],
         current_milestone: milestone['version'],
         current_milestone_name: milestone['name'],
         latest_completed_milestone: latestCompleted?.version || null,
@@ -1530,7 +1533,9 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
     // It returns [] cheaply when no roots are configured, so the realpath cost only
     // occurs when the caller has actually set trusted_global_roots.
     const trustedGlobalRoots = (0, security_cjs_1.loadTrustedGlobalRoots)(config);
-    const validPaths = [];
+    // Each entry is either a filesystem include ({ kind: 'include', ref, display }) or a
+    // Skill-tool directive ({ kind: 'directive', name }) for plugin-provided namespaced skills.
+    const validEntries = [];
     for (const skillPath of skillPaths) {
         if (typeof skillPath !== 'string')
             continue;
@@ -1540,10 +1545,25 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
                 process.stderr.write(`[agent-skills] WARNING: "global:" prefix with empty skill name — skipping\n`);
                 continue;
             }
-            if (!/^[a-zA-Z0-9_-]+$/.test(skillName)) {
+            // Accept: one or more [A-Za-z0-9_-]+ segments joined by single colons.
+            // Rejects: empty segments (::), leading/trailing colon, dots, slashes, backslashes.
+            if (!/^[A-Za-z0-9_-]+(:[A-Za-z0-9_-]+)*$/.test(skillName)) {
                 process.stderr.write(`[agent-skills] WARNING: Invalid global skill name "${skillName}" — skipping\n`);
                 continue;
             }
+            const isNamespaced = skillName.includes(':');
+            if (isNamespaced) {
+                // Plugin-provided namespaced skill: no filesystem path exists locally.
+                if (runtime === 'claude') {
+                    // Emit a natural-language Skill-tool directive (not a @-include).
+                    validEntries.push({ kind: 'directive', name: skillName });
+                }
+                else {
+                    process.stderr.write(`[agent-skills] WARNING: Plugin-namespaced skill "global:${skillName}" requires a Skill-tool-capable runtime (claude) — skipping on runtime "${runtime}"\n`);
+                }
+                continue;
+            }
+            // Non-namespaced bare name: attempt filesystem resolution as before.
             if (globalSkillsBase === null) {
                 process.stderr.write(`[agent-skills] WARNING: Runtime "${runtime}" does not use a skills directory — "global:${skillName}" is not supported on this runtime\n`);
                 continue;
@@ -1567,7 +1587,7 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
                 }
                 process.stderr.write(`[agent-skills] NOTE: Global skill "${skillName}" accepted via trusted_global_roots (resolves outside the default skills dir)\n`);
             }
-            validPaths.push({ ref: `${globalSkillDir}/SKILL.md`, display: displayPath });
+            validEntries.push({ kind: 'include', ref: `${globalSkillDir}/SKILL.md`, display: displayPath });
             continue;
         }
         const pathCheck = (0, security_cjs_1.validatePath)(skillPath, projectRoot);
@@ -1580,11 +1600,16 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
             process.stderr.write(`[agent-skills] WARNING: Skill not found at "${skillPath}/SKILL.md" — skipping\n`);
             continue;
         }
-        validPaths.push({ ref: `${skillPath}/SKILL.md`, display: skillPath });
+        validEntries.push({ kind: 'include', ref: `${skillPath}/SKILL.md`, display: skillPath });
     }
-    if (validPaths.length === 0)
+    if (validEntries.length === 0)
         return '';
-    const lines = validPaths.map((p) => `- @${p.ref}`).join('\n');
+    const lines = validEntries.map((entry) => {
+        if (entry.kind === 'directive') {
+            return `- Load the \`${entry.name}\` skill via the Skill tool before proceeding (plugin-provided).`;
+        }
+        return `- @${entry.ref}`;
+    }).join('\n');
     return `<agent_skills>\nRead these user-configured skills:\n${lines}\n</agent_skills>`;
 }
 function cmdAgentSkills(cwd, agentType, raw, jsonMode) {
@@ -1718,16 +1743,22 @@ function buildSkillManifest(cwd, skillsDir = null) {
             roots.push(rootSummary);
             continue;
         }
-        let skillCount = 0;
-        for (const entry of entries) {
-            if (!entry.isDirectory())
-                continue;
-            const skillMdPath = node_path_1.default.join(rootPath, entry.name, 'SKILL.md');
-            const content = (0, shell_command_projection_cjs_1.platformReadSync)(skillMdPath);
-            if (content === null)
-                continue;
+        // Track skill names seen within this root to deduplicate dual-routed concretes
+        // (e.g. spec-phase nested under both gsd-ns-workflow and gsd-ns-manage).
+        const seenNamesInRoot = new Set();
+        function pushSkillEntry(
+        // relPath must use forward slashes on all platforms (manifest paths are
+        // posix-style for cross-platform stability; flat entries use template
+        // literals that always produce '/'; nested entries are joined below
+        // with explicit '/' separators rather than path.join).
+        relPath, content) {
             const frontmatter = extractFrontmatter(content);
-            const name = frontmatter['name'] || entry.name;
+            const dirPart = relPath.replace(/\/SKILL\.md$/, '');
+            const stem = dirPart.includes('/') ? dirPart.split('/').pop() : dirPart;
+            const name = frontmatter['name'] || stem;
+            if (seenNamesInRoot.has(name))
+                return false; // dedupe dual-routed concretes
+            seenNamesInRoot.add(name);
             const description = frontmatter['description'] || '';
             const triggers = [];
             const bodyMatch = content.match(/^---[\s\S]*?---\s*\n([\s\S]*)$/);
@@ -1746,14 +1777,54 @@ function buildSkillManifest(cwd, skillsDir = null) {
                 name,
                 description,
                 triggers,
-                path: entry.name,
-                file_path: `${entry.name}/SKILL.md`,
+                path: dirPart,
+                file_path: relPath,
                 root: rootInfo.root,
                 scope: rootInfo.scope,
                 installed: rootInfo.scope !== 'import-only',
                 deprecated: !!rootInfo.deprecated,
             });
-            skillCount++;
+            return true;
+        }
+        let skillCount = 0;
+        for (const entry of entries) {
+            if (!entry.isDirectory())
+                continue;
+            const skillMdPath = node_path_1.default.join(rootPath, entry.name, 'SKILL.md');
+            const content = (0, shell_command_projection_cjs_1.platformReadSync)(skillMdPath);
+            if (content !== null) {
+                if (pushSkillEntry(`${entry.name}/SKILL.md`, content))
+                    skillCount++;
+            }
+            // Nested layout: <entry>/skills/<stem>/SKILL.md
+            // Used by cline, qwen, hermes, augment, trae, antigravity (#69 nested=true).
+            // Descend exactly one level into <entry>/skills/ — no deeper recursion.
+            // Scope to gsd-ns-* routers only: never vacuum up an unrelated user skill
+            // that happens to have its own `skills/` subdirectory.
+            if (!entry.name.startsWith('gsd-ns-'))
+                continue;
+            const nestedSkillsDir = node_path_1.default.join(rootPath, entry.name, 'skills');
+            let nestedEntries = [];
+            try {
+                nestedEntries = node_fs_1.default.readdirSync(nestedSkillsDir, { withFileTypes: true });
+            }
+            catch {
+                // No skills/ subdir — flat layout or unreadable; nothing to do.
+                nestedEntries = [];
+            }
+            for (const nested of nestedEntries) {
+                if (!nested.isDirectory())
+                    continue;
+                const nestedSkillMd = node_path_1.default.join(nestedSkillsDir, nested.name, 'SKILL.md');
+                const nestedContent = (0, shell_command_projection_cjs_1.platformReadSync)(nestedSkillMd);
+                if (nestedContent === null)
+                    continue;
+                // Use forward-slash separator explicitly so manifest paths are posix-style
+                // on all platforms, matching the flat-layout behaviour above.
+                const relPath = `${entry.name}/skills/${nested.name}/SKILL.md`;
+                if (pushSkillEntry(relPath, nestedContent))
+                    skillCount++;
+            }
         }
         rootSummary.skill_count = skillCount;
         roots.push(rootSummary);

@@ -80,6 +80,10 @@ config_file = "/Users/lmarques/Dev/efx-motion-editor/.codex/agents/gsd-integrati
 description = "Analyzes codebase and writes structured intel files to .planning/intel/."
 config_file = "/Users/lmarques/Dev/efx-motion-editor/.codex/agents/gsd-intel-updater.toml"
 
+[agents.gsd-mempalace-curator]
+description = "Ship-time MemPalace curation — writes the session diary, proposes/creates cross-project tunnels, mirrors extract-learnings into the temporal KG, and runs wing-scoped drawer pruning. Spawned at ship:post by the mempalace capability."
+config_file = "/Users/lmarques/Dev/efx-motion-editor/.codex/agents/gsd-mempalace-curator.toml"
+
 [agents.gsd-nyquist-auditor]
 description = "Fills Nyquist validation gaps by generating tests and verifying coverage for phase requirements"
 config_file = "/Users/lmarques/Dev/efx-motion-editor/.codex/agents/gsd-nyquist-auditor.toml"

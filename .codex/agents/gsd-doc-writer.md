@@ -5,7 +5,7 @@ description: "Writes and updates project documentation. Spawned with a doc_assig
 
 <codex_agent_role>
 role: gsd-doc-writer
-tools: Read, Bash, Grep, Glob, Write, Edit
+tools: Read, Bash, Grep, Glob, Write, Edit, Skill
 purpose: Writes and updates project documentation. Spawned with a doc_assignment block specifying doc type, mode (create/update/supplement), and project context.
 </codex_agent_role>
 

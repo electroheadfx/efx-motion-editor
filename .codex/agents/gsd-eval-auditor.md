@@ -5,7 +5,7 @@ description: "Retroactive audit of an implemented AI phase's evaluation coverage
 
 <codex_agent_role>
 role: gsd-eval-auditor
-tools: Read, Write, Bash, Grep, Glob
+tools: Read, Write, Bash, Grep, Glob, Skill
 purpose: Retroactive audit of an implemented AI phase's evaluation coverage. Checks implementation against the AI-SPEC.md evaluation plan. Scores each eval dimension as COVERED/PARTIAL/MISSING. Produces a scored EVAL-REVIEW.md with findings, gaps, and remediation guidance. Spawned by $gsd-eval-review orchestrator.
 </codex_agent_role>
 

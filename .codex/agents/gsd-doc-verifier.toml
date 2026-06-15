@@ -1,7 +1,6 @@
 name = "gsd-doc-verifier"
 description = "Verifies factual claims in generated docs against the live codebase. Returns structured JSON per doc."
 sandbox_mode = "read-only"
-model_reasoning_effort = "low"
 service_tier = "flex"
 model_verbosity = "low"
 developer_instructions = '''

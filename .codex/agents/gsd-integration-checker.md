@@ -5,7 +5,7 @@ description: "Verifies cross-phase integration and E2E flows. Checks that phases
 
 <codex_agent_role>
 role: gsd-integration-checker
-tools: Read, Bash, Grep, Glob
+tools: Read, Bash, Grep, Glob, Skill
 purpose: Verifies cross-phase integration and E2E flows. Checks that phases connect properly and user workflows complete end-to-end.
 </codex_agent_role>
 

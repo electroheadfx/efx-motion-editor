@@ -24,6 +24,8 @@ const frontmatterMod = require("./frontmatter.cjs");
 const stateMod = require("./state.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- model-profiles.cjs is an export= CommonJS module
 const modelProfilesMod = require("./model-profiles.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- plan-scan.cjs is an export= CommonJS module
+const planScanMod = require("./plan-scan.cjs");
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 const package_identity_cjs_1 = require("./package-identity.cjs");
 const runtime_slash_cjs_1 = require("./runtime-slash.cjs");
@@ -121,6 +123,98 @@ function cmdVerifySummary(cwd, summaryPath, checkFileCount, raw) {
     const result = { passed, checks, errors };
     output(result, raw, passed ? 'passed' : 'failed');
 }
+/**
+ * Issue #429 — negative-grep comment-text echo gate.
+ * A literal that an acceptance criterion negative-greps for (grep -c 'LIT' file == 0)
+ * must not also appear verbatim inside an <action> body, or the executor's commit-time
+ * verify gate fails on the comment echo rather than a real regression. Conservative:
+ * errors only on a confidently-extracted QUOTED literal; ambiguous (bareword) → warning.
+ */
+function scanNegativeGrepCommentEcho(content) {
+    const errors = [];
+    const warnings = [];
+    // Normalize newlines; join backslash line-continuations so a verify command wrapped
+    // across lines (grep ... \ <newline> == 0) is still seen as one segment.
+    const text = (content || '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\\\n/g, ' ');
+    // 1. Allowlisted literals: <!-- planner-discipline-allow: LIT -->
+    const allow = new Set();
+    const allowRe = /<!--\s*planner-discipline-allow:\s*(.+?)\s*-->/g;
+    let am;
+    while ((am = allowRe.exec(text)) !== null)
+        allow.add(am[1]);
+    // Zero-equality comparison (the negative grep). The required leading whitespace
+    // before the operator distinguishes a shell comparison (`[ $c == 0 ]`, `... == 0`,
+    // always spaced) from an assignment (`VAR=0`, never spaced) and naturally excludes
+    // `>= 0`, `<= 0`, `!= 0`, `!== 0`, `=== 0`.
+    const zeroCmp = (s) => /\s==?\s*0\b/.test(s) || /-eq\s+0\b/.test(s) || /\bequals\s+0\b/.test(s);
+    // A grep invocation using a count flag (-c / -cF / -Fc / --count), capturing the
+    // search pattern (first quoted token, else first bareword) after a run of options.
+    // The options run lets `grep -c -F 'LIT'`, `grep -F -c 'LIT'`, `grep -c -e 'LIT'`
+    // and `grep --count 'LIT'` all resolve to the LIT pattern.
+    const countGrepRe = /grep((?:\s+-{1,2}[A-Za-z][A-Za-z-]*)+)\s+(?:'([^']*)'|"([^"]*)"|([^\s'"|>&;]+))/g;
+    const optsHaveCount = (opts) => /(?:^|\s)-[A-Za-z]*c[A-Za-z]*(?=\s|$)/.test(opts) || /--count\b/.test(opts);
+    // `grep -cv 'pat' == 0` counts NON-matching lines, so == 0 there asserts "all lines
+    // match" — a POSITIVE gate, not our negative gate. Skip inverted greps.
+    const optsHaveInvert = (opts) => /(?:^|\s)-[A-Za-z]*v[A-Za-z]*(?=\s|$)/.test(opts) || /--invert-match\b/.test(opts);
+    // Bareword sanity: a real grep target, not a stray operator/number/flag.
+    const plausibleBare = (s) => /[A-Za-z0-9_]/.test(s) && !/^[-=!<>0-9]+$/.test(s);
+    // 2. <action> text to scan, with negative-grep COMMAND SPANS removed (only the
+    //    command, not the whole line) so a pasted verify command does not self-flag
+    //    while a prose echo on the same line is still caught.
+    const cmdSpanRe = /grep(?:\s+-{1,2}[A-Za-z][A-Za-z-]*)+\s+(?:'[^']*'|"[^"]*"|[^\s'"|>&;]+)[^\n]*?(?:==|-eq|=)\s*0\b/g;
+    const actionZones = [];
+    const actionRe = /<action>([\s\S]*?)<\/action>/g;
+    let acm;
+    while ((acm = actionRe.exec(text)) !== null)
+        actionZones.push(acm[1]);
+    const scannableActionText = actionZones.map((zone) => zone.replace(cmdSpanRe, ' ')).join('\n');
+    // 3. Per shell SEGMENT (split lines on && / ||) extract count-grep literals and
+    //    check echoes. Per-segment splitting keeps a positive gate (`== 1`) from
+    //    poisoning a negative gate (`== 0`) sharing the same physical line.
+    const seenErr = new Set();
+    const seenWarn = new Set();
+    const segments = text.split('\n').flatMap((line) => line.split(/\s*(?:&&|\|\|)\s*/));
+    for (const seg of segments) {
+        if (!/grep(?:\s+-{1,2}[A-Za-z])/.test(seg) || !zeroCmp(seg))
+            continue;
+        countGrepRe.lastIndex = 0;
+        const quotedLits = [];
+        const bareLits = [];
+        let m;
+        while ((m = countGrepRe.exec(seg)) !== null) {
+            if (!optsHaveCount(m[1]) || optsHaveInvert(m[1]))
+                continue; // need count, not invert (-cv is positive)
+            if (m[2] !== undefined)
+                quotedLits.push(m[2]);
+            else if (m[3] !== undefined)
+                quotedLits.push(m[3]);
+            else if (m[4] !== undefined && plausibleBare(m[4]))
+                bareLits.push(m[4]);
+        }
+        for (const quoted of quotedLits) {
+            if (!quoted || allow.has(quoted) || seenErr.has(quoted))
+                continue;
+            if (scannableActionText.includes(quoted)) {
+                seenErr.add(quoted);
+                errors.push(`Plan body contains forbidden literal "${quoted}" in an <action> block, but an acceptance criterion negative-greps for it (grep -c ... == 0). Rephrase the literal by concept, remove it from the plan body, or add <!-- planner-discipline-allow: ${quoted} --> if it must legitimately appear.`);
+            }
+        }
+        if (quotedLits.length === 0) {
+            for (const bare of bareLits) {
+                if (allow.has(bare) || seenWarn.has(bare))
+                    continue;
+                if (scannableActionText.includes(bare)) {
+                    seenWarn.add(bare);
+                    warnings.push(`Possible comment-text echo (#429): negative-grep target "${bare}" is unquoted so its literal could not be extracted unambiguously, but it appears in an <action> block. Quote the grep literal and add an allowlist marker if the echo is intended, or rephrase by concept.`);
+                }
+            }
+        }
+    }
+    return { errors, warnings };
+}
 function cmdVerifyPlanStructure(cwd, filePath, raw) {
     if (!filePath) {
         error('file path required');
@@ -175,6 +269,9 @@ function cmdVerifyPlanStructure(cwd, filePath, raw) {
     if (hasCheckpoints && fm['autonomous'] !== 'false' && String(fm['autonomous']) !== 'false') {
         errors.push('Has checkpoint tasks but autonomous is not false');
     }
+    const echoScan = scanNegativeGrepCommentEcho(content);
+    errors.push(...echoScan.errors);
+    warnings.push(...echoScan.warnings);
     output({
         valid: errors.length === 0,
         errors,
@@ -355,6 +452,39 @@ function cmdVerifyArtifacts(cwd, planFilePath, raw) {
         artifacts: results,
     }, raw, passed === results.length ? 'valid' : 'invalid');
 }
+/**
+ * Returns a Set of file paths (relative to cwd) that are promised by plans in
+ * the same phase directory at a wave number >= minWave.
+ *
+ * Used by cmdVerifyKeyLinks to avoid hard-failing a missing `from:` file that
+ * is a planned future artifact (fix #1202).
+ */
+function collectPromisedFilesAtOrAfterWave(phaseDir, minWave) {
+    const promised = new Set();
+    const { planFiles } = planScanMod.scanPhasePlans(phaseDir);
+    for (const planFile of planFiles) {
+        const planFullPath = node_path_1.default.join(phaseDir, planFile);
+        const planContent = (0, shell_command_projection_cjs_1.platformReadSync)(planFullPath);
+        if (!planContent)
+            continue;
+        const fm = extractFrontmatter(planContent);
+        const waveRaw = fm['wave'];
+        const wave = typeof waveRaw === 'string' ? parseInt(waveRaw, 10) : (typeof waveRaw === 'number' ? waveRaw : NaN);
+        if (isNaN(wave) || wave < minWave)
+            continue;
+        const filesModified = fm['files_modified'];
+        if (!filesModified)
+            continue;
+        const files = Array.isArray(filesModified)
+            ? filesModified
+            : (typeof filesModified === 'string' ? [filesModified] : []);
+        for (const f of files) {
+            if (typeof f === 'string' && f.trim())
+                promised.add(f.trim());
+        }
+    }
+    return promised;
+}
 function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
     if (!planFilePath) {
         error('plan file path required');
@@ -370,7 +500,25 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
         output({ error: 'No must_haves.key_links found in frontmatter', path: planFilePath }, raw);
         return;
     }
+    // Derive the current plan's wave number and phase directory for wave-aware
+    // missing-file handling (fix #1202).
+    const currentFm = extractFrontmatter(content);
+    const currentWaveRaw = currentFm['wave'];
+    const currentWave = typeof currentWaveRaw === 'string'
+        ? parseInt(currentWaveRaw, 10)
+        : (typeof currentWaveRaw === 'number' ? currentWaveRaw : 1);
+    const phaseDir = node_path_1.default.dirname(fullPath);
+    // Collect files promised by plans at wave >= currentWave (lazy: computed once
+    // the first time a missing source is encountered).
+    let promisedFiles = null;
+    function getPromisedFiles() {
+        if (promisedFiles === null) {
+            promisedFiles = collectPromisedFilesAtOrAfterWave(phaseDir, isNaN(currentWave) ? 1 : currentWave);
+        }
+        return promisedFiles;
+    }
     const results = [];
+    let pendingCount = 0;
     for (const link of keyLinks) {
         if (typeof link === 'string')
             continue;
@@ -381,9 +529,20 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
             verified: false,
             detail: '',
         };
-        const sourceContent = (0, shell_command_projection_cjs_1.platformReadSync)(node_path_1.default.join(cwd, link['from'] || ''));
+        const fromPath = link['from'] || '';
+        const sourceContent = (0, shell_command_projection_cjs_1.platformReadSync)(node_path_1.default.join(cwd, fromPath));
         if (!sourceContent) {
-            check['detail'] = 'Source file not found';
+            // Check if the missing file is promised by a plan at the same or later wave.
+            const promised = getPromisedFiles();
+            const isPromised = fromPath.trim() !== '' && promised.has(fromPath.trim());
+            if (isPromised) {
+                check['pending'] = true;
+                check['detail'] = 'Source file not yet created — declared in files_modified of a same-or-later-wave plan';
+                pendingCount++;
+            }
+            else {
+                check['detail'] = 'Source file not found (from: must be a relative file path; describe components/endpoints in via:)';
+            }
         }
         else if (link['pattern']) {
             try {
@@ -419,12 +578,17 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
         results.push(check);
     }
     const verified = results.filter((r) => r['verified']).length;
+    // A pending link (from: file promised by a same-or-later-wave plan) is not a
+    // hard failure — it should not count against the all_verified gate (#1202).
+    const hardFailed = results.filter((r) => !r['verified'] && !r['pending']).length;
+    const allVerified = hardFailed === 0;
     output({
-        all_verified: verified === results.length,
+        all_verified: allVerified,
         verified,
+        pending: pendingCount,
         total: results.length,
         links: results,
-    }, raw, verified === results.length ? 'valid' : 'invalid');
+    }, raw, allVerified ? 'valid' : 'invalid');
 }
 function listMilestoneArchiveDirs(planBase) {
     const milestonesDir = node_path_1.default.join(planBase, 'milestones');
@@ -825,6 +989,12 @@ function cmdValidateHealth(cwd, options, raw) {
         if (!agentStatus.agents_installed) {
             if ((agentStatus.installed_agents).length === 0) {
                 addIssue('warning', 'W010', `No GSD agents found in ${agentStatus.agents_dir} — Task(subagent_type="gsd-*") will fall back to general-purpose`, `Run the GSD installer: npx ${package_identity_cjs_1.PACKAGE_NAME}@latest`);
+            }
+            else if ((agentStatus.incomplete_agents).length > 0 && (agentStatus.missing_agents).length === 0) {
+                addIssue('warning', 'W010', `Incomplete agent installs (missing generated file): ${(agentStatus.incomplete_agents).join(', ')} — affected workflows may fall back to general-purpose`, `Re-run the GSD installer to complete the install: npx ${package_identity_cjs_1.PACKAGE_NAME}@latest`);
+            }
+            else if ((agentStatus.incomplete_agents).length > 0) {
+                addIssue('warning', 'W010', `Missing ${(agentStatus.missing_agents).length} GSD agents: ${(agentStatus.missing_agents).join(', ')}; incomplete agent installs (missing generated file): ${(agentStatus.incomplete_agents).join(', ')} — affected workflows will fall back to general-purpose`, `Run the GSD installer: npx ${package_identity_cjs_1.PACKAGE_NAME}@latest`);
             }
             else {
                 addIssue('warning', 'W010', `Missing ${(agentStatus.missing_agents).length} GSD agents: ${(agentStatus.missing_agents).join(', ')} — affected workflows will fall back to general-purpose`, `Run the GSD installer: npx ${package_identity_cjs_1.PACKAGE_NAME}@latest`);
@@ -1239,6 +1409,7 @@ function cmdValidateAgents(cwd, raw) {
         agents_found: agentStatus.agents_installed,
         installed: agentStatus.installed_agents,
         missing: agentStatus.missing_agents,
+        incomplete: agentStatus.incomplete_agents,
         expected,
     }, raw);
 }
@@ -1250,7 +1421,7 @@ function cmdVerifySchemaDrift(cwd, phaseArg, skipFlag, raw) {
     const pDir = planningDir(cwd);
     const phasesDir = node_path_1.default.join(pDir, 'phases');
     if (!node_fs_1.default.existsSync(phasesDir)) {
-        output({ drift_detected: false, blocking: false, message: 'No phases directory' }, raw);
+        output({ block: false, drift_detected: false, blocking: false, message: 'No phases directory' }, raw);
         return;
     }
     let phaseDir = null;
@@ -1267,7 +1438,7 @@ function cmdVerifySchemaDrift(cwd, phaseArg, skipFlag, raw) {
             phaseDir = exact;
     }
     if (!phaseDir) {
-        output({ drift_detected: false, blocking: false, message: `Phase directory not found: ${phaseArg}` }, raw);
+        output({ block: false, drift_detected: false, blocking: false, message: `Phase directory not found: ${phaseArg}` }, raw);
         return;
     }
     const allFiles = [];
@@ -1290,14 +1461,20 @@ function cmdVerifySchemaDrift(cwd, phaseArg, skipFlag, raw) {
         executionLog += '\n' + gitLog.stdout;
     }
     const result = (0, schema_detect_cjs_1.checkSchemaDrift)(allFiles, executionLog, { skipCheck: !!skipFlag });
+    const isSkipped = !!result['skipped'];
     output({
+        // Uniform gate contract: `block` = true means "this gate's bad condition is met".
+        // When skipCheck is true (GSD_SKIP_SCHEMA_CHECK=true), the gate is bypassed —
+        // block must be false regardless of whether drift was detected.
+        // drift_detected and blocking are kept for compatibility.
+        block: isSkipped ? false : !!result['driftDetected'],
         drift_detected: result['driftDetected'],
         blocking: result['blocking'],
         schema_files: result['schemaFiles'],
         orms: result['orms'],
         unpushed_orms: result['unpushedOrms'],
         message: result['message'],
-        skipped: result['skipped'] || false,
+        skipped: isSkipped,
     }, raw);
 }
 function cmdVerifyCodebaseDrift(cwd, raw) {
@@ -1310,6 +1487,8 @@ function cmdVerifyCodebaseDrift(cwd, raw) {
         const structurePath = node_path_1.default.join(codebaseDir, 'STRUCTURE.md');
         if (!node_fs_1.default.existsSync(structurePath)) {
             emit({
+                // Uniform gate contract: block = action_required (false when skipped).
+                block: false,
                 skipped: true,
                 reason: 'no-structure-md',
                 action_required: false,
@@ -1324,6 +1503,7 @@ function cmdVerifyCodebaseDrift(cwd, raw) {
         }
         catch (err) {
             emit({
+                block: false,
                 skipped: true,
                 reason: 'cannot-read-structure-md: ' + (err instanceof Error ? err.message : String(err)),
                 action_required: false,
@@ -1336,6 +1516,7 @@ function cmdVerifyCodebaseDrift(cwd, raw) {
         const revProbe = (0, shell_command_projection_cjs_1.execGit)(['rev-parse', 'HEAD'], { cwd });
         if (revProbe.exitCode !== 0) {
             emit({
+                block: false,
                 skipped: true,
                 reason: 'not-a-git-repo',
                 action_required: false,
@@ -1357,6 +1538,7 @@ function cmdVerifyCodebaseDrift(cwd, raw) {
         const diff = (0, shell_command_projection_cjs_1.execGit)(['diff', '--name-status', base, 'HEAD'], { cwd });
         if (diff.exitCode !== 0) {
             emit({
+                block: false,
                 skipped: true,
                 reason: 'git-diff-failed',
                 action_required: false,
@@ -1398,10 +1580,13 @@ function cmdVerifyCodebaseDrift(cwd, raw) {
             action,
             runtime: (0, runtime_slash_cjs_1.resolveRuntime)(cwd),
         });
+        const actionRequired = !!driftResult['actionRequired'];
         emit({
+            // Uniform gate contract: block = action_required.
+            block: actionRequired,
             skipped: !!driftResult['skipped'],
             reason: driftResult['reason'] || null,
-            action_required: !!driftResult['actionRequired'],
+            action_required: actionRequired,
             directive: driftResult['directive'],
             spawn_mapper: !!driftResult['spawnMapper'],
             affected_paths: driftResult['affectedPaths'] || [],
@@ -1414,6 +1599,7 @@ function cmdVerifyCodebaseDrift(cwd, raw) {
     }
     catch (err) {
         emit({
+            block: false,
             skipped: true,
             reason: 'exception: ' + (err && err instanceof Error ? err.message : String(err)),
             action_required: false,
@@ -1423,6 +1609,7 @@ function cmdVerifyCodebaseDrift(cwd, raw) {
     }
 }
 module.exports = {
+    scanNegativeGrepCommentEcho,
     cmdVerifySummary,
     cmdVerifyPlanStructure,
     cmdVerifyPhaseCompleteness,

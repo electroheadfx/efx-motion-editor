@@ -37,7 +37,13 @@ Execute mode fallback:
 ## C. Task() → spawn_agent Mapping
 GSD workflows use `Task(...)` (Claude Code syntax). Translate to Codex collaboration tools:
 
-Direct mapping:
+**Schema detection (required first step):** Codex exposes two `spawn_agent` schemas:
+- **agent_type-capable schema** (e.g. `multi_agent_v2`): `spawn_agent` accepts `agent_type`, `message`, `reasoning_effort`, `fork_context`, etc. — typed GSD agent dispatch is available.
+- **Generic schema** (`multi_agent_v1`): `spawn_agent` accepts only `message`, `items`, `fork_context` — there is **no `agent_type` field**. Typed GSD agent dispatch is unavailable in this session.
+
+Before spawning, inspect the `spawn_agent` tool's visible parameter schema (via `tool_search` or the tool list) to determine which form is active.
+
+Typed mapping (agent_type-capable schema only):
 - `Task(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Agent(subagent_type="X", prompt="Y")` → `spawn_agent(agent_type="X", message="Y")`
 - `Task(model="...")` → omit. `spawn_agent` has no inline `model` parameter;
@@ -53,6 +59,24 @@ Direct mapping:
   Codex `spawn_agent` does not create or bind a git worktree automatically.
   Workflows that require this isolation must fail closed or use an explicit
   manual worktree protocol before spawning (#3360).
+
+Generic-agent workaround (multi_agent_v1 schema — NO agent_type field):
+When only the generic `multi_agent_v1` schema is available, typed GSD agent dispatch
+(`gsd-planner`, `gsd-executor`, etc.) is NOT possible. This is a known Codex limitation
+(openai/codex#15250). **This workaround is NOT equivalent to typed gsd-planner/gsd-executor
+execution** — GSD agents carry project-aware prompts, audit logging, and workflow context
+that a generic subagent lacks. Use the following fallback:
+1. Resolve your active Codex config root — the directory that contains your `config.toml`.
+   This directory is determined in priority order: `$CODEX_HOME` (if set), the path given
+   by `--config-dir` (if passed on invocation), a local `.codex` directory in the current
+   project (if `--local` was used), or the default global config directory. Read
+   `agents/<agent-name>.toml` relative to that config root to extract the agent's system
+   instructions.
+2. Inject those instructions as a role-preamble into a generic `spawn_agent(message=...)` call.
+3. Label results and logs clearly as "generic-agent workaround" so the orchestrator and user
+   know full typed-agent guarantees are not in effect.
+4. Where typed dispatch is mandatory for correctness (e.g. worktree isolation), fail closed
+   and report the schema limitation rather than silently degrading.
 
 Spawn restriction:
 - Codex restricts `spawn_agent` to cases where the user has explicitly
@@ -97,8 +121,12 @@ Parse the first token of {{GSD_ARGS}}:
 
 ## list / status
 
-Call `listSurface(runtimeConfigDir, manifest, CLUSTERS)` from
-`gsd-core/bin/lib/surface.cjs`. Display:
+Load the capability registry and call `listSurface(runtimeConfigDir, manifest, CLUSTERS, registry)` from
+`gsd-core/bin/lib/surface.cjs`. The registry is loaded via:
+```js
+const registry = require('gsd-core/bin/lib/capability-registry.cjs');
+```
+Display:
 
 ```
 Enabled (N skills, ~T tokens):
@@ -128,8 +156,9 @@ Install profile: standard  (from .gsd-profile)
 3. `writeSurface(runtimeConfigDir, surfaceState)`.
 4. Resolve and re-apply:
    ```js
+   const registry = require('gsd-core/bin/lib/capability-registry.cjs');
    const layout = resolveRuntimeArtifactLayout(runtime, runtimeConfigDir, scope);
-   applySurface(runtimeConfigDir, layout, manifest, CLUSTERS);
+   applySurface(runtimeConfigDir, layout, manifest, CLUSTERS, registry);
    ```
 5. Confirm: "Surface updated to profile `<name>`. N skills enabled."
 
@@ -145,8 +174,9 @@ Valid cluster names: `core_loop`, `audit_review`, `milestone`, `research_ideate`
 3. Add cluster to `surfaceState.disabledClusters` (deduplicate).
 4. `writeSurface` → resolve layout → `applySurface`:
    ```js
+   const registry = require('gsd-core/bin/lib/capability-registry.cjs');
    const layout = resolveRuntimeArtifactLayout(runtime, runtimeConfigDir, scope);
-   applySurface(runtimeConfigDir, layout, manifest, CLUSTERS);
+   applySurface(runtimeConfigDir, layout, manifest, CLUSTERS, registry);
    ```
 5. Confirm: "Disabled cluster `<cluster>`. N skills removed from surface."
 
@@ -158,8 +188,9 @@ Valid cluster names: `core_loop`, `audit_review`, `milestone`, `research_ideate`
 2. Remove cluster from `surfaceState.disabledClusters`.
 3. `writeSurface` → resolve layout → `applySurface`:
    ```js
+   const registry = require('gsd-core/bin/lib/capability-registry.cjs');
    const layout = resolveRuntimeArtifactLayout(runtime, runtimeConfigDir, scope);
-   applySurface(runtimeConfigDir, layout, manifest, CLUSTERS);
+   applySurface(runtimeConfigDir, layout, manifest, CLUSTERS, registry);
    ```
 4. Confirm: "Enabled cluster `<cluster>`. N skills added back to surface."
 

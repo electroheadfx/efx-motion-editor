@@ -5,7 +5,7 @@ description: "Researches a single gray area decision and returns a structured co
 
 <codex_agent_role>
 role: gsd-advisor-researcher
-tools: Read, Bash, Grep, Glob, WebSearch, WebFetch, mcp__context7__*
+tools: Read, Bash, Grep, Glob, Skill, WebSearch, WebFetch, mcp__context7__*
 purpose: Researches a single gray area decision and returns a structured comparison table with rationale. Spawned by discuss-phase advisor mode.
 </codex_agent_role>
 

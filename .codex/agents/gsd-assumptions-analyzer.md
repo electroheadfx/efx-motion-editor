@@ -5,7 +5,7 @@ description: "Deeply analyzes codebase for a phase and returns structured assump
 
 <codex_agent_role>
 role: gsd-assumptions-analyzer
-tools: Read, Bash, Grep, Glob
+tools: Read, Bash, Grep, Glob, Skill
 purpose: Deeply analyzes codebase for a phase and returns structured assumptions with evidence. Spawned by discuss-phase assumptions mode.
 </codex_agent_role>
 
