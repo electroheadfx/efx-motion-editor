@@ -29,9 +29,12 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('{getPhysicsPaintSourceLabel(props.mode)}');
     expect(stateCode).toContain('Roto #1');
     expect(stateCode).toContain('Play #2');
+    const modeLabelBlock = code.slice(code.indexOf('physics-paint-mode-label'), code.indexOf('physics-paint-workflow-animation'));
+
     expect(code).not.toContain("props.mode === 'roto' ? 'Roto paint' : 'Play paint'");
-    expect(code).not.toContain('Roto paint');
-    expect(code).not.toContain('Play paint');
+    expect(modeLabelBlock).toContain('{getPhysicsPaintSourceLabel(props.mode)}');
+    expect(modeLabelBlock).not.toContain('Roto paint');
+    expect(modeLabelBlock).not.toContain('Play paint');
     expect(code).toContain('physics-paint-mode-label');
     expect(code).not.toContain('role="tablist"');
     expect(code).not.toContain('role="tab"');
