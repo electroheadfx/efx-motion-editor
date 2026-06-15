@@ -423,8 +423,8 @@ export class TimelineRenderer {
     ctx.roundRect(trackLeft, barY, trackRight - trackLeft, barH, 3);
     ctx.clip();
 
-    const rangeH = Math.max(4, Math.min(7, Math.round(barH * 0.34)));
-    const rangeY = barY + Math.round((barH - rangeH) / 2);
+    const rangeH = Math.max(10, Math.min(14, Math.round(barH * 0.7)));
+    const rangeY = barY + barH - rangeH - 2;
     const centerY = rangeY + rangeH / 2;
     const endpointRadius = Math.max(2.5, Math.min(4, rangeH * 0.58));
 
@@ -468,7 +468,7 @@ export class TimelineRenderer {
         ctx.font = '600 10px system-ui, sans-serif';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = marker.active ? '#FFFFFF' : 'rgba(255, 255, 255, 0.72)';
-        ctx.fillText(this.truncateText(ctx, label, labelMaxW), labelX, barY + barH / 2);
+        ctx.fillText(this.truncateText(ctx, label, labelMaxW), labelX, centerY);
       }
     }
 
@@ -590,7 +590,7 @@ export class TimelineRenderer {
         const barNameMaxW = clippedRight - barNameX - 4;
         if (barNameMaxW > 10) {
           const barName = this.truncateText(ctx, getTimelinePhysicsPaintBarLabel(fxTrack), barNameMaxW);
-          ctx.fillText(barName, barNameX, barY + barH / 2);
+          ctx.fillText(barName, barNameX, barY + 6);
         }
       }
 

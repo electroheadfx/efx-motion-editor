@@ -142,9 +142,11 @@ describe('TimelineRenderer play script marker source contract', () => {
     expect(markerDrawSource).toContain('marker.active');
     expect(markerDrawSource).toContain('colors.accent');
     expect(markerDrawSource).toContain('rgba(255, 255, 255, 0.38)');
+    expect(markerDrawSource).toContain('Math.max(10, Math.min(14, Math.round(barH * 0.7)))');
+    expect(markerDrawSource).toContain('const rangeY = barY + barH - rangeH - 2');
     expect(markerDrawSource).toContain('getTimelinePlayScriptLabel(index)');
     expect(markerDrawSource).toContain("ctx.font = '600 10px system-ui, sans-serif'");
-    expect(markerDrawSource).toContain('ctx.fillText(this.truncateText(ctx, label, labelMaxW)');
+    expect(markerDrawSource).toContain('ctx.fillText(this.truncateText(ctx, label, labelMaxW), labelX, centerY)');
     expect(markerDrawSource).toContain('Math.max(markerX, barX, TRACK_HEADER_WIDTH)');
     expect(markerDrawSource).toContain('Math.min(markerX + markerW, barX + barW, canvasWidth)');
   });
@@ -156,6 +158,7 @@ describe('TimelineRenderer play script marker source contract', () => {
     expect(fxTrackSource).toContain("fxTrack.layerType === 'physic-paint'");
     expect(fxTrackSource).toContain('this.drawPhysicPaintPlayScriptMarkers');
     expect(fxTrackSource).toContain("ctx.font = '600 10px system-ui, sans-serif'");
+    expect(fxTrackSource).toContain('ctx.fillText(barName, barNameX, barY + 6)');
     expect(code).not.toContain('document.createElement');
     expect(code).not.toContain('play-script-row');
   });
