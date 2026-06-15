@@ -1,6 +1,5 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
-
-export type PhysicsPaintApplyStatus = 'idle' | 'applying' | 'success' | 'error';
+import { getPhysicsPaintEngineStatusTone, type PhysicsPaintApplyStatus } from './physicsPaintWorkflowState';
 
 export interface PhysicsPaintTopBarProps {
   brushSize: number;
@@ -12,14 +11,11 @@ export interface PhysicsPaintTopBarProps {
   error?: string | null;
   applyStatus?: PhysicsPaintApplyStatus;
   applyMessage?: string | null;
-  devExportEnabled?: boolean;
-  devExportBusy?: boolean;
   onBrushSizeChange: (value: number) => void;
   onOpacityChange: (value: number) => void;
   onBackgroundChange: (mode: BgMode) => void;
   onPaperGrainChange: (key: string) => void;
   onGrainStrengthChange: (value: number) => void;
-  onExportDebugProof?: () => void;
 }
 
 const PAPER_TEXTURES = {
@@ -108,17 +104,14 @@ export function PhysicsPaintTopBar({
   error,
   applyStatus = 'idle',
   applyMessage,
-  devExportEnabled = false,
-  devExportBusy = false,
   onBrushSizeChange,
   onOpacityChange,
   onBackgroundChange,
   onPaperGrainChange,
   onGrainStrengthChange,
-  onExportDebugProof,
 }: PhysicsPaintTopBarProps) {
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
-  const statusTone = error || applyStatus === 'error' ? 'error' : ready ? 'ready' : 'not-ready';
+  const statusTone = getPhysicsPaintEngineStatusTone({ ready, error, applyStatus });
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -187,11 +180,6 @@ export function PhysicsPaintTopBar({
         {applyStatus === 'applying' ? <span class="physics-paint-apply-copy applying">Applying...</span> : null}
         {applyMessage ? <span class={`physics-paint-apply-copy ${applyStatus}`}>{applyMessage}</span> : null}
         {error ? <span class="physics-paint-apply-copy error">{error}</span> : null}
-        {devExportEnabled ? (
-          <button type="button" class="physics-paint-text-button physics-paint-dev-export" disabled={devExportBusy || !onExportDebugProof} onClick={onExportDebugProof}>
-            Export PNGs + manifest
-          </button>
-        ) : null}
       </div>
     </header>
   );

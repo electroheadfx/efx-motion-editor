@@ -30,6 +30,9 @@ export interface PhysicsPaintRightPanelProps {
   onEraseStrengthChange: (value: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
   onPlayWiggleChange: (wiggle: PhysicsPaintPlayWiggleSettings) => void;
+  devExportEnabled?: boolean;
+  devExportBusy?: boolean;
+  onExportDebugProof?: () => void;
   onSaveState: () => void;
   onLoadState: (event: Event) => void;
 }
@@ -108,12 +111,16 @@ export function PhysicsPaintRightPanel({
   onEraseStrengthChange,
   onOnionChange,
   onPlayWiggleChange,
+  devExportEnabled = false,
+  devExportBusy = false,
+  onExportDebugProof,
   onSaveState,
   onLoadState,
 }: PhysicsPaintRightPanelProps) {
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
+  const [colorTab, setColorTab] = useState<'brush' | 'log'>('brush');
   const [optionsTab, setOptionsTab] = useState<'tool' | 'onion' | 'motion'>('tool');
   const previousColorRef = useRef(color);
   const colorBoxRef = useRef<HTMLCanvasElement>(null);
@@ -131,6 +138,10 @@ export function PhysicsPaintRightPanel({
     previousColorRef.current = color;
     setHexInput(color);
   }, [color]);
+
+  useEffect(() => {
+    if (!devExportEnabled && colorTab === 'log') setColorTab('brush');
+  }, [colorTab, devExportEnabled]);
 
   const currentRgb = useMemo(() => hexToRgba(color), [color]);
   const currentHex = useMemo(() => rgbaToHex(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
@@ -222,86 +233,107 @@ export function PhysicsPaintRightPanel({
         <div class="physics-paint-options-tabs physics-paint-single-tab" role="tablist" aria-label="Brush color panel">
           <button
             type="button"
-            class="physics-paint-options-tab physics-paint-tab-brush active"
+            class={`physics-paint-options-tab physics-paint-tab-brush ${colorTab === 'brush' ? 'active' : ''}`}
             role="tab"
-            aria-selected="true"
+            aria-selected={colorTab === 'brush'}
+            onClick={() => setColorTab('brush')}
           >
             BRUSH COLOR
           </button>
+          {devExportEnabled ? (
+            <button
+              type="button"
+              class={`physics-paint-options-tab physics-paint-tab-log ${colorTab === 'log' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={colorTab === 'log'}
+              onClick={() => setColorTab('log')}
+            >
+              LOG
+            </button>
+          ) : null}
         </div>
-        <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel" role="tabpanel" aria-label="Brush color">
-          <div class="physics-paint-color-picker" aria-label="Brush color picker">
-            <canvas
-              ref={colorBoxRef}
-              width={232}
-              height={160}
-              class="physics-paint-color-box"
-              onPointerDown={(event) => {
-                draggingColorBox.current = true;
-                (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-                handleColorBoxPointer(event as unknown as PointerEvent);
-              }}
-              onPointerMove={(event) => draggingColorBox.current && handleColorBoxPointer(event as unknown as PointerEvent)}
-              onPointerUp={() => { draggingColorBox.current = false; }}
-            />
-            <span
-              class="physics-paint-color-cursor"
-              style={{ left: `${currentHsv.s * 100}%`, top: `${(1 - currentHsv.v) * 100}%`, backgroundColor: currentHex }}
-            />
-          </div>
-
-        <div
-          ref={hueRef}
-          class="physics-paint-hue-strip"
-          aria-label="Brush hue"
-          onPointerDown={(event) => {
-            draggingHue.current = true;
-            (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-            handleHuePointer(event as unknown as PointerEvent);
-          }}
-          onPointerMove={(event) => draggingHue.current && handleHuePointer(event as unknown as PointerEvent)}
-          onPointerUp={() => { draggingHue.current = false; }}
-        >
-          <span class="physics-paint-hue-cursor" style={{ left: `${currentHsv.h * 100}%` }} />
-        </div>
-
-        <div class="physics-paint-color-input-row">
-          <input
-            type="color"
-            class="physics-paint-color-chip"
-            value={currentHex}
-            aria-label="Brush color"
-            onInput={(event) => commitColor((event.target as HTMLInputElement).value)}
-          />
-          <input
-            type="text"
-            class="physics-paint-hex-input"
-            value={hexInput}
-            aria-label="Brush color hex value"
-            placeholder="#103c65"
-            onInput={(event) => setHexInput((event.target as HTMLInputElement).value)}
-            onBlur={() => commitColor(hexInput)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') commitColor(hexInput);
-            }}
-          />
-          <button type="button" class="physics-paint-text-button physics-paint-add-swatch" onClick={addFavorite}>+</button>
-        </div>
-
-          <div class="physics-paint-swatch-grid" aria-label="Color palette">
-            {swatches.map((swatch) => (
-              <button
-                key={swatch}
-                type="button"
-                class="physics-paint-swatch"
-                style={{ backgroundColor: swatch }}
-                title={swatch}
-                aria-label={`Use ${swatch}`}
-                onClick={() => commitColor(swatch)}
+        {colorTab === 'brush' ? (
+          <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel" role="tabpanel" aria-label="Brush color">
+            <div class="physics-paint-color-picker" aria-label="Brush color picker">
+              <canvas
+                ref={colorBoxRef}
+                width={232}
+                height={160}
+                class="physics-paint-color-box"
+                onPointerDown={(event) => {
+                  draggingColorBox.current = true;
+                  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+                  handleColorBoxPointer(event as unknown as PointerEvent);
+                }}
+                onPointerMove={(event) => draggingColorBox.current && handleColorBoxPointer(event as unknown as PointerEvent)}
+                onPointerUp={() => { draggingColorBox.current = false; }}
               />
-            ))}
+              <span
+                class="physics-paint-color-cursor"
+                style={{ left: `${currentHsv.s * 100}%`, top: `${(1 - currentHsv.v) * 100}%`, backgroundColor: currentHex }}
+              />
+            </div>
+
+            <div
+              ref={hueRef}
+              class="physics-paint-hue-strip"
+              aria-label="Brush hue"
+              onPointerDown={(event) => {
+                draggingHue.current = true;
+                (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+                handleHuePointer(event as unknown as PointerEvent);
+              }}
+              onPointerMove={(event) => draggingHue.current && handleHuePointer(event as unknown as PointerEvent)}
+              onPointerUp={() => { draggingHue.current = false; }}
+            >
+              <span class="physics-paint-hue-cursor" style={{ left: `${currentHsv.h * 100}%` }} />
+            </div>
+
+            <div class="physics-paint-color-input-row">
+              <input
+                type="color"
+                class="physics-paint-color-chip"
+                value={currentHex}
+                aria-label="Brush color"
+                onInput={(event) => commitColor((event.target as HTMLInputElement).value)}
+              />
+              <input
+                type="text"
+                class="physics-paint-hex-input"
+                value={hexInput}
+                aria-label="Brush color hex value"
+                placeholder="#103c65"
+                onInput={(event) => setHexInput((event.target as HTMLInputElement).value)}
+                onBlur={() => commitColor(hexInput)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') commitColor(hexInput);
+                }}
+              />
+              <button type="button" class="physics-paint-text-button physics-paint-add-swatch" onClick={addFavorite}>+</button>
+            </div>
+
+            <div class="physics-paint-swatch-grid" aria-label="Color palette">
+              {swatches.map((swatch) => (
+                <button
+                  key={swatch}
+                  type="button"
+                  class="physics-paint-swatch"
+                  style={{ backgroundColor: swatch }}
+                  title={swatch}
+                  aria-label={`Use ${swatch}`}
+                  onClick={() => commitColor(swatch)}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        ) : devExportEnabled ? (
+          <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel physics-paint-log-tab-panel" role="tabpanel" aria-label="Dev log">
+            <span class="physics-paint-right-label">Dev log</span>
+            <button type="button" class="physics-paint-text-button physics-paint-dev-export" disabled={devExportBusy || !onExportDebugProof} onClick={onExportDebugProof}>
+              Export PNGs + manifest
+            </button>
+          </div>
+        ) : null}
       </section>
 
       <section class="physics-paint-right-section physics-paint-options-tabs-section">

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
@@ -9,8 +10,12 @@ const motionCanvas =
   typeof motionCanvasModule === 'function'
     ? motionCanvasModule
     : (motionCanvasModule as any).default;
+const packageJson = JSON.parse(readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8')) as { version: string };
 
 export default defineConfig({
+  define: {
+    'import.meta.env.PACKAGE_VERSION': JSON.stringify(packageJson.version),
+  },
   plugins: [
     // Preact preset MUST come first to set default JSX runtime to Preact
     preact(),

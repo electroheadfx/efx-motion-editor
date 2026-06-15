@@ -1,6 +1,6 @@
 [package]
 name = "efx-motion-editor"
-version = "0.1.0"
+version = "0.8.0"
 description = "EFX Motion Editor"
 authors = ["EFX Lab"]
 edition = "2021"

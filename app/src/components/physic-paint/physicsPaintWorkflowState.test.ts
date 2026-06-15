@@ -4,6 +4,7 @@ import {
   clampOnionCount,
   clampOnionOpacity,
   getActivePrimaryActionLabel,
+  getPhysicsPaintEngineStatusTone,
   getPlayRangeMarker,
   getPreviewFps,
   isPhysicsPaintDevExportEnabled,
@@ -62,10 +63,20 @@ describe('physicsPaintWorkflowState', () => {
     expect(getPlayRangeMarker(10, 0, 10).frameCount).toBe(1);
   });
 
-  it('gates dev/debug export to Vite dev mode only (D-18, D-19)', () => {
-    expect(isPhysicsPaintDevExportEnabled({ DEV: true })).toBe(true);
-    expect(isPhysicsPaintDevExportEnabled({ MODE: 'development' })).toBe(true);
-    expect(isPhysicsPaintDevExportEnabled({ DEV: false, MODE: 'production' })).toBe(false);
+  it('keeps the engine status tone ready across non-error apply states', () => {
+    expect(getPhysicsPaintEngineStatusTone({ ready: true })).toBe('ready');
+    expect(getPhysicsPaintEngineStatusTone({ ready: true, applyStatus: 'applying' })).toBe('ready');
+    expect(getPhysicsPaintEngineStatusTone({ ready: true, applyStatus: 'success' })).toBe('ready');
+    expect(getPhysicsPaintEngineStatusTone({ ready: true, applyStatus: 'error' })).toBe('ready');
+    expect(getPhysicsPaintEngineStatusTone({ ready: true, error: 'Apply failed' })).toBe('ready');
+    expect(getPhysicsPaintEngineStatusTone({ ready: false })).toBe('not-ready');
+    expect(getPhysicsPaintEngineStatusTone({ ready: false, error: 'Engine failed' })).toBe('error');
+  });
+
+  it('gates dev/debug export to Tauri dev mode only (D-18, D-19)', () => {
+    expect(isPhysicsPaintDevExportEnabled({ DEV: true, MODE: 'development', TAURI_ENV_PLATFORM: 'darwin' })).toBe(true);
+    expect(isPhysicsPaintDevExportEnabled({ DEV: true, MODE: 'development' })).toBe(false);
+    expect(isPhysicsPaintDevExportEnabled({ DEV: false, MODE: 'production', TAURI_ENV_PLATFORM: 'darwin' })).toBe(false);
     expect(isPhysicsPaintDevExportEnabled({})).toBe(false);
   });
 

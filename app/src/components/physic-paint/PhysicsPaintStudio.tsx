@@ -755,7 +755,7 @@ export function PhysicsPaintStudio() {
   const updatePlayFrameCount = useCallback((frameCount: number) => {
     const limit = launchContext?.maxPlayFrameCount;
     const safeFrameCount = Math.min(clampPhysicPaintFrameCount(frameCount), limit ?? Number.POSITIVE_INFINITY);
-    if (limit !== undefined && frameCount > limit) showPlayLimitToast(launchContext.maxPlayFrameCountReason ?? `Play duration limited to ${limit} frames.`);
+    if (limit !== undefined && frameCount > limit) showPlayLimitToast(launchContext?.maxPlayFrameCountReason ?? `Play duration limited to ${limit} frames.`);
     setFramesToApply(safeFrameCount);
     if (workflowMode !== 'play') return;
     setCachedPlayPreviewUrl(null);
@@ -1558,14 +1558,11 @@ export function PhysicsPaintStudio() {
           error={lastError}
           applyStatus={applyStatus}
           applyMessage={applyMessage}
-          devExportEnabled={isPhysicsPaintDevExportEnabled(import.meta.env)}
-          devExportBusy={applyStatus === 'applying'}
           onBrushSizeChange={setBrushSize}
           onOpacityChange={setBrushOpacity}
           onBackgroundChange={setBackground}
           onPaperGrainChange={setPaperGrain}
           onGrainStrengthChange={setGrainStrength}
-          onExportDebugProof={exportDebugProof}
         />
 
         <PhysicsPaintToolRail
@@ -1650,6 +1647,9 @@ export function PhysicsPaintStudio() {
               onion={onion}
               onionDisabled={isPlaying}
               playWiggle={playWiggle}
+              devExportEnabled={isPhysicsPaintDevExportEnabled(import.meta.env)}
+              devExportBusy={applyStatus === 'applying'}
+              onExportDebugProof={exportDebugProof}
               onColorChange={setBrushColor}
               onEdgeDetailChange={setEdgeDetail}
               onPickupChange={setPickup}

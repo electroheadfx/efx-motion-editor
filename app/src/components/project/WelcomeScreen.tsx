@@ -10,6 +10,8 @@ interface RecentProjectEntry extends RecentProject {
   available: boolean;
 }
 
+const appVersion = import.meta.env.PACKAGE_VERSION;
+
 const featurePills = [
   {label: 'Multi-layer FX', color: 'var(--color-accent)'},
   {label: 'Audio Sync', color: 'var(--color-dot-purple)'},
@@ -331,7 +333,7 @@ export function WelcomeScreen() {
         {/* Version info */}
         <div class="flex items-center gap-2 w-[340px] rounded-lg bg-(--color-bg-card) p-3 px-4">
           <span class="text-[10px] text-(--color-text-dim)">
-            EFX Motion Editor v0.1.0
+            EFX Motion Editor v{appVersion}
           </span>
         </div>
       </div>

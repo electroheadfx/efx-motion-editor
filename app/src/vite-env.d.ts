@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  readonly PACKAGE_VERSION: string;
+}
+
 interface Window {
   __TAURI_INTERNALS__?: Record<string, unknown>;
 }
