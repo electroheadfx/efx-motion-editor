@@ -21,27 +21,19 @@ const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'TimelineRen
 const source = () => readFileSync(sourcePath, 'utf8');
 
 describe('TimelineRenderer play script marker geometry', () => {
-  it('labels physics paint FX bars by editable source instead of repeating the layer name', async () => {
-    const { getTimelinePhysicsPaintBarLabel } = await import('./TimelineRenderer');
+  it('labels the physics paint bar as Roto and each Play script marker independently', async () => {
+    const { getTimelinePhysicsPaintBarLabel, getTimelinePlayScriptLabel } = await import('./TimelineRenderer');
 
     expect(getTimelinePhysicsPaintBarLabel({
       layerType: 'physic-paint',
       sequenceName: 'Physic Paint',
-      playScriptMarkers: [],
     })).toBe('Roto #1');
-    expect(getTimelinePhysicsPaintBarLabel({
-      layerType: 'physic-paint',
-      sequenceName: 'Physic Paint',
-      playScriptMarkers: [
-        { id: 'play-0', startFrame: 0, frameCount: 5, active: false },
-        { id: 'play-8', startFrame: 8, frameCount: 16, active: true },
-      ],
-    })).toBe('Play #3');
     expect(getTimelinePhysicsPaintBarLabel({
       layerType: 'paint',
       sequenceName: 'Paint',
-      playScriptMarkers: undefined,
     })).toBe('Paint');
+    expect(getTimelinePlayScriptLabel(0)).toBe('Play #2');
+    expect(getTimelinePlayScriptLabel(1)).toBe('Play #3');
   });
 
   it('maps marker frame range through timeline zoom and scroll math', async () => {
@@ -142,7 +134,7 @@ describe('TimelineRenderer play script marker source contract', () => {
   it('draws nested polished marker ranges with endpoints and active/subdued styles', () => {
     const code = source();
     const markerDrawIndex = code.indexOf('drawPhysicPaintPlayScriptMarkers');
-    const markerDrawSource = code.slice(markerDrawIndex, markerDrawIndex + 2600);
+    const markerDrawSource = code.slice(markerDrawIndex, markerDrawIndex + 3600);
 
     expect(markerDrawIndex).toBeGreaterThan(-1);
     expect(markerDrawSource).toContain('ctx.roundRect');
@@ -150,6 +142,8 @@ describe('TimelineRenderer play script marker source contract', () => {
     expect(markerDrawSource).toContain('marker.active');
     expect(markerDrawSource).toContain('colors.accent');
     expect(markerDrawSource).toContain('rgba(255, 255, 255, 0.38)');
+    expect(markerDrawSource).toContain('getTimelinePlayScriptLabel(index)');
+    expect(markerDrawSource).toContain('ctx.fillText(this.truncateText(ctx, label, labelMaxW)');
     expect(markerDrawSource).toContain('Math.max(markerX, barX, TRACK_HEADER_WIDTH)');
     expect(markerDrawSource).toContain('Math.min(markerX + markerW, barX + barW, canvasWidth)');
   });

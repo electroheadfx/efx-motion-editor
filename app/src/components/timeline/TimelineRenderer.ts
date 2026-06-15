@@ -31,10 +31,12 @@ export function getTimelinePlayScriptMarkerGeometry(
   };
 }
 
-export function getTimelinePhysicsPaintBarLabel(fxTrack: Pick<FxTrackLayout, 'layerType' | 'sequenceName' | 'playScriptMarkers'>): string {
-  if (fxTrack.layerType !== 'physic-paint') return fxTrack.sequenceName;
-  const activePlayIndex = fxTrack.playScriptMarkers?.findIndex(marker => marker.active) ?? -1;
-  return activePlayIndex >= 0 ? `Play #${activePlayIndex + 2}` : 'Roto #1';
+export function getTimelinePhysicsPaintBarLabel(fxTrack: Pick<FxTrackLayout, 'layerType' | 'sequenceName'>): string {
+  return fxTrack.layerType === 'physic-paint' ? 'Roto #1' : fxTrack.sequenceName;
+}
+
+export function getTimelinePlayScriptLabel(index: number): string {
+  return `Play #${index + 2}`;
 }
 
 // Functional colors -- stay hardcoded (high-visibility, theme-independent)
@@ -426,7 +428,7 @@ export class TimelineRenderer {
     const centerY = rangeY + rangeH / 2;
     const endpointRadius = Math.max(2.5, Math.min(4, rangeH * 0.58));
 
-    for (const marker of markers) {
+    for (const [index, marker] of markers.entries()) {
       if (marker.frameCount <= 0) continue;
       const { x: markerX, width: markerW } = getTimelinePlayScriptMarkerGeometry(marker, frameWidth, scrollX);
       const clippedLeft = Math.max(markerX, barX, TRACK_HEADER_WIDTH);
@@ -457,6 +459,16 @@ export class TimelineRenderer {
         ctx.strokeStyle = outline;
         ctx.lineWidth = 1;
         ctx.stroke();
+      }
+
+      const label = getTimelinePlayScriptLabel(index);
+      const labelX = Math.max(clippedLeft + 4, markerX + 4, trackLeft + 4);
+      const labelMaxW = clippedRight - labelX - 4;
+      if (labelMaxW >= 18) {
+        ctx.font = '8px system-ui, sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = marker.active ? '#FFFFFF' : 'rgba(255, 255, 255, 0.72)';
+        ctx.fillText(this.truncateText(ctx, label, labelMaxW), labelX, barY + barH / 2);
       }
     }
 
