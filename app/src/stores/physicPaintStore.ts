@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
 
 let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
@@ -18,6 +18,8 @@ type PhysicPaintMceOutput = {
   play_frame_count?: number;
   editable_source?: PhysicPaintWorkflowMetadata['editableSource'];
   play_motion?: PhysicPaintPlayMotionSettings;
+  roto_cache_metadata?: PhysicPaintRotoCacheFrame[];
+  roto_interpolation_settings?: PhysicPaintRotoInterpolationSettings;
 };
 
 type PhysicPaintMceOutputInput = PhysicPaintMceOutput & {
@@ -32,6 +34,8 @@ const _frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
 const _editableStates = new Map<string, SerializedProject>();
 const _workflowMetadata = new Map<string, PhysicPaintWorkflowMetadata>();
 const _playScriptRanges = new Map<string, PhysicPaintPlayScriptRange[]>();
+const _rotoCacheMetadata = new Map<string, Map<number, PhysicPaintRotoCacheFrame>>();
+const _rotoInterpolationSettings = new Map<string, PhysicPaintRotoInterpolationSettings>();
 let _serializationRevision = 0;
 let _cachedSerializationRevision = -1;
 let _cachedMceOutputs: PhysicPaintMceOutput[] = [];
@@ -47,6 +51,29 @@ function _getOrCreateLayer(layerId: string): Map<number, PhysicPaintRenderedFram
     _frames.set(layerId, layerFrames);
   }
   return layerFrames;
+}
+
+function _getOrCreateRotoMetadata(layerId: string): Map<number, PhysicPaintRotoCacheFrame> {
+  let metadata = _rotoCacheMetadata.get(layerId);
+  if (!metadata) {
+    metadata = new Map();
+    _rotoCacheMetadata.set(layerId, metadata);
+  }
+  return metadata;
+}
+
+function _cloneRotoInterpolationSettings(settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRotoInterpolationSettings {
+  return { ...settings };
+}
+
+function _makeRotoCacheFrame(renderedFrame: PhysicPaintRenderedFrame, appFrame: number, source: PhysicPaintRotoCacheFrame['source'], nearestRealKeyFrame?: number, backgroundOnly?: boolean): PhysicPaintRotoCacheFrame {
+  return {
+    ...renderedFrame,
+    appFrame,
+    source,
+    ...(nearestRealKeyFrame !== undefined ? { nearestRealKeyFrame } : {}),
+    ...(backgroundOnly !== undefined ? { backgroundOnly } : {}),
+  };
 }
 
 function _notifyVisualChange(): void {
@@ -311,12 +338,80 @@ export const physicPaintStore = {
     return new Map(_frames.get(layerId) ?? []);
   },
 
+  getRotoCacheFrames(layerId: string): PhysicPaintRotoCacheFrame[] {
+    const metadata = _rotoCacheMetadata.get(layerId);
+    if (!metadata) return [];
+    return Array.from(metadata.values()).sort((a, b) => a.appFrame - b.appFrame).map(frame => ({ ...frame }));
+  },
+
+  getRealRotoKeyFrames(layerId: string): number[] {
+    return this.getRotoCacheFrames(layerId)
+      .filter(frame => frame.source === 'real-key')
+      .map(frame => frame.appFrame);
+  },
+
+  upsertRealRotoKeyFrame(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame): void {
+    if (!Number.isInteger(frame) || frame < 0) return;
+    const normalizedFrame = { ...renderedFrame, appFrame: frame };
+    _getOrCreateLayer(layerId).set(frame, normalizedFrame);
+    _getOrCreateRotoMetadata(layerId).set(frame, _makeRotoCacheFrame(normalizedFrame, frame, 'real-key'));
+    _workflowMetadata.set(layerId, { workflowMode: 'roto', editableSource: 'roto' });
+    _notifyVisualChange();
+  },
+
+  removeRealRotoKeyFrame(layerId: string, frame: number): boolean {
+    if (!Number.isInteger(frame) || frame < 0) return false;
+    const metadata = _rotoCacheMetadata.get(layerId);
+    if (metadata?.get(frame)?.source !== 'real-key') return false;
+    const layerFrames = _frames.get(layerId);
+    layerFrames?.delete(frame);
+    if (layerFrames?.size === 0) _frames.delete(layerId);
+    metadata.delete(frame);
+    if (metadata.size === 0) _rotoCacheMetadata.delete(layerId);
+    _notifyVisualChange();
+    return true;
+  },
+
+  replaceGeneratedRotoCache(layerId: string, frames: PhysicPaintRotoCacheFrame[], settings: PhysicPaintRotoInterpolationSettings): boolean {
+    if (!isPhysicPaintRotoInterpolationSettings(settings)) return false;
+    if (!frames.every(isPhysicPaintRotoCacheFrame)) return false;
+    const layerFrames = _getOrCreateLayer(layerId);
+    const metadata = _getOrCreateRotoMetadata(layerId);
+    for (const frame of Array.from(metadata.values())) {
+      if (frame.source !== 'generated-interpolation') continue;
+      layerFrames.delete(frame.appFrame);
+      metadata.delete(frame.appFrame);
+    }
+    for (const frame of frames) {
+      const normalizedFrame = { ...frame, appFrame: frame.appFrame };
+      layerFrames.set(frame.appFrame, normalizedFrame);
+      metadata.set(frame.appFrame, normalizedFrame);
+    }
+    if (layerFrames.size === 0) _frames.delete(layerId);
+    if (metadata.size === 0) _rotoCacheMetadata.delete(layerId);
+    _rotoInterpolationSettings.set(layerId, _cloneRotoInterpolationSettings(settings));
+    _notifyVisualChange();
+    return true;
+  },
+
+  getRotoInterpolationSettings(layerId: string): PhysicPaintRotoInterpolationSettings | null {
+    const settings = _rotoInterpolationSettings.get(layerId);
+    return settings ? _cloneRotoInterpolationSettings(settings) : null;
+  },
+
+  setRotoInterpolationSettings(layerId: string, settings: PhysicPaintRotoInterpolationSettings): boolean {
+    if (!isPhysicPaintRotoInterpolationSettings(settings)) return false;
+    _rotoInterpolationSettings.set(layerId, _cloneRotoInterpolationSettings(settings));
+    _notifyVisualChange();
+    return true;
+  },
+
   toMceOutputs(): PhysicPaintMceOutput[] {
     if (_cachedSerializationRevision === _serializationRevision) {
       return _cachedMceOutputs;
     }
 
-    const layerIds = new Set([..._frames.keys(), ..._editableStates.keys(), ..._workflowMetadata.keys(), ..._playScriptRanges.keys()]);
+    const layerIds = new Set([..._frames.keys(), ..._editableStates.keys(), ..._workflowMetadata.keys(), ..._playScriptRanges.keys(), ..._rotoCacheMetadata.keys(), ..._rotoInterpolationSettings.keys()]);
     const outputs = Array.from(layerIds)
       .map((layerId) => {
         const frames = _frames.get(layerId) ?? new Map<number, PhysicPaintRenderedFrame>();
@@ -327,10 +422,12 @@ export const physicPaintStore = {
             .map(([frame, renderedFrame]) => ({ ...renderedFrame, appFrame: frame })),
           ...(_editableStates.has(layerId) ? { editable_state: structuredClone(_editableStates.get(layerId)!) } : {}),
           ...(_playScriptRanges.has(layerId) ? { play_script_ranges: _cloneRanges(_playScriptRanges.get(layerId)!) } : {}),
+          ...(_rotoCacheMetadata.has(layerId) ? { roto_cache_metadata: Array.from(_rotoCacheMetadata.get(layerId)!.values()).sort((a, b) => a.appFrame - b.appFrame).map(frame => ({ ...frame })) } : {}),
+          ...(_rotoInterpolationSettings.has(layerId) ? { roto_interpolation_settings: _cloneRotoInterpolationSettings(_rotoInterpolationSettings.get(layerId)!) } : {}),
           ..._metadataToMce(_workflowMetadata.get(layerId)),
         };
       })
-      .filter(output => output.frames.length > 0 || output.editable_state || output.workflow_mode || output.play_script_ranges);
+      .filter(output => output.frames.length > 0 || output.editable_state || output.workflow_mode || output.play_script_ranges || output.roto_cache_metadata || output.roto_interpolation_settings);
 
     _cachedMceOutputs = outputs;
     _cachedSerializationRevision = _serializationRevision;
@@ -342,6 +439,8 @@ export const physicPaintStore = {
     _editableStates.clear();
     _workflowMetadata.clear();
     _playScriptRanges.clear();
+    _rotoCacheMetadata.clear();
+    _rotoInterpolationSettings.clear();
     for (const output of outputs ?? []) {
       if (!output || typeof output.layer_id !== 'string' || !Array.isArray(output.frames)) continue;
       const layerFrames = _getOrCreateLayer(output.layer_id);
@@ -354,6 +453,18 @@ export const physicPaintStore = {
       if (output.editable_state) _editableStates.set(output.layer_id, structuredClone(output.editable_state));
       const playScriptRanges = normalizePhysicPaintPlayScriptRanges(output.play_script_ranges);
       if (playScriptRanges) _playScriptRanges.set(output.layer_id, playScriptRanges);
+      if (Array.isArray(output.roto_cache_metadata)) {
+        const metadata = new Map<number, PhysicPaintRotoCacheFrame>();
+        for (const frame of output.roto_cache_metadata) {
+          if (!isPhysicPaintRotoCacheFrame(frame)) continue;
+          if (!layerFrames.has(frame.appFrame)) continue;
+          metadata.set(frame.appFrame, { ...frame });
+        }
+        if (metadata.size > 0) _rotoCacheMetadata.set(output.layer_id, metadata);
+      }
+      if (isPhysicPaintRotoInterpolationSettings(output.roto_interpolation_settings)) {
+        _rotoInterpolationSettings.set(output.layer_id, _cloneRotoInterpolationSettings(output.roto_interpolation_settings));
+      }
       const metadata = _metadataFromMce(output);
       if (metadata) _workflowMetadata.set(output.layer_id, metadata);
     }
@@ -393,8 +504,7 @@ export const physicPaintStore = {
     }
 
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
-    _workflowMetadata.set(payload.layerId, { workflowMode: 'roto', editableSource: 'roto' });
-    this.setFrame(payload.layerId, payload.startFrame, payload.renderedFrame);
+    this.upsertRealRotoKeyFrame(payload.layerId, payload.startFrame, payload.renderedFrame);
     return {
       operationId: payload.operationId,
       kind: payload.kind,
@@ -513,20 +623,24 @@ export const physicPaintStore = {
   },
 
   clearLayer(layerId: string): void {
-    if (!_frames.has(layerId) && !_editableStates.has(layerId) && !_workflowMetadata.has(layerId) && !_playScriptRanges.has(layerId)) return;
+    if (!_frames.has(layerId) && !_editableStates.has(layerId) && !_workflowMetadata.has(layerId) && !_playScriptRanges.has(layerId) && !_rotoCacheMetadata.has(layerId) && !_rotoInterpolationSettings.has(layerId)) return;
     _frames.delete(layerId);
     _editableStates.delete(layerId);
     _workflowMetadata.delete(layerId);
     _playScriptRanges.delete(layerId);
+    _rotoCacheMetadata.delete(layerId);
+    _rotoInterpolationSettings.delete(layerId);
     _notifyVisualChange();
   },
 
   reset(): void {
-    if (_frames.size === 0 && _editableStates.size === 0 && _workflowMetadata.size === 0 && _playScriptRanges.size === 0) return;
+    if (_frames.size === 0 && _editableStates.size === 0 && _workflowMetadata.size === 0 && _playScriptRanges.size === 0 && _rotoCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0) return;
     _frames.clear();
     _editableStates.clear();
     _workflowMetadata.clear();
     _playScriptRanges.clear();
+    _rotoCacheMetadata.clear();
+    _rotoInterpolationSettings.clear();
     _notifyVisualChange();
   },
 
