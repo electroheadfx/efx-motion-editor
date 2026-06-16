@@ -6,6 +6,8 @@ import {
   isPhysicPaintApplyPayload,
   isPhysicPaintFrameSyncMessage,
   isPhysicPaintLaunchContext,
+  isPhysicPaintRotoCacheFrame,
+  isPhysicPaintRotoInterpolationSettings,
   normalizePhysicPaintPlayScriptRanges,
 } from './physicPaint';
 
@@ -71,6 +73,43 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, maxPlayFrameCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, maxPlayFrameCountReason: 12 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, cachedPlayFrames: [{ ...renderedFrame, dataUrl: 'bad' }] })).toBe(false);
+  });
+
+  it('accepts launch contexts with cached Roto frame summaries', () => {
+    expect(isPhysicPaintLaunchContext({
+      operationId: 'op-1',
+      layerId: 'layer-1',
+      startFrame: 0,
+      cachedRotoFrames: [{ frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,a', source: 'real-key' }],
+    })).toBe(true);
+
+    expect(isPhysicPaintLaunchContext({
+      operationId: 'op-1',
+      layerId: 'layer-1',
+      startFrame: 0,
+      cachedRotoFrames: [{ frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,a', source: 'generated-interpolation', nearestRealKeyFrame: 0, backgroundOnly: true }],
+    })).toBe(true);
+
+    expect(isPhysicPaintLaunchContext({
+      operationId: 'op-1',
+      layerId: 'layer-1',
+      startFrame: 0,
+      cachedRotoFrames: [{ frameIndex: 0, appFrame: 0, dataUrl: 'data:text/plain;base64,a', source: 'real-key' }],
+    })).toBe(false);
+  });
+
+  it('validates Roto interpolation settings and rejects invalid counts', () => {
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenFrameCount: 2, mode: 'blend', deform: 10, position: 20 })).toBe(true);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: false, inBetweenFrameCount: 0, mode: 'duplicate', deform: 0, position: 0 })).toBe(true);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenFrameCount: 1.5, mode: 'blend', deform: 10, position: 20 })).toBe(false);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenFrameCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1, mode: 'blend', deform: 10, position: 20 })).toBe(false);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenFrameCount: 2, mode: 'warp', deform: 10, position: 20 })).toBe(false);
+  });
+
+  it('validates generated Roto cache frames separately from real keys', () => {
+    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'generated-interpolation', nearestRealKeyFrame: 2 })).toBe(true);
+    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'generated-interpolation', nearestRealKeyFrame: -1 })).toBe(false);
+    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'preview' })).toBe(false);
   });
 
   it('normalizes sorted non-overlapping saved Play script ranges', () => {
