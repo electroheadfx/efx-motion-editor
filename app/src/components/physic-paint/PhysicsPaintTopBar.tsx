@@ -1,5 +1,5 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
-import { getPhysicsPaintEngineStatusTone, type PhysicsPaintApplyStatus } from './physicsPaintWorkflowState';
+import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowState';
 
 export interface PhysicsPaintTopBarProps {
   brushSize: number;
@@ -8,9 +8,6 @@ export interface PhysicsPaintTopBarProps {
   paperGrain: string;
   grainStrength: number;
   ready: boolean;
-  error?: string | null;
-  applyStatus?: PhysicsPaintApplyStatus;
-  applyMessage?: string | null;
   onBrushSizeChange: (value: number) => void;
   onOpacityChange: (value: number) => void;
   onBackgroundChange: (mode: BgMode) => void;
@@ -101,9 +98,6 @@ export function PhysicsPaintTopBar({
   paperGrain,
   grainStrength,
   ready,
-  error,
-  applyStatus = 'idle',
-  applyMessage,
   onBrushSizeChange,
   onOpacityChange,
   onBackgroundChange,
@@ -111,7 +105,7 @@ export function PhysicsPaintTopBar({
   onGrainStrengthChange,
 }: PhysicsPaintTopBarProps) {
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
-  const statusTone = getPhysicsPaintEngineStatusTone({ ready, error, applyStatus });
+  const statusTone = getPhysicsPaintEngineStatusTone({ ready });
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -176,11 +170,6 @@ export function PhysicsPaintTopBar({
         </div>
       </div>
 
-      <div class="physics-paint-topbar-meta">
-        {applyStatus === 'applying' ? <span class="physics-paint-apply-copy applying">Applying...</span> : null}
-        {applyMessage ? <span class={`physics-paint-apply-copy ${applyStatus}`}>{applyMessage}</span> : null}
-        {error ? <span class="physics-paint-apply-copy error">{error}</span> : null}
-      </div>
     </header>
   );
 }

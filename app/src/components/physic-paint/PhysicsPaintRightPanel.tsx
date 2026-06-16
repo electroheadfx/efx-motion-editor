@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { ToolType } from '@efxlab/efx-physic-paint';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../lib/colorUtils';
 import { loadFavoriteColors, loadRecentColors, saveFavoriteColors } from '../../lib/paintPreferences';
-import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from './physicsPaintWorkflowState';
+import { clampOnionCount, clampOnionOpacity, type PhysicsPaintApplyStatus, type PhysicsPaintOnionState } from './physicsPaintWorkflowState';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
@@ -32,6 +32,9 @@ export interface PhysicsPaintRightPanelProps {
   onPlayWiggleChange: (wiggle: PhysicsPaintPlayWiggleSettings) => void;
   devExportEnabled?: boolean;
   devExportBusy?: boolean;
+  applyStatus?: PhysicsPaintApplyStatus;
+  applyMessage?: string | null;
+  error?: string | null;
   onExportDebugProof?: () => void;
   onSaveState: () => void;
   onLoadState: (event: Event) => void;
@@ -113,6 +116,9 @@ export function PhysicsPaintRightPanel({
   onPlayWiggleChange,
   devExportEnabled = false,
   devExportBusy = false,
+  applyStatus = 'idle',
+  applyMessage,
+  error,
   onExportDebugProof,
   onSaveState,
   onLoadState,
@@ -127,6 +133,7 @@ export function PhysicsPaintRightPanel({
   const hueRef = useRef<HTMLDivElement>(null);
   const draggingColorBox = useRef(false);
   const draggingHue = useRef(false);
+  const logVisible = Boolean(devExportEnabled || applyMessage || error || applyStatus === 'applying');
 
   useEffect(() => {
     void loadRecentColors().then(setRecentColors);
@@ -140,8 +147,8 @@ export function PhysicsPaintRightPanel({
   }, [color]);
 
   useEffect(() => {
-    if (!devExportEnabled && colorTab === 'log') setColorTab('brush');
-  }, [colorTab, devExportEnabled]);
+    if (!logVisible && colorTab === 'log') setColorTab('brush');
+  }, [colorTab, logVisible]);
 
   const currentRgb = useMemo(() => hexToRgba(color), [color]);
   const currentHex = useMemo(() => rgbaToHex(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
@@ -240,7 +247,7 @@ export function PhysicsPaintRightPanel({
           >
             BRUSH COLOR
           </button>
-          {devExportEnabled ? (
+          {logVisible ? (
             <button
               type="button"
               class={`physics-paint-options-tab physics-paint-tab-log ${colorTab === 'log' ? 'active' : ''}`}
@@ -326,12 +333,19 @@ export function PhysicsPaintRightPanel({
               ))}
             </div>
           </div>
-        ) : devExportEnabled ? (
-          <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel physics-paint-log-tab-panel" role="tabpanel" aria-label="Dev log">
-            <span class="physics-paint-right-label">Dev log</span>
-            <button type="button" class="physics-paint-text-button physics-paint-dev-export" disabled={devExportBusy || !onExportDebugProof} onClick={onExportDebugProof}>
-              Export PNGs + manifest
-            </button>
+        ) : logVisible ? (
+          <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel physics-paint-log-tab-panel" role="tabpanel" aria-label="Log">
+            <span class="physics-paint-right-label">Log</span>
+            <div class="physics-paint-log-messages" aria-live="polite">
+              {applyStatus === 'applying' ? <p class="physics-paint-log-message applying">Applying...</p> : null}
+              {applyMessage ? <p class={`physics-paint-log-message ${applyStatus}`}>{applyMessage}</p> : null}
+              {error ? <p class="physics-paint-log-message error">{error}</p> : null}
+            </div>
+            {devExportEnabled ? (
+              <button type="button" class="physics-paint-text-button physics-paint-dev-export" disabled={devExportBusy || !onExportDebugProof} onClick={onExportDebugProof}>
+                Export PNGs + manifest
+              </button>
+            ) : null}
           </div>
         ) : null}
       </section>

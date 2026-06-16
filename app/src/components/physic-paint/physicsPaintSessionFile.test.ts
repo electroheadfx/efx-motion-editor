@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import {
   LOAD_STATE_INVALID_COPY,
@@ -9,6 +11,9 @@ import {
   parsePhysicsPaintStateFile,
   serializePhysicsPaintState,
 } from './physicsPaintSessionFile';
+
+const sourcePath = fileURLToPath(new URL('./physicsPaintSessionFile.ts', import.meta.url));
+const source = () => readFileSync(sourcePath, 'utf8');
 
 const editableState: SerializedProject = {
   version: 2,
@@ -41,6 +46,14 @@ describe('physicsPaintSessionFile', () => {
     expect(() => parsePhysicsPaintStateFile(JSON.stringify({ ...editableState, version: undefined }))).toThrow(LOAD_STATE_INVALID_COPY);
     expect(() => parsePhysicsPaintStateFile(JSON.stringify({ ...editableState, strokes: {} }))).toThrow(LOAD_STATE_INVALID_COPY);
     expect(LOAD_STATE_INVALID_COPY).toBe('This file is not a valid Physics Paint state JSON. Choose a state file exported from Physics Paint.');
+  });
+
+  it('uses direct Tauri save plugin imports instead of dynamic imports that can silently fail', () => {
+    const text = source();
+
+    expect(text).toContain("import { save as saveDialog } from '@tauri-apps/plugin-dialog'");
+    expect(text).toContain("import { writeTextFile } from '@tauri-apps/plugin-fs'");
+    expect(text).not.toContain("import(/* @vite-ignore */ dialogModule)");
   });
 
   it('downloads editable state JSON through an injected adapter without rendered PNG output', async () => {
@@ -94,7 +107,7 @@ describe('physicsPaintSessionFile', () => {
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
-  it('falls back to browser download when native save APIs are unavailable', async () => {
+  it('falls back to browser download when native save APIs are unavailable outside Tauri', async () => {
     const browserSave = vi.fn().mockResolvedValue(undefined);
 
     const result = await downloadPhysicsPaintState(editableState, {

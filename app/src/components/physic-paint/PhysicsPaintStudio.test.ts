@@ -82,6 +82,14 @@ describe('PhysicsPaintStudio top bar controls contract', () => {
     expect(css).toContain('.physics-paint-topbar-slider.exact');
     expect(css).toContain('width: 132px');
   });
+
+  it('keeps save/load/apply feedback out of the top header', () => {
+    const topBar = topBarSource();
+
+    expect(topBar).not.toContain('applyMessage');
+    expect(topBar).not.toContain('physics-paint-topbar-meta');
+    expect(topBar).not.toContain('physics-paint-apply-copy');
+  });
 });
 
 describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
@@ -231,6 +239,20 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(saveEditableStateBlock).toContain('capturePendingPlayFrameEdits()');
     expect(saveEditableStateBlock).toContain('annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
     expect(saveEditableStateBlock).toContain('downloadPhysicsPaintState(editableState)');
+  });
+
+  it('rebuilds Play editing context when loading a saved editable state', () => {
+    const text = source();
+    const loadEditableStateBlock = text.slice(text.indexOf('const loadEditableState = useCallback'), text.indexOf('const exportDebugProof = useCallback'));
+
+    expect(text).toContain('function getPlayFrameEditAssignments');
+    expect(text).toContain('function getPlayFrameCountFromAssignments');
+    expect(loadEditableStateBlock).toContain('const assignments = getPlayFrameEditAssignments(state)');
+    expect(loadEditableStateBlock).toContain('playFrameEditAssignmentsRef.current = assignments');
+    expect(loadEditableStateBlock).toContain('playFrameEditBaselineRef.current = { frame: previewFrame, strokeCount: state.strokes.length }');
+    expect(loadEditableStateBlock).toContain("playCacheStatus: 'stale'");
+    expect(loadEditableStateBlock).toContain('cachedPlayFrames: []');
+    expect(loadEditableStateBlock).toContain('setSavedPlayCacheDirty(true)');
   });
 
   it('uses the selected cached Play frame as the edit background without keeping the preview overlay alive', () => {

@@ -118,6 +118,20 @@ function annotatePlayFrameStrokes(state: SerializedPhysicsPaintProject, assignme
   };
 }
 
+function getPlayFrameEditAssignments(state: SerializedPhysicsPaintProject): Map<number, number> {
+  const assignments = new Map<number, number>();
+  state.strokes.forEach((stroke, index) => {
+    const playFrame = stroke.playFrame;
+    if (typeof playFrame === 'number' && Number.isInteger(playFrame) && playFrame >= 0) assignments.set(index, playFrame);
+  });
+  return assignments;
+}
+
+function getPlayFrameCountFromAssignments(assignments: Map<number, number>, fallback: number): number {
+  if (assignments.size === 0) return fallback;
+  return clampPhysicPaintFrameCount(Math.max(...assignments.values()) + 1);
+}
+
 function applyLaunchContext(
   context: PhysicPaintLaunchContext,
   setLaunchContext: (context: PhysicPaintLaunchContext) => void,
@@ -1260,6 +1274,29 @@ export function PhysicsPaintStudio() {
       try {
         const state = parsePhysicsPaintStateFile(String(reader.result ?? ''));
         engine.load(state);
+        if (workflowMode === 'play') {
+          const assignments = getPlayFrameEditAssignments(state);
+          const frameCount = getPlayFrameCountFromAssignments(assignments, framesToApply);
+          const previewFrame = assignments.values().next().value ?? 0;
+          playFrameEditAssignmentsRef.current = assignments;
+          playFrameEditBaselineRef.current = { frame: previewFrame, strokeCount: state.strokes.length };
+          latestPlayFramesRef.current = [];
+          setLatestPlayFrames([]);
+          setCachedPlayPreviewUrl(null);
+          setSavedPlayCacheDirty(true);
+          setLocalPlayPreviewFrame(previewFrame);
+          setFramesToApply(frameCount);
+          setPlayFramesVersion((version) => version + 1);
+          setLaunchContext((current) => current ? {
+            ...withoutRotoGapLimit(current),
+            workflowMode: 'play',
+            editableSource: 'play',
+            playFrameCount: frameCount,
+            playCacheStatus: 'stale',
+            cachedPlayFrames: [],
+            previewFrame,
+          } : current);
+        }
         setApplyStatus('success');
         setApplyMessage('Loaded editable JSON state.');
         setLastError(null);
@@ -1272,7 +1309,7 @@ export function PhysicsPaintStudio() {
     };
     reader.readAsText(file);
     (event.target as HTMLInputElement).value = '';
-  }, [engine]);
+  }, [engine, framesToApply, workflowMode]);
 
   const exportDebugProof = useCallback(() => {
     if (!engine || !launchContext) return;
@@ -1569,9 +1606,6 @@ export function PhysicsPaintStudio() {
           paperGrain={settings.paperGrain}
           grainStrength={settings.grainStrength}
           ready={readyToApply}
-          error={lastError}
-          applyStatus={applyStatus}
-          applyMessage={applyMessage}
           onBrushSizeChange={setBrushSize}
           onOpacityChange={setBrushOpacity}
           onBackgroundChange={setBackground}
@@ -1664,6 +1698,9 @@ export function PhysicsPaintStudio() {
               playWiggle={playWiggle}
               devExportEnabled={isPhysicsPaintDevExportEnabled(import.meta.env)}
               devExportBusy={applyStatus === 'applying'}
+              applyStatus={applyStatus}
+              applyMessage={applyMessage}
+              error={lastError}
               onExportDebugProof={exportDebugProof}
               onColorChange={setBrushColor}
               onEdgeDetailChange={setEdgeDetail}

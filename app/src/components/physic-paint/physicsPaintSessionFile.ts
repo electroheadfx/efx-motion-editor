@@ -1,8 +1,11 @@
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
+import { save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { isSerializedProject } from '../../types/physicPaint';
 
 export const SAVE_STATE_SUCCESS_COPY = 'Saved editable JSON state.';
 export const SAVE_STATE_CANCELLED_COPY = 'Save state cancelled.';
+export const SAVE_STATE_UNAVAILABLE_COPY = 'Save state is unavailable because the native file dialog could not be opened.';
 export const LOAD_STATE_SUCCESS_COPY = 'Loaded editable JSON state.';
 export const LOAD_STATE_INVALID_COPY = 'This file is not a valid Physics Paint state JSON. Choose a state file exported from Physics Paint.';
 
@@ -16,6 +19,10 @@ export interface PhysicsPaintStateBrowserDownloadAdapter {
   save: (request: PhysicsPaintStateDownloadRequest) => Promise<void> | void;
 }
 
+export type PhysicsPaintRuntimeAdapter = {
+  isTauri?: () => boolean;
+};
+
 export interface PhysicsPaintStateNativeSaveAdapter {
   saveDialog: (options: { defaultPath: string; filters: { name: string; extensions: string[] }[] }) => Promise<string | null>;
   writeTextFile: (path: string, contents: string) => Promise<void> | void;
@@ -24,6 +31,7 @@ export interface PhysicsPaintStateNativeSaveAdapter {
 export type PhysicsPaintStateDownloadAdapter = PhysicsPaintStateBrowserDownloadAdapter | {
   native?: PhysicsPaintStateNativeSaveAdapter | null;
   browser: PhysicsPaintStateBrowserDownloadAdapter;
+  runtime?: PhysicsPaintRuntimeAdapter;
 };
 
 export type PhysicsPaintStateDownloadResult = {
@@ -64,6 +72,7 @@ export async function downloadPhysicsPaintState(
       return { status: 'saved', message: SAVE_STATE_SUCCESS_COPY };
     }
 
+    if (resolvedAdapter.runtime?.isTauri?.() ?? isTauriRuntime()) throw new Error(SAVE_STATE_UNAVAILABLE_COPY);
     await resolvedAdapter.browser.save({ filename, contents, mimeType: 'application/json' });
     return { status: 'saved', message: SAVE_STATE_SUCCESS_COPY };
   }
@@ -85,18 +94,7 @@ async function createDefaultPhysicsPaintStateDownloadAdapter(): Promise<PhysicsP
 
 async function loadTauriNativeSaveAdapter(): Promise<PhysicsPaintStateNativeSaveAdapter | null> {
   if (!isTauriRuntime()) return null;
-  try {
-    const dialogModule = '@tauri-apps/plugin-dialog';
-    const fsModule = '@tauri-apps/plugin-fs';
-    const [{ save }, { writeTextFile }] = await Promise.all([
-      import(/* @vite-ignore */ dialogModule) as Promise<{ save: PhysicsPaintStateNativeSaveAdapter['saveDialog'] }>,
-      import(/* @vite-ignore */ fsModule) as Promise<{ writeTextFile: PhysicsPaintStateNativeSaveAdapter['writeTextFile'] }>,
-    ]);
-    if (typeof save !== 'function' || typeof writeTextFile !== 'function') return null;
-    return { saveDialog: save, writeTextFile };
-  } catch {
-    return null;
-  }
+  return { saveDialog, writeTextFile };
 }
 
 function isTauriRuntime(): boolean {
@@ -111,7 +109,10 @@ const browserPhysicsPaintStateDownloadAdapter: PhysicsPaintStateBrowserDownloadA
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
     anchor.click();
+    anchor.remove();
     URL.revokeObjectURL(url);
   },
 };

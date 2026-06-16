@@ -51,6 +51,17 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rightPanelSource()).toContain('Load state');
   });
 
+  it('routes apply and save/load messages to the right-panel Log tab', () => {
+    const rightPanel = rightPanelSource();
+    const studio = studioSource();
+
+    expect(rightPanel).toContain("const logVisible = Boolean(devExportEnabled || applyMessage || error || applyStatus === 'applying')");
+    expect(rightPanel).toContain('physics-paint-log-message');
+    expect(rightPanel).toContain('{applyMessage ? <p class={`physics-paint-log-message ${applyStatus}`}>{applyMessage}</p> : null}');
+    expect(studio).toContain('applyMessage={applyMessage}');
+    expect(studio).toContain('error={lastError}');
+  });
+
   it('owns physics-paint-specific timeline rows without importing the main EFX Motion timeline', () => {
     const code = source();
 

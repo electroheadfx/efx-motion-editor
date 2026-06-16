@@ -556,14 +556,6 @@ button.destructive {
   min-width: 0;
 }
 
-.physics-paint-topbar-meta {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
-}
-
 .physics-paint-status-pill {
   display: inline-flex;
   align-items: center;
@@ -585,32 +577,9 @@ button.destructive {
   background: rgba(204, 170, 34, 0.14);
 }
 
-.physics-paint-status-pill.error,
-.physics-paint-apply-copy.error {
-  color: var(--color-error-text, #ff6666);
-}
-
 .physics-paint-status-pill.error {
+  color: var(--color-error-text, #ff6666);
   background: rgba(255, 102, 102, 0.14);
-}
-
-.physics-paint-apply-copy {
-  max-width: 220px;
-  overflow: hidden;
-  color: var(--sidebar-text-secondary, #7799bb);
-  font-size: 11px;
-  line-height: 1.2;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.physics-paint-apply-copy.applying {
-  color: #f59e0b;
-}
-
-.physics-paint-apply-copy.success {
-  color: var(--sidebar-dot-green, #4caf70);
 }
 
 .physics-paint-topbar-actions {
@@ -1010,6 +979,32 @@ button.destructive {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.physics-paint-log-messages {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.physics-paint-log-message {
+  margin: 0;
+  color: var(--sidebar-text-secondary, #7799bb);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.physics-paint-log-message.applying {
+  color: #f59e0b;
+}
+
+.physics-paint-log-message.success {
+  color: var(--sidebar-dot-green, #4caf70);
+}
+
+.physics-paint-log-message.error {
+  color: var(--color-error-text, #ff6666);
 }
 
 .physics-paint-onion-toggle-row,
@@ -1714,8 +1709,7 @@ button.destructive {
     grid-template-columns: 1fr;
   }
 
-  .physics-paint-topbar-status,
-  .physics-paint-topbar-meta {
+  .physics-paint-topbar-status {
     justify-content: center;
   }
 
