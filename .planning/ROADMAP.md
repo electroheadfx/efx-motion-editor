@@ -234,6 +234,17 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 36.2: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 36
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 36.2 to break down)
+
 ### Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback
 
 **Goal**: Users can see multiple saved Physics Paint Play script animation ranges as nested markers inside one Physic Paint timeline layer, reopen the correct script from the editor scrubber, preview Play interpolation locally in the standalone window, and render Play scripts sequentially like one artist hand.
