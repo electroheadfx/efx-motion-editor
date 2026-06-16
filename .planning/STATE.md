@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-status: ready_to_plan
+status: executing
 stopped_at: Phase 36.2 context gathered
-last_updated: "2026-06-16T20:07:58.066Z"
-last_activity: 2026-06-16 -- Phase 36.2 inserted after Phase 36
+last_updated: "2026-06-16T20:57:24.182Z"
+last_activity: 2026-06-16 -- Phase 36.2 execution started
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 30
+  total_plans: 36
   completed_plans: 30
   percent: 67
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.2 — Roto paint enhancements
+**Current focus:** Phase 36.2 — roto-paint-enhancements-all-details-are-here-specs-phase-36-
 
 ## Current Position
 
-Phase: 36.2
-Plan: Not started
-Status: Ready to plan Phase 36.2
-Last activity: 2026-06-16 -- Phase 36.2 inserted after Phase 36
+Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 36.2
+Last activity: 2026-06-16 -- Phase 36.2 execution started
 
 Progress: [████████░░░░░] 4/5 phases (80%)
 
