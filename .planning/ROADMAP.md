@@ -236,14 +236,32 @@ Plans:
 
 ### Phase 36.2: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Users can work with Physics Paint Roto as a cache-first animation workflow with gray/green/pink cache cells, cached-reference navigation, save-on-leave/save-on-close, cached playback/export, and render-only interpolation/key utilities.
+**Requirements**: PH36.2-CACHE, PH36.2-MISSING, PH36.2-PLAYBACK, PH36.2-INTERP
 **Depends on:** Phase 36
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Plans:
+**Wave 1**
 
-- [ ] TBD (run /gsd-plan-phase 36.2 to break down)
+- [ ] 36.2-01-PLAN.md — Define cache-first Roto contracts, real/generated metadata, and invalidating store helpers.
+
+**Wave 2** *(blocked on Wave 1 cache metadata)*
+
+- [ ] 36.2-02-PLAN.md — Render gray/green/pink Roto cells, outline-only current frame, and Save pending/current UX.
+
+**Wave 3** *(blocked on cache/store and cell semantics)*
+
+- [ ] 36.2-03-PLAN.md — Add cached reference navigation plus dirty save-on-leave/save-on-close behavior.
+- [ ] 36.2-04-PLAN.md — Hydrate cached Roto launch summaries and verify cached preview/export missing-frame behavior.
+
+**Wave 4** *(blocked on cache navigation and playback/export paths)*
+
+- [ ] 36.2-05-PLAN.md — Add cached Roto Play/Stop preview without all-frame rendering.
+
+**Wave 5** *(tail plan blocked on cache-first foundation)*
+
+- [ ] 36.2-06-PLAN.md — Add global Roto interpolation connectors and real-key duplicate/insert/delete/copy/paste utilities.
 
 ### Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback
 
