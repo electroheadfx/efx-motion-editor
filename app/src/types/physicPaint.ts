@@ -15,10 +15,26 @@ export type PhysicPaintPlayScriptRangeSource = 'play';
 export type PhysicPaintPlayScriptCacheStatus = 'cached' | 'stale' | 'missing';
 export type PhysicPaintPlayRenderTool = 'normal-paint' | 'physics-paint' | 'erase';
 export type PhysicPaintPlayBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3' | 'photo';
+export type PhysicPaintRotoFrameSource = 'real-key' | 'generated-interpolation';
+export type PhysicPaintRotoInterpolationMode = 'duplicate' | 'blend';
 
 export interface PhysicPaintPlayMotionSettings {
   strokeDeformation: number;
   strokePosition: number;
+}
+
+export interface PhysicPaintRotoInterpolationSettings {
+  enabled: boolean;
+  inBetweenFrameCount: number;
+  mode: PhysicPaintRotoInterpolationMode;
+  deform: number;
+  position: number;
+}
+
+export interface PhysicPaintRotoCacheFrame extends PhysicPaintRenderedFrame {
+  source: PhysicPaintRotoFrameSource;
+  nearestRealKeyFrame?: number;
+  backgroundOnly?: boolean;
 }
 
 export interface PhysicPaintPlayRenderOptionsSnapshot {
@@ -72,6 +88,8 @@ export interface PhysicPaintLaunchContext {
   playRenderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
   previewFrame?: number;
   cachedPlayFrames?: PhysicPaintRenderedFrame[];
+  cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
+  rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
   maxPlayFrameCount?: number;
   maxPlayFrameCountReason?: string;
 }
@@ -202,6 +220,8 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalPlayRenderOptions(value.playRenderOptions) &&
     optionalNonNegativeInteger(value.previewFrame) &&
     optionalRenderedFrames(value.cachedPlayFrames) &&
+    optionalRotoCacheFrames(value.cachedRotoFrames) &&
+    optionalRotoInterpolationSettings(value.rotoInterpolationSettings) &&
     optionalFrameCount(value.maxPlayFrameCount) &&
     (value.maxPlayFrameCountReason === undefined || typeof value.maxPlayFrameCountReason === 'string') &&
     (value.layerName === undefined || typeof value.layerName === 'string') &&
@@ -309,6 +329,25 @@ export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPain
   }
 
   return ranges;
+}
+
+export function isPhysicPaintRotoCacheFrame(value: unknown): value is PhysicPaintRotoCacheFrame {
+  if (!isPhysicPaintRenderedFrame(value)) return false;
+  if (!isRecord(value)) return false;
+  if (value.source !== 'real-key' && value.source !== 'generated-interpolation') return false;
+  if (!optionalNonNegativeInteger(value.nearestRealKeyFrame)) return false;
+  return value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean';
+}
+
+export function isPhysicPaintRotoInterpolationSettings(value: unknown): value is PhysicPaintRotoInterpolationSettings {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.enabled === 'boolean' &&
+    isRotoInBetweenFrameCount(value.inBetweenFrameCount) &&
+    (value.mode === 'duplicate' || value.mode === 'blend') &&
+    isPercentInteger(value.deform) &&
+    isPercentInteger(value.position)
+  );
 }
 
 export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintApplyResult {
@@ -432,6 +471,14 @@ function optionalRenderedFrames(value: unknown): boolean {
   return value === undefined || (Array.isArray(value) && value.every((frame) => isPhysicPaintRenderedFrame(frame)));
 }
 
+function optionalRotoCacheFrames(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.every((frame) => isPhysicPaintRotoCacheFrame(frame)));
+}
+
+function optionalRotoInterpolationSettings(value: unknown): boolean {
+  return value === undefined || isPhysicPaintRotoInterpolationSettings(value);
+}
+
 function optionalFrameCount(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= PHYSIC_PAINT_MIN_APPLY_FRAMES && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES);
 }
@@ -472,6 +519,10 @@ function normalizePlayRenderOptions(value: PhysicPaintPlayRenderOptionsSnapshot)
 
 function isPercentInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100;
+}
+
+function isRotoInBetweenFrameCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
 }
 
 function isPositiveInteger(value: unknown): value is number {

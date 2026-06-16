@@ -280,6 +280,70 @@ describe('physicPaintStore', () => {
     expect(dirtyCount).toBe(2);
   });
 
+  it('tracks real Roto keys separately from generated cache and removes deleted real key output', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeFrame(0, 2));
+    expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([2]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 2, source: 'real-key' }),
+    ]);
+
+    const beforeRemove = physicPaintVersion.value;
+    expect(physicPaintStore.removeRealRotoKeyFrame('layer-1', 2)).toBe(true);
+    expect(physicPaintStore.getFrame('layer-1', 2)).toBeNull();
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([]);
+    expect(physicPaintVersion.value).toBe(beforeRemove + 1);
+  });
+
+  it('replaces generated Roto cache through existing rendered frame storage', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, makeFrame(0, 0));
+    physicPaintStore.replaceGeneratedRotoCache('layer-1', [
+      { ...makeFrame(0, 1), source: 'generated-interpolation', nearestRealKeyFrame: 0 },
+      { ...makeFrame(1, 2), source: 'generated-interpolation', nearestRealKeyFrame: 3 },
+    ], { enabled: true, inBetweenFrameCount: 2, mode: 'blend', deform: 10, position: 20 });
+
+    expect(physicPaintStore.getFrame('layer-1', 1)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 0, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0 }),
+      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', nearestRealKeyFrame: 3 }),
+    ]);
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1')).toEqual({ enabled: true, inBetweenFrameCount: 2, mode: 'blend', deform: 10, position: 20 });
+
+    physicPaintStore.replaceGeneratedRotoCache('layer-1', [
+      { ...makeFrame(0, 4), source: 'generated-interpolation', nearestRealKeyFrame: 3 },
+    ], { enabled: true, inBetweenFrameCount: 1, mode: 'duplicate', deform: 0, position: 0 });
+    expect(physicPaintStore.getFrame('layer-1', 1)).toBeNull();
+    expect(physicPaintStore.getFrame('layer-1', 2)).toBeNull();
+    expect(physicPaintStore.getFrame('layer-1', 4)?.dataUrl).toContain('data:image/png');
+  });
+
+  it('round-trips Roto source metadata and interpolation settings without editable per-frame state', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, makeFrame(0, 0));
+    physicPaintStore.replaceGeneratedRotoCache('layer-1', [
+      { ...makeFrame(0, 1), source: 'generated-interpolation', nearestRealKeyFrame: 0 },
+    ], { enabled: true, inBetweenFrameCount: 1, mode: 'duplicate', deform: 5, position: 15 });
+
+    const outputs = physicPaintStore.toMceOutputs();
+    expect(outputs[0]).toEqual(expect.objectContaining({
+      roto_cache_metadata: [
+        expect.objectContaining({ appFrame: 0, source: 'real-key' }),
+        expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0 }),
+      ],
+      roto_interpolation_settings: { enabled: true, inBetweenFrameCount: 1, mode: 'duplicate', deform: 5, position: 15 },
+    }));
+    expect(JSON.stringify(outputs)).not.toContain('editableStatesByFrame');
+
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(outputs);
+
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 0, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0 }),
+    ]);
+  });
+
   it('serializes and hydrates rendered output by layer and app frame', () => {
     physicPaintStore.setFrame('layer-1', 12, makeFrame(0, 12));
     physicPaintStore.setFrame('layer-1', 10, makeFrame(0, 10));
