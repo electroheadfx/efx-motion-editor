@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-status: executing
-stopped_at: Phase 36.1 UI-SPEC approved
-last_updated: "2026-06-15T17:23:03.472Z"
-last_activity: 2026-06-15 -- Phase 36.1 execution resumed (wave continue)
+status: ready_to_plan
+stopped_at: Phase 36.1 complete, ready to plan Phase 37
+last_updated: "2026-06-16T16:08:00.660Z"
+last_activity: 2026-06-16
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 30
-  completed_plans: 29
-  percent: 60
+  completed_plans: 30
+  percent: 80
 ---
 
 # Project State
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.1 — when-a-physic-paint-was-created-with-a-play-paint-script-ani
+**Current focus:** Phase 37 — Future Integration Contract and Validation
 
 ## Current Position
 
-Phase: 36.1 (when-a-physic-paint-was-created-with-a-play-paint-script-ani) — EXECUTING
-Plan: 1 of 9
-Status: Executing Phase 36.1
-Last activity: 2026-06-15 -- Phase 36.1 execution resumed (wave continue)
+Phase: 37
+Plan: Not started
+Status: Ready to plan Phase 37
+Last activity: 2026-06-16 -- Phase 36.1 verified and marked complete
 
-Progress: [██████████] 100%
+Progress: [████████░░░░░] 4/5 phases (80%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 10 for v0.8.0
+- Total plans completed: 30 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -50,6 +50,7 @@ Progress: [██████████] 100%
 | 37. Future Integration Contract and Validation | 0 | TBD | - |
 | 34 | 3 | - | - |
 | 35 | 7 | - | - |
+| 36.1 | 9 | - | - |
 
 **Recent Trend:**
 
@@ -107,6 +108,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-14T09:46:22.887Z
-Stopped at: Phase 36.1 UI-SPEC approved
-Resume file: .planning/phases/36.1-when-a-physic-paint-was-created-with-a-play-paint-script-ani/36.1-UI-SPEC.md
+Last session: 2026-06-16T16:08:00Z
+Stopped at: Phase 36.1 complete, ready to plan Phase 37
+Resume file: None

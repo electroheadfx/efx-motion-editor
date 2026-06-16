@@ -128,6 +128,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 34: Standalone Demo Shell** - Users can launch and iterate on a package-local physics paint demo from repo-root pnpm scripts. (completed 2026-06-08)
 - [x] **Phase 35: Interactive Physics Paint Controls** - Users can test the real physics paint engine with live canvas input, paint/erase tools, settings, and diagnostics. (completed 2026-06-10)
 - [x] **Phase 36: Session Persistence and Output Proof** - Users can save, reload, inspect, and export standalone physics paint output for future cached compositing. (completed 2026-06-13)
+- [x] **Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback** - Users can see saved Play script ranges, reopen/scrub them correctly, and render sequential Play animation. (completed 2026-06-16)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
 
 ## Phase Details
@@ -278,7 +279,7 @@ Plans:
 
 **Wave 7** *(gap closure; blocked on Plan 08 mode/render UX)*
 
-- [ ] 36.1-09-PLAN.md — Fix cached saved-script reopen, standalone clear/remake editor updates, and EFX Motion saved-script deletion.
+- [x] 36.1-09-PLAN.md — Fix cached saved-script reopen, standalone clear/remake editor updates, and EFX Motion saved-script deletion.
 
 **UI hint**: yes
 
@@ -313,4 +314,5 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 34. Standalone Demo Shell | v0.8.0 | 3/3 | Complete    | 2026-06-08 |
 | 35. Interactive Physics Paint Controls | v0.8.0 | 7/7 | Complete    | 2026-06-10 |
 | 36. Session Persistence and Output Proof | v0.8.0 | 11/11 | Complete   | 2026-06-13 |
+| 36.1. Physics Paint Play-Script Timeline Markers and Sequential Playback | v0.8.0 | 9/9 | Complete | 2026-06-16 |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
