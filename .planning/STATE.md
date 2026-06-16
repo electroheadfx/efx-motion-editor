@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: ready_to_plan
-stopped_at: Phase 36.1 complete, ready to plan Phase 37
-last_updated: "2026-06-16T16:08:00.660Z"
-last_activity: 2026-06-16
+stopped_at: Phase 36.2 context gathered
+last_updated: "2026-06-16T20:07:58.066Z"
+last_activity: 2026-06-16 -- Phase 36.2 inserted after Phase 36
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 4
   total_plans: 30
   completed_plans: 30
-  percent: 80
+  percent: 67
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 37 — Future Integration Contract and Validation
+**Current focus:** Phase 36.2 — Roto paint enhancements
 
 ## Current Position
 
-Phase: 37
+Phase: 36.2
 Plan: Not started
-Status: Ready to plan Phase 37
-Last activity: 2026-06-16 -- Phase 36.1 verified and marked complete
+Status: Ready to plan Phase 36.2
+Last activity: 2026-06-16 -- Phase 36.2 inserted after Phase 36
 
 Progress: [████████░░░░░] 4/5 phases (80%)
 
@@ -96,6 +96,7 @@ None yet.
 
 - Phase 36 edited: added heavy physics paint package UI rebuild scope alongside session persistence and output proof.
 - Phase 36.1 inserted after Phase 36 (URGENT): Physics paint timeline markers for play script segments, selecting/editing the active segment by scrubber position, previewing interpolation inside efx-physics paint, and rendering play paint scripts sequentially like one pencil stroke path instead of parallel hands.
+- Phase 36.2 inserted after Phase 36: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (URGENT)
 
 ## Deferred Items
 
@@ -108,6 +109,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-16T16:08:00Z
-Stopped at: Phase 36.1 complete, ready to plan Phase 37
-Resume file: None
+Last session: 2026-06-16T20:07:58.061Z
+Stopped at: Phase 36.2 context gathered
+Resume file: .planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CONTEXT.md
