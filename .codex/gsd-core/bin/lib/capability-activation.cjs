@@ -55,32 +55,59 @@ function _readRawConfigKey(filePath, dotKey) {
         return { found: false, value: undefined };
     }
 }
-function _resolveActivationValue(dotKey, config, cwd, registry) {
+/**
+ * Resolve the raw value for a dotted config key using the four-level precedence
+ * walk. Returns { found, value } with the RAW value (not coerced to boolean),
+ * so callers can decide how to interpret the value (boolean gate vs. raw config
+ * value for numeric/string settings like security_asvs_level).
+ *
+ * Precedence (mirrors _resolveActivationValue):
+ *   1. loadConfig result (config arg) — guarded nested-lookup.
+ *   2. Workstream config.json at planningDir(cwd)/config.json.
+ *   3. Root config.json at planningRoot(cwd)/config.json (only if path differs).
+ *   4. registry.configSchema[dotKey].default — schema default.
+ *   5. Absent → { found: false, value: undefined }.
+ */
+function resolveConfigKey(dotKey, opts) {
+    const { config, cwd, registry } = opts;
+    // Level 1: loadConfig result
     const fromConfig = _getNestedConfigValue(config, dotKey);
     if (fromConfig.found)
-        return Boolean(fromConfig.value);
+        return { found: true, value: fromConfig.value };
+    // Level 2 + 3: raw config.json files (only when cwd is available)
     if (cwd) {
         const wsConfigPath = node_path_1.default.join(planningDir(cwd), 'config.json');
         const rootConfigPath = node_path_1.default.join(planningRoot(cwd), 'config.json');
         const fromWs = _readRawConfigKey(wsConfigPath, dotKey);
         if (fromWs.found)
-            return Boolean(fromWs.value);
+            return { found: true, value: fromWs.value };
         if (wsConfigPath !== rootConfigPath) {
             const fromRoot = _readRawConfigKey(rootConfigPath, dotKey);
             if (fromRoot.found)
-                return Boolean(fromRoot.value);
+                return { found: true, value: fromRoot.value };
         }
     }
-    const schemaEntry = registry['configSchema']?.[dotKey];
-    if (schemaEntry && typeof schemaEntry === 'object' && schemaEntry !== null) {
-        const def = schemaEntry['default'];
-        if (def !== undefined)
-            return Boolean(def);
+    // Level 4: registry configSchema default
+    const schemaMap = registry['configSchema'];
+    if (schemaMap && typeof schemaMap === 'object' && !Array.isArray(schemaMap)
+        && Object.prototype.hasOwnProperty.call(schemaMap, dotKey)) {
+        const schemaEntry = schemaMap[dotKey];
+        if (schemaEntry && typeof schemaEntry === 'object' && schemaEntry !== null) {
+            const def = schemaEntry['default'];
+            if (def !== undefined)
+                return { found: true, value: def };
+        }
     }
-    return false;
+    // Level 5: absent
+    return { found: false, value: undefined };
+}
+function _resolveActivationValue(dotKey, config, cwd, registry) {
+    const r = resolveConfigKey(dotKey, { config, cwd, registry });
+    return r.found ? Boolean(r.value) : false;
 }
 module.exports = {
     _getNestedConfigValue,
     _readRawConfigKey,
     _resolveActivationValue,
+    resolveConfigKey,
 };

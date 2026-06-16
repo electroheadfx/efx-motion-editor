@@ -32,6 +32,7 @@ exports.trySymbolicRef = trySymbolicRef;
 exports.tryRemoteShow = tryRemoteShow;
 exports.tryLocalBranch = tryLocalBranch;
 exports.resolveBaseBranch = resolveBaseBranch;
+exports.gitWorktreeInfoInternal = gitWorktreeInfoInternal;
 exports.cmdGitBaseBranch = cmdGitBaseBranch;
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
@@ -159,7 +160,7 @@ function tryLocalBranch(cwd, execGit) {
  */
 function resolveBaseBranch(cwd, deps) {
     const execGit = deps?.execGit ?? shell_command_projection_cjs_1.execGit;
-    // Derive .planning dir relative to cwd (mirrors planningDir() in core.cjs)
+    // Derive .planning dir relative to cwd (mirrors planningDir() in planning-workspace.cjs)
     const planningDir = node_path_1.default.join(cwd, '.planning');
     // 1. Config override
     const configured = readConfigBaseBranch(planningDir, deps);
@@ -179,6 +180,31 @@ function resolveBaseBranch(cwd, deps) {
         return local;
     // 5. Last-resort default
     return 'main';
+}
+/**
+ * Detect whether `cwd` sits inside a git worktree, and if so, return the
+ * absolute path of the worktree root.
+ */
+function gitWorktreeInfoInternal(cwd) {
+    try {
+        const insideResult = (0, shell_command_projection_cjs_1.execGit)(['rev-parse', '--is-inside-work-tree'], { cwd, timeout: 5000 });
+        if (insideResult.exitCode !== 0) {
+            return { inside: false, worktreeRoot: null };
+        }
+        const insideStdout = String(insideResult.stdout || '').trim();
+        if (insideStdout !== 'true') {
+            return { inside: false, worktreeRoot: null };
+        }
+        const rootResult = (0, shell_command_projection_cjs_1.execGit)(['rev-parse', '--show-toplevel'], { cwd, timeout: 5000 });
+        if (rootResult.exitCode !== 0) {
+            return { inside: true, worktreeRoot: null };
+        }
+        const root = String(rootResult.stdout || '').trim();
+        return { inside: true, worktreeRoot: root || null };
+    }
+    catch {
+        return { inside: false, worktreeRoot: null };
+    }
 }
 // ─── CLI entry point ──────────────────────────────────────────────────────────
 /**

@@ -18,14 +18,15 @@
  * pure, config-only resolution with no filesystem I/O.
  * cmdCapabilityState is the I/O handler.
  *
- * Dependencies (leaf modules only — no core.cjs circular risk):
+ * Dependencies (leaf modules only — no circular risk):
  *   - node:path
- *   - ./core.cjs               (output, error)
+ *   - ./io.cjs                 (output, error)
  *   - ./capability-activation.cjs (_resolveActivationValue)
  *   - ./install-profiles.cjs   (readActiveProfile, loadSkillsManifest, resolveProfile)
  *   - ./surface.cjs            (resolveSurface)
  *   - ./config-loader.cjs      (loadConfig)
  *   - ./runtime-homes.cjs      (getGlobalConfigDir — for runtimeConfigDir auto-detection)
+ *   - ./runtime-slash.cjs      (resolveRuntime — GSD_RUNTIME > config.runtime > 'claude' precedence)
  *   - capability-registry.cjs  (loaded at call time)
  */
 var __importDefault = (this && this.__importDefault) || function (mod) {
@@ -34,8 +35,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 const node_path_1 = __importDefault(require("node:path"));
 const node_fs_1 = __importDefault(require("node:fs"));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const core = require("./core.cjs");
-const { output: coreOutput, error: coreError } = core;
+const ioMod = require("./io.cjs");
+const { output: coreOutput, error: coreError } = ioMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const activationMod = require("./capability-activation.cjs");
 const { _resolveActivationValue } = activationMod;
@@ -135,6 +136,19 @@ function resolveCapabilityState(input) {
             surfaced = skills.every((s) => surfacedSkills.has(s));
         }
         const enabled = installed && surfaced;
+        // ── per-capability config activation ──────────────────────────────────────
+        // Resolve the capability's own activationKey (if present). This is the
+        // config-level toggle that gates the whole capability — separate from the
+        // per-hook `when` keys that gate individual hooks. When activationKey is
+        // absent, configActivation defaults to true (no config gate on the cap).
+        // active = enabled && configActivation  (enabled unchanged: installed && surfaced)
+        const activationKey = typeof capObj['activationKey'] === 'string' && capObj['activationKey'].length > 0
+            ? capObj['activationKey']
+            : undefined;
+        const configActivation = activationKey !== undefined
+            ? _resolveActivationValue(activationKey, config, cwd, registry)
+            : true;
+        const active = enabled && configActivation;
         // ── hooks ──────────────────────────────────────────────────────────────────
         // Collect from steps, gates, contributions. Each may have a `when` key.
         // Activation semantics (mirrors loop-resolver.isActive exactly):
@@ -165,7 +179,12 @@ function resolveCapabilityState(input) {
                     // (mirrors loop-resolver.isActive: `typeof when !== 'string' || when.length === 0` → false)
                     configured = false;
                 }
-                hooks.push({ point, kind, when: whenRaw, configured, active: enabled && configured });
+                // Hook active = capability-level active AND hook's own config gate.
+                // The capability's `active` constant (= enabled && configActivation) is
+                // used here so that a config-disabled capability (active=false) cannot
+                // produce active hooks even when the hook's own `when` is unconditional
+                // (configured=true). The capability gate cascades to all its hooks.
+                hooks.push({ point, kind, when: whenRaw, configured, active: active && configured });
             }
         }
         const stepsRaw = capObj['steps'];
@@ -174,7 +193,7 @@ function resolveCapabilityState(input) {
         processHooks(Array.isArray(stepsRaw) ? stepsRaw : [], 'step');
         processHooks(Array.isArray(gatesRaw) ? gatesRaw : [], 'gate');
         processHooks(Array.isArray(contributionsRaw) ? contributionsRaw : [], 'contribution');
-        results.push({ id: capId, tier, skills, installed, surfaced, enabled, hooks });
+        results.push({ id: capId, tier, skills, installed, surfaced, enabled, active, hooks });
     }
     // Deterministic sort by id for stable output across calls
     results.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -283,16 +302,20 @@ function _resolveManifest(commandsGsdDir, configDir) {
 }
 /**
  * Command entry point: resolve install profile, surface, and config; compute
- * capability state; emit the envelope via core.output.
+ * capability state; emit the envelope via io.output.
  *
  * Envelope: { runtimeConfigDir, warnings?: string[], capabilities: CapabilityStateEntry[] }
  *
  * runtimeConfigDir resolution (when not provided or empty):
- *   Uses the canonical getGlobalConfigDir from runtime-homes.cjs to detect the
- *   active runtime's config dir — the same resolver used by install.js. This
- *   correctly handles all supported runtimes (claude, codex, cursor, gemini,
- *   opencode, grok, etc.) and their env-var overrides. Defaults to claude
- *   (falls back to ~/.claude) if the resolver throws.
+ *   Detects the active runtime via the canonical precedence:
+ *     process.env.GSD_RUNTIME → config.runtime → 'claude'
+ *   (using resolveRuntime() from runtime-slash.cjs, the same precedence used
+ *   by profile-output.cjs and the rest of the runtime resolution chain).
+ *   Then calls getGlobalConfigDir(detectedRuntime) from runtime-homes.cjs —
+ *   the same resolver used by install.js. This correctly handles all supported
+ *   runtimes (claude, codex, cursor, gemini, opencode, grok, etc.) and their
+ *   env-var overrides (CLAUDE_CONFIG_DIR, CODEX_HOME, CURSOR_CONFIG_DIR, …).
+ *   Defaults to ~/.claude if either resolver throws.
  *
  * Failure surfacing: genuine resolution failures (manifest/profile/surface
  * errors) are reported in the `warnings` array in the envelope. The output
@@ -308,15 +331,18 @@ function _resolveManifest(commandsGsdDir, configDir) {
  *                         Providing a value without a next token (e.g. the flag
  *                         is last in argv with no following value) should be
  *                         caught by the caller before invoking this function.
- * @param raw              Whether to emit raw JSON (core.output raw mode)
+ * @param raw              Whether to emit raw JSON (io.output raw mode)
  * @param _options         Reserved for future use
  */
-function resolveCapabilityRuntimeState(cwd, runtimeConfigDir) {
+function resolveCapabilityRuntimeState(cwd, runtimeConfigDir, configOverride) {
     const warnings = [];
     // Resolve runtimeConfigDir using the canonical runtime-homes resolver.
-    // When not provided, getGlobalConfigDir(runtime) is called with 'claude'
-    // as the default runtime — the same fallback as install.js. The canonical
-    // resolver handles all env-var overrides (CLAUDE_CONFIG_DIR, CODEX_HOME,
+    // When not provided, the active runtime is detected via the canonical
+    // precedence:  process.env.GSD_RUNTIME → config.runtime → 'claude'
+    // (mirrors resolveRuntime() from runtime-slash.cjs and the precedence used
+    // by profile-output.cjs and the rest of the runtime resolution chain).
+    // getGlobalConfigDir(detectedRuntime) is then called, which honours the
+    // runtime-specific env-var override (CLAUDE_CONFIG_DIR, CODEX_HOME,
     // CURSOR_CONFIG_DIR, GROK_AGENTS_HOME, etc.) correctly and without
     // fabricating env vars that don't exist upstream.
     let resolvedConfigDir = runtimeConfigDir || '';
@@ -324,13 +350,13 @@ function resolveCapabilityRuntimeState(cwd, runtimeConfigDir) {
         try {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const runtimeHomes = require('./runtime-homes.cjs');
-            // Delegate runtime detection entirely to getGlobalConfigDir: calling it
-            // with 'claude' causes it to check CLAUDE_CONFIG_DIR first, falling back
-            // to ~/.claude. The canonical resolver already encodes the correct env-var
-            // precedence for each runtime — we do not re-implement that logic here.
-            // For non-claude runtimes, the caller should pass --config-dir explicitly
-            // (or set the runtime-specific env var, which getGlobalConfigDir honors).
-            resolvedConfigDir = runtimeHomes.getGlobalConfigDir('claude');
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const runtimeSlash = require('./runtime-slash.cjs');
+            // Detect the active runtime via GSD_RUNTIME → config.runtime → 'claude'.
+            // resolveRuntime reads config.json directly (no side effects) and returns
+            // a lowercased canonical runtime name.
+            const detectedRuntime = runtimeSlash.resolveRuntime(cwd);
+            resolvedConfigDir = runtimeHomes.getGlobalConfigDir(detectedRuntime);
         }
         catch {
             // Defensive fallback: use ~/.claude if the canonical resolver throws.
@@ -392,12 +418,20 @@ function resolveCapabilityRuntimeState(cwd, runtimeConfigDir) {
         surfacedSkills = new Set();
     }
     // ── Load config ───────────────────────────────────────────────────────────────
+    // When the caller already holds a loadConfig snapshot (e.g. cmdLoopRenderHooks),
+    // accept it via configOverride so capability `active` and hook resolution
+    // share the SAME config object — single snapshot, no TOCTOU window.
     let config;
-    try {
-        config = loadConfig(cwd);
+    if (configOverride !== undefined) {
+        config = configOverride;
     }
-    catch {
-        config = {};
+    else {
+        try {
+            config = loadConfig(cwd);
+        }
+        catch {
+            config = {};
+        }
     }
     // ── Resolve state ────────────────────────────────────────────────────────────
     const result = resolveCapabilityState({
@@ -410,8 +444,6 @@ function resolveCapabilityRuntimeState(cwd, runtimeConfigDir) {
     return {
         runtimeConfigDir: resolvedConfigDir,
         warnings,
-        registry,
-        config,
         capabilities: result.capabilities,
     };
 }
@@ -431,9 +463,27 @@ function cmdCapabilityState(cwd, runtimeConfigDir, raw, _options = {}) {
     }
     coreOutput(envelope, raw);
 }
+/**
+ * Convenience predicate: returns true if the capability identified by `capId`
+ * is active (installed && surfaced && config-enabled) in the current runtime
+ * environment at `cwd`.
+ *
+ * Internally calls `resolveCapabilityRuntimeState(cwd, undefined)` and returns
+ * the `active` field of the matching CapabilityStateEntry.
+ * Returns `false` when the capability is not found in the registry.
+ *
+ * @param capId  Capability identifier (e.g. 'graphify', 'intel')
+ * @param cwd    Project root directory for config resolution
+ */
+function isCapabilityActive(capId, cwd) {
+    const result = resolveCapabilityRuntimeState(cwd, undefined);
+    const entry = result.capabilities.find((c) => c.id === capId);
+    return entry !== undefined ? entry.active : false;
+}
 module.exports = {
     resolveCapabilityState,
     resolveCapabilityRuntimeState,
+    isCapabilityActive,
     cmdCapabilityState,
     // Exported for tests
     _resolveCommandsGsdDir,

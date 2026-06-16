@@ -172,8 +172,7 @@ function executeWorktreePrunePlan(plan, deps = {}) {
     }
     const result = execGit(['worktree', 'prune'], { cwd: plan.repoRoot });
     if (result.timedOut) {
-        // AC4: surface timedOut as a first-class field so callers (e.g.
-        // pruneOrphanedWorktrees in core.cjs) can log a structured WARNING rather
+        // AC4: surface timedOut as a first-class field so callers can log a structured WARNING rather
         // than silently ignoring it (PRED.k302 — error-swallowing-empty-sentinel).
         return {
             ok: false,
@@ -927,6 +926,40 @@ function cmdWorktreeReapOrphans(cwd) {
 }
 // Unused exports kept for API compatibility
 void parseWorktreeListPaths;
+// ─── Moved from core.cjs (ADR-857 T0 #1268 rehome-core-squatters) ─────────────
+/**
+ * Resolve the main worktree root when running inside a git worktree.
+ * In a linked worktree, .planning/ lives in the main worktree, not in the linked one.
+ * Returns the main worktree path, or cwd if not in a worktree.
+ */
+function resolveWorktreeRoot(cwd) {
+    const context = resolveWorktreeContext(cwd, {
+        existsSync: node_fs_1.default.existsSync,
+    });
+    return context.effectiveRoot;
+}
+/**
+ * Clear stale worktree metadata references via `git worktree prune`.
+ *
+ * Destructive linked-worktree removal is disabled by default for safety.
+ *
+ * @param repoRoot - absolute path to the main (or any) worktree of
+ *   the repository; used as `cwd` for git commands.
+ * @returns list of worktree paths that were removed (always empty)
+ */
+function pruneOrphanedWorktrees(repoRoot) {
+    try {
+        const plan = planWorktreePrune(repoRoot, { allowDestructive: false }, { parseWorktreePorcelain });
+        const pruneResult = executeWorktreePrunePlan(plan);
+        if (pruneResult && pruneResult.timedOut) {
+            process.stderr.write('[gsd-tools] WARNING: worktree health check degraded' +
+                ' — git worktree prune timed out after 10s.' +
+                ' Orphaned worktree metadata may remain until the next successful run.\n');
+        }
+    }
+    catch { /* never crash the caller */ }
+    return [];
+}
 module.exports = {
     resolveWorktreeContext,
     parseWorktreePorcelain,
@@ -941,4 +974,6 @@ module.exports = {
     cmdWorktreeCleanupWave,
     reapOrphanWorktrees,
     cmdWorktreeReapOrphans,
+    resolveWorktreeRoot,
+    pruneOrphanedWorktrees,
 };

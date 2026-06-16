@@ -13,8 +13,14 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const clock_cjs_1 = require("./clock.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const core = require("./core.cjs");
-const { escapeRegex, normalizePhaseName, phaseMarkdownRegexSource, phaseMarkdownRegexSourceExact, output, error, findPhaseInternal, phaseTokenMatches } = core;
+const ioMod = require("./io.cjs");
+const { output, error } = ioMod;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const phaseIdMod = require("./phase-id.cjs");
+const { escapeRegex, normalizePhaseName, phaseMarkdownRegexSource, phaseMarkdownRegexSourceExact, phaseTokenMatches } = phaseIdMod;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const phaseLocatorMod = require("./phase-locator.cjs");
+const { findPhaseInternal } = phaseLocatorMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const roadmapParserModule = require("./roadmap-parser.cjs");
 const { stripShippedMilestones, extractCurrentMilestone, replaceInCurrentMilestone } = roadmapParserModule;
@@ -77,8 +83,7 @@ function countPhasePlansAndSummaries(phaseDir) {
         hasResearch: phaseFiles.some(f => f.endsWith('-RESEARCH.md') || f === 'RESEARCH.md'),
     };
 }
-// `phaseMarkdownRegexSource` moved to core.cjs (#3537) so phase.cjs and
-// core.cjs itself can consume it without circular deps. Imported above.
+// `phaseMarkdownRegexSource` lives in phase-id.cjs (#3537) and is imported above.
 // ─── searchPhaseInContent ─────────────────────────────────────────────────────
 /**
  * Search for a phase header (and its section) within the given content string.

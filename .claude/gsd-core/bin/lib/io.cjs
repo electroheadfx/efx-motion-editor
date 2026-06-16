@@ -5,10 +5,8 @@
  *
  * Extracted from core.cts (ADR-857 rollout phase 1 / issue #859).
  * The hand-written bodies are preserved byte-for-behaviour; only the module
- * boundary moved. core.cts re-exports every symbol here under its own
- * `export =` object so existing consumers are unaffected.
- *
- * New imports should pull I/O primitives from io.cjs directly.
+ * boundary moved. The core.cjs re-export spine was retired in epic #1267;
+ * callers import I/O primitives from io.cjs directly.
  */
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };

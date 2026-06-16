@@ -24,7 +24,7 @@
  * inline case arms which each required only their own module).
  */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const core = require("./core.cjs");
+const io = require("./io.cjs");
 // ─── routeAuditUat ────────────────────────────────────────────────────────────
 function routeAuditUat({ args, cwd, raw, error, _uat }) {
     // Suppress unused-variable warnings for args/error — this command has no
@@ -42,16 +42,16 @@ function routeAuditOpen({ args, cwd, raw, error, _audit, _core }) {
     void error;
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
     const a = _audit ?? require('./audit.cjs');
-    const c = _core ?? core;
+    const c = _core ?? io;
     const wantJson = args.includes('--json');
     const result = a.auditOpenArtifacts(cwd);
     if (wantJson) {
-        // core.output JSON-stringifies its first arg; pass the object directly.
+        // io.output JSON-stringifies its first arg; pass the object directly.
         c.output(result, raw);
     }
     else {
         // Human-readable report must bypass JSON encoding — use the rawValue
-        // form (third arg) which core.output emits verbatim.
+        // form (third arg) which io.output emits verbatim.
         c.output(null, true, a.formatAuditReport(result));
     }
 }

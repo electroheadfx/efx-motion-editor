@@ -13,8 +13,14 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const node_child_process_1 = require("node:child_process");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const core = require("./core.cjs");
-const { output, error, ERROR_REASON } = core;
+const io = require("./io.cjs");
+const { output, error, ERROR_REASON } = io;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const planningWorkspaceMod = require("./planning-workspace.cjs");
+const { planningDir } = planningWorkspaceMod;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const phaseLocatorMod = require("./phase-locator.cjs");
+const { findPhaseInternal } = phaseLocatorMod;
 const decisions_cjs_1 = require("./decisions.cjs");
 const ui_safety_gate_cjs_1 = require("./ui-safety-gate.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -26,6 +32,7 @@ const { getRoadmapPhaseWithFallback } = roadmapModule;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const gapCheckerModule = require("./gap-checker.cjs");
 const { runGapAnalysis } = gapCheckerModule;
+const prohibition_enforcement_cjs_1 = require("./prohibition-enforcement.cjs");
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function normalizePhrase(text) {
     // eslint-disable-next-line @typescript-eslint/no-base-to-string
@@ -341,7 +348,7 @@ function cmdDecisionCoverageVerify(projectDir, args, raw) {
  * Invocable as: gsd_run check ui-plan-gate <phase>
  *
  * Uses checkUiPresence from ui-safety-gate.cjs — does NOT reimplement frontend detection.
- * Uses getRoadmapPhaseInternal + findPhaseInternal from core.cjs for phase data.
+ * Uses getRoadmapPhaseWithFallback + findPhaseInternal from leaf modules for phase data.
  */
 function findUiSpecInDir(phaseDir) {
     if (!phaseDir || !node_fs_1.default.existsSync(phaseDir))
@@ -368,7 +375,7 @@ function findUiSpecInDir(phaseDir) {
  *       surface the miss — we do NOT silently degrade to frontend:false if the roadmap
  *       exists but the phase header is absent.
  *   (b) Runs checkUiPresence (frontend detection) — no reimplementation.
- *   (c) Resolves the phase directory via core.findPhaseInternal; checks for *-UI-SPEC.md.
+ *   (c) Resolves the phase directory via findPhaseInternal (phase-locator.cjs); checks for *-UI-SPEC.md.
  *
  * Returns: { frontend, hasUiSpec, block, uiSpecPath, phaseLookupFailed }
  *   block = frontend && !hasUiSpec
@@ -385,10 +392,8 @@ function computeUiPlanGate(projectDir, phase) {
         const section = getRoadmapPhaseWithFallback(projectDir, phase);
         if (section === null) {
             // Distinguish: ROADMAP.md missing (no-roadmap project) vs phase not found in ROADMAP.
-            // core.planningDir(cwd) resolves the .planning/ root for workstream-aware paths.
-            const planDir = typeof core['planningDir'] === 'function'
-                ? core['planningDir'](projectDir)
-                : node_path_1.default.join(projectDir, '.planning');
+            // planningDir(cwd) resolves the .planning/ root for workstream-aware paths.
+            const planDir = planningDir(projectDir);
             const roadmapPath = node_path_1.default.join(planDir, 'ROADMAP.md');
             if (node_fs_1.default.existsSync(roadmapPath)) {
                 // ROADMAP.md exists but phase was not found → surface the miss
@@ -405,23 +410,19 @@ function computeUiPlanGate(projectDir, phase) {
     const presenceResult = (0, ui_safety_gate_cjs_1.checkUiPresence)(phaseSection);
     const frontend = presenceResult.hasUI;
     // (c) Resolve phase directory via findPhaseInternal and check for *-UI-SPEC.md
-    const coreModule = core;
     let phaseDir = '';
     try {
-        const findPhase = coreModule['findPhaseInternal'];
-        if (typeof findPhase === 'function') {
-            const result = findPhase(projectDir, phase);
-            if (result && typeof result === 'object') {
-                // findPhaseInternal returns { directory: '<relative-posix-path>', ... }
-                // directory is relative to cwd — resolve it to absolute.
-                const relDir = typeof result['directory'] === 'string' ? result['directory'] : '';
-                if (relDir) {
-                    phaseDir = node_path_1.default.resolve(projectDir, relDir);
-                }
+        const result = findPhaseInternal(projectDir, phase);
+        if (result && typeof result === 'object') {
+            // findPhaseInternal returns { directory: '<relative-posix-path>', ... }
+            // directory is relative to cwd — resolve it to absolute.
+            const relDir = typeof result['directory'] === 'string' ? result['directory'] : '';
+            if (relDir) {
+                phaseDir = node_path_1.default.resolve(projectDir, relDir);
             }
-            else if (typeof result === 'string') {
-                phaseDir = result;
-            }
+        }
+        else if (typeof result === 'string') {
+            phaseDir = result;
         }
     }
     catch { /* phase dir lookup failure → hasUiSpec=false */ }
@@ -475,7 +476,7 @@ const UI_PATH_PATTERNS_RE = /\/(components|pages|views|screens|layouts|ui|fronte
  *       same lookup as computeUiPlanGate — to determine if this is a frontend phase.
  *   (b) Runs checkUiPresence (frontend detection) — no reimplementation.
  *   (c) Checks git diff HEAD~1..HEAD for UI file changes in the current worktree.
- *   (d) Resolves the phase directory via core.findPhaseInternal; checks for *-UI-SPEC.md.
+ *   (d) Resolves the phase directory via findPhaseInternal (phase-locator.cjs); checks for *-UI-SPEC.md.
  *
  * Returns: { frontend, hasUiFiles, hasUiSpec, block, message?, phaseLookupFailed? }
  *   block = frontend && hasUiFiles && !hasUiSpec
@@ -488,9 +489,7 @@ function computeUiSafetyGate(projectDir, phase) {
     try {
         const section = getRoadmapPhaseWithFallback(projectDir, phase);
         if (section === null) {
-            const planDir = typeof core['planningDir'] === 'function'
-                ? core['planningDir'](projectDir)
-                : node_path_1.default.join(projectDir, '.planning');
+            const planDir = planningDir(projectDir);
             const roadmapPath = node_path_1.default.join(planDir, 'ROADMAP.md');
             if (node_fs_1.default.existsSync(roadmapPath)) {
                 phaseLookupFailed = true;
@@ -519,21 +518,17 @@ function computeUiSafetyGate(projectDir, phase) {
     }
     catch { /* git unavailable or no prior commit — treat as no UI files changed */ }
     // (d) Resolve phase directory and check for *-UI-SPEC.md (same as computeUiPlanGate)
-    const coreModule = core;
     let phaseDir = '';
     try {
-        const findPhase = coreModule['findPhaseInternal'];
-        if (typeof findPhase === 'function') {
-            const result = findPhase(projectDir, phase);
-            if (result && typeof result === 'object') {
-                const relDir = typeof result['directory'] === 'string' ? result['directory'] : '';
-                if (relDir) {
-                    phaseDir = node_path_1.default.resolve(projectDir, relDir);
-                }
+        const result = findPhaseInternal(projectDir, phase);
+        if (result && typeof result === 'object') {
+            const relDir = typeof result['directory'] === 'string' ? result['directory'] : '';
+            if (relDir) {
+                phaseDir = node_path_1.default.resolve(projectDir, relDir);
             }
-            else if (typeof result === 'string') {
-                phaseDir = result;
-            }
+        }
+        else if (typeof result === 'string') {
+            phaseDir = result;
         }
     }
     catch { /* phase dir lookup failure → hasUiSpec=false */ }
@@ -567,20 +562,16 @@ function cmdTddReviewCheckpoint(projectDir, args, raw) {
         return;
     }
     // Resolve phase directory
-    const coreModule = core;
     let phaseDir = '';
     try {
-        const findPhase = coreModule['findPhaseInternal'];
-        if (typeof findPhase === 'function') {
-            const result = findPhase(projectDir, phase);
-            if (result && typeof result === 'object') {
-                const relDir = typeof result['directory'] === 'string' ? result['directory'] : '';
-                if (relDir)
-                    phaseDir = node_path_1.default.resolve(projectDir, relDir);
-            }
-            else if (typeof result === 'string') {
-                phaseDir = result;
-            }
+        const result = findPhaseInternal(projectDir, phase);
+        if (result && typeof result === 'object') {
+            const relDir = typeof result['directory'] === 'string' ? result['directory'] : '';
+            if (relDir)
+                phaseDir = node_path_1.default.resolve(projectDir, relDir);
+        }
+        else if (typeof result === 'string') {
+            phaseDir = result;
         }
     }
     catch { /* phase dir lookup failure */ }
@@ -788,7 +779,15 @@ function routeCheckCommand({ args, cwd, raw }) {
         cmdVerifyCodebaseDrift(cwd, raw);
         return;
     }
-    error('Unknown check subcommand. Available: auto-mode, decision-coverage-plan, decision-coverage-verify, gap-analysis-plan-post, tdd-review-checkpoint, ui-plan-gate, ui-safety-gate, verify-schema-drift, verify-codebase-drift', ERROR_REASON.SDK_UNKNOWN_COMMAND);
+    if (subcommand === 'prohibition-enforcement') {
+        // The deterministic test-tier prohibition PRODUCER/gate (#1259, ADR-550 D5d). Locates the
+        // wired mechanical check (node-test or lint-rule), confirms fail-first, runs it, builds
+        // enforcementEvidence, and emits the dispositionForProhibition verdict. Invocable as
+        // `gsd_run check prohibition-enforcement <request.json>`.
+        (0, prohibition_enforcement_cjs_1.routeProhibitionEnforcement)(args, raw);
+        return;
+    }
+    error('Unknown check subcommand. Available: auto-mode, decision-coverage-plan, decision-coverage-verify, gap-analysis-plan-post, prohibition-enforcement, tdd-review-checkpoint, ui-plan-gate, ui-safety-gate, verify-schema-drift, verify-codebase-drift', ERROR_REASON.SDK_UNKNOWN_COMMAND);
 }
 module.exports = {
     routeCheckCommand,

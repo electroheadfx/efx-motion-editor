@@ -20,8 +20,11 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const node_os_1 = __importDefault(require("node:os"));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const core = require("./core.cjs");
-const { output, error, loadConfig } = core;
+const io = require("./io.cjs");
+const { output, error } = io;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const configLoader = require("./config-loader.cjs");
+const { loadConfig } = configLoader;
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 const runtime_homes_cjs_1 = require("./runtime-homes.cjs");
 const runtime_slash_cjs_1 = require("./runtime-slash.cjs");

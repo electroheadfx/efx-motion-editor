@@ -6,8 +6,8 @@
  *
  * Imported by:
  *   - config.cjs (isValidConfigKey validator)
- *   - core.cjs
  *   - many tests (config-schema.property.test.cjs, bug-*, feat-*, etc.)
+ * (core.cjs re-export spine retired in epic #1267)
  *
  * See Phase 2 Cycle 5 (#3536) — schema manifest migration.
  *

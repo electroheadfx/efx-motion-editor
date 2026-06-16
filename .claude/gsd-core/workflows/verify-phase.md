@@ -70,7 +70,17 @@ Aggregate all must_haves across plans for phase-level verification.
 **Prohibitions (`must_haves.prohibitions`, ADR-550 D3 — the must-NOT sibling block):** When a plan carries `must_haves.prohibitions`, extract each `{ statement, status, verification }` item and route it by `verification` tier in verdict assembly (ADR-550 D4, "B-with-guard", 2026-06-12 maintainer decision). These are NEGATIVE checks (the must-NOT must NOT have happened), distinct from positive `truths`:
 
 - **judgment-tier → mode-dependent soft-gate.** Interactive verify defers each item to the end-of-phase human checkpoint (`human_verify_mode: end-of-phase`). Autonomous verify records a NON-AUTHORITATIVE LLM-judge verdict + a prominent `unverified-prohibition — human review recommended` flag (autonomous completion reads "complete with N flagged prohibitions"). NEVER a silent pass; NEVER a hard halt of an AFK run.
-- **test-tier → FAIL CLOSED (accept-and-flag).** Accept the `verification: test` value (the SPEC↔must_haves.prohibitions projection contract holds — no forced schema change later), but a well-formed test-tier item reaching verify with NO wired enforcement disposes as UNVERIFIED, flagged like an unresolved judgment item, NEVER green. The deterministic fail-closed default is `dispositionForProhibition()` in probe-core (`status: 'unverified'`, `flagged: true` on empty `enforcementEvidence`). The real fail-first negative-test enforcement MECHANISM defers to a follow-up PR (#644's corpus is entirely judgment-tier; a contrived test-tier fixture here would be the gold-plating failure mode).
+- **test-tier → ENFORCED via `check prohibition-enforcement` (green on pass, hard-gate on miss/fail).** Accept the `verification: test` value (the SPEC↔must_haves.prohibitions projection contract holds — no forced schema change later). For each test-tier item, the verifier builds `request.check` **DETERMINISTICALLY from the projected descriptor** — it does NOT invent `{ kind, target, rule }`. Read the flat scalar keys `check_kind` / `check_target` / `check_rule` off the `must_haves.prohibitions` item and reconstruct the `CheckDescriptor` via the `descriptorFromProjection` adapter in `prohibition-enforcement` (`descriptorFromProjection(projectedItem)` → `{ kind: check_kind, target: check_target, rule?: check_rule }`). Then attest `failFirst: true` in the request — `failFirst` is the ONE field NOT sourced from the projection; it stays a verify-time caller attestation (#1279 machine-proves it against a violation fixture). Invoke the producer (CLI surface unchanged):
+
+  ```bash
+  gsd_run check prohibition-enforcement <request.json>
+  ```
+
+  where `<request.json>` carries `{ prohibition, check, mode }` — `check` being the wired mechanical-check descriptor `{ kind: 'node-test' | 'lint-rule', target, rule?, failFirst: true }`, with `kind`/`target`/`rule` now sourced from the projected `check_*` scalars (not author/verifier invention) and `failFirst` caller-attested. For `node-test`, `target` (from `check_target`) is the negative-test file path; for `lint-rule`, `target` is the PATH to lint and `rule` (from `check_rule`) is the eslint rule id (e.g. `local/no-source-grep`) — both required (a lint-rule without `rule` is not a valid wired check). The producer LOCATES the wired check, requires the caller-attested `failFirst` marker, RUNS it for a genuine non-vacuous pass, builds `enforcementEvidence`, and emits the `dispositionForProhibition()` verdict (#1259, ADR-550 D5d). Route the result by its typed fields:
+  - **`status: 'green'`, `flagged: false`** (a genuinely-passing wired negative test / lint rule, `located: true`, non-empty `evidence`) → the item is satisfiable → it can reach **passed**.
+  - **missing, non-attested, or genuinely-non-passing check** (`located: false` OR `status: 'unverified'`, `flagged: true`) → **hard-gate**: disposes flagged-unverified, NEVER green, routing to `gaps_found` in BOTH interactive and autonomous modes (a failing mechanical check blocks even AFK; ADR-550 D4 / D3). The deterministic fail-closed default backing every miss/fail is `dispositionForProhibition()` in probe-core (`status: 'unverified'`, `flagged: true` on empty `enforcementEvidence`).
+
+  > **Descriptor source — deterministic locate (#1278, DELIVERED).** The `check` descriptor's `{ kind, target, rule }` is now sourced **deterministically from the projected `check_kind` / `check_target` / `check_rule` scalars** on the `must_haves.prohibitions` item (authored at `/gsd-spec-phase`, projected by `projectProhibitions`, read back via the `descriptorFromProjection` adapter). So a wired passing test closes the gap with **zero manual descriptor authoring** — the verifier no longer invents the locate (removing the spoofable invent-at-verify-time surface; ADR-857 §147 exogenous grading). **Fail-closed is preserved:** an item with NO projected descriptor — or a PARTIAL one (e.g. a `lint-rule` missing `check_rule`) — makes `descriptorFromProjection` return `null` / an under-specified descriptor, which falls through to the producer's existing fail-closed LOCATE (`located: false`) → flagged-unverified, NEVER green, in BOTH modes. The only field still attested at verify time (not projected) is `failFirst`; machine-proving it against a violation fixture is the remaining **tracked follow-up: #1279**.
 
 **Option B: Use Success Criteria from ROADMAP.md**
 
@@ -101,9 +111,11 @@ If no must_haves in frontmatter AND no Success Criteria in ROADMAP:
 <step name="verify_truths">
 For each observable truth, determine if the codebase enables it.
 
-**Status:** ✓ VERIFIED (all supporting artifacts pass) | ✗ FAILED (artifact missing/stub/unwired) | ? UNCERTAIN (needs human)
+**Status:** ✓ VERIFIED (all supporting artifacts pass — and, for a behavior-dependent truth, a behavioral test exercises the asserted behavior) | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED (present + wired, but a state transition or cancellation/cleanup/ordering invariant is exercised by no test — routes to human verification, excluded from the score) | ✗ FAILED (artifact missing/stub/unwired) | ? UNCERTAIN (needs human)
 
 For each truth: identify supporting artifacts → check artifact status → check wiring → determine truth status.
+
+**Behavior-dependent truths:** when a truth asserts a state transition or a cancellation/cleanup/ordering invariant, symbol presence + wiring is necessary but not sufficient — the code can be present and wired yet still leak state on the path the invariant covers. Mark such a truth ✓ VERIFIED only when a pre-existing test exercises the transition/invariant and passes (one named test, never the full suite); otherwise mark it ⚠️ PRESENT_BEHAVIOR_UNVERIFIED, emit a human-verification item, and exclude it from the verified score.
 
 **Example:** Truth "User can see existing messages" depends on Chat.tsx (renders), /api/chat GET (provides), Message model (schema). If Chat.tsx is a stub or API returns hardcoded [] → FAILED. If all exist, are substantive, and connected → VERIFIED.
 </step>
@@ -440,13 +452,14 @@ Infrastructure and foundation phases — code foundations, database schema, inte
 - Mark human verification as **N/A** with rationale: "Infrastructure/foundation phase — no user-facing elements to test manually."
 - Set `human_verification: []` and do **not** produce a `human_needed` status solely due to lack of user-facing features.
 - Only add human verification items if the phase goal or success criteria explicitly describe something a user would interact with (UI, CLI command output visible to end users, external service UX).
+- **Exception — behavior-unverified truths still count.** A truth marked ⚠️ PRESENT_BEHAVIOR_UNVERIFIED (a state transition or a cancellation/cleanup/ordering invariant with no test exercising it) is a behavioral-evidence gap, not an artificial user-facing step. Record it in `behavior_unverified_items` and emit a human-verification item for it **even on an infrastructure/foundation phase** — these invariants are exactly where infra phases hide runtime state leaks. Such a truth drives `human_needed`; the auto-pass-UAT shortcut applies only to the absence of user-facing UX, never to a behavior-unverified invariant.
 
 **How to determine if a phase is infrastructure/foundation:**
 - Phase goal or name contains: "foundation", "infrastructure", "schema", "database", "internal API", "data model", "scaffolding", "pipeline", "tooling", "CI", "migrations", "service layer", "backend", "core library"
 - Phase success criteria describe only technical artifacts (files exist, tests pass, schema is valid) with no user interaction required
 - There is no UI, CLI output visible to end users, or real-time behavior to observe
 
-**If the phase IS infrastructure/foundation:** auto-pass UAT — skip the human verification items list entirely. Log:
+**If the phase IS infrastructure/foundation:** auto-pass UAT — skip the human verification items list entirely, **except any ⚠️ PRESENT_BEHAVIOR_UNVERIFIED truth (see exception above), which still emits a human-verification item and drives `human_needed`.** Log:
 
 ```markdown
 ## Human Verification
@@ -471,19 +484,21 @@ Classify status using this decision tree IN ORDER (most restrictive first):
    → **gaps_found**
 
 2. IF any `must_haves.prohibitions` item disposes as flagged-unverified (ADR-550 D4):
-   - **test-tier, fail-closed** (no wired enforcement — `dispositionForProhibition()` returns `status: 'unverified'`, `flagged: true`): → **gaps_found** (never green; the unwired test-tier item is an unverified gap).
+   - **test-tier, fail-closed when the wired check is MISSING OR FAILS** (now run via `check prohibition-enforcement` — `located: false`, or `dispositionForProhibition()` returns `status: 'unverified'`, `flagged: true`): → **gaps_found** in both interactive and autonomous modes (never green; a missing/failing mechanical check is an unverified gap). A test-tier item whose wired check PASSES disposes `status: 'green'`, `flagged: false` and is NOT a gap — it can reach **passed**.
    - **judgment-tier, autonomous run** (non-authoritative LLM-judge verdict): emit the `unverified-prohibition — human review recommended` flag and classify → **human_needed** (autonomous completion reads "complete with N flagged prohibitions"; never a silent pass, never a hard halt).
    - **judgment-tier, interactive run**: route to the end-of-phase human checkpoint → **human_needed**.
 
-3. IF the previous step produced ANY human verification items:
-   → **human_needed** (even if all truths VERIFIED and score is N/N)
+3. IF the previous step produced ANY human verification items — this includes every ⚠️ PRESENT_BEHAVIOR_UNVERIFIED truth:
+   → **human_needed** (even if all other truths VERIFIED)
 
 4. IF all checks pass AND no human verification items AND no flagged prohibitions:
    → **passed**
 
 **passed is ONLY valid when no human verification items AND no flagged prohibitions exist.** A prohibition (must-NOT) can never be silently absorbed into a `passed` verdict — that is the core failure mode ADR-550 D4 forbids.
 
-**Score:** `verified_truths / total_truths`
+A ⚠️ PRESENT_BEHAVIOR_UNVERIFIED truth is never FAILED and never VERIFIED: it does not trigger gaps_found (the code is present and wired) and is not counted as verified (its runtime behavior was not exercised). It routes through the existing human_needed sink — no new overall status.
+
+**Score:** `verified_truths / total_truths` — `verified_truths` counts ✓ VERIFIED truths plus PASSED (override) truths; ⚠️ PRESENT_BEHAVIOR_UNVERIFIED truths are the only ones excluded, reported separately as the `behavior_unverified` count. A headline N/N therefore certifies behavioral evidence for every behavior-dependent truth, not merely symbol presence.
 </step>
 
 <step name="filter_deferred_items">

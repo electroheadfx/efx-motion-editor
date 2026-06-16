@@ -241,6 +241,15 @@ function validateProhibitionResolution(resolution) {
  * and are intentionally NOT projected into the plan block (which is keyed on the must-NOT
  * statement, not the source requirement). A non-array input projects to `[]` (fail-soft on the
  * empty/zero-prohibition case), never a throw.
+ *
+ * An OPTIONAL wired-check descriptor (#1278) projects as the LOCKED flat scalar keys
+ * `check_kind`/`check_target`/`check_rule` (NEVER a nested `check:{}` object; `failFirst` is never
+ * projected). These ride the EXISTING continuation-KV path of `parseMustHavesBlock`
+ * (src/frontmatter.cts:344) with NO shared-parser rewrite (IMPL-SCOPING §3 Option 1). The keys are
+ * emitted ONLY for a well-formed descriptor (valid `check_kind` + non-empty `check_target`; plus
+ * `check_rule` only for a lint-rule that carries one); a descriptor-less or under-specified item is
+ * byte-identical to today (CHK-07), so an under-specified descriptor projects absent and fails closed
+ * at the producer downstream (CHK-06), never as a partial-but-locatable green.
  */
 function projectProhibitions(items) {
     if (!Array.isArray(items))
@@ -259,6 +268,20 @@ function projectProhibitions(items) {
             entry.verification = String(p.verification);
         if (p.reason != null && String(p.reason).trim())
             entry.reason = String(p.reason);
+        // Optional wired-check descriptor (#1278): emit flat scalars ONLY when well-formed. A valid kind
+        // plus a non-empty target is the minimum; under that bar nothing is emitted (CHK-07 byte-identity,
+        // and the producer fails closed on the absent descriptor — CHK-06).
+        const kind = p.check_kind;
+        const targetOk = typeof p.check_target === 'string' && p.check_target.trim() !== '';
+        if ((kind === 'node-test' || kind === 'lint-rule') && targetOk) {
+            entry.check_kind = kind;
+            entry.check_target = String(p.check_target);
+            // `check_rule` rides only the lint-rule path (node-test never carries one); a lint-rule missing
+            // its rule leaves check_rule absent so the producer's fail-closed locate rejects it (CHK-06).
+            if (kind === 'lint-rule' && typeof p.check_rule === 'string' && p.check_rule.trim() !== '') {
+                entry.check_rule = String(p.check_rule);
+            }
+        }
         out.push(entry);
     }
     return out;
@@ -270,11 +293,10 @@ function projectProhibitions(items) {
  * This is the cheap safety guarantee: a well-formed prohibition that reaches verify-phase with NO
  * wired enforcement evidence can NEVER be a silent pass. It is `{ status: 'unverified', flagged:
  * true }` — never `green` — exactly like an unresolved judgment item. The HEAVY half (a real
- * fail-first negative-test enforcement mechanism that, given evidence, would flip a test-tier item
- * to green) is OUT of #644 scope and defers to a follow-up PR: #644's corpus is entirely
- * judgment-tier, so wiring a contrived test-tier consumer here would be the delete-bad-tests /
- * gold-plating failure mode. Until that follow-up lands, ANY prohibition without enforcement
- * evidence — test- or judgment-tier — disposes as flagged-unverified.
+ * negative-test enforcement mechanism that, given evidence, flips a test-tier item to green) was OUT
+ * of #644 scope and LANDED in #1259 as the `prohibition-enforcement` producer (it builds the
+ * `enforcementEvidence` this helper reads). This helper's policy is unchanged: ANY prohibition
+ * without enforcement evidence — test- or judgment-tier — disposes as flagged-unverified.
  *
  * The function is pure: same input always yields the same disposition (no LLM judgment, ADR-550
  * D5). The LLM-judge soft-gate for judgment-tier items is a verify-phase PROSE concern (the
@@ -287,23 +309,23 @@ function dispositionForProhibition(prohibition, context = {}) {
     const evidence = Array.isArray(context.enforcementEvidence) ? context.enforcementEvidence : [];
     const hasEnforcement = evidence.length > 0;
     // FAIL CLOSED: no wired enforcement evidence -> flagged unverified, never green. This holds for
-    // every tier today (the real enforcement mechanism that could flip a test-tier item to green is
-    // deferred to a follow-up PR). The guard the safety assertion proves: an unwired item can never
-    // be silently skipped.
+    // every tier (the producer that builds enforcement evidence for a test-tier item — the
+    // `prohibition-enforcement` module — landed in #1259). The guard the safety assertion proves: an
+    // unwired item can never be silently skipped.
     if (!hasEnforcement) {
         return {
             status: 'unverified',
             flagged: true,
             tier,
             reason: tier === 'test'
-                ? 'test-tier prohibition has no wired enforcement evidence — flagged unverified (fail-closed; real negative-test enforcement deferred to a follow-up PR, ADR-550 D5d)'
+                ? 'test-tier prohibition has no passing wired enforcement check — flagged unverified (fail-closed; never a silent pass, ADR-550 D5d)'
                 : 'prohibition has no enforcement evidence — flagged unverified (fail-closed; never a silent pass, ADR-550 D5d)',
         };
     }
     // D4 GUARD: a judgment-tier (or unknown-tier) prohibition is NEVER a silent green from this
     // deterministic helper — it always routes to human/LLM judgment review (ADR-550 D4; verify-phase.md).
-    // Only a test-tier item with wired enforcement evidence may go green, and even that is the deferred
-    // heavy half until the real negative-test enforcement mechanism lands (no #644 caller passes evidence).
+    // Only a test-tier item with wired enforcement evidence may go green; the producer that supplies
+    // that evidence (`prohibition-enforcement`, #1259) runs the wired check and requires a genuine pass.
     if (tier === 'test') {
         return {
             status: 'green',

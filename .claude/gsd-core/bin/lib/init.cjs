@@ -13,8 +13,22 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const node_os_1 = __importDefault(require("node:os"));
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- core.cjs is an export= CommonJS module
-const core = require("./core.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- io.cjs is an export= CommonJS module
+const io = require("./io.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- config-loader.cjs is an export= CommonJS module
+const configLoader = require("./config-loader.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- model-resolver.cjs is an export= CommonJS module
+const modelResolver = require("./model-resolver.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-locator.cjs is an export= CommonJS module
+const phaseLocator = require("./phase-locator.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- roadmap-parser.cjs is an export= CommonJS module
+const roadmapParser = require("./roadmap-parser.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- core-utils.cjs is an export= CommonJS module
+const coreUtils = require("./core-utils.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-id.cjs is an export= CommonJS module
+const phaseId = require("./phase-id.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- worktree-safety.cjs is an export= CommonJS module
+const worktreeSafety = require("./worktree-safety.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- planning-workspace.cjs is an export= CommonJS module
 const planningWorkspace = require("./planning-workspace.cjs");
 const secrets_cjs_1 = require("./secrets.cjs");
@@ -28,7 +42,20 @@ const security_cjs_1 = require("./security.cjs");
 const runtime_homes_cjs_1 = require("./runtime-homes.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- frontmatter.cjs is an export= CommonJS module
 const frontmatterMod = require("./frontmatter.cjs");
-const { loadConfig, resolveModelInternal, resolveGranularityInternal, assertValidGranularityOverride, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, gitWorktreeInfoInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, normalizePhaseName, toPosixPath, output, error, checkAgentsInstalled, phaseTokenMatches, } = core;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- agent-install-check.cjs is an export= CommonJS module
+const agentInstallCheck = require("./agent-install-check.cjs");
+const { checkAgentsInstalled } = agentInstallCheck;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- git-base-branch.cjs is an export= CommonJS module
+const gitBaseBranch = require("./git-base-branch.cjs");
+const { gitWorktreeInfoInternal } = gitBaseBranch;
+const { output, error } = io;
+const { loadConfig } = configLoader;
+const { resolveModelInternal, resolveGranularityInternal, assertValidGranularityOverride } = modelResolver;
+const { findPhaseInternal } = phaseLocator;
+const { getRoadmapPhaseInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, } = roadmapParser;
+const { pathExistsInternal, generateSlugInternal, toPosixPath } = coreUtils;
+const { normalizePhaseName, phaseTokenMatches } = phaseId;
+const { pruneOrphanedWorktrees } = worktreeSafety;
 const { planningPaths, planningDir, planningRoot, findContextMdIn, } = planningWorkspace;
 const { determinePhaseStatus } = commandsMod;
 const { extractFrontmatter } = frontmatterMod;
@@ -1222,7 +1249,6 @@ function cmdInitManager(cwd, raw) {
 }
 function cmdInitProgress(cwd, raw) {
     try {
-        const { pruneOrphanedWorktrees } = core;
         pruneOrphanedWorktrees(cwd);
     }
     catch {

@@ -14,7 +14,7 @@
  *   - re-resolve: always calls resolveCapabilityRuntimeState for the return value
  *
  * Dependencies (leaf modules only — no circular risk):
- *   - ./core.cjs               (output, error)
+ *   - ./io.cjs                 (output, error)
  *   - ./capability-state.cjs   (resolveCapabilityRuntimeState, _resolveManifest, _resolveCommandsGsdDir)
  *   - ./surface.cjs            (readSurface, writeSurface, applySurface)
  *   - ./install-profiles.cjs   (readActiveProfile)
@@ -23,8 +23,8 @@
  *   - capability-registry.cjs  (loaded at call time)
  */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const core = require("./core.cjs");
-const { output: coreOutput, error: coreError } = core;
+const ioMod = require("./io.cjs");
+const { output: coreOutput, error: coreError } = ioMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const capabilityStateMod = require("./capability-state.cjs");
 const { resolveCapabilityRuntimeState, _resolveManifest, _resolveCommandsGsdDir } = capabilityStateMod;
@@ -71,7 +71,8 @@ function setCapabilityState(cwd, runtimeConfigDir, desired, opts) {
     const before = resolveCapabilityRuntimeState(cwd, runtimeConfigDir);
     const resolvedConfigDir = before.runtimeConfigDir;
     // ── Load registry ─────────────────────────────────────────────────────────
-    const registry = before.registry;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const registry = require('./capability-registry.cjs');
     const capabilitiesMap = (registry['capabilities'] && typeof registry['capabilities'] === 'object' && !Array.isArray(registry['capabilities'])
         ? registry['capabilities']
         : {});
