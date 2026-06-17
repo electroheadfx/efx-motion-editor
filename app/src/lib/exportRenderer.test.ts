@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { physicPaintStore } from '../stores/physicPaintStore';
-import { resolveMissingRotoFrameDraw } from './previewRenderer';
+import { resolveMissingRotoFrameDraw } from './rotoFrameDraw';
 
 const root = resolve(__dirname, '../..');
 const readSource = (path: string) => readFileSync(resolve(root, path), 'utf8');

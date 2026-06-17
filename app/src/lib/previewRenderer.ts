@@ -20,6 +20,8 @@ import {applyMotionBlur} from './glMotionBlur';
 import {motionBlurStore} from '../stores/motionBlurStore';
 import {VelocityCache, isStationary} from './motionBlurEngine';
 import {interpolateAt} from './keyframeEngine';
+import {resolveMissingRotoFrameDraw} from './rotoFrameDraw';
+import type {MissingRotoFrameBackgroundState} from './rotoFrameDraw';
 
 /**
  * Create a Canvas 2D gradient from GradientData.
@@ -83,23 +85,6 @@ function blendModeToCompositeOp(mode: BlendMode): GlobalCompositeOperation {
     default:
       return 'source-over';
   }
-}
-
-export type MissingRotoFrameBackgroundState =
-  | { mode: 'transparent' }
-  | { mode: 'color'; color: string };
-
-export type MissingRotoFrameDrawInstruction =
-  | { kind: 'transparent' }
-  | { kind: 'background-only'; color: string };
-
-export function resolveMissingRotoFrameDraw(
-  _layerId: string,
-  _frame: number,
-  backgroundState: MissingRotoFrameBackgroundState,
-): MissingRotoFrameDrawInstruction {
-  if (backgroundState.mode === 'transparent') return { kind: 'transparent' };
-  return { kind: 'background-only', color: backgroundState.color };
 }
 
 function getMissingRotoBackgroundState(layer: Layer): MissingRotoFrameBackgroundState {
