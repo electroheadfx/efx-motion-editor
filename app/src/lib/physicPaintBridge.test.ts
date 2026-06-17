@@ -157,6 +157,67 @@ describe('physicPaintBridge', () => {
     expect(context.operationId).toMatch(/^physic-paint-/);
   });
 
+  it('hydrates every cached Roto frame summary into launch context', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 8, makeFrame(0, 8));
+    physicPaintStore.replaceGeneratedRotoCache('phys-layer-1', [{
+      ...makeFrame(1, 9),
+      source: 'generated-interpolation',
+      nearestRealKeyFrame: 8,
+    }], {
+      enabled: true,
+      inBetweenFrameCount: 1,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null, 'roto');
+
+    expect(context).toMatchObject({
+      workflowMode: 'roto',
+      startFrame: 8,
+      editableSource: 'roto',
+    });
+    expect(context.cachedRotoFrames).toEqual([
+      expect.objectContaining({ appFrame: 8, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 9, source: 'generated-interpolation', nearestRealKeyFrame: 8 }),
+    ]);
+    expect(context.rotoInterpolationSettings).toEqual({
+      enabled: true,
+      inBetweenFrameCount: 1,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+    });
+  });
+
+  it('redirects generated-only Roto launch targets to the nearest real key frame', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 12, makeFrame(0, 12));
+    physicPaintStore.replaceGeneratedRotoCache('phys-layer-1', [{
+      ...makeFrame(1, 13),
+      source: 'generated-interpolation',
+      nearestRealKeyFrame: 12,
+    }], {
+      enabled: true,
+      inBetweenFrameCount: 1,
+      mode: 'blend',
+      deform: 20,
+      position: 30,
+    });
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 13, null, null, 'roto');
+
+    expect(context).toMatchObject({
+      requestedWorkflowMode: 'roto',
+      workflowMode: 'roto',
+      startFrame: 12,
+      editableSource: 'roto',
+    });
+    expect(context.cachedRotoFrames).toEqual(expect.arrayContaining([
+      expect.objectContaining({ appFrame: 13, source: 'generated-interpolation', nearestRealKeyFrame: 12 }),
+    ]));
+  });
+
   it('opens the saved Play script containing the scrubber frame with relative preview frame', () => {
     physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
       id: 'play-a',
