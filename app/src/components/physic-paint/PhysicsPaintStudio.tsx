@@ -480,6 +480,7 @@ export function PhysicsPaintStudio() {
   const [isRotoCachedPlaybackActive, setIsRotoCachedPlaybackActive] = useState(false);
   const [cachedRotoPlaybackFrame, setCachedRotoPlaybackFrame] = useState<RenderedFramePayload | null>(null);
   const [rotoCachedPlaybackStatus, setRotoCachedPlaybackStatus] = useState<string | null>(null);
+  const [hasCopiedRotoKey, setHasCopiedRotoKey] = useState(false);
   const [savedPlayCacheDirty, setSavedPlayCacheDirty] = useState(false);
   const [playLimitToast, setPlayLimitToast] = useState<string | null>(null);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
@@ -1476,12 +1477,23 @@ export function PhysicsPaintStudio() {
       .sort((a, b) => a - b)
   ), [occupiedRotoFrames, savedRotoFrames]);
 
+  function isCurrentFrameARealRotoKey(): boolean {
+    return getRealRotoKeyFramesForStudio().includes(currentFrame);
+  }
+
+  const requireCurrentRealRotoKey = useCallback(() => {
+    if (isCurrentFrameARealRotoKey()) return true;
+    setApplyMessage('Key utilities require a real Roto key. Generated in-betweens are render-only.');
+    return false;
+  }, [currentFrame, getRealRotoKeyFramesForStudio]);
+
   const syncRotoKeyFrameLists = useCallback((frames: number[]) => {
     setOccupiedRotoFrames(frames);
     setSavedRotoFrames((markers) => frames.map((frame) => markers.find(marker => marker.frame === frame) ?? { frame, saved: true }));
   }, []);
 
   const duplicateRotoKey = useCallback(() => {
+    if (!requireCurrentRealRotoKey()) return;
     const result = duplicateRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame);
     const sourceState = rotoFrameStatesRef.current.get(result.sourceFrame);
     for (const frame of [...result.shiftedFrames].sort((a, b) => b - a)) {
@@ -1496,9 +1508,10 @@ export function PhysicsPaintStudio() {
     syncRotoKeyFrameLists(result.frames);
     physicPaintStore.regenerateRotoInterpolationCache(launchContext?.layerId ?? '');
     setApplyMessage(`Duplicate key created at frame ${result.targetFrame}.`);
-  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext?.layerId, syncRotoKeyFrameLists]);
+  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext?.layerId, requireCurrentRealRotoKey, syncRotoKeyFrameLists]);
 
   const insertRotoFrame = useCallback(() => {
+    if (!requireCurrentRealRotoKey()) return;
     const result = insertRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame);
     for (const frame of [...result.shiftedFrames].sort((a, b) => b - a)) {
       const state = rotoFrameStatesRef.current.get(frame);
@@ -1510,9 +1523,10 @@ export function PhysicsPaintStudio() {
     syncRotoKeyFrameLists(result.frames);
     physicPaintStore.regenerateRotoInterpolationCache(launchContext?.layerId ?? '');
     setApplyMessage(`Inserted Roto frame at ${result.targetFrame}.`);
-  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext?.layerId, syncRotoKeyFrameLists]);
+  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext?.layerId, requireCurrentRealRotoKey, syncRotoKeyFrameLists]);
 
   const deleteRotoFrame = useCallback(() => {
+    if (!requireCurrentRealRotoKey()) return;
     const result = deleteRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame);
     if (result.removedFrame !== null) rotoFrameStatesRef.current.delete(result.removedFrame);
     for (const frame of result.shiftedFrames) {
@@ -1526,20 +1540,21 @@ export function PhysicsPaintStudio() {
     physicPaintStore.removeFrameRange(launchContext?.layerId ?? '', currentFrame, 1);
     physicPaintStore.regenerateRotoInterpolationCache(launchContext?.layerId ?? '');
     setApplyMessage(`Deleted Roto key ${currentFrame}.`);
-  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext?.layerId, syncRotoKeyFrameLists]);
+  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext?.layerId, requireCurrentRealRotoKey, syncRotoKeyFrameLists]);
 
   const copyRotoFrame = useCallback(() => {
-    if (!launchContext) return;
+    if (!launchContext || !requireCurrentRealRotoKey()) return;
     copiedRotoKeyRef.current = {
       frame: currentFrame,
       editableState: rotoFrameStatesRef.current.get(currentFrame),
       cachedFrame: physicPaintStore.getFrame(launchContext.layerId, currentFrame) ?? undefined,
     };
+    setHasCopiedRotoKey(true);
     setApplyMessage(`Copied Roto frame ${currentFrame}.`);
-  }, [currentFrame, launchContext]);
+  }, [currentFrame, launchContext, requireCurrentRealRotoKey]);
 
   const pasteRotoFrame = useCallback(() => {
-    if (!launchContext || !copiedRotoKeyRef.current) return;
+    if (!launchContext || !copiedRotoKeyRef.current || !requireCurrentRealRotoKey()) return;
     const result = replaceRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame);
     if (copiedRotoKeyRef.current.editableState) {
       rotoFrameStatesRef.current.set(currentFrame, structuredClone(copiedRotoKeyRef.current.editableState));
@@ -1552,7 +1567,7 @@ export function PhysicsPaintStudio() {
     syncRotoKeyFrameLists(result.frames);
     physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId);
     setApplyMessage(`Paste frame replaced Roto key ${currentFrame}.`);
-  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext, syncRotoKeyFrameLists]);
+  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext, requireCurrentRealRotoKey, syncRotoKeyFrameLists]);
 
   const saveEditableState = useCallback(async () => {
     if (!engine) return;
@@ -2151,6 +2166,12 @@ export function PhysicsPaintStudio() {
           onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}
           onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode })}
           onRotoInterpolationMotionChange={updateRotoInterpolationSettings}
+          onDuplicateRotoKey={duplicateRotoKey}
+          onInsertRotoFrame={insertRotoFrame}
+          onDeleteRotoFrame={deleteRotoFrame}
+          onCopyRotoFrame={copyRotoFrame}
+          onPasteRotoFrame={pasteRotoFrame}
+          hasCopiedRotoKey={hasCopiedRotoKey}
           playPublicationSummary={applyStatus === 'success' ? applyMessage : null}
           statusMessage={isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null)}
           onion={onion}
