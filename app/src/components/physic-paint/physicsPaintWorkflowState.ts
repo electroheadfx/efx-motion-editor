@@ -3,11 +3,13 @@ import {
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
   PHYSIC_PAINT_MIN_APPLY_FRAMES,
   clampPhysicPaintFrameCount,
+  type PhysicPaintRotoCacheFrame,
 } from '../../types/physicPaint';
 
 export type PhysicsPaintWorkflowMode = 'roto' | 'play';
 export type PhysicsPaintApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 export type PhysicsPaintEngineStatusTone = 'ready' | 'not-ready' | 'error';
+export type RotoCellFill = 'empty' | 'cached-only' | 'editable-session';
 
 export type PhysicsPaintWorkflowAction =
   | 'save-active-source'
@@ -53,8 +55,24 @@ export function clampOnionOpacity(value: unknown): number {
   return integer;
 }
 
-export function getActivePrimaryActionLabel(mode: PhysicsPaintWorkflowMode): 'Save roto frame' | 'Save play' {
-  return mode === 'play' ? 'Save play' : 'Save roto frame';
+export function getActivePrimaryActionLabel(mode: PhysicsPaintWorkflowMode): 'Save current' | 'Save play' {
+  return mode === 'play' ? 'Save play' : 'Save current';
+}
+
+export function getRotoCellFill(
+  frame: number,
+  cachedFrames: readonly PhysicPaintRotoCacheFrame[] | ReadonlySet<number> | readonly number[] | undefined,
+  editableFrames: readonly number[] | ReadonlySet<number> | undefined,
+): RotoCellFill {
+  if (hasFrame(editableFrames, frame)) return 'editable-session';
+  if (hasCachedRotoFrame(cachedFrames, frame)) return 'cached-only';
+  return 'empty';
+}
+
+export function getRotoPendingLabel(hasPending: boolean, isSaving: boolean): string | null {
+  if (isSaving) return 'Saving Roto frame...';
+  if (hasPending) return 'Unsaved Roto frame pending';
+  return null;
 }
 
 export function getPhysicsPaintSourceLabel(mode: PhysicsPaintWorkflowMode): 'Roto #1' | 'Play #2' {
@@ -112,6 +130,20 @@ export {
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
   PHYSIC_PAINT_MIN_APPLY_FRAMES,
 };
+
+function hasFrame(frames: readonly number[] | ReadonlySet<number> | undefined, frame: number): boolean {
+  if (!Number.isInteger(frame) || frame < 0 || !frames) return false;
+  return Array.isArray(frames) ? frames.includes(frame) : frames.has(frame);
+}
+
+function hasCachedRotoFrame(
+  frames: readonly PhysicPaintRotoCacheFrame[] | ReadonlySet<number> | readonly number[] | undefined,
+  frame: number,
+): boolean {
+  if (!Number.isInteger(frame) || frame < 0 || !frames) return false;
+  if (frames instanceof Set) return frames.has(frame);
+  return frames.some((entry) => typeof entry === 'number' ? entry === frame : entry.appFrame === frame);
+}
 
 function clampNonNegativeInteger(value: unknown, fallback: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);

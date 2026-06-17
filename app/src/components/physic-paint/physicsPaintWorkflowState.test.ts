@@ -8,14 +8,42 @@ import {
   getPhysicsPaintSourceLabel,
   getPlayRangeMarker,
   getPreviewFps,
+  getRotoCellFill,
+  getRotoPendingLabel,
   isPhysicsPaintDevExportEnabled,
   requiresDestructiveConfirmation,
+  type RotoCellFill,
 } from './physicsPaintWorkflowState';
 
 describe('physicsPaintWorkflowState', () => {
   it('returns active primary action labels for Roto and Play workflow tabs (D-10, D-11, D-12, D-16)', () => {
-    expect(getActivePrimaryActionLabel('roto')).toBe('Save roto frame');
+    expect(getActivePrimaryActionLabel('roto')).toBe('Save current');
     expect(getActivePrimaryActionLabel('play')).toBe('Save play');
+  });
+
+  it('classifies Roto cells with exactly gray, green, and pink semantic fills (D-11 through D-16)', () => {
+    const cachedFrames = [
+      { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,cached-five', source: 'real-key' as const },
+      { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cached-six', source: 'real-key' as const },
+    ];
+    const editableFrames = [5];
+
+    expect(getRotoCellFill(5, cachedFrames, editableFrames)).toBe('editable-session');
+    expect(getRotoCellFill(6, cachedFrames, editableFrames)).toBe('cached-only');
+    expect(getRotoCellFill(7, cachedFrames, editableFrames)).toBe('empty');
+  });
+
+  it('keeps pending, dirty, and current-frame state out of the Roto semantic fill helper (D-11 through D-16)', () => {
+    const allSemanticFills: RotoCellFill[] = ['empty', 'cached-only', 'editable-session'];
+
+    expect(getRotoCellFill(5, [], [5])).toBe('editable-session');
+    expect(getRotoPendingLabel(true, false)).toBe('Unsaved Roto frame pending');
+    expect(getRotoPendingLabel(true, true)).toBe('Saving Roto frame...');
+    expect(getRotoPendingLabel(false, false)).toBeNull();
+    expect(allSemanticFills).not.toContain('dirty' as RotoCellFill);
+    expect(allSemanticFills).not.toContain('yellow' as RotoCellFill);
+    expect(allSemanticFills).not.toContain('orange' as RotoCellFill);
+    expect(allSemanticFills).not.toContain('current' as RotoCellFill);
   });
 
   it('returns numbered source labels for the workflow strip header', () => {
