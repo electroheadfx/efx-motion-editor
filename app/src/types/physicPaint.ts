@@ -17,6 +17,14 @@ export type PhysicPaintPlayRenderTool = 'normal-paint' | 'physics-paint' | 'eras
 export type PhysicPaintPlayBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3' | 'photo';
 export type PhysicPaintRotoFrameSource = 'real-key' | 'generated-interpolation';
 export type PhysicPaintRotoInterpolationMode = 'duplicate' | 'blend';
+export type PhysicPaintRotoBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3';
+
+export interface PhysicPaintRotoBackgroundMetadata {
+  background: PhysicPaintRotoBackgroundMode;
+  paperGrain: string;
+  grainStrength: number;
+  color?: string;
+}
 
 export interface PhysicPaintPlayMotionSettings {
   strokeDeformation: number;
@@ -66,6 +74,7 @@ export interface PhysicPaintWorkflowMetadata {
   editableSource?: PhysicPaintEditableSource;
   playScriptRanges?: PhysicPaintPlayScriptRange[];
   playMotion?: PhysicPaintPlayMotionSettings;
+  rotoBackground?: PhysicPaintRotoBackgroundMetadata;
 }
 
 export interface PhysicPaintLaunchContext {
@@ -351,6 +360,19 @@ export function isPhysicPaintRotoInterpolationSettings(value: unknown): value is
     (value.mode === 'duplicate' || value.mode === 'blend') &&
     isPercentInteger(value.deform) &&
     isPercentInteger(value.position)
+  );
+}
+
+export function isPhysicPaintRotoBackgroundMetadata(value: unknown): value is PhysicPaintRotoBackgroundMetadata {
+  if (!isRecord(value)) return false;
+  return (
+    (value.background === 'transparent' || value.background === 'white' || value.background === 'canvas1' || value.background === 'canvas2' || value.background === 'canvas3') &&
+    isNonEmptyString(value.paperGrain) &&
+    typeof value.grainStrength === 'number' &&
+    Number.isFinite(value.grainStrength) &&
+    value.grainStrength >= 0 &&
+    value.grainStrength <= 1 &&
+    (value.color === undefined || typeof value.color === 'string')
   );
 }
 

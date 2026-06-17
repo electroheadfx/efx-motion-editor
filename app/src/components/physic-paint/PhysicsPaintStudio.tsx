@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot } from '../../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore } from '../../stores/physicPaintStore';
@@ -437,6 +437,16 @@ function buildPlayRenderOptionsSnapshot(settings: PhysicsPaintStudioSettings, mo
   };
 }
 
+function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings): PhysicPaintRotoBackgroundMetadata {
+  const background = settings.background === 'photo' ? 'transparent' : settings.background;
+  return {
+    background,
+    paperGrain: settings.paperGrain,
+    grainStrength: settings.grainStrength,
+    ...(background === 'white' ? { color: '#ffffff' } : {}),
+  };
+}
+
 function applyRenderOptionsSnapshotToSettings(snapshot: PhysicPaintPlayRenderOptionsSnapshot): PhysicsPaintStudioSettings {
   return {
     ...makeInitialSettings(),
@@ -743,6 +753,15 @@ export function PhysicsPaintStudio() {
   const undo = useCallback(() => {
     engine?.undo();
   }, [engine]);
+
+  const persistRotoBackgroundMetadata = useCallback(() => {
+    if (!launchContext || workflowMode !== 'roto') return;
+    physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, buildRotoBackgroundMetadata(settings));
+  }, [launchContext, settings, workflowMode]);
+
+  useEffect(() => {
+    persistRotoBackgroundMetadata();
+  }, [persistRotoBackgroundMetadata]);
 
   function findCachedPlayPreviewFrame(previewFrame: number): RenderedFramePayload | null {
     if (!launchContext) return null;

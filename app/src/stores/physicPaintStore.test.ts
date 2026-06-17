@@ -293,9 +293,10 @@ describe('physicPaintStore', () => {
 
     physicPaintStore.setFrame('layer-1', 1, makeFrame(0, 1));
     physicPaintStore.setFrame('layer-1', 2, makeFrame(0, 2));
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
 
-    expect(physicPaintVersion.value).toBe(before + 2);
-    expect(dirtyCount).toBe(2);
+    expect(physicPaintVersion.value).toBe(before + 3);
+    expect(dirtyCount).toBe(3);
   });
 
   it('tracks real Roto keys separately from generated cache and removes deleted real key output', () => {
@@ -338,6 +339,7 @@ describe('physicPaintStore', () => {
 
   it('round-trips Roto source metadata and interpolation settings without editable per-frame state', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, makeFrame(0, 0));
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
     physicPaintStore.replaceGeneratedRotoCache('layer-1', [
       { ...makeFrame(0, 1), source: 'generated-interpolation', nearestRealKeyFrame: 0 },
     ], { enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 5, position: 15 });
@@ -349,6 +351,7 @@ describe('physicPaintStore', () => {
         expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0 }),
       ],
       roto_interpolation_settings: { enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 5, position: 15 },
+      roto_background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
     }));
     expect(JSON.stringify(outputs)).not.toContain('editableStatesByFrame');
 
@@ -360,6 +363,7 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 0, source: 'real-key' }),
       expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0 }),
     ]);
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
   });
 
   it('serializes and hydrates rendered output by layer and app frame', () => {

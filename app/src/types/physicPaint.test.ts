@@ -6,6 +6,7 @@ import {
   isPhysicPaintApplyPayload,
   isPhysicPaintFrameSyncMessage,
   isPhysicPaintLaunchContext,
+  isPhysicPaintRotoBackgroundMetadata,
   isPhysicPaintRotoCacheFrame,
   isPhysicPaintRotoInterpolationSettings,
   normalizePhysicPaintPlayScriptRanges,
@@ -110,6 +111,14 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'generated-interpolation', nearestRealKeyFrame: 2 })).toBe(true);
     expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'generated-interpolation', nearestRealKeyFrame: -1 })).toBe(false);
     expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'preview' })).toBe(false);
+  });
+
+  it('validates Roto background metadata for transparent, paper, and canvas grain gaps', () => {
+    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 })).toBe(true);
+    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 })).toBe(true);
+    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'photo', paperGrain: 'canvas1', grainStrength: 0.5 })).toBe(false);
+    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'canvas1', paperGrain: '', grainStrength: 0.5 })).toBe(false);
+    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 2 })).toBe(false);
   });
 
   it('normalizes sorted non-overlapping saved Play script ranges', () => {

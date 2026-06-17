@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
 import { getRotoInterpolationSpanFrames } from '../components/physic-paint/physicsPaintWorkflowState';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -21,6 +21,7 @@ type PhysicPaintMceOutput = {
   play_motion?: PhysicPaintPlayMotionSettings;
   roto_cache_metadata?: PhysicPaintRotoCacheFrame[];
   roto_interpolation_settings?: PhysicPaintRotoInterpolationSettings;
+  roto_background?: PhysicPaintRotoBackgroundMetadata;
 };
 
 type PhysicPaintMceOutputInput = PhysicPaintMceOutput & {
@@ -99,6 +100,7 @@ function _metadataToMce(metadata: PhysicPaintWorkflowMetadata | undefined): Omit
     ...(metadata.playFrameCount !== undefined ? { play_frame_count: metadata.playFrameCount } : {}),
     ...(metadata.editableSource ? { editable_source: metadata.editableSource } : {}),
     ...(metadata.playMotion ? { play_motion: { ...metadata.playMotion } } : {}),
+    ...(metadata.rotoBackground ? { roto_background: { ...metadata.rotoBackground } } : {}),
   };
 }
 
@@ -291,12 +293,15 @@ function _metadataFromMce(output: PhysicPaintMceOutputInput): PhysicPaintWorkflo
   if (playFrameCount !== undefined && (!Number.isInteger(playFrameCount) || playFrameCount < 1)) return null;
   if (editableSource !== undefined && editableSource !== 'roto' && editableSource !== 'play') return null;
   if (playMotion !== undefined && !_isValidPlayMotion(playMotion)) return null;
+  const rotoBackground = output.roto_background;
+  if (rotoBackground !== undefined && !isPhysicPaintRotoBackgroundMetadata(rotoBackground)) return null;
   return {
     workflowMode,
     ...(playStartFrame !== undefined ? { playStartFrame } : {}),
     ...(playFrameCount !== undefined ? { playFrameCount } : {}),
     ...(editableSource ? { editableSource } : {}),
     ...(playMotion ? { playMotion: { ...playMotion } } : {}),
+    ...(rotoBackground ? { rotoBackground: { ...rotoBackground } } : {}),
   };
 }
 
@@ -324,7 +329,19 @@ export const physicPaintStore = {
 
   getWorkflowMetadata(layerId: string): PhysicPaintWorkflowMetadata | null {
     const metadata = _workflowMetadata.get(layerId);
-    return metadata ? { ...metadata } : null;
+    return metadata ? structuredClone(metadata) : null;
+  },
+
+  getRotoBackgroundMetadata(layerId: string): PhysicPaintRotoBackgroundMetadata | null {
+    return _workflowMetadata.get(layerId)?.rotoBackground ? { ..._workflowMetadata.get(layerId)!.rotoBackground! } : null;
+  },
+
+  setRotoBackgroundMetadata(layerId: string, metadata: PhysicPaintRotoBackgroundMetadata): void {
+    if (!isPhysicPaintRotoBackgroundMetadata(metadata)) return;
+    const current = _workflowMetadata.get(layerId) ?? { workflowMode: 'roto' as const, editableSource: 'roto' as const };
+    if (JSON.stringify(current.rotoBackground ?? null) === JSON.stringify(metadata)) return;
+    _workflowMetadata.set(layerId, { ...current, workflowMode: 'roto', editableSource: 'roto', rotoBackground: { ...metadata } });
+    _notifyVisualChange();
   },
 
   getPlayScriptRanges(layerId: string): PhysicPaintPlayScriptRange[] {
@@ -452,7 +469,7 @@ export const physicPaintStore = {
     const normalizedFrame = { ...renderedFrame, appFrame: frame, source: 'real-key' as const };
     _getOrCreateLayer(layerId).set(frame, normalizedFrame);
     _getOrCreateRotoMetadata(layerId).set(frame, _makeRotoCacheFrame(normalizedFrame, frame, 'real-key', undefined, backgroundOnly || undefined));
-    _workflowMetadata.set(layerId, { workflowMode: 'roto', editableSource: 'roto' });
+    _workflowMetadata.set(layerId, { ...(_workflowMetadata.get(layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
     _notifyVisualChange();
   },
 
@@ -675,7 +692,7 @@ export const physicPaintStore = {
       layerFrames.set(appFrame, { ...renderedFrame, appFrame });
     });
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
-    _workflowMetadata.set(payload.layerId, { workflowMode: 'roto', editableSource: 'roto' });
+    _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
     _notifyVisualChange();
 
     return {

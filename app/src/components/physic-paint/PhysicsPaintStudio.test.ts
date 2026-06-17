@@ -57,6 +57,15 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(saveRotoBlock).toContain('renderedFrame,');
   });
 
+  it('persists Roto background metadata from standalone paper settings without creating cached cells', () => {
+    const text = source();
+
+    expect(text).toContain('function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings): PhysicPaintRotoBackgroundMetadata');
+    expect(text).toContain('physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, buildRotoBackgroundMetadata(settings))');
+    expect(text).toContain('persistRotoBackgroundMetadata();');
+    expect(text).not.toContain('setFrame(launchContext.layerId, currentFrame, buildRotoBackgroundMetadata');
+  });
+
   it('applies onion previous/next toggles and opacity to the canvas overlay', () => {
     const text = source();
 
