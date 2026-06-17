@@ -176,6 +176,35 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).toContain('position: interpolationPosition > 0 ? 0 : 50');
   });
 
+  it('renders visible Roto key utility controls only inside the Roto strip', () => {
+    const code = source();
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const rotoControlsBlock = code.slice(code.indexOf('physics-paint-roto-key-utilities'), code.indexOf('physics-paint-play-controls'));
+    const playControlsBlock = code.slice(code.indexOf('physics-paint-play-controls'), code.indexOf('props.mode === \'roto\' ? (', code.indexOf('physics-paint-play-controls')));
+
+    for (const contract of [
+      'physics-paint-roto-key-utilities',
+      'Duplicate key',
+      'Insert frame',
+      'Delete frame',
+      'Copy frame',
+      'Paste frame',
+      'onDuplicateRotoKey?: () => void',
+      'onInsertRotoFrame?: () => void',
+      'onDeleteRotoFrame?: () => void',
+      'onCopyRotoFrame?: () => void',
+      'onPasteRotoFrame?: () => void',
+      'hasCopiedRotoKey?: boolean',
+    ]) {
+      expect(code).toContain(contract);
+    }
+    expect(rotoControlsBlock).toContain('disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey}');
+    expect(rotoControlsBlock).toContain('disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey || !props.hasCopiedRotoKey}');
+    expect(playControlsBlock).not.toContain('physics-paint-roto-key-utilities');
+    expect(css).toContain('.physics-paint-roto-key-utilities');
+    expect(css).toContain('.physics-paint-roto-key-button');
+  });
+
   it('renders compact visible Roto interpolation controls only inside the Roto strip', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
