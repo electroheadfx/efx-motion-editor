@@ -333,6 +333,33 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 });
 
 describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
+  it('loads cached-only Roto frames as repaintable non-exported references', () => {
+    const text = source();
+    const loadBlock = text.slice(text.indexOf('function findCachedRotoReferenceFrame'), text.indexOf('const previewLocalPlayFrame = useCallback'));
+
+    expect(text).toContain('const [cachedRotoReferenceUrl, setCachedRotoReferenceUrl] = useState<string | null>(null)');
+    expect(text).toContain('function findCachedRotoReferenceFrame(appFrame: number)');
+    expect(loadBlock).toContain('launchContext.cachedRotoFrames?.find((frame) => frame.appFrame === appFrame && frame.source === \'real-key\')');
+    expect(loadBlock).toContain('physicPaintStore.getFrame(launchContext.layerId, appFrame)');
+    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
+    expect(text).toContain('cachedRotoReferenceUrl={cachedRotoReferenceUrl}');
+    expect(text).toContain('class="physics-paint-cached-roto-reference"');
+  });
+
+  it('flushes dirty Roto frames on Save pending and best-effort close', () => {
+    const text = source();
+    const closeBlock = text.slice(text.indexOf('function flushCurrentRotoFrameBeforeClose'), text.indexOf('const handlePhysicsPaintKeyDown'));
+
+    expect(text).toContain('const savePendingRotoFrames = useCallback');
+    expect(text).toContain('const flushCurrentRotoFrameBeforeClose = useCallback');
+    expect(closeBlock).toContain('snapshotCurrentRotoFrame()');
+    expect(closeBlock).toContain('flushRotoFrame(currentFrame, { force: true })');
+    expect(text).toContain("window.addEventListener('beforeunload', handleBeforeUnload)");
+    expect(text).toContain("eventApi.listen('tauri://close-requested'");
+    expect(text).toContain('onSavePendingRotoFrames={savePendingRotoFrames}');
+  });
+
   it('tracks dirty Roto frames and flushes once before synced navigation', () => {
     const text = source();
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
