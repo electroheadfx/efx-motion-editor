@@ -213,20 +213,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onFrameCountChange(clampedFrameCount);
   }
 
-  function handleRotoInterpolationCountInput(event: Event) {
-    const value = Number((event.currentTarget as HTMLInputElement).value);
-    props.onRotoInterpolationCountChange?.(Math.max(0, Math.trunc(Number.isFinite(value) ? value : 0)));
-  }
-
-  function toggleRotoInterpolationMotion(key: 'deform' | 'position', activeValue: number) {
-    const next = {
-      deform: interpolationDeform,
-      position: interpolationPosition,
-      [key]: activeValue > 0 ? 0 : 50,
-    };
-    props.onRotoInterpolationMotionChange?.(next);
-  }
-
   function previewPlayFrame(frame: number) {
     const nextFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(frame)));
     props.onPreviewPlayFrame?.(nextFrame);
@@ -360,7 +346,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     min={0}
                     value={interpolationCount}
                     disabled={props.ready === false || !interpolationEnabled}
-                    onInput={handleRotoInterpolationCountInput}
+                    onInput={(event) => props.onRotoInterpolationCountChange?.(Math.max(0, Math.trunc(Number((event.currentTarget as HTMLInputElement).value) || 0)))}
                   />
                 </label>
                 <select
@@ -378,7 +364,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   class={`physics-paint-roto-motion-toggle ${interpolationDeform > 0 ? 'active' : ''}`}
                   aria-pressed={interpolationDeform > 0}
                   disabled={props.ready === false || !interpolationEnabled}
-                  onClick={() => toggleRotoInterpolationMotion('deform', interpolationDeform)}
+                  onClick={() => props.onRotoInterpolationMotionChange?.({ deform: interpolationDeform > 0 ? 0 : 50, position: interpolationPosition })}
                 >
                   Deform
                 </button>
@@ -387,7 +373,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   class={`physics-paint-roto-motion-toggle ${interpolationPosition > 0 ? 'active' : ''}`}
                   aria-pressed={interpolationPosition > 0}
                   disabled={props.ready === false || !interpolationEnabled}
-                  onClick={() => toggleRotoInterpolationMotion('position', interpolationPosition)}
+                  onClick={() => props.onRotoInterpolationMotionChange?.({ deform: interpolationDeform, position: interpolationPosition > 0 ? 0 : 50 })}
                 >
                   Position
                 </button>

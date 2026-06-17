@@ -160,7 +160,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationCountChange');
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationModeChange');
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationMotionChange');
-    expect(rotoControlsBlock).toContain('toggleRotoInterpolationMotion');
+    expect(rotoControlsBlock).toContain('deform: interpolationDeform > 0 ? 0 : 50');
+    expect(rotoControlsBlock).toContain('position: interpolationPosition > 0 ? 0 : 50');
   });
 
   it('renders compact visible Roto interpolation controls only inside the Roto strip', () => {

@@ -4,7 +4,7 @@ import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot } from '../../types/physicPaint';
-import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
+import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
@@ -1961,6 +1961,24 @@ export function PhysicsPaintStudio() {
     if (workflowMode !== 'roto') stopRotoCachedPlayback();
   }, [stopRotoCachedPlayback, workflowMode]);
 
+  const updateRotoInterpolationSettings = useCallback((patch: Partial<PhysicPaintRotoInterpolationSettings>) => {
+    if (!launchContext) return;
+    const settings = {
+      ...physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
+      ...patch,
+    };
+    physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, settings);
+    physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId);
+    setLaunchContext((current) => current ? {
+      ...current,
+      cachedRotoFrames: physicPaintStore.getRotoCacheFrames(launchContext.layerId),
+      rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
+    } : current);
+    setRotoCachedPlaybackStatus(settings.enabled
+      ? 'Generated interpolation frames are render-only. Connector lines mark in-between spans.'
+      : 'Interpolation disabled. Generated in-betweens cleared.');
+  }, [launchContext]);
+
   const goToFirstFrame = useCallback(() => {
     void navigateToSyncedFrame(0);
   }, [navigateToSyncedFrame]);
@@ -2129,6 +2147,10 @@ export function PhysicsPaintStudio() {
           isRotoCachedPlaybackActive={isRotoCachedPlaybackActive}
           onToggleRotoPlayback={toggleRotoCachedPlayback}
           rotoInterpolationSettings={launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined}
+          onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}
+          onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}
+          onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode })}
+          onRotoInterpolationMotionChange={updateRotoInterpolationSettings}
           playPublicationSummary={applyStatus === 'success' ? applyMessage : null}
           statusMessage={isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null)}
           onion={onion}
