@@ -410,6 +410,20 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('class="physics-paint-cached-roto-reference"');
   });
 
+  it('shows cached Roto references at full opacity while keeping them out of replacement exports', () => {
+    const text = source();
+    const css = styles();
+    const cachedRotoRuleStart = css.lastIndexOf('.physics-paint-cached-roto-reference {');
+    const cssRule = css.slice(cachedRotoRuleStart, css.indexOf('}', cachedRotoRuleStart));
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
+
+    expect(cssRule).not.toContain('opacity: 0.78');
+    expect(cssRule).not.toMatch(/opacity:\s*0\.[0-9]+/);
+    expect(cssRule).toContain('outline:');
+    expect(flushBlock.indexOf('(engine as PreviewBackgroundEngine).resetBackground()')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame)'));
+    expect(flushBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame)'));
+  });
+
   it('flushes dirty Roto frames on Save pending and ordered close/unload', () => {
     const text = source();
     const closeBlock = text.slice(text.indexOf('const flushCurrentRotoFrameBeforeClose'), text.indexOf('const handlePhysicsPaintKeyDown'));

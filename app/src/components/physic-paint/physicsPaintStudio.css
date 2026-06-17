@@ -1706,7 +1706,8 @@ button.destructive {
 
 .physics-paint-cached-roto-reference {
   z-index: 1;
-  opacity: 0.78;
+  outline: 1px dashed rgba(91, 216, 143, 0.72);
+  outline-offset: -2px;
 }
 
 .physics-paint-shortcuts-help {
