@@ -1383,7 +1383,8 @@ button.destructive {
 
 .physics-paint-preview-status,
 .physics-paint-publication-summary,
-.physics-paint-roto-status {
+.physics-paint-roto-status,
+.physics-paint-roto-interpolation-status {
   color: #f59e0b;
   font-size: 13px;
   line-height: 1.5;
@@ -1393,7 +1394,8 @@ button.destructive {
   color: var(--sidebar-dot-green, #4caf70);
 }
 
-.physics-paint-roto-status {
+.physics-paint-roto-status,
+.physics-paint-roto-interpolation-status {
   margin: -2px 0 0;
   color: #b8c4d4;
   font-size: 12px;

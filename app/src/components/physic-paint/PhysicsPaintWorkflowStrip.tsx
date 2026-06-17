@@ -144,6 +144,13 @@ function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
   return 'roto-fill-editable-session';
 }
 
+function getRotoInterpolationStatusCopy(realKeyCount: number, enabled: boolean, generatedCount: number): string {
+  if (realKeyCount < 2) return 'Interpolation needs two real Roto keys.';
+  if (!enabled) return 'Enable interpolation to generate render-only in-betweens between real keys.';
+  if (generatedCount > 0) return 'Generated in-betweens are render-only; connector lines mark interpolation spans.';
+  return 'Generated in-betweens stay render-only, not editable targets.';
+}
+
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   const [confirmation, setConfirmation] = useState<PhysicsPaintWorkflowConfirmation | null>(null);
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
@@ -175,6 +182,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const interpolationMode = interpolationSettings.mode === 'blend' ? 'blend' : 'duplicate';
   const interpolationDeform = Math.max(0, Math.trunc(Number(interpolationSettings.deform ?? 0) || 0));
   const interpolationPosition = Math.max(0, Math.trunc(Number(interpolationSettings.position ?? 0) || 0));
+  const generatedRotoFrameCount = (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'generated-interpolation').length;
+  const interpolationStatusCopy = getRotoInterpolationStatusCopy(realRotoFrames.length, interpolationEnabled, generatedRotoFrameCount);
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
   const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
@@ -477,9 +486,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         ) : null}
       </div>
 
-      {props.mode === 'roto' && (rotoPendingLabel || currentRotoFill === 'cached-only') ? (
-        <p class="physics-paint-roto-status">
-          {rotoPendingLabel ?? 'Cached reference: repaintable, not stroke-editable'}
+      {props.mode === 'roto' ? (
+        <p class="physics-paint-roto-interpolation-status">
+          {rotoPendingLabel ?? (currentRotoFill === 'cached-only' ? 'Cached reference: repaintable, not stroke-editable. ' : '')}{interpolationStatusCopy}
         </p>
       ) : null}
 
