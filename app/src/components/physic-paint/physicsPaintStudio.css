@@ -1288,7 +1288,8 @@ button.destructive {
 }
 
 .physics-paint-preview-status,
-.physics-paint-publication-summary {
+.physics-paint-publication-summary,
+.physics-paint-roto-status {
   color: #f59e0b;
   font-size: 13px;
   line-height: 1.5;
@@ -1296,6 +1297,12 @@ button.destructive {
 
 .physics-paint-publication-summary {
   color: var(--sidebar-dot-green, #4caf70);
+}
+
+.physics-paint-roto-status {
+  margin: -2px 0 0;
+  color: #b8c4d4;
+  font-size: 12px;
 }
 
 .physics-paint-timeline {
@@ -1412,20 +1419,35 @@ button.destructive {
   color: transparent;
 }
 
-.physics-paint-roto-cell.occupied {
-  border-color: #526170;
-  background: #3d4a58;
+.physics-paint-roto-cell.roto-fill-empty {
+  border-color: #3d454d;
+  background: #4d535a;
 }
 
+.physics-paint-roto-cell.roto-fill-cached-only {
+  border-color: rgba(91, 216, 143, 0.78);
+  background: #2d6f48;
+}
+
+.physics-paint-roto-cell.roto-fill-editable-session {
+  border-color: rgba(255, 126, 196, 0.82);
+  background: #a33d73;
+}
+
+.physics-paint-roto-cell.occupied,
 .physics-paint-roto-cell.saved {
-  border-color: #4d5258;
-  background: #2f343a;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.physics-paint-roto-cell.pending {
+  border-style: dashed;
 }
 
 .physics-paint-roto-cell.current {
   border-color: #f5a623;
-  background: #f5a623;
-  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65);
+  outline: 2px solid rgba(245, 166, 35, 0.9);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65), 0 0 10px rgba(245, 166, 35, 0.38);
 }
 
 .physics-paint-play-cells {

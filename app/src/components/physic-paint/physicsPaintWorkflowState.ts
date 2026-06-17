@@ -133,7 +133,8 @@ export {
 
 function hasFrame(frames: readonly number[] | ReadonlySet<number> | undefined, frame: number): boolean {
   if (!Number.isInteger(frame) || frame < 0 || !frames) return false;
-  return Array.isArray(frames) ? frames.includes(frame) : frames.has(frame);
+  if (typeof (frames as ReadonlySet<number>).has === 'function') return (frames as ReadonlySet<number>).has(frame);
+  return (frames as readonly number[]).includes(frame);
 }
 
 function hasCachedRotoFrame(
@@ -141,8 +142,8 @@ function hasCachedRotoFrame(
   frame: number,
 ): boolean {
   if (!Number.isInteger(frame) || frame < 0 || !frames) return false;
-  if (frames instanceof Set) return frames.has(frame);
-  return frames.some((entry) => typeof entry === 'number' ? entry === frame : entry.appFrame === frame);
+  if (typeof (frames as ReadonlySet<number>).has === 'function') return (frames as ReadonlySet<number>).has(frame);
+  return (frames as readonly (PhysicPaintRotoCacheFrame | number)[]).some((entry) => typeof entry === 'number' ? entry === frame : entry.appFrame === frame);
 }
 
 function clampNonNegativeInteger(value: unknown, fallback: number): number {

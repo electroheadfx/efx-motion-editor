@@ -1730,6 +1730,10 @@ export function PhysicsPaintStudio() {
           ready={readyToApply}
           occupiedRotoFrames={occupiedRotoFrames}
           savedRotoFrames={savedRotoFrames}
+          cachedRotoFrames={launchContext?.cachedRotoFrames}
+          editableRotoFrames={occupiedRotoFrames}
+          pendingRotoFrames={[]}
+          rotoSaveInFlight={applyStatus === 'applying'}
           playPublicationSummary={applyStatus === 'success' ? applyMessage : null}
           statusMessage={isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null)}
           onion={onion}
@@ -1737,6 +1741,7 @@ export function PhysicsPaintStudio() {
           showOnionHiddenDuringPreview={onion.enabled && isPlaying}
           missingPlayFramesForConversion={missingPlayFramesForConversion}
           onSaveRotoFrame={saveRotoFrameAndAdvance}
+          onSavePendingRotoFrames={saveRotoFrameAndAdvance}
           onSavePlay={savePlay}
           onUpdatePlayOptions={updateSelectedPlayOptions}
           onFrameCountChange={updatePlayFrameCount}

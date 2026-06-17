@@ -10,10 +10,12 @@ import {
   clampOnionCount,
   getPhysicsPaintSourceLabel,
   getPlayRangeMarker,
+  getRotoCellFill,
+  getRotoPendingLabel,
   type PhysicsPaintOnionState,
   type PhysicsPaintWorkflowMode,
 } from './physicsPaintWorkflowState';
-import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
+import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 
 const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
@@ -45,6 +47,10 @@ export interface PhysicsPaintWorkflowStripProps {
   ready?: boolean;
   occupiedRotoFrames?: number[];
   savedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[];
+  cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
+  editableRotoFrames?: number[];
+  pendingRotoFrames?: number[];
+  rotoSaveInFlight?: boolean;
   playPublicationSummary?: string | null;
   statusMessage?: string | null;
   sameModeReplacementMessage?: string | null;
@@ -53,6 +59,7 @@ export interface PhysicsPaintWorkflowStripProps {
   showOnionHiddenDuringPreview?: boolean;
   missingPlayFramesForConversion?: boolean;
   onSaveRotoFrame: () => void;
+  onSavePendingRotoFrames: () => void;
   onSavePlay: () => void;
   onUpdatePlayOptions?: () => void;
   currentPreviewFrame?: number;
@@ -111,6 +118,12 @@ function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefine
   return Boolean(markers?.some(marker => marker.frame === frame && marker.saved !== false));
 }
 
+function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
+  if (fill === 'empty') return 'roto-fill-empty';
+  if (fill === 'cached-only') return 'roto-fill-cached-only';
+  return 'roto-fill-editable-session';
+}
+
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   const [confirmation, setConfirmation] = useState<PhysicsPaintWorkflowConfirmation | null>(null);
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
@@ -129,6 +142,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const maxFrameCount = getMaxFrameCount();
   const safeFrameCount = Math.min(clampPhysicPaintFrameCount(props.frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES), maxFrameCount);
   const playFrameCells = useMemo(() => buildPlayFrameCells(props.startFrame, safeFrameCount), [props.startFrame, safeFrameCount]);
+  const realCachedRotoFrames = useMemo(() => (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'real-key'), [props.cachedRotoFrames]);
+  const pendingRotoFrameSet = useMemo(() => new Set(props.pendingRotoFrames ?? []), [props.pendingRotoFrames]);
+  const hasPendingRotoFrames = pendingRotoFrameSet.size > 0;
+  const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames, props.editableRotoFrames);
+  const rotoPendingLabel = getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight));
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
   const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
@@ -150,7 +168,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       renderPlayFrames();
       return;
     }
-    props.onSaveRotoFrame();
+    props.onSavePendingRotoFrames();
   }
 
   function renderPlayFrames() {
@@ -294,8 +312,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             </div>
           )}
           {props.mode === 'roto' ? (
-            <button class="physics-paint-render-action" title="Save the current Roto paint frame" aria-label="Save roto frame" disabled={props.ready === false} onClick={handlePrimaryAction}>
-              Save roto frame
+            <button class="physics-paint-render-action" title="Flush unsaved Roto frame changes" aria-label={hasPendingRotoFrames ? 'Save pending' : 'Save current'} disabled={props.ready === false || !hasPendingRotoFrames || props.rotoSaveInFlight} onClick={handlePrimaryAction}>
+              {hasPendingRotoFrames ? 'Save pending' : 'Save current'}
             </button>
           ) : null}
         </div>
@@ -314,16 +332,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           {props.mode === 'roto' ? (
             <div class="physics-paint-lane">
               <div class="physics-paint-roto-cells" role="row">
-                {frameCells.map(frame => (
-                  <button
-                    key={frame}
-                    class={`physics-paint-roto-cell ${isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied' : ''} ${isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${frame === props.currentFrame ? 'current' : ''}`}
-                    aria-label={`Roto frame ${frame}`}
-                    onClick={() => props.onNavigateToSyncedFrame(frame)}
-                  >
-                    <span>{frame}</span>
-                  </button>
-                ))}
+                {frameCells.map(frame => {
+                  const fill = getRotoCellFill(frame, realCachedRotoFrames, props.editableRotoFrames);
+                  return (
+                    <button
+                      key={frame}
+                      class={`physics-paint-roto-cell ${getRotoFillClass(fill)} ${isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied' : ''} ${isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${pendingRotoFrameSet.has(frame) ? 'pending' : ''} ${frame === props.currentFrame ? 'current' : ''}`}
+                      aria-label={`Roto frame ${frame}`}
+                      onClick={() => props.onNavigateToSyncedFrame(frame)}
+                    >
+                      <span>{frame}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ) : (
@@ -352,6 +373,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           </div>
         ) : null}
       </div>
+
+      {props.mode === 'roto' && (rotoPendingLabel || currentRotoFill === 'cached-only') ? (
+        <p class="physics-paint-roto-status">
+          {rotoPendingLabel ?? 'Cached reference: repaintable, not stroke-editable'}
+        </p>
+      ) : null}
 
       {visibleOnionPreviewFrames.length > 0 ? (
         <div class="physics-paint-onion-overlay" aria-hidden="true">

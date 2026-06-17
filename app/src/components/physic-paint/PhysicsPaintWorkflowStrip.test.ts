@@ -42,7 +42,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('Play canvas');
     expect(code).not.toContain('function requestWorkflowModeChange');
     expect(code).not.toContain('onRequestModeChange');
-    expect(code).toContain('Save roto frame');
+    expect(code).not.toContain('Save roto frame');
+    expect(code).toContain('Save pending');
+    expect(code).toContain('Save current');
     expect(code).toContain('Render play');
     expect(code).not.toContain('Preview / Save Play');
     expect(code).toContain('Preview cached Play frames, or render and save the Play cache when it is stale.');
@@ -261,6 +263,44 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(builderBlock).not.toContain('latestPlayFrames.forEach');
     expect(builderBlock).not.toContain("addFrame(frame, 'play')");
     expect(savePlayBlock).toContain('setLatestPlayFrames(frames)');
+  });
+
+  it('renders gray, green, and pink Roto cells from real-key cache metadata only (D-03, D-11 through D-16)', () => {
+    const code = source();
+
+    expect(code).toContain('cachedRotoFrames?: PhysicPaintRotoCacheFrame[]');
+    expect(code).toContain('editableRotoFrames?: number[]');
+    expect(code).toContain('pendingRotoFrames?: number[]');
+    expect(code).toContain("frame.source === 'real-key'");
+    expect(code).toContain('getRotoCellFill(frame, realCachedRotoFrames, props.editableRotoFrames)');
+    expect(code).toContain('roto-fill-empty');
+    expect(code).toContain('roto-fill-cached-only');
+    expect(code).toContain('roto-fill-editable-session');
+    expect(code).toContain('Cached reference: repaintable, not stroke-editable');
+  });
+
+  it('uses Save pending/current copy with pending and ready disabled logic (D-10)', () => {
+    const code = source();
+
+    expect(code).not.toContain('Save roto frame');
+    expect(code).toContain('onSavePendingRotoFrames: () => void');
+    expect(code).toContain('rotoSaveInFlight?: boolean');
+    expect(code).toContain("hasPendingRotoFrames ? 'Save pending' : 'Save current'");
+    expect(code).toContain('disabled={props.ready === false || !hasPendingRotoFrames || props.rotoSaveInFlight}');
+    expect(code).toContain('props.onSavePendingRotoFrames');
+  });
+
+  it('keeps current Roto CSS as an outline without adding a fourth fill color', () => {
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const currentRule = css.slice(css.indexOf('.physics-paint-roto-cell.current'), css.indexOf('.physics-paint-play-cells'));
+
+    expect(css).toContain('.physics-paint-roto-cell.roto-fill-empty');
+    expect(css).toContain('.physics-paint-roto-cell.roto-fill-cached-only');
+    expect(css).toContain('.physics-paint-roto-cell.roto-fill-editable-session');
+    expect(currentRule).toContain('border-color:');
+    expect(currentRule).toContain('outline:');
+    expect(currentRule).toContain('box-shadow:');
+    expect(currentRule).not.toContain('background:');
   });
 
   it('removes the in-window mode switch while retaining guarded conversion helpers only for explicit flows', () => {
