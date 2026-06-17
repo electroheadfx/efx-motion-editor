@@ -1,4 +1,57 @@
-import { describe, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import { physicPaintStore } from '../stores/physicPaintStore';
+import { resolveMissingRotoFrameDraw } from './previewRenderer';
+
+const root = resolve(__dirname, '../..');
+const readSource = (path: string) => readFileSync(resolve(root, path), 'utf8');
+
+describe('physics paint cache-first preview/export contract', () => {
+  it('uses cached physics paint frame lookup and subscribes to physics paint mutations in previewRenderer', () => {
+    const source = readSource('src/lib/previewRenderer.ts');
+
+    expect(source).toContain('void physicPaintVersion.value');
+    expect(source).toContain('physicPaintStore.getFrame(paintLayerId, paintLookupFrame)');
+    expect(source).not.toMatch(/renderFromStrokes/);
+  });
+
+  it('keeps export delegated through PreviewRenderer without importing the physics paint engine', () => {
+    const source = readSource('src/lib/exportRenderer.ts');
+
+    expect(source).toContain('renderer.renderFrame(');
+    expect(source).not.toMatch(/@efxlab\/efx-physic-paint/);
+    expect(source).not.toMatch(/renderFromStrokes/);
+  });
+
+  it('resolves missing transparent Roto frames as playback-only no-op without store mutation', () => {
+    const setFrame = vi.spyOn(physicPaintStore, 'setFrame');
+    const upsertRealRotoKeyFrame = vi.spyOn(physicPaintStore, 'upsertRealRotoKeyFrame');
+    const replaceGeneratedRotoCache = vi.spyOn(physicPaintStore, 'replaceGeneratedRotoCache');
+
+    const result = resolveMissingRotoFrameDraw('phys-layer-1', 24, { mode: 'transparent' });
+
+    expect(result).toEqual({ kind: 'transparent' });
+    expect(setFrame).not.toHaveBeenCalled();
+    expect(upsertRealRotoKeyFrame).not.toHaveBeenCalled();
+    expect(replaceGeneratedRotoCache).not.toHaveBeenCalled();
+    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+  });
+
+  it('resolves missing background Roto frames as virtual background-only draw without store mutation', () => {
+    const setFrame = vi.spyOn(physicPaintStore, 'setFrame');
+    const upsertRealRotoKeyFrame = vi.spyOn(physicPaintStore, 'upsertRealRotoKeyFrame');
+    const replaceGeneratedRotoCache = vi.spyOn(physicPaintStore, 'replaceGeneratedRotoCache');
+
+    const result = resolveMissingRotoFrameDraw('phys-layer-1', 25, { mode: 'color', color: '#ffffff' });
+
+    expect(result).toEqual({ kind: 'background-only', color: '#ffffff' });
+    expect(setFrame).not.toHaveBeenCalled();
+    expect(upsertRealRotoKeyFrame).not.toHaveBeenCalled();
+    expect(replaceGeneratedRotoCache).not.toHaveBeenCalled();
+    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+  });
+});
 
 describe('exportRenderer', () => {
   describe('renderGlobalFrame', () => {
