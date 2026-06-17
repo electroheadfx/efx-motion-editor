@@ -4,9 +4,9 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.2
 current_phase_name: roto-paint-enhancements-all-details-are-here-specs-phase-36-
-status: verifying
+status: executing
 stopped_at: Completed 36.2-09-PLAN.md
-last_updated: "2026-06-17T19:49:36.193Z"
+last_updated: "2026-06-17T20:21:16.406Z"
 last_activity: 2026-06-17
 last_activity_desc: Completed 36.2-09-PLAN.md
 progress:
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 
 Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — EXECUTING
 Plan: 10 of 10
-Status: Phase complete — ready for verification
+Status: Ready to execute
 Last activity: 2026-06-17 — Completed 36.2-09-PLAN.md
 
 Progress: [██████████] 39/40 plans (98%)
