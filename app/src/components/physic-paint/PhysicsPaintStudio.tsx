@@ -9,7 +9,7 @@ import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT
 import { physicPaintStore } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
-import { clampOnionCount, clampOnionOpacity, getPreviewFps, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
+import { clampOnionCount, clampOnionOpacity, deleteRotoKeyFrame, duplicateRotoKeyFrame, getNearestRealRotoKeyFrame, getPreviewFps, insertRotoKeyFrame, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, replaceRotoKeyFrame, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
@@ -481,6 +481,7 @@ export function PhysicsPaintStudio() {
   const playerRef = useRef<AnimationPlayer | null>(null);
   const rotoFrameStatesRef = useRef<Map<number, ReturnType<EfxPaintEngine['save']>>>(new Map());
   const rotoPreviewFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map());
+  const copiedRotoKeyRef = useRef<{ frame: number; editableState?: ReturnType<EfxPaintEngine['save']>; cachedFrame?: RenderedFramePayload } | null>(null);
   const latestPlayFramesRef = useRef<RenderedFramePayload[]>([]);
   const cachedPreviewTimerRef = useRef<number | null>(null);
   const rotoCachedPlaybackTimerRef = useRef<number | null>(null);
@@ -498,6 +499,7 @@ export function PhysicsPaintStudio() {
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
   const currentFrame = launchContext?.startFrame ?? 0;
+  const effectiveCurrentFrame = launchContext ? getNearestRealRotoKeyFrame(currentFrame, physicPaintStore.getRealRotoKeyFrames(launchContext.layerId)) ?? currentFrame : currentFrame;
   const previewFps = getPreviewFps(launchContext?.fps);
   const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
     if (!engine || !launchContext) return null;
@@ -1445,6 +1447,90 @@ export function PhysicsPaintStudio() {
     return lastPayload;
   }, [flushRotoFrame, snapshotCurrentRotoFrame]);
 
+  const getRealRotoKeyFramesForStudio = useCallback(() => (
+    Array.from(new Set([...occupiedRotoFrames, ...savedRotoFrames.map(frame => frame.frame)]))
+      .filter(frame => Number.isInteger(frame) && frame >= 0)
+      .sort((a, b) => a - b)
+  ), [occupiedRotoFrames, savedRotoFrames]);
+
+  const syncRotoKeyFrameLists = useCallback((frames: number[]) => {
+    setOccupiedRotoFrames(frames);
+    setSavedRotoFrames((markers) => frames.map((frame) => markers.find(marker => marker.frame === frame) ?? { frame, saved: true }));
+  }, []);
+
+  const duplicateRotoKey = useCallback(() => {
+    const result = duplicateRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame);
+    const sourceState = rotoFrameStatesRef.current.get(result.sourceFrame);
+    for (const frame of [...result.shiftedFrames].sort((a, b) => b - a)) {
+      const state = rotoFrameStatesRef.current.get(frame);
+      if (state) {
+        rotoFrameStatesRef.current.set(frame + 1, structuredClone(state));
+        rotoFrameStatesRef.current.delete(frame);
+      }
+    }
+    if (sourceState) rotoFrameStatesRef.current.set(result.targetFrame, structuredClone(sourceState));
+    else rotoFrameStatesRef.current.delete(result.targetFrame);
+    syncRotoKeyFrameLists(result.frames);
+    physicPaintStore.regenerateRotoInterpolationCache(launchContext?.layerId ?? '');
+    setApplyMessage(`Duplicate key created at frame ${result.targetFrame}.`);
+  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext?.layerId, syncRotoKeyFrameLists]);
+
+  const insertRotoFrame = useCallback(() => {
+    const result = insertRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame);
+    for (const frame of [...result.shiftedFrames].sort((a, b) => b - a)) {
+      const state = rotoFrameStatesRef.current.get(frame);
+      if (state) {
+        rotoFrameStatesRef.current.set(frame + 1, structuredClone(state));
+        rotoFrameStatesRef.current.delete(frame);
+      }
+    }
+    syncRotoKeyFrameLists(result.frames);
+    physicPaintStore.regenerateRotoInterpolationCache(launchContext?.layerId ?? '');
+    setApplyMessage(`Inserted Roto frame at ${result.targetFrame}.`);
+  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext?.layerId, syncRotoKeyFrameLists]);
+
+  const deleteRotoFrame = useCallback(() => {
+    const result = deleteRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame);
+    if (result.removedFrame !== null) rotoFrameStatesRef.current.delete(result.removedFrame);
+    for (const frame of result.shiftedFrames) {
+      const state = rotoFrameStatesRef.current.get(frame);
+      if (state) {
+        rotoFrameStatesRef.current.set(frame - 1, structuredClone(state));
+        rotoFrameStatesRef.current.delete(frame);
+      }
+    }
+    syncRotoKeyFrameLists(result.frames);
+    physicPaintStore.removeFrameRange(launchContext?.layerId ?? '', currentFrame, 1);
+    physicPaintStore.regenerateRotoInterpolationCache(launchContext?.layerId ?? '');
+    setApplyMessage(`Deleted Roto key ${currentFrame}.`);
+  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext?.layerId, syncRotoKeyFrameLists]);
+
+  const copyRotoFrame = useCallback(() => {
+    if (!launchContext) return;
+    copiedRotoKeyRef.current = {
+      frame: currentFrame,
+      editableState: rotoFrameStatesRef.current.get(currentFrame),
+      cachedFrame: physicPaintStore.getFrame(launchContext.layerId, currentFrame) ?? undefined,
+    };
+    setApplyMessage(`Copied Roto frame ${currentFrame}.`);
+  }, [currentFrame, launchContext]);
+
+  const pasteRotoFrame = useCallback(() => {
+    if (!launchContext || !copiedRotoKeyRef.current) return;
+    const result = replaceRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame);
+    if (copiedRotoKeyRef.current.editableState) {
+      rotoFrameStatesRef.current.set(currentFrame, structuredClone(copiedRotoKeyRef.current.editableState));
+    } else {
+      rotoFrameStatesRef.current.delete(currentFrame);
+    }
+    if (copiedRotoKeyRef.current.cachedFrame) {
+      physicPaintStore.setFrame(launchContext.layerId, currentFrame, { ...copiedRotoKeyRef.current.cachedFrame, appFrame: currentFrame, source: 'real-key' });
+    }
+    syncRotoKeyFrameLists(result.frames);
+    physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId);
+    setApplyMessage(`Paste frame replaced Roto key ${currentFrame}.`);
+  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext, syncRotoKeyFrameLists]);
+
   const saveEditableState = useCallback(async () => {
     if (!engine) return;
     try {
@@ -1783,9 +1869,29 @@ export function PhysicsPaintStudio() {
         void saveRotoFrameAndAdvance();
         return;
       }
+      if (meta && key === 'd') {
+        event.preventDefault();
+        duplicateRotoKey();
+        return;
+      }
+      if (key === 'i') {
+        event.preventDefault();
+        insertRotoFrame();
+        return;
+      }
+      if (meta && key === 'c') {
+        event.preventDefault();
+        copyRotoFrame();
+        return;
+      }
+      if (meta && key === 'v') {
+        event.preventDefault();
+        pasteRotoFrame();
+        return;
+      }
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
-        clearActiveSource();
+        deleteRotoFrame();
         return;
       }
     }
@@ -1796,7 +1902,7 @@ export function PhysicsPaintStudio() {
       else if (!savedPlayCacheDirty && getCachedPlayFramesForRange(framesToApply)) playPreview(framesToApply);
       else void savePlay();
     }
-  }, [clearActiveSource, currentFrame, framesToApply, isPlaying, navigateToSyncedFrame, playPreview, savePlay, saveRotoFrameAndAdvance, savedPlayCacheDirty, savedRotoFrames, stopPreview, undo, workflowMode]);
+  }, [copyRotoFrame, currentFrame, deleteRotoFrame, duplicateRotoKey, framesToApply, insertRotoFrame, isPlaying, navigateToSyncedFrame, pasteRotoFrame, playPreview, savePlay, saveRotoFrameAndAdvance, savedPlayCacheDirty, savedRotoFrames, stopPreview, undo, workflowMode]);
 
   const onionPreviewFrames = buildOnionPreviewFrames().filter((frame) => (
     (frame.direction === 'previous' && onion.previous) || (frame.direction === 'next' && onion.next)
@@ -1968,7 +2074,7 @@ export function PhysicsPaintStudio() {
 
         <PhysicsPaintWorkflowStrip
           mode={workflowMode}
-          currentFrame={currentFrame}
+          currentFrame={effectiveCurrentFrame}
           startFrame={launchContext?.startFrame ?? 0}
           frameCount={framesToApply}
           currentPreviewFrame={localPlayPreviewFrame}
@@ -1988,6 +2094,7 @@ export function PhysicsPaintStudio() {
           rotoCachedPlaybackStatus={rotoCachedPlaybackStatus}
           isRotoCachedPlaybackActive={isRotoCachedPlaybackActive}
           onToggleRotoPlayback={toggleRotoCachedPlayback}
+          rotoInterpolationSettings={launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined}
           playPublicationSummary={applyStatus === 'success' ? applyMessage : null}
           statusMessage={isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null)}
           onion={onion}
@@ -2017,7 +2124,7 @@ export function PhysicsPaintStudio() {
           <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">
             <strong>Physics Paint shortcuts</strong>
             <span>Cmd+Z undo · Cmd+S save active workflow · Esc stop preview · ? help</span>
-            <span>Roto: arrows navigate · O onion · [ ] onion count · Cmd+Enter save and next · Delete clear frame</span>
+            <span>Roto: arrows navigate · O onion · [ ] onion count · Cmd+Enter save and next · Duplicate key · Insert frame · Delete frame · Copy frame · Paste frame</span>
             <span>Play: Space/Enter preview · Cmd+S save play</span>
           </aside>
         ) : null}

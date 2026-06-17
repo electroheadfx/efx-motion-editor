@@ -121,4 +121,45 @@ describe('physicsPaintWorkflowState', () => {
     expect(getPreviewFps(0)).toBe(24);
     expect(getPreviewFps('custom')).toBe(24);
   });
+
+  it('builds render-only Roto interpolation spans between adjacent real keys', async () => {
+    const { getRotoInterpolationSpanFrames } = await import('./physicsPaintWorkflowState');
+
+    expect(getRotoInterpolationSpanFrames([1, 2, 3], { enabled: true, inBetweenCount: 1, mode: 'duplicate' })).toEqual([
+      { fromFrame: 1, toFrame: 2, frame: 1.5, ordinal: 1, total: 1, t: 0.5 },
+      { fromFrame: 2, toFrame: 3, frame: 2.5, ordinal: 1, total: 1, t: 0.5 },
+    ]);
+    expect(getRotoInterpolationSpanFrames([1, 2, 3], { enabled: true, inBetweenCount: 2, mode: 'blend' }).map(span => span.frame)).toEqual([
+      1 + 1 / 3,
+      1 + 2 / 3,
+      2 + 1 / 3,
+      2 + 2 / 3,
+    ]);
+    expect(getRotoInterpolationSpanFrames([4], { enabled: true, inBetweenCount: 2, mode: 'blend' })).toEqual([]);
+    expect(getRotoInterpolationSpanFrames([1, 1, 3, -2, 2.2], { enabled: true, inBetweenCount: 1, mode: 'blend' }).map(span => span.fromFrame)).toEqual([1]);
+  });
+
+  it('finds the nearest real Roto key for generated-only frame opens', async () => {
+    const { getNearestRealRotoKeyFrame } = await import('./physicsPaintWorkflowState');
+
+    expect(getNearestRealRotoKeyFrame(5, [1, 10])).toBe(1);
+    expect(getNearestRealRotoKeyFrame(8, [1, 10])).toBe(10);
+    expect(getNearestRealRotoKeyFrame(8, [])).toBeNull();
+  });
+
+  it('keeps Roto key utilities limited to sorted real keys', async () => {
+    const {
+      deleteRotoKeyFrame,
+      duplicateRotoKeyFrame,
+      insertRotoKeyFrame,
+      replaceRotoKeyFrame,
+    } = await import('./physicsPaintWorkflowState');
+
+    expect(duplicateRotoKeyFrame([1, 2, 3], 1)).toEqual({ sourceFrame: 1, targetFrame: 2, frames: [1, 2, 3, 4], shiftedFrames: [2, 3] });
+    expect(duplicateRotoKeyFrame([1, 3], 1)).toEqual({ sourceFrame: 1, targetFrame: 2, frames: [1, 2, 4], shiftedFrames: [3] });
+    expect(insertRotoKeyFrame([1, 3, 4], 3)).toEqual({ targetFrame: 3, frames: [1, 3, 4, 5], shiftedFrames: [3, 4] });
+    expect(deleteRotoKeyFrame([1, 3, 4], 3)).toEqual({ removedFrame: 3, frames: [1, 3], shiftedFrames: [4] });
+    expect(replaceRotoKeyFrame([1, 3, 4], 3)).toEqual({ targetFrame: 3, frames: [1, 3, 4], replaced: true });
+    expect(replaceRotoKeyFrame([1, 4], 3)).toEqual({ targetFrame: 3, frames: [1, 3, 4], replaced: false });
+  });
 });

@@ -99,11 +99,11 @@ describe('physic paint payload contracts', () => {
   });
 
   it('validates Roto interpolation settings and rejects invalid counts', () => {
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenFrameCount: 2, mode: 'blend', deform: 10, position: 20 })).toBe(true);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: false, inBetweenFrameCount: 0, mode: 'duplicate', deform: 0, position: 0 })).toBe(true);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenFrameCount: 1.5, mode: 'blend', deform: 10, position: 20 })).toBe(false);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenFrameCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1, mode: 'blend', deform: 10, position: 20 })).toBe(false);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenFrameCount: 2, mode: 'warp', deform: 10, position: 20 })).toBe(false);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20 })).toBe(true);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: false, inBetweenCount: 0, mode: 'duplicate', deform: 0, position: 0 })).toBe(true);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 1.5, mode: 'blend', deform: 10, position: 20 })).toBe(false);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1, mode: 'blend', deform: 10, position: 20 })).toBe(false);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'warp', deform: 10, position: 20 })).toBe(false);
   });
 
   it('validates generated Roto cache frames separately from real keys', () => {

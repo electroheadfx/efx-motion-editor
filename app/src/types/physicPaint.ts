@@ -25,7 +25,7 @@ export interface PhysicPaintPlayMotionSettings {
 
 export interface PhysicPaintRotoInterpolationSettings {
   enabled: boolean;
-  inBetweenFrameCount: number;
+  inBetweenCount: number;
   mode: PhysicPaintRotoInterpolationMode;
   deform: number;
   position: number;
@@ -108,6 +108,8 @@ export interface PhysicPaintRenderedFrame {
   dataUrl: string;
   width?: number;
   height?: number;
+  /** Roto cache provenance; generated frames are render-only and never editable. */
+  source?: PhysicPaintRotoFrameSource;
 }
 
 export interface PhysicPaintApplyCanvasPayload {
@@ -344,7 +346,7 @@ export function isPhysicPaintRotoInterpolationSettings(value: unknown): value is
   if (!isRecord(value)) return false;
   return (
     typeof value.enabled === 'boolean' &&
-    isRotoInBetweenFrameCount(value.inBetweenFrameCount) &&
+    isRotoInBetweenFrameCount(value.inBetweenCount) &&
     (value.mode === 'duplicate' || value.mode === 'blend') &&
     isPercentInteger(value.deform) &&
     isPercentInteger(value.position)
@@ -396,6 +398,7 @@ export function isPhysicPaintRenderedFrame(value: unknown, expectedAppFrame?: nu
   if (expectedFrameIndex !== undefined && value.frameIndex !== expectedFrameIndex) return false;
   if (expectedAppFrame !== undefined && value.appFrame !== expectedAppFrame) return false;
   if (!isRenderedPngDataUrl(value.dataUrl)) return false;
+  if (value.source !== undefined && value.source !== 'real-key' && value.source !== 'generated-interpolation') return false;
   return optionalNumber(value.width) && optionalNumber(value.height);
 }
 

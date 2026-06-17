@@ -459,4 +459,20 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(workflowStripBlock).toContain('rotoSaveInFlight={Boolean(rotoFlushInFlightRef.current) || applyStatus === \'applying\'}');
     expect(workflowStripBlock).toContain('onSavePendingRotoFrames={savePendingRotoFrames}');
   });
+
+  it('wires named real-key utility actions without inserting generated frames into editable refs', () => {
+    const text = source();
+
+    for (const label of ['duplicateRotoKey', 'insertRotoFrame', 'deleteRotoFrame', 'copyRotoFrame', 'pasteRotoFrame']) {
+      expect(text).toContain(label);
+    }
+    expect(text).toContain('Duplicate key');
+    expect(text).toContain('Insert frame');
+    expect(text).toContain('Delete frame');
+    expect(text).toContain('Copy frame');
+    expect(text).toContain('Paste frame');
+    expect(text).toContain('physicPaintStore.regenerateRotoInterpolationCache');
+    expect(text).not.toContain("rotoFrameStatesRef.current.set(result.targetFrame, { source: 'generated-interpolation'");
+    expect(text).toContain('getNearestRealRotoKeyFrame(currentFrame, physicPaintStore.getRealRotoKeyFrames(launchContext.layerId))');
+  });
 });

@@ -165,7 +165,7 @@ describe('physicPaintBridge', () => {
       nearestRealKeyFrame: 8,
     }], {
       enabled: true,
-      inBetweenFrameCount: 1,
+      inBetweenCount: 1,
       mode: 'duplicate',
       deform: 0,
       position: 0,
@@ -185,7 +185,7 @@ describe('physicPaintBridge', () => {
     expect(context.editableState).toBeUndefined();
     expect(context.rotoInterpolationSettings).toEqual({
       enabled: true,
-      inBetweenFrameCount: 1,
+      inBetweenCount: 1,
       mode: 'duplicate',
       deform: 0,
       position: 0,
@@ -210,7 +210,7 @@ describe('physicPaintBridge', () => {
       nearestRealKeyFrame: 12,
     }], {
       enabled: true,
-      inBetweenFrameCount: 1,
+      inBetweenCount: 1,
       mode: 'blend',
       deform: 20,
       position: 30,
