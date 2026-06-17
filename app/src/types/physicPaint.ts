@@ -81,6 +81,17 @@ export interface PhysicPaintFrameSyncMessage {
   frame: number;
 }
 
+export type PhysicPaintRotoCacheFrameSource = 'real-key' | 'generated-interpolation';
+export type PhysicPaintRotoInterpolationMode = 'duplicate' | 'blend';
+
+export interface PhysicPaintRotoInterpolationSettings {
+  enabled: boolean;
+  inBetweenCount: number;
+  mode: PhysicPaintRotoInterpolationMode;
+  position: number;
+  deform: number;
+}
+
 export interface PhysicPaintRenderedFrame {
   /** Generated sequence-local frame index. For still applies this is 0. */
   frameIndex: number;
@@ -90,6 +101,8 @@ export interface PhysicPaintRenderedFrame {
   dataUrl: string;
   width?: number;
   height?: number;
+  /** Roto cache provenance; generated frames are render-only and never editable. */
+  source?: PhysicPaintRotoCacheFrameSource;
 }
 
 export interface PhysicPaintApplyCanvasPayload {
@@ -356,6 +369,7 @@ export function isPhysicPaintRenderedFrame(value: unknown, expectedAppFrame?: nu
   if (expectedFrameIndex !== undefined && value.frameIndex !== expectedFrameIndex) return false;
   if (expectedAppFrame !== undefined && value.appFrame !== expectedAppFrame) return false;
   if (!isRenderedPngDataUrl(value.dataUrl)) return false;
+  if (value.source !== undefined && value.source !== 'real-key' && value.source !== 'generated-interpolation') return false;
   return optionalNumber(value.width) && optionalNumber(value.height);
 }
 

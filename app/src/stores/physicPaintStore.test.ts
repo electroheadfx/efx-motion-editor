@@ -425,4 +425,48 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.hasOutput('layer-2')).toBe(false);
     expect(physicPaintVersion.value).toBe(afterSet + 2);
   });
+
+  it('regenerates render-only Roto interpolation cache and bumps version', () => {
+    physicPaintStore.setFrame('layer-1', 1, makeFrame(0, 1));
+    physicPaintStore.setFrame('layer-1', 3, makeFrame(0, 3));
+    const before = physicPaintVersion.value;
+
+    const generated = physicPaintStore.setRotoInterpolationSettings('layer-1', {
+      enabled: true,
+      inBetweenCount: 1,
+      mode: 'duplicate',
+      position: 25,
+      deform: 50,
+    });
+
+    expect(generated).toHaveLength(1);
+    expect(physicPaintStore.getFrame('layer-1', 2)?.source).toBe('generated-interpolation');
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 3]);
+    expect(physicPaintVersion.value).toBeGreaterThan(before);
+
+    const replaced = physicPaintStore.setRotoInterpolationSettings('layer-1', {
+      enabled: true,
+      inBetweenCount: 0,
+      mode: 'duplicate',
+      position: 25,
+      deform: 50,
+    });
+    expect(replaced).toEqual([]);
+    expect(physicPaintStore.getFrame('layer-1', 2)).toBeNull();
+    expect(physicPaintStore.getFrame('layer-1', 1)?.source).toBe('real-key');
+  });
+
+  it('uses duplicate and blend interpolation render helpers with motion settings', async () => {
+    const { renderBlendedRotoInterpolationFrame, renderDuplicateRotoInterpolationFrame } = await import('./physicPaintStore');
+    const settings = { enabled: true, inBetweenCount: 1, mode: 'blend' as const, position: 33, deform: 44 };
+
+    const duplicate = renderDuplicateRotoInterpolationFrame(makeFrame(0, 1), 2, settings);
+    const blend = renderBlendedRotoInterpolationFrame(makeFrame(0, 1), makeFrame(0, 3), 2, 0.5, settings);
+
+    expect(duplicate).toMatchObject({ appFrame: 2, source: 'generated-interpolation' });
+    expect(blend.source).toBe('generated-interpolation');
+    expect(blend.dataUrl).toContain('blend:0.500:0.500');
+    expect(blend.dataUrl).toContain('pos=33');
+    expect(blend.dataUrl).toContain('deform=44');
+  });
 });
