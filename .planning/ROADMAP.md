@@ -239,7 +239,7 @@ Plans:
 **Goal:** Users can work with Physics Paint Roto as a cache-first animation workflow with gray/green/pink cache cells, cached-reference navigation, save-on-leave/save-on-close, cached playback/export, and render-only interpolation/key utilities.
 **Requirements**: PH36.2-CACHE, PH36.2-MISSING, PH36.2-PLAYBACK, PH36.2-INTERP
 **Depends on:** Phase 36
-**Plans:** 9/10 plans executed
+**Plans:** 10/10 plans complete
 
 Plans:
 **Wave 1**
@@ -277,7 +277,7 @@ Plans:
 
 **Gap Closure Wave 4** *(blocked on 36.2-07 and 36.2-08)*
 
-- [ ] 36.2-10-PLAN.md — Fix missing Roto paper/background preview, export, and playback behavior.
+- [x] 36.2-10-PLAN.md — Fix missing Roto paper/background preview, export, and playback behavior.
 
 ### Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback
 
