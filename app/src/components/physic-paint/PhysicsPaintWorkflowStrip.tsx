@@ -157,6 +157,12 @@ function getRotoInterpolationStatusCopy(realKeyCount: number, enabled: boolean, 
   return 'Generated in-betweens stay render-only, not editable targets.';
 }
 
+function getRotoKeyUtilityStatusCopy(isRealKey: boolean, hasCopiedKey: boolean): string {
+  if (!isRealKey) return 'Key utilities require a real Roto key; generated in-betweens are render-only.';
+  if (hasCopiedKey) return 'Paste is ready and replaces the selected real key without changing timing.';
+  return 'Paste replaces the current real key; Duplicate, Insert, and Delete ripple real keys only.';
+}
+
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   const [confirmation, setConfirmation] = useState<PhysicsPaintWorkflowConfirmation | null>(null);
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
@@ -191,6 +197,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const generatedRotoFrameCount = (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'generated-interpolation').length;
   const interpolationStatusCopy = getRotoInterpolationStatusCopy(realRotoFrames.length, interpolationEnabled, generatedRotoFrameCount);
   const currentRotoUtilityTargetIsRealKey = realRotoFrames.includes(props.currentFrame);
+  const rotoKeyUtilityStatusCopy = getRotoKeyUtilityStatusCopy(currentRotoUtilityTargetIsRealKey, Boolean(props.hasCopiedRotoKey));
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
   const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
@@ -501,9 +508,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       </div>
 
       {props.mode === 'roto' ? (
-        <p class="physics-paint-roto-interpolation-status">
-          {rotoPendingLabel ?? (currentRotoFill === 'cached-only' ? 'Cached reference: repaintable, not stroke-editable. ' : '')}{interpolationStatusCopy}
-        </p>
+        <div class="physics-paint-roto-status-stack">
+          <p class="physics-paint-roto-key-status">{rotoKeyUtilityStatusCopy}</p>
+          <p class="physics-paint-roto-interpolation-status">
+            {rotoPendingLabel ?? (currentRotoFill === 'cached-only' ? 'Cached reference: repaintable, not stroke-editable. ' : '')}{interpolationStatusCopy}
+          </p>
+        </div>
       ) : null}
 
       {visibleOnionPreviewFrames.length > 0 ? (
