@@ -290,6 +290,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('pendingRotoFrames?: number[]');
     expect(code).toContain("frame.source === 'real-key'");
     expect(code).toContain('getRotoCellFill(frame, realCachedRotoFrames, props.editableRotoFrames)');
+    expect(studioSource()).toContain('editableRotoFrames={editableRotoFrames}');
+    expect(studioSource()).not.toContain('editableRotoFrames={occupiedRotoFrames}');
     expect(code).toContain('roto-fill-empty');
     expect(code).toContain('roto-fill-cached-only');
     expect(code).toContain('roto-fill-editable-session');

@@ -100,6 +100,7 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
     expect(text).toContain('function getSavedRotoMarkersFromLaunchContext(context: PhysicPaintLaunchContext | null)');
     expect(text).toContain('useState<PhysicsPaintWorkflowStripFrameMarker[]>(() => getSavedRotoMarkersFromLaunchContext(launchContext))');
     expect(text).toContain('useState<number[]>(() => getRealCachedRotoFrameNumbers(launchContext))');
+    expect(text).toContain('useState<number[]>([])');
     expect(text).toContain('setSavedRotoFrames(getSavedRotoMarkersFromLaunchContext(launchContext))');
     expect(text).toContain('setOccupiedRotoFrames(getRealCachedRotoFrameNumbers(launchContext))');
     expect(text).toContain('cachedRotoFrames={launchContext?.cachedRotoFrames}');
@@ -440,7 +441,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(closeBlock).not.toContain('getRotoCachedPlaybackFrames');
   });
 
-  it('persists paper/background-only Roto frames while transparent empty frames remain empty', () => {
+  it('persists paper/background-only Roto frames without marking them editable-session pink', () => {
     const text = source();
     const predicateBlock = text.slice(text.indexOf('function shouldPersistRotoFrame'), text.indexOf('function addOccupiedRotoFrame'));
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
@@ -448,7 +449,26 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(predicateBlock).toContain("state.strokes.length > 0 || state.settings.bgMode !== 'transparent'");
     expect(predicateBlock).toContain("state.strokes.length === 0 && state.settings.bgMode !== 'transparent'");
     expect(flushBlock).toContain('const backgroundOnly = isBackgroundOnlyRotoFrame(editableState)');
+    expect(flushBlock).toContain('if (backgroundOnly) {');
+    expect(flushBlock).toContain('removeEditableRotoFrame(frame)');
+    expect(flushBlock).toContain('} else {');
+    expect(flushBlock).toContain('addEditableRotoFrame(frame)');
     expect(flushBlock).toContain('...(backgroundOnly ? { backgroundOnly: true } : {})');
+  });
+
+  it('passes editable real-key Roto frames separately from occupied/background-only frames', () => {
+    const text = source();
+    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const toggleRotoCachedPlayback'));
+
+    expect(text).toContain('const [editableRotoFrames, setEditableRotoFrames] = useState<number[]>([])');
+    expect(text).toContain('function hasEditableRotoContent');
+    expect(snapshotBlock).toContain('if (hasEditableRotoContent(currentState)) addEditableRotoFrame(appFrame)');
+    expect(snapshotBlock).toContain('else removeEditableRotoFrame(appFrame)');
+    expect(snapshotBlock).not.toContain('addEditableRotoFrame(appFrame)\n    return true');
+    expect(workflowStripBlock).toContain('occupiedRotoFrames={occupiedRotoFrames}');
+    expect(workflowStripBlock).toContain('editableRotoFrames={editableRotoFrames}');
+    expect(workflowStripBlock).not.toContain('editableRotoFrames={occupiedRotoFrames}');
   });
 
   it('tracks dirty Roto frames and flushes once before synced navigation', () => {
