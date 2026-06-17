@@ -70,6 +70,12 @@ export interface PhysicsPaintWorkflowStripProps {
   onRotoInterpolationCountChange?: (count: number) => void;
   onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings['mode']>) => void;
   onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, 'deform' | 'position'>) => void;
+  onDuplicateRotoKey?: () => void;
+  onInsertRotoFrame?: () => void;
+  onDeleteRotoFrame?: () => void;
+  onCopyRotoFrame?: () => void;
+  onPasteRotoFrame?: () => void;
+  hasCopiedRotoKey?: boolean;
   onSaveRotoFrame: () => void;
   onSavePendingRotoFrames: () => void;
   onSavePlay: () => void;
@@ -184,6 +190,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const interpolationPosition = Math.max(0, Math.trunc(Number(interpolationSettings.position ?? 0) || 0));
   const generatedRotoFrameCount = (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'generated-interpolation').length;
   const interpolationStatusCopy = getRotoInterpolationStatusCopy(realRotoFrames.length, interpolationEnabled, generatedRotoFrameCount);
+  const currentRotoUtilityTargetIsRealKey = realRotoFrames.includes(props.currentFrame);
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
   const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
@@ -337,6 +344,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <span class="physics-paint-roto-playback-status" role="status">
                 {props.rotoCachedPlaybackStatus ?? 'Missing frames play transparent/background'}
               </span>
+              <div class="physics-paint-roto-key-utilities" aria-label="Roto key utility controls">
+                <button type="button" class="physics-paint-roto-key-button" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey} onClick={props.onDuplicateRotoKey}>Duplicate key</button>
+                <button type="button" class="physics-paint-roto-key-button" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey} onClick={props.onInsertRotoFrame}>Insert frame</button>
+                <button type="button" class="physics-paint-roto-key-button destructive" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey} onClick={props.onDeleteRotoFrame}>Delete frame</button>
+                <button type="button" class="physics-paint-roto-key-button" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey} onClick={props.onCopyRotoFrame}>Copy frame</button>
+                <button type="button" class="physics-paint-roto-key-button" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey || !props.hasCopiedRotoKey} onClick={props.onPasteRotoFrame}>Paste frame</button>
+              </div>
               <div class="physics-paint-roto-interpolation-controls" aria-label="Roto interpolation controls">
                 <label class="physics-paint-roto-interpolation-toggle">
                   <input
