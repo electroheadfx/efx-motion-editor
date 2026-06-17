@@ -4,13 +4,13 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
 stopped_at: Phase 36.2 context gathered
-last_updated: "2026-06-17T09:20:43.376Z"
+last_updated: "2026-06-17T09:52:04.968Z"
 last_activity: 2026-06-16 -- Phase 36.2 execution started
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 36
-  completed_plans: 32
+  completed_plans: 33
   percent: 67
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-06-16 -- Phase 36.2 execution started
 
@@ -61,6 +61,7 @@ Progress: [████████░░░░░] 4/5 phases (80%)
 | Phase 36 P06 | 392 | 2 tasks | 3 files |
 | Phase 36 P09 | 6min | 2 tasks | 2 files |
 | Phase 36.2 P02 | 5580 | 3 tasks | 6 files |
+| Phase 36.2 P04 | 21min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,8 @@ Recent decisions affecting current work:
 - [Phase 36]: Play lane click handling remains inspection-only; conversion and clearing are explicit button/dialog flows. — Mitigates timeline-click tampering by keeping destructive callbacks behind explicit confirmations.
 - [Phase 36]: Roto onion overlays use local Roto snapshots and persisted Roto output only, excluding latest Play frames from normal post-save overlay rendering.
 - [Phase 36.2]: Plan 02 keeps Roto dirty/current state orthogonal to gray/green/pink semantic fills; missing main EFX Motion cache preview/marker propagation is carried to Plans 36.2-03/04.
+- [Phase 36.2 Plan 04]: Generated-only Roto cache frames are launch redirects, not editable targets; standalone launch opens the nearest real key when metadata is available.
+- [Phase 36.2 Plan 04]: Missing Roto frames are resolved virtually in PreviewRenderer, preserving transparent/background-only playback without writing cache metadata.
 
 ### Pending Todos
 
@@ -111,6 +114,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-17T09:19:41.809Z
-Stopped at: Phase 36.2 context gathered
-Resume file: .planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CONTEXT.md
+Last session: 2026-06-17T09:52:04.963Z
+Stopped at: Completed 36.2-04-PLAN.md
+Resume file: None
