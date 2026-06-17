@@ -809,8 +809,20 @@ export function PhysicsPaintStudio() {
     return Boolean(cachedFrame);
   }
 
+  function buildTransientRotoBackgroundFrame(appFrame: number): RenderedFramePayload | null {
+    const metadata = launchContext ? physicPaintStore.getRotoBackgroundMetadata(launchContext.layerId) : null;
+    if (!metadata || metadata.background === 'transparent') return null;
+    return {
+      frameIndex: 0,
+      appFrame,
+      dataUrl: `data:application/x-efx-roto-background,${encodeURIComponent(JSON.stringify(metadata))}`,
+      width: launchContext?.width,
+      height: launchContext?.height,
+    };
+  }
+
   function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null {
-    return findCachedRotoReferenceFrame(appFrame);
+    return findCachedRotoReferenceFrame(appFrame) ?? buildTransientRotoBackgroundFrame(appFrame);
   }
 
   function getRotoCachedPlaybackFrames(): Array<RenderedFramePayload | null> {

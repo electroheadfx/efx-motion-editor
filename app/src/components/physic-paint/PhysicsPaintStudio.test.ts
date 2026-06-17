@@ -115,6 +115,18 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
     expect(text).toContain('cachedRotoFrames={launchContext?.cachedRotoFrames}');
   });
 
+  it('synthesizes transient background-only Roto playback frames without cached cell mutation', () => {
+    const text = source();
+    const playbackBlock = text.slice(text.indexOf('function buildTransientRotoBackgroundFrame'), text.indexOf('useEffect(() => {', text.indexOf('function buildTransientRotoBackgroundFrame')));
+
+    expect(playbackBlock).toContain('physicPaintStore.getRotoBackgroundMetadata(launchContext.layerId)');
+    expect(playbackBlock).toContain("if (!metadata || metadata.background === 'transparent') return null");
+    expect(playbackBlock).toContain('data:application/x-efx-roto-background');
+    expect(playbackBlock).toContain('return findCachedRotoReferenceFrame(appFrame) ?? buildTransientRotoBackgroundFrame(appFrame)');
+    expect(playbackBlock).not.toContain('physicPaintStore.setFrame');
+    expect(playbackBlock).not.toContain('setSavedRotoFrames');
+  });
+
   it('shows cached Roto references as an overlay and does not install them as the paint engine background', () => {
     const text = source();
     const loadBlock = text.slice(text.indexOf('function loadCachedRotoReferenceFrame'), text.indexOf('useEffect(() => {', text.indexOf('function loadCachedRotoReferenceFrame')));
