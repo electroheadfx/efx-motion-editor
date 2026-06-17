@@ -531,15 +531,20 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('wires named real-key utility actions without inserting generated frames into editable refs', () => {
     const text = source();
+    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
 
     for (const label of ['duplicateRotoKey', 'insertRotoFrame', 'deleteRotoFrame', 'copyRotoFrame', 'pasteRotoFrame']) {
       expect(text).toContain(label);
     }
-    expect(text).toContain('Duplicate key');
-    expect(text).toContain('Insert frame');
-    expect(text).toContain('Delete frame');
-    expect(text).toContain('Copy frame');
-    expect(text).toContain('Paste frame');
+    expect(workflowStripBlock).toContain('onDuplicateRotoKey={duplicateRotoKey}');
+    expect(workflowStripBlock).toContain('onInsertRotoFrame={insertRotoFrame}');
+    expect(workflowStripBlock).toContain('onDeleteRotoFrame={deleteRotoFrame}');
+    expect(workflowStripBlock).toContain('onCopyRotoFrame={copyRotoFrame}');
+    expect(workflowStripBlock).toContain('onPasteRotoFrame={pasteRotoFrame}');
+    expect(workflowStripBlock).toContain('hasCopiedRotoKey={hasCopiedRotoKey}');
+    expect(text).toContain('const [hasCopiedRotoKey, setHasCopiedRotoKey]');
+    expect(text).toContain('function isCurrentFrameARealRotoKey()');
+    expect(text).toContain("setApplyMessage('Key utilities require a real Roto key. Generated in-betweens are render-only.');");
     expect(text).toContain('physicPaintStore.regenerateRotoInterpolationCache');
     expect(text).not.toContain("rotoFrameStatesRef.current.set(result.targetFrame, { source: 'generated-interpolation'");
     expect(text).toContain('getNearestRealRotoKeyFrame(currentFrame, physicPaintStore.getRealRotoKeyFrames(launchContext.layerId))');
