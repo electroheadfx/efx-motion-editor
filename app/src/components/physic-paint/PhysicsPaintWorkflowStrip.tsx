@@ -66,6 +66,10 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoCachedPlaybackStatus?: string | null;
   onToggleRotoPlayback?: () => void;
   isRotoCachedPlaybackActive?: boolean;
+  onRotoInterpolationEnabledChange?: (enabled: boolean) => void;
+  onRotoInterpolationCountChange?: (count: number) => void;
+  onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings['mode']>) => void;
+  onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, 'deform' | 'position'>) => void;
   onSaveRotoFrame: () => void;
   onSavePendingRotoFrames: () => void;
   onSavePlay: () => void;
@@ -165,6 +169,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const hasPendingRotoFrames = pendingRotoFrameSet.size > 0;
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames, props.editableRotoFrames);
   const rotoPendingLabel = getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight));
+  const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 0, mode: 'duplicate' as const, deform: 0, position: 0 };
+  const interpolationEnabled = interpolationSettings.enabled === true;
+  const interpolationCount = Math.max(0, Math.trunc(Number(interpolationSettings.inBetweenCount ?? 0) || 0));
+  const interpolationMode = interpolationSettings.mode === 'blend' ? 'blend' : 'duplicate';
+  const interpolationDeform = Math.max(0, Math.trunc(Number(interpolationSettings.deform ?? 0) || 0));
+  const interpolationPosition = Math.max(0, Math.trunc(Number(interpolationSettings.position ?? 0) || 0));
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
   const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
@@ -201,6 +211,20 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       props.onPlayLimit?.(playLimitMessage);
     }
     props.onFrameCountChange(clampedFrameCount);
+  }
+
+  function handleRotoInterpolationCountInput(event: Event) {
+    const value = Number((event.currentTarget as HTMLInputElement).value);
+    props.onRotoInterpolationCountChange?.(Math.max(0, Math.trunc(Number.isFinite(value) ? value : 0)));
+  }
+
+  function toggleRotoInterpolationMotion(key: 'deform' | 'position', activeValue: number) {
+    const next = {
+      deform: interpolationDeform,
+      position: interpolationPosition,
+      [key]: activeValue > 0 ? 0 : 50,
+    };
+    props.onRotoInterpolationMotionChange?.(next);
   }
 
   function previewPlayFrame(frame: number) {
@@ -318,6 +342,56 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <span class="physics-paint-roto-playback-status" role="status">
                 {props.rotoCachedPlaybackStatus ?? 'Missing frames play transparent/background'}
               </span>
+              <div class="physics-paint-roto-interpolation-controls" aria-label="Roto interpolation controls">
+                <label class="physics-paint-roto-interpolation-toggle">
+                  <input
+                    type="checkbox"
+                    checked={interpolationEnabled}
+                    disabled={props.ready === false}
+                    onChange={(event) => props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked)}
+                  />
+                  <span>Interpolation</span>
+                </label>
+                <label class="physics-paint-roto-interpolation-count" for="physics-roto-interpolation-count">
+                  <span>In-betweens</span>
+                  <input
+                    id="physics-roto-interpolation-count"
+                    type="number"
+                    min={0}
+                    value={interpolationCount}
+                    disabled={props.ready === false || !interpolationEnabled}
+                    onInput={handleRotoInterpolationCountInput}
+                  />
+                </label>
+                <select
+                  class="physics-paint-roto-interpolation-select"
+                  aria-label="Roto interpolation mode"
+                  value={interpolationMode}
+                  disabled={props.ready === false || !interpolationEnabled}
+                  onChange={(event) => props.onRotoInterpolationModeChange?.((event.currentTarget as HTMLSelectElement).value === 'blend' ? 'blend' : 'duplicate')}
+                >
+                  <option value="duplicate">Duplicate</option>
+                  <option value="blend">Blend</option>
+                </select>
+                <button
+                  type="button"
+                  class={`physics-paint-roto-motion-toggle ${interpolationDeform > 0 ? 'active' : ''}`}
+                  aria-pressed={interpolationDeform > 0}
+                  disabled={props.ready === false || !interpolationEnabled}
+                  onClick={() => toggleRotoInterpolationMotion('deform', interpolationDeform)}
+                >
+                  Deform
+                </button>
+                <button
+                  type="button"
+                  class={`physics-paint-roto-motion-toggle ${interpolationPosition > 0 ? 'active' : ''}`}
+                  aria-pressed={interpolationPosition > 0}
+                  disabled={props.ready === false || !interpolationEnabled}
+                  onClick={() => toggleRotoInterpolationMotion('position', interpolationPosition)}
+                >
+                  Position
+                </button>
+              </div>
             </div>
           ) : (
             <div class="physics-paint-mode-controls physics-paint-play-controls">

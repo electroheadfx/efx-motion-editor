@@ -1220,6 +1220,69 @@ button.destructive {
   white-space: nowrap;
 }
 
+.physics-paint-roto-interpolation-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 2px 5px;
+  border: 1px solid rgba(111, 144, 255, 0.34);
+  border-radius: 7px;
+  background: rgba(12, 18, 32, 0.34);
+}
+
+.physics-paint-roto-interpolation-toggle,
+.physics-paint-roto-interpolation-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #e3e6ea;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.physics-paint-roto-interpolation-toggle input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #6f90ff;
+}
+
+.physics-paint-roto-interpolation-count input {
+  width: 42px;
+  height: 22px;
+  padding: 1px 4px;
+  border: 1px solid #747980;
+  border-radius: 4px;
+  background: #5a5c5f;
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.physics-paint-roto-interpolation-select,
+.physics-paint-roto-motion-toggle {
+  min-height: 22px;
+  padding: 2px 6px;
+  border: 1px solid #5a5e63;
+  border-radius: 5px;
+  background: #343638;
+  color: #f2f5f7;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.physics-paint-roto-motion-toggle.active {
+  border-color: #6f90ff;
+  background: #365ed6;
+  color: #fff;
+}
+
 .physics-paint-workflow-segment,
 .physics-paint-primary-action,
 .physics-paint-render-action {
