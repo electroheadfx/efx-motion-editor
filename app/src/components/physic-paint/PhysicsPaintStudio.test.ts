@@ -92,6 +92,30 @@ describe('PhysicsPaintStudio top bar controls contract', () => {
   });
 });
 
+describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
+  it('initializes saved and occupied Roto cells from real cached launch frames after reopen', () => {
+    const text = source();
+
+    expect(text).toContain('function getRealCachedRotoFrames(context: PhysicPaintLaunchContext | null)');
+    expect(text).toContain('function getSavedRotoMarkersFromLaunchContext(context: PhysicPaintLaunchContext | null)');
+    expect(text).toContain('useState<PhysicsPaintWorkflowStripFrameMarker[]>(() => getSavedRotoMarkersFromLaunchContext(launchContext))');
+    expect(text).toContain('useState<number[]>(() => getRealCachedRotoFrameNumbers(launchContext))');
+    expect(text).toContain('setSavedRotoFrames(getSavedRotoMarkersFromLaunchContext(launchContext))');
+    expect(text).toContain('setOccupiedRotoFrames(getRealCachedRotoFrameNumbers(launchContext))');
+    expect(text).toContain('cachedRotoFrames={launchContext?.cachedRotoFrames}');
+  });
+
+  it('shows cached Roto references as an overlay and does not install them as the paint engine background', () => {
+    const text = source();
+    const loadBlock = text.slice(text.indexOf('function loadCachedRotoReferenceFrame'), text.indexOf('useEffect(() => {', text.indexOf('function loadCachedRotoReferenceFrame')));
+
+    expect(loadBlock).toContain('setCachedRotoReferenceUrl(cachedFrame?.dataUrl ?? null)');
+    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
+    expect(loadBlock).not.toContain('setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(styles()).toContain('.physics-paint-cached-roto-reference');
+  });
+});
+
 describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
   it('initializes workflow mode and Play range from launch context metadata instead of hardcoded Roto defaults', () => {
     const text = source();

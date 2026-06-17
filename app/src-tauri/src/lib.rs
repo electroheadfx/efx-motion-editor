@@ -27,6 +27,17 @@ struct PhysicsPaintRenderedFrame {
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct PhysicsPaintRotoCacheFrame {
+    #[serde(flatten)]
+    rendered: PhysicsPaintRenderedFrame,
+    source: String,
+    #[serde(rename = "nearestRealKeyFrame", skip_serializing_if = "Option::is_none")]
+    nearest_real_key_frame: Option<u32>,
+    #[serde(rename = "backgroundOnly", skip_serializing_if = "Option::is_none")]
+    background_only: Option<bool>,
+}
+
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 struct PhysicsPaintLaunchContext {
     #[serde(rename = "operationId")]
     operation_id: String,
@@ -64,6 +75,10 @@ struct PhysicsPaintLaunchContext {
     preview_frame: Option<u32>,
     #[serde(rename = "cachedPlayFrames", default, skip_serializing_if = "Vec::is_empty")]
     cached_play_frames: Vec<PhysicsPaintRenderedFrame>,
+    #[serde(rename = "cachedRotoFrames", default, skip_serializing_if = "Vec::is_empty")]
+    cached_roto_frames: Vec<PhysicsPaintRotoCacheFrame>,
+    #[serde(rename = "rotoInterpolationSettings", skip_serializing_if = "Option::is_none")]
+    roto_interpolation_settings: Option<Value>,
     #[serde(rename = "maxPlayFrameCount", skip_serializing_if = "Option::is_none")]
     max_play_frame_count: Option<u32>,
     #[serde(rename = "maxPlayFrameCountReason", skip_serializing_if = "Option::is_none")]
@@ -568,6 +583,8 @@ mod tests {
                 width: Some(1000),
                 height: Some(650),
             }],
+            cached_roto_frames: Vec::new(),
+            roto_interpolation_settings: None,
             max_play_frame_count: None,
             max_play_frame_count_reason: None,
         }
@@ -599,5 +616,34 @@ mod tests {
         assert_eq!(cloned.cached_play_frames.len(), 1);
         assert_eq!(cloned.cached_play_frames[0].app_frame, 13);
         assert!(cloned.editable_state.is_some());
+    }
+
+    #[test]
+    fn physics_paint_launch_context_preserves_cached_roto_frames_after_mount() {
+        let mut context = play_launch_context();
+        context.workflow_mode = Some("roto".into());
+        context.editable_source = Some("roto".into());
+        context.editable_state = None;
+        context.cached_play_frames = Vec::new();
+        context.cached_roto_frames = vec![PhysicsPaintRotoCacheFrame {
+            rendered: PhysicsPaintRenderedFrame {
+                frame_index: 0,
+                app_frame: 4,
+                data_url: "data:image/png;base64,cm90bw==".into(),
+                width: Some(1000),
+                height: Some(650),
+            },
+            source: "real-key".into(),
+            nearest_real_key_frame: None,
+            background_only: None,
+        }];
+
+        let cloned = context.clone();
+
+        assert_eq!(cloned.workflow_mode.as_deref(), Some("roto"));
+        assert_eq!(cloned.cached_roto_frames.len(), 1);
+        assert_eq!(cloned.cached_roto_frames[0].rendered.app_frame, 4);
+        assert_eq!(cloned.cached_roto_frames[0].source, "real-key");
+        assert!(cloned.editable_state.is_none());
     }
 }

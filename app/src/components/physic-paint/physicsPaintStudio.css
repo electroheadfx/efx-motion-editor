@@ -1646,12 +1646,18 @@ button.destructive {
   z-index: 4 !important;
 }
 
-.physics-paint-cached-play-preview {
+.physics-paint-cached-play-preview,
+.physics-paint-cached-roto-reference {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.physics-paint-cached-roto-reference {
+  z-index: 1;
+  opacity: 0.78;
 }
 
 .physics-paint-shortcuts-help {

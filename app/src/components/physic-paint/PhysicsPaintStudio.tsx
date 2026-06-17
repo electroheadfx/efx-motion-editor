@@ -132,6 +132,18 @@ function getPlayFrameCountFromAssignments(assignments: Map<number, number>, fall
   return clampPhysicPaintFrameCount(Math.max(...assignments.values()) + 1);
 }
 
+function getRealCachedRotoFrames(context: PhysicPaintLaunchContext | null): PhysicPaintRenderedFrame[] {
+  return context?.cachedRotoFrames?.filter((frame) => frame.source === 'real-key') ?? [];
+}
+
+function getRealCachedRotoFrameNumbers(context: PhysicPaintLaunchContext | null): number[] {
+  return getRealCachedRotoFrames(context).map((frame) => frame.appFrame).sort((a, b) => a - b);
+}
+
+function getSavedRotoMarkersFromLaunchContext(context: PhysicPaintLaunchContext | null): PhysicsPaintWorkflowStripFrameMarker[] {
+  return getRealCachedRotoFrameNumbers(context).map((frame) => ({ frame, saved: true, label: `Frame ${frame}` }));
+}
+
 function applyLaunchContext(
   context: PhysicPaintLaunchContext,
   setLaunchContext: (context: PhysicPaintLaunchContext) => void,
@@ -447,8 +459,8 @@ export function PhysicsPaintStudio() {
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [onion, setOnion] = useState<PhysicsPaintOnionState>({ enabled: true, previous: true, next: true, count: 1, opacity: 60 });
   const [playWiggle, setPlayWiggle] = useState<AnimationWiggleConfig>(() => normalizePlayWiggle(launchContext?.playMotion ?? DEFAULT_PLAY_WIGGLE));
-  const [savedRotoFrames, setSavedRotoFrames] = useState<PhysicsPaintWorkflowStripFrameMarker[]>([]);
-  const [occupiedRotoFrames, setOccupiedRotoFrames] = useState<number[]>([]);
+  const [savedRotoFrames, setSavedRotoFrames] = useState<PhysicsPaintWorkflowStripFrameMarker[]>(() => getSavedRotoMarkersFromLaunchContext(launchContext));
+  const [occupiedRotoFrames, setOccupiedRotoFrames] = useState<number[]>(() => getRealCachedRotoFrameNumbers(launchContext));
   const [pendingRotoFrames, setPendingRotoFrames] = useState<number[]>([]);
   const [latestPlayFrames, setLatestPlayFrames] = useState<RenderedFramePayload[]>([]);
   const [playFramesVersion, setPlayFramesVersion] = useState(0);
@@ -490,6 +502,11 @@ export function PhysicsPaintStudio() {
   useEffect(() => {
     localPlayPreviewFrameRef.current = localPlayPreviewFrame;
   }, [localPlayPreviewFrame]);
+
+  useEffect(() => {
+    setSavedRotoFrames(getSavedRotoMarkersFromLaunchContext(launchContext));
+    setOccupiedRotoFrames(getRealCachedRotoFrameNumbers(launchContext));
+  }, [launchContext?.cachedRotoFrames]);
 
   const getStrokeMetadata = useCallback(() => {
     if (workflowModeRef.current !== 'play') return null;
@@ -750,8 +767,7 @@ export function PhysicsPaintStudio() {
     }
     const cachedFrame = findCachedRotoReferenceFrame(appFrame);
     setCachedRotoReferenceUrl(cachedFrame?.dataUrl ?? null);
-    if (cachedFrame?.dataUrl) (engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl);
-    else (engine as PreviewBackgroundEngine).resetBackground();
+    (engine as PreviewBackgroundEngine).resetBackground();
     return Boolean(cachedFrame);
   }
 

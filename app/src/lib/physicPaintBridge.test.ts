@@ -182,6 +182,7 @@ describe('physicPaintBridge', () => {
       expect.objectContaining({ appFrame: 8, source: 'real-key' }),
       expect.objectContaining({ appFrame: 9, source: 'generated-interpolation', nearestRealKeyFrame: 8 }),
     ]);
+    expect(context.editableState).toBeUndefined();
     expect(context.rotoInterpolationSettings).toEqual({
       enabled: true,
       inBetweenFrameCount: 1,
@@ -189,6 +190,16 @@ describe('physicPaintBridge', () => {
       deform: 0,
       position: 0,
     });
+  });
+
+  it('does not attach stale layer-level editable state when reopening cached-only Roto frames', () => {
+    physicPaintStore.applyCanvas(applyCanvasPayload({ startFrame: 1, renderedFrame: makeFrame(0, 1) }));
+    physicPaintStore.applyCanvas(applyCanvasPayload({ operationId: 'apply-still-2', startFrame: 4, renderedFrame: makeFrame(0, 4) }));
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 1, null, null, 'roto');
+
+    expect(context.cachedRotoFrames?.map((frame) => frame.appFrame)).toEqual([1, 4]);
+    expect(context.editableState).toBeUndefined();
   });
 
   it('redirects generated-only Roto launch targets to the nearest real key frame', () => {
