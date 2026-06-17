@@ -152,6 +152,17 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('pointer-events: none');
   });
 
+  it('wires Roto interpolation controls to callback props', () => {
+    const code = source();
+    const rotoControlsBlock = code.slice(code.indexOf('physics-paint-roto-interpolation-controls'), code.indexOf('physics-paint-play-controls'));
+
+    expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange');
+    expect(rotoControlsBlock).toContain('props.onRotoInterpolationCountChange');
+    expect(rotoControlsBlock).toContain('props.onRotoInterpolationModeChange');
+    expect(rotoControlsBlock).toContain('props.onRotoInterpolationMotionChange');
+    expect(rotoControlsBlock).toContain('toggleRotoInterpolationMotion');
+  });
+
   it('renders compact visible Roto interpolation controls only inside the Roto strip', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');

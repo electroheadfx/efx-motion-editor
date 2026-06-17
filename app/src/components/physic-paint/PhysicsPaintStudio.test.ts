@@ -356,6 +356,23 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).not.toContain('function buildPlayStrokeStyleOverride');
   });
 
+  it('wires visible Roto interpolation settings through the store regeneration path', () => {
+    const text = source();
+    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const updateBlock = text.slice(text.indexOf('const updateRotoInterpolationSettings = useCallback'), text.indexOf('const goToFirstFrame = useCallback'));
+
+    expect(text).toContain('const updateRotoInterpolationSettings = useCallback');
+    expect(updateBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId');
+    expect(updateBlock).toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');
+    expect(updateBlock).toContain('setLaunchContext((current) => current ? {');
+    expect(updateBlock).toContain('cachedRotoFrames: physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
+    expect(updateBlock).toContain('rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId)');
+    expect(workflowStripBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
+    expect(workflowStripBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
+    expect(workflowStripBlock).toContain('onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode })}');
+    expect(workflowStripBlock).toContain('onRotoInterpolationMotionChange={updateRotoInterpolationSettings}');
+  });
+
   it('previews cached Roto playback from cached frames only and avoids AnimationPlayer in the Roto branch', () => {
     const text = source();
     const cachedRotoBlock = text.slice(text.indexOf('function findCachedRotoReferenceFrame'), text.indexOf('const playPreview = useCallback'));
