@@ -152,6 +152,34 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('pointer-events: none');
   });
 
+  it('renders compact visible Roto interpolation controls only inside the Roto strip', () => {
+    const code = source();
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const rotoControlsBlock = code.slice(code.indexOf('physics-paint-roto-interpolation-controls'), code.indexOf('physics-paint-roto-playback-status'));
+    const playControlsBlock = code.slice(code.indexOf('physics-paint-play-controls'), code.indexOf('props.mode === \'roto\' ? (', code.indexOf('physics-paint-play-controls')));
+
+    for (const contract of [
+      'physics-paint-roto-interpolation-controls',
+      'Interpolation',
+      'In-betweens',
+      'Duplicate',
+      'Blend',
+      'Deform',
+      'Position',
+      'onRotoInterpolationEnabledChange?: (enabled: boolean) => void',
+      'onRotoInterpolationCountChange?: (count: number) => void',
+      'onRotoInterpolationModeChange?: (mode: RotoInterpolationSettings[\'mode\']) => void',
+      'onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void',
+    ]) {
+      expect(code).toContain(contract);
+    }
+    expect(rotoControlsBlock).toContain('disabled={props.ready === false}');
+    expect(playControlsBlock).not.toContain('physics-paint-roto-interpolation-controls');
+    expect(css).toContain('.physics-paint-roto-interpolation-controls');
+    expect(css).toContain('.physics-paint-roto-interpolation-select');
+    expect(css).toContain('.physics-paint-roto-motion-toggle');
+  });
+
   it('uses Render play plus a separate Update action for saved Play options', () => {
     const code = source();
     const playControlsIndex = code.indexOf('physics-paint-play-controls');
