@@ -234,7 +234,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('engine.getStrokeCount()');
     expect(text).not.toContain('engine.save().strokes.length');
     expect(text).toContain('setSavedPlayCacheDirty(true)');
-    expect(text).toContain('onInputIntent={beginPlayFrameEdit}');
+    expect(text).toContain("onInputIntent={workflowMode === 'play' ? beginPlayFrameEdit : markCurrentRotoFrameDirty}");
     expect(text).not.toContain('inputDisabled={!canEditCurrentPlayFrame}');
     expect(saveEditableStateBlock).toContain('capturePendingPlayFrameEdits()');
     expect(saveEditableStateBlock).toContain('annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
