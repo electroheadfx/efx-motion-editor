@@ -149,7 +149,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 
   it('keeps local Play scrub separate from editor frame sync', () => {
     const text = source();
-    const localPreviewBlock = text.slice(text.indexOf('const previewLocalPlayFrame = useCallback'), text.indexOf('const startApplyTimeout'));
+    const localPreviewBlock = text.slice(text.indexOf('const previewLocalPlayFrame = useCallback'), text.indexOf('const handleApplyResult = useCallback'));
 
     expect(localPreviewBlock).toContain('setLocalPlayPreviewFrame');
     expect(localPreviewBlock).toContain('loadCachedPlayPreviewFrame');
@@ -349,7 +349,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('flushes dirty Roto frames on Save pending and best-effort close', () => {
     const text = source();
-    const closeBlock = text.slice(text.indexOf('function flushCurrentRotoFrameBeforeClose'), text.indexOf('const handlePhysicsPaintKeyDown'));
+    const closeBlock = text.slice(text.indexOf('const flushCurrentRotoFrameBeforeClose'), text.indexOf('const handlePhysicsPaintKeyDown'));
 
     expect(text).toContain('const savePendingRotoFrames = useCallback');
     expect(text).toContain('const flushCurrentRotoFrameBeforeClose = useCallback');
