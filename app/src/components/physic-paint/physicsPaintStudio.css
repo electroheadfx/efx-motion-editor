@@ -1189,6 +1189,37 @@ button.destructive {
   opacity: 0.35;
 }
 
+.physics-paint-roto-transport {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid #5a5e63;
+  border-radius: 6px;
+  background: #343638;
+  color: #f2f5f7;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.physics-paint-roto-transport:hover:not(:disabled),
+.physics-paint-roto-transport.active {
+  border-color: #7a7f86;
+  background: #505255;
+}
+
+.physics-paint-roto-playback-status {
+  max-width: 220px;
+  color: #b6bec8;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .physics-paint-workflow-segment,
 .physics-paint-primary-action,
 .physics-paint-render-action {

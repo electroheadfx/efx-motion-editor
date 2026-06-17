@@ -1,4 +1,4 @@
-import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Square } from 'lucide-preact';
+import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play as PlayIcon, Square } from 'lucide-preact';
 
 // Source contract: a one-frame Play gap opened at frame 11 yields buildPlayFrameCells(11, 1) === [11].
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -58,6 +58,10 @@ export interface PhysicsPaintWorkflowStripProps {
   onionPreviewFrames?: PhysicsPaintWorkflowOnionPreviewFrame[];
   showOnionHiddenDuringPreview?: boolean;
   missingPlayFramesForConversion?: boolean;
+  rotoCachedPlaybackAvailable?: boolean;
+  rotoCachedPlaybackStatus?: string | null;
+  onToggleRotoPlayback?: () => void;
+  isRotoCachedPlaybackActive?: boolean;
   onSaveRotoFrame: () => void;
   onSavePendingRotoFrames: () => void;
   onSavePlay: () => void;
@@ -286,6 +290,20 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <output class="physics-paint-current-frame">{props.currentFrame}</output>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
+              <button
+                type="button"
+                class={`physics-paint-roto-transport ${props.isRotoCachedPlaybackActive ? 'active' : ''}`}
+                aria-label={props.isRotoCachedPlaybackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'}
+                title="Play cached Roto frames only. Missing frames play transparent/background."
+                disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || !props.onToggleRotoPlayback}
+                onClick={props.onToggleRotoPlayback}
+              >
+                {props.isRotoCachedPlaybackActive ? <Square size={13} /> : <PlayIcon size={13} />}
+                <span>{props.isRotoCachedPlaybackActive ? 'Stop' : 'Play'}</span>
+              </button>
+              <span class="physics-paint-roto-playback-status" role="status">
+                {props.rotoCachedPlaybackStatus ?? 'Missing frames play transparent/background'}
+              </span>
             </div>
           ) : (
             <div class="physics-paint-mode-controls physics-paint-play-controls">
