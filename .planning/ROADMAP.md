@@ -239,7 +239,7 @@ Plans:
 **Goal:** Users can work with Physics Paint Roto as a cache-first animation workflow with gray/green/pink cache cells, cached-reference navigation, save-on-leave/save-on-close, cached playback/export, and render-only interpolation/key utilities.
 **Requirements**: PH36.2-CACHE, PH36.2-MISSING, PH36.2-PLAYBACK, PH36.2-INTERP
 **Depends on:** Phase 36
-**Plans:** 6/10 plans executed
+**Plans:** 7/10 plans executed
 
 Plans:
 **Wave 1**
@@ -265,7 +265,7 @@ Plans:
 
 **Gap Closure Wave 1** *(UAT gap closure)*
 
-- [ ] 36.2-07-PLAN.md — Fix Roto close flush ordering, editable cell classification, and cached-reference strength.
+- [x] 36.2-07-PLAN.md — Fix Roto close flush ordering, editable cell classification, and cached-reference strength.
 
 **Gap Closure Wave 2** *(blocked on 36.2-07)*
 
