@@ -10,8 +10,10 @@ import {
   clampOnionCount,
   getPhysicsPaintSourceLabel,
   getPlayRangeMarker,
+  getRotoInterpolationSpanFrames,
   type PhysicsPaintOnionState,
   type PhysicsPaintWorkflowMode,
+  type RotoInterpolationSettings,
 } from './physicsPaintWorkflowState';
 import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
 
@@ -24,6 +26,7 @@ export interface PhysicsPaintWorkflowStripFrameMarker {
   frame: number;
   saved?: boolean;
   label?: string;
+  source?: 'real-key' | 'generated-interpolation';
 }
 
 export interface PhysicsPaintWorkflowOnionPreviewFrame {
@@ -45,6 +48,8 @@ export interface PhysicsPaintWorkflowStripProps {
   ready?: boolean;
   occupiedRotoFrames?: number[];
   savedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[];
+  cachedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[];
+  rotoInterpolationSettings?: RotoInterpolationSettings;
   playPublicationSummary?: string | null;
   statusMessage?: string | null;
   sameModeReplacementMessage?: string | null;
@@ -108,7 +113,15 @@ function isOccupiedFrame(frames: number[] | undefined, frame: number): boolean {
 }
 
 function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefined, frame: number): boolean {
-  return Boolean(markers?.some(marker => marker.frame === frame && marker.saved !== false));
+  return Boolean(markers?.some(marker => marker.frame === frame && marker.saved !== false && marker.source !== 'generated-interpolation'));
+}
+
+function getRealRotoFrames(occupiedFrames: number[] | undefined, savedFrames: PhysicsPaintWorkflowStripFrameMarker[] | undefined, cachedFrames: PhysicsPaintWorkflowStripFrameMarker[] | undefined): number[] {
+  return Array.from(new Set([
+    ...(occupiedFrames ?? []),
+    ...(savedFrames ?? []).filter(marker => marker.source !== 'generated-interpolation').map(marker => marker.frame),
+    ...(cachedFrames ?? []).filter(marker => marker.source !== 'generated-interpolation').map(marker => marker.frame),
+  ])).filter(frame => Number.isInteger(frame) && frame >= 0).sort((a, b) => a - b);
 }
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
@@ -120,6 +133,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     [props.currentFrame, props.frameCount, props.startFrame]
   );
   const frameCells = useMemo(() => buildFrameCells(props.currentFrame), [props.currentFrame]);
+  const realRotoFrames = useMemo(() => getRealRotoFrames(props.occupiedRotoFrames, props.savedRotoFrames, props.cachedRotoFrames), [props.cachedRotoFrames, props.occupiedRotoFrames, props.savedRotoFrames]);
+  const visibleRealRotoFrames = useMemo(() => new Set(realRotoFrames.filter(frame => frameCells.includes(frame))), [frameCells, realRotoFrames]);
+  const interpolationConnectors = useMemo(() => getRotoInterpolationSpanFrames(realRotoFrames, props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 0, mode: 'duplicate' }), [props.rotoInterpolationSettings, realRotoFrames]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   const getMaxFrameCount = useCallback(() => (
     props.maxPlayFrameCount !== undefined
@@ -314,15 +330,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           {props.mode === 'roto' ? (
             <div class="physics-paint-lane">
               <div class="physics-paint-roto-cells" role="row">
-                {frameCells.map(frame => (
+                {frameCells.filter(frame => visibleRealRotoFrames.has(frame) || !isSavedFrame(props.cachedRotoFrames, frame)).map(frame => (
                   <button
                     key={frame}
-                    class={`physics-paint-roto-cell ${isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied' : ''} ${isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${frame === props.currentFrame ? 'current' : ''}`}
+                    class={`physics-paint-roto-cell ${isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied editable-session' : ''} ${isSavedFrame(props.savedRotoFrames, frame) || isSavedFrame(props.cachedRotoFrames, frame) ? 'saved cached-only' : ''} ${frame === props.currentFrame ? 'current' : ''}`}
                     aria-label={`Roto frame ${frame}`}
                     onClick={() => props.onNavigateToSyncedFrame(frame)}
                   >
                     <span>{frame}</span>
                   </button>
+                ))}
+                {interpolationConnectors.map(connector => (
+                  <span
+                    key={`${connector.fromFrame}-${connector.toFrame}-${connector.ordinal}`}
+                    class={`physics-paint-roto-interpolation-connector connector-count-${connector.total}`}
+                    data-from-frame={connector.fromFrame}
+                    data-to-frame={connector.toFrame}
+                    data-generated-frame={connector.frame}
+                    aria-hidden="true"
+                  />
                 ))}
               </div>
             </div>

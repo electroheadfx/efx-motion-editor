@@ -1836,6 +1836,8 @@ export function PhysicsPaintStudio() {
           ready={readyToApply}
           occupiedRotoFrames={occupiedRotoFrames}
           savedRotoFrames={savedRotoFrames}
+          cachedRotoFrames={savedRotoFrames}
+          rotoInterpolationSettings={launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined}
           playPublicationSummary={applyStatus === 'success' ? applyMessage : null}
           statusMessage={isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null)}
           onion={onion}

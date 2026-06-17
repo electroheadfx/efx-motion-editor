@@ -1424,8 +1424,25 @@ button.destructive {
 
 .physics-paint-roto-cell.current {
   border-color: #f5a623;
-  background: #f5a623;
   box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.65);
+}
+
+.physics-paint-roto-interpolation-connector {
+  display: block;
+  align-self: center;
+  width: 100%;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(245, 166, 35, 0.72);
+  pointer-events: none;
+}
+
+.physics-paint-roto-interpolation-connector.connector-count-1 {
+  opacity: 0.72;
+}
+
+.physics-paint-roto-interpolation-connector.connector-count-2 {
+  opacity: 0.88;
 }
 
 .physics-paint-play-cells {

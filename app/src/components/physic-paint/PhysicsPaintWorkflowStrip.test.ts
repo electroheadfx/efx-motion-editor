@@ -133,6 +133,23 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('[11]');
   });
 
+  it('renders Roto interpolation as connector lines and filters generated cache from square cells', () => {
+    const code = source();
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const rotoBlock = code.slice(code.indexOf('props.mode === \'roto\''), code.indexOf('physics-paint-lane physics-paint-play-lane'));
+
+    expect(code).toContain('rotoInterpolationSettings?: RotoInterpolationSettings');
+    expect(code).toContain('cachedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[]');
+    expect(code).toContain("source?: 'real-key' | 'generated-interpolation'");
+    expect(code).toContain("marker.source !== 'generated-interpolation'");
+    expect(rotoBlock).toContain('physics-paint-roto-interpolation-connector');
+    expect(rotoBlock).toContain('connector-count-${connector.total}');
+    expect(rotoBlock).toContain('data-generated-frame={connector.frame}');
+    expect(rotoBlock).not.toContain("source === 'generated-interpolation') ? <button");
+    expect(css).toContain('.physics-paint-roto-interpolation-connector');
+    expect(css).toContain('pointer-events: none');
+  });
+
   it('uses Render play plus a separate Update action for saved Play options', () => {
     const code = source();
     const playControlsIndex = code.indexOf('physics-paint-play-controls');
