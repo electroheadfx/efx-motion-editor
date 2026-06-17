@@ -13,6 +13,8 @@ describe('physics paint cache-first preview/export contract', () => {
 
     expect(source).toContain('void physicPaintVersion.value');
     expect(source).toContain('physicPaintStore.getFrame(paintLayerId, paintLookupFrame)');
+    expect(source).toContain('hasMissingRotoBackground(layer)');
+    expect(source).toContain('drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH)');
     expect(source).not.toMatch(/renderFromStrokes/);
   });
 
@@ -49,6 +51,16 @@ describe('physics paint cache-first preview/export contract', () => {
     expect(setFrame).not.toHaveBeenCalled();
     expect(upsertRealRotoKeyFrame).not.toHaveBeenCalled();
     expect(replaceGeneratedRotoCache).not.toHaveBeenCalled();
+    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+  });
+
+  it('resolves persisted paper and canvas grain metadata for missing Roto frames without store mutation', () => {
+    const setFrame = vi.spyOn(physicPaintStore, 'setFrame');
+
+    const result = resolveMissingRotoFrameDraw('phys-layer-1', 26, { mode: 'paper', metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } });
+
+    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    expect(setFrame).not.toHaveBeenCalled();
     expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
   });
 });

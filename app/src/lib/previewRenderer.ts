@@ -20,7 +20,7 @@ import {applyMotionBlur} from './glMotionBlur';
 import {motionBlurStore} from '../stores/motionBlurStore';
 import {VelocityCache, isStationary} from './motionBlurEngine';
 import {interpolateAt} from './keyframeEngine';
-import {resolveMissingRotoFrameDraw} from './rotoFrameDraw';
+import {drawMissingRotoBackground, resolveMissingRotoFrameDraw} from './rotoFrameDraw';
 import type {MissingRotoFrameBackgroundState} from './rotoFrameDraw';
 
 /**
@@ -88,9 +88,17 @@ function blendModeToCompositeOp(mode: BlendMode): GlobalCompositeOperation {
 }
 
 function getMissingRotoBackgroundState(layer: Layer): MissingRotoFrameBackgroundState {
+  const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+  const metadata = physicPaintStore.getRotoBackgroundMetadata(paintLayerId);
+  if (metadata) return { mode: 'paper', metadata };
   const color = layer.paintBgColor;
   if (!color || color === 'transparent') return { mode: 'transparent' };
   return { mode: 'color', color };
+}
+
+function hasMissingRotoBackground(layer: Layer): boolean {
+  const draw = resolveMissingRotoFrameDraw('', 0, getMissingRotoBackgroundState(layer));
+  return draw.kind === 'background-only';
 }
 
 /**
@@ -193,6 +201,13 @@ export class PreviewRenderer {
           hasDrawable = true;  // Paint layer always has solid bg
           break;
           continue;
+        } else if (layer.type === 'physic-paint') {
+          const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+          const renderedFrame = physicPaintStore.getFrame(paintLayerId, paintLookupFrame);
+          if (renderedFrame || hasMissingRotoBackground(layer)) {
+            hasDrawable = true;
+            break;
+          }
         } else if (isAdjustmentLayer(layer)) {
           // Adjustments only matter if there's content below; continue checking
           continue;
@@ -305,8 +320,7 @@ export class PreviewRenderer {
             ctx.save();
             ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
             ctx.globalAlpha = effectiveOpacity;
-            ctx.fillStyle = missingDraw.color;
-            ctx.fillRect(0, 0, logicalW, logicalH);
+            drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH);
             ctx.restore();
           }
         }
