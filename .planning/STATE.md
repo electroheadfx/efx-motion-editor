@@ -5,15 +5,15 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.2
 current_phase_name: roto-paint-enhancements-all-details-are-here-specs-phase-36-
 status: executing
-stopped_at: Completed 36.2-05-PLAN.md
-last_updated: "2026-06-17T19:30:27.948Z"
+stopped_at: Completed 36.2-09-PLAN.md
+last_updated: "2026-06-17T19:39:25.649Z"
 last_activity: 2026-06-17
 last_activity_desc: Phase 36.2 execution started
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 40
-  completed_plans: 38
+  completed_plans: 39
   percent: 67
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — EXECUTING
-Plan: 3 of 10
+Plan: 10 of 10
 Status: Ready to execute
-Last activity: 2026-06-17 — Phase 36.2 execution started
+Last activity: 2026-06-17 — Completed 36.2-09-PLAN.md
 
-Progress: [████████░░░░░] 4/5 phases (80%)
+Progress: [██████████] 39/40 plans (98%)
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [████████░░░░░] 4/5 phases (80%)
 - Trend: N/A
 
 *Updated after each plan completion*
+| Phase 36.2 P09 | 7min | 3 tasks | 5 files |
 | Phase 36.2 P08 | 7min | 3 tasks | 5 files |
 | Phase 36.2 P07 | 5min | 3 tasks | 4 files |
 | Phase 36 P06 | 392 | 2 tasks | 3 files |
@@ -93,6 +94,7 @@ Recent decisions affecting current work:
 - [Phase 36.2 Plan 07]: Cached Roto references stay full opacity and use outline treatment for reference status so old cache pixels are not visually diminished.
 - [Phase 36.2 Plan 08]: Roto interpolation controls live inline in the standalone workflow strip, not in a modal or hidden shortcut path, so UAT can discover and change settings visually.
 - [Phase 36.2 Plan 08]: Generated interpolation frames remain render-only cached frames surfaced by connector/status UI; real-key cells remain the only editable targets.
+- [Phase 36.2 Plan 09]: Roto key utility controls are inline in the standalone workflow strip; generated interpolation frames stay render-only and Paste is replace-style on real keys only.
 
 ### Pending Todos
 
@@ -128,6 +130,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-17T19:30:27.944Z
-Stopped at: Completed 36.2-08-PLAN.md
+Last session: 2026-06-17T19:38:28Z
+Stopped at: Completed 36.2-09-PLAN.md
 Resume file: None
