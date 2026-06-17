@@ -1,3 +1,0 @@
-interface:
-  display_name: "resume work"
-  short_description: "Resume work from previous session with full context restoration"

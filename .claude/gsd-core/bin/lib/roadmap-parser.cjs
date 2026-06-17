@@ -178,6 +178,27 @@ function replaceInCurrentMilestone(content, pattern, replacement) {
     const after = content.slice(offset);
     return before + after.replace(pattern, replacement);
 }
+function findRoadmapPhaseInContent(content, phaseNum) {
+    const phasePattern = new RegExp(`#{2,4}\\s*(?:\\[[^\\]]+\\]\\s*)?Phase\\s+${phaseMarkdownRegexSource(phaseNum)}:\\s*([^\\n]+)`, 'i');
+    const headerMatch = content.match(phasePattern);
+    if (!headerMatch)
+        return null;
+    const phaseName = headerMatch[1].trim();
+    const headerIndex = headerMatch.index;
+    const restOfContent = content.slice(headerIndex);
+    const nextHeaderMatch = restOfContent.match(/\n#{2,4}\s+(?:\[[^\]]+\]\s*)?Phase\s+[\w]/i);
+    const sectionEnd = nextHeaderMatch ? headerIndex + nextHeaderMatch.index : content.length;
+    const section = content.slice(headerIndex, sectionEnd).trim();
+    const goalMatch = section.match(/\*\*Goal(?:\*\*:|\*?\*?:\*\*)\s*([^\n]+)/i);
+    const goal = goalMatch ? goalMatch[1].trim() : null;
+    return {
+        found: true,
+        phase_number: String(phaseNum),
+        phase_name: phaseName,
+        goal,
+        section,
+    };
+}
 function getRoadmapPhaseInternal(cwd, phaseNum) {
     if (!phaseNum)
         return null;
@@ -189,26 +210,10 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
         if (roadmapRaw === null)
             throw new Error('missing');
         const content = extractCurrentMilestone(roadmapRaw, cwd);
-        const phasePattern = new RegExp(`#{2,4}\\s*(?:\\[[^\\]]+\\]\\s*)?Phase\\s+${phaseMarkdownRegexSource(phaseNum)}:\\s*([^\\n]+)`, 'i');
-        const headerMatch = content.match(phasePattern);
-        if (!headerMatch)
-            return null;
-        const phaseName = headerMatch[1].trim();
-        const headerIndex = headerMatch.index;
-        const restOfContent = content.slice(headerIndex);
-        const nextHeaderMatch = restOfContent.match(/\n#{2,4}\s+(?:\[[^\]]+\]\s*)?Phase\s+[\w]/i);
-        const sectionEnd = nextHeaderMatch ? headerIndex + nextHeaderMatch.index : content.length;
-        const section = content.slice(headerIndex, sectionEnd).trim();
-        const goalMatch = section.match(/\*\*Goal(?:\*\*:|\*?\*?:\*\*)\s*([^\n]+)/i);
-        const goal = goalMatch ? goalMatch[1].trim() : null;
-        return {
-            found: true,
-            // eslint-disable-next-line @typescript-eslint/no-base-to-string
-            phase_number: String(phaseNum),
-            phase_name: phaseName,
-            goal,
-            section,
-        };
+        const scopedResult = findRoadmapPhaseInContent(content, phaseNum);
+        if (scopedResult)
+            return scopedResult;
+        return findRoadmapPhaseInContent(stripShippedMilestones(roadmapRaw), phaseNum);
     }
     catch {
         return null;

@@ -34,6 +34,19 @@ const { extractFrontmatter, reconstructFrontmatter } = frontmatter;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const scanPhasePlans = require("./plan-scan.cjs");
 const state_document_cjs_1 = require("./state-document.cjs");
+const STATE_PROGRESS_RESYNC_FIELDS = new Set([
+    'Progress',
+    'Total Plans in Phase',
+    'Total Phases',
+]);
+function shouldResyncStateProgress(fields) {
+    for (const field of fields) {
+        if (STATE_PROGRESS_RESYNC_FIELDS.has(field)) {
+            return true;
+        }
+    }
+    return false;
+}
 // ─── Cache ────────────────────────────────────────────────────────────────────
 // Cache disk scan results from buildStateFrontmatter per cwd per process (#1967).
 // Avoids re-reading N+1 directories on every state write when the phase structure
@@ -157,6 +170,7 @@ function cmdStatePatch(cwd, patches, raw) {
     const statePath = planningPaths(cwd).state;
     try {
         const results = { updated: [], failed: [] };
+        const shouldResync = shouldResyncStateProgress(Object.keys(patches));
         // Use atomic read-modify-write to prevent lost updates from concurrent agents
         readModifyWriteStateMd(statePath, (content) => {
             for (const [field, value] of Object.entries(patches)) {
@@ -170,7 +184,7 @@ function cmdStatePatch(cwd, patches, raw) {
                 }
             }
             return content;
-        }, cwd);
+        }, cwd, { resync: shouldResync });
         output(results, raw, results.updated.length > 0 ? 'true' : 'false');
     }
     catch {
@@ -191,7 +205,7 @@ function cmdStateUpdate(cwd, field, value) {
     const statePath = planningPaths(cwd).state;
     try {
         let updated = false;
-        const shouldResync = ['Progress', 'Total Plans in Phase', 'Total Phases'].includes(field);
+        const shouldResync = shouldResyncStateProgress([field]);
         // Preserve curated progress for body-only updates, but allow fields that
         // directly project into progress.* frontmatter to rebuild after mutation.
         readModifyWriteStateMd(statePath, (content) => {
@@ -931,6 +945,32 @@ function matchSessionSection(body) {
     return body.match(/(?:^|\n)##[ \t]*Session[ \t]*\n([\s\S]*?)(?=\n##|$)/i)
         || body.match(/(?:^|\n)##[ \t]*Session Continuity[ \t]*\n([\s\S]*?)(?=\n##|$)/i);
 }
+function parseProsePhaseField(value) {
+    if (!value)
+        return { phase: null, name: null };
+    const phaseMatch = value.match(/\b(\d+[A-Z]?(?:\.\d+)*)\b/i);
+    const parenName = value.match(/\(([^)]+)\)/);
+    const dashName = value.match(/—\s*([^(\n]+?)(?:\s*\(|$)/);
+    const rawName = parenName?.[1] ?? dashName?.[1] ?? null;
+    const name = rawName && !/^(?:complete|executing|not started)$/i.test(rawName.trim())
+        ? rawName.trim()
+        : null;
+    return {
+        phase: phaseMatch ? phaseMatch[1] : null,
+        name,
+    };
+}
+function parseProseLastActivityField(value) {
+    if (!value)
+        return { date: null, description: null };
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})(?:\s+[—-]{1,2}\s+(.+))?$/);
+    if (!match)
+        return { date: value, description: null };
+    return {
+        date: match[1],
+        description: match[2]?.trim() || null,
+    };
+}
 function cmdStateSnapshot(cwd, raw) {
     const statePath = planningPaths(cwd).state;
     if (!node_fs_1.default.existsSync(statePath)) {
@@ -959,15 +999,18 @@ function cmdStateSnapshot(cwd, raw) {
         return null;
     };
     // Extract basic fields — frontmatter keys take precedence over body
-    const currentPhase = fmScalar('current_phase') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Current Phase');
-    const currentPhaseName = fmScalar('current_phase_name') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Current Phase Name');
+    const prosePhase = parseProsePhaseField((0, state_document_cjs_1.stateExtractField)(body, 'Phase'));
+    const currentPhase = fmScalar('current_phase') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Current Phase') ?? prosePhase.phase;
+    const currentPhaseName = fmScalar('current_phase_name') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Current Phase Name') ?? prosePhase.name;
     const totalPhasesRaw = fmScalar('total_phases') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Total Phases');
     const currentPlan = fmScalar('current_plan') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Current Plan');
     const totalPlansRaw = fmScalar('total_plans_in_phase') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Total Plans in Phase');
     const status = fmScalar('status') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Status');
     const progressRaw = fmScalar('progress') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Progress');
-    const lastActivity = fmScalar('last_activity') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Last Activity');
-    const lastActivityDesc = fmScalar('last_activity_desc') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Last Activity Description');
+    const rawLastActivity = (0, state_document_cjs_1.stateExtractField)(body, 'Last Activity') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Last activity');
+    const proseLastActivity = parseProseLastActivityField(rawLastActivity);
+    const lastActivity = fmScalar('last_activity') ?? proseLastActivity.date ?? rawLastActivity;
+    const lastActivityDesc = fmScalar('last_activity_desc') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Last Activity Description') ?? proseLastActivity.description;
     const pausedAt = fmScalar('paused_at') ?? (0, state_document_cjs_1.stateExtractField)(body, 'Paused At');
     // Parse numeric fields
     const totalPhases = totalPhasesRaw ? parseInt(totalPhasesRaw, 10) : null;
@@ -1052,14 +1095,18 @@ function cmdStateSnapshot(cwd, raw) {
  * reliably via `state json` instead of fragile regex parsing.
  */
 function buildStateFrontmatter(bodyContent, cwd) {
-    const currentPhase = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Current Phase');
-    const currentPhaseName = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Current Phase Name');
+    const prosePhase = parseProsePhaseField((0, state_document_cjs_1.stateExtractField)(bodyContent, 'Phase'));
+    const currentPhase = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Current Phase') ?? prosePhase.phase;
+    const currentPhaseName = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Current Phase Name') ?? prosePhase.name;
     const currentPlan = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Current Plan');
     const totalPhasesRaw = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Total Phases');
     const totalPlansRaw = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Total Plans in Phase');
     const status = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Status');
     const progressRaw = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Progress');
-    const lastActivity = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Last Activity');
+    const rawLastActivity = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Last Activity') ?? (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Last activity');
+    const proseLastActivity = parseProseLastActivityField(rawLastActivity);
+    const lastActivity = proseLastActivity.date ?? rawLastActivity;
+    const lastActivityDesc = (0, state_document_cjs_1.stateExtractField)(bodyContent, 'Last Activity Description') ?? proseLastActivity.description;
     // Bug #2444: scope Stopped At extraction to the ## Session section so that
     // historical "Stopped at:" prose elsewhere in the body (e.g. in a
     // Session Continuity Archive section) never overwrites the current value.
@@ -1203,6 +1250,8 @@ function buildStateFrontmatter(bodyContent, cwd) {
     fm['last_updated'] = clock_cjs_1.realClock.nowIso();
     if (lastActivity)
         fm['last_activity'] = lastActivity;
+    if (lastActivityDesc)
+        fm['last_activity_desc'] = lastActivityDesc;
     const progress = {};
     if (totalPhases !== null)
         progress['total_phases'] = totalPhases;
@@ -1754,14 +1803,14 @@ function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount, raw) {
                         posBody = replaced;
                 }
                 // Update Last activity line if present
-                const newActivity = `Last activity: ${today} -- Phase ${phaseNumber} execution started`;
+                const newActivity = `Last activity: ${today} — Phase ${phaseNumber} execution started`;
                 if (/^Last activity:/im.test(posBody)) {
                     posBody = posBody.replace(/^Last activity:.*$/im, newActivity);
                 }
                 else {
                     // Pipe-table format in Current Position (#1255)
                     // Value must match the inline branch (date + narrative), not bare date.
-                    const activityValue = `${today} -- Phase ${phaseNumber} execution started`;
+                    const activityValue = `${today} — Phase ${phaseNumber} execution started`;
                     const replaced = (0, state_document_cjs_1.stateReplaceField)(posBody, 'Last Activity', activityValue)
                         ?? (0, state_document_cjs_1.stateReplaceField)(posBody, 'Last activity', activityValue);
                     if (replaced !== null)
@@ -1779,7 +1828,7 @@ function cmdStateBeginPhase(cwd, phaseNumber, phaseName, planCount, raw) {
             if (positionMatch) {
                 const header = positionMatch[1];
                 let posBody = positionMatch[2];
-                const resumeActivity = `Last activity: ${today} -- Phase ${phaseNumber} execution resumed (wave continue)`;
+                const resumeActivity = `Last activity: ${today} — Phase ${phaseNumber} execution resumed (wave continue)`;
                 if (/^Last activity:/im.test(posBody)) {
                     posBody = posBody.replace(/^Last activity:.*$/im, resumeActivity);
                     body = body.replace(positionPattern, () => `${header}${posBody}`);
@@ -1942,7 +1991,7 @@ function cmdStatePlannedPhase(cwd, phaseNumber, planCount, raw) {
         // Update Current Position section
         body = updateCurrentPositionFields(body, {
             status: 'Ready to execute',
-            lastActivity: `${today} -- Phase ${phaseNumber} planning complete`,
+            lastActivity: `${today} — Phase ${phaseNumber} planning complete`,
         });
         return reassemble(body);
     }, cwd, { resync: false });
@@ -2481,14 +2530,14 @@ function cmdStateCompletePhase(cwd, raw, overridePhase) {
                     posBody = replaced;
             }
             // Update Last activity line if present
-            const newActivity = `Last activity: ${today} -- Phase ${currentPhase} marked complete`;
+            const newActivity = `Last activity: ${today} — Phase ${currentPhase} marked complete`;
             if (/^Last activity:/im.test(posBody)) {
                 posBody = posBody.replace(/^Last activity:.*$/im, newActivity);
             }
             else {
                 // Pipe-table format in Current Position (#1255)
                 // Value must match the inline branch (date + narrative), not bare date.
-                const activityValue = `${today} -- Phase ${currentPhase} marked complete`;
+                const activityValue = `${today} — Phase ${currentPhase} marked complete`;
                 const replaced = (0, state_document_cjs_1.stateReplaceField)(posBody, 'Last Activity', activityValue)
                     ?? (0, state_document_cjs_1.stateReplaceField)(posBody, 'Last activity', activityValue);
                 if (replaced !== null)

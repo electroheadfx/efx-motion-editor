@@ -173,7 +173,7 @@ function extractPhaseToken(dirName) {
     const tokenSegments = [];
     for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
-        if (/^\d/.test(seg)) {
+        if (/^\d/.test(seg) || (i === 0 && /^[A-Za-z]{1,3}\d/.test(seg))) {
             tokenSegments.push(seg);
         }
         else {

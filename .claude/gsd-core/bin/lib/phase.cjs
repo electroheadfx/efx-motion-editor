@@ -1040,6 +1040,22 @@ function writePlanningFileSet(writes) {
         throw err;
     }
 }
+function phaseDisplayNameFromRoadmap(roadmapContent, phaseNum) {
+    if (!roadmapContent || !phaseNum)
+        return null;
+    const phaseEscaped = phaseMarkdownRegexSource(phaseNum);
+    const heading = roadmapContent.match(new RegExp(`^#{2,4}\\s*Phase\\s+${phaseEscaped}\\s*:\\s*([^\\n]+)`, 'im'));
+    if (!heading)
+        return null;
+    const name = heading[1].replace(/\(INSERTED\)/i, '').trim();
+    return name || null;
+}
+function phaseDisplayNameFromSlug(slug) {
+    if (!slug)
+        return null;
+    const name = slug.replace(/-/g, ' ').trim();
+    return name || null;
+}
 function cmdPhaseComplete(cwd, phaseNum, raw) {
     if (!phaseNum) {
         error('phase number required for phase complete');
@@ -1287,6 +1303,8 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                 const originalStateContent = (0, shell_command_projection_cjs_1.platformReadSync)(statePath) || '';
                 let stateContent = originalStateContent;
                 const phaseValue = nextPhaseNum || phaseNum;
+                const nextPhaseDisplayName = phaseDisplayNameFromRoadmap(roadmapContent, nextPhaseNum) ??
+                    phaseDisplayNameFromSlug(nextPhaseName);
                 const existingPhaseField = stateExtractField(stateContent, 'Current Phase') ||
                     stateExtractField(stateContent, 'Phase');
                 let newPhaseValue = String(phaseValue);
@@ -1295,22 +1313,39 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                     const nameMatch = existingPhaseField.match(/\(([^)]+)\)/);
                     if (totalMatch) {
                         const total = totalMatch[1];
-                        const nameStr = nextPhaseName
-                            ? ` (${nextPhaseName.replace(/-/g, ' ')})`
+                        const nameStr = nextPhaseDisplayName
+                            ? ` (${nextPhaseDisplayName})`
                             : nameMatch
                                 ? ` (${nameMatch[1]})`
                                 : '';
                         newPhaseValue = `${phaseValue} of ${total}${nameStr}`;
                     }
+                    else if (nextPhaseDisplayName) {
+                        newPhaseValue = `${phaseValue} — ${nextPhaseDisplayName}`;
+                    }
                 }
                 stateContent = stateReplaceFieldWithFallback(stateContent, 'Current Phase', 'Phase', newPhaseValue);
-                if (nextPhaseName) {
-                    stateContent = stateReplaceFieldWithFallback(stateContent, 'Current Phase Name', null, nextPhaseName.replace(/-/g, ' '));
+                if (nextPhaseDisplayName) {
+                    stateContent =
+                        stateReplaceField(stateContent, 'Current Phase Name', nextPhaseDisplayName) ||
+                            stateContent;
                 }
                 stateContent = stateReplaceFieldWithFallback(stateContent, 'Status', null, isLastPhase ? 'Milestone complete' : 'Ready to plan');
                 stateContent = stateReplaceFieldWithFallback(stateContent, 'Current Plan', 'Plan', 'Not started');
-                stateContent = stateReplaceFieldWithFallback(stateContent, 'Last Activity', 'Last activity', today);
-                stateContent = stateReplaceFieldWithFallback(stateContent, 'Last Activity Description', null, `Phase ${phaseNum} complete${nextPhaseNum ? `, transitioned to Phase ${nextPhaseNum}` : ''}`);
+                const lastActivityDescription = `Phase ${phaseNum} complete${nextPhaseNum ? `, transitioned to Phase ${nextPhaseNum}` : ''}`;
+                if (/^Last activity:/m.test(stateContent)) {
+                    stateContent =
+                        stateReplaceField(stateContent, 'Last activity', `${today} — ${lastActivityDescription}`) ||
+                            stateContent;
+                }
+                else {
+                    stateContent =
+                        stateReplaceField(stateContent, 'Last Activity', today) ||
+                            stateContent;
+                }
+                stateContent =
+                    stateReplaceField(stateContent, 'Last Activity Description', lastActivityDescription) ||
+                        stateContent;
                 const completedRaw = stateExtractField(stateContent, 'Completed Phases');
                 if (completedRaw !== null) {
                     let newCompleted = parseInt(completedRaw, 10);

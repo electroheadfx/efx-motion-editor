@@ -1,3 +1,0 @@
-interface:
-  display_name: "thread"
-  short_description: "Manage persistent context threads for cross-session work"

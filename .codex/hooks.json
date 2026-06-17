@@ -1,45 +1,47 @@
 {
-  "SessionStart": [
-    {
-      "hooks": [
-        {
-          "type": "command",
-          "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/Dev/efx-motion-editor/.codex/hooks/gsd-check-update.js\""
-        }
-      ]
-    }
-  ],
-  "SubagentStart": [
-    {
-      "hooks": [
-        {
-          "type": "command",
-          "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/Dev/efx-motion-editor/.codex/hooks/gsd-context-monitor.js\"",
-          "timeout": 10
-        }
-      ]
-    }
-  ],
-  "Stop": [
-    {
-      "hooks": [
-        {
-          "type": "command",
-          "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/Dev/efx-motion-editor/.codex/hooks/gsd-context-monitor.js\"",
-          "timeout": 10
-        }
-      ]
-    }
-  ],
-  "PostToolUse": [
-    {
-      "hooks": [
-        {
-          "type": "command",
-          "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/Dev/efx-motion-editor/.codex/hooks/gsd-context-monitor.js\"",
-          "timeout": 10
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/Dev/efx-motion-editor/.codex/hooks/gsd-check-update.js\""
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/Dev/efx-motion-editor/.codex/hooks/gsd-context-monitor.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/Dev/efx-motion-editor/.codex/hooks/gsd-context-monitor.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/Dev/efx-motion-editor/.codex/hooks/gsd-context-monitor.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
 }

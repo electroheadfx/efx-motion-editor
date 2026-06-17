@@ -281,6 +281,13 @@ function projectProhibitions(items) {
             if (kind === 'lint-rule' && typeof p.check_rule === 'string' && p.check_rule.trim() !== '') {
                 entry.check_rule = String(p.check_rule);
             }
+            // `check_violation_fixture` (#1346) rides BOTH kinds — it's what the #1279 prover machine-proves
+            // fail-first against. Emit ONLY a non-empty fixture (a blank one projects absent so green still
+            // hard-gates downstream — never a partial green); meaningless without the descriptor, so it lives
+            // inside this well-formed-descriptor branch.
+            if (typeof p.check_violation_fixture === 'string' && p.check_violation_fixture.trim() !== '') {
+                entry.check_violation_fixture = String(p.check_violation_fixture);
+            }
         }
         out.push(entry);
     }

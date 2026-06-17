@@ -1,3 +1,0 @@
-interface:
-  display_name: "workstreams"
-  short_description: "Manage parallel workstreams — list, create, switch, status, progress, complete, and resume"

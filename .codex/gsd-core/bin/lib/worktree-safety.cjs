@@ -304,11 +304,14 @@ function normalizeCleanupManifestEntry(entry) {
         return null;
     if (!/^worktree-agent-[A-Za-z0-9._/-]+$/.test(branch))
         return null;
+    const rawAllowedBases = Array.isArray(e.allowed_bases) ? e.allowed_bases : [];
+    const allowedBases = Array.from(new Set([expectedBase, ...rawAllowedBases.filter((base) => typeof base === 'string' && base.length > 0)]));
     return {
         agent_id: typeof e.agent_id === 'string' ? e.agent_id : null,
         worktree_path: worktreePath,
         branch,
         expected_base: expectedBase,
+        allowed_bases: allowedBases,
     };
 }
 function normalizeCleanupManifest(manifest) {
@@ -529,7 +532,10 @@ function executeWorktreeWaveCleanupPlan(plan, deps = {}) {
             break;
         }
         const mergeBase = execGit(['merge-base', 'HEAD', entry.branch], { cwd: plan.repoRoot });
-        if (!gitResultOk(mergeBase) || mergeBase.stdout.trim() !== entry.expected_base) {
+        const allowedBases = Array.isArray(entry.allowed_bases) && entry.allowed_bases.length > 0
+            ? entry.allowed_bases
+            : [entry.expected_base];
+        if (!gitResultOk(mergeBase) || !allowedBases.includes(mergeBase.stdout.trim())) {
             result.status = 'blocked';
             result.reason = 'base_mismatch';
             result.stderr = mergeBase?.stderr || '';

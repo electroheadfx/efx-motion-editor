@@ -19,12 +19,14 @@
  * (flagged, non-green) in BOTH interactive and autonomous modes (ADR-550 D4 / D3) — never a silent
  * green.
  *
- * FAIL-FIRST IS CALLER-ATTESTED (honest scope, #1259): the producer requires the caller to ATTEST
- * `failFirst: true` AND requires the runner to observe a real non-vacuous pass — but it does NOT
- * independently prove the check fails-on-violation. Genuine fail-first confirmation needs running
- * the check against a known violation fixture and is a tracked follow-up (recorded in ADR-550's D5d
- * note). What ships here closes the permanent-`gaps_found` dead-end with a genuinely-executed gate;
- * it does not yet replace caller attestation with machine proof of the red-first property.
+ * FAIL-FIRST IS MACHINE-PROVEN (#1279): the producer no longer greens on caller attestation. The
+ * green verdict requires the injectable prover (`proveFailFirst`, default `defaultProveFailFirst`) to
+ * INDEPENDENTLY run the check against a known violation fixture and observe it go red, AND the runner
+ * to observe a real non-vacuous pass: `passed = proof.provenFailFirst === true && run.passed === true`.
+ * Caller attestation (`CheckDescriptor.failFirst`) is demoted to a non-authoritative hint kept only
+ * for backward route-JSON shape — no path greens on it alone (FF-08). The proof method is recorded in
+ * the evidence (`failFirstProof`, FF-07). This replaces the #1259 caller-attested red-first property
+ * with machine proof, closing the gap the ADR-550 D5d note tracked as a follow-up.
  *
  * Authored as strict TypeScript (`src/prohibition-enforcement.cts`) and compiled by
  * `tsc -p tsconfig.build.json` (`npm run build:lib`) to the gitignored runtime artifact
@@ -46,11 +48,15 @@ exports.descriptorFromProjection = descriptorFromProjection;
 exports.buildNodeTestArgs = buildNodeTestArgs;
 exports.buildLintArgs = buildLintArgs;
 exports.parseNodeTestSummary = parseNodeTestSummary;
+exports.isNodeTestRed = isNodeTestRed;
 exports.tapTestNames = tapTestNames;
 exports.isNonVacuousNodeTestPass = isNonVacuousNodeTestPass;
+exports.tapFailedTestNames = tapFailedTestNames;
+exports.isNonVacuousNodeTestRed = isNonVacuousNodeTestRed;
 exports.eslintFileResultCount = eslintFileResultCount;
 exports.eslintHasFatalError = eslintHasFatalError;
 exports.eslintJsonHasRule = eslintJsonHasRule;
+exports.defaultProveFailFirst = defaultProveFailFirst;
 exports.runProhibitionEnforcement = runProhibitionEnforcement;
 exports.routeProhibitionEnforcement = routeProhibitionEnforcement;
 const node_fs_1 = __importDefault(require("node:fs"));
@@ -73,7 +79,8 @@ const probe_core_cjs_1 = require("./probe-core.cjs");
  *   - `null`/`undefined`/non-object input -> `null`.
  *   - `check_kind` ABSENT -> `null` (no descriptor -> producer locates nothing -> fail-closed).
  *   - `check_kind` present -> `{ kind: check_kind, target: check_target }`, adding `rule: check_rule`
- *     ONLY when `check_rule` is a non-empty string.
+ *     ONLY when `check_rule` is a non-empty string, and `violationFixture: check_violation_fixture`
+ *     ONLY when that scalar is a non-empty string (#1346 — composes #1278 locate with #1279 proof).
  *   - `failFirst` is NEVER sourced from the projection — it stays a verify-time caller attestation
  *     (#1279 machine-proves it; out of scope here). The returned descriptor carries no `failFirst`.
  *   - The adapter does NOT strictly validate kind/target/rule: it faithfully reconstructs whatever
@@ -104,6 +111,13 @@ function descriptorFromProjection(projected) {
         if (rule.trim().length > 0)
             descriptor.rule = rule;
     }
+    // `violationFixture` (#1346) rides BOTH kinds — reconstruct it from `check_violation_fixture` so the
+    // deterministic #1278 locate path and the #1279 machine-proof COMPOSE: a projected fixture lets the
+    // default prover green end-to-end with zero hand-authoring. Absent/blank -> no fixture -> the prover
+    // hard-gates (fail-closed; green requires a fixture), never fabricated.
+    const fixture = scalar(projected.check_violation_fixture);
+    if (fixture.trim().length > 0)
+        descriptor.violationFixture = fixture;
     return descriptor;
 }
 /** node --test argv. Forces the TAP reporter so the summary counts are parseable + version-stable;
@@ -157,6 +171,16 @@ function parseNodeTestSummary(out) {
         cancelled: num(/^# cancelled (\d+)/m),
     };
 }
+/**
+ * Pure: did a `node --test` run go RED on the violation fixture? True iff the TAP summary reports at
+ * least one failure (`# fail >= 1`). The default node-test prover requires this — a negative test
+ * that does NOT go red against a known-bad subject is toothless and must not prove fail-first.
+ * Mutation-pinned (`>= 1` boundary): a mutant flipping `>=`→`>` (or the threshold) is caught by the
+ * `# fail 1` unit case. An unparseable summary yields `fail: 0` → false (fail-closed for the prover).
+ */
+function isNodeTestRed(out) {
+    return parseNodeTestSummary(out).fail >= 1;
+}
 /** The names of REAL (run) tests from TAP `ok N - <name>` / `not ok N - <name>` lines. A line with a
  * `# SKIP` / `# TODO` directive is EXCLUDED — a skipped/todo negative test never executed, so it must
  * not count toward non-vacuity (#1259 m1). */
@@ -196,6 +220,41 @@ function isNonVacuousNodeTestPass(out, target) {
     // "guards the must-NOT") has no separators, so its basename never equals the target file's.
     const tgtBase = baseOf(target);
     return tapTestNames(out).some((n) => baseOf(n) !== tgtBase);
+}
+/** The names of FAILING (run) tests from TAP `not ok N - <name>` lines, excluding `# SKIP`/`# TODO`
+ * directives (a skipped/todo line never ran). The fail-first analog of `tapTestNames`. */
+function tapFailedTestNames(out) {
+    if (typeof out !== 'string')
+        return [];
+    const names = [];
+    const re = /^not ok \d+ - (.+)$/gm;
+    let m;
+    while ((m = re.exec(out)) !== null) {
+        const rest = m[1];
+        if (/\s#\s*(?:SKIP|TODO)\b/i.test(rest))
+            continue; // skipped/todo did not run
+        names.push(rest.replace(/\s+#\s.*$/, '').trim());
+    }
+    return names;
+}
+/**
+ * A NON-VACUOUS node-test RED — the fail-first proof analog of `isNonVacuousNodeTestPass`. True iff
+ * the run reports `# fail >= 1` AND at least one FAILING test is named DISTINCTLY from the target file.
+ *
+ * Why the distinct-name guard: a violation fixture that makes the negative test CRASH at load
+ * (ENOENT / throw-on-require / syntax error) emits a FILE-NAMED `not ok 1 - <file>` with `# fail 1`.
+ * That is a crash, NOT the negative assertion firing red — so it must not "prove" the test is a
+ * regression guard (the RED-side mirror of the BL-01 vacuity hole on the pass side). Requiring a
+ * failing test named distinctly from the file closes that hole, symmetric with the clean-pass guard.
+ *
+ * KNOWN CONSTRAINT (fail-closed, not a hole): a negative test whose `test('...')` name is EXACTLY its
+ * own file basename is conservatively rejected — same benign authoring constraint, same safe direction.
+ */
+function isNonVacuousNodeTestRed(out, target) {
+    if (!isNodeTestRed(out))
+        return false; // no `# fail >= 1` summary -> not red (fail-closed)
+    const tgtBase = baseOf(target);
+    return tapFailedTestNames(out).some((n) => baseOf(n) !== tgtBase);
 }
 /** Number of file results in an eslint `--format json` report (0 if unparseable / not an array). */
 function eslintFileResultCount(jsonText) {
@@ -263,7 +322,8 @@ function eslintJsonHasRule(jsonText, rule) {
 /**
  * The default REAL check runner (used when no `runCheck` is injected). Reports only an OBSERVED,
  * genuinely-non-vacuous pass; guarded so a missing tool / non-zero exit yields a non-passing result,
- * NEVER an uncaught throw (the no-throw contract). It does NOT determine fail-first (caller-attested).
+ * NEVER an uncaught throw (the no-throw contract). It does NOT determine fail-first — that is the
+ * separate `proveFailFirst` seam's job (machine-proven against the violation fixture, #1279).
  *   - node-test: runs `node --test` (TAP) and requires a NON-VACUOUS pass (>=1 test, >=1 pass, 0 fail
  *     AND a reported test named distinctly from the file). A bare exit 0 for an empty/zero-test file
  *     — which `node --test` counts as one passing "test" named after the file — is NOT a pass (the
@@ -360,18 +420,121 @@ function defaultRunCheck(check, cwd, timeoutMs) {
     }
 }
 /**
- * LOCATE -> CONFIRM fail-first -> RUN -> build enforcementEvidence -> dispositionForProhibition.
+ * The default REAL fail-first prover (#1279; used when no `proveFailFirst` is injected). It runs the
+ * wired check against the descriptor's `violationFixture` (a KNOWN-BAD subject) and requires it to go
+ * RED — the machine proof that replaces caller attestation. Like `defaultRunCheck`, it is the
+ * impure/injectable seam (spawns eslint / `node --test`), reuses the identical bounded-subprocess
+ * machinery (`childEnv`/`posTimeout`/`CHECK_MAX_BUFFER`, `execFileSync(process.execPath, …)`, arg
+ * arrays → no shell), and NEVER throws — every un-provable path returns `{ provenFailFirst: false }`.
+ *
+ *   - lint-rule: lint the `violationFixture` via the project flat config (so `local/*` plugins load)
+ *     and require the target to actually lint (>=1 file result) AND no fatal/parse error AND the rule
+ *     id to appear in the report (messages OR suppressedMessages — an inline-disabled violation still
+ *     proves the rule has teeth, #1259 B1). Absent fixture / unresolvable eslint → not proven.
+ *   - node-test: spawn the negative test (TAP) with `GSD_PROHIB_SUBJECT` set to the `violationFixture`
+ *     — the CONVENTION (#1279) by which a negative test reads its subject-under-test — and require a
+ *     NON-VACUOUS red (`isNonVacuousNodeTestRed`: `# fail >= 1` AND a failing test named distinctly
+ *     from the file, so a load-CRASH on the bad subject is not mistaken for the assertion firing red).
+ *     A toothless test that passes anyway → not proven. Absent fixture → not proven (fail-closed;
+ *     NEVER falls back to attestation).
+ */
+function defaultProveFailFirst(check, cwd, timeoutMs) {
+    try {
+        if (check.kind === 'lint-rule') {
+            const fixture = check.violationFixture;
+            if (!fixture)
+                return { provenFailFirst: false }; // can't prove without a known violation -> hard-gate
+            const eslintCli = resolveEslintCli(cwd);
+            if (!eslintCli)
+                return { provenFailFirst: false }; // eslint not installed -> fail closed, never throw
+            let json = '';
+            try {
+                json = (0, node_child_process_1.execFileSync)(process.execPath, [eslintCli, ...buildLintArgs({ ...check, target: fixture })], {
+                    cwd,
+                    encoding: 'utf-8',
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                    windowsHide: true,
+                    env: childEnv(),
+                    timeout: posTimeout(timeoutMs, ESLINT_TIMEOUT_MS),
+                    maxBuffer: CHECK_MAX_BUFFER,
+                });
+            }
+            catch (e) {
+                // eslint exits non-zero on any error; the JSON report is still on stdout. A timeout/kill
+                // leaves no parseable JSON -> eslintHasFatalError(unparseable) -> not proven (fail-closed).
+                const stdout = e && typeof e === 'object' && 'stdout' in e ? e.stdout : '';
+                json = typeof stdout === 'string' ? stdout : '';
+            }
+            // Proven iff: the fixture actually linted (>=1 file result), the rule RAN (no fatal/parse
+            // error), and the rule id appears (the violation was flagged -> the rule has teeth).
+            const proven = eslintFileResultCount(json) >= 1
+                && !eslintHasFatalError(json)
+                && eslintJsonHasRule(json, check.rule);
+            return { provenFailFirst: proven, method: 'violation-fixture' };
+        }
+        if (check.kind === 'node-test') {
+            const fixture = check.violationFixture;
+            // Fail-CLOSED on a missing/typo'd/stale fixture path, SYMMETRIC with the lint-rule path's
+            // `eslintFileResultCount >= 1` guard. Without the existence check, a non-existent fixture makes
+            // `GSD_PROHIB_SUBJECT` point at a missing file; an honest negative test reading that subject
+            // throws ENOENT *inside its callback* — a failing test named DISTINCTLY from the file, which
+            // `isNonVacuousNodeTestRed` would accept as proof. That is fail-OPEN: a typo forges a green from
+            // a setup crash, not from the prohibition firing. Requiring the fixture to exist before spawning
+            // closes the realistic typo/stale-path case (#1279 review, Major 1).
+            //
+            // KNOWN RESIDUAL (documented, fail-open direction, tracked follow-up #1346): existence is
+            // necessary but not sufficient — a deliberately deceptive negative test that reds merely BECAUSE
+            // `GSD_PROHIB_SUBJECT` is set (rather than because the subject's CONTENT violates the must-NOT)
+            // is still accepted. Proving "the red was CAUSED BY the violation" cannot be done generically for
+            // an arbitrary author-supplied test, so it is recorded as a constraint, not silently implied-solved.
+            // Resolve the fixture against `cwd` (NOT the verify process's cwd): the spawned test reads
+            // `GSD_PROHIB_SUBJECT` and resolves a relative subject against `cwd`, so the existence check must
+            // use the SAME base or it could pass here yet ENOENT in the child (re-opening the fail-open hole).
+            if (!fixture || !node_fs_1.default.existsSync(node_path_1.default.resolve(cwd, fixture)))
+                return { provenFailFirst: false };
+            let out = '';
+            try {
+                out = (0, node_child_process_1.execFileSync)(process.execPath, buildNodeTestArgs(check), {
+                    cwd,
+                    encoding: 'utf-8',
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                    windowsHide: true,
+                    // CONVENTION (#1279): the negative test reads its subject-under-test from this env var.
+                    env: { ...childEnv(), GSD_PROHIB_SUBJECT: fixture },
+                    timeout: posTimeout(timeoutMs, NODE_TEST_TIMEOUT_MS),
+                    maxBuffer: CHECK_MAX_BUFFER,
+                });
+            }
+            catch (e) {
+                // A negative test that goes RED exits non-zero; the partial TAP (with the `# fail` summary)
+                // is on stdout. Parse what we have: a real failure here is the PROOF the test is fail-first.
+                const stdout = e && typeof e === 'object' && 'stdout' in e ? e.stdout : '';
+                out = typeof stdout === 'string' ? stdout : '';
+            }
+            return { provenFailFirst: isNonVacuousNodeTestRed(out, check.target), method: 'violation-fixture' };
+        }
+        // Unknown kind — defensive; the LOCATE guard already rejects it.
+        return { provenFailFirst: false };
+    }
+    catch {
+        return { provenFailFirst: false };
+    }
+}
+/**
+ * LOCATE -> PROVE fail-first -> RUN -> build enforcementEvidence -> dispositionForProhibition.
  *
  * (1) LOCATE: if no well-formed check descriptor is locatable -> fail-closed
  *     (`dispositionForProhibition` with empty evidence) plus `{ located: false, kind: null, evidence: [] }`.
- * (2) ATTEST + RUN: require the caller to attest `failFirst: true` and run it via `runCheck`. A check
- *     the caller does not attest as fail-first, or that does not genuinely (non-vacuously) PASS ->
- *     fail-closed disposition with `located: true` (a real located miss, non-green, flagged) in BOTH
- *     modes. Fail-first is caller-attested, not independently proven (see module docstring).
- * (3) PASS: build a typed `enforcementEvidence` array and call `dispositionForProhibition` — the
- *     non-empty array flips a test-tier item to green (the previously-unreachable branch).
+ * (2) PROVE + RUN: machine-prove fail-first via `proveFailFirst` (default `defaultProveFailFirst`) AND
+ *     run the check via `runCheck`. The green AND is `proof.provenFailFirst === true && run.passed ===
+ *     true` — caller attestation is NOT consulted (FF-08). A check that cannot be proven fail-first, or
+ *     that does not genuinely (non-vacuously) PASS -> fail-closed disposition with `located: true` (a
+ *     real located miss, non-green, flagged) in BOTH modes.
+ * (3) PASS: build a typed `enforcementEvidence` array (recording the proof method) and call
+ *     `dispositionForProhibition` — the non-empty array flips a test-tier item to green.
  *
- * Pure/deterministic: same (prohibition, check, runCheck) -> same result.
+ * Pure/deterministic DECISION layer: the only impure seams are the injectable `runCheck`/`proveFailFirst`;
+ * given their results the disposition is same-input-same-output and mutation-survivable.
  */
 function runProhibitionEnforcement(prohibition, check, options = {}) {
     const mode = options.mode;
@@ -388,13 +551,21 @@ function runProhibitionEnforcement(prohibition, check, options = {}) {
         return { ...disposition, located: false, kind: null, evidence: [], ...(mode ? { mode } : {}) };
     }
     const runCheck = options.runCheck ?? ((toRun) => defaultRunCheck(toRun, options.cwd ?? process.cwd(), options.timeoutMs));
-    // (2) ATTEST fail-first (CALLER-DECLARED) + RUN. The caller must attest `failFirst: true` AND the
-    // runner must observe a genuine NON-VACUOUS pass. The producer does NOT independently prove
-    // fail-first (that needs a violation fixture — tracked follow-up, ADR-550 D5d). A non-attested or
-    // non-passing check hard-gates (never green) in BOTH modes.
-    const attestedFailFirst = c.failFirst === true;
-    // No-throw contract end-to-end: even a (test-injected) runCheck that throws must fail closed,
-    // never propagate. The default real runner already never throws.
+    const proveFailFirst = options.proveFailFirst ?? ((toProve) => defaultProveFailFirst(toProve, options.cwd ?? process.cwd(), options.timeoutMs));
+    // (2) PROVE fail-first (MACHINE) + RUN. The prover must INDEPENDENTLY run the check against the
+    // descriptor's violation fixture and observe it go red (`proof.provenFailFirst`), AND the runner
+    // must observe a genuine NON-VACUOUS pass. Caller attestation (`c.failFirst`) is NOT consulted for
+    // the green verdict (FF-08) — a check that cannot be machine-proven fail-first hard-gates (never
+    // green) in BOTH modes, even if attested.
+    // No-throw contract end-to-end: even a (test-injected) prover/runner that throws must fail closed,
+    // never propagate. The default real prover/runner already never throw.
+    let proof;
+    try {
+        proof = proveFailFirst(c);
+    }
+    catch {
+        proof = { provenFailFirst: false };
+    }
     let run;
     try {
         run = runCheck(c);
@@ -402,9 +573,11 @@ function runProhibitionEnforcement(prohibition, check, options = {}) {
     catch {
         run = { passed: false };
     }
-    const passed = attestedFailFirst && run.passed === true;
+    // The `&&` and `=== true` are mutation-load-bearing — both directions (proven-red AND clean-pass)
+    // must hold for green; Plan 01/02 guards pin them.
+    const passed = proof.provenFailFirst === true && run.passed === true;
     if (!passed) {
-        // NOT attested fail-first OR did not genuinely pass -> fail-closed, located: true (an actual
+        // NOT machine-proven fail-first OR did not genuinely pass -> fail-closed, located: true (an actual
         // located miss/fail). Hard-gate applies in BOTH modes; the disposition stays non-green / flagged.
         const disposition = (0, probe_core_cjs_1.dispositionForProhibition)(prohibition, { enforcementEvidence: [] });
         return {
@@ -416,13 +589,15 @@ function runProhibitionEnforcement(prohibition, check, options = {}) {
         };
     }
     // (3) PASS -> build typed enforcementEvidence and let the policy flip a test-tier item green.
-    // `failFirst` here is the caller's attestation (recorded for provenance), not a machine proof.
+    // `failFirst: true` here means MACHINE-PROVEN (the green AND required `proof.provenFailFirst`),
+    // and `failFirstProof` records HOW it was proven (FF-07).
     const evidence = [{
             kind: c.kind,
             target: c.target,
             ...(typeof c.rule === 'string' ? { rule: c.rule } : {}),
             failFirst: true,
             passed: true,
+            ...(proof.method ? { failFirstProof: proof.method } : {}),
         }];
     const disposition = (0, probe_core_cjs_1.dispositionForProhibition)(prohibition, { enforcementEvidence: evidence });
     return {

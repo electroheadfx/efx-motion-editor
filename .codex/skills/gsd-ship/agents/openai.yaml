@@ -1,3 +1,0 @@
-interface:
-  display_name: "ship"
-  short_description: "Create PR, run review, and prepare for merge after verification passes"

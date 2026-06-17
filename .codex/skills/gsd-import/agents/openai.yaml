@@ -1,3 +1,0 @@
-interface:
-  display_name: "import"
-  short_description: "Ingest external plans with conflict detection against project decisions before writing anything."

@@ -1,3 +1,0 @@
-interface:
-  display_name: "plan phase"
-  short_description: "Create detailed phase plan (PLAN.md) with verification loop"

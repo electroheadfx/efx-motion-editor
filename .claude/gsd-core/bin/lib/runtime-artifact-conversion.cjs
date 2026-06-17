@@ -287,6 +287,9 @@ function skillFrontmatterName(skillDirName) {
     // Return the hyphen form as-is (gsd-<cmd>) — canonical since #2808.
     return skillDirName;
 }
+function normalizeClaudeSkillEffort(effort) {
+    return effort === 'xhigh' ? 'max' : effort;
+}
 /**
  * Qwen Code skills accept an optional numeric `priority` frontmatter field.
  * Per the Qwen skills spec (qwen-code/docs/users/features/skills.md, verified
@@ -386,7 +389,7 @@ function convertClaudeCommandToClaudeSkill(content, skillName, runtime = null, c
     if (context)
         fm += `context: ${context}\n`;
     if (effort)
-        fm += `effort: ${effort}\n`;
+        fm += `effort: ${normalizeClaudeSkillEffort(effort)}\n`;
     if (toolsBlock)
         fm += toolsBlock;
     fm += '---';

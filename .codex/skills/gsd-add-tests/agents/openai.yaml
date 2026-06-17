@@ -1,3 +1,0 @@
-interface:
-  display_name: "add tests"
-  short_description: "Generate tests for a completed phase based on UAT criteria and implementation"

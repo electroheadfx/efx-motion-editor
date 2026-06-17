@@ -1,3 +1,0 @@
-interface:
-  display_name: "audit milestone"
-  short_description: "Audit milestone completion against original intent before archiving"

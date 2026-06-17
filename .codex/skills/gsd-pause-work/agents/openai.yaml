@@ -1,3 +1,0 @@
-interface:
-  display_name: "pause work"
-  short_description: "Create context handoff when pausing work mid-phase"

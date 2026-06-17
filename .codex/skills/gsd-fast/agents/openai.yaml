@@ -1,3 +1,0 @@
-interface:
-  display_name: "fast"
-  short_description: "Execute a trivial task inline — no subagents, no planning overhead"
