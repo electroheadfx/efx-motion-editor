@@ -331,3 +331,31 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).not.toContain('function buildPlayStrokeStyleOverride');
   });
 });
+
+describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
+  it('tracks dirty Roto frames and flushes once before synced navigation', () => {
+    const text = source();
+    const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
+
+    expect(text).toContain('const dirtyRotoFramesRef = useRef<Set<number>>(new Set())');
+    expect(text).toContain('const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null)');
+    expect(text).toContain('const flushRotoFrame = useCallback(async (frame: number');
+    expect(text).toContain('dirtyRotoFramesRef.current.add(appFrame)');
+    expect(navigateBlock).toContain('await flushRotoFrame(previousFrame');
+    expect(navigateBlock.indexOf('await flushRotoFrame(previousFrame')).toBeLessThan(navigateBlock.indexOf('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)'));
+    expect(text).not.toContain('onPointerMoveCapture={');
+  });
+
+  it('wires pending Roto saves without repeated brush-move apply calls', () => {
+    const text = source();
+    const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
+    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+
+    expect(text).toContain('const [pendingRotoFrames, setPendingRotoFrames] = useState<number[]>([])');
+    expect(text).toContain('const markCurrentRotoFrameDirty = useCallback');
+    expect(canvasBlock).toContain('onInputIntent={workflowMode === \'play\' ? beginPlayFrameEdit : markCurrentRotoFrameDirty}');
+    expect(workflowStripBlock).toContain('pendingRotoFrames={pendingRotoFrames}');
+    expect(workflowStripBlock).toContain('rotoSaveInFlight={Boolean(rotoFlushInFlightRef.current) || applyStatus === \'applying\'}');
+    expect(workflowStripBlock).toContain('onSavePendingRotoFrames={savePendingRotoFrames}');
+  });
+});
