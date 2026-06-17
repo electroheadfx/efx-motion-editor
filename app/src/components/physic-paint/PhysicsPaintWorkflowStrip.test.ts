@@ -281,4 +281,32 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE');
     expect(code).not.toContain('Clear Play canvas range');
   });
+
+  it('adds cached Roto playback props and a modest Play/Stop transport control without render-all copy', () => {
+    const code = source();
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const rotoControlsIndex = code.indexOf("props.mode === 'roto'");
+    const rotoControlsBlock = code.slice(rotoControlsIndex, rotoControlsIndex + 2600);
+
+    for (const contract of [
+      'rotoCachedPlaybackAvailable?: boolean',
+      'rotoCachedPlaybackStatus?: string | null',
+      'onToggleRotoPlayback?: () => void',
+      'isRotoCachedPlaybackActive?: boolean',
+      'physics-paint-roto-transport',
+      'aria-label={props.isRotoCachedPlaybackActive ? \'Stop cached Roto playback\' : \'Play cached Roto frames\'}',
+    ]) {
+      expect(code).toContain(contract);
+    }
+    expect(rotoControlsBlock).toContain('props.isRotoCachedPlaybackActive ? \'Stop\' : \'Play\'');
+    expect(rotoControlsBlock).toContain('props.onToggleRotoPlayback');
+    expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackAvailable');
+    expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackStatus');
+    expect(rotoControlsBlock).toContain('Missing frames play transparent/background');
+    expect(rotoControlsBlock).not.toContain('Render all');
+    expect(rotoControlsBlock).not.toContain('Save all');
+    expect(css).toContain('.physics-paint-roto-transport');
+    expect(css).not.toContain('.physics-paint-roto-cell.playing');
+    expect(css).not.toContain('.physics-paint-roto-cell.missing-playback');
+  });
 });
