@@ -152,6 +152,18 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('pointer-events: none');
   });
 
+  it('explains Roto interpolation availability and render-only generated frames', () => {
+    const code = source();
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+
+    expect(code).toContain('getRotoInterpolationStatusCopy');
+    expect(code).toContain('Interpolation needs two real Roto keys.');
+    expect(code).toContain('Generated in-betweens are render-only; connector lines mark interpolation spans.');
+    expect(code).toContain('Generated in-betweens stay render-only, not editable targets.');
+    expect(code).not.toContain('Generated in-betweens are editable');
+    expect(css).toContain('.physics-paint-roto-interpolation-status');
+  });
+
   it('wires Roto interpolation controls to callback props', () => {
     const code = source();
     const rotoControlsBlock = code.slice(code.indexOf('physics-paint-roto-interpolation-controls'), code.indexOf('physics-paint-play-controls'));
