@@ -85,6 +85,29 @@ function blendModeToCompositeOp(mode: BlendMode): GlobalCompositeOperation {
   }
 }
 
+export type MissingRotoFrameBackgroundState =
+  | { mode: 'transparent' }
+  | { mode: 'color'; color: string };
+
+export type MissingRotoFrameDrawInstruction =
+  | { kind: 'transparent' }
+  | { kind: 'background-only'; color: string };
+
+export function resolveMissingRotoFrameDraw(
+  _layerId: string,
+  _frame: number,
+  backgroundState: MissingRotoFrameBackgroundState,
+): MissingRotoFrameDrawInstruction {
+  if (backgroundState.mode === 'transparent') return { kind: 'transparent' };
+  return { kind: 'background-only', color: backgroundState.color };
+}
+
+function getMissingRotoBackgroundState(layer: Layer): MissingRotoFrameBackgroundState {
+  const color = layer.paintBgColor;
+  if (!color || color === 'transparent') return { mode: 'transparent' };
+  return { mode: 'color', color };
+}
+
 /**
  * Canvas 2D compositing engine that renders all visible layers bottom-to-top.
  *
@@ -291,6 +314,16 @@ export class PreviewRenderer {
           ctx.globalAlpha = effectiveOpacity;
           ctx.drawImage(source, 0, 0, logicalW, logicalH);
           ctx.restore();
+        } else if (!renderedFrame) {
+          const missingDraw = resolveMissingRotoFrameDraw(paintLayerId, paintLookupFrame, getMissingRotoBackgroundState(layer));
+          if (missingDraw.kind === 'background-only') {
+            ctx.save();
+            ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+            ctx.globalAlpha = effectiveOpacity;
+            ctx.fillStyle = missingDraw.color;
+            ctx.fillRect(0, 0, logicalW, logicalH);
+            ctx.restore();
+          }
         }
       } else if (layer.type === 'paint') {
         // Always render paint layer (solid bg even when no strokes)
