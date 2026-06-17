@@ -211,9 +211,16 @@ export function createPhysicPaintLaunchContext(
 ): PhysicPaintLaunchContext {
   const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
   const currentFrame = Math.max(0, Math.trunc(frame));
+  const cachedRotoFrames = physicPaintStore.getRotoCacheFrames(layerId);
+  const currentRotoCacheFrame = cachedRotoFrames.find((candidate) => candidate.appFrame === currentFrame);
+  const shouldRedirectGeneratedRoto = requestedWorkflowMode !== 'play'
+    && currentRotoCacheFrame?.source === 'generated-interpolation'
+    && Number.isInteger(currentRotoCacheFrame.nearestRealKeyFrame)
+    && currentRotoCacheFrame.nearestRealKeyFrame >= 0;
+  const rotoLaunchFrame = shouldRedirectGeneratedRoto ? currentRotoCacheFrame.nearestRealKeyFrame! : currentFrame;
   const containingRange = physicPaintStore.findPlayScriptRangeAtFrame(layerId, currentFrame);
   const shouldOpenContainingPlay = Boolean(containingRange && requestedWorkflowMode !== 'roto');
-  const playLimitFrame = shouldOpenContainingPlay && containingRange ? containingRange.startFrame : currentFrame;
+  const playLimitFrame = shouldOpenContainingPlay && containingRange ? containingRange.startFrame : rotoLaunchFrame;
   const ignoredPlayScriptId = shouldOpenContainingPlay && containingRange ? containingRange.id : undefined;
   const playFrameCountLimit = getPlayFrameCountLimit(layerId, playLimitFrame, layer, ignoredPlayScriptId);
   const cachedPlayFrames = shouldOpenContainingPlay && containingRange
@@ -222,7 +229,8 @@ export function createPhysicPaintLaunchContext(
   const playCacheStatus: PhysicPaintPlayScriptCacheStatus | undefined = shouldOpenContainingPlay && containingRange
     ? cachedPlayFrames.length === containingRange.frameCount ? 'cached' : 'missing'
     : undefined;
-  const hasCurrentRotoFrame = Boolean(physicPaintStore.getFrame(layerId, currentFrame));
+  const hasCurrentRotoFrame = Boolean(physicPaintStore.getFrame(layerId, rotoLaunchFrame));
+  const rotoInterpolationSettings = physicPaintStore.getRotoInterpolationSettings(layerId);
   const editableState = shouldOpenContainingPlay && containingRange?.editableState
     ? structuredClone(containingRange.editableState)
     : hasCurrentRotoFrame
@@ -255,7 +263,7 @@ export function createPhysicPaintLaunchContext(
         }
       : {
           workflowMode: 'roto' as const,
-          startFrame: currentFrame,
+          startFrame: rotoLaunchFrame,
           editableSource: 'roto' as const,
           ...(playFrameCountLimit ? playFrameCountLimit : {}),
         };
@@ -270,6 +278,8 @@ export function createPhysicPaintLaunchContext(
     ...(requestedWorkflowMode ? { requestedWorkflowMode } : {}),
     ...launchSelection,
     ...(editableState ? { editableState } : {}),
+    ...(cachedRotoFrames.length > 0 ? { cachedRotoFrames } : {}),
+    ...(rotoInterpolationSettings ? { rotoInterpolationSettings } : {}),
   };
 }
 
