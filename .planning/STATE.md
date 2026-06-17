@@ -6,14 +6,14 @@ current_phase: 36.2
 current_phase_name: roto-paint-enhancements-all-details-are-here-specs-phase-36-
 status: executing
 stopped_at: Completed 36.2-05-PLAN.md
-last_updated: "2026-06-17T19:21:23.162Z"
+last_updated: "2026-06-17T19:30:27.948Z"
 last_activity: 2026-06-17
 last_activity_desc: Phase 36.2 execution started
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 40
-  completed_plans: 37
+  completed_plans: 38
   percent: 67
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 Status: Ready to execute
 Last activity: 2026-06-17 — Phase 36.2 execution started
 
@@ -61,6 +61,7 @@ Progress: [████████░░░░░] 4/5 phases (80%)
 - Trend: N/A
 
 *Updated after each plan completion*
+| Phase 36.2 P08 | 7min | 3 tasks | 5 files |
 | Phase 36.2 P07 | 5min | 3 tasks | 4 files |
 | Phase 36 P06 | 392 | 2 tasks | 3 files |
 | Phase 36 P09 | 6min | 2 tasks | 2 files |
@@ -90,6 +91,8 @@ Recent decisions affecting current work:
 - [Phase 36.2 Plan 07]: Roto close requests are prevented once, flushed through the existing apply-canvas path, then resumed via the Tauri window close API.
 - [Phase 36.2 Plan 07]: Editable-session pink cells are driven only by real editable stroke content in the open session; cached/background-only occupancy remains separate.
 - [Phase 36.2 Plan 07]: Cached Roto references stay full opacity and use outline treatment for reference status so old cache pixels are not visually diminished.
+- [Phase 36.2 Plan 08]: Roto interpolation controls live inline in the standalone workflow strip, not in a modal or hidden shortcut path, so UAT can discover and change settings visually.
+- [Phase 36.2 Plan 08]: Generated interpolation frames remain render-only cached frames surfaced by connector/status UI; real-key cells remain the only editable targets.
 
 ### Pending Todos
 
@@ -125,6 +128,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-17T19:21:23.157Z
-Stopped at: Completed 36.2-07-PLAN.md
+Last session: 2026-06-17T19:30:27.944Z
+Stopped at: Completed 36.2-08-PLAN.md
 Resume file: None
