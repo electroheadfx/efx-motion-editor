@@ -33,6 +33,50 @@ export interface PhysicsPaintPlayRange {
   markerRatio: number;
 }
 
+export type RotoInterpolationMode = 'duplicate' | 'blend';
+
+export interface RotoInterpolationSettings {
+  enabled?: boolean;
+  inBetweenCount?: number;
+  mode?: RotoInterpolationMode;
+  position?: number;
+  deform?: number;
+}
+
+export interface RotoInterpolationSpanFrame {
+  fromFrame: number;
+  toFrame: number;
+  frame: number;
+  ordinal: number;
+  total: number;
+  t: number;
+}
+
+export interface RotoDuplicateKeyResult {
+  sourceFrame: number;
+  targetFrame: number;
+  frames: number[];
+  shiftedFrames: number[];
+}
+
+export interface RotoInsertKeyResult {
+  targetFrame: number;
+  frames: number[];
+  shiftedFrames: number[];
+}
+
+export interface RotoDeleteKeyResult {
+  removedFrame: number | null;
+  frames: number[];
+  shiftedFrames: number[];
+}
+
+export interface RotoReplaceKeyResult {
+  targetFrame: number;
+  frames: number[];
+  replaced: boolean;
+}
+
 export const PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE = 'Save or regenerate Play output before converting it to roto frames.';
 
 export function clampOnionCount(value: unknown): number {
@@ -107,11 +151,120 @@ export function getPlayRangeMarker(startFrame: number, frameCount: number, curre
   };
 }
 
+export function getRotoInterpolationSpanFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoInterpolationSpanFrame[] {
+  const sortedKeys = normalizeRealRotoKeyFrames(realKeys);
+  const inBetweenCount = clampInterpolationInBetweenCount(settings.inBetweenCount);
+  if (settings.enabled === false || inBetweenCount < 1 || sortedKeys.length < 2) return [];
+
+  const spans: RotoInterpolationSpanFrame[] = [];
+  for (let index = 0; index < sortedKeys.length - 1; index++) {
+    const fromFrame = sortedKeys[index];
+    const toFrame = sortedKeys[index + 1];
+    for (let ordinal = 1; ordinal <= inBetweenCount; ordinal++) {
+      const t = ordinal / (inBetweenCount + 1);
+      spans.push({
+        fromFrame,
+        toFrame,
+        frame: fromFrame + (toFrame - fromFrame) * t,
+        ordinal,
+        total: inBetweenCount,
+        t,
+      });
+    }
+  }
+  return spans;
+}
+
+export function getNearestRealRotoKeyFrame(frame: number, realKeys: number[]): number | null {
+  const sortedKeys = normalizeRealRotoKeyFrames(realKeys);
+  if (sortedKeys.length === 0) return null;
+  const target = clampNonNegativeInteger(frame, 0);
+  return sortedKeys.reduce((nearest, candidate) => {
+    const nearestDistance = Math.abs(nearest - target);
+    const candidateDistance = Math.abs(candidate - target);
+    if (candidateDistance < nearestDistance) return candidate;
+    return nearest;
+  }, sortedKeys[0]);
+}
+
+export function duplicateRotoKeyFrame(realKeys: number[], selectedFrame: number): RotoDuplicateKeyResult {
+  const sortedKeys = normalizeRealRotoKeyFrames(realKeys);
+  const sourceFrame = normalizeSelectedRealKey(selectedFrame, sortedKeys);
+  const targetFrame = sourceFrame + 1;
+  const shiftedFrames = sortedKeys.filter(frame => frame >= targetFrame);
+  const shiftedSet = new Set(shiftedFrames);
+  const nextFrames = sortedKeys
+    .map(frame => shiftedSet.has(frame) ? frame + 1 : frame)
+    .concat(targetFrame);
+  return {
+    sourceFrame,
+    targetFrame,
+    frames: normalizeRealRotoKeyFrames(nextFrames),
+    shiftedFrames,
+  };
+}
+
+export function insertRotoKeyFrame(realKeys: number[], selectedFrame: number): RotoInsertKeyResult {
+  const sortedKeys = normalizeRealRotoKeyFrames(realKeys);
+  const targetFrame = clampNonNegativeInteger(selectedFrame, 0);
+  const shiftedFrames = sortedKeys.filter(frame => frame >= targetFrame);
+  const shiftedSet = new Set(shiftedFrames);
+  const nextFrames = sortedKeys
+    .map(frame => shiftedSet.has(frame) ? frame + 1 : frame)
+    .concat(targetFrame);
+  return {
+    targetFrame,
+    frames: normalizeRealRotoKeyFrames(nextFrames),
+    shiftedFrames,
+  };
+}
+
+export function deleteRotoKeyFrame(realKeys: number[], selectedFrame: number): RotoDeleteKeyResult {
+  const sortedKeys = normalizeRealRotoKeyFrames(realKeys);
+  const removedFrame = sortedKeys.includes(selectedFrame) ? selectedFrame : null;
+  if (removedFrame === null) return { removedFrame, frames: sortedKeys, shiftedFrames: [] };
+  const shiftedFrames = sortedKeys.filter(frame => frame > removedFrame);
+  return {
+    removedFrame,
+    frames: normalizeRealRotoKeyFrames(sortedKeys
+      .filter(frame => frame !== removedFrame)
+      .map(frame => frame > removedFrame ? frame - 1 : frame)),
+    shiftedFrames,
+  };
+}
+
+export function replaceRotoKeyFrame(realKeys: number[], targetFrame: number): RotoReplaceKeyResult {
+  const sortedKeys = normalizeRealRotoKeyFrames(realKeys);
+  const safeTargetFrame = clampNonNegativeInteger(targetFrame, 0);
+  const replaced = sortedKeys.includes(safeTargetFrame);
+  return {
+    targetFrame: safeTargetFrame,
+    frames: normalizeRealRotoKeyFrames([...sortedKeys, safeTargetFrame]),
+    replaced,
+  };
+}
+
 export {
   PHYSIC_PAINT_DEFAULT_APPLY_FRAMES,
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
   PHYSIC_PAINT_MIN_APPLY_FRAMES,
 };
+
+function normalizeRealRotoKeyFrames(realKeys: number[]): number[] {
+  return Array.from(new Set(realKeys.filter(frame => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
+}
+
+function normalizeSelectedRealKey(selectedFrame: number, sortedKeys: number[]): number {
+  if (sortedKeys.length === 0) return clampNonNegativeInteger(selectedFrame, 0);
+  if (sortedKeys.includes(selectedFrame)) return selectedFrame;
+  return getNearestRealRotoKeyFrame(selectedFrame, sortedKeys) ?? sortedKeys[0];
+}
+
+function clampInterpolationInBetweenCount(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(numeric)));
+}
 
 function clampNonNegativeInteger(value: unknown, fallback: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);
