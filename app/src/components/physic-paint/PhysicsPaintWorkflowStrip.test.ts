@@ -205,6 +205,19 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('.physics-paint-roto-key-button');
   });
 
+  it('explains real-key-only utility scope and replace-style Paste behavior', () => {
+    const code = source();
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+
+    expect(code).toContain('getRotoKeyUtilityStatusCopy');
+    expect(code).toContain('Key utilities require a real Roto key; generated in-betweens are render-only.');
+    expect(code).toContain('Paste replaces the current real key; Duplicate, Insert, and Delete ripple real keys only.');
+    expect(code).toContain('Paste is ready and replaces the selected real key without changing timing.');
+    expect(code).not.toContain('Generated frames can be moved');
+    expect(code).not.toContain('Generated frames can be erased');
+    expect(css).toContain('.physics-paint-roto-key-status');
+  });
+
   it('renders compact visible Roto interpolation controls only inside the Roto strip', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
