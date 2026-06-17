@@ -213,11 +213,12 @@ export function createPhysicPaintLaunchContext(
   const currentFrame = Math.max(0, Math.trunc(frame));
   const cachedRotoFrames = physicPaintStore.getRotoCacheFrames(layerId);
   const currentRotoCacheFrame = cachedRotoFrames.find((candidate) => candidate.appFrame === currentFrame);
+  const nearestRealKeyFrame = currentRotoCacheFrame?.nearestRealKeyFrame;
+  const redirectRotoFrame = typeof nearestRealKeyFrame === 'number' && Number.isInteger(nearestRealKeyFrame) && nearestRealKeyFrame >= 0 ? nearestRealKeyFrame : null;
   const shouldRedirectGeneratedRoto = requestedWorkflowMode !== 'play'
     && currentRotoCacheFrame?.source === 'generated-interpolation'
-    && Number.isInteger(currentRotoCacheFrame.nearestRealKeyFrame)
-    && currentRotoCacheFrame.nearestRealKeyFrame >= 0;
-  const rotoLaunchFrame = shouldRedirectGeneratedRoto ? currentRotoCacheFrame.nearestRealKeyFrame! : currentFrame;
+    && redirectRotoFrame !== null;
+  const rotoLaunchFrame = shouldRedirectGeneratedRoto ? redirectRotoFrame : currentFrame;
   const containingRange = physicPaintStore.findPlayScriptRangeAtFrame(layerId, currentFrame);
   const shouldOpenContainingPlay = Boolean(containingRange && requestedWorkflowMode !== 'roto');
   const playLimitFrame = shouldOpenContainingPlay && containingRange ? containingRange.startFrame : rotoLaunchFrame;
