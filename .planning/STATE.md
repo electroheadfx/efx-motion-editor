@@ -4,13 +4,13 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
 stopped_at: Phase 36.2 context gathered
-last_updated: "2026-06-16T20:57:24.182Z"
+last_updated: "2026-06-17T09:20:43.376Z"
 last_activity: 2026-06-16 -- Phase 36.2 execution started
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 36
-  completed_plans: 30
+  completed_plans: 32
   percent: 67
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 36.2
+Plan: 2 of 6
+Status: Ready to execute
 Last activity: 2026-06-16 -- Phase 36.2 execution started
 
 Progress: [████████░░░░░] 4/5 phases (80%)
@@ -60,6 +60,7 @@ Progress: [████████░░░░░] 4/5 phases (80%)
 *Updated after each plan completion*
 | Phase 36 P06 | 392 | 2 tasks | 3 files |
 | Phase 36 P09 | 6min | 2 tasks | 2 files |
+| Phase 36.2 P02 | 5580 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,7 @@ Recent decisions affecting current work:
 - [Phase 36]: Workflow strip owns a physics-paint-specific compact lane model rather than importing or cloning the main EFX Motion timeline. — Followed D-09 and keeps the bottom timeline separate from the main editor timeline implementation.
 - [Phase 36]: Play lane click handling remains inspection-only; conversion and clearing are explicit button/dialog flows. — Mitigates timeline-click tampering by keeping destructive callbacks behind explicit confirmations.
 - [Phase 36]: Roto onion overlays use local Roto snapshots and persisted Roto output only, excluding latest Play frames from normal post-save overlay rendering.
+- [Phase 36.2]: Plan 02 keeps Roto dirty/current state orthogonal to gray/green/pink semantic fills; missing main EFX Motion cache preview/marker propagation is carried to Plans 36.2-03/04.
 
 ### Pending Todos
 
@@ -109,6 +111,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-16T20:07:58.061Z
+Last session: 2026-06-17T09:19:41.809Z
 Stopped at: Phase 36.2 context gathered
 Resume file: .planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CONTEXT.md
