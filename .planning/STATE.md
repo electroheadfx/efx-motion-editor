@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 status: executing
-stopped_at: Phase 36.2 context gathered
-last_updated: "2026-06-17T09:52:04.968Z"
+stopped_at: Completed 36.2-03-PLAN.md
+last_updated: "2026-06-17T10:30:12.972Z"
 last_activity: 2026-06-16 -- Phase 36.2 execution started
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 36
-  completed_plans: 33
+  completed_plans: 34
   percent: 67
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 ## Current Position
 
 Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-06-16 -- Phase 36.2 execution started
 
@@ -62,6 +62,7 @@ Progress: [████████░░░░░] 4/5 phases (80%)
 | Phase 36 P09 | 6min | 2 tasks | 2 files |
 | Phase 36.2 P02 | 5580 | 3 tasks | 6 files |
 | Phase 36.2 P04 | 21min | 2 tasks | 4 files |
+| Phase 36.2 P03 | 2h | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Recent decisions affecting current work:
 - [Phase 36.2]: Plan 02 keeps Roto dirty/current state orthogonal to gray/green/pink semantic fills; missing main EFX Motion cache preview/marker propagation is carried to Plans 36.2-03/04.
 - [Phase 36.2 Plan 04]: Generated-only Roto cache frames are launch redirects, not editable targets; standalone launch opens the nearest real key when metadata is available.
 - [Phase 36.2 Plan 04]: Missing Roto frames are resolved virtually in PreviewRenderer, preserving transparent/background-only playback without writing cache metadata.
+- [Phase 36.2]: Plan 03: Dirty Roto frames flush only at explicit lifecycle boundaries: frame leave, Save pending/current, and close/unload. — Prevents repeated apply traffic during brush movement while preserving cache durability.
+- [Phase 36.2]: Plan 03: Cached-only Roto PNGs are repaintable visual references, not editable stroke state, and are cleared before exported replacement frames are generated. — Prevents old cache compositing into replacement Roto output.
+- [Phase 36.2]: Plan 03: Navigation is blocked while a Roto flush/apply is in flight to preserve operation ordering and avoid duplicate frame-sync races. — Preserves bridge operation matching across save-on-leave boundaries.
 
 ### Pending Todos
 
@@ -114,6 +118,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-17T09:52:04.963Z
-Stopped at: Completed 36.2-04-PLAN.md
+Last session: 2026-06-17T10:30:12.968Z
+Stopped at: Completed 36.2-03-PLAN.md
 Resume file: None
