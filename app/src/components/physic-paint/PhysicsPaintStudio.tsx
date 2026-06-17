@@ -304,8 +304,12 @@ function CanvasMountProbe(props: { width: number; height: number; onEngineReady:
   );
 }
 
-function hasPhysicsPaintContent(state: ReturnType<EfxPaintEngine['save']>): boolean {
-  return state.strokes.length > 0;
+function shouldPersistRotoFrame(state: ReturnType<EfxPaintEngine['save']>): boolean {
+  return state.strokes.length > 0 || state.settings.bgMode !== 'transparent';
+}
+
+function isBackgroundOnlyRotoFrame(state: ReturnType<EfxPaintEngine['save']>): boolean {
+  return state.strokes.length === 0 && state.settings.bgMode !== 'transparent';
 }
 
 function addOccupiedRotoFrame(frames: number[], frame: number): number[] {
@@ -899,7 +903,7 @@ export function PhysicsPaintStudio() {
     if (!engine || !launchContext) return false;
     const appFrame = currentFrame;
     const currentState = engine.save();
-    if (!hasPhysicsPaintContent(currentState)) {
+    if (!shouldPersistRotoFrame(currentState)) {
       rotoFrameStatesRef.current.delete(appFrame);
       rotoPreviewFramesRef.current.delete(appFrame);
       setOccupiedRotoFrames((frames) => frames.filter((occupiedFrame) => occupiedFrame !== appFrame));
@@ -998,7 +1002,7 @@ export function PhysicsPaintStudio() {
       const editableState = frame === currentFrame
         ? liveState
         : rotoFrameStatesRef.current.get(frame);
-      if (!editableState || !hasPhysicsPaintContent(editableState)) {
+      if (!editableState || !shouldPersistRotoFrame(editableState)) {
         dirtyRotoFramesRef.current.delete(frame);
         syncPendingRotoFrames();
         return null;
@@ -1009,8 +1013,9 @@ export function PhysicsPaintStudio() {
         rotoFrameStatesRef.current.set(frame, editableState);
         setCachedRotoReferenceUrl(null);
         (engine as PreviewBackgroundEngine).resetBackground();
+        const backgroundOnly = isBackgroundOnlyRotoFrame(editableState);
         const renderedFrame = buildRotoOutputFrame(engine, frame);
-        rotoPreviewFramesRef.current.set(frame, buildRotoOnionPreviewFrame(engine, frame));
+        rotoPreviewFramesRef.current.set(frame, backgroundOnly ? renderedFrame : buildRotoOnionPreviewFrame(engine, frame));
         setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, frame));
         setApplyStatus('applying');
         setApplyMessage(`Saving roto frame ${frame}...`);
@@ -1025,6 +1030,7 @@ export function PhysicsPaintStudio() {
           startFrame: frame,
           editableState,
           renderedFrame,
+          ...(backgroundOnly ? { backgroundOnly: true } : {}),
         };
         await sendPhysicPaintApplyPayload(payload, bridgeMode);
         dirtyRotoFramesRef.current.delete(frame);

@@ -61,6 +61,24 @@ describe('physicPaintStore', () => {
     expect(physicPaintVersion.value).toBe(before + 1);
   });
 
+  it('marks no-stroke paper Roto applies as background-only cache frames', () => {
+    const result = physicPaintStore.applyCanvas({
+      kind: 'apply-canvas',
+      operationId: 'op-background-only',
+      layerId: 'layer-1',
+      startFrame: 4,
+      renderedFrame: makeFrame(0, 4),
+      editableState: { ...editableState, strokes: [] },
+      backgroundOnly: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getFrame('layer-1', 4)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 4, source: 'real-key', backgroundOnly: true }),
+    ]);
+  });
+
   it('stores sorted non-overlapping Play script ranges and finds only containing frames', () => {
     physicPaintStore.upsertPlayScriptRange('layer-1', { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached' });
     physicPaintStore.upsertPlayScriptRange('layer-1', { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' });

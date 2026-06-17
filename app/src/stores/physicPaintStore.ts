@@ -350,11 +350,11 @@ export const physicPaintStore = {
       .map(frame => frame.appFrame);
   },
 
-  upsertRealRotoKeyFrame(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame): void {
+  upsertRealRotoKeyFrame(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame, backgroundOnly = false): void {
     if (!Number.isInteger(frame) || frame < 0) return;
     const normalizedFrame = { ...renderedFrame, appFrame: frame };
     _getOrCreateLayer(layerId).set(frame, normalizedFrame);
-    _getOrCreateRotoMetadata(layerId).set(frame, _makeRotoCacheFrame(normalizedFrame, frame, 'real-key'));
+    _getOrCreateRotoMetadata(layerId).set(frame, _makeRotoCacheFrame(normalizedFrame, frame, 'real-key', undefined, backgroundOnly || undefined));
     _workflowMetadata.set(layerId, { workflowMode: 'roto', editableSource: 'roto' });
     _notifyVisualChange();
   },
@@ -504,7 +504,7 @@ export const physicPaintStore = {
     }
 
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
-    this.upsertRealRotoKeyFrame(payload.layerId, payload.startFrame, payload.renderedFrame);
+    this.upsertRealRotoKeyFrame(payload.layerId, payload.startFrame, payload.renderedFrame, payload.backgroundOnly === true);
     return {
       operationId: payload.operationId,
       kind: payload.kind,

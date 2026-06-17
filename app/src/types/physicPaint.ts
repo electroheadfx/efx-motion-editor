@@ -117,6 +117,7 @@ export interface PhysicPaintApplyCanvasPayload {
   startFrame: number;
   renderedFrame: PhysicPaintRenderedFrame;
   editableState: SerializedProject;
+  backgroundOnly?: boolean;
 }
 
 export interface PhysicPaintApplyPlayCanvasPayload {
@@ -266,7 +267,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   if (!isSerializedProject(value.editableState)) return false;
 
   if (value.kind === 'apply-canvas') {
-    return isPhysicPaintRenderedFrame(value.renderedFrame, value.startFrame, 0);
+    return isPhysicPaintRenderedFrame(value.renderedFrame, value.startFrame, 0) && (value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean');
   }
 
   if (value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto') {

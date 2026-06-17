@@ -384,6 +384,17 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('onSavePendingRotoFrames={savePendingRotoFrames}');
   });
 
+  it('persists paper/background-only Roto frames while transparent empty frames remain empty', () => {
+    const text = source();
+    const predicateBlock = text.slice(text.indexOf('function shouldPersistRotoFrame'), text.indexOf('function addOccupiedRotoFrame'));
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
+
+    expect(predicateBlock).toContain("state.strokes.length > 0 || state.settings.bgMode !== 'transparent'");
+    expect(predicateBlock).toContain("state.strokes.length === 0 && state.settings.bgMode !== 'transparent'");
+    expect(flushBlock).toContain('const backgroundOnly = isBackgroundOnlyRotoFrame(editableState)');
+    expect(flushBlock).toContain('...(backgroundOnly ? { backgroundOnly: true } : {})');
+  });
+
   it('tracks dirty Roto frames and flushes once before synced navigation', () => {
     const text = source();
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
