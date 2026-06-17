@@ -110,6 +110,7 @@ export interface PhysicPaintRenderedFrame {
   height?: number;
   /** Roto cache provenance; generated frames are render-only and never editable. */
   source?: PhysicPaintRotoFrameSource;
+  nearestRealKeyFrame?: number;
 }
 
 export interface PhysicPaintApplyCanvasPayload {

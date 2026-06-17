@@ -209,7 +209,7 @@ function _withGeneratedAppFrame(frame: PhysicPaintRenderedFrame, appFrame: numbe
 export function renderDuplicateRotoInterpolationFrame(sourceKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {
   const position = settings.position;
   const deform = settings.deform;
-  return _withGeneratedAppFrame({ ...sourceKeyFrame, width: sourceKeyFrame.width, height: sourceKeyFrame.height + 0 * deform + 0 * position }, targetFrame);
+  return _withGeneratedAppFrame({ ...sourceKeyFrame, width: sourceKeyFrame.width, height: (sourceKeyFrame.height ?? 0) + 0 * deform + 0 * position }, targetFrame);
 }
 
 export function renderBlendedRotoInterpolationFrame(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, t: number, settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {

@@ -890,6 +890,15 @@ export function PhysicsPaintStudio() {
     setPendingRotoFrames(Array.from(dirtyRotoFramesRef.current).sort((a, b) => a - b));
   }, []);
 
+  const stopRotoCachedPlayback = useCallback(() => {
+    if (rotoCachedPlaybackTimerRef.current) {
+      window.clearInterval(rotoCachedPlaybackTimerRef.current);
+      rotoCachedPlaybackTimerRef.current = null;
+    }
+    setIsRotoCachedPlaybackActive(false);
+    setCachedRotoPlaybackFrame(null);
+  }, []);
+
   const markCurrentRotoFrameDirty = useCallback(() => {
     if (workflowMode !== 'roto') return;
     const appFrame = currentFrame;
@@ -947,15 +956,6 @@ export function PhysicsPaintStudio() {
     setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, appFrame));
     return true;
   }, [currentFrame, engine, launchContext]);
-
-  const stopRotoCachedPlayback = useCallback(() => {
-    if (rotoCachedPlaybackTimerRef.current) {
-      window.clearInterval(rotoCachedPlaybackTimerRef.current);
-      rotoCachedPlaybackTimerRef.current = null;
-    }
-    setIsRotoCachedPlaybackActive(false);
-    setCachedRotoPlaybackFrame(null);
-  }, []);
 
   const toggleRotoCachedPlayback = useCallback(() => {
     if (isRotoCachedPlaybackActive) {

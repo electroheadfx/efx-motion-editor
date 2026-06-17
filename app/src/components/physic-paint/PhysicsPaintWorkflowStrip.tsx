@@ -150,7 +150,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   );
   const frameCells = useMemo(() => buildFrameCells(props.currentFrame), [props.currentFrame]);
   const realRotoFrames = useMemo(() => getRealRotoFrames(props.occupiedRotoFrames, props.savedRotoFrames, props.cachedRotoFrames), [props.cachedRotoFrames, props.occupiedRotoFrames, props.savedRotoFrames]);
-  const visibleRealRotoFrames = useMemo(() => new Set(realRotoFrames.filter(frame => frameCells.includes(frame))), [frameCells, realRotoFrames]);
   const interpolationConnectors = useMemo(() => getRotoInterpolationSpanFrames(realRotoFrames, props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 0, mode: 'duplicate' }), [props.rotoInterpolationSettings, realRotoFrames]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   const getMaxFrameCount = useCallback(() => (
