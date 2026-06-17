@@ -409,17 +409,35 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('class="physics-paint-cached-roto-reference"');
   });
 
-  it('flushes dirty Roto frames on Save pending and best-effort close', () => {
+  it('flushes dirty Roto frames on Save pending and ordered close/unload', () => {
     const text = source();
     const closeBlock = text.slice(text.indexOf('const flushCurrentRotoFrameBeforeClose'), text.indexOf('const handlePhysicsPaintKeyDown'));
 
     expect(text).toContain('const savePendingRotoFrames = useCallback');
-    expect(text).toContain('const flushCurrentRotoFrameBeforeClose = useCallback');
+    expect(text).toContain('const flushCurrentRotoFrameBeforeClose = useCallback(async () =>');
     expect(closeBlock).toContain('snapshotCurrentRotoFrame()');
-    expect(closeBlock).toContain('flushRotoFrame(currentFrame, { force: true })');
+    expect(closeBlock).toContain('return flushRotoFrame(currentFrame, { force: true })');
+    expect(closeBlock).toContain('await flushCurrentRotoFrameBeforeClose()');
+    expect(closeBlock).toContain('event.preventDefault()');
+    expect(closeBlock).toContain('await appWindow.close()');
     expect(text).toContain("window.addEventListener('beforeunload', handleBeforeUnload)");
-    expect(text).toContain("eventApi.listen('tauri://close-requested'");
+    expect(text).toContain('appWindow.onCloseRequested');
     expect(text).toContain('onSavePendingRotoFrames={savePendingRotoFrames}');
+  });
+
+  it('keeps the close flush on the normal single-frame apply-canvas path', () => {
+    const text = source();
+    const closeBlock = text.slice(text.indexOf('const flushCurrentRotoFrameBeforeClose'), text.indexOf('const handlePhysicsPaintKeyDown'));
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
+
+    expect(closeBlock).toContain('flushRotoFrame(currentFrame, { force: true })');
+    expect(closeBlock).not.toContain('savePendingRotoFrames()');
+    expect(closeBlock).not.toContain('savePlay()');
+    expect(flushBlock).toContain("kind: 'apply-canvas'");
+    expect(flushBlock).toContain('renderedFrame,');
+    expect(flushBlock).toContain('await sendPhysicPaintApplyPayload(payload, bridgeMode)');
+    expect(closeBlock).not.toContain('buildRotoOutputFrame');
+    expect(closeBlock).not.toContain('getRotoCachedPlaybackFrames');
   });
 
   it('persists paper/background-only Roto frames while transparent empty frames remain empty', () => {

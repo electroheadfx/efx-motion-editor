@@ -495,6 +495,7 @@ export function PhysicsPaintStudio() {
   const pendingRotoAdvanceRef = useRef<number | null>(null);
   const dirtyRotoFramesRef = useRef<Set<number>>(new Set());
   const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null);
+  const allowCloseAfterRotoFlushRef = useRef(false);
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
@@ -1773,7 +1774,7 @@ export function PhysicsPaintStudio() {
     }
   }, [actionContext, currentFrame, framesToApply, playWiggle, settings, startApplyTimeout]);
 
-  const flushCurrentRotoFrameBeforeClose = useCallback(() => {
+  const flushCurrentRotoFrameBeforeClose = useCallback(async () => {
     if (workflowMode !== 'roto') return null;
     snapshotCurrentRotoFrame();
     if (!dirtyRotoFramesRef.current.has(currentFrame)) return null;
@@ -1781,22 +1782,33 @@ export function PhysicsPaintStudio() {
   }, [currentFrame, flushRotoFrame, snapshotCurrentRotoFrame, workflowMode]);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (allowCloseAfterRotoFlushRef.current) return;
       void flushCurrentRotoFrameBeforeClose();
+      if (workflowMode === 'roto' && dirtyRotoFramesRef.current.has(currentFrame)) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [flushCurrentRotoFrameBeforeClose]);
+  }, [currentFrame, flushCurrentRotoFrameBeforeClose, workflowMode]);
 
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     const installCloseHandler = async () => {
       try {
-        const eventApi = await import('@tauri-apps/api/event');
-        if (typeof eventApi.listen !== 'function') return;
-        unlisten = await eventApi.listen('tauri://close-requested', () => {
-          void flushCurrentRotoFrameBeforeClose();
+        const windowApi = await import('@tauri-apps/api/window');
+        const appWindow = windowApi.getCurrentWindow();
+        if (typeof appWindow.onCloseRequested !== 'function') return;
+        unlisten = await appWindow.onCloseRequested(async (event) => {
+          if (allowCloseAfterRotoFlushRef.current) return;
+          event.preventDefault();
+          await flushCurrentRotoFrameBeforeClose();
+          if (disposed) return;
+          allowCloseAfterRotoFlushRef.current = true;
+          await appWindow.close();
         });
         if (disposed) unlisten?.();
       } catch (error) {
