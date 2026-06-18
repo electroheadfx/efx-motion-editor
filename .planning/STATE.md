@@ -4,11 +4,11 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.2
 current_phase_name: roto-paint-enhancements-all-details-are-here-specs-phase-36-
-status: executing
-stopped_at: Completed 36.2-09-PLAN.md
-last_updated: "2026-06-17T20:31:48.032Z"
-last_activity: 2026-06-17
-last_activity_desc: Phase 36.2 execution started
+status: failed
+stopped_at: Codex Phase 36.2 gap execution rejected after rollback
+last_updated: "2026-06-18T00:00:00.000Z"
+last_activity: 2026-06-18
+last_activity_desc: Phase 36.2 Codex gap execution marked failed; failed history preserved on backup/broken-36.2-gap-execution-20260618
 progress:
   total_phases: 6
   completed_phases: 4
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 
 ## Current Position
 
-Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — EXECUTING
-Plan: 1 of 13
-Status: Executing Phase 36.2
-Last activity: 2026-06-17 — Phase 36.2 execution started
+Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — FAILED
+Plan: gap execution rejected
+Status: Codex gap execution failed; restart diagnosis/implementation from current main
+Last activity: 2026-06-18 — failed history preserved on backup/broken-36.2-gap-execution-20260618
 
 Progress: [██████████] 39/40 plans (98%)
 
@@ -105,7 +105,9 @@ None yet.
 
 ### Blockers/Concerns
 
-None yet.
+- Phase 36.2 Codex gap execution is rejected as failed. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
+- Full failed local history is preserved on `backup/broken-36.2-gap-execution-20260618`; current `main` is synced to `origin/main` at `f9758371`.
+- Reported failures: Physics Paint close path broken, Roto interpolation not working, cache routing regression into sequence image behavior, Roto key utility buttons unusable/missing, and UI spec coverage incomplete.
 
 ### Quick Tasks Completed
 
