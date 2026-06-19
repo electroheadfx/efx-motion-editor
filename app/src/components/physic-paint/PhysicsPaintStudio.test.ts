@@ -127,14 +127,14 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
     expect(playbackBlock).not.toContain('setSavedRotoFrames');
   });
 
-  it('shows cached Roto references as an overlay and installs them as the repaintable reference background', () => {
+  it('shows cached Roto references as an overlay without installing them as the engine paper background', () => {
     const text = source();
     const loadBlock = text.slice(text.indexOf('function loadCachedRotoReferenceFrame'), text.indexOf('useEffect(() => {', text.indexOf('function loadCachedRotoReferenceFrame')));
 
     expect(loadBlock).toContain('setCachedRotoReferenceUrl(cachedFrame?.dataUrl ?? null)');
     expect(loadBlock).toContain('targetEngine.resetBackground()');
     expect(loadBlock).toContain('targetEngine.clear()');
-    expect(loadBlock).toContain('targetEngine.setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(loadBlock).not.toContain('targetEngine.setBackgroundImageUrl(cachedFrame.dataUrl)');
     expect(text).toContain('const resetRotoSessionForLaunch = useCallback');
     expect(text).toContain('resetRotoSessionForLaunch(context)');
     expect(text).toContain('loadCachedRotoReferenceFrame(context.startFrame, readyEngine as PreviewBackgroundEngine, context)');
@@ -448,7 +448,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('function findCachedRotoReferenceFrame(appFrame: number, context: PhysicPaintLaunchContext | null = launchContext)');
     expect(loadBlock).toContain("context.cachedRotoFrames?.find((frame) => frame.appFrame === appFrame && frame.source === 'real-key')");
     expect(loadBlock).toContain('physicPaintStore.getFrame(context.layerId, appFrame)');
-    expect(loadBlock).toContain('targetEngine.setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(loadBlock).not.toContain('targetEngine.setBackgroundImageUrl(cachedFrame.dataUrl)');
     expect(loadBlock).toContain('targetEngine.resetBackground()');
     expect(text).toContain('cachedRotoReferenceUrl={cachedRotoReferenceUrl}');
     expect(text).toContain('class="physics-paint-cached-roto-reference"');

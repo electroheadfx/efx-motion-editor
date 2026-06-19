@@ -619,20 +619,23 @@ describe('Phase 36.3 durable Roto cache core', () => {
 
     paintHarness.engine?.setBackgroundImageUrl.mockClear();
     paintHarness.engine?.resetBackground.mockClear();
+    paintHarness.engine?.clear.mockClear();
     paintHarness.engine?.load.mockClear();
     for (let attempt = 0; attempt < 5; attempt += 1) {
       if (paintHarness.launchListeners.length > 0) break;
       await flushPreact();
     }
     for (const listener of [...paintHarness.launchListeners]) listener({ payload: reopenContext });
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    let reopenedText = visibleText(root);
+    for (let attempt = 0; attempt < 5 && !reopenedText.includes('Cached reference'); attempt += 1) {
       await flushPreact();
-      if (paintHarness.engine?.setBackgroundImageUrl.mock.calls.length) break;
+      reopenedText = visibleText(root);
     }
-    const reopenedText = visibleText(root);
     if (!reopenedText.includes('Cached reference')) failures.push(`expected relaunched Physics Paint to label frame 8 as a Cached reference, got: ${reopenedText}`);
     const backgroundCalls = paintHarness.engine?.setBackgroundImageUrl.mock.calls ?? [];
-    if (backgroundCalls[backgroundCalls.length - 1]?.[0] !== savedDataUrl) failures.push(`expected relaunched Physics Paint engine to receive the cached PNG from the hydrated launch context as a repaintable reference background; got background=${JSON.stringify(backgroundCalls)} reset=${JSON.stringify(paintHarness.engine?.resetBackground.mock.calls)}`);
+    if (backgroundCalls.some(([dataUrl]) => dataUrl === savedDataUrl)) failures.push(`expected relaunched Roto cached reference to stay out of the engine paper background; got background=${JSON.stringify(backgroundCalls)}`);
+    if (!paintHarness.engine?.resetBackground.mock.calls.length) failures.push('expected relaunched Roto cached reference to reset stale engine background');
+    if (!paintHarness.engine?.clear.mock.calls.length) failures.push('expected relaunched cached-only Roto reference to clear stale editable strokes before showing the overlay reference');
     if (paintHarness.engine?.load.mock.calls.some(([state]) => state === editableState || state.strokes.length > 0)) failures.push('expected cached-only Roto relaunch not to load editable saved strokes');
     paintHarness.engine?.__setState(editedState, unsavedDataUrl);
     if (canvasStack) fire(canvasStack, 'PointerDown');

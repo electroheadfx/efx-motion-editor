@@ -837,10 +837,7 @@ export function PhysicsPaintStudio() {
     const cachedFrame = findCachedRotoReferenceFrame(appFrame, context);
     setCachedRotoReferenceUrl(cachedFrame?.dataUrl ?? null);
     targetEngine.resetBackground();
-    if (cachedFrame?.dataUrl) {
-      targetEngine.clear();
-      targetEngine.setBackgroundImageUrl(cachedFrame.dataUrl);
-    }
+    if (cachedFrame?.dataUrl) targetEngine.clear();
     return Boolean(cachedFrame);
   }
 
