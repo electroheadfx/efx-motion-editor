@@ -98,10 +98,11 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Stroke draw-reveal animation with speed-based distribution — v0.7.0 Phase 33
 - ✓ Inline color picker positioned adjacent to canvas (left panel, 260px) — v0.7.0 Phase 33
 - ✓ efx-physic-paint is runnable and testable as a standalone interactive physics paint app/window before editor integration — v0.8.0 Phase 35
+- ✓ One Physics Paint Roto frame can be cached into EFX Motion, drawn in preview, preserved through project save/load, and reopened as a cached visual reference — v0.8.0 Phase 36.3
 
 ### Active
 
-- [ ] Standalone physics paint can produce inspectable/exportable still or frame-sequence output suitable for later cached compositing in EFX Motion Editor — v0.8.0
+- [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 Phase 37
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
 ## Current Milestone: v0.8.0 Standalone Physics Paint
@@ -206,6 +207,8 @@ Known technical debt:
 | Triangle filter blur kernel in GLSL | Smooth directional blur falloff vs box filter | ✓ Good — natural motion blur appearance |
 | VelocityCache with seek invalidation | Math.abs(currentFrame - lastFrame) > 1 detects seek vs playback | ✓ Good — clean velocity on playback, no artifacts on seek |
 | Sub-frame accumulation with Float32 averaging | Higher quality export blur via temporal super-sampling | ✓ Good — combined with GLSL velocity blur for best quality |
+| Cached Roto PNG as durable truth | Phase 36.3 recovered the smallest trustworthy Roto path after Phase 36.2 failed: explicit `Save current` writes one frame into EFX Motion and reopen uses the saved PNG as reference, not editable stroke restore | ✓ Good — UAT passed for save, preview, save/load, cached-reference reopen, and navigation preservation |
+| Phase 37 is contract/validation-only | The milestone still avoids editor integration scope creep after proving one durable cached frame | Pending — next phase should document typed seam and validation without headless adapter/editor-runtime implementation |
 
 ## Evolution
 
@@ -225,4 +228,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-08 after starting milestone v0.8.0 — standalone physics paint milestone scoped before editor integration*
+*Last updated: 2026-06-19 after Phase 36.3 — durable Roto cache core validated and Phase 37 contract work queued*

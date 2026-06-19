@@ -129,7 +129,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 35: Interactive Physics Paint Controls** - Users can test the real physics paint engine with live canvas input, paint/erase tools, settings, and diagnostics. (completed 2026-06-10)
 - [x] **Phase 36: Session Persistence and Output Proof** - Users can save, reload, inspect, and export standalone physics paint output for future cached compositing. (completed 2026-06-13)
 - [x] **Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback** - Users can see saved Play script ranges, reopen/scrub them correctly, and render sequential Play animation. (completed 2026-06-16)
-- [ ] **Phase 36.3: Physics Paint Roto Durable Core Recovery** - MVP/TDD recovery phase to prove one painted Roto frame can be cached into EFX Motion, appear in preview, survive project save/load, and reopen as a cached visual reference. (planned recovery)
+- [x] **Phase 36.3: Physics Paint Roto Durable Core Recovery** - MVP/TDD recovery phase to prove one painted Roto frame can be cached into EFX Motion, appear in preview, survive project save/load, and reopen as a cached visual reference. (planned recovery) (completed 2026-06-19)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
 
 ## Phase Details
@@ -364,11 +364,11 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 36.3-01-PLAN.md — Add the one vertical RED test, implement the durable Save current cache path, and gate the minimal Roto UI.
+- [x] 36.3-01-PLAN.md — Add the one vertical RED test, implement the durable Save current cache path, and gate the minimal Roto UI.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 36.3-02-PLAN.md — Run user-owned manual UAT for the full durable core and discard behavior.
+- [x] 36.3-02-PLAN.md — Run user-owned manual UAT for the full durable core and discard behavior.
 
 **UI hint**: yes
 
@@ -405,5 +405,5 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36. Session Persistence and Output Proof | v0.8.0 | 11/11 | Complete   | 2026-06-13 |
 | 36.1. Physics Paint Play-Script Timeline Markers and Sequential Playback | v0.8.0 | 9/9 | Complete | 2026-06-16 |
 | 36.2. Roto paint enhancements | v0.8.0 | 13/13 records closed | Failed/superseded | 2026-06-19 |
-| 36.3. Physics Paint Roto Durable Core Recovery | v0.8.0 | 0/TBD | Planned recovery | - |
+| 36.3. Physics Paint Roto Durable Core Recovery | v0.8.0 | 2/2 | Complete    | 2026-06-19 |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |

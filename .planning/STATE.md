@@ -2,46 +2,46 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.3
-current_phase_name: Physics Paint Roto Durable Core Recovery
-status: executing
-stopped_at: Phase 36.3 UI-SPEC approved
-last_updated: "2026-06-19T09:52:08.354Z"
+current_phase: 37
+current_phase_name: Future Integration Contract and Validation
+status: ready_to_plan
+stopped_at: Phase 36.3 complete, ready to plan Phase 37
+last_updated: "2026-06-19T17:55:00+02:00"
 last_activity: 2026-06-19
-last_activity_desc: Phase 36.3 execution started
+last_activity_desc: Phase 36.3 complete, transitioned to Phase 37
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 45
-  completed_plans: 43
-  percent: 71
+  completed_plans: 45
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-08)
+See: .planning/PROJECT.md (updated 2026-06-19)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.3 — Physics Paint Roto Durable Core Recovery
+**Current focus:** Phase 37 — Future Integration Contract and Validation
 
 ## Current Position
 
-Phase: 36.3 (Physics Paint Roto Durable Core Recovery) — EXECUTING
-Previous phase: 36.2 — FAILED/SUPERSEDED administrative closure
-Plan: 1 of 2
-Status: Executing Phase 36.3
-Last activity: 2026-06-19 — Phase 36.3 execution started
-Next recommended action: `/gsd-mvp-phase 36.3` or `/gsd-plan-phase 36.3` for Physics Paint Roto Durable Core Recovery
+Phase: 37 — Future Integration Contract and Validation
+Previous phase: 36.3 — Physics Paint Roto Durable Core Recovery complete
+Plan: Not started
+Status: Ready to plan Phase 37
+Last activity: 2026-06-19 — Phase 36.3 complete, transitioned to Phase 37
+Next recommended action: `/gsd-plan-phase 37`
 
-Progress: [██████████] 43/43 Phase 36.2 plan records closed administratively; Phase 36.2 outcome is failed/superseded, not complete
+Progress: [████████████████████] 45/45 plans (100%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 30 for v0.8.0
+- Total plans completed: 32 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -56,6 +56,7 @@ Progress: [██████████] 43/43 Phase 36.2 plan records closed 
 | 34 | 3 | - | - |
 | 35 | 7 | - | - |
 | 36.1 | 9 | - | - |
+| 36.3 | 2 | - | - |
 
 **Recent Trend:**
 
@@ -98,8 +99,9 @@ Recent decisions affecting current work:
 - [Phase 36.2 Plan 08]: Roto interpolation controls live inline in the standalone workflow strip, not in a modal or hidden shortcut path, so UAT can discover and change settings visually.
 - [Phase 36.2 Plan 08]: Generated interpolation frames remain render-only cached frames surfaced by connector/status UI; real-key cells remain the only editable targets.
 - [Phase 36.2 Plan 09]: Roto key utility controls are inline in the standalone workflow strip; generated interpolation frames stay render-only and Paste is replace-style on real keys only.
-- [Phase ?]: [Phase 36.2 Plan 10]: Roto paper/background settings are stored as layer workflow metadata, not rendered cache frames, so missing background gaps never become green cached cells.
-- [Phase ?]: [Phase 36.2 Plan 10]: Missing Roto active backgrounds render virtually in PreviewRenderer/export and transiently in compact playback without mutating physicPaintStore.
+- [Phase 36.3]: Cached Roto PNG output is the durable truth; reopen uses a full-strength visual `Cached reference`, not editable stroke restoration.
+- [Phase 36.3]: `Save current` is the validated recovery path for one Roto frame through parent preview, project save/load, and navigation preservation.
+- [Phase 36.3]: Phase 36.3 UI-spec fidelity debt is documented in `36.3-UI-REVIEW.md`; defer fixes to a later targeted UI cleanup, not hidden Phase 36.3 scope.
 
 ### Pending Todos
 
@@ -108,10 +110,9 @@ None yet.
 ### Blockers/Concerns
 
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
-- Full failed local history is preserved on `backup/broken-36.2-gap-execution-20260618`; current `main` is synced to `origin/main` at `f9758371`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
-- Reported failures remain recovery inputs: Physics Paint close path broken, Roto interpolation not working, cache routing regression into sequence image behavior, Roto key utility buttons unusable/missing, and UI spec coverage incomplete.
-- Next action is to create or plan new MVP/TDD recovery phases using `SPECS/36.2-and-more/gsd-recovery-context.en.md`, starting with durable Physics Paint Roto cache core behavior.
+- Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
+- Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
 ### Quick Tasks Completed
 
@@ -139,6 +140,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T08:28:39.064Z
-Stopped at: Phase 36.3 UI-SPEC approved
-Resume file: .planning/phases/36.3-physics-paint-roto-durable-core-recovery/36.3-UI-SPEC.md
+Last session: 2026-06-19T17:55:00+02:00
+Stopped at: Phase 36.3 complete, ready to plan Phase 37
+Resume file: None
