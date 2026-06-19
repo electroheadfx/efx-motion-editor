@@ -4,15 +4,15 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.3
 current_phase_name: Physics Paint Roto Durable Core Recovery
-status: planned_recovery
+status: executing
 stopped_at: Phase 36.3 UI-SPEC approved
-last_updated: "2026-06-19T08:28:39.069Z"
+last_updated: "2026-06-19T09:52:08.354Z"
 last_activity: 2026-06-19
-last_activity_desc: failed history preserved on backup/broken-36.2-gap-execution-20260618; 36.2-11 through 36.2-13 closed as rejected/superseded summaries
+last_activity_desc: Phase 36.3 execution started
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 43
+  total_plans: 45
   completed_plans: 43
   percent: 71
 ---
@@ -24,15 +24,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Recovery planning after Phase 36.2 failed/superseded closure
+**Current focus:** Phase 36.3 — Physics Paint Roto Durable Core Recovery
 
 ## Current Position
 
-Phase: 36.3 (Physics Paint Roto Durable Core Recovery) — PLANNED RECOVERY
+Phase: 36.3 (Physics Paint Roto Durable Core Recovery) — EXECUTING
 Previous phase: 36.2 — FAILED/SUPERSEDED administrative closure
-Plan: create or plan the new MVP/TDD recovery phase
-Status: Do not execute Phase 36.2. Create or plan Phase 36.3 from current main.
-Last activity: 2026-06-19 — failed history preserved on backup/broken-36.2-gap-execution-20260618; 36.2-11 through 36.2-13 closed as rejected/superseded summaries
+Plan: 1 of 2
+Status: Executing Phase 36.3
+Last activity: 2026-06-19 — Phase 36.3 execution started
 Next recommended action: `/gsd-mvp-phase 36.3` or `/gsd-plan-phase 36.3` for Physics Paint Roto Durable Core Recovery
 
 Progress: [██████████] 43/43 Phase 36.2 plan records closed administratively; Phase 36.2 outcome is failed/superseded, not complete
