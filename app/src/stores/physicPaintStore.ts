@@ -541,6 +541,12 @@ export const physicPaintStore = {
           metadata.set(frame.appFrame, { ...frame });
         }
         if (metadata.size > 0) _rotoCacheMetadata.set(output.layer_id, metadata);
+      } else if ((output.workflow_mode ?? output.workflowMode) === 'roto' || (output.editable_source ?? output.editableSource) === 'roto') {
+        const metadata = new Map<number, PhysicPaintRotoCacheFrame>();
+        for (const [frame, renderedFrame] of layerFrames) {
+          metadata.set(frame, { ...renderedFrame, source: 'real-key' });
+        }
+        if (metadata.size > 0) _rotoCacheMetadata.set(output.layer_id, metadata);
       }
       if (isPhysicPaintRotoInterpolationSettings(output.roto_interpolation_settings)) {
         _rotoInterpolationSettings.set(output.layer_id, _cloneRotoInterpolationSettings(output.roto_interpolation_settings));

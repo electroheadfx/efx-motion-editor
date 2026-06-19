@@ -202,6 +202,22 @@ describe('physicPaintBridge', () => {
     expect(context.editableState).toBeUndefined();
   });
 
+  it('treats hydrated Roto frames without metadata as real-key cached references for relaunch', () => {
+    physicPaintStore.loadFromMceOutputs([{
+      layer_id: 'phys-layer-1',
+      frames: [makeFrame(0, 8)],
+      workflow_mode: 'roto',
+      editable_source: 'roto',
+    }]);
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null, 'roto');
+
+    expect(context.cachedRotoFrames).toEqual([
+      expect.objectContaining({ appFrame: 8, source: 'real-key', dataUrl: makeFrame(0, 8).dataUrl }),
+    ]);
+    expect(context.editableState).toBeUndefined();
+  });
+
   it('redirects generated-only Roto launch targets to the nearest real key frame', () => {
     physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 12, makeFrame(0, 12));
     physicPaintStore.replaceGeneratedRotoCache('phys-layer-1', [{
