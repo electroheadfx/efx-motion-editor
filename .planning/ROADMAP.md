@@ -344,7 +344,7 @@ Plans:
 
 ### Phase 36.3: Physics Paint Roto Durable Core Recovery
 
-**Goal**: Users can save one painted Physics Paint Roto frame into the parent EFX Motion physics-paint cache, see it in preview, preserve it through project save/load, and reopen it as a cached visual reference before adding timeline tools.
+**Goal:** As a stop-motion animator, I want to cache one painted Roto frame back into EFX Motion and preserve it through project save/load, so that Physics Paint Roto has a trustworthy durable core before adding timeline tools.
 **Mode:** mvp
 **Depends on**: Phase 36.2 failed/superseded closure
 **Requirements**: TBD in new MVP recovery planning
