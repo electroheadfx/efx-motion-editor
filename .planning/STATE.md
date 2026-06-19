@@ -2,18 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.2
-current_phase_name: roto-paint-enhancements-all-details-are-here-specs-phase-36-
-status: failed
-stopped_at: Codex Phase 36.2 gap execution rejected after rollback
-last_updated: "2026-06-18T00:00:00.000Z"
-last_activity: 2026-06-18
-last_activity_desc: Phase 36.2 Codex gap execution marked failed; failed history preserved on backup/broken-36.2-gap-execution-20260618
+current_phase: 36.3
+current_phase_name: Physics Paint Roto Durable Core Recovery
+status: planned_recovery
+stopped_at: Phase 36.2 administratively closed as failed/superseded; do not execute remaining 36.2 gap plans
+last_updated: "2026-06-19T00:00:00.000Z"
+last_activity: 2026-06-19
+last_activity_desc: Phase 36.2 administratively closed as failed/superseded; next action is creating/planning new MVP recovery phases, not executing 36.2
+next_recommended_action: Create or plan a new MVP/TDD recovery phase beginning with Physics Paint Roto Durable Core Recovery
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 4
   total_plans: 43
-  completed_plans: 40
+  completed_plans: 43
   percent: 67
 ---
 
@@ -24,16 +25,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-08)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.2 — roto-paint-enhancements-all-details-are-here-specs-phase-36-
+**Current focus:** Recovery planning after Phase 36.2 failed/superseded closure
 
 ## Current Position
 
-Phase: 36.2 (roto-paint-enhancements-all-details-are-here-specs-phase-36-) — FAILED
-Plan: gap execution rejected
-Status: Codex gap execution failed; restart diagnosis/implementation from current main
-Last activity: 2026-06-18 — failed history preserved on backup/broken-36.2-gap-execution-20260618
+Phase: 36.3 (Physics Paint Roto Durable Core Recovery) — PLANNED RECOVERY
+Previous phase: 36.2 — FAILED/SUPERSEDED administrative closure
+Plan: create or plan the new MVP/TDD recovery phase
+Status: Do not execute Phase 36.2. Create or plan Phase 36.3 from current main.
+Last activity: 2026-06-19 — failed history preserved on backup/broken-36.2-gap-execution-20260618; 36.2-11 through 36.2-13 closed as rejected/superseded summaries
+Next recommended action: `/gsd-mvp-phase 36.3` or `/gsd-plan-phase 36.3` for Physics Paint Roto Durable Core Recovery
 
-Progress: [██████████] 39/40 plans (98%)
+Progress: [██████████] 43/43 Phase 36.2 plan records closed administratively; Phase 36.2 outcome is failed/superseded, not complete
 
 ## Performance Metrics
 
@@ -105,9 +108,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 36.2 Codex gap execution is rejected as failed. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
+- Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Full failed local history is preserved on `backup/broken-36.2-gap-execution-20260618`; current `main` is synced to `origin/main` at `f9758371`.
-- Reported failures: Physics Paint close path broken, Roto interpolation not working, cache routing regression into sequence image behavior, Roto key utility buttons unusable/missing, and UI spec coverage incomplete.
+- Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
+- Reported failures remain recovery inputs: Physics Paint close path broken, Roto interpolation not working, cache routing regression into sequence image behavior, Roto key utility buttons unusable/missing, and UI spec coverage incomplete.
+- Next action is to create or plan new MVP/TDD recovery phases using `SPECS/36.2-and-more/gsd-recovery-context.en.md`, starting with durable Physics Paint Roto cache core behavior.
 
 ### Quick Tasks Completed
 
@@ -135,6 +140,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-17T19:49:25.025Z
-Stopped at: Completed 36.2-09-PLAN.md
+Last session: 2026-06-19T00:00:00.000Z
+Stopped at: Phase 36.2 failed/superseded closure; ready to create or plan Phase 36.3 recovery
 Resume file: None

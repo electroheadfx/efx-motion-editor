@@ -129,6 +129,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 35: Interactive Physics Paint Controls** - Users can test the real physics paint engine with live canvas input, paint/erase tools, settings, and diagnostics. (completed 2026-06-10)
 - [x] **Phase 36: Session Persistence and Output Proof** - Users can save, reload, inspect, and export standalone physics paint output for future cached compositing. (completed 2026-06-13)
 - [x] **Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback** - Users can see saved Play script ranges, reopen/scrub them correctly, and render sequential Play animation. (completed 2026-06-16)
+- [ ] **Phase 36.3: Physics Paint Roto Durable Core Recovery** - MVP/TDD recovery phase to prove one painted Roto frame can be cached into EFX Motion, appear in preview, survive project save/load, and reopen as a cached visual reference. (planned recovery)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
 
 ## Phase Details
@@ -234,12 +235,13 @@ Plans:
 
 **UI hint**: yes
 
-### Phase 36.2: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (INSERTED)
+### Phase 36.2: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (FAILED/SUPERSEDED)
 
 **Goal:** Users can work with Physics Paint Roto as a cache-first animation workflow with gray/green/pink cache cells, cached-reference navigation, save-on-leave/save-on-close, cached playback/export, and render-only interpolation/key utilities.
+**Outcome:** Failed/superseded. Do not execute or resume Phase 36.2 gap-closure plans; use the failure as recovery input for new MVP/TDD phases.
 **Requirements**: PH36.2-CACHE, PH36.2-MISSING, PH36.2-PLAYBACK, PH36.2-INTERP
 **Depends on:** Phase 36
-**Plans:** 13 plans
+**Plans:** 13 plan records closed; final outcome failed/superseded, not completed implementation
 
 Plans:
 **Wave 1**
@@ -281,15 +283,15 @@ Plans:
 
 **Gap Closure Wave 5** *(requirement traceability and runtime gap fixes)*
 
-- [ ] 36.2-11-PLAN.md — Define and trace Phase 36.2 requirement IDs in REQUIREMENTS.md.
+- [x] 36.2-11-PLAN.md — REJECTED/SUPERSEDED administrative closure; do not resume. Requirement traceability moves to new recovery phases.
 
 **Gap Closure Wave 6** *(blocked on interpolation UI and missing-background work)*
 
-- [ ] 36.2-12-PLAN.md — Implement real generated PNG interpolation and range-enumerated cached playback gaps.
+- [x] 36.2-12-PLAN.md — REJECTED/SUPERSEDED administrative closure; do not resume. Interpolation/playback gaps move to later MVP recovery phases.
 
 **Gap Closure Wave 7** *(blocked on runtime gap fixes)*
 
-- [ ] 36.2-13-PLAN.md — Prove close/save, UI discoverability, cached reopen, and missing-background UAT behavior.
+- [x] 36.2-13-PLAN.md — REJECTED/SUPERSEDED administrative closure; do not resume. Final proof moves to smaller MVP recovery UAT checkpoints.
 
 ### Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback
 
@@ -340,6 +342,28 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 36.3: Physics Paint Roto Durable Core Recovery
+
+**Goal**: Users can save one painted Physics Paint Roto frame into the parent EFX Motion physics-paint cache, see it in preview, preserve it through project save/load, and reopen it as a cached visual reference before adding timeline tools.
+**Mode:** mvp
+**Depends on**: Phase 36.2 failed/superseded closure
+**Requirements**: TBD in new MVP recovery planning
+**Success Criteria** (what must be TRUE):
+
+  1. User can open Physics Paint in Roto mode for a physics-paint layer.
+  2. User can paint one Roto frame and explicitly save the current frame.
+  3. Parent EFX Motion receives a rendered PNG for the correct layer and frame.
+  4. EFX Motion preview draws that cached PNG.
+  5. Project save/load preserves that cached PNG.
+  6. Reopening Physics Paint shows the cached PNG as a visual reference.
+  7. Closing without saving does not block the module or corrupt existing saved cache.
+
+**Exclusions:** interpolation, generated frames, key utilities, save-on-leave, cached Roto playback, missing background rules, Play/Roto conversion, final Pencil timeline UI, and Tauri asset protocol hardening.
+
+**Plans**: TBD
+
+**UI hint**: yes
+
 ### Phase 37: Future Integration Contract and Validation
 
 **Goal**: Developers can validate the standalone milestone and prepare the future editor seam without implementing editor integration now.
@@ -372,4 +396,6 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 35. Interactive Physics Paint Controls | v0.8.0 | 7/7 | Complete    | 2026-06-10 |
 | 36. Session Persistence and Output Proof | v0.8.0 | 11/11 | Complete   | 2026-06-13 |
 | 36.1. Physics Paint Play-Script Timeline Markers and Sequential Playback | v0.8.0 | 9/9 | Complete | 2026-06-16 |
+| 36.2. Roto paint enhancements | v0.8.0 | 13/13 records closed | Failed/superseded | 2026-06-19 |
+| 36.3. Physics Paint Roto Durable Core Recovery | v0.8.0 | 0/TBD | Planned recovery | - |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
