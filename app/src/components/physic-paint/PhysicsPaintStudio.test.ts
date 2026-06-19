@@ -50,11 +50,11 @@ describe('PhysicsPaintStudio onion preview contract', () => {
 
   it('sends paper composite frames to EFX Motion while caching transparent onion previews', () => {
     const text = source();
-    const saveRotoBlock = text.slice(text.indexOf('const saveRotoFrame = useCallback'), text.indexOf('const savePlay = useCallback'));
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
 
-    expect(saveRotoBlock).toContain('const renderedFrame = buildRotoOutputFrame(engine, currentFrame)');
-    expect(saveRotoBlock).toContain('rotoPreviewFramesRef.current.set(currentFrame, buildRotoOnionPreviewFrame(engine, currentFrame))');
-    expect(saveRotoBlock).toContain('renderedFrame,');
+    expect(flushBlock).toContain('const renderedFrame = buildRotoOutputFrame(engine, frame)');
+    expect(flushBlock).toContain('rotoPreviewFramesRef.current.set(frame, backgroundOnly ? renderedFrame : buildRotoOnionPreviewFrame(engine, frame))');
+    expect(flushBlock).toContain('renderedFrame,');
   });
 
   it('persists Roto background metadata from standalone paper settings without creating cached cells', () => {
@@ -357,7 +357,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 
   it('saves Play using selected script range and clears dirty cache status after regenerated frames publish', () => {
     const text = source();
-    const savePlayBlock = text.slice(text.indexOf('const savePlay = useCallback'), text.indexOf('const saveRotoFrameAndAdvance'));
+    const savePlayBlock = text.slice(text.indexOf('const savePlay = useCallback'), text.indexOf('const savePendingRotoFrames'));
 
     expect(savePlayBlock).toContain('const playStartFrame = getActivePlayStartFrame(launchContext, currentFrame)');
     expect(savePlayBlock).toContain('appFrame: playStartFrame + frameIndex');
@@ -462,35 +462,37 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(flushBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame)'));
   });
 
-  it('flushes dirty Roto frames on Save pending and ordered close/unload', () => {
+  it('saves only the current Roto frame on explicit Save current and discards unsaved close edits', () => {
     const text = source();
-    const closeBlock = text.slice(text.indexOf('const flushCurrentRotoFrameBeforeClose'), text.indexOf('const handlePhysicsPaintKeyDown'));
+    const saveBlock = text.slice(text.indexOf('const saveRotoFrame = useCallback'), text.indexOf('const updateSelectedPlayOptions = useCallback'));
+    const unloadBlock = text.slice(text.indexOf('const handleBeforeUnload ='), text.indexOf('const handlePhysicsPaintKeyDown = useCallback'));
 
-    expect(text).toContain('const savePendingRotoFrames = useCallback');
-    expect(text).toContain('const flushCurrentRotoFrameBeforeClose = useCallback(async () =>');
-    expect(closeBlock).toContain('snapshotCurrentRotoFrame()');
-    expect(closeBlock).toContain('return flushRotoFrame(currentFrame, { force: true })');
-    expect(closeBlock).toContain('await flushCurrentRotoFrameBeforeClose()');
-    expect(closeBlock).toContain('event.preventDefault()');
-    expect(closeBlock).toContain('await appWindow.close()');
+    expect(text).toContain('const saveRotoFrame = useCallback');
+    expect(saveBlock).toContain('snapshotCurrentRotoFrame()');
+    expect(saveBlock).toContain('dirtyRotoFramesRef.current.add(currentFrame)');
+    expect(saveBlock).toContain('return flushRotoFrame(currentFrame, { force: true, advanceToFrame })');
+    expect(unloadBlock).toContain('snapshotCurrentRotoFrame()');
+    expect(unloadBlock).not.toContain('flushRotoFrame(currentFrame');
+    expect(unloadBlock).not.toContain('event.preventDefault()');
+    expect(unloadBlock).not.toContain('await appWindow.close()');
     expect(text).toContain("window.addEventListener('beforeunload', handleBeforeUnload)");
     expect(text).toContain('appWindow.onCloseRequested');
-    expect(text).toContain('onSavePendingRotoFrames={savePendingRotoFrames}');
+    expect(text).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
   });
 
-  it('keeps the close flush on the normal single-frame apply-canvas path', () => {
+  it('keeps the explicit Save current path on the normal single-frame apply-canvas flow', () => {
     const text = source();
-    const closeBlock = text.slice(text.indexOf('const flushCurrentRotoFrameBeforeClose'), text.indexOf('const handlePhysicsPaintKeyDown'));
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
+    const saveBlock = text.slice(text.indexOf('const saveRotoFrame = useCallback'), text.indexOf('const updateSelectedPlayOptions = useCallback'));
 
-    expect(closeBlock).toContain('flushRotoFrame(currentFrame, { force: true })');
-    expect(closeBlock).not.toContain('savePendingRotoFrames()');
-    expect(closeBlock).not.toContain('savePlay()');
+    expect(saveBlock).toContain('flushRotoFrame(currentFrame, { force: true, advanceToFrame })');
+    expect(saveBlock).not.toContain('savePendingRotoFrames()');
+    expect(saveBlock).not.toContain('savePlay()');
     expect(flushBlock).toContain("kind: 'apply-canvas'");
     expect(flushBlock).toContain('renderedFrame,');
     expect(flushBlock).toContain('await sendPhysicPaintApplyPayload(payload, bridgeMode)');
-    expect(closeBlock).not.toContain('buildRotoOutputFrame');
-    expect(closeBlock).not.toContain('getRotoCachedPlaybackFrames');
+    expect(saveBlock).not.toContain('buildRotoOutputFrame');
+    expect(saveBlock).not.toContain('getRotoCachedPlaybackFrames');
   });
 
   it('persists paper/background-only Roto frames without marking them editable-session pink', () => {
@@ -523,7 +525,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(workflowStripBlock).not.toContain('editableRotoFrames={occupiedRotoFrames}');
   });
 
-  it('tracks dirty Roto frames and flushes once before synced navigation', () => {
+  it('tracks dirty Roto frames without autosaving before synced navigation', () => {
     const text = source();
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
 
@@ -531,12 +533,13 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null)');
     expect(text).toContain('const flushRotoFrame = useCallback(async (frame: number');
     expect(text).toContain('dirtyRotoFramesRef.current.add(appFrame)');
-    expect(navigateBlock).toContain('await flushRotoFrame(previousFrame');
-    expect(navigateBlock.indexOf('await flushRotoFrame(previousFrame')).toBeLessThan(navigateBlock.indexOf('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)'));
+    expect(navigateBlock).toContain('snapshotCurrentRotoFrame()');
+    expect(navigateBlock).toContain('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
+    expect(navigateBlock).not.toContain('await flushRotoFrame(previousFrame');
     expect(text).not.toContain('onPointerMoveCapture={');
   });
 
-  it('wires pending Roto saves without repeated brush-move apply calls', () => {
+  it('wires explicit current-frame Roto saves without repeated brush-move apply calls', () => {
     const text = source();
     const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
     const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
@@ -547,12 +550,13 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(canvasBlock).toContain('onInputIntent={workflowMode === \'play\' ? beginPlayFrameEdit : beginRotoFrameEdit}');
     expect(workflowStripBlock).toContain('pendingRotoFrames={pendingRotoFrames}');
     expect(workflowStripBlock).toContain('rotoSaveInFlight={Boolean(rotoFlushInFlightRef.current) || applyStatus === \'applying\'}');
-    expect(workflowStripBlock).toContain('onSavePendingRotoFrames={savePendingRotoFrames}');
+    expect(workflowStripBlock).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
   });
 
-  it('wires named real-key utility actions without inserting generated frames into editable refs', () => {
+  it('keeps real-key utility helpers out of the strict Phase 36.3 Roto strip surface', () => {
     const text = source();
     const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const shortcutsBlock = text.slice(text.indexOf('{shortcutsVisible'), text.indexOf('</section>'));
 
     for (const label of ['duplicateRotoKey', 'insertRotoFrame', 'deleteRotoFrame', 'copyRotoFrame', 'pasteRotoFrame']) {
       expect(text).toContain(label);
@@ -563,6 +567,11 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(workflowStripBlock).toContain('onCopyRotoFrame={copyRotoFrame}');
     expect(workflowStripBlock).toContain('onPasteRotoFrame={pasteRotoFrame}');
     expect(workflowStripBlock).toContain('hasCopiedRotoKey={hasCopiedRotoKey}');
+    expect(shortcutsBlock).not.toContain('Duplicate key');
+    expect(shortcutsBlock).not.toContain('Insert frame');
+    expect(shortcutsBlock).not.toContain('Delete frame');
+    expect(shortcutsBlock).not.toContain('Copy frame');
+    expect(shortcutsBlock).not.toContain('Paste frame');
     expect(text).toContain('const [hasCopiedRotoKey, setHasCopiedRotoKey]');
     expect(text).toContain('function isCurrentFrameARealRotoKey()');
     expect(text).toContain("setApplyMessage('Key utilities require a real Roto key. Generated in-betweens are render-only.');");

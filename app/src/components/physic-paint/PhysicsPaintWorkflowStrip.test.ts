@@ -43,7 +43,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('function requestWorkflowModeChange');
     expect(code).not.toContain('onRequestModeChange');
     expect(code).not.toContain('Save roto frame');
-    expect(code).toContain('Save pending');
+    expect(code).not.toContain('Save pending');
     expect(code).toContain('Save current');
     expect(code).toContain('Render play');
     expect(code).not.toContain('Preview / Save Play');
@@ -152,43 +152,39 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('pointer-events: none');
   });
 
-  it('explains Roto interpolation availability and render-only generated frames', () => {
+  it('keeps Roto interpolation explanatory copy out of the strict Phase 36.3 Roto strip', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
 
-    expect(code).toContain('getRotoInterpolationStatusCopy');
-    expect(code).toContain('Interpolation needs two real Roto keys.');
-    expect(code).toContain('Generated in-betweens are render-only; connector lines mark interpolation spans.');
-    expect(code).toContain('Generated in-betweens stay render-only, not editable targets.');
+    expect(code).not.toContain('getRotoInterpolationStatusCopy');
+    expect(rotoControlsBlock).not.toContain('Interpolation needs two real Roto keys.');
+    expect(rotoControlsBlock).not.toContain('Generated in-betweens are render-only; connector lines mark interpolation spans.');
+    expect(rotoControlsBlock).not.toContain('Generated in-betweens stay render-only, not editable targets.');
     expect(code).not.toContain('Generated in-betweens are editable');
     expect(css).toContain('.physics-paint-roto-interpolation-status');
   });
 
-  it('wires Roto interpolation controls to callback props', () => {
+  it('gates Roto interpolation controls out of the strict Phase 36.3 Roto strip', () => {
     const code = source();
-    const rotoControlsBlock = code.slice(code.indexOf('physics-paint-roto-interpolation-controls'), code.indexOf('physics-paint-play-controls'));
+    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
 
-    expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange');
-    expect(rotoControlsBlock).toContain('props.onRotoInterpolationCountChange');
-    expect(rotoControlsBlock).toContain('props.onRotoInterpolationModeChange');
-    expect(rotoControlsBlock).toContain('props.onRotoInterpolationMotionChange');
-    expect(rotoControlsBlock).toContain('deform: interpolationDeform > 0 ? 0 : 50');
-    expect(rotoControlsBlock).toContain('position: interpolationPosition > 0 ? 0 : 50');
+    expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
+    expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
+    expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
+    expect(code).toContain('onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void');
+    expect(rotoControlsBlock).not.toContain('physics-paint-roto-interpolation-controls');
+    expect(rotoControlsBlock).not.toContain('props.onRotoInterpolationEnabledChange');
+    expect(rotoControlsBlock).not.toContain('In-betweens');
+    expect(rotoControlsBlock).not.toContain('Deform');
+    expect(rotoControlsBlock).not.toContain('Position');
   });
 
-  it('renders visible Roto key utility controls only inside the Roto strip', () => {
+  it('gates Roto key utility controls out of the strict Phase 36.3 Roto strip', () => {
     const code = source();
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
-    const rotoControlsBlock = code.slice(code.indexOf('physics-paint-roto-key-utilities'), code.indexOf('physics-paint-play-controls'));
-    const playControlsBlock = code.slice(code.indexOf('physics-paint-play-controls'), code.indexOf('props.mode === \'roto\' ? (', code.indexOf('physics-paint-play-controls')));
+    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
 
     for (const contract of [
-      'physics-paint-roto-key-utilities',
-      'Duplicate key',
-      'Insert frame',
-      'Delete frame',
-      'Copy frame',
-      'Paste frame',
       'onDuplicateRotoKey?: () => void',
       'onInsertRotoFrame?: () => void',
       'onDeleteRotoFrame?: () => void',
@@ -198,52 +194,40 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     ]) {
       expect(code).toContain(contract);
     }
-    expect(rotoControlsBlock).toContain('disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey}');
-    expect(rotoControlsBlock).toContain('disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey || !props.hasCopiedRotoKey}');
-    expect(playControlsBlock).not.toContain('physics-paint-roto-key-utilities');
-    expect(css).toContain('.physics-paint-roto-key-utilities');
-    expect(css).toContain('.physics-paint-roto-key-button');
+    expect(rotoControlsBlock).not.toContain('physics-paint-roto-key-utilities');
+    expect(rotoControlsBlock).not.toContain('Duplicate key');
+    expect(rotoControlsBlock).not.toContain('Insert frame');
+    expect(rotoControlsBlock).not.toContain('Delete frame');
+    expect(rotoControlsBlock).not.toContain('Copy frame');
+    expect(rotoControlsBlock).not.toContain('Paste frame');
   });
 
-  it('explains real-key-only utility scope and replace-style Paste behavior', () => {
+  it('keeps real-key utility explanatory copy out of the strict Phase 36.3 Roto strip', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
 
-    expect(code).toContain('getRotoKeyUtilityStatusCopy');
-    expect(code).toContain('Key utilities require a real Roto key; generated in-betweens are render-only.');
-    expect(code).toContain('Paste replaces the current real key; Duplicate, Insert, and Delete ripple real keys only.');
-    expect(code).toContain('Paste is ready and replaces the selected real key without changing timing.');
+    expect(code).not.toContain('getRotoKeyUtilityStatusCopy');
+    expect(rotoControlsBlock).not.toContain('Key utilities require a real Roto key; generated in-betweens are render-only.');
+    expect(rotoControlsBlock).not.toContain('Paste replaces the current real key; Duplicate, Insert, and Delete ripple real keys only.');
+    expect(rotoControlsBlock).not.toContain('Paste is ready and replaces the selected real key without changing timing.');
     expect(code).not.toContain('Generated frames can be moved');
     expect(code).not.toContain('Generated frames can be erased');
     expect(css).toContain('.physics-paint-roto-key-status');
   });
 
-  it('renders compact visible Roto interpolation controls only inside the Roto strip', () => {
+  it('does not render compact Roto interpolation controls in the strict Phase 36.3 Roto strip', () => {
     const code = source();
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
-    const rotoControlsBlock = code.slice(code.indexOf('physics-paint-roto-interpolation-controls'), code.indexOf('physics-paint-play-controls'));
-    const playControlsBlock = code.slice(code.indexOf('physics-paint-play-controls'), code.indexOf('props.mode === \'roto\' ? (', code.indexOf('physics-paint-play-controls')));
+    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
 
-    for (const contract of [
-      'physics-paint-roto-interpolation-controls',
-      'Interpolation',
-      'In-betweens',
-      'Duplicate',
-      'Blend',
-      'Deform',
-      'Position',
-      'onRotoInterpolationEnabledChange?: (enabled: boolean) => void',
-      'onRotoInterpolationCountChange?: (count: number) => void',
-      'onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void',
-      'onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void',
-    ]) {
-      expect(code).toContain(contract);
-    }
-    expect(rotoControlsBlock).toContain('disabled={props.ready === false}');
-    expect(playControlsBlock).not.toContain('physics-paint-roto-interpolation-controls');
-    expect(css).toContain('.physics-paint-roto-interpolation-controls');
-    expect(css).toContain('.physics-paint-roto-interpolation-select');
-    expect(css).toContain('.physics-paint-roto-motion-toggle');
+    expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
+    expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
+    expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
+    expect(code).toContain('onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void');
+    expect(rotoControlsBlock).not.toContain('physics-paint-roto-interpolation-controls');
+    expect(rotoControlsBlock).not.toContain('Interpolation');
+    expect(rotoControlsBlock).not.toContain('In-betweens');
+    expect(rotoControlsBlock).not.toContain('Blend');
   });
 
   it('uses Render play plus a separate Update action for saved Play options', () => {
@@ -392,15 +376,16 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('Cached reference: repaintable, not stroke-editable');
   });
 
-  it('uses Save pending/current copy with pending and ready disabled logic (D-10)', () => {
+  it('uses Save current copy with pending and ready disabled logic for the strict Phase 36.3 Roto surface', () => {
     const code = source();
 
     expect(code).not.toContain('Save roto frame');
     expect(code).toContain('onSavePendingRotoFrames: () => void');
     expect(code).toContain('rotoSaveInFlight?: boolean');
-    expect(code).toContain("hasPendingRotoFrames ? 'Save pending' : 'Save current'");
+    expect(code).toContain('aria-label="Save current"');
+    expect(code).toContain('Save current');
     expect(code).toContain('disabled={props.ready === false || !hasPendingRotoFrames || props.rotoSaveInFlight}');
-    expect(code).toContain('props.onSavePendingRotoFrames');
+    expect(code).toContain('props.onSaveRotoFrame()');
   });
 
   it('keeps current Roto CSS as an outline without adding a fourth fill color', () => {
@@ -436,31 +421,24 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('Clear Play canvas range');
   });
 
-  it('adds cached Roto playback props and a modest Play/Stop transport control without render-all copy', () => {
+  it('keeps cached Roto playback props but hides playback transport from the strict Phase 36.3 Roto strip', () => {
     const code = source();
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
     const rotoControlsIndex = code.indexOf("props.mode === 'roto'");
-    const rotoControlsBlock = code.slice(rotoControlsIndex, rotoControlsIndex + 2600);
+    const rotoControlsBlock = code.slice(rotoControlsIndex, rotoControlsIndex + 2200);
 
     for (const contract of [
       'rotoCachedPlaybackAvailable?: boolean',
       'rotoCachedPlaybackStatus?: string | null',
       'onToggleRotoPlayback?: () => void',
       'isRotoCachedPlaybackActive?: boolean',
-      'physics-paint-roto-transport',
-      'aria-label={props.isRotoCachedPlaybackActive ? \'Stop cached Roto playback\' : \'Play cached Roto frames\'}',
     ]) {
       expect(code).toContain(contract);
     }
-    expect(rotoControlsBlock).toContain('props.isRotoCachedPlaybackActive ? \'Stop\' : \'Play\'');
-    expect(rotoControlsBlock).toContain('props.onToggleRotoPlayback');
-    expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackAvailable');
-    expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackStatus');
-    expect(rotoControlsBlock).toContain('Missing frames play transparent/background');
+    expect(rotoControlsBlock).not.toContain('physics-paint-roto-transport');
+    expect(rotoControlsBlock).not.toContain('Play cached Roto frames');
+    expect(rotoControlsBlock).not.toContain('props.onToggleRotoPlayback');
+    expect(rotoControlsBlock).not.toContain('Missing frames play transparent/background');
     expect(rotoControlsBlock).not.toContain('Render all');
     expect(rotoControlsBlock).not.toContain('Save all');
-    expect(css).toContain('.physics-paint-roto-transport');
-    expect(css).not.toContain('.physics-paint-roto-cell.playing');
-    expect(css).not.toContain('.physics-paint-roto-cell.missing-playback');
   });
 });

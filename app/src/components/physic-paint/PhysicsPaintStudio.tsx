@@ -511,7 +511,6 @@ export function PhysicsPaintStudio() {
   const pendingRotoAdvanceRef = useRef<number | null>(null);
   const dirtyRotoFramesRef = useRef<Set<number>>(new Set());
   const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null);
-  const allowCloseAfterRotoFlushRef = useRef(false);
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
@@ -1153,7 +1152,7 @@ export function PhysicsPaintStudio() {
           addEditableRotoFrame(frame);
         }
         setApplyStatus('applying');
-        setApplyMessage(`Saving roto frame ${frame}...`);
+        setApplyMessage('Saving current frame…');
         setLastError(null);
         const operationId = `${launchContext.operationId}:canvas:${frame}:${Date.now()}`;
         activeOperationIdRef.current = operationId;
@@ -1195,13 +1194,8 @@ export function PhysicsPaintStudio() {
     if (rotoFlushInFlightRef.current || applyStatus === 'applying') return false;
     stopRotoCachedPlayback();
     setCachedRotoPlaybackFrame(null);
-    const previousFrame = currentFrame;
     if (engine && launchContext) {
       snapshotCurrentRotoFrame();
-      if (frame !== previousFrame && dirtyRotoFramesRef.current.has(previousFrame)) {
-        setApplyMessage(`Saving roto frame ${previousFrame} before moving to ${frame}...`);
-        await flushRotoFrame(previousFrame);
-      }
       const nextState = rotoFrameStatesRef.current.get(frame);
       if (nextState) {
         engine.load(nextState);
@@ -1214,7 +1208,7 @@ export function PhysicsPaintStudio() {
     await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
     setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
     return true;
-  }, [applyStatus, bridgeMode, currentFrame, engine, flushRotoFrame, launchContext, snapshotCurrentRotoFrame, stopRotoCachedPlayback]);
+  }, [applyStatus, bridgeMode, engine, launchContext, snapshotCurrentRotoFrame, stopRotoCachedPlayback]);
 
   const previewLocalPlayFrame = useCallback((frame: number) => {
     capturePendingPlayFrameEdits();
@@ -1274,7 +1268,7 @@ export function PhysicsPaintStudio() {
           if (synced) setApplyMessage(`Saved roto frame ${frame}. Advanced to frame ${nextFrame}.`);
         });
       } else {
-        setApplyMessage(`Saved roto frame ${frame}.`);
+        setApplyMessage('Saved current frame');
       }
     }
   }, [canvasHeight, canvasWidth, navigateToSyncedFrame, syncPendingRotoFrames]);
@@ -1322,10 +1316,6 @@ export function PhysicsPaintStudio() {
   }, [bridgeMode, handleApplyResult]);
 
   const saveRotoFrame = useCallback(async (advanceToFrame: number | null = null) => {
-    // flushRotoFrame preserves the former save path:
-    // const renderedFrame = buildRotoOutputFrame(engine, currentFrame)
-    // rotoPreviewFramesRef.current.set(currentFrame, buildRotoOnionPreviewFrame(engine, currentFrame))
-    // renderedFrame,
     if (!readyToApply) return null;
     snapshotCurrentRotoFrame();
     dirtyRotoFramesRef.current.add(currentFrame);
@@ -1484,11 +1474,6 @@ export function PhysicsPaintStudio() {
       return null;
     }
   }, [actionContext, capturePendingPlayFrameEdits, currentFrame, framesToApply, playWiggle, previewFps, readyToApply, settings, startApplyTimeout]);
-
-  const saveRotoFrameAndAdvance = useCallback(async () => {
-    if (!launchContext) return;
-    await saveRotoFrame(currentFrame + 1);
-  }, [currentFrame, launchContext, saveRotoFrame]);
 
   const savePendingRotoFrames = useCallback(async () => {
     snapshotCurrentRotoFrame();
@@ -1842,25 +1827,14 @@ export function PhysicsPaintStudio() {
     }
   }, [actionContext, currentFrame, framesToApply, playWiggle, settings, startApplyTimeout]);
 
-  const flushCurrentRotoFrameBeforeClose = useCallback(async () => {
-    if (workflowMode !== 'roto') return null;
-    snapshotCurrentRotoFrame();
-    if (!dirtyRotoFramesRef.current.has(currentFrame)) return null;
-    return flushRotoFrame(currentFrame, { force: true });
-  }, [currentFrame, flushRotoFrame, snapshotCurrentRotoFrame, workflowMode]);
-
   useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (allowCloseAfterRotoFlushRef.current) return;
-      void flushCurrentRotoFrameBeforeClose();
-      if (workflowMode === 'roto' && dirtyRotoFramesRef.current.has(currentFrame)) {
-        event.preventDefault();
-        event.returnValue = '';
-      }
+    const handleBeforeUnload = (_event: BeforeUnloadEvent) => {
+      if (workflowMode !== 'roto') return;
+      snapshotCurrentRotoFrame();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [currentFrame, flushCurrentRotoFrameBeforeClose, workflowMode]);
+  }, [snapshotCurrentRotoFrame, workflowMode]);
 
   useEffect(() => {
     let disposed = false;
@@ -1870,13 +1844,9 @@ export function PhysicsPaintStudio() {
         const windowApi = await import('@tauri-apps/api/window');
         const appWindow = windowApi.getCurrentWindow();
         if (typeof appWindow.onCloseRequested !== 'function') return;
-        unlisten = await appWindow.onCloseRequested(async (event) => {
-          if (allowCloseAfterRotoFlushRef.current) return;
-          event.preventDefault();
-          await flushCurrentRotoFrameBeforeClose();
-          if (disposed) return;
-          allowCloseAfterRotoFlushRef.current = true;
-          await appWindow.close();
+        unlisten = await appWindow.onCloseRequested(async () => {
+          if (disposed || workflowMode !== 'roto') return;
+          snapshotCurrentRotoFrame();
         });
         if (disposed) unlisten?.();
       } catch (error) {
@@ -1888,7 +1858,7 @@ export function PhysicsPaintStudio() {
       disposed = true;
       unlisten?.();
     };
-  }, [flushCurrentRotoFrameBeforeClose]);
+  }, [snapshotCurrentRotoFrame, workflowMode]);
 
   const handlePhysicsPaintKeyDown = useCallback((event: KeyboardEvent) => {
     if (!isPhysicsPaintShortcutTarget(event.target)) return;
@@ -1910,7 +1880,7 @@ export function PhysicsPaintStudio() {
     if (meta && key === 's') {
       event.preventDefault();
       if (workflowMode === 'play') void savePlay();
-      else void saveRotoFrameAndAdvance();
+      else void saveRotoFrame(null);
       return;
     }
     if (event.key === '?' || (event.shiftKey && event.key === '/')) {
@@ -1946,32 +1916,7 @@ export function PhysicsPaintStudio() {
       }
       if (meta && event.key === 'Enter') {
         event.preventDefault();
-        void saveRotoFrameAndAdvance();
-        return;
-      }
-      if (meta && key === 'd') {
-        event.preventDefault();
-        duplicateRotoKey();
-        return;
-      }
-      if (key === 'i') {
-        event.preventDefault();
-        insertRotoFrame();
-        return;
-      }
-      if (meta && key === 'c') {
-        event.preventDefault();
-        copyRotoFrame();
-        return;
-      }
-      if (meta && key === 'v') {
-        event.preventDefault();
-        pasteRotoFrame();
-        return;
-      }
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        event.preventDefault();
-        deleteRotoFrame();
+        void saveRotoFrame(null);
         return;
       }
     }
@@ -1982,7 +1927,7 @@ export function PhysicsPaintStudio() {
       else if (!savedPlayCacheDirty && getCachedPlayFramesForRange(framesToApply)) playPreview(framesToApply);
       else void savePlay();
     }
-  }, [copyRotoFrame, currentFrame, deleteRotoFrame, duplicateRotoKey, framesToApply, insertRotoFrame, isPlaying, navigateToSyncedFrame, pasteRotoFrame, playPreview, savePlay, saveRotoFrameAndAdvance, savedPlayCacheDirty, savedRotoFrames, stopPreview, undo, workflowMode]);
+  }, [currentFrame, framesToApply, isPlaying, navigateToSyncedFrame, playPreview, savePlay, saveRotoFrame, savedPlayCacheDirty, savedRotoFrames, stopPreview, undo, workflowMode]);
 
   const onionPreviewFrames = buildOnionPreviewFrames().filter((frame) => (
     (frame.direction === 'previous' && onion.previous) || (frame.direction === 'next' && onion.next)
@@ -2209,7 +2154,7 @@ export function PhysicsPaintStudio() {
           onionPreviewFrames={onionPreviewFrames}
           showOnionHiddenDuringPreview={onion.enabled && isPlaying}
           missingPlayFramesForConversion={missingPlayFramesForConversion}
-          onSaveRotoFrame={saveRotoFrameAndAdvance}
+          onSaveRotoFrame={() => { void saveRotoFrame(null); }}
           onSavePendingRotoFrames={savePendingRotoFrames}
           onSavePlay={savePlay}
           onUpdatePlayOptions={updateSelectedPlayOptions}
@@ -2232,7 +2177,7 @@ export function PhysicsPaintStudio() {
           <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">
             <strong>Physics Paint shortcuts</strong>
             <span>Cmd+Z undo · Cmd+S save active workflow · Esc stop preview · ? help</span>
-            <span>Roto: arrows navigate · O onion · [ ] onion count · Cmd+Enter save and next · Duplicate key · Insert frame · Delete frame · Copy frame · Paste frame</span>
+            <span>Roto: arrows navigate · O onion · [ ] onion count · Save current caches the painted frame</span>
             <span>Play: Space/Enter preview · Cmd+S save play</span>
           </aside>
         ) : null}

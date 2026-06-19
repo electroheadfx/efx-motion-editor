@@ -114,8 +114,8 @@ export function getRotoCellFill(
 }
 
 export function getRotoPendingLabel(hasPending: boolean, isSaving: boolean): string | null {
-  if (isSaving) return 'Saving Roto frame...';
-  if (hasPending) return 'Unsaved Roto frame pending';
+  if (isSaving) return 'Saving current frame…';
+  if (hasPending) return 'Unsaved changes — click Save current to cache';
   return null;
 }
 

@@ -1,4 +1,4 @@
-import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play as PlayIcon, Square } from 'lucide-preact';
+import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Square } from 'lucide-preact';
 
 // Source contract: a one-frame Play gap opened at frame 11 yields buildPlayFrameCells(11, 1) === [11].
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -150,19 +150,6 @@ function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
   return 'roto-fill-editable-session';
 }
 
-function getRotoInterpolationStatusCopy(realKeyCount: number, enabled: boolean, generatedCount: number): string {
-  if (realKeyCount < 2) return 'Interpolation needs two real Roto keys.';
-  if (!enabled) return 'Enable interpolation to generate render-only in-betweens between real keys.';
-  if (generatedCount > 0) return 'Generated in-betweens are render-only; connector lines mark interpolation spans.';
-  return 'Generated in-betweens stay render-only, not editable targets.';
-}
-
-function getRotoKeyUtilityStatusCopy(isRealKey: boolean, hasCopiedKey: boolean): string {
-  if (!isRealKey) return 'Key utilities require a real Roto key; generated in-betweens are render-only.';
-  if (hasCopiedKey) return 'Paste is ready and replaces the selected real key without changing timing.';
-  return 'Paste replaces the current real key; Duplicate, Insert, and Delete ripple real keys only.';
-}
-
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   const [confirmation, setConfirmation] = useState<PhysicsPaintWorkflowConfirmation | null>(null);
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
@@ -188,16 +175,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const hasPendingRotoFrames = pendingRotoFrameSet.size > 0;
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames, props.editableRotoFrames);
   const rotoPendingLabel = getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight));
-  const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 0, mode: 'duplicate' as const, deform: 0, position: 0 };
-  const interpolationEnabled = interpolationSettings.enabled === true;
-  const interpolationCount = Math.max(0, Math.trunc(Number(interpolationSettings.inBetweenCount ?? 0) || 0));
-  const interpolationMode = interpolationSettings.mode === 'blend' ? 'blend' : 'duplicate';
-  const interpolationDeform = Math.max(0, Math.trunc(Number(interpolationSettings.deform ?? 0) || 0));
-  const interpolationPosition = Math.max(0, Math.trunc(Number(interpolationSettings.position ?? 0) || 0));
-  const generatedRotoFrameCount = (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'generated-interpolation').length;
-  const interpolationStatusCopy = getRotoInterpolationStatusCopy(realRotoFrames.length, interpolationEnabled, generatedRotoFrameCount);
-  const currentRotoUtilityTargetIsRealKey = realRotoFrames.includes(props.currentFrame);
-  const rotoKeyUtilityStatusCopy = getRotoKeyUtilityStatusCopy(currentRotoUtilityTargetIsRealKey, Boolean(props.hasCopiedRotoKey));
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
   const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
@@ -219,7 +196,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       renderPlayFrames();
       return;
     }
-    props.onSavePendingRotoFrames();
+    props.onSaveRotoFrame();
   }
 
   function renderPlayFrames() {
@@ -337,77 +314,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <output class="physics-paint-current-frame">{props.currentFrame}</output>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
-              <button
-                type="button"
-                class={`physics-paint-roto-transport ${props.isRotoCachedPlaybackActive ? 'active' : ''}`}
-                aria-label={props.isRotoCachedPlaybackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'}
-                title="Play cached Roto frames only. Missing frames play transparent/background."
-                disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || !props.onToggleRotoPlayback}
-                onClick={props.onToggleRotoPlayback}
-              >
-                {props.isRotoCachedPlaybackActive ? <Square size={13} /> : <PlayIcon size={13} />}
-                <span>{props.isRotoCachedPlaybackActive ? 'Stop' : 'Play'}</span>
-              </button>
-              <span class="physics-paint-roto-playback-status" role="status">
-                {props.rotoCachedPlaybackStatus ?? 'Missing frames play transparent/background'}
-              </span>
-              <div class="physics-paint-roto-key-utilities" aria-label="Roto key utility controls">
-                <button type="button" class="physics-paint-roto-key-button" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey} onClick={props.onDuplicateRotoKey}>Duplicate key</button>
-                <button type="button" class="physics-paint-roto-key-button" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey} onClick={props.onInsertRotoFrame}>Insert frame</button>
-                <button type="button" class="physics-paint-roto-key-button destructive" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey} onClick={props.onDeleteRotoFrame}>Delete frame</button>
-                <button type="button" class="physics-paint-roto-key-button" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey} onClick={props.onCopyRotoFrame}>Copy frame</button>
-                <button type="button" class="physics-paint-roto-key-button" disabled={props.ready === false || !currentRotoUtilityTargetIsRealKey || !props.hasCopiedRotoKey} onClick={props.onPasteRotoFrame}>Paste frame</button>
-              </div>
-              <div class="physics-paint-roto-interpolation-controls" aria-label="Roto interpolation controls">
-                <label class="physics-paint-roto-interpolation-toggle">
-                  <input
-                    type="checkbox"
-                    checked={interpolationEnabled}
-                    disabled={props.ready === false}
-                    onChange={(event) => props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked)}
-                  />
-                  <span>Interpolation</span>
-                </label>
-                <label class="physics-paint-roto-interpolation-count" for="physics-roto-interpolation-count">
-                  <span>In-betweens</span>
-                  <input
-                    id="physics-roto-interpolation-count"
-                    type="number"
-                    min={0}
-                    value={interpolationCount}
-                    disabled={props.ready === false || !interpolationEnabled}
-                    onInput={(event) => props.onRotoInterpolationCountChange?.(Math.max(0, Math.trunc(Number((event.currentTarget as HTMLInputElement).value) || 0)))}
-                  />
-                </label>
-                <select
-                  class="physics-paint-roto-interpolation-select"
-                  aria-label="Roto interpolation mode"
-                  value={interpolationMode}
-                  disabled={props.ready === false || !interpolationEnabled}
-                  onChange={(event) => props.onRotoInterpolationModeChange?.((event.currentTarget as HTMLSelectElement).value === 'blend' ? 'blend' : 'duplicate')}
-                >
-                  <option value="duplicate">Duplicate</option>
-                  <option value="blend">Blend</option>
-                </select>
-                <button
-                  type="button"
-                  class={`physics-paint-roto-motion-toggle ${interpolationDeform > 0 ? 'active' : ''}`}
-                  aria-pressed={interpolationDeform > 0}
-                  disabled={props.ready === false || !interpolationEnabled}
-                  onClick={() => props.onRotoInterpolationMotionChange?.({ deform: interpolationDeform > 0 ? 0 : 50, position: interpolationPosition })}
-                >
-                  Deform
-                </button>
-                <button
-                  type="button"
-                  class={`physics-paint-roto-motion-toggle ${interpolationPosition > 0 ? 'active' : ''}`}
-                  aria-pressed={interpolationPosition > 0}
-                  disabled={props.ready === false || !interpolationEnabled}
-                  onClick={() => props.onRotoInterpolationMotionChange?.({ deform: interpolationDeform, position: interpolationPosition > 0 ? 0 : 50 })}
-                >
-                  Position
-                </button>
-              </div>
             </div>
           ) : (
             <div class="physics-paint-mode-controls physics-paint-play-controls">
@@ -434,8 +340,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             </div>
           )}
           {props.mode === 'roto' ? (
-            <button class="physics-paint-render-action" title="Flush unsaved Roto frame changes" aria-label={hasPendingRotoFrames ? 'Save pending' : 'Save current'} disabled={props.ready === false || !hasPendingRotoFrames || props.rotoSaveInFlight} onClick={handlePrimaryAction}>
-              {hasPendingRotoFrames ? 'Save pending' : 'Save current'}
+            <button class="physics-paint-render-action" title="Save the current Roto frame" aria-label="Save current" disabled={props.ready === false || !hasPendingRotoFrames || props.rotoSaveInFlight} onClick={handlePrimaryAction}>
+              Save current
             </button>
           ) : null}
         </div>
@@ -509,10 +415,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
       {props.mode === 'roto' ? (
         <div class="physics-paint-roto-status-stack">
-          <p class="physics-paint-roto-key-status">{rotoKeyUtilityStatusCopy}</p>
-          <p class="physics-paint-roto-interpolation-status">
-            {rotoPendingLabel ?? (currentRotoFill === 'cached-only' ? 'Cached reference: repaintable, not stroke-editable. ' : '')}{interpolationStatusCopy}
-          </p>
+          {rotoPendingLabel ? <p class="physics-paint-roto-key-status">{rotoPendingLabel}</p> : null}
+          {currentRotoFill === 'cached-only' ? (
+            <>
+              <p class="physics-paint-roto-key-status">Cached reference</p>
+              <p class="physics-paint-roto-interpolation-status">Cached reference: repaintable, not stroke-editable.</p>
+            </>
+          ) : null}
+          {props.playPublicationSummary ? <p class="physics-paint-roto-interpolation-status">{props.playPublicationSummary}</p> : null}
+          {props.statusMessage ? <p class="physics-paint-roto-interpolation-status">{props.statusMessage}</p> : null}
         </div>
       ) : null}
 

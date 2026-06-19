@@ -1,6 +1,6 @@
 import { exists, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
 import type { McePhysicPaintOutput, RuntimePhysicPaintOutput } from '../types/project';
-import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
+import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../types/physicPaint';
 
 const PHYSIC_PAINT_CACHE_DIR = 'cache/physic-paint';
 const DATA_URL_PREFIX = 'data:image/png;base64,';
@@ -65,6 +65,7 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
     await ensureDir(layerDir);
 
     const frames: McePhysicPaintOutput['frames'] = [];
+    const cachePathsByAppFrame = new Map<number, string>();
     for (const frame of output.frames) {
       const bytes = decodePngDataUrl(frame.dataUrl);
       if (!bytes) {
@@ -76,11 +77,22 @@ export async function savePhysicPaintData(projectDir: string, outputs: RuntimePh
       await writeFile(`${projectDir}/${cachePath}`, bytes);
       const { dataUrl: _dataUrl, ...metadata } = frame;
       frames.push({ ...metadata, cache_path: cachePath });
+      cachePathsByAppFrame.set(frame.appFrame, cachePath);
     }
+
+    const rotoCacheMetadata = Array.isArray(output.roto_cache_metadata)
+      ? output.roto_cache_metadata.map((candidate) => {
+          const cachePath = cachePathsByAppFrame.get(candidate.appFrame);
+          const runtimeCandidate = candidate as PhysicPaintRenderedFrame & typeof candidate;
+          const { dataUrl: _dataUrl, ...metadata } = runtimeCandidate;
+          return cachePath ? { ...metadata, cache_path: cachePath } : metadata;
+        })
+      : undefined;
 
     persistedOutputs.push({
       ...output,
       frames,
+      ...(rotoCacheMetadata ? { roto_cache_metadata: rotoCacheMetadata } : {}),
     });
   }
 
@@ -97,23 +109,38 @@ export async function loadPhysicPaintData(projectDir: string, outputs: McePhysic
     if (!output || typeof output.layer_id !== 'string' || !Array.isArray(output.frames)) continue;
 
     const frames: PhysicPaintRenderedFrame[] = [];
+    const dataUrlsByCachePath = new Map<string, string>();
 
     for (const frame of output.frames) {
       try {
         const bytes = await readFile(`${projectDir}/${frame.cache_path}`);
+        const dataUrl = encodePngDataUrl(bytes);
+        dataUrlsByCachePath.set(frame.cache_path, dataUrl);
         const { cache_path: _cachePath, ...metadata } = frame;
         frames.push({
           ...metadata,
-          dataUrl: encodePngDataUrl(bytes),
+          dataUrl,
         });
       } catch (err) {
         console.error(`Failed to load physics paint frame ${frame.cache_path} (non-fatal):`, err);
       }
     }
 
+    const rotoCacheMetadata: PhysicPaintRotoCacheFrame[] | undefined = Array.isArray(output.roto_cache_metadata)
+      ? output.roto_cache_metadata.flatMap((candidate) => {
+          const cachePath = candidate.cache_path;
+          const dataUrl = typeof cachePath === 'string' ? dataUrlsByCachePath.get(cachePath) : undefined;
+          if (!dataUrl) return [];
+          const { cache_path: _cachePath, ...metadata } = candidate;
+          return [{ ...metadata, dataUrl }];
+        })
+      : undefined;
+
+    const { frames: _persistedFrames, roto_cache_metadata: _persistedRotoCacheMetadata, ...metadata } = output;
     hydratedOutputs.push({
-      ...output,
+      ...metadata,
       frames,
+      ...(rotoCacheMetadata ? { roto_cache_metadata: rotoCacheMetadata } : {}),
     });
   }
 

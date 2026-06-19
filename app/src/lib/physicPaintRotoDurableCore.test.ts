@@ -7,7 +7,7 @@ import { defaultTransform } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from '../stores/physicPaintStore';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext } from '../types/physicPaint';
-import type { RuntimePhysicPaintOutput } from '../types/project';
+import type { McePhysicPaintOutput, RuntimePhysicPaintOutput } from '../types/project';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, applyPhysicPaintPayload, createPhysicPaintLaunchContext } from './physicPaintBridge';
 import { loadPhysicPaintData, savePhysicPaintData } from './physicPaintPersistence';
 
@@ -43,8 +43,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async () => () => {}),
-  emit: vi.fn(async () => {}),
-  emitTo: vi.fn(async () => {}),
 }));
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async () => null),
@@ -83,30 +81,30 @@ vi.mock('@efxlab/efx-physic-paint/animation', () => ({
 }));
 
 interface TestPaintEngine {
-  save: ReturnType<typeof vi.fn<[], SerializedProject>>;
-  load: ReturnType<typeof vi.fn<[SerializedProject], void>>;
-  clear: ReturnType<typeof vi.fn<[], void>>;
-  exportCompositeCanvas: ReturnType<typeof vi.fn<[], { width: number; height: number; toDataURL: () => string }>>;
-  setBackgroundImageUrl: ReturnType<typeof vi.fn<[string], void>>;
-  resetBackground: ReturnType<typeof vi.fn<[], void>>;
-  getStrokeCount: ReturnType<typeof vi.fn<[], number>>;
-  setTool: ReturnType<typeof vi.fn>;
-  setPhysicsMode: ReturnType<typeof vi.fn>;
-  setColorHex: ReturnType<typeof vi.fn>;
-  setBrushOpacity: ReturnType<typeof vi.fn>;
-  setBrushSize: ReturnType<typeof vi.fn>;
-  setBgMode: ReturnType<typeof vi.fn>;
-  setPaperGrain: ReturnType<typeof vi.fn>;
-  setEmbossStrength: ReturnType<typeof vi.fn>;
-  setEdgeDetail: ReturnType<typeof vi.fn>;
-  setPickup: ReturnType<typeof vi.fn>;
-  setLocalSpreadStrength: ReturnType<typeof vi.fn>;
-  setAntiAlias: ReturnType<typeof vi.fn>;
-  setEraseStrength: ReturnType<typeof vi.fn>;
-  startPhysics: ReturnType<typeof vi.fn>;
-  stopPhysics: ReturnType<typeof vi.fn>;
-  forceDry: ReturnType<typeof vi.fn>;
-  undo: ReturnType<typeof vi.fn>;
+  save: () => SerializedProject;
+  load: (state: SerializedProject) => void;
+  clear: () => void;
+  exportCompositeCanvas: () => { width: number; height: number; toDataURL: () => string };
+  setBackgroundImageUrl: (dataUrl: string) => void;
+  resetBackground: () => void;
+  getStrokeCount: () => number;
+  setTool: (...args: unknown[]) => void;
+  setPhysicsMode: (...args: unknown[]) => void;
+  setColorHex: (...args: unknown[]) => void;
+  setBrushOpacity: (...args: unknown[]) => void;
+  setBrushSize: (...args: unknown[]) => void;
+  setBgMode: (mode: string) => void;
+  setPaperGrain: (...args: unknown[]) => void;
+  setEmbossStrength: (...args: unknown[]) => void;
+  setEdgeDetail: (...args: unknown[]) => void;
+  setPickup: (...args: unknown[]) => void;
+  setLocalSpreadStrength: (...args: unknown[]) => void;
+  setAntiAlias: (...args: unknown[]) => void;
+  setEraseStrength: (...args: unknown[]) => void;
+  startPhysics: (...args: unknown[]) => void;
+  stopPhysics: (...args: unknown[]) => void;
+  forceDry: () => void;
+  undo: () => void;
   __setState: (state: SerializedProject, dataUrl: string) => void;
 }
 
@@ -574,10 +572,13 @@ describe('Phase 36.3 durable Roto cache core', () => {
     if (applyPayloads.length !== 1) failures.push(`expected exactly one apply-canvas payload after Save current, got ${applyPayloads.length}`);
     const payload = applyPayloads[0];
     if (payload) {
-      if (payload.kind !== 'apply-canvas') failures.push(`expected apply-canvas payload, got ${payload.kind}`);
-      if (payload.layerId !== 'phys-layer-1') failures.push(`expected payload for phys-layer-1, got ${payload.layerId}`);
-      if (payload.startFrame !== 8) failures.push(`expected payload for app frame 8, got ${payload.startFrame}`);
-      if (payload.renderedFrame.dataUrl !== savedDataUrl) failures.push('expected the first saved PNG to be the durable rendered output');
+      if (payload.kind !== 'apply-canvas') {
+        failures.push(`expected apply-canvas payload, got ${payload.kind}`);
+      } else {
+        if (payload.layerId !== 'phys-layer-1') failures.push(`expected payload for phys-layer-1, got ${payload.layerId}`);
+        if (payload.startFrame !== 8) failures.push(`expected payload for app frame 8, got ${payload.startFrame}`);
+        if (payload.renderedFrame.dataUrl !== savedDataUrl) failures.push('expected the first saved PNG to be the durable rendered output');
+      }
     }
 
     const savedFrame = physicPaintStore.getFrame('phys-layer-1', 8);
@@ -586,7 +587,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
 
     const runtimeOutputs = physicPaintStore.toMceOutputs() as RuntimePhysicPaintOutput[];
     const persistedOutputs = await savePhysicPaintData('/project', runtimeOutputs);
-    const persisted = persistedOutputs[0] as RuntimePhysicPaintOutput & { roto_cache_metadata?: Array<{ appFrame: number; source?: string; dataUrl?: string; cache_path?: string }> };
+    const persisted = persistedOutputs[0] as McePhysicPaintOutput;
     if (!persisted?.frames[0] || !('cache_path' in persisted.frames[0])) failures.push('expected persisted frame 8 to use a cache_path PNG file');
     if (JSON.stringify(persistedOutputs).includes('data:image/png')) failures.push('expected persisted Physics Paint outputs to omit inline PNG data URLs everywhere');
     const cachePath = persisted?.frames[0] && 'cache_path' in persisted.frames[0] ? persisted.frames[0].cache_path : null;
@@ -595,7 +596,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
 
     const hydratedOutputs = await loadPhysicPaintData('/project', persistedOutputs);
     physicPaintStore.reset();
-    physicPaintStore.loadFromMceOutputs(hydratedOutputs);
+    if (!hydratedOutputs) failures.push('expected persisted Physics Paint outputs to hydrate');
+    else physicPaintStore.loadFromMceOutputs(hydratedOutputs);
     const hydratedFrame = physicPaintStore.getFrame('phys-layer-1', 8);
     if (!hydratedFrame?.dataUrl.startsWith('data:image/png')) failures.push('expected loadPhysicPaintData hydration to restore a runtime data:image/png frame for app frame 8');
 

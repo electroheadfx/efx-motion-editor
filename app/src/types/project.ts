@@ -1,5 +1,5 @@
 import type {MceAudioTrack} from './audio';
-import type {PhysicPaintPlayMotionSettings, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintWorkflowMetadata} from './physicPaint';
+import type {PhysicPaintPlayMotionSettings, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintWorkflowMetadata} from './physicPaint';
 
 /** Legacy type -- used by project_get_default */
 export interface ProjectData {
@@ -42,6 +42,10 @@ export interface McePhysicPaintCachedFrame {
   height?: number;
 }
 
+export type McePhysicPaintRotoCachedFrame = Omit<PhysicPaintRotoCacheFrame, 'dataUrl'> & {
+  cache_path?: string;
+};
+
 export interface McePhysicPaintOutput {
   layer_id: string;
   frames: McePhysicPaintCachedFrame[];
@@ -52,10 +56,14 @@ export interface McePhysicPaintOutput {
   play_frame_count?: number;
   editable_source?: PhysicPaintWorkflowMetadata['editableSource'];
   play_motion?: PhysicPaintPlayMotionSettings;
+  roto_cache_metadata?: McePhysicPaintRotoCachedFrame[];
+  roto_interpolation_settings?: PhysicPaintRotoInterpolationSettings;
+  roto_background?: PhysicPaintRotoBackgroundMetadata;
 }
 
-export type RuntimePhysicPaintOutput = Omit<McePhysicPaintOutput, 'frames'> & {
+export type RuntimePhysicPaintOutput = Omit<McePhysicPaintOutput, 'frames' | 'roto_cache_metadata'> & {
   frames: PhysicPaintRenderedFrame[];
+  roto_cache_metadata?: PhysicPaintRotoCacheFrame[];
 };
 
 /** Sequence definition within a project file */
