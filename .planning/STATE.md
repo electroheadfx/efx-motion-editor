@@ -5,8 +5,8 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.3
 current_phase_name: Physics Paint Roto Durable Core Recovery
 status: planned_recovery
-stopped_at: Phase 36.3 context gathered
-last_updated: "2026-06-19T07:59:06.729Z"
+stopped_at: Phase 36.3 UI-SPEC approved
+last_updated: "2026-06-19T08:28:39.069Z"
 last_activity: 2026-06-19
 last_activity_desc: failed history preserved on backup/broken-36.2-gap-execution-20260618; 36.2-11 through 36.2-13 closed as rejected/superseded summaries
 progress:
@@ -139,6 +139,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T07:59:06.723Z
-Stopped at: Phase 36.3 context gathered
-Resume file: .planning/phases/36.3-physics-paint-roto-durable-core-recovery/36.3-CONTEXT.md
+Last session: 2026-06-19T08:28:39.064Z
+Stopped at: Phase 36.3 UI-SPEC approved
+Resume file: .planning/phases/36.3-physics-paint-roto-durable-core-recovery/36.3-UI-SPEC.md
