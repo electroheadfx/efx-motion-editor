@@ -37,6 +37,13 @@ function encodePngDataUrl(bytes: Uint8Array): string {
   return DATA_URL_PREFIX + btoa(binary);
 }
 
+function isSafePhysicPaintCachePath(cachePath: unknown): cachePath is string {
+  if (typeof cachePath !== 'string') return false;
+  if (!cachePath.startsWith(`${PHYSIC_PAINT_CACHE_DIR}/`)) return false;
+  if (cachePath.includes('\\')) return false;
+  return cachePath.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
+}
+
 async function ensureDir(path: string): Promise<void> {
   if (!(await exists(path))) {
     await mkdir(path, { recursive: true });
@@ -112,6 +119,7 @@ export async function loadPhysicPaintData(projectDir: string, outputs: McePhysic
     const dataUrlsByCachePath = new Map<string, string>();
 
     for (const frame of output.frames) {
+      if (!isSafePhysicPaintCachePath(frame.cache_path)) continue;
       try {
         const bytes = await readFile(`${projectDir}/${frame.cache_path}`);
         const dataUrl = encodePngDataUrl(bytes);

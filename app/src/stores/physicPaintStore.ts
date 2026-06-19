@@ -172,10 +172,11 @@ function clampPercentLikeCount(value: unknown): number {
 }
 
 function _getRealRotoKeyFrames(layerId: string): number[] {
-  const layerFrames = _frames.get(layerId) ?? new Map<number, PhysicPaintRenderedFrame>();
-  return Array.from(layerFrames.entries())
-    .filter(([, frame]) => frame.source !== 'generated-interpolation')
-    .map(([frame]) => frame)
+  const metadata = _rotoCacheMetadata.get(layerId);
+  if (!metadata) return [];
+  return Array.from(metadata.values())
+    .filter((frame) => frame.source === 'real-key')
+    .map((frame) => frame.appFrame)
     .sort((a, b) => a - b);
 }
 
@@ -640,6 +641,25 @@ export const physicPaintStore = {
       layerId: payload.layerId,
       startFrame: payload.startFrame,
       appliedFrameCount: 1,
+      ok: true,
+    };
+  },
+
+  deleteRotoFrame(payload: Extract<PhysicPaintApplyPayload, { kind: 'delete-roto-frame' }>): PhysicPaintApplyResult {
+    if (!isPhysicPaintApplyPayload(payload)) {
+      return _errorResult(payload, 'Invalid physics paint delete payload');
+    }
+    if (payload.kind !== 'delete-roto-frame') {
+      return _errorResult(payload, 'Expected delete-roto-frame payload');
+    }
+
+    this.removeRealRotoKeyFrame(payload.layerId, payload.startFrame);
+    return {
+      operationId: payload.operationId,
+      kind: payload.kind,
+      layerId: payload.layerId,
+      startFrame: payload.startFrame,
+      appliedFrameCount: 0,
       ok: true,
     };
   },

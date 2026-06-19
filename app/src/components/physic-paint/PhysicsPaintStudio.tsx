@@ -1171,9 +1171,33 @@ export function PhysicsPaintStudio() {
         ? liveState
         : rotoFrameStatesRef.current.get(frame);
       if (!editableState || !shouldPersistRotoFrame(editableState)) {
-        dirtyRotoFramesRef.current.delete(frame);
-        syncPendingRotoFrames();
-        return null;
+        try {
+          setApplyStatus('applying');
+          setApplyMessage('Saving current frame…');
+          setLastError(null);
+          const operationId = `${launchContext.operationId}:delete-roto:${frame}:${Date.now()}`;
+          activeOperationIdRef.current = operationId;
+          pendingRotoAdvanceRef.current = options.advanceToFrame ?? null;
+          const payload: PhysicPaintApplyPayload = {
+            operationId,
+            kind: 'delete-roto-frame',
+            layerId: launchContext.layerId,
+            startFrame: frame,
+          };
+          await sendPhysicPaintApplyPayload(payload, bridgeMode);
+          dirtyRotoFramesRef.current.delete(frame);
+          syncPendingRotoFrames();
+          startApplyTimeout(operationId);
+          return payload;
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          const message = `Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. ${detail}`;
+          setApplyStatus('error');
+          setApplyMessage(message);
+          setLastError(message);
+          pendingRotoAdvanceRef.current = null;
+          return null;
+        }
       }
 
       try {

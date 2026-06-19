@@ -73,6 +73,30 @@ describe('physicPaintPersistence', () => {
     });
   });
 
+  it('skips unsafe persisted cache paths while loading project data', async () => {
+    files.set('/secret.png', new Uint8Array([1, 2, 3]));
+    files.set('/project/cache/physic-paint/physic_layer_1/frame-000012-0000.png', new Uint8Array([4, 5, 6]));
+
+    const hydrated = await loadPhysicPaintData('/project', [{
+      layer_id: 'physic layer/1',
+      frames: [
+        { frameIndex: 0, appFrame: 10, cache_path: '../secret.png', width: 100, height: 50 },
+        { frameIndex: 0, appFrame: 11, cache_path: '/secret.png', width: 100, height: 50 },
+        { frameIndex: 0, appFrame: 12, cache_path: 'cache/physic-paint/physic_layer_1/frame-000012-0000.png', width: 100, height: 50 },
+      ],
+      roto_cache_metadata: [
+        { frameIndex: 0, appFrame: 10, cache_path: '../secret.png', width: 100, height: 50, source: 'real-key' },
+        { frameIndex: 0, appFrame: 12, cache_path: 'cache/physic-paint/physic_layer_1/frame-000012-0000.png', width: 100, height: 50, source: 'real-key' },
+      ],
+      workflow_mode: 'roto',
+      editable_source: 'roto',
+    }]);
+
+    expect(hydrated?.[0].frames.map((frame) => frame.appFrame)).toEqual([12]);
+    expect(hydrated?.[0].roto_cache_metadata?.map((frame) => frame.appFrame)).toEqual([12]);
+    expect(hydrated?.[0].frames[0].dataUrl).toBe('data:image/png;base64,BAUG');
+  });
+
   it('skips malformed outputs without frames while loading old project data', async () => {
     const persisted = await savePhysicPaintData('/project', makeOutput());
     const malformed = { layer_id: 'broken-layer', workflow_mode: 'play' } as never;

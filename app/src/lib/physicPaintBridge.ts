@@ -76,18 +76,23 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
 
   try {
     if (deliveredOperationIds.has(payload.operationId)) {
-      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.kind === 'update-play-render-options' ? 0 : payload.frames.length);
+      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'delete-roto-frame' ? 0 : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.kind === 'update-play-render-options' ? 0 : payload.frames.length);
     }
 
-    const result = payload.kind === 'apply-canvas'
-      ? physicPaintStore.applyCanvas(payload)
-      : payload.kind === 'apply-play-canvas'
-        ? physicPaintStore.applySequence(payload)
-        : payload.kind === 'convert-play-to-roto'
-          ? physicPaintStore.convertPlayToRoto(payload)
-          : payload.kind === 'convert-roto-to-play'
-            ? physicPaintStore.convertRotoToPlay(payload)
-            : physicPaintStore.updatePlayScriptRenderOptions(payload.layerId, payload.playScriptId, payload.renderOptions, payload.operationId);
+    let result: PhysicPaintApplyResult;
+    if (payload.kind === 'apply-canvas') {
+      result = physicPaintStore.applyCanvas(payload);
+    } else if (payload.kind === 'delete-roto-frame') {
+      result = physicPaintStore.deleteRotoFrame(payload);
+    } else if (payload.kind === 'apply-play-canvas') {
+      result = physicPaintStore.applySequence(payload);
+    } else if (payload.kind === 'convert-play-to-roto') {
+      result = physicPaintStore.convertPlayToRoto(payload);
+    } else if (payload.kind === 'convert-roto-to-play') {
+      result = physicPaintStore.convertRotoToPlay(payload);
+    } else {
+      result = physicPaintStore.updatePlayScriptRenderOptions(payload.layerId, payload.playScriptId, payload.renderOptions, payload.operationId);
+    }
     if (result.ok) deliveredOperationIds.add(payload.operationId);
     return result.ok ? result : { ...result, error: `${APPLY_ERROR} ${result.error ?? ''}`.trim() };
   } catch (error) {

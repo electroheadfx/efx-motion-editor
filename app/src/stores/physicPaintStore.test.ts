@@ -90,6 +90,43 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getMaxPlayFrameCountFromGap('layer-1', 7)).toBe(1);
   });
 
+  it('removes a durable real Roto key through a delete payload', () => {
+    physicPaintStore.applyCanvas({
+      kind: 'apply-canvas',
+      operationId: 'op-still',
+      layerId: 'layer-1',
+      startFrame: 8,
+      renderedFrame: makeFrame(0, 8),
+      editableState,
+    });
+
+    const result = physicPaintStore.deleteRotoFrame({
+      kind: 'delete-roto-frame',
+      operationId: 'op-delete-roto',
+      layerId: 'layer-1',
+      startFrame: 8,
+    });
+
+    expect(result).toMatchObject({ ok: true, kind: 'delete-roto-frame', appliedFrameCount: 0 });
+    expect(physicPaintStore.getFrame('layer-1', 8)).toBeNull();
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([]);
+    expect(physicPaintStore.toMceOutputs()[0]?.frames ?? []).toEqual([]);
+  });
+
+  it('does not treat Play output frames as real Roto keys', () => {
+    physicPaintStore.applySequence({
+      kind: 'apply-play-canvas',
+      operationId: 'op-play-frames',
+      layerId: 'layer-1',
+      startFrame: 4,
+      frameCount: 2,
+      frames: [makeFrame(0, 4), makeFrame(1, 5)],
+      editableState,
+    });
+
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([]);
+  });
+
   it('stores sequence frames starting at the app start frame with Play workflow metadata', () => {
     const result = physicPaintStore.applySequence({
       kind: 'apply-play-canvas',
