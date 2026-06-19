@@ -347,7 +347,7 @@ Plans:
 **Goal:** As a stop-motion animator, I want to cache one painted Roto frame back into EFX Motion and preserve it through project save/load, so that Physics Paint Roto has a trustworthy durable core before adding timeline tools.
 **Mode:** mvp
 **Depends on**: Phase 36.2 failed/superseded closure
-**Requirements**: TBD in new MVP recovery planning
+**Requirements**: PH36.3-DURABLE-CORE, PH36.3-UAT
 **Success Criteria** (what must be TRUE):
 
   1. User can open Physics Paint in Roto mode for a physics-paint layer.
@@ -360,7 +360,15 @@ Plans:
 
 **Exclusions:** interpolation, generated frames, key utilities, save-on-leave, cached Roto playback, missing background rules, Play/Roto conversion, final Pencil timeline UI, and Tauri asset protocol hardening.
 
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+**Wave 1**
+
+- [ ] 36.3-01-PLAN.md — Add the one vertical RED test, implement the durable Save current cache path, and gate the minimal Roto UI.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 36.3-02-PLAN.md — Run user-owned manual UAT for the full durable core and discard behavior.
 
 **UI hint**: yes
 
