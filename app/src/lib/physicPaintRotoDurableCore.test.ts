@@ -8,7 +8,7 @@ import { layerStore } from '../stores/layerStore';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from '../stores/physicPaintStore';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext } from '../types/physicPaint';
 import type { McePhysicPaintOutput, RuntimePhysicPaintOutput } from '../types/project';
-import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, applyPhysicPaintPayload, createPhysicPaintLaunchContext } from './physicPaintBridge';
+import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, applyPhysicPaintPayload, createPhysicPaintLaunchContext } from './physicPaintBridge';
 import { loadPhysicPaintData, savePhysicPaintData } from './physicPaintPersistence';
 
 const fsMock = vi.hoisted(() => ({
@@ -18,6 +18,8 @@ const fsMock = vi.hoisted(() => ({
 
 const paintHarness = vi.hoisted(() => ({
   engine: null as TestPaintEngine | null,
+  storedLaunchContext: null as PhysicPaintLaunchContext | null,
+  launchListeners: [] as Array<(event: { payload: unknown }) => void>,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -42,10 +44,15 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn(async () => () => {}),
+  listen: vi.fn(async (eventName: string, handler: (event: { payload: unknown }) => void) => {
+    if (eventName === PHYSIC_PAINT_LAUNCH_EVENT) paintHarness.launchListeners.push(handler);
+    return () => {
+      paintHarness.launchListeners = paintHarness.launchListeners.filter((listener) => listener !== handler);
+    };
+  }),
 }));
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(async () => null),
+  invoke: vi.fn(async (command: string) => command === 'get_physics_paint_launch_context' ? paintHarness.storedLaunchContext : null),
   isTauri: vi.fn(() => false),
 }));
 vi.mock('@tauri-apps/api/window', () => ({
@@ -82,11 +89,11 @@ vi.mock('@efxlab/efx-physic-paint/animation', () => ({
 
 interface TestPaintEngine {
   save: () => SerializedProject;
-  load: (state: SerializedProject) => void;
-  clear: () => void;
+  load: ReturnType<typeof vi.fn<(state: SerializedProject) => void>>;
+  clear: ReturnType<typeof vi.fn<() => void>>;
   exportCompositeCanvas: () => { width: number; height: number; toDataURL: () => string };
-  setBackgroundImageUrl: (dataUrl: string) => void;
-  resetBackground: () => void;
+  setBackgroundImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
+  resetBackground: ReturnType<typeof vi.fn<() => void>>;
   getStrokeCount: () => number;
   setTool: (...args: unknown[]) => void;
   setPhysicsMode: (...args: unknown[]) => void;
@@ -513,6 +520,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
     paintHarness.engine = makeEngine(editableState, savedDataUrl);
+    paintHarness.storedLaunchContext = null;
+    paintHarness.launchListeners = [];
     mockLayers([physicLayer()]);
   });
 
@@ -522,6 +531,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
     vi.unstubAllGlobals();
     physicPaintStore.reset();
     paintHarness.engine = null;
+    paintHarness.storedLaunchContext = null;
+    paintHarness.launchListeners = [];
   });
 
   it('saves one current Roto frame as durable cache, reopens it as reference, and discards later unsaved edits', async () => {
@@ -606,6 +617,23 @@ describe('Phase 36.3 durable Roto cache core', () => {
     if (!reopenContext.cachedRotoFrames?.some((frame) => frame.appFrame === 8 && frame.source === 'real-key' && frame.dataUrl === savedDataUrl)) failures.push('expected reopen launch context to expose the saved frame as a real-key cached Roto reference');
     if (reopenContext.editableState) failures.push('expected cached-only Roto reopen not to restore editable stroke state as durable truth');
 
+    paintHarness.engine?.setBackgroundImageUrl.mockClear();
+    paintHarness.engine?.resetBackground.mockClear();
+    paintHarness.engine?.load.mockClear();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      if (paintHarness.launchListeners.length > 0) break;
+      await flushPreact();
+    }
+    for (const listener of [...paintHarness.launchListeners]) listener({ payload: reopenContext });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await flushPreact();
+      if (paintHarness.engine?.setBackgroundImageUrl.mock.calls.length) break;
+    }
+    const reopenedText = visibleText(root);
+    if (!reopenedText.includes('Cached reference')) failures.push(`expected relaunched Physics Paint to label frame 8 as a Cached reference, got: ${reopenedText}`);
+    const backgroundCalls = paintHarness.engine?.setBackgroundImageUrl.mock.calls ?? [];
+    if (backgroundCalls[backgroundCalls.length - 1]?.[0] !== savedDataUrl) failures.push(`expected relaunched Physics Paint engine to receive the cached PNG from the hydrated launch context as a repaintable reference background; got background=${JSON.stringify(backgroundCalls)} reset=${JSON.stringify(paintHarness.engine?.resetBackground.mock.calls)}`);
+    if (paintHarness.engine?.load.mock.calls.some(([state]) => state === editableState || state.strokes.length > 0)) failures.push('expected cached-only Roto relaunch not to load editable saved strokes');
     paintHarness.engine?.__setState(editedState, unsavedDataUrl);
     if (canvasStack) fire(canvasStack, 'PointerDown');
     await flushPreact();

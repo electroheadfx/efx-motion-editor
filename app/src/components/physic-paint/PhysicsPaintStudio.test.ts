@@ -127,13 +127,18 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
     expect(playbackBlock).not.toContain('setSavedRotoFrames');
   });
 
-  it('shows cached Roto references as an overlay and does not install them as the paint engine background', () => {
+  it('shows cached Roto references as an overlay and installs them as the repaintable reference background', () => {
     const text = source();
     const loadBlock = text.slice(text.indexOf('function loadCachedRotoReferenceFrame'), text.indexOf('useEffect(() => {', text.indexOf('function loadCachedRotoReferenceFrame')));
 
     expect(loadBlock).toContain('setCachedRotoReferenceUrl(cachedFrame?.dataUrl ?? null)');
-    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
-    expect(loadBlock).not.toContain('setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(loadBlock).toContain('targetEngine.resetBackground()');
+    expect(loadBlock).toContain('targetEngine.clear()');
+    expect(loadBlock).toContain('targetEngine.setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(text).toContain('const resetRotoSessionForLaunch = useCallback');
+    expect(text).toContain('resetRotoSessionForLaunch(context)');
+    expect(text).toContain('loadCachedRotoReferenceFrame(context.startFrame, readyEngine as PreviewBackgroundEngine, context)');
+    expect(text).toContain("if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine)");
     expect(styles()).toContain('.physics-paint-cached-roto-reference');
   });
 });
@@ -155,8 +160,9 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
 
     expect(text).toContain("coreApi.invoke('get_physics_paint_launch_context')");
     expect(text).toContain('isPhysicPaintLaunchContext(storedContext)');
-    expect(text).toContain('applyLaunchContext(storedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle, setSettings)');
-    expect(text).toContain('applyLaunchContext(event.payload, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle, setSettings)');
+    expect(text).toContain('const applyIncomingLaunchContext = useCallback');
+    expect(text).toContain('applyIncomingLaunchContext(storedContext)');
+    expect(text).toContain('applyIncomingLaunchContext(event.payload)');
     expect(text).toContain('setSavedPlayCacheDirty?.(getLaunchWorkflowMode(context) === \'play\' && context.playCacheStatus !== \'cached\')');
   });
 
@@ -403,8 +409,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('const [isRotoCachedPlaybackActive, setIsRotoCachedPlaybackActive]');
     expect(text).toContain('const [cachedRotoPlaybackFrame, setCachedRotoPlaybackFrame]');
     expect(text).toContain('const rotoCachedPlaybackTimerRef = useRef<number | null>(null)');
-    expect(cachedRotoBlock).toContain('function findCachedRotoReferenceFrame(appFrame: number): RenderedFramePayload | null');
-    expect(cachedRotoBlock).toContain('physicPaintStore.getFrame(launchContext.layerId, appFrame)');
+    expect(cachedRotoBlock).toContain('function findCachedRotoReferenceFrame(appFrame: number, context: PhysicPaintLaunchContext | null = launchContext): RenderedFramePayload | null');
+    expect(cachedRotoBlock).toContain('physicPaintStore.getFrame(context.layerId, appFrame)');
     expect(cachedRotoBlock).toContain('rotoPreviewFramesRef.current.get(appFrame)');
     expect(cachedRotoBlock).toContain('function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null');
     expect(cachedRotoBlock).toContain('return findCachedRotoReferenceFrame(appFrame)');
@@ -439,11 +445,11 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const loadBlock = text.slice(text.indexOf('function findCachedRotoReferenceFrame'), text.indexOf('const previewLocalPlayFrame = useCallback'));
 
     expect(text).toContain('const [cachedRotoReferenceUrl, setCachedRotoReferenceUrl] = useState<string | null>(null)');
-    expect(text).toContain('function findCachedRotoReferenceFrame(appFrame: number)');
-    expect(loadBlock).toContain('launchContext.cachedRotoFrames?.find((frame) => frame.appFrame === appFrame && frame.source === \'real-key\')');
-    expect(loadBlock).toContain('physicPaintStore.getFrame(launchContext.layerId, appFrame)');
-    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl)');
-    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
+    expect(text).toContain('function findCachedRotoReferenceFrame(appFrame: number, context: PhysicPaintLaunchContext | null = launchContext)');
+    expect(loadBlock).toContain("context.cachedRotoFrames?.find((frame) => frame.appFrame === appFrame && frame.source === 'real-key')");
+    expect(loadBlock).toContain('physicPaintStore.getFrame(context.layerId, appFrame)');
+    expect(loadBlock).toContain('targetEngine.setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(loadBlock).toContain('targetEngine.resetBackground()');
     expect(text).toContain('cachedRotoReferenceUrl={cachedRotoReferenceUrl}');
     expect(text).toContain('class="physics-paint-cached-roto-reference"');
   });
