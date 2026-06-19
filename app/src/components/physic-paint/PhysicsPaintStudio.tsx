@@ -1023,6 +1023,12 @@ export function PhysicsPaintStudio() {
   const snapshotCurrentRotoFrame = useCallback(() => {
     if (!engine || !launchContext) return false;
     const appFrame = currentFrame;
+    if (cachedRotoReferenceUrl && !dirtyRotoFramesRef.current.has(appFrame)) {
+      rotoFrameStatesRef.current.delete(appFrame);
+      rotoPreviewFramesRef.current.delete(appFrame);
+      removeEditableRotoFrame(appFrame);
+      return false;
+    }
     const currentState = engine.save();
     if (!shouldPersistRotoFrame(currentState)) {
       rotoFrameStatesRef.current.delete(appFrame);
@@ -1037,7 +1043,7 @@ export function PhysicsPaintStudio() {
     if (hasEditableRotoContent(currentState)) addEditableRotoFrame(appFrame);
     else removeEditableRotoFrame(appFrame);
     return true;
-  }, [addEditableRotoFrame, currentFrame, engine, launchContext, removeEditableRotoFrame]);
+  }, [addEditableRotoFrame, cachedRotoReferenceUrl, currentFrame, engine, launchContext, removeEditableRotoFrame]);
 
   const toggleRotoCachedPlayback = useCallback(() => {
     if (isRotoCachedPlaybackActive) {

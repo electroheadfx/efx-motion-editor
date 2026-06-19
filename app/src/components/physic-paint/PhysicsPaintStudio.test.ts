@@ -523,6 +523,9 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
     expect(text).toContain('const [editableRotoFrames, setEditableRotoFrames] = useState<number[]>([])');
     expect(text).toContain('function hasEditableRotoContent');
+    expect(snapshotBlock).toContain('if (cachedRotoReferenceUrl && !dirtyRotoFramesRef.current.has(appFrame))');
+    expect(snapshotBlock).toContain('rotoFrameStatesRef.current.delete(appFrame)');
+    expect(snapshotBlock).toContain('rotoPreviewFramesRef.current.delete(appFrame)');
     expect(snapshotBlock).toContain('if (hasEditableRotoContent(currentState)) addEditableRotoFrame(appFrame)');
     expect(snapshotBlock).toContain('else removeEditableRotoFrame(appFrame)');
     expect(snapshotBlock).not.toContain('addEditableRotoFrame(appFrame)\n    return true');
