@@ -5,17 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.3
 current_phase_name: Physics Paint Roto Durable Core Recovery
 status: planned_recovery
-stopped_at: Phase 36.2 administratively closed as failed/superseded; do not execute remaining 36.2 gap plans
-last_updated: "2026-06-19T00:00:00.000Z"
+stopped_at: Phase 36.3 context gathered
+last_updated: "2026-06-19T07:59:06.729Z"
 last_activity: 2026-06-19
-last_activity_desc: Phase 36.2 administratively closed as failed/superseded; next action is creating/planning new MVP recovery phases, not executing 36.2
-next_recommended_action: Create or plan a new MVP/TDD recovery phase beginning with Physics Paint Roto Durable Core Recovery
+last_activity_desc: failed history preserved on backup/broken-36.2-gap-execution-20260618; 36.2-11 through 36.2-13 closed as rejected/superseded summaries
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 43
   completed_plans: 43
-  percent: 67
+  percent: 71
 ---
 
 # Project State
@@ -140,6 +139,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T00:00:00.000Z
-Stopped at: Phase 36.2 failed/superseded closure; ready to create or plan Phase 36.3 recovery
-Resume file: None
+Last session: 2026-06-19T07:59:06.723Z
+Stopped at: Phase 36.3 context gathered
+Resume file: .planning/phases/36.3-physics-paint-roto-durable-core-recovery/36.3-CONTEXT.md
