@@ -1,6 +1,6 @@
 # Main setup
 
-- **Please find GSD tools from `.Codex/get-shit-done`** and not from `$HOME/.Codex/get-shit-done`
+- **Please find GSD tools from `.Codex/gsd-core`** and not from `$HOME/.Codex/gsd-core`
 - **Please do not run the server** I do on my side
 
 # context-mode — MANDATORY routing rules
