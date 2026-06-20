@@ -244,13 +244,13 @@ Use SPECS/36.x-phases/phase-36.6-save-on-leave/spec-36.6-save-on-leave.md as the
 **Mode:** mvp
 **Requirements**: 36.6-AC-01, 36.6-AC-02, 36.6-AC-03, 36.6-AC-04, 36.6-AC-05, 36.6-AC-06, 36.6-FB-01
 **Depends on:** Phase 36
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 36.6-01-PLAN.md — Implement the tested Roto save-on-leave navigation coordinator.
+- [x] 36.6-01-PLAN.md — Implement the tested Roto save-on-leave navigation coordinator.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.6
-current_phase_name: physics-paint-roto-save-on-leave
-status: planning
-stopped_at: Phase 36.6 context gathered
-last_updated: "2026-06-20T15:50:02.573Z"
+current_phase_name: physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase
+status: executing
+stopped_at: Completed 36.6-01-PLAN.md
+last_updated: "2026-06-20T17:29:54.344Z"
 last_activity: 2026-06-20
-last_activity_desc: Phase 36.6 inserted; ready to plan
+last_activity_desc: Phase 36.6 execution started
 progress:
   total_phases: 10
   completed_phases: 8
-  total_plans: 50
-  completed_plans: 50
+  total_plans: 52
+  completed_plans: 51
   percent: 80
 ---
 
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-20)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.6 — physics-paint-roto-save-on-leave
+**Current focus:** Phase 36.6 — physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase
 
 ## Current Position
 
-Phase: 36.6 (physics-paint-roto-save-on-leave) — NOT PLANNED
+Phase: 36.6 (physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase) — EXECUTING
 Previous phase: 36.5 — Physics Paint Roto Cell Semantics complete
-Plan: 0 of TBD
-Status: Phase 36.6 inserted; ready to plan
-Last activity: 2026-06-20 — Phase 36.6 inserted; ready to plan
-Next recommended action: `/gsd-plan-phase 36.6`
+Plan: 1 of 2
+Status: Plan 36.6-01 complete; Plan 36.6-02 ready
+Last activity: 2026-06-20 — Completed 36.6-01 save-on-leave coordinator
+Next recommended action: `/gsd-execute-phase 36.6 --interactive`
 
-Progress: [████████████████████] 50/50 plans (100%)
+Progress: [███████████████████░] 51/52 plans (98%)
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [████████████████████] 50/50 p
 | Phase 36.5 P01 | 7min | 3 tasks | 2 files |
 | Phase 36.5 P02 | 4min | 3 tasks | 2 files |
 | Phase 36.5 P03 | 34min | 3 tasks + visual fix | 4 files |
+| Phase 36.6 P01 | 42min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -150,6 +151,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-20T15:50:02.567Z
-Stopped at: Phase 36.6 context gathered
-Resume file: .planning/phases/36.6-physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase/36.6-CONTEXT.md
+Last session: 2026-06-20T17:29:54.337Z
+Stopped at: Completed 36.6-01-PLAN.md
+Resume file: None
