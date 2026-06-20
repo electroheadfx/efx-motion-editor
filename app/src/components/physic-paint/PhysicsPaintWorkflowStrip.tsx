@@ -11,10 +11,12 @@ import {
   getPhysicsPaintSourceLabel,
   getPlayRangeMarker,
   getRotoCellFill,
+  getRotoCellViewModel,
   getRotoInterpolationSpanFrames,
   getRotoPendingLabel,
   type PhysicsPaintOnionState,
   type PhysicsPaintWorkflowMode,
+  type RotoCellViewModel,
   type RotoInterpolationSettings,
 } from './physicsPaintWorkflowState';
 import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
@@ -23,6 +25,16 @@ const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
 const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
 const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
+const GENERATED_ROTO_STATUS_TEMPLATE = 'Generated frame {frame} is render-only.';
+const ROTO_CELL_LEGEND_ITEMS = [
+  { label: 'Empty', className: 'roto-fill-empty' },
+  { label: 'Cached', className: 'roto-fill-cached' },
+  { label: 'Current', className: 'roto-fill-editable-current current' },
+  { label: 'Generated', className: 'roto-fill-generated' },
+  { label: 'Background only', className: 'roto-fill-background-only' },
+  { label: 'Unsaved', className: 'roto-fill-cached dirty' },
+  { label: 'Saving', className: 'roto-fill-cached pending' },
+];
 
 export interface PhysicsPaintWorkflowStripFrameMarker {
   frame: number;
@@ -173,6 +185,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const realCachedRotoFrames = useMemo(() => (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'real-key'), [props.cachedRotoFrames]);
   const pendingRotoFrameSet = useMemo(() => new Set(props.pendingRotoFrames ?? []), [props.pendingRotoFrames]);
   const hasPendingRotoFrames = pendingRotoFrameSet.size > 0;
+  const currentRotoCell = getRotoCellViewModel({
+    frame: props.currentFrame,
+    currentFrame: props.currentFrame,
+    cachedFrames: props.cachedRotoFrames,
+    editableFrames: props.editableRotoFrames,
+    pendingFrames: props.pendingRotoFrames,
+    isSaving: Boolean(props.rotoSaveInFlight),
+  });
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames, props.editableRotoFrames);
   const rotoPendingLabel = getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight));
   const playRulerStep = getPlayRulerStep(safeFrameCount);
@@ -217,6 +237,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     const nextFrame = Math.max(0, Math.min(safeFrameCount - 1, Math.trunc(frame)));
     props.onPreviewPlayFrame?.(nextFrame);
     props.onInspectPlayFrame(nextFrame);
+  }
+
+  function handleRotoCellClick(frame: number, vm: RotoCellViewModel) {
+    if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) return;
+    props.onNavigateToSyncedFrame(frame);
+  }
+
+  function getGeneratedRotoStatus(frame: number): string {
+    return GENERATED_ROTO_STATUS_TEMPLATE.replace('{frame}', String(frame));
   }
 
   function getConfirmationCopy(kind: PhysicsPaintWorkflowConfirmation): string {
@@ -361,13 +390,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             <div class="physics-paint-lane">
               <div class="physics-paint-roto-cells" role="row">
                 {frameCells.map(frame => {
+                  const vm = getRotoCellViewModel({
+                    frame,
+                    currentFrame: props.currentFrame,
+                    cachedFrames: props.cachedRotoFrames,
+                    editableFrames: props.editableRotoFrames,
+                    pendingFrames: props.pendingRotoFrames,
+                    isSaving: Boolean(props.rotoSaveInFlight),
+                  });
                   const fill = getRotoCellFill(frame, realCachedRotoFrames, props.editableRotoFrames);
+                  const generatedStatus = vm.baseMeaning === 'generated' || vm.isEditableTarget === false ? getGeneratedRotoStatus(frame) : null;
                   return (
                     <button
                       key={frame}
-                      class={`physics-paint-roto-cell ${getRotoFillClass(fill)} ${isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied' : ''} ${isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${pendingRotoFrameSet.has(frame) ? 'pending' : ''} ${frame === props.currentFrame ? 'current' : ''}`}
-                      aria-label={`Roto frame ${frame}`}
-                      onClick={() => props.onNavigateToSyncedFrame(frame)}
+                      class={`physics-paint-roto-cell ${getRotoFillClass(fill)} ${vm.fillClass} ${isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied' : ''} ${isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''}`}
+                      aria-label={vm.ariaLabel}
+                      title={generatedStatus ?? vm.title}
+                      onClick={() => handleRotoCellClick(frame, vm)}
                     >
                       <span>{frame}</span>
                     </button>
@@ -415,6 +454,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
       {props.mode === 'roto' ? (
         <div class="physics-paint-roto-status-stack">
+          <div class="physics-paint-roto-cell-legend" aria-label="Roto cell states">
+            <span class="physics-paint-roto-cell-legend-title">Roto cell states</span>
+            {ROTO_CELL_LEGEND_ITEMS.map(item => (
+              <span key={item.label} class="physics-paint-roto-cell-legend-item">
+                <span class={`physics-paint-roto-cell-swatch ${item.className}`} aria-hidden="true" />
+                <span>{item.label}</span>
+              </span>
+            ))}
+          </div>
+          <p class="physics-paint-roto-status">{currentRotoCell.label}</p>
+          {currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false ? <p class="physics-paint-roto-key-status">{getGeneratedRotoStatus(currentRotoCell.frame)}</p> : null}
           {rotoPendingLabel ? <p class="physics-paint-roto-key-status">{rotoPendingLabel}</p> : null}
           {currentRotoFill === 'cached-only' ? (
             <>
