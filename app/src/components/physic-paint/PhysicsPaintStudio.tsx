@@ -499,6 +499,7 @@ export function PhysicsPaintStudio() {
   const [occupiedRotoFrames, setOccupiedRotoFrames] = useState<number[]>(() => getRealCachedRotoFrameNumbers(launchContext));
   const [editableRotoFrames, setEditableRotoFrames] = useState<number[]>([]);
   const [pendingRotoFrames, setPendingRotoFrames] = useState<number[]>([]);
+  const [rotoSavingFrame, setRotoSavingFrame] = useState<number | null>(null);
   const [latestPlayFrames, setLatestPlayFrames] = useState<RenderedFramePayload[]>([]);
   const [playFramesVersion, setPlayFramesVersion] = useState(0);
   const [localPlayPreviewFrame, setLocalPlayPreviewFrame] = useState(() => getLaunchPreviewFrame(launchContext));
@@ -565,6 +566,7 @@ export function PhysicsPaintStudio() {
     }
     setEditableRotoFrames([]);
     setPendingRotoFrames([]);
+    setRotoSavingFrame(null);
     setCachedRotoReferenceUrl(null);
     setCachedRotoPlaybackFrame(null);
     setIsRotoCachedPlaybackActive(false);
@@ -1230,6 +1232,9 @@ export function PhysicsPaintStudio() {
         syncPendingRotoFrames();
       }
       saveOnLeaveSourceFrameRef.current = null;
+      saveOnLeaveRenderedFrameRef.current = null;
+      saveOnLeaveDeleteFrameRef.current = null;
+      setRotoSavingFrame(null);
       if (closeAfterApplyOperationIdRef.current === operationId) {
         setRotoClosePromptState('error');
         setRotoClosePromptMessage('Could not save before closing. The main editor did not return an apply result.');
@@ -1284,6 +1289,10 @@ export function PhysicsPaintStudio() {
           setApplyMessage(message);
           setLastError(message);
           pendingRotoAdvanceRef.current = null;
+          saveOnLeaveSourceFrameRef.current = null;
+          saveOnLeaveRenderedFrameRef.current = null;
+          saveOnLeaveDeleteFrameRef.current = null;
+          setRotoSavingFrame(null);
           return null;
         }
       }
@@ -1334,6 +1343,10 @@ export function PhysicsPaintStudio() {
         setApplyMessage(message);
         setLastError(message);
         pendingRotoAdvanceRef.current = null;
+        saveOnLeaveSourceFrameRef.current = null;
+        saveOnLeaveRenderedFrameRef.current = null;
+        saveOnLeaveDeleteFrameRef.current = null;
+        setRotoSavingFrame(null);
         return null;
       } finally {
         if (previousState) engine.load(previousState);
@@ -1378,10 +1391,12 @@ export function PhysicsPaintStudio() {
     const sourceIsDirty = dirtyRotoFramesRef.current.has(sourceFrame);
     if (!sourceIsDirty) return navigateToSyncedFrame(targetFrame);
     saveOnLeaveSourceFrameRef.current = sourceFrame;
+    setRotoSavingFrame(sourceFrame);
     pendingRotoAdvanceRef.current = targetFrame;
     const payload = await flushRotoFrame(sourceFrame, { force: true, advanceToFrame: targetFrame });
     if (!payload) {
       saveOnLeaveSourceFrameRef.current = null;
+      setRotoSavingFrame(null);
       pendingRotoAdvanceRef.current = null;
       dirtyRotoFramesRef.current.add(sourceFrame);
       syncPendingRotoFrames();
@@ -1419,6 +1434,7 @@ export function PhysicsPaintStudio() {
       saveOnLeaveSourceFrameRef.current = null;
       saveOnLeaveRenderedFrameRef.current = null;
       saveOnLeaveDeleteFrameRef.current = null;
+      setRotoSavingFrame(null);
       if (saveOnLeaveSourceFrame !== null) {
         dirtyRotoFramesRef.current.add(saveOnLeaveSourceFrame);
         syncPendingRotoFrames();
@@ -1473,6 +1489,7 @@ export function PhysicsPaintStudio() {
       saveOnLeaveSourceFrameRef.current = null;
       saveOnLeaveRenderedFrameRef.current = null;
       saveOnLeaveDeleteFrameRef.current = null;
+      setRotoSavingFrame(null);
       if (nextFrame !== null) {
         void navigateToSyncedFrame(nextFrame).then((synced) => {
           if (synced) setApplyMessage(`Saved roto frame ${frame}. Advanced to frame ${nextFrame}.`);
@@ -2392,6 +2409,7 @@ export function PhysicsPaintStudio() {
           editableRotoFrames={editableRotoFrames}
           pendingRotoFrames={pendingRotoFrames}
           rotoSaveInFlight={Boolean(rotoFlushInFlightRef.current) || applyStatus === 'applying'}
+          rotoSavingFrame={rotoSavingFrame}
           rotoCachedPlaybackAvailable={rotoCachedPlaybackAvailable}
           rotoCachedPlaybackStatus={rotoCachedPlaybackStatus}
           isRotoCachedPlaybackActive={isRotoCachedPlaybackActive}

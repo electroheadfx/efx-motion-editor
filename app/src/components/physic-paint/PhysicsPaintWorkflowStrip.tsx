@@ -66,6 +66,7 @@ export interface PhysicsPaintWorkflowStripProps {
   editableRotoFrames?: number[];
   pendingRotoFrames?: number[];
   rotoSaveInFlight?: boolean;
+  rotoSavingFrame?: number | null;
   rotoInterpolationSettings?: RotoInterpolationSettings;
   playPublicationSummary?: string | null;
   statusMessage?: string | null;
@@ -194,7 +195,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     isSaving: Boolean(props.rotoSaveInFlight),
   });
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames, props.editableRotoFrames);
-  const rotoPendingLabel = getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight));
+  const rotoPendingLabel = getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight), props.rotoSavingFrame);
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
   const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
@@ -464,6 +465,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             ))}
           </div>
           <p class="physics-paint-roto-status">{currentRotoCell.label}</p>
+          <p class="physics-paint-roto-interpolation-status">Dirty frames save when leaving.</p>
           {currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false ? <p class="physics-paint-roto-key-status">{getGeneratedRotoStatus(currentRotoCell.frame)}</p> : null}
           {rotoPendingLabel ? <p class="physics-paint-roto-key-status">{rotoPendingLabel}</p> : null}
           {currentRotoFill === 'cached-only' ? (

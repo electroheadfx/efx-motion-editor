@@ -457,6 +457,34 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('props.onSaveRotoFrame()');
   });
 
+  it('shows Phase 36.6 save-on-leave feedback without blocking queued Roto navigation', () => {
+    const code = source();
+    const studio = studioSource();
+    const clickHandlerBlock = code.slice(code.indexOf('function handleRotoCellClick'), code.indexOf('function getGeneratedRotoStatus'));
+    const statusStackBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('visibleOnionPreviewFrames.length'));
+
+    expect(code).toContain('rotoSavingFrame?: number | null');
+    expect(code).toContain('getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight), props.rotoSavingFrame)');
+    expect(studio).toContain('const [rotoSavingFrame, setRotoSavingFrame] = useState<number | null>(null)');
+    expect(studio).toContain('setRotoSavingFrame(sourceFrame)');
+    expect(studio).toContain('rotoSavingFrame={rotoSavingFrame}');
+    expect(studio).toContain('setRotoSavingFrame(null)');
+    expect(statusStackBlock).toContain('Dirty frames save when leaving.');
+    expect(code).toContain('aria-label="Save current"');
+    expect(code).toContain('Save current');
+    expect(code).toContain('disabled={props.ready === false || !hasPendingRotoFrames || props.rotoSaveInFlight}');
+    expect(clickHandlerBlock).toContain("vm.baseMeaning === 'generated'");
+    expect(clickHandlerBlock).toContain('vm.isEditableTarget === false');
+    expect(clickHandlerBlock).toContain('props.onNavigateToSyncedFrame(frame)');
+    expect(clickHandlerBlock).not.toContain('rotoSaveInFlight');
+    expect(statusStackBlock).not.toContain('role="dialog"');
+    expect(statusStackBlock).not.toContain('physics-paint-save-on-leave-overlay');
+    expect(statusStackBlock).not.toContain('toast');
+    expect(statusStackBlock).not.toContain('tutorial');
+    expect(code).not.toContain('Save on leave');
+    expect(code).not.toContain('Queue destination');
+  });
+
   it('keeps current Roto CSS as an outline without adding a fourth fill color', () => {
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
     const currentRule = getCssRule(css, '.physics-paint-roto-cell.current');
