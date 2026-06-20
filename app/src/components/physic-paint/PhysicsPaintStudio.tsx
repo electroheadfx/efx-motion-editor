@@ -23,6 +23,7 @@ const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strok
 const PLAY_LIMIT_TOAST_DISMISS_MS = 5000;
 type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
+type RotoClosePromptState = 'idle' | 'prompt' | 'saving' | 'error';
 type RenderedFramePayload = PhysicPaintRenderedFrame;
 type SerializedPhysicsPaintProject = ReturnType<EfxPaintEngine['save']>;
 type PreviewBackgroundEngine = EfxPaintEngine & {
@@ -493,6 +494,8 @@ export function PhysicsPaintStudio() {
   const [hasCopiedRotoKey, setHasCopiedRotoKey] = useState(false);
   const [savedPlayCacheDirty, setSavedPlayCacheDirty] = useState(false);
   const [playLimitToast, setPlayLimitToast] = useState<string | null>(null);
+  const [rotoClosePromptState, setRotoClosePromptState] = useState<RotoClosePromptState>('idle');
+  const [rotoClosePromptMessage, setRotoClosePromptMessage] = useState<string | null>(null);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const playerRef = useRef<AnimationPlayer | null>(null);
   const rotoFrameStatesRef = useRef<Map<number, ReturnType<EfxPaintEngine['save']>>>(new Map());
@@ -506,6 +509,8 @@ export function PhysicsPaintStudio() {
   const workflowModeRef = useRef<PhysicsPaintWorkflowMode>(workflowMode);
   const localPlayPreviewFrameRef = useRef(localPlayPreviewFrame);
   const activeOperationIdRef = useRef<string | null>(null);
+  const closeAfterApplyOperationIdRef = useRef<string | null>(null);
+  const closeGuardBypassRef = useRef(false);
   const applyTimeoutRef = useRef<number | null>(null);
   const nativePenInputHandlerRef = useRef<((input: { pressure: number; tiltX?: number; tiltY?: number }) => void) | null>(null);
   const engineRef = useRef<EfxPaintEngine | null>(null);
@@ -529,6 +534,8 @@ export function PhysicsPaintStudio() {
     rotoFrameStatesRef.current.clear();
     rotoPreviewFramesRef.current.clear();
     pendingRotoAdvanceRef.current = null;
+    closeAfterApplyOperationIdRef.current = null;
+    closeGuardBypassRef.current = false;
     rotoFlushInFlightRef.current = null;
     if (rotoCachedPlaybackTimerRef.current) {
       window.clearInterval(rotoCachedPlaybackTimerRef.current);
@@ -539,6 +546,8 @@ export function PhysicsPaintStudio() {
     setCachedRotoReferenceUrl(null);
     setCachedRotoPlaybackFrame(null);
     setIsRotoCachedPlaybackActive(false);
+    setRotoClosePromptState('idle');
+    setRotoClosePromptMessage(null);
     setSavedRotoFrames(getSavedRotoMarkersFromLaunchContext(context));
     setOccupiedRotoFrames(getRealCachedRotoFrameNumbers(context));
   }, []);
@@ -579,6 +588,10 @@ export function PhysicsPaintStudio() {
     setApplyMessage(null);
     setLastError(null);
     activeOperationIdRef.current = null;
+    closeAfterApplyOperationIdRef.current = null;
+    closeGuardBypassRef.current = false;
+    setRotoClosePromptState('idle');
+    setRotoClosePromptMessage(null);
   }, [resetRotoSessionForLaunch]);
 
   useEffect(() => {
@@ -680,6 +693,8 @@ export function PhysicsPaintStudio() {
   useEffect(() => {
     return () => {
       if (applyTimeoutRef.current) window.clearTimeout(applyTimeoutRef.current);
+      closeAfterApplyOperationIdRef.current = null;
+      closeGuardBypassRef.current = false;
       if (cachedPreviewTimerRef.current) window.clearInterval(cachedPreviewTimerRef.current);
       if (rotoCachedPlaybackTimerRef.current) window.clearInterval(rotoCachedPlaybackTimerRef.current);
     };
@@ -1145,6 +1160,20 @@ export function PhysicsPaintStudio() {
     setIsPlaying(false);
   }, [stopRotoCachedPlayback]);
 
+  const closePhysicsPaintWindow = useCallback(async () => {
+    try {
+      const windowApi = await import('@tauri-apps/api/window');
+      const appWindow = windowApi.getCurrentWindow();
+      if (typeof appWindow.close === 'function') {
+        await appWindow.close();
+        return;
+      }
+    } catch {
+      // Browser fallback below is expected outside Tauri.
+    }
+    window.close();
+  }, []);
+
   const startApplyTimeout = useCallback((operationId: string) => {
     if (applyTimeoutRef.current) window.clearTimeout(applyTimeoutRef.current);
     applyTimeoutRef.current = window.setTimeout(() => {
@@ -1152,6 +1181,11 @@ export function PhysicsPaintStudio() {
       setApplyStatus('error');
       setApplyMessage('Could not apply physics paint output. The main editor did not return an apply result.');
       setLastError('The main editor did not return an apply result.');
+      if (closeAfterApplyOperationIdRef.current === operationId) {
+        setRotoClosePromptState('error');
+        setRotoClosePromptMessage('Could not save before closing. The main editor did not return an apply result.');
+        closeAfterApplyOperationIdRef.current = null;
+      }
       activeOperationIdRef.current = null;
       pendingRotoAdvanceRef.current = null;
       applyTimeoutRef.current = null;
@@ -1286,6 +1320,7 @@ export function PhysicsPaintStudio() {
 
   const handleApplyResult = useCallback((detail: PhysicPaintApplyResult | null | undefined) => {
     if (!detail || detail.operationId !== activeOperationIdRef.current) return;
+    const shouldCloseAfterSave = closeAfterApplyOperationIdRef.current === detail.operationId;
     if (applyTimeoutRef.current) {
       window.clearTimeout(applyTimeoutRef.current);
       applyTimeoutRef.current = null;
@@ -1294,12 +1329,23 @@ export function PhysicsPaintStudio() {
 
     if (!detail.ok) {
       pendingRotoAdvanceRef.current = null;
+      if (shouldCloseAfterSave) {
+        closeAfterApplyOperationIdRef.current = null;
+        setRotoClosePromptState('error');
+        setRotoClosePromptMessage('Could not save before closing. Keep the window open and try again.');
+      }
       const message = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
       const diagnostic = detail.error;
       setApplyStatus('error');
       setApplyMessage(diagnostic ? `${message} ${diagnostic}` : message);
       setLastError(diagnostic ? `${message} ${diagnostic}` : message);
       return;
+    }
+
+    if (shouldCloseAfterSave) {
+      closeAfterApplyOperationIdRef.current = null;
+      setRotoClosePromptState('idle');
+      setRotoClosePromptMessage(null);
     }
 
     setApplyStatus('success');
@@ -1333,8 +1379,12 @@ export function PhysicsPaintStudio() {
       } else {
         setApplyMessage('Saved current frame');
       }
+      if (shouldCloseAfterSave) {
+        closeGuardBypassRef.current = true;
+        void closePhysicsPaintWindow();
+      }
     }
-  }, [canvasHeight, canvasWidth, navigateToSyncedFrame, syncPendingRotoFrames]);
+  }, [canvasHeight, canvasWidth, closePhysicsPaintWindow, navigateToSyncedFrame, syncPendingRotoFrames]);
 
   useEffect(() => {
     const handleResult = (event: Event) => {
@@ -1899,6 +1949,42 @@ export function PhysicsPaintStudio() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [snapshotCurrentRotoFrame, workflowMode]);
 
+  const closeWithoutSavingRotoFrame = useCallback(() => {
+    closeAfterApplyOperationIdRef.current = null;
+    closeGuardBypassRef.current = true;
+    setRotoClosePromptState('idle');
+    setRotoClosePromptMessage(null);
+    void closePhysicsPaintWindow();
+  }, [closePhysicsPaintWindow]);
+
+  const cancelRotoClose = useCallback(() => {
+    closeAfterApplyOperationIdRef.current = null;
+    closeGuardBypassRef.current = false;
+    setRotoClosePromptState('idle');
+    setRotoClosePromptMessage(null);
+  }, []);
+
+  const saveAndCloseRotoFrame = useCallback(async () => {
+    if (rotoClosePromptState === 'saving') return;
+    setRotoClosePromptState('saving');
+    setRotoClosePromptMessage('Saving current frame…');
+    try {
+      const payload = await saveRotoFrame(null);
+      if (!payload?.operationId) {
+        closeAfterApplyOperationIdRef.current = null;
+        setRotoClosePromptState('error');
+        setRotoClosePromptMessage('Could not save before closing. Try Save current, then close again.');
+        return;
+      }
+      closeAfterApplyOperationIdRef.current = payload.operationId;
+    } catch (error) {
+      closeAfterApplyOperationIdRef.current = null;
+      const detail = error instanceof Error ? error.message : String(error);
+      setRotoClosePromptState('error');
+      setRotoClosePromptMessage(`Could not save before closing. ${detail}`);
+    }
+  }, [rotoClosePromptState, saveRotoFrame]);
+
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
@@ -1907,9 +1993,15 @@ export function PhysicsPaintStudio() {
         const windowApi = await import('@tauri-apps/api/window');
         const appWindow = windowApi.getCurrentWindow();
         if (typeof appWindow.onCloseRequested !== 'function') return;
-        unlisten = await appWindow.onCloseRequested(async () => {
+        unlisten = await appWindow.onCloseRequested(async (event) => {
           if (disposed || workflowMode !== 'roto') return;
+          if (closeGuardBypassRef.current) return;
           snapshotCurrentRotoFrame();
+          const isCurrentRotoFrameDirty = workflowMode === 'roto' && dirtyRotoFramesRef.current.has(currentFrame);
+          if (!isCurrentRotoFrameDirty) return;
+          event.preventDefault();
+          setRotoClosePromptState('prompt');
+          setRotoClosePromptMessage(null);
         });
         if (disposed) unlisten?.();
       } catch (error) {
@@ -1921,7 +2013,7 @@ export function PhysicsPaintStudio() {
       disposed = true;
       unlisten?.();
     };
-  }, [snapshotCurrentRotoFrame, workflowMode]);
+  }, [currentFrame, snapshotCurrentRotoFrame, workflowMode]);
 
   const handlePhysicsPaintKeyDown = useCallback((event: KeyboardEvent) => {
     if (!isPhysicsPaintShortcutTarget(event.target)) return;
@@ -2238,6 +2330,23 @@ export function PhysicsPaintStudio() {
           onConvertPlayToRoto={convertPlayToRoto}
           onConvertRotoToPlay={convertRotoToPlay}
         />
+
+        {rotoClosePromptState !== 'idle' ? (
+          <div class="physics-paint-confirmation physics-paint-roto-close-confirmation" role="dialog" aria-modal="true" aria-labelledby="physics-paint-roto-close-title">
+            <div class="physics-paint-confirmation-card">
+              <h2 id="physics-paint-roto-close-title">Close unsaved Roto frame?</h2>
+              <p>The current Roto frame has unsaved changes. Choose whether to discard this edit, keep working, or save before closing.</p>
+              {rotoClosePromptMessage ? (
+                <p class={`physics-paint-roto-close-message ${rotoClosePromptState === 'error' ? 'error' : ''}`} role="status" aria-live="polite">{rotoClosePromptMessage}</p>
+              ) : null}
+              <div class="physics-paint-confirmation-actions">
+                <button class="physics-paint-text-button destructive" type="button" disabled={rotoClosePromptState === 'saving'} onClick={closeWithoutSavingRotoFrame}>Close without saving</button>
+                <button class="physics-paint-text-button" type="button" disabled={rotoClosePromptState === 'saving'} onClick={cancelRotoClose}>Cancel</button>
+                <button class="physics-paint-text-button primary" type="button" disabled={rotoClosePromptState === 'saving'} onClick={saveAndCloseRotoFrame}>Close saving</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {shortcutsVisible ? (
           <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">

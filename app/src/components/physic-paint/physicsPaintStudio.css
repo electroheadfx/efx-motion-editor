@@ -1751,6 +1751,20 @@ button.destructive {
   gap: 8px;
 }
 
+.physics-paint-roto-close-message {
+  color: #b8c4d4 !important;
+}
+
+.physics-paint-roto-close-message.error {
+  color: var(--color-error-text, #ff6666) !important;
+}
+
+.physics-paint-text-button.primary {
+  border-color: #6f90ff;
+  background: #2d5be3;
+  color: #ffffff;
+}
+
 .physics-paint-swatch-button {
   width: 32px;
   height: 30px;

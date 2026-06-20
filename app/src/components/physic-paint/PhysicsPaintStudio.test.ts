@@ -489,6 +489,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   it('blocks only dirty current Roto native closes and renders the exact three explicit choices', () => {
     const text = source();
     const closeBlock = text.slice(text.indexOf('const closePhysicsPaintWindow = useCallback'), text.indexOf('const handlePhysicsPaintKeyDown = useCallback'));
+    const promptBlock = text.slice(text.indexOf('physics-paint-roto-close-confirmation'), text.indexOf('{shortcutsVisible'));
 
     expect(text).toContain("type RotoClosePromptState = 'idle' | 'prompt' | 'saving' | 'error'");
     expect(text).toContain('const closeGuardBypassRef = useRef(false)');
@@ -496,11 +497,11 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(closeBlock).toContain("workflowMode === 'roto' && dirtyRotoFramesRef.current.has(currentFrame)");
     expect(closeBlock).toContain('event.preventDefault()');
     expect(closeBlock).toContain("setRotoClosePromptState('prompt')");
-    expect(closeBlock).toContain('Close without saving');
-    expect(closeBlock).toContain('Cancel');
-    expect(closeBlock).toContain('Close saving');
-    expect(closeBlock.match(/Close without saving/g)).toHaveLength(1);
-    expect(closeBlock.match(/Close saving/g)).toHaveLength(1);
+    expect(promptBlock).toContain('Close without saving');
+    expect(promptBlock).toContain('Cancel');
+    expect(promptBlock).toContain('Close saving');
+    expect(promptBlock.match(/Close without saving/g)).toHaveLength(1);
+    expect(promptBlock.match(/Close saving/g)).toHaveLength(1);
   });
 
   it('closes without saving by bypassing the guard without writing or deleting cached Roto output', () => {
@@ -550,7 +551,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
     const timeoutBlock = text.slice(text.indexOf('const startApplyTimeout = useCallback'), text.indexOf('const flushRotoFrame = useCallback'));
-    const cleanupBlock = text.slice(text.indexOf('return () => {', text.indexOf('if (applyTimeoutRef.current) window.clearTimeout(applyTimeoutRef.current)')), text.indexOf('const missingConditions = useMemo'));
+    const cleanupBlock = text.slice(text.indexOf('useEffect(() => {\n    return () => {\n      if (applyTimeoutRef.current)'), text.indexOf('const missingConditions = useMemo'));
 
     expect(saveCloseBlock).toContain("setRotoClosePromptState('error')");
     expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = null');
