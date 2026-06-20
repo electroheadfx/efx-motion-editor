@@ -9,11 +9,16 @@ import {
   getPlayRangeMarker,
   getPreviewFps,
   getRotoCellFill,
+  getRotoCellStateLabel,
+  getRotoCellViewModel,
   getRotoPendingLabel,
   isPhysicsPaintDevExportEnabled,
   requiresDestructiveConfirmation,
+  type RotoCellBaseMeaning,
   type RotoCellFill,
+  type RotoCellOverlay,
 } from './physicsPaintWorkflowState';
+import type { PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 
 describe('physicsPaintWorkflowState', () => {
   it('returns active primary action labels for Roto and Play workflow tabs (D-10, D-11, D-12, D-16)', () => {
@@ -44,6 +49,82 @@ describe('physicsPaintWorkflowState', () => {
     expect(allSemanticFills).not.toContain('yellow' as RotoCellFill);
     expect(allSemanticFills).not.toContain('orange' as RotoCellFill);
     expect(allSemanticFills).not.toContain('current' as RotoCellFill);
+  });
+
+  it('builds Roto cell view models for empty, cached, editable, generated, and background-only states', () => {
+    const cachedFrames: PhysicPaintRotoCacheFrame[] = [
+      { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cached-six', source: 'real-key' },
+      { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,background-eight', source: 'real-key', backgroundOnly: true },
+      { frameIndex: 0, appFrame: 9, dataUrl: 'data:image/png;base64,generated-nine', source: 'generated-interpolation', nearestRealKeyFrame: 6 },
+    ];
+    const editableFrames = [5];
+
+    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('empty');
+    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames, editableFrames }).state).toBe('Empty');
+    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('No Roto content on frame 7');
+    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-empty');
+
+    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('cached');
+    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames, editableFrames }).state).toBe('Cached');
+    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Cached frame 6');
+    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-cached');
+
+    expect(getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('editable-current');
+    expect(getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames, editableFrames }).overlays).toContain('current');
+    expect(getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Frame 5: Current');
+    expect(getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-editable-current');
+
+    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('generated');
+    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Generated frame 9 (render-only)');
+    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-generated');
+    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).isEditableTarget).toBe(false);
+
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('background-only');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Background only on frame 8');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-background-only');
+  });
+
+  it('keeps Roto current, dirty, and pending as overlays separate from base meanings', () => {
+    const baseMeanings: RotoCellBaseMeaning[] = ['empty', 'cached', 'editable-current', 'generated', 'background-only'];
+    const overlays: RotoCellOverlay[] = ['current', 'dirty', 'pending'];
+
+    const dirtyModel = getRotoCellViewModel({
+      frame: 5,
+      currentFrame: 5,
+      cachedFrames: [],
+      editableFrames: [5],
+      pendingFrames: [5],
+      isSaving: false,
+    });
+    const pendingModel = getRotoCellViewModel({
+      frame: 5,
+      currentFrame: 5,
+      cachedFrames: [],
+      editableFrames: [5],
+      pendingFrames: [5],
+      isSaving: true,
+    });
+
+    expect(dirtyModel.baseMeaning).toBe('editable-current');
+    expect(dirtyModel.overlays).toEqual(['current', 'dirty']);
+    expect(dirtyModel.label).toBe('Unsaved changes on frame 5');
+    expect(pendingModel.baseMeaning).toBe('editable-current');
+    expect(pendingModel.overlays).toEqual(['current', 'dirty', 'pending']);
+    expect(pendingModel.label).toBe('Saving frame 5...');
+    expect(baseMeanings).not.toContain('current' as RotoCellBaseMeaning);
+    expect(baseMeanings).not.toContain('dirty' as RotoCellBaseMeaning);
+    expect(baseMeanings).not.toContain('pending' as RotoCellBaseMeaning);
+    expect(overlays).not.toContain('cached' as RotoCellOverlay);
+  });
+
+  it('returns Roto cell labels from base meanings and overlays', () => {
+    expect(getRotoCellStateLabel(7, 'empty', [])).toBe('No Roto content on frame 7');
+    expect(getRotoCellStateLabel(6, 'cached', [])).toBe('Cached frame 6');
+    expect(getRotoCellStateLabel(5, 'editable-current', ['current'])).toBe('Frame 5: Current');
+    expect(getRotoCellStateLabel(5, 'editable-current', ['current', 'dirty'])).toBe('Unsaved changes on frame 5');
+    expect(getRotoCellStateLabel(5, 'editable-current', ['current', 'dirty', 'pending'])).toBe('Saving frame 5...');
+    expect(getRotoCellStateLabel(9, 'generated', [])).toBe('Generated frame 9 (render-only)');
+    expect(getRotoCellStateLabel(8, 'background-only', [])).toBe('Background only on frame 8');
   });
 
   it('returns numbered source labels for the workflow strip header', () => {
