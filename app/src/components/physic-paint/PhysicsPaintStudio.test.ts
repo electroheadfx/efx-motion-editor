@@ -708,6 +708,20 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
   });
 
+  it('clears save-on-leave source tracking on terminal paths while preserving the apply-result origin guard (D-12, D-16)', () => {
+    const text = source();
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+    const timeoutBlock = text.slice(text.indexOf('const startApplyTimeout = useCallback'), text.indexOf('const flushRotoFrame = useCallback'));
+    const listenerBlock = text.slice(text.indexOf('const handleMessageResult ='), text.indexOf('window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT'));
+
+    expect(resultBlock).toContain('saveOnLeaveSourceFrameRef.current = null');
+    expect(resultBlock).toContain('saveOnLeaveRenderedFrameRef.current = null');
+    expect(resultBlock).toContain('saveOnLeaveDeleteFrameRef.current = null');
+    expect(timeoutBlock).toContain('saveOnLeaveSourceFrameRef.current = null');
+    expect(listenerBlock).toContain('if (event.origin !== window.location.origin) return');
+    expect(listenerBlock).toContain('isPhysicPaintApplyResultMessage(event.data)');
+  });
+
   it('wires explicit current-frame Roto saves without repeated brush-move apply calls', () => {
     const text = source();
     const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
