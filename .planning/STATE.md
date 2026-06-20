@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 37
-current_phase_name: future-integration-contract-and-validation
-status: planning
+current_phase: 36.6
+current_phase_name: physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase
+status: executing
 stopped_at: Completed Phase 36.6
-last_updated: "2026-06-20T20:31:00.000Z"
+last_updated: "2026-06-20T19:15:11.566Z"
 last_activity: 2026-06-20
-last_activity_desc: Phase 36.6 completed
+last_activity_desc: Phase 36.6 execution started
 progress:
   total_phases: 10
-  completed_phases: 9
-  total_plans: 52
+  completed_phases: 8
+  total_plans: 53
   completed_plans: 52
-  percent: 90
+  percent: 80
 ---
 
 # Project State
@@ -24,15 +24,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-20)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 37 — Future Integration Contract and Validation
+**Current focus:** Phase 36.6 — physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase
 
 ## Current Position
 
-Phase: 37 (future-integration-contract-and-validation) — PLANNING
+Phase: 36.6 (physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase) — EXECUTING
 Previous phase: 36.6 — Physics Paint Roto Save On Leave complete
-Plan: 0 of TBD
-Status: Phase 36.6 complete; Phase 37 ready for planning
-Last activity: 2026-06-20 — Completed Phase 36.6 save-on-leave implementation
+Plan: 1 of 3
+Status: Executing Phase 36.6
+Last activity: 2026-06-20 — Phase 36.6 execution started
 Next recommended action: `/gsd-plan-phase 37`
 
 Progress: [████████████████████] 52/52 plans (100%)
