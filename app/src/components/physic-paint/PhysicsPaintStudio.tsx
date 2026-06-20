@@ -1735,6 +1735,7 @@ export function PhysicsPaintStudio() {
         cachedPlayFrames: frames,
         previewFrame: 0,
       } : current);
+      pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: payload.startFrame };
       await sendPhysicPaintApplyPayload(payload, bridgeMode);
       startApplyTimeout(operationId);
       return payload;
@@ -2219,12 +2220,12 @@ export function PhysicsPaintStudio() {
         const nextFrame = event.shiftKey
           ? findAdjacentSavedFrame(savedRotoFrames, currentFrame, direction)
           : Math.max(0, currentFrame + direction);
-        if (nextFrame !== null) void navigateToSyncedFrame(nextFrame);
+        if (nextFrame !== null) void requestRotoFrameNavigation(nextFrame);
         return;
       }
       if (key === 'g') {
         event.preventDefault();
-        void navigateToSyncedFrame(currentFrame);
+        void requestRotoFrameNavigation(currentFrame);
         return;
       }
       if (key === 'o') {
@@ -2250,7 +2251,7 @@ export function PhysicsPaintStudio() {
       else if (!savedPlayCacheDirty && getCachedPlayFramesForRange(framesToApply)) playPreview(framesToApply);
       else void savePlay();
     }
-  }, [currentFrame, framesToApply, isPlaying, navigateToSyncedFrame, playPreview, savePlay, saveRotoFrame, savedPlayCacheDirty, savedRotoFrames, stopPreview, undo, workflowMode]);
+  }, [currentFrame, framesToApply, isPlaying, playPreview, requestRotoFrameNavigation, savePlay, saveRotoFrame, savedPlayCacheDirty, savedRotoFrames, stopPreview, undo, workflowMode]);
 
   const onionPreviewFrames = buildOnionPreviewFrames().filter((frame) => (
     (frame.direction === 'previous' && onion.previous) || (frame.direction === 'next' && onion.next)

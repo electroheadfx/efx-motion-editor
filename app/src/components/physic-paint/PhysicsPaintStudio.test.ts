@@ -660,6 +660,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const coordinatorBlock = text.slice(text.indexOf('const requestRotoFrameNavigation = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
+    const keyboardBlock = text.slice(text.indexOf('const handlePhysicsPaintKeyDown = useCallback'), text.indexOf('const onionPreviewFrames = buildOnionPreviewFrames'));
     const frameNavStart = text.indexOf('const goToFirstFrame = useCallback');
     const frameNavBlock = text.slice(frameNavStart, text.indexOf('return (', frameNavStart));
     const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
@@ -681,6 +682,9 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(frameNavBlock).toContain('void requestRotoFrameNavigation(Math.max(0, currentFrame - 1))');
     expect(frameNavBlock).toContain('void requestRotoFrameNavigation(currentFrame + 1)');
     expect(frameNavBlock).toContain('void requestRotoFrameNavigation(Math.max(currentFrame, highestSavedFrame, playEndFrame, framesToApply - 1))');
+    expect(keyboardBlock).toContain('void requestRotoFrameNavigation(nextFrame)');
+    expect(keyboardBlock).toContain('void requestRotoFrameNavigation(currentFrame)');
+    expect(keyboardBlock).not.toContain('void navigateToSyncedFrame(nextFrame)');
     expect(workflowStripBlock).toContain('onNavigateToSyncedFrame={(frame) => { void requestRotoFrameNavigation(frame); }}');
     expect(workflowStripBlock).toContain('onGoToFirstFrame={goToFirstFrame}');
     expect(workflowStripBlock).toContain('onGoToPreviousFrame={goToPreviousFrame}');
@@ -761,7 +765,11 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
 
     expect(text).toContain("const pendingApplyRef = useRef<Pick<PhysicPaintApplyPayload, 'operationId' | 'kind' | 'startFrame'> | null>(null)");
+    const savePlayBlock = text.slice(text.indexOf('const savePlay = useCallback'), text.indexOf('const savePendingRotoFrames = useCallback'));
+
     expect(flushBlock).toContain('pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: frame }');
+    expect(savePlayBlock).toContain('pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: payload.startFrame }');
+    expect(savePlayBlock.indexOf('pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: payload.startFrame }')).toBeLessThan(savePlayBlock.indexOf('await sendPhysicPaintApplyPayload(payload, bridgeMode)'));
     expect(resultBlock).toContain('const pendingApply = pendingApplyRef.current');
     expect(resultBlock).toContain('detail.kind !== pendingApply.kind || detail.startFrame !== pendingApply.startFrame');
     expect(resultBlock.indexOf('detail.kind !== pendingApply.kind')).toBeLessThan(resultBlock.indexOf('activeOperationIdRef.current = null'));
