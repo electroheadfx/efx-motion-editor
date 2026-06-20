@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.4
-current_phase_name: Physics Paint Roto Explicit Close Behavior
-status: ready_to_execute
+current_phase: 37
+current_phase_name: Future Integration Contract and Validation
+status: executing
 stopped_at: Completed 36.4-02-PLAN.md
-last_updated: "2026-06-20T08:32:51.082Z"
+last_updated: "2026-06-20T08:56:49.498Z"
 last_activity: 2026-06-20
-last_activity_desc: Phase 36.4 planned with 1 MVP plan
+last_activity_desc: Phase 36.4 complete, transitioned to Phase 37
 progress:
   total_phases: 8
   completed_phases: 7
@@ -24,24 +24,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-19)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.4 — Physics Paint Roto Explicit Close Behavior
+**Current focus:** Phase 37 — Future Integration Contract and Validation
 
 ## Current Position
 
-Phase: 36.4 — Physics Paint Roto Explicit Close Behavior
-Previous phase: 36.3 — Physics Paint Roto Durable Core Recovery complete
-Plan: 1 plan ready
-Status: Ready to execute Phase 36.4
-Last activity: 2026-06-20 — Phase 36.4 planned with 1 MVP plan
-Next recommended action: `/gsd-execute-phase 36.4`
+Phase: 37 — Future Integration Contract and Validation
+Previous phase: 36.4 — Physics Paint Roto Explicit Close Behavior complete
+Plan: Not started
+Status: Ready to plan Phase 37
+Last activity: 2026-06-20 — Phase 36.4 complete, transitioned to Phase 37
+Next recommended action: `/gsd-plan-phase 37`
 
-Progress: [███████████████████░] 45/46 plans (98%)
+Progress: [████████████████████] 47/47 plans (100%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 32 for v0.8.0
+- Total plans completed: 34 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -57,6 +57,7 @@ Progress: [███████████████████░] 45/46 p
 | 35 | 7 | - | - |
 | 36.1 | 9 | - | - |
 | 36.3 | 2 | - | - |
+| 36.4 | 2 | - | - |
 
 **Recent Trend:**
 
