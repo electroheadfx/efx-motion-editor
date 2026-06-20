@@ -44,6 +44,9 @@ describe('physicsPaintWorkflowState', () => {
     expect(getRotoCellFill(5, [], [5])).toBe('editable-session');
     expect(getRotoPendingLabel(true, false)).toBe('Unsaved changes — click Save current to cache');
     expect(getRotoPendingLabel(true, true)).toBe('Saving current frame…');
+    expect(getRotoPendingLabel(true, true, 7)).toBe('Saving frame 7…');
+    expect(getRotoPendingLabel(true, true, -1)).toBe('Saving current frame…');
+    expect(getRotoPendingLabel(true, true, 1.5)).toBe('Saving current frame…');
     expect(getRotoPendingLabel(false, false)).toBeNull();
     expect(allSemanticFills).not.toContain('dirty' as RotoCellFill);
     expect(allSemanticFills).not.toContain('yellow' as RotoCellFill);
