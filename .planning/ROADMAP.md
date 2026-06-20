@@ -235,6 +235,29 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 36.5: Physics Paint Roto Cell Semantics
+
+This phase (in SPECS/36.x-phases/phase-36.5-cell-semantics/spec-36.5-cell-semantics.md) is not another close-behavior phase. Phase 36.4 already covered explicit close choices. Phase 36.5 should focus on Roto timeline cell semantics: making frame states visible and trustworthy in the UI, using SPECS/36.x-phases/timeline-ui/* as visual reference while keeping the MVP narrow. (INSERTED)
+
+**Goal:** As a stop-motion animator, I want Roto timeline cells to clearly distinguish empty, cached, editable, current, generated, and background-only states, so that I can trust what each frame represents.
+**Requirements**: 36.5-STATE-01, 36.5-STATE-02, 36.5-STATE-03, 36.5-STATE-04, 36.5-STATE-05, 36.5-STATE-06, 36.5-SCOPE-01
+**Depends on:** Phase 36
+**Plans:** 3 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 36.5-01-PLAN.md — Define and test normalized Roto cell base meanings and overlays.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 36.5-02-PLAN.md — Wire semantic Roto cells, legend, status copy, and scope guards into the workflow strip.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 36.5-03-PLAN.md — Apply semantic CSS treatments and run user-owned visual verification.
+
 ### Phase 36.4: Physics Paint Roto Explicit Close Behavior
 
 Use SPECS/36.x-phases/phase-36.4-explicit-close/spec-36.4-explicit-close.md as the source of truth for this phase. (INSERTED)
