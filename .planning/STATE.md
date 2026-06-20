@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 37
-current_phase_name: future-integration-contract-and-validation
-status: planning_ready
-stopped_at: Phase 36.5 complete; Phase 37 ready
-last_updated: "2026-06-20T15:56:00.000Z"
+current_phase: 36.6
+current_phase_name: physics-paint-roto-save-on-leave
+status: planning
+stopped_at: Phase 36.6 context gathered
+last_updated: "2026-06-20T15:50:02.573Z"
 last_activity: 2026-06-20
-last_activity_desc: Phase 36.5 completed with approved Roto cell semantics and cached-reference navigation fix
+last_activity_desc: Phase 36.6 inserted; ready to plan
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 8
   total_plans: 50
   completed_plans: 50
-  percent: 89
+  percent: 80
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-20)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 37 — future-integration-contract-and-validation
+**Current focus:** Phase 36.6 — physics-paint-roto-save-on-leave
 
 ## Current Position
 
-Phase: 37 (future-integration-contract-and-validation) — PLANNING READY
+Phase: 36.6 (physics-paint-roto-save-on-leave) — NOT PLANNED
 Previous phase: 36.5 — Physics Paint Roto Cell Semantics complete
 Plan: 0 of TBD
-Status: Phase 36.5 complete; ready to plan Phase 37
-Last activity: 2026-06-20 — Phase 36.5 completed with approved visual checkpoint
-Next recommended action: `/gsd-plan-phase 37`
+Status: Phase 36.6 inserted; ready to plan
+Last activity: 2026-06-20 — Phase 36.6 inserted; ready to plan
+Next recommended action: `/gsd-plan-phase 36.6`
 
 Progress: [████████████████████] 50/50 plans (100%)
 
@@ -137,6 +137,7 @@ None yet.
 - Phase 36.2 inserted after Phase 36: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (URGENT)
 - Phase 36.4 inserted after Phase 36: Physics Paint Roto Explicit Close Behavior Use SPECS/36.x-phases/phase-36.4-explicit-close/spec-36.4-explicit-close.md as the source of truth for this phase. (URGENT)
 - Phase 36.5 inserted after Phase 36: Physics Paint Roto Cell Semantics — Roto timeline cell semantics: make frame states visible and trustworthy in the UI, using SPECS/36.x-phases/timeline-ui/* as visual reference while keeping the MVP narrow. (URGENT)
+- Phase 36.6 inserted after Phase 36: Physics Paint Roto Save On Leave — source of truth: SPECS/36.x-phases/phase-36.6-save-on-leave/spec-36.6-save-on-leave.md (URGENT)
 
 ## Deferred Items
 
@@ -149,6 +150,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-20T15:56:00.000Z
-Stopped at: Phase 36.5 complete; Phase 37 ready
-Resume file: .planning/ROADMAP.md
+Last session: 2026-06-20T15:50:02.567Z
+Stopped at: Phase 36.6 context gathered
+Resume file: .planning/phases/36.6-physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase/36.6-CONTEXT.md
