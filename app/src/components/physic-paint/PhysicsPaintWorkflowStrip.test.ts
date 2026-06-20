@@ -12,6 +12,14 @@ const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
 const studioSource = () => readFileSync(studioSourcePath, 'utf8');
 const workflowStateSource = () => readFileSync(workflowStateSourcePath, 'utf8');
 
+function getRotoControlsBlock(code: string): string {
+  return code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
+}
+
+function getRotoMapBlock(code: string): string {
+  return code.slice(code.indexOf('frameCells.map(frame =>'), code.indexOf('interpolationConnectors.map'));
+}
+
 describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('exports the workflow strip component and props', () => {
     const code = source();
@@ -155,7 +163,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('keeps Roto interpolation explanatory copy out of the strict Phase 36.3 Roto strip', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
-    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
+    const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).not.toContain('getRotoInterpolationStatusCopy');
     expect(rotoControlsBlock).not.toContain('Interpolation needs two real Roto keys.');
@@ -167,7 +175,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('gates Roto interpolation controls out of the strict Phase 36.3 Roto strip', () => {
     const code = source();
-    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
+    const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
@@ -182,7 +190,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('gates Roto key utility controls out of the strict Phase 36.3 Roto strip', () => {
     const code = source();
-    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
+    const rotoControlsBlock = getRotoControlsBlock(code);
 
     for (const contract of [
       'onDuplicateRotoKey?: () => void',
@@ -205,7 +213,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('keeps real-key utility explanatory copy out of the strict Phase 36.3 Roto strip', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
-    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
+    const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).not.toContain('getRotoKeyUtilityStatusCopy');
     expect(rotoControlsBlock).not.toContain('Key utilities require a real Roto key; generated in-betweens are render-only.');
@@ -218,7 +226,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('does not render compact Roto interpolation controls in the strict Phase 36.3 Roto strip', () => {
     const code = source();
-    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
+    const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
@@ -379,7 +387,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('renders Phase 36.5 Roto cell semantics from the view model in the existing strip (D-02, D-03, D-04)', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
-    const rotoMapBlock = code.slice(code.indexOf('frameCells.map(frame =>'), code.indexOf('interpolationConnectors.map'));
+    const rotoMapBlock = getRotoMapBlock(code);
 
     expect(code).toContain('getRotoCellViewModel');
     expect(code).toContain('physics-paint-roto-cell-legend');
@@ -400,7 +408,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('guards generated Roto cells as render-only before ordinary editable navigation (D-02, D-05)', () => {
     const code = source();
-    const rotoMapBlock = code.slice(code.indexOf('frameCells.map(frame =>'), code.indexOf('interpolationConnectors.map'));
+    const rotoMapBlock = getRotoMapBlock(code);
 
     expect(rotoMapBlock).toContain("vm.baseMeaning === 'generated'");
     expect(rotoMapBlock).toContain('vm.isEditableTarget === false');
@@ -411,7 +419,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps Phase 36.5 Roto cell scope MVP-only without excluded controls (36.5-SCOPE-01, D-01, D-05)', () => {
     const code = source();
-    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
+    const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).not.toMatch(/from ['"].*Timeline/);
     expect(code).not.toContain('<Timeline');
