@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 37
-current_phase_name: Future Integration Contract and Validation
+current_phase: 36.5
+current_phase_name: Physics Paint Roto Cell Semantics
 status: executing
-stopped_at: Completed 36.4-02-PLAN.md
-last_updated: "2026-06-20T08:56:49.498Z"
+stopped_at: Phase 36.5 UI-SPEC approved
+last_updated: "2026-06-20T10:07:43.410Z"
 last_activity: 2026-06-20
-last_activity_desc: Phase 36.4 complete, transitioned to Phase 37
+last_activity_desc: Phase 36.5 inserted after Phase 36
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 7
   total_plans: 47
   completed_plans: 47
-  percent: 88
+  percent: 78
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-19)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 37 — Future Integration Contract and Validation
+**Current focus:** Phase 36.5 — Physics Paint Roto Cell Semantics
 
 ## Current Position
 
-Phase: 37 — Future Integration Contract and Validation
+Phase: 36.5 — Physics Paint Roto Cell Semantics
 Previous phase: 36.4 — Physics Paint Roto Explicit Close Behavior complete
-Plan: Not started
-Status: Ready to plan Phase 37
-Last activity: 2026-06-20 — Phase 36.4 complete, transitioned to Phase 37
-Next recommended action: `/gsd-plan-phase 37`
+Plan: 3 plans ready
+Status: Ready to execute Phase 36.5
+Last activity: 2026-06-20 — Phase 36.5 planned and verified
+Next recommended action: `/gsd-execute-phase 36.5`
 
 Progress: [████████████████████] 47/47 plans (100%)
 
@@ -131,6 +131,7 @@ None yet.
 - Phase 36.1 inserted after Phase 36 (URGENT): Physics paint timeline markers for play script segments, selecting/editing the active segment by scrubber position, previewing interpolation inside efx-physics paint, and rendering play paint scripts sequentially like one pencil stroke path instead of parallel hands.
 - Phase 36.2 inserted after Phase 36: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (URGENT)
 - Phase 36.4 inserted after Phase 36: Physics Paint Roto Explicit Close Behavior Use SPECS/36.x-phases/phase-36.4-explicit-close/spec-36.4-explicit-close.md as the source of truth for this phase. (URGENT)
+- Phase 36.5 inserted after Phase 36: Physics Paint Roto Cell Semantics — Roto timeline cell semantics: make frame states visible and trustworthy in the UI, using SPECS/36.x-phases/timeline-ui/* as visual reference while keeping the MVP narrow. (URGENT)
 
 ## Deferred Items
 
@@ -143,6 +144,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-20T08:32:51.078Z
-Stopped at: Completed 36.4-02-PLAN.md
-Resume file: None
+Last session: 2026-06-20T10:07:43.404Z
+Stopped at: Phase 36.5 UI-SPEC approved
+Resume file: .planning/phases/36.5-physics-paint-roto-cell-semantics-this-phase-in-specs-36-x-p/36.5-UI-SPEC.md
