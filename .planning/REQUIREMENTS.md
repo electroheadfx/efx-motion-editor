@@ -33,6 +33,16 @@ Requirements for the Standalone Physics Paint milestone. This milestone proves `
 - [x] **OUT-01**: User can export the current rendered paint result as a PNG or still image.
 - [x] **OUT-02**: User can produce a frame-sequence or cache-manifest proof from the live engine for future editor consumption.
 
+### Physics Paint Roto Save On Leave
+
+- [x] **36.6-AC-01**: Navigating away from a clean Roto frame opens the destination immediately.
+- [x] **36.6-AC-02**: Navigating away from a dirty Roto frame saves the source frame first and opens the destination only after matching save success.
+- [x] **36.6-AC-03**: The saved source frame appears in the correct cache/timeline position.
+- [x] **36.6-AC-04**: Returning to the source frame shows the saved cached result.
+- [x] **36.6-AC-05**: Save-on-leave feedback makes the wait visible without adding modal, toast, tutorial, or extra navigation controls.
+- [x] **36.6-AC-06**: Rapid frame changes during one dirty source save keep only the latest requested destination without corrupting source or destination state.
+- [x] **36.6-FB-01**: Failed save-on-leave stays on the dirty source frame, preserves unsaved state, clears queued destination, and does not switch frames.
+
 ### Future Integration Seam
 
 - [ ] **SEAM-01**: Developer has typed contracts for future transport/cache messages without implementing editor integration in this milestone.
@@ -85,16 +95,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAVE-02 | Phase 36 | Complete |
 | OUT-01 | Phase 36 | Complete |
 | OUT-02 | Phase 36 | Complete |
+| 36.6-AC-01 | Phase 36.6 | Complete |
+| 36.6-AC-02 | Phase 36.6 | Complete |
+| 36.6-AC-03 | Phase 36.6 | Complete |
+| 36.6-AC-04 | Phase 36.6 | Complete |
+| 36.6-AC-05 | Phase 36.6 | Complete |
+| 36.6-AC-06 | Phase 36.6 | Complete |
+| 36.6-FB-01 | Phase 36.6 | Complete |
 | SEAM-01 | Phase 37 | Pending |
 | SEAM-02 | Phase 37 | Pending |
 | TEST-01 | Phase 37 | Pending |
 
 **Coverage:**
 
-- v0.8.0 requirements: 17 total
-- Mapped to phases: 17
+- v0.8.0 requirements: 24 total
+- Mapped to phases: 24
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-08*
-*Last updated: 2026-06-08 after v0.8.0 roadmap creation*
+*Last updated: 2026-06-20 after Phase 36.6 save-on-leave traceability update*
