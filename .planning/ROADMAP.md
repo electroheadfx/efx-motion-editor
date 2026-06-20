@@ -243,12 +243,12 @@ Use SPECS/36.x-phases/phase-36.4-explicit-close/spec-36.4-explicit-close.md as t
 **Mode:** mvp
 **Requirements**: PH36.4-CLEAN-CLOSE, PH36.4-DIRTY-CHOICES, PH36.4-DISCARD, PH36.4-CANCEL, PH36.4-SAVE-CLOSE
 **Depends on:** Phase 36
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 **Wave 1**
 
-- [ ] 36.4-01-PLAN.md — Implement explicit dirty Roto close choices, save-close completion, clean close, and non-stuck recovery.
+- [x] 36.4-01-PLAN.md — Implement explicit dirty Roto close choices, save-close completion, clean close, and non-stuck recovery.
 
 ### Phase 36.2: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (FAILED/SUPERSEDED)
 
