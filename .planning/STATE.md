@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.6
-current_phase_name: physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase
-status: executing
-stopped_at: Completed 36.6-01-PLAN.md
-last_updated: "2026-06-20T17:29:54.344Z"
+current_phase: 37
+current_phase_name: future-integration-contract-and-validation
+status: planning
+stopped_at: Completed Phase 36.6
+last_updated: "2026-06-20T20:31:00.000Z"
 last_activity: 2026-06-20
-last_activity_desc: Phase 36.6 execution started
+last_activity_desc: Phase 36.6 completed
 progress:
   total_phases: 10
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 52
-  completed_plans: 51
-  percent: 80
+  completed_plans: 52
+  percent: 90
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-20)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.6 — physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase
+**Current focus:** Phase 37 — Future Integration Contract and Validation
 
 ## Current Position
 
-Phase: 36.6 (physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase) — EXECUTING
-Previous phase: 36.5 — Physics Paint Roto Cell Semantics complete
-Plan: 1 of 2
-Status: Plan 36.6-01 complete; Plan 36.6-02 ready
-Last activity: 2026-06-20 — Completed 36.6-01 save-on-leave coordinator
-Next recommended action: `/gsd-execute-phase 36.6 --interactive`
+Phase: 37 (future-integration-contract-and-validation) — PLANNING
+Previous phase: 36.6 — Physics Paint Roto Save On Leave complete
+Plan: 0 of TBD
+Status: Phase 36.6 complete; Phase 37 ready for planning
+Last activity: 2026-06-20 — Completed Phase 36.6 save-on-leave implementation
+Next recommended action: `/gsd-plan-phase 37`
 
-Progress: [███████████████████░] 51/52 plans (98%)
+Progress: [████████████████████] 52/52 plans (100%)
 
 ## Performance Metrics
 
@@ -80,6 +80,7 @@ Progress: [███████████████████░] 51/52 p
 | Phase 36.5 P02 | 4min | 3 tasks | 2 files |
 | Phase 36.5 P03 | 34min | 3 tasks + visual fix | 4 files |
 | Phase 36.6 P01 | 42min | 3 tasks | 2 files |
+| Phase 36.6 P02 | 25min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
