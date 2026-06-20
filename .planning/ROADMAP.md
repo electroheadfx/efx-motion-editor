@@ -235,6 +235,21 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 36.4: Physics Paint Roto Explicit Close Behavior
+
+Use SPECS/36.x-phases/phase-36.4-explicit-close/spec-36.4-explicit-close.md as the source of truth for this phase. (INSERTED)
+
+**Goal:** As a stop-motion animator, I want to close Physics Paint with an unsaved Roto frame by choosing close without saving, cancel, or close saving, so that I can choose between speed and preserving the current frame.
+**Mode:** mvp
+**Requirements**: PH36.4-CLEAN-CLOSE, PH36.4-DIRTY-CHOICES, PH36.4-DISCARD, PH36.4-CANCEL, PH36.4-SAVE-CLOSE
+**Depends on:** Phase 36
+**Plans:** 1 plan
+
+Plans:
+**Wave 1**
+
+- [ ] 36.4-01-PLAN.md — Implement explicit dirty Roto close choices, save-close completion, clean close, and non-stuck recovery.
+
 ### Phase 36.2: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (FAILED/SUPERSEDED)
 
 **Goal:** Users can work with Physics Paint Roto as a cache-first animation workflow with gray/green/pink cache cells, cached-reference navigation, save-on-leave/save-on-close, cached playback/export, and render-only interpolation/key utilities.

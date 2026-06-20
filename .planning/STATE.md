@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 37
-current_phase_name: Future Integration Contract and Validation
-status: ready_to_plan
-stopped_at: Phase 36.3 complete, ready to plan Phase 37
-last_updated: "2026-06-19T17:55:00+02:00"
-last_activity: 2026-06-19
-last_activity_desc: Phase 36.3 complete, transitioned to Phase 37
+current_phase: 36.4
+current_phase_name: Physics Paint Roto Explicit Close Behavior
+status: ready_to_execute
+stopped_at: Phase 36.4 planned, ready to execute
+last_updated: "2026-06-20T06:19:46.087Z"
+last_activity: 2026-06-20
+last_activity_desc: Phase 36.4 planned with 1 MVP plan
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 6
-  total_plans: 45
+  total_plans: 46
   completed_plans: 45
-  percent: 100
+  percent: 75
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-19)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 37 — Future Integration Contract and Validation
+**Current focus:** Phase 36.4 — Physics Paint Roto Explicit Close Behavior
 
 ## Current Position
 
-Phase: 37 — Future Integration Contract and Validation
+Phase: 36.4 — Physics Paint Roto Explicit Close Behavior
 Previous phase: 36.3 — Physics Paint Roto Durable Core Recovery complete
-Plan: Not started
-Status: Ready to plan Phase 37
-Last activity: 2026-06-19 — Phase 36.3 complete, transitioned to Phase 37
-Next recommended action: `/gsd-plan-phase 37`
+Plan: 1 plan ready
+Status: Ready to execute Phase 36.4
+Last activity: 2026-06-20 — Phase 36.4 planned with 1 MVP plan
+Next recommended action: `/gsd-execute-phase 36.4`
 
-Progress: [████████████████████] 45/45 plans (100%)
+Progress: [███████████████████░] 45/46 plans (98%)
 
 ## Performance Metrics
 
@@ -128,6 +128,7 @@ None yet.
 - Phase 36 edited: added heavy physics paint package UI rebuild scope alongside session persistence and output proof.
 - Phase 36.1 inserted after Phase 36 (URGENT): Physics paint timeline markers for play script segments, selecting/editing the active segment by scrubber position, previewing interpolation inside efx-physics paint, and rendering play paint scripts sequentially like one pencil stroke path instead of parallel hands.
 - Phase 36.2 inserted after Phase 36: Roto paint enhancements: All details are here @SPECS/phase-36.2-physics-paint-roto-cache.md (URGENT)
+- Phase 36.4 inserted after Phase 36: Physics Paint Roto Explicit Close Behavior Use SPECS/36.x-phases/phase-36.4-explicit-close/spec-36.4-explicit-close.md as the source of truth for this phase. (URGENT)
 
 ## Deferred Items
 
