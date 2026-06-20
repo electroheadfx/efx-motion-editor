@@ -7,6 +7,7 @@
     "core:default",
     "core:window:default",
     "core:window:allow-set-fullscreen",
+    "core:window:allow-close",
     "core:window:allow-destroy",
     "core:app:default",
     "core:path:default",

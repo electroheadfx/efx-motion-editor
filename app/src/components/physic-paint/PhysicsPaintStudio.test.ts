@@ -487,8 +487,9 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
   });
 
-  it('grants the Physics Paint window permission required by clean close', () => {
+  it('grants the Physics Paint window permissions required by clean close', () => {
     const text = source();
+    const tauriWindowApi = readFileSync(fileURLToPath(new URL('../../../node_modules/@tauri-apps/api/window.js', import.meta.url)), 'utf8');
     const capability = JSON.parse(readFileSync(defaultCapabilityPath, 'utf8')) as {
       windows?: string[];
       permissions?: unknown[];
@@ -496,7 +497,10 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
     expect(text).toContain('const appWindow = windowApi.getCurrentWindow()');
     expect(text).toContain('await appWindow.close()');
+    expect(tauriWindowApi).toContain("return invoke('plugin:window|close'");
+    expect(tauriWindowApi).toContain('await this.destroy()');
     expect(capability.windows).toContain('efx-physic-paint');
+    expect(capability.permissions).toContain('core:window:allow-close');
     expect(capability.permissions).toContain('core:window:allow-destroy');
   });
 
