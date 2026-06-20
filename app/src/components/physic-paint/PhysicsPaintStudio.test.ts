@@ -656,6 +656,49 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).not.toContain('onPointerMoveCapture={');
   });
 
+  it('routes Phase 36.6 save-on-leave Roto navigation through one leave-boundary coordinator (D-01, D-02, D-03, D-05)', () => {
+    const text = source();
+    const coordinatorBlock = text.slice(text.indexOf('const requestRotoFrameNavigation = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
+    const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
+    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+
+    expect(text).toContain('const requestRotoFrameNavigation = useCallback');
+    expect(coordinatorBlock).toContain('if (!Number.isInteger(targetFrame) || targetFrame < 0) return false');
+    expect(coordinatorBlock).toContain('snapshotCurrentRotoFrame()');
+    expect(coordinatorBlock).toContain('const sourceFrame = currentFrame');
+    expect(coordinatorBlock).toContain('const sourceIsDirty = dirtyRotoFramesRef.current.has(sourceFrame)');
+    expect(coordinatorBlock).toContain('if (!sourceIsDirty) return navigateToSyncedFrame(targetFrame)');
+    expect(coordinatorBlock).toContain('flushRotoFrame(sourceFrame, { force: true, advanceToFrame: targetFrame })');
+    expect(coordinatorBlock).toContain('pendingRotoAdvanceRef.current = targetFrame');
+    expect(coordinatorBlock).toContain('if (rotoFlushInFlightRef.current)');
+    expect(navigateBlock).toContain('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
+    expect(navigateBlock).not.toContain('flushRotoFrame(sourceFrame');
+    expect(workflowStripBlock).toContain('onNavigateToSyncedFrame={(frame) => { void requestRotoFrameNavigation(frame); }}');
+    expect(workflowStripBlock).toContain('onGoToFirstFrame={() => { void requestRotoFrameNavigation(0); }}');
+    expect(workflowStripBlock).toContain('onGoToPreviousFrame={() => { void requestRotoFrameNavigation(currentFrame - 1); }}');
+    expect(workflowStripBlock).toContain('onGoToNextFrame={() => { void requestRotoFrameNavigation(currentFrame + 1); }}');
+    expect(workflowStripBlock).toContain('onGoToLastFrame={() => { void requestRotoFrameNavigation(totalFrames - 1); }}');
+  });
+
+  it('keeps Phase 36.6 failed save-on-leave on the dirty source and clears queued navigation (D-10, D-11, D-12)', () => {
+    const text = source();
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+    const timeoutBlock = text.slice(text.indexOf('const startApplyTimeout = useCallback'), text.indexOf('const flushRotoFrame = useCallback'));
+
+    expect(resultBlock).toContain('const nextFrame = pendingRotoAdvanceRef.current');
+    expect(resultBlock).toContain('if (!detail.ok)');
+    expect(resultBlock).toContain('pendingRotoAdvanceRef.current = null');
+    expect(resultBlock).toContain('saveOnLeaveSourceFrameRef.current');
+    expect(resultBlock).toContain('Could not save frame');
+    expect(resultBlock).toContain('try navigating again to retry');
+    expect(resultBlock).not.toContain('void navigateToSyncedFrame(nextFrame)');
+    expect(timeoutBlock).toContain('pendingRotoAdvanceRef.current = null');
+    expect(timeoutBlock).toContain('saveOnLeaveSourceFrameRef.current');
+    expect(timeoutBlock).toContain('Could not save frame');
+    expect(text).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
+    expect(text).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
+  });
+
   it('wires explicit current-frame Roto saves without repeated brush-move apply calls', () => {
     const text = source();
     const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
