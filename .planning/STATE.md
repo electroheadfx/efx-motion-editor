@@ -2,40 +2,40 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.5
-current_phase_name: physics-paint-roto-cell-semantics-this-phase-in-specs-36-x-p
-status: executing
-stopped_at: Phase 36.5 UI-SPEC approved
-last_updated: "2026-06-20T11:32:17.482Z"
+current_phase: 37
+current_phase_name: future-integration-contract-and-validation
+status: planning_ready
+stopped_at: Phase 36.5 complete; Phase 37 ready
+last_updated: "2026-06-20T15:56:00.000Z"
 last_activity: 2026-06-20
-last_activity_desc: Phase 36.5 execution started
+last_activity_desc: Phase 36.5 completed with approved Roto cell semantics and cached-reference navigation fix
 progress:
   total_phases: 9
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 50
-  completed_plans: 47
-  percent: 78
+  completed_plans: 50
+  percent: 89
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-19)
+See: .planning/PROJECT.md (updated 2026-06-20)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.5 — physics-paint-roto-cell-semantics-this-phase-in-specs-36-x-p
+**Current focus:** Phase 37 — future-integration-contract-and-validation
 
 ## Current Position
 
-Phase: 36.5 (physics-paint-roto-cell-semantics-this-phase-in-specs-36-x-p) — EXECUTING
-Previous phase: 36.4 — Physics Paint Roto Explicit Close Behavior complete
-Plan: 1 of 3
-Status: Executing Phase 36.5
-Last activity: 2026-06-20 — Phase 36.5 execution started
-Next recommended action: `/gsd-execute-phase 36.5`
+Phase: 37 (future-integration-contract-and-validation) — PLANNING READY
+Previous phase: 36.5 — Physics Paint Roto Cell Semantics complete
+Plan: 0 of TBD
+Status: Phase 36.5 complete; ready to plan Phase 37
+Last activity: 2026-06-20 — Phase 36.5 completed with approved visual checkpoint
+Next recommended action: `/gsd-plan-phase 37`
 
-Progress: [████████████████████] 47/47 plans (100%)
+Progress: [████████████████████] 50/50 plans (100%)
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [████████████████████] 47/47 p
 | 36.1 | 9 | - | - |
 | 36.3 | 2 | - | - |
 | 36.4 | 2 | - | - |
+| 36.5 | 3 | 45min | 15min |
 
 **Recent Trend:**
 
@@ -75,6 +76,9 @@ Progress: [████████████████████] 47/47 p
 | Phase 36.2 P03 | 2h | 2 tasks | 3 files |
 | Phase 36.2 P10 | 8min | 3 tasks | 8 files |
 | Phase 36.4 P01 | 20min | 3 tasks | 3 files |
+| Phase 36.5 P01 | 7min | 3 tasks | 2 files |
+| Phase 36.5 P02 | 4min | 3 tasks | 2 files |
+| Phase 36.5 P03 | 34min | 3 tasks + visual fix | 4 files |
 
 ## Accumulated Context
 
@@ -114,6 +118,7 @@ None yet.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
+- Phase 36.5 completed: Roto cell semantics are visible in the existing workflow strip, generated cells are render-only guarded, and saved cached PNG references remain visible during standalone navigation.
 - Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
 ### Quick Tasks Completed
@@ -144,6 +149,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-20T10:07:43.404Z
-Stopped at: Phase 36.5 UI-SPEC approved
-Resume file: .planning/phases/36.5-physics-paint-roto-cell-semantics-this-phase-in-specs-36-x-p/36.5-UI-SPEC.md
+Last session: 2026-06-20T15:56:00.000Z
+Stopped at: Phase 36.5 complete; Phase 37 ready
+Resume file: .planning/ROADMAP.md

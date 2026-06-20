@@ -99,6 +99,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Inline color picker positioned adjacent to canvas (left panel, 260px) — v0.7.0 Phase 33
 - ✓ efx-physic-paint is runnable and testable as a standalone interactive physics paint app/window before editor integration — v0.8.0 Phase 35
 - ✓ One Physics Paint Roto frame can be cached into EFX Motion, drawn in preview, preserved through project save/load, and reopened as a cached visual reference — v0.8.0 Phase 36.3
+- ✓ Physics Paint Roto timeline cells distinguish empty, cached, editable/current, generated/render-only, background-only, dirty, and saving states with semantic labels, non-color visual cues, and compact legend/status copy — v0.8.0 Phase 36.5
 
 ### Active
 
@@ -208,6 +209,7 @@ Known technical debt:
 | VelocityCache with seek invalidation | Math.abs(currentFrame - lastFrame) > 1 detects seek vs playback | ✓ Good — clean velocity on playback, no artifacts on seek |
 | Sub-frame accumulation with Float32 averaging | Higher quality export blur via temporal super-sampling | ✓ Good — combined with GLSL velocity blur for best quality |
 | Cached Roto PNG as durable truth | Phase 36.3 recovered the smallest trustworthy Roto path after Phase 36.2 failed: explicit `Save current` writes one frame into EFX Motion and reopen uses the saved PNG as reference, not editable stroke restore | ✓ Good — UAT passed for save, preview, save/load, cached-reference reopen, and navigation preservation |
+| Phase 36.5 Roto cell semantics stay MVP-only | User needed trustworthy existing strip state communication without reopening interpolation, cached playback, key utilities, save-on-leave, close behavior, or full timeline redesign scope | ✓ Good — semantic view models, compact legend/status, non-color CSS cues, generated-cell guard, and cached-reference navigation fix were validated |
 | Phase 37 is contract/validation-only | The milestone still avoids editor integration scope creep after proving one durable cached frame | Pending — next phase should document typed seam and validation without headless adapter/editor-runtime implementation |
 
 ## Evolution
@@ -228,4 +230,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-19 after Phase 36.3 — durable Roto cache core validated and Phase 37 contract work queued*
+*Last updated: 2026-06-20 after Phase 36.5 — Roto cell semantics validated and Phase 37 contract work queued*

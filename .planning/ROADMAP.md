@@ -130,6 +130,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36: Session Persistence and Output Proof** - Users can save, reload, inspect, and export standalone physics paint output for future cached compositing. (completed 2026-06-13)
 - [x] **Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback** - Users can see saved Play script ranges, reopen/scrub them correctly, and render sequential Play animation. (completed 2026-06-16)
 - [x] **Phase 36.3: Physics Paint Roto Durable Core Recovery** - MVP/TDD recovery phase to prove one painted Roto frame can be cached into EFX Motion, appear in preview, survive project save/load, and reopen as a cached visual reference. (planned recovery) (completed 2026-06-19)
+- [x] **Phase 36.5: Physics Paint Roto Cell Semantics** - Roto timeline cells clearly distinguish empty, cached, editable/current, generated/render-only, background-only, dirty, and saving states while staying MVP-only. (completed 2026-06-20)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
 
 ## Phase Details
@@ -242,21 +243,21 @@ This phase (in SPECS/36.x-phases/phase-36.5-cell-semantics/spec-36.5-cell-semant
 **Goal:** As a stop-motion animator, I want Roto timeline cells to clearly distinguish empty, cached, editable, current, generated, and background-only states, so that I can trust what each frame represents.
 **Requirements**: 36.5-STATE-01, 36.5-STATE-02, 36.5-STATE-03, 36.5-STATE-04, 36.5-STATE-05, 36.5-STATE-06, 36.5-SCOPE-01
 **Depends on:** Phase 36
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 
 **Wave 1**
 
-- [ ] 36.5-01-PLAN.md — Define and test normalized Roto cell base meanings and overlays.
+- [x] 36.5-01-PLAN.md — Define and test normalized Roto cell base meanings and overlays.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 36.5-02-PLAN.md — Wire semantic Roto cells, legend, status copy, and scope guards into the workflow strip.
+- [x] 36.5-02-PLAN.md — Wire semantic Roto cells, legend, status copy, and scope guards into the workflow strip.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 36.5-03-PLAN.md — Apply semantic CSS treatments and run user-owned visual verification.
+- [x] 36.5-03-PLAN.md — Apply semantic CSS treatments and run user-owned visual verification.
 
 ### Phase 36.4: Physics Paint Roto Explicit Close Behavior
 
