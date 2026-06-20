@@ -672,7 +672,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(coordinatorBlock).toContain('if (!sourceIsDirty) return navigateToSyncedFrame(targetFrame)');
     expect(coordinatorBlock).toContain('flushRotoFrame(sourceFrame, { force: true, advanceToFrame: targetFrame })');
     expect(coordinatorBlock).toContain('pendingRotoAdvanceRef.current = targetFrame');
-    expect(coordinatorBlock).toContain('if (saveOnLeaveSourceFrameRef.current !== null && rotoFlushInFlightRef.current)');
+    expect(coordinatorBlock).toContain('const saveOnLeaveSourceFrame = saveOnLeaveSourceFrameRef.current');
+    expect(coordinatorBlock).toContain('if (saveOnLeaveSourceFrame !== null && activeOperationIdRef.current)');
     expect(coordinatorBlock).toContain('saveOnLeaveSourceFrameRef.current = sourceFrame');
     expect(navigateBlock).toContain('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
     expect(navigateBlock).not.toContain('flushRotoFrame(sourceFrame');
@@ -732,7 +733,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(resultBlock).toContain('saveOnLeaveDeleteFrameRef.current = null');
     expect(resultBlock).toContain('Could not save frame');
     expect(resultBlock).toContain('try navigating again to retry');
-    expect(resultBlock.indexOf('return;')).toBeLessThan(resultBlock.indexOf('void navigateToSyncedFrame(nextFrame)'));
+    expect(resultBlock.indexOf('return;')).toBeLessThan(resultBlock.indexOf('void openSyncedRotoFrameAfterSave(nextFrame)'));
     expect(timeoutBlock).toContain('pendingRotoAdvanceRef.current = null');
     expect(timeoutBlock).toContain('saveOnLeaveSourceFrameRef.current');
     expect(timeoutBlock).toContain('Could not save frame');

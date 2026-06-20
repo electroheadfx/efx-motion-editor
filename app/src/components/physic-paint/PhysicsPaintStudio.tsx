@@ -1379,10 +1379,30 @@ export function PhysicsPaintStudio() {
     return true;
   }, [applyStatus, bridgeMode, engine, launchContext, snapshotCurrentRotoFrame, stopRotoCachedPlayback]);
 
+  const openSyncedRotoFrameAfterSave = useCallback(async (frame: number) => {
+    if (!Number.isInteger(frame) || frame < 0) return false;
+    stopRotoCachedPlayback();
+    setCachedRotoPlaybackFrame(null);
+    if (engine && launchContext) {
+      const nextState = rotoFrameStatesRef.current.get(frame);
+      if (nextState) {
+        engine.load(nextState);
+      } else {
+        (engine as PreviewBackgroundEngine).resetBackground();
+        engine.clear();
+        loadCachedRotoReferenceFrame(frame);
+      }
+    }
+    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
+    setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+    return true;
+  }, [bridgeMode, engine, launchContext, stopRotoCachedPlayback]);
+
   const requestRotoFrameNavigation = useCallback(async (targetFrame: number) => {
     if (!Number.isInteger(targetFrame) || targetFrame < 0) return false;
     if (workflowMode !== 'roto') return navigateToSyncedFrame(targetFrame);
-    if (saveOnLeaveSourceFrameRef.current !== null && rotoFlushInFlightRef.current) {
+    const saveOnLeaveSourceFrame = saveOnLeaveSourceFrameRef.current;
+    if (saveOnLeaveSourceFrame !== null && activeOperationIdRef.current) {
       pendingRotoAdvanceRef.current = targetFrame;
       return false;
     }
@@ -1491,8 +1511,8 @@ export function PhysicsPaintStudio() {
       saveOnLeaveDeleteFrameRef.current = null;
       setRotoSavingFrame(null);
       if (nextFrame !== null) {
-        void navigateToSyncedFrame(nextFrame).then((synced) => {
-          if (synced) setApplyMessage(`Saved roto frame ${frame}. Advanced to frame ${nextFrame}.`);
+        void openSyncedRotoFrameAfterSave(nextFrame).then(() => {
+          setApplyMessage(`Saved roto frame ${frame}. Advanced to frame ${nextFrame}.`);
         });
       } else {
         setApplyMessage('Saved current frame');
@@ -1502,7 +1522,7 @@ export function PhysicsPaintStudio() {
         void closePhysicsPaintWindow();
       }
     }
-  }, [canvasHeight, canvasWidth, closePhysicsPaintWindow, navigateToSyncedFrame, syncPendingRotoFrames, upsertCachedRotoFrameInLaunchContext]);
+  }, [canvasHeight, canvasWidth, closePhysicsPaintWindow, openSyncedRotoFrameAfterSave, syncPendingRotoFrames, upsertCachedRotoFrameInLaunchContext]);
 
   useEffect(() => {
     const handleResult = (event: Event) => {
