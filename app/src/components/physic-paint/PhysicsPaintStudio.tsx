@@ -4,7 +4,7 @@ import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../types/physicPaint';
-import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
+import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
@@ -143,6 +143,22 @@ function getRealCachedRotoFrameNumbers(context: PhysicPaintLaunchContext | null)
 
 function getSavedRotoMarkersFromLaunchContext(context: PhysicPaintLaunchContext | null): PhysicsPaintWorkflowStripFrameMarker[] {
   return getRealCachedRotoFrameNumbers(context).map((frame) => ({ frame, saved: true, label: `Frame ${frame}` }));
+}
+
+function upsertCachedRotoCacheFrame(frames: PhysicPaintRotoCacheFrame[] | undefined, renderedFrame: RenderedFramePayload, backgroundOnly: boolean): PhysicPaintRotoCacheFrame[] {
+  const cachedFrame: PhysicPaintRotoCacheFrame = {
+    ...renderedFrame,
+    source: 'real-key',
+    ...(backgroundOnly ? { backgroundOnly: true } : {}),
+  };
+  return [
+    ...(frames ?? []).filter((frame) => frame.appFrame !== renderedFrame.appFrame),
+    cachedFrame,
+  ].sort((a, b) => a.appFrame - b.appFrame || a.frameIndex - b.frameIndex);
+}
+
+function removeCachedRotoCacheFrame(frames: PhysicPaintRotoCacheFrame[] | undefined, appFrame: number): PhysicPaintRotoCacheFrame[] {
+  return (frames ?? []).filter((frame) => frame.appFrame !== appFrame);
 }
 
 function applyLaunchContext(
@@ -992,6 +1008,20 @@ export function PhysicsPaintStudio() {
     setCachedRotoPlaybackFrame(null);
   }, []);
 
+  const upsertCachedRotoFrameInLaunchContext = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean) => {
+    setLaunchContext((current) => current ? {
+      ...current,
+      cachedRotoFrames: upsertCachedRotoCacheFrame(current.cachedRotoFrames, renderedFrame, backgroundOnly),
+    } : current);
+  }, []);
+
+  const removeCachedRotoFrameFromLaunchContext = useCallback((appFrame: number) => {
+    setLaunchContext((current) => current ? {
+      ...current,
+      cachedRotoFrames: removeCachedRotoCacheFrame(current.cachedRotoFrames, appFrame),
+    } : current);
+  }, []);
+
   const markCurrentRotoFrameDirty = useCallback(() => {
     if (workflowMode !== 'roto') return;
     const appFrame = currentFrame;
@@ -1220,6 +1250,7 @@ export function PhysicsPaintStudio() {
           };
           await sendPhysicPaintApplyPayload(payload, bridgeMode);
           dirtyRotoFramesRef.current.delete(frame);
+          removeCachedRotoFrameFromLaunchContext(frame);
           syncPendingRotoFrames();
           startApplyTimeout(operationId);
           return payload;
@@ -1265,6 +1296,7 @@ export function PhysicsPaintStudio() {
         };
         await sendPhysicPaintApplyPayload(payload, bridgeMode);
         dirtyRotoFramesRef.current.delete(frame);
+        upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly);
         syncPendingRotoFrames();
         startApplyTimeout(operationId);
         return payload;
@@ -1284,7 +1316,7 @@ export function PhysicsPaintStudio() {
 
     rotoFlushInFlightRef.current = flushPromise;
     return flushPromise;
-  }, [actionContext, addEditableRotoFrame, currentFrame, removeEditableRotoFrame, startApplyTimeout, syncPendingRotoFrames]);
+  }, [actionContext, addEditableRotoFrame, currentFrame, removeCachedRotoFrameFromLaunchContext, removeEditableRotoFrame, startApplyTimeout, syncPendingRotoFrames, upsertCachedRotoFrameInLaunchContext]);
 
   const navigateToSyncedFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;

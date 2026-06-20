@@ -596,6 +596,19 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(saveBlock).not.toContain('getRotoCachedPlaybackFrames');
   });
 
+  it('keeps saved Roto PNGs in the standalone cache for navigation reference after Save current', () => {
+    const text = source();
+    const upsertHelperBlock = text.slice(text.indexOf('function upsertCachedRotoCacheFrame'), text.indexOf('function removeCachedRotoCacheFrame'));
+    const upsertCallbackBlock = text.slice(text.indexOf('const upsertCachedRotoFrameInLaunchContext = useCallback'), text.indexOf('const removeCachedRotoFrameFromLaunchContext = useCallback'));
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
+
+    expect(text).toContain('const upsertCachedRotoFrameInLaunchContext = useCallback');
+    expect(upsertHelperBlock).toContain("source: 'real-key'");
+    expect(upsertCallbackBlock).toContain('cachedRotoFrames: upsertCachedRotoCacheFrame');
+    expect(flushBlock).toContain('upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly)');
+    expect(flushBlock).not.toContain('savePendingRotoFrames()');
+  });
+
   it('persists paper/background-only Roto frames without marking them editable-session pink', () => {
     const text = source();
     const predicateBlock = text.slice(text.indexOf('function shouldPersistRotoFrame'), text.indexOf('function addOccupiedRotoFrame'));
