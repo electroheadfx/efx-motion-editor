@@ -208,7 +208,7 @@ export function getRotoCellStateLabel(frame: number, baseMeaning: RotoCellBaseMe
 
 export function getRotoPendingLabel(hasPending: boolean, isSaving: boolean, savingFrame?: number | null): string | null {
   if (isSaving) {
-    if (Number.isInteger(savingFrame) && savingFrame >= 0) return `Saving frame ${savingFrame}…`;
+    if (typeof savingFrame === 'number' && Number.isInteger(savingFrame) && savingFrame >= 0) return `Saving frame ${savingFrame}…`;
     return 'Saving current frame…';
   }
   if (hasPending) return 'Unsaved changes — click Save current to cache';

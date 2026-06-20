@@ -755,6 +755,40 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(listenerBlock).toContain('isPhysicPaintApplyResultMessage(event.data)');
   });
 
+  it('validates apply result kind and frame before clearing Roto save-on-leave state', () => {
+    const text = source();
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+
+    expect(text).toContain("const pendingApplyRef = useRef<Pick<PhysicPaintApplyPayload, 'operationId' | 'kind' | 'startFrame'> | null>(null)");
+    expect(flushBlock).toContain('pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: frame }');
+    expect(resultBlock).toContain('const pendingApply = pendingApplyRef.current');
+    expect(resultBlock).toContain('detail.kind !== pendingApply.kind || detail.startFrame !== pendingApply.startFrame');
+    expect(resultBlock.indexOf('detail.kind !== pendingApply.kind')).toBeLessThan(resultBlock.indexOf('activeOperationIdRef.current = null'));
+    expect(resultBlock).toContain('pendingApplyRef.current = null');
+  });
+
+  it('does not mark deleted Roto save-on-leave frames as saved after successful apply', () => {
+    const text = source();
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+
+    expect(resultBlock).toContain('const deletedFrame = saveOnLeaveDeleteFrameRef.current === frame');
+    expect(resultBlock).toContain('if (deletedFrame) {');
+    expect(resultBlock).toContain('setSavedRotoFrames((frames) => frames.filter((savedFrame) => savedFrame.frame !== frame))');
+    expect(resultBlock).toContain('setOccupiedRotoFrames((frames) => frames.filter((occupiedFrame) => occupiedFrame !== frame))');
+    expect(resultBlock).toContain('removeEditableRotoFrame(frame)');
+    expect(resultBlock.indexOf('if (deletedFrame) {')).toBeLessThan(resultBlock.indexOf('setSavedRotoFrames((frames) => [\n          ...frames.filter'));
+  });
+
+  it('disables Roto canvas input while save-on-leave is applying', () => {
+    const text = source();
+    const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
+
+    expect(text).toContain("const rotoInputDisabled = workflowMode === 'roto' && Boolean(saveOnLeaveSourceFrameRef.current) && applyStatus === 'applying'");
+    expect(canvasBlock).toContain('inputDisabled={rotoInputDisabled}');
+    expect(canvasBlock).toContain('inputDisabledMessage="Saving current Roto frame…"');
+  });
+
   it('wires explicit current-frame Roto saves without repeated brush-move apply calls', () => {
     const text = source();
     const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
