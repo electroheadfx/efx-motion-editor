@@ -1,8 +1,9 @@
 ---
-status: investigating
+status: resolved
 trigger: "Diagnose this Phase 36.6 UAT issue in /Users/lmarques/Dev/efx-motion-editor. Do not edit files. Context: user tested Roto save-on-leave. Test 1 passed: dirty source frame is visible and unsaved. Test 2 failed: when clicking another Roto frame from a dirty source frame, the source frame is saved, but the requested destination frame does not open; UI stays on the original frame. Expected: dirty source frame saves automatically and requested destination opens after save completes."
 created: 2026-06-20T00:00:00Z
-updated: 2026-06-20T00:00:00Z
+updated: 2026-06-20T20:36:07Z
+resolved: 2026-06-20T20:36:07Z
 ---
 
 ## Current Focus
@@ -50,6 +51,9 @@ started: Phase 36.6 UAT Test 2
 <!-- OVERWRITE as understanding evolves -->
 
 root_cause: In /Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/PhysicsPaintStudio.tsx, handleApplyResult consumes pendingRotoAdvanceRef after a successful save but calls navigateToSyncedFrame while the navigate callback still has applyStatus === 'applying' captured from the render that initiated the save. navigateToSyncedFrame rejects navigation on applyStatus === 'applying', so save-on-leave saves the source frame but skips the queued destination.
-fix: Diagnose-only. Likely fix is to let the post-save advance bypass the applyStatus/flush guard after clearing the active operation, or split guarded user-initiated navigation from internal post-save synced navigation.
-verification: static diagnosis only; no edits performed
-files_changed: []
+fix: Plan 36.6-03 added an internal post-save frame opener that bypasses the stale applying-state guard only after a matching successful save. Follow-up review fixes validated apply-result kind/frame, preserved deleted-frame semantics, locked Roto input while save-on-leave is applying, registered Play apply results, and routed keyboard Roto navigation through the save-on-leave coordinator.
+verification: focused PhysicsPaintStudio/WorkflowState tests passed, app typecheck passed, and 36.6-REVIEW.md is clean; remaining 36.6-VERIFICATION.md status is human_needed for runtime UAT.
+files_changed:
+  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
+  - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
+  - app/src/components/physic-paint/physicsPaintWorkflowState.ts
