@@ -687,6 +687,38 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(workflowStripBlock).toContain('onGoToLastFrame={goToLastFrame}');
   });
 
+  it('advances queued Roto save-on-leave destination across stale applyStatus state (D-02, D-03, D-08, D-10, D-11, D-12, D-14)', () => {
+    const text = source();
+    const coordinatorBlock = text.slice(text.indexOf('const requestRotoFrameNavigation = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
+    const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
+    const internalAdvanceBlock = text.slice(text.indexOf('const openSyncedRotoFrameAfterSave = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+    const saveBlock = text.slice(text.indexOf('const saveRotoFrame = useCallback'), text.indexOf('const updateSelectedPlayOptions = useCallback'));
+
+    expect(text).toContain('const openSyncedRotoFrameAfterSave = useCallback');
+    expect(navigateBlock).toContain("if (rotoFlushInFlightRef.current || applyStatus === 'applying') return false");
+    expect(internalAdvanceBlock).toContain('stopRotoCachedPlayback()');
+    expect(internalAdvanceBlock).toContain('setCachedRotoPlaybackFrame(null)');
+    expect(internalAdvanceBlock).toContain('loadCachedRotoReferenceFrame(frame)');
+    expect(internalAdvanceBlock).toContain('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
+    expect(internalAdvanceBlock).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current)');
+    expect(internalAdvanceBlock).not.toContain("applyStatus === 'applying'");
+    expect(internalAdvanceBlock).not.toContain('rotoFlushInFlightRef.current');
+    expect(resultBlock).toContain('void openSyncedRotoFrameAfterSave(nextFrame).then(() => {');
+    expect(resultBlock).not.toContain('void navigateToSyncedFrame(nextFrame)');
+    expect(resultBlock).toContain('const nextFrame = pendingRotoAdvanceRef.current');
+    expect(resultBlock).toContain('pendingRotoAdvanceRef.current = null');
+    expect(resultBlock).toContain('if (!detail.ok)');
+    expect(resultBlock).toContain('saveOnLeaveRenderedFrameRef.current = null');
+    expect(coordinatorBlock).toContain('const saveOnLeaveSourceFrame = saveOnLeaveSourceFrameRef.current');
+    expect(coordinatorBlock).toContain('if (saveOnLeaveSourceFrame !== null && activeOperationIdRef.current)');
+    expect(coordinatorBlock).toContain('pendingRotoAdvanceRef.current = targetFrame');
+    expect(coordinatorBlock).toContain('return false');
+    expect(coordinatorBlock).not.toContain('if (saveOnLeaveSourceFrameRef.current !== null && rotoFlushInFlightRef.current)');
+    expect(saveBlock).toContain('return flushRotoFrame(currentFrame, { force: true, advanceToFrame })');
+    expect(text).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
+  });
+
   it('keeps Phase 36.6 failed save-on-leave on the dirty source and clears queued navigation (D-10, D-11, D-12)', () => {
     const text = source();
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
