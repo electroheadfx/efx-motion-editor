@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const sourcePath = fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url));
 const topBarPath = fileURLToPath(new URL('./PhysicsPaintTopBar.tsx', import.meta.url));
 const stylePath = fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url));
+const defaultCapabilityPath = fileURLToPath(new URL('../../../src-tauri/capabilities/default.json', import.meta.url));
 const bridgePath = fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url));
 const enginePath = fileURLToPath(new URL('../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
@@ -484,6 +485,19 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain("window.addEventListener('beforeunload', handleBeforeUnload)");
     expect(text).toContain('appWindow.onCloseRequested');
     expect(text).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
+  });
+
+  it('grants the Physics Paint window permission required by clean close', () => {
+    const text = source();
+    const capability = JSON.parse(readFileSync(defaultCapabilityPath, 'utf8')) as {
+      windows?: string[];
+      permissions?: unknown[];
+    };
+
+    expect(text).toContain('const appWindow = windowApi.getCurrentWindow()');
+    expect(text).toContain('await appWindow.close()');
+    expect(capability.windows).toContain('efx-physic-paint');
+    expect(capability.permissions).toContain('core:window:allow-destroy');
   });
 
   it('blocks only dirty current Roto native closes and renders the exact three explicit choices', () => {
