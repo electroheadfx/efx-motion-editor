@@ -376,6 +376,61 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('Cached reference: repaintable, not stroke-editable');
   });
 
+  it('renders Phase 36.5 Roto cell semantics from the view model in the existing strip (D-02, D-03, D-04)', () => {
+    const code = source();
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const rotoMapBlock = code.slice(code.indexOf('frameCells.map(frame =>'), code.indexOf('interpolationConnectors.map'));
+
+    expect(code).toContain('getRotoCellViewModel');
+    expect(code).toContain('physics-paint-roto-cell-legend');
+    expect(rotoMapBlock).toContain('vm.ariaLabel');
+    expect(rotoMapBlock).toContain('vm.title');
+    expect(rotoMapBlock).toContain('vm.fillClass');
+    expect(rotoMapBlock).toContain("vm.overlays.includes('dirty')");
+    expect(rotoMapBlock).toContain("vm.overlays.includes('pending')");
+    expect(rotoMapBlock).toContain("vm.overlays.includes('current')");
+
+    for (const visibleCopy of ['Roto cell states', 'Empty', 'Cached', 'Current', 'Generated', 'Background only', 'Unsaved', 'Saving']) {
+      expect(code).toContain(visibleCopy);
+    }
+    for (const className of ['roto-fill-cached', 'roto-fill-editable-current', 'roto-fill-generated', 'roto-fill-background-only', 'dirty', 'pending']) {
+      expect(code + css).toContain(className);
+    }
+  });
+
+  it('guards generated Roto cells as render-only before ordinary editable navigation (D-02, D-05)', () => {
+    const code = source();
+    const rotoMapBlock = code.slice(code.indexOf('frameCells.map(frame =>'), code.indexOf('interpolationConnectors.map'));
+
+    expect(rotoMapBlock).toContain("vm.baseMeaning === 'generated'");
+    expect(rotoMapBlock).toContain('vm.isEditableTarget === false');
+    expect(code).toContain('Generated frame {frame} is render-only.');
+    expect(rotoMapBlock).toContain('handleRotoCellClick(frame, vm)');
+    expect(rotoMapBlock).not.toContain('onNavigateToSyncedFrame(frame)}');
+  });
+
+  it('keeps Phase 36.5 Roto cell scope MVP-only without excluded controls (36.5-SCOPE-01, D-01, D-05)', () => {
+    const code = source();
+    const rotoControlsBlock = code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
+
+    expect(code).not.toMatch(/from ['"].*Timeline/);
+    expect(code).not.toContain('<Timeline');
+    expect(rotoControlsBlock).not.toContain('physics-paint-roto-interpolation-controls');
+    expect(rotoControlsBlock).not.toContain('In-betweens');
+    expect(rotoControlsBlock).not.toContain('Deform');
+    expect(rotoControlsBlock).not.toContain('Position');
+    expect(rotoControlsBlock).not.toContain('physics-paint-roto-key-utilities');
+    expect(rotoControlsBlock).not.toContain('Duplicate key');
+    expect(rotoControlsBlock).not.toContain('Insert frame');
+    expect(rotoControlsBlock).not.toContain('Delete frame');
+    expect(rotoControlsBlock).not.toContain('Copy frame');
+    expect(rotoControlsBlock).not.toContain('Paste frame');
+    expect(rotoControlsBlock).not.toContain('physics-paint-roto-transport');
+    expect(rotoControlsBlock).not.toContain('Play cached Roto frames');
+    expect(rotoControlsBlock).not.toContain('Save on leave');
+    expect(rotoControlsBlock).not.toContain('close-choice');
+  });
+
   it('uses Save current copy with pending and ready disabled logic for the strict Phase 36.3 Roto surface', () => {
     const code = source();
 
