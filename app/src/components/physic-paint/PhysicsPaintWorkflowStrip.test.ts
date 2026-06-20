@@ -20,6 +20,12 @@ function getRotoMapBlock(code: string): string {
   return code.slice(code.indexOf('frameCells.map(frame =>'), code.indexOf('interpolationConnectors.map'));
 }
 
+function getCssRule(css: string, selector: string): string {
+  const ruleStart = css.indexOf(selector);
+  expect(ruleStart).toBeGreaterThan(-1);
+  return css.slice(ruleStart, css.indexOf('}', ruleStart));
+}
+
 describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('exports the workflow strip component and props', () => {
     const code = source();
@@ -453,8 +459,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps current Roto CSS as an outline without adding a fourth fill color', () => {
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
-    const currentRuleStart = css.indexOf('.physics-paint-roto-cell.current');
-    const currentRule = css.slice(currentRuleStart, css.indexOf('}', currentRuleStart));
+    const currentRule = getCssRule(css, '.physics-paint-roto-cell.current');
 
     expect(css).toContain('.physics-paint-roto-cell.roto-fill-empty');
     expect(css).toContain('.physics-paint-roto-cell.roto-fill-cached-only');
@@ -463,6 +468,38 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(currentRule).toContain('outline:');
     expect(currentRule).toContain('box-shadow:');
     expect(currentRule).not.toContain('background:');
+  });
+
+  it('covers Phase 36.5 CSS semantics for fills, overlays, and legend swatches (D-03, D-04)', () => {
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const currentRule = getCssRule(css, '.physics-paint-roto-cell.current');
+    const dirtyRule = getCssRule(css, '.physics-paint-roto-cell.dirty::after');
+    const pendingRule = getCssRule(css, '.physics-paint-roto-cell.pending');
+
+    for (const selector of [
+      '.physics-paint-roto-cell.roto-fill-empty',
+      '.physics-paint-roto-cell.roto-fill-cached',
+      '.physics-paint-roto-cell.roto-fill-editable-current',
+      '.physics-paint-roto-cell.roto-fill-generated',
+      '.physics-paint-roto-cell.roto-fill-background-only',
+      '.physics-paint-roto-cell.dirty::after',
+      '.physics-paint-roto-cell.pending',
+      '.physics-paint-roto-cell.current',
+      '.physics-paint-roto-cell-legend',
+      '.physics-paint-roto-cell-swatch',
+    ]) {
+      expect(css).toContain(selector);
+    }
+    for (const color of ['#4d535a', '#2d6f48', '#a33d73', '#365ed6', '#505860', '#f59e0b']) {
+      expect(css.toLowerCase()).toContain(color);
+    }
+    expect(currentRule).toContain('outline:');
+    expect(currentRule).not.toContain('background:');
+    expect(dirtyRule).toContain('#f59e0b');
+    expect(dirtyRule).toContain('border-top: 5px');
+    expect(dirtyRule).toContain('border-left: 5px');
+    expect(pendingRule).toContain('border-style: dashed');
+    expect(pendingRule).not.toContain('background:');
   });
 
   it('removes the in-window mode switch while retaining guarded conversion helpers only for explicit flows', () => {
