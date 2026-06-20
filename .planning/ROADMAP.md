@@ -245,9 +245,11 @@ Use SPECS/36.x-phases/phase-36.6-save-on-leave/spec-36.6-save-on-leave.md as the
 **Mode:** mvp
 **Requirements**: 36.6-AC-01, 36.6-AC-02, 36.6-AC-03, 36.6-AC-04, 36.6-AC-05, 36.6-AC-06, 36.6-FB-01
 **Depends on:** Phase 36
-**Plans:** 2/2 plans complete
+**Plans:** 3/3 plans complete
 
 Plans:
+
+- [x] 36.6-03-PLAN.md
 
 **Wave 1**
 
