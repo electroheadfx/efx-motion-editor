@@ -236,6 +236,26 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 36.6: Physics Paint Roto Save On Leave
+
+Use SPECS/36.x-phases/phase-36.6-save-on-leave/spec-36.6-save-on-leave.md as the source of truth for this phase. (INSERTED)
+
+**Goal:** As a stop-motion animator, I want to move between Roto frames without manually pressing Save current every time, so that I can paint multiple frames without manually saving each one.
+**Mode:** mvp
+**Requirements**: 36.6-AC-01, 36.6-AC-02, 36.6-AC-03, 36.6-AC-04, 36.6-AC-05, 36.6-AC-06, 36.6-FB-01
+**Depends on:** Phase 36
+**Plans:** 2 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 36.6-01-PLAN.md — Implement the tested Roto save-on-leave navigation coordinator.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 36.6-02-PLAN.md — Add source-frame pending feedback and disabled-action wiring.
+
 ### Phase 36.5: Physics Paint Roto Cell Semantics
 
 This phase (in SPECS/36.x-phases/phase-36.5-cell-semantics/spec-36.5-cell-semantics.md) is not another close-behavior phase. Phase 36.4 already covered explicit close choices. Phase 36.5 should focus on Roto timeline cell semantics: making frame states visible and trustworthy in the UI, using SPECS/36.x-phases/timeline-ui/* as visual reference while keeping the MVP narrow. (INSERTED)
