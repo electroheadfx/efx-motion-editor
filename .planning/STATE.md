@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.5
-current_phase_name: Physics Paint Roto Cell Semantics
+current_phase_name: physics-paint-roto-cell-semantics-this-phase-in-specs-36-x-p
 status: executing
 stopped_at: Phase 36.5 UI-SPEC approved
-last_updated: "2026-06-20T10:07:43.410Z"
+last_updated: "2026-06-20T11:32:17.482Z"
 last_activity: 2026-06-20
-last_activity_desc: Phase 36.5 inserted after Phase 36
+last_activity_desc: Phase 36.5 execution started
 progress:
   total_phases: 9
   completed_phases: 7
-  total_plans: 47
+  total_plans: 50
   completed_plans: 47
   percent: 78
 ---
@@ -24,15 +24,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-19)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.5 — Physics Paint Roto Cell Semantics
+**Current focus:** Phase 36.5 — physics-paint-roto-cell-semantics-this-phase-in-specs-36-x-p
 
 ## Current Position
 
-Phase: 36.5 — Physics Paint Roto Cell Semantics
+Phase: 36.5 (physics-paint-roto-cell-semantics-this-phase-in-specs-36-x-p) — EXECUTING
 Previous phase: 36.4 — Physics Paint Roto Explicit Close Behavior complete
-Plan: 3 plans ready
-Status: Ready to execute Phase 36.5
-Last activity: 2026-06-20 — Phase 36.5 planned and verified
+Plan: 1 of 3
+Status: Executing Phase 36.5
+Last activity: 2026-06-20 — Phase 36.5 execution started
 Next recommended action: `/gsd-execute-phase 36.5`
 
 Progress: [████████████████████] 47/47 plans (100%)
