@@ -38,6 +38,24 @@ export interface RotoCellViewModelInput {
   isSaving?: boolean;
 }
 
+const ROTO_CELL_STATES: Record<RotoCellBaseMeaning, RotoCellState> = {
+  empty: 'Empty',
+  cached: 'Cached',
+  'editable-current': 'Current',
+  generated: 'Generated',
+  'background-only': 'Background only',
+};
+
+const ROTO_CELL_FILL_CLASSES: Record<RotoCellBaseMeaning, string> = {
+  empty: 'roto-fill-empty',
+  cached: 'roto-fill-cached',
+  'editable-current': 'roto-fill-editable-current',
+  generated: 'roto-fill-generated',
+  'background-only': 'roto-fill-background-only',
+};
+
+const EDITABLE_ROTO_CELL_MEANINGS = new Set<RotoCellBaseMeaning>(['empty', 'cached', 'editable-current', 'background-only']);
+
 export type PhysicsPaintWorkflowAction =
   | 'save-active-source'
   | 'clear-active-source'
@@ -169,8 +187,8 @@ export function getRotoCellViewModel({
     label,
     title: label,
     ariaLabel: label,
-    fillClass: getRotoCellFillClass(baseMeaning),
-    isEditableTarget: baseMeaning === 'editable-current' || baseMeaning === 'cached' || baseMeaning === 'empty' || baseMeaning === 'background-only',
+    fillClass: ROTO_CELL_FILL_CLASSES[baseMeaning],
+    isEditableTarget: EDITABLE_ROTO_CELL_MEANINGS.has(baseMeaning),
     isCurrent,
     isDirty,
     isPending,
@@ -356,19 +374,7 @@ function getRotoCellBaseMeaning(
 }
 
 function getRotoCellState(baseMeaning: RotoCellBaseMeaning): RotoCellState {
-  if (baseMeaning === 'cached') return 'Cached';
-  if (baseMeaning === 'editable-current') return 'Current';
-  if (baseMeaning === 'generated') return 'Generated';
-  if (baseMeaning === 'background-only') return 'Background only';
-  return 'Empty';
-}
-
-function getRotoCellFillClass(baseMeaning: RotoCellBaseMeaning): string {
-  if (baseMeaning === 'cached') return 'roto-fill-cached';
-  if (baseMeaning === 'editable-current') return 'roto-fill-editable-current';
-  if (baseMeaning === 'generated') return 'roto-fill-generated';
-  if (baseMeaning === 'background-only') return 'roto-fill-background-only';
-  return 'roto-fill-empty';
+  return ROTO_CELL_STATES[baseMeaning];
 }
 
 function hasFrame(frames: readonly number[] | ReadonlySet<number> | undefined, frame: number): boolean {
