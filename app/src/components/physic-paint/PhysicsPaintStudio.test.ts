@@ -468,22 +468,98 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(flushBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame)'));
   });
 
-  it('saves only the current Roto frame on explicit Save current and discards unsaved close edits', () => {
+  it('keeps beforeunload snapshot-only while explicit Save current remains the cache write path', () => {
     const text = source();
     const saveBlock = text.slice(text.indexOf('const saveRotoFrame = useCallback'), text.indexOf('const updateSelectedPlayOptions = useCallback'));
-    const unloadBlock = text.slice(text.indexOf('const handleBeforeUnload ='), text.indexOf('const handlePhysicsPaintKeyDown = useCallback'));
+    const beforeUnloadBlock = text.slice(text.indexOf('const handleBeforeUnload ='), text.indexOf('window.addEventListener(\'beforeunload\', handleBeforeUnload)'));
 
     expect(text).toContain('const saveRotoFrame = useCallback');
     expect(saveBlock).toContain('snapshotCurrentRotoFrame()');
     expect(saveBlock).toContain('dirtyRotoFramesRef.current.add(currentFrame)');
     expect(saveBlock).toContain('return flushRotoFrame(currentFrame, { force: true, advanceToFrame })');
-    expect(unloadBlock).toContain('snapshotCurrentRotoFrame()');
-    expect(unloadBlock).not.toContain('flushRotoFrame(currentFrame');
-    expect(unloadBlock).not.toContain('event.preventDefault()');
-    expect(unloadBlock).not.toContain('await appWindow.close()');
+    expect(beforeUnloadBlock).toContain('snapshotCurrentRotoFrame()');
+    expect(beforeUnloadBlock).not.toContain('flushRotoFrame(currentFrame');
+    expect(beforeUnloadBlock).not.toContain('event.preventDefault()');
+    expect(beforeUnloadBlock).not.toContain('appWindow.close()');
     expect(text).toContain("window.addEventListener('beforeunload', handleBeforeUnload)");
     expect(text).toContain('appWindow.onCloseRequested');
     expect(text).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
+  });
+
+  it('blocks only dirty current Roto native closes and renders the exact three explicit choices', () => {
+    const text = source();
+    const closeBlock = text.slice(text.indexOf('const closePhysicsPaintWindow = useCallback'), text.indexOf('const handlePhysicsPaintKeyDown = useCallback'));
+
+    expect(text).toContain("type RotoClosePromptState = 'idle' | 'prompt' | 'saving' | 'error'");
+    expect(text).toContain('const closeGuardBypassRef = useRef(false)');
+    expect(closeBlock).toContain('snapshotCurrentRotoFrame()');
+    expect(closeBlock).toContain("workflowMode === 'roto' && dirtyRotoFramesRef.current.has(currentFrame)");
+    expect(closeBlock).toContain('event.preventDefault()');
+    expect(closeBlock).toContain("setRotoClosePromptState('prompt')");
+    expect(closeBlock).toContain('Close without saving');
+    expect(closeBlock).toContain('Cancel');
+    expect(closeBlock).toContain('Close saving');
+    expect(closeBlock.match(/Close without saving/g)).toHaveLength(1);
+    expect(closeBlock.match(/Close saving/g)).toHaveLength(1);
+  });
+
+  it('closes without saving by bypassing the guard without writing or deleting cached Roto output', () => {
+    const text = source();
+    const discardBlock = text.slice(text.indexOf('const closeWithoutSavingRotoFrame = useCallback'), text.indexOf('const cancelRotoClose = useCallback'));
+
+    expect(discardBlock).toContain('closeGuardBypassRef.current = true');
+    expect(discardBlock).toContain('closePhysicsPaintWindow()');
+    expect(discardBlock).not.toContain('saveRotoFrame');
+    expect(discardBlock).not.toContain('flushRotoFrame');
+    expect(discardBlock).not.toContain('sendPhysicPaintApplyPayload');
+    expect(discardBlock).not.toContain('applyCanvas');
+    expect(discardBlock).not.toContain('delete-roto-frame');
+  });
+
+  it('cancels dirty close without closing or clearing dirty current-canvas state', () => {
+    const text = source();
+    const cancelBlock = text.slice(text.indexOf('const cancelRotoClose = useCallback'), text.indexOf('const saveAndCloseRotoFrame = useCallback'));
+
+    expect(cancelBlock).toContain("setRotoClosePromptState('idle')");
+    expect(cancelBlock).toContain('setRotoClosePromptMessage(null)');
+    expect(cancelBlock).not.toContain('closePhysicsPaintWindow');
+    expect(cancelBlock).not.toContain('dirtyRotoFramesRef.current.clear');
+    expect(cancelBlock).not.toContain('dirtyRotoFramesRef.current.delete(currentFrame)');
+    expect(cancelBlock).not.toContain('engine.clear()');
+  });
+
+  it('saves dirty close through Save current and closes only after the matching successful apply result', () => {
+    const text = source();
+    const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+
+    expect(text).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
+    expect(saveCloseBlock).toContain("setRotoClosePromptState('saving')");
+    expect(saveCloseBlock).toContain("setRotoClosePromptMessage('Saving current frame…')");
+    expect(saveCloseBlock).toContain('const payload = await saveRotoFrame(null)');
+    expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = payload.operationId');
+    expect(saveCloseBlock).not.toContain('closePhysicsPaintWindow()');
+    expect(resultBlock).toContain('const shouldCloseAfterSave = closeAfterApplyOperationIdRef.current === detail.operationId');
+    expect(resultBlock).toContain('if (shouldCloseAfterSave)');
+    expect(resultBlock).toContain('closeGuardBypassRef.current = true');
+    expect(resultBlock).toContain('void closePhysicsPaintWindow()');
+  });
+
+  it('recovers dirty close prompt state after send errors, failed apply results, timeouts, and cleanup', () => {
+    const text = source();
+    const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+    const timeoutBlock = text.slice(text.indexOf('const startApplyTimeout = useCallback'), text.indexOf('const flushRotoFrame = useCallback'));
+    const cleanupBlock = text.slice(text.indexOf('return () => {', text.indexOf('if (applyTimeoutRef.current) window.clearTimeout(applyTimeoutRef.current)')), text.indexOf('const missingConditions = useMemo'));
+
+    expect(saveCloseBlock).toContain("setRotoClosePromptState('error')");
+    expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = null');
+    expect(resultBlock).toContain("setRotoClosePromptState('error')");
+    expect(resultBlock).toContain('closeAfterApplyOperationIdRef.current = null');
+    expect(timeoutBlock).toContain("setRotoClosePromptState('error')");
+    expect(timeoutBlock).toContain('closeAfterApplyOperationIdRef.current = null');
+    expect(cleanupBlock).toContain('closeAfterApplyOperationIdRef.current = null');
+    expect(cleanupBlock).toContain('closeGuardBypassRef.current = false');
   });
 
   it('keeps the explicit Save current path on the normal single-frame apply-canvas flow', () => {
