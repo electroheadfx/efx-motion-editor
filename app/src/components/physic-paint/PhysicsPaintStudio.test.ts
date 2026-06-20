@@ -660,6 +660,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const coordinatorBlock = text.slice(text.indexOf('const requestRotoFrameNavigation = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
+    const frameNavStart = text.indexOf('const goToFirstFrame = useCallback');
+    const frameNavBlock = text.slice(frameNavStart, text.indexOf('return (', frameNavStart));
     const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
 
     expect(text).toContain('const requestRotoFrameNavigation = useCallback');
@@ -670,14 +672,19 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(coordinatorBlock).toContain('if (!sourceIsDirty) return navigateToSyncedFrame(targetFrame)');
     expect(coordinatorBlock).toContain('flushRotoFrame(sourceFrame, { force: true, advanceToFrame: targetFrame })');
     expect(coordinatorBlock).toContain('pendingRotoAdvanceRef.current = targetFrame');
-    expect(coordinatorBlock).toContain('if (rotoFlushInFlightRef.current)');
+    expect(coordinatorBlock).toContain('if (saveOnLeaveSourceFrameRef.current !== null && rotoFlushInFlightRef.current)');
+    expect(coordinatorBlock).toContain('saveOnLeaveSourceFrameRef.current = sourceFrame');
     expect(navigateBlock).toContain('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
     expect(navigateBlock).not.toContain('flushRotoFrame(sourceFrame');
+    expect(frameNavBlock).toContain('void requestRotoFrameNavigation(0)');
+    expect(frameNavBlock).toContain('void requestRotoFrameNavigation(Math.max(0, currentFrame - 1))');
+    expect(frameNavBlock).toContain('void requestRotoFrameNavigation(currentFrame + 1)');
+    expect(frameNavBlock).toContain('void requestRotoFrameNavigation(Math.max(currentFrame, highestSavedFrame, playEndFrame, framesToApply - 1))');
     expect(workflowStripBlock).toContain('onNavigateToSyncedFrame={(frame) => { void requestRotoFrameNavigation(frame); }}');
-    expect(workflowStripBlock).toContain('onGoToFirstFrame={() => { void requestRotoFrameNavigation(0); }}');
-    expect(workflowStripBlock).toContain('onGoToPreviousFrame={() => { void requestRotoFrameNavigation(currentFrame - 1); }}');
-    expect(workflowStripBlock).toContain('onGoToNextFrame={() => { void requestRotoFrameNavigation(currentFrame + 1); }}');
-    expect(workflowStripBlock).toContain('onGoToLastFrame={() => { void requestRotoFrameNavigation(totalFrames - 1); }}');
+    expect(workflowStripBlock).toContain('onGoToFirstFrame={goToFirstFrame}');
+    expect(workflowStripBlock).toContain('onGoToPreviousFrame={goToPreviousFrame}');
+    expect(workflowStripBlock).toContain('onGoToNextFrame={goToNextFrame}');
+    expect(workflowStripBlock).toContain('onGoToLastFrame={goToLastFrame}');
   });
 
   it('keeps Phase 36.6 failed save-on-leave on the dirty source and clears queued navigation (D-10, D-11, D-12)', () => {
@@ -689,9 +696,11 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(resultBlock).toContain('if (!detail.ok)');
     expect(resultBlock).toContain('pendingRotoAdvanceRef.current = null');
     expect(resultBlock).toContain('saveOnLeaveSourceFrameRef.current');
+    expect(resultBlock).toContain('saveOnLeaveRenderedFrameRef.current = null');
+    expect(resultBlock).toContain('saveOnLeaveDeleteFrameRef.current = null');
     expect(resultBlock).toContain('Could not save frame');
     expect(resultBlock).toContain('try navigating again to retry');
-    expect(resultBlock).not.toContain('void navigateToSyncedFrame(nextFrame)');
+    expect(resultBlock.indexOf('return;')).toBeLessThan(resultBlock.indexOf('void navigateToSyncedFrame(nextFrame)'));
     expect(timeoutBlock).toContain('pendingRotoAdvanceRef.current = null');
     expect(timeoutBlock).toContain('saveOnLeaveSourceFrameRef.current');
     expect(timeoutBlock).toContain('Could not save frame');
