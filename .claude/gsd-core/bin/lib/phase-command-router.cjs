@@ -160,6 +160,11 @@ function routePhaseCommand({ phase, args, cwd, raw, error }) {
                 phase.cmdPhaseUatPassed(cwd, positional[0], raw, { policy: { requireVerification } });
                 return { ok: true, data: null };
             },
+            // #1437 — list plan files for a phase
+            'list-plans': (_ctx) => {
+                phase.cmdPhaseListPlans(cwd, args[2], raw);
+                return { ok: true, data: null };
+            },
         },
     };
     // ── Build manifest (available subcommands for UnknownCommand detection) ─────

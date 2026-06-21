@@ -13,6 +13,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const security_cjs_1 = require("./security.cjs");
+const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
 const STATUS_REJECT_SET = new Set(['superseded', 'rejected', 'deprecated']);
 const CANONICAL_HEADERS = {
     status: ['status', 'state', 'lifecycle', 'stage'],
@@ -208,24 +209,30 @@ function splitEntries(blockText) {
         .map((line) => line.replace(/^[-*+]\s+/, '').trim())
         .filter(Boolean);
 }
+/**
+ * Thin adapter: wraps the seam's `collectSections` to produce the same
+ * `{ heading: string | null, body: string[] }` shape the rest of adr-parser
+ * consumes. ADR-1372 T2 migration.
+ */
 function parseSections(markdown) {
-    const lines = (typeof markdown === 'string' ? markdown : '').split(/\r?\n/);
-    const sections = [];
-    let current = { heading: null, body: [] };
-    for (const line of lines) {
-        const m = line.match(/^#{1,6}\s+(.*)$/);
-        if (m) {
-            if (current.heading || current.body.length)
-                sections.push(current);
-            current = { heading: m[1].trim(), body: [] };
-        }
-        else {
-            current.body.push(line);
-        }
-    }
-    if (current.heading || current.body.length)
-        sections.push(current);
-    return sections;
+    const content = typeof markdown === 'string' ? markdown : '';
+    // collectSections(content, () => true) collects every heading as a stop
+    // boundary — mirrors the old line-by-line heading walk exactly.
+    const sections = (0, markdown_sectionizer_cjs_1.collectSections)(content, () => true);
+    // Map seam Section → MarkdownSection. The seam's HeadingToken.text is the
+    // heading text after trimming (same as the old m[1].trim() capture).
+    // The body is a trimEnd()-ed joined string; split it back to lines to match
+    // the old string[] shape consumed by parseStatusFromSections / parseAdrMarkdown.
+    //
+    // Note: the old parseSections emitted a leading { heading: null, body: [...] }
+    // entry for preamble text before the first heading.  Both consumers skip it
+    // immediately (parseAdrMarkdown: `if (!heading) continue`; parseStatusFromSections:
+    // `classifyHeader(normalizeAdrHeader(null))` → null ≠ 'status' → continue), so
+    // the preamble entry was dead code and is not reconstructed here.
+    return sections.map((sec) => ({
+        heading: sec.heading.text,
+        body: sec.body === '' ? [] : sec.body.split('\n'),
+    }));
 }
 function parseStatusFromSections(sections) {
     for (const section of sections) {

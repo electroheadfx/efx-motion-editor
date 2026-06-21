@@ -22,6 +22,7 @@ const { planningDir } = planningWorkspaceMod;
 const phaseLocatorMod = require("./phase-locator.cjs");
 const { findPhaseInternal } = phaseLocatorMod;
 const decisions_cjs_1 = require("./decisions.cjs");
+const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
 const ui_safety_gate_cjs_1 = require("./ui-safety-gate.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const verifyModule = require("./verify.cjs");
@@ -128,10 +129,11 @@ function loadPlanContents(phaseDir) {
 const DESIGNATED_HEADINGS_RE = /^#{1,6}\s+(?:must[_ ]haves?|truths?|tasks?|objective)\b/i;
 const XML_DECISION_TAGS_RE = /<(?:objective|tasks?|action)(?:\s[^>]*)?>([\s\S]*?)<\/(?:objective|tasks?|action)>/gi;
 function stripCommentsAndFences(text) {
-    return text
-        .replace(/<!--[\s\S]*?-->/g, ' ')
-        .replace(/```[\s\S]*?```/g, ' ')
-        .replace(/~~~[\s\S]*?~~~/g, ' ');
+    // HTML-comment stripping stays caller-side (the seam does not strip HTML comments).
+    const htmlStripped = text.replace(/<!--[\s\S]*?-->/g, ' ');
+    // Fenced-code stripping: delegate to the canonical CommonMark-correct seam.
+    // replaces the prior independent regex copy (```` ``` ``` ````  + `~~~ ~~~`).
+    return (0, markdown_sectionizer_cjs_1.stripFencedCode)(htmlStripped).text;
 }
 function extractYamlBlock(frontmatter, key) {
     const match = frontmatter.match(new RegExp(`^${key}\\s*:(.*)$`, 'm'));
@@ -169,18 +171,19 @@ function extractPlanDesignatedSections(planContent) {
         if (block)
             parts.push(block);
     }
+    // Replace hand-rolled split(/\r?\n/) + heading walk with the seam's collectSections.
+    // stopPredicate fires on EVERY heading (collectSections needs to start a section at
+    // each heading), then we filter to designated ones — same semantics as the prior
+    // inDesignated flag: emit the heading line + body only when DESIGNATED_HEADINGS_RE matches.
+    const sections = (0, markdown_sectionizer_cjs_1.collectSections)(body, () => true);
     const bodyParts = [];
-    let inDesignated = false;
-    for (const line of body.split(/\r?\n/)) {
-        const heading = /^#{1,6}\s+/.test(line);
-        if (heading) {
-            inDesignated = DESIGNATED_HEADINGS_RE.test(line);
-            if (inDesignated)
-                bodyParts.push(line);
-            continue;
+    for (const section of sections) {
+        const headingLine = '#'.repeat(section.heading.level) + ' ' + section.heading.text;
+        if (DESIGNATED_HEADINGS_RE.test(headingLine)) {
+            bodyParts.push(headingLine);
+            if (section.body)
+                bodyParts.push(section.body);
         }
-        if (inDesignated)
-            bodyParts.push(line);
     }
     parts.push(bodyParts.join('\n'));
     parts.push(extractXmlTagBodies(cleaned));
@@ -213,8 +216,12 @@ function buildVerifyMessage(notHonored) {
         'This is a soft warning - verification status is unchanged.',
     ].join('\n');
 }
-function loadTrackableDecisions(contextPath) {
-    return (0, decisions_cjs_1.parseDecisions)(readIfExists(contextPath)).filter((decision) => decision.trackable);
+function loadDecisionExtraction(contextPath) {
+    const extraction = (0, decisions_cjs_1.extractDecisions)(readIfExists(contextPath));
+    return {
+        trackable: extraction.decisions.filter((d) => d.trackable),
+        outcome: extraction.outcome,
+    };
 }
 function cmdDecisionCoveragePlan(projectDir, args, raw) {
     const phaseDir = args[2] ? resolvePath(args[2], projectDir) : '';
@@ -227,7 +234,31 @@ function cmdDecisionCoveragePlan(projectDir, args, raw) {
         output({ passed: true, skipped: true, reason: 'CONTEXT.md missing', total: 0, covered: 0, uncovered: [], message: 'No CONTEXT.md - nothing to check.' }, raw, undefined);
         return;
     }
-    const decisions = loadTrackableDecisions(contextPath);
+    const { trackable: decisions, outcome } = loadDecisionExtraction(contextPath);
+    // #1365 fail-loud gate: any could-not-parse outcome must NOT silently pass —
+    // even when some decisions were extracted (e.g. D-01 valid but D-02 malformed).
+    // A parse-miss on ANY bullet means the gate cannot certify full coverage.
+    // Fire independent of decisions.length so a partial-parse still blocks.
+    if (outcome === 'could-not-parse') {
+        const partialParse = decisions.length > 0;
+        output({
+            passed: false,
+            skipped: false,
+            reason: 'could-not-parse',
+            total: decisions.length,
+            covered: 0,
+            uncovered: [],
+            message: partialParse
+                ? 'Decision coverage gate: decisions could not be fully parsed — one or more ' +
+                    '`- **D-NN ...**` bullets appear malformed (missing `:` or ` — ` separator). ' +
+                    'Fix the bullet format so all D-NN decisions can be read before re-running the gate.'
+                : 'Decision coverage gate: could not parse decisions — possible format mismatch. ' +
+                    'The CONTEXT.md appears to be decision-shaped (has a <decisions> block, a decisions heading, ' +
+                    'or D- tokens) but no D-NN bullets could be extracted. Check the formatting of the decisions ' +
+                    'block and ensure bullets follow the `- **D-NN:** text` or `- **D-NN — title** body` form.',
+        }, raw, undefined);
+        return;
+    }
     if (decisions.length === 0) {
         output({ passed: true, skipped: true, reason: 'no trackable decisions', total: 0, covered: 0, uncovered: [], message: 'No trackable decisions in CONTEXT.md.' }, raw, undefined);
         return;
@@ -305,7 +336,27 @@ function cmdDecisionCoverageVerify(projectDir, args, raw) {
         output({ skipped: true, blocking: false, reason: 'CONTEXT.md missing', total: 0, honored: 0, not_honored: [], message: 'No CONTEXT.md - nothing to check.' }, raw, undefined);
         return;
     }
-    const decisions = loadTrackableDecisions(contextPath);
+    const { trackable: decisions, outcome: decisionOutcome } = loadDecisionExtraction(contextPath);
+    // Mirror could-not-parse surface for verify (non-blocking advisory WARN).
+    // Fire independent of decisions.length — a parse-miss on any bullet must surface,
+    // even when some decisions were partially extracted (#1365 fix-parity with plan gate).
+    if (decisionOutcome === 'could-not-parse') {
+        const partialParse = decisions.length > 0;
+        output({
+            skipped: false,
+            blocking: false,
+            reason: 'could-not-parse',
+            total: decisions.length,
+            honored: 0,
+            not_honored: [],
+            message: partialParse
+                ? 'Decision coverage verify (warning): decisions could not be fully parsed — one or more ' +
+                    '`- **D-NN ...**` bullets appear malformed. Fix the bullet format in the CONTEXT.md decisions block.'
+                : 'Decision coverage verify (warning): could not parse decisions — possible format mismatch. ' +
+                    'Check the formatting of the CONTEXT.md decisions block.',
+        }, raw, undefined);
+        return;
+    }
     if (decisions.length === 0) {
         output({ skipped: true, blocking: false, reason: 'no trackable decisions', total: 0, honored: 0, not_honored: [], message: 'No trackable decisions in CONTEXT.md.' }, raw, undefined);
         return;

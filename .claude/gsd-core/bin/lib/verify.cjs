@@ -50,7 +50,7 @@ const { getMilestoneInfo, stripShippedMilestones, extractCurrentMilestone } = ro
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const worktreeSafetyMod = require("./worktree-safety.cjs");
 const { inspectWorktreeHealth } = worktreeSafetyMod;
-const { planningDir } = planningWorkspace;
+const { planningDir, planningRoot } = planningWorkspace;
 const { extractFrontmatter, parseMustHavesBlock } = frontmatterMod;
 const { writeStateMd } = stateMod;
 const { MODEL_PROFILES } = modelProfilesMod;
@@ -1112,12 +1112,18 @@ function cmdValidateHealth(cwd, options, raw) {
         }, raw);
         return;
     }
-    const planBase = planningDir(cwd);
-    const projectPath = node_path_1.default.join(planBase, 'PROJECT.md');
-    const roadmapPath = node_path_1.default.join(planBase, 'ROADMAP.md');
-    const statePath = node_path_1.default.join(planBase, 'STATE.md');
-    const configPath = node_path_1.default.join(planBase, 'config.json');
-    const phasesDir = node_path_1.default.join(planBase, 'phases');
+    // rootBase always resolves to .planning/ (shared root — PROJECT.md, config.json live here)
+    // wsBase resolves to .planning/workstreams/<ws>/ when GSD_WORKSTREAM is set (STATE.md, ROADMAP.md, phases/)
+    const rootBase = planningRoot(cwd);
+    const wsBase = planningDir(cwd);
+    // planBase is kept as an alias for wsBase for all the internal helpers (collectDiskPhases, etc.)
+    // that are already parameterised on the workstream-aware path.
+    const planBase = wsBase;
+    const projectPath = node_path_1.default.join(rootBase, 'PROJECT.md');
+    const roadmapPath = node_path_1.default.join(wsBase, 'ROADMAP.md');
+    const statePath = node_path_1.default.join(wsBase, 'STATE.md');
+    const configPath = node_path_1.default.join(rootBase, 'config.json');
+    const phasesDir = node_path_1.default.join(wsBase, 'phases');
     const _slashRuntime = (0, runtime_slash_cjs_1.resolveRuntime)(cwd);
     const slash = (name) => (0, runtime_slash_cjs_1.formatGsdSlash)(name, _slashRuntime);
     const errors = [];
@@ -1133,7 +1139,7 @@ function cmdValidateHealth(cwd, options, raw) {
         else
             info.push(issue);
     };
-    if (!node_fs_1.default.existsSync(planBase)) {
+    if (!node_fs_1.default.existsSync(rootBase)) {
         addIssue('error', 'E001', '.planning/ directory not found', `Run ${slash('new-project')} to initialize`);
         output({ status: 'broken', errors, warnings, info, repairable_count: 0 }, raw);
         return;
@@ -1404,7 +1410,17 @@ function cmdValidateHealth(cwd, options, raw) {
                     continue;
                 }
                 if (finding['kind'] === 'stale') {
-                    addIssue('warning', 'W017', `Stale git worktree: ${finding['path']} (last modified ${finding['ageMinutes']} minutes ago)`, `Run: git worktree remove ${finding['path']} --force`);
+                    // Do not flag the active session's worktree — removing it would be harmful.
+                    const worktreePath = finding['path'];
+                    const activeCwd = process.cwd();
+                    const normalizedWorktree = node_path_1.default.resolve(worktreePath);
+                    const normalizedCwd = node_path_1.default.resolve(activeCwd);
+                    // Skip if the worktree IS the cwd or is an ancestor of it.
+                    const isActiveWorktree = normalizedCwd === normalizedWorktree ||
+                        normalizedCwd.startsWith(normalizedWorktree + node_path_1.default.sep);
+                    if (isActiveWorktree)
+                        continue;
+                    addIssue('warning', 'W017', `Stale git worktree: ${worktreePath} (last modified ${finding['ageMinutes']} minutes ago)`, `Run: git worktree remove ${worktreePath} --force`);
                 }
             }
         }
@@ -1440,8 +1456,8 @@ function cmdValidateHealth(cwd, options, raw) {
     catch {
         /* W021 check is advisory — skip on error */
     }
-    const milestonesPath = node_path_1.default.join(planBase, 'MILESTONES.md');
-    const milestonesArchiveDir = node_path_1.default.join(planBase, 'milestones');
+    const milestonesPath = node_path_1.default.join(rootBase, 'MILESTONES.md');
+    const milestonesArchiveDir = node_path_1.default.join(rootBase, 'milestones');
     const missingFromRegistry = [];
     try {
         if (node_fs_1.default.existsSync(milestonesArchiveDir)) {
@@ -1470,7 +1486,7 @@ function cmdValidateHealth(cwd, options, raw) {
         /* intentionally empty — milestone sync check is advisory */
     }
     try {
-        const entries = node_fs_1.default.readdirSync(planBase, { withFileTypes: true });
+        const entries = node_fs_1.default.readdirSync(rootBase, { withFileTypes: true });
         for (const entry of entries) {
             if (!entry.isFile())
                 continue;
@@ -1566,7 +1582,7 @@ function cmdValidateHealth(cwd, options, raw) {
                         }
                         const milestone = getMilestoneInfo(cwd);
                         const projectRef = node_path_1.default
-                            .relative(cwd, node_path_1.default.join(planningDir(cwd), 'PROJECT.md'))
+                            .relative(cwd, node_path_1.default.join(rootBase, 'PROJECT.md'))
                             .split(node_path_1.default.sep)
                             .join('/');
                         let stateContent = `# Session State\n\n`;

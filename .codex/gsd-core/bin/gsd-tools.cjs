@@ -386,6 +386,120 @@ function dispatchCapabilityCommand({ command, args, cwd, raw, error, registry, r
   return true;
 }
 
+/**
+ * Require a THIRD-PARTY capability's router module from its install root, confined to that root.
+ * The module name must be a bare `.cjs` basename (same conservative pattern the generator enforces).
+ * The install root is realpath-resolved (defeating symlinked path components) and the resolved
+ * module must live strictly inside it; the module file is then realpath-checked so a symlinked file
+ * cannot escape the root either. ADR-1244 Phase 5 (D7).
+ *
+ * @param {string} installRoot Absolute install-root dir of the owning capability
+ * @param {string} m           Bare `.cjs` module basename from the capability manifest
+ * @returns {*} the required module
+ */
+function defaultRequireFromInstallRoot(installRoot, m) {
+  if (typeof m !== 'string' || !/^[A-Za-z0-9._-]+\.cjs$/.test(m)) {
+    throw new Error('capability module must be a bare .cjs basename: ' + JSON.stringify(m));
+  }
+  // Realpath the root so a symlinked ancestor can't widen confinement.
+  const realRoot = fs.realpathSync(installRoot);
+  const resolved = path.resolve(realRoot, m);
+  if (resolved === realRoot || !resolved.startsWith(realRoot + path.sep)) {
+    throw new Error('capability module path escapes its install root: ' + JSON.stringify(m));
+  }
+  // The module file itself must not be a symlink pointing outside the root.
+  const realResolved = fs.realpathSync(resolved);
+  if (realResolved !== realRoot && !realResolved.startsWith(realRoot + path.sep)) {
+    throw new Error('capability module resolves outside its install root (symlink): ' + JSON.stringify(m));
+  }
+  return require(realResolved);
+}
+
+/**
+ * Dispatch a THIRD-PARTY (installed overlay) capability command family — ADR-1244 Phase 5 (D7).
+ * This is where third-party code executes, so it is doubly gated:
+ *   - CONSENT: `loadRegistry({ includeInstalled })` excludes `_pending` (unconsented) capabilities,
+ *     and only third-party caps that declared `commands` appear in `_overlay.commandRoots`. A capId
+ *     absent from `commandRoots` is first-party (handled by dispatchCapabilityCommand) or not an
+ *     installed overlay — we fall through.
+ *   - CONFINEMENT: the router module is `require()`'d FROM the capability's install root, confined to
+ *     that root (basename validation + realpath containment), so a manifest can never reach code
+ *     outside its own bundle.
+ * Returns true when consumed (suppress "Unknown command"), false to fall through.
+ *
+ * @param {object} opts
+ * @param {Function} [opts.loadRegistry]  Injectable overlay loader (for tests)
+ * @param {Function} [opts.requireModule] Injectable (installRoot, module) loader (for tests)
+ */
+function dispatchOverlayCapabilityCommand({ command, args, cwd, raw, error, loadRegistry, requireModule }) {
+  if (command === '__proto__' || command === 'constructor' || command === 'prototype') {
+    return false;
+  }
+
+  let reg;
+  try {
+    const load = loadRegistry !== undefined ? loadRegistry : require('./lib/capability-loader.cjs').loadRegistry;
+    reg = load({ includeInstalled: true, cwd });
+  } catch (_) {
+    return false; // overlay load failed — fall through to "Unknown command"
+  }
+
+  const families = reg && reg.commandFamilies;
+  const commandRoots = reg && reg._overlay && reg._overlay.commandRoots;
+  if (!families || typeof families !== 'object' || !commandRoots || typeof commandRoots !== 'object') {
+    return false; // no installed overlay command families
+  }
+
+  const entry = families[command];
+  if (!entry || typeof entry !== 'object') return false;
+
+  // Only THIRD-PARTY overlay caps are dispatched here. A capId present in commandRoots is an
+  // accepted, committed (consented) overlay cap; a capId absent is first-party or not an overlay.
+  const capId = entry.capId;
+  if (typeof capId !== 'string' || !Object.prototype.hasOwnProperty.call(commandRoots, capId)) {
+    return false;
+  }
+  const installRoot = commandRoots[capId];
+  if (typeof installRoot !== 'string' || !installRoot) return false;
+
+  const loadModule = requireModule !== undefined ? requireModule : defaultRequireFromInstallRoot;
+  let mod;
+  try {
+    mod = loadModule(installRoot, entry.module);
+  } catch (_) {
+    error('capability command "' + command + '" module "' + entry.module + '" failed to load from its install root');
+    return true; // consumed — don't emit "Unknown command"
+  }
+
+  if (!mod || !Object.prototype.hasOwnProperty.call(mod, entry.router)) {
+    error('capability command "' + command + '" router "' + entry.router + '" is not an own export of module "' + entry.module + '"');
+    return true;
+  }
+  const fn = mod[entry.router];
+  if (typeof fn !== 'function') {
+    error('capability command "' + command + '" router "' + entry.router + '" is not a function in module "' + entry.module + '"');
+    return true;
+  }
+
+  let _result;
+  try {
+    _result = fn({ args, cwd, raw, error });
+  } catch (e) {
+    if (e instanceof ExitError) throw e;
+    error(
+      'capability command "' + command + '" router "' + entry.router + '" in module "' + entry.module + '" threw: ' + (e && e.message ? e.message : String(e)),
+      ERROR_REASON.SDK_FAIL_FAST,
+    );
+  }
+  if (_result && typeof _result.then === 'function') {
+    error(
+      'capability command "' + command + '" router "' + entry.router + '" in module "' + entry.module + '" must be synchronous (returned a Promise); async capability routers are not supported.',
+      ERROR_REASON.SDK_FAIL_FAST,
+    );
+  }
+  return true;
+}
+
 // ─── Arg parsing helpers ──────────────────────────────────────────────────────
 
 // ─── CLI Router ───────────────────────────────────────────────────────────────
@@ -637,6 +751,14 @@ function captureStdoutSyncWrites(run) {
       return captured;
     }, (err) => {
       restore();
+      // The wrapped command may have written to stdout BEFORE it threw — e.g. a --raw
+      // command that emits a JSON result/error envelope and THEN throws ExitError to set a
+      // non-zero exit code (capability set/disable on an unknown id). Without this flush that
+      // captured output is silently discarded (the success-path flush at the call site never
+      // runs on a throw). Emit it now; the error still propagates so the exit code is preserved.
+      if (captured) {
+        try { originalWriteSync.call(fs, 1, resolveAtFileOutput(captured)); } catch { /* best-effort flush */ }
+      }
       throw err;
     });
 }
@@ -1301,6 +1423,118 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
       // If 'loop' were ever added to SKIP_ROOT_RESOLUTION, 'capability' should
       // be added at the same time to keep them consistent.
       const capSubcommand = args[1];
+      // --- Capability management CLI helpers (ADR-1244 D5/D6; install/update/remove/list/disable/enable).
+      //     Pure arg parsing + scope/config/host-version resolution. The lifecycle modules themselves are
+      //     lazy-required inside each mutating branch so the common state/set paths never load them. ---
+      const capFlagValue = (name) => {
+        const i = args.indexOf(name);
+        if (i === -1) return undefined;
+        const v = args[i + 1];
+        if (!v || v.startsWith('--')) {
+          error(`Missing value for ${name}`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        }
+        return v;
+      };
+      const capHasFlag = (name) => args.includes(name);
+      const capRepeatedFlag = (name) => {
+        const out = [];
+        for (let i = 0; i < args.length; i++) {
+          if (args[i] === name) {
+            const v = args[i + 1];
+            if (!v || v.startsWith('--')) {
+              error(`Missing value for ${name}`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+            }
+            out.push(v);
+            i++; // skip the consumed value
+          }
+        }
+        return out;
+      };
+      // Resolve a --scope value to the lifecycle runtimeDir — the scope ROOT that holds
+      // .gsd/capabilities/<id> and the .gsd-capabilities.json ledger, matching capability-loader's
+      // read paths exactly (global → $GSD_HOME||home; project → the resolved project root). For the
+      // project scope this is just `cwd`: the outer dispatch already resolved cwd to the project root
+      // via findProjectRoot (capability is NOT in SKIP_ROOT_RESOLUTION), so no second resolve is needed.
+      // Note: the strict_known_registries policy (capReadStrict) is read from the PROJECT config
+      // regardless of --scope — it is a project-scoped policy; there is no machine-wide source allowlist.
+      const capResolveScope = (scope) => {
+        const s = scope || 'global';
+        if (s !== 'global' && s !== 'project') {
+          error(`Invalid --scope "${s}": expected global or project`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        }
+        if (s === 'project') return { scope: 'project', runtimeDir: cwd };
+        const os = require('node:os');
+        return { scope: 'global', runtimeDir: process.env.GSD_HOME || os.homedir() };
+      };
+      // capabilities.strict_known_registries policy (null=permissive, []=lockdown, [hosts]=allowlist).
+      // loadConfig's whitelist does not surface this key, so read config.json directly (drift-guard pattern);
+      // undefined => the lifecycle's permissive default. The raw value is passed THROUGH verbatim — a
+      // malformed (non-array, non-null) value must reach the trust gate so it can fail CLOSED, not be
+      // silently downgraded to permissive here.
+      const capReadStrict = () => {
+        let cfgPath;
+        try {
+          const { planningDir } = require('./lib/planning-workspace.cjs');
+          cfgPath = path.join(planningDir(cwd), 'config.json');
+        } catch {
+          return undefined; // cannot even resolve the project config dir — permissive default
+        }
+        if (!fs.existsSync(cfgPath)) return undefined; // no project config — permissive default
+        let cfg;
+        try {
+          cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+        } catch {
+          // Config is PRESENT but unreadable/unparseable: a security policy must not silently
+          // downgrade to permissive. Fail CLOSED — lockdown ([]) blocks external installs (local
+          // still allowed) until the config is fixed.
+          return [];
+        }
+        if (cfg && cfg.capabilities && Object.prototype.hasOwnProperty.call(cfg.capabilities, 'strict_known_registries')) {
+          return cfg.capabilities.strict_known_registries;
+        }
+        return undefined;
+      };
+      // Running GSD version (hard gate for engines.gsd at install/load); fail-closed to 0.0.0.
+      const capHostVersion = () => {
+        try {
+          const pkg = require('../../package.json'); // gsd-core/bin/ -> repo root is two up
+          return typeof pkg.version === 'string' && pkg.version ? pkg.version : '0.0.0';
+        } catch {
+          return '0.0.0';
+        }
+      };
+      // #1459: the USER-OWNED consent home (GSD_HOME||homedir()) where project-scope consent records
+      // live — OUTSIDE any repo. SAME rule as the loader/consent-store path resolution so a record
+      // written here is the record the loader checks.
+      const capConsentHome = () => {
+        const osMod = require('node:os');
+        return process.env.GSD_HOME || osMod.homedir();
+      };
+      // #1459: realpath(cwd) — the canonical PROJECT ROOT used to bind/lookup a project consent
+      // record (the consent store realpaths it too, so loader + CLI agree). Best-effort: cwd if the
+      // path cannot be realpath'd (e.g. it does not exist yet).
+      const capProjectRoot = () => {
+        try { return fs.realpathSync(cwd); } catch { return cwd; }
+      };
+      // UX-2: run the best-effort pre-op crash-recovery sweep AND surface any warnings it reports
+      // (e.g. a corrupt-present ledger, or a rollback that could not complete) on stderr. The previous
+      // bare `try { reconcile } catch {}` discarded the report entirely, so corruption detected during
+      // reconcile was invisible. We never abort on a reconcile warning here — the mutating op that
+      // follows runs its own fail-closed checks — but the warning must be OBSERVABLE.
+      // #1459 IC-03: pass scope + the user-owned consent home so a rollback that DELETES a committed/
+      // half-committed PROJECT-scope entry whose bundle dir is gone also REVOKES the now-stale consent
+      // record (an identical re-drop then stays inactive until re-consented). Global scope / no store →
+      // reconcile revokes nothing.
+      const capRunReconcile = (runtimeDir, lifecycle, scope) => {
+        try {
+          const report = lifecycle.reconcileCapabilities({ runtimeDir, scope, consentStoreDir: capConsentHome() });
+          if (report && Array.isArray(report.warnings)) {
+            for (const w of report.warnings) {
+              try { process.stderr.write(`capability reconcile: ${w}\n`); } catch { /* best-effort */ }
+            }
+          }
+        } catch { /* best-effort crash recovery — never block the op on a reconcile failure */ }
+      };
       if (capSubcommand === 'state') {
         const configDirIdx = args.indexOf('--config-dir');
         let configDir = null;
@@ -1390,9 +1624,443 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
           { enabled: setEnabled, gates: Object.keys(setGates).length > 0 ? setGates : undefined, runtime: setRuntime, scope: setScope },
           raw,
         );
+      } else if (capSubcommand === 'install') {
+        // capability install <spec> [--integrity sha512-…] [--scope global|project] [--yes] [--shared-file <rel>]…
+        const spec = args[2];
+        if (!spec || spec.startsWith('--')) {
+          error('Missing <spec> for: capability install <spec>', ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        }
+        const { scope, runtimeDir } = capResolveScope(capFlagValue('--scope'));
+        const lifecycle = require('./lib/capability-lifecycle.cjs');
+        const trust = require('./lib/capability-trust.cjs');
+        // Finding 5(b): bound the --shared-file COUNT EARLY — before reconcile, source resolution,
+        // staging, or any shared-config write — so an over-cap install fails fast with a clear count
+        // error and leaves NO staging dir / _pending behind. The lifecycle re-checks (defense in
+        // depth); this CLI-side guard short-circuits before even the pre-op reconcile runs.
+        const installSharedFiles = capRepeatedFlag('--shared-file');
+        const ledgerModInstall = require('./lib/capability-ledger.cjs');
+        if (installSharedFiles.length > ledgerModInstall.MAX_SHARED_FILES) {
+          error(
+            `capability install blocked: too many --shared-file entries: ${installSharedFiles.length} ` +
+            `exceeds the maximum of ${ledgerModInstall.MAX_SHARED_FILES}.`,
+            ERROR_REASON ? ERROR_REASON.USAGE : undefined,
+          );
+        }
+        capRunReconcile(runtimeDir, lifecycle, scope); // UX-2: surface reconcile warnings on stderr
+        const res = await lifecycle.installCapability(spec, {
+          runtimeDir,
+          hostVersion: capHostVersion(),
+          consentGranted: capHasFlag('--yes'),
+          integrity: capFlagValue('--integrity'),
+          sharedFiles: installSharedFiles,
+          strictKnownRegistries: capReadStrict(),
+          // #1459: bind a user consent record for a CONSENTED project install (under the user-owned
+          // consent home, NOT in the repo). The lifecycle records nothing for global scope.
+          scope,
+          consentStoreDir: capConsentHome(),
+        });
+        if (res.status === 'installed') {
+          output({
+            status: 'installed',
+            id: res.id,
+            version: res.version,
+            scope,
+            disclosure: trust.summarizeDisclosure(res.disclosure || {}),
+          }, raw);
+        } else if (res.status === 'aborted') {
+          // 'aborted' always means "executable surface needs consent" in the lifecycle contract —
+          // match it regardless of the requiresConsent flag so a future aborted path can't fall
+          // through to the generic "blocked: unknown reason" arm with a misleading message.
+          const disclosure = trust.summarizeDisclosure(res.disclosure || {});
+          // UX-5: emit a structured aborted envelope on STDOUT before the non-zero exit so automation
+          // can detect the consent requirement programmatically. We throw ExitError (not error(),
+          // which calls process.exit and would bypass the stdout-capture flush) so the buffered stdout
+          // is flushed before exit; the human-readable guidance still lands on stderr.
+          output({ status: 'aborted', requiresConsent: true, scope, disclosure }, raw);
+          throw new ExitError(
+            1,
+            ['Error: This capability declares executable surfaces and needs your consent before install:']
+              .concat(disclosure.map((l) => '  ' + l))
+              .concat(['Re-run with --yes to grant consent and install.'])
+              .join('\n'),
+          );
+        } else {
+          error(
+            `capability install blocked: ${(res.blockReasons || ['unknown reason']).join('; ')}`,
+            ERROR_REASON ? ERROR_REASON.SDK_FAIL_FAST : undefined,
+          );
+        }
+      } else if (capSubcommand === 'update') {
+        // capability update [<id> | --all] [--scope global|project] [--yes] [--shared-file <rel>]…
+        const all = capHasFlag('--all');
+        const id = args[2] && !args[2].startsWith('--') ? args[2] : undefined;
+        if (!all && !id) {
+          error('capability update requires <id> or --all', ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        }
+        if (all && id) {
+          error('capability update: pass either <id> or --all, not both', ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        }
+        const { scope, runtimeDir } = capResolveScope(capFlagValue('--scope'));
+        const lifecycle = require('./lib/capability-lifecycle.cjs');
+        const ledgerMod = require('./lib/capability-ledger.cjs');
+        const trust = require('./lib/capability-trust.cjs');
+        // Finding 4 (MEDIUM): parse the --shared-file list ONCE and enforce MAX_SHARED_FILES BEFORE
+        // the pre-op reconcile (install has this early guard; update did not — it ran reconcile, then
+        // re-parsed --shared-file per entry inside upgradeOne). An over-cap update now fails fast with
+        // a clear count error and leaves no reconcile side-effects, mirroring the install dispatch.
+        const updateSharedFiles = capRepeatedFlag('--shared-file');
+        if (updateSharedFiles.length > ledgerMod.MAX_SHARED_FILES) {
+          error(
+            `capability update blocked: too many --shared-file entries: ${updateSharedFiles.length} ` +
+            `exceeds the maximum of ${ledgerMod.MAX_SHARED_FILES}.`,
+            ERROR_REASON ? ERROR_REASON.USAGE : undefined,
+          );
+        }
+        capRunReconcile(runtimeDir, lifecycle, scope); // UX-2: surface reconcile warnings on stderr
+        // readLedgerStrict: returns null when MISSING (no installs yet), throws CorruptLedgerError
+        // when the ledger FILE EXISTS but is unparseable. Using the strict variant ensures a
+        // corrupt-but-present ledger fails closed rather than silently reporting not_installed (<id>)
+        // or succeeding with an empty list (--all), both of which bypass fail-closed (Codex pass 3 M2).
+        let ledger;
+        try {
+          ledger = ledgerMod.readLedgerStrict(runtimeDir);
+        } catch (err) {
+          error(`capability update blocked: ${err.message}`, ERROR_REASON ? ERROR_REASON.SDK_FAIL_FAST : undefined);
+        }
+        const entries = (ledger && ledger.entries) || {};
+        const upgradeOne = async (capId) => {
+          const entry = entries[capId];
+          if (!entry) return { id: capId, status: 'not_installed' };
+          // expectedId pins the op to the requested id: a retargeted/edited source that now resolves
+          // to a different manifest id is refused by the lifecycle rather than upgrading the wrong cap.
+          const r = await lifecycle.upgradeCapability(entry.source, {
+            runtimeDir,
+            hostVersion: capHostVersion(),
+            consentGranted: capHasFlag('--yes'),
+            sharedFiles: updateSharedFiles, // finding 4: parsed once, count-checked before reconcile
+            strictKnownRegistries: capReadStrict(),
+            expectedId: capId,
+            // #1459: re-record the project consent for the upgraded bundle (new integrity/signature).
+            scope,
+            consentStoreDir: capConsentHome(),
+          });
+          // UX-6: normalize absent fields to explicit null so a not_installed/blocked row serializes
+          // them as null rather than omitting them (JSON.stringify drops undefined keys), giving a
+          // stable per-entry shape for `--all` consumers.
+          return {
+            id: capId,
+            status: r.status,
+            fromVersion: r.fromVersion ?? null,
+            toVersion: r.toVersion ?? null,
+            requiresConsent: r.requiresConsent ?? null,
+            blockReasons: r.blockReasons ?? null,
+            disclosure: r.disclosure ? trust.summarizeDisclosure(r.disclosure) : null,
+          };
+        };
+        if (all) {
+          // Sequential by design: each upgrade takes the per-scope capability lock; parallel
+          // runs would contend on the ledger/lock (mirrors the worktree config.lock policy).
+          const results = [];
+          for (const capId of Object.keys(entries)) {
+            results.push(await upgradeOne(capId));
+          }
+          const failed = results.filter((x) => x.status !== 'upgraded');
+          if (failed.length > 0) {
+            // UX-1: emit the FULL structured result on STDOUT first (success and partial-failure
+            // alike), then set a non-zero exit. Previously the results JSON was embedded inside the
+            // error STRING on stderr, so automation could not parse a partial-failure run as
+            // structured data. We throw ExitError (not error(), which calls process.exit and would
+            // bypass the stdout-capture flush) so the buffered stdout is flushed before exit and a
+            // concise reason still lands on stderr.
+            output({ scope, updated: results }, raw);
+            throw new ExitError(
+              1,
+              `Error: capability update --all: ${failed.length} of ${results.length} did not upgrade ` +
+                `(see the JSON result on stdout for per-capability status).`,
+            );
+          }
+          output({ scope, updated: results }, raw);
+        } else {
+          const r = await upgradeOne(id);
+          if (r.status === 'upgraded') {
+            output({ status: 'upgraded', id: r.id, fromVersion: r.fromVersion, toVersion: r.toVersion, scope, disclosure: r.disclosure }, raw);
+          } else if (r.status === 'not_installed') {
+            error(`capability "${id}" is not installed in ${scope} scope; use: capability install`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+          } else if (r.status === 'aborted') {
+            // 'aborted' always means "needs consent" (see install) — handle it independently of the
+            // requiresConsent flag so it never falls through to the generic blocked arm.
+            error(
+              [`capability update for "${id}" changes its executable surface and needs your consent:`]
+                .concat((r.disclosure || []).map((l) => '  ' + l))
+                .concat(['Re-run with --yes to grant consent and update.'])
+                .join('\n'),
+              ERROR_REASON ? ERROR_REASON.USAGE : undefined,
+            );
+          } else {
+            error(`capability update blocked: ${(r.blockReasons || ['unknown reason']).join('; ')}`, ERROR_REASON ? ERROR_REASON.SDK_FAIL_FAST : undefined);
+          }
+        }
+      } else if (capSubcommand === 'remove') {
+        // capability remove <id> [--purge-data] [--scope global|project]
+        const id = args[2];
+        if (!id || id.startsWith('--')) {
+          error('Missing <id> for: capability remove <id>', ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        }
+        const { scope, runtimeDir } = capResolveScope(capFlagValue('--scope'));
+        const lifecycle = require('./lib/capability-lifecycle.cjs');
+        const ledgerMod = require('./lib/capability-ledger.cjs');
+        capRunReconcile(runtimeDir, lifecycle, scope); // UX-2: surface reconcile warnings on stderr
+        // Ledger first: an installed overlay is removable even if its id shadows a first-party name.
+        // Only when the id is NOT an installed overlay do we reject a first-party id (vs. a typo).
+        // Use readLedgerStrict so a corrupt-but-present ledger surfaces corruption here rather than
+        // silently reporting "first-party cannot be removed" for any id (finding 7).
+        let removeLedger;
+        try {
+          removeLedger = ledgerMod.readLedgerStrict(runtimeDir);
+        } catch (err) {
+          error(`capability remove blocked: ${err.message}`, ERROR_REASON ? ERROR_REASON.SDK_FAIL_FAST : undefined);
+        }
+        const inLedger = !!(removeLedger && removeLedger.entries && Object.prototype.hasOwnProperty.call(removeLedger.entries, id));
+        if (!inLedger) {
+          const base = require('./lib/capability-loader.cjs').loadRegistry();
+          if (base && base.capabilities && Object.prototype.hasOwnProperty.call(base.capabilities, id)) {
+            error(`"${id}" is a first-party capability and cannot be removed here; use the product uninstaller (gsd --uninstall)`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+          }
+        }
+        const res = lifecycle.removeCapability(id, {
+          runtimeDir,
+          removeData: capHasFlag('--purge-data'),
+          // #1459: a project-scope removal revokes the user consent record so a later repo-dropped
+          // bundle of the same id cannot silently re-activate against a stale consent.
+          scope,
+          consentStoreDir: capConsentHome(),
+        });
+        if (res.status === 'removed') {
+          // #1459 finding 3: a project removal whose consent revoke FAILED (e.g. the consent-store lock
+          // could not be acquired) is a NON-CLEAN removal — the bundle/ledger are gone but a STALE consent
+          // record remains. Surface it on stderr + in the JSON so the user knows to clear it.
+          if (res.consentRevokeFailed) {
+            process.stderr.write(`warning: ${res.consentRevokeWarning || `consent record for "${id}" could not be revoked; clear it with: gsd capability trust revoke ${id}`}\n`);
+          }
+          output({
+            status: 'removed',
+            id,
+            scope,
+            removedFiles: res.removedFiles,
+            strippedEdits: res.strippedEdits,
+            dataPreserved: res.dataPreserved,
+            consentRevokeFailed: res.consentRevokeFailed || undefined,
+            consentRevokeWarning: res.consentRevokeWarning || undefined,
+          }, raw);
+        } else if (res.status === 'not_installed') {
+          error(`capability "${id}" is not installed in ${scope} scope`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        } else {
+          error(`capability remove blocked: ${(res.blockReasons || ['unknown reason']).join('; ')}`, ERROR_REASON ? ERROR_REASON.SDK_FAIL_FAST : undefined);
+        }
+      } else if (capSubcommand === 'list') {
+        // capability list [--json] [--scope global|project] — emits a JSON array of capability descriptors.
+        // When --scope is given, only that scope's overlay ledger is read (finding 8: honor --scope so a
+        // corrupt unrelated ledger in another scope does not block a scoped list).
+        const loader = require('./lib/capability-loader.cjs');
+        const ledgerMod = require('./lib/capability-ledger.cjs');
+        const semver = require('./lib/semver-compare.cjs');
+        const host = capHostVersion();
+        const rows = [];
+        const listScopeArg = capFlagValue('--scope');
+        // Validate --scope if provided.
+        if (listScopeArg && listScopeArg !== 'global' && listScopeArg !== 'project') {
+          error(`Invalid --scope "${listScopeArg}": must be "global" or "project"`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        }
+        // First-party capabilities are always included (they have no scope concept).
+        const base = loader.loadRegistry();
+        const fp = (base && base.capabilities) || {};
+        // #1459: consult the composed overlay's warnings so a DISCOVERED-BUT-INACTIVE project overlay
+        // (a bundle whose project ledger looks committed but has no user consent record on THIS
+        // machine) is marked status:'inactive' with a reason, instead of silently appearing active.
+        // loadRegistry is non-throwing; a failure here just leaves rows un-annotated.
+        const inactiveById = {};
+        try {
+          const composed = loader.loadRegistry({ includeInstalled: true, cwd });
+          const overlayWarnings = (composed && composed._overlay && composed._overlay.warnings) || [];
+          for (const w of overlayWarnings) {
+            // #1459 IC-02: classify by the STRUCTURAL discriminant `kind`, not by matching the
+            // human-readable reason prose (which is free to change without breaking this filter).
+            if (w && typeof w.id === 'string' && w.kind === 'unconsented') {
+              inactiveById[`${w.scope} ${w.id}`] = w.reason;
+            }
+          }
+        } catch { /* best-effort — list still works without the inactive annotation */ }
+        for (const capId of Object.keys(fp)) {
+          const cap = fp[capId] || {};
+          rows.push({
+            id: capId,
+            role: cap.role || null,
+            version: cap.version || null,
+            tier: cap.tier || null,
+            source: 'first-party',
+            scope: 'first-party',
+            status: 'active',
+            title: cap.title || null,
+          });
+        }
+        // Overlay scopes: honor --scope to read only the requested scope (finding 8).
+        const overlayScopes = listScopeArg ? [listScopeArg] : ['global', 'project'];
+        for (const sc of overlayScopes) {
+          const { runtimeDir } = capResolveScope(sc);
+          // readLedgerStrict: returns null when MISSING (no overlays yet), throws CorruptLedgerError
+          // when the ledger FILE EXISTS but is unparseable. Using the strict variant ensures a
+          // corrupt-but-present ledger is visible to the user (blocked/error) rather than silently
+          // dropping overlay entries and returning a first-party-only list (site A fix, #1462).
+          let ledger;
+          try {
+            ledger = ledgerMod.readLedgerStrict(runtimeDir);
+          } catch (err) {
+            // UX-3: name the offending scope so the user knows WHICH ledger to fix.
+            error(`capability list blocked (${sc} scope): ${err.message}`, ERROR_REASON ? ERROR_REASON.SDK_FAIL_FAST : undefined);
+          }
+          if (!ledger || !ledger.entries) continue;
+          for (const capId of Object.keys(ledger.entries)) {
+            const entry = ledger.entries[capId];
+            let manifest = {};
+            try {
+              // #1459 CONVERGENCE finding 2: read the (project-plantable) capability.json via the SHARED
+              // bounded fd reader (open → fstat → require regular file → size cap → read exactly size), NOT
+              // a raw fs.readFileSync which BLOCKS forever on a repo-planted FIFO/device manifest and reads
+              // an oversized manifest unbounded into memory (OOM). 8 MiB is wildly more than any real
+              // declarative capability.json. A null (genuinely missing) or a bounded-reader throw
+              // (non-regular/oversized/IO) → leave manifest = {} so the entry is LISTED but with no metadata
+              // (null role/tier/title) rather than hanging the list — `capability list` still exits cleanly.
+              const raw = ledgerMod.readSmallRegularFile(path.join(runtimeDir, '.gsd', 'capabilities', capId, 'capability.json'), 8 * 1024 * 1024);
+              manifest = raw === null ? {} : JSON.parse(raw);
+            } catch { manifest = {}; }
+            let status = 'active';
+            let reason = null;
+            const range = manifest.engines && manifest.engines.gsd;
+            if (typeof range === 'string' && range && !semver.semverSatisfies(host, range)) status = 'incompatible';
+            // #1459: a project overlay with no user consent record is DISCOVERED-BUT-INACTIVE.
+            const inactiveReason = inactiveById[`${sc} ${capId}`];
+            if (inactiveReason) { status = 'inactive'; reason = inactiveReason; }
+            rows.push({
+              id: capId,
+              role: manifest.role || null,
+              version: entry.version || null,
+              tier: manifest.tier || null,
+              source: entry.source || null,
+              scope: sc,
+              status,
+              reason,
+              title: manifest.title || null,
+            });
+          }
+        }
+        output(rows, raw || capHasFlag('--json'));
+      } else if (capSubcommand === 'disable' || capSubcommand === 'enable') {
+        // capability disable|enable <id> — toggles activation state (same mechanism as: capability set <id> --off|--on).
+        const id = args[2];
+        if (!id || id.startsWith('--')) {
+          error(`Missing <id> for: capability ${capSubcommand} <id>`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        }
+        const dCfg = capFlagValue('--config-dir');
+        capabilityWriter.cmdCapabilitySet(
+          cwd,
+          dCfg ? path.resolve(dCfg) : null,
+          id,
+          { enabled: capSubcommand === 'enable', runtime: capFlagValue('--runtime'), scope: capFlagValue('--scope') },
+          raw,
+        );
+      } else if (capSubcommand === 'outdated') {
+        // capability outdated [--json] [--scope global|project] — ADR-1244 D6 "Update available?".
+        // For each installed overlay in the chosen scope(s), LIGHT-PEEK its recorded source for the
+        // latest available version and report whether a newer one exists. This never re-clones/re-packs;
+        // a failing/unsupported peek DEGRADES that row to status 'unknown' (the verb never crashes).
+        const lifecycle = require('./lib/capability-lifecycle.cjs');
+        const outdatedScopeArg = capFlagValue('--scope');
+        if (outdatedScopeArg && outdatedScopeArg !== 'global' && outdatedScopeArg !== 'project') {
+          error(`Invalid --scope "${outdatedScopeArg}": must be "global" or "project"`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+        }
+        // Honor --scope (read only that scope's ledger); default sweeps both, mirroring `list`.
+        const outdatedScopes = outdatedScopeArg ? [outdatedScopeArg] : ['global', 'project'];
+        const records = [];
+        for (const sc of outdatedScopes) {
+          const { runtimeDir } = capResolveScope(sc);
+          // outdatedCapabilities is read-only + non-throwing (returns [] on a missing/corrupt ledger).
+          const scRecords = lifecycle.outdatedCapabilities({ runtimeDir });
+          for (const r of scRecords) records.push({ ...r, scope: sc });
+        }
+        const asJson = raw || capHasFlag('--json');
+        if (asJson) {
+          output(records, false); // machine output: the records array (JSON).
+        } else {
+          // Human-readable table: ID | Source | Current | Latest | Status.
+          const headers = ['ID', 'Source', 'Current', 'Latest', 'Status'];
+          const cell = (v) => (v === null || v === undefined ? '-' : String(v));
+          const tableRows = records.map((r) => [cell(r.id), cell(r.sourceKind), cell(r.current), cell(r.latest), cell(r.status)]);
+          const widths = headers.map((h, i) => Math.max(h.length, ...tableRows.map((row) => row[i].length), 0));
+          const fmt = (row) => row.map((c, i) => c.padEnd(widths[i])).join('  ').replace(/\s+$/, '');
+          const lines = [fmt(headers), widths.map((w) => '-'.repeat(w)).join('  ').replace(/\s+$/, '')];
+          for (const row of tableRows) lines.push(fmt(row));
+          if (tableRows.length === 0) lines.push('(no installed overlay capabilities)');
+          output(records, true, lines.join('\n') + '\n');
+        }
+      } else if (capSubcommand === 'trust') {
+        // capability trust list [--scope project] [--json]
+        // capability trust revoke <id> [--project <path>]
+        // The user-owned consent store (#1459) gates PROJECT-scope third-party capability activation.
+        const consentMod = require('./lib/capability-consent.cjs');
+        const trustSub = args[2];
+        if (trustSub === 'list') {
+          // --scope is accepted for symmetry; only 'project' records exist today.
+          const listScope = capFlagValue('--scope');
+          if (listScope && listScope !== 'project') {
+            error(`Invalid --scope "${listScope}" for trust list: only "project" consent records exist`, ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+          }
+          const store = consentMod.readConsentStore(capConsentHome());
+          const rows = Object.keys(store.records).map((k) => {
+            const r = store.records[k];
+            // #1459 IC-09: surface disclosureSignature + contentHash so an operator can diff the STORED
+            // binding against the current bundle (e.g. `gsd capability list` showing inactive after a
+            // tamper) and understand why a consented cap deactivated. The contentHash is THE security
+            // binding the loader checks; disclosureSignature is the executable-surface re-consent key.
+            return {
+              id: r.id, scope: r.scope, projectRoot: r.projectRoot,
+              integrity: r.integrity, disclosureSignature: r.disclosureSignature, contentHash: r.contentHash,
+              consentedAt: r.consentedAt,
+            };
+          });
+          output(rows, raw || capHasFlag('--json'));
+        } else if (trustSub === 'revoke') {
+          const id = args[3];
+          if (!id || id.startsWith('--')) {
+            error('Missing <id> for: capability trust revoke <id>', ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+          }
+          // --project pins the project root whose consent is revoked; defaults to realpath(cwd).
+          const projFlag = capFlagValue('--project');
+          let projectRoot;
+          try { projectRoot = projFlag ? fs.realpathSync(path.resolve(projFlag)) : capProjectRoot(); }
+          catch { projectRoot = projFlag ? path.resolve(projFlag) : cwd; }
+          // #1459 finding 3: revokeProjectConsent THROWS when the consent-store lock cannot be acquired
+          // (round-3: never do an unlocked read-modify-write). Catch it and emit a CLEAN, actionable
+          // error rather than letting runMain surface a raw SDK/stack failure. The lifecycle treats a
+          // consent-write failure as non-fatal, so a clean exit-1 here is the right contract.
+          try {
+            consentMod.revokeProjectConsent({ gsdHome: capConsentHome(), projectRoot, id });
+          } catch (err) {
+            error(
+              `capability trust revoke blocked: ${err && err.message ? err.message : String(err)} ` +
+              `(could not acquire the consent-store lock; another capability operation may be in progress — retry)`,
+              ERROR_REASON ? ERROR_REASON.SDK_FAIL_FAST : undefined,
+            );
+          }
+          output({ status: 'revoked', id, projectRoot, scope: 'project' }, raw);
+        } else {
+          error(
+            `Unknown capability trust subcommand: ${trustSub}. Available: list, revoke`,
+            ERROR_REASON ? ERROR_REASON.SDK_UNKNOWN_COMMAND : undefined,
+          );
+        }
       } else {
         error(
-          `Unknown capability subcommand: ${capSubcommand}. Available: state, set`,
+          `Unknown capability subcommand: ${capSubcommand}. Available: install, update, remove, list, outdated, trust, disable, enable, state, set`,
           ERROR_REASON ? ERROR_REASON.SDK_UNKNOWN_COMMAND : undefined,
         );
       }
@@ -2207,6 +2875,11 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
       // this returns true when a registered capability owns the command, false otherwise.
       if (dispatchCapabilityCommand({ command, args, cwd, raw, error })) break;
 
+      // ADR-1244 Phase 5 (D7): if no first-party family owns the command, try an INSTALLED
+      // THIRD-PARTY (overlay) capability — dispatched only if committed/consented and only by
+      // require()-ing its router FROM the capability's install root (confined to that root).
+      if (dispatchOverlayCapabilityCommand({ command, args, cwd, raw, error })) break;
+
       // #3243: if the caller passed a dotted form (e.g. "foo.bar"), the shim
       // above split it so `command` here is the head ("foo"). Use
       // originalCommand to reconstruct the original dotted form and suggest
@@ -2236,4 +2909,6 @@ if (require.main === module) {
 // ─── Exports (for tests) ──────────────────────────────────────────────────────
 // ADR-959: export dispatchCapabilityCommand so tests can exercise it with
 // synthetic registry + requireModule injections.
-module.exports = { dispatchCapabilityCommand };
+// ADR-1244 Phase 5: export dispatchOverlayCapabilityCommand + defaultRequireFromInstallRoot for
+// the third-party overlay dispatch + install-root confinement tests.
+module.exports = { dispatchCapabilityCommand, dispatchOverlayCapabilityCommand, defaultRequireFromInstallRoot };

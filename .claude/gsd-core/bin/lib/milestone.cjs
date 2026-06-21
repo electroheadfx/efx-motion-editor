@@ -289,7 +289,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
         stateContent = stateReplaceFieldWithFallback(stateContent, 'Last Activity Description', null, `${version} milestone completed and archived`);
         // Reset Current Position narrative so resume/progress flows do not keep
         // pointing at closed-phase execution instructions.
-        const positionPattern = /(##\s*Current Position\s*\n)([\s\S]*?)(?=\n##|$)/i;
+        const positionPattern = /(##\s*Current Position\s*\n)([\s\S]*?)(?=\n##|$)/i; // allow-adhoc-markdown: pre-seam section write-modify in milestone.cts; pending collectSection migration #1372
         const closedPositionBody = `\nPhase: Milestone ${version} complete\n` +
             `Plan: —\n` +
             `Status: Awaiting next milestone\n` +
@@ -301,7 +301,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
             stateContent = `${stateContent.trimEnd()}\n\n## Current Position\n${closedPositionBody}`;
         }
         // Normalize operator-next-step tails that can become stale after close.
-        const operatorPattern = /(##\s*Operator Next Steps\s*\n)([\s\S]*?)(?=\n##|$)/i;
+        const operatorPattern = /(##\s*Operator Next Steps\s*\n)([\s\S]*?)(?=\n##|$)/i; // allow-adhoc-markdown: pre-seam section write-modify in milestone.cts; pending collectSection migration #1372
         if (operatorPattern.test(stateContent)) {
             stateContent = stateContent.replace(operatorPattern, `$1\n- Start the next milestone with ${(0, runtime_slash_cjs_1.formatGsdSlash)('new-milestone', (0, runtime_slash_cjs_1.resolveRuntime)(cwd))}\n\n`);
         }
@@ -353,6 +353,9 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
 function cmdPhasesClear(cwd, raw, args) {
     const phasesDir = planningPaths(cwd).phases;
     const confirm = Array.isArray(args) && args.includes('--confirm');
+    // --force bypasses the uncommitted-changes guard. Only use when the caller
+    // has already archived or explicitly accepts loss of uncommitted work. (#1447)
+    const force = Array.isArray(args) && args.includes('--force');
     let cleared = 0;
     if (node_fs_1.default.existsSync(phasesDir)) {
         const entries = node_fs_1.default.readdirSync(phasesDir, { withFileTypes: true });
@@ -360,6 +363,42 @@ function cmdPhasesClear(cwd, raw, args) {
         if (dirs.length > 0 && !confirm) {
             error(`phases clear would delete ${dirs.length} phase director${dirs.length === 1 ? 'y' : 'ies'}. ` +
                 `Pass --confirm to proceed.`);
+        }
+        // Guard (#1447): refuse to hard-delete phase directories that contain
+        // uncommitted changes. This prevents data loss when `new-milestone` runs
+        // `phases.clear --confirm` before the operator has archived or committed
+        // phase work from the outgoing milestone.
+        // Use `--force` to bypass this guard only when you have verified that
+        // archive or commit of the outgoing phases is already done.
+        if (dirs.length > 0 && !force) {
+            // Compute the path relative to cwd for git status
+            let relPhasesDir;
+            try {
+                relPhasesDir = node_path_1.default.relative(cwd, phasesDir);
+            }
+            catch {
+                relPhasesDir = phasesDir;
+            }
+            let gitStatusOutput = '';
+            try {
+                const gitResult = (0, shell_command_projection_cjs_1.execGit)(['status', '--porcelain', relPhasesDir], { cwd, timeout: 10_000 });
+                if (gitResult.exitCode === 0) {
+                    gitStatusOutput = gitResult.stdout ?? '';
+                }
+                // If git is not available or this is not a git repo, skip the guard
+                // (gitResult.exitCode non-zero → not a git repo → no uncommitted changes to protect).
+            }
+            catch {
+                // git unavailable — skip guard
+            }
+            const uncommittedLines = gitStatusOutput
+                .split('\n')
+                .filter((line) => line.trim().length > 0);
+            if (uncommittedLines.length > 0) {
+                error(`phases clear aborted: ${uncommittedLines.length} uncommitted change${uncommittedLines.length === 1 ? '' : 's'} detected in phase directories. ` +
+                    `Archive or commit outgoing phase work before running this command, ` +
+                    `or pass --force to skip this check and permanently delete the phase directories. (#1447)`);
+            }
         }
         try {
             for (const entry of dirs) {

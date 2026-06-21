@@ -19,6 +19,9 @@ const node_path_1 = __importDefault(require("node:path"));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const frontmatter = require("./frontmatter.cjs");
 const { extractFrontmatter } = frontmatter;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const markdownSectionizer = require("./markdown-sectionizer.cjs");
+const { stripFencedCode } = markdownSectionizer;
 // ─── Blocking state sets (documented for maintainability) ─────────────────────
 // UAT file frontmatter `status` values that indicate the file is not fully done
 const BLOCKING_UAT_FM_STATUSES = new Set([
@@ -53,57 +56,14 @@ function stripFalsePositiveContexts(content) {
     let stripped = content.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/, '');
     // Step (b): remove HTML comments anywhere; unterminated comment swallows to EOF
     stripped = stripped.replace(/<!--[\s\S]*?(?:-->|$)/g, '');
-    // Step (c): remove fenced code blocks via CommonMark-style state machine (handles CRLF + indented fences)
-    stripped = _stripFencedBlocks(stripped).text;
+    // Step (c): remove fenced code blocks via the canonical seam (ADR-1372 T5)
+    stripped = stripFencedCode(stripped).text;
     // Step (d): remove blockquote lines
     stripped = stripped
         .split('\n')
         .filter(line => !/^\s*>/.test(line))
         .join('\n');
     return stripped;
-}
-/**
- * CommonMark-style fenced-code-block stripper.
- * Tracks the opening delimiter char and length so that a ~~~ line inside a
- * ``` fence is correctly treated as fence content, not a closing delimiter.
- *
- * Opening rule: first delimiter line with char+len sets openFence.
- * Closing rule: delimiter line with SAME char, run length >= openFence.len,
- *   and NO trailing non-whitespace text closes the fence.
- * All delimiter and content lines are dropped; non-fence lines are kept.
- * Returns the kept text plus unterminatedFence:true if EOF inside a fence.
- */
-function _stripFencedBlocks(content) {
-    const lines = content.split('\n');
-    const kept = [];
-    let openFence = null;
-    const delimRe = /^(\s*)(`{3,}|~{3,})(.*)$/;
-    for (const rawLine of lines) {
-        // Tolerate CRLF: strip trailing \r for matching, but we work on split-by-\n lines
-        // (the outer caller joined by \n already; we just handle a stray \r in the last char)
-        const line = rawLine.replace(/\r$/, '');
-        const m = delimRe.exec(line);
-        if (m) {
-            const char = m[2][0];
-            const len = m[2].length;
-            const trailing = m[3];
-            if (openFence === null) {
-                // Opening delimiter — drop this line and record the fence
-                openFence = { char, len };
-            }
-            else if (char === openFence.char && len >= openFence.len && /^\s*$/.test(trailing)) {
-                // Closing delimiter (same char, sufficient length, no trailing text) — drop and close
-                openFence = null;
-            }
-            // else: mismatched delimiter inside fence (e.g. ~~~ inside ```) — drop as content
-            continue; // delimiter lines are always dropped
-        }
-        if (openFence === null) {
-            kept.push(rawLine);
-        }
-        // Lines inside fence are dropped
-    }
-    return { text: kept.join('\n'), unterminatedFence: openFence !== null };
 }
 /**
  * Analyse raw markdown for structural anomalies (unterminated fence / comment).
@@ -129,8 +89,8 @@ function analyzeMarkdown(raw) {
         }
         i = close + 3;
     }
-    // Fence state machine gives the accurate unterminated-fence signal.
-    const { unterminatedFence } = _stripFencedBlocks(raw);
+    // Fence state machine gives the accurate unterminated-fence signal (seam, ADR-1372 T5).
+    const { unterminatedFence } = stripFencedCode(raw);
     return { unterminatedFence, unterminatedComment };
 }
 // ─── parseUatResultItems ──────────────────────────────────────────────────────

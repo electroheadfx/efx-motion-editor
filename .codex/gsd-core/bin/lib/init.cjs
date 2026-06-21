@@ -17,6 +17,7 @@ const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs")
 const io = require("./io.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- config-loader.cjs is an export= CommonJS module
 const configLoader = require("./config-loader.cjs");
+const project_root_cjs_1 = require("./project-root.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- model-resolver.cjs is an export= CommonJS module
 const modelResolver = require("./model-resolver.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-locator.cjs is an export= CommonJS module
@@ -48,8 +49,9 @@ const { checkAgentsInstalled } = agentInstallCheck;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- git-base-branch.cjs is an export= CommonJS module
 const gitBaseBranch = require("./git-base-branch.cjs");
 const { gitWorktreeInfoInternal } = gitBaseBranch;
+const resolution_cjs_1 = require("./resolution.cjs");
 const { output, error } = io;
-const { loadConfig } = configLoader;
+const { loadConfig, loadConfigResolved } = configLoader;
 const { resolveModelInternal, resolveGranularityInternal, assertValidGranularityOverride } = modelResolver;
 const { findPhaseInternal } = phaseLocator;
 const { getRoadmapPhaseInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, } = roadmapParser;
@@ -1542,7 +1544,12 @@ function cmdInitRemoveWorkspace(cwd, name, raw) {
     };
     output(result, raw);
 }
-function buildAgentSkillsBlock(config, agentType, projectRoot) {
+function buildAgentSkillsBlock(config, agentType, projectRoot, diagnostics) {
+    const warn = (message) => {
+        process.stderr.write(message);
+        if (diagnostics)
+            diagnostics.warnings.push(message.replace(/\n+$/, ''));
+    };
     const runtime = (config && config['runtime']) || 'claude';
     const globalSkillsBase = (0, runtime_homes_cjs_1.getGlobalSkillsBase)(runtime);
     if (!config || !config['agent_skills'] || !agentType)
@@ -1552,7 +1559,11 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
         return '';
     if (typeof skillPaths === 'string')
         skillPaths = [skillPaths];
-    if (!Array.isArray(skillPaths) || skillPaths.length === 0)
+    if (!Array.isArray(skillPaths)) {
+        warn(`[agent-skills] WARNING: Agent "${agentType}" has a malformed agent_skills value (expected string or array, got ${typeof skillPaths}) — ignoring\n`);
+        return '';
+    }
+    if (skillPaths.length === 0)
         return '';
     // Hoist trusted roots computation before the loop: loadTrustedGlobalRoots does
     // realpathSync I/O and should run at most once per call, not once per failing skill.
@@ -1563,18 +1574,20 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
     // Skill-tool directive ({ kind: 'directive', name }) for plugin-provided namespaced skills.
     const validEntries = [];
     for (const skillPath of skillPaths) {
-        if (typeof skillPath !== 'string')
+        if (typeof skillPath !== 'string') {
+            warn(`[agent-skills] WARNING: Ignoring non-string skill entry (${typeof skillPath}) — skipping\n`);
             continue;
+        }
         if (skillPath.startsWith('global:')) {
             const skillName = skillPath.slice(7);
             if (!skillName) {
-                process.stderr.write(`[agent-skills] WARNING: "global:" prefix with empty skill name — skipping\n`);
+                warn(`[agent-skills] WARNING: "global:" prefix with empty skill name — skipping\n`);
                 continue;
             }
             // Accept: one or more [A-Za-z0-9_-]+ segments joined by single colons.
             // Rejects: empty segments (::), leading/trailing colon, dots, slashes, backslashes.
             if (!/^[A-Za-z0-9_-]+(:[A-Za-z0-9_-]+)*$/.test(skillName)) {
-                process.stderr.write(`[agent-skills] WARNING: Invalid global skill name "${skillName}" — skipping\n`);
+                warn(`[agent-skills] WARNING: Invalid global skill name "${skillName}" — skipping\n`);
                 continue;
             }
             const isNamespaced = skillName.includes(':');
@@ -1585,20 +1598,20 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
                     validEntries.push({ kind: 'directive', name: skillName });
                 }
                 else {
-                    process.stderr.write(`[agent-skills] WARNING: Plugin-namespaced skill "global:${skillName}" requires a Skill-tool-capable runtime (claude) — skipping on runtime "${runtime}"\n`);
+                    warn(`[agent-skills] WARNING: Plugin-namespaced skill "global:${skillName}" requires a Skill-tool-capable runtime (claude) — skipping on runtime "${runtime}"\n`);
                 }
                 continue;
             }
             // Non-namespaced bare name: attempt filesystem resolution as before.
             if (globalSkillsBase === null) {
-                process.stderr.write(`[agent-skills] WARNING: Runtime "${runtime}" does not use a skills directory — "global:${skillName}" is not supported on this runtime\n`);
+                warn(`[agent-skills] WARNING: Runtime "${runtime}" does not use a skills directory — "global:${skillName}" is not supported on this runtime\n`);
                 continue;
             }
             const globalSkillDir = (0, runtime_homes_cjs_1.getGlobalSkillDir)(runtime, skillName);
             const globalSkillMd = node_path_1.default.join(globalSkillDir, 'SKILL.md');
             const displayPath = (0, runtime_homes_cjs_1.getGlobalSkillDisplayPath)(runtime, skillName);
             if (!node_fs_1.default.existsSync(globalSkillMd)) {
-                process.stderr.write(`[agent-skills] WARNING: Global skill not found at "${displayPath}/SKILL.md" — skipping\n`);
+                warn(`[agent-skills] WARNING: Global skill not found at "${displayPath}/SKILL.md" — skipping\n`);
                 continue;
             }
             const pathCheck = (0, security_cjs_1.validatePath)(globalSkillMd, globalSkillsBase, { allowAbsolute: true });
@@ -1608,9 +1621,11 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
                     return Boolean(rootCheck['safe']);
                 });
                 if (!acceptedViaTrustedRoot) {
-                    process.stderr.write(`[agent-skills] WARNING: Global skill "${skillName}" failed path check (symlink escape?) — skipping\n`);
+                    warn(`[agent-skills] WARNING: Global skill "${skillName}" failed path check (symlink escape?) — skipping\n`);
                     continue;
                 }
+                // Intentionally a direct stderr write, NOT warn(): this is an acceptance
+                // trace, not a skip, so it must not land in the diagnostics warnings[].
                 process.stderr.write(`[agent-skills] NOTE: Global skill "${skillName}" accepted via trusted_global_roots (resolves outside the default skills dir)\n`);
             }
             validEntries.push({ kind: 'include', ref: `${globalSkillDir}/SKILL.md`, display: displayPath });
@@ -1618,18 +1633,20 @@ function buildAgentSkillsBlock(config, agentType, projectRoot) {
         }
         const pathCheck = (0, security_cjs_1.validatePath)(skillPath, projectRoot);
         if (!pathCheck['safe']) {
-            process.stderr.write(`[agent-skills] WARNING: Skipping unsafe path "${skillPath}": ${pathCheck['error']}\n`);
+            warn(`[agent-skills] WARNING: Skipping unsafe path "${skillPath}": ${pathCheck['error']}\n`);
             continue;
         }
         const skillMdPath = node_path_1.default.join(projectRoot, skillPath, 'SKILL.md');
         if (!node_fs_1.default.existsSync(skillMdPath)) {
-            process.stderr.write(`[agent-skills] WARNING: Skill not found at "${skillPath}/SKILL.md" — skipping\n`);
+            warn(`[agent-skills] WARNING: Skill not found at "${skillPath}/SKILL.md" — skipping\n`);
             continue;
         }
         validEntries.push({ kind: 'include', ref: `${skillPath}/SKILL.md`, display: skillPath });
     }
-    if (validEntries.length === 0)
+    if (validEntries.length === 0) {
+        warn(`[agent-skills] WARNING: Agent "${agentType}" has ${skillPaths.length} configured skill path(s) but none resolved to a valid skill — all were skipped (see warnings above)\n`);
         return '';
+    }
     const lines = validEntries.map((entry) => {
         if (entry.kind === 'directive') {
             return `- Load the \`${entry.name}\` skill via the Skill tool before proceeding (plugin-provided).`;
@@ -1643,16 +1660,68 @@ function cmdAgentSkills(cwd, agentType, raw, jsonMode) {
         output('', raw, '');
         return;
     }
-    const config = loadConfig(cwd);
-    const block = buildAgentSkillsBlock(config, agentType, cwd);
+    // Anchor to project root before loading config (#1415/#1366 cwd-drift fix).
+    const projectRoot = (0, project_root_cjs_1.findProjectRoot)(cwd);
+    const { config, source, degraded } = loadConfigResolved(projectRoot);
+    const diagnostics = { warnings: [] };
+    const block = buildAgentSkillsBlock(config, agentType, projectRoot, diagnostics);
+    // Compute configured + reason for diagnostic output.
+    const agentSkillsMap = (config && config['agent_skills'] && typeof config['agent_skills'] === 'object')
+        ? config['agent_skills']
+        : {};
+    const configured = Object.prototype.hasOwnProperty.call(agentSkillsMap, agentType);
+    let reason;
+    let skillPaths = configured ? agentSkillsMap[agentType] : [];
+    if (!configured) {
+        reason = 'not_configured';
+        skillPaths = [];
+    }
+    else {
+        // Normalize paths to array
+        if (typeof skillPaths === 'string')
+            skillPaths = [skillPaths];
+        if (!Array.isArray(skillPaths))
+            skillPaths = [];
+        const pathsArr = skillPaths;
+        // Fix 3: treat "" (empty string) as configured_empty — all-blank entries = no meaningful paths.
+        // An array of all empty/blank strings has length > 0 but zero meaningful paths.
+        const nonBlankPaths = pathsArr.filter(p => typeof p === 'string' && p.trim().length > 0);
+        if (pathsArr.length === 0 || nonBlankPaths.length === 0) {
+            // configured with empty array / "" / all-blank entries
+            reason = 'configured_empty';
+            // Reflect zero meaningful paths in the normalized array used for skills_count
+            skillPaths = [];
+            try {
+                process.stderr.write(`[agent-skills] WARNING: Agent "${agentType}" is configured in agent_skills but has no skill paths — skills_count will be 0\n`);
+            }
+            catch { /* stderr might be closed */ }
+        }
+        else if (!block) {
+            // configured with paths but all failed to resolve (warnings already emitted by buildAgentSkillsBlock)
+            reason = 'configured_unresolved';
+        }
+        else {
+            reason = 'resolved';
+        }
+    }
+    const normalizedPaths = Array.isArray(skillPaths) ? skillPaths : [];
     if (jsonMode) {
-        const skillPaths = (config && config.agent_skills && config.agent_skills[agentType]) || [];
-        const normalizedPaths = Array.isArray(skillPaths)
-            ? skillPaths
-            : skillPaths
-                ? [skillPaths]
-                : [];
-        output({ agent_type: agentType, block: block || '', skills_count: normalizedPaths.length }, raw);
+        // Build the Resolution<AgentSkillsValue> envelope and embed .value additively.
+        // Flat fields are retained unchanged for back-compat; value formalises the
+        // Resolution convention (ADR-1411 P3, #1416). source/degraded remain
+        // config-provenance extras, outside the Resolution<T> envelope.
+        const resolution = (0, resolution_cjs_1.makeResolution)({ block: block || '', skills_count: normalizedPaths.length }, { configured, reason, warnings: diagnostics.warnings });
+        output({
+            agent_type: agentType,
+            block: block || '',
+            skills_count: normalizedPaths.length,
+            warnings: diagnostics.warnings,
+            configured,
+            reason,
+            source,
+            degraded,
+            value: resolution.value,
+        }, raw);
         return;
     }
     if (block) {

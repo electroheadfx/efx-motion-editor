@@ -444,6 +444,14 @@ exports.PHASE_COMMAND_ALIASES = [
         ],
         "subcommand": "scaffold",
         "mutation": true
+    },
+    {
+        "canonical": "phase.list-plans",
+        "aliases": [
+            "phase list-plans"
+        ],
+        "subcommand": "list-plans",
+        "mutation": false
     }
 ];
 exports.PHASES_COMMAND_ALIASES = [

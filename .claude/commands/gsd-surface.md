@@ -123,16 +123,16 @@ Valid cluster names: `core_loop`, `audit_review`, `milestone`, `research_ideate`
 ## runtimeConfigDir resolution
 
 The `runtimeConfigDir` for `applySurface` is the **base Claude config directory**
-(`/Users/lmarques/Dev/efx-motion-editor/.claude`), NOT the skills sub-directory (`/Users/lmarques/Dev/efx-motion-editor/.claude/skills`).
+(`~/.claude`), NOT the skills sub-directory (`/Users/lmarques/Dev/efx-motion-editor/.claude/skills`).
 
 This matches `installRuntimeArtifacts` and `uninstallRuntimeArtifacts`, which also
-receive `/Users/lmarques/Dev/efx-motion-editor/.claude` as `configDir`. The skill dirs themselves live at
+receive `~/.claude` as `configDir`. The skill dirs themselves live at
 `/Users/lmarques/Dev/efx-motion-editor/.claude/skills/gsd-*/` because the `claude global` layout has `destSubpath =
 'skills'` — they are derived from `configDir`, not the root for it.
 
 ```bash
 # Claude Code — global install
-RUNTIME_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-/Users/lmarques/Dev/efx-motion-editor/.claude}"
+RUNTIME_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SCOPE="global"
 
 # Artifact destinations are derived from runtime layout

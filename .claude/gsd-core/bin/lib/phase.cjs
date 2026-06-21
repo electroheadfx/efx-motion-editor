@@ -1430,6 +1430,34 @@ function cmdPhaseUatPassed(cwd, phaseNum, raw, opts = {}) {
     const report = evaluateUatPassed(phaseFullDir, { policy: opts.policy });
     output({ phase: phaseNum, ...report }, raw);
 }
+// #1437 — phase.list-plans: list plan files for a given phase number.
+// Returns the full scan result from scanPhasePlans so callers can read plan
+// paths without re-discovering the phase directory themselves.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- plan-scan.cjs is an export= CommonJS module
+const planScanMod = require("./plan-scan.cjs");
+const { scanPhasePlans } = planScanMod;
+function cmdPhaseListPlans(cwd, phaseNum, raw) {
+    if (!phaseNum) {
+        error('phase number required for phase list-plans');
+    }
+    const phaseInfo = findPhaseInternal(cwd, phaseNum);
+    if (!phaseInfo) {
+        output({ phase: phaseNum, plan_count: 0, has_plans: false, plans: [], phase_dir: null }, raw);
+        return;
+    }
+    const phaseDir = node_path_1.default.join(cwd, phaseInfo['directory']);
+    const scan = scanPhasePlans(phaseDir);
+    const phaseRel = phaseInfo['directory'];
+    // Build absolute-usable relative paths for each plan file.
+    const plans = scan.planFiles.map((f) => toPosixPath(node_path_1.default.join(phaseRel, f)));
+    output({
+        phase: phaseNum,
+        phase_dir: phaseRel,
+        plan_count: scan.planCount,
+        has_plans: scan.planCount > 0,
+        plans,
+    }, raw);
+}
 module.exports = {
     cmdPhasesList,
     cmdPhaseNextDecimal,
@@ -1442,5 +1470,6 @@ module.exports = {
     cmdPhaseRemove,
     cmdPhaseComplete,
     cmdPhaseUatPassed,
+    cmdPhaseListPlans,
     computeDependencyLevels,
 };

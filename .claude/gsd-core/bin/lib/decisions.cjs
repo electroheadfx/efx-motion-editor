@@ -8,67 +8,56 @@
  * Accepts both numeric (D-42) and alphanumeric (D-INFRA-01) IDs.
  * Returns {id, text, category, tags, trackable} per decision.
  * CJS callers that only use {id, text} safely ignore the extra fields.
+ *
+ * ADR-1372 T1: rewritten to adopt the markdown-sectionizer seam.
+ * - `stripFencedCode` → seam's `stripFencedCode` (CommonMark-correct)
+ * - `extractDecisionsBlock` → seam's `extractTaggedBlocks(content,'decisions')`
+ * - Markdown-header fallback → seam's `collectSection(content, /decisions?/i, ...)`
+ * - Outer bullet loop → seam's `iterateBullets` (for the header-fallback path)
+ *
+ * Resolves #1364 (markdown-header + em-dash recall) and #1365 (fail-loud gate).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.extractDecisions = extractDecisions;
 exports.parseDecisions = parseDecisions;
+const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
 const DISCRETION_HEADINGS = new Set([
     "claude's discretion",
     'claudes discretion',
     'claude discretion',
 ]);
 const NON_TRACKABLE_TAGS = new Set(['informational', 'folded', 'deferred']);
+// ─── Bullet parsers (decisions-specific grammar) ─────────────────────────────
 /**
- * Strip fenced code blocks from `content` so example `<decisions>` snippets
- * inside ```` ``` ```` do not pollute the parser (review F11).
+ * Colon form: `- **D-NN[ [tags]]:** text`
+ * (#1343: `[^:*]*` subsumes any pre-colon prose, stops at `:**`)
  */
-function stripFencedCode(content) {
-    return content.replace(/```[\s\S]*?```/g, ' ').replace(/~~~[\s\S]*?~~~/g, ' ');
-}
+const bulletColonRe = /^\s*-\s+\*\*D-([A-Za-z0-9][A-Za-z0-9_-]*)(?:\s*\[([^\]]+)\])?[^:*]*:\*\*\s*(.*)$/;
 /**
- * Extract the inner text of EVERY `<decisions>...</decisions>` block in
- * order, concatenated by `\n\n`. Returns null when no block is present.
+ * Em-dash form: `- **D-NN[ [tags]] — title** body`
+ * The em-dash (U+2014) or its lookalike separates the ID+tags group from a title
+ * that lives inside the bold markers; the body (which may be empty) follows
+ * outside the closing `**`. This form was not handled pre-T1 (bug #1364).
  *
- * CONTEXT.md may legitimately contain more than one block (for example, a
- * "current decisions" block plus a "carry-over from prior phase" block);
- * dropping all-but-the-first silently lost the second batch (review F13).
+ * Accepts both U+2014 em-dash (—) and U+2013 en-dash (–) for robustness.
  */
-function extractDecisionsBlock(content) {
-    const cleaned = stripFencedCode(content);
-    const matches = [...cleaned.matchAll(/<decisions>([\s\S]*?)<\/decisions>/g)];
-    if (matches.length === 0)
-        return null;
-    return matches.map((m) => m[1]).join('\n\n');
-}
+const bulletEmDashRe = /^\s*-\s+\*\*D-([A-Za-z0-9][A-Za-z0-9_-]*)(?:\s*\[([^\]]+)\])?[^*]*[—–][^*]*\*\*\s*(.*)$/;
 /**
- * Parse trackable decisions from CONTEXT.md content.
+ * Parse decision lines from a block of text (the inner text of a <decisions>
+ * or markdown-header section body). Returns the extracted decisions and a count
+ * of parse-misses (lines that looked like D-NN bullets but failed both regexes).
  *
- * Returns ALL D-NN decisions found inside `<decisions>` (including
- * non-trackable ones, with `trackable: false`). Callers that only want the
- * gate-enforced decisions should filter `.filter(d => d.trackable)`.
+ * FIX B (#1365): parseMisses > 0 means the caller must treat the result as
+ * could-not-parse even when some decisions were extracted — a silent drop is
+ * worse than a fail-loud signal.
  */
-function parseDecisions(content) {
-    if (!content || typeof content !== 'string')
-        return [];
-    const block = extractDecisionsBlock(content);
-    if (block === null)
-        return [];
+function parseDecisionLines(block) {
     const lines = block.split(/\r?\n/);
     const out = [];
     let category = '';
     let inDiscretion = false;
-    // Bullet line: `- **D-NN[ [tags]]:** text`
-    // Phase 6 (#3575): aligned to CJS regex — accepts alphanumeric IDs (D-01, D-INFRA-01, D-FOO_BAR)
-    // in addition to numeric-only IDs (D-42). The first character after `D-` must
-    // be alphanumeric, so malformed shapes like `D--foo` or `D-_bar` are rejected.
-    // CJS callers consume {id, text} and ignore the optional extras.
-    // #1343: `[^:*]*` replaces the old `\s*` before `:**` so that a freeform run
-    // such as `(parenthetical)`, an em-dash, or other prose between the optional
-    // bracket-tag group and the closing `:**` is tolerated rather than silently
-    // dropping the whole decision. `[^:*]*` subsumes plain whitespace and stops
-    // correctly at `:**`. Capture groups 1 (id), 2 (bracket tags), 3 (text) are
-    // unchanged.
-    const bulletRe = /^\s*-\s+\*\*D-([A-Za-z0-9][A-Za-z0-9_-]*)(?:\s*\[([^\]]+)\])?[^:*]*:\*\*\s*(.*)$/;
     let current = null;
+    let parseMisses = 0;
     const flush = () => {
         if (current) {
             current.text = current.text.trim();
@@ -84,39 +73,49 @@ function parseDecisions(content) {
             flush();
             category = headingMatch[1];
             // Strip the full unicode-quote family so any rendering of "Claude's
-            // Discretion" (ASCII apostrophe, curly U+2019, U+2018, U+201A, U+201B,
-            // double-quote variants U+201C/D/E/F, etc.) collapses to the same key
-            // (review F20).
+            // Discretion" (ASCII apostrophe, curly U+2019 ’, U+2018 ‘,
+            // U+201A, U+201B, double-quote variants U+201C/D/E/F, etc.) collapses
+            // to the same key (FIX C + review F20).
             const normalized = category
                 .toLowerCase()
-                .replace(/[‘’‚‛“”„‟'"`]/g, '')
+                .replace(/[‘’‚‛“”„‟''"`]/g, '')
                 .trim();
             inDiscretion = DISCRETION_HEADINGS.has(normalized);
             continue;
         }
-        const bulletMatch = line.match(bulletRe);
-        if (bulletMatch) {
+        // Colon form: `- **D-NN[ [tags]]:** text`
+        const colonMatch = line.match(bulletColonRe);
+        if (colonMatch) {
             flush();
-            const id = `D-${bulletMatch[1]}`;
-            const tags = bulletMatch[2]
-                ? bulletMatch[2]
-                    .split(',')
-                    .map((t) => t.trim().toLowerCase())
-                    .filter(Boolean)
+            const id = `D-${colonMatch[1]}`;
+            const tags = colonMatch[2]
+                ? colonMatch[2].split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)
                 : [];
             const trackable = !inDiscretion && !tags.some((t) => NON_TRACKABLE_TAGS.has(t));
-            current = { id, text: bulletMatch[3], category, tags, trackable };
+            current = { id, text: colonMatch[3], category, tags, trackable };
             continue;
         }
-        // Parse-miss guard (#1343): a line that looks like a `D-NN` decision bullet
-        // but failed `bulletRe` (e.g. a `:` or `*` inside the pre-colon run) must NOT
-        // be silently dropped — a narrowed trackable set lets a blocking coverage gate
-        // report a false pass. Surface it loudly instead.
-        if (/^\s*-\s+\*\*D-/.test(line)) {
-            // A malformed D-bullet still starts a (failed) new decision, so it ends the
-            // previous one — flush before warning so a following continuation line cannot
-            // be mis-appended to the prior valid decision.
+        // Em-dash form: `- **D-NN[ [tags]] — title** body`
+        const emDashMatch = line.match(bulletEmDashRe);
+        if (emDashMatch) {
             flush();
+            const id = `D-${emDashMatch[1]}`;
+            const tags = emDashMatch[2]
+                ? emDashMatch[2].split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)
+                : [];
+            const trackable = !inDiscretion && !tags.some((t) => NON_TRACKABLE_TAGS.has(t));
+            // The body (emDashMatch[3]) may be empty for the pure title form; the
+            // title itself is embedded in the bold run but we report the body as text
+            // (consistent with how the gate cares only about coverage, not title/body split).
+            current = { id, text: emDashMatch[3] || '', category, tags, trackable };
+            continue;
+        }
+        // Parse-miss guard (FIX B + #1343): a line that looks like a `D-NN` decision
+        // bullet but failed both patterns — flush, warn, and record the miss.
+        // parseMisses > 0 forces could-not-parse even when other decisions parsed.
+        if (/^\s*-\s+\*\*D-/.test(line)) {
+            flush();
+            parseMisses += 1;
             console.warn(`parseDecisions: ignored unparseable decision bullet: ${trimmed}`);
             continue;
         }
@@ -132,5 +131,95 @@ function parseDecisions(content) {
         }
     }
     flush();
-    return out;
+    return { decisions: out, parseMisses };
+}
+// ─── Primary entry point: extractDecisions ────────────────────────────────────
+/**
+ * Extract decisions from CONTEXT.md content with a typed outcome.
+ *
+ * Strategy (in priority order):
+ * 1. If the content (fence-stripped) contains `<decisions>...</decisions>` blocks,
+ *    parse ONLY those blocks (canonical form; markdown-header content outside blocks
+ *    is ignored when a block is present — existing behavior preserved).
+ * 2. Otherwise, look for a /decisions?/i heading and collect its section body.
+ *    This is the T1 recall fix for #1364.
+ * 3. If neither is found, return outcome based on decision-shape heuristics.
+ */
+function extractDecisions(content) {
+    if (!content || typeof content !== 'string') {
+        return { decisions: [], outcome: 'none-present' };
+    }
+    // Apply fence-stripping for block extraction (prevents example blocks inside
+    // ``` fences from polluting the parser — review F11).
+    const { text: stripped, unterminatedFence } = (0, markdown_sectionizer_cjs_1.stripFencedCode)(content);
+    // ── Path 1: <decisions> blocks present ──────────────────────────────────────
+    const taggedBlocks = (0, markdown_sectionizer_cjs_1.extractTaggedBlocks)(stripped, 'decisions');
+    if (taggedBlocks.length > 0) {
+        const combined = taggedBlocks.join('\n\n');
+        const { decisions, parseMisses } = parseDecisionLines(combined);
+        if (decisions.length > 0 && parseMisses === 0) {
+            return { decisions, outcome: 'parsed' };
+        }
+        // FIX B: parse-misses present — could-not-parse even if some decisions extracted.
+        if (parseMisses > 0) {
+            return { decisions, outcome: 'could-not-parse' };
+        }
+        // FIX A: Block present but 0 extracted and no parse-misses.
+        // Only report could-not-parse when there is genuine evidence of real decisions
+        // that failed to parse: a \bD- token in the block text, or an unterminated fence.
+        // An empty scaffold (<decisions></decisions>) or an all-prose block has no such
+        // evidence — treat as none-present so the gate passes cleanly.
+        const hasDecisionTokenInBlock = /\bD-[A-Za-z0-9]/m.test(combined);
+        if (hasDecisionTokenInBlock || unterminatedFence) {
+            return { decisions: [], outcome: 'could-not-parse' };
+        }
+        return { decisions: [], outcome: 'none-present' };
+    }
+    // ── Path 2: markdown-header fallback (#1364 fix) ─────────────────────────────
+    // Use the seam's collectSection to find a /decisions?/i heading section.
+    // levelBounded:true → stop at next same-or-higher-level heading.
+    // stripFences:true → inner fences inside the section body are stripped.
+    const section = (0, markdown_sectionizer_cjs_1.collectSection)(content, (h) => /decisions?\b/i.test(h.text), { levelBounded: true, stripFences: true });
+    if (section !== null) {
+        const { decisions, parseMisses } = parseDecisionLines(section.body);
+        if (decisions.length > 0 && parseMisses === 0) {
+            return { decisions, outcome: 'parsed' };
+        }
+        // FIX B: parse-misses present — could-not-parse even if some decisions extracted.
+        if (parseMisses > 0) {
+            return { decisions, outcome: 'could-not-parse' };
+        }
+        // FIX A: Heading found but 0 extracted and no parse-misses.
+        // Only report could-not-parse when the section body contains a D- token.
+        // A heading with only prose, sub-headings, or all-discretion content
+        // (no trackable D- tokens) is a legitimate empty/discretion section → none-present.
+        const hasDecisionTokenInSection = /\bD-[A-Za-z0-9]/m.test(section.body);
+        if (hasDecisionTokenInSection) {
+            return { decisions: [], outcome: 'could-not-parse' };
+        }
+        return { decisions: [], outcome: 'none-present' };
+    }
+    // ── Path 3: no blocks, no heading ────────────────────────────────────────────
+    // Apply shape heuristics to distinguish none-present from could-not-parse.
+    // We re-use the already-computed unterminatedFence and check for D- tokens.
+    const hasDecisionToken = /\bD-[A-Za-z0-9]/m.test(stripped);
+    if (unterminatedFence || hasDecisionToken) {
+        return { decisions: [], outcome: 'could-not-parse' };
+    }
+    return { decisions: [], outcome: 'none-present' };
+}
+// ─── parseDecisions: thin delegate (backwards-compatible entry point) ─────────
+/**
+ * Parse trackable decisions from CONTEXT.md content.
+ *
+ * Thin delegate over extractDecisions — callers receive the decisions array
+ * exactly as before; nothing breaks. Use extractDecisions directly when the
+ * outcome enum is needed (e.g. for the fail-loud gate logic).
+ *
+ * Returns ALL D-NN decisions found (including non-trackable ones, with
+ * `trackable: false`). Callers that only want the gate-enforced decisions
+ * should filter `.filter(d => d.trackable)`.
+ */
+function parseDecisions(content) {
+    return extractDecisions(content).decisions;
 }

@@ -365,13 +365,16 @@ function resolveCapabilityRuntimeState(cwd, runtimeConfigDir, configOverride) {
             resolvedConfigDir = node_path_1.default.join(os.homedir(), '.claude');
         }
     }
-    // ── Load registry (ADR-857 phase 4c) ────────────────────────────────────────
-    // Load BEFORE resolveProfile and resolveSurface so both calls receive the
-    // registry and capability-contributed skills are reflected in installed/surfaced.
-    // No-op today (UI capability is tier:full → only adds to 'full', which returns
-    // '*' regardless) but cutover-ready for future tier:core/standard capabilities.
+    // ── Load registry (ADR-1244 D2 wiring) ──────────────────────────────────────
+    // Load overlay-aware registry BEFORE resolveProfile and resolveSurface so both
+    // calls receive the composed registry and installed third-party capabilities are
+    // reflected in installed/surfaced state exactly like first-party capabilities.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const registry = require('./capability-registry.cjs');
+    const { loadRegistry } = require('./capability-loader.cjs');
+    // #1459 IC-04: thread the consent home (process.env.GSD_HOME) EXPLICITLY so the overlay's global root
+    // and the project-scope consent lookup resolve to the SAME user-owned home this consumer sees — a
+    // legitimately-consented project cap then reports ACTIVE here (not falsely inactive at the wrong home).
+    const registry = loadRegistry({ includeInstalled: true, cwd, gsdHome: process.env['GSD_HOME'] });
     // ── Resolve installed skills (from install profile) ──────────────────────────
     // Distinguish "no profile marker → default full" (legitimate) from a thrown
     // error (surface as a warning and degrade gracefully — do NOT silently report

@@ -55,6 +55,7 @@
     "workflow.subagent_timeout",
     "workflow.test_command",
     "workflow.build_command",
+    "workflow.mvp_mode",
     "executor.stall_detect_interval_minutes",
     "executor.stall_threshold_minutes",
     "workflow.inline_plan_threshold",
@@ -91,7 +92,9 @@
     "model_policy.high",
     "model_policy.medium",
     "model_policy.low",
-    "agent_skills_security.trusted_global_roots"
+    "agent_skills_security.trusted_global_roots",
+    "capabilities.strict_known_registries",
+    "capabilities.auto_update"
   ],
   "runtimeStateKeys": [
     "workflow._auto_chain_active"

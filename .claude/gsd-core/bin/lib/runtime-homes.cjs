@@ -36,6 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolveConfigHomeFromDescriptor = resolveConfigHomeFromDescriptor;
 exports.resolveAntigravityGlobalDir = resolveAntigravityGlobalDir;
+exports.detectAntigravityDirAmbiguity = detectAntigravityDirAmbiguity;
 exports.resolveKimiGlobalDir = resolveKimiGlobalDir;
 exports.getGlobalConfigDir = getGlobalConfigDir;
 exports.resolveSkillsBaseFromDescriptor = resolveSkillsBaseFromDescriptor;
@@ -97,7 +98,20 @@ function resolveConfigHomeFromDescriptor(configHome, opts = {}) {
             }
             const base = node_path_1.default.join(home, configHome.parent);
             if (configHome.probe && configHome.probe.length > 0) {
-                // probe each candidate under base; return first that exists
+                // Pass 1 (marker-priority): when probeExists is declared, prefer the
+                // candidate GSD actually owns (its `<candidate>/<probeExists>` exists).
+                // This disambiguates an active-but-shadowing sibling dir (e.g. the
+                // Antigravity-IDE `~/.gemini/antigravity` dir) from the dir GSD was
+                // installed into, instead of blindly taking the first dir that exists.
+                if (configHome.probeExists) {
+                    for (const candidate of configHome.probe) {
+                        const resolved = node_path_1.default.join(base, candidate);
+                        if (existsSyncFn(node_path_1.default.join(resolved, configHome.probeExists))) {
+                            return resolved;
+                        }
+                    }
+                }
+                // Pass 2 (legacy bare-existence): first candidate dir that exists.
                 for (const candidate of configHome.probe) {
                     const resolved = node_path_1.default.join(base, candidate);
                     if (existsSyncFn(resolved))
@@ -171,7 +185,45 @@ function resolveAntigravityGlobalDir(opts = {}) {
         parent: '.gemini',
         env: ['ANTIGRAVITY_CONFIG_DIR'],
         probe: ['antigravity', 'antigravity-ide', 'antigravity-cli'],
+        // Prefer the candidate GSD installed into (carries gsd-core/VERSION) over
+        // a bare-existing sibling. Without this, a CLI user (antigravity-cli) who
+        // also has the IDE's ~/.gemini/antigravity dir is shadowed to the legacy
+        // dir because it is probed first. See #213/#217. The posix-slash literal
+        // matches capabilities/antigravity/capability.json; both normalize via
+        // path.join at the check site, so Windows backslash handling is covered.
+        probeExists: 'gsd-core/VERSION',
     }, { env, home, existsSync: existsSyncFn });
+}
+/**
+ * Detect whether the Antigravity config-dir resolution is ambiguous — i.e. more
+ * than one of ~/.gemini/{antigravity,antigravity-ide,antigravity-cli} exists, so
+ * a user upgrading from a pre-#217 install may have had GSD written into the
+ * wrong sibling dir (the legacy/IDE dir shadowing an active CLI dir).
+ *
+ * This is a pure, side-effect-free probe intended for the installer and
+ * /gsd-update to surface operator guidance (set ANTIGRAVITY_CONFIG_DIR or move
+ * gsd-core/ into the intended dir). The migration framework cannot relocate an
+ * install across sibling config dirs (it is bounded to a single configDir and
+ * has no cross-dir move primitive — see installer-migrations 004), so existing
+ * misinstalls are corrected by re-detection + operator guidance, not an
+ * automatic move.
+ */
+function detectAntigravityDirAmbiguity(opts = {}) {
+    const env = opts.env ?? process.env;
+    const home = opts.home ?? node_os_1.default.homedir();
+    const existsSyncFn = opts.existsSync ?? node_fs_1.default.existsSync;
+    const marker = node_path_1.default.join('gsd-core', 'VERSION');
+    const base = node_path_1.default.join(home, '.gemini');
+    const candidates = ['antigravity', 'antigravity-ide', 'antigravity-cli'].map((c) => node_path_1.default.join(base, c));
+    const presentDirs = candidates.filter((dir) => existsSyncFn(dir));
+    const gsdMarkedDirs = candidates.filter((dir) => existsSyncFn(node_path_1.default.join(dir, marker)));
+    return {
+        ambiguous: presentDirs.length > 1,
+        resolved: resolveAntigravityGlobalDir({ env, home, existsSync: existsSyncFn }),
+        presentDirs,
+        gsdMarkedDirs,
+        envOverridden: Boolean(env['ANTIGRAVITY_CONFIG_DIR']),
+    };
 }
 /**
  * Resolve Kimi's generic user root using Kimi CLI's documented first-existing
