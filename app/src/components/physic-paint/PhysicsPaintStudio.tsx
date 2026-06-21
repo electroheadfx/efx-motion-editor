@@ -1251,7 +1251,7 @@ export function PhysicsPaintStudio() {
     }, 5000);
   }, [syncPendingRotoFrames]);
 
-  const flushRotoFrame = useCallback(async (frame: number, options: { force?: boolean; advanceToFrame?: number | null } = {}) => {
+  const flushRotoFrame = useCallback(async (frame: number, options: { force?: boolean; advanceToFrame?: number | null; onPayload?: (payload: PhysicPaintApplyPayload) => void } = {}) => {
     if (!actionContext || !Number.isInteger(frame) || frame < 0) return null;
     if (!options.force && !dirtyRotoFramesRef.current.has(frame)) return null;
     if (rotoFlushInFlightRef.current) return rotoFlushInFlightRef.current;
@@ -1278,6 +1278,7 @@ export function PhysicsPaintStudio() {
             startFrame: frame,
           };
           pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: frame };
+          options.onPayload?.(payload);
           await sendPhysicPaintApplyPayload(payload, bridgeMode);
           if (saveOnLeaveSourceFrameRef.current === frame) {
             saveOnLeaveDeleteFrameRef.current = frame;
@@ -1334,6 +1335,7 @@ export function PhysicsPaintStudio() {
           ...(backgroundOnly ? { backgroundOnly: true } : {}),
         };
         pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: frame };
+        options.onPayload?.(payload);
         await sendPhysicPaintApplyPayload(payload, bridgeMode);
         if (saveOnLeaveSourceFrameRef.current === frame) {
           saveOnLeaveRenderedFrameRef.current = { renderedFrame, backgroundOnly };
@@ -1589,12 +1591,12 @@ export function PhysicsPaintStudio() {
     };
   }, [bridgeMode, handleApplyResult]);
 
-  const saveRotoFrame = useCallback(async (advanceToFrame: number | null = null) => {
+  const saveRotoFrame = useCallback(async (advanceToFrame: number | null = null, options: { onPayload?: (payload: PhysicPaintApplyPayload) => void } = {}) => {
     if (!readyToApply) return null;
     snapshotCurrentRotoFrame();
     dirtyRotoFramesRef.current.add(currentFrame);
     syncPendingRotoFrames();
-    return flushRotoFrame(currentFrame, { force: true, advanceToFrame });
+    return flushRotoFrame(currentFrame, { force: true, advanceToFrame, onPayload: options.onPayload });
   }, [currentFrame, flushRotoFrame, readyToApply, snapshotCurrentRotoFrame, syncPendingRotoFrames]);
 
   const updateSelectedPlayOptions = useCallback(async () => {
@@ -2138,14 +2140,16 @@ export function PhysicsPaintStudio() {
     setRotoClosePromptState('saving');
     setRotoClosePromptMessage('Saving current frame…');
     try {
-      const payload = await saveRotoFrame(null);
+      const payload = await saveRotoFrame(null, {
+        onPayload: (payload) => {
+          closeAfterApplyOperationIdRef.current = payload.operationId;
+        },
+      });
       if (!payload?.operationId) {
         closeAfterApplyOperationIdRef.current = null;
         setRotoClosePromptState('error');
         setRotoClosePromptMessage('Could not save before closing. Try Save current, then close again.');
-        return;
       }
-      closeAfterApplyOperationIdRef.current = payload.operationId;
     } catch (error) {
       closeAfterApplyOperationIdRef.current = null;
       const detail = error instanceof Error ? error.message : String(error);
