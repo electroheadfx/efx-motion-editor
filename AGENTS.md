@@ -3,6 +3,8 @@
 - **Please find GSD tools from `.Codex/gsd-core`** and not from `$HOME/.Codex/gsd-core`
 - **Please do not run the server** I do on my side
 
+# See CLAUDE.md for preact dev recommandation
+
 # context-mode — MANDATORY routing rules
 
 You have context-mode MCP tools available. These rules are NOT optional — they protect your context window from flooding. A single unrouted command can dump 56 KB into context and waste the entire session. Codex CLI does NOT have hooks, so these instructions are your ONLY enforcement mechanism. Follow them strictly.
