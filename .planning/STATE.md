@@ -2,46 +2,46 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.6
-current_phase_name: physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase
-status: executing
-stopped_at: Completed Phase 36.6
-last_updated: "2026-06-20T19:15:11.566Z"
-last_activity: 2026-06-20
-last_activity_desc: Phase 36.6 execution started
+current_phase: 37
+current_phase_name: Future Integration Contract and Validation
+status: ready_to_plan
+stopped_at: Phase 36.6 complete, ready to plan Phase 37
+last_updated: "2026-06-21T08:09:55.750Z"
+last_activity: 2026-06-21
+last_activity_desc: Phase 36.6 complete, transitioned to Phase 37
 progress:
   total_phases: 10
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 53
-  completed_plans: 52
-  percent: 80
+  completed_plans: 53
+  percent: 90
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-20)
+See: .planning/PROJECT.md (updated 2026-06-21)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.6 — physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase
+**Current focus:** Phase 37 — Future Integration Contract and Validation
 
 ## Current Position
 
-Phase: 36.6 (physics-paint-roto-save-on-leave-use-specs-36-x-phases-phase) — EXECUTING
+Phase: 37 — Future Integration Contract and Validation
 Previous phase: 36.6 — Physics Paint Roto Save On Leave complete
-Plan: 1 of 3
-Status: Executing Phase 36.6
-Last activity: 2026-06-20 — Phase 36.6 execution started
+Plan: Not started
+Status: Ready to plan Phase 37
+Last activity: 2026-06-21 — Phase 36.6 complete, transitioned to Phase 37
 Next recommended action: `/gsd-plan-phase 37`
 
-Progress: [████████████████████] 52/52 plans (100%)
+Progress: [████████████████████] 53/53 plans (100%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 34 for v0.8.0
+- Total plans completed: 37 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -59,6 +59,7 @@ Progress: [████████████████████] 52/52 p
 | 36.3 | 2 | - | - |
 | 36.4 | 2 | - | - |
 | 36.5 | 3 | 45min | 15min |
+| 36.6 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -110,6 +111,7 @@ Recent decisions affecting current work:
 - [Phase 36.3]: Cached Roto PNG output is the durable truth; reopen uses a full-strength visual `Cached reference`, not editable stroke restoration.
 - [Phase 36.3]: `Save current` is the validated recovery path for one Roto frame through parent preview, project save/load, and navigation preservation.
 - [Phase 36.3]: Phase 36.3 UI-spec fidelity debt is documented in `36.3-UI-REVIEW.md`; defer fixes to a later targeted UI cleanup, not hidden Phase 36.3 scope.
+- [Phase 36.6]: Dirty Roto save-on-leave saves the source frame, shows source-frame feedback, keeps latest queued destination, and retains dirty state on failure.
 
 ### Pending Todos
 
@@ -152,6 +154,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-20T17:29:54.337Z
-Stopped at: Completed 36.6-01-PLAN.md
+Last session: 2026-06-21T08:09:55.750Z
+Stopped at: Phase 36.6 complete, ready to plan Phase 37
 Resume file: None
