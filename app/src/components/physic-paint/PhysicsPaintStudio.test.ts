@@ -553,6 +553,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
 
     expect(text).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
+    expect(text).toContain('const closeAfterRotoSaveRequestedRef = useRef(false)');
+    expect(saveCloseBlock).toContain('closeAfterRotoSaveRequestedRef.current = true');
     expect(saveCloseBlock).toContain("setRotoClosePromptState('saving')");
     expect(saveCloseBlock).toContain("setRotoClosePromptMessage('Saving current frame…')");
     expect(saveCloseBlock).toContain('const payload = await saveRotoFrame(null, {');
@@ -560,8 +562,9 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = payload.operationId');
     expect(saveCloseBlock.indexOf('closeAfterApplyOperationIdRef.current = payload.operationId')).toBeLessThan(saveCloseBlock.indexOf('if (!payload?.operationId)'));
     expect(saveCloseBlock).not.toContain('closePhysicsPaintWindow()');
-    expect(resultBlock).toContain('const shouldCloseAfterSave = closeAfterApplyOperationIdRef.current === detail.operationId');
+    expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current && pendingApply?.operationId === detail.operationId');
     expect(resultBlock).toContain('if (shouldCloseAfterSave)');
+    expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(resultBlock).toContain('closeGuardBypassRef.current = true');
     expect(resultBlock).toContain('void closePhysicsPaintWindow()');
   });
@@ -571,15 +574,20 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
     const timeoutBlock = text.slice(text.indexOf('const startApplyTimeout = useCallback'), text.indexOf('const flushRotoFrame = useCallback'));
+    const closeListenerBlock = text.slice(text.indexOf('appWindow.onCloseRequested'), text.indexOf('const handlePhysicsPaintKeyDown = useCallback'));
     const cleanupBlock = text.slice(text.indexOf('useEffect(() => {\n    return () => {\n      if (applyTimeoutRef.current)'), text.indexOf('const missingConditions = useMemo'));
 
+    expect(closeListenerBlock).toContain('closeGuardBypassRef.current || closeAfterRotoSaveRequestedRef.current');
     expect(saveCloseBlock).toContain("setRotoClosePromptState('error')");
     expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = null');
+    expect(saveCloseBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(resultBlock).toContain("setRotoClosePromptState('error')");
     expect(resultBlock).toContain('closeAfterApplyOperationIdRef.current = null');
+    expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(timeoutBlock).toContain("setRotoClosePromptState('error')");
     expect(timeoutBlock).toContain('closeAfterApplyOperationIdRef.current = null');
     expect(cleanupBlock).toContain('closeAfterApplyOperationIdRef.current = null');
+    expect(cleanupBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(cleanupBlock).toContain('closeGuardBypassRef.current = false');
   });
 

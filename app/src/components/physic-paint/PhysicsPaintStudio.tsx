@@ -528,6 +528,7 @@ export function PhysicsPaintStudio() {
   const activeOperationIdRef = useRef<string | null>(null);
   const pendingApplyRef = useRef<Pick<PhysicPaintApplyPayload, 'operationId' | 'kind' | 'startFrame'> | null>(null);
   const closeAfterApplyOperationIdRef = useRef<string | null>(null);
+  const closeAfterRotoSaveRequestedRef = useRef(false);
   const closeGuardBypassRef = useRef(false);
   const applyTimeoutRef = useRef<number | null>(null);
   const nativePenInputHandlerRef = useRef<((input: { pressure: number; tiltX?: number; tiltY?: number }) => void) | null>(null);
@@ -560,6 +561,7 @@ export function PhysicsPaintStudio() {
     saveOnLeaveRenderedFrameRef.current = null;
     saveOnLeaveDeleteFrameRef.current = null;
     closeAfterApplyOperationIdRef.current = null;
+    closeAfterRotoSaveRequestedRef.current = false;
     pendingApplyRef.current = null;
     closeGuardBypassRef.current = false;
     rotoFlushInFlightRef.current = null;
@@ -726,6 +728,7 @@ export function PhysicsPaintStudio() {
       saveOnLeaveRenderedFrameRef.current = null;
       saveOnLeaveDeleteFrameRef.current = null;
       closeAfterApplyOperationIdRef.current = null;
+      closeAfterRotoSaveRequestedRef.current = false;
       closeGuardBypassRef.current = false;
       if (cachedPreviewTimerRef.current) window.clearInterval(cachedPreviewTimerRef.current);
       if (rotoCachedPlaybackTimerRef.current) window.clearInterval(rotoCachedPlaybackTimerRef.current);
@@ -1449,7 +1452,7 @@ export function PhysicsPaintStudio() {
   const handleApplyResult = useCallback((detail: PhysicPaintApplyResult | null | undefined) => {
     if (!detail || detail.operationId !== activeOperationIdRef.current) return;
     const pendingApply = pendingApplyRef.current;
-    const shouldCloseAfterSave = closeAfterApplyOperationIdRef.current === detail.operationId;
+    const shouldCloseAfterSave = closeAfterApplyOperationIdRef.current === detail.operationId || (closeAfterRotoSaveRequestedRef.current && pendingApply?.operationId === detail.operationId);
     if (!pendingApply || detail.kind !== pendingApply.kind || detail.startFrame !== pendingApply.startFrame) {
       setApplyStatus('error');
       setApplyMessage('Ignored mismatched physics paint apply result. Try saving again.');
@@ -1479,6 +1482,7 @@ export function PhysicsPaintStudio() {
       }
       if (shouldCloseAfterSave) {
         closeAfterApplyOperationIdRef.current = null;
+        closeAfterRotoSaveRequestedRef.current = false;
         setRotoClosePromptState('error');
         setRotoClosePromptMessage('Could not save before closing. Keep the window open and try again.');
       }
@@ -1491,6 +1495,7 @@ export function PhysicsPaintStudio() {
 
     if (shouldCloseAfterSave) {
       closeAfterApplyOperationIdRef.current = null;
+      closeAfterRotoSaveRequestedRef.current = false;
       setRotoClosePromptState('idle');
       setRotoClosePromptMessage(null);
     }
@@ -2137,6 +2142,7 @@ export function PhysicsPaintStudio() {
 
   const saveAndCloseRotoFrame = useCallback(async () => {
     if (rotoClosePromptState === 'saving') return;
+    closeAfterRotoSaveRequestedRef.current = true;
     setRotoClosePromptState('saving');
     setRotoClosePromptMessage('Saving current frame…');
     try {
@@ -2147,11 +2153,13 @@ export function PhysicsPaintStudio() {
       });
       if (!payload?.operationId) {
         closeAfterApplyOperationIdRef.current = null;
+        closeAfterRotoSaveRequestedRef.current = false;
         setRotoClosePromptState('error');
         setRotoClosePromptMessage('Could not save before closing. Try Save current, then close again.');
       }
     } catch (error) {
       closeAfterApplyOperationIdRef.current = null;
+      closeAfterRotoSaveRequestedRef.current = false;
       const detail = error instanceof Error ? error.message : String(error);
       setRotoClosePromptState('error');
       setRotoClosePromptMessage(`Could not save before closing. ${detail}`);
@@ -2168,7 +2176,7 @@ export function PhysicsPaintStudio() {
         if (typeof appWindow.onCloseRequested !== 'function') return;
         unlisten = await appWindow.onCloseRequested(async (event) => {
           if (disposed || workflowMode !== 'roto') return;
-          if (closeGuardBypassRef.current) return;
+          if (closeGuardBypassRef.current || closeAfterRotoSaveRequestedRef.current) return;
           snapshotCurrentRotoFrame();
           const isCurrentRotoFrameDirty = workflowMode === 'roto' && dirtyRotoFramesRef.current.has(currentFrame);
           if (!isCurrentRotoFrameDirty) return;
