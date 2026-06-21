@@ -513,7 +513,6 @@ export function PhysicsPaintStudio() {
   const [playLimitToast, setPlayLimitToast] = useState<string | null>(null);
   const [rotoClosePromptState, setRotoClosePromptState] = useState<RotoClosePromptState>('idle');
   const [rotoClosePromptMessage, setRotoClosePromptMessage] = useState<string | null>(null);
-  const [closeAfterRotoSaveReady, setCloseAfterRotoSaveReady] = useState(false);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const playerRef = useRef<AnimationPlayer | null>(null);
   const rotoFrameStatesRef = useRef<Map<number, ReturnType<EfxPaintEngine['save']>>>(new Map());
@@ -552,7 +551,7 @@ export function PhysicsPaintStudio() {
   }, [bridgeMode, engine, launchContext]);
   const rotoInputDisabled = workflowMode === 'roto' && Boolean(saveOnLeaveSourceFrameRef.current) && applyStatus === 'applying';
 
-  const resetRotoSessionForLaunch = useCallback((context: PhysicPaintLaunchContext) => {
+  const resetRotoSessionForLaunch = useCallback((context: PhysicPaintLaunchContext, options: { preserveCloseAfterRotoSave?: boolean } = {}) => {
     if (getLaunchWorkflowMode(context) !== 'roto') return;
     dirtyRotoFramesRef.current.clear();
     rotoFrameStatesRef.current.clear();
@@ -561,10 +560,12 @@ export function PhysicsPaintStudio() {
     saveOnLeaveSourceFrameRef.current = null;
     saveOnLeaveRenderedFrameRef.current = null;
     saveOnLeaveDeleteFrameRef.current = null;
-    closeAfterApplyOperationIdRef.current = null;
-    closeAfterRotoSaveRequestedRef.current = false;
-    pendingApplyRef.current = null;
-    closeGuardBypassRef.current = false;
+    if (!options.preserveCloseAfterRotoSave) {
+      closeAfterApplyOperationIdRef.current = null;
+      closeAfterRotoSaveRequestedRef.current = false;
+      closeGuardBypassRef.current = false;
+      pendingApplyRef.current = null;
+    }
     rotoFlushInFlightRef.current = null;
     if (rotoCachedPlaybackTimerRef.current) {
       window.clearInterval(rotoCachedPlaybackTimerRef.current);
@@ -573,12 +574,13 @@ export function PhysicsPaintStudio() {
     setEditableRotoFrames([]);
     setPendingRotoFrames([]);
     setRotoSavingFrame(null);
-    setCloseAfterRotoSaveReady(false);
     setCachedRotoReferenceUrl(null);
     setCachedRotoPlaybackFrame(null);
     setIsRotoCachedPlaybackActive(false);
-    setRotoClosePromptState('idle');
-    setRotoClosePromptMessage(null);
+    if (!options.preserveCloseAfterRotoSave) {
+      setRotoClosePromptState('idle');
+      setRotoClosePromptMessage(null);
+    }
     setSavedRotoFrames(getSavedRotoMarkersFromLaunchContext(context));
     setOccupiedRotoFrames(getRealCachedRotoFrameNumbers(context));
   }, []);
@@ -611,19 +613,22 @@ export function PhysicsPaintStudio() {
   }, []);
 
   const applyIncomingLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
-    resetRotoSessionForLaunch(context);
+    const preserveCloseAfterRotoSave = closeAfterRotoSaveRequestedRef.current;
+    resetRotoSessionForLaunch(context, { preserveCloseAfterRotoSave });
     applyLaunchContext(context, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle, setSettings);
     const readyEngine = engineRef.current;
     if (readyEngine && getLaunchWorkflowMode(context) === 'roto') loadCachedRotoReferenceFrame(context.startFrame, readyEngine as PreviewBackgroundEngine, context);
-    setApplyStatus('idle');
-    setApplyMessage(null);
-    setLastError(null);
-    activeOperationIdRef.current = null;
-    pendingApplyRef.current = null;
-    closeAfterApplyOperationIdRef.current = null;
-    closeGuardBypassRef.current = false;
-    setRotoClosePromptState('idle');
-    setRotoClosePromptMessage(null);
+    if (!preserveCloseAfterRotoSave) {
+      setApplyStatus('idle');
+      setApplyMessage(null);
+      setLastError(null);
+      activeOperationIdRef.current = null;
+      pendingApplyRef.current = null;
+      closeAfterApplyOperationIdRef.current = null;
+      closeGuardBypassRef.current = false;
+      setRotoClosePromptState('idle');
+      setRotoClosePromptMessage(null);
+    }
   }, [resetRotoSessionForLaunch]);
 
   useEffect(() => {
@@ -732,7 +737,6 @@ export function PhysicsPaintStudio() {
       closeAfterApplyOperationIdRef.current = null;
       closeAfterRotoSaveRequestedRef.current = false;
       closeGuardBypassRef.current = false;
-      setCloseAfterRotoSaveReady(false);
       if (cachedPreviewTimerRef.current) window.clearInterval(cachedPreviewTimerRef.current);
       if (rotoCachedPlaybackTimerRef.current) window.clearInterval(rotoCachedPlaybackTimerRef.current);
     };
@@ -1552,16 +1556,10 @@ export function PhysicsPaintStudio() {
       }
       if (shouldCloseAfterSave) {
         closeGuardBypassRef.current = true;
-        setCloseAfterRotoSaveReady(true);
+        void closePhysicsPaintWindow();
       }
     }
   }, [canvasHeight, canvasWidth, closePhysicsPaintWindow, openSyncedRotoFrameAfterSave, syncPendingRotoFrames, upsertCachedRotoFrameInLaunchContext]);
-
-  useEffect(() => {
-    if (!closeAfterRotoSaveReady) return;
-    closeGuardBypassRef.current = true;
-    void closePhysicsPaintWindow();
-  }, [closeAfterRotoSaveReady, closePhysicsPaintWindow]);
 
   useEffect(() => {
     const handleResult = (event: Event) => {
@@ -2150,30 +2148,34 @@ export function PhysicsPaintStudio() {
   }, []);
 
   const saveAndCloseRotoFrame = useCallback(async () => {
-    if (rotoClosePromptState === 'saving') return;
+    if (closeAfterRotoSaveRequestedRef.current) return;
     closeAfterRotoSaveRequestedRef.current = true;
-    setRotoClosePromptState('saving');
-    setRotoClosePromptMessage('Saving current frame…');
+    closeGuardBypassRef.current = true;
+    setRotoClosePromptState('idle');
+    setRotoClosePromptMessage(null);
     try {
       const payload = await saveRotoFrame(null, {
         onPayload: (payload) => {
           closeAfterApplyOperationIdRef.current = payload.operationId;
+          if (payload.kind === 'apply-canvas') payload.closeWindowAfterApply = true;
         },
       });
       if (!payload?.operationId) {
         closeAfterApplyOperationIdRef.current = null;
         closeAfterRotoSaveRequestedRef.current = false;
+        closeGuardBypassRef.current = false;
         setRotoClosePromptState('error');
         setRotoClosePromptMessage('Could not save before closing. Try Save current, then close again.');
       }
     } catch (error) {
       closeAfterApplyOperationIdRef.current = null;
       closeAfterRotoSaveRequestedRef.current = false;
+      closeGuardBypassRef.current = false;
       const detail = error instanceof Error ? error.message : String(error);
       setRotoClosePromptState('error');
       setRotoClosePromptMessage(`Could not save before closing. ${detail}`);
     }
-  }, [rotoClosePromptState, saveRotoFrame]);
+  }, [saveRotoFrame]);
 
   useEffect(() => {
     let disposed = false;

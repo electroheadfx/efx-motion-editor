@@ -38,6 +38,12 @@ interface TauriEventApi {
   listen?: (event: string, handler: (event: { payload: unknown }) => void) => Promise<() => void>;
 }
 
+interface TauriWindowApi {
+  Window?: {
+    getByLabel?: (label: string) => Promise<{ close?: () => Promise<void>; destroy?: () => Promise<void> } | null>;
+  };
+}
+
 interface TauriCoreApi {
   isTauri?: () => boolean;
   invoke?: <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -49,6 +55,10 @@ interface TauriPhysicsPaintLaunchResult {
   minimizedBefore: boolean;
   visible: boolean;
   minimized: boolean;
+}
+
+function shouldCloseNativeWindowAfterApply(payload: PhysicPaintApplyPayload): boolean {
+  return payload.kind === 'apply-canvas' && payload.closeWindowAfterApply === true;
 }
 
 const APPLY_ERROR = 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
@@ -116,6 +126,21 @@ export function installPhysicPaintFrameSyncListener(target: Window = window): ()
   return () => target.removeEventListener('message', listener);
 }
 
+async function closeNativePhysicPaintWindow(): Promise<void> {
+  try {
+    const windowApi = await import('@tauri-apps/api/window') as TauriWindowApi;
+    const paintWindow = await windowApi.Window?.getByLabel?.(PHYSIC_PAINT_WINDOW_LABEL);
+    if (!paintWindow) return;
+    if (typeof paintWindow.destroy === 'function') {
+      await paintWindow.destroy();
+      return;
+    }
+    await paintWindow.close?.();
+  } catch (error) {
+    console.warn('[physicPaintBridge] Could not close physics paint window after apply:', error);
+  }
+}
+
 export async function installPhysicPaintApplyListener(onResult?: (result: PhysicPaintApplyResult) => void): Promise<() => void> {
   const handlePayload = (payload: unknown, source?: Pick<Window, 'postMessage'> | null) => {
     const result = applyPhysicPaintPayload(payload);
@@ -128,11 +153,13 @@ export async function installPhysicPaintApplyListener(onResult?: (result: Physic
     try {
       const eventApi = await import('@tauri-apps/api/event') as TauriEventApi;
       const unlisten = await eventApi.listen?.(PHYSIC_PAINT_APPLY_EVENT, async (event) => {
-        const result = applyPhysicPaintPayload(event.payload);
+        const payload = event.payload;
+        const result = applyPhysicPaintPayload(payload);
         onResult?.(result);
         await eventApi.emit?.(PHYSIC_PAINT_APPLY_RESULT_EVENT, result);
         await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_APPLY_RESULT_EVENT, result);
         sendBrowserApplyResult(result);
+        if (result.ok && isPhysicPaintApplyPayload(payload) && shouldCloseNativeWindowAfterApply(payload)) await closeNativePhysicPaintWindow();
       });
       if (unlisten) return unlisten;
     } catch (error) {

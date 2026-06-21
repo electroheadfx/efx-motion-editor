@@ -137,7 +137,7 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
     expect(loadBlock).toContain('targetEngine.clear()');
     expect(loadBlock).not.toContain('targetEngine.setBackgroundImageUrl(cachedFrame.dataUrl)');
     expect(text).toContain('const resetRotoSessionForLaunch = useCallback');
-    expect(text).toContain('resetRotoSessionForLaunch(context)');
+    expect(text).toContain('resetRotoSessionForLaunch(context, { preserveCloseAfterRotoSave })');
     expect(text).toContain('loadCachedRotoReferenceFrame(context.startFrame, readyEngine as PreviewBackgroundEngine, context)');
     expect(text).toContain("if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine)");
     expect(styles()).toContain('.physics-paint-cached-roto-reference');
@@ -551,26 +551,27 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
-    const closeReadyEffect = text.slice(text.indexOf('if (!closeAfterRotoSaveReady) return'), text.indexOf('const handleResult = (event: Event)'));
-
     expect(text).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
     expect(text).toContain('const closeAfterRotoSaveRequestedRef = useRef(false)');
+    expect(text).not.toContain('closeAfterRotoSaveReady');
+    expect(saveCloseBlock).toContain('if (closeAfterRotoSaveRequestedRef.current) return');
     expect(saveCloseBlock).toContain('closeAfterRotoSaveRequestedRef.current = true');
-    expect(saveCloseBlock).toContain("setRotoClosePromptState('saving')");
-    expect(saveCloseBlock).toContain("setRotoClosePromptMessage('Saving current frame…')");
+    expect(saveCloseBlock).toContain('closeGuardBypassRef.current = true');
+    expect(saveCloseBlock).toContain("setRotoClosePromptState('idle')");
+    expect(saveCloseBlock).toContain('setRotoClosePromptMessage(null)');
+    expect(saveCloseBlock).not.toContain("setRotoClosePromptState('saving')");
+    expect(saveCloseBlock).not.toContain("setRotoClosePromptMessage('Saving current frame…')");
     expect(saveCloseBlock).toContain('const payload = await saveRotoFrame(null, {');
     expect(saveCloseBlock).toContain('onPayload: (payload) => {');
     expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = payload.operationId');
+    expect(saveCloseBlock).toContain("if (payload.kind === 'apply-canvas') payload.closeWindowAfterApply = true");
     expect(saveCloseBlock.indexOf('closeAfterApplyOperationIdRef.current = payload.operationId')).toBeLessThan(saveCloseBlock.indexOf('if (!payload?.operationId)'));
     expect(saveCloseBlock).not.toContain('closePhysicsPaintWindow()');
     expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current && pendingApply?.operationId === detail.operationId');
     expect(resultBlock).toContain('if (shouldCloseAfterSave)');
     expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(resultBlock).toContain('closeGuardBypassRef.current = true');
-    expect(resultBlock).toContain('setCloseAfterRotoSaveReady(true)');
-    expect(resultBlock).not.toContain('void closePhysicsPaintWindow()');
-    expect(closeReadyEffect).toContain('closeGuardBypassRef.current = true');
-    expect(closeReadyEffect).toContain('void closePhysicsPaintWindow()');
+    expect(resultBlock).toContain('void closePhysicsPaintWindow()');
   });
 
   it('recovers dirty close prompt state after send errors, failed apply results, timeouts, and cleanup', () => {
@@ -585,6 +586,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(saveCloseBlock).toContain("setRotoClosePromptState('error')");
     expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = null');
     expect(saveCloseBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
+    expect(saveCloseBlock).toContain('closeGuardBypassRef.current = false');
     expect(resultBlock).toContain("setRotoClosePromptState('error')");
     expect(resultBlock).toContain('closeAfterApplyOperationIdRef.current = null');
     expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
@@ -593,7 +595,26 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(cleanupBlock).toContain('closeAfterApplyOperationIdRef.current = null');
     expect(cleanupBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(cleanupBlock).toContain('closeGuardBypassRef.current = false');
-    expect(cleanupBlock).toContain('setCloseAfterRotoSaveReady(false)');
+  });
+
+  it('preserves dirty close-save continuation across the apply-result launch-context refresh', () => {
+    const text = source();
+    const applyIncomingBlock = text.slice(text.indexOf('const applyIncomingLaunchContext = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const applyIncomingLaunchContext = useCallback')));
+    const resetBlock = text.slice(text.indexOf('const resetRotoSessionForLaunch = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const resetRotoSessionForLaunch = useCallback')));
+
+    expect(applyIncomingBlock).toContain('const preserveCloseAfterRotoSave = closeAfterRotoSaveRequestedRef.current');
+    expect(applyIncomingBlock).toContain('resetRotoSessionForLaunch(context, { preserveCloseAfterRotoSave })');
+    expect(applyIncomingBlock).toContain('if (!preserveCloseAfterRotoSave) {');
+    expect(resetBlock).toContain('options: { preserveCloseAfterRotoSave?: boolean } = {}');
+    expect(resetBlock).toContain('if (!options.preserveCloseAfterRotoSave) {');
+    expect(resetBlock).toContain('closeAfterApplyOperationIdRef.current = null');
+    expect(resetBlock).toContain(`if (!options.preserveCloseAfterRotoSave) {
+      closeAfterApplyOperationIdRef.current = null;
+      closeAfterRotoSaveRequestedRef.current = false;
+      closeGuardBypassRef.current = false;
+      pendingApplyRef.current = null;
+    }
+    rotoFlushInFlightRef.current = null;`);
   });
 
   it('keeps the explicit Save current path on the normal single-frame apply-canvas flow', () => {

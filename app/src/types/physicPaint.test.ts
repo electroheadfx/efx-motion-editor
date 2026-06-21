@@ -189,6 +189,7 @@ describe('physic paint payload contracts', () => {
       startFrame: 12,
       renderedFrame,
       editableState,
+      closeWindowAfterApply: true,
     })).toBe(true);
 
     expect(isPhysicPaintApplyPayload({

@@ -1019,6 +1019,41 @@ describe('physicPaintBridge', () => {
     expect(applyCanvas).toHaveBeenCalledTimes(1);
   });
 
+  it('closes the native physics paint window from the main apply listener after close-save payload succeeds', async () => {
+    vi.resetModules();
+    let listener: ((event: { payload: unknown }) => Promise<void>) | undefined;
+    const emit = vi.fn().mockResolvedValue(undefined);
+    const emitTo = vi.fn().mockResolvedValue(undefined);
+    const destroy = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true }));
+    vi.doMock('@tauri-apps/api/event', () => ({
+      listen: vi.fn(async (_event: string, handler: (event: { payload: unknown }) => Promise<void>) => {
+        listener = handler;
+        return vi.fn();
+      }),
+      emit,
+      emitTo,
+    }));
+    vi.doMock('@tauri-apps/api/window', () => ({
+      Window: { getByLabel: vi.fn(async () => ({ destroy })) },
+    }));
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true });
+    const [{ layerStore: dynamicLayerStore }, { physicPaintStore: dynamicPhysicPaintStore }, { installPhysicPaintApplyListener: installListener }] = await Promise.all([
+      import('../stores/layerStore'),
+      import('../stores/physicPaintStore'),
+      import('./physicPaintBridge'),
+    ]);
+    dynamicPhysicPaintStore.reset();
+    vi.spyOn(dynamicLayerStore.layers, 'peek').mockReturnValue([physicLayer()]);
+    vi.spyOn(dynamicLayerStore.overlayLayers, 'peek').mockReturnValue([]);
+
+    await installListener();
+    await listener?.({ payload: applyCanvasPayload({ operationId: 'close-save-op', closeWindowAfterApply: true }) });
+
+    expect(emitTo).toHaveBeenCalledWith('efx-physic-paint', PHYSIC_PAINT_APPLY_RESULT_EVENT, expect.objectContaining({ ok: true, operationId: 'close-save-op' }));
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
   it('installs browser fallback listener that dispatches exactly one apply-result event', async () => {
     mockLayers([physicLayer()]);
     let listener: ((event: CustomEvent) => void) | undefined;
