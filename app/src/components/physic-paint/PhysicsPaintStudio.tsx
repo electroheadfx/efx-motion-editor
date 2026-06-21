@@ -513,6 +513,7 @@ export function PhysicsPaintStudio() {
   const [playLimitToast, setPlayLimitToast] = useState<string | null>(null);
   const [rotoClosePromptState, setRotoClosePromptState] = useState<RotoClosePromptState>('idle');
   const [rotoClosePromptMessage, setRotoClosePromptMessage] = useState<string | null>(null);
+  const [closeAfterRotoSaveReady, setCloseAfterRotoSaveReady] = useState(false);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const playerRef = useRef<AnimationPlayer | null>(null);
   const rotoFrameStatesRef = useRef<Map<number, ReturnType<EfxPaintEngine['save']>>>(new Map());
@@ -572,6 +573,7 @@ export function PhysicsPaintStudio() {
     setEditableRotoFrames([]);
     setPendingRotoFrames([]);
     setRotoSavingFrame(null);
+    setCloseAfterRotoSaveReady(false);
     setCachedRotoReferenceUrl(null);
     setCachedRotoPlaybackFrame(null);
     setIsRotoCachedPlaybackActive(false);
@@ -730,6 +732,7 @@ export function PhysicsPaintStudio() {
       closeAfterApplyOperationIdRef.current = null;
       closeAfterRotoSaveRequestedRef.current = false;
       closeGuardBypassRef.current = false;
+      setCloseAfterRotoSaveReady(false);
       if (cachedPreviewTimerRef.current) window.clearInterval(cachedPreviewTimerRef.current);
       if (rotoCachedPlaybackTimerRef.current) window.clearInterval(rotoCachedPlaybackTimerRef.current);
     };
@@ -1549,10 +1552,16 @@ export function PhysicsPaintStudio() {
       }
       if (shouldCloseAfterSave) {
         closeGuardBypassRef.current = true;
-        void closePhysicsPaintWindow();
+        setCloseAfterRotoSaveReady(true);
       }
     }
   }, [canvasHeight, canvasWidth, closePhysicsPaintWindow, openSyncedRotoFrameAfterSave, syncPendingRotoFrames, upsertCachedRotoFrameInLaunchContext]);
+
+  useEffect(() => {
+    if (!closeAfterRotoSaveReady) return;
+    closeGuardBypassRef.current = true;
+    void closePhysicsPaintWindow();
+  }, [closeAfterRotoSaveReady, closePhysicsPaintWindow]);
 
   useEffect(() => {
     const handleResult = (event: Event) => {

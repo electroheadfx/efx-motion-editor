@@ -551,6 +551,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+    const closeReadyEffect = text.slice(text.indexOf('if (!closeAfterRotoSaveReady) return'), text.indexOf('const handleResult = (event: Event)'));
 
     expect(text).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
     expect(text).toContain('const closeAfterRotoSaveRequestedRef = useRef(false)');
@@ -566,7 +567,10 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(resultBlock).toContain('if (shouldCloseAfterSave)');
     expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(resultBlock).toContain('closeGuardBypassRef.current = true');
-    expect(resultBlock).toContain('void closePhysicsPaintWindow()');
+    expect(resultBlock).toContain('setCloseAfterRotoSaveReady(true)');
+    expect(resultBlock).not.toContain('void closePhysicsPaintWindow()');
+    expect(closeReadyEffect).toContain('closeGuardBypassRef.current = true');
+    expect(closeReadyEffect).toContain('void closePhysicsPaintWindow()');
   });
 
   it('recovers dirty close prompt state after send errors, failed apply results, timeouts, and cleanup', () => {
@@ -589,6 +593,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(cleanupBlock).toContain('closeAfterApplyOperationIdRef.current = null');
     expect(cleanupBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(cleanupBlock).toContain('closeGuardBypassRef.current = false');
+    expect(cleanupBlock).toContain('setCloseAfterRotoSaveReady(false)');
   });
 
   it('keeps the explicit Save current path on the normal single-frame apply-canvas flow', () => {
