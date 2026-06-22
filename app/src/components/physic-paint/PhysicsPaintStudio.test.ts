@@ -465,6 +465,24 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(navigateBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(navigateBlock.indexOf('loadCachedRotoReferenceFrame(frame)'));
   });
 
+  it('keeps workflow status messages from resizing the visible canvas row', () => {
+    const css = styles();
+    const studioRuleStart = css.indexOf('.physics-paint-studio {');
+    const studioRule = css.slice(studioRuleStart, css.indexOf('}', studioRuleStart));
+    const stripRuleStart = css.indexOf('.physics-paint-workflow-strip {');
+    const stripRule = css.slice(stripRuleStart, css.indexOf('}', stripRuleStart));
+    const statusRuleStart = css.indexOf('.physics-paint-roto-status-stack {');
+    const statusRule = css.slice(statusRuleStart, css.indexOf('}', statusRuleStart));
+
+    expect(studioRule).toContain('grid-template-rows: 58px minmax(0, 1fr) 212px');
+    expect(studioRule).not.toContain('grid-template-rows: 58px minmax(0, 1fr) auto');
+    expect(stripRule).toContain('height: 212px');
+    expect(stripRule).toContain('overflow: hidden');
+    expect(statusRule).toContain('min-height: 66px');
+    expect(statusRule).toContain('max-height: 66px');
+    expect(statusRule).toContain('overflow: hidden');
+  });
+
   it('shows cached Roto references at full opacity while keeping them out of replacement exports', () => {
     const text = source();
     const css = styles();

@@ -409,7 +409,7 @@ button.destructive {
 
 .physics-paint-studio {
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr) auto;
+  grid-template-rows: 58px minmax(0, 1fr) 212px;
   grid-template-columns: 52px minmax(0, 1fr) minmax(316px, 340px);
   width: 100vw;
   height: 100vh;
@@ -1039,9 +1039,11 @@ button.destructive {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 146px;
+  height: 212px;
+  min-height: 0;
   padding: 8px 12px 10px;
   border-top: 1px solid #5a5e63;
+  overflow: hidden;
   background: #3e3f41;
   user-select: none;
 }
@@ -1454,7 +1456,10 @@ button.destructive {
 .physics-paint-roto-status-stack {
   display: grid;
   gap: 1px;
+  min-height: 66px;
+  max-height: 66px;
   margin: -2px 0 0;
+  overflow: hidden;
 }
 
 .physics-paint-roto-cell-legend {
