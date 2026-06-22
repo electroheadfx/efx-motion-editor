@@ -875,6 +875,18 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(workflowStripBlock).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
   });
 
+  it('keeps key-utility-suppressed onion previews hidden when painting an inserted blank key', () => {
+    const text = source();
+    const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
+    const transactionBlock = text.slice(text.indexOf('const applyRotoKeyUtilityTransaction = useCallback'), text.indexOf('const runRotoKeyAction = useCallback'));
+
+    expect(transactionBlock).toContain('setSuppressRotoOnionOverlay(true)');
+    expect(dirtyBlock).toContain('setCachedRotoReferenceUrl(null)');
+    expect(dirtyBlock).toContain('setCachedRotoPlaybackFrame(null)');
+    expect(dirtyBlock).toContain('(engine as PreviewBackgroundEngine | null)?.resetBackground?.()');
+    expect(dirtyBlock).not.toContain('setSuppressRotoOnionOverlay(false)');
+  });
+
   it('keeps real-key utility helpers out of the strict Phase 36.3 Roto strip surface', () => {
     const text = source();
     const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));

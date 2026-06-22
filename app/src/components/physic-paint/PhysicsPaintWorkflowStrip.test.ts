@@ -674,7 +674,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain("transaction.activeRestore.kind === 'blank-real-key'");
     expect(studio).toContain('setSuppressRotoOnionOverlay(true);');
     expect(studio).toContain('!suppressRotoOnionOverlay && onionPreviewFrames.length > 0');
-    expect(studio).toContain('setSuppressRotoOnionOverlay(false);');
+    expect(studio).toContain('setCachedRotoPlaybackFrame(null)');
     expect(studio).toContain('transaction.activeRestore.kind === \'load-real-key\'');
     expect(studio).toContain('syncRotoKeyFrameLists(transaction.realKeyFrameNumbers, transaction.realKeyFrames)');
     expect(studio).toContain('cachedRotoFrames: [...cacheFrames].sort');

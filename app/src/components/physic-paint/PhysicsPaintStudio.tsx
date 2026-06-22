@@ -1079,8 +1079,8 @@ export function PhysicsPaintStudio() {
     if (workflowMode !== 'roto') return;
     const appFrame = currentFrame;
     dirtyRotoFramesRef.current.add(appFrame);
-    setSuppressRotoOnionOverlay(false);
     setCachedRotoReferenceUrl(null);
+    setCachedRotoPlaybackFrame(null);
     (engine as PreviewBackgroundEngine | null)?.resetBackground?.();
     syncPendingRotoFrames();
   }, [currentFrame, engine, syncPendingRotoFrames, workflowMode]);
