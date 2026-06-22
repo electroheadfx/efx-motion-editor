@@ -1,18 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE,
+  canPasteRotoKeyTarget,
+  canUseRotoKeySource,
   clampOnionCount,
   clampOnionOpacity,
+  deleteRotoKeyFrame,
+  duplicateRotoKeyFrame,
   getActivePrimaryActionLabel,
   getPhysicsPaintEngineStatusTone,
   getPhysicsPaintSourceLabel,
   getPlayRangeMarker,
   getPreviewFps,
+  insertRotoKeyFrame,
   getRotoCellFill,
   getRotoCellStateLabel,
   getRotoCellViewModel,
   getRotoPendingLabel,
   isPhysicsPaintDevExportEnabled,
+  replaceRotoKeyFrame,
   requiresDestructiveConfirmation,
   type RotoCellBaseMeaning,
   type RotoCellFill,
@@ -245,5 +251,65 @@ describe('physicsPaintWorkflowState', () => {
     expect(deleteRotoKeyFrame([1, 3, 4], 3)).toEqual({ removedFrame: 3, frames: [1, 3], shiftedFrames: [4] });
     expect(replaceRotoKeyFrame([1, 3, 4], 3)).toEqual({ targetFrame: 3, frames: [1, 3, 4], replaced: true });
     expect(replaceRotoKeyFrame([1, 4], 3)).toEqual({ targetFrame: 3, frames: [1, 3, 4], replaced: false });
+  });
+
+  it('duplicates a selected real Roto key onto the next frame and shifts later real keys (D-01, D-04)', () => {
+    expect(duplicateRotoKeyFrame([1, 3], 1)).toEqual({
+      sourceFrame: 1,
+      targetFrame: 2,
+      frames: [1, 2, 4],
+      shiftedFrames: [3],
+    });
+  });
+
+  it('inserts a blank real Roto key before the selected real key and shifts current/later real keys (D-02, D-04)', () => {
+    expect(insertRotoKeyFrame([1, 3, 4], 3)).toEqual({
+      targetFrame: 3,
+      frames: [1, 3, 4, 5],
+      shiftedFrames: [3, 4],
+    });
+  });
+
+  it('deletes a selected real Roto key, closes the later real-key gap, and may remove the last key (D-03, D-07)', () => {
+    expect(deleteRotoKeyFrame([1, 3, 4], 3)).toEqual({
+      removedFrame: 3,
+      frames: [1, 3],
+      shiftedFrames: [4],
+    });
+    expect(deleteRotoKeyFrame([5], 5)).toEqual({
+      removedFrame: 5,
+      frames: [],
+      shiftedFrames: [],
+    });
+  });
+
+  it('creates or replaces real Roto keys for paste targets, including empty and existing real frames (D-06)', () => {
+    expect(replaceRotoKeyFrame([1, 4], 3)).toEqual({
+      targetFrame: 3,
+      frames: [1, 3, 4],
+      replaced: false,
+    });
+    expect(replaceRotoKeyFrame([1, 3, 4], 3)).toEqual({
+      targetFrame: 3,
+      frames: [1, 3, 4],
+      replaced: true,
+    });
+  });
+
+  it('rejects generated, empty, and invalid source frames for source key actions (D-04, D-05)', () => {
+    expect(canUseRotoKeySource({ frame: 1, realKeys: [1, 3] })).toBe(true);
+    expect(canUseRotoKeySource({ frame: 2, realKeys: [1, 3] })).toBe(false);
+    expect(canUseRotoKeySource({ frame: 2, realKeys: [1, 3], generatedFrames: [2] })).toBe(false);
+    expect(canUseRotoKeySource({ frame: -1, realKeys: [1, 3] })).toBe(false);
+    expect(canUseRotoKeySource({ frame: 1.5, realKeys: [1, 3] })).toBe(false);
+  });
+
+  it('allows paste targets on empty, generated, or real non-negative integer frames once a real key is copied (D-06)', () => {
+    expect(canPasteRotoKeyTarget({ frame: 1, hasCopiedRealKey: true })).toBe(true);
+    expect(canPasteRotoKeyTarget({ frame: 2, hasCopiedRealKey: true, generatedFrames: [2] })).toBe(true);
+    expect(canPasteRotoKeyTarget({ frame: 5, hasCopiedRealKey: true })).toBe(true);
+    expect(canPasteRotoKeyTarget({ frame: 5, hasCopiedRealKey: false })).toBe(false);
+    expect(canPasteRotoKeyTarget({ frame: -1, hasCopiedRealKey: true })).toBe(false);
+    expect(canPasteRotoKeyTarget({ frame: 2.5, hasCopiedRealKey: true })).toBe(false);
   });
 });
