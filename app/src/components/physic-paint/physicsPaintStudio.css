@@ -50,8 +50,9 @@ body:has(.demo-shell) {
 
 .demo-canvas-shell {
   position: relative;
-  width: min(100%, calc((100vh - 274px) * 1.538));
+  width: min(100%, 1000px);
   max-width: 100%;
+  max-height: 100%;
   aspect-ratio: 1000 / 650;
   border-radius: 4px;
   overflow: hidden;
@@ -1922,6 +1923,12 @@ button.destructive {
   height: 100%;
   min-width: 0;
   min-height: 0;
+}
+
+.physics-paint-canvas-stack > .demo-canvas-shell {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
 }
 
 .physics-paint-onion-overlay.canvas-region {

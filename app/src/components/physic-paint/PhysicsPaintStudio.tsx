@@ -1404,8 +1404,8 @@ export function PhysicsPaintStudio() {
         loadCachedRotoReferenceFrame(frame);
       }
     }
-    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
     setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
     return true;
   }, [applyStatus, bridgeMode, engine, launchContext, snapshotCurrentRotoFrame, stopRotoCachedPlayback]);
 
@@ -1423,8 +1423,8 @@ export function PhysicsPaintStudio() {
         loadCachedRotoReferenceFrame(frame);
       }
     }
-    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
     setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);
     return true;
   }, [bridgeMode, engine, launchContext, stopRotoCachedPlayback]);
 

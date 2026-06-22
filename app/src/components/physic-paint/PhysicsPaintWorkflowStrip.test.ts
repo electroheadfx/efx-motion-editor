@@ -507,6 +507,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('setRotoSavingFrame(sourceFrame)');
     expect(studio).toContain('rotoSavingFrame={rotoSavingFrame}');
     expect(studio).toContain('setRotoSavingFrame(null)');
+    expect(studio).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);\n    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);');
     expect(statusStackBlock).toContain('Dirty frames save when leaving.');
     expect(code).toContain('aria-label="Save current"');
     expect(code).toContain('Save current');
@@ -521,6 +522,15 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(statusStackBlock).not.toContain('tutorial');
     expect(code).not.toContain('Save on leave');
     expect(code).not.toContain('Queue destination');
+  });
+
+  it('keeps the physics paint canvas bounded inside the canvas region', () => {
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const shellRule = getCssRule(css, '.physics-paint-canvas-stack > .demo-canvas-shell');
+
+    expect(shellRule).toContain('height: 100%');
+    expect(shellRule).toContain('max-width: 100%');
+    expect(css).not.toContain('calc((100vh - 274px) * 1.538)');
   });
 
   it('keeps current Roto CSS as an outline without adding a fourth fill color', () => {
