@@ -9,7 +9,7 @@ import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT
 import { physicPaintStore } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
-import { canPasteRotoKeyTarget, canUseRotoKeySource, clampOnionCount, clampOnionOpacity, deleteRotoKeyFrame, duplicateRotoKeyFrame, getNearestRealRotoKeyFrame, getPreviewFps, insertRotoKeyFrame, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, replaceRotoKeyFrame, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
+import { canPasteRotoKeyTarget, canUseRotoKeySource, clampOnionCount, clampOnionOpacity, deleteRotoKeyFrame, duplicateRotoKeyFrame, getPreviewFps, insertRotoKeyFrame, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, replaceRotoKeyFrame, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
@@ -552,7 +552,6 @@ export function PhysicsPaintStudio() {
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
   const currentFrame = launchContext?.startFrame ?? 0;
-  const effectiveCurrentFrame = launchContext ? getNearestRealRotoKeyFrame(currentFrame, physicPaintStore.getRealRotoKeyFrames(launchContext.layerId)) ?? currentFrame : currentFrame;
   const previewFps = getPreviewFps(launchContext?.fps);
   const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
     if (!engine || !launchContext) return null;
@@ -2659,7 +2658,7 @@ export function PhysicsPaintStudio() {
 
         <PhysicsPaintWorkflowStrip
           mode={workflowMode}
-          currentFrame={effectiveCurrentFrame}
+          currentFrame={currentFrame}
           startFrame={launchContext?.startFrame ?? 0}
           frameCount={framesToApply}
           currentPreviewFrame={localPlayPreviewFrame}

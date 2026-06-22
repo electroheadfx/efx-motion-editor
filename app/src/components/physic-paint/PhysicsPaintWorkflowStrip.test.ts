@@ -508,6 +508,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('rotoSavingFrame={rotoSavingFrame}');
     expect(studio).toContain('setRotoSavingFrame(null)');
     expect(studio).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);\n    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);');
+    expect(studio).toContain('currentFrame={currentFrame}');
+    expect(studio).not.toContain('currentFrame={effectiveCurrentFrame}');
     expect(statusStackBlock).toContain('Dirty frames save when leaving.');
     expect(code).toContain('aria-label="Save current"');
     expect(code).toContain('Save current');
