@@ -69,10 +69,11 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).not.toContain('setFrame(launchContext.layerId, currentFrame, buildRotoBackgroundMetadata');
   });
 
-  it('applies onion previous/next toggles and opacity to the canvas overlay', () => {
+  it('defaults onion skinning off with next-frame onion disabled, while preserving manual controls', () => {
     const text = source();
 
-    expect(text).toContain('opacity: 60');
+    expect(text).toContain('const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 60 }');
+    expect(text).toContain('useState<PhysicsPaintOnionState>(DEFAULT_ONION_STATE)');
     expect(text).toContain('const onionOpacity = clampOnionOpacity(onion.opacity) / 100');
     expect(text).toContain("frame.direction === 'previous' && onion.previous");
     expect(text).toContain("frame.direction === 'next' && onion.next");
@@ -875,16 +876,15 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(workflowStripBlock).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
   });
 
-  it('keeps key-utility-suppressed onion previews hidden when painting an inserted blank key', () => {
+  it('clears stale Roto reference overlays on paint input without disabling onion controls', () => {
     const text = source();
     const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
-    const transactionBlock = text.slice(text.indexOf('const applyRotoKeyUtilityTransaction = useCallback'), text.indexOf('const runRotoKeyAction = useCallback'));
 
-    expect(transactionBlock).toContain('setSuppressRotoOnionOverlay(true)');
     expect(dirtyBlock).toContain('setCachedRotoReferenceUrl(null)');
     expect(dirtyBlock).toContain('setCachedRotoPlaybackFrame(null)');
     expect(dirtyBlock).toContain('(engine as PreviewBackgroundEngine | null)?.resetBackground?.()');
-    expect(dirtyBlock).not.toContain('setSuppressRotoOnionOverlay(false)');
+    expect(text).not.toContain('suppressRotoOnionOverlay');
+    expect(text).not.toContain('setSuppressRotoOnionOverlay');
   });
 
   it('keeps real-key utility helpers out of the strict Phase 36.3 Roto strip surface', () => {

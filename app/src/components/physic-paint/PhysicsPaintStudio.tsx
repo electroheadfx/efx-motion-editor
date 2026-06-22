@@ -21,6 +21,7 @@ const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper
 const DEFAULT_CANVAS_WIDTH = 1000;
 const DEFAULT_CANVAS_HEIGHT = 650;
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
+const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 60 };
 const PLAY_LIMIT_TOAST_DISMISS_MS = 5000;
 type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -512,7 +513,7 @@ export function PhysicsPaintStudio() {
   const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialSettings());
   const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>(() => getLaunchWorkflowMode(launchContext));
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-  const [onion, setOnion] = useState<PhysicsPaintOnionState>({ enabled: true, previous: true, next: true, count: 1, opacity: 60 });
+  const [onion, setOnion] = useState<PhysicsPaintOnionState>(DEFAULT_ONION_STATE);
   const [playWiggle, setPlayWiggle] = useState<AnimationWiggleConfig>(() => normalizePlayWiggle(launchContext?.playMotion ?? DEFAULT_PLAY_WIGGLE));
   const [savedRotoFrames, setSavedRotoFrames] = useState<PhysicsPaintWorkflowStripFrameMarker[]>(() => getSavedRotoMarkersFromLaunchContext(launchContext));
   const [occupiedRotoFrames, setOccupiedRotoFrames] = useState<number[]>(() => getRealCachedRotoFrameNumbers(launchContext));
@@ -524,7 +525,6 @@ export function PhysicsPaintStudio() {
   const [localPlayPreviewFrame, setLocalPlayPreviewFrame] = useState(() => getLaunchPreviewFrame(launchContext));
   const [cachedPlayPreviewUrl, setCachedPlayPreviewUrl] = useState<string | null>(null);
   const [cachedRotoReferenceUrl, setCachedRotoReferenceUrl] = useState<string | null>(null);
-  const [suppressRotoOnionOverlay, setSuppressRotoOnionOverlay] = useState(false);
   const [isRotoCachedPlaybackActive, setIsRotoCachedPlaybackActive] = useState(false);
   const [cachedRotoPlaybackFrame, setCachedRotoPlaybackFrame] = useState<RenderedFramePayload | null>(null);
   const [rotoCachedPlaybackStatus, setRotoCachedPlaybackStatus] = useState<string | null>(null);
@@ -1411,7 +1411,6 @@ export function PhysicsPaintStudio() {
     if (!Number.isInteger(frame) || frame < 0) return false;
     if (rotoFlushInFlightRef.current || applyStatus === 'applying') return false;
     stopRotoCachedPlayback();
-    setSuppressRotoOnionOverlay(false);
     setCachedRotoReferenceUrl(null);
     setCachedRotoPlaybackFrame(null);
     if (engine && launchContext) {
@@ -1433,7 +1432,6 @@ export function PhysicsPaintStudio() {
   const openSyncedRotoFrameAfterSave = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     stopRotoCachedPlayback();
-    setSuppressRotoOnionOverlay(false);
     setCachedRotoReferenceUrl(null);
     setCachedRotoPlaybackFrame(null);
     if (engine && launchContext) {
@@ -1916,14 +1914,12 @@ export function PhysicsPaintStudio() {
     syncRotoKeyFrameLists(transaction.realKeyFrameNumbers, transaction.realKeyFrames);
     if (transaction.activeRestore.kind === 'blank-real-key' || transaction.activeRestore.kind === 'clear-blank') {
       setCachedRotoReferenceUrl(null);
-      setSuppressRotoOnionOverlay(true);
       if (engine && transaction.activeFrame === currentFrame) {
         (engine as PreviewBackgroundEngine).resetBackground();
         engine.clear();
       }
     } else if (transaction.activeRestore.kind === 'load-real-key' && engine && transaction.activeFrame === currentFrame) {
       setCachedRotoReferenceUrl(null);
-      setSuppressRotoOnionOverlay(true);
       loadCachedRotoReferenceFrame(transaction.activeRestore.frame, engine as PreviewBackgroundEngine);
     }
   }, [currentFrame, engine, launchContext, syncRotoKeyFrameLists]);
@@ -2574,7 +2570,7 @@ export function PhysicsPaintStudio() {
             inputDisabled={rotoInputDisabled}
             inputDisabledMessage="Saving current Roto frame…"
             onInputIntent={workflowMode === 'play' ? beginPlayFrameEdit : beginRotoFrameEdit}
-            onionOverlay={onion.enabled && !suppressRotoOnionOverlay && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
+            onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
               <img
                 key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`}
                 class={`physics-paint-onion-frame ${frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`}

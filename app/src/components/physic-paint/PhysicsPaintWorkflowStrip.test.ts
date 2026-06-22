@@ -387,7 +387,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('physics-paint-onion-overlay');
     expect(code).not.toContain('visibleOnionPreviewFrames');
     expect(studioCode).toContain('physics-paint-onion-overlay canvas-region');
-    expect(studioCode).toContain('onionOverlay={onion.enabled && !suppressRotoOnionOverlay && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
+    expect(studioCode).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
     expect(studioCode).toContain('clampOnionCount');
     for (const label of [
       'physics-paint-options-tabs',
@@ -672,8 +672,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('pendingRotoKeyActionMessageRef');
     expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, frame)');
     expect(studio).toContain("transaction.activeRestore.kind === 'blank-real-key'");
-    expect(studio).toContain('setSuppressRotoOnionOverlay(true);');
-    expect(studio).toContain('!suppressRotoOnionOverlay && onionPreviewFrames.length > 0');
+    expect(studio).toContain('setCachedRotoReferenceUrl(null);');
+    expect(studio).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
     expect(studio).toContain('setCachedRotoPlaybackFrame(null)');
     expect(studio).toContain('transaction.activeRestore.kind === \'load-real-key\'');
     expect(studio).toContain('syncRotoKeyFrameLists(transaction.realKeyFrameNumbers, transaction.realKeyFrames)');
