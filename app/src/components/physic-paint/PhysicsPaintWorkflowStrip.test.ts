@@ -362,7 +362,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('physics-paint-onion-overlay');
     expect(code).not.toContain('visibleOnionPreviewFrames');
     expect(studioCode).toContain('physics-paint-onion-overlay canvas-region');
-    expect(studioCode).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
+    expect(studioCode).toContain('onionOverlay={onion.enabled && !suppressRotoOnionOverlay && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
     expect(studioCode).toContain('clampOnionCount');
     for (const label of [
       'physics-paint-options-tabs',
@@ -647,7 +647,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('pendingRotoKeyActionMessageRef');
     expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, result.targetFrame)');
     expect(studio).toContain('if (engine && result.removedFrame === currentFrame)');
-    expect(studio).toContain('setCachedRotoReferenceUrl(null);\n        if (result.frames.includes(currentFrame)) loadCachedRotoReferenceFrame(currentFrame, previewEngine);');
+    expect(studio).toContain('setSuppressRotoOnionOverlay(true);');
+    expect(studio).toContain('!suppressRotoOnionOverlay && onionPreviewFrames.length > 0');
+    expect(studio).toContain('setSuppressRotoOnionOverlay(false);');
+    expect(studio).toContain('setCachedRotoReferenceUrl(null);\n        setSuppressRotoOnionOverlay(true);\n        if (result.frames.includes(currentFrame)) loadCachedRotoReferenceFrame(currentFrame, previewEngine);');
     expect(studio).toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
     expect(studio).toContain('const preservedByFrame = new Map((current.cachedRotoFrames ?? []).map((frame) => [frame.appFrame, frame]))');
     expect(studio).toContain('localByFrame.get(frame) ?? preservedByFrame.get(frame)');

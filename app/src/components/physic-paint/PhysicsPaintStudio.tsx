@@ -512,6 +512,7 @@ export function PhysicsPaintStudio() {
   const [localPlayPreviewFrame, setLocalPlayPreviewFrame] = useState(() => getLaunchPreviewFrame(launchContext));
   const [cachedPlayPreviewUrl, setCachedPlayPreviewUrl] = useState<string | null>(null);
   const [cachedRotoReferenceUrl, setCachedRotoReferenceUrl] = useState<string | null>(null);
+  const [suppressRotoOnionOverlay, setSuppressRotoOnionOverlay] = useState(false);
   const [isRotoCachedPlaybackActive, setIsRotoCachedPlaybackActive] = useState(false);
   const [cachedRotoPlaybackFrame, setCachedRotoPlaybackFrame] = useState<RenderedFramePayload | null>(null);
   const [rotoCachedPlaybackStatus, setRotoCachedPlaybackStatus] = useState<string | null>(null);
@@ -1060,6 +1061,7 @@ export function PhysicsPaintStudio() {
     if (workflowMode !== 'roto') return;
     const appFrame = currentFrame;
     dirtyRotoFramesRef.current.add(appFrame);
+    setSuppressRotoOnionOverlay(false);
     setCachedRotoReferenceUrl(null);
     (engine as PreviewBackgroundEngine | null)?.resetBackground?.();
     syncPendingRotoFrames();
@@ -1391,6 +1393,7 @@ export function PhysicsPaintStudio() {
     if (!Number.isInteger(frame) || frame < 0) return false;
     if (rotoFlushInFlightRef.current || applyStatus === 'applying') return false;
     stopRotoCachedPlayback();
+    setSuppressRotoOnionOverlay(false);
     setCachedRotoPlaybackFrame(null);
     if (engine && launchContext) {
       snapshotCurrentRotoFrame();
@@ -1411,6 +1414,7 @@ export function PhysicsPaintStudio() {
   const openSyncedRotoFrameAfterSave = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     stopRotoCachedPlayback();
+    setSuppressRotoOnionOverlay(false);
     setCachedRotoPlaybackFrame(null);
     if (engine && launchContext) {
       const nextState = rotoFrameStatesRef.current.get(frame);
@@ -2023,6 +2027,7 @@ export function PhysicsPaintStudio() {
       physicPaintStore.upsertRealRotoKeyFrame(launchContext.layerId, result.targetFrame, blankFrame, false);
       rotoFrameStatesRef.current.delete(result.targetFrame);
       rotoPreviewFramesRef.current.set(result.targetFrame, blankFrame);
+      if (result.targetFrame === currentFrame) setSuppressRotoOnionOverlay(true);
       physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId);
       syncRotoKeyFrameLists(result.frames);
       return { frames: result.frames, message: `Inserted blank key before frame ${result.targetFrame}.` };
@@ -2046,6 +2051,7 @@ export function PhysicsPaintStudio() {
         previewEngine.resetBackground();
         engine.clear();
         setCachedRotoReferenceUrl(null);
+        setSuppressRotoOnionOverlay(true);
         if (result.frames.includes(currentFrame)) loadCachedRotoReferenceFrame(currentFrame, previewEngine);
       }
       return { frames: result.frames, message: `Deleted key ${currentFrame}.` };
@@ -2581,7 +2587,7 @@ export function PhysicsPaintStudio() {
             inputDisabled={rotoInputDisabled}
             inputDisabledMessage="Saving current Roto frame…"
             onInputIntent={workflowMode === 'play' ? beginPlayFrameEdit : beginRotoFrameEdit}
-            onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
+            onionOverlay={onion.enabled && !suppressRotoOnionOverlay && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
               <img
                 key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`}
                 class={`physics-paint-onion-frame ${frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`}
