@@ -86,7 +86,7 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
 
   try {
     if (deliveredOperationIds.has(payload.operationId)) {
-      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'delete-roto-frame' ? 0 : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.kind === 'update-play-render-options' ? 0 : payload.frames.length);
+      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'delete-roto-frame' ? 0 : payload.kind === 'replace-roto-key-frames' ? payload.frames.length : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.kind === 'update-play-render-options' ? 0 : payload.frames.length);
     }
 
     let result: PhysicPaintApplyResult;
@@ -94,6 +94,8 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
       result = physicPaintStore.applyCanvas(payload);
     } else if (payload.kind === 'delete-roto-frame') {
       result = physicPaintStore.deleteRotoFrame(payload);
+    } else if (payload.kind === 'replace-roto-key-frames') {
+      result = physicPaintStore.replaceRotoKeyFrames(payload);
     } else if (payload.kind === 'apply-play-canvas') {
       result = physicPaintStore.applySequence(payload);
     } else if (payload.kind === 'convert-play-to-roto') {

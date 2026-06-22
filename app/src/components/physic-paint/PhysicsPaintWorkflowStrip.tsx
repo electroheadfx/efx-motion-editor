@@ -7,7 +7,6 @@ import {
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
   PHYSIC_PAINT_MIN_APPLY_FRAMES,
   PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE,
-  clampOnionCount,
   getPhysicsPaintSourceLabel,
   getPlayRangeMarker,
   getRotoCellFill,
@@ -215,14 +214,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const playLimitMessage = props.maxPlayFrameCount !== undefined
     ? props.maxPlayFrameCountReason ?? `Play duration limited to ${props.maxPlayFrameCount} frames before the next saved Play script.`
     : null;
-  const onionCount = clampOnionCount(props.onion.count);
-  const visibleOnionPreviewFrames = props.isPlaying || !props.onion.enabled
-    ? []
-    : (props.onionPreviewFrames ?? []).filter(frame => (
-        frame.distance <= onionCount &&
-        ((frame.direction === 'previous' && props.onion.previous) || (frame.direction === 'next' && props.onion.next))
-      ));
-
   function handlePrimaryAction() {
     if (props.mode === 'play') {
       renderPlayFrames();
@@ -522,20 +513,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           ) : null}
           {props.playPublicationSummary ? <p class="physics-paint-roto-interpolation-status">{props.playPublicationSummary}</p> : null}
           {props.statusMessage ? <p class="physics-paint-roto-interpolation-status">{props.statusMessage}</p> : null}
-        </div>
-      ) : null}
-
-      {visibleOnionPreviewFrames.length > 0 ? (
-        <div class="physics-paint-onion-overlay" aria-hidden="true">
-          {visibleOnionPreviewFrames.map(frame => (
-            <img
-              key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`}
-              class={`physics-paint-onion-frame ${frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`}
-              src={frame.dataUrl}
-              style={{ opacity: Math.max(0.18, 0.62 - frame.distance * 0.14) }}
-              alt=""
-            />
-          ))}
         </div>
       ) : null}
 

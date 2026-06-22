@@ -664,6 +664,42 @@ export const physicPaintStore = {
     };
   },
 
+  replaceRotoKeyFrames(payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-key-frames' }>): PhysicPaintApplyResult {
+    if (!isPhysicPaintApplyPayload(payload)) {
+      return _errorResult(payload, 'Invalid physics paint key frame payload');
+    }
+    if (payload.kind !== 'replace-roto-key-frames') {
+      return _errorResult(payload, 'Expected replace-roto-key-frames payload');
+    }
+
+    const previousGenerated = _removeGeneratedRotoCache(payload.layerId);
+    const previousRealKeys = _getRealRotoKeyFrames(payload.layerId);
+    const layerFrames = _getOrCreateLayer(payload.layerId);
+    const metadata = _getOrCreateRotoMetadata(payload.layerId);
+    for (const frame of previousRealKeys) {
+      layerFrames.delete(frame);
+      metadata.delete(frame);
+    }
+    for (const frame of payload.frames) {
+      const normalizedFrame = { ...frame, frameIndex: 0, source: 'real-key' as const };
+      layerFrames.set(frame.appFrame, normalizedFrame);
+      metadata.set(frame.appFrame, _makeRotoCacheFrame(normalizedFrame, frame.appFrame, 'real-key', undefined, frame.backgroundOnly || undefined));
+    }
+    if (layerFrames.size === 0) _frames.delete(payload.layerId);
+    if (metadata.size === 0) _rotoCacheMetadata.delete(payload.layerId);
+    _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
+    const { changed, generatedFrames } = _regenerateGeneratedRotoCache(payload.layerId, this.getRotoInterpolationSettings(payload.layerId));
+    if (previousGenerated || previousRealKeys.length > 0 || payload.frames.length > 0 || changed || generatedFrames.length > 0) _notifyVisualChange();
+    return {
+      operationId: payload.operationId,
+      kind: payload.kind,
+      layerId: payload.layerId,
+      startFrame: payload.startFrame,
+      appliedFrameCount: payload.frames.length,
+      ok: true,
+    };
+  },
+
   applySequence(payload: PhysicPaintApplyPayload): PhysicPaintApplyResult {
     if (!isPhysicPaintApplyPayload(payload)) {
       return _errorResult(payload, 'Invalid physics paint apply payload');

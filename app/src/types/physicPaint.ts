@@ -7,7 +7,7 @@ export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals']);
 
-export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play' | 'update-play-render-options';
+export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play' | 'update-play-render-options';
 export type PhysicPaintWorkflowMode = 'roto' | 'play';
 export type PhysicPaintEditableSource = 'roto' | 'play';
 
@@ -140,6 +140,14 @@ export interface PhysicPaintDeleteRotoFramePayload {
   startFrame: number;
 }
 
+export interface PhysicPaintReplaceRotoKeyFramesPayload {
+  kind: 'replace-roto-key-frames';
+  operationId: string;
+  layerId: string;
+  startFrame: number;
+  frames: PhysicPaintRotoCacheFrame[];
+}
+
 export interface PhysicPaintApplyPlayCanvasPayload {
   kind: 'apply-play-canvas';
   operationId: string;
@@ -184,7 +192,7 @@ export interface PhysicPaintUpdatePlayRenderOptionsPayload {
   renderOptions: PhysicPaintPlayRenderOptionsSnapshot;
 }
 
-export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintApplyPlayCanvasPayload | PhysicPaintConvertPlayToRotoPayload | PhysicPaintConvertRotoToPlayPayload | PhysicPaintUpdatePlayRenderOptionsPayload;
+export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintApplyPlayCanvasPayload | PhysicPaintConvertPlayToRotoPayload | PhysicPaintConvertRotoToPlayPayload | PhysicPaintUpdatePlayRenderOptionsPayload;
 
 export interface PhysicPaintApplyResult {
   operationId: string;
@@ -285,6 +293,10 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   }
 
   if (value.kind === 'delete-roto-frame') return true;
+
+  if (value.kind === 'replace-roto-key-frames') {
+    return Array.isArray(value.frames) && value.frames.every((frame) => isPhysicPaintRotoCacheFrame(frame) && frame.source === 'real-key');
+  }
 
   if (!isSerializedProject(value.editableState)) return false;
 
@@ -392,7 +404,7 @@ export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintAp
   if (!isRecord(value)) return false;
   return (
     isNonEmptyString(value.operationId) &&
-    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options') &&
+    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options') &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
     isNonNegativeInteger(value.appliedFrameCount) &&
@@ -416,7 +428,7 @@ function isBaseApplyPayload(value: Record<string, unknown>): value is Record<str
   startFrame: number;
 } {
   return (
-    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options') &&
+    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options') &&
     isNonEmptyString(value.operationId) &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&

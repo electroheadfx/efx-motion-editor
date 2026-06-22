@@ -353,19 +353,17 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('id="physics-play-duration"');
   });
 
-  it('keeps onion preview overlays in the workflow strip and moves onion controls to the right panel', () => {
+  it('keeps onion preview overlays clipped to the canvas stack and moves onion controls to the right panel', () => {
     const code = source();
+    const studioCode = studioSource();
     const panelCode = rightPanelSource();
 
-    for (const label of [
-      'onionPreviewFrames',
-      'physics-paint-onion-overlay',
-      'physics-paint-onion-prev',
-      'physics-paint-onion-next',
-      'clampOnionCount',
-    ]) {
-      expect(code).toContain(label);
-    }
+    expect(code).toContain('onionPreviewFrames');
+    expect(code).not.toContain('physics-paint-onion-overlay');
+    expect(code).not.toContain('visibleOnionPreviewFrames');
+    expect(studioCode).toContain('physics-paint-onion-overlay canvas-region');
+    expect(studioCode).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
+    expect(studioCode).toContain('clampOnionCount');
     for (const label of [
       'physics-paint-options-tabs',
       'physics-paint-single-tab',
@@ -386,14 +384,14 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('Onion skin controls');
   });
 
-  it('filters onion preview overlays by count, direction toggles, and live preview state', () => {
-    const code = source();
+  it('filters canvas onion preview overlays by count, direction toggles, and live preview state', () => {
+    const code = studioSource();
 
-    expect(code).toContain('const visibleOnionPreviewFrames = props.isPlaying || !props.onion.enabled');
-    expect(code).toContain('frame.distance <= onionCount');
-    expect(code).toContain("frame.direction === 'previous' && props.onion.previous");
-    expect(code).toContain("frame.direction === 'next' && props.onion.next");
-    expect(code).toContain('visibleOnionPreviewFrames.map');
+    expect(code).toContain('const buildOnionPreviewFrames = useCallback');
+    expect(code).toContain('const count = clampOnionCount(onion.count)');
+    expect(code).toContain('if (distance < 1 || distance > count) return;');
+    expect(code).toContain("direction: frame.appFrame < currentFrame ? 'previous' : 'next'");
+    expect(code).toContain('onionPreviewFrames.map');
   });
 
   it('builds canvas onion previews from Roto sources and does not reuse saved Play frames as yellow overlays', () => {
@@ -501,7 +499,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const code = source();
     const studio = studioSource();
     const clickHandlerBlock = code.slice(code.indexOf('function handleRotoCellClick'), code.indexOf('function getGeneratedRotoStatus'));
-    const statusStackBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('visibleOnionPreviewFrames.length'));
+    const statusStackBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('confirmation ? ('));
 
     expect(code).toContain('rotoSavingFrame?: number | null');
     expect(code).toContain('getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight), props.rotoSavingFrame)');
@@ -623,6 +621,21 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('keyActionInFlight={rotoKeyActionInFlight}');
   });
 
+  it('persists D-08/D-09 Roto key utilities through the parent app bridge', () => {
+    const studio = studioSource();
+    const store = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../stores/physicPaintStore.ts'), 'utf8');
+    const bridge = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../lib/physicPaintBridge.ts'), 'utf8');
+    const types = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../types/physicPaint.ts'), 'utf8');
+
+    expect(types).toContain("kind: 'replace-roto-key-frames'");
+    expect(store).toContain('replaceRotoKeyFrames(payload');
+    expect(bridge).toContain('physicPaintStore.replaceRotoKeyFrames(payload)');
+    expect(studio).toContain("kind: 'replace-roto-key-frames'");
+    expect(studio).toContain('await sendPhysicPaintApplyPayload(payload');
+    expect(studio).toContain('pendingRotoKeyActionMessageRef');
+    expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, result.targetFrame)');
+  });
+
   it('keeps D-06 Paste target eligibility separate from source-only real-key guards', () => {
     const studio = studioSource();
     const pasteIndex = studio.indexOf('const pasteRotoFrame = useCallback');
@@ -633,6 +646,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(pasteBlock).toContain('canPasteRotoKeyTarget');
     expect(pasteBlock).toContain('replaceRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');
     expect(pasteBlock).toContain('physicPaintStore.upsertRealRotoKeyFrame');
+    expect(pasteBlock).toContain("return { frames: result.frames, message: `Pasted key to frame ${currentFrame}.` }");
     expect(pasteBlock).not.toContain('requireCurrentRealRotoKey()');
     expect(pasteBlock).not.toContain('canUseRotoKeySource');
   });
