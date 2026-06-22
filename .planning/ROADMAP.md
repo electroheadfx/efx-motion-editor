@@ -132,6 +132,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.3: Physics Paint Roto Durable Core Recovery** - MVP/TDD recovery phase to prove one painted Roto frame can be cached into EFX Motion, appear in preview, survive project save/load, and reopen as a cached visual reference. (planned recovery) (completed 2026-06-19)
 - [x] **Phase 36.5: Physics Paint Roto Cell Semantics** - Roto timeline cells clearly distinguish empty, cached, editable/current, generated/render-only, background-only, dirty, and saving states while staying MVP-only. (completed 2026-06-20)
 - [x] **Phase 36.6: Physics Paint Roto Save On Leave** - Users can leave dirty Roto frames with source-frame save feedback and without manually pressing Save current for each frame. (completed 2026-06-20)
+- [x] **Phase 36.7: Physics Paint Roto Key Utilities** - Stop-motion animators can duplicate, insert, delete, copy, and paste real Roto keys efficiently with clean cache/cell/canvas state. (completed 2026-06-22)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
 
 ## Phase Details
@@ -245,7 +246,7 @@ Use SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md as the
 **Mode:** mvp
 **Requirements**: 36.7-DUP, 36.7-INS, 36.7-DEL, 36.7-COPY-PASTE, 36.7-STUDIO, 36.7-UI
 **Depends on:** Phase 36
-**Plans:** 3/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 
@@ -263,11 +264,11 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 36.7-04-PLAN.md — Run final focused checks and user-owned live UAT.
+- [x] 36.7-04-PLAN.md — Run final focused checks and user-owned live UAT.
 
 **Wave 5** *(gap closure blocked on failed Wave 4 live UAT)*
 
-- [ ] 36.7-05-PLAN.md — Repair Insert/Delete/Paste state-cache coherence with a regression-first Roto key controller extraction.
+- [x] 36.7-05-PLAN.md — Repair Insert/Delete/Paste state-cache coherence with a regression-first Roto key controller extraction.
 
 ### Phase 36.6: Physics Paint Roto Save On Leave
 

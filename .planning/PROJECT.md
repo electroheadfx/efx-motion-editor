@@ -101,6 +101,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ One Physics Paint Roto frame can be cached into EFX Motion, drawn in preview, preserved through project save/load, and reopened as a cached visual reference — v0.8.0 Phase 36.3
 - ✓ Physics Paint Roto timeline cells distinguish empty, cached, editable/current, generated/render-only, background-only, dirty, and saving states with semantic labels, non-color visual cues, and compact legend/status copy — v0.8.0 Phase 36.5
 - ✓ Physics Paint dirty Roto frames save automatically on leave with source-frame feedback, latest-destination queuing, and failure retention — v0.8.0 Phase 36.6
+- ✓ Stop-motion animators can duplicate, insert, delete, copy, and paste real Physics Paint Roto keys with clean cache/cell/canvas state — v0.8.0 Phase 36.7
 
 ### Active
 
@@ -212,6 +213,7 @@ Known technical debt:
 | Cached Roto PNG as durable truth | Phase 36.3 recovered the smallest trustworthy Roto path after Phase 36.2 failed: explicit `Save current` writes one frame into EFX Motion and reopen uses the saved PNG as reference, not editable stroke restore | ✓ Good — UAT passed for save, preview, save/load, cached-reference reopen, and navigation preservation |
 | Phase 36.5 Roto cell semantics stay MVP-only | User needed trustworthy existing strip state communication without reopening interpolation, cached playback, key utilities, save-on-leave, close behavior, or full timeline redesign scope | ✓ Good — semantic view models, compact legend/status, non-color CSS cues, generated-cell guard, and cached-reference navigation fix were validated |
 | Phase 36.6 save-on-leave uses source-frame save truth | Dirty Roto navigation must save the source frame before opening a queued destination, not save/open based on destination state | ✓ Good — UAT passed for source save, source-specific feedback, latest destination, and failure retention |
+| Phase 36.7 Roto key utilities use controller-backed real-key transactions | Duplicate, Insert, Delete, Copy, and Paste need deterministic cache/cell/canvas updates without broad UI expansion or editor integration scope creep | ✓ Good — UAT passed for live key utility flow, generated/empty guards, dirty save-before-action, regression tests, typecheck, and user-story coverage |
 | Phase 37 is contract/validation-only | The milestone still avoids editor integration scope creep after proving one durable cached frame | Pending — next phase should document typed seam and validation without headless adapter/editor-runtime implementation |
 
 ## Evolution
@@ -232,4 +234,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-21 after Phase 36.6 — Roto save-on-leave validated and Phase 37 contract work queued*
+*Last updated: 2026-06-22 after Phase 36.7 — Roto key utilities validated and Phase 37 contract work queued*

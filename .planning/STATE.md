@@ -2,46 +2,46 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.7
-current_phase_name: Physics Paint Roto Key Utilities
-status: executing
-stopped_at: Phase 36.7 UI-SPEC approved
-last_updated: "2026-06-22T12:23:28.291Z"
+current_phase: 37
+current_phase_name: Future Integration Contract and Validation
+status: ready_to_plan
+stopped_at: Phase 36.7 complete, ready to plan Phase 37
+last_updated: "2026-06-22T18:54:38.591Z"
 last_activity: 2026-06-22
-last_activity_desc: Phase 36.7 execution started
+last_activity_desc: Phase 36.7 complete, transitioned to Phase 37
 progress:
   total_phases: 11
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 58
-  completed_plans: 57
-  percent: 82
+  completed_plans: 58
+  percent: 91
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-21)
+See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.7 — Physics Paint Roto Key Utilities
+**Current focus:** Phase 37 — Future Integration Contract and Validation
 
 ## Current Position
 
-Phase: 36.7 (Physics Paint Roto Key Utilities) — EXECUTING
-Previous phase: 36.6 — Physics Paint Roto Save On Leave complete
-Plan: 1 of 5
-Status: Executing Phase 36.7
-Last activity: 2026-06-22 — Phase 36.7 execution started
-Next recommended action: `/gsd-plan-phase 36.7`
+Phase: 37 — Future Integration Contract and Validation
+Previous phase: 36.7 — Physics Paint Roto Key Utilities complete
+Plan: Not started
+Status: Ready to plan Phase 37
+Last activity: 2026-06-22 — Phase 36.7 complete, transitioned to Phase 37
+Next recommended action: `/gsd-plan-phase 37`
 
-Progress: [████████████████████] 53/53 plans (100%)
+Progress: [████████████████████] 58/58 plans (100%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 37 for v0.8.0
+- Total plans completed: 42 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -60,6 +60,7 @@ Progress: [████████████████████] 53/53 p
 | 36.4 | 2 | - | - |
 | 36.5 | 3 | 45min | 15min |
 | 36.6 | 3 | - | - |
+| 36.7 | 5 | - | - |
 
 **Recent Trend:**
 
@@ -112,6 +113,7 @@ Recent decisions affecting current work:
 - [Phase 36.3]: `Save current` is the validated recovery path for one Roto frame through parent preview, project save/load, and navigation preservation.
 - [Phase 36.3]: Phase 36.3 UI-spec fidelity debt is documented in `36.3-UI-REVIEW.md`; defer fixes to a later targeted UI cleanup, not hidden Phase 36.3 scope.
 - [Phase 36.6]: Dirty Roto save-on-leave saves the source frame, shows source-frame feedback, keeps latest queued destination, and retains dirty state on failure.
+- [Phase 36.7]: Roto key utilities now operate on real-key controller transactions so Duplicate, Insert, Delete, Copy, and Paste keep cache/cell/canvas state clean.
 
 ### Pending Todos
 
@@ -122,7 +124,7 @@ None yet.
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
-- Phase 36.5 completed: Roto cell semantics are visible in the existing workflow strip, generated cells are render-only guarded, and saved cached PNG references remain visible during standalone navigation.
+- Phase 36.7 completed: Roto key utility UAT passed for Duplicate, Insert, Delete, Copy, Paste, generated/empty guards, dirty save-before-action, focused regressions, typecheck, and user-story coverage.
 - Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
 ### Quick Tasks Completed
@@ -155,6 +157,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T06:31:48.770Z
-Stopped at: Phase 36.7 UI-SPEC approved
-Resume file: .planning/phases/36.7-physics-paint-roto-key-utilities-use-specs-36-x-phases-phase/36.7-UI-SPEC.md
+Last session: 2026-06-22T18:54:38.591Z
+Stopped at: Phase 36.7 complete, ready to plan Phase 37
+Resume file: None
