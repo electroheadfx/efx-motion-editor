@@ -1820,10 +1820,21 @@ export function PhysicsPaintStudio() {
   const syncRotoKeyFrameLists = useCallback((frames: number[]) => {
     setOccupiedRotoFrames(frames);
     setSavedRotoFrames((markers) => frames.map((frame) => markers.find(marker => marker.frame === frame) ?? { frame, saved: true, label: `Frame ${frame}` }));
-    setLaunchContext((current) => current ? {
-      ...current,
-      cachedRotoFrames: physicPaintStore.getRotoCacheFrames(current.layerId),
-    } : current);
+    setLaunchContext((current) => {
+      if (!current) return current;
+      const storeCachedFrames = physicPaintStore.getRotoCacheFrames(current.layerId);
+      const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]));
+      const preservedByFrame = new Map((current.cachedRotoFrames ?? []).map((frame) => [frame.appFrame, frame]));
+      const realKeyFrames = frames
+        .map((frame) => localByFrame.get(frame) ?? preservedByFrame.get(frame))
+        .filter((frame): frame is PhysicPaintRotoCacheFrame => Boolean(frame))
+        .map((frame) => ({ ...frame, source: 'real-key' as const }));
+      const generatedFrames = storeCachedFrames.filter((frame) => frame.source === 'generated-interpolation');
+      return {
+        ...current,
+        cachedRotoFrames: [...realKeyFrames, ...generatedFrames].sort((a, b) => a.appFrame - b.appFrame),
+      };
+    });
   }, []);
 
   const getCachedRotoPayload = useCallback((frame: number): PhysicPaintRotoCacheFrame | null => {

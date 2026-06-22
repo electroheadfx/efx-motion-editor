@@ -634,6 +634,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('await sendPhysicPaintApplyPayload(payload');
     expect(studio).toContain('pendingRotoKeyActionMessageRef');
     expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, result.targetFrame)');
+    expect(studio).toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
+    expect(studio).toContain('const preservedByFrame = new Map((current.cachedRotoFrames ?? []).map((frame) => [frame.appFrame, frame]))');
+    expect(studio).toContain('localByFrame.get(frame) ?? preservedByFrame.get(frame)');
   });
 
   it('keeps D-06 Paste target eligibility separate from source-only real-key guards', () => {
