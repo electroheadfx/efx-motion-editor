@@ -237,6 +237,20 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 36.7: Physics Paint Roto Key Utilities
+
+Use SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md as the source of truth for this phase. (INSERTED)
+
+**Goal:** As a stop-motion animator, I want to duplicate, insert, delete, copy, and paste real Roto keys, so that I can build frame-by-frame animation efficiently.
+**Mode:** mvp
+**Requirements**: TBD
+**Depends on:** Phase 36
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 36.7 to break down)
+
 ### Phase 36.6: Physics Paint Roto Save On Leave
 
 Use SPECS/36.x-phases/phase-36.6-save-on-leave/spec-36.6-save-on-leave.md as the source of truth for this phase. (INSERTED)
