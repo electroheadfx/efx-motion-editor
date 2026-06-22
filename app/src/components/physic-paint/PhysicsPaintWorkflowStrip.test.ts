@@ -670,4 +670,50 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(pasteBlock).not.toContain('requireCurrentRealRotoKey()');
     expect(pasteBlock).not.toContain('canUseRotoKeySource');
   });
+
+  it('delegates D-01 through D-10 Roto key transaction layout and restore decisions to the controller boundary', () => {
+    const studio = studioSource();
+    const controller = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoKeyController.ts'), 'utf8');
+
+    expect(studio).toContain("from './physicsPaintRotoKeyController'");
+    expect(studio).toContain('deriveRotoKeyUtilityActionState');
+    expect(studio).toContain('buildRotoKeyUtilityTransaction');
+    expect(studio).toContain('applyRotoKeyUtilityTransactionToLocalState');
+    expect(studio).toContain('const applyRotoKeyUtilityTransaction = useCallback');
+    expect(studio).toContain('persistRotoKeyFrameTransaction(transaction)');
+    expect(studio).toContain('transaction.activeRestore');
+    expect(studio).toContain('transaction.cleanup.generatedFrames');
+    expect(studio).toContain('transaction.cleanup.deletedFrames');
+    expect(studio).not.toContain('duplicateRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');
+    expect(studio).not.toContain('insertRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');
+    expect(studio).not.toContain('deleteRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');
+    expect(studio).not.toContain('replaceRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');
+
+    for (const contract of [
+      'export type RotoKeyUtilityOperation',
+      'export interface RotoKeyUtilityActionState',
+      'export interface RotoKeyUtilityTransaction',
+      'export function deriveRotoKeyUtilityActionState',
+      'export function buildRotoKeyUtilityTransaction',
+      'export function applyRotoKeyUtilityTransactionToLocalState',
+      'dirty-save-before-action',
+      'active-restore-intent',
+      'generated-target-cleanup',
+      'deleted-frame-cleanup',
+    ]) {
+      expect(controller).toContain(contract);
+    }
+  });
+
+  it('keeps Studio at the current useEffect ceiling and rejects key utility orchestration effects', () => {
+    const studio = studioSource();
+    const effectCount = (studio.match(/useEffect\(/g) ?? []).length;
+    const effectBlocks = [...studio.matchAll(/useEffect\(\(\) => \{([\s\S]*?)\n  \}, \[[^\]]*\]\);/g)].map((match) => match[1]);
+
+    expect(effectCount).toBeLessThanOrEqual(21);
+    for (const block of effectBlocks) {
+      const coordinatesRotoKeyUtilities = /buildRotoKeyUtilityTransaction|applyRotoKeyUtilityTransactionToLocalState|rotoKeyActionInFlight|pendingRotoKeyActionMessageRef|dirty-save-before-action|generatedFrames|deletedFrames|activeRestore/.test(block);
+      expect(coordinatesRotoKeyUtilities).toBe(false);
+    }
+  });
 });
