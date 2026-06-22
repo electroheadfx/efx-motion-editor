@@ -194,9 +194,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).not.toContain('Position');
   });
 
-  it('gates Roto key utility controls out of the strict Phase 36.3 Roto strip', () => {
+  it('renders the Phase 36.7 contextual Roto key utility pill in the timeline lane (D-11, D-12)', () => {
     const code = source();
-    const rotoControlsBlock = getRotoControlsBlock(code);
+    const timelineBlock = code.slice(code.indexOf('physics-paint-timeline'), code.indexOf('physics-paint-roto-status-stack'));
+    const headerBlock = code.slice(code.indexOf('physics-paint-workflow-header'), code.indexOf('physics-paint-timeline'));
 
     for (const contract of [
       'onDuplicateRotoKey?: () => void',
@@ -205,29 +206,68 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       'onCopyRotoFrame?: () => void',
       'onPasteRotoFrame?: () => void',
       'hasCopiedRotoKey?: boolean',
+      'keyActionInFlight?: boolean',
     ]) {
       expect(code).toContain(contract);
     }
-    expect(rotoControlsBlock).not.toContain('physics-paint-roto-key-utilities');
-    expect(rotoControlsBlock).not.toContain('Duplicate key');
-    expect(rotoControlsBlock).not.toContain('Insert frame');
-    expect(rotoControlsBlock).not.toContain('Delete frame');
-    expect(rotoControlsBlock).not.toContain('Copy frame');
-    expect(rotoControlsBlock).not.toContain('Paste frame');
+    expect(timelineBlock).toContain('physics-paint-roto-key-utilities');
+    expect(timelineBlock).toContain('Roto key utilities for frame');
+    expect(timelineBlock).toContain('Key {props.currentFrame}');
+    for (const label of ['Insert', 'Dup', 'Copy', 'Paste', 'Delete']) {
+      expect(timelineBlock).toContain(`>${label}</button>`);
+    }
+    expect(headerBlock).not.toContain('physics-paint-roto-key-utilities');
+    expect(headerBlock).not.toContain('Duplicate Roto key');
   });
 
-  it('keeps real-key utility explanatory copy out of the strict Phase 36.3 Roto strip', () => {
+  it('uses native accessible disabled Roto key buttons and scoped feedback (D-12, D-13, D-15)', () => {
+    const code = source();
+    const timelineBlock = code.slice(code.indexOf('physics-paint-timeline'), code.indexOf('physics-paint-roto-status-stack'));
+    const statusBlock = code.slice(code.indexOf('function getRotoKeyUtilityDisabledMessage'), code.indexOf('const updateScrollbar'));
+
+    expect(code).toContain('const isCurrentRealRotoKey');
+    expect(code).toContain('const keyUtilitiesDisabledByBusyState');
+    expect(code).toContain('const canPasteRotoKey');
+    expect(timelineBlock).toContain('type="button"');
+    expect(timelineBlock).toContain('aria-label={`Insert blank Roto key before frame ${props.currentFrame}`}');
+    expect(timelineBlock).toContain('aria-label={`Duplicate Roto key at frame ${props.currentFrame}`}');
+    expect(timelineBlock).toContain('aria-label={`Copy Roto key at frame ${props.currentFrame}`}');
+    expect(timelineBlock).toContain('aria-label={`Paste Roto key to frame ${props.currentFrame}`}');
+    expect(timelineBlock).toContain('aria-label={`Delete Roto key at frame ${props.currentFrame}`}');
+    expect(timelineBlock).toContain('disabled={!canInsertRotoKey}');
+    expect(timelineBlock).toContain('disabled={!canDuplicateRotoKey}');
+    expect(timelineBlock).toContain('disabled={!canCopyRotoKey}');
+    expect(timelineBlock).toContain('disabled={!canPasteRotoKey}');
+    expect(timelineBlock).toContain('disabled={!canDeleteRotoKey}');
+    expect(timelineBlock).toContain('physics-paint-roto-key-button destructive');
+    for (const copy of [
+      'Select a real Roto key to insert.',
+      'Select a real Roto key to duplicate.',
+      'Select a real Roto key to copy.',
+      'Select a real Roto key to delete.',
+      'Copy a real Roto key before pasting.',
+      'Generated frame {frame} is render-only.',
+      'Finish saving frame {frame} before using key tools.',
+    ]) {
+      expect(statusBlock).toContain(copy);
+    }
+  });
+
+  it('keeps Phase 36.7 key utilities inside existing Preact/CSS scope only (D-14)', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
-    const rotoControlsBlock = getRotoControlsBlock(code);
 
-    expect(code).not.toContain('getRotoKeyUtilityStatusCopy');
-    expect(rotoControlsBlock).not.toContain('Key utilities require a real Roto key; generated in-betweens are render-only.');
-    expect(rotoControlsBlock).not.toContain('Paste replaces the current real key; Duplicate, Insert, and Delete ripple real keys only.');
-    expect(rotoControlsBlock).not.toContain('Paste is ready and replaces the selected real key without changing timing.');
-    expect(code).not.toContain('Generated frames can be moved');
-    expect(code).not.toContain('Generated frames can be erased');
-    expect(css).toContain('.physics-paint-roto-key-status');
+    expect(code).not.toMatch(/from ['"]react['"]/);
+    expect(code).not.toMatch(/from ['"]@radix-ui\//);
+    expect(code).not.toContain('useHotkeys');
+    expect(code).not.toContain('addEventListener(\'keydown\'');
+    expect(code).not.toContain('addEventListener("keydown"');
+    expect(code).not.toContain('toast');
+    expect(code).not.toContain('shadcn');
+    expect(code).not.toContain('className="');
+    expect(css).toContain('.physics-paint-roto-key-utilities');
+    expect(css).toContain('.physics-paint-roto-key-context');
+    expect(css).toContain('.physics-paint-roto-key-button.destructive');
   });
 
   it('does not render compact Roto interpolation controls in the strict Phase 36.3 Roto strip', () => {
