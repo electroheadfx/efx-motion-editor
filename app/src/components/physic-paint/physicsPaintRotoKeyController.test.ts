@@ -179,6 +179,39 @@ describe('physicsPaintRotoKeyController transaction coherence', () => {
     ]));
   });
 
+  it('D-10 keeps transaction frames at the launch canvas size instead of stale fitted cache dimensions', () => {
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'duplicate',
+      currentFrame: 2,
+      realKeyFrames: [
+        { ...frame(2, 'data:image/png;base64,real-two'), width: 716, height: 468 },
+        { ...frame(5, 'data:image/png;base64,real-five'), width: 716, height: 468 },
+      ],
+      cachedRotoFrames: [],
+      canvasSize: { width: 773, height: 505 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(transaction.realKeyFrames.map(({ appFrame, width, height }) => [appFrame, width, height])).toEqual([
+      [2, 773, 505],
+      [3, 773, 505],
+      [6, 773, 505],
+    ]);
+  });
+
+  it('D-05/D-06/D-10 pastes copied keys with the target launch canvas size', () => {
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'paste',
+      currentFrame: 5,
+      realKeyFrames: [{ ...frame(2, 'data:image/png;base64,real-two'), width: 716, height: 468 }],
+      copiedKeyFrame: { ...frame(2, 'data:image/png;base64,real-two'), width: 716, height: 468 },
+      canvasSize: { width: 773, height: 505 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(transaction.realKeyFrames.find((candidate) => candidate.appFrame === 5)).toMatchObject({ width: 773, height: 505 });
+  });
+
   it('D-04/D-10 applies transaction cleanup to local editable and preview maps deterministically', () => {
     const editableStates = new Map<number, unknown>([[5, { state: 'deleted' }], [6, { state: 'shifted' }]]);
     const previewFrames = new Map<number, PhysicPaintRotoCacheFrame>([

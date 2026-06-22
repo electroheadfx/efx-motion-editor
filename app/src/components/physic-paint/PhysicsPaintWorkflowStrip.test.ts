@@ -270,6 +270,31 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('.physics-paint-roto-key-button.destructive');
   });
 
+  it('keeps Roto key transactions authoritative after local apply instead of re-reading stale cache state', () => {
+    const studioCode = studioSource();
+    const applyBlock = studioCode.slice(studioCode.indexOf('const applyRotoKeyUtilityTransaction'), studioCode.indexOf('const runRotoKeyAction'));
+    const resultBlock = studioCode.slice(studioCode.indexOf("if (detail.kind === 'replace-roto-key-frames')"), studioCode.indexOf("} else if (detail.kind === 'update-play-render-options')"));
+
+    expect(applyBlock).toContain('syncRotoKeyFrameLists(transaction.realKeyFrameNumbers, transaction.realKeyFrames)');
+    expect(resultBlock).not.toContain('syncRotoKeyFrameLists(getRealRotoKeyFramesForStudio())');
+    expect(resultBlock).not.toContain('physicPaintStore.getRotoCacheFrames');
+  });
+
+  it('remounts the physics engine when launch canvas dimensions change', () => {
+    const studioCode = studioSource();
+
+    expect(studioCode).toContain('const canvasKey = `${canvasWidth}x${canvasHeight}`');
+    expect(studioCode).toContain('setEngine(null);');
+    expect(studioCode).toContain('setCanvasMounted(false);');
+    expect(studioCode).toContain('key={canvasKey}');
+  });
+
+  it('passes launch canvas dimensions into Roto key transaction building', () => {
+    const studioCode = studioSource();
+
+    expect(studioCode.match(/canvasSize: \{ width: canvasWidth, height: canvasHeight \}/g)?.length).toBe(4);
+  });
+
   it('does not render compact Roto interpolation controls in the strict Phase 36.3 Roto strip', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
@@ -651,9 +676,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('!suppressRotoOnionOverlay && onionPreviewFrames.length > 0');
     expect(studio).toContain('setSuppressRotoOnionOverlay(false);');
     expect(studio).toContain('transaction.activeRestore.kind === \'load-real-key\'');
-    expect(studio).toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
-    expect(studio).toContain('const preservedByFrame = new Map((current.cachedRotoFrames ?? []).map((frame) => [frame.appFrame, frame]))');
-    expect(studio).toContain('localByFrame.get(frame) ?? preservedByFrame.get(frame)');
+    expect(studio).toContain('syncRotoKeyFrameLists(transaction.realKeyFrameNumbers, transaction.realKeyFrames)');
+    expect(studio).toContain('cachedRotoFrames: [...cacheFrames].sort');
+    expect(studio).not.toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
+    expect(studio).not.toContain('localByFrame.get(frame) ?? preservedByFrame.get(frame)');
   });
 
   it('keeps D-06 Paste target eligibility separate from source-only real-key guards', () => {
@@ -710,7 +736,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const effectCount = (studio.match(/useEffect\(/g) ?? []).length;
     const effectBlocks = [...studio.matchAll(/useEffect\(\(\) => \{([\s\S]*?)\n  \}, \[[^\]]*\]\);/g)].map((match) => match[1]);
 
-    expect(effectCount).toBeLessThanOrEqual(21);
+    expect(effectCount).toBeLessThanOrEqual(22);
+    expect(studio).toContain('}, [canvasKey]);');
     for (const block of effectBlocks) {
       const coordinatesRotoKeyUtilities = /buildRotoKeyUtilityTransaction|applyRotoKeyUtilityTransactionToLocalState|rotoKeyActionInFlight|pendingRotoKeyActionMessageRef|dirty-save-before-action|generatedFrames|deletedFrames|activeRestore/.test(block);
       expect(coordinatesRotoKeyUtilities).toBe(false);

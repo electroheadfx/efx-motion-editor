@@ -553,6 +553,7 @@ export function PhysicsPaintStudio() {
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
   const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
+  const canvasKey = `${canvasWidth}x${canvasHeight}`;
   const currentFrame = launchContext?.startFrame ?? 0;
   const previewFps = getPreviewFps(launchContext?.fps);
   const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
@@ -560,6 +561,11 @@ export function PhysicsPaintStudio() {
     return { engine, launchContext, bridgeMode };
   }, [bridgeMode, engine, launchContext]);
   const rotoInputDisabled = workflowMode === 'roto' && Boolean(saveOnLeaveSourceFrameRef.current) && applyStatus === 'applying';
+
+  useEffect(() => {
+    setEngine(null);
+    setCanvasMounted(false);
+  }, [canvasKey]);
 
   const resetRotoSessionForLaunch = useCallback((context: PhysicPaintLaunchContext, options: { preserveCloseAfterRotoSave?: boolean } = {}) => {
     if (getLaunchWorkflowMode(context) !== 'roto') return;
@@ -1525,7 +1531,6 @@ export function PhysicsPaintStudio() {
     setApplyStatus('success');
     setLastError(null);
     if (detail.kind === 'replace-roto-key-frames') {
-      syncRotoKeyFrameLists(getRealRotoKeyFramesForStudio());
       setApplyMessage(pendingRotoKeyActionMessageRef.current ?? 'Saved Roto key changes.');
       pendingRotoKeyActionMessageRef.current = null;
     } else if (detail.kind === 'update-play-render-options') {
@@ -1828,24 +1833,14 @@ export function PhysicsPaintStudio() {
     return false;
   }, [getRotoKeyUtilityActionState]);
 
-  const syncRotoKeyFrameLists = useCallback((frames: number[]) => {
+  const syncRotoKeyFrameLists = useCallback((frames: number[], cacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => {
     setOccupiedRotoFrames(frames);
     setSavedRotoFrames((markers) => frames.map((frame) => markers.find(marker => marker.frame === frame) ?? { frame, saved: true, label: `Frame ${frame}` }));
-    setLaunchContext((current) => {
-      if (!current) return current;
-      const storeCachedFrames = physicPaintStore.getRotoCacheFrames(current.layerId);
-      const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]));
-      const preservedByFrame = new Map((current.cachedRotoFrames ?? []).map((frame) => [frame.appFrame, frame]));
-      const realKeyFrames = frames
-        .map((frame) => localByFrame.get(frame) ?? preservedByFrame.get(frame))
-        .filter((frame): frame is PhysicPaintRotoCacheFrame => Boolean(frame))
-        .map((frame) => ({ ...frame, source: 'real-key' as const }));
-      const generatedFrames = storeCachedFrames.filter((frame) => frame.source === 'generated-interpolation');
-      return {
-        ...current,
-        cachedRotoFrames: [...realKeyFrames, ...generatedFrames].sort((a, b) => a.appFrame - b.appFrame),
-      };
-    });
+    if (!cacheFrames) return;
+    setLaunchContext((current) => current ? {
+      ...current,
+      cachedRotoFrames: [...cacheFrames].sort((a, b) => a.appFrame - b.appFrame || a.frameIndex - b.frameIndex),
+    } : current);
   }, []);
 
   const getCachedRotoPayload = useCallback((frame: number): PhysicPaintRotoCacheFrame | null => {
@@ -1905,7 +1900,7 @@ export function PhysicsPaintStudio() {
     rotoPreviewFramesRef.current = nextLocalState.previewFrames as Map<number, RenderedFramePayload>;
     for (const frame of transaction.cleanup.generatedFrames) physicPaintStore.removeFrameRange(launchContext.layerId, frame, 1);
     for (const frame of transaction.cleanup.deletedFrames) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, frame);
-    syncRotoKeyFrameLists(transaction.realKeyFrameNumbers);
+    syncRotoKeyFrameLists(transaction.realKeyFrameNumbers, transaction.realKeyFrames);
     if (transaction.activeRestore.kind === 'blank-real-key' || transaction.activeRestore.kind === 'clear-blank') {
       setCachedRotoReferenceUrl(null);
       setSuppressRotoOnionOverlay(true);
@@ -2010,6 +2005,7 @@ export function PhysicsPaintStudio() {
       currentFrame,
       realKeyFrames: getRealRotoCacheFramesForStudio(),
       cachedRotoFrames: launchContext?.cachedRotoFrames,
+      canvasSize: { width: canvasWidth, height: canvasHeight },
       buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
     }));
   }, [canvasHeight, canvasWidth, currentFrame, getRealRotoCacheFramesForStudio, launchContext?.cachedRotoFrames, runRotoKeyAction]);
@@ -2020,6 +2016,7 @@ export function PhysicsPaintStudio() {
       currentFrame,
       realKeyFrames: getRealRotoCacheFramesForStudio(),
       cachedRotoFrames: launchContext?.cachedRotoFrames,
+      canvasSize: { width: canvasWidth, height: canvasHeight },
       buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
     }));
   }, [canvasHeight, canvasWidth, currentFrame, getRealRotoCacheFramesForStudio, launchContext?.cachedRotoFrames, runRotoKeyAction]);
@@ -2030,6 +2027,7 @@ export function PhysicsPaintStudio() {
       currentFrame,
       realKeyFrames: getRealRotoCacheFramesForStudio(),
       cachedRotoFrames: launchContext?.cachedRotoFrames,
+      canvasSize: { width: canvasWidth, height: canvasHeight },
       buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
     }));
   }, [canvasHeight, canvasWidth, currentFrame, getRealRotoCacheFramesForStudio, launchContext?.cachedRotoFrames, runRotoKeyAction]);
@@ -2049,6 +2047,7 @@ export function PhysicsPaintStudio() {
         realKeyFrames: getRealRotoCacheFramesForStudio(),
         cachedRotoFrames: launchContext?.cachedRotoFrames,
         copiedKeyFrame: copiedRotoKeyRef.current?.cachedFrame,
+        canvasSize: { width: canvasWidth, height: canvasHeight },
         buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
       });
     }, { requireSource: false });
@@ -2573,6 +2572,7 @@ export function PhysicsPaintStudio() {
             )) : null}
           >
             <CanvasMountProbe
+              key={canvasKey}
               width={canvasWidth}
               height={canvasHeight}
               onEngineReady={(readyEngine) => {

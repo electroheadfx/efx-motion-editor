@@ -370,9 +370,8 @@ export function replaceRotoKeyFrame(realKeys: number[], targetFrame: number): Ro
   };
 }
 
-export function canUseRotoKeySource({ frame, realKeys, generatedFrames }: RotoKeySourceEligibilityInput): boolean {
+export function canUseRotoKeySource({ frame, realKeys }: RotoKeySourceEligibilityInput): boolean {
   if (!isNonNegativeInteger(frame)) return false;
-  if (hasFrame(generatedFrames, frame)) return false;
   return normalizeRealRotoKeyFrames([...realKeys]).includes(frame);
 }
 
@@ -392,9 +391,9 @@ function getRotoCellBaseMeaning(
   editableFrames: readonly number[] | ReadonlySet<number> | undefined,
 ): RotoCellBaseMeaning {
   if (hasFrame(editableFrames, frame)) return 'editable-current';
+  if (cachedFrame?.source === 'real-key' && cachedFrame.backgroundOnly === true) return 'background-only';
+  if (cachedFrame?.source === 'real-key') return 'cached';
   if (cachedFrame?.source === 'generated-interpolation') return 'generated';
-  if (cachedFrame?.backgroundOnly === true) return 'background-only';
-  if (cachedFrame) return 'cached';
   return 'empty';
 }
 
@@ -425,7 +424,8 @@ function getCachedRotoFrame(
   if (typeof (frames as ReadonlySet<number>).has === 'function') {
     return (frames as ReadonlySet<number>).has(frame) ? createSyntheticRotoCacheFrame(frame) : null;
   }
-  const entry = (frames as readonly (PhysicPaintRotoCacheFrame | number)[]).find((candidate) => typeof candidate === 'number' ? candidate === frame : candidate.appFrame === frame);
+  const entries = (frames as readonly (PhysicPaintRotoCacheFrame | number)[]).filter((candidate) => typeof candidate === 'number' ? candidate === frame : candidate.appFrame === frame);
+  const entry = entries.find((candidate) => typeof candidate === 'number' || candidate.source === 'real-key') ?? entries[0];
   if (entry === undefined) return null;
   return typeof entry === 'number' ? createSyntheticRotoCacheFrame(entry) : entry;
 }

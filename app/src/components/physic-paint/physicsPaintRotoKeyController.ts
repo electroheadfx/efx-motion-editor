@@ -76,6 +76,7 @@ export interface RotoKeyUtilityTransactionInput {
   realKeyFrames: readonly PhysicPaintRotoCacheFrame[];
   cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
   copiedKeyFrame?: PhysicPaintRotoCacheFrame | null;
+  canvasSize?: { width: number; height: number };
   buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
 }
 
@@ -158,7 +159,8 @@ export function deriveRotoKeyUtilityActionState({
 
 export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionInput): RotoKeyUtilityTransaction {
   const currentFrame = normalizeFrame(input.currentFrame) ?? 0;
-  const realFramesByFrame = new Map(normalizeRealKeyFrames(input.realKeyFrames).map((frame) => [frame.appFrame, frame]));
+  const canvasSize = normalizeCanvasSize(input.canvasSize);
+  const realFramesByFrame = new Map(normalizeRealKeyFrames(input.realKeyFrames, canvasSize).map((frame) => [frame.appFrame, frame]));
   const generatedFrames = collectGeneratedFrames(input.cachedRotoFrames);
   const referenceFrames = collectReferenceFrames(input.cachedRotoFrames, currentFrame);
   const realKeyNumbers = Array.from(realFramesByFrame.keys()).sort((a, b) => a - b);
@@ -178,11 +180,11 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
       .map((frame) => frame >= targetFrame ? frame + 1 : frame)
       .concat(targetFrame);
     const realKeyFrames = normalizeFrameNumbers(nextFrames).map((frame) => {
-      if (frame === targetFrame) return normalizeRealKeyFrame(sourcePayload, targetFrame);
+      if (frame === targetFrame) return normalizeRealKeyFrame(sourcePayload, targetFrame, canvasSize);
       const originalFrame = frame > targetFrame ? frame - 1 : frame;
       const payload = realFramesByFrame.get(originalFrame);
       if (!payload) throw new Error(`No cached payload for shifted frame ${originalFrame}.`);
-      return normalizeRealKeyFrame(payload, frame);
+      return normalizeRealKeyFrame(payload, frame, canvasSize);
     });
     return makeTransaction({
       operation: input.operation,
@@ -199,13 +201,13 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
 
   if (input.operation === 'insert') {
     const shiftedFrames = realKeyNumbers.filter((frame) => frame >= currentFrame).sort((a, b) => b - a);
-    const blankFrame = normalizeRealKeyFrame(input.buildBlankRotoFrame(currentFrame), currentFrame);
+    const blankFrame = normalizeRealKeyFrame(input.buildBlankRotoFrame(currentFrame), currentFrame, canvasSize);
     const realKeyFrames = normalizeFrameNumbers([...realKeyNumbers.map((frame) => frame >= currentFrame ? frame + 1 : frame), currentFrame]).map((frameNumber) => {
       if (frameNumber === currentFrame) return blankFrame;
       const originalFrame = frameNumber > currentFrame ? frameNumber - 1 : frameNumber;
       const payload = realFramesByFrame.get(originalFrame);
       if (!payload) throw new Error(`No cached payload for shifted frame ${originalFrame}.`);
-      return normalizeRealKeyFrame(payload, frameNumber);
+      return normalizeRealKeyFrame(payload, frameNumber, canvasSize);
     });
     return makeTransaction({
       operation: input.operation,
@@ -228,7 +230,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
       .map((frame) => {
         const payload = realFramesByFrame.get(frame);
         if (!payload) throw new Error(`No cached payload for shifted frame ${frame}.`);
-        return normalizeRealKeyFrame(payload, frame > currentFrame ? frame - 1 : frame);
+        return normalizeRealKeyFrame(payload, frame > currentFrame ? frame - 1 : frame, canvasSize);
       })
       .sort((a, b) => a.appFrame - b.appFrame);
     const nextHasCurrentFrame = realKeyFrames.some((frame) => frame.appFrame === currentFrame);
@@ -247,8 +249,8 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
 
   const copiedKeyFrame = input.copiedKeyFrame;
   if (!copiedKeyFrame) throw new Error('Copy a real Roto key before pasting.');
-  const pastedFrame = normalizeRealKeyFrame(copiedKeyFrame, currentFrame);
-  const realKeyFrames = normalizeRealKeyFrames([...Array.from(realFramesByFrame.values()).filter((frame) => frame.appFrame !== currentFrame), pastedFrame]);
+  const pastedFrame = normalizeRealKeyFrame(copiedKeyFrame, currentFrame, canvasSize);
+  const realKeyFrames = normalizeRealKeyFrames([...Array.from(realFramesByFrame.values()).filter((frame) => frame.appFrame !== currentFrame), pastedFrame], canvasSize);
   return makeTransaction({
     operation: input.operation,
     realKeyFrames,
@@ -331,23 +333,24 @@ function cleanup(generatedFrames: readonly number[], referenceFrames: readonly n
   };
 }
 
-function normalizeRealKeyFrames(frames: readonly PhysicPaintRotoCacheFrame[]): PhysicPaintRotoCacheFrame[] {
+function normalizeRealKeyFrames(frames: readonly PhysicPaintRotoCacheFrame[], canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame[] {
   const byFrame = new Map<number, PhysicPaintRotoCacheFrame>();
   for (const frame of frames) {
     const appFrame = normalizeFrame(frame.appFrame);
     if (appFrame === null) continue;
     if (frame.source !== 'real-key') continue;
-    byFrame.set(appFrame, normalizeRealKeyFrame(frame, appFrame));
+    byFrame.set(appFrame, normalizeRealKeyFrame(frame, appFrame, canvasSize));
   }
   return Array.from(byFrame.values()).sort((a, b) => a.appFrame - b.appFrame);
 }
 
-function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: number): PhysicPaintRotoCacheFrame {
+function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: number, canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame {
   const next: PhysicPaintRotoCacheFrame = {
     ...frame,
     appFrame,
     frameIndex: 0,
     source: 'real-key',
+    ...(canvasSize ? { width: canvasSize.width, height: canvasSize.height } : {}),
   };
   delete next.nearestRealKeyFrame;
   return next;
@@ -372,6 +375,12 @@ function normalizeFrameNumbers(frames: readonly number[]): number[] {
 function normalizeFrame(frame: unknown): number | null {
   if (typeof frame !== 'number' || !Number.isInteger(frame) || frame < 0) return null;
   return frame;
+}
+
+function normalizeCanvasSize(size: { width: number; height: number } | undefined): { width: number; height: number } | undefined {
+  if (!size) return undefined;
+  if (!Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0) return undefined;
+  return { width: Math.trunc(size.width), height: Math.trunc(size.height) };
 }
 
 function nearestFrame(frames: readonly number[], target: number): number | null {

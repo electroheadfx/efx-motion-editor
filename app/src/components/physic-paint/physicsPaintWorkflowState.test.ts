@@ -88,6 +88,13 @@ describe('physicsPaintWorkflowState', () => {
     expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-generated');
     expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).isEditableTarget).toBe(false);
 
+    const realAndGeneratedCollision = [
+      { frameIndex: 0, appFrame: 10, dataUrl: 'data:image/png;base64,generated-ten', source: 'generated-interpolation' as const, nearestRealKeyFrame: 6 },
+      { frameIndex: 0, appFrame: 10, dataUrl: 'data:image/png;base64,real-ten', source: 'real-key' as const },
+    ];
+    expect(getRotoCellViewModel({ frame: 10, currentFrame: 10, cachedFrames: realAndGeneratedCollision, editableFrames: [] }).baseMeaning).toBe('cached');
+    expect(getRotoCellViewModel({ frame: 10, currentFrame: 10, cachedFrames: realAndGeneratedCollision, editableFrames: [] }).isEditableTarget).toBe(true);
+
     expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('background-only');
     expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Background only on frame 8');
     expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-background-only');
