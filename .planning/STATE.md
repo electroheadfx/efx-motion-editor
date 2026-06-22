@@ -5,8 +5,8 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.7
 current_phase_name: Physics Paint Roto Key Utilities
 status: planning
-stopped_at: Phase 36.7 inserted, ready to plan Phase 36.7
-last_updated: "2026-06-22T05:26:50.484Z"
+stopped_at: Phase 36.7 context gathered
+last_updated: "2026-06-22T06:17:00.485Z"
 last_activity: 2026-06-21
 last_activity_desc: Phase 36.7 inserted after Phase 36
 progress:
@@ -155,6 +155,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-21T08:09:55.750Z
-Stopped at: Phase 36.7 inserted, ready to plan Phase 36.7
-Resume file: None
+Last session: 2026-06-22T06:17:00.479Z
+Stopped at: Phase 36.7 context gathered
+Resume file: .planning/phases/36.7-physics-paint-roto-key-utilities-use-specs-36-x-phases-phase/36.7-CONTEXT.md
