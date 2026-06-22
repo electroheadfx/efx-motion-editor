@@ -245,7 +245,7 @@ Use SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md as the
 **Mode:** mvp
 **Requirements**: 36.7-DUP, 36.7-INS, 36.7-DEL, 36.7-COPY-PASTE, 36.7-STUDIO, 36.7-UI
 **Depends on:** Phase 36
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 
@@ -255,7 +255,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 36.7-02-PLAN.md — Wire Studio save-before-action orchestration and cache mutation.
+- [x] 36.7-02-PLAN.md — Wire Studio save-before-action orchestration and cache mutation.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
