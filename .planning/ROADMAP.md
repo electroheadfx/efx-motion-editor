@@ -245,13 +245,13 @@ Use SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md as the
 **Mode:** mvp
 **Requirements**: 36.7-DUP, 36.7-INS, 36.7-DEL, 36.7-COPY-PASTE, 36.7-STUDIO, 36.7-UI
 **Depends on:** Phase 36
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 36.7-01-PLAN.md — Define and test real Roto key utility transforms and eligibility.
+- [x] 36.7-01-PLAN.md — Define and test real Roto key utility transforms and eligibility.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
