@@ -645,12 +645,12 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain("kind: 'replace-roto-key-frames'");
     expect(studio).toContain('await sendPhysicPaintApplyPayload(payload');
     expect(studio).toContain('pendingRotoKeyActionMessageRef');
-    expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, result.targetFrame)');
-    expect(studio).toContain('if (engine && result.removedFrame === currentFrame)');
+    expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, frame)');
+    expect(studio).toContain("transaction.activeRestore.kind === 'blank-real-key'");
     expect(studio).toContain('setSuppressRotoOnionOverlay(true);');
     expect(studio).toContain('!suppressRotoOnionOverlay && onionPreviewFrames.length > 0');
     expect(studio).toContain('setSuppressRotoOnionOverlay(false);');
-    expect(studio).toContain('setCachedRotoReferenceUrl(null);\n        setSuppressRotoOnionOverlay(true);\n        if (result.frames.includes(currentFrame)) loadCachedRotoReferenceFrame(currentFrame, previewEngine);');
+    expect(studio).toContain('transaction.activeRestore.kind === \'load-real-key\'');
     expect(studio).toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
     expect(studio).toContain('const preservedByFrame = new Map((current.cachedRotoFrames ?? []).map((frame) => [frame.appFrame, frame]))');
     expect(studio).toContain('localByFrame.get(frame) ?? preservedByFrame.get(frame)');
@@ -664,9 +664,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
     expect(pasteIndex).toBeGreaterThan(-1);
     expect(pasteBlock).toContain('canPasteRotoKeyTarget');
-    expect(pasteBlock).toContain('replaceRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');
-    expect(pasteBlock).toContain('physicPaintStore.upsertRealRotoKeyFrame');
-    expect(pasteBlock).toContain("return { frames: result.frames, message: `Pasted key to frame ${currentFrame}.` }");
+    expect(pasteBlock).toContain('buildRotoKeyUtilityTransaction');
+    expect(pasteBlock).toContain("operation: 'paste'");
+    expect(pasteBlock).toContain('copiedKeyFrame: copiedRotoKeyRef.current?.cachedFrame');
     expect(pasteBlock).not.toContain('requireCurrentRealRotoKey()');
     expect(pasteBlock).not.toContain('canUseRotoKeySource');
   });

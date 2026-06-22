@@ -82,7 +82,7 @@ describe('physicsPaintRotoKeyController transaction coherence', () => {
       [2, 'data:image/png;base64,real-two'],
       [5, 'data:image/png;base64,real-six'],
     ]);
-    expect(transaction.removedFrames).toEqual([5, 6, 4, 7]);
+    expect(transaction.removedFrames).toEqual([4, 5, 6, 7]);
     expect(transaction.cleanup.deletedFrames).toEqual([5]);
     expect(transaction.cleanup.generatedFrames).toEqual([4, 7]);
     expect(transaction.activeRestore).toEqual({ kind: 'load-real-key', frame: 5 });
