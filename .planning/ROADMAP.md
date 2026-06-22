@@ -245,7 +245,7 @@ Use SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md as the
 **Mode:** mvp
 **Requirements**: 36.7-DUP, 36.7-INS, 36.7-DEL, 36.7-COPY-PASTE, 36.7-STUDIO, 36.7-UI
 **Depends on:** Phase 36
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 
@@ -259,7 +259,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 36.7-03-PLAN.md — Render and style the contextual Roto key utility pill.
+- [x] 36.7-03-PLAN.md — Render and style the contextual Roto key utility pill.
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
