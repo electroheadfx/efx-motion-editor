@@ -43,6 +43,7 @@ export interface PhysicPaintRotoCacheFrame extends PhysicPaintRenderedFrame {
   source: PhysicPaintRotoFrameSource;
   nearestRealKeyFrame?: number;
   backgroundOnly?: boolean;
+  onionDataUrl?: string;
 }
 
 export interface PhysicPaintPlayRenderOptionsSnapshot {
@@ -130,6 +131,7 @@ export interface PhysicPaintApplyCanvasPayload {
   renderedFrame: PhysicPaintRenderedFrame;
   editableState: SerializedProject;
   backgroundOnly?: boolean;
+  onionDataUrl?: string;
   closeWindowAfterApply?: boolean;
 }
 
@@ -303,6 +305,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   if (value.kind === 'apply-canvas') {
     return isPhysicPaintRenderedFrame(value.renderedFrame, value.startFrame, 0) &&
       (value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean') &&
+      (value.onionDataUrl === undefined || isRenderedPngDataUrl(value.onionDataUrl)) &&
       (value.closeWindowAfterApply === undefined || typeof value.closeWindowAfterApply === 'boolean');
   }
 
@@ -373,6 +376,7 @@ export function isPhysicPaintRotoCacheFrame(value: unknown): value is PhysicPain
   if (!isRecord(value)) return false;
   if (value.source !== 'real-key' && value.source !== 'generated-interpolation') return false;
   if (!optionalNonNegativeInteger(value.nearestRealKeyFrame)) return false;
+  if (value.onionDataUrl !== undefined && !isRenderedPngDataUrl(value.onionDataUrl)) return false;
   return value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean';
 }
 

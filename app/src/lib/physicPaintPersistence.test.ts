@@ -73,6 +73,29 @@ describe('physicPaintPersistence', () => {
     });
   });
 
+  it('stores transparent Roto onion frames as project cache files', async () => {
+    const output = makeOutput();
+    output[0].roto_cache_metadata = [{
+      ...output[0].frames[0],
+      source: 'real-key',
+      onionDataUrl: 'data:image/png;base64,BAUG',
+    }];
+
+    const persisted = await savePhysicPaintData('/project', output);
+
+    expect(persisted[0].roto_cache_metadata?.[0]).toMatchObject({
+      appFrame: 12,
+      source: 'real-key',
+      cache_path: 'cache/physic-paint/physic_layer_1/frame-000012-0000.png',
+      onion_cache_path: 'cache/physic-paint/physic_layer_1/onion-000012-0000.png',
+    });
+    expect(JSON.stringify(persisted)).not.toContain('data:image/png');
+    expect(files.has('/project/cache/physic-paint/physic_layer_1/onion-000012-0000.png')).toBe(true);
+
+    const hydrated = await loadPhysicPaintData('/project', persisted);
+    expect(hydrated?.[0].roto_cache_metadata?.[0].onionDataUrl).toBe('data:image/png;base64,BAUG');
+  });
+
   it('skips unsafe persisted cache paths while loading project data', async () => {
     files.set('/secret.png', new Uint8Array([1, 2, 3]));
     files.set('/project/cache/physic-paint/physic_layer_1/frame-000012-0000.png', new Uint8Array([4, 5, 6]));

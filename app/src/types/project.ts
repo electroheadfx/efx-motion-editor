@@ -42,8 +42,9 @@ export interface McePhysicPaintCachedFrame {
   height?: number;
 }
 
-export type McePhysicPaintRotoCachedFrame = Omit<PhysicPaintRotoCacheFrame, 'dataUrl'> & {
+export type McePhysicPaintRotoCachedFrame = Omit<PhysicPaintRotoCacheFrame, 'dataUrl' | 'onionDataUrl'> & {
   cache_path?: string;
+  onion_cache_path?: string;
 };
 
 export interface McePhysicPaintOutput {

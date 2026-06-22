@@ -1,6 +1,8 @@
 import {describe, it, expect, beforeEach} from 'vitest';
 import {projectStore} from './projectStore';
 import {audioStore} from './audioStore';
+import {sequenceStore} from './sequenceStore';
+import {physicPaintStore} from './physicPaintStore';
 import type {AudioTrack} from '../types/audio';
 import type {RuntimeMceProject} from '../types/project';
 
@@ -40,6 +42,8 @@ function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
 describe('projectStore audio persistence', () => {
   beforeEach(() => {
     audioStore.reset();
+    sequenceStore.reset();
+    physicPaintStore.reset();
   });
 
   describe('AUDIO-07: buildMceProject', () => {
@@ -84,6 +88,46 @@ describe('projectStore audio persistence', () => {
     it('outputs empty audio_tracks when none exist', () => {
       const project = projectStore.buildMceProject();
       expect(project.audio_tracks).toEqual([]);
+    });
+
+    it('omits cached physics paint outputs for deleted layer ids', () => {
+      sequenceStore.add({
+        id: 'seq-1',
+        kind: 'fx',
+        name: 'Physics Paint',
+        fps: 24,
+        width: 1920,
+        height: 1080,
+        keyPhotos: [],
+        layers: [{
+          id: 'active-layer',
+          name: 'Active Physics',
+          type: 'physic-paint',
+          visible: true,
+          opacity: 1,
+          blendMode: 'normal',
+          transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 },
+          source: { type: 'physic-paint', layerId: 'active-cache' },
+        }],
+        inFrame: 0,
+        outFrame: 24,
+      });
+      physicPaintStore.setFrame('active-cache', 1, {
+        frameIndex: 0,
+        appFrame: 1,
+        dataUrl: 'data:image/png;base64,AQID',
+        width: 100,
+        height: 50,
+      });
+      physicPaintStore.setFrame('deleted-cache', 1, {
+        frameIndex: 0,
+        appFrame: 1,
+        dataUrl: 'data:image/png;base64,BAUG',
+        width: 100,
+        height: 50,
+      });
+
+      expect(projectStore.buildMceProject().physic_paint_outputs?.map(output => output.layer_id)).toEqual(['active-cache']);
     });
   });
 

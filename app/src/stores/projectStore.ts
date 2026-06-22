@@ -53,8 +53,21 @@ const isSaving = signal(false);
 // --- Helpers ---
 
 /** Build MceProject from current store state */
+function getActivePhysicPaintLayerIds(): Set<string> {
+  const ids = new Set<string>();
+  for (const sequence of sequenceStore.sequences.value) {
+    for (const layer of sequence.layers) {
+      if (layer.type !== 'physic-paint' || layer.source.type !== 'physic-paint') continue;
+      ids.add(layer.id);
+      ids.add(layer.source.layerId);
+    }
+  }
+  return ids;
+}
+
 function buildMceProject(): RuntimeMceProject {
   const projectRoot = dirPath.value ?? '';
+  const activePhysicPaintLayerIds = getActivePhysicPaintLayerIds();
 
   // Convert sequences to MceSequence format
   const mceSequences: MceSequence[] = sequenceStore.sequences.value.map(
@@ -269,7 +282,7 @@ function buildMceProject(): RuntimeMceProject {
       preview_quality: motionBlurStore.previewQuality.peek(),
       export_sub_frames: exportStore.motionBlurSubFrames.peek(),
     },
-    physic_paint_outputs: physicPaintStore.toMceOutputs(),
+    physic_paint_outputs: physicPaintStore.toMceOutputs().filter(output => activePhysicPaintLayerIds.has(output.layer_id)),
   };
 }
 

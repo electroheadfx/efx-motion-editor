@@ -50,6 +50,7 @@ export interface PhysicsPaintWorkflowOnionPreviewFrame {
   direction: 'previous' | 'next';
   distance: number;
   source: 'roto' | 'play';
+  kind?: 'stroke-preview' | 'cached-composite';
 }
 
 export type PhysicsPaintWorkflowConfirmation = 'convert-play-to-roto' | 'convert-roto-to-play';

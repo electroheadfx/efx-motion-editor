@@ -77,12 +77,14 @@ function _cloneRotoInterpolationSettings(settings: PhysicPaintRotoInterpolationS
 }
 
 function _makeRotoCacheFrame(renderedFrame: PhysicPaintRenderedFrame, appFrame: number, source: PhysicPaintRotoCacheFrame['source'], nearestRealKeyFrame?: number, backgroundOnly?: boolean): PhysicPaintRotoCacheFrame {
+  const onionDataUrl = (renderedFrame as { onionDataUrl?: unknown }).onionDataUrl;
   return {
     ...renderedFrame,
     appFrame,
     source,
     ...(nearestRealKeyFrame !== undefined ? { nearestRealKeyFrame } : {}),
     ...(backgroundOnly !== undefined ? { backgroundOnly } : {}),
+    ...(typeof onionDataUrl === 'string' ? { onionDataUrl } : {}),
   };
 }
 
@@ -634,7 +636,7 @@ export const physicPaintStore = {
     }
 
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
-    this.upsertRealRotoKeyFrame(payload.layerId, payload.startFrame, payload.renderedFrame, payload.backgroundOnly === true);
+    this.upsertRealRotoKeyFrame(payload.layerId, payload.startFrame, { ...payload.renderedFrame, ...(payload.onionDataUrl ? { onionDataUrl: payload.onionDataUrl } : {}) }, payload.backgroundOnly === true);
     return {
       operationId: payload.operationId,
       kind: payload.kind,

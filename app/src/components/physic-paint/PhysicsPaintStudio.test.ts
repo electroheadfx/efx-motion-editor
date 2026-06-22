@@ -42,9 +42,10 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).not.toContain('<div class="physics-paint-onion-overlay canvas-region" aria-hidden="true">');
   });
 
-  it('keeps reference overlays below the live paint cursor and stroke preview', () => {
+  it('keeps reference overlays above the base canvas but below the live paint cursor and stroke preview', () => {
     const css = styles();
 
+    expect(css).toContain('.demo-canvas-shell .paint-canvas canvas {\n  z-index: 2 !important;');
     expect(css).toContain('.physics-paint-onion-overlay.canvas-region {\n  inset: auto;\n  z-index: 3;');
     expect(css).toContain('.demo-canvas-shell .paint-canvas canvas + canvas {\n  z-index: 4 !important;');
     expect(css).toContain('mix-blend-mode: multiply');
@@ -56,8 +57,10 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
 
     expect(flushBlock).toContain('const renderedFrame = buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)');
-    expect(flushBlock).toContain('rotoPreviewFramesRef.current.set(frame, backgroundOnly ? renderedFrame : buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight))');
+    expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight)');
+    expect(flushBlock).toContain('rotoPreviewFramesRef.current.set(frame, onionFrame ?? renderedFrame)');
     expect(flushBlock).toContain('renderedFrame,');
+    expect(flushBlock).toContain("...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {})");
   });
 
   it('persists Roto background metadata from standalone paper settings without creating cached cells', () => {
@@ -72,12 +75,43 @@ describe('PhysicsPaintStudio onion preview contract', () => {
   it('defaults onion skinning off with next-frame onion disabled, while preserving manual controls', () => {
     const text = source();
 
-    expect(text).toContain('const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 60 }');
+    expect(text).toContain('const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 50 }');
+    expect(text).toContain('const ONION_DEPTH_OPACITY = [0.5, 0.25, 0.15] as const');
     expect(text).toContain('useState<PhysicsPaintOnionState>(DEFAULT_ONION_STATE)');
-    expect(text).toContain('const onionOpacity = clampOnionOpacity(onion.opacity) / 100');
     expect(text).toContain("frame.direction === 'previous' && onion.previous");
     expect(text).toContain("frame.direction === 'next' && onion.next");
-    expect(text).toContain('Math.max(0.08, onionOpacity - frame.distance * 0.08)');
+    expect(text).toContain('style={{ opacity: getOnionFrameOpacity(frame.distance) }}');
+  });
+
+  it('uses saved transparent onion payloads for cached Roto key onion frames', () => {
+    const text = source();
+    const types = readFileSync(fileURLToPath(new URL('../../types/physicPaint.ts', import.meta.url)), 'utf8');
+    const store = readFileSync(fileURLToPath(new URL('../../stores/physicPaintStore.ts', import.meta.url)), 'utf8');
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
+    const onionBlock = text.slice(text.indexOf('const buildOnionPreviewFrames = useCallback'), text.indexOf('const convertPlayToRoto = useCallback'));
+
+    expect(types).toContain('onionDataUrl?: string');
+    expect(store).toContain('payload.onionDataUrl');
+    expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight)');
+    expect(flushBlock).toContain("...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {})");
+    expect(onionBlock).toContain('const addOnionCandidate = (frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame');
+    expect(onionBlock).toContain("if (frame.source && frame.source !== 'real-key') return;");
+    expect(onionBlock).toContain('if (frame.backgroundOnly) return;');
+    expect(onionBlock).toContain("onionKind: 'stroke-preview'");
+    expect(onionBlock).toContain("frame.source === 'real-key' ? 'cached-composite' : 'stroke-preview'");
+    expect(onionBlock).toContain('physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
+    expect(onionBlock).toContain('dirtyRotoFramesRef.current.has(frameNumber) || !candidates.has(frameNumber)');
+  });
+
+  it('renders onion frames above cached current-frame references inside the overlay', () => {
+    const css = styles();
+    const onionRuleStart = css.indexOf('.physics-paint-onion-frame {');
+    const onionRule = css.slice(onionRuleStart, css.indexOf('}', onionRuleStart));
+    const cachedRotoRuleStart = css.lastIndexOf('.physics-paint-cached-roto-reference {');
+    const cachedRotoRule = css.slice(cachedRotoRuleStart, css.indexOf('}', cachedRotoRuleStart));
+
+    expect(onionRule).toContain('z-index: 2;');
+    expect(cachedRotoRule).toContain('z-index: 1;');
   });
 });
 
@@ -669,8 +703,9 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
     expect(text).toContain('const upsertCachedRotoFrameInLaunchContext = useCallback');
     expect(upsertHelperBlock).toContain("source: 'real-key'");
+    expect(upsertHelperBlock).toContain('onionDataUrl: onionFrame.dataUrl');
     expect(upsertCallbackBlock).toContain('cachedRotoFrames: upsertCachedRotoCacheFrame');
-    expect(flushBlock).toContain('upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly)');
+    expect(flushBlock).toContain('upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame)');
     expect(flushBlock).not.toContain('savePendingRotoFrames()');
   });
 

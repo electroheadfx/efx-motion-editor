@@ -9,7 +9,7 @@ import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT
 import { physicPaintStore } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
-import { canPasteRotoKeyTarget, clampOnionCount, clampOnionOpacity, getPreviewFps, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
+import { canPasteRotoKeyTarget, clampOnionCount, getPreviewFps, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 import { applyRotoKeyUtilityTransactionToLocalState, buildRotoKeyUtilityTransaction, deriveRotoKeyUtilityActionState, type RotoKeyUtilityTransaction } from './physicsPaintRotoKeyController';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
@@ -21,7 +21,8 @@ const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper
 const DEFAULT_CANVAS_WIDTH = 1000;
 const DEFAULT_CANVAS_HEIGHT = 650;
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
-const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 60 };
+const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 50 };
+const ONION_DEPTH_OPACITY = [0.5, 0.25, 0.15] as const;
 const PLAY_LIMIT_TOAST_DISMISS_MS = 5000;
 type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -147,11 +148,12 @@ function getSavedRotoMarkersFromLaunchContext(context: PhysicPaintLaunchContext 
   return getRealCachedRotoFrameNumbers(context).map((frame) => ({ frame, saved: true, label: `Frame ${frame}` }));
 }
 
-function upsertCachedRotoCacheFrame(frames: PhysicPaintRotoCacheFrame[] | undefined, renderedFrame: RenderedFramePayload, backgroundOnly: boolean): PhysicPaintRotoCacheFrame[] {
+function upsertCachedRotoCacheFrame(frames: PhysicPaintRotoCacheFrame[] | undefined, renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null): PhysicPaintRotoCacheFrame[] {
   const cachedFrame: PhysicPaintRotoCacheFrame = {
     ...renderedFrame,
     source: 'real-key',
     ...(backgroundOnly ? { backgroundOnly: true } : {}),
+    ...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {}),
   };
   return [
     ...(frames ?? []).filter((frame) => frame.appFrame !== renderedFrame.appFrame),
@@ -391,6 +393,10 @@ function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number, wi
   return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height });
 }
 
+function getOnionFrameOpacity(distance: number): number {
+  return ONION_DEPTH_OPACITY[Math.max(0, Math.min(ONION_DEPTH_OPACITY.length - 1, distance - 1))];
+}
+
 function PhysicsPaintCanvasStack(props: { children: ComponentChildren; cachedPlayPreviewUrl?: string | null; cachedRotoReferenceUrl?: string | null; cachedRotoPlaybackUrl?: string | null; inputDisabled?: boolean; inputDisabledMessage?: string; onionOverlay: ComponentChildren; onInputIntent?: () => void }) {
   const stackRef = useRef<HTMLDivElement>(null);
   const [canvasBounds, setCanvasBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -557,7 +563,7 @@ export function PhysicsPaintStudio() {
   const engineRef = useRef<EfxPaintEngine | null>(null);
   const pendingRotoAdvanceRef = useRef<number | null>(null);
   const saveOnLeaveSourceFrameRef = useRef<number | null>(null);
-  const saveOnLeaveRenderedFrameRef = useRef<{ renderedFrame: RenderedFramePayload; backgroundOnly: boolean } | null>(null);
+  const saveOnLeaveRenderedFrameRef = useRef<{ renderedFrame: RenderedFramePayload; backgroundOnly: boolean; onionFrame?: RenderedFramePayload | null } | null>(null);
   const saveOnLeaveDeleteFrameRef = useRef<number | null>(null);
   const dirtyRotoFramesRef = useRef<Set<number>>(new Set());
   const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null);
@@ -1061,10 +1067,10 @@ export function PhysicsPaintStudio() {
     setCachedRotoPlaybackFrame(null);
   }, []);
 
-  const upsertCachedRotoFrameInLaunchContext = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean) => {
+  const upsertCachedRotoFrameInLaunchContext = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null) => {
     setLaunchContext((current) => current ? {
       ...current,
-      cachedRotoFrames: upsertCachedRotoCacheFrame(current.cachedRotoFrames, renderedFrame, backgroundOnly),
+      cachedRotoFrames: upsertCachedRotoCacheFrame(current.cachedRotoFrames, renderedFrame, backgroundOnly, onionFrame),
     } : current);
   }, []);
 
@@ -1351,7 +1357,8 @@ export function PhysicsPaintStudio() {
         (engine as PreviewBackgroundEngine).resetBackground();
         const backgroundOnly = isBackgroundOnlyRotoFrame(editableState);
         const renderedFrame = buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight);
-        rotoPreviewFramesRef.current.set(frame, backgroundOnly ? renderedFrame : buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight));
+        const onionFrame = backgroundOnly ? null : buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight);
+        rotoPreviewFramesRef.current.set(frame, onionFrame ?? renderedFrame);
         setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, frame));
         if (backgroundOnly) {
           removeEditableRotoFrame(frame);
@@ -1372,15 +1379,16 @@ export function PhysicsPaintStudio() {
           editableState,
           renderedFrame,
           ...(backgroundOnly ? { backgroundOnly: true } : {}),
+          ...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {}),
         };
         pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: frame };
         options.onPayload?.(payload);
         await sendPhysicPaintApplyPayload(payload, bridgeMode);
         if (saveOnLeaveSourceFrameRef.current === frame) {
-          saveOnLeaveRenderedFrameRef.current = { renderedFrame, backgroundOnly };
+          saveOnLeaveRenderedFrameRef.current = { renderedFrame, backgroundOnly, onionFrame };
         } else {
           dirtyRotoFramesRef.current.delete(frame);
-          upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly);
+          upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame);
         }
         syncPendingRotoFrames();
         startApplyTimeout(operationId);
@@ -1561,7 +1569,7 @@ export function PhysicsPaintStudio() {
       const nextFrame = pendingRotoAdvanceRef.current;
       const deletedFrame = saveOnLeaveDeleteFrameRef.current === frame;
       if (saveOnLeaveSourceFrameRef.current === frame && saveOnLeaveRenderedFrameRef.current) {
-        upsertCachedRotoFrameInLaunchContext(saveOnLeaveRenderedFrameRef.current.renderedFrame, saveOnLeaveRenderedFrameRef.current.backgroundOnly);
+        upsertCachedRotoFrameInLaunchContext(saveOnLeaveRenderedFrameRef.current.renderedFrame, saveOnLeaveRenderedFrameRef.current.backgroundOnly, saveOnLeaveRenderedFrameRef.current.onionFrame);
       } else if (deletedFrame) {
         removeCachedRotoFrameFromLaunchContext(frame);
       }
@@ -2168,24 +2176,40 @@ export function PhysicsPaintStudio() {
   const buildOnionPreviewFrames = useCallback((): PhysicsPaintWorkflowOnionPreviewFrame[] => {
     if (isPlaying || !launchContext) return [];
     const count = clampOnionCount(onion.count);
+    const candidates = new Map<number, RenderedFramePayload & { onionKind?: PhysicsPaintWorkflowOnionPreviewFrame['kind'] }>();
     const frames: PhysicsPaintWorkflowOnionPreviewFrame[] = [];
-    const addFrame = (frame: RenderedFramePayload, source: 'roto' | 'play') => {
-      const distance = Math.abs(frame.appFrame - currentFrame);
-      if (distance < 1 || distance > count) return;
+    const addOnionCandidate = (frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame, 'backgroundOnly' | 'onionDataUrl' | 'source'>>) => {
+      if (frame.source && frame.source !== 'real-key') return;
+      if (frame.backgroundOnly) return;
+      candidates.set(frame.appFrame, typeof frame.onionDataUrl === 'string'
+        ? { ...frame, dataUrl: frame.onionDataUrl, onionKind: 'stroke-preview' }
+        : { ...frame, onionKind: frame.source === 'real-key' ? 'cached-composite' : 'stroke-preview' });
+    };
+    const addFrame = (frame: RenderedFramePayload & { onionKind?: PhysicsPaintWorkflowOnionPreviewFrame['kind'] }, direction: 'previous' | 'next', distance: number) => {
       frames.push({
         frame: frame.appFrame,
         dataUrl: frame.dataUrl,
-        direction: frame.appFrame < currentFrame ? 'previous' : 'next',
+        direction,
         distance,
-        source,
+        source: 'roto',
+        kind: frame.onionKind,
       });
     };
-    for (const frame of physicPaintStore.getFrames(launchContext.layerId).values()) {
-      addFrame(frame, 'roto');
+    for (const frame of launchContext.cachedRotoFrames ?? []) addOnionCandidate(frame);
+    for (const frame of physicPaintStore.getRotoCacheFrames(launchContext.layerId)) addOnionCandidate(frame);
+    for (const [frameNumber, frame] of rotoPreviewFramesRef.current) {
+      if (dirtyRotoFramesRef.current.has(frameNumber) || !candidates.has(frameNumber)) addOnionCandidate(frame);
     }
-    for (const frame of rotoPreviewFramesRef.current.values()) {
-      addFrame(frame, 'roto');
-    }
+    const previousFrames = [...candidates.values()]
+      .filter((frame) => frame.appFrame < currentFrame)
+      .sort((a, b) => b.appFrame - a.appFrame)
+      .slice(0, count);
+    const nextFrames = [...candidates.values()]
+      .filter((frame) => frame.appFrame > currentFrame)
+      .sort((a, b) => a.appFrame - b.appFrame)
+      .slice(0, count);
+    previousFrames.forEach((frame, index) => addFrame(frame, 'previous', index + 1));
+    nextFrames.forEach((frame, index) => addFrame(frame, 'next', index + 1));
     return frames.sort((a, b) => b.distance - a.distance);
   }, [currentFrame, isPlaying, launchContext, onion.count]);
 
@@ -2464,7 +2488,6 @@ export function PhysicsPaintStudio() {
   const onionPreviewFrames = buildOnionPreviewFrames().filter((frame) => (
     (frame.direction === 'previous' && onion.previous) || (frame.direction === 'next' && onion.next)
   ));
-  const onionOpacity = clampOnionOpacity(onion.opacity) / 100;
   const missingPlayFramesForConversion = useMemo(() => {
     if (!launchContext) return true;
     const frameCount = clampPhysicPaintFrameCount(framesToApply);
@@ -2573,9 +2596,9 @@ export function PhysicsPaintStudio() {
             onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
               <img
                 key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`}
-                class={`physics-paint-onion-frame ${frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`}
+                class={`physics-paint-onion-frame ${frame.kind === 'cached-composite' ? 'physics-paint-onion-cached-composite' : frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`}
                 src={frame.dataUrl}
-                style={{ opacity: Math.max(0.08, onionOpacity - frame.distance * 0.08) }}
+                style={{ opacity: getOnionFrameOpacity(frame.distance) }}
                 alt=""
               />
             )) : null}
