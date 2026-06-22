@@ -474,9 +474,9 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const statusRuleStart = css.indexOf('.physics-paint-roto-status-stack {');
     const statusRule = css.slice(statusRuleStart, css.indexOf('}', statusRuleStart));
 
-    expect(studioRule).toContain('grid-template-rows: 58px minmax(0, 1fr) 212px');
+    expect(studioRule).toContain('grid-template-rows: 58px minmax(0, 1fr) 256px');
     expect(studioRule).not.toContain('grid-template-rows: 58px minmax(0, 1fr) auto');
-    expect(stripRule).toContain('height: 212px');
+    expect(stripRule).toContain('height: 256px');
     expect(stripRule).toContain('overflow: hidden');
     expect(statusRule).toContain('min-height: 66px');
     expect(statusRule).toContain('max-height: 66px');

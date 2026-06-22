@@ -409,7 +409,7 @@ button.destructive {
 
 .physics-paint-studio {
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr) 212px;
+  grid-template-rows: 58px minmax(0, 1fr) 256px;
   grid-template-columns: 52px minmax(0, 1fr) minmax(316px, 340px);
   width: 100vw;
   height: 100vh;
@@ -1039,7 +1039,7 @@ button.destructive {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  height: 212px;
+  height: 256px;
   min-height: 0;
   padding: 8px 12px 10px;
   border-top: 1px solid #5a5e63;
