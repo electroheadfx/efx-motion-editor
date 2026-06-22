@@ -354,14 +354,25 @@ function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElemen
   }
 }
 
-function buildRotoFrameFromCanvas(canvas: HTMLCanvasElement, appFrame: number): RenderedFramePayload {
+function buildRotoFrameFromCanvas(canvas: HTMLCanvasElement, appFrame: number, size?: { width: number; height: number }): RenderedFramePayload {
+  const outputCanvas = size ? drawCanvasAtSize(canvas, size) : canvas;
   return {
     frameIndex: 0,
     appFrame,
-    dataUrl: canvas.toDataURL('image/png'),
-    width: canvas.width,
-    height: canvas.height,
+    dataUrl: outputCanvas.toDataURL('image/png'),
+    width: outputCanvas.width,
+    height: outputCanvas.height,
   };
+}
+
+function drawCanvasAtSize(canvas: HTMLCanvasElement, size: { width: number; height: number }): HTMLCanvasElement {
+  if (canvas.width === size.width && canvas.height === size.height) return canvas;
+  const output = document.createElement('canvas');
+  output.width = size.width;
+  output.height = size.height;
+  const context = output.getContext('2d');
+  context?.drawImage(canvas, 0, 0, size.width, size.height);
+  return output;
 }
 
 function buildBlankRotoFrame(width: number, height: number, appFrame: number): RenderedFramePayload {
@@ -371,12 +382,12 @@ function buildBlankRotoFrame(width: number, height: number, appFrame: number): R
   return buildRotoFrameFromCanvas(canvas, appFrame);
 }
 
-function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload {
-  return buildRotoFrameFromCanvas(engine.exportCompositeCanvas(), appFrame);
+function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload {
+  return buildRotoFrameFromCanvas(engine.exportCompositeCanvas(), appFrame, { width, height });
 }
 
-function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload {
-  return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame);
+function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload {
+  return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height });
 }
 
 function PhysicsPaintCanvasStack(props: { children: ComponentChildren; cachedPlayPreviewUrl?: string | null; cachedRotoReferenceUrl?: string | null; cachedRotoPlaybackUrl?: string | null; inputDisabled?: boolean; inputDisabledMessage?: string; onionOverlay: ComponentChildren; onInputIntent?: () => void }) {
@@ -1126,12 +1137,12 @@ export function PhysicsPaintStudio() {
       return false;
     }
     rotoFrameStatesRef.current.set(appFrame, currentState);
-    rotoPreviewFramesRef.current.set(appFrame, buildRotoOnionPreviewFrame(engine, appFrame));
+    rotoPreviewFramesRef.current.set(appFrame, buildRotoOnionPreviewFrame(engine, appFrame, canvasWidth, canvasHeight));
     setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, appFrame));
     if (hasEditableRotoContent(currentState)) addEditableRotoFrame(appFrame);
     else removeEditableRotoFrame(appFrame);
     return true;
-  }, [addEditableRotoFrame, cachedRotoReferenceUrl, currentFrame, engine, launchContext, removeEditableRotoFrame]);
+  }, [addEditableRotoFrame, cachedRotoReferenceUrl, canvasHeight, canvasWidth, currentFrame, engine, launchContext, removeEditableRotoFrame]);
 
   const toggleRotoCachedPlayback = useCallback(() => {
     if (isRotoCachedPlaybackActive) {
@@ -1339,8 +1350,8 @@ export function PhysicsPaintStudio() {
         setCachedRotoReferenceUrl(null);
         (engine as PreviewBackgroundEngine).resetBackground();
         const backgroundOnly = isBackgroundOnlyRotoFrame(editableState);
-        const renderedFrame = buildRotoOutputFrame(engine, frame);
-        rotoPreviewFramesRef.current.set(frame, backgroundOnly ? renderedFrame : buildRotoOnionPreviewFrame(engine, frame));
+        const renderedFrame = buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight);
+        rotoPreviewFramesRef.current.set(frame, backgroundOnly ? renderedFrame : buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight));
         setOccupiedRotoFrames((frames) => addOccupiedRotoFrame(frames, frame));
         if (backgroundOnly) {
           removeEditableRotoFrame(frame);
@@ -1394,13 +1405,14 @@ export function PhysicsPaintStudio() {
 
     rotoFlushInFlightRef.current = flushPromise;
     return flushPromise;
-  }, [actionContext, addEditableRotoFrame, currentFrame, removeCachedRotoFrameFromLaunchContext, removeEditableRotoFrame, startApplyTimeout, syncPendingRotoFrames, upsertCachedRotoFrameInLaunchContext]);
+  }, [actionContext, addEditableRotoFrame, canvasHeight, canvasWidth, currentFrame, removeCachedRotoFrameFromLaunchContext, removeEditableRotoFrame, startApplyTimeout, syncPendingRotoFrames, upsertCachedRotoFrameInLaunchContext]);
 
   const navigateToSyncedFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     if (rotoFlushInFlightRef.current || applyStatus === 'applying') return false;
     stopRotoCachedPlayback();
     setSuppressRotoOnionOverlay(false);
+    setCachedRotoReferenceUrl(null);
     setCachedRotoPlaybackFrame(null);
     if (engine && launchContext) {
       snapshotCurrentRotoFrame();
@@ -1422,6 +1434,7 @@ export function PhysicsPaintStudio() {
     if (!Number.isInteger(frame) || frame < 0) return false;
     stopRotoCachedPlayback();
     setSuppressRotoOnionOverlay(false);
+    setCachedRotoReferenceUrl(null);
     setCachedRotoPlaybackFrame(null);
     if (engine && launchContext) {
       const nextState = rotoFrameStatesRef.current.get(frame);

@@ -22,10 +22,12 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).toContain("engine.setBgMode('transparent')");
     expect(text).toContain('return engine.exportCompositeCanvas()');
     expect(text).toContain('engine.load(state)');
-    expect(text).toContain('function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload');
-    expect(text).toContain('return buildRotoFrameFromCanvas(engine.exportCompositeCanvas(), appFrame)');
-    expect(text).toContain('function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number): RenderedFramePayload');
-    expect(text).toContain('return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame)');
+    expect(text).toContain('function drawCanvasAtSize(canvas: HTMLCanvasElement, size: { width: number; height: number }): HTMLCanvasElement');
+    expect(text).toContain('context?.drawImage(canvas, 0, 0, size.width, size.height)');
+    expect(text).toContain('function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload');
+    expect(text).toContain('return buildRotoFrameFromCanvas(engine.exportCompositeCanvas(), appFrame, { width, height })');
+    expect(text).toContain('function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload');
+    expect(text).toContain('return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height })');
   });
 
   it('clips the onion overlay to measured canvas bounds, not the full canvas stack', () => {
@@ -53,8 +55,8 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     const text = source();
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
 
-    expect(flushBlock).toContain('const renderedFrame = buildRotoOutputFrame(engine, frame)');
-    expect(flushBlock).toContain('rotoPreviewFramesRef.current.set(frame, backgroundOnly ? renderedFrame : buildRotoOnionPreviewFrame(engine, frame))');
+    expect(flushBlock).toContain('const renderedFrame = buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)');
+    expect(flushBlock).toContain('rotoPreviewFramesRef.current.set(frame, backgroundOnly ? renderedFrame : buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight))');
     expect(flushBlock).toContain('renderedFrame,');
   });
 
@@ -455,6 +457,14 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('class="physics-paint-cached-roto-reference"');
   });
 
+  it('clears stale cached Roto reference overlays before navigation loads the destination frame', () => {
+    const text = source();
+    const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
+
+    expect(navigateBlock).toContain('setCachedRotoReferenceUrl(null)');
+    expect(navigateBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(navigateBlock.indexOf('loadCachedRotoReferenceFrame(frame)'));
+  });
+
   it('shows cached Roto references at full opacity while keeping them out of replacement exports', () => {
     const text = source();
     const css = styles();
@@ -465,8 +475,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(cssRule).not.toContain('opacity: 0.78');
     expect(cssRule).not.toMatch(/opacity:\s*0\.[0-9]+/);
     expect(cssRule).toContain('outline:');
-    expect(flushBlock.indexOf('(engine as PreviewBackgroundEngine).resetBackground()')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame)'));
-    expect(flushBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame)'));
+    expect(flushBlock.indexOf('(engine as PreviewBackgroundEngine).resetBackground()')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
+    expect(flushBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
   });
 
   it('keeps beforeunload snapshot-only while explicit Save current remains the cache write path', () => {
@@ -867,10 +877,11 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(shortcutsBlock).not.toContain('Copy frame');
     expect(shortcutsBlock).not.toContain('Paste frame');
     expect(text).toContain('const [hasCopiedRotoKey, setHasCopiedRotoKey]');
-    expect(text).toContain('function isCurrentFrameARealRotoKey()');
-    expect(text).toContain("setApplyMessage('Key utilities require a real Roto key. Generated in-betweens are render-only.');");
+    expect(text).toContain('deriveRotoKeyUtilityActionState');
+    expect(text).toContain('const requireCurrentRealRotoKey = useCallback');
+    expect(text).toContain("setApplyMessage(actionState.disabledReason ?? 'Key utilities require a real Roto key. Generated in-betweens are render-only.');");
     expect(text).toContain('physicPaintStore.regenerateRotoInterpolationCache');
     expect(text).not.toContain("rotoFrameStatesRef.current.set(result.targetFrame, { source: 'generated-interpolation'");
-    expect(text).toContain('getNearestRealRotoKeyFrame(currentFrame, physicPaintStore.getRealRotoKeyFrames(launchContext.layerId))');
+    expect(text).not.toContain('getNearestRealRotoKeyFrame(currentFrame, physicPaintStore.getRealRotoKeyFrames(launchContext.layerId))');
   });
 });
