@@ -89,6 +89,7 @@ export interface PhysicsPaintWorkflowStripProps {
   onCopyRotoFrame?: () => void;
   onPasteRotoFrame?: () => void;
   hasCopiedRotoKey?: boolean;
+  keyActionInFlight?: boolean;
   onSaveRotoFrame: () => void;
   onSavePendingRotoFrames: () => void;
   onSavePlay: () => void;
