@@ -569,4 +569,31 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).not.toContain('Render all');
     expect(rotoControlsBlock).not.toContain('Save all');
   });
+
+  it('wires D-08/D-09 Studio Roto key utilities through one save-before-action runner', () => {
+    const studio = studioSource();
+
+    expect(studio).toContain('const runRotoKeyAction = useCallback(async');
+    expect(studio).toContain('setRotoKeyActionInFlight(true)');
+    expect(studio).toContain('setApplyMessage(`Saving frame ${sourceFrame} before ${actionLabel}...`)');
+    expect(studio).toContain('const payload = await flushRotoFrame(sourceFrame, { force: true })');
+    expect(studio).toContain('if (!payload) {');
+    expect(studio).toContain('setApplyMessage(`Could not save frame ${sourceFrame}; ${actionLabel} was cancelled.`)');
+    expect(studio).toContain('dirtyRotoFramesRef.current.add(sourceFrame)');
+    expect(studio).toContain('keyActionInFlight={rotoKeyActionInFlight}');
+  });
+
+  it('keeps D-06 Paste target eligibility separate from source-only real-key guards', () => {
+    const studio = studioSource();
+    const pasteIndex = studio.indexOf('const pasteRotoFrame = useCallback');
+    const nextActionIndex = studio.indexOf('const saveEditableState = useCallback', pasteIndex);
+    const pasteBlock = studio.slice(pasteIndex, nextActionIndex);
+
+    expect(pasteIndex).toBeGreaterThan(-1);
+    expect(pasteBlock).toContain('canPasteRotoKeyTarget');
+    expect(pasteBlock).toContain('replaceRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');
+    expect(pasteBlock).toContain('physicPaintStore.upsertRealRotoKeyFrame');
+    expect(pasteBlock).not.toContain('requireCurrentRealRotoKey()');
+    expect(pasteBlock).not.toContain('canUseRotoKeySource');
+  });
 });
