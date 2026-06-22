@@ -243,13 +243,27 @@ Use SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md as the
 
 **Goal:** As a stop-motion animator, I want to duplicate, insert, delete, copy, and paste real Roto keys, so that I can build frame-by-frame animation efficiently.
 **Mode:** mvp
-**Requirements**: TBD
+**Requirements**: 36.7-DUP, 36.7-INS, 36.7-DEL, 36.7-COPY-PASTE, 36.7-STUDIO, 36.7-UI
 **Depends on:** Phase 36
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 36.7 to break down)
+**Wave 1**
+
+- [ ] 36.7-01-PLAN.md — Define and test real Roto key utility transforms and eligibility.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 36.7-02-PLAN.md — Wire Studio save-before-action orchestration and cache mutation.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 36.7-03-PLAN.md — Render and style the contextual Roto key utility pill.
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 36.7-04-PLAN.md — Run final focused checks and user-owned live UAT.
 
 ### Phase 36.6: Physics Paint Roto Save On Leave
 
