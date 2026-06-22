@@ -1887,8 +1887,17 @@ function cmdVerifyCodebaseDrift(cwd, raw) {
             else if (status === 'D')
                 deleted.push(file);
         }
-        const config = loadConfig(cwd);
-        const wf = config?.workflow;
+        // loadConfig() returns a flattened object — there is no nested `workflow`
+        // key. Read the raw config.json directly to access workflow-scoped keys,
+        // matching the pattern used in check-command-router.cts:readWorkflowConfig.
+        let wf;
+        try {
+            const rawCfg = JSON.parse(node_fs_1.default.readFileSync(node_path_1.default.join(planningDir(cwd), 'config.json'), 'utf-8'));
+            wf = rawCfg['workflow'];
+        }
+        catch {
+            wf = undefined;
+        }
         const threshold = Number.isInteger(wf?.drift_threshold) && wf?.drift_threshold >= 1
             ? wf?.drift_threshold
             : 3;

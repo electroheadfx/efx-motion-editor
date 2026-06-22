@@ -22,7 +22,7 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseIdModule = require("./phase-id.cjs");
-const { escapeRegex, phaseMarkdownRegexSource } = phaseIdModule;
+const { escapeRegex, phaseMarkdownRegexSource, phaseMarkdownRegexSourceExact, stripProjectCodePrefix, OPTIONAL_PROJECT_CODE_PREFIX_SOURCE, } = phaseIdModule;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const planningWorkspace = require("./planning-workspace.cjs");
 const { planningDir } = planningWorkspace;
@@ -170,8 +170,8 @@ function replaceInCurrentMilestone(content, pattern, replacement) {
     const after = content.slice(offset);
     return before + after.replace(pattern, replacement);
 }
-function findRoadmapPhaseInContent(content, phaseNum) {
-    const phasePattern = new RegExp(`#{2,4}\\s*(?:\\[[^\\]]+\\]\\s*)?Phase\\s+${phaseMarkdownRegexSource(phaseNum)}:\\s*([^\\n]+)`, 'i');
+function findRoadmapPhaseInContent(content, phaseNum, phaseSource) {
+    const phasePattern = new RegExp(`#{2,4}\\s*(?:\\[[^\\]]+\\]\\s*)?Phase\\s+${phaseSource ?? phaseMarkdownRegexSource(phaseNum)}:\\s*([^\\n]+)`, 'i');
     const headerMatch = content.match(phasePattern);
     if (!headerMatch)
         return null;
@@ -191,6 +191,21 @@ function findRoadmapPhaseInContent(content, phaseNum) {
         section,
     };
 }
+function roadmapPhaseLookupSources(phaseNum) {
+    const sources = [];
+    const exactSource = phaseMarkdownRegexSourceExact(phaseNum);
+    if (exactSource)
+        sources.push(exactSource);
+    const numericSource = phaseMarkdownRegexSource(phaseNum);
+    // Source order matters: the bare numeric source is tried before the
+    // prefix-tolerant form so that a canonical bare heading ("Phase 117:") is
+    // preferred over a drifted prefixed heading ("Phase MANIFOLD-117:") when
+    // both exist in the same ROADMAP.  The prefix-tolerant form is the fallback
+    // that handles the drifted-only case.
+    sources.push(numericSource);
+    sources.push(`${OPTIONAL_PROJECT_CODE_PREFIX_SOURCE}${numericSource}`);
+    return [...new Set(sources)];
+}
 function getRoadmapPhaseInternal(cwd, phaseNum) {
     if (!phaseNum)
         return null;
@@ -202,10 +217,16 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
         if (roadmapRaw === null)
             throw new Error('missing');
         const content = extractCurrentMilestone(roadmapRaw, cwd);
-        const scopedResult = findRoadmapPhaseInContent(content, phaseNum);
-        if (scopedResult)
-            return scopedResult;
-        return findRoadmapPhaseInContent(stripShippedMilestones(roadmapRaw), phaseNum);
+        const fullContent = stripShippedMilestones(roadmapRaw);
+        for (const source of roadmapPhaseLookupSources(phaseNum)) {
+            const scopedResult = findRoadmapPhaseInContent(content, phaseNum, source);
+            if (scopedResult)
+                return scopedResult;
+            const fullResult = findRoadmapPhaseInContent(fullContent, phaseNum, source);
+            if (fullResult)
+                return fullResult;
+        }
+        return null;
     }
     catch {
         return null;
@@ -380,7 +401,7 @@ function getMilestonePhaseFilter(cwd, versionOverride, phaseIdConvention) {
         const customMatch = dirName.match(/^([A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*)/);
         if (customMatch && normalized.has(customMatch[1].toLowerCase()))
             return true;
-        const stripped = dirName.replace(/^[A-Z]{1,6}-(?=\d)/i, '');
+        const stripped = stripProjectCodePrefix(dirName);
         if (stripped !== dirName) {
             const sm = stripped.match(numericRe);
             if (sm && normalized.has(normalizePhaseIdSegments(sm[1]).toLowerCase()))

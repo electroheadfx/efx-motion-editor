@@ -25,33 +25,6 @@ const runtimeArtifactConversion = require("./runtime-artifact-conversion.cjs");
 const conversionExports = runtimeArtifactConversion;
 // In .cts (CommonJS output) files, `require` is available as a global.
 const _require = require;
-/**
- * Load bin/install.js exports in a test-safe way.
- * Sets GSD_TEST_MODE only for the duration of the require() call and only if
- * it was not already set, restoring the original value in a finally block so
- * the module-level environment is never permanently mutated.
- */
-function loadInstallExports() {
-    const savedTestMode = process.env['GSD_TEST_MODE'];
-    if (savedTestMode === undefined)
-        process.env['GSD_TEST_MODE'] = '1';
-    try {
-        return _require('../../../bin/install.js');
-    }
-    finally {
-        if (savedTestMode === undefined)
-            delete process.env['GSD_TEST_MODE'];
-        else
-            process.env['GSD_TEST_MODE'] = savedTestMode;
-    }
-}
-/** Cache after first successful load. */
-let _installExports = null;
-function getInstallExports() {
-    if (!_installExports)
-        _installExports = loadInstallExports();
-    return _installExports;
-}
 // ---------------------------------------------------------------------------
 // Source root finders
 // ---------------------------------------------------------------------------
@@ -330,4 +303,4 @@ function resolveRuntimeArtifactLayoutFromRegistry(registry, runtime, configDir, 
     const kinds = entries.map((entry) => dispatchKindEntry(entry, runtime, configDir, scope));
     return { runtime, configDir, scope, kinds };
 }
-module.exports = { resolveRuntimeArtifactLayout, resolveRuntimeArtifactLayoutFromRegistry, findInstallSourceRoot, getInstallExports };
+module.exports = { resolveRuntimeArtifactLayout, resolveRuntimeArtifactLayoutFromRegistry, findInstallSourceRoot };

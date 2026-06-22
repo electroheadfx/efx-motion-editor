@@ -288,6 +288,13 @@ function projectProhibitions(items) {
             if (typeof p.check_violation_fixture === 'string' && p.check_violation_fixture.trim() !== '') {
                 entry.check_violation_fixture = String(p.check_violation_fixture);
             }
+            // `check_clean_fixture` (#1346) rides BOTH kinds — the KNOWN-CLEAN control subject the prover
+            // requires to stay GREEN (content-dependence proof). Emit ONLY a non-empty fixture (blank ->
+            // absent so no control runs; the documented residual remains). Like the violation fixture it is
+            // meaningless without the descriptor, so it lives inside this well-formed-descriptor branch.
+            if (typeof p.check_clean_fixture === 'string' && p.check_clean_fixture.trim() !== '') {
+                entry.check_clean_fixture = String(p.check_clean_fixture);
+            }
         }
         out.push(entry);
     }

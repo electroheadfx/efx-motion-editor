@@ -15,7 +15,10 @@ const node_path_1 = __importDefault(require("node:path"));
 const node_child_process_1 = require("node:child_process");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const planningWorkspace = require("./planning-workspace.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const phaseIdMod = require("./phase-id.cjs");
 const { planningDir } = planningWorkspace;
+const { stripProjectCodePrefix } = phaseIdMod;
 // ─── Regex helpers ────────────────────────────────────────────────────────────
 // Matches legacy phase headings: ### Phase N: Name  (also decimal: Phase 2.1:)
 // Captures: (hashes)(spaces)(phase-number)(rest-of-line)
@@ -99,7 +102,7 @@ function assignSubIndices(phaseEntries) {
  */
 function extractPhaseNumFromDir(dirName) {
     // Strip optional project_code prefix: "GSD-01-setup" → "01-setup"
-    const stripped = dirName.replace(/^[A-Z]{1,6}-(?=\d)/i, '');
+    const stripped = stripProjectCodePrefix(dirName);
     // Matches: digits + optional letter + optional decimal suffix, followed by '-' or end.
     // e.g. "02.1-hotfix" → "02.1", "01-setup" → "01"
     const m = stripped.match(/^(\d+[A-Z]?(?:\.\d+)*)(?:-|$)/i);
@@ -113,7 +116,7 @@ function extractPhaseNumFromDir(dirName) {
  */
 function buildNewDirName(oldDirName, newId, projectCode) {
     // Strip existing project_code prefix
-    const stripped = oldDirName.replace(/^[A-Z]{1,6}-(?=\d)/i, '');
+    const stripped = stripProjectCodePrefix(oldDirName);
     // Extract slug: everything after "NN-" (the old phase num, including decimal like 02.1)
     const slugMatch = stripped.match(/^\d+[A-Z]?(?:\.\d+)*-(.*)/i);
     const slug = slugMatch ? slugMatch[1] : stripped;
@@ -383,20 +386,30 @@ function applyMigration(cwd, plan, options = {}) {
     if (gitStatus.trim().length > 0) {
         throw new Error('Working tree is dirty. Commit or stash changes before migrating.');
     }
-    // Capture HEAD sha for rollback
-    let headSha;
-    try {
-        headSha = (0, node_child_process_1.execSync)('git rev-parse HEAD', { cwd, encoding: 'utf8', windowsHide: true }).trim();
-    }
-    catch (err) {
-        throw new Error(`git rev-parse HEAD failed: ${err.message}`);
-    }
     const pDir = planningDir(cwd);
     const phasesDir = node_path_1.default.join(pDir, 'phases');
     const roadmapPath = node_path_1.default.join(pDir, 'ROADMAP.md');
     const configPath = node_path_1.default.join(pDir, 'config.json');
     const renamedDirs = [];
     const editedFiles = [];
+    // Surgical, git-independent rollback state (#1542). A `git reset --hard` +
+    // `git clean` rollback restores NOTHING for a gitignored `.planning/`
+    // (commit_docs:false — the default) and is a whole-repo operation besides.
+    // Instead, record the exact renames performed and snapshot each file before
+    // rewriting it, then undo precisely those on failure — correct whether
+    // `.planning/` is git-tracked or ignored.
+    const performedRenames = [];
+    const fileBackups = new Map();
+    const snapshotFile = (filePath) => {
+        if (fileBackups.has(filePath))
+            return;
+        try {
+            fileBackups.set(filePath, { existed: true, content: node_fs_1.default.readFileSync(filePath, 'utf8') });
+        }
+        catch {
+            fileBackups.set(filePath, { existed: false, content: '' });
+        }
+    };
     try {
         // 1. Rename phase directories
         for (const phaseEntry of plan.phases) {
@@ -404,6 +417,7 @@ function applyMigration(cwd, plan, options = {}) {
             const newPath = node_path_1.default.join(phasesDir, phaseEntry.newDir);
             if (node_fs_1.default.existsSync(oldPath)) {
                 node_fs_1.default.renameSync(oldPath, newPath);
+                performedRenames.push({ oldPath, newPath });
                 renamedDirs.push(`${phaseEntry.oldDir} → ${phaseEntry.newDir}`);
             }
         }
@@ -418,6 +432,7 @@ function applyMigration(cwd, plan, options = {}) {
                     lines[edit.lineIndex] = edit.to;
                 }
             }
+            snapshotFile(roadmapPath);
             node_fs_1.default.writeFileSync(roadmapPath, lines.join('\n'), 'utf8');
             editedFiles.push('ROADMAP.md');
         }
@@ -443,6 +458,7 @@ function applyMigration(cwd, plan, options = {}) {
                 }
             }
             if (changed) {
+                snapshotFile(filePath);
                 node_fs_1.default.writeFileSync(filePath, content, 'utf8');
                 editedFiles.push(fileName);
             }
@@ -454,19 +470,33 @@ function applyMigration(cwd, plan, options = {}) {
         }
         catch { /* config may not exist yet */ }
         configData['phase_id_convention'] = 'milestone-prefixed';
+        snapshotFile(configPath);
         node_fs_1.default.writeFileSync(configPath, JSON.stringify(configData, null, 2) + '\n', 'utf8');
         editedFiles.push('config.json');
     }
     catch (err) {
-        // Rollback via git reset --hard + git clean
-        try {
-            (0, node_child_process_1.execSync)(`git reset --hard ${headSha}`, { cwd, stdio: 'pipe', windowsHide: true });
-            (0, node_child_process_1.execSync)('git clean -fd .planning/phases/', { cwd, stdio: 'pipe', windowsHide: true });
+        // Surgical rollback: reverse the renames (newest first) and restore every
+        // file we snapshotted (deleting files that did not previously exist). This
+        // actually restores `.planning/` regardless of git tracking — so the
+        // "rolled back" claim is truthful — and never touches anything else.
+        for (let i = performedRenames.length - 1; i >= 0; i--) {
+            const { oldPath, newPath } = performedRenames[i];
+            try {
+                if (node_fs_1.default.existsSync(newPath))
+                    node_fs_1.default.renameSync(newPath, oldPath);
+            }
+            catch { /* best-effort */ }
         }
-        catch {
-            // Swallow rollback errors — surface original error
+        for (const [filePath, backup] of fileBackups) {
+            try {
+                if (backup.existed)
+                    node_fs_1.default.writeFileSync(filePath, backup.content, 'utf8');
+                else if (node_fs_1.default.existsSync(filePath))
+                    node_fs_1.default.unlinkSync(filePath);
+            }
+            catch { /* best-effort */ }
         }
-        throw new Error(`Migration failed (rolled back to ${headSha}): ${err.message}`);
+        throw new Error(`Migration failed and rolled back: ${err.message}`);
     }
     return { applied: true, renamedDirs, editedFiles };
 }

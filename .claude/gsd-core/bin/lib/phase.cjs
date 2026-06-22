@@ -32,7 +32,7 @@ const coreUtilsMod = require("./core-utils.cjs");
 const { toPosixPath, generateSlugInternal, readSubdirectories } = coreUtilsMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-id.cjs is an export= CommonJS module
 const phaseIdMod = require("./phase-id.cjs");
-const { escapeRegex, normalizePhaseName, phaseMarkdownRegexSource, comparePhaseNum, phaseTokenMatches } = phaseIdMod;
+const { escapeRegex, normalizePhaseName, phaseMarkdownRegexSource, comparePhaseNum, phaseTokenMatches, OPTIONAL_PROJECT_CODE_PREFIX_SOURCE, } = phaseIdMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-locator.cjs is an export= CommonJS module
 const phaseLocatorMod = require("./phase-locator.cjs");
 const { findPhaseInternal, getArchivedPhaseDirs } = phaseLocatorMod;
@@ -167,7 +167,7 @@ function cmdPhaseNextDecimal(cwd, basePhase, raw) {
             const entries = node_fs_1.default.readdirSync(phasesDir, { withFileTypes: true });
             const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
             baseExists = dirs.some((d) => phaseTokenMatches(d, normalized));
-            const dirPattern = new RegExp(`^(?:[A-Z]{1,6}-)?${escapeRegex(normalized)}\\.(\\d+)`);
+            const dirPattern = new RegExp(`^${OPTIONAL_PROJECT_CODE_PREFIX_SOURCE}${escapeRegex(normalized)}\\.(\\d+)`);
             for (const dir of dirs) {
                 const match = dir.match(dirPattern);
                 if (match)
@@ -310,7 +310,7 @@ function cmdFindPhase(cwd, phase, raw) {
             const match = dirs.find((d) => phaseTokenMatches(d, normalized));
             if (!match)
                 continue;
-            const dirMatch = match.match(/^(?:[A-Z]{1,6}-)(\d+[A-Z]?(?:\.\d+)*)-?(.*)/i) ||
+            const dirMatch = match.match(new RegExp(`^${OPTIONAL_PROJECT_CODE_PREFIX_SOURCE}(\\d+[A-Z]?(?:\\.\\d+)*)-?(.*)`, 'i')) ||
                 match.match(/^(\d+[A-Z]?(?:\.\d+)*)-?(.*)/i);
             const phaseNumber = dirMatch ? dirMatch[1] : normalized;
             const phaseName = dirMatch && dirMatch[2] ? dirMatch[2] : null;
@@ -756,7 +756,7 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
         try {
             const entries = node_fs_1.default.readdirSync(phasesDir, { withFileTypes: true });
             const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
-            const decimalPattern = new RegExp(`^(?:[A-Z]{1,6}-)?${escapeRegex(normalizedBase)}\\.(\\d+)`);
+            const decimalPattern = new RegExp(`^${OPTIONAL_PROJECT_CODE_PREFIX_SOURCE}${escapeRegex(normalizedBase)}\\.(\\d+)`);
             for (const dir of dirs) {
                 const dm = dir.match(decimalPattern);
                 if (dm)

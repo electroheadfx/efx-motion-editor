@@ -37,14 +37,17 @@ exports.canonicalPlanStem = canonicalPlanStem;
 exports.phaseVariants = phaseVariants;
 exports.buildRoadmapPhaseVariants = buildRoadmapPhaseVariants;
 exports.buildNotStartedPhaseVariants = buildNotStartedPhaseVariants;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const phaseIdMod = require("./phase-id.cjs");
+const { OPTIONAL_PROJECT_CODE_PREFIX_SOURCE } = phaseIdMod;
 // ── Issue #26: regex constants (W005, W006-archived) ────────────────────────
 // Matches legacy numeric dirs (01-setup), milestone-prefixed dirs (02-01-setup),
 // deep dirs (02-04-01-deep), and project-code-prefixed variants (GSD-02-01-setup).
-exports.phaseDirNameRe = /^(?:[A-Z]{1,6}-)?\d{2,}(?:-\d+)*(?:\.\d+)*-[\w-]+$/i;
+exports.phaseDirNameRe = new RegExp(`^${OPTIONAL_PROJECT_CODE_PREFIX_SOURCE}\\d{2,}(?:-\\d+)*(?:\\.\\d+)*-[\\w-]+$`, 'i');
 // Extracts the full phase token from a directory name, including milestone-prefixed
 // multi-segment tokens like "02-01" from "02-01-setup" or "GSD-02-01-setup".
 // Greedily captures all leading all-digit segments before the first letter-start segment.
-exports.PHASE_TOKEN_FROM_DIR_RE = /^(?:[A-Z]{1,6}-)?(\d+(?:-\d+)*[A-Z]?(?:\.\d+)*)(?:-[a-z]|$)/i;
+exports.PHASE_TOKEN_FROM_DIR_RE = new RegExp(`^${OPTIONAL_PROJECT_CODE_PREFIX_SOURCE}(\\d+(?:-\\d+)*[A-Z]?(?:\\.\\d+)*)(?:-[a-z]|$)`, 'i');
 exports.MILESTONE_ARCHIVE_DIR_RE = /^v\d+.*-phases$/i;
 // ── Issue #26: I001 canonicalization ────────────────────────────────────────
 function canonicalPlanStem(stem) {

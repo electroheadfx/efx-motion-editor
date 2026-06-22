@@ -33,7 +33,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
-const node_os_1 = __importDefault(require("node:os"));
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const installProfiles = require("./install-profiles.cjs");
@@ -41,7 +40,9 @@ const { readActiveProfile, resolveProfile, loadSkillsManifest, } = installProfil
 const clusters_cjs_1 = require("./clusters.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const runtimeArtifactLayout = require("./runtime-artifact-layout.cjs");
-const { findInstallSourceRoot, getInstallExports } = runtimeArtifactLayout;
+const { findInstallSourceRoot } = runtimeArtifactLayout;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const runtimeArtifactConversion = require("./runtime-artifact-conversion.cjs");
 const SURFACE_FILE_NAME = '.gsd-surface.json';
 /**
  * Read the surface state from a runtime config directory.
@@ -265,26 +266,18 @@ function applySurface(runtimeConfigDir, layout, manifest, clusterMap, registry) 
     const resolved = resolveSurface(layout.configDir, skillManifest, clusterMap, registry);
     // Mirror installRuntimeArtifacts: skills kinds get per-runtime path rewrites
     // so SKILL.md bodies reference the install target (pathPrefix), not the
-    // converter's default ~/.claude paths (#813). Computed lazily so command-only
-    // runtimes do not trigger the install.js require.
-    let pathPrefix = null;
+    // converter's default ~/.claude paths (#813). Delegated to the conversion
+    // module's deep seam (ADR-1508 / #1511 Phase 2) — no attribution resolver
+    // needed here (proven: Co-Authored-By never appears in staged content; see
+    // brief PROVEN KEY FACT). No getInstallExports() call required.
     for (const kind of layout.kinds) {
         const staged = kind.stage(resolved);
         if (kind.kind === 'skills') {
-            const installExports = getInstallExports();
-            if (pathPrefix === null) {
-                const scope = layout.scope ?? 'global';
-                const resolvedTarget = node_path_1.default.resolve(layout.configDir).replace(/\\/g, '/');
-                const homeDir = node_os_1.default.homedir().replace(/\\/g, '/');
-                pathPrefix = installExports.computePathPrefix({
-                    isGlobal: scope === 'global',
-                    isOpencode: layout.runtime === 'opencode',
-                    isWindowsHost: process.platform === 'win32',
-                    resolvedTarget,
-                    homeDir,
-                });
-            }
-            installExports.applyRuntimeContentRewritesInPlace(staged, layout.runtime, pathPrefix);
+            runtimeArtifactConversion.rewriteStagedSkillBodies(staged, {
+                runtime: layout.runtime,
+                configDir: layout.configDir,
+                scope: layout.scope ?? 'global',
+            });
         }
         const dest = node_path_1.default.join(layout.configDir, kind.destSubpath);
         _syncGsdDir(staged, dest, kind, skillManifest);

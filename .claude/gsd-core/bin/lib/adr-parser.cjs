@@ -58,7 +58,6 @@ const CANONICAL_HEADERS = {
         'candidates',
         'approaches considered',
         'variants',
-        'trade-offs',
         'pros and cons of the options',
         'discussion',
     ],
@@ -190,14 +189,30 @@ function normalizeAdrHeader(raw) {
         .replace(/[^\w\s]/g, '')
         .trim();
 }
-function classifyHeader(normalizedHeader) {
+// Normalized synonym index (audit M7). classifyHeader receives an ALREADY-normalized
+// header (via normalizeAdrHeader), but historically compared it against the RAW synonym
+// strings. Because normalizeAdrHeader collapses [\s:._-]+ to a space and strips [^\w\s],
+// any synonym carrying a hyphen/apostrophe/etc. ('trade-offs', "won't do", 'post-grilling')
+// could never match a normalized header — it was silently dead, and its ADR section went
+// unmapped. Normalizing BOTH sides closes that abstraction asymmetry once, so every synonym
+// (current and future) is reachable regardless of punctuation. Precomputed at module load to
+// avoid re-normalizing the whole table per call; insertion order is preserved so first-match-
+// wins and the exact-then-prefix precedence stay identical to the prior raw-compare loop.
+const _NORMALIZED_SYNONYM_INDEX = (() => {
+    const index = [];
     for (const [canonical, synonyms] of Object.entries(CANONICAL_HEADERS)) {
         for (const synonym of synonyms) {
-            if (normalizedHeader === synonym)
-                return canonical;
-            if (normalizedHeader.startsWith(`${synonym} `))
-                return canonical;
+            index.push([normalizeAdrHeader(synonym), canonical]);
         }
+    }
+    return index;
+})();
+function classifyHeader(normalizedHeader) {
+    for (const [synonym, canonical] of _NORMALIZED_SYNONYM_INDEX) {
+        if (normalizedHeader === synonym)
+            return canonical;
+        if (normalizedHeader.startsWith(`${synonym} `))
+            return canonical;
     }
     return null;
 }
