@@ -2041,9 +2041,16 @@ export function PhysicsPaintStudio() {
       for (const frame of result.shiftedFrames) moveRotoRealKey(frame, frame - 1);
       physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId);
       syncRotoKeyFrameLists(result.frames);
+      if (engine && result.removedFrame === currentFrame) {
+        const previewEngine = engine as PreviewBackgroundEngine;
+        previewEngine.resetBackground();
+        engine.clear();
+        setCachedRotoReferenceUrl(null);
+        if (result.frames.includes(currentFrame)) loadCachedRotoReferenceFrame(currentFrame, previewEngine);
+      }
       return { frames: result.frames, message: `Deleted key ${currentFrame}.` };
     });
-  }, [currentFrame, getRealRotoKeyFramesForStudio, launchContext, moveRotoRealKey, runRotoKeyAction, syncRotoKeyFrameLists]);
+  }, [currentFrame, engine, getRealRotoKeyFramesForStudio, launchContext, moveRotoRealKey, runRotoKeyAction, syncRotoKeyFrameLists]);
 
   const copyRotoFrame = useCallback(() => {
     void runRotoKeyCopyAction();

@@ -646,6 +646,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('await sendPhysicPaintApplyPayload(payload');
     expect(studio).toContain('pendingRotoKeyActionMessageRef');
     expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, result.targetFrame)');
+    expect(studio).toContain('if (engine && result.removedFrame === currentFrame)');
+    expect(studio).toContain('setCachedRotoReferenceUrl(null);\n        if (result.frames.includes(currentFrame)) loadCachedRotoReferenceFrame(currentFrame, previewEngine);');
     expect(studio).toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
     expect(studio).toContain('const preservedByFrame = new Map((current.cachedRotoFrames ?? []).map((frame) => [frame.appFrame, frame]))');
     expect(studio).toContain('localByFrame.get(frame) ?? preservedByFrame.get(frame)');
