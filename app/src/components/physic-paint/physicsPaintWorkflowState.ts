@@ -124,6 +124,18 @@ export interface RotoReplaceKeyResult {
   replaced: boolean;
 }
 
+export interface RotoKeySourceEligibilityInput {
+  frame: number;
+  realKeys: readonly number[];
+  generatedFrames?: readonly number[] | ReadonlySet<number>;
+}
+
+export interface RotoKeyPasteTargetEligibilityInput {
+  frame: number;
+  hasCopiedRealKey: boolean;
+  generatedFrames?: readonly number[] | ReadonlySet<number>;
+}
+
 export const PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE = 'Save or regenerate Play output before converting it to roto frames.';
 
 export function clampOnionCount(value: unknown): number {
@@ -358,6 +370,16 @@ export function replaceRotoKeyFrame(realKeys: number[], targetFrame: number): Ro
   };
 }
 
+export function canUseRotoKeySource({ frame, realKeys, generatedFrames }: RotoKeySourceEligibilityInput): boolean {
+  if (!isNonNegativeInteger(frame)) return false;
+  if (hasFrame(generatedFrames, frame)) return false;
+  return normalizeRealRotoKeyFrames([...realKeys]).includes(frame);
+}
+
+export function canPasteRotoKeyTarget({ frame, hasCopiedRealKey }: RotoKeyPasteTargetEligibilityInput): boolean {
+  return hasCopiedRealKey && isNonNegativeInteger(frame);
+}
+
 export {
   PHYSIC_PAINT_DEFAULT_APPLY_FRAMES,
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
@@ -437,6 +459,10 @@ function clampNonNegativeInteger(value: unknown, fallback: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.max(0, Math.trunc(numeric));
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 function clampNumber(value: number, min: number, max: number): number {
