@@ -238,6 +238,128 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 36.9: Physics Paint Roto State Machine Readiness
+
+Create a follow-up phase after 36.8 to evaluate and, if justified, introduce XState/state-machine ownership for Physics Paint Roto workflow transitions.
+
+Context:
+Phase 36.8 should first extract a small Preact-native Signals/controller state boundary for Roto key/session/cache coherence. That boundary should expose explicit action methods or dispatch-like transactions so it can later be migrated or wrapped by a state machine without rewriting UI wiring.
+
+Goal:
+Evaluate whether XState is the right state-machine layer for Physics Paint Roto and introduce it only if the transition model is clearer than a Signals/controller alone.
+
+Scope:
+
+- Build on Phase 36.8's Roto state boundary.
+- Identify Roto workflow states and guarded transitions: idle, real-key selected, generated/render-only selected, dirty, saving-before-action, save-failed, deleting, pasting, blank-key inserted, navigation blocked/resumed.
+- Decide whether XState is warranted based on concrete transition complexity and test readability.
+- If adopted, wrap or replace the 36.8 controller internals without changing PhysicsPaintStudio UI props/placement/labels.
+- Keep Signals where they remain useful for Preact rendering and derived UI state.
+- Do not rewrite the whole PhysicsPaintStudio component.
+- Do not change user-visible UI.
+- Do not add new controls or feature scope.
+
+Architecture constraints:
+
+- 36.8 should prepare the project with state-machine-shaped actions/transactions, not lock the implementation into scattered Signals.
+- XState, if introduced, must own transitions/rules; Signals may mirror selected derived state for Preact rendering.
+- Avoid prop drilling by exposing a compact session boundary to PhysicsPaintStudio and PhysicsPaintWorkflowStrip.
+- No broad useEffect orchestration for Roto key/cache coherence.
+
+TDD requirements:
+
+- Tests must cover the state transition graph and guarded actions before UI rewiring.
+- Existing Phase 36.7 and 36.8 Roto regression tests must continue to pass.
+- Add source-contract tests that PhysicsPaintStudio consumes the compact boundary instead of regaining scattered useState/useEffect orchestration.
+
+Success criteria:
+
+- Clear decision recorded: stay with Signals/controller or adopt XState.
+- If XState is adopted, transition rules are explicit, tested, and isolated from rendering.
+- PhysicsPaintStudio remains an adapter for UI wiring, persistence bridge, and canvas engine calls.
+- No user-visible UI changes.
+- No new feature scope. (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 36.8
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 36.9 to break down)
+
+### Phase 36.8: Physics Paint Roto State Refactor
+
+Create a new MVP/TDD phase for a narrow maintainability and correctness refactor after Phase 36.7.
+
+Problem:
+Phase 36.7 was completed, but implementation was difficult and produced repeated regressions around Insert/Delete/Paste, blank keys, deleted keys reappearing, yellow/translucent cached canvas state, and inconsistent timeline/cache/canvas behavior. The root cause appears to be that PhysicsPaintStudio has grown too large and coordinates Roto state through many local useState, useRef, launchContext mutations, canvas engine mutations, cache updates, and broad useEffect synchronization branches.
+
+Goal:
+Extract a small Preact-native Roto session/key state boundary so PhysicsPaintStudio stops owning all Roto key/cache coherence directly. Prefer @preact/signals for reactive state that moves outside PhysicsPaintStudio. Keep PhysicsPaintStudio as an adapter for UI wiring, bridge/store persistence, and canvas engine calls.
+
+MVP scope:
+
+- Focus only on Roto key/session state needed by the existing 36.7 utilities and Roto cache coherence.
+- Preserve all existing UI and behavior.
+- Do not add new controls, shortcuts, modals, toasts, interpolation UI, cached playback UI, or Play/Roto conversion UI.
+- Do not rewrite the whole PhysicsPaintStudio component.
+- Do not refactor unrelated paint modes or physics engine internals.
+- Do not replace hooks with Signals mechanically.
+- Use Signals only where they create a clearer external state boundary or derived state model.
+
+Desired state boundary:
+
+- Real Roto key ownership
+- Current/selected Roto frame
+- Dirty frame status
+- Copied key clipboard state
+- Generated/render-only frame markers
+- Blank inserted key state
+- Deleted-frame cleanup state
+- Restore intent for canvas/background/reference overlays
+- Derived action availability for Insert, Duplicate, Copy, Paste, Delete
+- Compact status/action feedback state if currently owned by scattered local state
+
+Architecture constraints:
+
+- PhysicsPaintStudio should consume derived state/actions from the new boundary instead of coordinating Roto utility coherence through additional useEffect branches.
+- New broad useEffect branches inside PhysicsPaintStudio should be forbidden unless they synchronize with a true external system.
+- Effects should be boundary effects only: bridge events, canvas engine lifecycle, parent persistence, or external window communication.
+- If state moves outside PhysicsPaintStudio, use @preact/signals or justify why a pure/stateless controller is safer.
+- Expose a compact Roto session object with explicit actions/transactions so PhysicsPaintStudio and PhysicsPaintWorkflowStrip avoid large prop lists.
+- Keep the boundary state-machine-shaped enough that Phase 36.9 can wrap or replace internals with XState without UI rewiring.
+- Keep the refactor incremental and regression-first.
+
+TDD requirements:
+Start with failing regression/source-contract tests proving:
+
+1. Inserted blank keys remain clean when navigating away/back and when painting.
+2. Deleted keys do not reappear from stale cache/canvas/background state.
+3. Paste onto empty/generated targets creates clean real keys and clears generated/render-only state.
+4. Duplicate behavior remains unchanged.
+5. Dirty save-before-action still preserves visible edits and cancels safely on save failure.
+6. UI labels and placement remain unchanged.
+7. PhysicsPaintStudio does not gain new broad useEffect orchestration for Roto key/cache coherence.
+
+Success criteria:
+
+- Existing Phase 36.7 UAT still passes.
+- Roto key/cache/canvas state derives from one coherent boundary.
+- PhysicsPaintStudio has less ownership of Roto utility state and fewer scattered state/ref mutation responsibilities.
+- No user-visible UI changes.
+- No new feature scope. (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 36
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 36.8 to break down)
+
 ### Phase 36.7: Physics Paint Roto Key Utilities
 
 Use SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md as the source of truth for this phase. (INSERTED)

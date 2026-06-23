@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 37
-current_phase_name: Future Integration Contract and Validation
+current_phase: 36.8
+current_phase_name: Physics Paint Roto State Refactor
 status: ready_to_plan
-stopped_at: Phase 36.7 complete, ready to plan Phase 37
-last_updated: "2026-06-22T18:54:38.591Z"
+stopped_at: Phase 36.8 inserted, ready to plan Phase 36.8
+last_updated: "2026-06-23T06:59:33.112Z"
 last_activity: 2026-06-22
-last_activity_desc: Phase 36.7 complete, transitioned to Phase 37
+last_activity_desc: Phase 36.8 inserted after Phase 36 for Roto state refactor
 progress:
-  total_phases: 11
+  total_phases: 13
   completed_phases: 10
   total_plans: 58
   completed_plans: 58
-  percent: 91
+  percent: 77
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 37 — Future Integration Contract and Validation
+**Current focus:** Phase 36.8 — Physics Paint Roto State Refactor
 
 ## Current Position
 
-Phase: 37 — Future Integration Contract and Validation
+Phase: 36.8 — Physics Paint Roto State Refactor
 Previous phase: 36.7 — Physics Paint Roto Key Utilities complete
 Plan: Not started
-Status: Ready to plan Phase 37
-Last activity: 2026-06-22 — Phase 36.7 complete, transitioned to Phase 37
-Next recommended action: `/gsd-plan-phase 37`
+Status: Ready to plan Phase 36.8
+Last activity: 2026-06-22 — Phase 36.8 inserted after Phase 36 for Roto state refactor
+Next recommended action: `/gsd-plan-phase 36.8`
 
 Progress: [████████████████████] 58/58 plans (100%)
 
@@ -145,6 +145,8 @@ None yet.
 - Phase 36.5 inserted after Phase 36: Physics Paint Roto Cell Semantics — Roto timeline cell semantics: make frame states visible and trustworthy in the UI, using SPECS/36.x-phases/timeline-ui/* as visual reference while keeping the MVP narrow. (URGENT)
 - Phase 36.6 inserted after Phase 36: Physics Paint Roto Save On Leave — source of truth: SPECS/36.x-phases/phase-36.6-save-on-leave/spec-36.6-save-on-leave.md (URGENT)
 - Phase 36.7 inserted after Phase 36: Physics Paint Roto Key Utilities; source of truth: SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md (URGENT)
+- Phase 36.8 inserted after Phase 36: Physics Paint Roto State Refactor (URGENT)
+- Phase 36.9 inserted after Phase 36: Physics Paint Roto State Machine Readiness (URGENT)
 
 ## Deferred Items
 
