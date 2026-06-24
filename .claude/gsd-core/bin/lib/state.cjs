@@ -19,7 +19,7 @@ const configLoaderMod = require("./config-loader.cjs");
 const { loadConfig } = configLoaderMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseIdMod = require("./phase-id.cjs");
-const { escapeRegex } = phaseIdMod;
+const { escapeRegex, normalizePhaseName, extractPhaseToken } = phaseIdMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const roadmapParserMod = require("./roadmap-parser.cjs");
 const { getMilestoneInfo, getMilestonePhaseFilter, extractCurrentMilestone } = roadmapParserMod;
@@ -65,6 +65,81 @@ process.on('exit', () => {
         catch { /* already gone */ }
     }
 });
+// ---------------------------------------------------------------------------
+// Lock liveness probe (test seam) — audit M1
+//
+// mtime is a LEAKY proxy for "the holder is still alive": a live-but-slow writer
+// whose critical section runs past staleThresholdMs ages out and a waiter would
+// steal its lock → two writers in STATE.md's read-modify-write window → lost
+// update / corruption (the recurring #500/#905/#1230 family). The real signal —
+// process.kill(pid, 0) — is already used by capability-lock.cts. We backport it
+// here. The indirection lets unit tests inject a deterministic isPidAlive without
+// real pids (mirrors capability-lock's _lockProbes / _setLockProbes seam).
+// ---------------------------------------------------------------------------
+/** Is `pid` a live process? process.kill(pid, 0) succeeds for a live (signalable) process. */
+function _realIsPidAlive(pid) {
+    try {
+        process.kill(pid, 0);
+        return true; // signalable → alive
+    }
+    catch (err) {
+        // EPERM = process exists but we cannot signal it (still ALIVE). ESRCH = gone.
+        return err.code === 'EPERM';
+    }
+}
+const _stateLockProbes = { isPidAlive: _realIsPidAlive };
+const _stateLockTestHooks = {};
+/**
+ * Consume the one-shot simulateWriteError errno, if set. Returns an Error with the
+ * configured `.code` and self-clears so only the NEXT writeSync throws (the retry
+ * then succeeds). Returns null when no injection is pending.
+ */
+function _consumeSimulatedWriteError() {
+    const code = _stateLockTestHooks.simulateWriteError;
+    if (!code)
+        return null;
+    _stateLockTestHooks.simulateWriteError = null; // one-shot
+    const e = new Error('simulated writeSync failure (' + code + ')');
+    e.code = code;
+    return e;
+}
+function _stateLockIsPidAlive(pid) {
+    return _stateLockProbes.isPidAlive(pid);
+}
+/**
+ * Is the holder recorded in the lock body VERIFIED-LIVE? The STATE.md lock body is
+ * a bare pid (written at acquire time). Returns true ONLY when the body parses to a
+ * positive integer pid AND that pid signals alive. A garbage / non-numeric / legacy
+ * body (or a dead pid) is NOT verified-live, so the lock stays stealable — corrupt
+ * locks never block forever, and a live holder is never stolen.
+ */
+function _stateHolderVerifiedLive(lockPath) {
+    const pid = _stateLockBodyPid(lockPath);
+    return pid !== null && _stateLockIsPidAlive(pid);
+}
+/**
+ * Parse the lock body to its recorded pid, or null when the body is empty / non-numeric
+ * / unreadable (legacy or mid-creation). Distinguishing a COMPLETE dead-pid body (steal
+ * promptly) from an EMPTY/unparseable one (the create→write window — do not steal while
+ * fresh) is what `_stateHolderVerifiedLive` alone cannot express, so the steal decision
+ * in acquireStateLock reads the pid directly (PR #1532 review, window a).
+ */
+function _stateLockBodyPid(lockPath) {
+    let body;
+    try {
+        body = node_fs_1.default.readFileSync(lockPath, 'utf-8');
+    }
+    catch {
+        return null; // unreadable body → cannot verify
+    }
+    const trimmed = body.trim();
+    const pid = parseInt(trimmed, 10);
+    if (!Number.isInteger(pid) || pid <= 0 || String(pid) !== trimmed)
+        return null;
+    return pid;
+}
+// Monotonic sequence for unique stale-steal rename targets (no crypto dependency).
+let _stateStealSeq = 0;
 // Hoisted to module scope — compiled once, not per call (#320). Stateless (/i, used with .match).
 const byPhaseTablePattern = /(\|\s*Phase\s*\|\s*Plans\s*\|\s*Total\s*\|\s*Avg\/Plan\s*\|[ \t]*\n\|(?:[- :\t]+\|)+[ \t]*\n)((?:[ \t]*\|[^\n]*\n)*)(?=\n|$)/i;
 // ─── ADR-1372 T6: seam-based section splice helper ───────────────────────────
@@ -1193,6 +1268,63 @@ function cmdStateSnapshot(cwd, raw) {
 }
 // ─── State Frontmatter Sync ──────────────────────────────────────────────────
 /**
+ * Canonical key for matching a ROADMAP phase token against an on-disk phase
+ * directory: normalizePhaseName collapses padding/case, strips the project-code
+ * prefix, and handles decimals/letter-suffixes/milestone-prefixed IDs, so
+ * "Phase 4"/"Phase 04"/dir "04-delta" and "Phase PROJ-42"/dir "PROJ-42-foo"
+ * each map to one key. For a directory, extract its phase token first.
+ *
+ * Stripping the project-code prefix is GSD's canonical phase identity (a
+ * project_code is a display prefix; normalizePhaseName / phaseTokenMatches treat
+ * `CK-01` and `01` as the same phase, which is what lets a prefixed dir match a
+ * bare ROADMAP token). A consistent project uses one scheme, so a bare numeric
+ * and a same-suffix project-code phase never coexist in one milestone.
+ */
+function phaseKeyFromToken(token) {
+    return normalizePhaseName(token).toUpperCase();
+}
+function phaseKeyFromDir(dir) {
+    return phaseKeyFromToken(extractPhaseToken(dir));
+}
+/**
+ * Extract the set of retired/folded phase keys from a ROADMAP milestone scope
+ * (#1514). A retired phase is struck through with GFM strikethrough,
+ * e.g. `- [x] ~~**Phase 04: Delta**~~ — folded into Phase 05; number retired`.
+ * Such a phase keeps a `[x]` mark and often a directory but ships no completion
+ * artifact, so it would otherwise inflate `total_phases` (the denominator)
+ * without ever satisfying the numerator, freezing a shipped milestone below
+ * 100%.
+ *
+ * Detection is scoped to the lines that canonically mark a phase retired — a
+ * checklist entry (`- [x] …`) or a phase heading (`#### Phase …`) — and within
+ * those, only a struck span whose SUBJECT is the phase counts: the phase
+ * reference must sit at the start of the `~~…~~` span (after optional markdown
+ * emphasis), as in `~~**Phase 04: Delta**~~`, `~~Phase 04~~`, or
+ * `~~Phase PROJ-42~~`. This ignores struck PROSE that merely mentions a phase
+ * (a goal line `~~folded into Phase 05~~`, or `~~Phase 04 was renamed~~`) and
+ * the fold target in `~~Phase 04~~ — folded into Phase 05` (outside the span).
+ * The phase token shape mirrors the heading counter's `[\w][\w.-]*` so numeric,
+ * decimal, and project-code IDs are detected alike. Returns canonical keys
+ * (see phaseKeyFromToken).
+ */
+function extractRetiredPhaseNumbers(scope) {
+    const retired = new Set();
+    const isChecklistOrHeading = /^\s*(?:[-*+]\s*\[[ xX]\]|#{1,6}\s)/;
+    for (const line of scope.split(/\r?\n/)) {
+        if (!isChecklistOrHeading.test(line))
+            continue;
+        const strikeSpan = /~~([^~]*?)~~/g;
+        let s;
+        while ((s = strikeSpan.exec(line)) !== null) {
+            const phaseRef = /^[\s*_]*Phase\s+([\w][\w.-]*)/i.exec(s[1]);
+            // Require a digit so struck prose like ~~Phase Overview~~ is ignored.
+            if (phaseRef && /\d/.test(phaseRef[1]))
+                retired.add(phaseKeyFromToken(phaseRef[1]));
+        }
+    }
+    return retired;
+}
+/**
  * Extract machine-readable fields from STATE.md markdown body and build
  * a YAML frontmatter object. Allows hooks and scripts to read state
  * reliably via `state json` instead of fragile regex parsing.
@@ -1242,6 +1374,21 @@ function buildStateFrontmatter(bodyContent, cwd) {
                 // on repeated buildStateFrontmatter invocations within the same process (#1967)
                 let cached = _diskScanCache.get(cwd);
                 if (!cached) {
+                    // Read the current-milestone ROADMAP scope once: it feeds both the
+                    // heading-based phase count below and the retired/folded-phase
+                    // exclusion (#1514). Computed before the disk scan so retired phases
+                    // can be dropped from the dir set too.
+                    let roadmapScope = null;
+                    let retiredPhaseNums = new Set();
+                    try {
+                        const roadmapPath = node_path_1.default.join(planningDir(cwd), 'ROADMAP.md');
+                        const roadmapRaw = (0, shell_command_projection_cjs_1.platformReadSync)(roadmapPath);
+                        if (roadmapRaw !== null) {
+                            roadmapScope = extractCurrentMilestone(roadmapRaw, cwd);
+                            retiredPhaseNums = extractRetiredPhaseNumbers(roadmapScope);
+                        }
+                    }
+                    catch { /* fall through: no roadmap scope → no retired exclusion */ }
                     const isDirInMilestone = getMilestonePhaseFilter(cwd);
                     const allMatchingDirs = node_fs_1.default.readdirSync(phasesDir, { withFileTypes: true })
                         .filter(e => e.isDirectory()).map(e => e.name)
@@ -1252,6 +1399,12 @@ function buildStateFrontmatter(bodyContent, cwd) {
                     // modified dir. This prevents double-counting (e.g. two "Phase 1" dirs).
                     const seenPhaseNums = new Map(); // normalizedNum -> dirName
                     for (const dir of allMatchingDirs) {
+                        // #1514: a retired/folded phase keeps a directory but no completion
+                        // artifact; drop it from the disk phase set so it counts toward
+                        // neither the denominator nor the numerator (mirrors the heading
+                        // exclusion below). Project-code-aware via phaseKeyFromDir.
+                        if (retiredPhaseNums.size > 0 && retiredPhaseNums.has(phaseKeyFromDir(dir)))
+                            continue;
                         const m = dir.match(/^0*(\d+[A-Za-z]?(?:\.\d+)*)/);
                         const key = m ? m[1].toLowerCase() : dir;
                         if (!seenPhaseNums.has(key)) {
@@ -1287,24 +1440,23 @@ function buildStateFrontmatter(bodyContent, cwd) {
                     // `## Phase Overview:` or `## Phase Details:` — single source of
                     // truth for total_phases (#549).
                     let roadmapPhaseCount = 0;
-                    try {
-                        const roadmapPath = node_path_1.default.join(planningDir(cwd), 'ROADMAP.md');
-                        const roadmapRaw = (0, shell_command_projection_cjs_1.platformReadSync)(roadmapPath);
-                        if (roadmapRaw !== null) {
-                            const roadmapScope = extractCurrentMilestone(roadmapRaw, cwd);
-                            const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)\s*:/gi;
-                            let m;
-                            while ((m = phaseHeadingPattern.exec(roadmapScope)) !== null) {
-                                // Only count tokens that contain at least one digit — excludes
-                                // pure-word section headings (Overview, Details) while keeping
-                                // numeric phases (01, 05.1) and project-code IDs (PROJ-42).
-                                // Also exclude 999.x backlog phases. Mirrors init.cts filter.
-                                if (/\d/.test(m[1]) && !/^999\b/.test(m[1]))
-                                    roadmapPhaseCount++;
-                            }
+                    if (roadmapScope !== null) {
+                        const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)\s*:/gi;
+                        let m;
+                        while ((m = phaseHeadingPattern.exec(roadmapScope)) !== null) {
+                            // Only count tokens that contain at least one digit — excludes
+                            // pure-word section headings (Overview, Details) while keeping
+                            // numeric phases (01, 05.1) and project-code IDs (PROJ-42).
+                            // Also exclude 999.x backlog phases. Mirrors init.cts filter.
+                            if (!/\d/.test(m[1]) || /^999\b/.test(m[1]))
+                                continue;
+                            // #1514: retired/folded phases are struck through in the ROADMAP;
+                            // exclude them from the denominator (they can never be completed).
+                            if (retiredPhaseNums.has(phaseKeyFromToken(m[1])))
+                                continue;
+                            roadmapPhaseCount++;
                         }
                     }
-                    catch { /* fall through: phaseDirs.length used as sole count */ }
                     cached = {
                         totalPhases: roadmapPhaseCount > 0
                             ? Math.max(phaseDirs.length, roadmapPhaseCount)
@@ -1486,8 +1638,23 @@ function acquireStateLock(statePath, clock) {
         clock = clock_cjs_1.realClock;
     const lockPath = statePath + '.lock';
     const retryDelay = 200; // ms
-    const staleThresholdMs = 10000;
     const maxWaitMs = 30000;
+    // Deadman ceiling (audit M1) — set ABOVE maxWaitMs so a holder that reads as
+    // VERIFIED-LIVE is NEVER stolen within the wait budget; only a crashed (dead
+    // pid) or unparseable-body lock is stolen, and a pid-reuse holder (reads alive
+    // but is unrelated) is recovered once age crosses this absolute ceiling rather
+    // than blocking forever. The prior mtime-only `staleThresholdMs = 10000` gate
+    // was BELOW maxWaitMs, so a live-but-slow holder >10 s was robbed mid-write.
+    const deadmanCeilingMs = 60000;
+    // Fresh-create floor (PR #1532 review, window a) — a lock with an EMPTY/unparseable
+    // body is either mid-creation (O_EXCL create done, pid not yet written by the holder)
+    // or a genuine orphan. While such a body is younger than this floor it is treated as
+    // mid-creation and is NEVER stolen — stealing it at age ≈ 0 robs a holder still
+    // writing its pid (the lost-update window capability-lock.cts's `age <= LOCK_STALE_MS`
+    // floor closes). The create→write gap is sub-millisecond; this floor is orders of
+    // magnitude larger yet well under maxWaitMs so a real orphan still clears within budget.
+    // A COMPLETE dead-pid body is NOT subject to this floor — it is stolen promptly.
+    const freshCreateFloorMs = 1000;
     const startedAt = clock.now();
     // Shared helper: check the time budget then back off with jitter before the
     // next retry.  Both the EEXIST contention path and the recoverable-errno path
@@ -1502,11 +1669,42 @@ function acquireStateLock(statePath, clock) {
         const jitter = Math.floor(Math.random() * 50);
         clock.sleep(retryDelay + jitter);
     };
+    let _loopIteration = 0;
     while (true) {
+        if (_stateLockTestHooks.onLoopIteration)
+            _stateLockTestHooks.onLoopIteration({ iteration: _loopIteration++ });
         try {
             const fd = node_fs_1.default.openSync(lockPath, node_fs_1.default.constants.O_CREAT | node_fs_1.default.constants.O_EXCL | node_fs_1.default.constants.O_WRONLY);
-            node_fs_1.default.writeSync(fd, String(process.pid));
-            node_fs_1.default.closeSync(fd);
+            // Audit M9 (resource-safety): once the exclusive create SUCCEEDS, a
+            // writeSync/closeSync failure must NOT leak the fd or strand the just-created
+            // (now empty) lock — an orphan body self-blocks every later acquirer until a
+            // liveness steal or the deadman. On any write/close error, guardedly close the
+            // fd and unlink the file we created, then re-throw to the existing outer catch
+            // (which keeps classifying recoverable vs fatal errnos — DRY). A FATAL errno
+            // still propagates after cleanup; a RECOVERABLE one retries from a clean slate.
+            // Mirrors capability-lock.cts:415-425.
+            try {
+                const injected = _consumeSimulatedWriteError();
+                if (injected)
+                    throw injected; // test seam: one-shot writeSync failure (M9)
+                node_fs_1.default.writeSync(fd, String(process.pid));
+                node_fs_1.default.closeSync(fd);
+            }
+            catch (writeErr) {
+                try {
+                    node_fs_1.default.closeSync(fd);
+                }
+                catch { /* best-effort — fd may already be closed */ }
+                // Best-effort unlink of the lock WE just created. Guarded so we never throw
+                // here; if another acquirer already stole the empty lock the unlink is a
+                // harmless ENOENT no-op (we do not double-unlink someone else's lock — the
+                // open(O_EXCL) above guarantees we created this path this iteration).
+                try {
+                    node_fs_1.default.unlinkSync(lockPath);
+                }
+                catch { /* best-effort — no orphan */ }
+                throw writeErr; // re-throw to the outer catch for recoverable/fatal classification
+            }
             // Exit-time cleanup keeps a crashed locked region from leaving a stale file (#1916).
             _heldStateLocks.add(lockPath);
             return lockPath;
@@ -1522,36 +1720,91 @@ function acquireStateLock(statePath, clock) {
             }
             if (err.code !== 'EEXIST')
                 throw err; // propagate — silent bypass causes lost updates
-            // Only unlink a lock we did not place when it has crossed the staleness
-            // threshold (crashed holder). Nuking a fresh lock held by a slow-but-live
-            // writer causes lost updates (#3711 regression).
+            // Liveness-gated steal (audit M1) + steal-safety (PR #1532 review). The steal
+            // decision is three-way on the lock body:
+            //   - VERIFIED-LIVE holder (parseable pid that signals alive): NEVER stolen until
+            //     its age crosses the absolute deadman ceiling (the pid-reuse backstop) —
+            //     nuking a slow-but-live writer's lock causes lost updates (#3711 / #500/#905/
+            //     #1230 family).
+            //   - COMPLETE DEAD pid (parseable pid, not alive): stolen PROMPTLY regardless of
+            //     age — a crashed holder left a full body.
+            //   - EMPTY / unparseable body: liveness is unknowable. While FRESH (age <=
+            //     freshCreateFloorMs) it is a lock still mid-creation (O_EXCL done, pid not yet
+            //     written) and is NOT stolen (window a); only once aged past the floor is it a
+            //     genuine orphan and stealable.
+            // The steal itself is an ATOMIC rename-then-recreate (only one racer can rename the
+            // inode) guarded by an identity re-confirm, so a racer that recreates a fresh lock
+            // in the decision→steal gap never has its replacement deleted (window b). Mirrors
+            // capability-lock.cts:455-499.
             try {
                 const stat = node_fs_1.default.statSync(lockPath);
-                if ((clock).now() - stat.mtimeMs > staleThresholdMs) {
-                    let removed = false;
+                const ageMs = clock.now() - stat.mtimeMs;
+                const bodyPid = _stateLockBodyPid(lockPath);
+                const holderLive = bodyPid !== null && _stateLockIsPidAlive(bodyPid);
+                let steal;
+                if (holderLive) {
+                    steal = ageMs > deadmanCeilingMs; // pid-reuse backstop only
+                }
+                else if (bodyPid !== null) {
+                    steal = true; // complete dead pid → prompt steal
+                }
+                else {
+                    steal = ageMs > freshCreateFloorMs; // empty/garbage → protect the create window
+                }
+                if (steal) {
+                    if (_stateLockTestHooks.beforeSteal)
+                        _stateLockTestHooks.beforeSteal({ lockPath });
+                    // Identity re-confirm immediately before the steal: a racer that stole +
+                    // recreated a fresh lock in the decision→steal gap changes (dev, ino) and/or
+                    // the body pid → do NOT delete the replacement; re-evaluate from scratch.
+                    let confirmStat;
                     try {
-                        node_fs_1.default.unlinkSync(lockPath);
-                        removed = true;
+                        confirmStat = node_fs_1.default.statSync(lockPath);
                     }
-                    catch { /* swallow: bounded below */ }
-                    if (removed) {
-                        // Successful steal — retry immediately to grab the just-freed lock.
-                        // Must NOT call checkBudgetAndSleep here: a throw-after-delete would
-                        // corrupt the filesystem state, and the budget is already bounded on
-                        // the next iteration's EEXIST or open attempt (#1217 regression fix).
+                    catch {
+                        continue; // lock vanished between decision and steal — retry the create.
+                    }
+                    const sameInstance = typeof stat.dev === 'number' && typeof stat.ino === 'number' &&
+                        confirmStat.dev === stat.dev && confirmStat.ino === stat.ino &&
+                        _stateLockBodyPid(lockPath) === bodyPid;
+                    if (!sameInstance) {
+                        // The lock changed under us (a racer won the steal + recreated). Back off
+                        // and re-evaluate rather than deleting the racer's fresh replacement.
+                        checkBudgetAndSleep('lock changed before steal');
                         continue;
                     }
-                    // Persistent unlinkSync failure — apply budget + backoff so it cannot
-                    // busy-spin (#1217).
-                    checkBudgetAndSleep('stale lock removal failed');
+                    // Atomic steal: rename the inode aside, then remove it. Only ONE racer can
+                    // win the rename; a failed rename means another process already stole it, so
+                    // we must NOT fall through to a delete — back off and retry the create.
+                    const stolen = lockPath + '.stale-' + process.pid + '-' + clock.now() + '-' + (_stateStealSeq++);
+                    let renamed = false;
+                    try {
+                        node_fs_1.default.renameSync(lockPath, stolen);
+                        renamed = true;
+                    }
+                    catch { /* another racer won */ }
+                    if (renamed) {
+                        try {
+                            node_fs_1.default.rmSync(stolen, { force: true });
+                        }
+                        catch { /* best-effort */ }
+                        // Successful steal — retry immediately to grab the just-freed lock.
+                        // Must NOT call checkBudgetAndSleep here: a throw-after-rename would
+                        // corrupt filesystem state, and the budget is already bounded on the next
+                        // iteration's EEXIST or open attempt (#1217 regression fix).
+                        continue;
+                    }
+                    // Lost the steal race (or a transient rename failure) — apply budget + backoff
+                    // so it cannot busy-spin (#1217).
+                    checkBudgetAndSleep('stale lock steal lost to racer');
                     continue;
                 }
             }
             catch (err) {
-                // Re-throw a budget-exceeded error from the unlinkSync failure path above
-                // unchanged — its message already names the real cause ("stale lock removal
-                // failed") and double-wrapping it would replace that with the misleading
-                // "statSync failed after EEXIST" context string (#1217 diagnostic fix).
+                // Re-throw a budget-exceeded error from the steal path above unchanged — its
+                // message already names the real cause ("lock changed before steal" / "stale
+                // lock steal lost to racer") and double-wrapping it would replace that with the
+                // misleading "statSync failed after EEXIST" context string (#1217 diagnostic fix).
                 if (err?.lockBudgetExceeded)
                     throw err;
                 // statSync failed — lock was likely released between our EEXIST and this
@@ -1593,14 +1846,26 @@ function withStateLock(statePath, fn) {
  *   Optional clock seam; defaults to realClock. Passed through to acquireStateLock.
  */
 function writeStateMd(statePath, content, cwd, clock) {
-    // Invalidate disk scan cache before computing new frontmatter — the write
-    // may create new PLAN/SUMMARY files that buildStateFrontmatter must see.
-    // Safe for any calling pattern, not just short-lived CLI processes (#1967).
-    if (cwd)
-        _diskScanCache.delete(cwd);
-    const synced = syncStateFrontmatter(content, cwd);
     const lockPath = acquireStateLock(statePath, clock);
+    // Test seam (audit M8): fire AFTER the lock is taken so a test can simulate a
+    // concurrent writer landing in the (now-closed) scan→lock window.
+    if (_stateLockTestHooks.afterAcquire)
+        _stateLockTestHooks.afterAcquire(lockPath);
     try {
+        // Audit M8 (leaky-abstractions): the disk scan that counts PLAN/SUMMARY files
+        // to build the frontmatter is the READ half of this read-modify-write — it must
+        // run INSIDE the lock (mirroring readModifyWriteStateMd), not before it. Scanning
+        // before acquireStateLock left a TOCTOU window where a concurrent writer that
+        // committed a new PLAN/SUMMARY between our scan and our lock made writeStateMd
+        // stamp STALE progress counts (lost update — the #500/#905/#1230 family). The
+        // scan order is otherwise byte-for-behaviour identical for single-threaded
+        // callers — only the concurrent-writer window closes.
+        //
+        // Invalidate the disk scan cache first — the write may create new PLAN/SUMMARY
+        // files that buildStateFrontmatter must see (#1967).
+        if (cwd)
+            _diskScanCache.delete(cwd);
+        const synced = syncStateFrontmatter(content, cwd);
         (0, shell_command_projection_cjs_1.platformWriteSync)(statePath, synced);
     }
     finally {
@@ -2274,12 +2539,27 @@ function cmdStateSync(cwd, options, raw) {
         output({ synced: true, changes: [], dry_run: !!verify }, raw, undefined);
         return;
     }
+    // #1514: read the current-milestone ROADMAP scope once so retired/folded
+    // phases are excluded from BOTH the disk scan and the heading count here,
+    // exactly as buildStateFrontmatter does — otherwise `state sync --verify`
+    // would keep re-deriving the inflated denominator and report "no drift".
+    let syncRoadmapScope = null;
+    let syncRetiredPhaseNums = new Set();
+    try {
+        const roadmapRaw = (0, shell_command_projection_cjs_1.platformReadSync)(node_path_1.default.join(planningDir(cwd), 'ROADMAP.md'));
+        if (roadmapRaw !== null) {
+            syncRoadmapScope = extractCurrentMilestone(roadmapRaw, cwd);
+            syncRetiredPhaseNums = extractRetiredPhaseNumbers(syncRoadmapScope);
+        }
+    }
+    catch { /* fall through: no roadmap scope → no retired exclusion */ }
     // Scan all phases
     let entries;
     try {
         entries = node_fs_1.default.readdirSync(phasesDir, { withFileTypes: true })
             .filter(e => e.isDirectory())
             .map(e => e.name)
+            .filter(name => !(syncRetiredPhaseNums.size > 0 && syncRetiredPhaseNums.has(phaseKeyFromDir(name))))
             .sort();
     }
     catch {
@@ -2324,18 +2604,19 @@ function cmdStateSync(cwd, options, raw) {
     let syncTotalPhases = null;
     try {
         let roadmapPhaseCount = 0;
-        const roadmapPath = node_path_1.default.join(planningDir(cwd), 'ROADMAP.md');
-        const roadmapRaw = (0, shell_command_projection_cjs_1.platformReadSync)(roadmapPath);
-        if (roadmapRaw !== null) {
-            const roadmapScope = extractCurrentMilestone(roadmapRaw, cwd);
+        if (syncRoadmapScope !== null) {
             const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)\s*:/gi;
             let m;
-            while ((m = phaseHeadingPattern.exec(roadmapScope)) !== null) {
+            while ((m = phaseHeadingPattern.exec(syncRoadmapScope)) !== null) {
                 // Only count tokens that contain at least one digit — excludes
                 // pure-word section headings (Overview, Details) while keeping
                 // numeric phases (01, 05.1) and project-code IDs (PROJ-42).
-                if (/\d/.test(m[1]))
-                    roadmapPhaseCount++;
+                if (!/\d/.test(m[1]))
+                    continue;
+                // #1514: retired/folded phases are struck through; exclude from total.
+                if (syncRetiredPhaseNums.has(phaseKeyFromToken(m[1])))
+                    continue;
+                roadmapPhaseCount++;
             }
         }
         if (roadmapPhaseCount > 0) {
@@ -2740,4 +3021,35 @@ module.exports = {
     cmdStateMilestoneSwitch,
     cmdSignalWaiting,
     cmdSignalResume,
+    // Test seam (#1514): the pure retired/folded-phase parser, exposed so its
+    // strikethrough-detection logic can be property-tested directly.
+    _extractRetiredPhaseNumbers: extractRetiredPhaseNumbers,
+    // Test seam (audit M1): inject a deterministic isPidAlive so the liveness-gated
+    // steal decision is exercised without real pids. Mirrors capability-lock.cts.
+    _setLockProbes(probes) {
+        if (typeof probes.isPidAlive === 'function')
+            _stateLockProbes.isPidAlive = probes.isPidAlive;
+    },
+    _resetLockProbes() {
+        _stateLockProbes.isPidAlive = _realIsPidAlive;
+    },
+    // Test seam (audit M8/M9): inject deterministic hooks for the scan-in-lock window
+    // (afterAcquire), the one-shot recoverable writeSync failure (simulateWriteError),
+    // and per-iteration orphan-lock snapshots (onLoopIteration). See _stateLockTestHooks.
+    _setStateLockTestHooks(hooks) {
+        if ('afterAcquire' in hooks)
+            _stateLockTestHooks.afterAcquire = hooks.afterAcquire;
+        if ('simulateWriteError' in hooks)
+            _stateLockTestHooks.simulateWriteError = hooks.simulateWriteError;
+        if ('onLoopIteration' in hooks)
+            _stateLockTestHooks.onLoopIteration = hooks.onLoopIteration;
+        if ('beforeSteal' in hooks)
+            _stateLockTestHooks.beforeSteal = hooks.beforeSteal;
+    },
+    _resetStateLockTestHooks() {
+        delete _stateLockTestHooks.afterAcquire;
+        delete _stateLockTestHooks.simulateWriteError;
+        delete _stateLockTestHooks.onLoopIteration;
+        delete _stateLockTestHooks.beforeSteal;
+    },
 };

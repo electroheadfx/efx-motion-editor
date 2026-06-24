@@ -523,9 +523,12 @@ function stageSkillsForRuntimeAsSkills(srcCommandsDir, resolvedProfile, converte
  *
  * @param srcAgentsDir    source agents directory (e.g. agents/)
  * @param resolvedProfile profile filter from resolveProfile()
- * @param converter       (content: string) → string  pure per-file converter
+ * @param converter       (content: string, isGlobal?: boolean) → string per-file
+ *                        converter; scope-aware converters (copilot/antigravity)
+ *                        read isGlobal, single-arg converters ignore it (#1173)
+ * @param isGlobal        install scope passed through to the converter
  */
-function stageAgentsForRuntimeWithConverter(srcAgentsDir, resolvedProfile, converter) {
+function stageAgentsForRuntimeWithConverter(srcAgentsDir, resolvedProfile, converter, isGlobal = false) {
     if (!node_fs_1.default.existsSync(srcAgentsDir))
         return srcAgentsDir;
     const stageDir = node_fs_1.default.mkdtempSync(node_path_1.default.join(node_os_1.default.tmpdir(), 'gsd-profile-runtime-agents-'));
@@ -544,7 +547,7 @@ function stageAgentsForRuntimeWithConverter(srcAgentsDir, resolvedProfile, conve
                 }
             }
             const content = node_fs_1.default.readFileSync(node_path_1.default.join(srcAgentsDir, entry.name), 'utf8');
-            const converted = converter(content);
+            const converted = converter(content, isGlobal);
             node_fs_1.default.writeFileSync(node_path_1.default.join(stageDir, entry.name), converted, 'utf8');
         }
     }

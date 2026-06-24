@@ -270,17 +270,49 @@ function applySurface(runtimeConfigDir, layout, manifest, clusterMap, registry) 
     // module's deep seam (ADR-1508 / #1511 Phase 2) — no attribution resolver
     // needed here (proven: Co-Authored-By never appears in staged content; see
     // brief PROVEN KEY FACT). No getInstallExports() call required.
-    for (const kind of layout.kinds) {
-        const staged = kind.stage(resolved);
-        if (kind.kind === 'skills') {
-            runtimeArtifactConversion.rewriteStagedSkillBodies(staged, {
-                runtime: layout.runtime,
-                configDir: layout.configDir,
-                scope: layout.scope ?? 'global',
-            });
+    // #1615 adversarial review (PR #1622): commands kind was previously skipped,
+    // leaving raw @~/.claude/... references in Windsurf workflow bodies after a
+    // /gsd-surface profile change. Same gap affected any runtime with commands
+    // kinds (windsurf, opencode, kilo, cursor, augment, codebuddy, gemini).
+    //
+    // Asymmetry note: rewriteStagedSkillBodies mutates in place (returns void),
+    // but rewriteStagedCommandBodies copies to a fresh mkdtemp dir and returns
+    // its path (commands .md files are flat; mutating the staged source would
+    // corrupt the package source on full-profile runs). Caller MUST sync from
+    // the returned dir and clean it up.
+    const tempDirsToClean = [];
+    try {
+        for (const kind of layout.kinds) {
+            let staged = kind.stage(resolved);
+            if (kind.kind === 'skills') {
+                runtimeArtifactConversion.rewriteStagedSkillBodies(staged, {
+                    runtime: layout.runtime,
+                    configDir: layout.configDir,
+                    scope: layout.scope ?? 'global',
+                });
+            }
+            else if (kind.kind === 'commands') {
+                const rewritten = runtimeArtifactConversion.rewriteStagedCommandBodies(staged, {
+                    runtime: layout.runtime,
+                    configDir: layout.configDir,
+                    scope: layout.scope ?? 'global',
+                });
+                if (rewritten && rewritten !== staged) {
+                    staged = rewritten;
+                    tempDirsToClean.push(rewritten);
+                }
+            }
+            const dest = node_path_1.default.join(layout.configDir, kind.destSubpath);
+            _syncGsdDir(staged, dest, kind, skillManifest);
         }
-        const dest = node_path_1.default.join(layout.configDir, kind.destSubpath);
-        _syncGsdDir(staged, dest, kind, skillManifest);
+    }
+    finally {
+        for (const dir of tempDirsToClean) {
+            try {
+                node_fs_1.default.rmSync(dir, { recursive: true, force: true });
+            }
+            catch { /* best-effort cleanup */ }
+        }
     }
     return resolved;
 }

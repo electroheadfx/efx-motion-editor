@@ -74,4 +74,5 @@ module.exports = {
     isCapabilityConfigKey,
     isCentralConfigKey,
     isValidConfigKey,
+    getCapabilityConfigSchema: _capabilityConfigSchema,
 };

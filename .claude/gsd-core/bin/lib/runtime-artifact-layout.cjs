@@ -130,6 +130,20 @@ function agentsKind(destSubpath, prefix, configDir) {
  * Agent filenames are preserved verbatim (the prefix is already embedded in the
  * agent stem — e.g. `gsd-planner.md`).
  *
+ * #1173 SCOPE — plumbing only (declarations deferred): this provides the
+ * converter dispatch + `isGlobal` scope threading for the descriptor's `agents`
+ * kind, but NO runtime currently declares a converted `agents` kind in its
+ * `capability.json`. The descriptor declarations for the 8 non-Claude runtimes
+ * (copilot/antigravity/cursor/windsurf/augment/trae/codebuddy/cline) are
+ * DEFERRED to a follow-up that first ships the ADR-1235 §0 byte-for-byte parity
+ * harness, because the second `layout.kinds` consumer — `applySurface` /
+ * `/gsd:surface` / `--materialize` (`src/surface.cts`) — does not yet mirror the
+ * legacy agent pipeline (Copilot's `.agent.md` filename rename, the cross-cutting
+ * path-prefix rewrite + attribution, stale-file cleanup, config-reading steps),
+ * so declaring the kind now would regress the surface path. Until then the legacy
+ * `bin/install.js` agent loop remains authoritative for the real install, and
+ * this `convertedAgentsKind` is exercised only by synthetic-descriptor seam tests.
+ *
  * Mirrors the `convertedCommandsKind` pattern (#785).
  *
  * @param destSubpath   destination subpath within configDir (e.g. 'agents')
@@ -137,14 +151,18 @@ function agentsKind(destSubpath, prefix, configDir) {
  * @param converterName name of converter function in Runtime Artifact Conversion exports
  * @param configDir     runtime config dir (for .gsd-source marker resolution)
  */
-function convertedAgentsKind(destSubpath, prefix, converterName, configDir) {
+function convertedAgentsKind(destSubpath, prefix, converterName, configDir, scope = 'global') {
     return {
         kind: 'agents',
         destSubpath,
         prefix,
         stage: (resolved) => {
+            // isGlobal is threaded so scope-aware agent converters (copilot, antigravity)
+            // choose global-home vs workspace-relative paths; converters that only take
+            // (content) ignore the extra positional arg. Mirrors skillsKind's scope
+            // threading (#1173).
             const converter = conversionExports[converterName];
-            return stageAgentsForRuntimeWithConverter(findAgentsSourceRoot(configDir), resolved, converter);
+            return stageAgentsForRuntimeWithConverter(findAgentsSourceRoot(configDir), resolved, converter, scope === 'global');
         },
     };
 }
@@ -267,7 +285,7 @@ function dispatchKindEntry(entry, runtime, configDir, scope) {
             if (converter == null) {
                 return agentsKind(destSubpath, prefix, configDir);
             }
-            return convertedAgentsKind(destSubpath, prefix, converter, configDir);
+            return convertedAgentsKind(destSubpath, prefix, converter, configDir, scope);
         case 'skills':
             if (converter == null) {
                 throw new TypeError(`resolveRuntimeArtifactLayout: skills entry for '${runtime}' has converter=null (converter is required for skills)`);

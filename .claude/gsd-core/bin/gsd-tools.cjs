@@ -85,6 +85,7 @@
  * UAT Audit:
  *   audit-uat                           Scan all phases for unresolved UAT/verification items
  *   uat render-checkpoint --file <path> Render the current UAT checkpoint block
+ *   uat classify-coverage --summary <path> Classify a SUMMARY coverage block into auto-passed vs human-UAT (#1602)
  *
  * Open Artifact Audit:
  *   audit-open [--json]                 Scan all .planning/ artifact types for unresolved items
@@ -638,7 +639,7 @@ async function main() {
     'from-gsd2, frontmatter, gap-analysis, generate-claude-md, generate-claude-profile, ' +
     'generate-dev-preferences, generate-slug, graphify, history-digest, init, intel, ' +
     'capability, classify-confidence, git, learnings, list-seeds, list-todos, loop, milestone, package-legitimacy, phase, phase-plan-index, phases, profile-questionnaire, ' +
-    'profile-sample, progress, prompt-budget, requirements, research-plan, research-store, resolve-granularity, resolve-model, roadmap, scaffold, state, ' +
+    'profile-sample, progress, project-instruction-file, prompt-budget, requirements, research-plan, research-store, resolve-granularity, resolve-model, roadmap, scaffold, state, ' +
     'task, template, user-story, validate, verify, verify-path-exists, verify-summary, workstream, worktree\n\n' +
     'Global flags:\n' +
     '  --raw              Emit raw output without post-processing\n' +
@@ -689,6 +690,10 @@ async function main() {
     'worktree', 'prompt-budget',
     'research-store', 'research-plan', 'package-legitimacy', 'classify-confidence',
     'user-story', // pure string validation — no .planning/ access needed
+    // #1529: pure runtime→filename projection via getProjectInstructionFile; no
+    // .planning/ access needed, and resolving project root would break workflow
+    // invocations that run before .planning/ exists (new-project Step 1).
+    'project-instruction-file',
   ]);
   if (!SKIP_ROOT_RESOLUTION.has(command)) {
     cwd = findProjectRoot(cwd);
@@ -1103,6 +1108,29 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
       break;
     }
 
+    case 'project-instruction-file': {
+      // #1529: pure runtime→filename projection. Backs the
+      // `gsd_run query project-instruction-file --runtime <r>` call in
+      // new-project.md so the bash workflow and profile-output.cjs share one
+      // source of truth (getProjectInstructionFile in runtime-name-policy.cjs).
+      // No SDK bridge — pure local lookup, runs before .planning/ exists.
+      const { getProjectInstructionFile } = require('./lib/runtime-name-policy.cjs');
+      // Parse --runtime <value> (space or = form); default to empty so the
+      // safe AGENTS.md cross-agent default applies.
+      const pifArgs = args.slice(1);
+      let pifRuntime = '';
+      for (let i = 0; i < pifArgs.length; i++) {
+        const a = pifArgs[i];
+        if (a === '--runtime' && pifArgs[i + 1] !== undefined) { pifRuntime = pifArgs[++i]; continue; }
+        if (a.startsWith('--runtime=')) { pifRuntime = a.slice('--runtime='.length); continue; }
+        // First positional that isn't a flag also works (lenient); otherwise ignore unknown flags.
+        if (!a.startsWith('-') && !pifRuntime) { pifRuntime = a; }
+      }
+      const filename = getProjectInstructionFile(pifRuntime);
+      process.stdout.write(filename + '\n');
+      break;
+    }
+
     case 'list-todos': {
       commands.cmdListTodos(cwd, args[1], raw);
       break;
@@ -1333,12 +1361,16 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
 
     case 'uat': {
       const subcommand = args[1];
-      const uat = require('./lib/uat.cjs');
       if (subcommand === 'render-checkpoint') {
+        const uat = require('./lib/uat.cjs');
         const options = parseNamedArgs(args, ['file']);
         uat.cmdRenderCheckpoint(cwd, options, raw);
+      } else if (subcommand === 'classify-coverage') {
+        const coverage = require('./lib/coverage.cjs');
+        const options = parseNamedArgs(args, ['summary', 'file']);
+        coverage.cmdClassify(cwd, options, raw);
       } else {
-        error('Unknown uat subcommand. Available: render-checkpoint', ERROR_REASON.SDK_UNKNOWN_COMMAND);
+        error('Unknown uat subcommand. Available: render-checkpoint, classify-coverage', ERROR_REASON.SDK_UNKNOWN_COMMAND);
       }
       break;
     }
