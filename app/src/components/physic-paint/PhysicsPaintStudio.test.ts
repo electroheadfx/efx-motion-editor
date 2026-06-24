@@ -46,7 +46,8 @@ function getUseEffectBlocks(text: string): string[] {
 describe('PhysicsPaintStudio Roto session boundary contract', () => {
   it('D-03/D-17 consumes one compact createRotoSession boundary object for Roto session state', () => {
     const text = source();
-    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
     expect(text).toContain("from './physicsPaintRotoSession'");
     expect(text).toContain('createRotoSession');
@@ -57,6 +58,48 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(text).toContain('rotoSession.actionAvailability.value');
     expect(workflowStripBlock).toContain('hasCopiedRotoKey={rotoSession.copiedKey.value !== null}');
     expect(workflowStripBlock).toContain('pendingRotoFrames={rotoSession.dirtyFrames.value}');
+    expect(workflowStripBlock).not.toContain('copiedRotoKeyRef');
+    expect(workflowStripBlock).not.toContain('dirtyRotoFramesRef');
+  });
+
+  it('36.8-REG-06/D-03/D-18 keeps WorkflowStrip wiring stable without adding individual Roto key/cache props', () => {
+    const text = source();
+    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
+
+    const rotoPropNames = [...workflowStripBlock.matchAll(/\n\s+(\w*(?:Roto|roto)\w*)=/g)].map((match) => match[1]);
+    expect(rotoPropNames).toEqual([
+      'occupiedRotoFrames',
+      'savedRotoFrames',
+      'cachedRotoFrames',
+      'editableRotoFrames',
+      'pendingRotoFrames',
+      'rotoSaveInFlight',
+      'rotoSavingFrame',
+      'rotoInterpolationSettings',
+      'rotoCachedPlaybackAvailable',
+      'rotoCachedPlaybackStatus',
+      'onToggleRotoPlayback',
+      'isRotoCachedPlaybackActive',
+      'onRotoInterpolationEnabledChange',
+      'onRotoInterpolationCountChange',
+      'onRotoInterpolationModeChange',
+      'onRotoInterpolationMotionChange',
+      'onDuplicateRotoKey',
+      'onInsertRotoFrame',
+      'onDeleteRotoFrame',
+      'onCopyRotoFrame',
+      'onPasteRotoFrame',
+      'hasCopiedRotoKey',
+      'keyActionInFlight',
+      'onSaveRotoFrame',
+      'onSavePendingRotoFrames',
+    ]);
+    expect(workflowStripBlock).toContain('onDuplicateRotoKey={duplicateRotoKey}');
+    expect(workflowStripBlock).toContain('onInsertRotoFrame={insertRotoFrame}');
+    expect(workflowStripBlock).toContain('onDeleteRotoFrame={deleteRotoFrame}');
+    expect(workflowStripBlock).toContain('onCopyRotoFrame={copyRotoFrame}');
+    expect(workflowStripBlock).toContain('onPasteRotoFrame={pasteRotoFrame}');
   });
 
   it('D-07/D-17 executes session effects through a Studio adapter descriptor runner', () => {
@@ -356,7 +399,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 
   it('passes launch gap limits into the fixed Play mode so frame 11 can clamp to one visible cell', () => {
     const text = source();
-    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
     expect(text).toContain('function withoutRotoGapLimit');
     expect(text).toContain("if (context.workflowMode === 'play') return context;");
@@ -511,7 +555,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 
   it('wires visible Roto interpolation settings through the store regeneration path', () => {
     const text = source();
-    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
     const updateBlock = text.slice(text.indexOf('const updateRotoInterpolationSettings = useCallback'), text.indexOf('const goToFirstFrame = useCallback'));
 
     expect(text).toContain('const updateRotoInterpolationSettings = useCallback');
@@ -530,7 +575,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const text = source();
     const cachedRotoBlock = text.slice(text.indexOf('function findCachedRotoReferenceFrame'), text.indexOf('const playPreview = useCallback'));
     const toggleBlock = text.slice(text.indexOf('const toggleRotoCachedPlayback = useCallback'), text.indexOf('const stopPreview = useCallback'));
-    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
     expect(text).toContain('const [isRotoCachedPlaybackActive, setIsRotoCachedPlaybackActive]');
     expect(text).toContain('const [cachedRotoPlaybackFrame, setCachedRotoPlaybackFrame]');
@@ -814,7 +860,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('passes editable real-key Roto frames separately from occupied/background-only frames', () => {
     const text = source();
-    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
     const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const toggleRotoCachedPlayback'));
 
     expect(text).toContain('const [editableRotoFrames, setEditableRotoFrames] = useState<number[]>([])');
@@ -851,7 +898,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const keyboardBlock = text.slice(text.indexOf('const handlePhysicsPaintKeyDown = useCallback'), text.indexOf('const onionPreviewFrames = buildOnionPreviewFrames'));
     const frameNavStart = text.indexOf('const goToFirstFrame = useCallback');
     const frameNavBlock = text.slice(frameNavStart, text.indexOf('return (', frameNavStart));
-    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
     expect(text).toContain('const requestRotoFrameNavigation = useCallback');
     expect(coordinatorBlock).toContain('if (!Number.isInteger(targetFrame) || targetFrame < 0) return false');
@@ -988,7 +1036,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   it('wires explicit current-frame Roto saves without repeated brush-move apply calls', () => {
     const text = source();
     const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
-    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
     expect(text).toContain('const [rotoSessionVersion, setRotoSessionVersion] = useState(0)');
     expect(text).toContain('const markCurrentRotoFrameDirty = useCallback');
@@ -1012,7 +1061,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('keeps real-key utility helpers out of the strict Phase 36.3 Roto strip surface', () => {
     const text = source();
-    const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
+    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
     const shortcutsBlock = text.slice(text.indexOf('{shortcutsVisible'), text.indexOf('</section>'));
 
     for (const label of ['duplicateRotoKey', 'insertRotoFrame', 'deleteRotoFrame', 'copyRotoFrame', 'pasteRotoFrame']) {

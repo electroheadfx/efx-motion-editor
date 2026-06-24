@@ -20,6 +20,10 @@ function getRotoMapBlock(code: string): string {
   return code.slice(code.indexOf('frameCells.map(frame =>'), code.indexOf('interpolationConnectors.map'));
 }
 
+function getWorkflowStripPropsInterface(code: string): string {
+  return code.slice(code.indexOf('export interface PhysicsPaintWorkflowStripProps'), code.indexOf('const VIRTUAL_TIMELINE_FRAME_COUNT'));
+}
+
 function getCssRule(css: string, selector: string): string {
   const ruleStart = css.indexOf(selector);
   expect(ruleStart).toBeGreaterThan(-1);
@@ -194,10 +198,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).not.toContain('Position');
   });
 
-  it('renders the Phase 36.7 contextual Roto key utility pill in the timeline lane (D-11, D-12)', () => {
+  it('36.8-REG-06/D-18 keeps the contextual Roto key utility pill in the timeline lane outside the header', () => {
     const code = source();
     const timelineBlock = code.slice(code.indexOf('physics-paint-timeline'), code.indexOf('physics-paint-roto-status-stack'));
     const headerBlock = code.slice(code.indexOf('physics-paint-workflow-header'), code.indexOf('physics-paint-timeline'));
+    const keyUtilityBlock = timelineBlock.slice(timelineBlock.indexOf('physics-paint-roto-key-utilities'), timelineBlock.indexOf('</div>', timelineBlock.indexOf('physics-paint-roto-key-utilities')));
 
     for (const contract of [
       'onDuplicateRotoKey?: () => void',
@@ -213,11 +218,59 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(timelineBlock).toContain('physics-paint-roto-key-utilities');
     expect(timelineBlock).toContain('Roto key utilities for frame');
     expect(timelineBlock).toContain('Key {props.currentFrame}');
-    for (const label of ['Insert', 'Dup', 'Copy', 'Paste', 'Delete']) {
-      expect(timelineBlock).toContain(`>${label}</button>`);
-    }
+    expect([...keyUtilityBlock.matchAll(/>(Insert|Dup|Copy|Paste|Delete)<\/button>/g)].map((match) => match[1])).toEqual(['Insert', 'Dup', 'Copy', 'Paste', 'Delete']);
+    expect(keyUtilityBlock).toContain('aria-label={`Insert blank Roto key before frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('aria-label={`Duplicate Roto key at frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('aria-label={`Copy Roto key at frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('aria-label={`Paste Roto key to frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('aria-label={`Delete Roto key at frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('physics-paint-roto-key-button destructive');
     expect(headerBlock).not.toContain('physics-paint-roto-key-utilities');
     expect(headerBlock).not.toContain('Duplicate Roto key');
+  });
+
+  it('36.8-REG-06/D-18 keeps Save/current dirty/reference status copy unchanged', () => {
+    const code = source();
+    const statusStackBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('confirmation ? ('));
+
+    expect(code).toContain('aria-label="Save current"');
+    expect(code).toContain('Save current');
+    expect(statusStackBlock).toContain('Dirty frames save when leaving.');
+    expect(statusStackBlock).toContain('Cached reference: repaintable, not stroke-editable.');
+  });
+
+  it('D-03 keeps WorkflowStrip Roto key/cache state on the existing compact pre-36.8 prop surface', () => {
+    const propsInterface = getWorkflowStripPropsInterface(source());
+    const rotoKeyCacheProps = [...propsInterface.matchAll(/^\s+(\w*(?:Roto|roto)\w*)\??:/gm)].map((match) => match[1]);
+
+    expect(rotoKeyCacheProps).toEqual([
+      'occupiedRotoFrames',
+      'savedRotoFrames',
+      'cachedRotoFrames',
+      'editableRotoFrames',
+      'pendingRotoFrames',
+      'rotoSaveInFlight',
+      'rotoSavingFrame',
+      'rotoInterpolationSettings',
+      'rotoCachedPlaybackAvailable',
+      'rotoCachedPlaybackStatus',
+      'onToggleRotoPlayback',
+      'isRotoCachedPlaybackActive',
+      'onRotoInterpolationEnabledChange',
+      'onRotoInterpolationCountChange',
+      'onRotoInterpolationModeChange',
+      'onRotoInterpolationMotionChange',
+      'onDuplicateRotoKey',
+      'onInsertRotoFrame',
+      'onDeleteRotoFrame',
+      'onCopyRotoFrame',
+      'onPasteRotoFrame',
+      'hasCopiedRotoKey',
+      'keyActionInFlight',
+      'onSaveRotoFrame',
+      'onSavePendingRotoFrames',
+      'onConvertRotoToPlay',
+    ]);
   });
 
   it('uses native accessible disabled Roto key buttons and scoped feedback (D-12, D-13, D-15)', () => {
