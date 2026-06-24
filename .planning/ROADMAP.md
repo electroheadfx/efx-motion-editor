@@ -354,9 +354,15 @@ Success criteria:
 **Goal:** [Urgent work - to be planned]
 **Requirements**: TBD
 **Depends on:** Phase 36
-**Plans:** 0 plans
+**Plans:** 2/5 plans executed
 
 Plans:
+
+- [x] 36.8-01-PLAN.md
+- [x] 36.8-02-PLAN.md
+- [ ] 36.8-03-PLAN.md
+- [ ] 36.8-04-PLAN.md
+- [ ] 36.8-05-PLAN.md
 
 - [ ] TBD (run /gsd-plan-phase 36.8 to break down)
 
