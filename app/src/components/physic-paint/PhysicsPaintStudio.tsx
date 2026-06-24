@@ -2665,6 +2665,7 @@ export function PhysicsPaintStudio() {
           onCopyRotoFrame={copyRotoFrame}
           onPasteRotoFrame={pasteRotoFrame}
           hasCopiedRotoKey={rotoSession.copiedKey.value !== null}
+          rotoKeyState={{ actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null }}
           playPublicationSummary={applyStatus === 'success' ? applyMessage : null}
           statusMessage={isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null)}
           onion={onion}

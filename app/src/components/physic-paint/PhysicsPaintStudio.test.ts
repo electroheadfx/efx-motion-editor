@@ -76,11 +76,11 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
       'pendingRotoFrames',
       'rotoSaveInFlight',
       'rotoSavingFrame',
-      'rotoInterpolationSettings',
       'rotoCachedPlaybackAvailable',
       'rotoCachedPlaybackStatus',
-      'onToggleRotoPlayback',
       'isRotoCachedPlaybackActive',
+      'onToggleRotoPlayback',
+      'rotoInterpolationSettings',
       'onRotoInterpolationEnabledChange',
       'onRotoInterpolationCountChange',
       'onRotoInterpolationModeChange',
@@ -91,9 +91,11 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
       'onCopyRotoFrame',
       'onPasteRotoFrame',
       'hasCopiedRotoKey',
-      'keyActionInFlight',
+      'rotoKeyState',
       'onSaveRotoFrame',
       'onSavePendingRotoFrames',
+      'onConvertPlayToRoto',
+      'onConvertRotoToPlay',
     ]);
     expect(workflowStripBlock).toContain('onDuplicateRotoKey={duplicateRotoKey}');
     expect(workflowStripBlock).toContain('onInsertRotoFrame={insertRotoFrame}');
