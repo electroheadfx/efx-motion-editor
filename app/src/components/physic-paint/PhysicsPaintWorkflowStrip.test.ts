@@ -7,10 +7,12 @@ const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPain
 const rightPanelSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintRightPanel.tsx');
 const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudio.tsx');
 const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowState.ts');
+const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoSession.ts');
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
 const studioSource = () => readFileSync(studioSourcePath, 'utf8');
 const workflowStateSource = () => readFileSync(workflowStateSourcePath, 'utf8');
+const rotoSessionSource = () => readFileSync(rotoSessionSourcePath, 'utf8');
 
 function getRotoControlsBlock(code: string): string {
   return code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
@@ -18,6 +20,10 @@ function getRotoControlsBlock(code: string): string {
 
 function getRotoMapBlock(code: string): string {
   return code.slice(code.indexOf('frameCells.map(frame =>'), code.indexOf('interpolationConnectors.map'));
+}
+
+function getWorkflowStripPropsInterface(code: string): string {
+  return code.slice(code.indexOf('export interface PhysicsPaintWorkflowStripProps'), code.indexOf('const VIRTUAL_TIMELINE_FRAME_COUNT'));
 }
 
 function getCssRule(css: string, selector: string): string {
@@ -194,10 +200,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).not.toContain('Position');
   });
 
-  it('renders the Phase 36.7 contextual Roto key utility pill in the timeline lane (D-11, D-12)', () => {
+  it('36.8-REG-06/D-18 keeps the contextual Roto key utility pill in the timeline lane outside the header', () => {
     const code = source();
     const timelineBlock = code.slice(code.indexOf('physics-paint-timeline'), code.indexOf('physics-paint-roto-status-stack'));
     const headerBlock = code.slice(code.indexOf('physics-paint-workflow-header'), code.indexOf('physics-paint-timeline'));
+    const keyUtilityBlock = timelineBlock.slice(timelineBlock.indexOf('physics-paint-roto-key-utilities'), timelineBlock.indexOf('</div>', timelineBlock.indexOf('physics-paint-roto-key-utilities')));
 
     for (const contract of [
       'onDuplicateRotoKey?: () => void',
@@ -213,11 +220,60 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(timelineBlock).toContain('physics-paint-roto-key-utilities');
     expect(timelineBlock).toContain('Roto key utilities for frame');
     expect(timelineBlock).toContain('Key {props.currentFrame}');
-    for (const label of ['Insert', 'Dup', 'Copy', 'Paste', 'Delete']) {
-      expect(timelineBlock).toContain(`>${label}</button>`);
-    }
+    expect([...keyUtilityBlock.matchAll(/>(Insert|Dup|Copy|Paste|Delete)<\/button>/g)].map((match) => match[1])).toEqual(['Insert', 'Dup', 'Copy', 'Paste', 'Delete']);
+    expect(keyUtilityBlock).toContain('aria-label={`Insert blank Roto key before frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('aria-label={`Duplicate Roto key at frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('aria-label={`Copy Roto key at frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('aria-label={`Paste Roto key to frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('aria-label={`Delete Roto key at frame ${props.currentFrame}`}');
+    expect(keyUtilityBlock).toContain('physics-paint-roto-key-button destructive');
     expect(headerBlock).not.toContain('physics-paint-roto-key-utilities');
     expect(headerBlock).not.toContain('Duplicate Roto key');
+  });
+
+  it('36.8-REG-06/D-18 keeps Save/current dirty/reference status copy unchanged', () => {
+    const code = source();
+    const statusStackBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('confirmation ? ('));
+
+    expect(code).toContain('aria-label="Save current"');
+    expect(code).toContain('Save current');
+    expect(statusStackBlock).toContain('Dirty frames save when leaving.');
+    expect(statusStackBlock).toContain('Cached reference: repaintable, not stroke-editable.');
+  });
+
+  it('D-03 keeps WorkflowStrip Roto key/cache state on the existing compact session-derived prop surface', () => {
+    const propsInterface = getWorkflowStripPropsInterface(source());
+    const rotoKeyCacheProps = [...propsInterface.matchAll(/^\s+(\w*(?:Roto|roto)\w*)\??:/gm)].map((match) => match[1]);
+
+    expect(rotoKeyCacheProps).toEqual([
+      'occupiedRotoFrames',
+      'savedRotoFrames',
+      'cachedRotoFrames',
+      'editableRotoFrames',
+      'pendingRotoFrames',
+      'rotoSaveInFlight',
+      'rotoSavingFrame',
+      'rotoInterpolationSettings',
+      'rotoCachedPlaybackAvailable',
+      'rotoCachedPlaybackStatus',
+      'onToggleRotoPlayback',
+      'isRotoCachedPlaybackActive',
+      'onRotoInterpolationEnabledChange',
+      'onRotoInterpolationCountChange',
+      'onRotoInterpolationModeChange',
+      'onRotoInterpolationMotionChange',
+      'onDuplicateRotoKey',
+      'onInsertRotoFrame',
+      'onDeleteRotoFrame',
+      'onCopyRotoFrame',
+      'onPasteRotoFrame',
+      'hasCopiedRotoKey',
+      'rotoKeyState',
+      'onSaveRotoFrame',
+      'onSavePendingRotoFrames',
+      'onConvertPlayToRoto',
+      'onConvertRotoToPlay',
+    ]);
   });
 
   it('uses native accessible disabled Roto key buttons and scoped feedback (D-12, D-13, D-15)', () => {
@@ -289,10 +345,14 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studioCode).toContain('key={canvasKey}');
   });
 
-  it('passes launch canvas dimensions into Roto key transaction building', () => {
+  it('passes launch canvas dimensions into Roto session transaction building', () => {
     const studioCode = studioSource();
+    const sessionCode = rotoSessionSource();
 
-    expect(studioCode.match(/canvasSize: \{ width: canvasWidth, height: canvasHeight \}/g)?.length).toBe(4);
+    expect(studioCode).toContain('canvasSize: { width: canvasWidth, height: canvasHeight }');
+    expect(sessionCode).toContain('canvasSize: input.canvasSize');
+    expect(sessionCode).toContain('normalizeRealKeyFrames(input.realKeyFrames, input.canvasSize)');
+    expect(sessionCode).toContain('normalizeCachedFrames(input.cachedRotoFrames, input.canvasSize)');
   });
 
   it('does not render compact Roto interpolation controls in the strict Phase 36.3 Roto strip', () => {
@@ -431,12 +491,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('rotoPreviewFramesRef');
     expect(code).toContain('snapshotCurrentRotoFrame');
     expect(builderBlock).toContain('launchContext.cachedRotoFrames ?? []');
-    expect(builderBlock).toContain("frame.source !== 'real-key' || frame.backgroundOnly");
+    expect(builderBlock).toContain("if (frame.source && frame.source !== 'real-key') return;");
+    expect(builderBlock).toContain('if (frame.backgroundOnly) return;');
     expect(builderBlock).toContain("onionKind: 'stroke-preview'");
-    expect(builderBlock).toContain("onionKind: 'cached-composite'");
+    expect(builderBlock).toContain("onionKind: frame.source === 'real-key' ? 'cached-composite' : 'stroke-preview'");
     expect(builderBlock).toContain('physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
     expect(builderBlock).toContain('rotoPreviewFramesRef.current');
-    expect(builderBlock).toContain('addLivePreviewFrame(frame)');
+    expect(builderBlock).toContain('addOnionCandidate(frame)');
     expect(builderBlock.indexOf('launchContext.cachedRotoFrames ?? []')).toBeLessThan(builderBlock.indexOf('rotoPreviewFramesRef.current'));
     expect(builderBlock).toContain("addFrame(frame, 'previous', index + 1)");
     expect(builderBlock).toContain("addFrame(frame, 'next', index + 1)");
@@ -538,7 +599,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('rotoSavingFrame?: number | null');
     expect(code).toContain('getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight), props.rotoSavingFrame)');
     expect(studio).toContain('const [rotoSavingFrame, setRotoSavingFrame] = useState<number | null>(null)');
-    expect(studio).toContain('setRotoSavingFrame(sourceFrame)');
+    expect(studio).toContain('setRotoSavingFrame(effect.frame)');
     expect(studio).toContain('rotoSavingFrame={rotoSavingFrame}');
     expect(studio).toContain('setRotoSavingFrame(null)');
     expect(studio).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);\n    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);');
@@ -654,17 +715,20 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).not.toContain('Save all');
   });
 
-  it('wires D-08/D-09 Studio Roto key utilities through one save-before-action runner', () => {
+  it('wires D-08/D-09 Studio Roto key utilities through one session result runner', () => {
     const studio = studioSource();
 
-    expect(studio).toContain('const runRotoKeyAction = useCallback(async');
+    expect(studio).toContain('const runRotoSessionResult = useCallback(async');
     expect(studio).toContain('setRotoKeyActionInFlight(true)');
-    expect(studio).toContain('setApplyMessage(`Saving frame ${sourceFrame} before ${actionLabel}...`)');
-    expect(studio).toContain('const payload = await flushRotoFrame(sourceFrame, { force: true })');
-    expect(studio).toContain('if (!payload) {');
-    expect(studio).toContain('setApplyMessage(`Could not save frame ${sourceFrame}; ${actionLabel} was cancelled.`)');
-    expect(studio).toContain('dirtyRotoFramesRef.current.add(sourceFrame)');
+    expect(studio).toContain('runRotoSessionResult(rotoSession.duplicateKey()');
+    expect(studio).toContain('runRotoSessionResult(rotoSession.insertBlankKey()');
+    expect(studio).toContain('runRotoSessionResult(rotoSession.deleteKey()');
+    expect(studio).toContain('runRotoSessionResult(rotoSession.copyKey()');
+    expect(studio).toContain('runRotoSessionResult(rotoSession.pasteKey()');
+    expect(studio).toContain('case \'saveFrame\'');
+    expect(studio).toContain('dirtyRotoFramesRef.current = new Set(rotoSession.dirtyFrames.value)');
     expect(studio).toContain('keyActionInFlight={rotoKeyActionInFlight}');
+    expect(studio).toContain('rotoKeyState={{ actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null }}');
   });
 
   it('persists D-08/D-09 Roto key utilities through the parent app bridge', () => {
@@ -680,11 +744,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('await sendPhysicPaintApplyPayload(payload');
     expect(studio).toContain('pendingRotoKeyActionMessageRef');
     expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, frame)');
-    expect(studio).toContain("transaction.activeRestore.kind === 'blank-real-key'");
+    expect(studio).toContain("restore.kind === 'blank-real-key'");
     expect(studio).toContain('setCachedRotoReferenceUrl(null);');
     expect(studio).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
     expect(studio).toContain('setCachedRotoPlaybackFrame(null)');
-    expect(studio).toContain('transaction.activeRestore.kind === \'load-real-key\'');
+    expect(studio).toContain("restore.kind === 'load-real-key'");
     expect(studio).toContain('syncRotoKeyFrameLists(transaction.realKeyFrameNumbers, transaction.realKeyFrames)');
     expect(studio).toContain('cachedRotoFrames: [...cacheFrames].sort');
     expect(studio).not.toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
@@ -692,33 +756,39 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('keeps D-06 Paste target eligibility separate from source-only real-key guards', () => {
-    const studio = studioSource();
-    const pasteIndex = studio.indexOf('const pasteRotoFrame = useCallback');
-    const nextActionIndex = studio.indexOf('const saveEditableState = useCallback', pasteIndex);
-    const pasteBlock = studio.slice(pasteIndex, nextActionIndex);
+    const session = rotoSessionSource();
+    const pasteIndex = session.indexOf('function pasteKey()');
+    const transactionIndex = session.indexOf('function applyTransaction');
+    const pasteBlock = session.slice(pasteIndex, transactionIndex);
+    const transactionBlock = session.slice(transactionIndex, session.indexOf('function queueSaveBeforeContinuation'));
 
     expect(pasteIndex).toBeGreaterThan(-1);
-    expect(pasteBlock).toContain('canPasteRotoKeyTarget');
-    expect(pasteBlock).toContain('buildRotoKeyUtilityTransaction');
-    expect(pasteBlock).toContain("operation: 'paste'");
-    expect(pasteBlock).toContain('copiedKeyFrame: copiedRotoKeyRef.current?.cachedFrame');
-    expect(pasteBlock).not.toContain('requireCurrentRealRotoKey()');
-    expect(pasteBlock).not.toContain('canUseRotoKeySource');
+    expect(pasteBlock).toContain("return applyTransaction('pasteKey', 'paste')");
+    expect(transactionBlock).toContain("operation === 'paste' && !actionState.canPaste");
+    expect(transactionBlock).toContain('actionState.pasteDisabledReason');
+    expect(transactionBlock).toContain("operation !== 'paste' && !hasRealSource");
+    expect(session).toContain('copiedKey.peek()?.cachedFrame ?? null');
+    expect(transactionBlock).not.toContain('requireCurrentRealRotoKey()');
+    expect(transactionBlock).not.toContain('canUseRotoKeySource');
   });
 
-  it('delegates D-01 through D-10 Roto key transaction layout and restore decisions to the controller boundary', () => {
+  it('delegates D-01 through D-10 Roto key transaction layout and restore decisions to the session/controller boundary', () => {
     const studio = studioSource();
+    const session = rotoSessionSource();
     const controller = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoKeyController.ts'), 'utf8');
 
     expect(studio).toContain("from './physicsPaintRotoKeyController'");
-    expect(studio).toContain('deriveRotoKeyUtilityActionState');
-    expect(studio).toContain('buildRotoKeyUtilityTransaction');
+    expect(studio).not.toContain('deriveRotoKeyUtilityActionState');
+    expect(studio).not.toContain('buildRotoKeyUtilityTransaction');
     expect(studio).toContain('applyRotoKeyUtilityTransactionToLocalState');
     expect(studio).toContain('const applyRotoKeyUtilityTransaction = useCallback');
-    expect(studio).toContain('persistRotoKeyFrameTransaction(transaction)');
-    expect(studio).toContain('transaction.activeRestore');
-    expect(studio).toContain('transaction.cleanup.generatedFrames');
-    expect(studio).toContain('transaction.cleanup.deletedFrames');
+    expect(studio).toContain('persistRotoKeyFrameTransaction(effect.transaction)');
+    expect(studio).toContain('effect.restore');
+    expect(studio).toContain('effect.transaction.cleanup.generatedFrames');
+    expect(studio).toContain('effect.transaction.cleanup.deletedFrames');
+    expect(session).toContain('deriveRotoKeyUtilityActionState');
+    expect(session).toContain('buildRotoKeyUtilityTransaction');
+    expect(session).toContain('transaction.activeRestore');
     expect(studio).not.toContain('duplicateRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');
     expect(studio).not.toContain('insertRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');
     expect(studio).not.toContain('deleteRotoKeyFrame(getRealRotoKeyFramesForStudio(), currentFrame)');

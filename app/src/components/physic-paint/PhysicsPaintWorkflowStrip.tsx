@@ -19,6 +19,7 @@ import {
   type RotoInterpolationSettings,
 } from './physicsPaintWorkflowState';
 import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
+import type { RotoKeyUtilityActionState } from './physicsPaintRotoKeyController';
 
 const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
@@ -27,6 +28,10 @@ const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
 const GENERATED_ROTO_STATUS_TEMPLATE = 'Generated frame {frame} is render-only.';
 const ROTO_KEY_BUSY_STATUS_TEMPLATE = 'Finish saving frame {frame} before using key tools.';
 type RotoKeyUtilityAction = 'insert' | 'duplicate' | 'copy' | 'paste' | 'delete';
+export interface PhysicsPaintWorkflowRotoKeyState {
+  actionAvailability: RotoKeyUtilityActionState;
+  hasCopiedRotoKey: boolean;
+}
 const ROTO_CELL_LEGEND_ITEMS = [
   { label: 'Empty', className: 'roto-fill-empty' },
   { label: 'Cached', className: 'roto-fill-cached' },
@@ -92,6 +97,7 @@ export interface PhysicsPaintWorkflowStripProps {
   onPasteRotoFrame?: () => void;
   hasCopiedRotoKey?: boolean;
   keyActionInFlight?: boolean;
+  rotoKeyState?: PhysicsPaintWorkflowRotoKeyState;
   onSaveRotoFrame: () => void;
   onSavePendingRotoFrames: () => void;
   onSavePlay: () => void;
@@ -199,13 +205,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   });
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames, props.editableRotoFrames);
   const isCurrentRealRotoKey = realRotoFrames.includes(props.currentFrame) && currentRotoCell.isEditableTarget !== false;
-  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.rotoSaveInFlight) || Boolean(props.keyActionInFlight);
+  const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
+  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.rotoSaveInFlight) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
-  const canInsertRotoKey = canUseSourceRotoKey;
-  const canDuplicateRotoKey = canUseSourceRotoKey;
-  const canCopyRotoKey = canUseSourceRotoKey;
-  const canPasteRotoKey = Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState;
-  const canDeleteRotoKey = canUseSourceRotoKey;
+  const canInsertRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canInsert && props.ready !== false : canUseSourceRotoKey;
+  const canDuplicateRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canDuplicate && props.ready !== false : canUseSourceRotoKey;
+  const canCopyRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canCopy && props.ready !== false : canUseSourceRotoKey;
+  const canPasteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canPaste && props.ready !== false : Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState;
+  const canDeleteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canDelete && props.ready !== false : canUseSourceRotoKey;
   const rotoPendingLabel = getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight), props.rotoSavingFrame);
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
@@ -257,8 +264,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }
 
   function getRotoKeyUtilityDisabledMessage(action: RotoKeyUtilityAction): string {
+    if (sessionKeyAvailability?.busy) return sessionKeyAvailability.disabledReason ?? 'Finish saving frame {frame} before using key tools.'.replace('{frame}', String(props.rotoSavingFrame ?? props.currentFrame));
     if (keyUtilitiesDisabledByBusyState) return 'Finish saving frame {frame} before using key tools.'.replace('{frame}', String(props.rotoSavingFrame ?? props.currentFrame));
-    if (action === 'paste') return 'Copy a real Roto key before pasting.';
+    if (action === 'paste') return sessionKeyAvailability?.pasteDisabledReason ?? 'Copy a real Roto key before pasting.';
     if (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false) return 'Generated frame {frame} is render-only.'.replace('{frame}', String(currentRotoCell.frame));
     if (action === 'insert') return 'Select a real Roto key to insert.';
     if (action === 'duplicate') return 'Select a real Roto key to duplicate.';
