@@ -9,8 +9,8 @@ import {
   type RotoKeyUtilityTransaction,
 } from './physicsPaintRotoKeyController';
 
-export type RotoSessionActionName = 'duplicateKey' | 'insertBlankKey' | 'deleteKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty';
-export type RotoSessionSaveReason = 'frame-navigation' | 'key-action';
+export type RotoSessionActionName = 'duplicateKey' | 'insertBlankKey' | 'deleteKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty' | 'onSaveSucceeded' | 'onSaveFailed';
+export type RotoSessionSaveReason = 'beforeNavigate' | 'beforeAction';
 export type RotoSessionRestoreIntent = RotoKeyUtilityActiveRestore;
 
 export interface RotoSessionCopiedKey {
@@ -18,8 +18,18 @@ export interface RotoSessionCopiedKey {
   cachedFrame: PhysicPaintRotoCacheFrame;
 }
 
+export type RotoSessionPendingKeyAction = Exclude<RotoKeyUtilityOperation, 'copy'>;
+export type RotoSessionSaveContinuation =
+  | { type: 'navigate'; frame: number }
+  | { type: 'keyAction'; operation: RotoSessionPendingKeyAction };
+
+export interface RotoSessionFailedSaveFeedback {
+  frame: number;
+  message: string;
+}
+
 export type RotoSessionEffect =
-  | { type: 'saveFrame'; frame: number; reason: RotoSessionSaveReason; resumeFrame?: number; resumeAction?: RotoKeyUtilityOperation }
+  | { type: 'saveFrame'; frame: number; reason: RotoSessionSaveReason; after: RotoSessionSaveContinuation }
   | { type: 'replaceKeys'; frames: PhysicPaintRotoCacheFrame[]; changedFrames: number[]; removedFrames: number[]; transaction: RotoKeyUtilityTransaction }
   | { type: 'restoreFrame'; frame: number; restore: RotoSessionRestoreIntent }
   | { type: 'clearCanvas'; frame: number }
@@ -60,6 +70,11 @@ export interface RotoSession {
   copiedKey: Signal<RotoSessionCopiedKey | null>;
   restoreIntent: Signal<RotoSessionRestoreIntent>;
   feedback: Signal<string | null>;
+  savingFrame: Signal<number | null>;
+  pendingNavigationFrame: Signal<number | null>;
+  pendingKeyAction: Signal<RotoSessionPendingKeyAction | null>;
+  failedSaveFeedback: Signal<RotoSessionFailedSaveFeedback | null>;
+  currentFrameIsDirty: Signal<boolean>;
   actionAvailability: Signal<RotoKeyUtilityActionState>;
   duplicateKey: () => RotoSessionActionResult;
   insertBlankKey: () => RotoSessionActionResult;
@@ -68,6 +83,8 @@ export interface RotoSession {
   pasteKey: () => RotoSessionActionResult;
   requestFrame: (frame: number) => RotoSessionActionResult;
   markDirty: (frame?: number) => RotoSessionActionResult;
+  onSaveSucceeded: (frame: number) => RotoSessionActionResult;
+  onSaveFailed: (frame: number, message: string) => RotoSessionActionResult;
 }
 
 export function createRotoSession(input: RotoSessionInput): RotoSession {
@@ -79,9 +96,14 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   const copiedKey = signal<RotoSessionCopiedKey | null>(input.copiedKey ? normalizeCopiedKey(input.copiedKey, input.canvasSize) : null);
   const restoreIntent = signal<RotoSessionRestoreIntent>({ kind: 'none', frame: initialCurrentFrame });
   const feedback = signal<string | null>(null);
+  const savingFrame = signal<number | null>(null);
+  const pendingNavigationFrame = signal<number | null>(null);
+  const pendingKeyAction = signal<RotoSessionPendingKeyAction | null>(null);
+  const failedSaveFeedback = signal<RotoSessionFailedSaveFeedback | null>(null);
 
   const realKeyFrameNumbers = computed(() => realKeyFrames.value.map((frame) => frame.appFrame));
   const generatedFrameNumbers = computed(() => collectGeneratedFrames(cachedRotoFrames.value));
+  const currentFrameIsDirty = computed(() => hasFrame(dirtyFrames.value, currentFrame.value));
   const actionAvailability = computed(() => deriveRotoKeyUtilityActionState({
     currentFrame: currentFrame.value,
     realKeyFrameNumbers: realKeyFrameNumbers.value,
@@ -97,17 +119,16 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     const targetFrame = normalizeFrame(frame);
     if (targetFrame === null) return failed('requestFrame', 'Select a valid Roto frame.');
     const sourceFrame = currentFrame.peek();
-    const effects: RotoSessionEffect[] = [];
     if (hasFrame(dirtyFrames.peek(), sourceFrame) && targetFrame !== sourceFrame) {
-      effects.push({ type: 'saveFrame', frame: sourceFrame, reason: 'frame-navigation', resumeFrame: targetFrame });
+      return queueSaveBeforeContinuation('requestFrame', sourceFrame, 'beforeNavigate', { type: 'navigate', frame: targetFrame });
     }
     batch(() => {
       currentFrame.value = targetFrame;
       restoreIntent.value = { kind: 'none', frame: targetFrame };
       feedback.value = null;
+      failedSaveFeedback.value = null;
     });
-    effects.push({ type: 'navigate', frame: targetFrame });
-    return { action: 'requestFrame', ok: true, message: null, effects };
+    return { action: 'requestFrame', ok: true, message: null, effects: [{ type: 'navigate', frame: targetFrame }] };
   }
 
   function markDirty(frame = currentFrame.peek()): RotoSessionActionResult {
@@ -154,11 +175,32 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     if (operation === 'paste' && !actionState.canPaste) {
       return failed(action, actionState.pasteDisabledReason ?? 'Copy a real Roto key before pasting.');
     }
-    const effects: RotoSessionEffect[] = [];
     if (hasFrame(dirtyFrames.peek(), sourceFrame)) {
-      effects.push({ type: 'saveFrame', frame: sourceFrame, reason: 'key-action', resumeAction: operation });
+      return queueSaveBeforeContinuation(action, sourceFrame, 'beforeAction', { type: 'keyAction', operation });
     }
 
+    return runKeyTransaction(action, operation);
+  }
+
+  function queueSaveBeforeContinuation(
+    action: RotoSessionActionName,
+    sourceFrame: number,
+    reason: RotoSessionSaveReason,
+    after: RotoSessionSaveContinuation,
+  ): RotoSessionActionResult {
+    batch(() => {
+      savingFrame.value = sourceFrame;
+      pendingNavigationFrame.value = after.type === 'navigate' ? after.frame : null;
+      pendingKeyAction.value = after.type === 'keyAction' ? after.operation : null;
+      failedSaveFeedback.value = null;
+      feedback.value = null;
+    });
+    return { action, ok: true, message: null, effects: [{ type: 'saveFrame', frame: sourceFrame, reason, after }] };
+  }
+
+  function runKeyTransaction(action: RotoSessionActionName, operation: RotoSessionPendingKeyAction): RotoSessionActionResult {
+    const sourceFrame = currentFrame.peek();
+    const effects: RotoSessionEffect[] = [];
     try {
       const transaction = buildRotoKeyUtilityTransaction({
         operation,
@@ -176,12 +218,55 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
         currentFrame.value = transaction.activeFrame;
         restoreIntent.value = transaction.activeRestore;
         feedback.value = transaction.successMessage;
+        failedSaveFeedback.value = null;
       });
       effects.push(...effectsForTransaction(transaction));
       return { action, ok: true, message: transaction.successMessage, effects, transaction };
     } catch (error) {
       return failed(action, error instanceof Error ? error.message : String(error));
     }
+  }
+
+  function onSaveSucceeded(frame: number): RotoSessionActionResult {
+    const savedFrame = normalizeFrame(frame);
+    if (savedFrame === null) return failed('onSaveSucceeded', 'Select a valid Roto frame.');
+    if (savingFrame.peek() !== savedFrame) return failed('onSaveSucceeded', `No pending save for frame ${savedFrame}.`);
+    const targetFrame = pendingNavigationFrame.peek();
+    const queuedAction = pendingKeyAction.peek();
+    batch(() => {
+      dirtyFrames.value = removeFrames(dirtyFrames.peek(), [savedFrame]);
+      savingFrame.value = null;
+      pendingNavigationFrame.value = null;
+      pendingKeyAction.value = null;
+      failedSaveFeedback.value = null;
+      feedback.value = null;
+    });
+    if (targetFrame !== null) {
+      batch(() => {
+        currentFrame.value = targetFrame;
+        restoreIntent.value = { kind: 'none', frame: targetFrame };
+      });
+      return { action: 'onSaveSucceeded', ok: true, message: null, effects: [{ type: 'navigate', frame: targetFrame }] };
+    }
+    if (queuedAction !== null) {
+      return runKeyTransaction('onSaveSucceeded', queuedAction);
+    }
+    return { action: 'onSaveSucceeded', ok: true, message: null, effects: [] };
+  }
+
+  function onSaveFailed(frame: number, detail: string): RotoSessionActionResult {
+    const failedFrame = normalizeFrame(frame);
+    if (failedFrame === null) return failed('onSaveFailed', 'Select a valid Roto frame.');
+    const message = `Could not save frame ${failedFrame}. ${detail}`.trim();
+    batch(() => {
+      dirtyFrames.value = normalizeFrameNumbers([...dirtyFrames.peek(), failedFrame]);
+      savingFrame.value = null;
+      pendingNavigationFrame.value = null;
+      pendingKeyAction.value = null;
+      failedSaveFeedback.value = { frame: failedFrame, message };
+      feedback.value = message;
+    });
+    return { action: 'onSaveFailed', ok: false, message, effects: [] };
   }
 
   return {
@@ -194,6 +279,11 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     copiedKey,
     restoreIntent,
     feedback,
+    savingFrame,
+    pendingNavigationFrame,
+    pendingKeyAction,
+    failedSaveFeedback,
+    currentFrameIsDirty,
     actionAvailability,
     duplicateKey,
     insertBlankKey,
@@ -202,6 +292,8 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     pasteKey,
     requestFrame,
     markDirty,
+    onSaveSucceeded,
+    onSaveFailed,
   };
 
   function failed(action: RotoSessionActionName, message: string): RotoSessionActionResult {
