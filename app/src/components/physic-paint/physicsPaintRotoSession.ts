@@ -9,6 +9,7 @@ import {
   type RotoKeyUtilityTransaction,
 } from './physicsPaintRotoKeyController';
 
+export type RotoSessionActionName = 'duplicateKey' | 'insertBlankKey' | 'deleteKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty';
 export type RotoSessionSaveReason = 'frame-navigation' | 'key-action';
 export type RotoSessionRestoreIntent = RotoKeyUtilityActiveRestore;
 
@@ -29,6 +30,7 @@ export type RotoSessionEffect =
   | { type: 'clearDeletedFrames'; frames: number[] };
 
 export interface RotoSessionActionResult {
+  action: RotoSessionActionName;
   ok: boolean;
   message: string | null;
   effects: RotoSessionEffect[];
@@ -93,7 +95,7 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
 
   function requestFrame(frame: number): RotoSessionActionResult {
     const targetFrame = normalizeFrame(frame);
-    if (targetFrame === null) return failed('Select a valid Roto frame.');
+    if (targetFrame === null) return failed('requestFrame', 'Select a valid Roto frame.');
     const sourceFrame = currentFrame.peek();
     const effects: RotoSessionEffect[] = [];
     if (hasFrame(dirtyFrames.peek(), sourceFrame) && targetFrame !== sourceFrame) {
@@ -105,52 +107,52 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
       feedback.value = null;
     });
     effects.push({ type: 'navigate', frame: targetFrame });
-    return { ok: true, message: null, effects };
+    return { action: 'requestFrame', ok: true, message: null, effects };
   }
 
   function markDirty(frame = currentFrame.peek()): RotoSessionActionResult {
     const dirtyFrame = normalizeFrame(frame);
-    if (dirtyFrame === null) return failed('Select a valid Roto frame.');
+    if (dirtyFrame === null) return failed('markDirty', 'Select a valid Roto frame.');
     dirtyFrames.value = normalizeFrameNumbers([...dirtyFrames.peek(), dirtyFrame]);
-    return { ok: true, message: null, effects: [] };
+    return { action: 'markDirty', ok: true, message: null, effects: [] };
   }
 
   function copyKey(): RotoSessionActionResult {
     const sourceFrame = currentFrame.peek();
     const sourcePayload = realKeyFrames.peek().find((frame) => frame.appFrame === sourceFrame);
-    if (!sourcePayload) return failed(actionAvailability.peek().disabledReason ?? 'Select a real Roto key to copy.');
+    if (!sourcePayload) return failed('copyKey', actionAvailability.peek().disabledReason ?? 'Select a real Roto key to copy.');
     const normalized = normalizeRealKeyFrame(sourcePayload, sourceFrame, input.canvasSize);
     copiedKey.value = { frame: sourceFrame, cachedFrame: normalized };
     const message = `Copied key ${sourceFrame}.`;
     feedback.value = message;
-    return { ok: true, message, effects: [] };
+    return { action: 'copyKey', ok: true, message, effects: [] };
   }
 
   function duplicateKey(): RotoSessionActionResult {
-    return applyTransaction('duplicate');
+    return applyTransaction('duplicateKey', 'duplicate');
   }
 
   function insertBlankKey(): RotoSessionActionResult {
-    return applyTransaction('insert');
+    return applyTransaction('insertBlankKey', 'insert');
   }
 
   function deleteKey(): RotoSessionActionResult {
-    return applyTransaction('delete');
+    return applyTransaction('deleteKey', 'delete');
   }
 
   function pasteKey(): RotoSessionActionResult {
-    return applyTransaction('paste');
+    return applyTransaction('pasteKey', 'paste');
   }
 
-  function applyTransaction(operation: Exclude<RotoKeyUtilityOperation, 'copy'>): RotoSessionActionResult {
+  function applyTransaction(action: RotoSessionActionName, operation: Exclude<RotoKeyUtilityOperation, 'copy'>): RotoSessionActionResult {
     const sourceFrame = currentFrame.peek();
     const actionState = actionAvailability.peek();
     const hasRealSource = realKeyFrames.peek().some((frame) => frame.appFrame === sourceFrame);
     if (operation !== 'paste' && !hasRealSource) {
-      return failed(actionState.disabledReason ?? 'Select a real Roto key to use key tools.');
+      return failed(action, actionState.disabledReason ?? 'Select a real Roto key to use key tools.');
     }
     if (operation === 'paste' && !actionState.canPaste) {
-      return failed(actionState.pasteDisabledReason ?? 'Copy a real Roto key before pasting.');
+      return failed(action, actionState.pasteDisabledReason ?? 'Copy a real Roto key before pasting.');
     }
     const effects: RotoSessionEffect[] = [];
     if (hasFrame(dirtyFrames.peek(), sourceFrame)) {
@@ -176,9 +178,9 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
         feedback.value = transaction.successMessage;
       });
       effects.push(...effectsForTransaction(transaction));
-      return { ok: true, message: transaction.successMessage, effects, transaction };
+      return { action, ok: true, message: transaction.successMessage, effects, transaction };
     } catch (error) {
-      return failed(error instanceof Error ? error.message : String(error));
+      return failed(action, error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -202,9 +204,9 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     markDirty,
   };
 
-  function failed(message: string): RotoSessionActionResult {
+  function failed(action: RotoSessionActionName, message: string): RotoSessionActionResult {
     feedback.value = message;
-    return { ok: false, message, effects: [] };
+    return { action, ok: false, message, effects: [] };
   }
 }
 
