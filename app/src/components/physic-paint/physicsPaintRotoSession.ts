@@ -120,19 +120,7 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     if (targetFrame === null) return failed('requestFrame', 'Select a valid Roto frame.');
     const sourceFrame = currentFrame.peek();
     if (hasFrame(dirtyFrames.peek(), sourceFrame) && targetFrame !== sourceFrame) {
-      batch(() => {
-        savingFrame.value = sourceFrame;
-        pendingNavigationFrame.value = targetFrame;
-        pendingKeyAction.value = null;
-        failedSaveFeedback.value = null;
-        feedback.value = null;
-      });
-      return {
-        action: 'requestFrame',
-        ok: true,
-        message: null,
-        effects: [{ type: 'saveFrame', frame: sourceFrame, reason: 'beforeNavigate', after: { type: 'navigate', frame: targetFrame } }],
-      };
+      return queueSaveBeforeContinuation('requestFrame', sourceFrame, 'beforeNavigate', { type: 'navigate', frame: targetFrame });
     }
     batch(() => {
       currentFrame.value = targetFrame;
@@ -188,22 +176,26 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
       return failed(action, actionState.pasteDisabledReason ?? 'Copy a real Roto key before pasting.');
     }
     if (hasFrame(dirtyFrames.peek(), sourceFrame)) {
-      batch(() => {
-        savingFrame.value = sourceFrame;
-        pendingNavigationFrame.value = null;
-        pendingKeyAction.value = operation;
-        failedSaveFeedback.value = null;
-        feedback.value = null;
-      });
-      return {
-        action,
-        ok: true,
-        message: null,
-        effects: [{ type: 'saveFrame', frame: sourceFrame, reason: 'beforeAction', after: { type: 'keyAction', operation } }],
-      };
+      return queueSaveBeforeContinuation(action, sourceFrame, 'beforeAction', { type: 'keyAction', operation });
     }
 
     return runKeyTransaction(action, operation);
+  }
+
+  function queueSaveBeforeContinuation(
+    action: RotoSessionActionName,
+    sourceFrame: number,
+    reason: RotoSessionSaveReason,
+    after: RotoSessionSaveContinuation,
+  ): RotoSessionActionResult {
+    batch(() => {
+      savingFrame.value = sourceFrame;
+      pendingNavigationFrame.value = after.type === 'navigate' ? after.frame : null;
+      pendingKeyAction.value = after.type === 'keyAction' ? after.operation : null;
+      failedSaveFeedback.value = null;
+      feedback.value = null;
+    });
+    return { action, ok: true, message: null, effects: [{ type: 'saveFrame', frame: sourceFrame, reason, after }] };
   }
 
   function runKeyTransaction(action: RotoSessionActionName, operation: RotoSessionPendingKeyAction): RotoSessionActionResult {
