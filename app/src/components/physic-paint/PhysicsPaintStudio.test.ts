@@ -990,7 +990,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
     const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
 
-    expect(text).toContain('const [, setPendingRotoFrames] = useState<number[]>([])');
+    expect(text).toContain('const [rotoSessionVersion, setRotoSessionVersion] = useState(0)');
     expect(text).toContain('const markCurrentRotoFrameDirty = useCallback');
     expect(text).toContain('const beginRotoFrameEdit = useCallback');
     expect(canvasBlock).toContain('onInputIntent={workflowMode === \'play\' ? beginPlayFrameEdit : beginRotoFrameEdit}');

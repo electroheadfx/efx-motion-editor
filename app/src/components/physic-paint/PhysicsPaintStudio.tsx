@@ -525,7 +525,6 @@ export function PhysicsPaintStudio() {
   const [savedRotoFrames, setSavedRotoFrames] = useState<PhysicsPaintWorkflowStripFrameMarker[]>(() => getSavedRotoMarkersFromLaunchContext(launchContext));
   const [occupiedRotoFrames, setOccupiedRotoFrames] = useState<number[]>(() => getRealCachedRotoFrameNumbers(launchContext));
   const [editableRotoFrames, setEditableRotoFrames] = useState<number[]>([]);
-  const [, setPendingRotoFrames] = useState<number[]>([]);
   const [rotoSavingFrame, setRotoSavingFrame] = useState<number | null>(null);
   const [latestPlayFrames, setLatestPlayFrames] = useState<RenderedFramePayload[]>([]);
   const [playFramesVersion, setPlayFramesVersion] = useState(0);
@@ -616,7 +615,7 @@ export function PhysicsPaintStudio() {
       rotoCachedPlaybackTimerRef.current = null;
     }
     setEditableRotoFrames([]);
-    setPendingRotoFrames([]);
+    setRotoSessionVersion((version) => version + 1);
     setRotoSavingFrame(null);
     setCachedRotoReferenceUrl(null);
     setCachedRotoPlaybackFrame(null);
@@ -1058,8 +1057,6 @@ export function PhysicsPaintStudio() {
   }, [markSelectedPlayCacheDirty, workflowMode]);
 
   const syncPendingRotoFrames = useCallback(() => {
-    const frames = Array.from(dirtyRotoFramesRef.current).sort((a, b) => a - b);
-    setPendingRotoFrames(frames);
     setRotoSessionVersion((version) => version + 1);
   }, []);
 
