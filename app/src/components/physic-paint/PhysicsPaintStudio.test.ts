@@ -51,8 +51,8 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(text).toContain("from './physicsPaintRotoSession'");
     expect(text).toContain('createRotoSession');
     expect(text).toContain('const rotoSession = useMemo(() => createRotoSession({');
-    expect(text).toContain('rotoSession.currentFrame.value');
-    expect(text).toContain('rotoSession.realKeyFrames.value');
+    expect(text).toContain('currentFrame,');
+    expect(text).toContain('realKeyFrames: getRealCachedRotoFrames(launchContext)');
     expect(text).toContain('rotoSession.dirtyFrames.value');
     expect(text).toContain('rotoSession.actionAvailability.value');
     expect(workflowStripBlock).toContain('hasCopiedRotoKey={rotoSession.copiedKey.value !== null}');
@@ -61,7 +61,7 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
 
   it('D-07/D-17 executes session effects through a Studio adapter descriptor runner', () => {
     const text = source();
-    const executorBlock = text.slice(text.indexOf('const executeRotoSessionEffects = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
+    const executorBlock = text.slice(text.indexOf('const executeRotoSessionEffects = useCallback'), text.indexOf('const duplicateRotoKey = useCallback'));
 
     expect(text).toContain('type RotoSessionEffect');
     expect(text).toContain('type RotoSessionActionResult');
@@ -856,14 +856,14 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('const requestRotoFrameNavigation = useCallback');
     expect(coordinatorBlock).toContain('if (!Number.isInteger(targetFrame) || targetFrame < 0) return false');
     expect(coordinatorBlock).toContain('snapshotCurrentRotoFrame()');
-    expect(coordinatorBlock).toContain('const sourceFrame = currentFrame');
-    expect(coordinatorBlock).toContain('const sourceIsDirty = dirtyRotoFramesRef.current.has(sourceFrame)');
-    expect(coordinatorBlock).toContain('if (!sourceIsDirty) return navigateToSyncedFrame(targetFrame)');
-    expect(coordinatorBlock).toContain('flushRotoFrame(sourceFrame, { force: true, advanceToFrame: targetFrame })');
+    expect(coordinatorBlock).toContain('const result = rotoSession.requestFrame(targetFrame)');
+    expect(coordinatorBlock).toContain("result.effects.some((effect) => effect.type === 'navigate')");
+    expect(coordinatorBlock).toContain('executeRotoSessionEffects(result.effects)');
+    expect(coordinatorBlock).toContain('runRotoSessionResult(result)');
     expect(coordinatorBlock).toContain('pendingRotoAdvanceRef.current = targetFrame');
     expect(coordinatorBlock).toContain('const saveOnLeaveSourceFrame = saveOnLeaveSourceFrameRef.current');
     expect(coordinatorBlock).toContain('if (saveOnLeaveSourceFrame !== null && activeOperationIdRef.current)');
-    expect(coordinatorBlock).toContain('saveOnLeaveSourceFrameRef.current = sourceFrame');
+    expect(text).toContain('saveOnLeaveSourceFrameRef.current = effect.frame');
     expect(navigateBlock).toContain('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
     expect(navigateBlock).not.toContain('flushRotoFrame(sourceFrame');
     expect(frameNavBlock).toContain('void requestRotoFrameNavigation(0)');
@@ -990,11 +990,11 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
     const workflowStripBlock = text.slice(text.indexOf('<PhysicsPaintWorkflowStrip'), text.indexOf('{shortcutsVisible'));
 
-    expect(text).toContain('const [pendingRotoFrames, setPendingRotoFrames] = useState<number[]>([])');
+    expect(text).toContain('const [, setPendingRotoFrames] = useState<number[]>([])');
     expect(text).toContain('const markCurrentRotoFrameDirty = useCallback');
     expect(text).toContain('const beginRotoFrameEdit = useCallback');
     expect(canvasBlock).toContain('onInputIntent={workflowMode === \'play\' ? beginPlayFrameEdit : beginRotoFrameEdit}');
-    expect(workflowStripBlock).toContain('pendingRotoFrames={pendingRotoFrames}');
+    expect(workflowStripBlock).toContain('pendingRotoFrames={rotoSession.dirtyFrames.value}');
     expect(workflowStripBlock).toContain('rotoSaveInFlight={Boolean(rotoFlushInFlightRef.current) || applyStatus === \'applying\'}');
     expect(workflowStripBlock).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
   });
@@ -1023,14 +1023,14 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(workflowStripBlock).toContain('onDeleteRotoFrame={deleteRotoFrame}');
     expect(workflowStripBlock).toContain('onCopyRotoFrame={copyRotoFrame}');
     expect(workflowStripBlock).toContain('onPasteRotoFrame={pasteRotoFrame}');
-    expect(workflowStripBlock).toContain('hasCopiedRotoKey={hasCopiedRotoKey}');
+    expect(workflowStripBlock).toContain('hasCopiedRotoKey={rotoSession.copiedKey.value !== null}');
     expect(shortcutsBlock).not.toContain('Duplicate key');
     expect(shortcutsBlock).not.toContain('Insert frame');
     expect(shortcutsBlock).not.toContain('Delete frame');
     expect(shortcutsBlock).not.toContain('Copy frame');
     expect(shortcutsBlock).not.toContain('Paste frame');
-    expect(text).toContain('const [hasCopiedRotoKey, setHasCopiedRotoKey]');
-    expect(text).toContain('deriveRotoKeyUtilityActionState');
+    expect(text).toContain('const rotoSession = useMemo(() => createRotoSession({');
+    expect(text).toContain('rotoSession.actionAvailability.value');
     expect(text).toContain('const requireCurrentRealRotoKey = useCallback');
     expect(text).toContain("setApplyMessage(actionState.disabledReason ?? 'Key utilities require a real Roto key. Generated in-betweens are render-only.');");
     expect(text).toContain('physicPaintStore.regenerateRotoInterpolationCache');
