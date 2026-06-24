@@ -5,8 +5,8 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.8
 current_phase_name: Physics Paint Roto State Refactor
 status: ready_to_plan
-stopped_at: Phase 36.8 inserted, ready to plan Phase 36.8
-last_updated: "2026-06-23T06:59:33.112Z"
+stopped_at: Phase 36.8 context gathered
+last_updated: "2026-06-24T15:49:31.470Z"
 last_activity: 2026-06-22
 last_activity_desc: Phase 36.8 inserted after Phase 36 for Roto state refactor
 progress:
@@ -159,6 +159,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T18:54:38.591Z
-Stopped at: Phase 36.7 complete, ready to plan Phase 37
-Resume file: None
+Last session: 2026-06-24T15:49:31.460Z
+Stopped at: Phase 36.8 context gathered
+Resume file: .planning/phases/36.8-physics-paint-roto-state-refactor-create-a-new-mvp-tdd-phase/36.8-CONTEXT.md
