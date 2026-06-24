@@ -10,11 +10,7 @@
       "Read(STATE.md)",
       "Write(STATE.md)"
     ],
-    "deny": [
-      "Read(.env)",
-      "Read(.env.*)",
-      "Read(.secrets)"
-    ]
+    "deny": ["Read(.env)", "Read(.env.*)", "Read(.secrets)"]
   },
   "hooks": {
     "SessionStart": [
@@ -185,5 +181,9 @@
   },
   "worktree": {
     "baseRef": "head"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "\"/Users/lmarques/.nvm/versions/node/v24.15.0/bin/node\" \"/Users/lmarques/.claude/hooks/gsd-statusline.js\""
   }
 }
