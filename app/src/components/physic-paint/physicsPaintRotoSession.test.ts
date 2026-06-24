@@ -78,8 +78,8 @@ describe('physicsPaintRotoSession save orchestration boundary', () => {
     const resumed = session.onSaveSucceeded(5);
 
     expect(resumed.ok).toBe(true);
-    expect(effectTypes(resumed.effects)).toEqual(['replaceKeys', 'restoreFrame', 'clearDeletedFrames']);
-    expect(session.realKeyFrameNumbers.value).toEqual([5]);
+    expect(effectTypes(resumed.effects)).toEqual(['replaceKeys', 'clearCanvas', 'restoreFrame', 'clearDeletedFrames']);
+    expect(session.realKeyFrameNumbers.value).toEqual([7]);
     expect(session.realKeyFrames.value.find((candidate) => candidate.dataUrl === 'data:image/png;base64,real-five')).toBeUndefined();
     expect(session.dirtyFrames.value).not.toContain(5);
     expect(session.pendingKeyAction.value).toBeNull();
@@ -211,7 +211,7 @@ describe('physicsPaintRotoSession boundary clean key transactions', () => {
         { ...frame(5, 'data:image/png;base64,reference-five', 'generated-interpolation'), nearestRealKeyFrame: 5 },
         frame(7, 'data:image/png;base64,generated-seven', 'generated-interpolation'),
       ],
-      dirtyFrames: [5],
+      dirtyFrames: [],
       canvasSize: { width: 100, height: 100 },
       buildBlankRotoFrame: blankFrame,
     });
