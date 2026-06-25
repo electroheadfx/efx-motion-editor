@@ -326,8 +326,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('.physics-paint-roto-key-button.destructive');
     expect(css).toContain('.physics-paint-roto-key-button:active:not(:disabled)');
     expect(css).toContain('.physics-paint-roto-key-button[data-pressed="true"]');
-    expect(code).toContain('onPointerDown={() => setPressedRotoKeyAction');
-    expect(code).toContain('data-pressed={pressedRotoKeyAction ===');
+    expect(code).toContain('onPointerDown: () => setPressedRotoKeyAction(action)');
+    expect(code).toContain("'data-pressed': pressedRotoKeyAction === action");
   });
 
   it('keeps Roto key transactions authoritative after local apply instead of re-reading stale cache state', () => {
@@ -727,7 +727,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('runRotoSessionResult(rotoSession.duplicateKey()');
     expect(studio).toContain('runRotoSessionResult(rotoSession.insertBlankKey()');
     expect(studio).toContain('runRotoSessionResult(rotoSession.deleteKey()');
-    expect(studio).toContain('runRotoSessionResult(rotoSession.copyKey()');
+    expect(studio).toContain('runRotoSessionResult(synced.session.copyKey(), synced.session)');
     expect(studio).toContain('runRotoSessionResult(rotoSession.pasteKey()');
     expect(studio).toContain('case \'saveFrame\'');
     expect(studio).toContain('dirtyRotoFramesRef.current = new Set(rotoSession.dirtyFrames.value)');

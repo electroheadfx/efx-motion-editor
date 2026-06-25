@@ -174,6 +174,7 @@ function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   const [confirmation, setConfirmation] = useState<PhysicsPaintWorkflowConfirmation | null>(null);
+  const [pressedRotoKeyAction, setPressedRotoKeyAction] = useState<RotoKeyUtilityAction | null>(null);
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const playRange = useMemo(
@@ -284,6 +285,26 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       // so the existing status stack can mirror the same reason when Studio supplies it.
       getRotoKeyUtilityDisabledMessage(action);
     }
+  }
+
+  function endRotoKeyPress(action: RotoKeyUtilityAction) {
+    setTimeout(() => setPressedRotoKeyAction((pressed) => pressed === action ? null : pressed), 120);
+  }
+
+  function getRotoKeyButtonPressProps(action: RotoKeyUtilityAction) {
+    return {
+      'data-pressed': pressedRotoKeyAction === action,
+      onPointerDown: () => setPressedRotoKeyAction(action),
+      onPointerUp: () => endRotoKeyPress(action),
+      onPointerCancel: () => endRotoKeyPress(action),
+      onPointerLeave: () => endRotoKeyPress(action),
+      onKeyDown: (event: KeyboardEvent) => {
+        if (event.key === ' ' || event.key === 'Enter') setPressedRotoKeyAction(action);
+      },
+      onKeyUp: (event: KeyboardEvent) => {
+        if (event.key === ' ' || event.key === 'Enter') endRotoKeyPress(action);
+      },
+    };
   }
 
   function getConfirmationCopy(kind: PhysicsPaintWorkflowConfirmation): string {
@@ -464,11 +485,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               </div>
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key utilities for frame ${props.currentFrame}`}>
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
-                <button type="button" class="physics-paint-roto-key-button" aria-label={`Insert blank Roto key before frame ${props.currentFrame}`} disabled={!canInsertRotoKey} onClick={() => runRotoKeyUtilityAction('insert', canInsertRotoKey, props.onInsertRotoFrame)}>Insert</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label={`Duplicate Roto key at frame ${props.currentFrame}`} disabled={!canDuplicateRotoKey} onClick={() => runRotoKeyUtilityAction('duplicate', canDuplicateRotoKey, props.onDuplicateRotoKey)}>Dup</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label={`Copy Roto key at frame ${props.currentFrame}`} disabled={!canCopyRotoKey} onClick={() => runRotoKeyUtilityAction('copy', canCopyRotoKey, props.onCopyRotoFrame)}>Copy</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label={`Paste Roto key to frame ${props.currentFrame}`} disabled={!canPasteRotoKey} onClick={() => runRotoKeyUtilityAction('paste', canPasteRotoKey, props.onPasteRotoFrame)}>Paste</button>
-                <button type="button" class="physics-paint-roto-key-button destructive" aria-label={`Delete Roto key at frame ${props.currentFrame}`} disabled={!canDeleteRotoKey} onClick={() => runRotoKeyUtilityAction('delete', canDeleteRotoKey, props.onDeleteRotoFrame)}>Delete</button>
+                <button type="button" class="physics-paint-roto-key-button" aria-label={`Insert blank Roto key before frame ${props.currentFrame}`} disabled={!canInsertRotoKey} {...getRotoKeyButtonPressProps('insert')} onClick={() => runRotoKeyUtilityAction('insert', canInsertRotoKey, props.onInsertRotoFrame)}>Insert</button>
+                <button type="button" class="physics-paint-roto-key-button" aria-label={`Duplicate Roto key at frame ${props.currentFrame}`} disabled={!canDuplicateRotoKey} {...getRotoKeyButtonPressProps('duplicate')} onClick={() => runRotoKeyUtilityAction('duplicate', canDuplicateRotoKey, props.onDuplicateRotoKey)}>Dup</button>
+                <button type="button" class="physics-paint-roto-key-button" aria-label={`Copy Roto key at frame ${props.currentFrame}`} disabled={!canCopyRotoKey} {...getRotoKeyButtonPressProps('copy')} onClick={() => runRotoKeyUtilityAction('copy', canCopyRotoKey, props.onCopyRotoFrame)}>Copy</button>
+                <button type="button" class="physics-paint-roto-key-button" aria-label={`Paste Roto key to frame ${props.currentFrame}`} disabled={!canPasteRotoKey} {...getRotoKeyButtonPressProps('paste')} onClick={() => runRotoKeyUtilityAction('paste', canPasteRotoKey, props.onPasteRotoFrame)}>Paste</button>
+                <button type="button" class="physics-paint-roto-key-button destructive" aria-label={`Delete Roto key at frame ${props.currentFrame}`} disabled={!canDeleteRotoKey} {...getRotoKeyButtonPressProps('delete')} onClick={() => runRotoKeyUtilityAction('delete', canDeleteRotoKey, props.onDeleteRotoFrame)}>Delete</button>
               </div>
             </div>
           ) : (
