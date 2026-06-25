@@ -43,6 +43,10 @@ const security_cjs_1 = require("./security.cjs");
 const runtime_homes_cjs_1 = require("./runtime-homes.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- frontmatter.cjs is an export= CommonJS module
 const frontmatterMod = require("./frontmatter.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- verification.cjs is an export= CommonJS module
+const verificationMod = require("./verification.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- uat-predicate.cjs is an export= CommonJS module
+const uatPredicateMod = require("./uat-predicate.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- agent-install-check.cjs is an export= CommonJS module
 const agentInstallCheck = require("./agent-install-check.cjs");
 const { checkAgentsInstalled } = agentInstallCheck;
@@ -61,6 +65,8 @@ const { pruneOrphanedWorktrees } = worktreeSafety;
 const { planningPaths, planningDir, planningRoot, findContextMdIn, } = planningWorkspace;
 const { determinePhaseStatus } = commandsMod;
 const { extractFrontmatter } = frontmatterMod;
+const { readVerificationStatus } = verificationMod;
+const { evaluateUatPassed } = uatPredicateMod;
 // Unused but imported for structural parity
 void stripShippedMilestones;
 // Accept all bold/colon variants of the Requirements header (#2769)
@@ -70,6 +76,45 @@ function listPhaseSummaryFiles(phaseDir) {
 }
 function listPhasePlanFiles(phaseDir) {
     return scanPhasePlans(phaseDir)['planFiles'];
+}
+function verificationNextCommand(status, phaseNumber, slashRuntime) {
+    if (status === 'gaps_found') {
+        return `${(0, runtime_slash_cjs_1.formatGsdSlash)('plan-phase', slashRuntime)} ${phaseNumber} --gaps`;
+    }
+    if (status === 'human_needed' || status === 'stale') {
+        return `${(0, runtime_slash_cjs_1.formatGsdSlash)('verify-work', slashRuntime)} ${phaseNumber}`;
+    }
+    if (status === 'missing' || status === 'unknown') {
+        return `${(0, runtime_slash_cjs_1.formatGsdSlash)('execute-phase', slashRuntime)} ${phaseNumber}`;
+    }
+    return '';
+}
+function projectCompletionStatus(implementationComplete, verificationPassed) {
+    if (implementationComplete && verificationPassed)
+        return 'complete';
+    if (implementationComplete)
+        return 'executed';
+    return 'incomplete';
+}
+function buildPhaseCompletionProjection(cwd, phaseNumber, phaseDir, planCount, summaryCount, slashRuntime) {
+    const implementationComplete = planCount > 0 && summaryCount >= planCount;
+    const phaseFullDir = phaseDir ? node_path_1.default.join(cwd, phaseDir) : '';
+    const verificationStatus = implementationComplete
+        ? readVerificationStatus(phaseFullDir)
+        : { status: 'not_required', next_action: '', next_command: '' };
+    const projectedVerificationStatus = verificationStatus.status;
+    const projectedVerificationAction = verificationStatus.next_action;
+    const verificationPassed = projectedVerificationStatus === 'passed';
+    const phaseComplete = implementationComplete && verificationPassed;
+    return {
+        implementation_complete: implementationComplete,
+        verification_status: projectedVerificationStatus,
+        verification_passed: verificationPassed,
+        phase_complete: phaseComplete,
+        completion_status: projectCompletionStatus(implementationComplete, verificationPassed),
+        verification_next_action: projectedVerificationAction,
+        verification_next_command: verificationNextCommand(projectedVerificationStatus, phaseNumber, slashRuntime),
+    };
 }
 function getLatestCompletedMilestone(cwd) {
     const milestonesPath = node_path_1.default.join(planningRoot(cwd), 'MILESTONES.md');
@@ -636,6 +681,7 @@ function cmdInitVerifyWork(cwd, phase, raw) {
         error('phase required for init verify-work');
     }
     const config = loadConfig(cwd);
+    const _slashRuntime = (0, runtime_slash_cjs_1.resolveRuntime)(cwd);
     let phaseInfo = findPhaseInternal(cwd, phase);
     if (phaseInfo?.['archived']) {
         const roadmapPhase = getRoadmapPhaseInternal(cwd, phase);
@@ -664,15 +710,30 @@ function cmdInitVerifyWork(cwd, phase, raw) {
             };
         }
     }
+    const phaseDir = phaseInfo?.['directory'] || null;
+    const planCount = phaseInfo?.['plans']?.length || 0;
+    const summaryCount = phaseInfo?.['summaries']?.length || 0;
+    const completion = buildPhaseCompletionProjection(cwd, phaseInfo?.['phase_number'] || phase, phaseDir, planCount, summaryCount, _slashRuntime);
+    const uatReport = phaseDir
+        ? evaluateUatPassed(node_path_1.default.join(cwd, phaseDir), {
+            policy: { requireVerification: true },
+        })
+        : null;
     const result = {
         planner_model: resolveModelInternal(cwd, 'gsd-planner'),
         checker_model: resolveModelInternal(cwd, 'gsd-plan-checker'),
         commit_docs: config.commit_docs,
         phase_found: !!phaseInfo,
-        phase_dir: phaseInfo?.['directory'] || null,
+        phase_dir: phaseDir,
         phase_number: phaseInfo?.['phase_number'] || null,
         phase_name: phaseInfo?.['phase_name'] || null,
         has_verification: phaseInfo?.['has_verification'] || false,
+        phase_completion: {
+            ...completion,
+            uat_passed: uatReport?.passed ?? false,
+            uat_blockers: uatReport?.blockers ?? [],
+            ready_to_transition: completion.phase_complete && (uatReport?.passed ?? false),
+        },
     };
     output(withProjectRoot(cwd, result), raw);
 }
@@ -1035,18 +1096,23 @@ function cmdInitManager(cwd, raw) {
         let hasResearch = false;
         let lastActivity = null;
         let isActive = false;
+        let completion = buildPhaseCompletionProjection(cwd, phaseNum, null, planCount, summaryCount, _slashRuntime);
         try {
             const dirs = _phaseDirEntries.filter(isDirInMilestone);
             const dirMatch = dirs.find((d) => phaseTokenMatches(d, normalized));
             if (dirMatch) {
                 const fullDir = node_path_1.default.join(phasesDir, dirMatch);
+                const phaseDirRel = toPosixPath(node_path_1.default.relative(cwd, fullDir));
                 const phaseFiles = node_fs_1.default.readdirSync(fullDir);
                 planCount = listPhasePlanFiles(fullDir).length;
                 summaryCount = listPhaseSummaryFiles(fullDir).length;
                 hasContext = findContextMdIn(fullDir) !== null;
                 hasResearch = phaseFiles.some((f) => f.endsWith('-RESEARCH.md') || f === 'RESEARCH.md');
-                if (summaryCount >= planCount && planCount > 0)
+                completion = buildPhaseCompletionProjection(cwd, phaseNum, phaseDirRel, planCount, summaryCount, _slashRuntime);
+                if (completion.phase_complete)
                     diskStatus = 'complete';
+                else if (completion.implementation_complete)
+                    diskStatus = 'executed';
                 else if (summaryCount > 0)
                     diskStatus = 'partial';
                 else if (planCount > 0)
@@ -1079,7 +1145,7 @@ function cmdInitManager(cwd, raw) {
             /* intentionally empty */
         }
         const roadmapComplete = _checkboxStates.get(phaseNum) || false;
-        if (roadmapComplete && diskStatus !== 'complete') {
+        if (roadmapComplete && completion.phase_complete && diskStatus !== 'complete') {
             diskStatus = 'complete';
         }
         phases.push({
@@ -1093,6 +1159,7 @@ function cmdInitManager(cwd, raw) {
             plan_count: planCount,
             summary_count: summaryCount,
             roadmap_complete: roadmapComplete,
+            ...completion,
             last_activity: lastActivity,
             is_active: isActive,
         });
@@ -1107,22 +1174,42 @@ function cmdInitManager(cwd, raw) {
             phase['display_name'] = name;
         }
     }
-    const completedNums = new Set(phases.filter((p) => p['disk_status'] === 'complete').map((p) => p['number']));
+    function normalizePhaseNumber(value) {
+        return value
+            .split('.')
+            .map((part) => {
+            const match = /^(\d+)([A-Z]?)$/i.exec(part);
+            if (!match)
+                return part;
+            return `${Number(match[1])}${match[2].toUpperCase()}`;
+        })
+            .join('.');
+    }
+    const completedNums = new Set(phases
+        .filter((p) => p['phase_complete'] === true)
+        .map((p) => normalizePhaseNumber(p['number'])));
+    const phaseMap = new Map(phases.map((p) => [normalizePhaseNumber(p['number']), p]));
     const _allCompletedPattern = /-\s*\[x\]\s*.*Phase\s+(\d+[A-Z]?(?:\.\d+)*)[:\s]/gi;
     let _allMatch;
     while ((_allMatch = _allCompletedPattern.exec(rawContent)) !== null) {
-        completedNums.add(_allMatch[1]);
+        const phaseNum = normalizePhaseNumber(_allMatch[1]);
+        const phase = phaseMap.get(phaseNum);
+        if (!phase || phase['phase_complete'] === true) {
+            completedNums.add(phaseNum);
+        }
     }
-    const phaseMap = new Map(phases.map((p) => [p['number'], p]));
     function reaches(from, to, visited = new Set()) {
-        if (visited.has(from))
+        const normalizedFrom = normalizePhaseNumber(from);
+        const normalizedTo = normalizePhaseNumber(to);
+        if (visited.has(normalizedFrom))
             return false;
-        visited.add(from);
-        const p = phaseMap.get(from);
+        visited.add(normalizedFrom);
+        const p = phaseMap.get(normalizedFrom);
         if (!p || !p['dep_phases'] || p['dep_phases'].length === 0)
             return false;
-        if (p['dep_phases'].includes(to))
+        if (p['dep_phases'].some((dep) => normalizePhaseNumber(dep) === normalizedTo)) {
             return true;
+        }
         return p['dep_phases'].some((dep) => reaches(dep, to, visited));
     }
     function hasDepRelationship(numA, numB) {
@@ -1134,8 +1221,8 @@ function cmdInitManager(cwd, raw) {
             phase['deps_satisfied'] = true;
         }
         else {
-            const depNums = phase['depends_on'].match(/\d+(?:\.\d+)*/g) || [];
-            phase['deps_satisfied'] = depNums.every((n) => completedNums.has(n));
+            const depNums = phase['depends_on'].match(/\d+[A-Z]?(?:\.\d+)*/gi) || [];
+            phase['deps_satisfied'] = depNums.every((n) => completedNums.has(normalizePhaseNumber(n)));
             phase['dep_phases'] = depNums;
         }
     }
@@ -1167,7 +1254,16 @@ function cmdInitManager(cwd, raw) {
             continue;
         if (/^999(?:\.|$)/.test(phase['number']))
             continue;
-        if (phase['disk_status'] === 'planned' && phase['deps_satisfied']) {
+        if (phase['disk_status'] === 'executed') {
+            recommendedActions.push({
+                phase: phase['number'],
+                phase_name: phase['name'],
+                action: 'verify',
+                reason: `Implementation complete; verification ${phase['verification_status']}`,
+                command: phase['verification_next_command'],
+            });
+        }
+        else if (phase['disk_status'] === 'planned' && phase['deps_satisfied']) {
             recommendedActions.push({
                 phase: phase['number'],
                 phase_name: phase['name'],
@@ -1211,7 +1307,7 @@ function cmdInitManager(cwd, raw) {
         return true;
     });
     const nonBacklogPhases = phases.filter((p) => !/^999(?:\.|$)/.test(p['number']));
-    const completedCount = nonBacklogPhases.filter((p) => p['disk_status'] === 'complete').length;
+    const completedCount = nonBacklogPhases.filter((p) => p['phase_complete'] === true).length;
     const sanitizeFlags = (rawVal) => {
         const val = typeof rawVal === 'string' ? rawVal : '';
         if (!val)
@@ -1238,7 +1334,7 @@ function cmdInitManager(cwd, raw) {
         phases,
         phase_count: phases.length,
         completed_count: completedCount,
-        in_progress_count: phases.filter((p) => ['partial', 'planned', 'discussed', 'researched'].includes(p['disk_status'])).length,
+        in_progress_count: phases.filter((p) => ['executed', 'partial', 'planned', 'discussed', 'researched'].includes(p['disk_status'])).length,
         recommended_actions: filteredActions,
         waiting_signal: waitingSignal,
         all_complete: completedCount === nonBacklogPhases.length && nonBacklogPhases.length > 0,
@@ -1258,6 +1354,7 @@ function cmdInitProgress(cwd, raw) {
     }
     const config = loadConfig(cwd);
     const milestone = getMilestoneInfo(cwd);
+    const _slashRuntime = (0, runtime_slash_cjs_1.resolveRuntime)(cwd);
     const phasesDir = node_path_1.default.join(planningDir(cwd), 'phases');
     const phases = [];
     let currentPhase = null;
@@ -1307,24 +1404,29 @@ function cmdInitProgress(cwd, raw) {
             const plans = listPhasePlanFiles(phasePath);
             const summaries = listPhaseSummaryFiles(phasePath);
             const hasResearch = phaseFiles.some((f) => f.endsWith('-RESEARCH.md') || f === 'RESEARCH.md');
-            const status = summaries.length >= plans.length && plans.length > 0
+            const phaseDirRel = toPosixPath(node_path_1.default.relative(cwd, node_path_1.default.join(planningDir(cwd), 'phases', dir)));
+            const completion = buildPhaseCompletionProjection(cwd, phaseNumber, phaseDirRel, plans.length, summaries.length, _slashRuntime);
+            const status = completion.phase_complete
                 ? 'complete'
-                : plans.length > 0
-                    ? 'in_progress'
-                    : hasResearch
-                        ? 'researched'
-                        : 'pending';
+                : completion.implementation_complete
+                    ? 'executed'
+                    : plans.length > 0
+                        ? 'in_progress'
+                        : hasResearch
+                            ? 'researched'
+                            : 'pending';
             const phaseInfo = {
                 number: phaseNumber,
                 name: phaseName,
-                directory: toPosixPath(node_path_1.default.relative(cwd, node_path_1.default.join(planningDir(cwd), 'phases', dir))),
+                directory: phaseDirRel,
                 status,
                 plan_count: plans.length,
                 summary_count: summaries.length,
                 has_research: hasResearch,
+                ...completion,
             };
             phases.push(phaseInfo);
-            if (!currentPhase && (status === 'in_progress' || status === 'researched')) {
+            if (!currentPhase && (status === 'executed' || status === 'in_progress' || status === 'researched')) {
                 currentPhase = phaseInfo;
             }
             if (!nextPhase && status === 'pending') {
@@ -1340,7 +1442,8 @@ function cmdInitProgress(cwd, raw) {
         if (!seenPhaseNums.has(stripped)) {
             const checkboxComplete = roadmapCheckboxStates.get(num) === true ||
                 roadmapCheckboxStates.get(stripped) === true;
-            const status = checkboxComplete ? 'complete' : 'not_started';
+            const completion = buildPhaseCompletionProjection(cwd, num, null, 0, 0, _slashRuntime);
+            const status = 'not_started';
             const phaseInfo = {
                 number: num,
                 name: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
@@ -1349,9 +1452,11 @@ function cmdInitProgress(cwd, raw) {
                 plan_count: 0,
                 summary_count: 0,
                 has_research: false,
+                roadmap_complete: checkboxComplete,
+                ...completion,
             };
             phases.push(phaseInfo);
-            if (!nextPhase && !currentPhase && status !== 'complete') {
+            if (!nextPhase && !currentPhase && !checkboxComplete) {
                 nextPhase = phaseInfo;
             }
         }
@@ -1373,7 +1478,7 @@ function cmdInitProgress(cwd, raw) {
         phases,
         phase_count: phases.length,
         completed_count: phases.filter((p) => p['status'] === 'complete').length,
-        in_progress_count: phases.filter((p) => p['status'] === 'in_progress').length,
+        in_progress_count: phases.filter((p) => ['executed', 'in_progress'].includes(p['status'])).length,
         current_phase: currentPhase,
         next_phase: nextPhase,
         paused_at: pausedAt,

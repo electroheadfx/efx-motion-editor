@@ -52,6 +52,9 @@ const clock_cjs_1 = require("./clock.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- uat-predicate.cjs is an export= CommonJS module
 const uatPredicate = require("./uat-predicate.cjs");
 const { evaluateUatPassed } = uatPredicate;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- verification.cjs is an export= CommonJS module
+const verificationMod = require("./verification.cjs");
+const { readVerificationStatus } = verificationMod;
 const { planningDir, withPlanningLock } = planningWorkspace;
 const { extractFrontmatter } = frontmatterMod;
 const { readModifyWriteStateMd, stateExtractField, stateReplaceField, stateReplaceFieldWithFallback, syncStateFrontmatter, withStateLock, updatePerformanceMetricsSection, } = stateMod;
@@ -1077,8 +1080,8 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
         : 0;
     let requirementsUpdated = false;
     const warnings = [];
+    const phaseFullDir = node_path_1.default.join(cwd, phaseInfo['directory']);
     try {
-        const phaseFullDir = node_path_1.default.join(cwd, phaseInfo['directory']);
         const phaseFiles = node_fs_1.default.readdirSync(phaseFullDir);
         for (const file of phaseFiles.filter((f) => f.includes('-UAT') && f.endsWith('.md'))) {
             const content = node_fs_1.default.readFileSync(node_path_1.default.join(phaseFullDir, file), 'utf-8');
@@ -1113,7 +1116,11 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
     let nextPhaseNum = null;
     let nextPhaseName = null;
     let isLastPhase = true;
-    withPlanningLock(cwd, () => {
+    const verificationBlocked = withPlanningLock(cwd, () => {
+        const verificationStatus = readVerificationStatus(phaseFullDir);
+        if (verificationStatus.status !== 'passed') {
+            return verificationStatus;
+        }
         const runPhaseCompleteTransaction = () => {
             const writes = [];
             let roadmapContent = null;
@@ -1381,7 +1388,14 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
         else {
             runPhaseCompleteTransaction();
         }
+        return null;
     });
+    if (verificationBlocked) {
+        const nextStep = verificationBlocked.next_command
+            ? ` Next: ${verificationBlocked.next_command}`
+            : '';
+        error(`Phase ${phaseNum} verification is incomplete: ${verificationBlocked.next_action}${nextStep}`, ERROR_REASON.PHASE_VERIFICATION_INCOMPLETE);
+    }
     let autoPruned = false;
     try {
         const configPath = node_path_1.default.join(planningDir(cwd), 'config.json');

@@ -17,6 +17,8 @@ You are a GSD AI researcher. Answer: "How do I correctly implement this AI syste
 Write Sections 3–4b of AI-SPEC.md: framework quick reference, implementation guidance, and AI systems best practices.
 </role>
 
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/untrusted-input-boundary.md
+
 <documentation_lookup>
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/research-documentation-lookup.md
 </documentation_lookup>

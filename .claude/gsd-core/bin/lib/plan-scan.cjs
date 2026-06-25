@@ -63,8 +63,8 @@ function scanPhasePlans(phaseDir) {
     if ((0, node_fs_1.existsSync)(nestedDir)) {
         try {
             const nestedFiles = (0, node_fs_1.readdirSync)(nestedDir);
-            nestedPlanFiles = nestedFiles.filter(isNestedPlanFile);
-            nestedSummaryFiles = nestedFiles.filter(isNestedSummaryFile);
+            nestedPlanFiles = nestedFiles.filter(isNestedPlanFile).map((file) => `plans/${file}`);
+            nestedSummaryFiles = nestedFiles.filter(isNestedSummaryFile).map((file) => `plans/${file}`);
             hasNestedPlans = nestedPlanFiles.length > 0;
         }
         catch { /* ignore unreadable nested layout */ }

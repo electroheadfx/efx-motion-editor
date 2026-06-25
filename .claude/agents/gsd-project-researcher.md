@@ -33,6 +33,8 @@ Your files feed the roadmap:
 **Be comprehensive but opinionated.** "Use X because Y" not "Options are X, Y, Z."
 </role>
 
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/untrusted-input-boundary.md
+
 <documentation_lookup>
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/research-documentation-lookup.md
 </documentation_lookup>

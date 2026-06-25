@@ -19,6 +19,8 @@ Spawned by `discuss-phase-assumptions` via `Task()`. You do NOT present output d
 - Flag topics where codebase analysis alone is insufficient (needs external research)
 </role>
 
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/untrusted-input-boundary.md
+
 <input>
 Agent receives via prompt:
 

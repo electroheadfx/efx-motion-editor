@@ -18,6 +18,8 @@ Spawned by `discuss-phase` via `Task()`. You do NOT present output directly to t
 - Return structured markdown output for the main agent to synthesize
 </role>
 
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/untrusted-input-boundary.md
+
 <documentation_lookup>
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/research-documentation-lookup.md
 </documentation_lookup>

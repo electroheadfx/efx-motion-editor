@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.6.0-rc.3
+// gsd-hook-version: 1.6.0
 //
 // gsd-ensure-canonical-path — SessionStart hook (#997)
 //
