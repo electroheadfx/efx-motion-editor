@@ -566,6 +566,7 @@ export function PhysicsPaintStudio() {
   const saveOnLeaveDeleteFrameRef = useRef<number | null>(null);
   const dirtyRotoFramesRef = useRef<Set<number>>(new Set());
   const copiedRotoKeyRef = useRef<RotoSessionCopiedKey | null>(null);
+  const copiedRotoEditableStateRef = useRef<ReturnType<EfxPaintEngine['save']> | null>(null);
   const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null);
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
@@ -1525,6 +1526,7 @@ export function PhysicsPaintStudio() {
       editableStates: rotoFrameStatesRef.current,
       previewFrames: rotoPreviewFramesRef.current,
       transaction,
+      copiedEditableState: transaction.operation === 'paste' ? copiedRotoEditableStateRef.current ?? undefined : undefined,
     });
     rotoFrameStatesRef.current = nextLocalState.editableStates as Map<number, ReturnType<EfxPaintEngine['save']>>;
     rotoPreviewFramesRef.current = nextLocalState.previewFrames as Map<number, RenderedFramePayload>;
@@ -1994,34 +1996,6 @@ export function PhysicsPaintStudio() {
     return false;
   }, [rotoSession]);
 
-  const syncCurrentRotoFrameForKeyAction = useCallback(() => {
-    if (!engine || !launchContext) return { session: rotoSession };
-    const appFrame = currentFrame;
-    const currentState = engine.save();
-    if (!shouldPersistRotoFrame(currentState)) return { session: rotoSession };
-    const renderedFrame = buildRotoOutputFrame(engine, appFrame, canvasWidth, canvasHeight);
-    const nextLaunchContext = {
-      ...launchContext,
-      cachedRotoFrames: upsertCachedRotoCacheFrame(launchContext.cachedRotoFrames, renderedFrame, isBackgroundOnlyRotoFrame(currentState), hasEditableRotoContent(currentState) ? buildRotoOnionPreviewFrame(engine, appFrame, canvasWidth, canvasHeight) : null),
-    };
-    rotoFrameStatesRef.current.set(appFrame, currentState);
-    rotoPreviewFramesRef.current.set(appFrame, renderedFrame);
-    syncRotoKeyFrameLists(getRealCachedRotoFrameNumbers(nextLaunchContext), getRealCachedRotoFrames(nextLaunchContext));
-    const session = createRotoSession({
-      currentFrame,
-      realKeyFrames: getRealCachedRotoFrames(nextLaunchContext).map((frame): PhysicPaintRotoCacheFrame => ({ ...frame, source: 'real-key' })),
-      cachedRotoFrames: nextLaunchContext.cachedRotoFrames,
-      dirtyFrames: dirtyRotoFramesRef.current,
-      copiedKey: copiedRotoKeyRef.current,
-      canvasSize: { width: canvasWidth, height: canvasHeight },
-      keyActionInFlight: rotoKeyActionInFlight,
-      applyStatus,
-      flushInFlight: Boolean(rotoFlushInFlightRef.current),
-      buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
-    });
-    return { session };
-  }, [applyStatus, canvasHeight, canvasWidth, currentFrame, engine, launchContext, rotoKeyActionInFlight, rotoSession, syncRotoKeyFrameLists]);
-
   const duplicateRotoKey = useCallback(() => {
     if (rotoKeyActionInFlight || Boolean(rotoFlushInFlightRef.current) || applyStatus === 'applying') return;
     if (!requireCurrentRealRotoKey()) return;
@@ -2045,14 +2019,14 @@ export function PhysicsPaintStudio() {
 
   const copyRotoFrame = useCallback(() => {
     if (rotoKeyActionInFlight || Boolean(rotoFlushInFlightRef.current) || applyStatus === 'applying') return;
-    const synced = syncCurrentRotoFrameForKeyAction();
-    const actionState = synced.session.actionAvailability.value;
+    const actionState = rotoSession.actionAvailability.value;
     if (!actionState.currentIsRealKey) {
       setApplyMessage(actionState.disabledReason ?? 'Key utilities require a real Roto key. Generated in-betweens are render-only.');
       return;
     }
-    void runRotoSessionResult(synced.session.copyKey(), synced.session).then(() => syncPendingRotoFrames());
-  }, [applyStatus, rotoKeyActionInFlight, runRotoSessionResult, syncCurrentRotoFrameForKeyAction, syncPendingRotoFrames]);
+    copiedRotoEditableStateRef.current = rotoFrameStatesRef.current.get(currentFrame) ?? null;
+    void runRotoSessionResult(rotoSession.copyKey()).then(() => syncPendingRotoFrames());
+  }, [applyStatus, currentFrame, rotoKeyActionInFlight, rotoSession, runRotoSessionResult, syncPendingRotoFrames]);
 
   const pasteRotoFrame = useCallback(() => {
     if (rotoKeyActionInFlight || Boolean(rotoFlushInFlightRef.current) || applyStatus === 'applying') return;

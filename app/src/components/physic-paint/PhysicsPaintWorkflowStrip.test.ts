@@ -730,7 +730,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('runRotoSessionResult(rotoSession.duplicateKey()');
     expect(studio).toContain('runRotoSessionResult(rotoSession.insertBlankKey()');
     expect(studio).toContain('runRotoSessionResult(rotoSession.deleteKey()');
-    expect(studio).toContain('runRotoSessionResult(synced.session.copyKey(), synced.session)');
+    expect(studio).toContain('runRotoSessionResult(rotoSession.copyKey()');
     expect(studio).toContain('runRotoSessionResult(rotoSession.pasteKey()');
     expect(studio).toContain('case \'saveFrame\'');
     expect(studio).toContain('dirtyRotoFramesRef.current = new Set(rotoSession.dirtyFrames.value)');
