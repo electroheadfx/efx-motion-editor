@@ -284,6 +284,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('const isCurrentRealRotoKey');
     expect(code).toContain('const keyUtilitiesDisabledByBusyState');
     expect(code).toContain('const canPasteRotoKey');
+    expect(code).toContain('const canUseVisibleSourceRotoKey = canUseSourceRotoKey || (Boolean(sessionKeyAvailability) && isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState)');
+    expect(code).toContain('const canCopyRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canCopy || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey');
+    expect(code).toContain('const canPasteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canPaste && props.ready !== false : Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState');
     expect(timelineBlock).toContain('type="button"');
     expect(timelineBlock).toContain('aria-label={`Insert blank Roto key before frame ${props.currentFrame}`}');
     expect(timelineBlock).toContain('aria-label={`Duplicate Roto key at frame ${props.currentFrame}`}');

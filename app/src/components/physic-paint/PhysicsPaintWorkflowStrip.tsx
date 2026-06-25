@@ -209,11 +209,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.rotoSaveInFlight) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
-  const canInsertRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canInsert && props.ready !== false : canUseSourceRotoKey;
-  const canDuplicateRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canDuplicate && props.ready !== false : canUseSourceRotoKey;
-  const canCopyRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canCopy && props.ready !== false : canUseSourceRotoKey;
+  const canUseVisibleSourceRotoKey = canUseSourceRotoKey || (Boolean(sessionKeyAvailability) && isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState);
+  const canInsertRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const canDuplicateRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDuplicate || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
+  const canCopyRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canCopy || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
   const canPasteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canPaste && props.ready !== false : Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState;
-  const canDeleteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canDelete && props.ready !== false : canUseSourceRotoKey;
+  const canDeleteRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
   const rotoPendingLabel = getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight), props.rotoSavingFrame);
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
