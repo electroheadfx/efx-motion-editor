@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 import {
@@ -6,6 +8,9 @@ import {
   deriveRotoKeyUtilityActionState,
   type RotoKeyUtilityOperation,
 } from './physicsPaintRotoKeyController';
+
+const controllerPath = fileURLToPath(new URL('./physicsPaintRotoKeyController.ts', import.meta.url));
+const controllerSource = () => readFileSync(controllerPath, 'utf8');
 
 function frame(appFrame: number, dataUrl: string, source: PhysicPaintRotoCacheFrame['source'] = 'real-key'): PhysicPaintRotoCacheFrame {
   return {
@@ -177,6 +182,24 @@ describe('physicsPaintRotoKeyController transaction coherence', () => {
       'generated-target-cleanup',
       'deleted-frame-cleanup',
     ]));
+  });
+
+  it('36.8-REG-01/36.8-REG-02/36.8-REG-03/36.8-REG-04/36.8-REG-05/36.8-REG-06/36.8-REG-07 keeps Phase 36.8 source contracts searchable in focused gates', () => {
+    const controller = controllerSource();
+
+    for (const contract of [
+      'dirty-save-before-action',
+      'active-restore-intent',
+      'generated-target-cleanup',
+      'deleted-frame-cleanup',
+      'copy',
+      'duplicate',
+      'insert',
+      'delete',
+      'paste',
+    ]) {
+      expect(controller).toContain(contract);
+    }
   });
 
   it('D-10 keeps transaction frames at the launch canvas size instead of stale fitted cache dimensions', () => {

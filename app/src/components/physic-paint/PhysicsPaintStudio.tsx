@@ -11,7 +11,7 @@ import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physics
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
 import { clampOnionCount, getPreviewFps, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 import { applyRotoKeyUtilityTransactionToLocalState, type RotoKeyUtilityActiveRestore, type RotoKeyUtilityTransaction } from './physicsPaintRotoKeyController';
-import { createRotoSession, type RotoSessionActionResult, type RotoSessionEffect } from './physicsPaintRotoSession';
+import { createRotoSession, type RotoSessionActionResult, type RotoSessionCopiedKey, type RotoSessionEffect } from './physicsPaintRotoSession';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
@@ -137,7 +137,7 @@ function getPlayFrameCountFromAssignments(assignments: Map<number, number>, fall
   return clampPhysicPaintFrameCount(Math.max(...assignments.values()) + 1);
 }
 
-function getRealCachedRotoFrames(context: PhysicPaintLaunchContext | null): PhysicPaintRenderedFrame[] {
+function getRealCachedRotoFrames(context: PhysicPaintLaunchContext | null): PhysicPaintRotoCacheFrame[] {
   return context?.cachedRotoFrames?.filter((frame) => frame.source === 'real-key') ?? [];
 }
 
@@ -565,6 +565,7 @@ export function PhysicsPaintStudio() {
   const saveOnLeaveRenderedFrameRef = useRef<{ renderedFrame: RenderedFramePayload; backgroundOnly: boolean; onionFrame?: RenderedFramePayload | null } | null>(null);
   const saveOnLeaveDeleteFrameRef = useRef<number | null>(null);
   const dirtyRotoFramesRef = useRef<Set<number>>(new Set());
+  const copiedRotoKeyRef = useRef<RotoSessionCopiedKey | null>(null);
   const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null);
 
   const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
@@ -581,6 +582,7 @@ export function PhysicsPaintStudio() {
     realKeyFrames: getRealCachedRotoFrames(launchContext).map((frame): PhysicPaintRotoCacheFrame => ({ ...frame, source: 'real-key' })),
     cachedRotoFrames: launchContext?.cachedRotoFrames,
     dirtyFrames: dirtyRotoFramesRef.current,
+    copiedKey: copiedRotoKeyRef.current,
     canvasSize: { width: canvasWidth, height: canvasHeight },
     keyActionInFlight: rotoKeyActionInFlight,
     applyStatus,
@@ -1591,18 +1593,20 @@ export function PhysicsPaintStudio() {
     }
   }, [applyRotoKeyUtilityTransaction, currentFrame, engine, flushRotoFrame, launchContext, openSyncedRotoFrameAfterSave, persistRotoKeyFrameTransaction, removeCachedRotoFrameFromLaunchContext, restoreRotoFrameFromSessionEffect, rotoSession, syncPendingRotoFrames]);
 
-  const runRotoSessionResult = useCallback(async (result: RotoSessionActionResult) => {
+  const runRotoSessionResult = useCallback(async (result: RotoSessionActionResult, sourceSession = rotoSession) => {
     if (!result.ok) {
       if (result.message) setApplyMessage(result.message);
       return;
     }
-    setRotoKeyActionInFlight(true);
+    const hasSessionEffects = result.effects.length > 0;
+    if (hasSessionEffects) setRotoKeyActionInFlight(true);
     try {
-      await executeRotoSessionEffects(result.effects);
+      if (hasSessionEffects) await executeRotoSessionEffects(result.effects);
       if (result.message) setApplyMessage(result.message);
       setLastError(null);
-      dirtyRotoFramesRef.current = new Set(rotoSession.dirtyFrames.value);
-      syncPendingRotoFrames();
+      dirtyRotoFramesRef.current = new Set(sourceSession.dirtyFrames.value);
+      copiedRotoKeyRef.current = sourceSession.copiedKey.value;
+      if (hasSessionEffects) syncPendingRotoFrames();
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       const message = `Could not complete Roto session action. ${detail}`;
@@ -1613,7 +1617,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(message);
       setLastError(message);
     } finally {
-      setRotoKeyActionInFlight(false);
+      if (hasSessionEffects) setRotoKeyActionInFlight(false);
       setRotoSavingFrame(null);
     }
   }, [executeRotoSessionEffects, rotoSession, syncPendingRotoFrames]);
@@ -1990,6 +1994,34 @@ export function PhysicsPaintStudio() {
     return false;
   }, [rotoSession]);
 
+  const syncCurrentRotoFrameForKeyAction = useCallback(() => {
+    if (!engine || !launchContext) return { session: rotoSession };
+    const appFrame = currentFrame;
+    const currentState = engine.save();
+    if (!shouldPersistRotoFrame(currentState)) return { session: rotoSession };
+    const renderedFrame = buildRotoOutputFrame(engine, appFrame, canvasWidth, canvasHeight);
+    const nextLaunchContext = {
+      ...launchContext,
+      cachedRotoFrames: upsertCachedRotoCacheFrame(launchContext.cachedRotoFrames, renderedFrame, isBackgroundOnlyRotoFrame(currentState), hasEditableRotoContent(currentState) ? buildRotoOnionPreviewFrame(engine, appFrame, canvasWidth, canvasHeight) : null),
+    };
+    rotoFrameStatesRef.current.set(appFrame, currentState);
+    rotoPreviewFramesRef.current.set(appFrame, renderedFrame);
+    syncRotoKeyFrameLists(getRealCachedRotoFrameNumbers(nextLaunchContext), getRealCachedRotoFrames(nextLaunchContext));
+    const session = createRotoSession({
+      currentFrame,
+      realKeyFrames: getRealCachedRotoFrames(nextLaunchContext).map((frame): PhysicPaintRotoCacheFrame => ({ ...frame, source: 'real-key' })),
+      cachedRotoFrames: nextLaunchContext.cachedRotoFrames,
+      dirtyFrames: dirtyRotoFramesRef.current,
+      copiedKey: copiedRotoKeyRef.current,
+      canvasSize: { width: canvasWidth, height: canvasHeight },
+      keyActionInFlight: rotoKeyActionInFlight,
+      applyStatus,
+      flushInFlight: Boolean(rotoFlushInFlightRef.current),
+      buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
+    });
+    return { session };
+  }, [applyStatus, canvasHeight, canvasWidth, currentFrame, engine, launchContext, rotoKeyActionInFlight, rotoSession, syncRotoKeyFrameLists]);
+
   const duplicateRotoKey = useCallback(() => {
     if (rotoKeyActionInFlight || Boolean(rotoFlushInFlightRef.current) || applyStatus === 'applying') return;
     if (!requireCurrentRealRotoKey()) return;
@@ -2013,10 +2045,14 @@ export function PhysicsPaintStudio() {
 
   const copyRotoFrame = useCallback(() => {
     if (rotoKeyActionInFlight || Boolean(rotoFlushInFlightRef.current) || applyStatus === 'applying') return;
-    if (!requireCurrentRealRotoKey()) return;
-    snapshotCurrentRotoFrame();
-    void runRotoSessionResult(rotoSession.copyKey());
-  }, [applyStatus, requireCurrentRealRotoKey, rotoKeyActionInFlight, rotoSession, runRotoSessionResult, snapshotCurrentRotoFrame]);
+    const synced = syncCurrentRotoFrameForKeyAction();
+    const actionState = synced.session.actionAvailability.value;
+    if (!actionState.currentIsRealKey) {
+      setApplyMessage(actionState.disabledReason ?? 'Key utilities require a real Roto key. Generated in-betweens are render-only.');
+      return;
+    }
+    void runRotoSessionResult(synced.session.copyKey(), synced.session).then(() => syncPendingRotoFrames());
+  }, [applyStatus, rotoKeyActionInFlight, runRotoSessionResult, syncCurrentRotoFrameForKeyAction, syncPendingRotoFrames]);
 
   const pasteRotoFrame = useCallback(() => {
     if (rotoKeyActionInFlight || Boolean(rotoFlushInFlightRef.current) || applyStatus === 'applying') return;
