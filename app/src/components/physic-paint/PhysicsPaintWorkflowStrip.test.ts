@@ -324,6 +324,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('.physics-paint-roto-key-utilities');
     expect(css).toContain('.physics-paint-roto-key-context');
     expect(css).toContain('.physics-paint-roto-key-button.destructive');
+    expect(css).toContain('.physics-paint-roto-key-button:active:not(:disabled)');
+    expect(css).toContain('.physics-paint-roto-key-button[data-pressed="true"]');
+    expect(code).toContain('onPointerDown={() => setPressedRotoKeyAction');
+    expect(code).toContain('data-pressed={pressedRotoKeyAction ===');
   });
 
   it('keeps Roto key transactions authoritative after local apply instead of re-reading stale cache state', () => {

@@ -1060,6 +1060,19 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(workflowStripBlock).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
   });
 
+  it('36.8-REG-09 syncs the current editable Roto frame before Copy availability is checked', () => {
+    const text = source();
+    const syncBlock = text.slice(text.indexOf('const syncCurrentRotoFrameForKeyAction = useCallback'), text.indexOf('const duplicateRotoKey = useCallback'));
+    const copyBlock = text.slice(text.indexOf('const copyRotoFrame = useCallback'), text.indexOf('const pasteRotoFrame = useCallback'));
+    const sessionBlock = text.slice(text.indexOf('const rotoSession = useMemo'), text.indexOf('const rotoInputDisabled'));
+
+    expect(syncBlock).toContain('buildRotoOutputFrame(engine, appFrame, canvasWidth, canvasHeight)');
+    expect(syncBlock).toContain('syncRotoKeyFrameLists(getRealCachedRotoFrameNumbers(nextLaunchContext), getRealCachedRotoFrames(nextLaunchContext))');
+    expect(copyBlock).toContain('const synced = syncCurrentRotoFrameForKeyAction()');
+    expect(copyBlock).toContain('synced.session.copyKey()');
+    expect(sessionBlock).toContain('realKeyFrames: getRealCachedRotoFrames(launchContext)');
+  });
+
   it('clears stale Roto reference overlays on paint input without disabling onion controls', () => {
     const text = source();
     const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
