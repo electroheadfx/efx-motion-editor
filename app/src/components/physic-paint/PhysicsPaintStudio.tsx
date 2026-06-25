@@ -1596,13 +1596,14 @@ export function PhysicsPaintStudio() {
       if (result.message) setApplyMessage(result.message);
       return;
     }
-    setRotoKeyActionInFlight(true);
+    const hasSessionEffects = result.effects.length > 0;
+    if (hasSessionEffects) setRotoKeyActionInFlight(true);
     try {
-      await executeRotoSessionEffects(result.effects);
+      if (hasSessionEffects) await executeRotoSessionEffects(result.effects);
       if (result.message) setApplyMessage(result.message);
       setLastError(null);
       dirtyRotoFramesRef.current = new Set(rotoSession.dirtyFrames.value);
-      syncPendingRotoFrames();
+      if (hasSessionEffects) syncPendingRotoFrames();
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       const message = `Could not complete Roto session action. ${detail}`;
@@ -1613,7 +1614,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(message);
       setLastError(message);
     } finally {
-      setRotoKeyActionInFlight(false);
+      if (hasSessionEffects) setRotoKeyActionInFlight(false);
       setRotoSavingFrame(null);
     }
   }, [executeRotoSessionEffects, rotoSession, syncPendingRotoFrames]);

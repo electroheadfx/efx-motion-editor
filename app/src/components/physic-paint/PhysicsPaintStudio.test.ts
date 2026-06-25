@@ -120,6 +120,16 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(executorBlock).toContain('openSyncedRotoFrameAfterSave(effect.frame)');
   });
 
+  it('36.8-REG-08 keeps effectless Copy inside the live session so Paste enables after click', () => {
+    const text = source();
+    const resultBlock = text.slice(text.indexOf('const runRotoSessionResult = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
+
+    expect(resultBlock).toContain('const hasSessionEffects = result.effects.length > 0');
+    expect(resultBlock).toContain('if (hasSessionEffects) setRotoKeyActionInFlight(true)');
+    expect(resultBlock).toContain('if (hasSessionEffects) await executeRotoSessionEffects(result.effects)');
+    expect(resultBlock).toContain('if (hasSessionEffects) syncPendingRotoFrames()');
+  });
+
   it('36.8-REG-07/D-17 does not add broad internal Roto key/cache/session useEffect orchestration', () => {
     const text = source();
     const effectBlocks = getUseEffectBlocks(text);
