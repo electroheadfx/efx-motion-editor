@@ -1060,16 +1060,19 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(workflowStripBlock).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
   });
 
-  it('36.8-REG-09 syncs the current editable Roto frame before Copy availability is checked', () => {
+  it('36.8-REG-09 keeps Copy read-only and preserves copied editable state for Paste', () => {
     const text = source();
-    const syncBlock = text.slice(text.indexOf('const syncCurrentRotoFrameForKeyAction = useCallback'), text.indexOf('const duplicateRotoKey = useCallback'));
     const copyBlock = text.slice(text.indexOf('const copyRotoFrame = useCallback'), text.indexOf('const pasteRotoFrame = useCallback'));
+    const pasteBlock = text.slice(text.indexOf('const pasteRotoFrame = useCallback'), text.indexOf('const saveEditableState = useCallback'));
+    const applyBlock = text.slice(text.indexOf('const applyRotoKeyUtilityTransaction = useCallback'), text.indexOf('const executeRotoSessionEffects = useCallback'));
     const sessionBlock = text.slice(text.indexOf('const rotoSession = useMemo'), text.indexOf('const rotoInputDisabled'));
 
-    expect(syncBlock).toContain('buildRotoOutputFrame(engine, appFrame, canvasWidth, canvasHeight)');
-    expect(syncBlock).toContain('syncRotoKeyFrameLists(getRealCachedRotoFrameNumbers(nextLaunchContext), getRealCachedRotoFrames(nextLaunchContext))');
-    expect(copyBlock).toContain('const synced = syncCurrentRotoFrameForKeyAction()');
-    expect(copyBlock).toContain('synced.session.copyKey()');
+    expect(copyBlock).toContain('copiedRotoEditableStateRef.current = rotoFrameStatesRef.current.get(currentFrame) ?? null');
+    expect(copyBlock).not.toContain('syncCurrentRotoFrameForKeyAction');
+    expect(copyBlock).not.toContain('buildRotoOutputFrame');
+    expect(copyBlock).not.toContain('snapshotCurrentRotoFrame');
+    expect(pasteBlock).toContain('runRotoSessionResult(rotoSession.pasteKey()');
+    expect(applyBlock).toContain('copiedEditableState: transaction.operation === \'paste\' ? copiedRotoEditableStateRef.current ?? undefined : undefined');
     expect(sessionBlock).toContain('realKeyFrames: getRealCachedRotoFrames(launchContext)');
   });
 
