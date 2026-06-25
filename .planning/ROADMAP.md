@@ -133,6 +133,8 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.5: Physics Paint Roto Cell Semantics** - Roto timeline cells clearly distinguish empty, cached, editable/current, generated/render-only, background-only, dirty, and saving states while staying MVP-only. (completed 2026-06-20)
 - [x] **Phase 36.6: Physics Paint Roto Save On Leave** - Users can leave dirty Roto frames with source-frame save feedback and without manually pressing Save current for each frame. (completed 2026-06-20)
 - [x] **Phase 36.7: Physics Paint Roto Key Utilities** - Stop-motion animators can duplicate, insert, delete, copy, and paste real Roto keys efficiently with clean cache/cell/canvas state. (completed 2026-06-22)
+- [x] **Phase 36.8: Physics Paint Roto State Refactor** - PhysicsPaintStudio consumes a compact Roto session/key state boundary while preserving Phase 36.7 visible behavior. (completed 2026-06-25)
+- [ ] **Phase 36.9: Physics Paint Roto State Machine Readiness** - Developers can evaluate whether XState/state-machine ownership is justified for the extracted Roto boundary. (planned)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
 
 ## Phase Details
@@ -351,10 +353,10 @@ Success criteria:
 - No user-visible UI changes.
 - No new feature scope. (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Extract a compact Preact-native Roto session/key state boundary so PhysicsPaintStudio stops owning all Roto key/cache coherence directly while preserving Phase 36.7 visible behavior.
+**Requirements**: 36.8-REG-01, 36.8-REG-02, 36.8-REG-03, 36.8-REG-04, 36.8-REG-05, 36.8-REG-06, 36.8-REG-07, 36.8-REG-08, 36.8-REG-09, 36.8-REG-10
 **Depends on:** Phase 36
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 
@@ -362,9 +364,7 @@ Plans:
 - [x] 36.8-02-PLAN.md
 - [x] 36.8-03-PLAN.md
 - [x] 36.8-04-PLAN.md
-- [ ] 36.8-05-PLAN.md
-
-- [ ] TBD (run /gsd-plan-phase 36.8 to break down)
+- [x] 36.8-05-PLAN.md
 
 ### Phase 36.7: Physics Paint Roto Key Utilities
 
@@ -634,4 +634,6 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.1. Physics Paint Play-Script Timeline Markers and Sequential Playback | v0.8.0 | 9/9 | Complete | 2026-06-16 |
 | 36.2. Roto paint enhancements | v0.8.0 | 13/13 records closed | Failed/superseded | 2026-06-19 |
 | 36.3. Physics Paint Roto Durable Core Recovery | v0.8.0 | 2/2 | Complete    | 2026-06-19 |
+| 36.8. Physics Paint Roto State Refactor | v0.8.0 | 5/5 | Complete | 2026-06-25 |
+| 36.9. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Not started | - |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |

@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.8
-current_phase_name: Physics Paint Roto State Refactor
-status: executing
-stopped_at: Phase 36.8 context gathered
-last_updated: "2026-06-24T17:08:07.966Z"
-last_activity: 2026-06-24
-last_activity_desc: Phase 36.8 execution started
+current_phase: 36.9
+current_phase_name: Physics Paint Roto State Machine Readiness
+status: ready_to_plan
+stopped_at: Phase 36.8 complete; Phase 36.9 ready to plan
+last_updated: "2026-06-25T07:34:48Z"
+last_activity: 2026-06-25
+last_activity_desc: Phase 36.8 completed with automated gates and user-approved Roto key utility UAT
 progress:
-  total_phases: 13
-  completed_phases: 10
-  total_plans: 63
-  completed_plans: 58
-  percent: 77
+  total_phases: 14
+  completed_phases: 11
+  total_plans: 64
+  completed_plans: 63
+  percent: 98
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.8 — Physics Paint Roto State Refactor
+**Current focus:** Phase 36.9 — Physics Paint Roto State Machine Readiness
 
 ## Current Position
 
-Phase: 36.8 (Physics Paint Roto State Refactor) — EXECUTING
-Previous phase: 36.7 — Physics Paint Roto Key Utilities complete
-Plan: 1 of 5
-Status: Executing Phase 36.8
-Last activity: 2026-06-24 — Phase 36.8 execution started
-Next recommended action: `/gsd-plan-phase 36.8`
+Phase: 36.9 (Physics Paint Roto State Machine Readiness) — READY TO PLAN
+Previous phase: 36.8 — Physics Paint Roto State Refactor complete
+Plan: 0 of TBD
+Status: Ready to plan Phase 36.9
+Last activity: 2026-06-25 — Phase 36.8 completed with automated gates and user-approved UAT
+Next recommended action: `/gsd-plan-phase 36.9`
 
-Progress: [████████████████████] 58/58 plans (100%)
+Progress: [████████████████████] 63/64 plans (98%)
 
 ## Performance Metrics
 
@@ -125,6 +125,7 @@ None yet.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
 - Phase 36.7 completed: Roto key utility UAT passed for Duplicate, Insert, Delete, Copy, Paste, generated/empty guards, dirty save-before-action, focused regressions, typecheck, and user-story coverage.
+- Phase 36.8 completed: Roto session/key state boundary refactor passed focused regressions, full app tests, typecheck, package build, and user-approved Roto key utility UAT.
 - Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
 ### Quick Tasks Completed
