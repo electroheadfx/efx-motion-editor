@@ -1078,6 +1078,7 @@ export function PhysicsPaintStudio() {
     }
     setIsRotoCachedPlaybackActive(false);
     setCachedRotoPlaybackFrame(null);
+    setIsPlaying(false);
   }, []);
 
   const upsertCachedRotoFrameInLaunchContext = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null) => {
