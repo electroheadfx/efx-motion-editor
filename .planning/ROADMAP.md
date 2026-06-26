@@ -248,10 +248,11 @@ Plans:
 
 Use `SPECS/36.x-phases/phase-36.9-cached-autoplay/spec-36.9-cached-autoplay.md` as the source of truth for this phase.
 
-**Goal:** As a stop-motion animator, I want a Play button to automatically advance through cached Roto frames inside Physics Paint, so that I can preview timing without manually pressing previous and next.
+**Goal:** As a stop-motion animator, I want to press Play to automatically advance through cached Roto frames inside Physics Paint, so that I can preview timing without manually pressing previous and next.
+**Mode:** mvp
 **Requirements**: 36.9-CACHED-PLAYBACK, 36.9-UAT
 **Depends on:** Phase 36.8
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Planning notes:
 
@@ -263,7 +264,17 @@ Planning notes:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 36.9 to break down)
+**Wave 1**
+
+- [ ] 36.9-01-PLAN.md — Confirm whether timed cached Roto playback is necessary before app-code changes.
+
+**Wave 2** *(blocked on Wave 1 timed-preview approval)*
+
+- [ ] 36.9-02-PLAN.md — Use TDD to harden cached Roto playback controller behavior and no-mutation contracts.
+
+**Wave 3** *(blocked on Wave 2 controller contracts)*
+
+- [ ] 36.9-03-PLAN.md — Expose visible Play/Stop controls from the timeline references and run live UAT.
 
 ### Phase 36.10: Physics Paint Roto Missing Background Preview Export
 
