@@ -10,7 +10,11 @@
       "Read(STATE.md)",
       "Write(STATE.md)"
     ],
-    "deny": ["Read(.env)", "Read(.env.*)", "Read(.secrets)"]
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(.secrets)"
+    ]
   },
   "hooks": {
     "SessionStart": [
