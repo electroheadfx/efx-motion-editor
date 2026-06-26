@@ -794,9 +794,9 @@ export function PhysicsPaintStudio() {
     if (!canvasMounted) missing.push('Canvas is still mounting');
     if (!launchContext) missing.push('No app layer context received');
     if (bridgeMode === 'Unavailable') missing.push('App bridge is not connected');
-    if (applyStatus === 'applying' || isPlaying) missing.push('Apply operation is still running');
+    if (applyStatus === 'applying' || (isPlaying && !isRotoCachedPlaybackActive)) missing.push('Apply operation is still running');
     return missing;
-  }, [applyStatus, bridgeMode, canvasMounted, engine, isPlaying, launchContext]);
+  }, [applyStatus, bridgeMode, canvasMounted, engine, isPlaying, isRotoCachedPlaybackActive, launchContext]);
 
   const readyToApply = missingConditions.length === 0;
 
@@ -960,7 +960,7 @@ export function PhysicsPaintStudio() {
     return findCachedRotoReferenceFrame(appFrame) ?? buildTransientRotoBackgroundFrame(appFrame);
   }
 
-  function getRotoCachedPlaybackFrames(): Array<RenderedFramePayload | null> {
+  function getRotoCachedPlaybackFrames(): Array<{ appFrame: number; frame: RenderedFramePayload | null }> {
     if (!launchContext) return [];
     const frames = new Set<number>();
     physicPaintStore.getFrames(launchContext.layerId).forEach((_, frame) => frames.add(frame));
@@ -973,7 +973,9 @@ export function PhysicsPaintStudio() {
     });
     occupiedRotoFrames.forEach((frame) => frames.add(frame));
     frames.add(currentFrame);
-    return [...frames].sort((a, b) => a - b).map((frame) => findCachedRotoPlaybackFrame(frame));
+    return [...frames]
+      .sort((a, b) => a - b)
+      .map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }));
   }
 
   useEffect(() => {
@@ -1175,7 +1177,7 @@ export function PhysicsPaintStudio() {
       setRotoCachedPlaybackStatus('No cached Roto frames yet. Missing frames play transparent/background.');
       return;
     }
-    const missingCount = cachedFrames.filter((frame) => !frame).length;
+    const missingCount = cachedFrames.filter((entry) => !entry.frame).length;
     let frameIndex = 0;
     setIsRotoCachedPlaybackActive(true);
     setIsPlaying(true);
@@ -1186,7 +1188,8 @@ export function PhysicsPaintStudio() {
     const showNextCachedRotoFrame = () => {
       const cachedFrame = cachedFrames[frameIndex];
       setAnimFrame(frameIndex);
-      setCachedRotoPlaybackFrame(cachedFrame ?? null);
+      setCachedRotoPlaybackFrame(cachedFrame.frame ?? null);
+      setLaunchContext((current) => current ? { ...current, startFrame: cachedFrame.appFrame } : current);
       frameIndex += 1;
       if (frameIndex >= cachedFrames.length) {
         if (rotoCachedPlaybackTimerRef.current) window.clearInterval(rotoCachedPlaybackTimerRef.current);

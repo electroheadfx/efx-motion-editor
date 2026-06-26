@@ -600,8 +600,11 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(cachedRotoBlock).toContain('function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null');
     expect(cachedRotoBlock).toContain('return findCachedRotoReferenceFrame(appFrame)');
     expect(toggleBlock).toContain('const cachedFrames = getRotoCachedPlaybackFrames()');
-    expect(toggleBlock).toContain('const missingCount = cachedFrames.filter((frame) => !frame).length');
-    expect(toggleBlock).toContain('setCachedRotoPlaybackFrame(cachedFrame ?? null)');
+    expect(cachedRotoBlock).toContain('Array<{ appFrame: number; frame: RenderedFramePayload | null }>');
+    expect(cachedRotoBlock).toContain('map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }))');
+    expect(toggleBlock).toContain('const missingCount = cachedFrames.filter((entry) => !entry.frame).length');
+    expect(toggleBlock).toContain('setCachedRotoPlaybackFrame(cachedFrame.frame ?? null)');
+    expect(toggleBlock).toContain('setLaunchContext((current) => current ? { ...current, startFrame: cachedFrame.appFrame } : current)');
     expect(toggleBlock).toContain('Missing frames play transparent/background');
     expect(canvasStackBlock).toContain('cachedRotoPlaybackUrl={cachedRotoPlaybackFrame?.dataUrl ?? null}');
     for (const forbidden of [
@@ -635,6 +638,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(stopBlock).toContain('setIsRotoCachedPlaybackActive(false)');
     expect(stopBlock).toContain('setCachedRotoPlaybackFrame(null)');
     expect(stopBlock).toContain('setIsPlaying(false)');
+    expect(text).toContain("if (applyStatus === 'applying' || (isPlaying && !isRotoCachedPlaybackActive)) missing.push('Apply operation is still running')");
     expect(navigateBlock).toContain('stopRotoCachedPlayback()');
     expect(navigateBlock).toContain('setCachedRotoPlaybackFrame(null)');
     expect(requestNavigationBlock).toContain('const result = rotoSession.requestFrame(targetFrame)');
