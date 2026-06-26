@@ -1,6 +1,6 @@
 # Main setup
 
-- **Please find GSD tools from `.Codex/gsd-core`** and not from `$HOME/.Codex/gsd-core`
+- Please use the project-local GSD install from `.claude/gsd-core`.
 - **Please do not run the server** I do on my side
 
 # Preact Development Guidelines
