@@ -1195,11 +1195,12 @@ button.destructive {
 .physics-paint-roto-transport {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   min-height: 26px;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border: 1px solid #5a5e63;
-  border-radius: 6px;
+  border-radius: 999px;
   background: #343638;
   color: #f2f5f7;
   font-size: 12px;
@@ -1214,8 +1215,15 @@ button.destructive {
   background: #505255;
 }
 
+.physics-paint-roto-play-button:not(:disabled) {
+  border-color: var(--color-accent, #2d5be3);
+  background: color-mix(in srgb, var(--color-accent, #2d5be3) 62%, var(--color-bg-card, #1a1a1a));
+  color: #fff;
+}
+
 .physics-paint-roto-playback-status {
-  max-width: 220px;
+  margin: 0;
+  max-width: 100%;
   color: #b6bec8;
   font-size: 11px;
   font-weight: 600;

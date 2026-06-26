@@ -400,9 +400,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             <div class="physics-paint-mode-controls">
               <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
+              {props.isRotoCachedPlaybackActive ? (
+                <button type="button" class="physics-paint-nav-button physics-paint-roto-transport active" aria-label="Stop cached Roto playback" onClick={props.onToggleRotoPlayback}><Square size={15} /></button>
+              ) : null}
               <output class="physics-paint-current-frame">{props.currentFrame}</output>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
+              <button type="button" class="physics-paint-roto-transport physics-paint-roto-play-button" aria-label="Play cached Roto frames" disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || props.isRotoCachedPlaybackActive || !props.onToggleRotoPlayback} onClick={props.onToggleRotoPlayback}>Play</button>
             </div>
           ) : (
             <div class="physics-paint-mode-controls physics-paint-play-controls">
@@ -544,6 +548,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           ) : null}
           {props.playPublicationSummary ? <p class="physics-paint-roto-interpolation-status">{props.playPublicationSummary}</p> : null}
           {props.statusMessage ? <p class="physics-paint-roto-interpolation-status">{props.statusMessage}</p> : null}
+          <p class="physics-paint-roto-playback-status">{props.rotoCachedPlaybackStatus ?? 'Missing frames play transparent/background.'}</p>
         </div>
       ) : null}
 
