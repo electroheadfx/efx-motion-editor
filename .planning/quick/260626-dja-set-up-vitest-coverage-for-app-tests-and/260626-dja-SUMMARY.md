@@ -70,18 +70,18 @@ status: complete
 
 ## Coverage Report Result
 
-Command: `pnpm --dir /Users/lmarques/Dev/efx-motion-editor/.claude/worktrees/agent-a16ef3cd37e8b9415/app run test:coverage`
+Command: `pnpm --dir app run test:coverage`
 
-Overall totals:
+Overall totals from the main checkout rerun:
 
 | Metric | Total |
 |--------|-------|
-| Statements | 20.52% |
-| Branches | 71.35% |
-| Functions | 44.36% |
-| Lines | 20.52% |
+| Statements | 20.3% |
+| Branches | 71.21% |
+| Functions | 44.15% |
+| Lines | 20.3% |
 
-Generated report location: `/Users/lmarques/Dev/efx-motion-editor/.claude/worktrees/agent-a16ef3cd37e8b9415/app/coverage/`
+Generated report location: `app/coverage/`
 
 Note: The run emitted existing stderr from `projectStore` audio hydration tests when Tauri `window` is unavailable in the test environment, but the test suite and coverage command completed successfully.
 

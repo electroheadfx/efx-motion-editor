@@ -8,7 +8,7 @@ status: ready_to_discuss
 stopped_at: Phase 36.8 complete; Phase 36.9 cached playback ready to discuss
 last_updated: "2026-06-26T07:30:14.831Z"
 last_activity: 2026-06-26
-last_activity_desc: Phase 36.9 State Machine Readiness deferred behind remaining user-facing Roto features
+last_activity_desc: Completed quick task 260626-dja: Set up Vitest coverage for app tests and run the coverage report
 progress:
   total_phases: 17
   completed_phases: 11
@@ -32,7 +32,7 @@ Phase: 36.9 (Physics Paint Roto Cached Playback Auto-Play) — READY TO DISCUSS
 Previous phase: 36.8 — Physics Paint Roto State Refactor complete
 Plan: 0 of TBD
 Status: Ready to discuss Phase 36.9
-Last activity: 2026-06-26 — Phase 36.9 State Machine Readiness deferred behind remaining user-facing Roto features
+Last activity: 2026-06-26 — Completed quick task 260626-dja: Set up Vitest coverage for app tests and run the coverage report
 Next recommended action: /gsd-discuss-phase 36.9
 
 Progress: [████████████████████] 63/63 plans executed; 11/17 phases complete (65%)
@@ -137,6 +137,7 @@ None yet.
 | 260615-c4t | solidify phase 36.1 | 2026-06-15 | 29969ee | [260615-c4t-solidify-phase-36-1-fix-the-version-numb](./quick/260615-c4t-solidify-phase-36-1-fix-the-version-numb/) |
 | 260615-dpz | Phase 36.1 consolidation naming fix | 2026-06-15 | 410ac50 | [260615-dpz-phase-36-1-consolidation-image-9-there-i](./quick/260615-dpz-phase-36-1-consolidation-image-9-there-i/) |
 | 260615-iui | Phase 36.1 Consolidation play canvas brush cache fix | 2026-06-15 | be8f6e8 | [260615-iui-phase-36-1-consolidation-when-i-add-brus](./quick/260615-iui-phase-36-1-consolidation-when-i-add-brus/) |
+| 260626-dja | Set up Vitest coverage for app tests and run the coverage report | 2026-06-26 | 966c76ec | [260626-dja-set-up-vitest-coverage-for-app-tests-and](./quick/260626-dja-set-up-vitest-coverage-for-app-tests-and/) |
 
 ### Roadmap Evolution
 
