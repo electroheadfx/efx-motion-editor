@@ -1175,25 +1175,23 @@ export function PhysicsPaintStudio() {
     return true;
   }, [addEditableRotoFrame, cachedRotoReferenceUrl, canvasHeight, canvasWidth, currentFrame, engine, launchContext, removeEditableRotoFrame]);
 
-  const toggleRotoCachedPlayback = useCallback(() => {
-    if (isRotoCachedPlaybackActive) {
-      stopRotoCachedPlayback();
-      setRotoCachedPlaybackStatus('Cached Roto playback stopped.');
-      return;
-    }
+  const startRotoCachedPlayback = useCallback((fps = rotoCachedPlaybackFps) => {
     const cachedFrames = getRotoCachedPlaybackFrames();
     if (cachedFrames.length === 0) {
       setRotoCachedPlaybackStatus('No cached Roto frames yet. Missing frames play transparent/background.');
       return;
     }
+    const playbackFps = clampRotoPlaybackFps(fps);
     const missingCount = cachedFrames.filter((entry) => !entry.frame).length;
     let frameIndex = 0;
+    if (rotoCachedPlaybackTimerRef.current) window.clearInterval(rotoCachedPlaybackTimerRef.current);
+    rotoCachedPlaybackTimerRef.current = null;
     setIsRotoCachedPlaybackActive(true);
     setIsPlaying(true);
     setAnimTotal(cachedFrames.length);
     setRotoCachedPlaybackStatus(missingCount > 0
-      ? `Playing cached Roto frames at ${rotoCachedPlaybackFps} fps. ${missingCount} missing frame(s). Missing frames play transparent/background.`
-      : `Playing ${cachedFrames.length} cached Roto frame(s) at ${rotoCachedPlaybackFps} fps. Missing frames play transparent/background.`);
+      ? `Playing cached Roto frames at ${playbackFps} fps. ${missingCount} missing frame(s). Missing frames play transparent/background.`
+      : `Playing ${cachedFrames.length} cached Roto frame(s) at ${playbackFps} fps. Missing frames play transparent/background.`);
     const showNextCachedRotoFrame = () => {
       const cachedFrame = cachedFrames[frameIndex];
       setAnimFrame(frameIndex);
@@ -1213,9 +1211,24 @@ export function PhysicsPaintStudio() {
     };
     showNextCachedRotoFrame();
     if (cachedFrames.length > 1) {
-      rotoCachedPlaybackTimerRef.current = window.setInterval(showNextCachedRotoFrame, 1000 / rotoCachedPlaybackFps);
+      rotoCachedPlaybackTimerRef.current = window.setInterval(showNextCachedRotoFrame, 1000 / playbackFps);
     }
-  }, [currentFrame, isRotoCachedPlaybackActive, launchContext, occupiedRotoFrames, rotoCachedPlaybackFps, rotoCachedPlaybackLoop, savedRotoFrames, stopRotoCachedPlayback]);
+  }, [currentFrame, launchContext, occupiedRotoFrames, rotoCachedPlaybackFps, rotoCachedPlaybackLoop, savedRotoFrames]);
+
+  const toggleRotoCachedPlayback = useCallback(() => {
+    if (isRotoCachedPlaybackActive) {
+      stopRotoCachedPlayback();
+      setRotoCachedPlaybackStatus('Cached Roto playback stopped.');
+      return;
+    }
+    startRotoCachedPlayback();
+  }, [isRotoCachedPlaybackActive, startRotoCachedPlayback, stopRotoCachedPlayback]);
+
+  const updateRotoCachedPlaybackFps = useCallback((fps: number) => {
+    const nextFps = clampRotoPlaybackFps(fps);
+    setRotoCachedPlaybackFps(nextFps);
+    if (isRotoCachedPlaybackActive) startRotoCachedPlayback(nextFps);
+  }, [isRotoCachedPlaybackActive, startRotoCachedPlayback]);
 
   const playPreview = useCallback((frameCount: number) => {
     if (!playerRef.current || !engine) return;
@@ -2427,6 +2440,11 @@ export function PhysicsPaintStudio() {
     }
 
     if (workflowMode === 'roto') {
+      if (event.key === ' ') {
+        event.preventDefault();
+        toggleRotoCachedPlayback();
+        return;
+      }
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault();
         const direction = event.key === 'ArrowLeft' ? -1 : 1;
@@ -2464,7 +2482,7 @@ export function PhysicsPaintStudio() {
       else if (!savedPlayCacheDirty && getCachedPlayFramesForRange(framesToApply)) playPreview(framesToApply);
       else void savePlay();
     }
-  }, [currentFrame, framesToApply, isPlaying, playPreview, requestRotoFrameNavigation, savePlay, saveRotoFrame, savedPlayCacheDirty, savedRotoFrames, stopPreview, undo, workflowMode]);
+  }, [currentFrame, framesToApply, isPlaying, playPreview, requestRotoFrameNavigation, savePlay, saveRotoFrame, savedPlayCacheDirty, savedRotoFrames, stopPreview, toggleRotoCachedPlayback, undo, workflowMode]);
 
   const onionPreviewFrames = buildOnionPreviewFrames().filter((frame) => (
     (frame.direction === 'previous' && onion.previous) || (frame.direction === 'next' && onion.next)
@@ -2685,7 +2703,7 @@ export function PhysicsPaintStudio() {
           isRotoCachedPlaybackActive={isRotoCachedPlaybackActive}
           onToggleRotoPlayback={toggleRotoCachedPlayback}
           onRotoPlaybackLoopChange={setRotoCachedPlaybackLoop}
-          onRotoPlaybackFpsChange={(fps) => setRotoCachedPlaybackFps(clampRotoPlaybackFps(fps))}
+          onRotoPlaybackFpsChange={updateRotoCachedPlaybackFps}
           rotoInterpolationSettings={launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined}
           onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}
           onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}

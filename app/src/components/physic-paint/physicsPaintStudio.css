@@ -1221,7 +1221,6 @@ button.destructive {
   color: #fff;
 }
 
-.physics-paint-roto-loop-toggle,
 .physics-paint-roto-fps-control {
   display: inline-flex;
   align-items: center;
@@ -1232,11 +1231,10 @@ button.destructive {
   line-height: 1;
 }
 
-.physics-paint-roto-loop-toggle input {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  accent-color: var(--color-accent, #2d5be3);
+.physics-paint-roto-loop-toggle.active {
+  border: 1px solid var(--color-accent, #2d5be3);
+  background: color-mix(in srgb, var(--color-accent, #2d5be3) 44%, transparent);
+  color: #fff;
 }
 
 .physics-paint-roto-fps-control input {

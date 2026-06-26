@@ -1,4 +1,4 @@
-import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Square } from 'lucide-preact';
+import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, RotateCcw, Square } from 'lucide-preact';
 
 // Source contract: a one-frame Play gap opened at frame 11 yields buildPlayFrameCells(11, 1) === [11].
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -410,21 +410,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             <div class="physics-paint-mode-controls">
               <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
-              {props.isRotoCachedPlaybackActive ? (
-                <button type="button" class="physics-paint-nav-button physics-paint-roto-transport active" aria-label="Stop cached Roto playback" onClick={props.onToggleRotoPlayback}><Square size={15} /></button>
-              ) : null}
+              <button type="button" class={`physics-paint-nav-button physics-paint-roto-transport ${props.isRotoCachedPlaybackActive ? 'active' : ''}`} aria-label={props.isRotoCachedPlaybackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'} disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || !props.onToggleRotoPlayback} onClick={props.onToggleRotoPlayback}>{props.isRotoCachedPlaybackActive ? <Square size={15} /> : <Play size={15} />}</button>
               <output class="physics-paint-current-frame">{props.currentFrame}</output>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
-              <label class="physics-paint-roto-loop-toggle">
-                <input type="checkbox" checked={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false} aria-label="Loop cached Roto playback" onChange={(event) => props.onRotoPlaybackLoopChange?.((event.currentTarget as HTMLInputElement).checked)} />
-                <span>Loop</span>
-              </label>
+              <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>
               <label class="physics-paint-roto-fps-control">
                 <span>fps</span>
                 <input type="number" min="1" max="60" step="0.5" value={props.rotoCachedPlaybackFps ?? props.projectFps ?? 1} aria-label="Cached Roto playback frames per second" disabled={props.ready === false} onInput={handleRotoPlaybackFpsInput} />
               </label>
-              <button type="button" class="physics-paint-roto-transport physics-paint-roto-play-button" aria-label="Play cached Roto frames" disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || props.isRotoCachedPlaybackActive || !props.onToggleRotoPlayback} onClick={props.onToggleRotoPlayback}>Play</button>
             </div>
           ) : (
             <div class="physics-paint-mode-controls physics-paint-play-controls">

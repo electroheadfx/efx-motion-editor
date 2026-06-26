@@ -724,17 +724,17 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     ]) {
       expect(code).toContain(contract);
     }
-    // Timeline UI reference: Stop is the square transport icon among navigation controls.
+    // Timeline UI reference: Play/Stop is one transport icon slot among navigation controls.
     expect(rotoControlsBlock).toContain('physics-paint-roto-transport');
-    expect(rotoControlsBlock).toContain('aria-label="Stop cached Roto playback"');
-    expect(rotoControlsBlock).toContain('<Square size={15} />');
-    // Timeline UI reference: Play is the blue rounded button after frame navigation.
-    expect(rotoControlsBlock).toContain('aria-label="Play cached Roto frames"');
-    expect(rotoControlsBlock).toContain('Play');
+    expect(rotoControlsBlock).toContain("aria-label={props.isRotoCachedPlaybackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'}");
+    expect(rotoControlsBlock).toContain("{props.isRotoCachedPlaybackActive ? <Square size={15} /> : <Play size={15} />}");
+    expect(rotoControlsBlock).not.toContain('>Play</button>');
     expect(rotoControlsBlock).toContain('props.onToggleRotoPlayback');
     expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackAvailable');
     expect(rotoControlsBlock).toContain('props.isRotoCachedPlaybackActive');
     expect(rotoControlsBlock).toContain('aria-label="Loop cached Roto playback"');
+    expect(rotoControlsBlock).toContain('aria-pressed={Boolean(props.rotoCachedPlaybackLoop)}');
+    expect(rotoControlsBlock).toContain('<RotateCcw size={15} />');
     expect(rotoControlsBlock).toContain('props.onRotoPlaybackLoopChange');
     expect(rotoControlsBlock).toContain('aria-label="Cached Roto playback frames per second"');
     expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackFps ?? props.projectFps ?? 1');

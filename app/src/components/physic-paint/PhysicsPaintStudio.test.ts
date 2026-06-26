@@ -590,7 +590,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
   it('previews cached Roto playback from cached frames only and avoids mutation paths in the Roto branch', () => {
     const text = source();
     const cachedRotoBlock = text.slice(text.indexOf('function findCachedRotoReferenceFrame'), text.indexOf('const playPreview = useCallback'));
-    const toggleBlock = text.slice(text.indexOf('const toggleRotoCachedPlayback = useCallback'), text.indexOf('const stopPreview = useCallback'));
+    const toggleBlock = text.slice(text.indexOf('const startRotoCachedPlayback = useCallback'), text.indexOf('const stopPreview = useCallback'));
     const canvasStackBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('<CanvasMountProbe'));
     const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
@@ -611,9 +611,11 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(toggleBlock).toContain('const missingCount = cachedFrames.filter((entry) => !entry.frame).length');
     expect(toggleBlock).toContain('setCachedRotoPlaybackFrame(cachedFrame.frame ?? null)');
     expect(toggleBlock).toContain('setLaunchContext((current) => current ? { ...current, startFrame: cachedFrame.appFrame } : current)');
+    expect(toggleBlock).toContain('const playbackFps = clampRotoPlaybackFps(fps)');
+    expect(toggleBlock).toContain('if (rotoCachedPlaybackTimerRef.current) window.clearInterval(rotoCachedPlaybackTimerRef.current)');
     expect(toggleBlock).toContain('if (rotoCachedPlaybackLoop)');
     expect(toggleBlock).toContain('frameIndex = 0');
-    expect(toggleBlock).toContain('1000 / rotoCachedPlaybackFps');
+    expect(toggleBlock).toContain('1000 / playbackFps');
     expect(toggleBlock).toContain('Missing frames play transparent/background');
     expect(canvasStackBlock).toContain('cachedRotoPlaybackUrl={cachedRotoPlaybackFrame?.dataUrl ?? null}');
     for (const forbidden of [
@@ -636,7 +638,9 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(workflowStripBlock).toContain('isRotoCachedPlaybackActive={isRotoCachedPlaybackActive}');
     expect(workflowStripBlock).toContain('onToggleRotoPlayback={toggleRotoCachedPlayback}');
     expect(workflowStripBlock).toContain('onRotoPlaybackLoopChange={setRotoCachedPlaybackLoop}');
-    expect(workflowStripBlock).toContain('onRotoPlaybackFpsChange={(fps) => setRotoCachedPlaybackFps(clampRotoPlaybackFps(fps))}');
+    expect(workflowStripBlock).toContain('onRotoPlaybackFpsChange={updateRotoCachedPlaybackFps}');
+    expect(text).toContain('const updateRotoCachedPlaybackFps = useCallback');
+    expect(text).toContain('if (isRotoCachedPlaybackActive) startRotoCachedPlayback(nextFps)');
   });
 
   it('stops cached Roto playback on edit intent manual Roto navigation and mode changes', () => {
@@ -659,6 +663,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(requestNavigationBlock).toContain('executeRotoSessionEffects(result.effects)');
     expect(requestNavigationBlock).not.toContain('setCachedRotoPlaybackFrame(cachedFrame');
     expect(text).toContain('const beginRotoFrameEdit = useCallback');
+    expect(text).toContain("if (event.key === ' ')");
+    expect(text).toContain('toggleRotoCachedPlayback()');
     expect(canvasStackBlock).toContain('onInputIntent={workflowMode === \'play\' ? beginPlayFrameEdit : beginRotoFrameEdit}');
     expect(text).toContain("if (workflowMode !== 'roto') stopRotoCachedPlayback()");
   });
