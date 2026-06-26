@@ -252,7 +252,7 @@ Use `SPECS/36.x-phases/phase-36.9-cached-autoplay/spec-36.9-cached-autoplay.md` 
 **Mode:** mvp
 **Requirements**: 36.9-CACHED-PLAYBACK, 36.9-UAT
 **Depends on:** Phase 36.8
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Planning notes:
 
@@ -266,7 +266,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 36.9-01-PLAN.md — Confirm whether timed cached Roto playback is necessary before app-code changes.
+- [x] 36.9-01-PLAN.md — Confirm whether timed cached Roto playback is necessary before app-code changes.
 
 **Wave 2** *(blocked on Wave 1 timed-preview approval)*
 
@@ -734,7 +734,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.2. Roto paint enhancements | v0.8.0 | 13/13 records closed | Failed/superseded | 2026-06-19 |
 | 36.3. Physics Paint Roto Durable Core Recovery | v0.8.0 | 2/2 | Complete    | 2026-06-19 |
 | 36.8. Physics Paint Roto State Refactor | v0.8.0 | 5/5 | Complete | 2026-06-25 |
-| 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 0/TBD | Not started | - |
+| 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 1/3 | In Progress|  |
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 0/TBD | Not started | - |
 | 36.11. Physics Paint Roto Generated Interpolation | v0.8.0 | 0/TBD | Not started | - |
 | 36.12. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
