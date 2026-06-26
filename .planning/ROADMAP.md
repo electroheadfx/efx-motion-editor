@@ -134,7 +134,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.6: Physics Paint Roto Save On Leave** - Users can leave dirty Roto frames with source-frame save feedback and without manually pressing Save current for each frame. (completed 2026-06-20)
 - [x] **Phase 36.7: Physics Paint Roto Key Utilities** - Stop-motion animators can duplicate, insert, delete, copy, and paste real Roto keys efficiently with clean cache/cell/canvas state. (completed 2026-06-22)
 - [x] **Phase 36.8: Physics Paint Roto State Refactor** - PhysicsPaintStudio consumes a compact Roto session/key state boundary while preserving Phase 36.7 visible behavior. (completed 2026-06-25)
-- [ ] **Phase 36.9: Physics Paint Roto Cached Playback Auto-Play** - Animators can optionally preview cached Roto frames with Play/Stop automation if manual stepping is not enough. (planned)
+- [ ] **Phase 36.9: Physics Paint Roto Cached Playback Auto-Play** - Animators can optionally preview cached Roto frames with Play/Stop automation if manual stepping is not enough. (planned; final UAT confirmation pending)
 - [ ] **Phase 36.10: Physics Paint Roto Missing Background Preview Export** - Missing Roto frames render consistently as transparent or background-only in preview and export. (planned)
 - [ ] **Phase 36.11: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (planned)
 - [ ] **Phase 36.12: Physics Paint Roto Timeline UI From Pencil** - Roto timeline controls match the corrected Pencil design after behavior is stable. (planned)
@@ -252,7 +252,7 @@ Use `SPECS/36.x-phases/phase-36.9-cached-autoplay/spec-36.9-cached-autoplay.md` 
 **Mode:** mvp
 **Requirements**: 36.9-CACHED-PLAYBACK, 36.9-UAT
 **Depends on:** Phase 36.8
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed; final UAT confirmation pending
 
 Planning notes:
 
@@ -274,7 +274,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 controller contracts)*
 
-- [ ] 36.9-03-PLAN.md — Expose visible Play/Stop controls from the timeline references and run live UAT.
+- [x] 36.9-03-PLAN.md — Expose visible Play/Stop controls from the timeline references and run live UAT. (final confirmation pending after real-key-only playback fix)
 
 ### Phase 36.10: Physics Paint Roto Missing Background Preview Export
 
@@ -734,7 +734,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.2. Roto paint enhancements | v0.8.0 | 13/13 records closed | Failed/superseded | 2026-06-19 |
 | 36.3. Physics Paint Roto Durable Core Recovery | v0.8.0 | 2/2 | Complete    | 2026-06-19 |
 | 36.8. Physics Paint Roto State Refactor | v0.8.0 | 5/5 | Complete | 2026-06-25 |
-| 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 2/3 | In Progress|  |
+| 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 3/3 | UAT pending |  |
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 0/TBD | Not started | - |
 | 36.11. Physics Paint Roto Generated Interpolation | v0.8.0 | 0/TBD | Not started | - |
 | 36.12. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
