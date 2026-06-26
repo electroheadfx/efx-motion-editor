@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.9
-current_phase_name: Physics Paint Roto State Machine Readiness
-status: ready_to_plan
-stopped_at: Phase 36.8 complete; Phase 36.9 ready to plan
-last_updated: "2026-06-25T07:34:48Z"
-last_activity: 2026-06-25
-last_activity_desc: Phase 36.8 completed with automated gates and user-approved Roto key utility UAT
+current_phase_name: Physics Paint Roto Cached Playback Auto-Play
+status: ready_to_discuss
+stopped_at: Phase 36.8 complete; Phase 36.9 cached playback ready to discuss
+last_updated: "2026-06-26T07:30:14.831Z"
+last_activity: 2026-06-26
+last_activity_desc: Phase 36.9 State Machine Readiness deferred behind remaining user-facing Roto features
 progress:
-  total_phases: 14
+  total_phases: 17
   completed_phases: 11
-  total_plans: 64
+  total_plans: 63
   completed_plans: 63
-  percent: 98
+  percent: 65
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.9 — Physics Paint Roto State Machine Readiness
+**Current focus:** Phase 36.9 — Physics Paint Roto Cached Playback Auto-Play
 
 ## Current Position
 
-Phase: 36.9 (Physics Paint Roto State Machine Readiness) — READY TO PLAN
+Phase: 36.9 (Physics Paint Roto Cached Playback Auto-Play) — READY TO DISCUSS
 Previous phase: 36.8 — Physics Paint Roto State Refactor complete
 Plan: 0 of TBD
-Status: Ready to plan Phase 36.9
-Last activity: 2026-06-25 — Phase 36.8 completed with automated gates and user-approved UAT
-Next recommended action: `/gsd-plan-phase 36.9`
+Status: Ready to discuss Phase 36.9
+Last activity: 2026-06-26 — Phase 36.9 State Machine Readiness deferred behind remaining user-facing Roto features
+Next recommended action: /gsd-discuss-phase 36.9
 
-Progress: [████████████████████] 63/64 plans (98%)
+Progress: [████████████████████] 63/63 plans executed; 11/17 phases complete (65%)
 
 ## Performance Metrics
 
@@ -126,6 +126,7 @@ None yet.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
 - Phase 36.7 completed: Roto key utility UAT passed for Duplicate, Insert, Delete, Copy, Paste, generated/empty guards, dirty save-before-action, focused regressions, typecheck, and user-story coverage.
 - Phase 36.8 completed: Roto session/key state boundary refactor passed focused regressions, full app tests, typecheck, package build, and user-approved Roto key utility UAT.
+- Phase 36.9 State Machine Readiness is deferred to Phase 36.13 maintenance; Phase 36.8 is the state boundary foundation while remaining user-facing Roto features are prioritized first.
 - Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
 ### Quick Tasks Completed
@@ -148,6 +149,7 @@ None yet.
 - Phase 36.7 inserted after Phase 36: Physics Paint Roto Key Utilities; source of truth: SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md (URGENT)
 - Phase 36.8 inserted after Phase 36: Physics Paint Roto State Refactor (URGENT)
 - Phase 36.9 inserted after Phase 36: Physics Paint Roto State Machine Readiness (URGENT)
+- Phase 36.9 edited: deferred State Machine Readiness to Phase 36.13 maintenance after remaining user-facing 36.x Roto features; Phase 36.8 is the state boundary foundation
 
 ## Deferred Items
 
