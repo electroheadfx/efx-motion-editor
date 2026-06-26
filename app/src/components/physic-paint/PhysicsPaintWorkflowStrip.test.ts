@@ -579,8 +579,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).not.toContain('Delete frame');
     expect(rotoControlsBlock).not.toContain('Copy frame');
     expect(rotoControlsBlock).not.toContain('Paste frame');
-    expect(rotoControlsBlock).not.toContain('physics-paint-roto-transport');
-    expect(rotoControlsBlock).not.toContain('Play cached Roto frames');
+    expect(rotoControlsBlock).toContain('physics-paint-roto-transport');
+    expect(rotoControlsBlock).toContain('Play cached Roto frames');
     expect(rotoControlsBlock).not.toContain('Save on leave');
     expect(rotoControlsBlock).not.toContain('close-choice');
   });
@@ -701,10 +701,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('Clear Play canvas range');
   });
 
-  it('keeps cached Roto playback props but hides playback transport from the strict Phase 36.3 Roto strip', () => {
+  it('shows Phase 36.9 cached Roto Play Stop transport in the Roto header', () => {
     const code = source();
     const rotoControlsIndex = code.indexOf("props.mode === 'roto'");
-    const rotoControlsBlock = code.slice(rotoControlsIndex, rotoControlsIndex + 2200);
+    const rotoControlsBlock = code.slice(rotoControlsIndex, rotoControlsIndex + 3200);
+    const statusStackBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('confirmation ? ('));
 
     for (const contract of [
       'rotoCachedPlaybackAvailable?: boolean',
@@ -714,12 +715,34 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     ]) {
       expect(code).toContain(contract);
     }
-    expect(rotoControlsBlock).not.toContain('physics-paint-roto-transport');
-    expect(rotoControlsBlock).not.toContain('Play cached Roto frames');
-    expect(rotoControlsBlock).not.toContain('props.onToggleRotoPlayback');
-    expect(rotoControlsBlock).not.toContain('Missing frames play transparent/background');
+    // Timeline UI reference: Stop is the square transport icon among navigation controls.
+    expect(rotoControlsBlock).toContain('physics-paint-roto-transport');
+    expect(rotoControlsBlock).toContain('aria-label="Stop cached Roto playback"');
+    expect(rotoControlsBlock).toContain('<Square size={15} />');
+    // Timeline UI reference: Play is the blue rounded button after frame navigation.
+    expect(rotoControlsBlock).toContain('aria-label="Play cached Roto frames"');
+    expect(rotoControlsBlock).toContain('Play');
+    expect(rotoControlsBlock).toContain('props.onToggleRotoPlayback');
+    expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackAvailable');
+    expect(rotoControlsBlock).toContain('props.isRotoCachedPlaybackActive');
+    expect(statusStackBlock).toContain('props.rotoCachedPlaybackStatus');
+    expect(statusStackBlock).toContain('Missing frames play transparent/background');
+  });
+
+  it('keeps cached Roto playback UI inside existing Preact CSS scope without render or save-all actions', () => {
+    const code = source();
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const rotoControlsIndex = code.indexOf("props.mode === 'roto'");
+    const rotoControlsBlock = code.slice(rotoControlsIndex, rotoControlsIndex + 3200);
+
+    expect(code).not.toMatch(/from ['"]react['"]/);
+    expect(code).not.toMatch(/from ['"]lucide-react['"]/);
+    expect(code).not.toContain('className=');
+    expect(css).toContain('.physics-paint-roto-transport');
+    expect(css).toContain('.physics-paint-roto-playback-status');
     expect(rotoControlsBlock).not.toContain('Render all');
     expect(rotoControlsBlock).not.toContain('Save all');
+    expect(rotoControlsBlock).not.toContain('Export');
   });
 
   it('wires D-08/D-09 Studio Roto key utilities through one session result runner', () => {
