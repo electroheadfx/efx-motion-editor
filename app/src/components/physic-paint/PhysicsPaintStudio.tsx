@@ -953,38 +953,14 @@ export function PhysicsPaintStudio() {
     return Boolean(cachedFrame);
   }
 
-  function buildTransientRotoBackgroundFrame(appFrame: number): RenderedFramePayload | null {
-    const metadata = launchContext ? physicPaintStore.getRotoBackgroundMetadata(launchContext.layerId) : null;
-    if (!metadata || metadata.background === 'transparent') return null;
-    return {
-      frameIndex: 0,
-      appFrame,
-      dataUrl: `data:application/x-efx-roto-background,${encodeURIComponent(JSON.stringify(metadata))}`,
-      width: launchContext?.width,
-      height: launchContext?.height,
-    };
-  }
-
   function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null {
-    return findCachedRotoReferenceFrame(appFrame) ?? buildTransientRotoBackgroundFrame(appFrame);
+    return findCachedRotoReferenceFrame(appFrame);
   }
 
-  function getRotoCachedPlaybackFrames(): Array<{ appFrame: number; frame: RenderedFramePayload | null }> {
-    if (!launchContext) return [];
-    const frames = new Set<number>();
-    physicPaintStore.getFrames(launchContext.layerId).forEach((_, frame) => frames.add(frame));
-    launchContext.cachedRotoFrames?.forEach((frame) => {
-      if (frame.source === 'real-key') frames.add(frame.appFrame);
-    });
-    rotoPreviewFramesRef.current.forEach((_, frame) => frames.add(frame));
-    savedRotoFrames.forEach((marker) => {
-      if (marker.saved !== false) frames.add(marker.frame);
-    });
-    occupiedRotoFrames.forEach((frame) => frames.add(frame));
-    frames.add(currentFrame);
-    return [...frames]
-      .sort((a, b) => a - b)
-      .map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }));
+  function getRotoCachedPlaybackFrames(): Array<{ appFrame: number; frame: RenderedFramePayload }> {
+    return getRealCachedRotoFrameNumbers(launchContext)
+      .map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }))
+      .filter((entry): entry is { appFrame: number; frame: RenderedFramePayload } => Boolean(entry.frame));
   }
 
   useEffect(() => {

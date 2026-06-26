@@ -300,16 +300,17 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
     expect(text).toContain('cachedRotoFrames={launchContext?.cachedRotoFrames}');
   });
 
-  it('synthesizes transient background-only Roto playback frames without cached cell mutation', () => {
+  it('keeps cached Roto playback scoped to real cached key frames', () => {
     const text = source();
-    const playbackBlock = text.slice(text.indexOf('function buildTransientRotoBackgroundFrame'), text.indexOf('useEffect(() => {', text.indexOf('function buildTransientRotoBackgroundFrame')));
+    const playbackBlock = text.slice(text.indexOf('function findCachedRotoPlaybackFrame'), text.indexOf('useEffect(() => {', text.indexOf('function findCachedRotoPlaybackFrame')));
 
-    expect(playbackBlock).toContain('physicPaintStore.getRotoBackgroundMetadata(launchContext.layerId)');
-    expect(playbackBlock).toContain("if (!metadata || metadata.background === 'transparent') return null");
-    expect(playbackBlock).toContain('data:application/x-efx-roto-background');
-    expect(playbackBlock).toContain('return findCachedRotoReferenceFrame(appFrame) ?? buildTransientRotoBackgroundFrame(appFrame)');
-    expect(playbackBlock).not.toContain('physicPaintStore.setFrame');
-    expect(playbackBlock).not.toContain('setSavedRotoFrames');
+    expect(playbackBlock).toContain('return findCachedRotoReferenceFrame(appFrame)');
+    expect(playbackBlock).toContain('return getRealCachedRotoFrameNumbers(launchContext)');
+    expect(playbackBlock).toContain('filter((entry): entry is { appFrame: number; frame: RenderedFramePayload } => Boolean(entry.frame))');
+    expect(playbackBlock).not.toContain('buildTransientRotoBackgroundFrame');
+    expect(playbackBlock).not.toContain('frames.add(currentFrame)');
+    expect(playbackBlock).not.toContain('occupiedRotoFrames.forEach');
+    expect(playbackBlock).not.toContain('savedRotoFrames.forEach');
   });
 
   it('shows cached Roto references as an overlay without installing them as the engine paper background', () => {
@@ -606,8 +607,9 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(cachedRotoBlock).toContain('function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null');
     expect(cachedRotoBlock).toContain('return findCachedRotoReferenceFrame(appFrame)');
     expect(toggleBlock).toContain('const cachedFrames = getRotoCachedPlaybackFrames()');
-    expect(cachedRotoBlock).toContain('Array<{ appFrame: number; frame: RenderedFramePayload | null }>');
-    expect(cachedRotoBlock).toContain('map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }))');
+    expect(cachedRotoBlock).toContain('Array<{ appFrame: number; frame: RenderedFramePayload }>');
+    expect(cachedRotoBlock).toContain('return getRealCachedRotoFrameNumbers(launchContext)');
+    expect(cachedRotoBlock).toContain('filter((entry): entry is { appFrame: number; frame: RenderedFramePayload } => Boolean(entry.frame))');
     expect(toggleBlock).toContain('const missingCount = cachedFrames.filter((entry) => !entry.frame).length');
     expect(toggleBlock).toContain('setCachedRotoPlaybackFrame(cachedFrame.frame ?? null)');
     expect(toggleBlock).toContain('setLaunchContext((current) => current ? { ...current, startFrame: cachedFrame.appFrame } : current)');
