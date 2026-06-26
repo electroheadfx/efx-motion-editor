@@ -1,10 +1,26 @@
 ---
 phase: 36-physics-paint-ui-rebuild-session-persistence-and-output-proo
-verified: 2026-06-13T11:08:10Z
-status: human_needed
-next_action: human verification required before Phase 36 can be marked fully accepted
-score: 6/6 must-haves verified
+verified: 2026-06-26T17:12:41Z
+status: passed
+next_action: administrative parent closure accepted from completed child phase evidence
+score: administrative closure; 8/8 child evidence phases reviewed
 overrides_applied: 0
+administrative_parent_closure:
+  previous_status: human_needed
+  closure_type: parent-phase evidence rollup
+  implementation_rerun: false
+  feature_work_generated: false
+  evidence_phases:
+    - "36.1: UAT complete, 5/5 passed, 0 issues."
+    - "36.3: UAT complete, 6/6 passed, 0 issues."
+    - "36.4: UAT complete, 6/6 passed, verification passed."
+    - "36.5: no direct UAT/VERIFICATION; summaries record completed implementation slices and passing targeted automated checks."
+    - "36.6: UAT complete, 3/3 passed; stale human_needed verification acknowledges user completed UAT and approved proceeding."
+    - "36.7: UAT complete, 13/13 passed, 0 issues."
+    - "36.8: UAT complete, 11/11 passed, 0 issues."
+    - "36.9: UAT complete, 9/9 passed, verification passed with 12/12 must-haves verified."
+  gaps_remaining: []
+  regressions: []
 re_verification:
   previous_status: human_needed
   previous_score: 6/6
@@ -15,30 +31,15 @@ re_verification:
     - "UAT gap 7: Save play stores Play workflow metadata, relaunch hydrates Play mode/range/source context, and saved Play frames are not reused as post-save onion overlays."
   gaps_remaining: []
   regressions: []
-human_verification:
-  - test: "Open the user-run app, launch a Physics Paint layer/window, and inspect the rebuilt five-region UI visually."
-    expected: "Top bar, left rail, canvas region, right panel, and workflow strip match the Phase 36 visual spec and remain polished in the real runtime. Grain strength exposes None, Soft, Med, Hard."
-    why_human: "Visual fidelity and runtime interaction feel cannot be fully verified by static code inspection or unit tests, and project instructions prohibit running the dev server."
-  - test: "Retest tab-driven Roto/Play conversion UX in the live app."
-    expected: "There are no standalone Convert Play to Roto / Convert Roto to Play buttons in the bottom strip; switching workflow tabs opens the appropriate destructive confirmation, and Play lane clicks only inspect/navigate."
-    why_human: "Runtime interaction flow and visual absence/presence of controls require user-run app verification."
-  - test: "Retest onion controls with multiple saved/navigated Roto frames and during Play preview."
-    expected: "Previous/next/count controls visibly update onion overlays from adjacent Roto snapshots; live Play preview hides overlays; Save play does not leave a yellow/orange overlay artifact."
-    why_human: "Canvas overlay rendering and visual artifact absence require live browser/canvas verification."
-  - test: "Retest Save state and Load state in the desktop app."
-    expected: "Save state opens the native macOS/Tauri save dialog and writes editable JSON when a path is selected; cancel is non-error; Load state still accepts valid JSON and rejects invalid JSON with the required copy."
-    why_human: "Native OS save dialog behavior cannot be proven by static source checks or non-Tauri unit tests."
-  - test: "Retest Play preview, Save play, close/reopen EFX Physics for the same layer, and dev export."
-    expected: "Play remains preview-only until Save play; Save play keeps the standalone window open with a summary; reopening restores Play canvas mode/range/source edits; dev export produces inspectable PNG/manifest proof metadata."
-    why_human: "End-to-end desktop runtime, canvas frame capture, persistence round-trip, and file/download output require live app verification."
+human_verification: []
 ---
 
 # Phase 36: Physics Paint UI Rebuild, Session Persistence, and Output Proof Verification Report
 
 **Phase Goal:** Users can work in a rebuilt, production-grade physics paint package UI that preserves standalone sessions and produces inspectable rendered output suitable for later cached editor compositing.
-**Verified:** 2026-06-13T11:08:10Z
-**Status:** human_needed
-**Re-verification:** Yes — after gap-closure plans 36-08 through 36-11 and follow-up fix commit `c72d7ca`
+**Verified:** 2026-06-26T17:12:41Z
+**Status:** passed
+**Re-verification:** Yes — administrative parent-phase closure from completed child phase evidence after gap-closure plans 36-08 through 36-11, follow-up fix commit `c72d7ca`, and child phases 36.1, 36.3, 36.4, 36.5, 36.6, 36.7, 36.8, and 36.9
 
 ## Goal Achievement
 
@@ -137,45 +138,30 @@ No orphaned Phase 36 requirement IDs were found in `.planning/REQUIREMENTS.md`; 
 
 No blocker debt markers (`TBD`, `FIXME`, `XXX`) were found in the verified phase implementation files.
 
+## Administrative Parent Closure — 2026-06-26
+
+This pass closes Phase 36 as an administrative parent rollup only. No implementation was re-run, no application source was changed, no dev server was started, and no new feature work was generated.
+
+| Evidence Phase | Closure Evidence | Status |
+|---|---|---|
+| 36.1 | `36.1-UAT.md` records 5 total, 5 passed, 0 issues. | ACCEPTED |
+| 36.3 | `36.3-UAT.md` records 6 total, 6 passed, 0 issues. | ACCEPTED |
+| 36.4 | `36.4-UAT.md` records 6 total, 6 passed, 0 issues; `36.4-VERIFICATION.md` is passed. | ACCEPTED |
+| 36.5 | No direct UAT/VERIFICATION artifact exists; `36.5-01-SUMMARY.md`, `36.5-02-SUMMARY.md`, and `36.5-03-SUMMARY.md` record completed semantic-cell implementation slices with passing targeted automated checks, and later Roto UAT flows exercise the resulting semantics. | ACCEPTED WITH DOCUMENTED CAVEAT |
+| 36.6 | `36.6-UAT.md` records 3 total, 3 passed, 0 issues; stale `36.6-VERIFICATION.md` acknowledges the user completed UAT and approved proceeding despite its earlier `human_needed` status. | ACCEPTED |
+| 36.7 | `36.7-UAT.md` records 13 total, 13 passed, 0 issues. | ACCEPTED |
+| 36.8 | `36.8-UAT.md` records 11 total, 11 passed, 0 issues. | ACCEPTED |
+| 36.9 | `36.9-UAT.md` records 9 total, 9 passed, 0 issues; `36.9-VERIFICATION.md` is passed with 12/12 must-haves verified. | ACCEPTED |
+
 ## Human Verification Required
 
-### 1. Visual layout and interaction review
-
-**Test:** Open the user-run app, launch a Physics Paint layer/window, and inspect the rebuilt five-region UI visually.  
-**Expected:** Top bar, left rail, canvas region, right panel, and workflow strip match the Phase 36 visual spec and remain polished in the real runtime. Grain strength exposes `None`, `Soft`, `Med`, `Hard`.  
-**Why human:** Visual fidelity and runtime interaction feel cannot be fully verified by static code inspection or unit tests, and project instructions prohibit running the dev server.
-
-### 2. Tab-driven Roto/Play conversion UX
-
-**Test:** In the live app, switch between `Roto canvas` and `Play canvas`, inspect the bottom strip, and click inside the Play lane.  
-**Expected:** There are no standalone conversion buttons; cross-mode tab switches open destructive confirmation; Play lane clicks only inspect/navigate and never publish/convert/delete data.  
-**Why human:** Runtime UX and visual control placement require live app verification.
-
-### 3. Onion overlay behavior
-
-**Test:** Save/navigate between multiple Roto frames, toggle previous/next/count onion controls, run Play preview, then Save play.  
-**Expected:** Onion controls visibly change adjacent Roto overlays; live preview hides overlays; Save play does not leave a yellow/orange overlay artifact.  
-**Why human:** Canvas overlay rendering and artifact absence require a live browser/canvas check.
-
-### 4. Desktop Save state / Load state flow
-
-**Test:** Click `Save state` and `Load state` in the desktop app.  
-**Expected:** Save state opens the native macOS/Tauri save dialog and writes editable JSON when a path is selected; cancel is non-error; Load state accepts valid exported JSON and rejects invalid JSON with the required message.  
-**Why human:** Native OS dialog behavior cannot be proven by static code or non-Tauri unit tests.
-
-### 5. Save play persistence and output proof
-
-**Test:** Paint in Play mode, run Play preview, Save play, close/reopen EFX Physics for the same layer, and run dev export in development.  
-**Expected:** Play remains preview-only until Save play; Save play keeps the window open with a summary; reopening restores Play canvas mode/range/source edits; dev export produces inspectable PNG/manifest proof metadata.  
-**Why human:** End-to-end desktop runtime, canvas capture, persisted project round-trip, and output file/download behavior require live app verification.
+None for this parent closure pass. The live runtime checks previously listed in this parent report were completed through the requested child-phase evidence rollup or superseded by later completed child UAT/verification artifacts.
 
 ## Gaps Summary
 
-No code-level blocking gaps remain after the 36-08 through 36-11 gap-closure work and follow-up fix commit `c72d7ca`. The prior UAT gaps are closed in code with supporting tests: tab-driven conversion UX, functional Roto onion preview sourcing, native Save state adapter, and Save play workflow metadata/relaunch hydration.
-
-The phase remains `human_needed`, not `passed`, because the remaining acceptance items are runtime/visual/Tauri/canvas behaviors that require user-run app verification, and project instructions prohibit starting the dev server during automated verification.
+No parent-phase blocking gaps remain. The stale Phase 36 `human_needed` status is closed administratively from the completed child phase evidence listed above.
 
 ---
 
-_Verified: 2026-06-13T11:08:10Z_  
-_Verifier: Claude (gsd-verifier)_
+_Verified: 2026-06-26T17:12:41Z_  
+_Verifier: Claude (administrative parent closure)_
