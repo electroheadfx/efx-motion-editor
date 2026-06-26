@@ -583,10 +583,11 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(workflowStripBlock).toContain('onRotoInterpolationMotionChange={updateRotoInterpolationSettings}');
   });
 
-  it('previews cached Roto playback from cached frames only and avoids AnimationPlayer in the Roto branch', () => {
+  it('previews cached Roto playback from cached frames only and avoids mutation paths in the Roto branch', () => {
     const text = source();
     const cachedRotoBlock = text.slice(text.indexOf('function findCachedRotoReferenceFrame'), text.indexOf('const playPreview = useCallback'));
     const toggleBlock = text.slice(text.indexOf('const toggleRotoCachedPlayback = useCallback'), text.indexOf('const stopPreview = useCallback'));
+    const canvasStackBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('<CanvasMountProbe'));
     const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
@@ -602,21 +603,43 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(toggleBlock).toContain('const missingCount = cachedFrames.filter((frame) => !frame).length');
     expect(toggleBlock).toContain('setCachedRotoPlaybackFrame(cachedFrame ?? null)');
     expect(toggleBlock).toContain('Missing frames play transparent/background');
-    expect(toggleBlock).not.toContain('AnimationPlayer');
+    expect(canvasStackBlock).toContain('cachedRotoPlaybackUrl={cachedRotoPlaybackFrame?.dataUrl ?? null}');
+    for (const forbidden of [
+      'AnimationPlayer',
+      'flushRotoFrame',
+      'sendPhysicPaintApplyPayload',
+      'regenerateRotoInterpolationCache',
+      'removeFrameRange',
+      'removeRealRotoKeyFrame',
+      'upsertCachedRotoFrameInLaunchContext',
+      'removeCachedRotoFrameFromLaunchContext',
+    ]) {
+      expect(toggleBlock).not.toContain(forbidden);
+    }
     expect(workflowStripBlock).toContain('rotoCachedPlaybackAvailable={rotoCachedPlaybackAvailable}');
     expect(workflowStripBlock).toContain('rotoCachedPlaybackStatus={rotoCachedPlaybackStatus}');
     expect(workflowStripBlock).toContain('isRotoCachedPlaybackActive={isRotoCachedPlaybackActive}');
     expect(workflowStripBlock).toContain('onToggleRotoPlayback={toggleRotoCachedPlayback}');
   });
 
-  it('stops cached Roto playback on edit intent and manual Roto navigation', () => {
+  it('stops cached Roto playback on edit intent manual Roto navigation and mode changes', () => {
     const text = source();
+    const stopBlock = text.slice(text.indexOf('const stopRotoCachedPlayback = useCallback'), text.indexOf('const upsertCachedRotoFrameInLaunchContext'));
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
+    const requestNavigationBlock = text.slice(text.indexOf('const requestRotoFrameNavigation = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
     const canvasStackBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('<CanvasMountProbe'));
 
     expect(text).toContain('const stopRotoCachedPlayback = useCallback');
+    expect(stopBlock).toContain('window.clearInterval(rotoCachedPlaybackTimerRef.current)');
+    expect(stopBlock).toContain('rotoCachedPlaybackTimerRef.current = null');
+    expect(stopBlock).toContain('setIsRotoCachedPlaybackActive(false)');
+    expect(stopBlock).toContain('setCachedRotoPlaybackFrame(null)');
+    expect(stopBlock).toContain('setIsPlaying(false)');
     expect(navigateBlock).toContain('stopRotoCachedPlayback()');
     expect(navigateBlock).toContain('setCachedRotoPlaybackFrame(null)');
+    expect(requestNavigationBlock).toContain('const result = rotoSession.requestFrame(targetFrame)');
+    expect(requestNavigationBlock).toContain('executeRotoSessionEffects(result.effects)');
+    expect(requestNavigationBlock).not.toContain('setCachedRotoPlaybackFrame(cachedFrame');
     expect(text).toContain('const beginRotoFrameEdit = useCallback');
     expect(canvasStackBlock).toContain('onInputIntent={workflowMode === \'play\' ? beginPlayFrameEdit : beginRotoFrameEdit}');
     expect(text).toContain("if (workflowMode !== 'roto') stopRotoCachedPlayback()");
