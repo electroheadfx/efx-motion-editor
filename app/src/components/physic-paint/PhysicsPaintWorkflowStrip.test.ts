@@ -256,7 +256,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       'rotoInterpolationSettings',
       'rotoCachedPlaybackAvailable',
       'rotoCachedPlaybackStatus',
+      'rotoCachedPlaybackLoop',
+      'rotoCachedPlaybackFps',
       'onToggleRotoPlayback',
+      'onRotoPlaybackLoopChange',
+      'onRotoPlaybackFpsChange',
       'isRotoCachedPlaybackActive',
       'onRotoInterpolationEnabledChange',
       'onRotoInterpolationCountChange',
@@ -710,7 +714,12 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     for (const contract of [
       'rotoCachedPlaybackAvailable?: boolean',
       'rotoCachedPlaybackStatus?: string | null',
+      'rotoCachedPlaybackLoop?: boolean',
+      'rotoCachedPlaybackFps?: number',
+      'projectFps?: number',
       'onToggleRotoPlayback?: () => void',
+      'onRotoPlaybackLoopChange?: (loop: boolean) => void',
+      'onRotoPlaybackFpsChange?: (fps: number) => void',
       'isRotoCachedPlaybackActive?: boolean',
     ]) {
       expect(code).toContain(contract);
@@ -725,8 +734,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).toContain('props.onToggleRotoPlayback');
     expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackAvailable');
     expect(rotoControlsBlock).toContain('props.isRotoCachedPlaybackActive');
-    expect(statusStackBlock).toContain('props.rotoCachedPlaybackStatus');
-    expect(statusStackBlock).toContain('Missing frames play transparent/background');
+    expect(rotoControlsBlock).toContain('aria-label="Loop cached Roto playback"');
+    expect(rotoControlsBlock).toContain('props.onRotoPlaybackLoopChange');
+    expect(rotoControlsBlock).toContain('aria-label="Cached Roto playback frames per second"');
+    expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackFps ?? props.projectFps ?? 1');
+    expect(code).toContain('props.onRotoPlaybackFpsChange?.(value)');
+    expect(statusStackBlock).toContain('props.rotoCachedPlaybackStatus ? <p class="physics-paint-roto-playback-status">{props.rotoCachedPlaybackStatus}</p> : null');
+    expect(statusStackBlock).not.toContain("props.rotoCachedPlaybackStatus ?? 'Missing frames play transparent/background.'");
   });
 
   it('keeps cached Roto playback UI inside existing Preact CSS scope without render or save-all actions', () => {
@@ -739,6 +753,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toMatch(/from ['"]lucide-react['"]/);
     expect(code).not.toContain('className=');
     expect(css).toContain('.physics-paint-roto-transport');
+    expect(css).toContain('.physics-paint-roto-loop-toggle');
+    expect(css).toContain('.physics-paint-roto-fps-control');
     expect(css).toContain('.physics-paint-roto-playback-status');
     expect(rotoControlsBlock).not.toContain('Render all');
     expect(rotoControlsBlock).not.toContain('Save all');

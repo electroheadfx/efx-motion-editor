@@ -84,7 +84,12 @@ export interface PhysicsPaintWorkflowStripProps {
   missingPlayFramesForConversion?: boolean;
   rotoCachedPlaybackAvailable?: boolean;
   rotoCachedPlaybackStatus?: string | null;
+  rotoCachedPlaybackLoop?: boolean;
+  rotoCachedPlaybackFps?: number;
+  projectFps?: number;
   onToggleRotoPlayback?: () => void;
+  onRotoPlaybackLoopChange?: (loop: boolean) => void;
+  onRotoPlaybackFpsChange?: (fps: number) => void;
   isRotoCachedPlaybackActive?: boolean;
   onRotoInterpolationEnabledChange?: (enabled: boolean) => void;
   onRotoInterpolationCountChange?: (count: number) => void;
@@ -252,6 +257,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.onInspectPlayFrame(nextFrame);
   }
 
+  function handleRotoPlaybackFpsInput(event: Event) {
+    const value = Number((event.currentTarget as HTMLInputElement).value);
+    if (Number.isFinite(value)) props.onRotoPlaybackFpsChange?.(value);
+  }
+
   function handleRotoCellClick(frame: number, vm: RotoCellViewModel) {
     if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) return;
     props.onNavigateToSyncedFrame(frame);
@@ -406,6 +416,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <output class="physics-paint-current-frame">{props.currentFrame}</output>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
+              <label class="physics-paint-roto-loop-toggle">
+                <input type="checkbox" checked={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false} aria-label="Loop cached Roto playback" onChange={(event) => props.onRotoPlaybackLoopChange?.((event.currentTarget as HTMLInputElement).checked)} />
+                <span>Loop</span>
+              </label>
+              <label class="physics-paint-roto-fps-control">
+                <span>fps</span>
+                <input type="number" min="1" max="60" step="0.5" value={props.rotoCachedPlaybackFps ?? props.projectFps ?? 1} aria-label="Cached Roto playback frames per second" disabled={props.ready === false} onInput={handleRotoPlaybackFpsInput} />
+              </label>
               <button type="button" class="physics-paint-roto-transport physics-paint-roto-play-button" aria-label="Play cached Roto frames" disabled={props.ready === false || !props.rotoCachedPlaybackAvailable || props.isRotoCachedPlaybackActive || !props.onToggleRotoPlayback} onClick={props.onToggleRotoPlayback}>Play</button>
             </div>
           ) : (
@@ -548,7 +566,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           ) : null}
           {props.playPublicationSummary ? <p class="physics-paint-roto-interpolation-status">{props.playPublicationSummary}</p> : null}
           {props.statusMessage ? <p class="physics-paint-roto-interpolation-status">{props.statusMessage}</p> : null}
-          <p class="physics-paint-roto-playback-status">{props.rotoCachedPlaybackStatus ?? 'Missing frames play transparent/background.'}</p>
+          {props.rotoCachedPlaybackStatus ? <p class="physics-paint-roto-playback-status">{props.rotoCachedPlaybackStatus}</p> : null}
         </div>
       ) : null}
 

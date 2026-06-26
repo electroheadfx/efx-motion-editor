@@ -1221,6 +1221,38 @@ button.destructive {
   color: #fff;
 }
 
+.physics-paint-roto-loop-toggle,
+.physics-paint-roto-fps-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #e3e6ea;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.physics-paint-roto-loop-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--color-accent, #2d5be3);
+}
+
+.physics-paint-roto-fps-control input {
+  width: 48px;
+  height: 24px;
+  padding: 2px 4px;
+  border: 1px solid #747980;
+  border-radius: 3px;
+  background: #5a5c5f;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
 .physics-paint-roto-playback-status {
   margin: 0;
   max-width: 100%;
