@@ -121,6 +121,15 @@ function hasMissingRotoBackground(layer: Layer, frame = 0): boolean {
   return resolveMissingRotoFrameDrawForLayer(layer, frame).kind === 'background-only';
 }
 
+function resolveRealRotoFrameBackgroundDrawForLayer(layer: Layer): Extract<ReturnType<typeof resolveMissingRotoFrameDraw>, { kind: 'background-only' }> | null {
+  const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+  if (!isRotoWorkflowLayer(paintLayerId)) return null;
+  const backgroundState = getMissingRotoBackgroundState(layer);
+  if (backgroundState.mode !== 'paper') return null;
+  const instruction = resolveMissingRotoFrameDraw(paintLayerId, 0, backgroundState);
+  return instruction.kind === 'background-only' ? instruction : null;
+}
+
 const PHYSIC_PAINT_PAPER_TEXTURE_URLS: Record<string, string> = {
   canvas1: '/img/paper_1.jpg',
   canvas2: '/img/paper_2.jpg',
@@ -361,14 +370,16 @@ export class PreviewRenderer {
         const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
         const renderedFrame = getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame);
         const missingDraw = isRotoWorkflowLayer(paintLayerId) ? resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame) : null;
+        const realKeyBackgroundDraw = renderedFrame ? resolveRealRotoFrameBackgroundDrawForLayer(layer) : null;
         const source = renderedFrame ? this.getPhysicPaintImageSource(paintLayerId, paintLookupFrame, renderedFrame) : null;
-        if (missingDraw?.kind === 'background-only') {
-          const paperTexture = this.getPaperTextureSource(missingDraw.paperTexture);
-          const paperCanvas = this.getProjectPaperCanvas(missingDraw.paperTexture, paperTexture);
+        const backgroundDraw = realKeyBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null);
+        if (backgroundDraw) {
+          const paperTexture = this.getPaperTextureSource(backgroundDraw.paperTexture);
+          const paperCanvas = this.getProjectPaperCanvas(backgroundDraw.paperTexture, paperTexture);
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
           ctx.globalAlpha = effectiveOpacity;
-          drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH, paperTexture, paperCanvas);
+          drawMissingRotoBackground(ctx, backgroundDraw, logicalW, logicalH, paperTexture, paperCanvas);
           ctx.restore();
         }
         if (source) {

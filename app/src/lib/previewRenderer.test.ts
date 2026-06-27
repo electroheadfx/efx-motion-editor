@@ -175,7 +175,7 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
 
     expect(source).toContain("import {drawMissingRotoBackground, resolveMissingRotoFrameDraw} from './rotoFrameDraw'");
     expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)');
-    expect(source).toContain('drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH, paperTexture, paperCanvas)');
+    expect(source).toContain('drawMissingRotoBackground(ctx, backgroundDraw, logicalW, logicalH, paperTexture, paperCanvas)');
   });
 
   it('checks cached real frames before resolving missing transparent or background-only frames', () => {
@@ -187,7 +187,7 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     expect(physicPaintBranch.indexOf('getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame)')).toBeLessThan(
       physicPaintBranch.indexOf('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)'),
     );
-    expect(physicPaintBranch).toContain("if (missingDraw?.kind === 'background-only')");
+    expect(physicPaintBranch).toContain("const backgroundDraw = realKeyBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null)");
     expect(physicPaintBranch).not.toContain('setFrame(');
     expect(physicPaintBranch).not.toContain('upsertRealRotoKeyFrame(');
     expect(physicPaintBranch).not.toContain('replaceGeneratedRotoCache(');

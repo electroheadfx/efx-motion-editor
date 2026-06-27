@@ -16,7 +16,7 @@ describe('physics paint cache-first preview/export contract', () => {
     expect(source).toContain('physicPaintStore.getRotoFrame(layerId, frame)');
     expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)');
     expect(source).toContain('physicPaintStore.getRealRotoKeyFrames(paintLayerId)');
-    expect(source).toContain('drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH, paperTexture, paperCanvas)');
+    expect(source).toContain('drawMissingRotoBackground(ctx, backgroundDraw, logicalW, logicalH, paperTexture, paperCanvas)');
     expect(source).not.toMatch(/renderFromStrokes/);
   });
 
