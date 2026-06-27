@@ -13,10 +13,12 @@ import {
   getRotoCellViewModel,
   getRotoInterpolationSpanFrames,
   getRotoPendingLabel,
+  getMissingRotoFrameStatusLabel,
   type PhysicsPaintOnionState,
   type PhysicsPaintWorkflowMode,
   type RotoCellViewModel,
   type RotoInterpolationSettings,
+  type RotoMissingFrameStatusKind,
 } from './physicsPaintWorkflowState';
 import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 import type { RotoKeyUtilityActionState } from './physicsPaintRotoKeyController';
@@ -78,6 +80,7 @@ export interface PhysicsPaintWorkflowStripProps {
   playPublicationSummary?: string | null;
   statusMessage?: string | null;
   sameModeReplacementMessage?: string | null;
+  rotoMissingFrameStatusKind?: RotoMissingFrameStatusKind | null;
   onion: PhysicsPaintOnionState;
   onionPreviewFrames?: PhysicsPaintWorkflowOnionPreviewFrame[];
   showOnionHiddenDuringPreview?: boolean;
@@ -209,6 +212,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     pendingFrames: props.pendingRotoFrames,
     isSaving: Boolean(props.rotoSaveInFlight),
   });
+  const rotoMissingStatusLabel = props.rotoMissingFrameStatusKind
+    ? getMissingRotoFrameStatusLabel({ frame: props.currentFrame, kind: props.rotoMissingFrameStatusKind })
+    : null;
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames, props.editableRotoFrames);
   const isCurrentRealRotoKey = realRotoFrames.includes(props.currentFrame) && currentRotoCell.isEditableTarget !== false;
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
@@ -547,7 +553,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               </span>
             ))}
           </div>
-          <p class="physics-paint-roto-status">{currentRotoCell.label}</p>
+          <p class="physics-paint-roto-status">{rotoMissingStatusLabel ?? currentRotoCell.label}</p>
           <p class="physics-paint-roto-interpolation-status">Dirty frames save when leaving.</p>
           {currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false ? <p class="physics-paint-roto-key-status">{getGeneratedRotoStatus(currentRotoCell.frame)}</p> : null}
           {keyUtilitiesDisabledByBusyState ? <p class="physics-paint-roto-key-status">{getRotoKeyBusyStatus(props.rotoSavingFrame ?? props.currentFrame)}</p> : null}
