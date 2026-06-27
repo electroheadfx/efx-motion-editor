@@ -13,6 +13,12 @@ export type RotoCellFill = 'empty' | 'cached-only' | 'editable-session';
 export type RotoCellBaseMeaning = 'empty' | 'cached' | 'editable-current' | 'generated' | 'background-only';
 export type RotoCellOverlay = 'current' | 'dirty' | 'pending';
 export type RotoCellState = 'Empty' | 'Cached' | 'Current' | 'Generated' | 'Background only';
+export type RotoMissingFrameStatusKind = 'transparent' | 'background-only-interior' | 'background-only-dynamic';
+
+export interface RotoMissingFrameStatus {
+  kind: RotoMissingFrameStatusKind;
+  label: string;
+}
 
 export interface RotoCellViewModel {
   frame: number;
@@ -218,6 +224,21 @@ export function getRotoCellStateLabel(frame: number, baseMeaning: RotoCellBaseMe
   return `Background only on frame ${frame}`;
 }
 
+export function getRotoMissingFrameStatus({ frame, kind }: { frame: number; kind: RotoMissingFrameStatusKind }): RotoMissingFrameStatus {
+  return { kind, label: getMissingRotoFrameStatusLabel({ frame, kind }) };
+}
+
+export function getMissingRotoFrameStatusLabel({ frame, kind }: { frame: number; kind: RotoMissingFrameStatusKind }): string {
+  const safeFrame = clampNonNegativeInteger(frame, 0);
+  if (kind === 'transparent') return `Frame ${safeFrame}: transparent missing Roto frame`;
+  if (kind === 'background-only-interior') return `Frame ${safeFrame}: background only between real Roto keys`;
+  return `Frame ${safeFrame}: background only from current paper setting`;
+}
+
+export function getRotoReplacementSuccessLabel(frame: number): string {
+  return `Frame ${clampNonNegativeInteger(frame, 0)} saved as a real Roto key`;
+}
+
 export function getRotoPendingLabel(hasPending: boolean, isSaving: boolean, savingFrame?: number | null): string | null {
   if (isSaving) {
     if (typeof savingFrame === 'number' && Number.isInteger(savingFrame) && savingFrame >= 0) return `Saving frame ${savingFrame}…`;
@@ -391,7 +412,7 @@ function getRotoCellBaseMeaning(
   editableFrames: readonly number[] | ReadonlySet<number> | undefined,
 ): RotoCellBaseMeaning {
   if (hasFrame(editableFrames, frame)) return 'editable-current';
-  if (cachedFrame?.source === 'real-key' && cachedFrame.backgroundOnly === true) return 'background-only';
+  if (cachedFrame?.source === 'background-only-support' || cachedFrame?.backgroundOnly === true) return 'background-only';
   if (cachedFrame?.source === 'real-key') return 'cached';
   if (cachedFrame?.source === 'generated-interpolation') return 'generated';
   return 'empty';
