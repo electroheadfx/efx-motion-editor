@@ -10,11 +10,11 @@ last_updated: "2026-06-26T12:25:00.000Z"
 last_activity: 2026-06-26
 last_activity_desc: Phase 36.9 Plan 03 implemented and automated checks passed; final UAT confirmation pending
 progress:
-  total_phases: 17
+  total_phases: 18
   completed_phases: 11
   total_plans: 66
   completed_plans: 66
-  percent: 65
+  percent: 61
 ---
 
 # Project State
@@ -35,7 +35,7 @@ Status: Automated checks passed; final user confirmation pending for the real-ke
 Last activity: 2026-06-26 — Phase 36.9 Plan 03 implemented and summarized after UAT gap fixes
 Next recommended action: User refreshes/restarts the local app and confirms cached Roto playback no longer includes empty trailing frames
 
-Progress: [████████████████████] 66/66 plans executed; 11/17 phases complete (65%)
+Progress: [████████████████████] 66/66 plans executed; 11/18 phases complete (61%)
 
 ## Performance Metrics
 
@@ -125,10 +125,10 @@ None yet.
 
 - Phase 36.2 Codex gap execution is rejected as failed and administratively superseded. See `.planning/phases/36.2-roto-paint-enhancements-all-details-are-here-specs-phase-36-/36.2-CODEX-GAP-EXECUTION-FAILURE.md`.
 - Plans `36.2-11`, `36.2-12`, and `36.2-13` are closed with rejected/superseded summaries so they must not be resumed as Phase 36.2 implementation.
-- Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
+- Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
 - Phase 36.7 completed: Roto key utility UAT passed for Duplicate, Insert, Delete, Copy, Paste, generated/empty guards, dirty save-before-action, focused regressions, typecheck, and user-story coverage.
 - Phase 36.8 completed: Roto session/key state boundary refactor passed focused regressions, full app tests, typecheck, package build, and user-approved Roto key utility UAT.
-- Phase 36.9 State Machine Readiness is deferred to Phase 36.13 maintenance; Phase 36.8 is the state boundary foundation while remaining user-facing Roto features are prioritized first.
+- Phase 36.9 State Machine Readiness is deferred to Phase 36.14 maintenance; Phase 36.8 is the state boundary foundation while remaining user-facing Roto features are prioritized first.
 - Phase 36.9 cached playback has green automated checks and Plan 03 summary prepared, but final user UAT confirmation is still pending for the real-key-only fix that should remove empty trailing playback frames.
 - Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
@@ -153,7 +153,7 @@ None yet.
 - Phase 36.7 inserted after Phase 36: Physics Paint Roto Key Utilities; source of truth: SPECS/36.x-phases/phase-36.7-key-utilities/spec-36.7-key-utilities.md (URGENT)
 - Phase 36.8 inserted after Phase 36: Physics Paint Roto State Refactor (URGENT)
 - Phase 36.9 inserted after Phase 36: Physics Paint Roto State Machine Readiness (URGENT)
-- Phase 36.9 edited: deferred State Machine Readiness to Phase 36.13 maintenance after remaining user-facing 36.x Roto features; Phase 36.8 is the state boundary foundation
+- Phase 36.x order updated: inserted Phase 36.11 Repaint Cached Real Key, shifted Generated Interpolation to 36.12, Timeline UI From Pencil to 36.13, and deferred State Machine Readiness to 36.14 maintenance after remaining user-facing Roto features; Phase 36.8 is the state boundary foundation
 
 ## Deferred Items
 
