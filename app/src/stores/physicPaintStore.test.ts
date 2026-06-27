@@ -592,4 +592,98 @@ describe('physicPaintStore', () => {
     expect(blend.dataUrl).toContain('pos=33');
     expect(blend.dataUrl).toContain('deform=44');
   });
+
+  it('D-07 persists bounded background-only support only inside real Roto key spans', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeFrame(0, 2));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, makeFrame(0, 6));
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+
+    const support = physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', [4]);
+
+    expect(support).toEqual([expect.objectContaining({ appFrame: 4, source: 'background-only-support', backgroundOnly: true, nearestRealKeyFrame: 2 })]);
+    expect(physicPaintStore.getBackgroundOnlyRotoSupportFrames('layer-1')).toEqual([4]);
+    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
+      frames: [expect.objectContaining({ appFrame: 2 }), expect.objectContaining({ appFrame: 4 }), expect.objectContaining({ appFrame: 6 })],
+      roto_cache_metadata: [
+        expect.objectContaining({ appFrame: 2, source: 'real-key' }),
+        expect.objectContaining({ appFrame: 4, source: 'background-only-support', backgroundOnly: true }),
+        expect.objectContaining({ appFrame: 6, source: 'real-key' }),
+      ],
+    }));
+  });
+
+  it('D-05/D-06 does not persist leading or trailing background-only support', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeFrame(0, 2));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, makeFrame(0, 6));
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+
+    const before = physicPaintStore.toMceOutputs();
+    const support = physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', [1, 8]);
+
+    expect(support).toEqual([]);
+    expect(physicPaintStore.getFrame('layer-1', 1)).toBeNull();
+    expect(physicPaintStore.getFrame('layer-1', 8)).toBeNull();
+    expect(physicPaintStore.toMceOutputs()).toEqual(before);
+  });
+
+  it('D-08/D-14/D-15 keeps derived support separate from editable real-key alpha content', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, { ...makeFrame(0, 2), dataUrl: 'data:image/png;base64,cmVhbC0y' });
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, { ...makeFrame(0, 6), dataUrl: 'data:image/png;base64,cmVhbC02' });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
+
+    physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', [4]);
+
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([2, 6]);
+    expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).toBe('data:image/png;base64,cmVhbC0y');
+    expect(physicPaintStore.getFrame('layer-1', 6)?.dataUrl).toBe('data:image/png;base64,cmVhbC02');
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toContainEqual(expect.objectContaining({ appFrame: 4, source: 'background-only-support', backgroundOnly: true }));
+  });
+
+  it('D-09 applyCanvas replaces only the same-frame background-only support with a real Roto key', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeFrame(0, 2));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, makeFrame(0, 6));
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', [3, 4]);
+
+    const result = physicPaintStore.applyCanvas({
+      kind: 'apply-canvas',
+      operationId: 'op-replace-support',
+      layerId: 'layer-1',
+      startFrame: 4,
+      renderedFrame: { ...makeFrame(0, 4), dataUrl: 'data:image/png;base64,cmVhbC00' },
+      editableState,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 2, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 3, source: 'background-only-support' }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 6, source: 'real-key' }),
+    ]);
+    expect(physicPaintStore.getFrame('layer-1', 4)?.dataUrl).toBe('data:image/png;base64,cmVhbC00');
+  });
+
+  it('D-10 replaceRotoKeyFrames removes stale support and recomputes only current bounded interiors', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeFrame(0, 2));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, makeFrame(0, 6));
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas3', paperGrain: 'canvas3', grainStrength: 0.5 });
+    physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', [4]);
+
+    const result = physicPaintStore.replaceRotoKeyFrames({
+      kind: 'replace-roto-key-frames',
+      operationId: 'op-replace-keys',
+      layerId: 'layer-1',
+      startFrame: 2,
+      frames: [{ ...makeFrame(0, 6), source: 'real-key' }, { ...makeFrame(0, 10), source: 'real-key' }],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getFrame('layer-1', 4)).toBeNull();
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 6, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 10, source: 'real-key' }),
+    ]);
+    expect(physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', [8]).map(frame => frame.appFrame)).toEqual([8]);
+  });
 });
