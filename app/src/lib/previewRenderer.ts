@@ -96,13 +96,16 @@ function getMissingRotoBackgroundState(layer: Layer): MissingRotoFrameBackground
   return { mode: 'color', color };
 }
 
-function hasMissingRotoBackground(layer: Layer, frame = 0): boolean {
+function resolveMissingRotoFrameDrawForLayer(layer: Layer, frame: number) {
   const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-  const draw = resolveMissingRotoFrameDraw(paintLayerId, frame, {
+  return resolveMissingRotoFrameDraw(paintLayerId, frame, {
     backgroundState: getMissingRotoBackgroundState(layer),
     realKeyFrames: physicPaintStore.getRealRotoKeyFrames(paintLayerId),
   });
-  return draw.kind === 'background-only';
+}
+
+function hasMissingRotoBackground(layer: Layer, frame = 0): boolean {
+  return resolveMissingRotoFrameDrawForLayer(layer, frame).kind === 'background-only';
 }
 
 /**
@@ -319,10 +322,7 @@ export class PreviewRenderer {
           ctx.drawImage(source, 0, 0, logicalW, logicalH);
           ctx.restore();
         } else if (!renderedFrame) {
-          const missingDraw = resolveMissingRotoFrameDraw(paintLayerId, paintLookupFrame, {
-            backgroundState: getMissingRotoBackgroundState(layer),
-            realKeyFrames: physicPaintStore.getRealRotoKeyFrames(paintLayerId),
-          });
+          const missingDraw = resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame);
           if (missingDraw.kind === 'background-only') {
             ctx.save();
             ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);

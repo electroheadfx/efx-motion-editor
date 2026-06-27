@@ -13,7 +13,7 @@ describe('physics paint cache-first preview/export contract', () => {
 
     expect(source).toContain('void physicPaintVersion.value');
     expect(source).toContain('physicPaintStore.getFrame(paintLayerId, paintLookupFrame)');
-    expect(source).toContain('resolveMissingRotoFrameDraw(paintLayerId, paintLookupFrame');
+    expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)');
     expect(source).toContain('physicPaintStore.getRealRotoKeyFrames(paintLayerId)');
     expect(source).toContain('drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH)');
     expect(source).not.toMatch(/renderFromStrokes/);
