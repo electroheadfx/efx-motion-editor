@@ -24,9 +24,22 @@ describe('physics paint cache-first preview/export contract', () => {
 
     expect(source).toContain('renderer.renderFrame(');
     expect(source).not.toMatch(/rotoFrameDraw/);
+    expect(source).not.toMatch(/resolveMissingRotoFrameDraw/);
+    expect(source).not.toMatch(/drawMissingRotoBackground/);
     expect(source).not.toMatch(/physicPaintStore/);
     expect(source).not.toMatch(/@efxlab\/efx-physic-paint/);
     expect(source).not.toMatch(/renderFromStrokes/);
+    expect(source).not.toMatch(/forceDryAll/);
+  });
+
+  it('delegates both normal and transition export renders through PreviewRenderer frame rendering', () => {
+    const source = readSource('src/lib/exportRenderer.ts');
+    const renderFrameCalls = source.match(/\.renderFrame\(/g) ?? [];
+
+    expect(renderFrameCalls.length).toBeGreaterThanOrEqual(4);
+    expect(source).toContain('renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity, globalFrame)');
+    expect(source).not.toMatch(/if \([^)]*missing/i);
+    expect(source).not.toMatch(/background-only/);
   });
 
   it('resolves missing transparent Roto frames as playback-only no-op without store mutation', () => {
@@ -65,6 +78,21 @@ describe('physics paint cache-first preview/export contract', () => {
     expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'no-real-keys' }, materialize: false });
     expect(setFrame).not.toHaveBeenCalled();
     expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+  });
+
+  it('keeps trailing background-only export resolution dynamic without serialized cache growth', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' });
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 6, { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' });
+    const before = structuredClone(physicPaintStore.toMceOutputs());
+
+    const result = resolveMissingRotoFrameDraw('phys-layer-1', 9, {
+      backgroundState: { mode: 'paper', metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } },
+      realKeyFrames: physicPaintStore.getRealRotoKeyFrames('phys-layer-1'),
+    });
+
+    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'trailing', previousRealKeyFrame: 6 }, materialize: false });
+    expect(physicPaintStore.getFrame('phys-layer-1', 9)).toBeNull();
+    expect(physicPaintStore.toMceOutputs()).toEqual(before);
   });
 });
 
