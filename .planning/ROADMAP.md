@@ -281,7 +281,8 @@ Plans:
 
 Use `SPECS/36.x-phases/phase-36.10-missing-background/spec-36.10-missing-background.md` as the source of truth for this phase.
 
-**Goal:** As a stop-motion animator, I want missing Roto frames to render transparent or background-only according to layer settings, so that preview and export match the intended animation.
+**Goal:** As a stop-motion animator, I want to render missing Roto frames as transparent or paper-background-only frames, so that gaps between painted keys and trailing frames preview/export consistently without accidental paint content.
+**Mode:** mvp
 **Requirements**: 36.10-MISSING-TRANSPARENT, 36.10-MISSING-BACKGROUND, 36.10-PREVIEW-EXPORT-PARITY
 **Depends on:** Phase 36.9
 **Plans:** 0 plans

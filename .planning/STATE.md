@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.9
 current_phase_name: Physics Paint Roto Cached Playback Auto-Play
 status: uat_pending
-stopped_at: Phase 36.9 real-key-only cached playback fix awaits final user UAT confirmation
-last_updated: "2026-06-26T12:25:00.000Z"
+stopped_at: Phase 36.10 context gathered; commit blocked by .git/index.lock
+last_updated: "2026-06-27T08:04:56.095Z"
 last_activity: 2026-06-26
-last_activity_desc: Phase 36.9 Plan 03 implemented and automated checks passed; final UAT confirmation pending
+last_activity_desc: Phase 36.9 Plan 03 implemented and summarized after UAT gap fixes
 progress:
   total_phases: 18
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 66
   completed_plans: 66
-  percent: 61
+  percent: 67
 ---
 
 # Project State
@@ -166,6 +166,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-24T15:49:31.460Z
-Stopped at: Phase 36.8 context gathered
-Resume file: .planning/phases/36.8-physics-paint-roto-state-refactor-create-a-new-mvp-tdd-phase/36.8-CONTEXT.md
+Last session: 2026-06-27T08:04:56.088Z
+Stopped at: Phase 36.10 context gathered; commit blocked by .git/index.lock
+Resume file: .planning/phases/36.10-physics-paint-roto-missing-background-preview-export/36.10-CONTEXT.md
