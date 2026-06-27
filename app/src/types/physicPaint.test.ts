@@ -113,6 +113,31 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'preview' })).toBe(false);
   });
 
+  it('D-14/D-15 validates explicit background-only support provenance and rejects unknown strings', () => {
+    expect(isPhysicPaintRotoCacheFrame({
+      frameIndex: 0,
+      appFrame: 4,
+      dataUrl: 'data:image/png;base64,a',
+      source: 'background-only-support',
+      backgroundOnly: true,
+      nearestRealKeyFrame: 2,
+    })).toBe(true);
+    expect(isPhysicPaintRotoCacheFrame({
+      frameIndex: 0,
+      appFrame: 4,
+      dataUrl: 'data:image/png;base64,a',
+      source: 'background-only-support',
+      backgroundOnly: false,
+    })).toBe(false);
+    expect(isPhysicPaintRotoCacheFrame({
+      frameIndex: 0,
+      appFrame: 4,
+      dataUrl: 'data:image/png;base64,a',
+      source: 'background-preview',
+      backgroundOnly: true,
+    })).toBe(false);
+  });
+
   it('validates Roto background metadata for transparent, paper, and canvas grain gaps', () => {
     expect(isPhysicPaintRotoBackgroundMetadata({ background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 })).toBe(true);
     expect(isPhysicPaintRotoBackgroundMetadata({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 })).toBe(true);

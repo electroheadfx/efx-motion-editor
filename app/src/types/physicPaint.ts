@@ -15,7 +15,7 @@ export type PhysicPaintPlayScriptRangeSource = 'play';
 export type PhysicPaintPlayScriptCacheStatus = 'cached' | 'stale' | 'missing';
 export type PhysicPaintPlayRenderTool = 'normal-paint' | 'physics-paint' | 'erase';
 export type PhysicPaintPlayBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3' | 'photo';
-export type PhysicPaintRotoFrameSource = 'real-key' | 'generated-interpolation';
+export type PhysicPaintRotoFrameSource = 'real-key' | 'generated-interpolation' | 'background-only-support';
 export type PhysicPaintRotoInterpolationMode = 'duplicate' | 'blend';
 export type PhysicPaintRotoBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3';
 
@@ -374,7 +374,8 @@ export function normalizePhysicPaintPlayScriptRanges(value: unknown): PhysicPain
 export function isPhysicPaintRotoCacheFrame(value: unknown): value is PhysicPaintRotoCacheFrame {
   if (!isPhysicPaintRenderedFrame(value)) return false;
   if (!isRecord(value)) return false;
-  if (value.source !== 'real-key' && value.source !== 'generated-interpolation') return false;
+  if (value.source !== 'real-key' && value.source !== 'generated-interpolation' && value.source !== 'background-only-support') return false;
+  if (value.source === 'background-only-support' && value.backgroundOnly !== true) return false;
   if (!optionalNonNegativeInteger(value.nearestRealKeyFrame)) return false;
   if (value.onionDataUrl !== undefined && !isRenderedPngDataUrl(value.onionDataUrl)) return false;
   return value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean';
@@ -449,7 +450,7 @@ export function isPhysicPaintRenderedFrame(value: unknown, expectedAppFrame?: nu
   if (expectedFrameIndex !== undefined && value.frameIndex !== expectedFrameIndex) return false;
   if (expectedAppFrame !== undefined && value.appFrame !== expectedAppFrame) return false;
   if (!isRenderedPngDataUrl(value.dataUrl)) return false;
-  if (value.source !== undefined && value.source !== 'real-key' && value.source !== 'generated-interpolation') return false;
+  if (value.source !== undefined && value.source !== 'real-key' && value.source !== 'generated-interpolation' && value.source !== 'background-only-support') return false;
   return optionalNumber(value.width) && optionalNumber(value.height);
 }
 
