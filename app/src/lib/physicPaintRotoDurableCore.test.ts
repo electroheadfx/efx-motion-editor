@@ -649,4 +649,25 @@ describe('Phase 36.3 durable Roto cache core', () => {
 
     expect(failures).toEqual([]);
   });
+
+  it('preserves adjacent real-key alpha caches when background-only support is computed for a gap', () => {
+    installDom('', () => {});
+    const realKeyTwo = pngDataUrl('alpha-only-real-key-2');
+    const realKeySix = pngDataUrl('alpha-only-real-key-6');
+
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 2, { frameIndex: 0, appFrame: 2, dataUrl: realKeyTwo, width: 1000, height: 650 });
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 6, { frameIndex: 0, appFrame: 6, dataUrl: realKeySix, width: 1000, height: 650 });
+    physicPaintStore.setRotoBackgroundMetadata('phys-layer-1', { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+
+    const beforeOutputs = structuredClone(physicPaintStore.toMceOutputs());
+    const support = physicPaintStore.recomputeBackgroundOnlyRotoSupport('phys-layer-1', [4, 8]);
+
+    expect(support).toEqual([expect.objectContaining({ appFrame: 4, source: 'background-only-support', backgroundOnly: true })]);
+    expect(physicPaintStore.getFrame('phys-layer-1', 2)?.dataUrl).toBe(realKeyTwo);
+    expect(physicPaintStore.getFrame('phys-layer-1', 6)?.dataUrl).toBe(realKeySix);
+    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([2, 6]);
+    expect(physicPaintStore.getFrame('phys-layer-1', 8)).toBeNull();
+    expect(physicPaintStore.toMceOutputs()[0]?.frames.map((frame) => frame.appFrame)).toEqual([2, 4, 6]);
+    expect(beforeOutputs[0]?.frames.map((frame) => frame.dataUrl)).toEqual([realKeyTwo, realKeySix]);
+  });
 });
