@@ -6,14 +6,14 @@ current_phase: 36.11
 current_phase_name: Physics Paint Roto Repaint Cached Real Key
 status: executing
 stopped_at: Phase 36.10 UI-SPEC approved
-last_updated: "2026-06-27T17:46:58.250Z"
+last_updated: "2026-06-27T21:58:00.000Z"
 last_activity: 2026-06-27
-last_activity_desc: Phase 36.10 complete, transitioned to Phase 36.11
+last_activity_desc: Phase 36.10 Plan 06 gap closure automated-ready; live UAT Test 5 pending user rerun
 progress:
   total_phases: 18
   completed_phases: 13
-  total_plans: 71
-  completed_plans: 71
+  total_plans: 72
+  completed_plans: 72
   percent: 72
 ---
 
@@ -31,11 +31,11 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 Phase: 36.11 — Physics Paint Roto Repaint Cached Real Key
 Previous phase: 36.10 — Physics Paint Roto Missing Background Preview Export complete
 Plan: Not started
-Status: Phase 36.10 complete; Phase 36.11 ready to plan
-Last activity: 2026-06-27 — Phase 36.10 complete, transitioned to Phase 36.11
-Next recommended action: Plan Phase 36.11 from `SPECS/36.x-phases/phase-36.11-repaint-cached-real-key/spec-36.11-repaint-cached-real-key.md`
+Status: Phase 36.10 Plan 06 gap closure automated-ready; live UAT Test 5 pending user rerun before claiming user-approved completion
+Last activity: 2026-06-27 — Phase 36.10 Plan 06 closed paper reopen, real-key paper compositing, and duplicate save-render gaps
+Next recommended action: Ask user to rerun Phase 36.10 UAT Test 5 in their running app, then proceed to Phase 36.11 only after live confirmation
 
-Progress: [████████████████████] 71/71 plans executed; 13/18 phases complete (72%)
+Progress: [████████████████████] 72/72 plans executed; 13/18 phases complete (72%)
 
 ## Performance Metrics
 
@@ -131,6 +131,7 @@ None yet.
 - Phase 36.8 completed: Roto session/key state boundary refactor passed focused regressions, full app tests, typecheck, package build, and user-approved Roto key utility UAT.
 - Phase 36.9 State Machine Readiness is deferred to Phase 36.14 maintenance; Phase 36.8 is the state boundary foundation while remaining user-facing Roto features are prioritized first.
 - Phase 36.9 cached playback has green automated checks and Plan 03 summary prepared, but final user UAT confirmation is still pending for the real-key-only fix that should remove empty trailing playback frames.
+- Phase 36.10 Plan 06 gap closure is automated-ready, but live UAT Test 5 still needs user rerun because Claude must not start the dev server.
 - Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
 ### Quick Tasks Completed
