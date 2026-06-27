@@ -43,6 +43,12 @@ Requirements for the Standalone Physics Paint milestone. This milestone proves `
 - [x] **36.6-AC-06**: Rapid frame changes during one dirty source save keep only the latest requested destination without corrupting source or destination state.
 - [x] **36.6-FB-01**: Failed save-on-leave stays on the dirty source frame, preserves unsaved state, clears queued destination, and does not switch frames.
 
+### Physics Paint Roto Missing Background Preview Export
+
+- [x] **36.10-MISSING-TRANSPARENT**: Missing Roto frames can render transparent without accidental paint content.
+- [x] **36.10-MISSING-BACKGROUND**: Missing Roto frames can render paper/background-only without paint content or baked real-key alpha cache pixels.
+- [x] **36.10-PREVIEW-EXPORT-PARITY**: Preview and export use the same Roto missing-frame and real-key paper compositing rules.
+
 ### Future Integration Seam
 
 - [ ] **SEAM-01**: Developer has typed contracts for future transport/cache messages without implementing editor integration in this milestone.
@@ -102,16 +108,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | 36.6-AC-05 | Phase 36.6 | Complete |
 | 36.6-AC-06 | Phase 36.6 | Complete |
 | 36.6-FB-01 | Phase 36.6 | Complete |
+| 36.10-MISSING-TRANSPARENT | Phase 36.10 | Complete |
+| 36.10-MISSING-BACKGROUND | Phase 36.10 | Complete |
+| 36.10-PREVIEW-EXPORT-PARITY | Phase 36.10 | Complete |
 | SEAM-01 | Phase 37 | Pending |
 | SEAM-02 | Phase 37 | Pending |
 | TEST-01 | Phase 37 | Pending |
 
 **Coverage:**
 
-- v0.8.0 requirements: 24 total
-- Mapped to phases: 24
+- v0.8.0 requirements: 27 total
+- Mapped to phases: 27
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-08*
-*Last updated: 2026-06-20 after Phase 36.6 save-on-leave traceability update*
+*Last updated: 2026-06-27 after Phase 36.10 missing-background traceability update*
