@@ -540,10 +540,15 @@ export const physicPaintStore = {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const metadata = _rotoCacheMetadata.get(layerId);
     if (metadata?.get(frame)?.source !== 'real-key') return false;
+    const previousSupportFrames = Array.from(metadata.values())
+      .filter((candidate) => candidate.source === 'background-only-support')
+      .map((candidate) => candidate.appFrame);
     const layerFrames = _frames.get(layerId);
     layerFrames?.delete(frame);
     if (layerFrames?.size === 0) _frames.delete(layerId);
     metadata.delete(frame);
+    _removeBackgroundOnlyRotoSupport(layerId);
+    _recomputeBackgroundOnlyRotoSupport(layerId, previousSupportFrames);
     if (metadata.size === 0) _rotoCacheMetadata.delete(layerId);
     _notifyVisualChange();
     return true;
@@ -753,6 +758,7 @@ export const physicPaintStore = {
     }
 
     const previousGenerated = _removeGeneratedRotoCache(payload.layerId);
+    const previousSupportFrames = this.getBackgroundOnlyRotoSupportFrames(payload.layerId);
     const previousSupport = _removeBackgroundOnlyRotoSupport(payload.layerId);
     const previousRealKeys = _getRealRotoKeyFrames(payload.layerId);
     const layerFrames = _getOrCreateLayer(payload.layerId);
@@ -769,8 +775,9 @@ export const physicPaintStore = {
     if (layerFrames.size === 0) _frames.delete(payload.layerId);
     if (metadata.size === 0) _rotoCacheMetadata.delete(payload.layerId);
     _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
+    const supportRecompute = _recomputeBackgroundOnlyRotoSupport(payload.layerId, previousSupportFrames);
     const { changed, generatedFrames } = _regenerateGeneratedRotoCache(payload.layerId, this.getRotoInterpolationSettings(payload.layerId));
-    if (previousGenerated || previousSupport || previousRealKeys.length > 0 || payload.frames.length > 0 || changed || generatedFrames.length > 0) _notifyVisualChange();
+    if (previousGenerated || previousSupport || supportRecompute.changed || previousRealKeys.length > 0 || payload.frames.length > 0 || changed || generatedFrames.length > 0) _notifyVisualChange();
     return {
       operationId: payload.operationId,
       kind: payload.kind,
