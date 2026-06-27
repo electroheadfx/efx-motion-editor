@@ -19,8 +19,8 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     const branchStart = source.lastIndexOf("layer.type === 'physic-paint'");
     const physicPaintBranch = source.slice(branchStart, source.indexOf("} else if (layer.type === 'paint')", branchStart));
 
-    expect(physicPaintBranch).toContain('physicPaintStore.getFrame(paintLayerId, paintLookupFrame)');
-    expect(physicPaintBranch.indexOf('physicPaintStore.getFrame(paintLayerId, paintLookupFrame)')).toBeLessThan(
+    expect(physicPaintBranch).toContain('getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame)');
+    expect(physicPaintBranch.indexOf('getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame)')).toBeLessThan(
       physicPaintBranch.indexOf('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)'),
     );
     expect(physicPaintBranch).toContain("if (missingDraw.kind === 'background-only')");

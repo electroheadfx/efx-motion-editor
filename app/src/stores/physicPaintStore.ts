@@ -239,6 +239,20 @@ function _makeBackgroundOnlySupportFrame(layerId: string, appFrame: number, near
   };
 }
 
+function _pruneFramesOutsideRotoCacheMetadata(layerId: string): boolean {
+  const layerFrames = _frames.get(layerId);
+  const metadata = _rotoCacheMetadata.get(layerId);
+  if (!layerFrames || !metadata || metadata.size === 0) return false;
+  let changed = false;
+  for (const frame of Array.from(layerFrames.keys())) {
+    if (metadata.has(frame)) continue;
+    layerFrames.delete(frame);
+    changed = true;
+  }
+  if (layerFrames.size === 0) _frames.delete(layerId);
+  return changed;
+}
+
 function _recomputeBackgroundOnlyRotoSupport(layerId: string, requestedFrames: readonly number[] = []): { changed: boolean; supportFrames: PhysicPaintRotoCacheFrame[] } {
   const realKeys = _getRealRotoKeyFrames(layerId);
   const requested = Array.from(new Set(requestedFrames.filter((frame) => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
@@ -382,6 +396,11 @@ function _errorResult(payload: Pick<PhysicPaintApplyPayload, 'kind' | 'operation
 
 export const physicPaintStore = {
   getFrame(layerId: string, frame: number): PhysicPaintRenderedFrame | null {
+    return _frames.get(layerId)?.get(frame) ?? null;
+  },
+
+  getRotoFrame(layerId: string, frame: number): PhysicPaintRenderedFrame | null {
+    if (!_rotoCacheMetadata.get(layerId)?.has(frame)) return null;
     return _frames.get(layerId)?.get(frame) ?? null;
   },
 
@@ -534,6 +553,7 @@ export const physicPaintStore = {
     _getOrCreateLayer(layerId).set(frame, normalizedFrame);
     _getOrCreateRotoMetadata(layerId).set(frame, _makeRotoCacheFrame(normalizedFrame, frame, 'real-key', undefined, backgroundOnly || undefined));
     _workflowMetadata.set(layerId, { ...(_workflowMetadata.get(layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
+    _pruneFramesOutsideRotoCacheMetadata(layerId);
     _notifyVisualChange();
   },
 
@@ -617,6 +637,7 @@ export const physicPaintStore = {
         }
         if (metadata.size > 0) _rotoCacheMetadata.set(output.layer_id, metadata);
       }
+      _pruneFramesOutsideRotoCacheMetadata(output.layer_id);
       if (isPhysicPaintRotoInterpolationSettings(output.roto_interpolation_settings)) {
         _rotoInterpolationSettings.set(output.layer_id, _cloneRotoInterpolationSettings(output.roto_interpolation_settings));
       }

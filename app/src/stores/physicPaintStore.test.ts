@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clampPhysicPaintFrameCount } from '../types/physicPaint';
+import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback } from './physicPaintStore';
 
 const editableState = {
@@ -624,6 +625,42 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', 1)).toBeNull();
     expect(physicPaintStore.getFrame('layer-1', 8)).toBeNull();
     expect(physicPaintStore.toMceOutputs()).toEqual(before);
+  });
+
+  it('D-05/D-06 ignores stale trailing rendered frames that are not real Roto keys', () => {
+    physicPaintStore.setFrame('layer-1', 11, { ...makeFrame(0, 11), dataUrl: 'data:image/png;base64,c3RhbGUtcGFpbnQ=' });
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 5, makeFrame(0, 5));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 7, makeFrame(0, 7));
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
+
+    const result = resolveMissingRotoFrameDraw('layer-1', 11, {
+      backgroundState: { mode: 'paper', metadata: physicPaintStore.getRotoBackgroundMetadata('layer-1')! },
+      realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1'),
+    });
+
+    expect(physicPaintStore.getFrame('layer-1', 11)).toBeNull();
+    expect(physicPaintStore.getRotoFrame('layer-1', 11)).toBeNull();
+    expect(result).toEqual({ kind: 'background-only', color: '#f4efe3', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 7 }, materialize: false });
+  });
+
+  it('D-05/D-06 prunes loaded stale trailing rendered frames outside Roto cache metadata', () => {
+    physicPaintStore.loadFromMceOutputs([{
+      layer_id: 'layer-1',
+      workflow_mode: 'roto',
+      editable_source: 'roto',
+      roto_background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
+      frames: [makeFrame(0, 5), makeFrame(0, 7), { ...makeFrame(0, 11), dataUrl: 'data:image/png;base64,c3RhbGUtcGFpbnQ=' }],
+      roto_cache_metadata: [
+        { ...makeFrame(0, 5), source: 'real-key' },
+        { ...makeFrame(0, 7), source: 'real-key' },
+      ],
+    }]);
+
+    expect(physicPaintStore.getFrame('layer-1', 5)?.source).toBeUndefined();
+    expect(physicPaintStore.getRotoFrame('layer-1', 5)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getFrame('layer-1', 11)).toBeNull();
+    expect(physicPaintStore.getRotoFrame('layer-1', 11)).toBeNull();
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([5, 7]);
   });
 
   it('D-08/D-14/D-15 keeps derived support separate from editable real-key alpha content', () => {

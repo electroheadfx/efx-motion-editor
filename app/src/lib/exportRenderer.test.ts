@@ -12,7 +12,8 @@ describe('physics paint cache-first preview/export contract', () => {
     const source = readSource('src/lib/previewRenderer.ts');
 
     expect(source).toContain('void physicPaintVersion.value');
-    expect(source).toContain('physicPaintStore.getFrame(paintLayerId, paintLookupFrame)');
+    expect(source).toContain('getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame)');
+    expect(source).toContain('physicPaintStore.getRotoFrame(layerId, frame)');
     expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)');
     expect(source).toContain('physicPaintStore.getRealRotoKeyFrames(paintLayerId)');
     expect(source).toContain('drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH)');

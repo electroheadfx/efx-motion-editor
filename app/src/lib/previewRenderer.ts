@@ -104,7 +104,20 @@ function resolveMissingRotoFrameDrawForLayer(layer: Layer, frame: number) {
   });
 }
 
+function isRotoWorkflowLayer(layerId: string): boolean {
+  const metadata = physicPaintStore.getWorkflowMetadata(layerId);
+  if (metadata) return metadata.workflowMode === 'roto' || metadata.editableSource === 'roto';
+  return physicPaintStore.getRealRotoKeyFrames(layerId).length > 0;
+}
+
+function getPhysicPaintFrameForLayer(layerId: string, frame: number): PhysicPaintRenderedFrame | null {
+  if (isRotoWorkflowLayer(layerId)) return physicPaintStore.getRotoFrame(layerId, frame);
+  return physicPaintStore.getFrame(layerId, frame);
+}
+
 function hasMissingRotoBackground(layer: Layer, frame = 0): boolean {
+  const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+  if (!isRotoWorkflowLayer(paintLayerId)) return false;
   return resolveMissingRotoFrameDrawForLayer(layer, frame).kind === 'background-only';
 }
 
@@ -210,7 +223,7 @@ export class PreviewRenderer {
           continue;
         } else if (layer.type === 'physic-paint') {
           const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-          const renderedFrame = physicPaintStore.getFrame(paintLayerId, paintLookupFrame);
+          const renderedFrame = getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame);
           if (renderedFrame || hasMissingRotoBackground(layer, paintLookupFrame)) {
             hasDrawable = true;
             break;
@@ -313,7 +326,7 @@ export class PreviewRenderer {
         this.drawAdjustmentLayer(layer, logicalW, logicalH, sequenceOpacity);
       } else if (layer.type === 'physic-paint') {
         const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-        const renderedFrame = physicPaintStore.getFrame(paintLayerId, paintLookupFrame);
+        const renderedFrame = getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame);
         const source = renderedFrame ? this.getPhysicPaintImageSource(paintLayerId, paintLookupFrame, renderedFrame) : null;
         if (source) {
           ctx.save();
