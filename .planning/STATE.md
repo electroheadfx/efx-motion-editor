@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.9
-current_phase_name: Physics Paint Roto Cached Playback Auto-Play
-status: uat_pending
+current_phase: 36.10
+current_phase_name: physics-paint-roto-missing-background-preview-export
+status: executing
 stopped_at: Phase 36.10 UI-SPEC approved
-last_updated: "2026-06-27T09:11:57.247Z"
-last_activity: 2026-06-26
-last_activity_desc: Phase 36.9 Plan 03 implemented and summarized after UAT gap fixes
+last_updated: "2026-06-27T10:10:20.570Z"
+last_activity: 2026-06-27
+last_activity_desc: Phase 36.10 execution started
 progress:
   total_phases: 18
   completed_phases: 12
-  total_plans: 66
+  total_plans: 71
   completed_plans: 66
   percent: 67
 ---
@@ -24,15 +24,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.9 — Physics Paint Roto Cached Playback Auto-Play
+**Current focus:** Phase 36.10 — physics-paint-roto-missing-background-preview-export
 
 ## Current Position
 
-Phase: 36.9 (Physics Paint Roto Cached Playback Auto-Play) — UAT PENDING
+Phase: 36.10 (physics-paint-roto-missing-background-preview-export) — EXECUTING
 Previous phase: 36.8 — Physics Paint Roto State Refactor complete
-Plan: 3 of 3 summaries prepared
-Status: Automated checks passed; final user confirmation pending for the real-key-only playback fix
-Last activity: 2026-06-26 — Phase 36.9 Plan 03 implemented and summarized after UAT gap fixes
+Plan: 1 of 5
+Status: Executing Phase 36.10
+Last activity: 2026-06-27 — Phase 36.10 execution started
 Next recommended action: User refreshes/restarts the local app and confirms cached Roto playback no longer includes empty trailing frames
 
 Progress: [████████████████████] 66/66 plans executed; 11/18 phases complete (61%)
