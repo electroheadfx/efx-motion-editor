@@ -80,6 +80,31 @@ describe('physicPaintStore', () => {
     ]);
   });
 
+  it('uses saved Roto paper settings for interior and trailing missing frames', () => {
+    physicPaintStore.applyCanvas({
+      kind: 'apply-canvas',
+      operationId: 'op-roto-1',
+      layerId: 'layer-1',
+      startFrame: 1,
+      renderedFrame: makeFrame(0, 1),
+      editableState,
+    });
+    physicPaintStore.applyCanvas({
+      kind: 'apply-canvas',
+      operationId: 'op-roto-3',
+      layerId: 'layer-1',
+      startFrame: 3,
+      renderedFrame: makeFrame(0, 3),
+      editableState,
+    });
+
+    const backgroundState = { mode: 'paper' as const, metadata: physicPaintStore.getRotoBackgroundMetadata('layer-1')! };
+
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
+    expect(resolveMissingRotoFrameDraw('layer-1', 2, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1') })).toEqual({ kind: 'background-only', color: '#f4efe3', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'interior', previousRealKeyFrame: 1, nextRealKeyFrame: 3 }, materialize: true });
+    expect(resolveMissingRotoFrameDraw('layer-1', 4, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1') })).toEqual({ kind: 'background-only', color: '#f4efe3', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 3 }, materialize: false });
+  });
+
   it('stores sorted non-overlapping Play script ranges and finds only containing frames', () => {
     physicPaintStore.upsertPlayScriptRange('layer-1', { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached' });
     physicPaintStore.upsertPlayScriptRange('layer-1', { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' });

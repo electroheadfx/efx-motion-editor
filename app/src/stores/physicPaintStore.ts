@@ -359,6 +359,18 @@ function _tryUpsertPlayScriptRange(layerId: string, range: PhysicPaintPlayScript
   return normalized;
 }
 
+function _rotoBackgroundFromEditableState(editableState: SerializedProject): PhysicPaintRotoBackgroundMetadata | null {
+  const settings = editableState.settings;
+  if (!settings) return null;
+  const candidate = {
+    background: settings.bgMode === 'photo' ? 'transparent' : settings.bgMode,
+    paperGrain: settings.paperGrain,
+    grainStrength: settings.embossStrength,
+    ...(settings.bgMode === 'white' ? { color: '#ffffff' } : {}),
+  };
+  return isPhysicPaintRotoBackgroundMetadata(candidate) ? candidate : null;
+}
+
 function _metadataFromMce(output: PhysicPaintMceOutputInput): PhysicPaintWorkflowMetadata | null {
   const workflowMode = output.workflow_mode ?? output.workflowMode;
   if (workflowMode !== 'roto' && workflowMode !== 'play') return null;
@@ -741,6 +753,10 @@ export const physicPaintStore = {
     }
 
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    const rotoBackground = _rotoBackgroundFromEditableState(payload.editableState);
+    if (rotoBackground) {
+      _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto', rotoBackground });
+    }
     this.upsertRealRotoKeyFrame(payload.layerId, payload.startFrame, { ...payload.renderedFrame, ...(payload.onionDataUrl ? { onionDataUrl: payload.onionDataUrl } : {}) }, payload.backgroundOnly === true);
     return {
       operationId: payload.operationId,
