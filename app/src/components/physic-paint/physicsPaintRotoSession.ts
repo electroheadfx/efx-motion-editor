@@ -8,6 +8,7 @@ import {
   type RotoKeyUtilityOperation,
   type RotoKeyUtilityTransaction,
 } from './physicsPaintRotoKeyController';
+import { getRotoReplacementSuccessLabel } from './physicsPaintWorkflowState';
 
 export type RotoSessionActionName = 'duplicateKey' | 'insertBlankKey' | 'deleteKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty' | 'onSaveSucceeded' | 'onSaveFailed';
 export type RotoSessionSaveReason = 'beforeNavigate' | 'beforeAction';
@@ -37,6 +38,7 @@ export type RotoSessionEffect =
   | { type: 'navigate'; frame: number }
   | { type: 'clearGeneratedFrames'; frames: number[] }
   | { type: 'clearCachedReferences'; frames: number[] }
+  | { type: 'clearBackgroundOnlySupport'; frames: number[] }
   | { type: 'clearDeletedFrames'; frames: number[] };
 
 export interface RotoSessionActionResult {
@@ -66,6 +68,8 @@ export interface RotoSession {
   realKeyFrameNumbers: Signal<number[]>;
   cachedRotoFrames: Signal<PhysicPaintRotoCacheFrame[]>;
   generatedFrameNumbers: Signal<number[]>;
+  backgroundOnlySupportFrameNumbers: Signal<number[]>;
+  playbackFrameNumbers: Signal<number[]>;
   dirtyFrames: Signal<number[]>;
   copiedKey: Signal<RotoSessionCopiedKey | null>;
   restoreIntent: Signal<RotoSessionRestoreIntent>;
@@ -103,6 +107,8 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
 
   const realKeyFrameNumbers = computed(() => realKeyFrames.value.map((frame) => frame.appFrame));
   const generatedFrameNumbers = computed(() => collectGeneratedFrames(cachedRotoFrames.value));
+  const backgroundOnlySupportFrameNumbers = computed(() => collectBackgroundOnlySupportFrames(cachedRotoFrames.value));
+  const playbackFrameNumbers = computed(() => [...realKeyFrameNumbers.value]);
   const currentFrameIsDirty = computed(() => hasFrame(dirtyFrames.value, currentFrame.value));
   const actionAvailability = computed(() => deriveRotoKeyUtilityActionState({
     currentFrame: currentFrame.value,
@@ -217,11 +223,11 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
         dirtyFrames.value = removeFrames(dirtyFrames.peek(), transaction.removedFrames);
         currentFrame.value = transaction.activeFrame;
         restoreIntent.value = transaction.activeRestore;
-        feedback.value = transaction.successMessage;
+        feedback.value = getTransactionSuccessMessage(transaction);
         failedSaveFeedback.value = null;
       });
       effects.push(...effectsForTransaction(transaction));
-      return { action, ok: true, message: transaction.successMessage, effects, transaction };
+      return { action, ok: true, message: getTransactionSuccessMessage(transaction), effects, transaction };
     } catch (error) {
       return failed(action, error instanceof Error ? error.message : String(error));
     }
@@ -275,6 +281,8 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     realKeyFrameNumbers,
     cachedRotoFrames,
     generatedFrameNumbers,
+    backgroundOnlySupportFrameNumbers,
+    playbackFrameNumbers,
     dirtyFrames,
     copiedKey,
     restoreIntent,
@@ -320,13 +328,21 @@ function effectsForTransaction(transaction: RotoKeyUtilityTransaction): RotoSess
 
   if (transaction.cleanup.generatedFrames.length > 0) effects.push({ type: 'clearGeneratedFrames', frames: transaction.cleanup.generatedFrames });
   if (transaction.cleanup.referenceFrames.length > 0) effects.push({ type: 'clearCachedReferences', frames: transaction.cleanup.referenceFrames });
+  if (transaction.cleanup.backgroundOnlySupportFrames.length > 0) effects.push({ type: 'clearBackgroundOnlySupport', frames: transaction.cleanup.backgroundOnlySupportFrames });
   if (transaction.cleanup.deletedFrames.length > 0) effects.push({ type: 'clearDeletedFrames', frames: transaction.cleanup.deletedFrames });
 
   return effects;
 }
 
+function getTransactionSuccessMessage(transaction: RotoKeyUtilityTransaction): string {
+  if (transaction.operation === 'paste' && transaction.cleanup.backgroundOnlySupportFrames.includes(transaction.activeFrame)) {
+    return getRotoReplacementSuccessLabel(transaction.activeFrame);
+  }
+  return transaction.successMessage;
+}
+
 function mergeCachedFrames(existing: readonly PhysicPaintRotoCacheFrame[], transaction: RotoKeyUtilityTransaction): PhysicPaintRotoCacheFrame[] {
-  const removeSet = new Set([...transaction.removedFrames, ...transaction.cleanup.generatedFrames, ...transaction.cleanup.referenceFrames, ...transaction.cleanup.deletedFrames]);
+  const removeSet = new Set([...transaction.removedFrames, ...transaction.cleanup.generatedFrames, ...transaction.cleanup.referenceFrames, ...transaction.cleanup.backgroundOnlySupportFrames, ...transaction.cleanup.deletedFrames]);
   const byFrame = new Map<number, PhysicPaintRotoCacheFrame>();
   for (const frame of existing) {
     if (!removeSet.has(frame.appFrame)) byFrame.set(frame.appFrame, { ...frame });
@@ -363,6 +379,7 @@ function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: numbe
     ...(canvasSize ? { width: canvasSize.width, height: canvasSize.height } : {}),
   };
   delete next.nearestRealKeyFrame;
+  delete next.backgroundOnly;
   return next;
 }
 
@@ -374,6 +391,10 @@ function normalizeCopiedKey(copiedKey: RotoSessionCopiedKey, canvasSize?: { widt
 
 function collectGeneratedFrames(frames: readonly PhysicPaintRotoCacheFrame[]): number[] {
   return normalizeFrameNumbers(frames.filter((frame) => frame.source === 'generated-interpolation').map((frame) => frame.appFrame));
+}
+
+function collectBackgroundOnlySupportFrames(frames: readonly PhysicPaintRotoCacheFrame[]): number[] {
+  return normalizeFrameNumbers(frames.filter((frame) => frame.source === 'background-only-support' || frame.backgroundOnly === true).map((frame) => frame.appFrame));
 }
 
 function removeFrames(frames: readonly number[], removedFrames: readonly number[]): number[] {

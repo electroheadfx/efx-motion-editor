@@ -12,6 +12,7 @@ function frame(appFrame: number, dataUrl: string, source: PhysicPaintRotoCacheFr
     height: 100,
     source,
     ...(source === 'generated-interpolation' ? { nearestRealKeyFrame: 2 } : {}),
+    ...(source === 'background-only-support' ? { backgroundOnly: true, nearestRealKeyFrame: 2 } : {}),
   };
 }
 
@@ -230,6 +231,68 @@ describe('physicsPaintRotoSession boundary clean key transactions', () => {
       expect.objectContaining({ type: 'clearCachedReferences', frames: [5] }),
       expect.objectContaining({ type: 'clearDeletedFrames', frames: [5] }),
     ]));
+  });
+
+  it('36.10 D-09 pastes over background-only support as a real key with exact replacement feedback', () => {
+    const session = createRotoSession({
+      currentFrame: 2,
+      realKeyFrames: [frame(2, 'data:image/png;base64,real-two')],
+      cachedRotoFrames: [frame(2, 'data:image/png;base64,real-two'), frame(5, 'data:image/png;base64,background-five', 'background-only-support')],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(session.realKeyFrameNumbers.value).toEqual([2]);
+    expect(session.backgroundOnlySupportFrameNumbers.value).toEqual([5]);
+    expect(session.generatedFrameNumbers.value).toEqual([]);
+    expect(session.playbackFrameNumbers.value).toEqual([2]);
+
+    expect(session.copyKey().ok).toBe(true);
+    session.requestFrame(5);
+    const result = session.pasteKey();
+
+    expect(result.ok).toBe(true);
+    expect(result.message).toBe('Frame 5 saved as a real Roto key');
+    expect(session.feedback.value).toBe('Frame 5 saved as a real Roto key');
+    expect(session.realKeyFrameNumbers.value).toEqual([2, 5]);
+    expect(session.backgroundOnlySupportFrameNumbers.value).toEqual([]);
+    expect(session.playbackFrameNumbers.value).toEqual([2, 5]);
+    expect(session.cachedRotoFrames.value.find((candidate) => candidate.appFrame === 5)).toMatchObject({ appFrame: 5, source: 'real-key' });
+    expect(session.cachedRotoFrames.value.find((candidate) => candidate.appFrame === 5)).not.toHaveProperty('backgroundOnly');
+    expect(result.effects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'replaceKeys' }),
+      expect.objectContaining({ type: 'clearBackgroundOnlySupport', frames: [5] }),
+      expect.objectContaining({ type: 'restoreFrame', restore: { kind: 'load-real-key', frame: 5 } }),
+    ]));
+  });
+
+  it('36.10 D-10/D-11 excludes background-only support from real-key playback and clears support on transactions', () => {
+    const session = createRotoSession({
+      currentFrame: 2,
+      realKeyFrames: [frame(2, 'data:image/png;base64,real-two'), frame(8, 'data:image/png;base64,real-eight')],
+      cachedRotoFrames: [
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(5, 'data:image/png;base64,background-five', 'background-only-support'),
+        frame(8, 'data:image/png;base64,real-eight'),
+      ],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(session.realKeyFrameNumbers.value).toEqual([2, 8]);
+    expect(session.playbackFrameNumbers.value).toEqual([2, 8]);
+    expect(session.backgroundOnlySupportFrameNumbers.value).toEqual([5]);
+
+    const result = session.duplicateKey();
+
+    expect(result.ok).toBe(true);
+    expect(result.effects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'clearBackgroundOnlySupport', frames: [5] }),
+    ]));
+    expect(session.backgroundOnlySupportFrameNumbers.value).toEqual([]);
+    expect(session.playbackFrameNumbers.value).toEqual([2, 3, 9]);
   });
 
   it('36.8-REG-03 D-01/D-04/D-06/D-07/D-12/D-14/D-15/D-16 pastes onto empty or generated targets as clean real keys', () => {
