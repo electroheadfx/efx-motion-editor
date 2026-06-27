@@ -3,6 +3,7 @@ import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
 import { getRotoInterpolationSpanFrames } from '../components/physic-paint/physicsPaintWorkflowState';
+import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 
 let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
@@ -205,6 +206,64 @@ function _removeGeneratedRotoCache(layerId: string): boolean {
     if (metadata.size === 0) _rotoCacheMetadata.delete(layerId);
   }
   return changed;
+}
+
+function _removeBackgroundOnlyRotoSupport(layerId: string, frames?: Iterable<number>): boolean {
+  const layerFrames = _frames.get(layerId);
+  const metadata = _rotoCacheMetadata.get(layerId);
+  let changed = false;
+  const candidateFrames = frames ? Array.from(frames) : Array.from(metadata?.keys() ?? []);
+  for (const frame of candidateFrames) {
+    if (metadata?.get(frame)?.source !== 'background-only-support') continue;
+    metadata.delete(frame);
+    if (layerFrames?.get(frame)?.source === 'background-only-support') layerFrames.delete(frame);
+    changed = true;
+  }
+  if (layerFrames?.size === 0) _frames.delete(layerId);
+  if (metadata?.size === 0) _rotoCacheMetadata.delete(layerId);
+  return changed;
+}
+
+function _makeBackgroundOnlySupportFrame(layerId: string, appFrame: number, nearestRealKeyFrame: number): PhysicPaintRotoCacheFrame | null {
+  const background = _workflowMetadata.get(layerId)?.rotoBackground;
+  if (!background) return null;
+  const instruction = resolveMissingRotoFrameDraw(layerId, appFrame, { backgroundState: { mode: 'paper', metadata: background }, realKeyFrames: _getRealRotoKeyFrames(layerId) });
+  if (instruction.kind !== 'background-only' || !instruction.materialize || instruction.span.kind !== 'interior') return null;
+  return {
+    frameIndex: 0,
+    appFrame,
+    dataUrl: `data:image/png;base64,${btoa(`background-only-support:${layerId}:${appFrame}:${instruction.color}:${instruction.paperGrain ?? ''}:${instruction.grainStrength ?? 0}`)}`,
+    source: 'background-only-support',
+    nearestRealKeyFrame,
+    backgroundOnly: true,
+  };
+}
+
+function _recomputeBackgroundOnlyRotoSupport(layerId: string, requestedFrames: readonly number[] = []): { changed: boolean; supportFrames: PhysicPaintRotoCacheFrame[] } {
+  const realKeys = _getRealRotoKeyFrames(layerId);
+  const requested = Array.from(new Set(requestedFrames.filter((frame) => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
+  const removed = _removeBackgroundOnlyRotoSupport(layerId, requested.length > 0 ? requested : undefined);
+  if (realKeys.length < 2 || requested.length === 0) return { changed: removed, supportFrames: [] };
+
+  const layerFrames = _getOrCreateLayer(layerId);
+  const metadata = _getOrCreateRotoMetadata(layerId);
+  const supportFrames: PhysicPaintRotoCacheFrame[] = [];
+  let added = false;
+  for (const appFrame of requested) {
+    if (metadata.get(appFrame)?.source === 'real-key') continue;
+    const previousRealKeyFrame = realKeys.filter((key) => key < appFrame).at(-1);
+    const nextRealKeyFrame = realKeys.find((key) => key > appFrame);
+    if (previousRealKeyFrame === undefined || nextRealKeyFrame === undefined) continue;
+    const supportFrame = _makeBackgroundOnlySupportFrame(layerId, appFrame, previousRealKeyFrame);
+    if (!supportFrame) continue;
+    layerFrames.set(appFrame, supportFrame);
+    metadata.set(appFrame, supportFrame);
+    supportFrames.push({ ...supportFrame });
+    added = true;
+  }
+  if (layerFrames.size === 0) _frames.delete(layerId);
+  if (metadata.size === 0) _rotoCacheMetadata.delete(layerId);
+  return { changed: removed || added, supportFrames };
 }
 
 function _withGeneratedAppFrame(frame: PhysicPaintRenderedFrame, appFrame: number): PhysicPaintRenderedFrame {
@@ -469,6 +528,7 @@ export const physicPaintStore = {
 
   upsertRealRotoKeyFrame(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame, backgroundOnly = false): void {
     if (!Number.isInteger(frame) || frame < 0) return;
+    _removeBackgroundOnlyRotoSupport(layerId, [frame]);
     const normalizedFrame = { ...renderedFrame, appFrame: frame, source: 'real-key' as const };
     _getOrCreateLayer(layerId).set(frame, normalizedFrame);
     _getOrCreateRotoMetadata(layerId).set(frame, _makeRotoCacheFrame(normalizedFrame, frame, 'real-key', undefined, backgroundOnly || undefined));
@@ -610,6 +670,24 @@ export const physicPaintStore = {
     return _getRealRotoKeyFrames(layerId);
   },
 
+  getBackgroundOnlyRotoSupportFrames(layerId: string): number[] {
+    return this.getRotoCacheFrames(layerId)
+      .filter((frame) => frame.source === 'background-only-support')
+      .map((frame) => frame.appFrame);
+  },
+
+  recomputeBackgroundOnlyRotoSupport(layerId: string, requestedFrames: readonly number[]): PhysicPaintRotoCacheFrame[] {
+    const { changed, supportFrames } = _recomputeBackgroundOnlyRotoSupport(layerId, requestedFrames);
+    if (changed) _notifyVisualChange();
+    return supportFrames;
+  },
+
+  removeBackgroundOnlyRotoSupport(layerId: string, frames?: Iterable<number>): boolean {
+    const changed = _removeBackgroundOnlyRotoSupport(layerId, frames);
+    if (changed) _notifyVisualChange();
+    return changed;
+  },
+
   setEditableState(layerId: string, editableState: SerializedProject): void {
     _editableStates.set(layerId, structuredClone(editableState));
     _notifyVisualChange();
@@ -675,6 +753,7 @@ export const physicPaintStore = {
     }
 
     const previousGenerated = _removeGeneratedRotoCache(payload.layerId);
+    const previousSupport = _removeBackgroundOnlyRotoSupport(payload.layerId);
     const previousRealKeys = _getRealRotoKeyFrames(payload.layerId);
     const layerFrames = _getOrCreateLayer(payload.layerId);
     const metadata = _getOrCreateRotoMetadata(payload.layerId);
@@ -691,7 +770,7 @@ export const physicPaintStore = {
     if (metadata.size === 0) _rotoCacheMetadata.delete(payload.layerId);
     _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
     const { changed, generatedFrames } = _regenerateGeneratedRotoCache(payload.layerId, this.getRotoInterpolationSettings(payload.layerId));
-    if (previousGenerated || previousRealKeys.length > 0 || payload.frames.length > 0 || changed || generatedFrames.length > 0) _notifyVisualChange();
+    if (previousGenerated || previousSupport || previousRealKeys.length > 0 || payload.frames.length > 0 || changed || generatedFrames.length > 0) _notifyVisualChange();
     return {
       operationId: payload.operationId,
       kind: payload.kind,
