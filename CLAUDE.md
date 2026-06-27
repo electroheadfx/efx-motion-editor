@@ -121,3 +121,13 @@ Before changing an existing implementation:
 Do not refactor unrelated code solely to replace hooks with Signals.
 
 When retaining a React-style hook instead of using a Signal, the implementation should have a clear lifecycle or locality reason.
+
+## Git index lock recovery
+
+If a Git command fails because `.git/index.lock` exists:
+
+1. Check whether a process is holding it with `lsof .git/index.lock`.
+2. If no process holds the lock and no Git operation is running, treat it as stale.
+3. Remove only `.git/index.lock`, never other `.git/*` files.
+4. Retry the blocked Git command.
+5. If any process is holding the lock, or the situation is unclear, stop and ask the user.
