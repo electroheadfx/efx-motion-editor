@@ -24,9 +24,22 @@ describe('physics paint cache-first preview/export contract', () => {
 
     expect(source).toContain('renderer.renderFrame(');
     expect(source).not.toMatch(/rotoFrameDraw/);
+    expect(source).not.toMatch(/resolveMissingRotoFrameDraw/);
+    expect(source).not.toMatch(/drawMissingRotoBackground/);
     expect(source).not.toMatch(/physicPaintStore/);
     expect(source).not.toMatch(/@efxlab\/efx-physic-paint/);
     expect(source).not.toMatch(/renderFromStrokes/);
+    expect(source).not.toMatch(/forceDryAll/);
+  });
+
+  it('delegates both normal and transition export renders through PreviewRenderer frame rendering', () => {
+    const source = readSource('src/lib/exportRenderer.ts');
+    const renderFrameCalls = source.match(/\.renderFrame\(/g) ?? [];
+
+    expect(renderFrameCalls.length).toBeGreaterThanOrEqual(4);
+    expect(source).toContain('renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity, globalFrame)');
+    expect(source).not.toMatch(/if \([^)]*missing/i);
+    expect(source).not.toMatch(/background-only/);
   });
 
   it('resolves missing transparent Roto frames as playback-only no-op without store mutation', () => {
