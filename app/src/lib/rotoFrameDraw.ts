@@ -20,7 +20,7 @@ export interface MissingRotoFrameResolveInput {
 
 export type MissingRotoFrameDrawInstruction =
   | { kind: 'transparent'; span: MissingRotoFrameSpan; materialize: false }
-  | { kind: 'background-only'; color: string; paperGrain?: string; grainStrength?: number; span: MissingRotoFrameSpan; materialize: boolean };
+  | { kind: 'background-only'; color: string; paperTexture?: string; paperGrain?: string; grainStrength?: number; span: MissingRotoFrameSpan; materialize: boolean };
 
 export function getMissingRotoFrameSpan(frame: number, realKeyFrames: readonly number[] = []): MissingRotoFrameSpan {
   const requestedFrame = Math.floor(frame);
@@ -60,6 +60,7 @@ export function resolveMissingRotoFrameDraw(
   return {
     kind: 'background-only',
     color: metadata.color ?? backgroundColorForRotoMode(metadata.background),
+    paperTexture: metadata.background,
     paperGrain: metadata.paperGrain,
     grainStrength: metadata.grainStrength,
     span,
@@ -72,7 +73,28 @@ export function drawMissingRotoBackground(
   instruction: Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }>,
   width: number,
   height: number,
+  paperTexture?: CanvasImageSource | null,
+  paperCanvas?: HTMLCanvasElement | null,
 ): void {
+  if (paperCanvas) {
+    ctx.drawImage(paperCanvas, 0, 0, width, height);
+    return;
+  }
+  if (paperTexture) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, width, height);
+    const previousAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = previousAlpha * 0.18;
+    const pattern = typeof ctx.createPattern === 'function' ? ctx.createPattern(paperTexture, 'repeat') : null;
+    if (pattern) {
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, width, height);
+    } else {
+      ctx.drawImage(paperTexture, 0, 0, width, height);
+    }
+    ctx.globalAlpha = previousAlpha;
+    return;
+  }
   ctx.fillStyle = instruction.color;
   ctx.fillRect(0, 0, width, height);
   const grainStrength = instruction.grainStrength ?? 0;

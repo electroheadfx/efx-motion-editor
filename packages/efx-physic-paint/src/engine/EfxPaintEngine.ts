@@ -161,6 +161,7 @@ export class EfxPaintEngine {
   private lastNativePenInputTime: number = 0
   private lastPointerInputTime: number = 0
   private readonly getStrokeMetadata?: () => StrokeMetadata | null | undefined
+  private readonly paperTextureScale: number
 
   // --- Bound Event Handlers (for removeEventListener) ---
   private readonly boundPointerDown: (e: PointerEvent) => void
@@ -178,6 +179,7 @@ export class EfxPaintEngine {
     this.height = config.height || DEFAULT_HEIGHT
     this.size = this.width * this.height
     this.getStrokeMetadata = config.getStrokeMetadata
+    this.paperTextureScale = Number.isFinite(config.paperTextureScale) && config.paperTextureScale && config.paperTextureScale > 0 ? config.paperTextureScale : 1
 
     // Create dual canvases
     this.dualCanvas = setupDualCanvas(container, this.width, this.height)
@@ -1338,7 +1340,7 @@ export class EfxPaintEngine {
   private async loadPaperTextures(papers: Array<{ name: string; url: string }>, defaultPaper: string): Promise<void> {
     for (const paper of papers) {
       try {
-        const result = await loadPaperTexture(paper.url, this.width, this.height)
+        const result = await loadPaperTexture(paper.url, this.width, this.height, this.paperTextureScale)
         this.paperTextures.set(paper.name, result)
       } catch (e) {
         console.error(`Failed to load paper texture: ${paper.name}`, e)

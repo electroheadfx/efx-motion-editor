@@ -54,7 +54,7 @@ export function ExportPreview() {
     const renderer = new PreviewRenderer(canvas);
     const sampleFrame = Math.floor(frames / 2);
 
-    preloadExportImages(renderer, fm).then(() => {
+    preloadExportImages(renderer, fm, undefined, allSeqs).then(() => {
       renderGlobalFrame(renderer, canvas, sampleFrame, fm, allSeqs, overlaps, soloStore.soloEnabled.value);
     });
 

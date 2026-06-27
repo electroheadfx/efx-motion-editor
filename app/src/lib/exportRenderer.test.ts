@@ -16,7 +16,7 @@ describe('physics paint cache-first preview/export contract', () => {
     expect(source).toContain('physicPaintStore.getRotoFrame(layerId, frame)');
     expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)');
     expect(source).toContain('physicPaintStore.getRealRotoKeyFrames(paintLayerId)');
-    expect(source).toContain('drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH)');
+    expect(source).toContain('drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH, paperTexture, paperCanvas)');
     expect(source).not.toMatch(/renderFromStrokes/);
   });
 
@@ -76,7 +76,7 @@ describe('physics paint cache-first preview/export contract', () => {
 
     const result = resolveMissingRotoFrameDraw('phys-layer-1', 26, { mode: 'paper', metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } });
 
-    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'no-real-keys' }, materialize: false });
+    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'no-real-keys' }, materialize: false });
     expect(setFrame).not.toHaveBeenCalled();
     expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
   });
@@ -91,7 +91,7 @@ describe('physics paint cache-first preview/export contract', () => {
       realKeyFrames: physicPaintStore.getRealRotoKeyFrames('phys-layer-1'),
     });
 
-    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'trailing', previousRealKeyFrame: 6 }, materialize: false });
+    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'trailing', previousRealKeyFrame: 6 }, materialize: false });
     expect(physicPaintStore.getFrame('phys-layer-1', 9)).toBeNull();
     expect(physicPaintStore.toMceOutputs()).toEqual(before);
   });

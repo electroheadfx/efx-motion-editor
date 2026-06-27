@@ -24,6 +24,7 @@ export function loadPaperTexture(
   url: string,
   width: number,
   height: number,
+  tileScale = 1,
 ): Promise<{ heightMap: Float32Array; tiledCanvas: HTMLCanvasElement }> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -37,9 +38,11 @@ export function loadPaperTexture(
         return
       }
       // Tile the image across the canvas
-      for (let y = 0; y < height; y += img.height) {
-        for (let x = 0; x < width; x += img.width) {
-          tx.drawImage(img, x, y)
+      const tileWidth = Math.max(1, img.width * tileScale)
+      const tileHeight = Math.max(1, img.height * tileScale)
+      for (let y = 0; y < height; y += tileHeight) {
+        for (let x = 0; x < width; x += tileWidth) {
+          tx.drawImage(img, x, y, tileWidth, tileHeight)
         }
       }
       try {

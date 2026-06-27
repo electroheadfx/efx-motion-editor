@@ -1,7 +1,7 @@
 import type {Layer, BlendMode} from '../types/layer';
 import {isGeneratorLayer, isAdjustmentLayer, isFxLayer} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
-import type {GradientData} from '../types/sequence';
+import type {GradientData, Sequence} from '../types/sequence';
 import {imageStore} from '../stores/imageStore';
 import {assetUrl} from './ipc';
 import {drawGrain, drawParticles, drawLines, drawDots, drawVignette} from './fxGenerators';
@@ -121,6 +121,17 @@ function hasMissingRotoBackground(layer: Layer, frame = 0): boolean {
   return resolveMissingRotoFrameDrawForLayer(layer, frame).kind === 'background-only';
 }
 
+const PHYSIC_PAINT_PAPER_TEXTURE_URLS: Record<string, string> = {
+  canvas1: '/img/paper_1.jpg',
+  canvas2: '/img/paper_2.jpg',
+  canvas3: '/img/paper_3.jpg',
+};
+
+function getPaperTextureUrl(paperGrain: string | undefined): string | null {
+  if (!paperGrain) return null;
+  return PHYSIC_PAINT_PAPER_TEXTURE_URLS[paperGrain] ?? null;
+}
+
 /**
  * Canvas 2D compositing engine that renders all visible layers bottom-to-top.
  *
@@ -137,12 +148,13 @@ export class PreviewRenderer {
   private videoReadyHandlers: Map<string, () => void>; // layerId -> shared loadeddata/seeked handler
   private offscreenCanvas: HTMLCanvasElement | null = null; // reusable offscreen canvas for video rasterization
   private blurOffscreen: HTMLCanvasElement | null = null; // reusable offscreen canvas for per-layer/generator blur
+  private paperCanvasCache: Map<string, HTMLCanvasElement>;
   private velocityCache = new VelocityCache();
 
   /** Callback invoked after an image finishes loading (triggers re-render) */
   onImageLoaded: (() => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>) {
+  constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>, sharedPaperCanvasCache?: Map<string, HTMLCanvasElement>) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -150,6 +162,7 @@ export class PreviewRenderer {
     }
     this.ctx = ctx;
     this.imageCache = sharedImageCache ?? new Map();
+    this.paperCanvasCache = sharedPaperCanvasCache ?? new Map();
     this.loadingImages = new Set();
     this.failedImages = new Set();
     this.videoElements = new Map();
@@ -161,7 +174,27 @@ export class PreviewRenderer {
    * this renderer's image cache. Used for GL transition dual-capture rendering.
    */
   cloneForCanvas(canvas: HTMLCanvasElement): PreviewRenderer {
-    return new PreviewRenderer(canvas, this.imageCache);
+    return new PreviewRenderer(canvas, this.imageCache, this.paperCanvasCache);
+  }
+
+  preloadPaperTextures(paperGrains: string[]): void {
+    for (const paperGrain of paperGrains) {
+      const url = getPaperTextureUrl(paperGrain);
+      if (url) this.getPaperTextureSource(paperGrain);
+    }
+  }
+
+  collectRotoPaperTextures(sequences: readonly Sequence[]): string[] {
+    const paperTextures = new Set<string>();
+    for (const seq of sequences) {
+      for (const layer of seq.layers) {
+        if (layer.type !== 'physic-paint') continue;
+        const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+        const background = physicPaintStore.getRotoBackgroundMetadata(layerId)?.background;
+        if (background?.startsWith('canvas')) paperTextures.add(background);
+      }
+    }
+    return [...paperTextures];
   }
 
   /**
@@ -327,22 +360,23 @@ export class PreviewRenderer {
       } else if (layer.type === 'physic-paint') {
         const paintLayerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
         const renderedFrame = getPhysicPaintFrameForLayer(paintLayerId, paintLookupFrame);
+        const missingDraw = isRotoWorkflowLayer(paintLayerId) ? resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame) : null;
         const source = renderedFrame ? this.getPhysicPaintImageSource(paintLayerId, paintLookupFrame, renderedFrame) : null;
+        if (missingDraw?.kind === 'background-only') {
+          const paperTexture = this.getPaperTextureSource(missingDraw.paperTexture);
+          const paperCanvas = this.getProjectPaperCanvas(missingDraw.paperTexture, paperTexture);
+          ctx.save();
+          ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+          ctx.globalAlpha = effectiveOpacity;
+          drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH, paperTexture, paperCanvas);
+          ctx.restore();
+        }
         if (source) {
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
           ctx.globalAlpha = effectiveOpacity;
           ctx.drawImage(source, 0, 0, logicalW, logicalH);
           ctx.restore();
-        } else if (!renderedFrame) {
-          const missingDraw = resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame);
-          if (missingDraw.kind === 'background-only') {
-            ctx.save();
-            ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-            ctx.globalAlpha = effectiveOpacity;
-            drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH);
-            ctx.restore();
-          }
         }
       } else if (layer.type === 'paint') {
         // Always render paint layer (solid bg even when no strokes)
@@ -565,6 +599,70 @@ export class PreviewRenderer {
     };
     img.src = renderedFrame.dataUrl;
     return null;
+  }
+
+  getPaperTextureSource(paperGrain: string | undefined): HTMLImageElement | null {
+    const url = getPaperTextureUrl(paperGrain);
+    if (!url || !paperGrain) return null;
+    const cacheKey = `physic-paint-paper:${paperGrain}`;
+    const cached = this.imageCache.get(cacheKey);
+    if (cached) return cached;
+    if (this.loadingImages.has(cacheKey) || this.failedImages.has(cacheKey)) return null;
+
+    this.loadingImages.add(cacheKey);
+    const img = new Image();
+    img.onload = () => {
+      this.loadingImages.delete(cacheKey);
+      this.imageCache.set(cacheKey, img);
+      this.onImageLoaded?.();
+    };
+    img.onerror = () => {
+      this.loadingImages.delete(cacheKey);
+      this.failedImages.add(cacheKey);
+      console.warn(`[PreviewRenderer] Failed to load physics paint paper texture: ${paperGrain}`);
+      this.onImageLoaded?.();
+    };
+    img.src = url;
+    return null;
+  }
+
+  isPaperTextureResolved(paperGrain: string): boolean {
+    const url = getPaperTextureUrl(paperGrain);
+    if (!url) return true;
+    const cacheKey = `physic-paint-paper:${paperGrain}`;
+    return this.imageCache.has(cacheKey) || this.failedImages.has(cacheKey);
+  }
+
+  private getProjectPaperCanvas(paperTexture: string | undefined, texture: HTMLImageElement | null): HTMLCanvasElement | null {
+    if (!paperTexture || !texture) return null;
+    const width = projectStore.width.peek();
+    const height = projectStore.height.peek();
+    if (width <= 0 || height <= 0) return null;
+    const cacheKey = `${paperTexture}:${width}x${height}`;
+    const cached = this.paperCanvasCache.get(cacheKey);
+    if (cached) return cached;
+    const paperCanvas = document.createElement('canvas');
+    paperCanvas.width = width;
+    paperCanvas.height = height;
+    const paperCtx = paperCanvas.getContext('2d');
+    if (!paperCtx) return null;
+    paperCtx.fillStyle = '#fff';
+    paperCtx.fillRect(0, 0, width, height);
+    paperCtx.globalAlpha = 0.18;
+    const pattern = typeof paperCtx.createPattern === 'function' ? paperCtx.createPattern(texture, 'repeat') : null;
+    if (pattern) {
+      paperCtx.fillStyle = pattern;
+      paperCtx.fillRect(0, 0, width, height);
+    } else {
+      for (let y = 0; y < height; y += texture.height) {
+        for (let x = 0; x < width; x += texture.width) {
+          paperCtx.drawImage(texture, x, y);
+        }
+      }
+    }
+    paperCtx.globalAlpha = 1;
+    this.paperCanvasCache.set(cacheKey, paperCanvas);
+    return paperCanvas;
   }
 
   /** Check if an image is already cached (for debug logging) */
@@ -1116,6 +1214,7 @@ export class PreviewRenderer {
     this.videoElements.clear();
     this.videoReadyHandlers.clear();
     this.imageCache.clear();
+    this.paperCanvasCache.clear();
     this.loadingImages.clear();
     this.failedImages.clear();
     this.offscreenCanvas = null;

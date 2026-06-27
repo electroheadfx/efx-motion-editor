@@ -42,6 +42,7 @@ export interface EngineConfig {
   height?: number          // default 650
   papers: PaperConfig[]
   defaultPaper?: string    // key to auto-select
+  paperTextureScale?: number
   getStrokeMetadata?: () => StrokeMetadata | null | undefined
 }
 

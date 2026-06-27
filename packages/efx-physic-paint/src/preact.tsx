@@ -41,6 +41,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
       height: props.height,
       papers: props.papers,
       defaultPaper: props.defaultPaper,
+      paperTextureScale: props.paperTextureScale,
       getStrokeMetadata: props.getStrokeMetadata,
     })
     engineRef.current = engine
@@ -61,7 +62,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
     <div
       ref={containerRef}
       class={props.class}
-      style={{ maxWidth: '100%', width: `${props.width || 1000}px` }}
+      style={{ maxWidth: '100%', width: `${props.width || 1000}px`, aspectRatio: `${props.width || 1000} / ${props.height || 650}` }}
     />
   )
 }

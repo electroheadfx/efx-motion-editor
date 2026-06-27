@@ -66,6 +66,10 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     const result = await openPhysicPaintCanvas({
       layer,
       frame: currentFrame,
+      canvas: {
+        width: projectStore.width.value,
+        height: projectStore.height.value,
+      },
       fps: projectStore.fps.value,
       requestedWorkflowMode: mode,
     });

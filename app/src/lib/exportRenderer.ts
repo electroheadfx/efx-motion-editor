@@ -404,8 +404,10 @@ export function preloadExportImages(
   renderer: PreviewRenderer,
   fm: FrameEntry[],
   signal?: AbortSignal,
+  sequences: readonly Sequence[] = [],
 ): Promise<void> {
   const imageIds = [...new Set(fm.map(f => f.imageId).filter(id => id !== ''))];
+  const paperTextures = renderer.collectRotoPaperTextures(sequences);
   return new Promise<void>((resolve, reject) => {
     let settled = false;
     const finish = () => {
@@ -429,21 +431,24 @@ export function preloadExportImages(
     const timeout = setTimeout(() => {
       const loaded = imageIds.filter(id => renderer.getImageSource(id) !== null).length;
       const failed = imageIds.filter(id => renderer.isImageFailed(id)).length;
+      const loadedPapers = paperTextures.filter(paper => renderer.isPaperTextureResolved(paper)).length;
       console.warn(
         `[preloadExportImages] Timeout after 30s: ${loaded} loaded, ${failed} failed, ` +
-        `${imageIds.length - loaded - failed} still pending out of ${imageIds.length} total`
+        `${imageIds.length - loaded - failed} content images and ${paperTextures.length - loadedPapers} paper textures still pending`
       );
       finish(); // Proceed with whatever images loaded — missing ones render as blank
     }, 30_000);
 
     renderer.preloadImages(imageIds);
+    renderer.preloadPaperTextures(paperTextures);
 
     // Check if an image is resolved (loaded or failed)
     const isResolved = (id: string) =>
       renderer.getImageSource(id) !== null || renderer.isImageFailed(id);
+    const isPaperResolved = (paper: string) => renderer.isPaperTextureResolved(paper);
 
     // Check if all already resolved
-    if (imageIds.every(isResolved)) {
+    if (imageIds.every(isResolved) && paperTextures.every(isPaperResolved)) {
       clearTimeout(timeout);
       finish();
       return;
@@ -451,7 +456,7 @@ export function preloadExportImages(
 
     // Wait for all to load/fail via onImageLoaded callback
     const check = () => {
-      if (imageIds.every(isResolved)) {
+      if (imageIds.every(isResolved) && paperTextures.every(isPaperResolved)) {
         clearTimeout(timeout);
         const failed = imageIds.filter(id => renderer.isImageFailed(id));
         if (failed.length > 0) {

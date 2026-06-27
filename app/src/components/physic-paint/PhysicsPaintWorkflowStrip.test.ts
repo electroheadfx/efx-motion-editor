@@ -348,16 +348,18 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(resultBlock).not.toContain('physicPaintStore.getRotoCacheFrames');
   });
 
-  it('remounts the physics engine when launch canvas dimensions change', () => {
+  it('remounts the physics engine when bounded working canvas dimensions change', () => {
     const studioCode = studioSource();
 
+    expect(studioCode).toContain('const projectCanvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH');
+    expect(studioCode).toContain('const workingCanvasSize = getPhysicsPaintWorkingSize(projectCanvasWidth, projectCanvasHeight)');
     expect(studioCode).toContain('const canvasKey = `${canvasWidth}x${canvasHeight}`');
     expect(studioCode).toContain('setEngine(null);');
     expect(studioCode).toContain('setCanvasMounted(false);');
     expect(studioCode).toContain('key={canvasKey}');
   });
 
-  it('passes launch canvas dimensions into Roto session transaction building', () => {
+  it('passes bounded working canvas dimensions into Roto session transaction building', () => {
     const studioCode = studioSource();
     const sessionCode = rotoSessionSource();
 
@@ -639,6 +641,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
     expect(shellRule).toContain('height: 100%');
     expect(shellRule).toContain('max-width: 100%');
+    expect(shellRule).toContain('max-height: 100%');
+    expect(studioSource()).toContain('getContainedCanvasDisplaySize(rect.width, rect.height, props.width, props.height)');
     expect(css).not.toContain('calc((100vh - 274px) * 1.538)');
   });
 

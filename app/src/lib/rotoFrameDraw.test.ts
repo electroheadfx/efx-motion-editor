@@ -38,6 +38,7 @@ describe('resolveMissingRotoFrameDraw', () => {
     expect(result).toEqual({
       kind: 'background-only',
       color: '#ebe3d2',
+      paperTexture: 'canvas2',
       paperGrain: 'canvas3',
       grainStrength: 0.65,
       span: { kind: 'interior', previousRealKeyFrame: 20, nextRealKeyFrame: 30 },

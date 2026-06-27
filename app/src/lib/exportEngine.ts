@@ -122,7 +122,7 @@ export async function startExport(startFromFrame = 0): Promise<void> {
       if (exportStore.isCancelled()) preloadAbort.abort();
     }, 200);
     try {
-      await preloadExportImages(renderer, fm, preloadAbort.signal);
+      await preloadExportImages(renderer, fm, preloadAbort.signal, allSeqs);
     } catch (err) {
       clearInterval(preloadCancelCheck);
       if (preloadAbort.signal.aborted) {

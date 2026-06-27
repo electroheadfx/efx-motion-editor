@@ -101,8 +101,8 @@ describe('physicPaintStore', () => {
     const backgroundState = { mode: 'paper' as const, metadata: physicPaintStore.getRotoBackgroundMetadata('layer-1')! };
 
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
-    expect(resolveMissingRotoFrameDraw('layer-1', 2, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1') })).toEqual({ kind: 'background-only', color: '#f4efe3', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'interior', previousRealKeyFrame: 1, nextRealKeyFrame: 3 }, materialize: true });
-    expect(resolveMissingRotoFrameDraw('layer-1', 4, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1') })).toEqual({ kind: 'background-only', color: '#f4efe3', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 3 }, materialize: false });
+    expect(resolveMissingRotoFrameDraw('layer-1', 2, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1') })).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'interior', previousRealKeyFrame: 1, nextRealKeyFrame: 3 }, materialize: true });
+    expect(resolveMissingRotoFrameDraw('layer-1', 4, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1') })).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 3 }, materialize: false });
   });
 
   it('stores sorted non-overlapping Play script ranges and finds only containing frames', () => {
@@ -665,7 +665,7 @@ describe('physicPaintStore', () => {
 
     expect(physicPaintStore.getFrame('layer-1', 11)).toBeNull();
     expect(physicPaintStore.getRotoFrame('layer-1', 11)).toBeNull();
-    expect(result).toEqual({ kind: 'background-only', color: '#f4efe3', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 7 }, materialize: false });
+    expect(result).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 7 }, materialize: false });
   });
 
   it('D-05/D-06 prunes loaded stale trailing rendered frames outside Roto cache metadata', () => {

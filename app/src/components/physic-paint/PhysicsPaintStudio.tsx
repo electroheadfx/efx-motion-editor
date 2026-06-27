@@ -21,6 +21,7 @@ import './physicsPaintStudio.css';
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
 const DEFAULT_CANVAS_WIDTH = 1000;
 const DEFAULT_CANVAS_HEIGHT = 650;
+const PHYSICS_PAINT_WORKING_LONG_EDGE = 1000;
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
 const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 50 };
 const ONION_DEPTH_OPACITY = [0.5, 0.25, 0.15] as const;
@@ -116,6 +117,29 @@ function withoutRotoGapLimit(context: PhysicPaintLaunchContext): PhysicPaintLaun
   delete next.maxPlayFrameCount;
   delete next.maxPlayFrameCountReason;
   return next;
+}
+
+function resizePhysicsPaintState(state: SerializedPhysicsPaintProject, width: number, height: number): SerializedPhysicsPaintProject {
+  if (state.width === width && state.height === height) return state;
+  const scaleX = width / state.width;
+  const scaleY = height / state.height;
+  return {
+    ...state,
+    width,
+    height,
+    strokes: state.strokes.map((stroke) => ({
+      ...stroke,
+      pts: stroke.pts.map((point) => [
+        Math.round(point[0] * scaleX * 100) / 100,
+        Math.round(point[1] * scaleY * 100) / 100,
+        point[2],
+        point[3],
+        point[4],
+        point[5],
+        point[6],
+      ]),
+    })),
+  };
 }
 
 function annotatePlayFrameStrokes(state: SerializedPhysicsPaintProject, assignments: Map<number, number>): SerializedPhysicsPaintProject {
@@ -293,22 +317,54 @@ function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
   return !Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
-function CanvasMountProbe(props: { width: number; height: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: (input: { pressure: number; tiltX?: number; tiltY?: number }) => void) => void; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
+function getPhysicsPaintWorkingSize(projectWidth: number, projectHeight: number): { width: number; height: number } {
+  if (projectWidth <= 0 || projectHeight <= 0) return { width: DEFAULT_CANVAS_WIDTH, height: DEFAULT_CANVAS_HEIGHT };
+  const scale = Math.min(1, PHYSICS_PAINT_WORKING_LONG_EDGE / Math.max(projectWidth, projectHeight));
+  return {
+    width: Math.max(1, Math.round(projectWidth * scale)),
+    height: Math.max(1, Math.round(projectHeight * scale)),
+  };
+}
+
+function getContainedCanvasDisplaySize(containerWidth: number, containerHeight: number, canvasWidth: number, canvasHeight: number): { width: number; height: number } | null {
+  if (containerWidth <= 0 || containerHeight <= 0 || canvasWidth <= 0 || canvasHeight <= 0) return null;
+  const canvasRatio = canvasWidth / canvasHeight;
+  const containerRatio = containerWidth / containerHeight;
+  if (containerRatio > canvasRatio) return { width: containerHeight * canvasRatio, height: containerHeight };
+  return { width: containerWidth, height: containerWidth / canvasRatio };
+}
+
+function CanvasMountProbe(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: (input: { pressure: number; tiltX?: number; tiltY?: number }) => void) => void; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
+  const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
 
   useEffect(() => {
+    const shell = shellRef.current;
+    const region = shell?.parentElement;
+    const updateDisplaySize = () => {
+      if (!region) return;
+      const rect = region.getBoundingClientRect();
+      setDisplaySize(getContainedCanvasDisplaySize(rect.width, rect.height, props.width, props.height));
+    };
+    updateDisplaySize();
+    const resizeObserver = region ? new ResizeObserver(updateDisplaySize) : null;
+    if (region) resizeObserver?.observe(region);
     const frame = window.requestAnimationFrame(() => {
       const mounted = Boolean(shellRef.current?.querySelector('canvas'));
       props.onCanvasMounted(mounted);
       if (!mounted) setMountError(CANVAS_MOUNT_ERROR);
+      updateDisplaySize();
     });
 
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
+    };
+  }, [props.height, props.width]);
 
   return (
-    <div class="demo-canvas-shell" ref={shellRef}>
+    <div class="demo-canvas-shell" ref={shellRef} style={{ aspectRatio: `${props.width} / ${props.height}`, ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}) }}>
       <EfxPaintCanvas
         width={props.width}
         height={props.height}
@@ -318,6 +374,7 @@ function CanvasMountProbe(props: { width: number; height: number; onEngineReady:
           { name: 'canvas3', url: '/img/paper_3.jpg' },
         ]}
         defaultPaper="canvas1"
+        paperTextureScale={props.paperTextureScale}
         class="paint-canvas"
         onNativePenInputReady={props.onNativePenInputReady}
         getStrokeMetadata={props.getStrokeMetadata}
@@ -394,7 +451,7 @@ function buildBlankRotoFrame(width: number, height: number, appFrame: number): R
 }
 
 function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload {
-  return buildRotoFrameFromCanvas(engine.exportCompositeCanvas(), appFrame, { width, height });
+  return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height });
 }
 
 function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload {
@@ -578,8 +635,12 @@ export function PhysicsPaintStudio() {
   const copiedRotoEditableStateRef = useRef<ReturnType<EfxPaintEngine['save']> | null>(null);
   const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null);
 
-  const canvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
-  const canvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
+  const projectCanvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
+  const projectCanvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
+  const workingCanvasSize = getPhysicsPaintWorkingSize(projectCanvasWidth, projectCanvasHeight);
+  const canvasWidth = workingCanvasSize.width;
+  const canvasHeight = workingCanvasSize.height;
+  const paperTextureScale = canvasWidth / projectCanvasWidth;
   const canvasKey = `${canvasWidth}x${canvasHeight}`;
   const currentFrame = launchContext?.startFrame ?? 0;
   const previewFps = getPreviewFps(launchContext?.fps);
@@ -757,7 +818,7 @@ export function PhysicsPaintStudio() {
     playerRef.current = new AnimationPlayer(engine);
     if (launchContext?.editableState) {
       try {
-        engine.load(launchContext.editableState);
+        engine.load(resizePhysicsPaintState(launchContext.editableState, canvasWidth, canvasHeight));
       } catch (error) {
         console.error('[PhysicsPaintStudio] failed to restore editable state', error);
         setLastError('Could not restore the previous physics paint state for this layer.');
@@ -767,7 +828,7 @@ export function PhysicsPaintStudio() {
       playerRef.current?.stop();
       playerRef.current = null;
     };
-  }, [engine, launchContext?.editableState]);
+  }, [canvasHeight, canvasWidth, engine, launchContext?.editableState]);
 
   useEffect(() => {
     if (!engine || !launchContext?.playRenderOptions) return;
@@ -2076,7 +2137,7 @@ export function PhysicsPaintStudio() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const state = parsePhysicsPaintStateFile(String(reader.result ?? ''));
+        const state = resizePhysicsPaintState(parsePhysicsPaintStateFile(String(reader.result ?? '')), canvasWidth, canvasHeight);
         engine.load(state);
         if (workflowMode === 'play') {
           const assignments = getPlayFrameEditAssignments(state);
@@ -2585,6 +2646,7 @@ export function PhysicsPaintStudio() {
               key={canvasKey}
               width={canvasWidth}
               height={canvasHeight}
+              paperTextureScale={paperTextureScale}
               onEngineReady={(readyEngine) => {
                 setEngine(readyEngine);
                 if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine);

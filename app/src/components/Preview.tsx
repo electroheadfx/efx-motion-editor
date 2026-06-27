@@ -40,8 +40,10 @@ export function Preview() {
     // Pre-load effect: preload all content frames from frameMap since cursor can be in any sequence
     const disposePreload = effect(() => {
       const frames = frameMap.value;
+      const sequences = sequenceStore.sequences.value;
       const imageIds = [...new Set(frames.map((f) => f.imageId))];
       renderer.preloadImages(imageIds);
+      renderer.preloadPaperTextures(renderer.collectRotoPaperTextures(sequences));
     });
 
     // Render effect: redraw on scrub/seek/step and property changes.

@@ -8,12 +8,16 @@ const stylePath = fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.
 const defaultCapabilityPath = fileURLToPath(new URL('../../../src-tauri/capabilities/default.json', import.meta.url));
 const bridgePath = fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url));
 const enginePath = fileURLToPath(new URL('../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url));
+const packageTypesPath = fileURLToPath(new URL('../../../../packages/efx-physic-paint/src/types.ts', import.meta.url));
+const preactWrapperPath = fileURLToPath(new URL('../../../../packages/efx-physic-paint/src/preact.tsx', import.meta.url));
 const rotoSessionPath = fileURLToPath(new URL('./physicsPaintRotoSession.ts', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
 const bridgeSource = () => readFileSync(bridgePath, 'utf8');
 const engineSource = () => readFileSync(enginePath, 'utf8');
+const packageTypesSource = () => readFileSync(packageTypesPath, 'utf8');
+const preactWrapperSource = () => readFileSync(preactWrapperPath, 'utf8');
 const rotoSessionSource = () => readFileSync(rotoSessionPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
@@ -162,7 +166,7 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
 });
 
 describe('PhysicsPaintStudio onion preview contract', () => {
-  it('captures transparent stroke previews instead of full paper composite snapshots', () => {
+  it('captures transparent Roto frames instead of full paper composite snapshots', () => {
     const text = source();
 
     expect(text).toContain('function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement');
@@ -171,10 +175,47 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).toContain('engine.load(state)');
     expect(text).toContain('function drawCanvasAtSize(canvas: HTMLCanvasElement, size: { width: number; height: number }): HTMLCanvasElement');
     expect(text).toContain('context?.drawImage(canvas, 0, 0, size.width, size.height)');
+    const outputBlock = text.slice(text.indexOf('function buildRotoOutputFrame'), text.indexOf('function buildRotoOnionPreviewFrame'));
+    const onionBlock = text.slice(text.indexOf('function buildRotoOnionPreviewFrame'), text.indexOf('function getOnionFrameOpacity'));
     expect(text).toContain('function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload');
-    expect(text).toContain('return buildRotoFrameFromCanvas(engine.exportCompositeCanvas(), appFrame, { width, height })');
+    expect(outputBlock).toContain('return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height })');
     expect(text).toContain('function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload');
-    expect(text).toContain('return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height })');
+    expect(onionBlock).toContain('return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height })');
+  });
+
+  it('sizes the standalone canvas shell from project canvas dimensions', () => {
+    const text = source();
+    const mountProbeBlock = text.slice(text.indexOf('function CanvasMountProbe'), text.indexOf('function shouldPersistRotoFrame'));
+
+    expect(text).toContain('const PHYSICS_PAINT_WORKING_LONG_EDGE = 1000');
+    expect(text).toContain('function getPhysicsPaintWorkingSize(projectWidth: number, projectHeight: number): { width: number; height: number }');
+    expect(text).toContain('const scale = Math.min(1, PHYSICS_PAINT_WORKING_LONG_EDGE / Math.max(projectWidth, projectHeight))');
+    expect(text).toContain('const projectCanvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH');
+    expect(text).toContain('const workingCanvasSize = getPhysicsPaintWorkingSize(projectCanvasWidth, projectCanvasHeight)');
+    expect(text).toContain('function getContainedCanvasDisplaySize(containerWidth: number, containerHeight: number, canvasWidth: number, canvasHeight: number)');
+    expect(mountProbeBlock).toContain('const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null)');
+    expect(mountProbeBlock).toContain('setDisplaySize(getContainedCanvasDisplaySize(rect.width, rect.height, props.width, props.height))');
+    expect(mountProbeBlock).toContain('style={{ aspectRatio: `${props.width} / ${props.height}`, ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}) }}');
+    expect(mountProbeBlock).toContain('width={props.width}');
+    expect(mountProbeBlock).toContain('height={props.height}');
+    expect(mountProbeBlock).toContain('paperTextureScale={props.paperTextureScale}');
+    expect(text).toContain('const paperTextureScale = canvasWidth / projectCanvasWidth');
+    expect(text).toContain('paperTextureScale={paperTextureScale}');
+    expect(preactWrapperSource()).toContain('aspectRatio: `${props.width || 1000} / ${props.height || 650}`');
+    expect(preactWrapperSource()).toContain('paperTextureScale: props.paperTextureScale');
+    expect(packageTypesSource()).toContain('paperTextureScale?: number');
+    expect(engineSource()).toContain('private readonly paperTextureScale: number');
+    expect(engineSource()).toContain('loadPaperTexture(paper.url, this.width, this.height, this.paperTextureScale)');
+  });
+
+  it('rescales editable project states into the bounded working canvas before loading them', () => {
+    const text = source();
+
+    expect(text).toContain('function resizePhysicsPaintState(state: SerializedPhysicsPaintProject, width: number, height: number): SerializedPhysicsPaintProject');
+    expect(text).toContain('const scaleX = width / state.width');
+    expect(text).toContain('const scaleY = height / state.height');
+    expect(text).toContain('engine.load(resizePhysicsPaintState(launchContext.editableState, canvasWidth, canvasHeight))');
+    expect(text).toContain('const state = resizePhysicsPaintState(parsePhysicsPaintStateFile(String(reader.result ?? \'\')), canvasWidth, canvasHeight)');
   });
 
   it('clips the onion overlay to measured canvas bounds, not the full canvas stack', () => {
@@ -199,7 +240,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(css).not.toContain('mix-blend-mode: screen');
   });
 
-  it('sends paper composite frames to EFX Motion while caching transparent onion previews', () => {
+  it('sends transparent Roto frames to EFX Motion while caching transparent onion previews', () => {
     const text = source();
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
 

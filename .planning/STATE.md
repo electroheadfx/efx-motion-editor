@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.10
-current_phase_name: physics-paint-roto-missing-background-preview-export
+current_phase: 36.11
+current_phase_name: Physics Paint Roto Repaint Cached Real Key
 status: executing
 stopped_at: Phase 36.10 UI-SPEC approved
-last_updated: "2026-06-27T10:10:20.570Z"
+last_updated: "2026-06-27T17:46:58.250Z"
 last_activity: 2026-06-27
-last_activity_desc: Phase 36.10 execution started
+last_activity_desc: Phase 36.10 complete, transitioned to Phase 36.11
 progress:
   total_phases: 18
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 71
-  completed_plans: 66
-  percent: 67
+  completed_plans: 71
+  percent: 72
 ---
 
 # Project State
@@ -24,24 +24,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.10 — physics-paint-roto-missing-background-preview-export
+**Current focus:** Phase 36.11 — Physics Paint Roto Repaint Cached Real Key
 
 ## Current Position
 
-Phase: 36.10 (physics-paint-roto-missing-background-preview-export) — EXECUTING
-Previous phase: 36.8 — Physics Paint Roto State Refactor complete
-Plan: 1 of 5
-Status: Executing Phase 36.10
-Last activity: 2026-06-27 — Phase 36.10 execution started
-Next recommended action: User refreshes/restarts the local app and confirms cached Roto playback no longer includes empty trailing frames
+Phase: 36.11 — Physics Paint Roto Repaint Cached Real Key
+Previous phase: 36.10 — Physics Paint Roto Missing Background Preview Export complete
+Plan: Not started
+Status: Phase 36.10 complete; Phase 36.11 ready to plan
+Last activity: 2026-06-27 — Phase 36.10 complete, transitioned to Phase 36.11
+Next recommended action: Plan Phase 36.11 from `SPECS/36.x-phases/phase-36.11-repaint-cached-real-key/spec-36.11-repaint-cached-real-key.md`
 
-Progress: [████████████████████] 66/66 plans executed; 11/18 phases complete (61%)
+Progress: [████████████████████] 71/71 plans executed; 13/18 phases complete (72%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 42 for v0.8.0
+- Total plans completed: 39 for v0.8.0
 - Average duration: N/A
 - Total execution time: 0.0 hours
 
@@ -61,6 +61,7 @@ Progress: [████████████████████] 66/66 p
 | 36.5 | 3 | 45min | 15min |
 | 36.6 | 3 | - | - |
 | 36.7 | 5 | - | - |
+| 36.10 | 5 | - | - |
 
 **Recent Trend:**
 

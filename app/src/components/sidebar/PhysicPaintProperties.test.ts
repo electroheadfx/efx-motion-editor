@@ -16,15 +16,18 @@ describe('PhysicPaintProperties source contract', () => {
     expect(source).not.toContain(['[open fx paint', 'canvas]'].join(' '));
   });
 
-  it('passes the current editor frame and requested workflow mode to the bridge for each button', () => {
+  it('passes the current editor frame, project canvas size, and requested workflow mode to the bridge for each button', () => {
     const openHandlerSource = source.slice(source.indexOf('const handleOpenCanvas'), source.indexOf('};\n\n  return ('));
 
     expect(openHandlerSource).toContain('const currentFrame = timelineStore.currentFrame.value');
     expect(openHandlerSource).toContain("requestedWorkflowMode: mode");
     expect(openHandlerSource).toContain('frame: currentFrame');
+    expect(openHandlerSource).toContain('width: projectStore.width.value');
+    expect(openHandlerSource).toContain('height: projectStore.height.value');
     expect(source).toContain("handleOpenCanvas('roto')");
     expect(source).toContain("handleOpenCanvas('play')");
     const bridgeRequestSource = openHandlerSource.slice(openHandlerSource.indexOf('openPhysicPaintCanvas({'), openHandlerSource.indexOf('});', openHandlerSource.indexOf('openPhysicPaintCanvas({')));
+    expect(bridgeRequestSource).toContain('canvas: {');
     expect(bridgeRequestSource).not.toContain('playStartFrame');
     expect(bridgeRequestSource).not.toContain('layer.startFrame');
   });
