@@ -5,24 +5,65 @@ export type MissingRotoFrameBackgroundState =
   | { mode: 'color'; color: string }
   | { mode: 'paper'; metadata: PhysicPaintRotoBackgroundMetadata };
 
+export type MissingRotoFrameSpanKind = 'leading' | 'interior' | 'trailing' | 'no-real-keys';
+
+export type MissingRotoFrameSpan =
+  | { kind: 'leading'; nextRealKeyFrame: number }
+  | { kind: 'interior'; previousRealKeyFrame: number; nextRealKeyFrame: number }
+  | { kind: 'trailing'; previousRealKeyFrame: number }
+  | { kind: 'no-real-keys' };
+
+export interface MissingRotoFrameResolveInput {
+  backgroundState: MissingRotoFrameBackgroundState;
+  realKeyFrames?: readonly number[];
+}
+
 export type MissingRotoFrameDrawInstruction =
-  | { kind: 'transparent' }
-  | { kind: 'background-only'; color: string; paperGrain?: string; grainStrength?: number };
+  | { kind: 'transparent'; span: MissingRotoFrameSpan; materialize: false }
+  | { kind: 'background-only'; color: string; paperGrain?: string; grainStrength?: number; span: MissingRotoFrameSpan; materialize: boolean };
+
+export function getMissingRotoFrameSpan(frame: number, realKeyFrames: readonly number[] = []): MissingRotoFrameSpan {
+  const requestedFrame = Math.floor(frame);
+  const sortedKeys = Array.from(new Set(realKeyFrames.filter((key) => Number.isInteger(key) && key >= 0))).sort((a, b) => a - b);
+  if (sortedKeys.length === 0) return { kind: 'no-real-keys' };
+
+  let previousRealKeyFrame: number | undefined;
+  let nextRealKeyFrame: number | undefined;
+  for (const key of sortedKeys) {
+    if (key < requestedFrame) previousRealKeyFrame = key;
+    if (key > requestedFrame) {
+      nextRealKeyFrame = key;
+      break;
+    }
+  }
+
+  if (previousRealKeyFrame !== undefined && nextRealKeyFrame !== undefined) {
+    return { kind: 'interior', previousRealKeyFrame, nextRealKeyFrame };
+  }
+  if (nextRealKeyFrame !== undefined) return { kind: 'leading', nextRealKeyFrame };
+  if (previousRealKeyFrame !== undefined) return { kind: 'trailing', previousRealKeyFrame };
+  return { kind: 'no-real-keys' };
+}
 
 export function resolveMissingRotoFrameDraw(
   _layerId: string,
-  _frame: number,
-  backgroundState: MissingRotoFrameBackgroundState,
+  frame: number,
+  input: MissingRotoFrameBackgroundState | MissingRotoFrameResolveInput,
 ): MissingRotoFrameDrawInstruction {
-  if (backgroundState.mode === 'transparent') return { kind: 'transparent' };
-  if (backgroundState.mode === 'color') return { kind: 'background-only', color: backgroundState.color };
+  const backgroundState = 'backgroundState' in input ? input.backgroundState : input;
+  const span = getMissingRotoFrameSpan(frame, 'backgroundState' in input ? input.realKeyFrames : []);
+  const materialize = span.kind === 'interior';
+  if (backgroundState.mode === 'transparent') return { kind: 'transparent', span, materialize: false };
+  if (backgroundState.mode === 'color') return { kind: 'background-only', color: backgroundState.color, span, materialize };
   const metadata = backgroundState.metadata;
-  if (metadata.background === 'transparent') return { kind: 'transparent' };
+  if (metadata.background === 'transparent') return { kind: 'transparent', span, materialize: false };
   return {
     kind: 'background-only',
     color: metadata.color ?? backgroundColorForRotoMode(metadata.background),
     paperGrain: metadata.paperGrain,
     grainStrength: metadata.grainStrength,
+    span,
+    materialize,
   };
 }
 
