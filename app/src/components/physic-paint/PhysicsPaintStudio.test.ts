@@ -166,21 +166,23 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
 });
 
 describe('PhysicsPaintStudio onion preview contract', () => {
-  it('captures transparent Roto frames instead of full paper composite snapshots', () => {
+  it('captures transparent Roto frames once and reuses that active-frame payload for save output and onion preview', () => {
     const text = source();
+    const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const startRotoCachedPlayback'));
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
 
     expect(text).toContain('function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement');
     expect(text).toContain("engine.setBgMode('transparent')");
     expect(text).toContain('return engine.exportCompositeCanvas()');
     expect(text).toContain('engine.load(state)');
-    expect(text).toContain('function drawCanvasAtSize(canvas: HTMLCanvasElement, size: { width: number; height: number }): HTMLCanvasElement');
-    expect(text).toContain('context?.drawImage(canvas, 0, 0, size.width, size.height)');
-    const outputBlock = text.slice(text.indexOf('function buildRotoOutputFrame'), text.indexOf('function buildRotoOnionPreviewFrame'));
-    const onionBlock = text.slice(text.indexOf('function buildRotoOnionPreviewFrame'), text.indexOf('function getOnionFrameOpacity'));
-    expect(text).toContain('function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload');
-    expect(outputBlock).toContain('return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height })');
-    expect(text).toContain('function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload');
-    expect(onionBlock).toContain('return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height })');
+    expect(text).toContain('const rotoCapturedFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map())');
+    expect(snapshotBlock).toContain('const capturedFrame = buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width: canvasWidth, height: canvasHeight })');
+    expect(snapshotBlock).toContain('rotoCapturedFramesRef.current.set(appFrame, capturedFrame)');
+    expect(snapshotBlock).toContain('rotoPreviewFramesRef.current.set(appFrame, capturedFrame)');
+    expect(flushBlock).toContain('const capturedFrame = rotoCapturedFramesRef.current.get(frame)');
+    expect(flushBlock).toContain('const renderedFrame = capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)');
+    expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : renderedFrame');
+    expect(flushBlock).not.toContain('buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight)');
   });
 
   it('sizes the standalone canvas shell from project canvas dimensions', () => {
@@ -244,8 +246,8 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     const text = source();
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
 
-    expect(flushBlock).toContain('const renderedFrame = buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)');
-    expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight)');
+    expect(flushBlock).toContain('const renderedFrame = capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)');
+    expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : renderedFrame');
     expect(flushBlock).toContain('rotoPreviewFramesRef.current.set(frame, onionFrame ?? renderedFrame)');
     expect(flushBlock).toContain('renderedFrame,');
     expect(flushBlock).toContain("...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {})");
@@ -280,7 +282,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
 
     expect(types).toContain('onionDataUrl?: string');
     expect(store).toContain('payload.onionDataUrl');
-    expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight)');
+    expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : renderedFrame');
     expect(flushBlock).toContain("...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {})");
     expect(onionBlock).toContain('const addOnionCandidate = (frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame');
     expect(onionBlock).toContain("if (frame.source && frame.source !== 'real-key') return;");
@@ -776,8 +778,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(cssRule).not.toContain('opacity: 0.78');
     expect(cssRule).not.toMatch(/opacity:\s*0\.[0-9]+/);
     expect(cssRule).toContain('outline:');
-    expect(flushBlock.indexOf('(engine as PreviewBackgroundEngine).resetBackground()')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
-    expect(flushBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(flushBlock.indexOf('const renderedFrame = buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
+    expect(flushBlock.indexOf('if (!capturedFrame) (engine as PreviewBackgroundEngine).resetBackground()')).toBeLessThan(flushBlock.indexOf('const renderedFrame = capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
+    expect(flushBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(flushBlock.indexOf('const renderedFrame = capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
   });
 
   it('keeps beforeunload snapshot-only while explicit Save current remains the cache write path', () => {
