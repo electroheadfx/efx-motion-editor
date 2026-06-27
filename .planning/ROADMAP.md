@@ -285,7 +285,7 @@ Use `SPECS/36.x-phases/phase-36.10-missing-background/spec-36.10-missing-backgro
 **Mode:** mvp
 **Requirements**: 36.10-MISSING-TRANSPARENT, 36.10-MISSING-BACKGROUND, 36.10-PREVIEW-EXPORT-PARITY
 **Depends on:** Phase 36.9
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 Planning notes:
 
@@ -297,7 +297,25 @@ Planning notes:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 36.10 to break down)
+**Wave 1**
+
+- [ ] 36.10-01-PLAN.md — Define and test the shared missing-frame resolver and preview/export delegation contract.
+
+**Wave 2** *(blocked on Wave 1 resolver contract)*
+
+- [ ] 36.10-02-PLAN.md — Implement bounded interior background-only support, exact replacement, and alpha-cache separation.
+
+**Wave 3** *(blocked on Wave 2 store/type support)*
+
+- [ ] 36.10-03-PLAN.md — Surface background-only/transparent missing-frame state through existing Roto workflow strip and session boundaries.
+
+**Wave 4** *(blocked on Wave 3 UI/session wiring)*
+
+- [ ] 36.10-04-PLAN.md — Prove preview/export parity, real-key adjacency, and alpha-separation regressions.
+
+**Wave 5** *(blocked on Wave 4 automated gates)*
+
+- [ ] 36.10-05-PLAN.md — Record automated validation and run user-owned live preview/export UAT.
 
 ### Phase 36.11: Physics Paint Roto Repaint Cached Real Key
 
