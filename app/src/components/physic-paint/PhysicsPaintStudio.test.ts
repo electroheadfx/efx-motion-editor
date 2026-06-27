@@ -382,6 +382,18 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
     expect(text).not.toContain('useState(4)');
   });
 
+  it('restores saved Roto paper metadata from launch context without using Play render options', () => {
+    const text = source();
+
+    expect(text).toContain('function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoBackgroundMetadata): PhysicsPaintStudioSettings');
+    expect(text).toContain("else if (getLaunchWorkflowMode(context) === 'roto' && context.rotoBackground) setSettings?.(applyRotoBackgroundMetadataToSettings(context.rotoBackground))");
+    expect(text).toContain('function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void');
+    expect(text).toContain('engine.setBgMode(metadata.background)');
+    expect(text).toContain('engine.setPaperGrain(metadata.paperGrain)');
+    expect(text).toContain('engine.setEmbossStrength(metadata.grainStrength)');
+    expect(text).toContain("if (getLaunchWorkflowMode(launchContext) === 'roto' && launchContext?.rotoBackground)");
+  });
+
   it('fetches the stored Tauri launch context after mount so editable Play state and cached frames are not lost on reopen', () => {
     const text = source();
 

@@ -96,6 +96,7 @@ export interface PhysicPaintLaunchContext {
   playCacheStatus?: PhysicPaintPlayScriptCacheStatus;
   playMotion?: PhysicPaintPlayMotionSettings;
   playRenderOptions?: PhysicPaintPlayRenderOptionsSnapshot;
+  rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   previewFrame?: number;
   cachedPlayFrames?: PhysicPaintRenderedFrame[];
   cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
@@ -249,6 +250,7 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalPlayScriptCacheStatus(value.playCacheStatus) &&
     optionalPlayMotion(value.playMotion) &&
     optionalPlayRenderOptions(value.playRenderOptions) &&
+    optionalRotoBackgroundMetadata(value.rotoBackground) &&
     optionalNonNegativeInteger(value.previewFrame) &&
     optionalRenderedFrames(value.cachedPlayFrames) &&
     optionalRotoCacheFrames(value.cachedRotoFrames) &&
@@ -547,6 +549,10 @@ function optionalPlayMotion(value: unknown): value is PhysicPaintPlayMotionSetti
 
 function optionalPlayRenderOptions(value: unknown): value is PhysicPaintPlayRenderOptionsSnapshot | undefined {
   return value === undefined || isPhysicPaintPlayRenderOptionsSnapshot(value);
+}
+
+function optionalRotoBackgroundMetadata(value: unknown): value is PhysicPaintRotoBackgroundMetadata | undefined {
+  return value === undefined || isPhysicPaintRotoBackgroundMetadata(value);
 }
 
 function optionalPlayBackgroundMode(value: unknown): value is PhysicPaintPlayBackgroundMode {

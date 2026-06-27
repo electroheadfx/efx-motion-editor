@@ -56,6 +56,9 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, requestedWorkflowMode: 'play', workflowMode: 'play', playStartFrame: 12, playFrameCount: 5, editableSource: 'play' })).toBe(true);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, selectedPlayScriptId: 'play-a', playCacheStatus: 'cached', playMotion: { strokeDeformation: 20, strokePosition: 30 }, previewFrame: 2, maxPlayFrameCount: 12, maxPlayFrameCountReason: 'Gap before play-b' })).toBe(true);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, cachedPlayFrames: [renderedFrame] })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'roto', rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'roto', rotoBackground: { background: 'photo', paperGrain: 'canvas1', grainStrength: 0.5 } })).toBe(false);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'roto', rotoBackground: { background: 'canvas1', paperGrain: '', grainStrength: 0.5 } })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: -1 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 0 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: -24 })).toBe(false);

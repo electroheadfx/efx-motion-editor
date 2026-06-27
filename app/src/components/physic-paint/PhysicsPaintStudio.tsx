@@ -214,6 +214,7 @@ function applyLaunchContext(
   setSavedPlayCacheDirty?.(getLaunchWorkflowMode(context) === 'play' && context.playCacheStatus !== 'cached');
   setPlayWiggle?.(normalizePlayWiggle(context.playRenderOptions?.motion ?? context.playMotion));
   if (context.playRenderOptions) setSettings?.(applyRenderOptionsSnapshotToSettings(context.playRenderOptions));
+  else if (getLaunchWorkflowMode(context) === 'roto' && context.rotoBackground) setSettings?.(applyRotoBackgroundMetadataToSettings(context.rotoBackground));
 }
 
 function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null {
@@ -569,6 +570,21 @@ function applyRenderOptionsSnapshotToSettings(snapshot: PhysicPaintPlayRenderOpt
   };
 }
 
+function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoBackgroundMetadata): PhysicsPaintStudioSettings {
+  return {
+    ...makeInitialSettings(),
+    background: metadata.background,
+    paperGrain: metadata.paperGrain,
+    grainStrength: metadata.grainStrength,
+  };
+}
+
+function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void {
+  engine.setBgMode(metadata.background);
+  engine.setPaperGrain(metadata.paperGrain);
+  engine.setEmbossStrength(metadata.grainStrength);
+}
+
 export function PhysicsPaintStudio() {
   const [engine, setEngine] = useState<EfxPaintEngine | null>(null);
   const [canvasMounted, setCanvasMounted] = useState(false);
@@ -824,11 +840,14 @@ export function PhysicsPaintStudio() {
         setLastError('Could not restore the previous physics paint state for this layer.');
       }
     }
+    if (getLaunchWorkflowMode(launchContext) === 'roto' && launchContext?.rotoBackground) {
+      applyRotoBackgroundMetadataToEngine(engine, launchContext.rotoBackground);
+    }
     return () => {
       playerRef.current?.stop();
       playerRef.current = null;
     };
-  }, [canvasHeight, canvasWidth, engine, launchContext?.editableState]);
+  }, [canvasHeight, canvasWidth, engine, launchContext?.editableState, launchContext?.rotoBackground, launchContext?.workflowMode, launchContext?.editableSource]);
 
   useEffect(() => {
     if (!engine || !launchContext?.playRenderOptions) return;

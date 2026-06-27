@@ -265,6 +265,9 @@ export function createPhysicPaintLaunchContext(
     ? cachedPlayFrames.length === containingRange.frameCount ? 'cached' : 'missing'
     : undefined;
   const rotoInterpolationSettings = physicPaintStore.getRotoInterpolationSettings(layerId);
+  const rotoBackground = !shouldOpenContainingPlay && requestedWorkflowMode !== 'play'
+    ? physicPaintStore.getRotoBackgroundMetadata(layerId)
+    : null;
   const editableState = shouldOpenContainingPlay && containingRange?.editableState
     ? structuredClone(containingRange.editableState)
     : null;
@@ -312,6 +315,7 @@ export function createPhysicPaintLaunchContext(
     ...(editableState ? { editableState } : {}),
     ...(cachedRotoFrames.length > 0 ? { cachedRotoFrames } : {}),
     ...(rotoInterpolationSettings ? { rotoInterpolationSettings } : {}),
+    ...(rotoBackground ? { rotoBackground: structuredClone(rotoBackground) } : {}),
   };
 }
 

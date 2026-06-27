@@ -192,6 +192,20 @@ describe('physicPaintBridge', () => {
     });
   });
 
+  it('includes a defensive copy of persisted Roto paper metadata for standalone reopen', () => {
+    const metadata = { background: 'canvas2' as const, paperGrain: 'canvas3', grainStrength: 0.65 };
+    physicPaintStore.setRotoBackgroundMetadata('phys-layer-1', metadata);
+
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null, 'roto');
+
+    expect(context).toMatchObject({
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      rotoBackground: metadata,
+    });
+    expect(context.rotoBackground).not.toBe(metadata);
+  });
+
   it('does not attach stale layer-level editable state when reopening cached-only Roto frames', () => {
     physicPaintStore.applyCanvas(applyCanvasPayload({ startFrame: 1, renderedFrame: makeFrame(0, 1) }));
     physicPaintStore.applyCanvas(applyCanvasPayload({ operationId: 'apply-still-2', startFrame: 4, renderedFrame: makeFrame(0, 4) }));
