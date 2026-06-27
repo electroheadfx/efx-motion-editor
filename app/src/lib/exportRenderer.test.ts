@@ -18,10 +18,12 @@ describe('physics paint cache-first preview/export contract', () => {
     expect(source).not.toMatch(/renderFromStrokes/);
   });
 
-  it('keeps export delegated through PreviewRenderer without importing the physics paint engine', () => {
+  it('keeps export delegated through PreviewRenderer without importing missing-frame or physics paint rendering', () => {
     const source = readSource('src/lib/exportRenderer.ts');
 
     expect(source).toContain('renderer.renderFrame(');
+    expect(source).not.toMatch(/rotoFrameDraw/);
+    expect(source).not.toMatch(/physicPaintStore/);
     expect(source).not.toMatch(/@efxlab\/efx-physic-paint/);
     expect(source).not.toMatch(/renderFromStrokes/);
   });
