@@ -285,7 +285,7 @@ Use `SPECS/36.x-phases/phase-36.10-missing-background/spec-36.10-missing-backgro
 **Mode:** mvp
 **Requirements**: 36.10-MISSING-TRANSPARENT, 36.10-MISSING-BACKGROUND, 36.10-PREVIEW-EXPORT-PARITY
 **Depends on:** Phase 36.9
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 Planning notes:
 
@@ -311,7 +311,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 UI/session wiring)*
 
-- [ ] 36.10-04-PLAN.md — Prove preview/export parity, real-key adjacency, and alpha-separation regressions.
+- [x] 36.10-04-PLAN.md — Prove preview/export parity, real-key adjacency, and alpha-separation regressions.
 
 **Wave 5** *(blocked on Wave 4 automated gates)*
 
@@ -776,7 +776,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.3. Physics Paint Roto Durable Core Recovery | v0.8.0 | 2/2 | Complete    | 2026-06-19 |
 | 36.8. Physics Paint Roto State Refactor | v0.8.0 | 5/5 | Complete | 2026-06-25 |
 | 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 3/3 | UAT pending |  |
-| 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 3/5 | In Progress|  |
+| 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 4/5 | In Progress|  |
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 0/TBD | Not started | - |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 0/TBD | Not started | - |
 | 36.13. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
