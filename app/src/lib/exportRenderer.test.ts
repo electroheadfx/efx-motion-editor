@@ -13,7 +13,8 @@ describe('physics paint cache-first preview/export contract', () => {
 
     expect(source).toContain('void physicPaintVersion.value');
     expect(source).toContain('physicPaintStore.getFrame(paintLayerId, paintLookupFrame)');
-    expect(source).toContain('hasMissingRotoBackground(layer)');
+    expect(source).toContain('resolveMissingRotoFrameDraw(paintLayerId, paintLookupFrame');
+    expect(source).toContain('physicPaintStore.getRealRotoKeyFrames(paintLayerId)');
     expect(source).toContain('drawMissingRotoBackground(ctx, missingDraw, logicalW, logicalH)');
     expect(source).not.toMatch(/renderFromStrokes/);
   });
@@ -35,7 +36,7 @@ describe('physics paint cache-first preview/export contract', () => {
 
     const result = resolveMissingRotoFrameDraw('phys-layer-1', 24, { mode: 'transparent' });
 
-    expect(result).toEqual({ kind: 'transparent' });
+    expect(result).toEqual({ kind: 'transparent', span: { kind: 'no-real-keys' }, materialize: false });
     expect(setFrame).not.toHaveBeenCalled();
     expect(upsertRealRotoKeyFrame).not.toHaveBeenCalled();
     expect(replaceGeneratedRotoCache).not.toHaveBeenCalled();
@@ -49,7 +50,7 @@ describe('physics paint cache-first preview/export contract', () => {
 
     const result = resolveMissingRotoFrameDraw('phys-layer-1', 25, { mode: 'color', color: '#ffffff' });
 
-    expect(result).toEqual({ kind: 'background-only', color: '#ffffff' });
+    expect(result).toEqual({ kind: 'background-only', color: '#ffffff', span: { kind: 'no-real-keys' }, materialize: false });
     expect(setFrame).not.toHaveBeenCalled();
     expect(upsertRealRotoKeyFrame).not.toHaveBeenCalled();
     expect(replaceGeneratedRotoCache).not.toHaveBeenCalled();
@@ -61,7 +62,7 @@ describe('physics paint cache-first preview/export contract', () => {
 
     const result = resolveMissingRotoFrameDraw('phys-layer-1', 26, { mode: 'paper', metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } });
 
-    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'no-real-keys' }, materialize: false });
     expect(setFrame).not.toHaveBeenCalled();
     expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
   });
