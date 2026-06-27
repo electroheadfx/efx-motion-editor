@@ -455,10 +455,6 @@ function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number, width: n
   return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height });
 }
 
-function buildRotoOnionPreviewFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload {
-  return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height });
-}
-
 function getOnionFrameOpacity(distance: number): number {
   return ONION_DEPTH_OPACITY[Math.max(0, Math.min(ONION_DEPTH_OPACITY.length - 1, distance - 1))];
 }
