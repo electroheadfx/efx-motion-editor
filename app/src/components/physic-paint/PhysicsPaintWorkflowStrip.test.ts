@@ -254,6 +254,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       'rotoSaveInFlight',
       'rotoSavingFrame',
       'rotoInterpolationSettings',
+      'rotoMissingFrameStatusKind',
       'rotoCachedPlaybackAvailable',
       'rotoCachedPlaybackStatus',
       'rotoCachedPlaybackLoop',
@@ -703,6 +704,26 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(confirmBlock).toContain('props.onConvertRotoToPlay?.()');
     expect(code).toContain('PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE');
     expect(code).not.toContain('Clear Play canvas range');
+  });
+
+  it('shows missing/background-only Roto status through existing compact strip surfaces without new controls', () => {
+    const code = source();
+    const statusStackBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('confirmation ? ('));
+    const rotoMapBlock = getRotoMapBlock(code);
+
+    expect(code).toContain('getMissingRotoFrameStatusLabel');
+    expect(code).toContain('rotoMissingFrameStatusKind?: RotoMissingFrameStatusKind | null');
+    expect(workflowStateSource()).toContain('Background only on frame ${frame}');
+    expect(workflowStateSource()).toContain('Frame ${safeFrame}: transparent missing Roto frame');
+    expect(workflowStateSource()).toContain('Frame ${safeFrame}: background only between real Roto keys');
+    expect(workflowStateSource()).toContain('Frame ${safeFrame}: background only from current paper setting');
+    expect(rotoMapBlock).toContain('vm.ariaLabel');
+    expect(rotoMapBlock).toContain('vm.title');
+    expect(statusStackBlock).toContain('rotoMissingStatusLabel ?? currentRotoCell.label');
+
+    for (const forbidden of ['missing-frame mode', 'fallback mode', 'Missing frame mode', 'Fallback mode', 'Missing frame tutorial', 'missing-frame-modal', 'missing-frame-toggle']) {
+      expect(code).not.toContain(forbidden);
+    }
   });
 
   it('shows Phase 36.9 cached Roto Play Stop transport in the Roto header', () => {

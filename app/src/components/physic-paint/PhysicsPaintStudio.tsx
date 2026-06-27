@@ -1590,6 +1590,9 @@ export function PhysicsPaintStudio() {
         case 'clearCachedReferences':
           for (const frame of effect.frames) removeCachedRotoFrameFromLaunchContext(frame);
           break;
+        case 'clearBackgroundOnlySupport':
+          for (const frame of effect.frames) removeCachedRotoFrameFromLaunchContext(frame);
+          break;
         case 'clearDeletedFrames':
           for (const frame of effect.frames) if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, frame);
           break;

@@ -6,6 +6,7 @@ export type RotoKeyUtilityActionStateExposure =
   | 'dirty-save-before-action'
   | 'active-restore-intent'
   | 'generated-target-cleanup'
+  | 'background-only-support-cleanup'
   | 'deleted-frame-cleanup';
 
 export interface RotoKeyUtilityActionState {
@@ -37,6 +38,7 @@ export type RotoKeyUtilityActiveRestore =
 export interface RotoKeyUtilityCleanup {
   generatedFrames: number[];
   referenceFrames: number[];
+  backgroundOnlySupportFrames: number[];
   deletedFrames: number[];
 }
 
@@ -102,6 +104,7 @@ const EXPOSURES: RotoKeyUtilityActionStateExposure[] = [
   'dirty-save-before-action',
   'active-restore-intent',
   'generated-target-cleanup',
+  'background-only-support-cleanup',
   'deleted-frame-cleanup',
 ];
 
@@ -163,6 +166,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
   const realFramesByFrame = new Map(normalizeRealKeyFrames(input.realKeyFrames, canvasSize).map((frame) => [frame.appFrame, frame]));
   const generatedFrames = collectGeneratedFrames(input.cachedRotoFrames);
   const referenceFrames = collectReferenceFrames(input.cachedRotoFrames, currentFrame);
+  const backgroundOnlySupportFrames = collectBackgroundOnlySupportFrames(input.cachedRotoFrames);
   const realKeyNumbers = Array.from(realFramesByFrame.keys()).sort((a, b) => a - b);
 
   if (input.operation === 'duplicate') {
@@ -191,7 +195,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
       realKeyFrames,
       activeFrame: targetFrame,
       activeRestore: { kind: 'load-real-key', frame: targetFrame },
-      cleanup: cleanup(generatedFrames, referenceFrames, []),
+      cleanup: cleanup(generatedFrames, referenceFrames, backgroundOnlySupportFrames, []),
       frameMappings,
       changedFrames: normalizeFrameNumbers([targetFrame, ...frameMappings.filter((mapping) => mapping.mode === 'move').map((mapping) => mapping.toFrame)]),
       removedFrames: generatedFrames,
@@ -214,7 +218,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
       realKeyFrames,
       activeFrame: currentFrame,
       activeRestore: { kind: 'blank-real-key', frame: currentFrame },
-      cleanup: cleanup(generatedFrames, normalizeFrameNumbers([...referenceFrames, currentFrame]), []),
+      cleanup: cleanup(generatedFrames, normalizeFrameNumbers([...referenceFrames, currentFrame]), backgroundOnlySupportFrames, []),
       frameMappings: shiftedFrames.map((frame) => ({ fromFrame: frame, toFrame: frame + 1, mode: 'move' as const })),
       changedFrames: normalizeFrameNumbers([currentFrame, ...shiftedFrames.map((frame) => frame + 1)]),
       removedFrames: normalizeFrameNumbers([...generatedFrames, currentFrame]),
@@ -239,7 +243,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
       realKeyFrames,
       activeFrame: currentFrame,
       activeRestore: nextHasCurrentFrame ? { kind: 'load-real-key', frame: currentFrame } : { kind: 'clear-blank', frame: currentFrame },
-      cleanup: cleanup(generatedFrames, referenceFrames, [currentFrame]),
+      cleanup: cleanup(generatedFrames, referenceFrames, backgroundOnlySupportFrames, [currentFrame]),
       frameMappings: shiftedFrames.map((frame) => ({ fromFrame: frame, toFrame: frame - 1, mode: 'move' as const })),
       changedFrames: normalizeFrameNumbers(shiftedFrames.map((frame) => frame - 1)),
       removedFrames: normalizeFrameNumbers([currentFrame, ...shiftedFrames, ...generatedFrames]),
@@ -256,7 +260,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
     realKeyFrames,
     activeFrame: currentFrame,
     activeRestore: { kind: 'load-real-key', frame: currentFrame },
-    cleanup: cleanup(generatedFrames.filter((frame) => frame === currentFrame), referenceFrames.filter((frame) => frame === currentFrame), []),
+    cleanup: cleanup(generatedFrames.filter((frame) => frame === currentFrame), referenceFrames.filter((frame) => frame === currentFrame), backgroundOnlySupportFrames.filter((frame) => frame === currentFrame), []),
     frameMappings: [{ fromFrame: copiedKeyFrame.appFrame, toFrame: currentFrame, mode: 'copy' }],
     changedFrames: [currentFrame],
     removedFrames: generatedFrames.filter((frame) => frame === currentFrame),
@@ -275,7 +279,7 @@ export function applyRotoKeyUtilityTransactionToLocalState<TEditable = unknown, 
   const originalEditableStates = new Map(editableStates);
   const originalPreviewFrames = new Map(previewFrames);
 
-  for (const frame of [...transaction.cleanup.generatedFrames, ...transaction.cleanup.referenceFrames, ...transaction.cleanup.deletedFrames, ...transaction.removedFrames]) {
+  for (const frame of [...transaction.cleanup.generatedFrames, ...transaction.cleanup.referenceFrames, ...transaction.cleanup.backgroundOnlySupportFrames, ...transaction.cleanup.deletedFrames, ...transaction.removedFrames]) {
     nextEditableStates.delete(frame);
     nextPreviewFrames.delete(frame);
   }
@@ -320,15 +324,17 @@ function makeTransaction(input: Omit<RotoKeyUtilityTransaction, 'realKeyFrameNum
     cleanup: {
       generatedFrames: normalizeFrameNumbers(input.cleanup.generatedFrames),
       referenceFrames: normalizeFrameNumbers(input.cleanup.referenceFrames),
+      backgroundOnlySupportFrames: normalizeFrameNumbers(input.cleanup.backgroundOnlySupportFrames),
       deletedFrames: normalizeFrameNumbers(input.cleanup.deletedFrames),
     },
   };
 }
 
-function cleanup(generatedFrames: readonly number[], referenceFrames: readonly number[], deletedFrames: readonly number[]): RotoKeyUtilityCleanup {
+function cleanup(generatedFrames: readonly number[], referenceFrames: readonly number[], backgroundOnlySupportFrames: readonly number[], deletedFrames: readonly number[]): RotoKeyUtilityCleanup {
   return {
     generatedFrames: normalizeFrameNumbers(generatedFrames),
     referenceFrames: normalizeFrameNumbers(referenceFrames),
+    backgroundOnlySupportFrames: normalizeFrameNumbers(backgroundOnlySupportFrames),
     deletedFrames: normalizeFrameNumbers(deletedFrames),
   };
 }
@@ -353,6 +359,7 @@ function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: numbe
     ...(canvasSize ? { width: canvasSize.width, height: canvasSize.height } : {}),
   };
   delete next.nearestRealKeyFrame;
+  delete next.backgroundOnly;
   return next;
 }
 
@@ -365,6 +372,12 @@ function collectGeneratedFrames(frames: readonly PhysicPaintRotoCacheFrame[] | u
 function collectReferenceFrames(frames: readonly PhysicPaintRotoCacheFrame[] | undefined, currentFrame: number): number[] {
   return normalizeFrameNumbers((frames ?? [])
     .filter((frame) => frame.source === 'generated-interpolation' && frame.appFrame === currentFrame)
+    .map((frame) => frame.appFrame));
+}
+
+function collectBackgroundOnlySupportFrames(frames: readonly PhysicPaintRotoCacheFrame[] | undefined): number[] {
+  return normalizeFrameNumbers((frames ?? [])
+    .filter((frame) => frame.source === 'background-only-support' || frame.backgroundOnly === true)
     .map((frame) => frame.appFrame));
 }
 

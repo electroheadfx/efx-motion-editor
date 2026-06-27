@@ -16,7 +16,10 @@ import {
   getRotoCellFill,
   getRotoCellStateLabel,
   getRotoCellViewModel,
+  getRotoMissingFrameStatus,
   getRotoPendingLabel,
+  getRotoReplacementSuccessLabel,
+  getMissingRotoFrameStatusLabel,
   isPhysicsPaintDevExportEnabled,
   replaceRotoKeyFrame,
   requiresDestructiveConfirmation,
@@ -63,7 +66,7 @@ describe('physicsPaintWorkflowState', () => {
   it('builds Roto cell view models for empty, cached, editable, generated, and background-only states', () => {
     const cachedFrames: PhysicPaintRotoCacheFrame[] = [
       { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cached-six', source: 'real-key' },
-      { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,background-eight', source: 'real-key', backgroundOnly: true },
+      { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,background-eight', source: 'background-only-support', backgroundOnly: true, nearestRealKeyFrame: 6 },
       { frameIndex: 0, appFrame: 9, dataUrl: 'data:image/png;base64,generated-nine', source: 'generated-interpolation', nearestRealKeyFrame: 6 },
     ];
     const editableFrames = [5];
@@ -96,8 +99,21 @@ describe('physicsPaintWorkflowState', () => {
     expect(getRotoCellViewModel({ frame: 10, currentFrame: 10, cachedFrames: realAndGeneratedCollision, editableFrames: [] }).isEditableTarget).toBe(true);
 
     expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('background-only');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).state).toBe('Background only');
     expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Background only on frame 8');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).title).toBe('Background only on frame 8');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).ariaLabel).toBe('Background only on frame 8');
     expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-background-only');
+  });
+
+  it('returns exact UI-SPEC missing Roto frame status copy', () => {
+    expect(getRotoMissingFrameStatus({ frame: 12, kind: 'transparent' })).toEqual({
+      kind: 'transparent',
+      label: 'Frame 12: transparent missing Roto frame',
+    });
+    expect(getMissingRotoFrameStatusLabel({ frame: 13, kind: 'background-only-interior' })).toBe('Frame 13: background only between real Roto keys');
+    expect(getMissingRotoFrameStatusLabel({ frame: 14, kind: 'background-only-dynamic' })).toBe('Frame 14: background only from current paper setting');
+    expect(getRotoReplacementSuccessLabel(15)).toBe('Frame 15 saved as a real Roto key');
   });
 
   it('keeps Roto current, dirty, and pending as overlays separate from base meanings', () => {
