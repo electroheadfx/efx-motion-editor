@@ -251,7 +251,8 @@ function _recomputeBackgroundOnlyRotoSupport(layerId: string, requestedFrames: r
   let added = false;
   for (const appFrame of requested) {
     if (metadata.get(appFrame)?.source === 'real-key') continue;
-    const previousRealKeyFrame = realKeys.filter((key) => key < appFrame).at(-1);
+    const priorRealKeys = realKeys.filter((key) => key < appFrame);
+    const previousRealKeyFrame = priorRealKeys[priorRealKeys.length - 1];
     const nextRealKeyFrame = realKeys.find((key) => key > appFrame);
     if (previousRealKeyFrame === undefined || nextRealKeyFrame === undefined) continue;
     const supportFrame = _makeBackgroundOnlySupportFrame(layerId, appFrame, previousRealKeyFrame);
