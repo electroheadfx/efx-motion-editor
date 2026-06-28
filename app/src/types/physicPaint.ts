@@ -133,6 +133,7 @@ export interface PhysicPaintApplyCanvasPayload {
   editableState: SerializedProject;
   backgroundOnly?: boolean;
   onionDataUrl?: string;
+  rotoBackground?: PhysicPaintRotoBackgroundMetadata;
   closeWindowAfterApply?: boolean;
 }
 
@@ -308,6 +309,7 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
     return isPhysicPaintRenderedFrame(value.renderedFrame, value.startFrame, 0) &&
       (value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean') &&
       (value.onionDataUrl === undefined || isRenderedPngDataUrl(value.onionDataUrl)) &&
+      optionalRotoBackgroundMetadata(value.rotoBackground) &&
       (value.closeWindowAfterApply === undefined || typeof value.closeWindowAfterApply === 'boolean');
   }
 

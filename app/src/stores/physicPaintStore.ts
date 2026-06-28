@@ -95,15 +95,20 @@ function _notifyVisualChange(): void {
   _markProjectDirty?.();
 }
 
-function _metadataToMce(metadata: PhysicPaintWorkflowMetadata | undefined): Omit<PhysicPaintMceOutput, 'layer_id' | 'frames' | 'editable_state' | 'play_script_ranges'> {
-  if (!metadata) return {};
+function _metadataToMce(metadata: PhysicPaintWorkflowMetadata | undefined, editableState?: SerializedProject): Omit<PhysicPaintMceOutput, 'layer_id' | 'frames' | 'editable_state' | 'play_script_ranges'> {
+  const editableRotoBackground = editableState ? _rotoBackgroundFromEditableState(editableState) : null;
+  const shouldUseRotoBackground = !metadata || metadata.workflowMode === 'roto' || metadata.editableSource === 'roto';
+  const rotoBackground = shouldUseRotoBackground ? metadata?.rotoBackground ?? editableRotoBackground : null;
+  if (!metadata) {
+    return rotoBackground ? { workflow_mode: 'roto', editable_source: 'roto', roto_background: { ...rotoBackground } } : {};
+  }
   return {
     workflow_mode: metadata.workflowMode,
     ...(metadata.playStartFrame !== undefined ? { play_start_frame: metadata.playStartFrame } : {}),
     ...(metadata.playFrameCount !== undefined ? { play_frame_count: metadata.playFrameCount } : {}),
     ...(metadata.editableSource ? { editable_source: metadata.editableSource } : {}),
     ...(metadata.playMotion ? { play_motion: { ...metadata.playMotion } } : {}),
-    ...(metadata.rotoBackground ? { roto_background: { ...metadata.rotoBackground } } : {}),
+    ...(rotoBackground ? { roto_background: { ...rotoBackground } } : {}),
   };
 }
 
@@ -373,17 +378,21 @@ function _rotoBackgroundFromEditableState(editableState: SerializedProject): Phy
 
 function _metadataFromMce(output: PhysicPaintMceOutputInput): PhysicPaintWorkflowMetadata | null {
   const workflowMode = output.workflow_mode ?? output.workflowMode;
-  if (workflowMode !== 'roto' && workflowMode !== 'play') return null;
+  const editableSource = output.editable_source ?? output.editableSource;
+  const shouldRecoverEditableRotoBackground = workflowMode === undefined || workflowMode === 'roto' || editableSource === 'roto';
+  const editableRotoBackground = shouldRecoverEditableRotoBackground && output.editable_state ? _rotoBackgroundFromEditableState(output.editable_state) : null;
+  const rotoBackground = output.roto_background ?? editableRotoBackground;
+  if (workflowMode !== 'roto' && workflowMode !== 'play') {
+    return rotoBackground ? { workflowMode: 'roto', editableSource: 'roto', rotoBackground: { ...rotoBackground } } : null;
+  }
   const playStartFrame = output.play_start_frame ?? output.playStartFrame;
   const playFrameCount = output.play_frame_count ?? output.playFrameCount;
-  const editableSource = output.editable_source ?? output.editableSource;
   const playMotion = output.play_motion ?? output.playMotion;
   if (playStartFrame !== undefined && (!Number.isInteger(playStartFrame) || playStartFrame < 0)) return null;
   if (playFrameCount !== undefined && (!Number.isInteger(playFrameCount) || playFrameCount < 1)) return null;
   if (editableSource !== undefined && editableSource !== 'roto' && editableSource !== 'play') return null;
   if (playMotion !== undefined && !_isValidPlayMotion(playMotion)) return null;
-  const rotoBackground = output.roto_background;
-  if (rotoBackground !== undefined && !isPhysicPaintRotoBackgroundMetadata(rotoBackground)) return null;
+  if (rotoBackground !== null && rotoBackground !== undefined && !isPhysicPaintRotoBackgroundMetadata(rotoBackground)) return null;
   return {
     workflowMode,
     ...(playStartFrame !== undefined ? { playStartFrame } : {}),
@@ -605,7 +614,7 @@ export const physicPaintStore = {
           ...(_playScriptRanges.has(layerId) ? { play_script_ranges: _cloneRanges(_playScriptRanges.get(layerId)!) } : {}),
           ...(_rotoCacheMetadata.has(layerId) ? { roto_cache_metadata: Array.from(_rotoCacheMetadata.get(layerId)!.values()).sort((a, b) => a.appFrame - b.appFrame).map(frame => ({ ...frame })) } : {}),
           ...(_rotoInterpolationSettings.has(layerId) ? { roto_interpolation_settings: _cloneRotoInterpolationSettings(_rotoInterpolationSettings.get(layerId)!) } : {}),
-          ..._metadataToMce(_workflowMetadata.get(layerId)),
+          ..._metadataToMce(_workflowMetadata.get(layerId), _editableStates.get(layerId)),
         };
       })
       .filter(output => output.frames.length > 0 || output.editable_state || output.workflow_mode || output.play_script_ranges || output.roto_cache_metadata || output.roto_interpolation_settings);
@@ -753,9 +762,9 @@ export const physicPaintStore = {
     }
 
     _editableStates.set(payload.layerId, structuredClone(payload.editableState));
-    const rotoBackground = _rotoBackgroundFromEditableState(payload.editableState);
+    const rotoBackground = payload.rotoBackground ?? _rotoBackgroundFromEditableState(payload.editableState);
     if (rotoBackground) {
-      _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto', rotoBackground });
+      _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto', rotoBackground: { ...rotoBackground } });
     }
     this.upsertRealRotoKeyFrame(payload.layerId, payload.startFrame, { ...payload.renderedFrame, ...(payload.onionDataUrl ? { onionDataUrl: payload.onionDataUrl } : {}) }, payload.backgroundOnly === true);
     return {

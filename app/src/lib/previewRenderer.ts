@@ -110,9 +110,19 @@ function isRotoWorkflowLayer(layerId: string): boolean {
   return physicPaintStore.getRealRotoKeyFrames(layerId).length > 0;
 }
 
+export interface PreviewPhysicPaintFrameSource {
+  layerId: string;
+  frame: number;
+  renderedFrame: PhysicPaintRenderedFrame;
+}
+
 function getPhysicPaintFrameForLayer(layerId: string, frame: number): PhysicPaintRenderedFrame | null {
   if (isRotoWorkflowLayer(layerId)) return physicPaintStore.getRotoFrame(layerId, frame);
   return physicPaintStore.getFrame(layerId, frame);
+}
+
+function getPhysicPaintFrameCacheKey(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame): string {
+  return `physic-paint:${layerId}:${frame}:${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`;
 }
 
 function hasMissingRotoBackground(layer: Layer, frame = 0): boolean {
@@ -204,6 +214,28 @@ export class PreviewRenderer {
       }
     }
     return [...paperTextures];
+  }
+
+  collectPhysicPaintFrameSources(layers: readonly Layer[], frame: number): PreviewPhysicPaintFrameSource[] {
+    const frameSources: PreviewPhysicPaintFrameSource[] = [];
+    for (const layer of layers) {
+      if (!layer.visible || layer.type !== 'physic-paint') continue;
+      const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+      const renderedFrame = getPhysicPaintFrameForLayer(layerId, frame);
+      if (renderedFrame) frameSources.push({ layerId, frame, renderedFrame });
+    }
+    return frameSources;
+  }
+
+  preloadPhysicPaintFrames(frames: readonly PreviewPhysicPaintFrameSource[]): void {
+    for (const frame of frames) {
+      this.getPhysicPaintImageSource(frame.layerId, frame.frame, frame.renderedFrame);
+    }
+  }
+
+  isPhysicPaintFrameResolved(frame: PreviewPhysicPaintFrameSource): boolean {
+    const cacheKey = getPhysicPaintFrameCacheKey(frame.layerId, frame.frame, frame.renderedFrame);
+    return this.imageCache.has(cacheKey) || this.failedImages.has(cacheKey);
   }
 
   /**
@@ -590,7 +622,7 @@ export class PreviewRenderer {
   }
 
   private getPhysicPaintImageSource(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame): HTMLImageElement | null {
-    const cacheKey = `physic-paint:${layerId}:${frame}:${renderedFrame.dataUrl.slice(0, 96)}:${renderedFrame.dataUrl.length}`;
+    const cacheKey = getPhysicPaintFrameCacheKey(layerId, frame, renderedFrame);
     const cached = this.imageCache.get(cacheKey);
     if (cached) return cached;
     if (this.loadingImages.has(cacheKey) || this.failedImages.has(cacheKey)) return null;

@@ -1,4 +1,4 @@
-import {PreviewRenderer} from './previewRenderer';
+import {PreviewRenderer, type PreviewPhysicPaintFrameSource} from './previewRenderer';
 import {interpolateAt} from './keyframeEngine';
 import {computeFadeOpacity, computeSolidFadeAlpha, computeCrossDissolveOpacity, computeTransitionProgress} from './transitionEngine';
 import {renderGlslTransition} from './glslRuntime';
@@ -59,6 +59,36 @@ function interpolateLayers(seq: Sequence, localFrame: number) {
       blur: values.blur,
     };
   });
+}
+
+function collectExportPhysicPaintFrameSources(renderer: PreviewRenderer, fm: FrameEntry[], sequences: readonly Sequence[]): PreviewPhysicPaintFrameSource[] {
+  const frameSources = new Map<string, PreviewPhysicPaintFrameSource>();
+  const addSources = (layers: ReturnType<typeof interpolateLayers>, frame: number) => {
+    for (const source of renderer.collectPhysicPaintFrameSources(layers, frame)) {
+      frameSources.set(`${source.layerId}:${source.frame}:${source.renderedFrame.dataUrl.length}:${source.renderedFrame.dataUrl.slice(0, 96)}`, source);
+    }
+  };
+
+  for (let globalFrame = 0; globalFrame < fm.length; globalFrame += 1) {
+    const entry = fm[globalFrame];
+    if (!entry) continue;
+    const seq = sequences.find((candidate) => candidate.id === entry.sequenceId);
+    if (!seq || seq.kind === 'fx') continue;
+    let seqStart = globalFrame;
+    while (seqStart > 0 && fm[seqStart - 1]?.sequenceId === entry.sequenceId) seqStart -= 1;
+    addSources(interpolateLayers(seq, globalFrame - seqStart), globalFrame);
+  }
+
+  for (const seq of sequences) {
+    if (seq.kind === 'content' || seq.visible === false) continue;
+    const start = Math.max(0, seq.inFrame ?? 0);
+    const end = Math.max(start, Math.min(fm.length, seq.outFrame ?? fm.length));
+    for (let globalFrame = start; globalFrame < end; globalFrame += 1) {
+      addSources(interpolateLayers(seq, globalFrame - start), globalFrame);
+    }
+  }
+
+  return [...frameSources.values()];
 }
 
 // ---- GL Transition offscreen canvases ----
@@ -408,6 +438,7 @@ export function preloadExportImages(
 ): Promise<void> {
   const imageIds = [...new Set(fm.map(f => f.imageId).filter(id => id !== ''))];
   const paperTextures = renderer.collectRotoPaperTextures(sequences);
+  const physicPaintFrames = collectExportPhysicPaintFrameSources(renderer, fm, sequences);
   return new Promise<void>((resolve, reject) => {
     let settled = false;
     const finish = () => {
@@ -432,23 +463,27 @@ export function preloadExportImages(
       const loaded = imageIds.filter(id => renderer.getImageSource(id) !== null).length;
       const failed = imageIds.filter(id => renderer.isImageFailed(id)).length;
       const loadedPapers = paperTextures.filter(paper => renderer.isPaperTextureResolved(paper)).length;
+      const loadedPhysicPaint = physicPaintFrames.filter(frame => renderer.isPhysicPaintFrameResolved(frame)).length;
       console.warn(
         `[preloadExportImages] Timeout after 30s: ${loaded} loaded, ${failed} failed, ` +
-        `${imageIds.length - loaded - failed} content images and ${paperTextures.length - loadedPapers} paper textures still pending`
+        `${imageIds.length - loaded - failed} content images, ${paperTextures.length - loadedPapers} paper textures, ` +
+        `and ${physicPaintFrames.length - loadedPhysicPaint} physics paint frames still pending`
       );
       finish(); // Proceed with whatever images loaded — missing ones render as blank
     }, 30_000);
 
     renderer.preloadImages(imageIds);
     renderer.preloadPaperTextures(paperTextures);
+    renderer.preloadPhysicPaintFrames(physicPaintFrames);
 
     // Check if an image is resolved (loaded or failed)
     const isResolved = (id: string) =>
       renderer.getImageSource(id) !== null || renderer.isImageFailed(id);
     const isPaperResolved = (paper: string) => renderer.isPaperTextureResolved(paper);
+    const isPhysicPaintResolved = (frame: PreviewPhysicPaintFrameSource) => renderer.isPhysicPaintFrameResolved(frame);
 
     // Check if all already resolved
-    if (imageIds.every(isResolved) && paperTextures.every(isPaperResolved)) {
+    if (imageIds.every(isResolved) && paperTextures.every(isPaperResolved) && physicPaintFrames.every(isPhysicPaintResolved)) {
       clearTimeout(timeout);
       finish();
       return;
@@ -456,7 +491,7 @@ export function preloadExportImages(
 
     // Wait for all to load/fail via onImageLoaded callback
     const check = () => {
-      if (imageIds.every(isResolved) && paperTextures.every(isPaperResolved)) {
+      if (imageIds.every(isResolved) && paperTextures.every(isPaperResolved) && physicPaintFrames.every(isPhysicPaintResolved)) {
         clearTimeout(timeout);
         const failed = imageIds.filter(id => renderer.isImageFailed(id));
         if (failed.length > 0) {

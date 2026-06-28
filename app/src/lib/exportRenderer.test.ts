@@ -1,11 +1,42 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import type { Layer } from '../types/layer';
+import { defaultTransform } from '../types/layer';
+import type { Sequence } from '../types/sequence';
 import { physicPaintStore } from '../stores/physicPaintStore';
+import type { PreviewPhysicPaintFrameSource, PreviewRenderer } from './previewRenderer';
+import { preloadExportImages } from './exportRenderer';
 import { resolveMissingRotoFrameDraw } from './rotoFrameDraw';
 
 const root = resolve(__dirname, '../..');
 const readSource = (path: string) => readFileSync(resolve(root, path), 'utf8');
+
+function makeRotoLayer(): Layer {
+  return {
+    id: 'roto-layer',
+    name: 'Roto',
+    type: 'physic-paint',
+    visible: true,
+    opacity: 1,
+    blendMode: 'normal',
+    transform: defaultTransform(),
+    source: { type: 'physic-paint', layerId: 'roto-layer' },
+  };
+}
+
+function makeSequence(layer: Layer): Sequence {
+  return {
+    id: 'seq-1',
+    kind: 'content',
+    name: 'Sequence',
+    fps: 24,
+    width: 1000,
+    height: 650,
+    keyPhotos: [{ id: 'kp-1', imageId: 'base-image', holdFrames: 2 }],
+    layers: [layer],
+  };
+}
 
 describe('physics paint cache-first preview/export contract', () => {
   it('uses cached physics paint frame lookup and subscribes to physics paint mutations in previewRenderer', () => {
@@ -107,6 +138,36 @@ describe('exportRenderer', () => {
   });
 
   describe('preloadExportImages', () => {
+    it('preloads cached Physics Paint frame PNGs before export renders', async () => {
+      const frameSource: PreviewPhysicPaintFrameSource = {
+        layerId: 'roto-layer',
+        frame: 0,
+        renderedFrame: { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,cm90by1zdHJva2Vz' },
+      };
+      const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
+      const renderer = {
+        onImageLoaded: null,
+        collectRotoPaperTextures: vi.fn(() => []),
+        collectPhysicPaintFrameSources: vi.fn(() => [frameSource]),
+        preloadImages: vi.fn(),
+        preloadPaperTextures: vi.fn(),
+        preloadPhysicPaintFrames: vi.fn((frames: readonly PreviewPhysicPaintFrameSource[]) => {
+          preloadedFrames.push(...frames);
+        }),
+        getImageSource: vi.fn(() => ({ naturalWidth: 1, naturalHeight: 1 })),
+        isImageFailed: vi.fn(() => false),
+        isPaperTextureResolved: vi.fn(() => true),
+        isPhysicPaintFrameResolved: vi.fn((source: PreviewPhysicPaintFrameSource) => preloadedFrames.includes(source)),
+      } as unknown as PreviewRenderer;
+      const sequence = makeSequence(makeRotoLayer());
+
+      await preloadExportImages(renderer, [{ globalFrame: 0, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 }], undefined, [sequence]);
+
+      expect(renderer.collectPhysicPaintFrameSources).toHaveBeenCalledWith(sequence.layers, 0);
+      expect(renderer.preloadPhysicPaintFrames).toHaveBeenCalledWith([frameSource]);
+      expect(renderer.isPhysicPaintFrameResolved).toHaveBeenCalledWith(frameSource);
+    });
+
     it.todo('resolves when all images are loaded');
     it.todo('resolves immediately if all images already cached');
   });

@@ -250,6 +250,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : renderedFrame');
     expect(flushBlock).toContain('rotoPreviewFramesRef.current.set(frame, onionFrame ?? renderedFrame)');
     expect(flushBlock).toContain('renderedFrame,');
+    expect(flushBlock).toContain('rotoBackground: buildRotoBackgroundMetadata(settings),');
     expect(flushBlock).toContain("...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {})");
   });
 
@@ -258,6 +259,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
 
     expect(text).toContain('function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings): PhysicPaintRotoBackgroundMetadata');
     expect(text).toContain('physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, buildRotoBackgroundMetadata(settings))');
+    expect(text).toContain('rotoBackground: buildRotoBackgroundMetadata(settings),');
     expect(text).toContain('persistRotoBackgroundMetadata();');
     expect(text).not.toContain('setFrame(launchContext.layerId, currentFrame, buildRotoBackgroundMetadata');
   });

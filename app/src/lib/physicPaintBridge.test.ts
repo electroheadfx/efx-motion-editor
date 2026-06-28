@@ -837,6 +837,19 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getEditableState('phys-layer-1')?.strokes).toHaveLength(1);
   });
 
+  it('applies explicit Roto background metadata from standalone saves into the parent app store', () => {
+    mockLayers([physicLayer()]);
+
+    const result = applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'apply-still-explicit-bg',
+      editableState: { ...editableState, settings: { ...editableState.settings, bgMode: 'transparent' } },
+      rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+    }));
+
+    expect(result).toMatchObject({ ok: true, operationId: 'apply-still-explicit-bg' });
+    expect(physicPaintStore.getRotoBackgroundMetadata('phys-layer-1')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+  });
+
   it('applies a generated sequence beginning at the captured app start frame', () => {
     mockLayers([physicLayer()]);
 

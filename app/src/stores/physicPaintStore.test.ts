@@ -62,6 +62,41 @@ describe('physicPaintStore', () => {
     expect(physicPaintVersion.value).toBe(before + 1);
   });
 
+  it('stores explicit Roto background metadata from apply payloads for project reopen', () => {
+    const result = physicPaintStore.applyCanvas({
+      kind: 'apply-canvas',
+      operationId: 'op-still-explicit-bg',
+      layerId: 'layer-1',
+      startFrame: 8,
+      renderedFrame: makeFrame(0, 8),
+      editableState: { ...editableState, settings: { ...editableState.settings, bgMode: 'transparent' } },
+      rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
+      roto_background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+    }));
+  });
+
+  it('recovers missing Roto background metadata from saved editable state on project reopen', () => {
+    physicPaintStore.loadFromMceOutputs([{
+      layer_id: 'layer-1',
+      frames: [makeFrame(0, 8)],
+      editable_state: editableState,
+      roto_cache_metadata: [{ ...makeFrame(0, 8), source: 'real-key' }],
+    }]);
+
+    expect(physicPaintStore.getFrame('layer-1', 8)?.dataUrl).toContain('data:image/png');
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
+    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
+      workflow_mode: 'roto',
+      editable_source: 'roto',
+      roto_background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
+    }));
+  });
+
   it('marks no-stroke paper Roto applies as background-only cache frames', () => {
     const result = physicPaintStore.applyCanvas({
       kind: 'apply-canvas',

@@ -1483,6 +1483,7 @@ export function PhysicsPaintStudio() {
           startFrame: frame,
           editableState,
           renderedFrame,
+          rotoBackground: buildRotoBackgroundMetadata(settings),
           ...(backgroundOnly ? { backgroundOnly: true } : {}),
           ...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {}),
         };
@@ -1522,7 +1523,7 @@ export function PhysicsPaintStudio() {
 
     rotoFlushInFlightRef.current = flushPromise;
     return flushPromise;
-  }, [actionContext, addEditableRotoFrame, canvasHeight, canvasWidth, currentFrame, removeCachedRotoFrameFromLaunchContext, removeEditableRotoFrame, rotoSession, startApplyTimeout, syncPendingRotoFrames, upsertCachedRotoFrameInLaunchContext]);
+  }, [actionContext, addEditableRotoFrame, canvasHeight, canvasWidth, currentFrame, removeCachedRotoFrameFromLaunchContext, removeEditableRotoFrame, rotoSession, settings, startApplyTimeout, syncPendingRotoFrames, upsertCachedRotoFrameInLaunchContext]);
 
   const navigateToSyncedFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;

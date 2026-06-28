@@ -217,8 +217,19 @@ describe('physic paint payload contracts', () => {
       startFrame: 12,
       renderedFrame,
       editableState,
+      rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
       closeWindowAfterApply: true,
     })).toBe(true);
+
+    expect(isPhysicPaintApplyPayload({
+      kind: 'apply-canvas',
+      operationId: 'op-1',
+      layerId: 'layer-1',
+      startFrame: 12,
+      renderedFrame,
+      editableState,
+      rotoBackground: { background: 'photo', paperGrain: 'canvas1', grainStrength: 0.65 },
+    })).toBe(false);
 
     expect(isPhysicPaintApplyPayload({
       kind: 'apply-play-canvas',
