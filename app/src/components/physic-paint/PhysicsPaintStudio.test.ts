@@ -961,6 +961,76 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(flushBlock).not.toContain('savePendingRotoFrames()');
   });
 
+  it('D-02/D-03/36.11-ALPHA-ONLY-MERGE merges cached real-key base with live transparent output only on dirty cached-key repaint save', () => {
+    const text = source();
+    const importsBlock = text.slice(0, text.indexOf('const CANVAS_MOUNT_ERROR'));
+    const loadBlock = text.slice(text.indexOf('function findCachedRotoReferenceFrame'), text.indexOf('function findCachedRotoPlaybackFrame'));
+    const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
+
+    expect(importsBlock).toContain("import { mergeCachedRotoAlphaFrame } from './physicsPaintRotoAlphaMerge'");
+    expect(text).toContain('const [cachedRotoRepaintBaseFrame, setCachedRotoRepaintBaseFrame] = useState<RenderedFramePayload | null>(null)');
+    expect(loadBlock).toContain('setCachedRotoRepaintBaseFrame(cachedFrame ?? null)');
+    expect(dirtyBlock).not.toContain('setCachedRotoReferenceUrl(null)');
+    expect(dirtyBlock).toContain('if (!cachedRotoRepaintBaseFrame) setCachedRotoReferenceUrl(null)');
+    expect(flushBlock).toContain('const cachedRepaintBase = cachedRotoRepaintBaseFrame?.appFrame === frame ? cachedRotoRepaintBaseFrame : null');
+    expect(flushBlock).toContain('const liveAlphaCanvas = exportTransparentStrokeCanvas(engine)');
+    expect(flushBlock).toContain('mergeCachedRotoAlphaFrame(cachedRepaintBase, liveAlphaCanvas, frame, { width: canvasWidth, height: canvasHeight })');
+    expect(flushBlock).toContain('const renderedFrame = cachedRepaintBase\n          ? await mergeCachedRotoAlphaFrame');
+    expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : renderedFrame');
+    expect(flushBlock).toContain('renderedFrame,');
+    expect(flushBlock).toContain("kind: 'apply-canvas'");
+    expect(flushBlock).not.toContain('engine.load(cachedRepaintBase');
+    expect(flushBlock).not.toContain('reconstructCachedRoto');
+  });
+
+  it('D-01 keeps cached repaint base full strength and semantically separate from onion/playback/reference visual treatment', () => {
+    const text = source();
+    const css = styles();
+    const canvasStackBlock = text.slice(text.indexOf('function PhysicsPaintCanvasStack'), text.indexOf('function makeInitialSettings'));
+    const cachedBaseRuleStart = css.indexOf('.physics-paint-cached-roto-repaint-base {');
+    const cachedBaseRule = css.slice(cachedBaseRuleStart, css.indexOf('}', cachedBaseRuleStart));
+
+    expect(canvasStackBlock).toContain('cachedRotoRepaintBaseUrl?: string | null');
+    expect(canvasStackBlock).toContain('class="physics-paint-cached-roto-repaint-base"');
+    expect(canvasStackBlock).toContain('props.cachedRotoRepaintBaseUrl');
+    expect(canvasStackBlock).not.toContain('physics-paint-onion-frame cachedRotoRepaintBaseUrl');
+    expect(canvasStackBlock).not.toContain('physics-paint-cached-play-preview cachedRotoRepaintBaseUrl');
+    expect(canvasStackBlock).not.toContain('physics-paint-cached-roto-reference cachedRotoRepaintBaseUrl');
+    expect(cachedBaseRuleStart).toBeGreaterThanOrEqual(0);
+    expect(cachedBaseRule).toContain('z-index: 1;');
+    expect(cachedBaseRule).not.toMatch(/opacity:\s*0\.[0-9]+/);
+    expect(cachedBaseRule).not.toContain('filter:');
+    expect(cachedBaseRule).not.toContain('mix-blend-mode:');
+    expect(cachedBaseRule).not.toContain('outline:');
+  });
+
+  it('D-02 keeps the cached repaint base outside editable stroke/script state restoration', () => {
+    const text = source();
+    const loadBlock = text.slice(text.indexOf('function loadCachedRotoReferenceFrame'), text.indexOf('function findCachedRotoPlaybackFrame'));
+    const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const startRotoCachedPlayback'));
+
+    expect(loadBlock).toContain('setCachedRotoRepaintBaseFrame(cachedFrame ?? null)');
+    expect(loadBlock).toContain('targetEngine.clear()');
+    expect(loadBlock).not.toContain('engine.load(cachedFrame');
+    expect(loadBlock).not.toContain('editableState');
+    expect(loadBlock).not.toContain('strokes');
+    expect(snapshotBlock).not.toContain('cachedRotoRepaintBaseFrame.strokes');
+    expect(snapshotBlock).not.toContain('rotoFrameStatesRef.current.set(appFrame, cachedRotoRepaintBaseFrame');
+  });
+
+  it('D-15/D-16 preserves cached repaint base and dirty live edits on merge failure while surfacing compact retry feedback', () => {
+    const text = source();
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
+
+    expect(flushBlock).toContain('setApplyMessage(`Merged new paint into frame ${frame}.`)');
+    expect(flushBlock).toContain('setApplyMessage(`Could not merge frame ${frame} — edits are still open. ${detail}`)');
+    expect(flushBlock).toContain('if (cachedRepaintBase) setCachedRotoReferenceUrl(cachedRepaintBase.dataUrl)');
+    expect(flushBlock).toContain('if (cachedRepaintBase) setCachedRotoRepaintBaseFrame(cachedRepaintBase)');
+    expect(flushBlock).toContain('dirtyRotoFramesRef.current.add(frame)');
+    expect(flushBlock).not.toContain('engine.clear()');
+  });
+
   it('persists paper/background-only Roto frames without marking them editable-session pink', () => {
     const text = source();
     const predicateBlock = text.slice(text.indexOf('function shouldPersistRotoFrame'), text.indexOf('function addOccupiedRotoFrame'));
