@@ -974,6 +974,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(dirtyBlock).not.toContain('setCachedRotoReferenceUrl(null)');
     expect(dirtyBlock).toContain('if (!cachedRotoRepaintBaseFrame) clearCachedRotoReferenceUrl()');
     expect(flushBlock).toContain('const cachedRepaintBase = cachedRotoRepaintBaseFrame?.appFrame === frame ? cachedRotoRepaintBaseFrame : null');
+    expect(flushBlock).toContain('}, [actionContext, addEditableRotoFrame, cachedRotoRepaintBaseFrame, canvasHeight');
     expect(flushBlock).toContain('const liveAlphaCanvas = exportTransparentStrokeCanvas(engine)');
     expect(flushBlock).toContain('mergeCachedRotoAlphaFrame(cachedRepaintBase, liveAlphaCanvas, frame, { width: canvasWidth, height: canvasHeight })');
     expect(flushBlock).toContain('const renderedFrame = cachedRepaintBase\n          ? await mergeCachedRotoAlphaFrame');
