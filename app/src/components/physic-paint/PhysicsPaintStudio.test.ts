@@ -1031,6 +1031,59 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(flushBlock).not.toContain('engine.clear()');
   });
 
+  it('36.11 D-10/D-13 preserves a clean cached-base Save current before delete/apply branches and reports compact no-new-paint feedback', () => {
+    const text = source();
+    const saveBlock = text.slice(text.indexOf('const saveRotoFrame = useCallback'), text.indexOf('const updateSelectedPlayOptions = useCallback'));
+
+    expect(saveBlock).toContain('const cachedRepaintBase = cachedRotoRepaintBaseFrame?.appFrame === currentFrame ? cachedRotoRepaintBaseFrame : null');
+    expect(saveBlock).toContain('if (cachedRepaintBase && !dirtyRotoFramesRef.current.has(currentFrame) && !snapshotHasLiveOverlay)');
+    expect(saveBlock).toContain('setApplyMessage(`No new paint to save for frame ${currentFrame}.`)');
+    expect(saveBlock.indexOf('No new paint to save')).toBeLessThan(saveBlock.indexOf('flushRotoFrame(currentFrame'));
+    expect(saveBlock).not.toContain("kind: 'delete-roto-frame'");
+    expect(saveBlock).not.toContain('mergeCachedRotoAlphaFrame');
+  });
+
+  it('36.11 D-14 emits cached-base-open feedback through existing status/apply-message surface without new UI surfaces', () => {
+    const text = source();
+    const loadBlock = text.slice(text.indexOf('function loadCachedRotoReferenceFrame'), text.indexOf('function findCachedRotoPlaybackFrame'));
+
+    expect(loadBlock).toContain('setApplyMessage(`Cached key base loaded — visible and non-editable. Add paint to update frame ${appFrame}.`)');
+    expect(loadBlock).toContain('setCachedRotoRepaintBaseFrame(cachedFrame ?? null)');
+    expect(text).not.toContain('cached-base-modal');
+    expect(text).not.toContain('cached-base-toast');
+    expect(text).not.toContain('CachedBaseFeedback');
+    expect(text).not.toContain('physics-paint-cached-base-feedback');
+  });
+
+  it('36.11 D-06/D-12 protects cached-base Clear as live-overlay-only without removing saved real-key/cache state', () => {
+    const text = source();
+    const clearBlock = text.slice(text.indexOf('const clearActiveSource = useCallback'), text.indexOf('const dryPaint = useCallback'));
+
+    expect(clearBlock).toContain('if (cachedRotoRepaintBaseFrame?.appFrame === currentFrame) {');
+    expect(clearBlock).toContain('rotoSession.markLiveOverlayEmpty(currentFrame)');
+    expect(clearBlock).toContain('setApplyMessage(`Cleared live repaint strokes for frame ${currentFrame}; cached base preserved.`)');
+    expect(clearBlock).toContain('return;');
+    const cachedBaseBranch = clearBlock.slice(clearBlock.indexOf('if (cachedRotoRepaintBaseFrame?.appFrame === currentFrame)'), clearBlock.indexOf('rotoFrameStatesRef.current.delete(currentFrame)'));
+    expect(cachedBaseBranch).not.toContain('removeEditableRotoFrame(currentFrame)');
+    expect(cachedBaseBranch).not.toContain('setSavedRotoFrames((frames) => frames.filter');
+    expect(cachedBaseBranch).not.toContain('setOccupiedRotoFrames((frames) => frames.filter');
+    expect(cachedBaseBranch).not.toContain('removeCachedRotoFrameFromLaunchContext');
+  });
+
+  it('36.11 D-07 keeps Undo/Redo live-overlay-only and never loads cached-base pixels into editable history', () => {
+    const text = source();
+    const undoBlock = text.slice(text.indexOf('const undo = useCallback'), text.indexOf('const persistRotoBackgroundMetadata = useCallback'));
+    const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
+
+    expect(text).toContain('const liveRotoOverlayActionCountRef = useRef<Map<number, number>>(new Map())');
+    expect(undoBlock).toContain('engine?.undo()');
+    expect(undoBlock).toContain('if (workflowMode === \'roto\' && cachedRotoRepaintBaseFrame?.appFrame === currentFrame)');
+    expect(undoBlock).toContain('rotoSession.markLiveOverlayEmpty(currentFrame)');
+    expect(dirtyBlock).toContain('liveRotoOverlayActionCountRef.current.set(appFrame, (liveRotoOverlayActionCountRef.current.get(appFrame) ?? 0) + 1)');
+    expect(text).not.toContain('engine.load(cachedRotoRepaintBaseFrame');
+    expect(text).not.toContain('rotoFrameStatesRef.current.set(currentFrame, cachedRotoRepaintBaseFrame');
+  });
+
   it('persists paper/background-only Roto frames without marking them editable-session pink', () => {
     const text = source();
     const predicateBlock = text.slice(text.indexOf('function shouldPersistRotoFrame'), text.indexOf('function addOccupiedRotoFrame'));

@@ -24,6 +24,74 @@ function effectTypes(effects: readonly RotoSessionEffect[]): string[] {
   return effects.map((effect) => effect.type);
 }
 
+describe('physicsPaintRotoSession cached-base repaint clean/no-change boundary', () => {
+  it('36.11 D-04/D-09 keeps a loaded cached real key clean and preserves it on navigation with no save effect', () => {
+    const session = createRotoSession({
+      currentFrame: 5,
+      realKeyFrames: [frame(5, 'data:image/png;base64,cached-five'), frame(8, 'data:image/png;base64,real-eight')],
+      cachedRotoFrames: [frame(5, 'data:image/png;base64,cached-five'), frame(8, 'data:image/png;base64,real-eight')],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    const loaded = session.markCachedBaseLoaded(5);
+    const navigate = session.requestFrame(8);
+
+    expect(loaded.ok).toBe(true);
+    expect(loaded.effects).toEqual([]);
+    expect(loaded.message).toContain('visible and non-editable');
+    expect(session.currentFrameIsDirty.value).toBe(false);
+    expect(session.dirtyFrames.value).not.toContain(5);
+    expect(effectTypes(navigate.effects)).toEqual(['navigate']);
+    expect(navigate.effects).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: 'saveFrame' })]));
+    expect(session.currentFrame.value).toBe(8);
+  });
+
+  it('36.11 D-11 marks only the cached-base frame dirty on the first live overlay edit and queues save-before-navigation', () => {
+    const session = createRotoSession({
+      currentFrame: 5,
+      realKeyFrames: [frame(5, 'data:image/png;base64,cached-five'), frame(8, 'data:image/png;base64,real-eight')],
+      cachedRotoFrames: [frame(5, 'data:image/png;base64,cached-five'), frame(8, 'data:image/png;base64,real-eight')],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    session.markCachedBaseLoaded(5);
+    const edited = session.markLiveOverlayDirty(5);
+    const navigate = session.requestFrame(8);
+
+    expect(edited.ok).toBe(true);
+    expect(session.dirtyFrames.value).toEqual([5]);
+    expect(session.currentFrameIsDirty.value).toBe(true);
+    expect(effectTypes(navigate.effects)).toEqual(['saveFrame']);
+    expect(navigate.effects[0]).toMatchObject({ type: 'saveFrame', frame: 5, reason: 'beforeNavigate', after: { type: 'navigate', frame: 8 } });
+  });
+
+  it('36.11 D-07/D-12 returns to clean cached-base state when Undo or Clear empties the live overlay', () => {
+    const session = createRotoSession({
+      currentFrame: 5,
+      realKeyFrames: [frame(5, 'data:image/png;base64,cached-five'), frame(8, 'data:image/png;base64,real-eight')],
+      cachedRotoFrames: [frame(5, 'data:image/png;base64,cached-five'), frame(8, 'data:image/png;base64,real-eight')],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    session.markCachedBaseLoaded(5);
+    session.markLiveOverlayDirty(5);
+    const emptied = session.markLiveOverlayEmpty(5);
+    const navigate = session.requestFrame(8);
+
+    expect(emptied.ok).toBe(true);
+    expect(session.dirtyFrames.value).not.toContain(5);
+    expect(session.currentFrameIsDirty.value).toBe(false);
+    expect(effectTypes(navigate.effects)).toEqual(['navigate']);
+    expect(navigate.effects).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: 'saveFrame' })]));
+  });
+});
+
 describe('physicsPaintRotoSession save orchestration boundary', () => {
   it('36.8-REG-05 D-10 saves the dirty source before navigation and resumes only after success', () => {
     const session = createRotoSession({
