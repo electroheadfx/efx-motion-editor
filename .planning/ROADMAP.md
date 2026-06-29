@@ -321,10 +321,11 @@ Plans:
 
 Use `SPECS/36.x-phases/phase-36.11-repaint-cached-real-key/spec-36.11-repaint-cached-real-key.md` as the source of truth for this phase.
 
-**Goal:** As a stop-motion animator, I want reopening an existing cached Roto key to keep its current painted alpha result as a base layer, so that I can add more paint without losing previous work or baking the paper background into the key.
+**Goal:** As a stop-motion animator, I want to repaint cached real Roto keys, so that I can add paint without losing prior work.
+**Mode:** mvp
 **Requirements**: 36.11-REPAINT-CACHED-REAL-KEY, 36.11-ALPHA-ONLY-MERGE, 36.11-NO-STROKE-RESTORE
 **Depends on:** Phase 36.10
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Planning notes:
 
@@ -336,7 +337,17 @@ Planning notes:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 36.11 to break down)
+**Wave 1**
+
+- [ ] 36.11-01-PLAN.md — Define and implement the TDD alpha-only merge slice for dirty cached real-key repaint saves.
+
+**Wave 2** *(blocked on Wave 1 merge helper/save wiring)*
+
+- [ ] 36.11-02-PLAN.md — Harden cached-base clean/no-change semantics and live-overlay-only Clear behavior.
+
+**Wave 3** *(blocked on Waves 1-2 repaint behavior)*
+
+- [ ] 36.11-03-PLAN.md — Prove store/renderer alpha separation and run live cached-key repaint UAT.
 
 ### Phase 36.12: Physics Paint Roto Generated Interpolation
 
