@@ -36,7 +36,7 @@ class TestCanvas {
   }
 
   toDataURL(type?: string): string {
-    return `${type ?? 'data:image/png'};base64,bWVyZ2Vk`;
+    return `data:${type ?? 'image/png'};base64,bWVyZ2Vk`;
   }
 }
 
@@ -80,22 +80,25 @@ function makeLiveCanvas(): HTMLCanvasElement {
 }
 
 describe('mergeCachedRotoAlphaFrame', () => {
-  const originalCreateElement = document.createElement.bind(document);
+  const originalDocument = globalThis.document;
   const originalImage = globalThis.Image;
 
   beforeEach(() => {
     operations = [];
     failContext = false;
     failImage = false;
-    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
-      if (tagName === 'canvas') return new TestCanvas() as unknown as HTMLElement;
-      return originalCreateElement(tagName);
+    vi.stubGlobal('document', {
+      createElement: (tagName: string) => {
+        if (tagName !== 'canvas') throw new Error(`Unexpected test element: ${tagName}`);
+        return new TestCanvas() as unknown as HTMLElement;
+      },
     });
     vi.stubGlobal('Image', TestImage);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.stubGlobal('document', originalDocument);
     vi.stubGlobal('Image', originalImage);
   });
 

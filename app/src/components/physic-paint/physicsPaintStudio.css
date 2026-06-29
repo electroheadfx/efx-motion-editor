@@ -2014,6 +2014,15 @@ button.destructive {
   outline-offset: -2px;
 }
 
+.physics-paint-cached-roto-repaint-base {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  z-index: 1;
+}
+
 .physics-paint-shortcuts-help {
   position: fixed;
   right: 16px;

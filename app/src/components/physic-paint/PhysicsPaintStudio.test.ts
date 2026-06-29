@@ -180,7 +180,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(snapshotBlock).toContain('rotoCapturedFramesRef.current.set(appFrame, capturedFrame)');
     expect(snapshotBlock).toContain('rotoPreviewFramesRef.current.set(appFrame, capturedFrame)');
     expect(flushBlock).toContain('const capturedFrame = rotoCapturedFramesRef.current.get(frame)');
-    expect(flushBlock).toContain('const renderedFrame = capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)');
+    expect(flushBlock).toContain('capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)');
     expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : renderedFrame');
     expect(flushBlock).not.toContain('buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight)');
   });
@@ -246,7 +246,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     const text = source();
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
 
-    expect(flushBlock).toContain('const renderedFrame = capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)');
+    expect(flushBlock).toContain('capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)');
     expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : renderedFrame');
     expect(flushBlock).toContain('rotoPreviewFramesRef.current.set(frame, onionFrame ?? renderedFrame)');
     expect(flushBlock).toContain('renderedFrame,');
@@ -780,8 +780,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(cssRule).not.toContain('opacity: 0.78');
     expect(cssRule).not.toMatch(/opacity:\s*0\.[0-9]+/);
     expect(cssRule).toContain('outline:');
-    expect(flushBlock.indexOf('if (!capturedFrame) (engine as PreviewBackgroundEngine).resetBackground()')).toBeLessThan(flushBlock.indexOf('const renderedFrame = capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
-    expect(flushBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(flushBlock.indexOf('const renderedFrame = capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
+    expect(flushBlock.indexOf('if (!capturedFrame) (engine as PreviewBackgroundEngine).resetBackground()')).toBeLessThan(flushBlock.indexOf('capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
+    expect(flushBlock.indexOf('setCachedRotoReferenceUrl(null)')).toBeLessThan(flushBlock.indexOf('capturedFrame ?? buildRotoOutputFrame(engine, frame, canvasWidth, canvasHeight)'));
   });
 
   it('keeps beforeunload snapshot-only while explicit Save current remains the cache write path', () => {
@@ -972,7 +972,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('const [cachedRotoRepaintBaseFrame, setCachedRotoRepaintBaseFrame] = useState<RenderedFramePayload | null>(null)');
     expect(loadBlock).toContain('setCachedRotoRepaintBaseFrame(cachedFrame ?? null)');
     expect(dirtyBlock).not.toContain('setCachedRotoReferenceUrl(null)');
-    expect(dirtyBlock).toContain('if (!cachedRotoRepaintBaseFrame) setCachedRotoReferenceUrl(null)');
+    expect(dirtyBlock).toContain('if (!cachedRotoRepaintBaseFrame) clearCachedRotoReferenceUrl()');
     expect(flushBlock).toContain('const cachedRepaintBase = cachedRotoRepaintBaseFrame?.appFrame === frame ? cachedRotoRepaintBaseFrame : null');
     expect(flushBlock).toContain('const liveAlphaCanvas = exportTransparentStrokeCanvas(engine)');
     expect(flushBlock).toContain('mergeCachedRotoAlphaFrame(cachedRepaintBase, liveAlphaCanvas, frame, { width: canvasWidth, height: canvasHeight })');
@@ -1256,7 +1256,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
 
-    expect(dirtyBlock).toContain('setCachedRotoReferenceUrl(null)');
+    expect(dirtyBlock).toContain('clearCachedRotoReferenceUrl()');
     expect(dirtyBlock).toContain('setCachedRotoPlaybackFrame(null)');
     expect(dirtyBlock).toContain('(engine as PreviewBackgroundEngine | null)?.resetBackground?.()');
     expect(text).not.toContain('suppressRotoOnionOverlay');
