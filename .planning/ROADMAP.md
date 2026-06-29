@@ -356,7 +356,7 @@ Use `SPECS/36.x-phases/phase-36.12-generated-interpolation/spec-36.12-generated-
 **Goal:** As a stop-motion animator, I want generated in-between Roto frames between real keys, so that I can preview smoother motion without making generated frames editable.
 **Requirements**: 36.12-GENERATED-FRAMES, 36.12-REAL-KEY-AUTHORITY, 36.12-STALE-REGENERATION
 **Depends on:** Phase 36.11
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 Planning notes:
 
@@ -369,7 +369,22 @@ Planning notes:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 36.12 to break down)
+**Wave 1**
+
+- [ ] 36.12-01-PLAN.md — Define and test integer whole-layer interpolation spans.
+
+**Wave 2** *(blocked on Wave 1 span contract)*
+
+- [ ] 36.12-02-PLAN.md — Generate alpha-only renderable cache frames with real-key authority and stale regeneration.
+- [ ] 36.12-03-PLAN.md — Expose preview-only generated selection and minimal Interpolation toggle UI.
+
+**Wave 3** *(blocked on Wave 2 store generation)*
+
+- [ ] 36.12-04-PLAN.md — Prove generated cache preview/export parity and alpha-background separation.
+
+**Wave 4** *(blocked on Waves 2-3 integration)*
+
+- [ ] 36.12-05-PLAN.md — Wire Studio end-to-end and run user-owned live generated interpolation UAT.
 
 ### Phase 36.13: Physics Paint Roto Timeline UI From Pencil
 
