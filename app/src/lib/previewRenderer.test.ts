@@ -238,4 +238,36 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     expect(imageIndex).toBeGreaterThanOrEqual(0);
     expect(paperIndex).toBeLessThan(imageIndex);
   });
+
+  it('36.11 draws renderer-owned paper before merged real-key alpha repaint output', () => {
+    seedRotoPaper();
+    physicPaintStore.applyCanvas({
+      kind: 'apply-canvas',
+      operationId: 'op-merged-preview',
+      layerId: 'roto-layer',
+      startFrame: 5,
+      renderedFrame: { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,bWVyZ2VkLXJlcGFpbnQtYWxwaGE=' },
+      editableState: {
+        version: 2,
+        width: 4,
+        height: 3,
+        strokes: [{ tool: 'paint', pts: [[1, 1, 0.5, 0, 0, 0, 0]], color: '#103c65', params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 }, time: 1, diffusionFrames: 0 }],
+        settings: { bgMode: 'transparent', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+      },
+      rotoBackground: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
+    });
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 5, [], 24, true, 1, 5);
+    renderer.renderFrame([makeRotoLayer()], 5, [], 24, true, 1, 5);
+
+    const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
+    const mergedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,bWVyZ2VkLXJlcGFpbnQtYWxwaGE=');
+
+    expect(paperIndex).toBeGreaterThanOrEqual(0);
+    expect(mergedAlphaIndex).toBeGreaterThanOrEqual(0);
+    expect(paperIndex).toBeLessThan(mergedAlphaIndex);
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'createPattern', source: '/img/paper_1.jpg' }));
+  });
 });

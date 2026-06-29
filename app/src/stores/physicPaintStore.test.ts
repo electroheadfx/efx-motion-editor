@@ -736,6 +736,40 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toContainEqual(expect.objectContaining({ appFrame: 4, source: 'background-only-support', backgroundOnly: true }));
   });
 
+  it('36.11 merged repaint applyCanvas output stays a real-key alpha cache and not background-only support', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeFrame(0, 2));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, makeFrame(0, 6));
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', [4]);
+
+    const result = physicPaintStore.applyCanvas({
+      kind: 'apply-canvas',
+      operationId: 'op-merged-repaint-real-key',
+      layerId: 'layer-1',
+      startFrame: 4,
+      renderedFrame: { ...makeFrame(0, 4), dataUrl: 'data:image/png;base64,bWVyZ2VkLWFscGhhLXJlcGFpbnQ=' },
+      editableState,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toContainEqual(expect.objectContaining({
+      appFrame: 4,
+      source: 'real-key',
+    }));
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).not.toContainEqual(expect.objectContaining({
+      appFrame: 4,
+      source: 'background-only-support',
+    }));
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).not.toContainEqual(expect.objectContaining({
+      appFrame: 4,
+      backgroundOnly: true,
+    }));
+    expect(physicPaintStore.getBackgroundOnlyRotoSupportFrames('layer-1')).toEqual([]);
+    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
+      roto_cache_metadata: expect.arrayContaining([expect.objectContaining({ appFrame: 4, source: 'real-key' })]),
+    }));
+  });
+
   it('D-09 applyCanvas replaces only the same-frame background-only support with a real Roto key', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeFrame(0, 2));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, makeFrame(0, 6));
