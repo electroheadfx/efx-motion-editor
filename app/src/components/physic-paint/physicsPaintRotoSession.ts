@@ -10,7 +10,7 @@ import {
 } from './physicsPaintRotoKeyController';
 import { getRotoReplacementSuccessLabel } from './physicsPaintWorkflowState';
 
-export type RotoSessionActionName = 'duplicateKey' | 'insertBlankKey' | 'deleteKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty' | 'onSaveSucceeded' | 'onSaveFailed';
+export type RotoSessionActionName = 'duplicateKey' | 'insertBlankKey' | 'deleteKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty' | 'onSaveSucceeded' | 'onSaveFailed';
 export type RotoSessionSaveReason = 'beforeNavigate' | 'beforeAction';
 export type RotoSessionRestoreIntent = RotoKeyUtilityActiveRestore;
 
@@ -71,6 +71,7 @@ export interface RotoSession {
   backgroundOnlySupportFrameNumbers: Signal<number[]>;
   playbackFrameNumbers: Signal<number[]>;
   dirtyFrames: Signal<number[]>;
+  cachedBaseFrames: Signal<number[]>;
   copiedKey: Signal<RotoSessionCopiedKey | null>;
   restoreIntent: Signal<RotoSessionRestoreIntent>;
   feedback: Signal<string | null>;
@@ -87,6 +88,9 @@ export interface RotoSession {
   pasteKey: () => RotoSessionActionResult;
   requestFrame: (frame: number) => RotoSessionActionResult;
   markDirty: (frame?: number) => RotoSessionActionResult;
+  markCachedBaseLoaded: (frame?: number) => RotoSessionActionResult;
+  markLiveOverlayDirty: (frame?: number) => RotoSessionActionResult;
+  markLiveOverlayEmpty: (frame?: number) => RotoSessionActionResult;
   onSaveSucceeded: (frame: number) => RotoSessionActionResult;
   onSaveFailed: (frame: number, message: string) => RotoSessionActionResult;
 }
@@ -97,6 +101,7 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   const realKeyFrames = signal(normalizeRealKeyFrames(input.realKeyFrames, input.canvasSize));
   const cachedRotoFrames = signal(normalizeCachedFrames(input.cachedRotoFrames, input.canvasSize));
   const dirtyFrames = signal(normalizeFrameNumbers(toArray(input.dirtyFrames)));
+  const cachedBaseFrames = signal<number[]>([]);
   const copiedKey = signal<RotoSessionCopiedKey | null>(input.copiedKey ? normalizeCopiedKey(input.copiedKey, input.canvasSize) : null);
   const restoreIntent = signal<RotoSessionRestoreIntent>({ kind: 'none', frame: initialCurrentFrame });
   const feedback = signal<string | null>(null);
@@ -138,10 +143,34 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   }
 
   function markDirty(frame = currentFrame.peek()): RotoSessionActionResult {
+    return markLiveOverlayDirty(frame, 'markDirty');
+  }
+
+  function markCachedBaseLoaded(frame = currentFrame.peek()): RotoSessionActionResult {
+    const cachedFrame = normalizeFrame(frame);
+    if (cachedFrame === null) return failed('markCachedBaseLoaded', 'Select a valid Roto frame.');
+    const message = `Cached key base loaded — visible and non-editable. Add paint to update frame ${cachedFrame}.`;
+    batch(() => {
+      cachedBaseFrames.value = normalizeFrameNumbers([...cachedBaseFrames.peek(), cachedFrame]);
+      dirtyFrames.value = removeFrames(dirtyFrames.peek(), [cachedFrame]);
+      feedback.value = message;
+      failedSaveFeedback.value = null;
+    });
+    return { action: 'markCachedBaseLoaded', ok: true, message, effects: [] };
+  }
+
+  function markLiveOverlayDirty(frame = currentFrame.peek(), action: RotoSessionActionName = 'markLiveOverlayDirty'): RotoSessionActionResult {
     const dirtyFrame = normalizeFrame(frame);
-    if (dirtyFrame === null) return failed('markDirty', 'Select a valid Roto frame.');
+    if (dirtyFrame === null) return failed(action, 'Select a valid Roto frame.');
     dirtyFrames.value = normalizeFrameNumbers([...dirtyFrames.peek(), dirtyFrame]);
-    return { action: 'markDirty', ok: true, message: null, effects: [] };
+    return { action, ok: true, message: null, effects: [] };
+  }
+
+  function markLiveOverlayEmpty(frame = currentFrame.peek()): RotoSessionActionResult {
+    const emptyFrame = normalizeFrame(frame);
+    if (emptyFrame === null) return failed('markLiveOverlayEmpty', 'Select a valid Roto frame.');
+    dirtyFrames.value = removeFrames(dirtyFrames.peek(), [emptyFrame]);
+    return { action: 'markLiveOverlayEmpty', ok: true, message: null, effects: [] };
   }
 
   function copyKey(): RotoSessionActionResult {
@@ -284,6 +313,7 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     backgroundOnlySupportFrameNumbers,
     playbackFrameNumbers,
     dirtyFrames,
+    cachedBaseFrames,
     copiedKey,
     restoreIntent,
     feedback,
@@ -300,6 +330,9 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
     pasteKey,
     requestFrame,
     markDirty,
+    markCachedBaseLoaded,
+    markLiveOverlayDirty,
+    markLiveOverlayEmpty,
     onSaveSucceeded,
     onSaveFailed,
   };

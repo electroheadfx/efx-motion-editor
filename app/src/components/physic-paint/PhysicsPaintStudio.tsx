@@ -626,6 +626,7 @@ export function PhysicsPaintStudio() {
   const rotoFrameStatesRef = useRef<Map<number, ReturnType<EfxPaintEngine['save']>>>(new Map());
   const rotoPreviewFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map());
   const rotoCapturedFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map());
+  const liveRotoOverlayActionCountRef = useRef<Map<number, number>>(new Map());
   const latestPlayFramesRef = useRef<RenderedFramePayload[]>([]);
   const cachedPreviewTimerRef = useRef<number | null>(null);
   const rotoCachedPlaybackTimerRef = useRef<number | null>(null);
@@ -689,6 +690,7 @@ export function PhysicsPaintStudio() {
     rotoFrameStatesRef.current.clear();
     rotoPreviewFramesRef.current.clear();
     rotoCapturedFramesRef.current.clear();
+    liveRotoOverlayActionCountRef.current.clear();
     pendingRotoAdvanceRef.current = null;
     saveOnLeaveSourceFrameRef.current = null;
     saveOnLeaveRenderedFrameRef.current = null;
@@ -973,7 +975,18 @@ export function PhysicsPaintStudio() {
 
   const undo = useCallback(() => {
     engine?.undo();
-  }, [engine]);
+    if (workflowMode === 'roto' && cachedRotoRepaintBaseFrame?.appFrame === currentFrame) {
+      const nextCount = Math.max(0, (liveRotoOverlayActionCountRef.current.get(currentFrame) ?? 0) - 1);
+      if (nextCount === 0) {
+        liveRotoOverlayActionCountRef.current.delete(currentFrame);
+        dirtyRotoFramesRef.current.delete(currentFrame);
+        rotoSession.markLiveOverlayEmpty(currentFrame);
+        syncPendingRotoFrames();
+      } else {
+        liveRotoOverlayActionCountRef.current.set(currentFrame, nextCount);
+      }
+    }
+  }, [cachedRotoRepaintBaseFrame, currentFrame, engine, rotoSession, syncPendingRotoFrames, workflowMode]);
 
   const persistRotoBackgroundMetadata = useCallback(() => {
     if (!launchContext || workflowMode !== 'roto') return;
@@ -1032,7 +1045,13 @@ export function PhysicsPaintStudio() {
     const cachedFrame = findCachedRotoReferenceFrame(appFrame, context);
     setCachedRotoReferenceUrl(cachedFrame?.dataUrl ?? null);
     setCachedRotoRepaintBaseFrame(cachedFrame ?? null);
-    if (cachedFrame?.dataUrl) setApplyMessage(`Cached key base loaded — add paint to update frame ${appFrame}.`);
+    if (cachedFrame?.dataUrl) {
+      rotoSession.markCachedBaseLoaded(appFrame);
+      dirtyRotoFramesRef.current.delete(appFrame);
+      liveRotoOverlayActionCountRef.current.delete(appFrame);
+      syncPendingRotoFrames();
+      setApplyMessage(`Cached key base loaded — visible and non-editable. Add paint to update frame ${appFrame}.`);
+    }
     targetEngine.resetBackground();
     if (cachedFrame?.dataUrl) targetEngine.clear();
     return Boolean(cachedFrame);
@@ -1057,7 +1076,7 @@ export function PhysicsPaintStudio() {
   useEffect(() => {
     if (workflowMode !== 'roto') return;
     loadCachedRotoReferenceFrame(currentFrame);
-  }, [currentFrame, engine, launchContext, workflowMode]);
+  }, [currentFrame, engine, launchContext, rotoSession, syncPendingRotoFrames, workflowMode]);
 
   const markSelectedPlayCacheDirty = useCallback(() => {
     if (!launchContext?.selectedPlayScriptId) return;
@@ -1175,11 +1194,13 @@ export function PhysicsPaintStudio() {
     if (workflowMode !== 'roto') return;
     const appFrame = currentFrame;
     dirtyRotoFramesRef.current.add(appFrame);
+    rotoSession.markLiveOverlayDirty(appFrame);
+    liveRotoOverlayActionCountRef.current.set(appFrame, (liveRotoOverlayActionCountRef.current.get(appFrame) ?? 0) + 1);
     if (!cachedRotoRepaintBaseFrame) clearCachedRotoReferenceUrl();
     setCachedRotoPlaybackFrame(null);
     (engine as PreviewBackgroundEngine | null)?.resetBackground?.();
     syncPendingRotoFrames();
-  }, [cachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, currentFrame, engine, syncPendingRotoFrames, workflowMode]);
+  }, [cachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, currentFrame, engine, rotoSession, syncPendingRotoFrames, workflowMode]);
 
   const beginRotoFrameEdit = useCallback(() => {
     stopRotoCachedPlayback();
@@ -1190,6 +1211,18 @@ export function PhysicsPaintStudio() {
     if (!engine || !launchContext) return;
     engine.clear();
     if (workflowMode === 'roto') {
+      if (cachedRotoRepaintBaseFrame?.appFrame === currentFrame) {
+        rotoFrameStatesRef.current.delete(currentFrame);
+        rotoPreviewFramesRef.current.delete(currentFrame);
+        rotoCapturedFramesRef.current.delete(currentFrame);
+        liveRotoOverlayActionCountRef.current.delete(currentFrame);
+        dirtyRotoFramesRef.current.delete(currentFrame);
+        rotoSession.markLiveOverlayEmpty(currentFrame);
+        syncPendingRotoFrames();
+        setApplyStatus('success');
+        setApplyMessage(`Cleared live repaint strokes for frame ${currentFrame}; cached base preserved.`);
+        return;
+      }
       rotoFrameStatesRef.current.delete(currentFrame);
       rotoPreviewFramesRef.current.delete(currentFrame);
       dirtyRotoFramesRef.current.add(currentFrame);
@@ -1209,7 +1242,7 @@ export function PhysicsPaintStudio() {
     markSelectedPlayCacheDirty();
     setApplyStatus('success');
     setApplyMessage(`Cleared Play canvas range ${currentFrame}–${currentFrame + clampPhysicPaintFrameCount(framesToApply) - 1}.`);
-  }, [cachedRotoRepaintBaseFrame, currentFrame, engine, framesToApply, launchContext, markSelectedPlayCacheDirty, removeEditableRotoFrame, syncPendingRotoFrames, workflowMode]);
+  }, [cachedRotoRepaintBaseFrame, currentFrame, engine, framesToApply, launchContext, markSelectedPlayCacheDirty, removeEditableRotoFrame, rotoSession, syncPendingRotoFrames, workflowMode]);
 
   const dryPaint = useCallback(() => {
     engine?.forceDry();
@@ -1944,11 +1977,17 @@ export function PhysicsPaintStudio() {
 
   const saveRotoFrame = useCallback(async (advanceToFrame: number | null = null, options: { onPayload?: (payload: PhysicPaintApplyPayload) => void } = {}) => {
     if (!readyToApply) return null;
-    snapshotCurrentRotoFrame();
+    const snapshotHasLiveOverlay = snapshotCurrentRotoFrame();
+    const cachedRepaintBase = cachedRotoRepaintBaseFrame?.appFrame === currentFrame ? cachedRotoRepaintBaseFrame : null;
+    if (cachedRepaintBase && !dirtyRotoFramesRef.current.has(currentFrame) && !snapshotHasLiveOverlay) {
+      setApplyStatus('success');
+      setApplyMessage(`No new paint to save for frame ${currentFrame}.`);
+      return null;
+    }
     dirtyRotoFramesRef.current.add(currentFrame);
     syncPendingRotoFrames();
     return flushRotoFrame(currentFrame, { force: true, advanceToFrame, onPayload: options.onPayload });
-  }, [currentFrame, flushRotoFrame, readyToApply, snapshotCurrentRotoFrame, syncPendingRotoFrames]);
+  }, [cachedRotoRepaintBaseFrame, currentFrame, flushRotoFrame, readyToApply, snapshotCurrentRotoFrame, syncPendingRotoFrames]);
 
   const updateSelectedPlayOptions = useCallback(async () => {
     if (!actionContext || workflowMode !== 'play') return null;
