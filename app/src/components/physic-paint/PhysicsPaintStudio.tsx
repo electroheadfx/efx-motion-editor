@@ -973,6 +973,10 @@ export function PhysicsPaintStudio() {
     engine.stopPhysics();
   }, [engine]);
 
+  const syncPendingRotoFrames = useCallback(() => {
+    setRotoSessionVersion((version) => version + 1);
+  }, []);
+
   const undo = useCallback(() => {
     engine?.undo();
     if (workflowMode === 'roto' && cachedRotoRepaintBaseFrame?.appFrame === currentFrame) {
@@ -1149,10 +1153,6 @@ export function PhysicsPaintStudio() {
       cachedPlayFrames: [],
     } : current);
   }, [markSelectedPlayCacheDirty, workflowMode]);
-
-  const syncPendingRotoFrames = useCallback(() => {
-    setRotoSessionVersion((version) => version + 1);
-  }, []);
 
   const addEditableRotoFrame = useCallback((frame: number) => {
     setEditableRotoFrames((frames) => addOccupiedRotoFrame(frames, frame));
