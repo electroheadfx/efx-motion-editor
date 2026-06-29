@@ -325,7 +325,7 @@ Use `SPECS/36.x-phases/phase-36.11-repaint-cached-real-key/spec-36.11-repaint-ca
 **Mode:** mvp
 **Requirements**: 36.11-REPAINT-CACHED-REAL-KEY, 36.11-ALPHA-ONLY-MERGE, 36.11-NO-STROKE-RESTORE
 **Depends on:** Phase 36.10
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Planning notes:
 
@@ -343,7 +343,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 merge helper/save wiring)*
 
-- [ ] 36.11-02-PLAN.md — Harden cached-base clean/no-change semantics and live-overlay-only Clear behavior.
+- [x] 36.11-02-PLAN.md — Harden cached-base clean/no-change semantics and live-overlay-only Clear behavior.
 
 **Wave 3** *(blocked on Waves 1-2 repaint behavior)*
 
@@ -788,7 +788,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.8. Physics Paint Roto State Refactor | v0.8.0 | 5/5 | Complete | 2026-06-25 |
 | 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 3/3 | UAT pending |  |
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 5/5 | Complete    | 2026-06-27 |
-| 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 1/3 | In Progress|  |
+| 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 2/3 | In Progress|  |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 0/TBD | Not started | - |
 | 36.13. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
 | 36.14. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |
