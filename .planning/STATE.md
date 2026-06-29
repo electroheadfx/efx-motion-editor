@@ -5,10 +5,10 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.11
 current_phase_name: Physics Paint Roto Repaint Cached Real Key
 status: executing
-stopped_at: Phase 36.10 UAT Test 5 passed
-last_updated: "2026-06-27T22:35:00.000Z"
+stopped_at: Phase 36.11 context gathered
+last_updated: "2026-06-29T06:36:43.280Z"
 last_activity: 2026-06-27
-last_activity_desc: Phase 36.10 UAT Test 5 passed after final saved-project Roto background persistence fix
+last_activity_desc: Phase 36.10 final follow-up preserved saved-project Roto paper/background metadata and closed UAT Test 5
 progress:
   total_phases: 18
   completed_phases: 13
@@ -168,6 +168,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T09:11:57.240Z
-Stopped at: Phase 36.10 UI-SPEC approved
-Resume file: .planning/phases/36.10-physics-paint-roto-missing-background-preview-export/36.10-UI-SPEC.md
+Last session: 2026-06-29T06:36:43.272Z
+Stopped at: Phase 36.11 context gathered
+Resume file: .planning/phases/36.11-physics-paint-roto-repaint-cached-real-key/36.11-CONTEXT.md
