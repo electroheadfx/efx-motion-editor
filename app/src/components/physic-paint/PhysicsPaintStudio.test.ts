@@ -992,20 +992,15 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const canvasStackBlock = text.slice(text.indexOf('function PhysicsPaintCanvasStack'), text.indexOf('function makeInitialSettings'));
     const cachedBaseRuleStart = css.indexOf('.physics-paint-cached-roto-repaint-base {');
     const cachedBaseRule = css.slice(cachedBaseRuleStart, css.indexOf('}', cachedBaseRuleStart));
-    const canvasShellRuleStart = css.indexOf('.physics-paint-canvas-stack > .demo-canvas-shell {');
-    const canvasShellRule = css.slice(canvasShellRuleStart, css.indexOf('}', canvasShellRuleStart));
 
     expect(canvasStackBlock).toContain('cachedRotoRepaintBaseUrl?: string | null');
-    expect(canvasStackBlock.indexOf('props.cachedRotoRepaintBaseUrl')).toBeLessThan(canvasStackBlock.indexOf('{props.children}'));
-    expect(canvasStackBlock).toContain('class="physics-paint-cached-roto-repaint-base canvas-region"');
+    expect(canvasStackBlock).toContain('class="physics-paint-cached-roto-repaint-base"');
     expect(canvasStackBlock).toContain('props.cachedRotoRepaintBaseUrl');
     expect(canvasStackBlock).not.toContain('physics-paint-onion-frame cachedRotoRepaintBaseUrl');
     expect(canvasStackBlock).not.toContain('physics-paint-cached-play-preview cachedRotoRepaintBaseUrl');
     expect(canvasStackBlock).not.toContain('physics-paint-cached-roto-reference cachedRotoRepaintBaseUrl');
     expect(cachedBaseRuleStart).toBeGreaterThanOrEqual(0);
-    expect(canvasShellRuleStart).toBeGreaterThanOrEqual(0);
     expect(cachedBaseRule).toContain('z-index: 1;');
-    expect(canvasShellRule).toContain('z-index: 2;');
     expect(cachedBaseRule).not.toMatch(/opacity:\s*0\.[0-9]+/);
     expect(cachedBaseRule).not.toContain('filter:');
     expect(cachedBaseRule).not.toContain('mix-blend-mode:');

@@ -489,15 +489,6 @@ function PhysicsPaintCanvasStack(props: { children: ComponentChildren; cachedPla
 
   return (
     <div class="physics-paint-canvas-stack" ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
-      {canvasBounds && props.cachedRotoRepaintBaseUrl ? (
-        <img
-          class="physics-paint-cached-roto-repaint-base canvas-region"
-          src={props.cachedRotoRepaintBaseUrl}
-          alt=""
-          aria-hidden="true"
-          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
-        />
-      ) : null}
       {props.children}
       {canvasBounds ? (
         <div
@@ -505,6 +496,7 @@ function PhysicsPaintCanvasStack(props: { children: ComponentChildren; cachedPla
           aria-hidden="true"
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
+          {props.cachedRotoRepaintBaseUrl ? <img class="physics-paint-cached-roto-repaint-base" src={props.cachedRotoRepaintBaseUrl} alt="" /> : null}
           {props.cachedRotoReferenceUrl ? <img class="physics-paint-cached-roto-reference" src={props.cachedRotoReferenceUrl} alt="" /> : null}
           {props.cachedPlayPreviewUrl ? <img class="physics-paint-cached-play-preview" src={props.cachedPlayPreviewUrl} alt="" /> : null}
           {props.cachedRotoPlaybackUrl ? <img class="physics-paint-cached-play-preview" src={props.cachedRotoPlaybackUrl} alt="" /> : null}
