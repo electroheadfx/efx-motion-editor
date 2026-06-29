@@ -1041,9 +1041,14 @@ export function PhysicsPaintStudio() {
     targetEngine: PreviewBackgroundEngine | null = engine as PreviewBackgroundEngine | null,
     context: PhysicPaintLaunchContext | null = launchContext,
   ): boolean {
-    if (!targetEngine || getLaunchWorkflowMode(context) !== 'roto' || dirtyRotoFramesRef.current.has(appFrame)) {
+    if (!targetEngine || getLaunchWorkflowMode(context) !== 'roto') {
       setCachedRotoReferenceUrl(null);
       setCachedRotoRepaintBaseFrame(null);
+      return false;
+    }
+    if (dirtyRotoFramesRef.current.has(appFrame)) {
+      setCachedRotoReferenceUrl(null);
+      setCachedRotoRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null);
       return false;
     }
     const cachedFrame = findCachedRotoReferenceFrame(appFrame, context);
