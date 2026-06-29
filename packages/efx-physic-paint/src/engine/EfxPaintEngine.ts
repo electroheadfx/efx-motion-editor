@@ -128,6 +128,9 @@ export class EfxPaintEngine {
   // --- Background Data ---
   private bgData: ImageData | null = null
   private previewBackgroundRequestId: number = 0
+  private previewBaseRequestId: number = 0
+  private previewBaseEnabled: boolean = false
+  private previewBaseImage: HTMLImageElement | null = null
 
   // --- Engine State ---
   private state: EngineState
@@ -398,6 +401,7 @@ export class EfxPaintEngine {
     // Replay strokes on new background
     const savedStrokes = this.allActions.filter(s => s.tool !== 'physics' as string)
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
+    this.redrawPreviewBase()
     // Clear dry canvas first — drawImage of transparent bg doesn't erase existing pixels
     this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
     this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
@@ -432,6 +436,28 @@ export class EfxPaintEngine {
   resetBackground(): void {
     this.previewBackgroundRequestId += 1
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
+    this.redrawPreviewBase()
+    this.redrawAll()
+  }
+
+  setPreviewBaseImageUrl(dataUrl: string): void {
+    const requestId = ++this.previewBaseRequestId
+    const image = new Image()
+    image.onload = () => {
+      if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
+      this.previewBaseImage = image
+      this.previewBaseEnabled = true
+      this.redrawPreviewBase()
+      this.redrawAll()
+    }
+    image.src = dataUrl
+  }
+
+  clearPreviewBaseImage(): void {
+    this.previewBaseRequestId += 1
+    this.previewBaseEnabled = false
+    this.previewBaseImage = null
+    this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
     this.redrawAll()
   }
 
@@ -482,7 +508,8 @@ export class EfxPaintEngine {
     // Restore clean wet layer from saved snapshot
     const id = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
     const d = id.data
-    const bd = this.bgData ? this.bgData.data : null
+    const restoreData = this.getDryRestoreData()
+    const bd = restoreData ? restoreData.data : null
     let canvasChanged = false
     const lastOnly = mode === 'last'
 
@@ -660,8 +687,12 @@ export class EfxPaintEngine {
     this.savedWet.strokeOpacity.fill(0)
     // Hard reset both canvases — putImageData overwrites all pixels including alpha
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
-    const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
-    this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
+    this.redrawPreviewBase()
+    this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
+    if (!this.previewBaseEnabled) {
+      const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
+      this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
+    }
     // Also force-clear the display canvas so stale wet composite is gone
     this.dualCanvas.displayCtx.clearRect(0, 0, this.width, this.height)
   }
@@ -901,15 +932,29 @@ export class EfxPaintEngine {
     compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn)
   }
 
+  private getDryRestoreData(): ImageData | null {
+    return this.previewBaseEnabled ? null : this.bgData
+  }
+
+  private redrawPreviewBase(): void {
+    this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
+    if (!this.previewBaseEnabled || !this.previewBaseImage) return
+    this.dualCanvas.previewBaseCtx.drawImage(this.bgCanvas, 0, 0)
+    this.dualCanvas.previewBaseCtx.drawImage(this.previewBaseImage, 0, 0, this.width, this.height)
+  }
+
   private resetReplaySurface(usePutImageData: boolean = false): void {
     this.stopNaturalDrying()
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
-    if (usePutImageData) {
-      const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
-      this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
-    } else {
-      this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
-      this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
+    this.redrawPreviewBase()
+    this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
+    if (!this.previewBaseEnabled) {
+      if (usePutImageData) {
+        const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
+        this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
+      } else {
+        this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
+      }
     }
     clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
     this.fluid.u.fill(0); this.fluid.v.fill(0)
@@ -1067,7 +1112,7 @@ export class EfxPaintEngine {
         this.state.embossStrength,
         this.paperHeight,
         this.state.bgMode,
-        this.bgData,
+        this.getDryRestoreData(),
       )
       forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
     }
@@ -1357,6 +1402,7 @@ export class EfxPaintEngine {
 
     // Redraw background with loaded textures
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
+    this.redrawPreviewBase()
     this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
   }
 

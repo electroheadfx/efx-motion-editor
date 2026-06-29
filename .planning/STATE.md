@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.11
-current_phase_name: Physics Paint Roto Repaint Cached Real Key
-status: executing
-stopped_at: Phase 36.11 context gathered
-last_updated: "2026-06-29T09:42:32.863Z"
+current_phase: 36.12
+current_phase_name: Physics Paint Roto Generated Interpolation
+status: ready
+stopped_at: Phase 36.11 completed with live UAT approval
+last_updated: "2026-06-29T16:50:00.000Z"
 last_activity: 2026-06-29
-last_activity_desc: Phase 36.11 execution started
+last_activity_desc: Phase 36.11 completed after additive cached real-key repaint UAT approval
 progress:
   total_phases: 18
-  completed_phases: 13
+  completed_phases: 14
   total_plans: 75
-  completed_plans: 73
-  percent: 72
+  completed_plans: 75
+  percent: 78
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.11 — Physics Paint Roto Repaint Cached Real Key
+**Current focus:** Phase 36.12 — Physics Paint Roto Generated Interpolation
 
 ## Current Position
 
-Phase: 36.11 (Physics Paint Roto Repaint Cached Real Key) — EXECUTING
-Previous phase: 36.10 — Physics Paint Roto Missing Background Preview Export complete
-Plan: 1 of 3
-Status: Executing Phase 36.11
-Last activity: 2026-06-29 — Phase 36.11 execution started
-Next recommended action: Proceed with Phase 36.11 Physics Paint Roto Repaint Cached Real Key
+Phase: 36.12 (Physics Paint Roto Generated Interpolation) — READY
+Previous phase: 36.11 — Physics Paint Roto Repaint Cached Real Key complete
+Plan: 0 of TBD
+Status: Ready to plan Phase 36.12
+Last activity: 2026-06-29 — Phase 36.11 completed with live UAT approval
+Next recommended action: Plan Phase 36.12 Physics Paint Roto Generated Interpolation
 
-Progress: [████████████████████] 72/72 plans executed; 13/18 phases complete (72%)
+Progress: [████████████████████] 75/75 plans executed; 14/18 phases complete (78%)
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [████████████████████] 72/72 p
 | 36.6 | 3 | - | - |
 | 36.7 | 5 | - | - |
 | 36.10 | 5 | - | - |
+| 36.11 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -117,6 +118,8 @@ Recent decisions affecting current work:
 - [Phase 36.7]: Roto key utilities now operate on real-key controller transactions so Duplicate, Insert, Delete, Copy, and Paste keep cache/cell/canvas state clean.
 - [Phase 36.9]: Cached Roto Play/Stop transport lives inside the Roto navigator; Play and Stop replace each other in one icon slot, loop is an icon pressed state, fps changes restart active playback, and Space toggles playback in Roto mode.
 - [Phase 36.9]: Cached Roto playback sequences only real cached Roto key frames from launch context, excluding current/occupied/saved/background fallback frames that caused empty trailing frames.
+- [Phase 36.11]: Cached real-key repaint uses the cached alpha as a non-editable engine preview base and merges new live alpha additively on save; preview base stays out of export/cache serialization.
+- [Phase 36.11]: Same-session navigation after Save current uses a confirmed in-session cached-frame source so the latest accepted cache appears without close/reopen.
 
 ### Pending Todos
 
@@ -132,6 +135,7 @@ None yet.
 - Phase 36.9 State Machine Readiness is deferred to Phase 36.14 maintenance; Phase 36.8 is the state boundary foundation while remaining user-facing Roto features are prioritized first.
 - Phase 36.9 cached playback has green automated checks and Plan 03 summary prepared, but final user UAT confirmation is still pending for the real-key-only fix that should remove empty trailing playback frames.
 - Phase 36.10 completed: UAT Test 5 passed after user verified save/close/reopen preserves Physics Paint Roto strokes and paper/background metadata.
+- Phase 36.11 completed: user approved additive cached real-key repaint after old cache visibility, new paint preview layering, paper/background proportions, save merge, and same-session navigation cache refresh were verified.
 - Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
 ### Quick Tasks Completed
@@ -168,6 +172,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T06:36:43.272Z
-Stopped at: Phase 36.11 context gathered
-Resume file: .planning/phases/36.11-physics-paint-roto-repaint-cached-real-key/36.11-CONTEXT.md
+Last session: 2026-06-29T16:50:00.000Z
+Stopped at: Phase 36.11 completed with live UAT approval
+Resume file: .planning/ROADMAP.md#phase-3612-physics-paint-roto-generated-interpolation

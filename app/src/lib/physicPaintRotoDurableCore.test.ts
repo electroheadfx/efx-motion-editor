@@ -94,13 +94,15 @@ interface TestPaintEngine {
   exportCompositeCanvas: () => { width: number; height: number; toDataURL: () => string };
   setBackgroundImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
   resetBackground: ReturnType<typeof vi.fn<() => void>>;
+  setPreviewBaseImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
+  clearPreviewBaseImage: ReturnType<typeof vi.fn<() => void>>;
   getStrokeCount: () => number;
   setTool: (...args: unknown[]) => void;
   setPhysicsMode: (...args: unknown[]) => void;
   setColorHex: (...args: unknown[]) => void;
   setBrushOpacity: (...args: unknown[]) => void;
   setBrushSize: (...args: unknown[]) => void;
-  setBgMode: (mode: string) => void;
+  setBgMode: ReturnType<typeof vi.fn<(mode: string) => void>>;
   setPaperGrain: (...args: unknown[]) => void;
   setEmbossStrength: (...args: unknown[]) => void;
   setEdgeDetail: (...args: unknown[]) => void;
@@ -156,6 +158,8 @@ function makeEngine(initialState: SerializedProject, initialDataUrl: string): Te
     exportCompositeCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl })),
     setBackgroundImageUrl: vi.fn(),
     resetBackground: vi.fn(),
+    setPreviewBaseImageUrl: vi.fn(),
+    clearPreviewBaseImage: vi.fn(),
     getStrokeCount: vi.fn(() => state.strokes.length),
     setTool: vi.fn(),
     setPhysicsMode: vi.fn(),
@@ -619,6 +623,9 @@ describe('Phase 36.3 durable Roto cache core', () => {
 
     paintHarness.engine?.setBackgroundImageUrl.mockClear();
     paintHarness.engine?.resetBackground.mockClear();
+    paintHarness.engine?.setPreviewBaseImageUrl.mockClear();
+    paintHarness.engine?.clearPreviewBaseImage.mockClear();
+    paintHarness.engine?.setBgMode.mockClear();
     paintHarness.engine?.clear.mockClear();
     paintHarness.engine?.load.mockClear();
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -634,8 +641,9 @@ describe('Phase 36.3 durable Roto cache core', () => {
     if (!reopenedText.includes('Cached reference')) failures.push(`expected relaunched Physics Paint to label frame 8 as a Cached reference, got: ${reopenedText}`);
     const backgroundCalls = paintHarness.engine?.setBackgroundImageUrl.mock.calls ?? [];
     if (backgroundCalls.some(([dataUrl]) => dataUrl === savedDataUrl)) failures.push(`expected relaunched Roto cached reference to stay out of the engine paper background; got background=${JSON.stringify(backgroundCalls)}`);
-    if (!paintHarness.engine?.resetBackground.mock.calls.length) failures.push('expected relaunched Roto cached reference to reset stale engine background');
-    if (!paintHarness.engine?.clear.mock.calls.length) failures.push('expected relaunched cached-only Roto reference to clear stale editable strokes before showing the overlay reference');
+    if (paintHarness.engine?.setBgMode.mock.calls.some(([mode]) => mode === 'transparent')) failures.push('expected relaunched Roto cached reference to preserve the engine paper background proportions');
+    if (!paintHarness.engine?.setPreviewBaseImageUrl.mock.calls.some(([dataUrl]) => dataUrl === savedDataUrl)) failures.push('expected relaunched Roto cached reference to use the non-editable engine preview base');
+    if (!paintHarness.engine?.clear.mock.calls.length) failures.push('expected relaunched cached-only Roto reference to clear stale editable strokes before showing the preview-base reference');
     if (paintHarness.engine?.load.mock.calls.some(([state]) => state === editableState || state.strokes.length > 0)) failures.push('expected cached-only Roto relaunch not to load editable saved strokes');
     paintHarness.engine?.__setState(editedState, unsavedDataUrl);
     if (canvasStack) fire(canvasStack, 'PointerDown');

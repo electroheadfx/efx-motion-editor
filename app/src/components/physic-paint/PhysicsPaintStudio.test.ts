@@ -175,6 +175,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).toContain("engine.setBgMode('transparent')");
     expect(text).toContain('return engine.exportCompositeCanvas()');
     expect(text).toContain('engine.load(state)');
+    expect(text).toContain('const confirmedCachedRotoFramesRef = useRef<Map<number, RenderedFramePayload>>');
     expect(text).toContain('const rotoCapturedFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map())');
     expect(snapshotBlock).toContain('const capturedFrame = buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width: canvasWidth, height: canvasHeight })');
     expect(snapshotBlock).toContain('rotoCapturedFramesRef.current.set(appFrame, capturedFrame)');
@@ -362,10 +363,14 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
     const text = source();
     const loadBlock = text.slice(text.indexOf('function loadCachedRotoReferenceFrame'), text.indexOf('useEffect(() => {', text.indexOf('function loadCachedRotoReferenceFrame')));
 
-    expect(loadBlock).toContain('setCachedRotoReferenceUrl(cachedFrame?.dataUrl ?? null)');
+    expect(loadBlock).toContain('setCachedRotoReferenceUrl(null)');
+    expect(loadBlock).toContain('targetEngine.setBgMode(settings.background)');
+    expect(loadBlock).toContain('targetEngine.setPreviewBaseImageUrl(cachedFrame.dataUrl)');
+    expect(loadBlock).toContain('targetEngine.clearPreviewBaseImage()');
     expect(loadBlock).toContain('targetEngine.resetBackground()');
     expect(loadBlock).toContain('targetEngine.clear()');
     expect(loadBlock).not.toContain('targetEngine.setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(loadBlock).not.toContain("targetEngine.setBgMode(cachedFrame?.dataUrl ? 'transparent' : settings.background)");
     expect(text).toContain('const resetRotoSessionForLaunch = useCallback');
     expect(text).toContain('resetRotoSessionForLaunch(context, { preserveCloseAfterRotoSave })');
     expect(text).toContain('loadCachedRotoReferenceFrame(context.startFrame, readyEngine as PreviewBackgroundEngine, context)');
@@ -558,8 +563,10 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 
     expect(text).toContain('type PreviewBackgroundEngine = EfxPaintEngine &');
     expect(loadBlock).toContain('findCachedPlayPreviewFrame(previewFrame)');
+    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).clearPreviewBaseImage()');
     expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl)');
     expect(editBlock).toContain('const cachedFrame = savedPlayCacheDirty ? null : findCachedPlayPreviewFrame(localPlayPreviewFrame)');
+    expect(editBlock).toContain('(engine as PreviewBackgroundEngine).clearPreviewBaseImage()');
     expect(editBlock).toContain('(engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl)');
     expect(editBlock).toContain('if (cachedPlayPreviewUrl) setCachedPlayPreviewUrl(null)');
     expect(editBlock).toContain('playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount }');
@@ -592,17 +599,23 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(previewBlock).toContain('playerRef.current.play');
   });
 
-  it('keeps the cached edit background out of generated Play frames', () => {
+  it('keeps cached edit backgrounds and Roto repaint bases out of generated output', () => {
     const engine = engineSource();
 
     expect(engine).toContain('setBackgroundImageUrl(dataUrl: string)');
     const backgroundBlock = engine.slice(engine.indexOf('setBackgroundImageUrl(dataUrl: string)'), engine.indexOf('resetBackground(): void'));
+    const previewBaseBlock = engine.slice(engine.indexOf('private redrawPreviewBase()'), engine.indexOf('private resetReplaySurface'));
+    const exportBlock = engine.slice(engine.indexOf('exportCompositeCanvas(): HTMLCanvasElement'), engine.indexOf('// ================================================================', engine.indexOf('exportCompositeCanvas(): HTMLCanvasElement')));
 
     expect(engine).toContain('const requestId = ++this.previewBackgroundRequestId');
     expect(engine).toContain('if (requestId !== this.previewBackgroundRequestId || this.destroyed || this.animationMode || this.state.drawing) return');
     expect(backgroundBlock).not.toContain('this.redrawAll()');
     expect(engine).toContain('resetBackground(): void');
     expect(engine).toContain('this.previewBackgroundRequestId += 1');
+    expect(engine).toContain('setPreviewBaseImageUrl(dataUrl: string)');
+    expect(previewBaseBlock).toContain('this.dualCanvas.previewBaseCtx.drawImage(this.bgCanvas, 0, 0)');
+    expect(previewBaseBlock).toContain('this.dualCanvas.previewBaseCtx.drawImage(this.previewBaseImage, 0, 0, this.width, this.height)');
+    expect(exportBlock).not.toContain('previewBaseCanvas');
   });
 
   it('saves Play using selected script range and clears dirty cache status after regenerated frames publish', () => {
@@ -660,7 +673,9 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('const rotoCachedPlaybackTimerRef = useRef<number | null>(null)');
     expect(cachedRotoBlock).toContain('function findCachedRotoReferenceFrame(appFrame: number, context: PhysicPaintLaunchContext | null = launchContext): RenderedFramePayload | null');
     expect(cachedRotoBlock).toContain('physicPaintStore.getFrame(context.layerId, appFrame)');
+    expect(cachedRotoBlock).toContain('confirmedCachedRotoFramesRef.current.get(appFrame)');
     expect(cachedRotoBlock).toContain('rotoPreviewFramesRef.current.get(appFrame)');
+    expect(cachedRotoBlock.indexOf('confirmedCachedRotoFramesRef.current.get(appFrame)')).toBeLessThan(cachedRotoBlock.indexOf('rotoPreviewFramesRef.current.get(appFrame)'));
     expect(cachedRotoBlock).toContain('function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null');
     expect(cachedRotoBlock).toContain('return findCachedRotoReferenceFrame(appFrame)');
     expect(toggleBlock).toContain('const cachedFrames = getRotoCachedPlaybackFrames()');
@@ -742,6 +757,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(loadBlock).toContain('targetEngine.resetBackground()');
     expect(text).toContain('cachedRotoReferenceUrl={cachedRotoReferenceUrl}');
     expect(text).toContain('class="physics-paint-cached-roto-reference"');
+    expect(loadBlock).toContain('setCachedRotoReferenceUrl(null)');
   });
 
   it('clears stale cached Roto reference overlays before navigation loads the destination frame', () => {
@@ -956,6 +972,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('const upsertCachedRotoFrameInLaunchContext = useCallback');
     expect(upsertHelperBlock).toContain("source: 'real-key'");
     expect(upsertHelperBlock).toContain('onionDataUrl: onionFrame.dataUrl');
+    expect(upsertCallbackBlock).toContain('confirmedCachedRotoFramesRef.current.set(renderedFrame.appFrame, renderedFrame)');
     expect(upsertCallbackBlock).toContain('cachedRotoFrames: upsertCachedRotoCacheFrame');
     expect(flushBlock).toContain('upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame)');
     expect(flushBlock).not.toContain('savePendingRotoFrames()');
@@ -973,7 +990,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(loadBlock).toContain('setCachedRotoRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null)');
     expect(loadBlock.indexOf('dirtyRotoFramesRef.current.has(appFrame)')).toBeLessThan(loadBlock.indexOf('const cachedFrame = findCachedRotoReferenceFrame'));
     expect(dirtyBlock).not.toContain('setCachedRotoReferenceUrl(null)');
-    expect(dirtyBlock).toContain('if (!cachedRotoRepaintBaseFrame) clearCachedRotoReferenceUrl()');
+    expect(dirtyBlock).toContain('clearCachedRotoReferenceUrl()');
     expect(flushBlock).toContain('const cachedRepaintBase = cachedRotoRepaintBaseFrame?.appFrame === frame ? cachedRotoRepaintBaseFrame : null');
     expect(flushBlock).toContain('}, [actionContext, addEditableRotoFrame, cachedRotoRepaintBaseFrame, canvasHeight');
     expect(flushBlock).toContain('const liveAlphaCanvas = exportTransparentStrokeCanvas(engine)');
@@ -982,29 +999,26 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(flushBlock).toContain('const onionFrame = backgroundOnly ? null : renderedFrame');
     expect(flushBlock).toContain('renderedFrame,');
     expect(flushBlock).toContain("kind: 'apply-canvas'");
+    expect(flushBlock).toContain('pendingCachedRotoMergeFrameRef.current = { frame, renderedFrame, backgroundOnly, onionFrame }');
+    expect(flushBlock).toContain('} else {\n            upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame);\n          }');
     expect(flushBlock).not.toContain('engine.load(cachedRepaintBase');
     expect(flushBlock).not.toContain('reconstructCachedRoto');
   });
 
   it('D-01 keeps cached repaint base full strength and semantically separate from onion/playback/reference visual treatment', () => {
     const text = source();
-    const css = styles();
     const canvasStackBlock = text.slice(text.indexOf('function PhysicsPaintCanvasStack'), text.indexOf('function makeInitialSettings'));
-    const cachedBaseRuleStart = css.indexOf('.physics-paint-cached-roto-repaint-base {');
-    const cachedBaseRule = css.slice(cachedBaseRuleStart, css.indexOf('}', cachedBaseRuleStart));
 
-    expect(canvasStackBlock).toContain('cachedRotoRepaintBaseUrl?: string | null');
-    expect(canvasStackBlock).toContain('class="physics-paint-cached-roto-repaint-base"');
-    expect(canvasStackBlock).toContain('props.cachedRotoRepaintBaseUrl');
+    expect(text).not.toContain('cachedRotoRepaintBaseUrl?: string | null');
+    expect(text).not.toContain('class="physics-paint-cached-roto-repaint-base"');
+    expect(text).not.toContain('cachedRotoRepaintBaseUrl={cachedRotoRepaintBaseFrame?.dataUrl ?? null}');
+    expect(text).not.toContain('cached-roto-repaint');
+    expect(canvasStackBlock).not.toContain('class="physics-paint-cached-roto-repaint-base"');
     expect(canvasStackBlock).not.toContain('physics-paint-onion-frame cachedRotoRepaintBaseUrl');
     expect(canvasStackBlock).not.toContain('physics-paint-cached-play-preview cachedRotoRepaintBaseUrl');
     expect(canvasStackBlock).not.toContain('physics-paint-cached-roto-reference cachedRotoRepaintBaseUrl');
-    expect(cachedBaseRuleStart).toBeGreaterThanOrEqual(0);
-    expect(cachedBaseRule).toContain('z-index: 1;');
-    expect(cachedBaseRule).not.toMatch(/opacity:\s*0\.[0-9]+/);
-    expect(cachedBaseRule).not.toContain('filter:');
-    expect(cachedBaseRule).not.toContain('mix-blend-mode:');
-    expect(cachedBaseRule).not.toContain('outline:');
+    expect(text).toContain('targetEngine.setPreviewBaseImageUrl(cachedFrame.dataUrl)');
+    expect(text).toContain('targetEngine.clearPreviewBaseImage()');
   });
 
   it('D-02 keeps the cached repaint base outside editable stroke/script state restoration', () => {
@@ -1014,10 +1028,12 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
     expect(loadBlock).toContain('setCachedRotoRepaintBaseFrame(cachedFrame ?? null)');
     expect(loadBlock).toContain('setCachedRotoRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null)');
+    expect(loadBlock).toContain('targetEngine.setPreviewBaseImageUrl(cachedFrame.dataUrl)');
     expect(loadBlock).toContain('targetEngine.clear()');
     expect(loadBlock).not.toContain('engine.load(cachedFrame');
     expect(loadBlock).not.toContain('editableState');
     expect(loadBlock).not.toContain('strokes');
+    expect(snapshotBlock).toContain('cachedRotoRepaintBaseFrame?.appFrame === appFrame');
     expect(snapshotBlock).not.toContain('cachedRotoRepaintBaseFrame.strokes');
     expect(snapshotBlock).not.toContain('rotoFrameStatesRef.current.set(appFrame, cachedRotoRepaintBaseFrame');
   });
@@ -1028,10 +1044,43 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
     expect(flushBlock).toContain('setApplyMessage(`Merged new paint into frame ${frame}.`)');
     expect(flushBlock).toContain('setApplyMessage(`Could not merge frame ${frame} — edits are still open. ${detail}`)');
-    expect(flushBlock).toContain('if (cachedRepaintBase) setCachedRotoReferenceUrl(cachedRepaintBase.dataUrl)');
+    expect(flushBlock).toContain('if (cachedRepaintBase) setCachedRotoReferenceUrl(null)');
     expect(flushBlock).toContain('if (cachedRepaintBase) setCachedRotoRepaintBaseFrame(cachedRepaintBase)');
     expect(flushBlock).toContain('dirtyRotoFramesRef.current.add(frame)');
     expect(flushBlock).not.toContain('engine.clear()');
+  });
+
+  it('36.11 clears live repaint overlay only after the merged cached frame is accepted', () => {
+    const text = source();
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+
+    expect(resultBlock).toContain('const mergedFrame = pendingCachedRotoMergeFrameRef.current?.frame === frame ? pendingCachedRotoMergeFrameRef.current : null');
+    expect(resultBlock).toContain('upsertCachedRotoFrameInLaunchContext(mergedFrame.renderedFrame, mergedFrame.backgroundOnly, mergedFrame.onionFrame)');
+    expect(resultBlock).toContain('setCachedRotoReferenceUrl(null)');
+    expect(resultBlock).toContain('setCachedRotoRepaintBaseFrame(mergedFrame.renderedFrame)');
+    expect(resultBlock).toContain('rotoFrameStatesRef.current.delete(frame)');
+    expect(resultBlock).toContain('liveRotoOverlayActionCountRef.current.delete(frame)');
+    expect(resultBlock).toContain('removeEditableRotoFrame(frame)');
+    expect(resultBlock).toContain('engine.setBgMode(settings.background)');
+    expect(resultBlock).toContain('engine.clear()');
+    expect(resultBlock).toContain('(engine as PreviewBackgroundEngine).setPreviewBaseImageUrl(mergedFrame.renderedFrame.dataUrl)');
+  });
+
+  it('36.11 keeps accepted cached repaint saves in a confirmed in-session source for timeline navigation', () => {
+    const text = source();
+    const resetBlock = text.slice(text.indexOf('const resetRotoSessionForLaunch = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const resetRotoSessionForLaunch = useCallback')));
+    const findBlock = text.slice(text.indexOf('function findCachedRotoReferenceFrame'), text.indexOf('function findCachedRotoPlaybackFrame'));
+    const upsertCallbackBlock = text.slice(text.indexOf('const upsertCachedRotoFrameInLaunchContext = useCallback'), text.indexOf('const clearCachedRotoReferenceUrl = useCallback'));
+    const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const startRotoCachedPlayback'));
+
+    expect(text).toContain('const confirmedCachedRotoFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map())');
+    expect(resetBlock).toContain('confirmedCachedRotoFramesRef.current = new Map(getRealCachedRotoFrames(context).map((frame) => [frame.appFrame, frame]))');
+    expect(findBlock.indexOf('confirmedCachedRotoFramesRef.current.get(appFrame)')).toBeLessThan(findBlock.indexOf('rotoPreviewFramesRef.current.get(appFrame)'));
+    expect(findBlock.indexOf('confirmedCachedRotoFramesRef.current.get(appFrame)')).toBeLessThan(findBlock.indexOf('context.cachedRotoFrames?.find'));
+    expect(upsertCallbackBlock).toContain('confirmedCachedRotoFramesRef.current.set(renderedFrame.appFrame, renderedFrame)');
+    expect(upsertCallbackBlock).toContain('confirmedCachedRotoFramesRef.current.delete(appFrame)');
+    expect(snapshotBlock).toContain('rotoPreviewFramesRef.current.delete(appFrame)');
+    expect(snapshotBlock).not.toContain('confirmedCachedRotoFramesRef.current.delete(appFrame)');
   });
 
   it('36.11 D-10/D-13 preserves a clean cached-base Save current before delete/apply branches and reports compact no-new-paint feedback', () => {
@@ -1110,7 +1159,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
     expect(text).toContain('const [editableRotoFrames, setEditableRotoFrames] = useState<number[]>([])');
     expect(text).toContain('function hasEditableRotoContent');
-    expect(snapshotBlock).toContain('if (cachedRotoReferenceUrl && !dirtyRotoFramesRef.current.has(appFrame))');
+    expect(snapshotBlock).toContain('if ((cachedRotoReferenceUrl || cachedRotoRepaintBaseFrame?.appFrame === appFrame) && !dirtyRotoFramesRef.current.has(appFrame))');
     expect(snapshotBlock).toContain('rotoFrameStatesRef.current.delete(appFrame)');
     expect(snapshotBlock).toContain('rotoPreviewFramesRef.current.delete(appFrame)');
     expect(snapshotBlock).toContain('if (hasEditableRotoContent(currentState)) addEditableRotoFrame(appFrame)');

@@ -136,7 +136,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.8: Physics Paint Roto State Refactor** - PhysicsPaintStudio consumes a compact Roto session/key state boundary while preserving Phase 36.7 visible behavior. (completed 2026-06-25)
 - [ ] **Phase 36.9: Physics Paint Roto Cached Playback Auto-Play** - Animators can optionally preview cached Roto frames with Play/Stop automation if manual stepping is not enough. (planned; final UAT confirmation pending)
 - [x] **Phase 36.10: Physics Paint Roto Missing Background Preview Export** - Missing Roto frames render consistently as transparent or background-only in preview/export, and final UAT Test 5 passed after saved-project Roto paper/background recovery. (completed 2026-06-27)
-- [ ] **Phase 36.11: Physics Paint Roto Repaint Cached Real Key** - Existing cached real Roto keys reopen with their alpha paint as an additive base layer for repainting without restoring old stroke scripts. (planned)
+- [x] **Phase 36.11: Physics Paint Roto Repaint Cached Real Key** - Existing cached real Roto keys reopen with their alpha paint as an additive base layer for repainting without restoring old stroke scripts. (completed 2026-06-29)
 - [ ] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (planned)
 - [ ] **Phase 36.13: Physics Paint Roto Timeline UI From Pencil** - Roto timeline controls match the corrected Pencil design after behavior is stable. (planned)
 - [ ] **Phase 36.14: Physics Paint Roto State Machine Readiness** - Maintenance phase to evaluate XState/state-machine ownership after remaining user-facing 36.x Roto features are integrated. (deferred)
@@ -325,7 +325,7 @@ Use `SPECS/36.x-phases/phase-36.11-repaint-cached-real-key/spec-36.11-repaint-ca
 **Mode:** mvp
 **Requirements**: 36.11-REPAINT-CACHED-REAL-KEY, 36.11-ALPHA-ONLY-MERGE, 36.11-NO-STROKE-RESTORE
 **Depends on:** Phase 36.10
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Planning notes:
 
@@ -347,7 +347,7 @@ Plans:
 
 **Wave 3** *(blocked on Waves 1-2 repaint behavior)*
 
-- [ ] 36.11-03-PLAN.md — Prove store/renderer alpha separation and run live cached-key repaint UAT.
+- [x] 36.11-03-PLAN.md — Prove store/renderer alpha separation and run live cached-key repaint UAT.
 
 ### Phase 36.12: Physics Paint Roto Generated Interpolation
 
@@ -788,7 +788,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.8. Physics Paint Roto State Refactor | v0.8.0 | 5/5 | Complete | 2026-06-25 |
 | 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 3/3 | UAT pending |  |
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 5/5 | Complete    | 2026-06-27 |
-| 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 2/3 | In Progress|  |
+| 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 0/TBD | Not started | - |
 | 36.13. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
 | 36.14. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |

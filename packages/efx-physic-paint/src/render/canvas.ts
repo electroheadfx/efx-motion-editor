@@ -10,6 +10,8 @@ import { smooth, resample, ribbon } from '../brush/stroke'
 
 /** Result of dual-canvas setup */
 export interface DualCanvas {
+  previewBaseCanvas: HTMLCanvasElement
+  previewBaseCtx: CanvasRenderingContext2D
   dryCanvas: HTMLCanvasElement
   dryCtx: CanvasRenderingContext2D
   displayCanvas: HTMLCanvasElement
@@ -35,12 +37,24 @@ export function setupDualCanvas(
   container.style.position = 'relative'
   container.style.overflow = 'hidden'
 
+  const previewBaseCanvas = document.createElement('canvas')
+  previewBaseCanvas.width = width
+  previewBaseCanvas.height = height
+  previewBaseCanvas.style.position = 'absolute'
+  previewBaseCanvas.style.top = '0'
+  previewBaseCanvas.style.left = '0'
+  previewBaseCanvas.style.zIndex = '1'
+  previewBaseCanvas.style.pointerEvents = 'none'
+  previewBaseCanvas.style.width = '100%'
+  previewBaseCanvas.style.height = 'auto'
+  container.appendChild(previewBaseCanvas)
+
   // Dry canvas — interactive layer
   const dryCanvas = document.createElement('canvas')
   dryCanvas.width = width
   dryCanvas.height = height
   dryCanvas.style.position = 'relative'
-  dryCanvas.style.zIndex = '1'
+  dryCanvas.style.zIndex = '2'
   dryCanvas.style.cursor = 'none'
   dryCanvas.style.touchAction = 'none'
   dryCanvas.style.display = 'block'
@@ -55,16 +69,17 @@ export function setupDualCanvas(
   displayCanvas.style.position = 'absolute'
   displayCanvas.style.top = '0'
   displayCanvas.style.left = '0'
-  displayCanvas.style.zIndex = '2'
+  displayCanvas.style.zIndex = '3'
   displayCanvas.style.pointerEvents = 'none'
   displayCanvas.style.width = '100%'
   displayCanvas.style.height = 'auto'
   container.appendChild(displayCanvas)
 
+  const previewBaseCtx = previewBaseCanvas.getContext('2d')!
   const dryCtx = dryCanvas.getContext('2d', { willReadFrequently: true })!
   const displayCtx = displayCanvas.getContext('2d')!
 
-  return { dryCanvas, dryCtx, displayCanvas, displayCtx }
+  return { previewBaseCanvas, previewBaseCtx, dryCanvas, dryCtx, displayCanvas, displayCtx }
 }
 
 /**
