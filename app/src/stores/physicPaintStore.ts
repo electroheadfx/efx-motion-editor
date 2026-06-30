@@ -294,11 +294,7 @@ function _withGeneratedAppFrame(frame: PhysicPaintRenderedFrame, appFrame: numbe
 
 function _decodeAlphaSource(dataUrl: string): string {
   const payload = dataUrl.split(',')[1] ?? '';
-  try {
-    if (typeof atob === 'function') return atob(payload);
-  } catch {
-    return payload;
-  }
+  if (typeof atob === 'function') return atob(payload);
   return payload;
 }
 

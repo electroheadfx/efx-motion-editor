@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clampPhysicPaintFrameCount } from '../types/physicPaint';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
@@ -664,7 +664,7 @@ describe('physicPaintStore', () => {
     const blend = renderBlendedRotoInterpolationFrame(first, second, 2, 0.5, settings);
     const changedFirst = renderBlendedRotoInterpolationFrame(makeAlphaFrame(0, 1, 'alpha-first-changed'), second, 2, 0.5, settings);
     const changedSecond = renderBlendedRotoInterpolationFrame(first, makeAlphaFrame(0, 3, 'alpha-second-changed'), 2, 0.5, settings);
-    const changedBackground = renderBlendedRotoInterpolationFrame({ ...first, backgroundOnly: true, nearestRealKeyFrame: 99 } as never, { ...second, onionDataUrl: 'data:image/png;base64,cGFwZXI=' }, 2, 0.5, settings);
+    const changedBackground = renderBlendedRotoInterpolationFrame({ ...first, backgroundOnly: true, nearestRealKeyFrame: 99 } as never, { ...second, onionDataUrl: 'data:image/png;base64,cGFwZXI=' } as never, 2, 0.5, settings);
 
     expect(blend).toMatchObject({ appFrame: 2, frameIndex: 0, source: 'generated-interpolation', width: 2, height: 2 });
     expect(blend.dataUrl).toMatch(/^data:image\/png;base64,/);
@@ -815,6 +815,63 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 6, source: 'real-key' }),
     ]);
     expect(physicPaintStore.getFrame('layer-1', 4)?.dataUrl).toBe('data:image/png;base64,cmVhbC00');
+  });
+
+  it('regenerates enabled interpolation after real-key upsert, removal, replacement, and disables cleanly', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeAlphaFrame(0, 1, 'alpha-one'));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'alpha-four'));
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 });
+    const initialGenerated = physicPaintStore.getFrame('layer-1', 2)?.dataUrl;
+
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'alpha-four-changed'));
+    expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).not.toBe(initialGenerated);
+    expect(physicPaintStore.getRotoInterpolationFailureStatus('layer-1')).toBeNull();
+
+    expect(physicPaintStore.removeRealRotoKeyFrame('layer-1', 4)).toBe(true);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 1, source: 'real-key' }),
+    ]);
+
+    physicPaintStore.replaceRotoKeyFrames({
+      kind: 'replace-roto-key-frames',
+      operationId: 'op-replace-regenerate',
+      layerId: 'layer-1',
+      startFrame: 1,
+      frames: [{ ...makeAlphaFrame(0, 2, 'alpha-two'), source: 'real-key' }, { ...makeAlphaFrame(0, 5, 'alpha-five'), source: 'real-key' }],
+    });
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 2, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', nearestRealKeyFrame: 2 }),
+      expect.objectContaining({ appFrame: 4, source: 'generated-interpolation', nearestRealKeyFrame: 2 }),
+      expect.objectContaining({ appFrame: 5, source: 'real-key' }),
+    ]);
+
+    const beforeDisable = physicPaintVersion.value;
+    expect(physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: false })).toEqual([]);
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([2, 5]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1').map(frame => frame.source)).toEqual(['real-key', 'real-key']);
+    expect(physicPaintVersion.value).toBeGreaterThan(beforeDisable);
+  });
+
+  it('keeps real-key mutations and exposes compact failure status when regeneration fails', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeAlphaFrame(0, 1, 'alpha-one'));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'alpha-four'));
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 });
+    const originalAtob = globalThis.atob;
+    vi.stubGlobal('atob', () => { throw new Error('decode failed'); });
+
+    try {
+      physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'alpha-failure-kept'));
+    } finally {
+      vi.stubGlobal('atob', originalAtob);
+    }
+
+    expect(physicPaintStore.getFrame('layer-1', 4)?.dataUrl).toBe(makeAlphaFrame(0, 4, 'alpha-failure-kept').dataUrl);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 1, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+    ]);
+    expect(physicPaintStore.getRotoInterpolationFailureStatus('layer-1')).toBe('Interpolation could not regenerate. Real keys were kept.');
   });
 
   it('D-10 replaceRotoKeyFrames removes stale support and recomputes only current bounded interiors', () => {
