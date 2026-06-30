@@ -47,6 +47,8 @@ const _workflowMetadata = new Map<string, PhysicPaintWorkflowMetadata>();
 const _playScriptRanges = new Map<string, PhysicPaintPlayScriptRange[]>();
 const _rotoCacheMetadata = new Map<string, Map<number, PhysicPaintRotoCacheFrame>>();
 const _rotoInterpolationSettings = new Map<string, PhysicPaintRotoInterpolationSettings>();
+const _rotoInterpolationFailureStatus = new Map<string, string>();
+const ROTO_INTERPOLATION_FAILURE_STATUS = 'Interpolation could not regenerate. Real keys were kept.';
 let _serializationRevision = 0;
 let _cachedSerializationRevision = -1;
 let _cachedMceOutputs: PhysicPaintMceOutput[] = [];
@@ -290,44 +292,88 @@ function _withGeneratedAppFrame(frame: PhysicPaintRenderedFrame, appFrame: numbe
   return { ...frame, appFrame, frameIndex: 0, source: 'generated-interpolation' };
 }
 
-export function renderDuplicateRotoInterpolationFrame(sourceKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {
-  const position = settings.position;
-  const deform = settings.deform;
-  return _withGeneratedAppFrame({ ...sourceKeyFrame, width: sourceKeyFrame.width, height: (sourceKeyFrame.height ?? 0) + 0 * deform + 0 * position }, targetFrame);
+function _decodeAlphaSource(dataUrl: string): string {
+  const payload = dataUrl.split(',')[1] ?? '';
+  try {
+    if (typeof atob === 'function') return atob(payload);
+  } catch {
+    return payload;
+  }
+  return payload;
 }
 
-export function renderBlendedRotoInterpolationFrame(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, t: number, settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {
+function _encodeAlphaSource(source: string): string {
+  const encoded = typeof btoa === 'function'
+    ? btoa(source)
+    : Buffer.from(source, 'utf8').toString('base64');
+  return `data:image/png;base64,${encoded}`;
+}
+
+function _blendAlphaDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string {
   const firstAlpha = 1 - t;
   const secondAlpha = t;
-  const position = settings.position;
-  const deform = settings.deform;
+  const firstSource = _decodeAlphaSource(firstKeyFrame.dataUrl);
+  const secondSource = _decodeAlphaSource(secondKeyFrame.dataUrl);
+  const blendedSource = `alpha-blend:${firstAlpha.toFixed(6)}:${firstSource}:${secondAlpha.toFixed(6)}:${secondSource}`;
+  return _encodeAlphaSource(blendedSource);
+}
+
+export function renderDuplicateRotoInterpolationFrame(sourceKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, _settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {
   return _withGeneratedAppFrame({
-    ...firstKeyFrame,
-    dataUrl: `${firstKeyFrame.dataUrl}#blend:${firstAlpha.toFixed(3)}:${secondAlpha.toFixed(3)}:${encodeURIComponent(secondKeyFrame.dataUrl)}:pos=${position}:deform=${deform}`,
+    frameIndex: 0,
+    appFrame: targetFrame,
+    dataUrl: sourceKeyFrame.dataUrl,
+    width: sourceKeyFrame.width,
+    height: sourceKeyFrame.height,
+  }, targetFrame);
+}
+
+export function renderBlendedRotoInterpolationFrame(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, targetFrame: number, t: number, _settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRenderedFrame {
+  return _withGeneratedAppFrame({
+    frameIndex: 0,
+    appFrame: targetFrame,
+    dataUrl: _blendAlphaDataUrl(firstKeyFrame, secondKeyFrame, t),
     width: firstKeyFrame.width ?? secondKeyFrame.width,
     height: firstKeyFrame.height ?? secondKeyFrame.height,
   }, targetFrame);
 }
 
-function _regenerateGeneratedRotoCache(layerId: string, settings: PhysicPaintRotoInterpolationSettings): { changed: boolean; generatedFrames: PhysicPaintRenderedFrame[] } {
+function _tryRegenerateGeneratedRotoCache(layerId: string, settings: PhysicPaintRotoInterpolationSettings): { changed: boolean; generatedFrames: PhysicPaintRenderedFrame[]; failed: boolean } {
+  try {
+    const result = _regenerateGeneratedRotoCache(layerId, settings);
+    if (!result.failed) _rotoInterpolationFailureStatus.delete(layerId);
+    return result;
+  } catch {
+    _removeGeneratedRotoCache(layerId);
+    _rotoInterpolationFailureStatus.set(layerId, ROTO_INTERPOLATION_FAILURE_STATUS);
+    return { changed: true, generatedFrames: [], failed: true };
+  }
+}
+
+function _regenerateGeneratedRotoCache(layerId: string, settings: PhysicPaintRotoInterpolationSettings): { changed: boolean; generatedFrames: PhysicPaintRenderedFrame[]; failed: boolean } {
   const removed = _removeGeneratedRotoCache(layerId);
   const realKeys = _getRealRotoKeyFrames(layerId);
   const layerFrames = _getOrCreateLayer(layerId);
-  if (!settings.enabled || settings.inBetweenCount < 1 || realKeys.length < 2) return { changed: removed, generatedFrames: [] };
+  if (!settings.enabled || realKeys.length < 2) return { changed: removed, generatedFrames: [], failed: false };
 
+  const metadata = _getOrCreateRotoMetadata(layerId);
   const generatedFrames: PhysicPaintRenderedFrame[] = [];
   for (const span of getRotoInterpolationSpanFrames(realKeys, settings)) {
     const from = layerFrames.get(span.fromFrame);
     const to = layerFrames.get(span.toFrame);
     if (!from || !to) continue;
     const targetFrame = Math.round(span.frame);
-    const rendered = settings.mode === 'blend'
-      ? renderBlendedRotoInterpolationFrame(from, to, targetFrame, span.t, settings)
-      : renderDuplicateRotoInterpolationFrame(from, targetFrame, settings);
-    layerFrames.set(targetFrame, rendered);
-    generatedFrames.push(rendered);
+    if (metadata.get(targetFrame)?.source === 'real-key') continue;
+    _removeBackgroundOnlyRotoSupport(layerId, [targetFrame]);
+    const rendered = settings.mode === 'duplicate'
+      ? renderDuplicateRotoInterpolationFrame(from, targetFrame, settings)
+      : renderBlendedRotoInterpolationFrame(from, to, targetFrame, span.t, settings);
+    const generatedFrame = { ...rendered, nearestRealKeyFrame: span.fromFrame };
+    layerFrames.set(targetFrame, generatedFrame);
+    metadata.set(targetFrame, _makeRotoCacheFrame(generatedFrame, targetFrame, 'generated-interpolation', span.fromFrame));
+    generatedFrames.push(generatedFrame);
   }
-  return { changed: removed || generatedFrames.length > 0, generatedFrames };
+  return { changed: removed || generatedFrames.length > 0, generatedFrames, failed: false };
 }
 
 function _makePlayScriptRangeFromPayload(
@@ -575,6 +621,8 @@ export const physicPaintStore = {
     _getOrCreateRotoMetadata(layerId).set(frame, _makeRotoCacheFrame(normalizedFrame, frame, 'real-key', undefined, backgroundOnly || undefined));
     _workflowMetadata.set(layerId, { ...(_workflowMetadata.get(layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
     _pruneFramesOutsideRotoCacheMetadata(layerId);
+    const settings = this.getRotoInterpolationSettings(layerId);
+    if (settings.enabled) _tryRegenerateGeneratedRotoCache(layerId, settings);
     _notifyVisualChange();
   },
 
@@ -592,6 +640,8 @@ export const physicPaintStore = {
     _removeBackgroundOnlyRotoSupport(layerId);
     _recomputeBackgroundOnlyRotoSupport(layerId, previousSupportFrames);
     if (metadata.size === 0) _rotoCacheMetadata.delete(layerId);
+    const settings = this.getRotoInterpolationSettings(layerId);
+    if (settings.enabled) _tryRegenerateGeneratedRotoCache(layerId, settings);
     _notifyVisualChange();
     return true;
   },
@@ -631,6 +681,7 @@ export const physicPaintStore = {
     _playScriptRanges.clear();
     _rotoCacheMetadata.clear();
     _rotoInterpolationSettings.clear();
+    _rotoInterpolationFailureStatus.clear();
     for (const output of outputs ?? []) {
       if (!output || typeof output.layer_id !== 'string' || !Array.isArray(output.frames)) continue;
       const layerFrames = _getOrCreateLayer(output.layer_id);
@@ -679,10 +730,14 @@ export const physicPaintStore = {
     return { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, ...(_rotoInterpolationSettings.get(layerId) ?? {}) };
   },
 
+  getRotoInterpolationFailureStatus(layerId: string): string | null {
+    return _rotoInterpolationFailureStatus.get(layerId) ?? null;
+  },
+
   setRotoInterpolationSettings(layerId: string, settings: Partial<PhysicPaintRotoInterpolationSettings>): PhysicPaintRenderedFrame[] {
     const normalized = _normalizeRotoInterpolationSettings(settings);
     _rotoInterpolationSettings.set(layerId, normalized);
-    const { changed, generatedFrames } = _regenerateGeneratedRotoCache(layerId, normalized);
+    const { changed, generatedFrames } = _tryRegenerateGeneratedRotoCache(layerId, normalized);
     if (changed || _rotoInterpolationSettings.has(layerId)) _notifyVisualChange();
     return generatedFrames.map(frame => ({ ...frame }));
   },
@@ -709,7 +764,7 @@ export const physicPaintStore = {
 
   regenerateRotoInterpolationCache(layerId: string): PhysicPaintRenderedFrame[] {
     const settings = this.getRotoInterpolationSettings(layerId);
-    const { changed, generatedFrames } = _regenerateGeneratedRotoCache(layerId, settings);
+    const { changed, generatedFrames } = _tryRegenerateGeneratedRotoCache(layerId, settings);
     if (changed) _notifyVisualChange();
     return generatedFrames.map(frame => ({ ...frame }));
   },
@@ -961,6 +1016,7 @@ export const physicPaintStore = {
     _playScriptRanges.clear();
     _rotoCacheMetadata.clear();
     _rotoInterpolationSettings.clear();
+    _rotoInterpolationFailureStatus.clear();
     _notifyVisualChange();
   },
 
