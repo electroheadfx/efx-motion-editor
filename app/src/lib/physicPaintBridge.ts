@@ -2,6 +2,7 @@ import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayScriptCacheStatus, PhysicPaintWorkflowMode } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext } from '../types/physicPaint';
+import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/physicsPaintRotoKeyController';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { sequenceStore } from '../stores/sequenceStore';
@@ -82,6 +83,10 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   }
   if (!Number.isInteger(payload.startFrame) || payload.startFrame < 0) {
     return failureResult(payload, 'Invalid physics paint start frame');
+  }
+  const generatedGuard = getGeneratedRotoMutationGuard(payload.layerId, payload.startFrame);
+  if (generatedGuard) {
+    return failureResult(payload, generatedGuard);
   }
 
   try {
@@ -236,6 +241,16 @@ function successResult(payload: PhysicPaintApplyPayload, appliedFrameCount: numb
   };
 }
 
+function getGeneratedRotoRenderOnlyStatus(frame: number): string {
+  return GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE.replace('{frame}', String(frame));
+}
+
+function getGeneratedRotoMutationGuard(layerId: string, startFrame: number): string | null {
+  const target = physicPaintStore.getRotoCacheFrames(layerId).find((candidate) => candidate.appFrame === startFrame);
+  if (target?.source !== 'generated-interpolation') return null;
+  return getGeneratedRotoRenderOnlyStatus(startFrame);
+}
+
 export function createPhysicPaintLaunchContext(
   layer: Layer,
   frame: number,
@@ -247,12 +262,10 @@ export function createPhysicPaintLaunchContext(
   const currentFrame = Math.max(0, Math.trunc(frame));
   const cachedRotoFrames = physicPaintStore.getRotoCacheFrames(layerId);
   const currentRotoCacheFrame = cachedRotoFrames.find((candidate) => candidate.appFrame === currentFrame);
-  const nearestRealKeyFrame = currentRotoCacheFrame?.nearestRealKeyFrame;
-  const redirectRotoFrame = typeof nearestRealKeyFrame === 'number' && Number.isInteger(nearestRealKeyFrame) && nearestRealKeyFrame >= 0 ? nearestRealKeyFrame : null;
-  const shouldRedirectGeneratedRoto = requestedWorkflowMode !== 'play'
-    && currentRotoCacheFrame?.source === 'generated-interpolation'
-    && redirectRotoFrame !== null;
-  const rotoLaunchFrame = shouldRedirectGeneratedRoto ? redirectRotoFrame : currentFrame;
+  const generatedRenderOnlyStatus = requestedWorkflowMode !== 'play' && currentRotoCacheFrame?.source === 'generated-interpolation'
+    ? getGeneratedRotoRenderOnlyStatus(currentFrame)
+    : null;
+  const rotoLaunchFrame = currentFrame;
   const containingRange = physicPaintStore.findPlayScriptRangeAtFrame(layerId, currentFrame);
   const shouldOpenContainingPlay = Boolean(containingRange && requestedWorkflowMode !== 'roto');
   const playLimitFrame = shouldOpenContainingPlay && containingRange ? containingRange.startFrame : rotoLaunchFrame;
@@ -316,6 +329,7 @@ export function createPhysicPaintLaunchContext(
     ...(cachedRotoFrames.length > 0 ? { cachedRotoFrames } : {}),
     ...(rotoInterpolationSettings ? { rotoInterpolationSettings } : {}),
     ...(rotoBackground ? { rotoBackground: structuredClone(rotoBackground) } : {}),
+    ...(generatedRenderOnlyStatus ? { maxPlayFrameCountReason: generatedRenderOnlyStatus } : {}),
   };
 }
 

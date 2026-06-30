@@ -27,7 +27,10 @@ const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
 const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
 const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
-const GENERATED_ROTO_STATUS_TEMPLATE = 'Generated frame {frame} is render-only.';
+const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
+const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
+const INTERPOLATION_ENABLED_STATUS = 'Interpolation on — generated render-only frames refresh from real keys.';
+const INTERPOLATION_DISABLED_STATUS = 'Interpolation off — real Roto keys only.';
 const ROTO_KEY_BUSY_STATUS_TEMPLATE = 'Finish saving frame {frame} before using key tools.';
 type RotoKeyUtilityAction = 'insert' | 'duplicate' | 'copy' | 'paste' | 'delete';
 export interface PhysicsPaintWorkflowRotoKeyState {
@@ -235,6 +238,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const playLimitMessage = props.maxPlayFrameCount !== undefined
     ? props.maxPlayFrameCountReason ?? `Play duration limited to ${props.maxPlayFrameCount} frames before the next saved Play script.`
     : null;
+  const interpolationStatus = props.rotoInterpolationSettings?.enabled ? INTERPOLATION_ENABLED_STATUS : INTERPOLATION_DISABLED_STATUS;
   function handlePrimaryAction() {
     if (props.mode === 'play') {
       renderPlayFrames();
@@ -269,12 +273,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }
 
   function handleRotoCellClick(frame: number, vm: RotoCellViewModel) {
-    if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) return;
+    if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) {
+      props.onNavigateToSyncedFrame(frame);
+      return;
+    }
     props.onNavigateToSyncedFrame(frame);
   }
 
-  function getGeneratedRotoStatus(frame: number): string {
-    return GENERATED_ROTO_STATUS_TEMPLATE.replace('{frame}', String(frame));
+  function getGeneratedRotoTitle(frame: number): string {
+    return GENERATED_ROTO_TITLE_TEMPLATE.replace('{frame}', String(frame));
+  }
+
+  function getGeneratedRotoDisabledStatus(frame: number): string {
+    return GENERATED_ROTO_DISABLED_STATUS_TEMPLATE.replace('{frame}', String(frame));
   }
 
   function getRotoKeyBusyStatus(frame: number): string {
@@ -284,8 +295,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   function getRotoKeyUtilityDisabledMessage(action: RotoKeyUtilityAction): string {
     if (sessionKeyAvailability?.busy) return sessionKeyAvailability.disabledReason ?? 'Finish saving frame {frame} before using key tools.'.replace('{frame}', String(props.rotoSavingFrame ?? props.currentFrame));
     if (keyUtilitiesDisabledByBusyState) return 'Finish saving frame {frame} before using key tools.'.replace('{frame}', String(props.rotoSavingFrame ?? props.currentFrame));
+    if (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false) return 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.'.replace('{frame}', String(currentRotoCell.frame));
     if (action === 'paste') return sessionKeyAvailability?.pasteDisabledReason ?? 'Copy a real Roto key before pasting.';
-    if (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false) return 'Generated frame {frame} is render-only.'.replace('{frame}', String(currentRotoCell.frame));
     if (action === 'insert') return 'Select a real Roto key to insert.';
     if (action === 'duplicate') return 'Select a real Roto key to duplicate.';
     if (action === 'copy') return 'Select a real Roto key to copy.';
@@ -420,6 +431,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <output class="physics-paint-current-frame">{props.currentFrame}</output>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
+              {props.onRotoInterpolationEnabledChange ? (
+                <label class="physics-paint-roto-interpolation-controls" title={interpolationStatus}>
+                  <input type="checkbox" aria-label="Interpolation" checked={Boolean(props.rotoInterpolationSettings?.enabled)} disabled={props.ready === false} onChange={(event) => props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked)} />
+                  <span>Interpolation</span>
+                </label>
+              ) : null}
               <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>
               <label class="physics-paint-roto-fps-control">
                 <span>fps</span>
@@ -481,13 +498,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     isSaving: Boolean(props.rotoSaveInFlight),
                   });
                   const fill = getRotoCellFill(frame, realCachedRotoFrames, props.editableRotoFrames);
-                  const generatedStatus = vm.baseMeaning === 'generated' || vm.isEditableTarget === false ? getGeneratedRotoStatus(frame) : null;
+                  const generatedTitle = vm.baseMeaning === 'generated' || vm.isEditableTarget === false ? getGeneratedRotoTitle(frame) : null;
                   return (
                     <button
                       key={frame}
                       class={`physics-paint-roto-cell ${getRotoFillClass(fill)} ${vm.fillClass} ${isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied' : ''} ${isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''}`}
-                      aria-label={vm.ariaLabel}
-                      title={generatedStatus ?? vm.title}
+                      aria-label={generatedTitle ?? vm.ariaLabel}
+                      title={generatedTitle ?? vm.title}
                       onClick={() => handleRotoCellClick(frame, vm)}
                     >
                       <span>{frame}</span>
@@ -554,8 +571,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             ))}
           </div>
           <p class="physics-paint-roto-status">{rotoMissingStatusLabel ?? currentRotoCell.label}</p>
+          {props.onRotoInterpolationEnabledChange ? <p class="physics-paint-roto-interpolation-status">{interpolationStatus}</p> : null}
           <p class="physics-paint-roto-interpolation-status">Dirty frames save when leaving.</p>
-          {currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false ? <p class="physics-paint-roto-key-status">{getGeneratedRotoStatus(currentRotoCell.frame)}</p> : null}
+          {currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false ? <p class="physics-paint-roto-key-status">{getGeneratedRotoDisabledStatus(currentRotoCell.frame)}</p> : null}
           {keyUtilitiesDisabledByBusyState ? <p class="physics-paint-roto-key-status">{getRotoKeyBusyStatus(props.rotoSavingFrame ?? props.currentFrame)}</p> : null}
           {rotoPendingLabel ? <p class="physics-paint-roto-key-status">{rotoPendingLabel}</p> : null}
           {currentRotoFill === 'cached-only' ? (

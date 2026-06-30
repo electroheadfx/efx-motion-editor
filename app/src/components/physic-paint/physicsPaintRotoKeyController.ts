@@ -94,6 +94,8 @@ export interface ApplyRotoKeyUtilityTransactionToLocalStateResult<TEditable = un
   previewFrames: Map<number, TPreview | PhysicPaintRotoCacheFrame>;
 }
 
+export const GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
+
 const SOURCE_OPERATIONS: RotoKeyUtilityOperation[] = ['copy', 'duplicate', 'insert', 'delete'];
 const EXPOSURES: RotoKeyUtilityActionStateExposure[] = [
   'copy',
@@ -129,7 +131,7 @@ export function deriveRotoKeyUtilityActionState({
       ? `Finish saving frame ${safeCurrentFrame} before using key tools.`
       : 'Finish saving before using key tools.'
     : currentIsGenerated && safeCurrentFrame !== null
-      ? `Generated frame ${safeCurrentFrame} is render-only.`
+      ? GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE.replace('{frame}', String(safeCurrentFrame))
       : currentIsRealKey
         ? null
         : 'Select a real Roto key to use key tools.';

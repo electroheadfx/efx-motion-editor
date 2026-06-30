@@ -232,7 +232,7 @@ describe('physicPaintBridge', () => {
     expect(context.editableState).toBeUndefined();
   });
 
-  it('redirects generated-only Roto launch targets to the nearest real key frame', () => {
+  it('36.12 D-16 rejects generated-only Roto launch targets as render-only instead of redirecting to editable state', () => {
     physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 12, makeFrame(0, 12));
     physicPaintStore.replaceGeneratedRotoCache('phys-layer-1', [{
       ...makeFrame(1, 13),
@@ -251,9 +251,11 @@ describe('physicPaintBridge', () => {
     expect(context).toMatchObject({
       requestedWorkflowMode: 'roto',
       workflowMode: 'roto',
-      startFrame: 12,
+      startFrame: 13,
       editableSource: 'roto',
     });
+    expect(context.editableState).toBeUndefined();
+    expect(context.maxPlayFrameCountReason).toBe('Generated frame 13 is render-only. Use timeline navigation or playback; edit a real Roto key to paint.');
     expect(context.cachedRotoFrames).toEqual(expect.arrayContaining([
       expect.objectContaining({ appFrame: 13, source: 'generated-interpolation', nearestRealKeyFrame: 12 }),
     ]));
@@ -848,6 +850,40 @@ describe('physicPaintBridge', () => {
 
     expect(result).toMatchObject({ ok: true, operationId: 'apply-still-explicit-bg' });
     expect(physicPaintStore.getRotoBackgroundMetadata('phys-layer-1')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+  });
+
+  it('36.12 D-16 rejects generated interpolation apply-canvas targets before store mutation', () => {
+    mockLayers([physicLayer()]);
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 12, makeFrame(0, 12));
+    physicPaintStore.replaceGeneratedRotoCache('phys-layer-1', [{
+      ...makeFrame(1, 13),
+      source: 'generated-interpolation',
+      nearestRealKeyFrame: 12,
+    }], {
+      enabled: true,
+      inBetweenCount: 1,
+      mode: 'blend',
+      deform: 20,
+      position: 30,
+    });
+    const applyCanvas = vi.spyOn(physicPaintStore, 'applyCanvas');
+
+    const result = applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'apply-generated-roto-target',
+      startFrame: 13,
+      renderedFrame: makeFrame(0, 13),
+    }));
+
+    expect(result).toMatchObject({
+      ok: false,
+      operationId: 'apply-generated-roto-target',
+      appliedFrameCount: 0,
+      error: 'Generated frame 13 is render-only. Use timeline navigation or playback; edit a real Roto key to paint.',
+    });
+    expect(applyCanvas).not.toHaveBeenCalled();
+    expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ appFrame: 13, source: 'generated-interpolation' }),
+    ]));
   });
 
   it('applies a generated sequence beginning at the captured app start frame', () => {

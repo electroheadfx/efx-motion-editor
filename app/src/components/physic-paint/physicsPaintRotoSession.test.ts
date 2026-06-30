@@ -228,6 +228,43 @@ describe('physicsPaintRotoSession save orchestration boundary', () => {
   });
 });
 
+describe('physicsPaintRotoSession generated interpolation render-only boundary', () => {
+  it('36.12 D-16 allows generated preview selection while keeping source key actions disabled', () => {
+    const session = createRotoSession({
+      currentFrame: 2,
+      realKeyFrames: [frame(2, 'data:image/png;base64,real-two'), frame(6, 'data:image/png;base64,real-six')],
+      cachedRotoFrames: [
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(4, 'data:image/png;base64,generated-four', 'generated-interpolation'),
+        frame(6, 'data:image/png;base64,real-six'),
+      ],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    const selected = session.requestFrame(4);
+
+    expect(selected.ok).toBe(true);
+    expect(effectTypes(selected.effects)).toEqual(['navigate']);
+    expect(selected.effects[0]).toMatchObject({ type: 'navigate', frame: 4 });
+    expect(session.currentFrame.value).toBe(4);
+    expect(session.generatedFrameNumbers.value).toEqual([4]);
+    expect(session.realKeyFrameNumbers.value).toEqual([2, 6]);
+    expect(session.actionAvailability.value).toMatchObject({
+      canDuplicate: false,
+      canInsert: false,
+      canCopy: false,
+      canDelete: false,
+    });
+    expect(session.actionAvailability.value.disabledReason).toBe('Generated frame 4 is render-only. Use timeline navigation or playback; edit a real Roto key to paint.');
+    expect(session.duplicateKey()).toMatchObject({ ok: false, message: 'Generated frame 4 is render-only. Use timeline navigation or playback; edit a real Roto key to paint.' });
+    expect(session.insertBlankKey()).toMatchObject({ ok: false, message: 'Generated frame 4 is render-only. Use timeline navigation or playback; edit a real Roto key to paint.' });
+    expect(session.copyKey()).toMatchObject({ ok: false, message: 'Generated frame 4 is render-only. Use timeline navigation or playback; edit a real Roto key to paint.' });
+    expect(session.deleteKey()).toMatchObject({ ok: false, message: 'Generated frame 4 is render-only. Use timeline navigation or playback; edit a real Roto key to paint.' });
+  });
+});
+
 describe('physicsPaintRotoSession boundary clean key transactions', () => {
   it('36.8-REG-01 D-01/D-04/D-06/D-07/D-12/D-14/D-15 inserts a blank key that stays clean until markDirty', () => {
     const session = createRotoSession({
