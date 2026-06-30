@@ -300,22 +300,23 @@ export function getPlayRangeMarker(startFrame: number, frameCount: number, curre
 
 export function getRotoInterpolationSpanFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoInterpolationSpanFrame[] {
   const sortedKeys = normalizeRealRotoKeyFrames(realKeys);
-  const inBetweenCount = clampInterpolationInBetweenCount(settings.inBetweenCount);
-  if (settings.enabled === false || inBetweenCount < 1 || sortedKeys.length < 2) return [];
+  if (settings.enabled !== true || sortedKeys.length < 2) return [];
 
   const spans: RotoInterpolationSpanFrame[] = [];
   for (let index = 0; index < sortedKeys.length - 1; index++) {
     const fromFrame = sortedKeys[index];
     const toFrame = sortedKeys[index + 1];
-    for (let ordinal = 1; ordinal <= inBetweenCount; ordinal++) {
-      const t = ordinal / (inBetweenCount + 1);
+    const total = toFrame - fromFrame - 1;
+    if (total < 1) continue;
+    for (let ordinal = 1; ordinal <= total; ordinal++) {
+      const frame = fromFrame + ordinal;
       spans.push({
         fromFrame,
         toFrame,
-        frame: fromFrame + (toFrame - fromFrame) * t,
+        frame,
         ordinal,
-        total: inBetweenCount,
-        t,
+        total,
+        t: (frame - fromFrame) / (toFrame - fromFrame),
       });
     }
   }
