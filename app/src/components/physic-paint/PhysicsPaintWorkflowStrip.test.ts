@@ -185,7 +185,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('.physics-paint-roto-interpolation-status');
   });
 
-  it('gates Roto interpolation controls out of the strict Phase 36.3 Roto strip', () => {
+  it('36.12 gates Roto interpolation to one optional toggle without count/mode/motion controls', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
@@ -193,8 +193,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
     expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
     expect(code).toContain('onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void');
-    expect(rotoControlsBlock).not.toContain('physics-paint-roto-interpolation-controls');
-    expect(rotoControlsBlock).not.toContain('props.onRotoInterpolationEnabledChange');
+    expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
+    expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
+    expect(rotoControlsBlock).toContain('Interpolation');
     expect(rotoControlsBlock).not.toContain('In-betweens');
     expect(rotoControlsBlock).not.toContain('Deform');
     expect(rotoControlsBlock).not.toContain('Position');
@@ -369,7 +370,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(sessionCode).toContain('normalizeCachedFrames(input.cachedRotoFrames, input.canvasSize)');
   });
 
-  it('does not render compact Roto interpolation controls in the strict Phase 36.3 Roto strip', () => {
+  it('36.12 renders compact Roto interpolation as one optional toggle only', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
@@ -377,8 +378,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
     expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
     expect(code).toContain('onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void');
-    expect(rotoControlsBlock).not.toContain('physics-paint-roto-interpolation-controls');
-    expect(rotoControlsBlock).not.toContain('Interpolation');
+    expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
+    expect(rotoControlsBlock).toContain('Interpolation');
     expect(rotoControlsBlock).not.toContain('In-betweens');
     expect(rotoControlsBlock).not.toContain('Blend');
   });
@@ -561,7 +562,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('36.12 D-15 routes generated Roto cell clicks to preview navigation without an editable-open guard', () => {
     const code = source();
-    const clickHandlerBlock = code.slice(code.indexOf('function handleRotoCellClick'), code.indexOf('function getGeneratedRotoStatus'));
+    const clickHandlerBlock = code.slice(code.indexOf('function handleRotoCellClick'), code.indexOf('function getGeneratedRotoTitle'));
     const rotoMapBlock = getRotoMapBlock(code);
 
     expect(rotoMapBlock).toContain("vm.baseMeaning === 'generated'");
@@ -569,6 +570,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('Generated frame {frame} — render-only.');
     expect(code).toContain('Generated frame {frame} is render-only.');
     expect(rotoMapBlock).toContain('handleRotoCellClick(frame, vm)');
+    expect(clickHandlerBlock).toContain("vm.baseMeaning === 'generated'");
     expect(clickHandlerBlock).toContain('props.onNavigateToSyncedFrame(frame)');
     expect(clickHandlerBlock).not.toContain("vm.baseMeaning === 'generated' || vm.isEditableTarget === false) return");
   });
@@ -577,6 +579,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
+    expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).toContain('Interpolation');
     expect(rotoControlsBlock).toContain('onRotoInterpolationEnabledChange');
@@ -594,7 +597,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
     expect(code).not.toMatch(/from ['"].*Timeline/);
     expect(code).not.toContain('<Timeline');
-    expect(rotoControlsBlock).not.toContain('physics-paint-roto-interpolation-controls');
+    expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
+    expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).not.toContain('In-betweens');
     expect(rotoControlsBlock).not.toContain('Deform');
     expect(rotoControlsBlock).not.toContain('Position');
@@ -625,7 +629,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('shows Phase 36.6 save-on-leave feedback without blocking queued Roto navigation', () => {
     const code = source();
     const studio = studioSource();
-    const clickHandlerBlock = code.slice(code.indexOf('function handleRotoCellClick'), code.indexOf('function getGeneratedRotoStatus'));
+    const clickHandlerBlock = code.slice(code.indexOf('function handleRotoCellClick'), code.indexOf('function getGeneratedRotoTitle'));
     const statusStackBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('confirmation ? ('));
 
     expect(code).toContain('rotoSavingFrame?: number | null');

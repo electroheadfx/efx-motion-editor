@@ -570,7 +570,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
 
     const textBeforeSave = visibleText(root);
     if (!textBeforeSave.includes('Unsaved changes — click Save current to cache')) failures.push(`expected unsaved status copy before save, got: ${textBeforeSave}`);
-    if (textBeforeSave.includes('Interpolation')) failures.push('expected interpolation controls to be hidden in the strict Phase 36.3 Roto surface');
     if (textBeforeSave.includes('Duplicate key') || textBeforeSave.includes('Insert frame') || textBeforeSave.includes('Delete frame') || textBeforeSave.includes('Copy frame') || textBeforeSave.includes('Paste frame')) failures.push('expected Roto key utilities to be hidden in the strict Phase 36.3 Roto surface');
     if (textBeforeSave.includes('Missing frames play transparent/background')) failures.push('expected cached Roto playback/missing-background copy to be hidden in the strict Phase 36.3 Roto surface');
 
