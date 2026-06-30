@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
 import type { Sequence } from '../types/sequence';
@@ -37,6 +37,14 @@ function makeSequence(layer: Layer): Sequence {
     layers: [layer],
   };
 }
+
+beforeEach(() => {
+  physicPaintStore.reset();
+});
+
+afterEach(() => {
+  physicPaintStore.reset();
+});
 
 describe('physics paint cache-first preview/export contract', () => {
   it('uses cached physics paint frame lookup and subscribes to physics paint mutations in previewRenderer', () => {
@@ -110,6 +118,56 @@ describe('physics paint cache-first preview/export contract', () => {
     expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'no-real-keys' }, materialize: false });
     expect(setFrame).not.toHaveBeenCalled();
     expect(physicPaintStore.getRotoCacheFrames('phys-layer-1')).toEqual([]);
+  });
+
+  it('collects generated interpolation cache frames for export through the preview renderer source contract', () => {
+    const layer = makeRotoLayer();
+    const sequence = makeSequence(layer);
+    physicPaintStore.setRotoBackgroundMetadata('roto-layer', { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,cmVhbC0w' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' });
+    physicPaintStore.replaceGeneratedRotoCache('roto-layer', [
+      { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,Z2VuZXJhdGVkLWFscGhhLW9ubHk=', source: 'generated-interpolation', nearestRealKeyFrame: 0 },
+    ]);
+    const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
+    const renderer = {
+      onImageLoaded: null,
+      collectRotoPaperTextures: vi.fn(() => []),
+      collectPhysicPaintFrameSources: vi.fn((layers: readonly Layer[], frame: number) => {
+        const paintLayer = layers.find((candidate) => candidate.type === 'physic-paint');
+        const renderedFrame = paintLayer ? physicPaintStore.getRotoFrame(paintLayer.source.layerId, frame) : null;
+        return renderedFrame ? [{ layerId: paintLayer!.source.layerId, frame, renderedFrame }] : [];
+      }),
+      preloadImages: vi.fn(),
+      preloadPaperTextures: vi.fn(),
+      preloadPhysicPaintFrames: vi.fn((frames: readonly PreviewPhysicPaintFrameSource[]) => {
+        preloadedFrames.push(...frames);
+      }),
+      getImageSource: vi.fn(() => ({ naturalWidth: 1, naturalHeight: 1 })),
+      isImageFailed: vi.fn(() => false),
+      isPaperTextureResolved: vi.fn(() => true),
+      isPhysicPaintFrameResolved: vi.fn((source: PreviewPhysicPaintFrameSource) => preloadedFrames.includes(source)),
+    } as unknown as PreviewRenderer;
+
+    preloadExportImages(renderer, [
+      { globalFrame: 0, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 0 },
+      { globalFrame: 1, sequenceId: sequence.id, keyPhotoId: 'kp-1', imageId: 'base-image', localFrame: 1 },
+    ], undefined, [sequence]);
+
+    expect(renderer.collectPhysicPaintFrameSources).toHaveBeenCalledWith(sequence.layers, 1);
+    expect(renderer.preloadPhysicPaintFrames).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({
+        layerId: 'roto-layer',
+        frame: 1,
+        renderedFrame: expect.objectContaining({
+          appFrame: 1,
+          source: 'generated-interpolation',
+          dataUrl: 'data:image/png;base64,Z2VuZXJhdGVkLWFscGhhLW9ubHk=',
+        }),
+      }),
+    ]));
+    expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    expect(physicPaintStore.getRotoFrame('roto-layer', 1)?.dataUrl).toBe('data:image/png;base64,Z2VuZXJhdGVkLWFscGhhLW9ubHk=');
   });
 
   it('keeps trailing background-only export resolution dynamic without serialized cache growth', () => {

@@ -239,6 +239,30 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     expect(paperIndex).toBeLessThan(imageIndex);
   });
 
+  it('draws renderer-owned paper before generated interpolation alpha cache output', () => {
+    seedRotoPaper();
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 3, { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' });
+    physicPaintStore.replaceGeneratedRotoCache('roto-layer', [
+      { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Z2VuZXJhdGVkLWFscGhhLW9ubHk=', source: 'generated-interpolation', nearestRealKeyFrame: 1 },
+    ]);
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
+    renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
+
+    const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
+    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,Z2VuZXJhdGVkLWFscGhhLW9ubHk=');
+
+    expect(paperIndex).toBeGreaterThanOrEqual(0);
+    expect(generatedAlphaIndex).toBeGreaterThanOrEqual(0);
+    expect(paperIndex).toBeLessThan(generatedAlphaIndex);
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0x' }));
+    expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: 'data:image/png;base64,cmVhbC0z' }));
+    expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer')).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 });
+  });
+
   it('36.11 draws renderer-owned paper before merged real-key alpha repaint output', () => {
     seedRotoPaper();
     physicPaintStore.applyCanvas({
