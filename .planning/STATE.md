@@ -4,15 +4,15 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.12
 current_phase_name: Physics Paint Roto Generated Interpolation
-status: ready
-stopped_at: Phase 36.12 context gathered
-last_updated: "2026-06-29T17:22:06.910Z"
-last_activity: 2026-06-29
-last_activity_desc: Phase 36.11 completed with live UAT approval
+status: executing
+stopped_at: Phase 36.12 UI-SPEC approved
+last_updated: "2026-06-30T04:58:47.914Z"
+last_activity: 2026-06-30
+last_activity_desc: Phase 36.12 execution started
 progress:
   total_phases: 18
   completed_phases: 14
-  total_plans: 75
+  total_plans: 80
   completed_plans: 75
   percent: 78
 ---
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: 36.12 (Physics Paint Roto Generated Interpolation) — READY
+Phase: 36.12 (Physics Paint Roto Generated Interpolation) — EXECUTING
 Previous phase: 36.11 — Physics Paint Roto Repaint Cached Real Key complete
-Plan: 0 of TBD
-Status: Ready to plan Phase 36.12
-Last activity: 2026-06-29 — Phase 36.11 completed with live UAT approval
+Plan: 1 of 5
+Status: Executing Phase 36.12
+Last activity: 2026-06-30 — Phase 36.12 execution started
 Next recommended action: Plan Phase 36.12 Physics Paint Roto Generated Interpolation
 
 Progress: [████████████████████] 75/75 plans executed; 14/18 phases complete (78%)
@@ -172,6 +172,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T17:22:06.902Z
-Stopped at: Phase 36.12 context gathered
-Resume file: .planning/phases/36.12-physics-paint-roto-generated-interpolation/36.12-CONTEXT.md
+Last session: 2026-06-29T18:12:04.187Z
+Stopped at: Phase 36.12 UI-SPEC approved
+Resume file: .planning/phases/36.12-physics-paint-roto-generated-interpolation/36.12-UI-SPEC.md
