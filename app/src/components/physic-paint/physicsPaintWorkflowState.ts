@@ -471,12 +471,6 @@ function normalizeSelectedRealKey(selectedFrame: number, sortedKeys: number[]): 
   return getNearestRealRotoKeyFrame(selectedFrame, sortedKeys) ?? sortedKeys[0];
 }
 
-function clampInterpolationInBetweenCount(value: unknown): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) return 0;
-  return Math.max(0, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(numeric)));
-}
-
 function clampNonNegativeInteger(value: unknown, fallback: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
