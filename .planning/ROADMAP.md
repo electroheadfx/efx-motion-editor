@@ -356,7 +356,7 @@ Use `SPECS/36.x-phases/phase-36.12-generated-interpolation/spec-36.12-generated-
 **Goal:** As a stop-motion animator, I want generated in-between Roto frames between real keys, so that I can preview smoother motion without making generated frames editable.
 **Requirements**: 36.12-GENERATED-FRAMES, 36.12-REAL-KEY-AUTHORITY, 36.12-STALE-REGENERATION
 **Depends on:** Phase 36.11
-**Plans:** 1/5 plans executed
+**Plans:** 3/5 plans executed
 
 Planning notes:
 
@@ -375,8 +375,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 span contract)*
 
-- [ ] 36.12-02-PLAN.md — Generate alpha-only renderable cache frames with real-key authority and stale regeneration.
-- [ ] 36.12-03-PLAN.md — Expose preview-only generated selection and minimal Interpolation toggle UI.
+- [x] 36.12-02-PLAN.md — Generate alpha-only renderable cache frames with real-key authority and stale regeneration.
+- [x] 36.12-03-PLAN.md — Expose preview-only generated selection and minimal Interpolation toggle UI.
 
 **Wave 3** *(blocked on Wave 2 store generation)*
 
@@ -804,7 +804,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 3/3 | UAT pending |  |
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 5/5 | Complete    | 2026-06-27 |
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
-| 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 1/5 | In Progress|  |
+| 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 3/5 | In Progress|  |
 | 36.13. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
 | 36.14. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
