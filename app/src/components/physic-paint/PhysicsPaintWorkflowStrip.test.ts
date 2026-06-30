@@ -559,15 +559,33 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     }
   });
 
-  it('guards generated Roto cells as render-only before ordinary editable navigation (D-02, D-05)', () => {
+  it('36.12 D-15 routes generated Roto cell clicks to preview navigation without an editable-open guard', () => {
     const code = source();
+    const clickHandlerBlock = code.slice(code.indexOf('function handleRotoCellClick'), code.indexOf('function getGeneratedRotoStatus'));
     const rotoMapBlock = getRotoMapBlock(code);
 
     expect(rotoMapBlock).toContain("vm.baseMeaning === 'generated'");
     expect(rotoMapBlock).toContain('vm.isEditableTarget === false');
+    expect(code).toContain('Generated frame {frame} — render-only.');
     expect(code).toContain('Generated frame {frame} is render-only.');
     expect(rotoMapBlock).toContain('handleRotoCellClick(frame, vm)');
-    expect(rotoMapBlock).not.toContain('onNavigateToSyncedFrame(frame)}');
+    expect(clickHandlerBlock).toContain('props.onNavigateToSyncedFrame(frame)');
+    expect(clickHandlerBlock).not.toContain("vm.baseMeaning === 'generated' || vm.isEditableTarget === false) return");
+  });
+
+  it('36.12 D-13/D-17 renders one Interpolation toggle and no count/mode/motion controls in the strip', () => {
+    const code = source();
+    const rotoControlsBlock = getRotoControlsBlock(code);
+
+    expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
+    expect(rotoControlsBlock).toContain('Interpolation');
+    expect(rotoControlsBlock).toContain('onRotoInterpolationEnabledChange');
+    expect(rotoControlsBlock).not.toContain('In-betweens');
+    expect(rotoControlsBlock).not.toContain('Mode');
+    expect(rotoControlsBlock).not.toContain('Duplicate / hold');
+    expect(rotoControlsBlock).not.toContain('Move');
+    expect(rotoControlsBlock).not.toContain('Deform');
+    expect(rotoControlsBlock).not.toContain('Position');
   });
 
   it('keeps Phase 36.5 Roto cell scope MVP-only without excluded controls (36.5-SCOPE-01, D-01, D-05)', () => {
