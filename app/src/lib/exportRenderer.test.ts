@@ -135,8 +135,9 @@ describe('physics paint cache-first preview/export contract', () => {
       collectRotoPaperTextures: vi.fn(() => []),
       collectPhysicPaintFrameSources: vi.fn((layers: readonly Layer[], frame: number) => {
         const paintLayer = layers.find((candidate) => candidate.type === 'physic-paint');
-        const renderedFrame = paintLayer ? physicPaintStore.getRotoFrame(paintLayer.source.layerId, frame) : null;
-        return renderedFrame ? [{ layerId: paintLayer!.source.layerId, frame, renderedFrame }] : [];
+        const layerId = paintLayer?.source.type === 'physic-paint' ? paintLayer.source.layerId : null;
+        const renderedFrame = layerId ? physicPaintStore.getRotoFrame(layerId, frame) : null;
+        return renderedFrame && layerId ? [{ layerId, frame, renderedFrame }] : [];
       }),
       preloadImages: vi.fn(),
       preloadPaperTextures: vi.fn(),
