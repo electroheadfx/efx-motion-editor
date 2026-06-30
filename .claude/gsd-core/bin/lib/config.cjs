@@ -637,6 +637,33 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
         }
         parsedValue = normalized.values;
     }
+    // #1517: validate review.reviewer_instances.<name>.<field> leaves at the
+    // invocation boundary (Postel/Kerckhoffs — strict at accept). The config
+    // schema dynamic pattern admits the path; this block validates the name + the
+    // field value so a misconfigured instance is rejected at config-set time, not
+    // silently at review time. Single-source validators live in
+    // review-reviewer-selection.cjs (INSTANCE_NAME_PATTERN, KNOWN_REVIEWER_SLUGS).
+    const instanceLeaf = kp.match(/^review\.reviewer_instances\.([a-zA-Z0-9_-]+)\.(cli|model|agent)$/);
+    if (instanceLeaf) {
+        const [, instanceName, field] = instanceLeaf;
+        if (!review_reviewer_selection_cjs_1.INSTANCE_NAME_PATTERN.test(instanceName)) {
+            error(`Invalid reviewer instance name '${instanceName}'. Must match ^[a-z0-9][a-z0-9-]*$.`);
+        }
+        if (review_reviewer_selection_cjs_1.KNOWN_REVIEWER_SLUGS.includes(instanceName)) {
+            error(`Reviewer instance name '${instanceName}' must not equal a built-in reviewer slug.`);
+        }
+        if (field === 'cli') {
+            if (typeof parsedValue !== 'string' || !review_reviewer_selection_cjs_1.KNOWN_REVIEWER_SLUGS.includes(parsedValue)) {
+                error(`Invalid reviewer_instances.${instanceName}.cli '${val}'. Must be a known reviewer adapter: ${review_reviewer_selection_cjs_1.KNOWN_REVIEWER_SLUGS.join(', ')}.`);
+            }
+        }
+        else {
+            // model | agent — opaque pass-through strings (never interpolated into shell).
+            if (typeof parsedValue !== 'string') {
+                error(`Invalid reviewer_instances.${instanceName}.${field} '${val}'. Must be a string.`);
+            }
+        }
+    }
     const setConfigValueResult = setConfigValue(cwd, kp, parsedValue);
     // Mask secrets in both JSON and text output. The plaintext is written
     // to config.json (that's where secrets live on disk); the CLI output

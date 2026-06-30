@@ -10,7 +10,7 @@ const capabilities = {
   "ai-integration": {
     "id": "ai-integration",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "AI design contract",
     "description": "AI-SPEC design contract workflow for phases that build AI systems; owns the AI integration command, agents, and workflow.ai_integration_phase activation key.",
     "tier": "full",
@@ -63,7 +63,7 @@ const capabilities = {
   "antigravity": {
     "id": "antigravity",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Antigravity",
     "description": "Google Antigravity IDE — nested under ~/.gemini/antigravity; probed across 1.x and 2.x layouts; Gemini hook event dialect; flat skill layout; tier-1 support.",
     "tier": "core",
@@ -86,6 +86,7 @@ const capabilities = {
         ],
         "probeExists": "gsd-core/VERSION"
       },
+      "localConfigDir": ".agents",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -117,13 +118,76 @@ const capabilities = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": "undocumented",
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": true,
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "go"
+      }
     }
+  },
+  "assumption-delta": {
+    "id": "assumption-delta",
+    "role": "feature",
+    "version": "1.7.0-rc.1",
+    "title": "Assumption-delta architecture checkpoint",
+    "description": "Rarely-firing advisory checkpoint that triggers when a phase makes something plural, optional, or chosen that used to be singular, required, or derived. Surfaces one identity-model question (promote the new general representation to primary, or add it alongside?) so a silent primary-key drift does not accumulate into a later user-facing bug. Non-blocking; fires only on a detected signal.",
+    "tier": "full",
+    "requires": [],
+    "engines": {
+      "gsd": ">=1.6.0"
+    },
+    "runtimeCompat": {
+      "supported": [
+        "*"
+      ],
+      "unsupported": []
+    },
+    "skills": [],
+    "agents": [],
+    "hooks": [],
+    "config": {
+      "workflow.assumption_delta": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable the assumption-delta architecture checkpoint during planning. When a pluralization/optional/chosen signal is detected in the phase scope, the planner is prompted to re-ask whether the primary key / identity model still names the right thing. Advisory (non-blocking)."
+      }
+    },
+    "steps": [],
+    "contributions": [
+      {
+        "point": "plan:pre",
+        "into": "planner",
+        "fragment": {
+          "path": "fragments/plan-pre.md",
+          "inline": "# Assumption-Delta Architecture Checkpoint\n\n> Advisory, non-blocking. Fires **only** when the phase scope shows a singular→plural / required→optional / derived→chosen transition. When it fires, it surfaces ONE identity-model question before the plan is finalized. Most phases will not fire it — that is the point.\n\n## Why this exists\n\nMost quietly-imported architectural debt does not come from a missing upfront design phase. It comes at the *seam*: a later phase introduces a second case (a second platform, auth method, tenant, region, source of truth) and nobody re-asks whether the original abstraction still names the right thing. The phase that adds the second case is exactly the 20-minute conversation that prevents an afternoon of later cleanup.\n\n## Run the detector\n\nThe detector is a deterministic scan over the phase scope text. It strips fenced code blocks first, so a trigger word that appears only inside a code snippet does not fire. It returns a typed result: `{ detected, signals[], terms }`. Resolve it through the `assumption-delta scan` query (same phase-section resolver as `roadmap.get-phase`):\n\n```bash\nASSUMPTION_DELTA_JSON=$(gsd_run query assumption-delta scan \"${PHASE}\" --json 2>/dev/null || echo '{\"detected\":false,\"signals\":[],\"terms\":{}}')\n```\n\n> If the phase section cannot be resolved (no `ROADMAP.md` / unknown phase), the query emits `{ \"detected\": false, ... }` — the checkpoint does not fire. Do not block on it.\n>\n> Optional tuning — pass `--terms <comma-list>` to replace the curated pluralization cues for this project (the `optional`/`chosen` cues keep their defaults): `gsd_run query assumption-delta scan \"${PHASE}\" --json --terms second,alternative,fallback`.\n\n## Decision branch\n\nRead `ASSUMPTION_DELTA_JSON`. Act on `detected` only — do **not** pattern-match the human prose.\n\n**If `detected` is `false`:** this phase does not change a core assumption. Skip the checkpoint entirely and continue planning. Do not raise it with the user.\n\n**If `detected` is `true`:** a core assumption may have lost its monopoly. The `signals[]` array tells you which family fired:\n\n| `kind` | What changed | The question to answer |\n|---|---|---|\n| `pluralization` | A second X was introduced where there was one (second platform / auth method / tenant / region / source of truth) | Does the current primary key / identity model still name the right noun? |\n| `optional` | A required / `only` field became optional | Is the field still the right anchor, or has the anchor moved? |\n| `chosen` | A derived value became chosen, or a constant became a parameter | Has a configuration decision become a modeling decision? |\n\nBefore finalizing the plan, answer this for the user and record the decision explicitly:\n\n> **Promote vs. add-alongside.** The usual correct move when a generalization occurs is to **promote** the new general representation to the primary and **demote** the old specific one to a detail of one variant — *not* to add the new one alongside the still-required old one. Adding alongside silently contradicts the generalized intent (a later variant that does not fit the old primary can be stored but never confirmed as a default).\n\nRecord the outcome in the PLAN.md front matter / a `<assumption_delta_decision>` block:\n\n- The **noun** that is now primary (the generalized identity).\n- The **decision**: `promote` | `add-alongside` | `no-change`, with a one-line rationale.\n- If `add-alongside`: call it out as accepted debt and note what would force a later promote.\n\n## Optional companion: an invariant test\n\nWhen `detected` is `true`, suggest (do not require) a contract/invariant test that encodes the now-generalized intent — e.g. *\"every confirmed default round-trips through the primary use-path, for every supported variant.\"* That test goes red the instant a future phase reintroduces the singular assumption, so the regression cannot land silently. If the user accepts, add the test as a task in the plan.\n\n## Tuning the vocabulary (optional)\n\nThe trigger vocabulary is a curated, additive-only set in `gsd-core/bin/lib/assumption-delta.cjs` (`DEFAULT_ASSUMPTION_DELTA_TERMS`). Bare \"or\" is intentionally excluded — it is too common in prose and would make the gate fire constantly. To widen or narrow the cues for a project, override at the call site with `--terms <comma-list>` (replaces the pluralization cues; `optional`/`chosen` keep defaults). The whole checkpoint is toggleable via `workflow.assumption_delta` in `.planning/config.json`.\n\nThis checkpoint is advisory: it informs and records; it never blocks the phase.\n"
+        },
+        "produces": [],
+        "consumes": [
+          "CONTEXT.md"
+        ],
+        "when": "workflow.assumption_delta",
+        "onError": "skip"
+      }
+    ],
+    "gates": []
   },
   "audit": {
     "id": "audit",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Audit",
     "description": "Open-artifact audit and UAT-gap audit for milestone close gates; exposes `gsd-tools audit-uat` (cross-phase UAT outstanding items) and `gsd-tools audit-open` (structured open-artifact scan across debug, tasks, threads, todos, seeds, UAT, verification, context-questions).",
     "tier": "full",
@@ -160,7 +224,7 @@ const capabilities = {
   "augment": {
     "id": "augment",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Augment Code",
     "description": "Augment Code CLI — commands + nested-skill artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -176,6 +240,7 @@ const capabilities = {
           "AUGMENT_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".augment",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -194,6 +259,14 @@ const capabilities = {
             "nesting": "nested",
             "recursive": false,
             "converter": "convertClaudeCommandToAugmentSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToAugmentAgent"
           }
         ],
         "local": [
@@ -212,6 +285,14 @@ const capabilities = {
             "nesting": "nested",
             "recursive": false,
             "converter": "convertClaudeCommandToAugmentSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToAugmentAgent"
           }
         ]
       },
@@ -223,13 +304,30 @@ const capabilities = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "claude": {
     "id": "claude",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Claude Code",
     "description": "Anthropic Claude Code — primary development runtime; tier-1 support with full hook surface and skills-based global install.",
     "tier": "core",
@@ -245,6 +343,7 @@ const capabilities = {
           "CLAUDE_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".claude",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -289,13 +388,30 @@ const capabilities = {
         "Stop",
         "PreCompact",
         "FileChanged"
-      ]
+      ],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": true,
+          "maxDepth": 5,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "cline": {
     "id": "cline",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Cline",
     "description": "Cline (VS Code extension) — global-only nested-skill layout; cline-rules hook surface (.clinerules); no hook events emitted; tier-2 support.",
     "tier": "core",
@@ -311,6 +427,7 @@ const capabilities = {
           "CLINE_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".cline",
       "configFormat": "markdown-dir",
       "artifactLayout": {
         "global": [
@@ -332,13 +449,30 @@ const capabilities = {
       "installSurface": "cline-rules",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "read-only",
+          "backgroundDispatch": false
+        },
+        "modelMode": "active",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "code-review": {
     "id": "code-review",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Code review",
     "description": "Source-file code review and review-fix workflow support for completed execution work.",
     "tier": "full",
@@ -399,7 +533,7 @@ const capabilities = {
   "codebuddy": {
     "id": "codebuddy",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "CodeBuddy",
     "description": "CodeBuddy (Tencent) — converted commands + skills artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -415,6 +549,7 @@ const capabilities = {
           "CODEBUDDY_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".codebuddy",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -433,6 +568,14 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCodebuddySkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCodebuddyAgent"
           }
         ],
         "local": [
@@ -451,6 +594,14 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCodebuddySkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCodebuddyAgent"
           }
         ]
       },
@@ -462,13 +613,30 @@ const capabilities = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "codex": {
     "id": "codex",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "OpenAI Codex CLI",
     "description": "OpenAI Codex CLI — shell-var command style; per-agent sandbox tiers; config.toml + hooks.json hook surface; tier-1 support.",
     "tier": "core",
@@ -484,6 +652,7 @@ const capabilities = {
           "CODEX_HOME"
         ]
       },
+      "localConfigDir": ".codex",
       "configFormat": "toml",
       "artifactLayout": {
         "global": [
@@ -515,13 +684,30 @@ const capabilities = {
       "installSurface": "codex-toml",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": true,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": true
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "copilot": {
     "id": "copilot",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "GitHub Copilot",
     "description": "GitHub Copilot (VS Code) — markdown config format; copilot-inline hook surface; no hook events emitted; flat skill nesting (unconfirmed recursive loader); tier-2 support.",
     "tier": "core",
@@ -538,6 +724,7 @@ const capabilities = {
           "COPILOT_HOME"
         ]
       },
+      "localConfigDir": ".github",
       "configFormat": "markdown",
       "artifactLayout": {
         "global": [
@@ -568,13 +755,30 @@ const capabilities = {
       "installSurface": "copilot-instructions",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "undocumented"
+      }
     }
   },
   "cursor": {
     "id": "cursor",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Cursor",
     "description": "Cursor IDE — skills + converted commands artifact layout; hooks.json surface; Claude hook event dialect; recursive skill loader (flat nesting); tier-2 support.",
     "tier": "core",
@@ -590,6 +794,7 @@ const capabilities = {
           "CURSOR_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".cursor",
       "configFormat": "none",
       "artifactLayout": {
         "global": [
@@ -608,6 +813,14 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCursorCommand"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCursorAgent"
           }
         ],
         "local": [
@@ -626,6 +839,14 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCursorCommand"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCursorAgent"
           }
         ]
       },
@@ -637,13 +858,30 @@ const capabilities = {
       "installSurface": "cursor-hooks-json",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": true,
+          "maxDepth": 2,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": true
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "drift": {
     "id": "drift",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Drift detection gates",
     "description": "Drift detection gates for the planning loop. At execute:wave:post: a blocking schema drift gate (detects schema files changed without a database push) and a non-blocking codebase drift gate (detects structural additions not reflected in STRUCTURE.md). At plan:pre: a non-blocking, warn-only codebase drift gate (gated on workflow.plan_drift_precheck) that flags a stale codebase map before planning, so plans are authored against a fresh STRUCTURE.md instead of discovering drift mid-execution.",
     "tier": "full",
@@ -721,7 +959,7 @@ const capabilities = {
   "gap-analysis": {
     "id": "gap-analysis",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Post-planning gap analysis",
     "description": "Proactive, non-blocking post-planning coverage report. After all PLAN.md files are generated, cross-references every REQ-ID and D-ID from REQUIREMENTS.md and CONTEXT.md against plan bodies. Emits a Source | Item | Status table. Does not block phase advancement.",
     "tier": "standard",
@@ -762,7 +1000,7 @@ const capabilities = {
   "gemini": {
     "id": "gemini",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Gemini CLI",
     "description": "Google Gemini CLI — commands-only artifact layout (TOML); Gemini hook event dialect; settings-json hook surface; tier-2 support.",
     "tier": "core",
@@ -778,6 +1016,7 @@ const capabilities = {
           "GEMINI_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".gemini",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -813,13 +1052,30 @@ const capabilities = {
         "BeforeAgent",
         "AfterAgent",
         "BeforeModel"
-      ]
+      ],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-toml",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": "undocumented",
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "graphify": {
     "id": "graphify",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Knowledge graph",
     "description": "Build, query, and inspect the project knowledge graph in `.planning/graphs/`; exposes graphify CLI subcommands (build, query, status, diff) and the /gsd-graphify skill.",
     "tier": "full",
@@ -860,7 +1116,7 @@ const capabilities = {
   "hermes": {
     "id": "hermes",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Hermes Agent",
     "description": "Hermes Agent (NousResearch) — skills nest under skills/gsd/ category bucket; nested skill layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -876,6 +1132,7 @@ const capabilities = {
           "HERMES_HOME"
         ]
       },
+      "localConfigDir": ".hermes",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -907,13 +1164,30 @@ const capabilities = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-programmatic",
+        "dispatch": {
+          "namedDispatch": false,
+          "nested": true,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "read-only",
+          "backgroundDispatch": false
+        },
+        "modelMode": "active",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "python"
+      }
     }
   },
   "intel": {
     "id": "intel",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Codebase intelligence",
     "description": "Code-intelligence store for codebase querying, diff, snapshot, and API-surface extraction; exposes `gsd-tools intel` subcommands (query, status, update, diff, snapshot, patch-meta, validate, extract-exports, api-surface) and backs `/gsd-map-codebase` and `gsd-intel-updater`.",
     "tier": "full",
@@ -965,7 +1239,7 @@ const capabilities = {
   "kilo": {
     "id": "kilo",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Kilo Code",
     "description": "Kilo Code — XDG-based config dir; global skills at ~/.kilo/skills (separate from XDG config); flat command/ + skills artifact layout; no lifecycle hook registration; tier-2 support.",
     "tier": "core",
@@ -988,6 +1262,7 @@ const capabilities = {
           "env": []
         }
       },
+      "localConfigDir": ".kilo",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -1034,13 +1309,30 @@ const capabilities = {
       "installSurface": "settings-json",
       "writesSharedSettings": false,
       "permissionWriter": "kilo",
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": true,
+          "maxDepth": -1,
+          "background": true,
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": false
+        },
+        "modelMode": "active",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "bun"
+      }
     }
   },
   "kimi": {
     "id": "kimi",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Kimi CLI",
     "description": "Kimi CLI (Moonshot AI) — generic agents root at ~/.config/agents; skills + kimi-agents artifact layout; no hook surface; no hook events; tier-2 support.",
     "tier": "core",
@@ -1061,6 +1353,7 @@ const capabilities = {
         ],
         "probeExists": "skills"
       },
+      "localConfigDir": ".kimi-code",
       "configFormat": "none",
       "artifactLayout": {
         "global": [
@@ -1090,13 +1383,30 @@ const capabilities = {
       "installSurface": "profile-marker-only",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "python"
+      }
     }
   },
   "mempalace": {
     "id": "mempalace",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "MemPalace memory",
     "description": "Cross-session, cross-project memory: deliberate recall before discuss/plan and verbatim capture + temporal-KG sync at phase boundaries, via the MemPalace MCP server and CLI.",
     "tier": "full",
@@ -1270,7 +1580,7 @@ const capabilities = {
   "nyquist": {
     "id": "nyquist",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Nyquist validation",
     "description": "Validation coverage audit that maps executed work back to tests and manual-only evidence.",
     "tier": "full",
@@ -1320,7 +1630,7 @@ const capabilities = {
   "opencode": {
     "id": "opencode",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "OpenCode",
     "description": "OpenCode — XDG-based config dir; flat command/ + skills artifact layout; settings-json config format; no lifecycle hook registration; tier-2 support.",
     "tier": "core",
@@ -1338,6 +1648,7 @@ const capabilities = {
           "XDG_CONFIG_HOME"
         ]
       },
+      "localConfigDir": ".opencode",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -1384,13 +1695,30 @@ const capabilities = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": "opencode",
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": false,
+          "subagentToolkit": "full",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "active",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "bun"
+      }
     }
   },
   "pattern-mapper": {
     "id": "pattern-mapper",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Pattern mapping",
     "description": "Optional codebase-pattern mapping before planning; owns the pattern mapper agent and workflow.pattern_mapper activation key.",
     "tier": "full",
@@ -1444,7 +1772,7 @@ const capabilities = {
   "profile-pipeline": {
     "id": "profile-pipeline",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Developer profiling pipeline",
     "description": "Developer behavioral profiling from Claude Code session history; scans session JSONL files, extracts and samples user messages, and generates profile artifacts (USER-PROFILE.md, dev-preferences.md, CLAUDE.md sections). Exposes eight `gsd-tools` commands: scan-sessions, extract-messages, profile-sample (pipeline phase) and write-profile, profile-questionnaire, generate-dev-preferences, generate-claude-profile, generate-claude-md (output phase). Backs the /gsd-profile-user skill and gsd-user-profiler agent.",
     "tier": "full",
@@ -1521,7 +1849,7 @@ const capabilities = {
   "qwen": {
     "id": "qwen",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Qwen Code",
     "description": "Qwen Code (Alibaba) — nested-skill artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -1537,6 +1865,7 @@ const capabilities = {
           "QWEN_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".qwen",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -1572,13 +1901,30 @@ const capabilities = {
         "SubagentStop",
         "Stop",
         "PreCompact"
-      ]
+      ],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "research": {
     "id": "research",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Phase research",
     "description": "Optional phase research before planning; owns the phase researcher agent and workflow.research activation key.",
     "tier": "standard",
@@ -1630,7 +1976,7 @@ const capabilities = {
   "schema-gate": {
     "id": "schema-gate",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Schema push detection gate",
     "description": "Detects ORM schema-relevant files in the phase scope during planning and injects a mandatory [BLOCKING] schema push task into the plan. Prevents false-positive verification where build/types pass because TypeScript types come from config, not the live database.",
     "tier": "full",
@@ -1676,7 +2022,7 @@ const capabilities = {
   "security": {
     "id": "security",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Security enforcement",
     "description": "Threat mitigation verification and ship-time security blocking for phases with security enforcement enabled.",
     "tier": "full",
@@ -1775,7 +2121,7 @@ const capabilities = {
   "tdd": {
     "id": "tdd",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Test-driven development",
     "description": "Injects TDD heuristics into the planner and enforces RED/GREEN gate compliance on type:tdd plans after execution. Owns workflow.tdd_mode; the --tdd CLI flag is the ephemeral override.",
     "tier": "full",
@@ -1828,7 +2174,7 @@ const capabilities = {
   "trae": {
     "id": "trae",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Trae IDE",
     "description": "Trae IDE — nested-skill artifact layout; no hook surface (profile-marker-only config); tier-2 support.",
     "tier": "core",
@@ -1844,6 +2190,7 @@ const capabilities = {
           "TRAE_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".trae",
       "configFormat": "none",
       "artifactLayout": {
         "global": [
@@ -1854,6 +2201,14 @@ const capabilities = {
             "nesting": "nested",
             "recursive": false,
             "converter": "convertClaudeCommandToTraeSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToTraeAgent"
           }
         ],
         "local": [
@@ -1864,6 +2219,14 @@ const capabilities = {
             "nesting": "nested",
             "recursive": false,
             "converter": "convertClaudeCommandToTraeSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToTraeAgent"
           }
         ]
       },
@@ -1874,13 +2237,30 @@ const capabilities = {
       "installSurface": "profile-marker-only",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": true,
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "passive",
+        "hookBus": "engine",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "ui": {
     "id": "ui",
     "role": "feature",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "UI design contracts",
     "description": "UI-SPEC design contract + retrospective UI audit for frontend phases.",
     "tier": "full",
@@ -1975,7 +2355,7 @@ const capabilities = {
   "windsurf": {
     "id": "windsurf",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Windsurf",
     "description": "Windsurf (Codeium) — workspace workflow artifact layout for slash commands; no hook surface; no hook events; tier-2 support.",
     "tier": "core",
@@ -1992,9 +2372,19 @@ const capabilities = {
           "WINDSURF_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".windsurf",
       "configFormat": "none",
       "artifactLayout": {
-        "global": [],
+        "global": [
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToWindsurfAgent"
+          }
+        ],
         "local": [
           {
             "kind": "commands",
@@ -2003,6 +2393,14 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToWindsurfWorkflow"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToWindsurfAgent"
           }
         ]
       },
@@ -2013,7 +2411,24 @@ const capabilities = {
       "installSurface": "profile-marker-only",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": "undocumented",
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": "undocumented",
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "undocumented"
+      }
     }
   }
 };
@@ -2187,6 +2602,21 @@ const byLoopPoint = {
       }
     ],
     "contributions": [
+      {
+        "capId": "assumption-delta",
+        "point": "plan:pre",
+        "into": "planner",
+        "fragment": {
+          "path": "fragments/plan-pre.md",
+          "inline": "# Assumption-Delta Architecture Checkpoint\n\n> Advisory, non-blocking. Fires **only** when the phase scope shows a singular→plural / required→optional / derived→chosen transition. When it fires, it surfaces ONE identity-model question before the plan is finalized. Most phases will not fire it — that is the point.\n\n## Why this exists\n\nMost quietly-imported architectural debt does not come from a missing upfront design phase. It comes at the *seam*: a later phase introduces a second case (a second platform, auth method, tenant, region, source of truth) and nobody re-asks whether the original abstraction still names the right thing. The phase that adds the second case is exactly the 20-minute conversation that prevents an afternoon of later cleanup.\n\n## Run the detector\n\nThe detector is a deterministic scan over the phase scope text. It strips fenced code blocks first, so a trigger word that appears only inside a code snippet does not fire. It returns a typed result: `{ detected, signals[], terms }`. Resolve it through the `assumption-delta scan` query (same phase-section resolver as `roadmap.get-phase`):\n\n```bash\nASSUMPTION_DELTA_JSON=$(gsd_run query assumption-delta scan \"${PHASE}\" --json 2>/dev/null || echo '{\"detected\":false,\"signals\":[],\"terms\":{}}')\n```\n\n> If the phase section cannot be resolved (no `ROADMAP.md` / unknown phase), the query emits `{ \"detected\": false, ... }` — the checkpoint does not fire. Do not block on it.\n>\n> Optional tuning — pass `--terms <comma-list>` to replace the curated pluralization cues for this project (the `optional`/`chosen` cues keep their defaults): `gsd_run query assumption-delta scan \"${PHASE}\" --json --terms second,alternative,fallback`.\n\n## Decision branch\n\nRead `ASSUMPTION_DELTA_JSON`. Act on `detected` only — do **not** pattern-match the human prose.\n\n**If `detected` is `false`:** this phase does not change a core assumption. Skip the checkpoint entirely and continue planning. Do not raise it with the user.\n\n**If `detected` is `true`:** a core assumption may have lost its monopoly. The `signals[]` array tells you which family fired:\n\n| `kind` | What changed | The question to answer |\n|---|---|---|\n| `pluralization` | A second X was introduced where there was one (second platform / auth method / tenant / region / source of truth) | Does the current primary key / identity model still name the right noun? |\n| `optional` | A required / `only` field became optional | Is the field still the right anchor, or has the anchor moved? |\n| `chosen` | A derived value became chosen, or a constant became a parameter | Has a configuration decision become a modeling decision? |\n\nBefore finalizing the plan, answer this for the user and record the decision explicitly:\n\n> **Promote vs. add-alongside.** The usual correct move when a generalization occurs is to **promote** the new general representation to the primary and **demote** the old specific one to a detail of one variant — *not* to add the new one alongside the still-required old one. Adding alongside silently contradicts the generalized intent (a later variant that does not fit the old primary can be stored but never confirmed as a default).\n\nRecord the outcome in the PLAN.md front matter / a `<assumption_delta_decision>` block:\n\n- The **noun** that is now primary (the generalized identity).\n- The **decision**: `promote` | `add-alongside` | `no-change`, with a one-line rationale.\n- If `add-alongside`: call it out as accepted debt and note what would force a later promote.\n\n## Optional companion: an invariant test\n\nWhen `detected` is `true`, suggest (do not require) a contract/invariant test that encodes the now-generalized intent — e.g. *\"every confirmed default round-trips through the primary use-path, for every supported variant.\"* That test goes red the instant a future phase reintroduces the singular assumption, so the regression cannot land silently. If the user accepts, add the test as a task in the plan.\n\n## Tuning the vocabulary (optional)\n\nThe trigger vocabulary is a curated, additive-only set in `gsd-core/bin/lib/assumption-delta.cjs` (`DEFAULT_ASSUMPTION_DELTA_TERMS`). Bare \"or\" is intentionally excluded — it is too common in prose and would make the gate fire constantly. To widen or narrow the cues for a project, override at the call site with `--terms <comma-list>` (replaces the pluralization cues; `optional`/`chosen` keep defaults). The whole checkpoint is toggleable via `workflow.assumption_delta` in `.planning/config.json`.\n\nThis checkpoint is advisory: it informs and records; it never blocks the phase.\n"
+        },
+        "produces": [],
+        "consumes": [
+          "CONTEXT.md"
+        ],
+        "when": "workflow.assumption_delta",
+        "onError": "skip"
+      },
       {
         "capId": "schema-gate",
         "point": "plan:pre",
@@ -2490,6 +2920,7 @@ const byLoopPoint = {
 
 const configKeys = {
   "workflow.ai_integration_phase": "ai-integration",
+  "workflow.assumption_delta": "assumption-delta",
   "workflow.code_review": "code-review",
   "workflow.code_review_depth": "code-review",
   "workflow.drift_threshold": "drift",
@@ -2529,6 +2960,12 @@ const configSchema = {
     "type": "boolean",
     "default": true,
     "description": "Prompt for an AI-SPEC design contract before planning phases that involve AI systems."
+  },
+  "workflow.assumption_delta": {
+    "owner": "assumption-delta",
+    "type": "boolean",
+    "default": true,
+    "description": "Enable the assumption-delta architecture checkpoint during planning. When a pluralization/optional/chosen signal is detected in the phase scope, the planner is prompted to re-ask whether the primary key / identity model still names the right thing. Advisory (non-blocking)."
   },
   "workflow.code_review": {
     "owner": "code-review",
@@ -2743,7 +3180,7 @@ const runtimes = {
   "antigravity": {
     "id": "antigravity",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Antigravity",
     "description": "Google Antigravity IDE — nested under ~/.gemini/antigravity; probed across 1.x and 2.x layouts; Gemini hook event dialect; flat skill layout; tier-1 support.",
     "tier": "core",
@@ -2766,6 +3203,7 @@ const runtimes = {
         ],
         "probeExists": "gsd-core/VERSION"
       },
+      "localConfigDir": ".agents",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -2797,13 +3235,30 @@ const runtimes = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": "undocumented",
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": true,
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "go"
+      }
     }
   },
   "augment": {
     "id": "augment",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Augment Code",
     "description": "Augment Code CLI — commands + nested-skill artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -2819,6 +3274,7 @@ const runtimes = {
           "AUGMENT_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".augment",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -2837,6 +3293,14 @@ const runtimes = {
             "nesting": "nested",
             "recursive": false,
             "converter": "convertClaudeCommandToAugmentSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToAugmentAgent"
           }
         ],
         "local": [
@@ -2855,6 +3319,14 @@ const runtimes = {
             "nesting": "nested",
             "recursive": false,
             "converter": "convertClaudeCommandToAugmentSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToAugmentAgent"
           }
         ]
       },
@@ -2866,13 +3338,30 @@ const runtimes = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "claude": {
     "id": "claude",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Claude Code",
     "description": "Anthropic Claude Code — primary development runtime; tier-1 support with full hook surface and skills-based global install.",
     "tier": "core",
@@ -2888,6 +3377,7 @@ const runtimes = {
           "CLAUDE_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".claude",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -2932,13 +3422,30 @@ const runtimes = {
         "Stop",
         "PreCompact",
         "FileChanged"
-      ]
+      ],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": true,
+          "maxDepth": 5,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "cline": {
     "id": "cline",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Cline",
     "description": "Cline (VS Code extension) — global-only nested-skill layout; cline-rules hook surface (.clinerules); no hook events emitted; tier-2 support.",
     "tier": "core",
@@ -2954,6 +3461,7 @@ const runtimes = {
           "CLINE_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".cline",
       "configFormat": "markdown-dir",
       "artifactLayout": {
         "global": [
@@ -2975,13 +3483,30 @@ const runtimes = {
       "installSurface": "cline-rules",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "read-only",
+          "backgroundDispatch": false
+        },
+        "modelMode": "active",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "codebuddy": {
     "id": "codebuddy",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "CodeBuddy",
     "description": "CodeBuddy (Tencent) — converted commands + skills artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -2997,6 +3522,7 @@ const runtimes = {
           "CODEBUDDY_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".codebuddy",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -3015,6 +3541,14 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCodebuddySkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCodebuddyAgent"
           }
         ],
         "local": [
@@ -3033,6 +3567,14 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCodebuddySkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCodebuddyAgent"
           }
         ]
       },
@@ -3044,13 +3586,30 @@ const runtimes = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "codex": {
     "id": "codex",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "OpenAI Codex CLI",
     "description": "OpenAI Codex CLI — shell-var command style; per-agent sandbox tiers; config.toml + hooks.json hook surface; tier-1 support.",
     "tier": "core",
@@ -3066,6 +3625,7 @@ const runtimes = {
           "CODEX_HOME"
         ]
       },
+      "localConfigDir": ".codex",
       "configFormat": "toml",
       "artifactLayout": {
         "global": [
@@ -3097,13 +3657,30 @@ const runtimes = {
       "installSurface": "codex-toml",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": true,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": true
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "copilot": {
     "id": "copilot",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "GitHub Copilot",
     "description": "GitHub Copilot (VS Code) — markdown config format; copilot-inline hook surface; no hook events emitted; flat skill nesting (unconfirmed recursive loader); tier-2 support.",
     "tier": "core",
@@ -3120,6 +3697,7 @@ const runtimes = {
           "COPILOT_HOME"
         ]
       },
+      "localConfigDir": ".github",
       "configFormat": "markdown",
       "artifactLayout": {
         "global": [
@@ -3150,13 +3728,30 @@ const runtimes = {
       "installSurface": "copilot-instructions",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "undocumented"
+      }
     }
   },
   "cursor": {
     "id": "cursor",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Cursor",
     "description": "Cursor IDE — skills + converted commands artifact layout; hooks.json surface; Claude hook event dialect; recursive skill loader (flat nesting); tier-2 support.",
     "tier": "core",
@@ -3172,6 +3767,7 @@ const runtimes = {
           "CURSOR_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".cursor",
       "configFormat": "none",
       "artifactLayout": {
         "global": [
@@ -3190,6 +3786,14 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCursorCommand"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCursorAgent"
           }
         ],
         "local": [
@@ -3208,6 +3812,14 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCursorCommand"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCursorAgent"
           }
         ]
       },
@@ -3219,13 +3831,30 @@ const runtimes = {
       "installSurface": "cursor-hooks-json",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": true,
+          "maxDepth": 2,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": true
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "gemini": {
     "id": "gemini",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Gemini CLI",
     "description": "Google Gemini CLI — commands-only artifact layout (TOML); Gemini hook event dialect; settings-json hook surface; tier-2 support.",
     "tier": "core",
@@ -3241,6 +3870,7 @@ const runtimes = {
           "GEMINI_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".gemini",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -3276,13 +3906,30 @@ const runtimes = {
         "BeforeAgent",
         "AfterAgent",
         "BeforeModel"
-      ]
+      ],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-toml",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": "undocumented",
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "hermes": {
     "id": "hermes",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Hermes Agent",
     "description": "Hermes Agent (NousResearch) — skills nest under skills/gsd/ category bucket; nested skill layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -3298,6 +3945,7 @@ const runtimes = {
           "HERMES_HOME"
         ]
       },
+      "localConfigDir": ".hermes",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -3329,13 +3977,30 @@ const runtimes = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-programmatic",
+        "dispatch": {
+          "namedDispatch": false,
+          "nested": true,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "read-only",
+          "backgroundDispatch": false
+        },
+        "modelMode": "active",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "python"
+      }
     }
   },
   "kilo": {
     "id": "kilo",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Kilo Code",
     "description": "Kilo Code — XDG-based config dir; global skills at ~/.kilo/skills (separate from XDG config); flat command/ + skills artifact layout; no lifecycle hook registration; tier-2 support.",
     "tier": "core",
@@ -3358,6 +4023,7 @@ const runtimes = {
           "env": []
         }
       },
+      "localConfigDir": ".kilo",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -3404,13 +4070,30 @@ const runtimes = {
       "installSurface": "settings-json",
       "writesSharedSettings": false,
       "permissionWriter": "kilo",
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": true,
+          "maxDepth": -1,
+          "background": true,
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": false
+        },
+        "modelMode": "active",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "bun"
+      }
     }
   },
   "kimi": {
     "id": "kimi",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Kimi CLI",
     "description": "Kimi CLI (Moonshot AI) — generic agents root at ~/.config/agents; skills + kimi-agents artifact layout; no hook surface; no hook events; tier-2 support.",
     "tier": "core",
@@ -3431,6 +4114,7 @@ const runtimes = {
         ],
         "probeExists": "skills"
       },
+      "localConfigDir": ".kimi-code",
       "configFormat": "none",
       "artifactLayout": {
         "global": [
@@ -3460,13 +4144,30 @@ const runtimes = {
       "installSurface": "profile-marker-only",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "python"
+      }
     }
   },
   "opencode": {
     "id": "opencode",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "OpenCode",
     "description": "OpenCode — XDG-based config dir; flat command/ + skills artifact layout; settings-json config format; no lifecycle hook registration; tier-2 support.",
     "tier": "core",
@@ -3484,6 +4185,7 @@ const runtimes = {
           "XDG_CONFIG_HOME"
         ]
       },
+      "localConfigDir": ".opencode",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -3530,13 +4232,30 @@ const runtimes = {
       "installSurface": "settings-json",
       "writesSharedSettings": true,
       "permissionWriter": "opencode",
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": false,
+          "subagentToolkit": "full",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "active",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "bun"
+      }
     }
   },
   "qwen": {
     "id": "qwen",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Qwen Code",
     "description": "Qwen Code (Alibaba) — nested-skill artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -3552,6 +4271,7 @@ const runtimes = {
           "QWEN_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".qwen",
       "configFormat": "settings-json",
       "artifactLayout": {
         "global": [
@@ -3587,13 +4307,30 @@ const runtimes = {
         "SubagentStop",
         "Stop",
         "PreCompact"
-      ]
+      ],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": false,
+          "maxDepth": 1,
+          "background": true,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "trae": {
     "id": "trae",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Trae IDE",
     "description": "Trae IDE — nested-skill artifact layout; no hook surface (profile-marker-only config); tier-2 support.",
     "tier": "core",
@@ -3609,6 +4346,7 @@ const runtimes = {
           "TRAE_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".trae",
       "configFormat": "none",
       "artifactLayout": {
         "global": [
@@ -3619,6 +4357,14 @@ const runtimes = {
             "nesting": "nested",
             "recursive": false,
             "converter": "convertClaudeCommandToTraeSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToTraeAgent"
           }
         ],
         "local": [
@@ -3629,6 +4375,14 @@ const runtimes = {
             "nesting": "nested",
             "recursive": false,
             "converter": "convertClaudeCommandToTraeSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToTraeAgent"
           }
         ]
       },
@@ -3639,13 +4393,30 @@ const runtimes = {
       "installSurface": "profile-marker-only",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": true,
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "passive",
+        "hookBus": "engine",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node"
+      }
     }
   },
   "windsurf": {
     "id": "windsurf",
     "role": "runtime",
-    "version": "1.6.0",
+    "version": "1.7.0-rc.1",
     "title": "Windsurf",
     "description": "Windsurf (Codeium) — workspace workflow artifact layout for slash commands; no hook surface; no hook events; tier-2 support.",
     "tier": "core",
@@ -3662,9 +4433,19 @@ const runtimes = {
           "WINDSURF_CONFIG_DIR"
         ]
       },
+      "localConfigDir": ".windsurf",
       "configFormat": "none",
       "artifactLayout": {
-        "global": [],
+        "global": [
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToWindsurfAgent"
+          }
+        ],
         "local": [
           {
             "kind": "commands",
@@ -3673,6 +4454,14 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToWindsurfWorkflow"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToWindsurfAgent"
           }
         ]
       },
@@ -3683,7 +4472,24 @@ const runtimes = {
       "installSurface": "profile-marker-only",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": []
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": "undocumented",
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": "undocumented",
+          "subagentToolkit": "undocumented",
+          "backgroundDispatch": "undocumented"
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "undocumented"
+      }
     }
   }
 };
@@ -3834,6 +4640,7 @@ const profileMembership = {
 const _requiresGraph = {
   "ai-integration": [],
   "antigravity": [],
+  "assumption-delta": [],
   "audit": [],
   "augment": [],
   "claude": [],

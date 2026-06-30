@@ -19,6 +19,8 @@ const frontmatterMod = require("./frontmatter.cjs");
 const stateMod = require("./state.cjs");
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 const runtime_slash_cjs_1 = require("./runtime-slash.cjs");
+const clock_cjs_1 = require("./clock.cjs");
+const state_transition_cjs_1 = require("./state-transition.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ioMod = require("./io.cjs");
 const { output, error } = ioMod;
@@ -33,7 +35,7 @@ const coreUtilsMod = require("./core-utils.cjs");
 const { extractOneLinerFromBody } = coreUtilsMod;
 const { planningPaths } = planningWorkspace;
 const { extractFrontmatter } = frontmatterMod;
-const { writeStateMd, stateReplaceFieldWithFallback } = stateMod;
+const { writeStateMd } = stateMod;
 function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
     if (!reqIdsRaw || reqIdsRaw.length === 0) {
         error('requirement IDs required. Usage: requirements mark-complete REQ-01,REQ-02 or REQ-01 REQ-02');
@@ -165,6 +167,14 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
                 })();
                 while ((pm = phasePattern.exec(scopedContent)) !== null) {
                     const phaseNum = pm[1];
+                    // Phase 0 (pre-milestone) and Phase 999 (backlog) are sentinels, not
+                    // real phases — they legitimately have no directory and must not block
+                    // milestone completion. Mirrors the engine-wide sentinel convention
+                    // (phase-id getMilestoneFromPhaseId, roadmap-command-router SENTINELS,
+                    // the #1445 /^999/ progress filters). (#1580)
+                    const major = parseInt(phaseNum, 10);
+                    if (major === 0 || major === 999)
+                        continue;
                     const normalized = normalizePhaseName(phaseNum);
                     // A phase has disk_status: 'no_directory' when no phase directory
                     // with a matching token exists on disk. Use the same phaseTokenMatches
@@ -253,7 +263,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
     // Archive audit file if exists
     const auditFile = node_path_1.default.join(cwd, '.planning', `${version}-MILESTONE-AUDIT.md`);
     if (node_fs_1.default.existsSync(auditFile)) {
-        node_fs_1.default.renameSync(auditFile, node_path_1.default.join(archiveDir, `${version}-MILESTONE-AUDIT.md`));
+        (0, shell_command_projection_cjs_1.retryRenameSync)(auditFile, node_path_1.default.join(archiveDir, `${version}-MILESTONE-AUDIT.md`));
     }
     // Create/append MILESTONES.md entry
     const accomplishmentsList = accomplishments.map((a) => `- ${a}`).join('\n');
@@ -281,34 +291,21 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
     else {
         (0, shell_command_projection_cjs_1.platformWriteSync)(milestonesPath, `# Milestones\n\n${milestoneEntry}`);
     }
-    // Update STATE.md — keep frontmatter/body semantically aligned after closure
+    // Update STATE.md — keep frontmatter/body semantically aligned after closure.
+    // ADR-1769 Phase 5: dispatches to the STATE.md Transition Module. The closure
+    // write (Status, Last Activity, Last Activity Description, Current Position
+    // reset, Operator Next Steps reset) is the pure `milestoneCompleteCore` in
+    // src/state-transition.cts, backed by the field-classification table. The
+    // runtime-specific next-milestone slash command is resolved here and injected
+    // via the intent so the core stays pure. writeStateMd still owns the lock and
+    // the steady-state syncStateFrontmatter post-sync.
     if (node_fs_1.default.existsSync(statePath)) {
-        let stateContent = node_fs_1.default.readFileSync(statePath, 'utf-8');
-        stateContent = stateReplaceFieldWithFallback(stateContent, 'Status', null, `${version} milestone complete`);
-        stateContent = stateReplaceFieldWithFallback(stateContent, 'Last Activity', 'Last activity', today);
-        stateContent = stateReplaceFieldWithFallback(stateContent, 'Last Activity Description', null, `${version} milestone completed and archived`);
-        // Reset Current Position narrative so resume/progress flows do not keep
-        // pointing at closed-phase execution instructions.
-        const positionPattern = /(##\s*Current Position\s*\n)([\s\S]*?)(?=\n##|$)/i; // allow-adhoc-markdown: pre-seam section write-modify in milestone.cts; pending collectSection migration #1372
-        const closedPositionBody = `\nPhase: Milestone ${version} complete\n` +
-            `Plan: —\n` +
-            `Status: Awaiting next milestone\n` +
-            `Last activity: ${today} — Milestone ${version} completed and archived\n\n`;
-        if (positionPattern.test(stateContent)) {
-            stateContent = stateContent.replace(positionPattern, (_m, header) => `${header}${closedPositionBody}`);
-        }
-        else {
-            stateContent = `${stateContent.trimEnd()}\n\n## Current Position\n${closedPositionBody}`;
-        }
-        // Normalize operator-next-step tails that can become stale after close.
-        const operatorPattern = /(##\s*Operator Next Steps\s*\n)([\s\S]*?)(?=\n##|$)/i; // allow-adhoc-markdown: pre-seam section write-modify in milestone.cts; pending collectSection migration #1372
-        if (operatorPattern.test(stateContent)) {
-            stateContent = stateContent.replace(operatorPattern, `$1\n- Start the next milestone with ${(0, runtime_slash_cjs_1.formatGsdSlash)('new-milestone', (0, runtime_slash_cjs_1.resolveRuntime)(cwd))}\n\n`);
-        }
-        else {
-            stateContent = `${stateContent.trimEnd()}\n\n## Operator Next Steps\n\n- Start the next milestone with ${(0, runtime_slash_cjs_1.formatGsdSlash)('new-milestone', (0, runtime_slash_cjs_1.resolveRuntime)(cwd))}\n`;
-        }
-        writeStateMd(statePath, stateContent, cwd);
+        const result = (0, state_transition_cjs_1.transitionCore)(node_fs_1.default.readFileSync(statePath, 'utf-8'), {
+            kind: 'milestoneComplete',
+            version,
+            nextMilestoneCommand: (0, runtime_slash_cjs_1.formatGsdSlash)('new-milestone', (0, runtime_slash_cjs_1.resolveRuntime)(cwd)),
+        }, { clock: clock_cjs_1.realClock, progressProvider: () => null });
+        writeStateMd(statePath, result.content, cwd);
     }
     // Archive phase directories if requested
     let phasesArchived = false;
@@ -322,7 +319,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
             for (const dir of phaseDirNames) {
                 if (!isDirInMilestone(dir))
                     continue;
-                node_fs_1.default.renameSync(node_path_1.default.join(phasesDir, dir), node_path_1.default.join(phaseArchiveDir, dir));
+                (0, shell_command_projection_cjs_1.retryRenameSync)(node_path_1.default.join(phasesDir, dir), node_path_1.default.join(phaseArchiveDir, dir));
                 archivedCount++;
             }
             phasesArchived = archivedCount > 0;

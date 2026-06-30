@@ -67,7 +67,7 @@ function migrateToWorkstreams(cwd, workstreamName) {
             const src = node_path_1.default.join(baseDir, item.name);
             if (node_fs_1.default.existsSync(src)) {
                 const dest = node_path_1.default.join(wsDir, item.name);
-                node_fs_1.default.renameSync(src, dest);
+                (0, shell_command_projection_cjs_1.retryRenameSync)(src, dest);
                 filesMoved.push(item.name);
             }
         }
@@ -75,7 +75,7 @@ function migrateToWorkstreams(cwd, workstreamName) {
     catch (err) {
         for (const name of filesMoved) {
             try {
-                node_fs_1.default.renameSync(node_path_1.default.join(wsDir, name), node_path_1.default.join(baseDir, name));
+                (0, shell_command_projection_cjs_1.retryRenameSync)(node_path_1.default.join(wsDir, name), node_path_1.default.join(baseDir, name));
             }
             catch { /* ignore */ }
         }
@@ -275,14 +275,14 @@ function cmdWorkstreamComplete(cwd, name, options, raw) {
     try {
         const entries = node_fs_1.default.readdirSync(wsDir, { withFileTypes: true });
         for (const entry of entries) {
-            node_fs_1.default.renameSync(node_path_1.default.join(wsDir, entry.name), node_path_1.default.join(archivePath, entry.name));
+            (0, shell_command_projection_cjs_1.retryRenameSync)(node_path_1.default.join(wsDir, entry.name), node_path_1.default.join(archivePath, entry.name));
             filesMoved.push(entry.name);
         }
     }
     catch (err) {
         for (const fname of filesMoved) {
             try {
-                node_fs_1.default.renameSync(node_path_1.default.join(archivePath, fname), node_path_1.default.join(wsDir, fname));
+                (0, shell_command_projection_cjs_1.retryRenameSync)(node_path_1.default.join(archivePath, fname), node_path_1.default.join(wsDir, fname));
             }
             catch { /* ignore */ }
         }

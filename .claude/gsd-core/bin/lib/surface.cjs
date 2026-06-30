@@ -43,6 +43,9 @@ const runtimeArtifactLayout = require("./runtime-artifact-layout.cjs");
 const { findInstallSourceRoot } = runtimeArtifactLayout;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const runtimeArtifactConversion = require("./runtime-artifact-conversion.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const runtimeArtifactInstallPlan = require("./runtime-artifact-install-plan.cjs");
+const { assertDestWithinConfigHome } = runtimeArtifactInstallPlan;
 const SURFACE_FILE_NAME = '.gsd-surface.json';
 /**
  * Read the surface state from a runtime config directory.
@@ -302,7 +305,7 @@ function applySurface(runtimeConfigDir, layout, manifest, clusterMap, registry) 
                     tempDirsToClean.push(rewritten);
                 }
             }
-            const dest = node_path_1.default.join(layout.configDir, kind.destSubpath);
+            const dest = assertDestWithinConfigHome(layout.configDir, kind.destSubpath);
             _syncGsdDir(staged, dest, kind, skillManifest);
         }
     }

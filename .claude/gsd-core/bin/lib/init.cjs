@@ -1756,7 +1756,7 @@ function buildAgentSkillsBlock(config, agentType, projectRoot, diagnostics) {
         if (entry.kind === 'directive') {
             return `- Load the \`${entry.name}\` skill via the Skill tool before proceeding (plugin-provided).`;
         }
-        return `- @${entry.ref}`;
+        return `- @${String(entry.ref).replace(/\\/g, '/')}`;
     }).join('\n');
     return `<agent_skills>\nRead these user-configured skills:\n${lines}\n</agent_skills>`;
 }

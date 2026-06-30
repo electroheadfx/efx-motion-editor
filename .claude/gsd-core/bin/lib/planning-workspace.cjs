@@ -260,7 +260,7 @@ function withPlanningLock(cwd, fn, clock) {
                         const stolen = lockPath + '.stale-' + process.pid + '-' + clock.now() + '-' + (_planningStealSeq++);
                         let renamed = false;
                         try {
-                            node_fs_1.default.renameSync(lockPath, stolen);
+                            (0, shell_command_projection_cjs_1.retryRenameSync)(lockPath, stolen);
                             renamed = true;
                         }
                         catch { /* another racer won */ }

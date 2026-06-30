@@ -594,13 +594,13 @@ function stageValidated(opts) {
         // lives in capability-lifecycle.cjs and uses promote:false above.)
         if (node_fs_1.default.existsSync(finalDir)) {
             const backupDir = `${finalDir}.old-${process.pid}-${Date.now()}`;
-            node_fs_1.default.renameSync(finalDir, backupDir);
+            shellSeam.retryRenameSync(finalDir, backupDir);
             try {
-                node_fs_1.default.renameSync(stagingDir, finalDir);
+                shellSeam.retryRenameSync(stagingDir, finalDir);
             }
             catch (err) {
                 try {
-                    node_fs_1.default.renameSync(backupDir, finalDir);
+                    shellSeam.retryRenameSync(backupDir, finalDir);
                 }
                 catch { /* best-effort restore */ }
                 throw err;
@@ -611,7 +611,7 @@ function stageValidated(opts) {
             catch { /* best-effort */ }
         }
         else {
-            node_fs_1.default.renameSync(stagingDir, finalDir);
+            shellSeam.retryRenameSync(stagingDir, finalDir);
         }
         const version = typeof cap['version'] === 'string' ? cap['version'] : '';
         return { id, version, stagedDir: finalDir, integrity, source };

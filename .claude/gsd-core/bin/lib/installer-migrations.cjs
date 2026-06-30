@@ -88,7 +88,7 @@ function atomicWriteInstallState(configDir, content) {
     const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
     try {
         node_fs_1.default.writeFileSync(tmpPath, content, 'utf8');
-        node_fs_1.default.renameSync(tmpPath, filePath);
+        (0, shell_command_projection_cjs_1.retryRenameSync)(tmpPath, filePath);
     }
     catch (error) {
         try {

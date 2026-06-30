@@ -156,13 +156,16 @@ function convertedAgentsKind(destSubpath, prefix, converterName, configDir, scop
         kind: 'agents',
         destSubpath,
         prefix,
-        stage: (resolved) => {
+        stage: (resolved, agentCtx) => {
             // isGlobal is threaded so scope-aware agent converters (copilot, antigravity)
             // choose global-home vs workspace-relative paths; converters that only take
             // (content) ignore the extra positional arg. Mirrors skillsKind's scope
             // threading (#1173).
             const converter = conversionExports[converterName];
-            return stageAgentsForRuntimeWithConverter(findAgentsSourceRoot(configDir), resolved, converter, scope === 'global');
+            // ADR-1235 §1: when agentCtx is provided (by createRuntimeArtifactInstallPlan
+            // for descriptor-driven runtimes), thread it through so stageAgentsForRuntimeWithConverter
+            // can apply the full pre-converter + post-converter sequence in the correct order.
+            return stageAgentsForRuntimeWithConverter(findAgentsSourceRoot(configDir), resolved, converter, scope === 'global', agentCtx);
         },
     };
 }

@@ -204,11 +204,31 @@ const projectRoot = require('./lib/project-root.cjs');
 // against any require/load-ordering edge where the export isn't bound yet
 // when this entrypoint is first required (#604).
 const findProjectRoot = (...args) => projectRoot.findProjectRoot(...args);
+
+// #1754: CLI skew detection — warn (stderr, non-blocking) if this gsd-tools.cjs
+// is NOT the project-local install while a project-local install exists. Catches
+// the shadowing scenario from #1748 (stale global canary shadowing project-local).
+try {
+  const _skew = require('./lib/cli-skew-check.cjs');
+  const _skewRoot = findProjectRoot(process.cwd());
+  if (_skewRoot) {
+    const _skewLocal = path.join(_skewRoot, '.claude', 'gsd-core', 'bin', 'gsd-tools.cjs');
+    const _skewWarn = _skew.checkCliSkew({
+      resolvedPath: path.resolve(__filename),
+      projectRoot: _skewRoot,
+      projectLocalExists: fs.existsSync(_skewLocal),
+    });
+    if (_skewWarn) process.stderr.write(_skewWarn + '\n');
+  }
+} catch { /* advisory — never block */ }
+
 const { getActiveWorkstream } = require('./lib/planning-workspace.cjs');
 const { resolveActiveWorkstream, applyResolvedWorkstreamEnv } = require('./lib/active-workstream-store.cjs');
 const state = require('./lib/state.cjs');
 const phase = require('./lib/phase.cjs');
 const roadmap = require('./lib/roadmap.cjs');
+// #1561 — assumption-delta advisory checkpoint detector (pure function).
+const { detectAssumptionDelta } = require('./lib/assumption-delta.cjs');
 const verify = require('./lib/verify.cjs');
 const config = require('./lib/config.cjs');
 const template = require('./lib/template.cjs');
@@ -227,6 +247,10 @@ const evalMod = require('./lib/eval.cjs');
 const { routeVerificationCommand } = require('./lib/verification-command-router.cjs');
 const verification = require('./lib/verification.cjs');
 const { routeInitCommand } = require('./lib/init-command-router.cjs');
+// Stale-bake guard (#1688): warns once when model config changed since agents
+// were last baked on static-frontmatter runtimes (codex/opencode). Lazy-required
+// here, invoked from case 'init' below.
+const { warnIfStaleBake } = require('./lib/stale-bake-guard.cjs');
 const loopResolver = require('./lib/loop-resolver.cjs');
 const capabilityState = require('./lib/capability-state.cjs');
 const capabilityWriter = require('./lib/capability-writer.cjs');
@@ -635,7 +659,7 @@ async function main() {
   // discovery; previously it was a partial subset that didn't include
   // phase / roadmap / milestone / progress / etc.
   const TOP_LEVEL_USAGE = 'Usage: gsd-tools <command> [args] [--raw] [--pick <field>] [--cwd <path>] [--ws <name>] [--json-errors]\n' +
-    'Commands: agent, agent-skills, audit-open, audit-uat, check, check-commit, commit, commit-to-subrepo, pr-subrepo, ' +
+    'Commands: agent, agent-skills, assumption-delta, audit-open, audit-uat, check, check-commit, commit, commit-to-subrepo, pr-subrepo, ' +
     'config-ensure-section, config-get, config-new-project, config-path, config-set, migrate-config, ' +
     'current-timestamp, detect-custom-files, docs-init, drift-guard, effort, extract-messages, find-phase, ' +
     'from-gsd2, frontmatter, gap-analysis, generate-claude-md, generate-claude-profile, ' +
@@ -1234,6 +1258,56 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
       break;
     }
 
+    case 'dispatch-should-flatten': {
+      // #1708 / #853: typed query replacing the `RUNTIME === 'codex'` prose rule.
+      //
+      // Resolves the current runtime (GSD_RUNTIME > config.runtime > 'claude'),
+      // looks up registry.runtimes[id].runtime.hostIntegration.dispatch, and
+      // calls shouldFlattenDispatch(dispatch) from host-integration.cjs.
+      //
+      // Fail-closed: any unknown runtime, missing dispatch, or thrown error
+      // yields `true` (inline — the always-safe default).
+      //
+      // Output:
+      //   --raw   → prints exactly `true` or `false`
+      //   --json  → prints { runtime, shouldFlatten, dispatch }
+      //   default → same as --raw
+      try {
+        // Resolve runtime using the same precedence as `config-get runtime`.
+        const { resolveRuntime } = require('./lib/runtime-slash.cjs');
+        const runtimeId = resolveRuntime(cwd);
+
+        // Look up dispatch from the capability registry.
+        const registry = require('./lib/capability-registry.cjs');
+        const runtimeEntry = registry.runtimes != null
+          ? registry.runtimes[runtimeId]
+          : null;
+        const dispatch = runtimeEntry?.runtime?.hostIntegration?.dispatch ?? null;
+
+        // Call shouldFlattenDispatch from host-integration.cjs.
+        const hostIntegration = require('./lib/host-integration.cjs');
+        const shouldFlat = dispatch !== null
+          ? hostIntegration.shouldFlattenDispatch(dispatch)
+          : true; // fail-closed: unknown runtime → inline
+
+        const jsonIdx = args.indexOf('--json');
+        if (jsonIdx !== -1) {
+          output({
+            runtime: runtimeId,
+            shouldFlatten: shouldFlat,
+            dispatch: dispatch,
+          }, raw);
+        } else {
+          // --raw or default: print exactly true or false
+          process.stdout.write(shouldFlat ? 'true' : 'false');
+        }
+      } catch {
+        // Fail-closed on any error: inline is always safe.
+        process.stdout.write('true');
+      }
+      break;
+    }
+
     case 'config-new-project': {
       // Phase 6 (#3575): dispatch via SDK executeForCjs when available.
       const handled = _dispatchNonFamily({
@@ -1307,6 +1381,43 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
         raw,
         error,
       });
+      break;
+    }
+
+    case 'assumption-delta': {
+      // #1561 — advisory architecture checkpoint. `scan <phase>` reads the
+      // phase section via the same resolver as roadmap.get-phase and runs the
+      // deterministic detectAssumptionDelta, emitting the typed IR as JSON.
+      const sub = args[1];
+      if (sub === 'scan') {
+        const phaseNum = args[2];
+        // Reject missing or flag-shaped phase values (QA matrix: values that
+        // look like flags). `scan --json` must not treat "--json" as a phase.
+        if (!phaseNum || phaseNum.startsWith('-')) {
+          error('Usage: assumption-delta scan <phase> [--terms <csv>]', ERROR_REASON.SDK_UNKNOWN_COMMAND);
+          break;
+        }
+        // Optional --terms <csv> override (replaces the pluralization cues;
+        // optional/chosen keep defaults). An EMPTY value ("") or a flag-shaped
+        // value restores the curated defaults (does NOT disable pluralization).
+        // Terms are normalized (deduped, alphanumeric-only, capped) by
+        // detectAssumptionDelta's resolveTerms.
+        let termsOverride;
+        const termsIdx = args.indexOf('--terms');
+        const termsVal = termsIdx !== -1 ? args[termsIdx + 1] : undefined;
+        if (typeof termsVal === 'string' && !termsVal.startsWith('-')) {
+          const list = termsVal
+            .split(',')
+            .map((t) => t.trim().toLowerCase())
+            .filter((t) => t.length > 0);
+          termsOverride = list.length > 0 ? { pluralization: list } : undefined;
+        }
+        const section = roadmap.getRoadmapPhaseWithFallback(cwd, phaseNum);
+        const result = detectAssumptionDelta(section ?? '', termsOverride);
+        output(result, raw);
+        break;
+      }
+      error(`Unknown assumption-delta subcommand: ${sub}. Available: scan`, ERROR_REASON.SDK_UNKNOWN_COMMAND);
       break;
     }
 
@@ -1414,6 +1525,10 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
     }
 
     case 'init': {
+      // #1688: warn (at most once per process) if the user edited model_overrides
+      // without re-running `gsd install <runtime>` on a static-frontmatter runtime.
+      // Best-effort, stderr-only, swallowed errors — never blocks the command.
+      try { warnIfStaleBake(cwd); } catch { /* guard must never break init */ }
       routeInitCommand({
         init,
         args,

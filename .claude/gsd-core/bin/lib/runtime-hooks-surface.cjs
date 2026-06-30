@@ -84,7 +84,7 @@ function atomicWriteFileSync(target, data, options) {
     __atomicWrittenTmps.add(tmp);
     try {
         node_fs_1.default.writeFileSync(tmp, data, options);
-        node_fs_1.default.renameSync(tmp, target);
+        shellCmdProjection.retryRenameSync(tmp, target);
         // Successful rename: the tmp path no longer exists, but leave it in the
         // Set so _cleanTmpFiles can recognise it as installer-owned if it somehow
         // lingers (e.g. a rename succeeded but left a stale entry on some FS).

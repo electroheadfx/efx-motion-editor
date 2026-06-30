@@ -13,6 +13,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const node_child_process_1 = require("node:child_process");
+const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const planningWorkspace = require("./planning-workspace.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -416,7 +417,7 @@ function applyMigration(cwd, plan, options = {}) {
             const oldPath = node_path_1.default.join(phasesDir, phaseEntry.oldDir);
             const newPath = node_path_1.default.join(phasesDir, phaseEntry.newDir);
             if (node_fs_1.default.existsSync(oldPath)) {
-                node_fs_1.default.renameSync(oldPath, newPath);
+                (0, shell_command_projection_cjs_1.retryRenameSync)(oldPath, newPath);
                 performedRenames.push({ oldPath, newPath });
                 renamedDirs.push(`${phaseEntry.oldDir} → ${phaseEntry.newDir}`);
             }
@@ -483,7 +484,7 @@ function applyMigration(cwd, plan, options = {}) {
             const { oldPath, newPath } = performedRenames[i];
             try {
                 if (node_fs_1.default.existsSync(newPath))
-                    node_fs_1.default.renameSync(newPath, oldPath);
+                    (0, shell_command_projection_cjs_1.retryRenameSync)(newPath, oldPath);
             }
             catch { /* best-effort */ }
         }
