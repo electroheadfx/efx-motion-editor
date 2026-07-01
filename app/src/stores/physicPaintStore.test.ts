@@ -656,6 +656,24 @@ describe('physicPaintStore', () => {
     }));
   });
 
+  it('writes generated interpolation cache with source-neighbor provenance without moving real keys', () => {
+    const realOne = makeAlphaFrame(0, 1, 'alpha-real-one');
+    const realFour = makeAlphaFrame(0, 4, 'alpha-real-four');
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, realOne);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, realFour);
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 2, mode: 'blend', position: 0, deform: 0 });
+
+    expect(physicPaintStore.getFrame('layer-1', 1)?.dataUrl).toBe(realOne.dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', 4)?.dataUrl).toBe(realFour.dataUrl);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 1, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', nearestRealKeyFrame: 1, fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 1 / 3 }),
+      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', nearestRealKeyFrame: 1, fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 2 / 3 }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+    ]);
+  });
+
   it('generates alpha-only Roto interpolation cache across whole integer spans with real-key authority', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeAlphaFrame(0, 1, 'alpha-real-one'));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'alpha-real-four'));
