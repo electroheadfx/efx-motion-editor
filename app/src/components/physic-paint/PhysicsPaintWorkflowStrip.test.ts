@@ -199,7 +199,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(mapBlock).toContain('isDisplayRealKey || isOccupiedFrame(props.occupiedRotoFrames, frame)');
   });
 
-  it('36.12 exposes only the whole-layer Interpolation toggle in the visible MVP', () => {
+  it('36.12 UAT Test 8/D-18 exposes count and accepted duplicate/hold plus alpha blend mode controls in the visible strip', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
@@ -207,18 +207,20 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
     expect(studioSource()).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
     expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
-    expect(code).toContain('onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void');
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).toContain('Interpolation');
     expect(rotoControlsBlock).toContain('In-betweens');
     expect(rotoControlsBlock).toContain('Interpolation frames per real-key pair');
     expect(rotoControlsBlock).toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-select');
+    expect(rotoControlsBlock).toContain('Interpolation mode');
+    expect(rotoControlsBlock).toContain('Duplicate / hold');
+    expect(rotoControlsBlock).toContain('Alpha blend');
+    expect(rotoControlsBlock).toContain("value=\"duplicate\"");
+    expect(rotoControlsBlock).toContain("value=\"blend\"");
     expect(rotoControlsBlock).not.toContain('Interpolation gap frames');
     expect(rotoControlsBlock).not.toContain('Gaps');
-    expect(rotoControlsBlock).not.toContain('physics-paint-roto-interpolation-select');
-    expect(rotoControlsBlock).not.toContain('Blend');
-    expect(rotoControlsBlock).not.toContain('Duplicate');
   });
 
   it('36.8-REG-06/D-18 keeps the contextual Roto key utility pill in the timeline lane outside the header', () => {
@@ -390,7 +392,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(sessionCode).toContain('normalizeCachedFrames(input.cachedRotoFrames, input.canvasSize)');
   });
 
-  it('36.12 renders compact Roto interpolation toggle with visible count control', () => {
+  it('36.12 UAT Test 8/D-19 renders compact Roto interpolation controls with visible count and mode selection', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
@@ -398,13 +400,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
     expect(studioSource()).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
     expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
-    expect(code).toContain('onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).toContain('Interpolation');
     expect(rotoControlsBlock).toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).toContain('Interpolation mode');
+    expect(rotoControlsBlock).toContain('Duplicate / hold');
+    expect(rotoControlsBlock).toContain('Alpha blend');
     expect(rotoControlsBlock).not.toContain('Gaps');
-    expect(rotoControlsBlock).not.toContain('Interpolation mode');
-    expect(rotoControlsBlock).not.toContain('Blend');
   });
 
   it('36.12 Studio wires only the Interpolation toggle through store-owned blend regeneration and compact status copy', () => {
@@ -619,7 +621,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(clickHandlerBlock).not.toContain("vm.baseMeaning === 'generated' || vm.isEditableTarget === false) return");
   });
 
-  it('36.12 D-13/D-17 renders only visible Interpolation toggle controls in the strip', () => {
+  it('36.12 D-13/D-17/D-20 renders only MVP interpolation count and mode controls in the strip', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
@@ -628,11 +630,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).toContain('Interpolation');
     expect(rotoControlsBlock).toContain('onRotoInterpolationEnabledChange');
     expect(rotoControlsBlock).toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).toContain('Interpolation mode');
+    expect(rotoControlsBlock).toContain('Duplicate / hold');
+    expect(rotoControlsBlock).toContain('Alpha blend');
     expect(rotoControlsBlock).not.toContain('Interpolation gap frames');
-    expect(rotoControlsBlock).not.toContain('Interpolation mode');
-    expect(rotoControlsBlock).not.toContain('Blend');
-    expect(rotoControlsBlock).not.toContain('Duplicate');
-    expect(rotoControlsBlock).not.toContain('Duplicate / hold');
     expect(rotoControlsBlock).not.toContain('Move');
     expect(rotoControlsBlock).not.toContain('Deform');
     expect(rotoControlsBlock).not.toContain('Position');

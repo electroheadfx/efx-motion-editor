@@ -651,14 +651,14 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).not.toContain('function buildPlayStrokeStyleOverride');
   });
 
-  it('wires the visible Roto interpolation toggle through store-owned blend regeneration and status copy', () => {
+  it('36.12 UAT Test 8 wires visible Roto interpolation count and mode controls through store-owned regeneration and status copy', () => {
     const text = source();
     const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
     const updateBlock = text.slice(text.indexOf('const updateRotoInterpolationSettings = useCallback'), text.indexOf('const goToFirstFrame = useCallback'));
 
     expect(text).toContain('const updateRotoInterpolationSettings = useCallback');
-    expect(updateBlock).toContain("mode: 'blend'");
+    expect(updateBlock).toContain('mode: patch.mode ?? currentSettings.mode');
     expect(updateBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, nextSettings)');
     expect(text).toContain('function hydrateLaunchContextRotoInterpolation(context: PhysicPaintLaunchContext): PhysicPaintLaunchContext');
     expect(text).toContain('const hydratedContext = hydrateLaunchContextRotoInterpolation(context)');
@@ -677,7 +677,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(updateBlock).toContain('rotoInterpolationSettings: refreshedSettings');
     expect(workflowStripBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
     expect(workflowStripBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
-    expect(workflowStripBlock).not.toContain('onRotoInterpolationModeChange=');
+    expect(workflowStripBlock).toContain('onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode })}');
     expect(workflowStripBlock).not.toContain('onRotoInterpolationMotionChange=');
   });
 
