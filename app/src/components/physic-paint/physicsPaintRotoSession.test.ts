@@ -229,6 +229,27 @@ describe('physicsPaintRotoSession save orchestration boundary', () => {
 });
 
 describe('physicsPaintRotoSession generated interpolation render-only boundary', () => {
+  it('36.12-GENERATED-FRAMES includes generated render-only frames in playback display order', () => {
+    const session = createRotoSession({
+      currentFrame: 2,
+      realKeyFrames: [frame(2, 'data:image/png;base64,real-two'), frame(6, 'data:image/png;base64,real-six')],
+      cachedRotoFrames: [
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(4, 'data:image/png;base64,generated-four', 'generated-interpolation'),
+        frame(6, 'data:image/png;base64,real-six'),
+        frame(5, 'data:image/png;base64,background-five', 'background-only-support'),
+      ],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(session.realKeyFrameNumbers.value).toEqual([2, 6]);
+    expect(session.generatedFrameNumbers.value).toEqual([4]);
+    expect(session.backgroundOnlySupportFrameNumbers.value).toEqual([5]);
+    expect(session.playbackFrameNumbers.value).toEqual([2, 4, 6]);
+  });
+
   it('36.12 D-16 allows generated preview selection while keeping source key actions disabled', () => {
     const session = createRotoSession({
       currentFrame: 2,
