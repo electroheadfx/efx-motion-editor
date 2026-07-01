@@ -183,10 +183,11 @@ function _clearCachedFramesForRange(layerId: string, range: Pick<PhysicPaintPlay
 
 function _normalizeRotoInterpolationSettings(settings: Partial<PhysicPaintRotoInterpolationSettings> | null | undefined): PhysicPaintRotoInterpolationSettings {
   const source = settings ?? {};
+  const mode = (source as { mode?: unknown }).mode;
   return {
     enabled: source.enabled === true,
     inBetweenCount: clampPercentLikeCount(source.inBetweenCount),
-    mode: source.mode === 'duplicate' ? 'duplicate' : 'blend',
+    mode: mode === 'duplicate' || mode === 'hold' ? 'duplicate' : 'blend',
     position: clampPercentLikeCount(source.position),
     deform: clampPercentLikeCount(source.deform),
   };
