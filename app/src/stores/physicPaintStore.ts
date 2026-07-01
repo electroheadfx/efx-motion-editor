@@ -2,7 +2,7 @@ import { signal } from '@preact/signals';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
-import { getRotoInterpolationSpanFrames } from '../components/physic-paint/physicsPaintWorkflowState';
+import { getExpandedRotoRealKeyFrames, getRotoInterpolationSpanFrames } from '../components/physic-paint/physicsPaintWorkflowState';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -36,10 +36,17 @@ type PhysicPaintMceOutputInput = PhysicPaintMceOutput & {
 const DEFAULT_ROTO_INTERPOLATION_SETTINGS: PhysicPaintRotoInterpolationSettings = {
   enabled: false,
   inBetweenCount: 0,
-  mode: 'duplicate',
+  mode: 'blend',
   position: 0,
   deform: 0,
 };
+
+const _rotoAlphaCanvasRegistry = new Map<string, HTMLCanvasElement>();
+
+export function registerRotoAlphaCanvasFrame(dataUrl: string, canvas: HTMLCanvasElement): void {
+  if (!dataUrl.startsWith('data:image/png') || canvas.width <= 0 || canvas.height <= 0) return;
+  _rotoAlphaCanvasRegistry.set(dataUrl, canvas);
+}
 
 const _frames = new Map<string, Map<number, PhysicPaintRenderedFrame>>();
 const _editableStates = new Map<string, SerializedProject>();
@@ -47,6 +54,7 @@ const _workflowMetadata = new Map<string, PhysicPaintWorkflowMetadata>();
 const _playScriptRanges = new Map<string, PhysicPaintPlayScriptRange[]>();
 const _rotoCacheMetadata = new Map<string, Map<number, PhysicPaintRotoCacheFrame>>();
 const _rotoInterpolationSettings = new Map<string, PhysicPaintRotoInterpolationSettings>();
+const _rotoExpandedSourceFrames = new Map<string, Map<number, number>>();
 const _rotoInterpolationFailureStatus = new Map<string, string>();
 const ROTO_INTERPOLATION_FAILURE_STATUS = 'Interpolation could not regenerate. Real keys were kept.';
 let _serializationRevision = 0;
@@ -169,7 +177,7 @@ function _normalizeRotoInterpolationSettings(settings: Partial<PhysicPaintRotoIn
   return {
     enabled: source.enabled === true,
     inBetweenCount: clampPercentLikeCount(source.inBetweenCount),
-    mode: source.mode === 'blend' ? 'blend' : 'duplicate',
+    mode: 'blend',
     position: clampPercentLikeCount(source.position),
     deform: clampPercentLikeCount(source.deform),
   };
@@ -188,6 +196,32 @@ function _getRealRotoKeyFrames(layerId: string): number[] {
     .filter((frame) => frame.source === 'real-key')
     .map((frame) => frame.appFrame)
     .sort((a, b) => a - b);
+}
+
+function _collapseInterpolatedRealKeySpacing(layerId: string): boolean {
+  const expandedSources = _rotoExpandedSourceFrames.get(layerId);
+  if (!expandedSources || expandedSources.size === 0) return false;
+  const currentRealKeys = _getRealRotoKeyFrames(layerId);
+  const collapsedRealKeys = currentRealKeys.map((frame) => expandedSources.get(frame) ?? frame);
+  if (currentRealKeys.length !== collapsedRealKeys.length || currentRealKeys.every((frame, index) => frame === collapsedRealKeys[index])) return false;
+  const layerFrames = _frames.get(layerId);
+  const metadata = _rotoCacheMetadata.get(layerId);
+  if (!layerFrames || !metadata) return false;
+  for (let index = 0; index < currentRealKeys.length; index++) {
+    const fromFrame = currentRealKeys[index];
+    const toFrame = collapsedRealKeys[index];
+    if (fromFrame === toFrame) continue;
+    const source = layerFrames.get(fromFrame);
+    const sourceMetadata = metadata.get(fromFrame);
+    if (!source || sourceMetadata?.source !== 'real-key') continue;
+    layerFrames.delete(fromFrame);
+    metadata.delete(fromFrame);
+    const moved = { ...source, appFrame: toFrame, source: 'real-key' as const };
+    layerFrames.set(toFrame, moved);
+    metadata.set(toFrame, _makeRotoCacheFrame(moved, toFrame, 'real-key', undefined, sourceMetadata.backgroundOnly));
+  }
+  _rotoExpandedSourceFrames.delete(layerId);
+  return true;
 }
 
 function _removeGeneratedRotoCache(layerId: string): boolean {
@@ -305,12 +339,35 @@ function _encodeAlphaSource(source: string): string {
   return `data:image/png;base64,${encoded}`;
 }
 
+function _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string | null {
+  if (typeof document === 'undefined') return null;
+  const firstCanvas = _rotoAlphaCanvasRegistry.get(firstKeyFrame.dataUrl);
+  const secondCanvas = _rotoAlphaCanvasRegistry.get(secondKeyFrame.dataUrl);
+  if (!firstCanvas || !secondCanvas) return null;
+  const width = Math.max(1, Math.trunc(firstKeyFrame.width ?? firstCanvas.width));
+  const height = Math.max(1, Math.trunc(firstKeyFrame.height ?? firstCanvas.height));
+  const output = document.createElement('canvas');
+  output.width = width;
+  output.height = height;
+  const outputContext = output.getContext('2d');
+  if (!outputContext) return null;
+  outputContext.clearRect(0, 0, width, height);
+  outputContext.globalAlpha = 1 - t;
+  outputContext.drawImage(firstCanvas, 0, 0, width, height);
+  outputContext.globalAlpha = t;
+  outputContext.drawImage(secondCanvas, 0, 0, width, height);
+  outputContext.globalAlpha = 1;
+  return output.toDataURL('image/png');
+}
+
 function _blendAlphaDataUrl(firstKeyFrame: PhysicPaintRenderedFrame, secondKeyFrame: PhysicPaintRenderedFrame, t: number): string {
+  const canvasBlend = _blendRegisteredAlphaCanvasDataUrl(firstKeyFrame, secondKeyFrame, t);
+  if (canvasBlend) return canvasBlend;
   const firstAlpha = 1 - t;
   const secondAlpha = t;
   const firstSource = _decodeAlphaSource(firstKeyFrame.dataUrl);
   const secondSource = _decodeAlphaSource(secondKeyFrame.dataUrl);
-  const blendedSource = `alpha-blend:${firstAlpha.toFixed(6)}:${firstSource}:${secondAlpha.toFixed(6)}:${secondSource}`;
+  const blendedSource = `roto-alpha:${firstAlpha.toFixed(6)}:${firstSource}:${secondAlpha.toFixed(6)}:${secondSource}`;
   return _encodeAlphaSource(blendedSource);
 }
 
@@ -348,11 +405,25 @@ function _tryRegenerateGeneratedRotoCache(layerId: string, settings: PhysicPaint
 
 function _regenerateGeneratedRotoCache(layerId: string, settings: PhysicPaintRotoInterpolationSettings): { changed: boolean; generatedFrames: PhysicPaintRenderedFrame[]; failed: boolean } {
   const removed = _removeGeneratedRotoCache(layerId);
+  const collapsed = _collapseInterpolatedRealKeySpacing(layerId);
   const realKeys = _getRealRotoKeyFrames(layerId);
   const layerFrames = _getOrCreateLayer(layerId);
-  if (!settings.enabled || realKeys.length < 2) return { changed: removed, generatedFrames: [], failed: false };
+  if (!settings.enabled || realKeys.length < 2) return { changed: removed || collapsed, generatedFrames: [], failed: false };
 
   const metadata = _getOrCreateRotoMetadata(layerId);
+  const expandedRealKeyFrames = getExpandedRotoRealKeyFrames(realKeys, settings);
+  const realKeyMoves = expandedRealKeyFrames.filter((key) => key.sourceFrame !== key.frame);
+  if (realKeyMoves.length > 0) _rotoExpandedSourceFrames.set(layerId, new Map(expandedRealKeyFrames.map((key) => [key.frame, key.sourceFrame])));
+  for (const move of realKeyMoves.sort((a, b) => b.sourceFrame - a.sourceFrame)) {
+    const source = layerFrames.get(move.sourceFrame);
+    const sourceMetadata = metadata.get(move.sourceFrame);
+    if (!source || sourceMetadata?.source !== 'real-key') continue;
+    layerFrames.delete(move.sourceFrame);
+    metadata.delete(move.sourceFrame);
+    const moved = { ...source, appFrame: move.frame, source: 'real-key' as const };
+    layerFrames.set(move.frame, moved);
+    metadata.set(move.frame, _makeRotoCacheFrame(moved, move.frame, 'real-key', undefined, sourceMetadata.backgroundOnly));
+  }
   const generatedFrames: PhysicPaintRenderedFrame[] = [];
   for (const span of getRotoInterpolationSpanFrames(realKeys, settings)) {
     const from = layerFrames.get(span.fromFrame);
@@ -361,9 +432,7 @@ function _regenerateGeneratedRotoCache(layerId: string, settings: PhysicPaintRot
     const targetFrame = Math.round(span.frame);
     if (metadata.get(targetFrame)?.source === 'real-key') continue;
     _removeBackgroundOnlyRotoSupport(layerId, [targetFrame]);
-    const rendered = settings.mode === 'duplicate'
-      ? renderDuplicateRotoInterpolationFrame(from, targetFrame, settings)
-      : renderBlendedRotoInterpolationFrame(from, to, targetFrame, span.t, settings);
+    const rendered = renderBlendedRotoInterpolationFrame(from, to, targetFrame, span.t, settings);
     const generatedFrame = { ...rendered, nearestRealKeyFrame: span.fromFrame };
     layerFrames.set(targetFrame, generatedFrame);
     metadata.set(targetFrame, _makeRotoCacheFrame(generatedFrame, targetFrame, 'generated-interpolation', span.fromFrame));
@@ -612,12 +681,13 @@ export const physicPaintStore = {
   upsertRealRotoKeyFrame(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame, backgroundOnly = false): void {
     if (!Number.isInteger(frame) || frame < 0) return;
     _removeBackgroundOnlyRotoSupport(layerId, [frame]);
+    const settings = this.getRotoInterpolationSettings(layerId);
+    if (settings.enabled) _collapseInterpolatedRealKeySpacing(layerId);
     const normalizedFrame = { ...renderedFrame, appFrame: frame, source: 'real-key' as const };
     _getOrCreateLayer(layerId).set(frame, normalizedFrame);
     _getOrCreateRotoMetadata(layerId).set(frame, _makeRotoCacheFrame(normalizedFrame, frame, 'real-key', undefined, backgroundOnly || undefined));
     _workflowMetadata.set(layerId, { ...(_workflowMetadata.get(layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
     _pruneFramesOutsideRotoCacheMetadata(layerId);
-    const settings = this.getRotoInterpolationSettings(layerId);
     if (settings.enabled) _tryRegenerateGeneratedRotoCache(layerId, settings);
     _notifyVisualChange();
   },
@@ -637,7 +707,10 @@ export const physicPaintStore = {
     _recomputeBackgroundOnlyRotoSupport(layerId, previousSupportFrames);
     if (metadata.size === 0) _rotoCacheMetadata.delete(layerId);
     const settings = this.getRotoInterpolationSettings(layerId);
-    if (settings.enabled) _tryRegenerateGeneratedRotoCache(layerId, settings);
+    if (settings.enabled) {
+      _collapseInterpolatedRealKeySpacing(layerId);
+      _tryRegenerateGeneratedRotoCache(layerId, settings);
+    }
     _notifyVisualChange();
     return true;
   },
@@ -677,6 +750,7 @@ export const physicPaintStore = {
     _playScriptRanges.clear();
     _rotoCacheMetadata.clear();
     _rotoInterpolationSettings.clear();
+    _rotoExpandedSourceFrames.clear();
     _rotoInterpolationFailureStatus.clear();
     for (const output of outputs ?? []) {
       if (!output || typeof output.layer_id !== 'string' || !Array.isArray(output.frames)) continue;
@@ -732,9 +806,10 @@ export const physicPaintStore = {
 
   setRotoInterpolationSettings(layerId: string, settings: Partial<PhysicPaintRotoInterpolationSettings>): PhysicPaintRenderedFrame[] {
     const normalized = _normalizeRotoInterpolationSettings(settings);
+    const collapsed = normalized.enabled ? false : _collapseInterpolatedRealKeySpacing(layerId);
     _rotoInterpolationSettings.set(layerId, normalized);
     const { changed, generatedFrames } = _tryRegenerateGeneratedRotoCache(layerId, normalized);
-    if (changed || _rotoInterpolationSettings.has(layerId)) _notifyVisualChange();
+    if (collapsed || changed || _rotoInterpolationSettings.has(layerId)) _notifyVisualChange();
     return generatedFrames.map(frame => ({ ...frame }));
   },
 
@@ -874,6 +949,7 @@ export const physicPaintStore = {
     if (metadata.size === 0) _rotoCacheMetadata.delete(payload.layerId);
     _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
     const supportRecompute = _recomputeBackgroundOnlyRotoSupport(payload.layerId, previousSupportFrames);
+    _collapseInterpolatedRealKeySpacing(payload.layerId);
     const { changed, generatedFrames } = _regenerateGeneratedRotoCache(payload.layerId, this.getRotoInterpolationSettings(payload.layerId));
     if (previousGenerated || previousSupport || supportRecompute.changed || previousRealKeys.length > 0 || payload.frames.length > 0 || changed || generatedFrames.length > 0) _notifyVisualChange();
     return {
@@ -1005,14 +1081,16 @@ export const physicPaintStore = {
   },
 
   reset(): void {
-    if (_frames.size === 0 && _editableStates.size === 0 && _workflowMetadata.size === 0 && _playScriptRanges.size === 0 && _rotoCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0) return;
+    if (_frames.size === 0 && _editableStates.size === 0 && _workflowMetadata.size === 0 && _playScriptRanges.size === 0 && _rotoCacheMetadata.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoAlphaCanvasRegistry.size === 0) return;
     _frames.clear();
     _editableStates.clear();
     _workflowMetadata.clear();
     _playScriptRanges.clear();
     _rotoCacheMetadata.clear();
     _rotoInterpolationSettings.clear();
+    _rotoExpandedSourceFrames.clear();
     _rotoInterpolationFailureStatus.clear();
+    _rotoAlphaCanvasRegistry.clear();
     _notifyVisualChange();
   },
 

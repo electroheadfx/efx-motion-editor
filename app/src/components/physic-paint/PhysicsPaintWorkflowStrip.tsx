@@ -9,6 +9,7 @@ import {
   PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE,
   getPhysicsPaintSourceLabel,
   getPlayRangeMarker,
+  getExpandedRotoRealKeyFrames,
   getRotoCellFill,
   getRotoCellViewModel,
   getRotoInterpolationSpanFrames,
@@ -29,7 +30,7 @@ const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
 const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
-const INTERPOLATION_ENABLED_STATUS = 'Interpolation on — generated render-only frames refresh from real keys.';
+const INTERPOLATION_ENABLED_STATUS = 'Interpolation on — generated render-only in-betweens refresh from real keys.';
 const INTERPOLATION_DISABLED_STATUS = 'Interpolation off — real Roto keys only.';
 const ROTO_KEY_BUSY_STATUS_TEMPLATE = 'Finish saving frame {frame} before using key tools.';
 type RotoKeyUtilityAction = 'insert' | 'duplicate' | 'copy' | 'paste' | 'delete';
@@ -192,9 +193,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     () => getPlayRangeMarker(props.startFrame, props.frameCount, props.currentFrame),
     [props.currentFrame, props.frameCount, props.startFrame]
   );
-  const frameCells = useMemo(() => buildFrameCells(props.currentFrame), [props.currentFrame]);
-  const realRotoFrames = useMemo(() => getRealRotoFrames(props.occupiedRotoFrames, props.savedRotoFrames, props.cachedRotoFrames), [props.cachedRotoFrames, props.occupiedRotoFrames, props.savedRotoFrames]);
-  const interpolationConnectors = useMemo(() => getRotoInterpolationSpanFrames(realRotoFrames, props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 0, mode: 'duplicate' }), [props.rotoInterpolationSettings, realRotoFrames]);
+  const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 0, mode: 'blend' as const, deform: 0, position: 0 };
+  const materializedGeneratedRotoFrames = useMemo(() => (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'generated-interpolation').map(frame => frame.appFrame), [props.cachedRotoFrames]);
+  const hasMaterializedGeneratedRotoFrames = materializedGeneratedRotoFrames.length > 0;
+  const realCachedRotoFrames = useMemo(() => (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'real-key'), [props.cachedRotoFrames]);
+  const realCachedRotoFrameNumbers = useMemo(() => realCachedRotoFrames.map(frame => frame.appFrame), [realCachedRotoFrames]);
+  const realRotoFrames = useMemo(() => hasMaterializedGeneratedRotoFrames ? realCachedRotoFrameNumbers : getRealRotoFrames(props.occupiedRotoFrames, props.savedRotoFrames, props.cachedRotoFrames), [hasMaterializedGeneratedRotoFrames, props.cachedRotoFrames, props.occupiedRotoFrames, props.savedRotoFrames, realCachedRotoFrameNumbers]);
+  const expandedRealRotoFrames = useMemo(() => hasMaterializedGeneratedRotoFrames ? realRotoFrames.map(frame => ({ sourceFrame: frame, frame })) : getExpandedRotoRealKeyFrames(realRotoFrames, interpolationSettings), [hasMaterializedGeneratedRotoFrames, interpolationSettings, realRotoFrames]);
+  const interpolationConnectors = useMemo(() => hasMaterializedGeneratedRotoFrames ? [] : getRotoInterpolationSpanFrames(realRotoFrames, interpolationSettings), [hasMaterializedGeneratedRotoFrames, interpolationSettings, realRotoFrames]);
+  const generatedRotoFrames = useMemo(() => hasMaterializedGeneratedRotoFrames ? materializedGeneratedRotoFrames : interpolationConnectors.map(connector => connector.frame), [hasMaterializedGeneratedRotoFrames, interpolationConnectors, materializedGeneratedRotoFrames]);
+  const expandedCurrentFrame = expandedRealRotoFrames.find(key => key.sourceFrame === props.currentFrame)?.frame ?? props.currentFrame;
+  const frameCells = useMemo(() => buildFrameCells(expandedCurrentFrame), [expandedCurrentFrame]);
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   const getMaxFrameCount = useCallback(() => (
     props.maxPlayFrameCount !== undefined
@@ -204,7 +213,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const maxFrameCount = getMaxFrameCount();
   const safeFrameCount = Math.min(clampPhysicPaintFrameCount(props.frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES), maxFrameCount);
   const playFrameCells = useMemo(() => buildPlayFrameCells(props.startFrame, safeFrameCount), [props.startFrame, safeFrameCount]);
-  const realCachedRotoFrames = useMemo(() => (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'real-key'), [props.cachedRotoFrames]);
   const pendingRotoFrameSet = useMemo(() => new Set(props.pendingRotoFrames ?? []), [props.pendingRotoFrames]);
   const hasPendingRotoFrames = pendingRotoFrameSet.size > 0;
   const currentRotoCell = getRotoCellViewModel({
@@ -238,7 +246,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const playLimitMessage = props.maxPlayFrameCount !== undefined
     ? props.maxPlayFrameCountReason ?? `Play duration limited to ${props.maxPlayFrameCount} frames before the next saved Play script.`
     : null;
-  const interpolationStatus = props.rotoInterpolationSettings?.enabled ? INTERPOLATION_ENABLED_STATUS : INTERPOLATION_DISABLED_STATUS;
+  const visibleInBetweenCount = Math.max(0, Math.trunc(Number(interpolationSettings.inBetweenCount) || 0));
+  const hasGeneratedInBetweens = interpolationConnectors.length > 0;
+  const interpolationStatus = interpolationSettings.enabled
+    ? hasGeneratedInBetweens
+      ? INTERPOLATION_ENABLED_STATUS
+      : 'Interpolation on — set In-betweens above 0 and save at least two real Roto keys.'
+    : INTERPOLATION_DISABLED_STATUS;
   function handlePrimaryAction() {
     if (props.mode === 'play') {
       renderPlayFrames();
@@ -270,6 +284,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   function handleRotoPlaybackFpsInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onRotoPlaybackFpsChange?.(value);
+  }
+
+  function handleRotoInterpolationCountInput(event: Event) {
+    const value = Number((event.currentTarget as HTMLInputElement).value);
+    if (Number.isFinite(value)) props.onRotoInterpolationCountChange?.(Math.max(0, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(value))));
   }
 
   function handleRotoCellClick(frame: number, vm: RotoCellViewModel) {
@@ -432,10 +451,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
               <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
               {props.onRotoInterpolationEnabledChange ? (
-                <label class="physics-paint-roto-interpolation-controls" title={interpolationStatus}>
-                  <input type="checkbox" aria-label="Interpolation" checked={Boolean(props.rotoInterpolationSettings?.enabled)} disabled={props.ready === false} onChange={(event) => props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked)} />
-                  <span>Interpolation</span>
-                </label>
+                <div class="physics-paint-roto-interpolation-controls" title={interpolationStatus}>
+                  <label class="physics-paint-roto-interpolation-toggle">
+                    <input type="checkbox" aria-label="Interpolation" checked={Boolean(interpolationSettings.enabled)} disabled={props.ready === false} onChange={(event) => props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked)} />
+                    <span>Interpolation</span>
+                  </label>
+                  <label class="physics-paint-roto-interpolation-count">
+                    <span>In-betweens</span>
+                    <input type="number" min="0" max={PHYSIC_PAINT_MAX_APPLY_FRAMES} step="1" value={visibleInBetweenCount} aria-label="Interpolation frames per real-key pair" disabled={props.ready === false || !interpolationSettings.enabled} onInput={handleRotoInterpolationCountInput} />
+                  </label>
+                  <span class="physics-paint-roto-interpolation-copy">Per adjacent real-key pair</span>
+                </div>
               ) : null}
               <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>
               <label class="physics-paint-roto-fps-control">
@@ -489,20 +515,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             <div class="physics-paint-lane">
               <div class="physics-paint-roto-cells" role="row">
                 {frameCells.map(frame => {
+                  const syntheticGeneratedFrame = generatedRotoFrames.includes(frame)
+                    ? [{ frameIndex: 0, appFrame: frame, dataUrl: 'data:image/png;base64,', source: 'generated-interpolation' as const }]
+                    : [];
+                  const cachedFramesForDisplay = syntheticGeneratedFrame.length > 0 && !props.cachedRotoFrames?.some(candidate => candidate.appFrame === frame) ? syntheticGeneratedFrame : props.cachedRotoFrames;
                   const vm = getRotoCellViewModel({
                     frame,
-                    currentFrame: props.currentFrame,
-                    cachedFrames: props.cachedRotoFrames,
+                    currentFrame: expandedCurrentFrame,
+                    cachedFrames: cachedFramesForDisplay,
                     editableFrames: props.editableRotoFrames,
                     pendingFrames: props.pendingRotoFrames,
                     isSaving: Boolean(props.rotoSaveInFlight),
                   });
                   const fill = getRotoCellFill(frame, realCachedRotoFrames, props.editableRotoFrames);
+                  const isDisplayRealKey = realCachedRotoFrameNumbers.includes(frame);
                   const generatedTitle = vm.baseMeaning === 'generated' || vm.isEditableTarget === false ? getGeneratedRotoTitle(frame) : null;
                   return (
                     <button
                       key={frame}
-                      class={`physics-paint-roto-cell ${getRotoFillClass(fill)} ${vm.fillClass} ${isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied' : ''} ${isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''}`}
+                      class={`physics-paint-roto-cell ${getRotoFillClass(fill)} ${vm.fillClass} ${isDisplayRealKey || isOccupiedFrame(props.occupiedRotoFrames, frame) ? 'occupied' : ''} ${isDisplayRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${vm.overlays.includes('current') ? 'current' : ''}`}
                       aria-label={generatedTitle ?? vm.ariaLabel}
                       title={generatedTitle ?? vm.title}
                       onClick={() => handleRotoCellClick(frame, vm)}

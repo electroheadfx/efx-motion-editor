@@ -19,7 +19,8 @@ function getRotoControlsBlock(code: string): string {
 }
 
 function getRotoMapBlock(code: string): string {
-  return code.slice(code.indexOf('frameCells.map(frame =>'), code.indexOf('interpolationConnectors.map'));
+  const mapStart = code.indexOf('{frameCells.map(frame =>');
+  return code.slice(mapStart, code.indexOf('interpolationConnectors.map', mapStart));
 }
 
 function getWorkflowStripPropsInterface(code: string): string {
@@ -185,20 +186,39 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('.physics-paint-roto-interpolation-status');
   });
 
-  it('36.12 gates Roto interpolation to one optional toggle without count/mode/motion controls', () => {
+  it('uses materialized generated cache frames as the Roto interpolation display mapping', () => {
+    const code = source();
+    const mapBlock = getRotoMapBlock(code);
+
+    expect(code).toContain('const materializedGeneratedRotoFrames = useMemo');
+    expect(code).toContain('const hasMaterializedGeneratedRotoFrames = materializedGeneratedRotoFrames.length > 0');
+    expect(code).toContain('hasMaterializedGeneratedRotoFrames ? realCachedRotoFrameNumbers : getRealRotoFrames');
+    expect(code).toContain('hasMaterializedGeneratedRotoFrames ? realRotoFrames.map(frame => ({ sourceFrame: frame, frame })) : getExpandedRotoRealKeyFrames');
+    expect(code).toContain('hasMaterializedGeneratedRotoFrames ? [] : getRotoInterpolationSpanFrames');
+    expect(mapBlock).toContain('const isDisplayRealKey = realCachedRotoFrameNumbers.includes(frame)');
+    expect(mapBlock).toContain('isDisplayRealKey || isOccupiedFrame(props.occupiedRotoFrames, frame)');
+  });
+
+  it('36.12 exposes only the whole-layer Interpolation toggle in the visible MVP', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
+    expect(studioSource()).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
     expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
     expect(code).toContain('onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void');
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).toContain('Interpolation');
-    expect(rotoControlsBlock).not.toContain('In-betweens');
-    expect(rotoControlsBlock).not.toContain('Deform');
-    expect(rotoControlsBlock).not.toContain('Position');
+    expect(rotoControlsBlock).toContain('In-betweens');
+    expect(rotoControlsBlock).toContain('Interpolation frames per real-key pair');
+    expect(rotoControlsBlock).toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).not.toContain('Interpolation gap frames');
+    expect(rotoControlsBlock).not.toContain('Gaps');
+    expect(rotoControlsBlock).not.toContain('physics-paint-roto-interpolation-select');
+    expect(rotoControlsBlock).not.toContain('Blend');
+    expect(rotoControlsBlock).not.toContain('Duplicate');
   });
 
   it('36.8-REG-06/D-18 keeps the contextual Roto key utility pill in the timeline lane outside the header', () => {
@@ -370,18 +390,42 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(sessionCode).toContain('normalizeCachedFrames(input.cachedRotoFrames, input.canvasSize)');
   });
 
-  it('36.12 renders compact Roto interpolation as one optional toggle only', () => {
+  it('36.12 renders compact Roto interpolation toggle with visible count control', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
+    expect(studioSource()).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
     expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
     expect(code).toContain('onRotoInterpolationMotionChange?: (motion: Pick<RotoInterpolationSettings, \'deform\' | \'position\'>) => void');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).toContain('Interpolation');
-    expect(rotoControlsBlock).not.toContain('In-betweens');
+    expect(rotoControlsBlock).toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).not.toContain('Gaps');
+    expect(rotoControlsBlock).not.toContain('Interpolation mode');
     expect(rotoControlsBlock).not.toContain('Blend');
+  });
+
+  it('36.12 Studio wires only the Interpolation toggle through store-owned blend regeneration and compact status copy', () => {
+    const studioCode = studioSource();
+    const toggleBlock = studioCode.slice(studioCode.indexOf('const updateRotoInterpolationSettings'), studioCode.indexOf('const goToFirstFrame'));
+    const stripStart = studioCode.lastIndexOf('<PhysicsPaintWorkflowStrip');
+    const stripPropsBlock = studioCode.slice(stripStart, studioCode.indexOf('/>', stripStart));
+
+    expect(toggleBlock).toContain("mode: 'blend'");
+    expect(toggleBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, nextSettings)');
+    expect(toggleBlock).toContain('mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames)');
+    expect(toggleBlock).not.toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');
+    expect(toggleBlock).toContain('physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId)');
+    expect(toggleBlock).toContain('Interpolation could not regenerate. Real keys were kept.');
+    expect(toggleBlock).toContain('Interpolation on — generated render-only in-betweens refresh from real keys.');
+    expect(toggleBlock).toContain('Interpolation on — set In-betweens above 0 and save at least two real Roto keys.');
+    expect(toggleBlock).toContain('Interpolation off — real Roto keys only.');
+    expect(stripPropsBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
+    expect(stripPropsBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
+    expect(stripPropsBlock).not.toContain('onRotoInterpolationModeChange=');
+    expect(stripPropsBlock).not.toContain('onRotoInterpolationMotionChange=');
   });
 
   it('uses Render play plus a separate Update action for saved Play options', () => {
@@ -575,7 +619,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(clickHandlerBlock).not.toContain("vm.baseMeaning === 'generated' || vm.isEditableTarget === false) return");
   });
 
-  it('36.12 D-13/D-17 renders one Interpolation toggle and no count/mode/motion controls in the strip', () => {
+  it('36.12 D-13/D-17 renders only visible Interpolation toggle controls in the strip', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
@@ -583,15 +627,18 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).toContain('Interpolation');
     expect(rotoControlsBlock).toContain('onRotoInterpolationEnabledChange');
-    expect(rotoControlsBlock).not.toContain('In-betweens');
-    expect(rotoControlsBlock).not.toContain('Mode');
+    expect(rotoControlsBlock).toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).not.toContain('Interpolation gap frames');
+    expect(rotoControlsBlock).not.toContain('Interpolation mode');
+    expect(rotoControlsBlock).not.toContain('Blend');
+    expect(rotoControlsBlock).not.toContain('Duplicate');
     expect(rotoControlsBlock).not.toContain('Duplicate / hold');
     expect(rotoControlsBlock).not.toContain('Move');
     expect(rotoControlsBlock).not.toContain('Deform');
     expect(rotoControlsBlock).not.toContain('Position');
   });
 
-  it('keeps Phase 36.5 Roto cell scope MVP-only without excluded controls (36.5-SCOPE-01, D-01, D-05)', () => {
+  it('keeps Phase 36.5 Roto cell scope without excluded advanced controls (36.5-SCOPE-01, D-01, D-05)', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
@@ -599,7 +646,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('<Timeline');
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
-    expect(rotoControlsBlock).not.toContain('In-betweens');
+    expect(rotoControlsBlock).toContain('In-betweens');
     expect(rotoControlsBlock).not.toContain('Deform');
     expect(rotoControlsBlock).not.toContain('Position');
     expect(rotoControlsBlock).not.toContain('physics-paint-roto-key-utilities');
@@ -779,12 +826,12 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).toContain('props.onToggleRotoPlayback');
     expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackAvailable');
     expect(rotoControlsBlock).toContain('props.isRotoCachedPlaybackActive');
-    expect(rotoControlsBlock).toContain('aria-label="Loop cached Roto playback"');
-    expect(rotoControlsBlock).toContain('aria-pressed={Boolean(props.rotoCachedPlaybackLoop)}');
-    expect(rotoControlsBlock).toContain('<RotateCcw size={15} />');
-    expect(rotoControlsBlock).toContain('props.onRotoPlaybackLoopChange');
-    expect(rotoControlsBlock).toContain('aria-label="Cached Roto playback frames per second"');
-    expect(rotoControlsBlock).toContain('props.rotoCachedPlaybackFps ?? props.projectFps ?? 1');
+    expect(code).toContain('aria-label="Loop cached Roto playback"');
+    expect(code).toContain('aria-pressed={Boolean(props.rotoCachedPlaybackLoop)}');
+    expect(code).toContain('<RotateCcw size={15} />');
+    expect(code).toContain('props.onRotoPlaybackLoopChange');
+    expect(code).toContain('aria-label="Cached Roto playback frames per second"');
+    expect(code).toContain('props.rotoCachedPlaybackFps ?? props.projectFps ?? 1');
     expect(code).toContain('props.onRotoPlaybackFpsChange?.(value)');
     expect(statusStackBlock).toContain('props.rotoCachedPlaybackStatus ? <p class="physics-paint-roto-playback-status">{props.rotoCachedPlaybackStatus}</p> : null');
     expect(statusStackBlock).not.toContain("props.rotoCachedPlaybackStatus ?? 'Missing frames play transparent/background.'");

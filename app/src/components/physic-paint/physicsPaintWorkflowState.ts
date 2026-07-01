@@ -103,6 +103,13 @@ export interface RotoInterpolationSpanFrame {
   ordinal: number;
   total: number;
   t: number;
+  sourceFromFrame?: number;
+  sourceToFrame?: number;
+}
+
+export interface RotoExpandedRealKeyFrame {
+  sourceFrame: number;
+  frame: number;
 }
 
 export interface RotoDuplicateKeyResult {
@@ -298,25 +305,45 @@ export function getPlayRangeMarker(startFrame: number, frameCount: number, curre
   };
 }
 
-export function getRotoInterpolationSpanFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoInterpolationSpanFrame[] {
+export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoExpandedRealKeyFrame[] {
   const sortedKeys = normalizeRealRotoKeyFrames(realKeys);
-  if (settings.enabled !== true || sortedKeys.length < 2) return [];
+  const inBetweenCount = settings.enabled === true ? clampNonNegativeInteger(settings.inBetweenCount, 0) : 0;
+  let displayFrame: number | null = null;
+  return sortedKeys.map((sourceFrame, index) => {
+    if (index === 0 || displayFrame === null) {
+      displayFrame = sourceFrame;
+    } else {
+      const previousSourceFrame = sortedKeys[index - 1];
+      const sourceGap = Math.max(1, sourceFrame - previousSourceFrame);
+      const preservedExtraSpacing = Math.max(0, sourceGap - 1);
+      displayFrame += inBetweenCount + 1 + preservedExtraSpacing;
+    }
+    return { sourceFrame, frame: displayFrame };
+  });
+}
+
+export function getRotoInterpolationSpanFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoInterpolationSpanFrame[] {
+  const displayKeys = getExpandedRotoRealKeyFrames(realKeys, settings);
+  const inBetweenCount = settings.enabled === true ? clampNonNegativeInteger(settings.inBetweenCount, 0) : 0;
+  if (settings.enabled !== true || displayKeys.length < 2 || inBetweenCount < 1) return [];
 
   const spans: RotoInterpolationSpanFrame[] = [];
-  for (let index = 0; index < sortedKeys.length - 1; index++) {
-    const fromFrame = sortedKeys[index];
-    const toFrame = sortedKeys[index + 1];
-    const total = toFrame - fromFrame - 1;
-    if (total < 1) continue;
-    for (let ordinal = 1; ordinal <= total; ordinal++) {
+  for (let index = 0; index < displayKeys.length - 1; index++) {
+    const fromFrame = displayKeys[index].frame;
+    const toFrame = displayKeys[index + 1].frame;
+    const sourceFromFrame = displayKeys[index].sourceFrame;
+    const sourceToFrame = displayKeys[index + 1].sourceFrame;
+    for (let ordinal = 1; ordinal <= inBetweenCount; ordinal++) {
       const frame = fromFrame + ordinal;
       spans.push({
         fromFrame,
         toFrame,
         frame,
         ordinal,
-        total,
-        t: (frame - fromFrame) / (toFrame - fromFrame),
+        total: inBetweenCount,
+        t: ordinal / (inBetweenCount + 1),
+        sourceFromFrame,
+        sourceToFrame,
       });
     }
   }

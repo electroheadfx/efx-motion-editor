@@ -1369,7 +1369,8 @@ button.destructive {
 }
 
 .physics-paint-roto-interpolation-select,
-.physics-paint-roto-motion-toggle {
+.physics-paint-roto-motion-toggle,
+.physics-paint-roto-interpolation-copy {
   min-height: 22px;
   padding: 2px 6px;
   border: 1px solid #5a5e63;
@@ -1380,6 +1381,11 @@ button.destructive {
   font-weight: 700;
   line-height: 1.2;
   text-transform: none;
+}
+
+.physics-paint-roto-interpolation-copy {
+  display: inline-flex;
+  align-items: center;
 }
 
 .physics-paint-roto-motion-toggle.active {

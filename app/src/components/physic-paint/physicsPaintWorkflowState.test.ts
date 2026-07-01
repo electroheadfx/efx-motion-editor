@@ -14,7 +14,9 @@ import {
   getPreviewFps,
   insertRotoKeyFrame,
   getRotoCellFill,
+  getRotoInterpolationSpanFrames,
   getRotoCellStateLabel,
+  getExpandedRotoRealKeyFrames,
   getRotoCellViewModel,
   getRotoMissingFrameStatus,
   getRotoPendingLabel,
@@ -235,36 +237,36 @@ describe('physicsPaintWorkflowState', () => {
     expect(getPreviewFps('custom')).toBe(24);
   });
 
-  it('D-01/D-06 builds integer render-only Roto interpolation spans inside adjacent real-key gaps', async () => {
-    const { getRotoInterpolationSpanFrames } = await import('./physicsPaintWorkflowState');
-
-    expect(getRotoInterpolationSpanFrames([1, 4], { enabled: true, inBetweenCount: 1, mode: 'duplicate' })).toEqual([
-      { fromFrame: 1, toFrame: 4, frame: 2, ordinal: 1, total: 2, t: 1 / 3 },
-      { fromFrame: 1, toFrame: 4, frame: 3, ordinal: 2, total: 2, t: 2 / 3 },
+  it('maps count 2 consecutive real keys to two generated in-betweens per adjacent pair', () => {
+    expect(getExpandedRotoRealKeyFrames([1, 2, 3], { enabled: true, inBetweenCount: 2, mode: 'blend' })).toEqual([
+      { sourceFrame: 1, frame: 1 },
+      { sourceFrame: 2, frame: 4 },
+      { sourceFrame: 3, frame: 7 },
     ]);
-    expect(getRotoInterpolationSpanFrames([1, 3, 6], { enabled: true, inBetweenCount: 2, mode: 'blend' }).map(span => ({
+    expect(getRotoInterpolationSpanFrames([1, 2, 3], { enabled: true, inBetweenCount: 2, mode: 'blend' }).map(span => ({
       fromFrame: span.fromFrame,
       toFrame: span.toFrame,
       frame: span.frame,
       ordinal: span.ordinal,
       total: span.total,
       t: span.t,
+      sourceFromFrame: span.sourceFromFrame,
+      sourceToFrame: span.sourceToFrame,
     }))).toEqual([
-      { fromFrame: 1, toFrame: 3, frame: 2, ordinal: 1, total: 1, t: 1 / 2 },
-      { fromFrame: 3, toFrame: 6, frame: 4, ordinal: 1, total: 2, t: 1 / 3 },
-      { fromFrame: 3, toFrame: 6, frame: 5, ordinal: 2, total: 2, t: 2 / 3 },
+      { fromFrame: 1, toFrame: 4, frame: 2, ordinal: 1, total: 2, t: 1 / 3, sourceFromFrame: 1, sourceToFrame: 2 },
+      { fromFrame: 1, toFrame: 4, frame: 3, ordinal: 2, total: 2, t: 2 / 3, sourceFromFrame: 1, sourceToFrame: 2 },
+      { fromFrame: 4, toFrame: 7, frame: 5, ordinal: 1, total: 2, t: 1 / 3, sourceFromFrame: 2, sourceToFrame: 3 },
+      { fromFrame: 4, toFrame: 7, frame: 6, ordinal: 2, total: 2, t: 2 / 3, sourceFromFrame: 2, sourceToFrame: 3 },
     ]);
   });
 
-  it('D-04/D-07 normalizes real keys and ignores count, mode, and motion controls for integer placement', async () => {
-    const { getRotoInterpolationSpanFrames } = await import('./physicsPaintWorkflowState');
-
-    expect(getRotoInterpolationSpanFrames([6, 1, 1, 3, -2, 2.2], { enabled: true, inBetweenCount: 99, mode: 'duplicate', position: 75, deform: 100 })).toEqual([
-      { fromFrame: 1, toFrame: 3, frame: 2, ordinal: 1, total: 1, t: 1 / 2 },
-      { fromFrame: 3, toFrame: 6, frame: 4, ordinal: 1, total: 2, t: 1 / 3 },
-      { fromFrame: 3, toFrame: 6, frame: 5, ordinal: 2, total: 2, t: 2 / 3 },
+  it('preserves user-authored real-key gaps while adding count-based in-betweens per pair', () => {
+    expect(getExpandedRotoRealKeyFrames([1, 3, 4], { enabled: true, inBetweenCount: 2, mode: 'blend' })).toEqual([
+      { sourceFrame: 1, frame: 1 },
+      { sourceFrame: 3, frame: 5 },
+      { sourceFrame: 4, frame: 8 },
     ]);
-    expect(getRotoInterpolationSpanFrames([1, 2], { enabled: true, inBetweenCount: 3, mode: 'blend' })).toEqual([]);
+    expect(getRotoInterpolationSpanFrames([1, 3, 4], { enabled: true, inBetweenCount: 2, mode: 'blend' }).map(span => span.frame)).toEqual([2, 3, 6, 7]);
     expect(getRotoInterpolationSpanFrames([1, 4], { enabled: false, inBetweenCount: 3, mode: 'blend' })).toEqual([]);
     expect(getRotoInterpolationSpanFrames([4], { enabled: true, inBetweenCount: 3, mode: 'blend' })).toEqual([]);
   });

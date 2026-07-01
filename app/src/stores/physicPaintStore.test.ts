@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clampPhysicPaintFrameCount } from '../types/physicPaint';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
-import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
+import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
 
 const editableState = {
   version: 2 as const,
@@ -419,6 +419,19 @@ describe('physicPaintStore', () => {
     expect(physicPaintVersion.value).toBe(beforeRemove + 1);
   });
 
+  it('does not recursively expand real keys when interpolation count changes', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, makeFrame(0, 0));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeFrame(1, 1));
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 2, mode: 'blend', deform: 0, position: 0 });
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 3]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1').filter(frame => frame.source === 'generated-interpolation').map(frame => frame.appFrame)).toEqual([1, 2]);
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 3, mode: 'blend', deform: 0, position: 0 });
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 4]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1').filter(frame => frame.source === 'generated-interpolation').map(frame => frame.appFrame)).toEqual([1, 2, 3]);
+  });
+
   it('replaces generated Roto cache through existing rendered frame storage', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, makeFrame(0, 0));
     physicPaintStore.replaceGeneratedRotoCache('layer-1', [
@@ -617,6 +630,32 @@ describe('physicPaintStore', () => {
     expect(physicPaintVersion.value).toBe(afterSet + 2);
   });
 
+  it('preserves real Roto keys while toggling interpolation generated frames on and off', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeAlphaFrame(0, 1, 'alpha-real-one'));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'alpha-real-four'));
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 2, mode: 'blend', position: 0, deform: 0 });
+
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 6]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 1, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', nearestRealKeyFrame: 1 }),
+      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', nearestRealKeyFrame: 1 }),
+      expect.objectContaining({ appFrame: 6, source: 'real-key' }),
+    ]);
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: false });
+
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 4]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 1, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+    ]);
+    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
+      roto_interpolation_settings: expect.objectContaining({ enabled: false }),
+    }));
+  });
+
   it('generates alpha-only Roto interpolation cache across whole integer spans with real-key authority', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeAlphaFrame(0, 1, 'alpha-real-one'));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'alpha-real-four'));
@@ -632,28 +671,29 @@ describe('physicPaintStore', () => {
       deform: 50,
     });
 
-    expect(generated.map(frame => frame.appFrame)).toEqual([2, 3]);
+    expect(generated.map(frame => frame.appFrame)).toEqual([2]);
     expect(generated.every(frame => frame.dataUrl.startsWith('data:image/png;base64,'))).toBe(true);
-    expect(JSON.stringify(generated)).not.toContain('#blend:');
+    expect(JSON.stringify(generated)).not.toContain('alpha-blend:');
     expect(JSON.stringify(generated)).not.toContain('background-only-support');
-    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 4]);
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 5]);
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
       expect.objectContaining({ appFrame: 1, source: 'real-key' }),
       expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', nearestRealKeyFrame: 1 }),
-      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', nearestRealKeyFrame: 1 }),
-      expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 3, source: 'background-only-support' }),
+      expect.objectContaining({ appFrame: 5, source: 'real-key' }),
     ]);
-    expect(physicPaintStore.getBackgroundOnlyRotoSupportFrames('layer-1')).toEqual([]);
+    expect(physicPaintStore.getBackgroundOnlyRotoSupportFrames('layer-1')).toEqual([3]);
     expect(physicPaintVersion.value).toBeGreaterThan(before);
 
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeAlphaFrame(0, 2, 'alpha-real-two'));
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
       expect.objectContaining({ appFrame: 1, source: 'real-key' }),
-      expect.objectContaining({ appFrame: 2, source: 'real-key' }),
-      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', nearestRealKeyFrame: 2 }),
-      expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', nearestRealKeyFrame: 1 }),
+      expect.objectContaining({ appFrame: 3, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 4, source: 'generated-interpolation', nearestRealKeyFrame: 3 }),
+      expect.objectContaining({ appFrame: 6, source: 'real-key' }),
     ]);
-    expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).toBe(makeAlphaFrame(0, 2, 'alpha-real-two').dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', 3)?.dataUrl).toBe(makeAlphaFrame(0, 2, 'alpha-real-two').dataUrl);
   });
 
   it('renders blend interpolation as generated PNG data derived from both neighboring alpha sources', () => {
@@ -668,12 +708,56 @@ describe('physicPaintStore', () => {
 
     expect(blend).toMatchObject({ appFrame: 2, frameIndex: 0, source: 'generated-interpolation', width: 2, height: 2 });
     expect(blend.dataUrl).toMatch(/^data:image\/png;base64,/);
-    expect(blend.dataUrl).not.toContain('#blend:');
+    expect(blend.dataUrl).not.toContain('alpha-blend:');
     expect(blend.dataUrl).not.toContain('pos=33');
     expect(blend.dataUrl).not.toContain('deform=44');
     expect(changedFirst.dataUrl).not.toBe(blend.dataUrl);
     expect(changedSecond.dataUrl).not.toBe(blend.dataUrl);
     expect(changedBackground.dataUrl).toBe(blend.dataUrl);
+  });
+
+  it('uses registered browser alpha canvases to produce a renderable blended PNG instead of a fake text payload', () => {
+    const originalDocument = globalThis.document;
+    const drawCalls: Array<{ alpha: number; source: string }> = [];
+    const outputCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({
+        globalAlpha: 1,
+        clearRect: vi.fn(),
+        drawImage(source: { id: string }) {
+          drawCalls.push({ alpha: this.globalAlpha, source: source.id });
+        },
+      }),
+      toDataURL: () => 'data:image/png;base64,visible-blended-png',
+    } as unknown as HTMLCanvasElement;
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        createElement: (tagName: string) => {
+          if (tagName !== 'canvas') throw new Error(`Unexpected element ${tagName}`);
+          return outputCanvas;
+        },
+      },
+    });
+    const first = makeAlphaFrame(0, 1, 'canvas-first');
+    const second = makeAlphaFrame(0, 4, 'canvas-second');
+    registerRotoAlphaCanvasFrame(first.dataUrl, { id: 'first-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+    registerRotoAlphaCanvasFrame(second.dataUrl, { id: 'second-canvas', width: 2, height: 2 } as unknown as HTMLCanvasElement);
+
+    try {
+      const blend = renderBlendedRotoInterpolationFrame(first, second, 2, 1 / 3, { enabled: true, inBetweenCount: 0, mode: 'blend', position: 0, deform: 0 });
+
+      expect(blend.dataUrl).toBe('data:image/png;base64,visible-blended-png');
+      expect(blend.dataUrl).not.toContain('alpha-blend:');
+      expect(drawCalls).toHaveLength(2);
+      expect(drawCalls[0].source).toBe('first-canvas');
+      expect(drawCalls[0].alpha).toBeCloseTo(2 / 3);
+      expect(drawCalls[1].source).toBe('second-canvas');
+      expect(drawCalls[1].alpha).toBeCloseTo(1 / 3);
+    } finally {
+      Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
+    }
   });
 
   it('D-07 persists bounded background-only support only inside real Roto key spans', () => {
@@ -827,7 +911,7 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).not.toBe(initialGenerated);
     expect(physicPaintStore.getRotoInterpolationFailureStatus('layer-1')).toBeNull();
 
-    expect(physicPaintStore.removeRealRotoKeyFrame('layer-1', 4)).toBe(true);
+    expect(physicPaintStore.removeRealRotoKeyFrame('layer-1', 5)).toBe(true);
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
       expect.objectContaining({ appFrame: 1, source: 'real-key' }),
     ]);
@@ -842,13 +926,12 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
       expect.objectContaining({ appFrame: 2, source: 'real-key' }),
       expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', nearestRealKeyFrame: 2 }),
-      expect.objectContaining({ appFrame: 4, source: 'generated-interpolation', nearestRealKeyFrame: 2 }),
       expect.objectContaining({ appFrame: 5, source: 'real-key' }),
     ]);
 
     const beforeDisable = physicPaintVersion.value;
     expect(physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: false })).toEqual([]);
-    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([2, 5]);
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([2, 4]);
     expect(physicPaintStore.getRotoCacheFrames('layer-1').map(frame => frame.source)).toEqual(['real-key', 'real-key']);
     expect(physicPaintVersion.value).toBeGreaterThan(beforeDisable);
   });
@@ -866,10 +949,10 @@ describe('physicPaintStore', () => {
       vi.stubGlobal('atob', originalAtob);
     }
 
-    expect(physicPaintStore.getFrame('layer-1', 4)?.dataUrl).toBe(makeAlphaFrame(0, 4, 'alpha-failure-kept').dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', 5)?.dataUrl).toBe(makeAlphaFrame(0, 4, 'alpha-failure-kept').dataUrl);
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
       expect.objectContaining({ appFrame: 1, source: 'real-key' }),
-      expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 5, source: 'real-key' }),
     ]);
     expect(physicPaintStore.getRotoInterpolationFailureStatus('layer-1')).toBe('Interpolation could not regenerate. Real keys were kept.');
   });
