@@ -852,6 +852,35 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getRotoBackgroundMetadata('phys-layer-1')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
   });
 
+  it('publishes generated Roto cache and settings through close/apply for parent preview/export', () => {
+    mockLayers([physicLayer()]);
+
+    const first = applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'apply-close-real-1',
+      startFrame: 1,
+      renderedFrame: makeFrame(0, 1),
+    }));
+    const second = applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'apply-close-real-4',
+      startFrame: 4,
+      renderedFrame: makeFrame(0, 4),
+      closeWindowAfterApply: true,
+    }));
+    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', { enabled: true, inBetweenCount: 2, mode: 'blend', deform: 20, position: 30 });
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(physicPaintStore.getFrame('phys-layer-1', 2)).toEqual(expect.objectContaining({ appFrame: 2, source: 'generated-interpolation' }));
+    expect(physicPaintStore.getFrame('phys-layer-1', 3)).toEqual(expect.objectContaining({ appFrame: 3, source: 'generated-interpolation' }));
+    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
+      roto_interpolation_settings: { enabled: true, inBetweenCount: 2, mode: 'blend', deform: 20, position: 30 },
+      roto_cache_metadata: expect.arrayContaining([
+        expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 4 }),
+        expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 4 }),
+      ]),
+    }));
+  });
+
   it('36.12 D-16 rejects generated interpolation apply-canvas targets before store mutation', () => {
     mockLayers([physicLayer()]);
     physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 12, makeFrame(0, 12));
