@@ -970,6 +970,38 @@ describe('physicPaintStore', () => {
     expect(physicPaintVersion.value).toBeGreaterThan(beforeDisable);
   });
 
+  it('replacement keeps source real keys and exposes compact failure status when regeneration fails', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeAlphaFrame(0, 1, 'alpha-one'));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'alpha-four'));
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 });
+    const originalAtob = globalThis.atob;
+    vi.stubGlobal('atob', () => { throw new Error('decode failed'); });
+
+    try {
+      physicPaintStore.replaceRotoKeyFrames({
+        kind: 'replace-roto-key-frames',
+        operationId: 'op-replace-failure-kept',
+        layerId: 'layer-1',
+        startFrame: 2,
+        frames: [
+          { ...makeAlphaFrame(0, 2, 'alpha-two-kept'), source: 'real-key' },
+          { ...makeAlphaFrame(0, 5, 'alpha-five-kept'), source: 'real-key' },
+        ],
+      });
+    } finally {
+      vi.stubGlobal('atob', originalAtob);
+    }
+
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([2, 5]);
+    expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).toBe(makeAlphaFrame(0, 2, 'alpha-two-kept').dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', 5)?.dataUrl).toBe(makeAlphaFrame(0, 5, 'alpha-five-kept').dataUrl);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 2, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 5, source: 'real-key' }),
+    ]);
+    expect(physicPaintStore.getRotoInterpolationFailureStatus('layer-1')).toBe('Interpolation could not regenerate. Real keys were kept.');
+  });
+
   it('keeps real-key mutations and exposes compact failure status when regeneration fails', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeAlphaFrame(0, 1, 'alpha-one'));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, makeAlphaFrame(0, 4, 'alpha-four'));
