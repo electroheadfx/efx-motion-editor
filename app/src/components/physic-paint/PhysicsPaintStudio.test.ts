@@ -358,13 +358,15 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
     expect(text).toContain('cachedRotoFrames={launchContext?.cachedRotoFrames}');
   });
 
-  it('keeps cached Roto playback scoped to real cached key frames', () => {
+  it('keeps cached Roto playback scoped to session display frames including generated cache frames', () => {
     const text = source();
     const playbackBlock = text.slice(text.indexOf('function findCachedRotoPlaybackFrame'), text.indexOf('useEffect(() => {', text.indexOf('function findCachedRotoPlaybackFrame')));
 
-    expect(playbackBlock).toContain('return findCachedRotoReferenceFrame(appFrame)');
-    expect(playbackBlock).toContain('return getRealCachedRotoFrameNumbers(launchContext)');
-    expect(playbackBlock).toContain('filter((entry): entry is { appFrame: number; frame: RenderedFramePayload } => Boolean(entry.frame))');
+    expect(playbackBlock).toContain('return findCachedRotoDisplayFrame(appFrame)');
+    expect(playbackBlock).toContain('return rotoSession.playbackFrameNumbers.value.map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }))');
+    expect(playbackBlock).toContain('RenderedFramePayload | null');
+    expect(playbackBlock).not.toContain('return getRealCachedRotoFrameNumbers(launchContext)');
+    expect(playbackBlock).not.toContain('filter((entry): entry is { appFrame: number; frame: RenderedFramePayload } => Boolean(entry.frame))');
     expect(playbackBlock).not.toContain('buildTransientRotoBackgroundFrame');
     expect(playbackBlock).not.toContain('frames.add(currentFrame)');
     expect(playbackBlock).not.toContain('occupiedRotoFrames.forEach');
@@ -701,7 +703,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(cachedRotoBlock).toContain('rotoPreviewFramesRef.current.get(appFrame)');
     expect(cachedRotoBlock.indexOf('confirmedCachedRotoFramesRef.current.get(appFrame)')).toBeLessThan(cachedRotoBlock.indexOf('rotoPreviewFramesRef.current.get(appFrame)'));
     expect(cachedRotoBlock).toContain('function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null');
-    expect(cachedRotoBlock).toContain('return findCachedRotoReferenceFrame(appFrame)');
+    expect(cachedRotoBlock).toContain('return findCachedRotoDisplayFrame(appFrame)');
     expect(toggleBlock).toContain('const cachedFrames = getRotoCachedPlaybackFrames()');
     expect(cachedRotoBlock).toContain('Array<{ appFrame: number; frame: RenderedFramePayload | null }>');
     expect(cachedRotoBlock).toContain('return rotoSession.playbackFrameNumbers.value.map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }))');
