@@ -409,13 +409,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).not.toContain('Gaps');
   });
 
-  it('36.12 Studio wires only the Interpolation toggle through store-owned blend regeneration and compact status copy', () => {
+  it('36.12 Studio wires visible interpolation count and mode through store-owned regeneration and compact status copy', () => {
     const studioCode = studioSource();
     const toggleBlock = studioCode.slice(studioCode.indexOf('const updateRotoInterpolationSettings'), studioCode.indexOf('const goToFirstFrame'));
     const stripStart = studioCode.lastIndexOf('<PhysicsPaintWorkflowStrip');
     const stripPropsBlock = studioCode.slice(stripStart, studioCode.indexOf('/>', stripStart));
 
-    expect(toggleBlock).toContain("mode: 'blend'");
+    expect(toggleBlock).toContain('mode: patch.mode ?? currentSettings.mode');
     expect(toggleBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, nextSettings)');
     expect(toggleBlock).toContain('mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames)');
     expect(toggleBlock).not.toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');
@@ -426,7 +426,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(toggleBlock).toContain('Interpolation off — real Roto keys only.');
     expect(stripPropsBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
     expect(stripPropsBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
-    expect(stripPropsBlock).not.toContain('onRotoInterpolationModeChange=');
+    expect(stripPropsBlock).toContain('onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode: mode as PhysicPaintRotoInterpolationMode })}');
     expect(stripPropsBlock).not.toContain('onRotoInterpolationMotionChange=');
   });
 

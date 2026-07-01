@@ -1337,7 +1337,8 @@ button.destructive {
 }
 
 .physics-paint-roto-interpolation-toggle,
-.physics-paint-roto-interpolation-count {
+.physics-paint-roto-interpolation-count,
+.physics-paint-roto-interpolation-mode {
   display: inline-flex;
   align-items: center;
   gap: 4px;

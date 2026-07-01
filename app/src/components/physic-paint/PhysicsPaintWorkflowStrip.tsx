@@ -291,6 +291,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (Number.isFinite(value)) props.onRotoInterpolationCountChange?.(Math.max(0, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(value))));
   }
 
+  function handleRotoInterpolationModeInput(event: Event) {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (value === 'duplicate' || value === 'blend') props.onRotoInterpolationModeChange?.(value);
+  }
+
   function handleRotoCellClick(frame: number, vm: RotoCellViewModel) {
     if (vm.baseMeaning === 'generated' || vm.isEditableTarget === false) {
       props.onNavigateToSyncedFrame(frame);
@@ -459,6 +464,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   <label class="physics-paint-roto-interpolation-count">
                     <span>In-betweens</span>
                     <input type="number" min="0" max={PHYSIC_PAINT_MAX_APPLY_FRAMES} step="1" value={visibleInBetweenCount} aria-label="Interpolation frames per real-key pair" disabled={props.ready === false || !interpolationSettings.enabled} onInput={handleRotoInterpolationCountInput} />
+                  </label>
+                  <label class="physics-paint-roto-interpolation-mode">
+                    <span>Interpolation mode</span>
+                    <select class="physics-paint-roto-interpolation-select" aria-label="Interpolation mode" value={interpolationSettings.mode === 'duplicate' || interpolationSettings.mode === 'hold' ? 'duplicate' : 'blend'} disabled={props.ready === false || !interpolationSettings.enabled || !props.onRotoInterpolationModeChange} onInput={handleRotoInterpolationModeInput}>
+                      <option value="duplicate">Duplicate / hold</option>
+                      <option value="blend">Alpha blend</option>
+                    </select>
                   </label>
                   <span class="physics-paint-roto-interpolation-copy">Per adjacent real-key pair</span>
                 </div>
