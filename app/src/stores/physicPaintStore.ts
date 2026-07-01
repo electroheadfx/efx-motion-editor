@@ -86,13 +86,23 @@ function _cloneRotoInterpolationSettings(settings: PhysicPaintRotoInterpolationS
   return { ...settings };
 }
 
-function _makeRotoCacheFrame(renderedFrame: PhysicPaintRenderedFrame, appFrame: number, source: PhysicPaintRotoCacheFrame['source'], nearestRealKeyFrame?: number, backgroundOnly?: boolean): PhysicPaintRotoCacheFrame {
+function _makeRotoCacheFrame(
+  renderedFrame: PhysicPaintRenderedFrame,
+  appFrame: number,
+  source: PhysicPaintRotoCacheFrame['source'],
+  nearestRealKeyFrame?: number,
+  backgroundOnly?: boolean,
+  provenance?: Pick<PhysicPaintRotoCacheFrame, 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT'>,
+): PhysicPaintRotoCacheFrame {
   const onionDataUrl = (renderedFrame as { onionDataUrl?: unknown }).onionDataUrl;
   return {
     ...renderedFrame,
     appFrame,
     source,
     ...(nearestRealKeyFrame !== undefined ? { nearestRealKeyFrame } : {}),
+    ...(provenance?.fromSourceFrame !== undefined ? { fromSourceFrame: provenance.fromSourceFrame } : {}),
+    ...(provenance?.toSourceFrame !== undefined ? { toSourceFrame: provenance.toSourceFrame } : {}),
+    ...(provenance?.interpolationT !== undefined ? { interpolationT: provenance.interpolationT } : {}),
     ...(backgroundOnly !== undefined ? { backgroundOnly } : {}),
     ...(typeof onionDataUrl === 'string' ? { onionDataUrl } : {}),
   };
@@ -394,9 +404,19 @@ function _regenerateGeneratedRotoCache(layerId: string, settings: PhysicPaintRot
     const rendered = settings.mode === 'duplicate'
       ? renderDuplicateRotoInterpolationFrame(from, targetFrame, settings)
       : renderBlendedRotoInterpolationFrame(from, to, targetFrame, span.t, settings);
-    const generatedFrame = { ...rendered, nearestRealKeyFrame: span.fromSourceFrame };
+    const generatedFrame = {
+      ...rendered,
+      nearestRealKeyFrame: span.fromSourceFrame,
+      fromSourceFrame: span.fromSourceFrame,
+      ...(span.toSourceFrame !== undefined ? { toSourceFrame: span.toSourceFrame } : {}),
+      interpolationT: span.t,
+    };
     layerFrames.set(targetFrame, generatedFrame);
-    metadata.set(targetFrame, _makeRotoCacheFrame(generatedFrame, targetFrame, 'generated-interpolation', span.fromSourceFrame));
+    metadata.set(targetFrame, _makeRotoCacheFrame(generatedFrame, targetFrame, 'generated-interpolation', span.fromSourceFrame, undefined, {
+      fromSourceFrame: span.fromSourceFrame,
+      ...(span.toSourceFrame !== undefined ? { toSourceFrame: span.toSourceFrame } : {}),
+      interpolationT: span.t,
+    }));
     generatedFrames.push(generatedFrame);
   }
   return { changed: removed || generatedFrames.length > 0, generatedFrames, failed: false };

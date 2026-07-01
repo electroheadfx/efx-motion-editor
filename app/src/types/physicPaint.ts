@@ -42,6 +42,9 @@ export interface PhysicPaintRotoInterpolationSettings {
 export interface PhysicPaintRotoCacheFrame extends PhysicPaintRenderedFrame {
   source: PhysicPaintRotoFrameSource;
   nearestRealKeyFrame?: number;
+  fromSourceFrame?: number;
+  toSourceFrame?: number;
+  interpolationT?: number;
   backgroundOnly?: boolean;
   onionDataUrl?: string;
 }
@@ -381,6 +384,9 @@ export function isPhysicPaintRotoCacheFrame(value: unknown): value is PhysicPain
   if (value.source !== 'real-key' && value.source !== 'generated-interpolation' && value.source !== 'background-only-support') return false;
   if (value.source === 'background-only-support' && value.backgroundOnly !== true) return false;
   if (!optionalNonNegativeInteger(value.nearestRealKeyFrame)) return false;
+  if (!optionalNonNegativeInteger(value.fromSourceFrame)) return false;
+  if (!optionalNonNegativeInteger(value.toSourceFrame)) return false;
+  if (value.interpolationT !== undefined && (typeof value.interpolationT !== 'number' || !Number.isFinite(value.interpolationT) || value.interpolationT < 0 || value.interpolationT > 1)) return false;
   if (value.onionDataUrl !== undefined && !isRenderedPngDataUrl(value.onionDataUrl)) return false;
   return value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean';
 }
