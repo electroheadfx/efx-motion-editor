@@ -759,8 +759,12 @@ export const physicPaintStore = {
         if (metadata.size > 0) _rotoCacheMetadata.set(output.layer_id, metadata);
       }
       _pruneFramesOutsideRotoCacheMetadata(output.layer_id);
-      if (isPhysicPaintRotoInterpolationSettings(output.roto_interpolation_settings)) {
-        _rotoInterpolationSettings.set(output.layer_id, _cloneRotoInterpolationSettings(output.roto_interpolation_settings));
+      if (output.roto_interpolation_settings !== undefined) {
+        const settings = _normalizeRotoInterpolationSettings(output.roto_interpolation_settings);
+        _rotoInterpolationSettings.set(output.layer_id, settings);
+        if (!settings.enabled || _getRealRotoKeyFrames(output.layer_id).length >= 2) {
+          _tryRegenerateGeneratedRotoCache(output.layer_id, settings);
+        }
       }
       const metadata = _metadataFromMce(output);
       if (metadata) _workflowMetadata.set(output.layer_id, metadata);
