@@ -1079,6 +1079,14 @@ export function PhysicsPaintStudio() {
       ?? physicPaintStore.getFrame(context.layerId, appFrame);
   }
 
+  function findCachedRotoDisplayFrame(appFrame: number, context: PhysicPaintLaunchContext | null = launchContext): RenderedFramePayload | null {
+    if (!context) return null;
+    return confirmedCachedRotoFramesRef.current.get(appFrame)
+      ?? rotoPreviewFramesRef.current.get(appFrame)
+      ?? context.cachedRotoFrames?.find((frame) => frame.appFrame === appFrame && (frame.source === 'real-key' || frame.source === 'generated-interpolation'))
+      ?? physicPaintStore.getRotoFrame(context.layerId, appFrame);
+  }
+
   function loadCachedRotoReferenceFrame(
     appFrame: number,
     targetEngine: PreviewBackgroundEngine | null = engine as PreviewBackgroundEngine | null,
@@ -1114,13 +1122,11 @@ export function PhysicsPaintStudio() {
   }
 
   function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null {
-    return findCachedRotoReferenceFrame(appFrame);
+    return findCachedRotoDisplayFrame(appFrame);
   }
 
-  function getRotoCachedPlaybackFrames(): Array<{ appFrame: number; frame: RenderedFramePayload }> {
-    return getRealCachedRotoFrameNumbers(launchContext)
-      .map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }))
-      .filter((entry): entry is { appFrame: number; frame: RenderedFramePayload } => Boolean(entry.frame));
+  function getRotoCachedPlaybackFrames(): Array<{ appFrame: number; frame: RenderedFramePayload | null }> {
+    return rotoSession.playbackFrameNumbers.value.map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }));
   }
 
   useEffect(() => {

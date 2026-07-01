@@ -113,7 +113,10 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   const realKeyFrameNumbers = computed(() => realKeyFrames.value.map((frame) => frame.appFrame));
   const generatedFrameNumbers = computed(() => collectGeneratedFrames(cachedRotoFrames.value));
   const backgroundOnlySupportFrameNumbers = computed(() => collectBackgroundOnlySupportFrames(cachedRotoFrames.value));
-  const playbackFrameNumbers = computed(() => [...realKeyFrameNumbers.value]);
+  const playbackFrameNumbers = computed(() => normalizeFrameNumbers([
+    ...realKeyFrameNumbers.value,
+    ...generatedFrameNumbers.value,
+  ]));
   const currentFrameIsDirty = computed(() => hasFrame(dirtyFrames.value, currentFrame.value));
   const actionAvailability = computed(() => deriveRotoKeyUtilityActionState({
     currentFrame: currentFrame.value,
