@@ -18,6 +18,7 @@ import {
   getRotoCellStateLabel,
   getExpandedRotoRealKeyFrames,
   getRotoCellViewModel,
+  getSourceRotoFrameForDisplayFrame,
   getRotoMissingFrameStatus,
   getRotoPendingLabel,
   getRotoReplacementSuccessLabel,
@@ -272,6 +273,24 @@ describe('physicsPaintWorkflowState', () => {
       { sourceFrame: 3, frame: 3, displayFrame: 3, kind: 'real-key' },
     ]);
     expect(getRotoInterpolationSpanFrames([0, 1, 3], { enabled: false, inBetweenCount: 2, mode: 'blend' })).toEqual([]);
+  });
+
+  it('resolves expanded display-frame real keys back to source keys for first toggle-off', () => {
+    const settings = { enabled: true, inBetweenCount: 3, mode: 'duplicate' as const };
+
+    expect(getSourceRotoFrameForDisplayFrame(0, [0, 1, 2], settings, 'existing-only')).toBe(0);
+    expect(getSourceRotoFrameForDisplayFrame(4, [0, 1, 2], settings, 'existing-only')).toBe(1);
+    expect(getSourceRotoFrameForDisplayFrame(8, [0, 1, 2], settings, 'existing-only')).toBe(2);
+    expect(getExpandedRotoRealKeyFrames([0, 1, 2], { ...settings, enabled: false }).map((frame) => ({ sourceFrame: frame.sourceFrame, displayFrame: frame.displayFrame }))).toEqual([
+      { sourceFrame: 0, displayFrame: 0 },
+      { sourceFrame: 1, displayFrame: 1 },
+      { sourceFrame: 2, displayFrame: 2 },
+    ]);
+  });
+
+  it('maps new real keys created in expanded space to the next source key slot', () => {
+    expect(getSourceRotoFrameForDisplayFrame(21, [0, 1, 2], { enabled: true, inBetweenCount: 3, mode: 'duplicate' })).toBe(3);
+    expect(getSourceRotoFrameForDisplayFrame(21, [0, 1, 2, 3], { enabled: false, inBetweenCount: 3, mode: 'duplicate' })).toBe(21);
   });
 
   it('preserves interpolation enabled, count, and accepted mode settings for duplicate/hold and alpha blend', () => {

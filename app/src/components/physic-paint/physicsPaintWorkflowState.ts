@@ -319,7 +319,7 @@ export function getPlayRangeMarker(startFrame: number, frameCount: number, curre
 
 export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoExpandedRealKeyFrame[] {
   const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
-  const inBetweenCount = settings.enabled === true ? clampNonNegativeInteger(settings.inBetweenCount, 0) : 0;
+  const inBetweenCount = settings.enabled === true ? clampPositiveInteger(settings.inBetweenCount, 1) : 0;
   const mode = normalizeRotoInterpolationMode(settings.mode);
   const expanded: RotoExpandedRealKeyFrame[] = [];
   let displayFrame = 0;
@@ -362,6 +362,16 @@ export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoI
 export function getRotoInterpolationSpanFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoInterpolationSpanFrame[] {
   if (settings.enabled !== true) return [];
   return getExpandedRotoRealKeyFrames(realKeys, settings).filter((frame): frame is RotoInterpolationSpanFrame => frame.kind === 'generated-interpolation');
+}
+
+export function getSourceRotoFrameForDisplayFrame(displayFrame: number, realKeys: number[], settings: RotoInterpolationSettings, mode: 'existing-or-next' | 'existing-only' = 'existing-or-next'): number | null {
+  if (!isNonNegativeInteger(displayFrame)) return null;
+  const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
+  const entry = getExpandedRotoRealKeyFrames(sourceKeys, settings).find((candidate) => candidate.kind === 'real-key' && candidate.displayFrame === displayFrame);
+  if (entry?.kind === 'real-key') return entry.sourceFrame;
+  if (mode === 'existing-only') return null;
+  if (settings.enabled === true && displayFrame > 0 && sourceKeys.length > 0) return Math.max(...sourceKeys) + 1;
+  return displayFrame;
 }
 
 export function getNearestRealRotoKeyFrame(frame: number, realKeys: number[]): number | null {
@@ -521,6 +531,12 @@ function clampNonNegativeInteger(value: unknown, fallback: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.max(0, Math.trunc(numeric));
+}
+
+function clampPositiveInteger(value: unknown, fallback: number): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(1, Math.trunc(numeric));
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

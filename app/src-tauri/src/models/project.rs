@@ -47,6 +47,12 @@ pub struct McePhysicPaintOutput {
     pub editable_source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub play_motion: Option<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roto_cache_metadata: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roto_interpolation_settings: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roto_background: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

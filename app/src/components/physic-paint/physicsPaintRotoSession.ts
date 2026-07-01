@@ -57,6 +57,7 @@ export interface RotoSessionInput {
   copiedKey?: RotoSessionCopiedKey | null;
   canvasSize?: { width: number; height: number };
   buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
+  resolveSourceFrameForDisplayFrame?: (displayFrame: number) => number | null;
   keyActionInFlight?: boolean;
   applyStatus?: 'idle' | 'applying' | 'success' | 'error';
   flushInFlight?: boolean;
@@ -177,9 +178,10 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   }
 
   function copyKey(): RotoSessionActionResult {
-    const sourceFrame = currentFrame.peek();
-    const sourcePayload = realKeyFrames.peek().find((frame) => frame.appFrame === sourceFrame);
+    const displayFrame = currentFrame.peek();
+    const sourcePayload = realKeyFrames.peek().find((frame) => frame.appFrame === displayFrame);
     if (!sourcePayload) return failed('copyKey', actionAvailability.peek().disabledReason ?? 'Select a real Roto key to copy.');
+    const sourceFrame = sourcePayload.sourceFrame ?? sourcePayload.appFrame;
     const normalized = normalizeRealKeyFrame(sourcePayload, sourceFrame, input.canvasSize);
     copiedKey.value = { frame: sourceFrame, cachedFrame: normalized };
     const message = `Copied key ${sourceFrame}.`;
@@ -237,7 +239,8 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   }
 
   function runKeyTransaction(action: RotoSessionActionName, operation: RotoSessionPendingKeyAction): RotoSessionActionResult {
-    const sourceFrame = currentFrame.peek();
+    const displayFrame = currentFrame.peek();
+    const sourceFrame = input.resolveSourceFrameForDisplayFrame?.(displayFrame) ?? displayFrame;
     const effects: RotoSessionEffect[] = [];
     try {
       const transaction = buildRotoKeyUtilityTransaction({
@@ -391,19 +394,20 @@ function mergeCachedFrames(existing: readonly PhysicPaintRotoCacheFrame[], trans
 
 function normalizeCachedFrames(frames: readonly PhysicPaintRotoCacheFrame[] | undefined, canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame[] {
   return (frames ?? [])
-    .map((frame) => frame.source === 'real-key' ? normalizeRealKeyFrame(frame, frame.appFrame, canvasSize) : { ...frame })
+    .map((frame) => frame.source === 'real-key' ? normalizeRealKeyFrameForDisplay(frame, canvasSize) : { ...frame })
     .filter((frame) => normalizeFrame(frame.appFrame) !== null)
     .sort((a, b) => a.appFrame - b.appFrame);
 }
 
 function normalizeRealKeyFrames(frames: readonly PhysicPaintRotoCacheFrame[], canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame[] {
-  const byFrame = new Map<number, PhysicPaintRotoCacheFrame>();
+  const byDisplayFrame = new Map<number, PhysicPaintRotoCacheFrame>();
   for (const frame of frames) {
-    const appFrame = normalizeFrame(frame.appFrame);
-    if (appFrame === null || frame.source !== 'real-key') continue;
-    byFrame.set(appFrame, normalizeRealKeyFrame(frame, appFrame, canvasSize));
+    if (frame.source !== 'real-key') continue;
+    const displayFrame = normalizeFrame(frame.displayFrame ?? frame.appFrame);
+    if (displayFrame === null) continue;
+    byDisplayFrame.set(displayFrame, normalizeRealKeyFrameForDisplay(frame, canvasSize));
   }
-  return Array.from(byFrame.values()).sort((a, b) => a.appFrame - b.appFrame);
+  return Array.from(byDisplayFrame.values()).sort((a, b) => a.appFrame - b.appFrame);
 }
 
 function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: number, canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame {
@@ -412,6 +416,27 @@ function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: numbe
     appFrame,
     frameIndex: 0,
     source: 'real-key',
+    sourceFrame: appFrame,
+    displayFrame: appFrame,
+    ...(canvasSize ? { width: canvasSize.width, height: canvasSize.height } : {}),
+  };
+  delete next.nearestRealKeyFrame;
+  delete next.backgroundOnly;
+  return next;
+}
+
+function normalizeRealKeyFrameForDisplay(frame: PhysicPaintRotoCacheFrame, canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame {
+  const displayFrame = normalizeFrame(frame.displayFrame ?? frame.appFrame);
+  const sourceFrame = normalizeFrame(frame.sourceFrame ?? frame.appFrame);
+  const appFrame = displayFrame ?? sourceFrame ?? 0;
+  const source = sourceFrame ?? appFrame;
+  const next: PhysicPaintRotoCacheFrame = {
+    ...frame,
+    appFrame,
+    frameIndex: 0,
+    source: 'real-key',
+    sourceFrame: source,
+    displayFrame: appFrame,
     ...(canvasSize ? { width: canvasSize.width, height: canvasSize.height } : {}),
   };
   delete next.nearestRealKeyFrame;

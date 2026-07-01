@@ -1,6 +1,8 @@
 import {describe, it, expect, beforeEach} from 'vitest';
 import {sequenceStore} from '../stores/sequenceStore';
-import {frameMap} from './frameMap';
+import {defaultTransform} from '../types/layer';
+import {frameMap, fxTrackLayouts} from './frameMap';
+import {physicPaintStore} from '../stores/physicPaintStore';
 import type {Sequence} from '../types/sequence';
 
 /** Build a test sequence with `as any` for solidColor/isTransparent fields
@@ -21,6 +23,7 @@ function makeSequence(overrides: Partial<Sequence> & { keyPhotos: any[] }): Sequ
 describe('frameMap solid/transparent entries', () => {
   beforeEach(() => {
     sequenceStore.reset();
+    physicPaintStore.reset();
   });
 
   it('produces FrameEntry with solidColor for key solid entries', () => {
@@ -80,5 +83,48 @@ describe('frameMap solid/transparent entries', () => {
     expect((entries[2] as any).solidColor).toBe('#0000FF');
     expect(entries[3].imageId).toBe('img-2');
     expect((entries[3] as any).solidColor).toBeUndefined();
+  });
+
+  it('extends the parent timeline and FX range to generated Roto interpolation display frames', () => {
+    sequenceStore.sequences.value = [
+      makeSequence({
+        keyPhotos: [
+          {id: 'kp-0', imageId: 'circle', holdFrames: 1},
+          {id: 'kp-1', imageId: 'square', holdFrames: 1},
+          {id: 'kp-2', imageId: 'crossed', holdFrames: 1},
+        ],
+      }),
+      {
+        id: 'fx-roto',
+        kind: 'fx',
+        name: 'Roto FX',
+        fps: 24,
+        width: 1920,
+        height: 1080,
+        keyPhotos: [],
+        layers: [{
+          id: 'roto-layer',
+          name: 'Roto',
+          type: 'physic-paint',
+          visible: true,
+          opacity: 1,
+          blendMode: 'normal',
+          transform: defaultTransform(),
+          source: { type: 'physic-paint', layerId: 'roto-layer' },
+        }],
+        inFrame: 0,
+        outFrame: 3,
+      },
+    ] as Sequence[];
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,Y2lyY2xl' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,c3F1YXJl' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Y3Jvc3NlZA==' });
+    physicPaintStore.setRotoInterpolationSettings('roto-layer', { enabled: true, inBetweenCount: 3, mode: 'duplicate' });
+
+    const entries = frameMap.value;
+    expect(entries).toHaveLength(12);
+    expect(entries.slice(0, 3).map((entry) => entry.imageId)).toEqual(['circle', 'square', 'crossed']);
+    expect(entries.slice(3).every((entry) => entry.imageId === 'crossed')).toBe(true);
+    expect(fxTrackLayouts.value[0]).toEqual(expect.objectContaining({ sequenceId: 'fx-roto', inFrame: 0, outFrame: 12 }));
   });
 });

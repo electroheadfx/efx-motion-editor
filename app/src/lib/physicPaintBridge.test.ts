@@ -870,13 +870,54 @@ describe('physicPaintBridge', () => {
 
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
-    expect(physicPaintStore.getFrame('phys-layer-1', 2)).toEqual(expect.objectContaining({ appFrame: 2, source: 'generated-interpolation' }));
-    expect(physicPaintStore.getFrame('phys-layer-1', 3)).toEqual(expect.objectContaining({ appFrame: 3, source: 'generated-interpolation' }));
+    expect(physicPaintStore.getRotoFrame('phys-layer-1', 2)).toEqual(expect.objectContaining({ appFrame: 2, source: 'generated-interpolation' }));
+    expect(physicPaintStore.getRotoFrame('phys-layer-1', 3)).toEqual(expect.objectContaining({ appFrame: 3, source: 'generated-interpolation' }));
     expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
       roto_interpolation_settings: { enabled: true, inBetweenCount: 2, mode: 'blend', deform: 20, position: 30 },
       roto_cache_metadata: expect.arrayContaining([
         expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 4 }),
         expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 4 }),
+      ]),
+    }));
+  });
+
+  it('syncs metadata-only Roto interpolation settings from standalone into parent preview/export state', () => {
+    mockLayers([physicLayer()]);
+    applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'apply-roto-real-0',
+      startFrame: 0,
+      renderedFrame: makeFrame(0, 0),
+    }));
+    applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'apply-roto-real-1',
+      startFrame: 1,
+      renderedFrame: makeFrame(0, 1),
+    }));
+    applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'apply-roto-real-2',
+      startFrame: 2,
+      renderedFrame: makeFrame(0, 2),
+    }));
+
+    const result = applyPhysicPaintPayload({
+      kind: 'update-roto-interpolation-settings',
+      operationId: 'sync-roto-interpolation-1',
+      layerId: 'phys-layer-1',
+      startFrame: 1,
+      settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 },
+    });
+
+    expect(result).toMatchObject({ ok: true, kind: 'update-roto-interpolation-settings', appliedFrameCount: 9 });
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual({ enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 });
+    expect(physicPaintStore.getRotoFrame('phys-layer-1', 11)).toEqual(expect.objectContaining({
+      appFrame: 11,
+      source: 'generated-interpolation',
+      dataUrl: makeFrame(0, 2).dataUrl,
+    }));
+    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
+      roto_interpolation_settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 },
+      roto_cache_metadata: expect.arrayContaining([
+        expect.objectContaining({ appFrame: 11, source: 'generated-interpolation', fromSourceFrame: 2 }),
       ]),
     }));
   });

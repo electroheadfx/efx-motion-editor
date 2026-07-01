@@ -7,7 +7,7 @@ export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
 const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals']);
 
-export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play' | 'update-play-render-options';
+export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play' | 'update-play-render-options' | 'update-roto-interpolation-settings';
 export type PhysicPaintWorkflowMode = 'roto' | 'play';
 export type PhysicPaintEditableSource = 'roto' | 'play';
 
@@ -42,6 +42,8 @@ export interface PhysicPaintRotoInterpolationSettings {
 export interface PhysicPaintRotoCacheFrame extends PhysicPaintRenderedFrame {
   source: PhysicPaintRotoFrameSource;
   nearestRealKeyFrame?: number;
+  sourceFrame?: number;
+  displayFrame?: number;
   fromSourceFrame?: number;
   toSourceFrame?: number;
   interpolationT?: number;
@@ -132,11 +134,13 @@ export interface PhysicPaintApplyCanvasPayload {
   operationId: string;
   layerId: string;
   startFrame: number;
+  sourceFrame?: number;
   renderedFrame: PhysicPaintRenderedFrame;
   editableState: SerializedProject;
   backgroundOnly?: boolean;
   onionDataUrl?: string;
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
+  rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
   closeWindowAfterApply?: boolean;
 }
 
@@ -145,6 +149,7 @@ export interface PhysicPaintDeleteRotoFramePayload {
   operationId: string;
   layerId: string;
   startFrame: number;
+  sourceFrame?: number;
 }
 
 export interface PhysicPaintReplaceRotoKeyFramesPayload {
@@ -199,7 +204,15 @@ export interface PhysicPaintUpdatePlayRenderOptionsPayload {
   renderOptions: PhysicPaintPlayRenderOptionsSnapshot;
 }
 
-export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintApplyPlayCanvasPayload | PhysicPaintConvertPlayToRotoPayload | PhysicPaintConvertRotoToPlayPayload | PhysicPaintUpdatePlayRenderOptionsPayload;
+export interface PhysicPaintUpdateRotoInterpolationSettingsPayload {
+  kind: 'update-roto-interpolation-settings';
+  operationId: string;
+  layerId: string;
+  startFrame: number;
+  settings: PhysicPaintRotoInterpolationSettings;
+}
+
+export type PhysicPaintApplyPayload = PhysicPaintApplyCanvasPayload | PhysicPaintDeleteRotoFramePayload | PhysicPaintReplaceRotoKeyFramesPayload | PhysicPaintApplyPlayCanvasPayload | PhysicPaintConvertPlayToRotoPayload | PhysicPaintConvertRotoToPlayPayload | PhysicPaintUpdatePlayRenderOptionsPayload | PhysicPaintUpdateRotoInterpolationSettingsPayload;
 
 export interface PhysicPaintApplyResult {
   operationId: string;
@@ -300,7 +313,11 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
     return isNonEmptyString(value.playScriptId) && isPhysicPaintPlayRenderOptionsSnapshot(value.renderOptions);
   }
 
-  if (value.kind === 'delete-roto-frame') return true;
+  if (value.kind === 'update-roto-interpolation-settings') {
+    return isPhysicPaintRotoInterpolationSettings(value.settings);
+  }
+
+  if (value.kind === 'delete-roto-frame') return optionalNonNegativeInteger(value.sourceFrame);
 
   if (value.kind === 'replace-roto-key-frames') {
     return Array.isArray(value.frames) && value.frames.every((frame) => isPhysicPaintRotoCacheFrame(frame) && frame.source === 'real-key');
@@ -309,10 +326,13 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   if (!isSerializedProject(value.editableState)) return false;
 
   if (value.kind === 'apply-canvas') {
-    return isPhysicPaintRenderedFrame(value.renderedFrame, value.startFrame, 0) &&
+    const sourceFrame = typeof value.sourceFrame === 'number' ? value.sourceFrame : value.startFrame;
+    return optionalNonNegativeInteger(value.sourceFrame) &&
+      isPhysicPaintRenderedFrame(value.renderedFrame, sourceFrame, 0) &&
       (value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean') &&
       (value.onionDataUrl === undefined || isRenderedPngDataUrl(value.onionDataUrl)) &&
       optionalRotoBackgroundMetadata(value.rotoBackground) &&
+      optionalRotoInterpolationSettings(value.rotoInterpolationSettings) &&
       (value.closeWindowAfterApply === undefined || typeof value.closeWindowAfterApply === 'boolean');
   }
 
@@ -384,6 +404,8 @@ export function isPhysicPaintRotoCacheFrame(value: unknown): value is PhysicPain
   if (value.source !== 'real-key' && value.source !== 'generated-interpolation' && value.source !== 'background-only-support') return false;
   if (value.source === 'background-only-support' && value.backgroundOnly !== true) return false;
   if (!optionalNonNegativeInteger(value.nearestRealKeyFrame)) return false;
+  if (!optionalNonNegativeInteger(value.sourceFrame)) return false;
+  if (!optionalNonNegativeInteger(value.displayFrame)) return false;
   if (!optionalNonNegativeInteger(value.fromSourceFrame)) return false;
   if (!optionalNonNegativeInteger(value.toSourceFrame)) return false;
   if (value.interpolationT !== undefined && (typeof value.interpolationT !== 'number' || !Number.isFinite(value.interpolationT) || value.interpolationT < 0 || value.interpolationT > 1)) return false;
@@ -419,7 +441,7 @@ export function isPhysicPaintApplyResult(value: unknown): value is PhysicPaintAp
   if (!isRecord(value)) return false;
   return (
     isNonEmptyString(value.operationId) &&
-    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options') &&
+    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options' || value.kind === 'update-roto-interpolation-settings') &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
     isNonNegativeInteger(value.appliedFrameCount) &&
@@ -443,7 +465,7 @@ function isBaseApplyPayload(value: Record<string, unknown>): value is Record<str
   startFrame: number;
 } {
   return (
-    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options') &&
+    (value.kind === 'apply-canvas' || value.kind === 'delete-roto-frame' || value.kind === 'replace-roto-key-frames' || value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto' || value.kind === 'convert-roto-to-play' || value.kind === 'update-play-render-options' || value.kind === 'update-roto-interpolation-settings') &&
     isNonEmptyString(value.operationId) &&
     isNonEmptyString(value.layerId) &&
     isNonNegativeInteger(value.startFrame) &&
@@ -592,7 +614,7 @@ function isPercentInteger(value: unknown): value is number {
 }
 
 function isRotoInBetweenFrameCount(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
 }
 
 function isPositiveInteger(value: unknown): value is number {

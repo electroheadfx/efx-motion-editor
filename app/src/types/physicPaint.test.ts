@@ -104,7 +104,8 @@ describe('physic paint payload contracts', () => {
 
   it('validates Roto interpolation settings and rejects invalid counts', () => {
     expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20 })).toBe(true);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: false, inBetweenCount: 0, mode: 'duplicate', deform: 0, position: 0 })).toBe(true);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 })).toBe(true);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: false, inBetweenCount: 0, mode: 'duplicate', deform: 0, position: 0 })).toBe(false);
     expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 1.5, mode: 'blend', deform: 10, position: 20 })).toBe(false);
     expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1, mode: 'blend', deform: 10, position: 20 })).toBe(false);
     expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'warp', deform: 10, position: 20 })).toBe(false);
@@ -195,6 +196,24 @@ describe('physic paint payload contracts', () => {
       startFrame: 12,
       playScriptId: 'play-a',
       renderOptions: { ...renderOptions, motion: { strokeDeformation: 101, strokePosition: 0 } },
+    })).toBe(false);
+  });
+
+  it('accepts metadata-only Roto interpolation settings update payloads', () => {
+    expect(isPhysicPaintApplyPayload({
+      kind: 'update-roto-interpolation-settings',
+      operationId: 'op-roto-interpolation',
+      layerId: 'layer-1',
+      startFrame: 12,
+      settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 },
+    })).toBe(true);
+
+    expect(isPhysicPaintApplyPayload({
+      kind: 'update-roto-interpolation-settings',
+      operationId: 'op-roto-interpolation',
+      layerId: 'layer-1',
+      startFrame: 12,
+      settings: { enabled: true, inBetweenCount: 3, mode: 'hold', deform: 0, position: 0 },
     })).toBe(false);
   });
 

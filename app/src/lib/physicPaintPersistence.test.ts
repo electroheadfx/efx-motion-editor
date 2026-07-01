@@ -96,6 +96,37 @@ describe('physicPaintPersistence', () => {
     expect(hydrated?.[0].roto_cache_metadata?.[0].onionDataUrl).toBe('data:image/png;base64,BAUG');
   });
 
+  it('hydrates persisted real Roto keys and settings while ignoring generated metadata without cache files', async () => {
+    files.set('/project/cache/physic-paint/physic_layer_1/frame-000000-0000.png', new Uint8Array([1, 2, 3]));
+    files.set('/project/cache/physic-paint/physic_layer_1/frame-000001-0000.png', new Uint8Array([4, 5, 6]));
+    files.set('/project/cache/physic-paint/physic_layer_1/frame-000002-0000.png', new Uint8Array([7, 8, 9]));
+
+    const hydrated = await loadPhysicPaintData('/project', [{
+      layer_id: 'physic layer/1',
+      frames: [
+        { frameIndex: 0, appFrame: 0, cache_path: 'cache/physic-paint/physic_layer_1/frame-000000-0000.png', width: 100, height: 50 },
+        { frameIndex: 0, appFrame: 1, cache_path: 'cache/physic-paint/physic_layer_1/frame-000001-0000.png', width: 100, height: 50 },
+        { frameIndex: 0, appFrame: 2, cache_path: 'cache/physic-paint/physic_layer_1/frame-000002-0000.png', width: 100, height: 50 },
+      ],
+      workflow_mode: 'roto',
+      editable_source: 'roto',
+      roto_cache_metadata: [
+        { frameIndex: 0, appFrame: 0, source: 'real-key' },
+        { frameIndex: 0, appFrame: 4, source: 'real-key', sourceFrame: 1 },
+        { frameIndex: 0, appFrame: 8, source: 'real-key', sourceFrame: 2 },
+        { frameIndex: 0, appFrame: 11, source: 'generated-interpolation', fromSourceFrame: 2 },
+      ],
+      roto_interpolation_settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 },
+    }]);
+
+    expect(hydrated?.[0].roto_interpolation_settings).toEqual({ enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 });
+    expect(hydrated?.[0].roto_cache_metadata?.map((frame) => ({ appFrame: frame.appFrame, sourceFrame: frame.sourceFrame, source: frame.source }))).toEqual([
+      { appFrame: 0, sourceFrame: undefined, source: 'real-key' },
+      { appFrame: 4, sourceFrame: 1, source: 'real-key' },
+      { appFrame: 8, sourceFrame: 2, source: 'real-key' },
+    ]);
+  });
+
   it('skips unsafe persisted cache paths while loading project data', async () => {
     files.set('/secret.png', new Uint8Array([1, 2, 3]));
     files.set('/project/cache/physic-paint/physic_layer_1/frame-000012-0000.png', new Uint8Array([4, 5, 6]));

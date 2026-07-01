@@ -8,7 +8,7 @@ import {isFxLayer} from '../types/layer';
 import type {LayerSourceData} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
 import type {Sequence} from '../types/sequence';
-import type {CrossDissolveOverlap} from './frameMap';
+import {getTimelineOverlaySequenceOutFrame, type CrossDissolveOverlap} from './frameMap';
 
 /**
  * Build a synthetic FrameEntry array for a given sequence.
@@ -82,7 +82,7 @@ function collectExportPhysicPaintFrameSources(renderer: PreviewRenderer, fm: Fra
   for (const seq of sequences) {
     if (seq.kind === 'content' || seq.visible === false) continue;
     const start = Math.max(0, seq.inFrame ?? 0);
-    const end = Math.max(start, Math.min(fm.length, seq.outFrame ?? fm.length));
+    const end = Math.max(start, Math.min(fm.length, getTimelineOverlaySequenceOutFrame(seq, fm.length)));
     for (let globalFrame = start; globalFrame < end; globalFrame += 1) {
       addSources(interpolateLayers(seq, globalFrame - start), globalFrame);
     }
@@ -298,7 +298,7 @@ export function renderGlobalFrame(
   for (let i = overlaySeqs.length - 1; i >= 0; i--) {
     const overlaySeq = overlaySeqs[i];
     if (overlaySeq.inFrame != null && globalFrame < overlaySeq.inFrame) continue;
-    if (overlaySeq.outFrame != null && globalFrame >= overlaySeq.outFrame) continue;
+    if (globalFrame >= getTimelineOverlaySequenceOutFrame(overlaySeq, fm.length)) continue;
 
     if (overlaySeq.kind === 'content-overlay') {
       // Content overlay: compute local frame relative to inFrame, apply keyframe interpolation

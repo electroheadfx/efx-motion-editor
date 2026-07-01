@@ -24,6 +24,14 @@ function frame(appFrame: number, dataUrl: string, source: PhysicPaintRotoCacheFr
   };
 }
 
+function expandedRealKey(sourceFrame: number, displayFrame: number, dataUrl: string): PhysicPaintRotoCacheFrame {
+  return {
+    ...frame(displayFrame, dataUrl),
+    sourceFrame,
+    displayFrame,
+  };
+}
+
 function blankFrame(appFrame: number): PhysicPaintRotoCacheFrame {
   return frame(appFrame, `data:image/png;base64,blank-${appFrame}`, 'real-key');
 }
@@ -150,6 +158,65 @@ describe('physicsPaintRotoKeyController transaction coherence', () => {
     ]);
     expect(transaction.changedFrames).toEqual([3, 6]);
     expect(transaction.activeRestore).toEqual({ kind: 'load-real-key', frame: 3 });
+  });
+
+  it('collapses expanded display-frame real keys back to source frames for key transactions', () => {
+    const realKeys = [
+      expandedRealKey(0, 0, 'data:image/png;base64,real-zero'),
+      expandedRealKey(1, 4, 'data:image/png;base64,real-one'),
+      expandedRealKey(2, 8, 'data:image/png;base64,real-two'),
+    ];
+    const generatedFrames = [
+      frame(1, 'data:image/png;base64,generated-one', 'generated-interpolation'),
+      frame(2, 'data:image/png;base64,generated-two', 'generated-interpolation'),
+      frame(3, 'data:image/png;base64,generated-three', 'generated-interpolation'),
+      frame(5, 'data:image/png;base64,generated-five', 'generated-interpolation'),
+      frame(6, 'data:image/png;base64,generated-six', 'generated-interpolation'),
+      frame(7, 'data:image/png;base64,generated-seven', 'generated-interpolation'),
+    ];
+
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'delete',
+      currentFrame: 8,
+      realKeyFrames: realKeys,
+      cachedRotoFrames: [...realKeys, ...generatedFrames],
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(transaction.realKeyFrameNumbers).toEqual([0, 1]);
+    expect(transaction.realKeyFrames.map(({ appFrame, sourceFrame, displayFrame, dataUrl }) => [appFrame, sourceFrame, displayFrame, dataUrl])).toEqual([
+      [0, 0, 0, 'data:image/png;base64,real-zero'],
+      [1, 1, 1, 'data:image/png;base64,real-one'],
+    ]);
+    expect(transaction.cleanup.generatedFrames).toEqual([1, 2, 3, 5, 6, 7]);
+    expect(transaction.cleanup.deletedFrames).toEqual([2]);
+    expect(transaction.activeRestore).toEqual({ kind: 'clear-blank', frame: 2 });
+  });
+
+  it('inserts from an expanded real-key selection in the source domain', () => {
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'insert',
+      currentFrame: 4,
+      realKeyFrames: [
+        expandedRealKey(0, 0, 'data:image/png;base64,real-zero'),
+        expandedRealKey(1, 4, 'data:image/png;base64,real-one'),
+        expandedRealKey(2, 8, 'data:image/png;base64,real-two'),
+      ],
+      cachedRotoFrames: [],
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(transaction.realKeyFrameNumbers).toEqual([0, 1, 2, 3]);
+    expect(transaction.realKeyFrames.map(({ appFrame, sourceFrame, displayFrame, dataUrl }) => [appFrame, sourceFrame, displayFrame, dataUrl])).toEqual([
+      [0, 0, 0, 'data:image/png;base64,real-zero'],
+      [1, 1, 1, 'data:image/png;base64,blank-1'],
+      [2, 2, 2, 'data:image/png;base64,real-one'],
+      [3, 3, 3, 'data:image/png;base64,real-two'],
+    ]);
+    expect(transaction.frameMappings).toEqual([
+      { fromFrame: 2, toFrame: 3, mode: 'move' },
+      { fromFrame: 1, toFrame: 2, mode: 'move' },
+    ]);
   });
 
   it('D-08/D-09 exposes derived action state for all key utilities and dirty save-before-action', () => {

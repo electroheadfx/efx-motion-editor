@@ -209,14 +209,17 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
-    expect(rotoControlsBlock).toContain('Interpolation');
-    expect(rotoControlsBlock).toContain('In-betweens');
-    expect(rotoControlsBlock).toContain('Interpolation frames per real-key pair');
-    expect(rotoControlsBlock).toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).not.toContain('<span>Interpolation</span>');
+    expect(rotoControlsBlock).toContain('Blend size={14}');
+    expect(rotoControlsBlock).toContain('Generated in-between frames per real-key pair');
+    expect(rotoControlsBlock).toContain('min="1"');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-select');
-    expect(rotoControlsBlock).toContain('Interpolation mode');
-    expect(rotoControlsBlock).toContain('Duplicate / hold');
-    expect(rotoControlsBlock).toContain('Alpha blend');
+    expect(rotoControlsBlock).toContain('aria-label="Generated in-between mode"');
+    expect(rotoControlsBlock).toContain('Duplicate');
+    expect(rotoControlsBlock).toContain('Blend');
+    expect(rotoControlsBlock).not.toContain('In-betweens</span>');
+    expect(rotoControlsBlock).not.toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).not.toContain('<span>Interpolation mode</span>');
     expect(rotoControlsBlock).toContain("value=\"duplicate\"");
     expect(rotoControlsBlock).toContain("value=\"blend\"");
     expect(rotoControlsBlock).not.toContain('Interpolation gap frames');
@@ -366,9 +369,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const applyBlock = studioCode.slice(studioCode.indexOf('const applyRotoKeyUtilityTransaction'), studioCode.indexOf('const runRotoKeyAction'));
     const resultBlock = studioCode.slice(studioCode.indexOf("if (detail.kind === 'replace-roto-key-frames')"), studioCode.indexOf("} else if (detail.kind === 'update-play-render-options')"));
 
-    expect(applyBlock).toContain('syncRotoKeyFrameLists(transaction.realKeyFrameNumbers, transaction.realKeyFrames)');
+    expect(applyBlock).toContain('physicPaintStore.replaceRotoKeyFrames({');
+    expect(applyBlock).toContain('const refreshedCacheFrames = physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
+    expect(applyBlock).toContain('syncRotoKeyFrameLists(refreshedRealKeyFrames, refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames)');
     expect(resultBlock).not.toContain('syncRotoKeyFrameLists(getRealRotoKeyFramesForStudio())');
-    expect(resultBlock).not.toContain('physicPaintStore.getRotoCacheFrames');
   });
 
   it('remounts the physics engine when bounded working canvas dimensions change', () => {
@@ -401,11 +405,14 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studioSource()).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
     expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
-    expect(rotoControlsBlock).toContain('Interpolation');
-    expect(rotoControlsBlock).toContain('Per adjacent real-key pair');
-    expect(rotoControlsBlock).toContain('Interpolation mode');
-    expect(rotoControlsBlock).toContain('Duplicate / hold');
-    expect(rotoControlsBlock).toContain('Alpha blend');
+    expect(rotoControlsBlock).not.toContain('<span>Interpolation</span>');
+    expect(rotoControlsBlock).toContain('Blend size={14}');
+    expect(rotoControlsBlock).toContain('Generated in-between frames per real-key pair');
+    expect(rotoControlsBlock).toContain('aria-label="Generated in-between mode"');
+    expect(rotoControlsBlock).toContain('Duplicate');
+    expect(rotoControlsBlock).toContain('Blend');
+    expect(rotoControlsBlock).not.toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).not.toContain('<span>Interpolation mode</span>');
     expect(rotoControlsBlock).not.toContain('Gaps');
   });
 
@@ -417,13 +424,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
     expect(toggleBlock).toContain('mode: patch.mode ?? currentSettings.mode');
     expect(toggleBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, nextSettings)');
-    expect(toggleBlock).toContain('mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames)');
+    expect(toggleBlock).toContain('const refreshedRotoFrames = refreshedSettings.enabled && storeRotoFrames.length > 0\n      ? storeRotoFrames\n      : fallbackRealKeys;');
     expect(toggleBlock).not.toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');
     expect(toggleBlock).toContain('physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId)');
-    expect(toggleBlock).toContain('Interpolation could not regenerate. Real keys were kept.');
-    expect(toggleBlock).toContain('Interpolation on — generated render-only in-betweens refresh from real keys.');
-    expect(toggleBlock).toContain('Interpolation on — set In-betweens above 0 and save at least two real Roto keys.');
-    expect(toggleBlock).toContain('Interpolation off — real Roto keys only.');
+    expect(toggleBlock).toContain('Generated in-betweens could not regenerate. Real keys were kept.');
+    expect(toggleBlock).toContain('Generated in-betweens on — render-only frames refresh from real keys.');
+    expect(toggleBlock).toContain('Generated in-betweens on — save at least two real Roto keys.');
+    expect(toggleBlock).toContain('Generated in-betweens off — real Roto keys only.');
     expect(stripPropsBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
     expect(stripPropsBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
     expect(stripPropsBlock).toContain('onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode: mode as PhysicPaintRotoInterpolationMode })}');
@@ -627,12 +634,15 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
-    expect(rotoControlsBlock).toContain('Interpolation');
+    expect(rotoControlsBlock).not.toContain('<span>Interpolation</span>');
     expect(rotoControlsBlock).toContain('onRotoInterpolationEnabledChange');
-    expect(rotoControlsBlock).toContain('Per adjacent real-key pair');
-    expect(rotoControlsBlock).toContain('Interpolation mode');
-    expect(rotoControlsBlock).toContain('Duplicate / hold');
-    expect(rotoControlsBlock).toContain('Alpha blend');
+    expect(rotoControlsBlock).toContain('Blend size={14}');
+    expect(rotoControlsBlock).toContain('Generated in-between frames per real-key pair');
+    expect(rotoControlsBlock).toContain('aria-label="Generated in-between mode"');
+    expect(rotoControlsBlock).toContain('Duplicate');
+    expect(rotoControlsBlock).toContain('Blend');
+    expect(rotoControlsBlock).not.toContain('Per adjacent real-key pair');
+    expect(rotoControlsBlock).not.toContain('<span>Interpolation mode</span>');
     expect(rotoControlsBlock).not.toContain('Interpolation gap frames');
     expect(rotoControlsBlock).not.toContain('Move');
     expect(rotoControlsBlock).not.toContain('Deform');
@@ -647,7 +657,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).not.toContain('<Timeline');
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
-    expect(rotoControlsBlock).toContain('In-betweens');
+    expect(rotoControlsBlock).toContain('Blend size={14}');
+    expect(rotoControlsBlock).toContain('Generated in-between frames per real-key pair');
+    expect(rotoControlsBlock).not.toContain('In-betweens</span>');
     expect(rotoControlsBlock).not.toContain('Deform');
     expect(rotoControlsBlock).not.toContain('Position');
     expect(rotoControlsBlock).not.toContain('physics-paint-roto-key-utilities');
@@ -890,7 +902,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
     expect(studio).toContain('setCachedRotoPlaybackFrame(null)');
     expect(studio).toContain("restore.kind === 'load-real-key'");
-    expect(studio).toContain('syncRotoKeyFrameLists(transaction.realKeyFrameNumbers, transaction.realKeyFrames)');
+    expect(studio).toContain('syncRotoKeyFrameLists(refreshedRealKeyFrames, refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames)');
     expect(studio).toContain('cachedRotoFrames: [...cacheFrames].sort');
     expect(studio).not.toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
     expect(studio).not.toContain('localByFrame.get(frame) ?? preservedByFrame.get(frame)');
@@ -925,8 +937,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('const applyRotoKeyUtilityTransaction = useCallback');
     expect(studio).toContain('persistRotoKeyFrameTransaction(effect.transaction)');
     expect(studio).toContain('effect.restore');
-    expect(studio).toContain('effect.transaction.cleanup.generatedFrames');
-    expect(studio).toContain('effect.transaction.cleanup.deletedFrames');
+    expect(studio).toContain('let replacedRotoKeys = false');
+    expect(studio).toContain('replacedRotoKeys = true');
+    expect(studio).toContain('if (!replacedRotoKeys) for (const frame of effect.frames)');
     expect(session).toContain('deriveRotoKeyUtilityActionState');
     expect(session).toContain('buildRotoKeyUtilityTransaction');
     expect(session).toContain('transaction.activeRestore');

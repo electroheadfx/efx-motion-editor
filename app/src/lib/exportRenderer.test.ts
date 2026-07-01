@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sequenceStore } from '../stores/sequenceStore';
 import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
 import type { Sequence } from '../types/sequence';
@@ -39,10 +40,12 @@ function makeSequence(layer: Layer): Sequence {
 }
 
 beforeEach(() => {
+  sequenceStore.reset();
   physicPaintStore.reset();
 });
 
 afterEach(() => {
+  sequenceStore.reset();
   physicPaintStore.reset();
 });
 
@@ -169,6 +172,69 @@ describe('physics paint cache-first preview/export contract', () => {
     ]));
     expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
     expect(physicPaintStore.getRotoFrame('roto-layer', 1)?.dataUrl).toBe('data:image/png;base64,Z2VuZXJhdGVkLWFscGhhLW9ubHk=');
+  });
+
+  it('preloads generated Roto frames past a stale FX sequence range after parent timeline expansion', async () => {
+    const layer = makeRotoLayer();
+    const contentSequence = {
+      ...makeSequence(layer),
+      id: 'content-seq',
+      layers: [],
+      keyPhotos: [
+        { id: 'kp-0', imageId: 'circle', holdFrames: 1 },
+        { id: 'kp-1', imageId: 'square', holdFrames: 1 },
+        { id: 'kp-2', imageId: 'crossed', holdFrames: 1 },
+      ],
+    };
+    const sequence = {
+      ...makeSequence(layer),
+      id: 'fx-roto',
+      kind: 'fx' as const,
+      keyPhotos: [],
+      inFrame: 0,
+      outFrame: 3,
+    };
+    sequenceStore.sequences.value = [contentSequence, sequence];
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,Y2lyY2xl' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,c3F1YXJl' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Y3Jvc3NlZA==' });
+    physicPaintStore.setRotoInterpolationSettings('roto-layer', { enabled: true, inBetweenCount: 3, mode: 'duplicate' });
+    const { frameMap } = await import('./frameMap');
+    const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
+    const renderer = {
+      onImageLoaded: null,
+      collectRotoPaperTextures: vi.fn(() => []),
+      collectPhysicPaintFrameSources: vi.fn((layers: readonly Layer[], frame: number) => {
+        const paintLayer = layers.find((candidate) => candidate.type === 'physic-paint');
+        const layerId = paintLayer?.source.type === 'physic-paint' ? paintLayer.source.layerId : null;
+        const renderedFrame = layerId ? physicPaintStore.getRotoFrame(layerId, frame) : null;
+        return renderedFrame && layerId ? [{ layerId, frame, renderedFrame }] : [];
+      }),
+      preloadImages: vi.fn(),
+      preloadPaperTextures: vi.fn(),
+      preloadPhysicPaintFrames: vi.fn((frames: readonly PreviewPhysicPaintFrameSource[]) => {
+        preloadedFrames.push(...frames);
+      }),
+      getImageSource: vi.fn(() => ({ naturalWidth: 1, naturalHeight: 1 })),
+      isImageFailed: vi.fn(() => false),
+      isPaperTextureResolved: vi.fn(() => true),
+      isPhysicPaintFrameResolved: vi.fn((source: PreviewPhysicPaintFrameSource) => preloadedFrames.includes(source)),
+    } as unknown as PreviewRenderer;
+
+    preloadExportImages(renderer, frameMap.value, undefined, [sequence]);
+
+    expect(renderer.collectPhysicPaintFrameSources).toHaveBeenCalledWith(sequence.layers, 11);
+    expect(renderer.preloadPhysicPaintFrames).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({
+        layerId: 'roto-layer',
+        frame: 11,
+        renderedFrame: expect.objectContaining({
+          appFrame: 11,
+          source: 'generated-interpolation',
+          dataUrl: 'data:image/png;base64,Y3Jvc3NlZA==',
+        }),
+      }),
+    ]));
   });
 
   it('preloads published generated interpolation cache frames after close/reopen load', () => {

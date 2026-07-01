@@ -84,19 +84,22 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   if (!Number.isInteger(payload.startFrame) || payload.startFrame < 0) {
     return failureResult(payload, 'Invalid physics paint start frame');
   }
-  const generatedGuard = getGeneratedRotoMutationGuard(payload.layerId, payload.startFrame);
+  const generatedGuard = payload.kind === 'update-roto-interpolation-settings' ? null : getGeneratedRotoMutationGuard(payload.layerId, payload.startFrame);
   if (generatedGuard) {
     return failureResult(payload, generatedGuard);
   }
 
   try {
     if (deliveredOperationIds.has(payload.operationId)) {
-      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'delete-roto-frame' ? 0 : payload.kind === 'replace-roto-key-frames' ? payload.frames.length : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.kind === 'update-play-render-options' ? 0 : payload.frames.length);
+      return successResult(payload, payload.kind === 'apply-canvas' ? 1 : payload.kind === 'delete-roto-frame' ? 0 : payload.kind === 'replace-roto-key-frames' ? payload.frames.length : payload.kind === 'convert-roto-to-play' ? payload.frameCount : payload.kind === 'update-play-render-options' || payload.kind === 'update-roto-interpolation-settings' ? 0 : payload.frames.length);
     }
 
     let result: PhysicPaintApplyResult;
     if (payload.kind === 'apply-canvas') {
       result = physicPaintStore.applyCanvas(payload);
+    } else if (payload.kind === 'update-roto-interpolation-settings') {
+      const generatedFrames = physicPaintStore.setRotoInterpolationSettings(payload.layerId, payload.settings);
+      result = successResult(payload, generatedFrames.length);
     } else if (payload.kind === 'delete-roto-frame') {
       result = physicPaintStore.deleteRotoFrame(payload);
     } else if (payload.kind === 'replace-roto-key-frames') {
@@ -220,7 +223,9 @@ function resultBase(payload: unknown): Pick<PhysicPaintApplyResult, 'operationId
           ? 'convert-roto-to-play'
           : record.kind === 'update-play-render-options'
             ? 'update-play-render-options'
-            : 'apply-canvas',
+            : record.kind === 'update-roto-interpolation-settings'
+              ? 'update-roto-interpolation-settings'
+              : 'apply-canvas',
     layerId: typeof record.layerId === 'string' ? record.layerId : 'unknown-layer',
     startFrame: typeof record.startFrame === 'number' && Number.isFinite(record.startFrame) ? Math.max(0, Math.trunc(record.startFrame)) : 0,
   };

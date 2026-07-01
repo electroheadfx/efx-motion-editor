@@ -163,8 +163,12 @@ export function deriveRotoKeyUtilityActionState({
 }
 
 export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionInput): RotoKeyUtilityTransaction {
-  const currentFrame = normalizeFrame(input.currentFrame) ?? 0;
+  const requestedFrame = normalizeFrame(input.currentFrame) ?? 0;
   const canvasSize = normalizeCanvasSize(input.canvasSize);
+  const displayToSourceFrame = new Map(input.realKeyFrames
+    .filter((frame) => frame.source === 'real-key')
+    .map((frame) => [frame.displayFrame ?? frame.appFrame, frame.sourceFrame ?? frame.appFrame]));
+  const currentFrame = displayToSourceFrame.get(requestedFrame) ?? requestedFrame;
   const realFramesByFrame = new Map(normalizeRealKeyFrames(input.realKeyFrames, canvasSize).map((frame) => [frame.appFrame, frame]));
   const generatedFrames = collectGeneratedFrames(input.cachedRotoFrames);
   const referenceFrames = collectReferenceFrames(input.cachedRotoFrames, currentFrame);
@@ -344,10 +348,10 @@ function cleanup(generatedFrames: readonly number[], referenceFrames: readonly n
 function normalizeRealKeyFrames(frames: readonly PhysicPaintRotoCacheFrame[], canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame[] {
   const byFrame = new Map<number, PhysicPaintRotoCacheFrame>();
   for (const frame of frames) {
-    const appFrame = normalizeFrame(frame.appFrame);
-    if (appFrame === null) continue;
+    const sourceFrame = normalizeFrame(frame.sourceFrame ?? frame.appFrame);
+    if (sourceFrame === null) continue;
     if (frame.source !== 'real-key') continue;
-    byFrame.set(appFrame, normalizeRealKeyFrame(frame, appFrame, canvasSize));
+    byFrame.set(sourceFrame, normalizeRealKeyFrame(frame, sourceFrame, canvasSize));
   }
   return Array.from(byFrame.values()).sort((a, b) => a.appFrame - b.appFrame);
 }
@@ -358,6 +362,8 @@ function normalizeRealKeyFrame(frame: PhysicPaintRotoCacheFrame, appFrame: numbe
     appFrame,
     frameIndex: 0,
     source: 'real-key',
+    sourceFrame: appFrame,
+    displayFrame: appFrame,
     ...(canvasSize ? { width: canvasSize.width, height: canvasSize.height } : {}),
   };
   delete next.nearestRealKeyFrame;

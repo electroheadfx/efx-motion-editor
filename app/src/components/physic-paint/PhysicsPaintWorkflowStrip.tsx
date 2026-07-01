@@ -1,4 +1,4 @@
-import { ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, RotateCcw, Square } from 'lucide-preact';
+import { Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, RotateCcw, Square } from 'lucide-preact';
 
 // Source contract: a one-frame Play gap opened at frame 11 yields buildPlayFrameCells(11, 1) === [11].
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -30,8 +30,8 @@ const CONVERT_PLAY_TO_ROTO_LABEL = 'Convert Play to Roto?';
 const CONVERT_ROTO_TO_PLAY_LABEL = 'Convert Roto to Play?';
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
-const INTERPOLATION_ENABLED_STATUS = 'Interpolation on — generated render-only in-betweens refresh from real keys.';
-const INTERPOLATION_DISABLED_STATUS = 'Interpolation off — real Roto keys only.';
+const INTERPOLATION_ENABLED_STATUS = 'Generated in-betweens on — render-only frames refresh from real keys.';
+const INTERPOLATION_DISABLED_STATUS = 'Generated in-betweens off — real Roto keys only.';
 const ROTO_KEY_BUSY_STATUS_TEMPLATE = 'Finish saving frame {frame} before using key tools.';
 type RotoKeyUtilityAction = 'insert' | 'duplicate' | 'copy' | 'paste' | 'delete';
 export interface PhysicsPaintWorkflowRotoKeyState {
@@ -193,7 +193,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     () => getPlayRangeMarker(props.startFrame, props.frameCount, props.currentFrame),
     [props.currentFrame, props.frameCount, props.startFrame]
   );
-  const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 0, mode: 'blend' as const, deform: 0, position: 0 };
+  const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 1, mode: 'duplicate' as const, deform: 0, position: 0 };
   const materializedGeneratedRotoFrames = useMemo(() => (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'generated-interpolation').map(frame => frame.appFrame), [props.cachedRotoFrames]);
   const hasMaterializedGeneratedRotoFrames = materializedGeneratedRotoFrames.length > 0;
   const realCachedRotoFrames = useMemo(() => (props.cachedRotoFrames ?? []).filter(frame => frame.source === 'real-key'), [props.cachedRotoFrames]);
@@ -246,12 +246,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const playLimitMessage = props.maxPlayFrameCount !== undefined
     ? props.maxPlayFrameCountReason ?? `Play duration limited to ${props.maxPlayFrameCount} frames before the next saved Play script.`
     : null;
-  const visibleInBetweenCount = Math.max(0, Math.trunc(Number(interpolationSettings.inBetweenCount) || 0));
+  const visibleInBetweenCount = Math.max(1, Math.trunc(Number(interpolationSettings.inBetweenCount) || 1));
   const hasGeneratedInBetweens = interpolationConnectors.length > 0;
   const interpolationStatus = interpolationSettings.enabled
     ? hasGeneratedInBetweens
       ? INTERPOLATION_ENABLED_STATUS
-      : 'Interpolation on — set In-betweens above 0 and save at least two real Roto keys.'
+      : 'Generated in-betweens on — save at least two real Roto keys.'
     : INTERPOLATION_DISABLED_STATUS;
   function handlePrimaryAction() {
     if (props.mode === 'play') {
@@ -288,7 +288,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
 
   function handleRotoInterpolationCountInput(event: Event) {
     const value = Number((event.currentTarget as HTMLInputElement).value);
-    if (Number.isFinite(value)) props.onRotoInterpolationCountChange?.(Math.max(0, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(value))));
+    if (Number.isFinite(value)) props.onRotoInterpolationCountChange?.(Math.max(1, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(value))));
   }
 
   function handleRotoInterpolationModeInput(event: Event) {
@@ -458,21 +458,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               {props.onRotoInterpolationEnabledChange ? (
                 <div class="physics-paint-roto-interpolation-controls" title={interpolationStatus}>
                   <label class="physics-paint-roto-interpolation-toggle">
-                    <input type="checkbox" aria-label="Interpolation" checked={Boolean(interpolationSettings.enabled)} disabled={props.ready === false} onChange={(event) => props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked)} />
-                    <span>Interpolation</span>
+                    <input type="checkbox" aria-label="Enable generated in-betweens" checked={Boolean(interpolationSettings.enabled)} disabled={props.ready === false} onChange={(event) => props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked)} />
                   </label>
-                  <label class="physics-paint-roto-interpolation-count">
-                    <span>In-betweens</span>
-                    <input type="number" min="0" max={PHYSIC_PAINT_MAX_APPLY_FRAMES} step="1" value={visibleInBetweenCount} aria-label="Interpolation frames per real-key pair" disabled={props.ready === false || !interpolationSettings.enabled} onInput={handleRotoInterpolationCountInput} />
+                  <label class="physics-paint-roto-interpolation-count" title="Generated in-betweens">
+                    <Blend size={14} aria-hidden="true" />
+                    <input type="number" min="1" max={PHYSIC_PAINT_MAX_APPLY_FRAMES} step="1" value={visibleInBetweenCount} aria-label="Generated in-between frames per real-key pair" disabled={props.ready === false || !interpolationSettings.enabled} onInput={handleRotoInterpolationCountInput} />
                   </label>
                   <label class="physics-paint-roto-interpolation-mode">
-                    <span>Interpolation mode</span>
-                    <select class="physics-paint-roto-interpolation-select" aria-label="Interpolation mode" value={interpolationSettings.mode === 'duplicate' || interpolationSettings.mode === 'hold' ? 'duplicate' : 'blend'} disabled={props.ready === false || !interpolationSettings.enabled || !props.onRotoInterpolationModeChange} onInput={handleRotoInterpolationModeInput}>
-                      <option value="duplicate">Duplicate / hold</option>
-                      <option value="blend">Alpha blend</option>
+                    <select class="physics-paint-roto-interpolation-select" aria-label="Generated in-between mode" value={interpolationSettings.mode === 'duplicate' || interpolationSettings.mode === 'hold' ? 'duplicate' : 'blend'} disabled={props.ready === false || !interpolationSettings.enabled || !props.onRotoInterpolationModeChange} onInput={handleRotoInterpolationModeInput}>
+                      <option value="duplicate">Duplicate</option>
+                      <option value="blend">Blend</option>
                     </select>
                   </label>
-                  <span class="physics-paint-roto-interpolation-copy">Per adjacent real-key pair</span>
                 </div>
               ) : null}
               <button type="button" class={`physics-paint-nav-button physics-paint-roto-loop-toggle ${props.rotoCachedPlaybackLoop ? 'active' : ''}`} aria-label="Loop cached Roto playback" aria-pressed={Boolean(props.rotoCachedPlaybackLoop)} disabled={props.ready === false || !props.onRotoPlaybackLoopChange} onClick={() => props.onRotoPlaybackLoopChange?.(!props.rotoCachedPlaybackLoop)}><RotateCcw size={15} /></button>

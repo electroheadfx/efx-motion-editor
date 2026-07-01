@@ -128,6 +128,7 @@ export async function loadPhysicPaintData(projectDir: string, outputs: McePhysic
 
     const frames: PhysicPaintRenderedFrame[] = [];
     const dataUrlsByCachePath = new Map<string, string>();
+    const dataUrlsByAppFrame = new Map<number, string>();
 
     for (const frame of output.frames) {
       if (!isSafePhysicPaintCachePath(frame.cache_path)) continue;
@@ -135,6 +136,7 @@ export async function loadPhysicPaintData(projectDir: string, outputs: McePhysic
         const bytes = await readFile(`${projectDir}/${frame.cache_path}`);
         const dataUrl = encodePngDataUrl(bytes);
         dataUrlsByCachePath.set(frame.cache_path, dataUrl);
+        dataUrlsByAppFrame.set(frame.appFrame, dataUrl);
         const { cache_path: _cachePath, ...metadata } = frame;
         frames.push({
           ...metadata,
@@ -148,7 +150,12 @@ export async function loadPhysicPaintData(projectDir: string, outputs: McePhysic
     const rotoCacheMetadata: PhysicPaintRotoCacheFrame[] | undefined = Array.isArray(output.roto_cache_metadata)
       ? (await Promise.all(output.roto_cache_metadata.map(async (candidate) => {
           const cachePath = candidate.cache_path;
-          const dataUrl = typeof cachePath === 'string' ? dataUrlsByCachePath.get(cachePath) : undefined;
+          const sourceFrame = candidate.sourceFrame ?? candidate.appFrame;
+          const dataUrl = typeof cachePath === 'string'
+            ? dataUrlsByCachePath.get(cachePath)
+            : candidate.source === 'real-key'
+              ? dataUrlsByAppFrame.get(sourceFrame)
+              : undefined;
           if (!dataUrl) return null;
           const { cache_path: _cachePath, onion_cache_path: onionCachePath, ...metadata } = candidate;
           if (!isSafePhysicPaintCachePath(onionCachePath)) return { ...metadata, dataUrl };

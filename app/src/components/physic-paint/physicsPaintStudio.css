@@ -1369,9 +1369,13 @@ button.destructive {
   text-align: center;
 }
 
+.physics-paint-roto-interpolation-count svg {
+  color: #b8c7ff;
+  flex: 0 0 auto;
+}
+
 .physics-paint-roto-interpolation-select,
-.physics-paint-roto-motion-toggle,
-.physics-paint-roto-interpolation-copy {
+.physics-paint-roto-motion-toggle {
   min-height: 22px;
   padding: 2px 6px;
   border: 1px solid #5a5e63;
@@ -1384,10 +1388,6 @@ button.destructive {
   text-transform: none;
 }
 
-.physics-paint-roto-interpolation-copy {
-  display: inline-flex;
-  align-items: center;
-}
 
 .physics-paint-roto-motion-toggle.active {
   border-color: #6f90ff;

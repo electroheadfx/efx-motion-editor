@@ -5,16 +5,18 @@ import {currentFrame as timelineCurrentFrame} from '../stores/timelineFrameSigna
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
 import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
 import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange} from '../types/timeline';
-import type {GlTransition} from '../types/sequence';
+import type {GlTransition, Sequence} from '../types/sequence';
 import type {Layer, LayerType, EasingType} from '../types/layer';
 
 /** Flattened frame array: every frame maps to a sequence, key photo, and image (GLOBAL).
  *  Cross dissolve does NOT shorten the timeline — both sequences keep all their frames.
  *  The overlap is handled visually in Preview via crossDissolveOverlaps. */
 export const frameMap = computed<FrameEntry[]>(() => {
+  void physicPaintVersion.value;
   const entries: FrameEntry[] = [];
   let globalFrame = 0;
-  const contentSeqs = sequenceStore.sequences.value.filter(s => s.kind === 'content');
+  const sequences = sequenceStore.sequences.value;
+  const contentSeqs = sequences.filter(s => s.kind === 'content');
 
   for (const seq of contentSeqs) {
     for (const kp of seq.keyPhotos) {
@@ -32,6 +34,12 @@ export const frameMap = computed<FrameEntry[]>(() => {
         globalFrame++;
       }
     }
+  }
+
+  const targetLength = getTimelineRequiredFrameCount(sequences, entries.length);
+  const tailEntry = entries[entries.length - 1];
+  while (tailEntry && entries.length < targetLength) {
+    entries.push({ ...tailEntry, globalFrame: entries.length });
   }
   return entries;
 });
@@ -108,6 +116,43 @@ const FX_TRACK_COLORS: Record<string, string> = {
 };
 const FX_DEFAULT_COLOR = '#888888';
 
+function getLayerId(layer: Layer): string {
+  return layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+}
+
+function getPhysicPaintRotoDisplayEndFrame(layerId: string): number | null {
+  const frames = physicPaintStore.getRotoCacheFrames(layerId);
+  if (frames.length === 0) return null;
+  return Math.max(...frames.map((frame) => frame.appFrame)) + 1;
+}
+
+function getTimelineRequiredFrameCount(sequences: readonly Sequence[], contentFrameCount: number): number {
+  let required = contentFrameCount;
+  for (const seq of sequences) {
+    if (seq.visible === false) continue;
+    const seqStart = seq.kind === 'content' ? 0 : seq.inFrame ?? 0;
+    const seqEnd = seq.kind === 'content' ? contentFrameCount : seq.outFrame ?? contentFrameCount;
+    required = Math.max(required, seqEnd);
+    for (const layer of seq.layers) {
+      if (layer.type !== 'physic-paint') continue;
+      const rotoEnd = getPhysicPaintRotoDisplayEndFrame(getLayerId(layer));
+      if (rotoEnd !== null) required = Math.max(required, seqStart + rotoEnd);
+    }
+  }
+  return required;
+}
+
+export function getTimelineOverlaySequenceOutFrame(seq: Sequence, fallbackOutFrame: number): number {
+  let outFrame = seq.outFrame ?? fallbackOutFrame;
+  const startFrame = seq.inFrame ?? 0;
+  for (const layer of seq.layers) {
+    if (layer.type !== 'physic-paint') continue;
+    const rotoEnd = getPhysicPaintRotoDisplayEndFrame(getLayerId(layer));
+    if (rotoEnd !== null) outFrame = Math.max(outFrame, startFrame + rotoEnd);
+  }
+  return outFrame;
+}
+
 function fxColorForLayerType(type: LayerType): string {
   return FX_TRACK_COLORS[type] ?? FX_DEFAULT_COLOR;
 }
@@ -144,7 +189,7 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       sequenceName: seq.name,
       kind: seq.kind as 'fx' | 'content-overlay',
       inFrame: seq.inFrame ?? 0,
-      outFrame: seq.outFrame ?? 100,
+      outFrame: getTimelineOverlaySequenceOutFrame(seq, 100),
       color,
       visible: seq.visible !== false,
       thumbnailImageId: seq.kind === 'content-overlay' ? getThumbnailImageId(primaryLayer) : undefined,
