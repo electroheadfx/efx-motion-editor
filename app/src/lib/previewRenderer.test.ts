@@ -263,6 +263,32 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer')).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 });
   });
 
+  it('36.12-GENERATED-FRAMES draws published generated interpolation alpha cache after close/reopen load', () => {
+    seedRotoPaper();
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 3, { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' });
+    physicPaintStore.replaceGeneratedRotoCache('roto-layer', [
+      { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Z2VuZXJhdGVkLXJlb3Blbg==', source: 'generated-interpolation', nearestRealKeyFrame: 1 },
+    ]);
+    const persisted = structuredClone(physicPaintStore.toMceOutputs());
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(persisted);
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
+    renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
+
+    const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
+    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,Z2VuZXJhdGVkLXJlb3Blbg==');
+
+    expect(paperIndex).toBeGreaterThanOrEqual(0);
+    expect(generatedAlphaIndex).toBeGreaterThanOrEqual(0);
+    expect(paperIndex).toBeLessThan(generatedAlphaIndex);
+    expect(physicPaintStore.getRotoFrame('roto-layer', 2)?.source).toBe('generated-interpolation');
+    expect(physicPaintStore.getRotoCacheFrames('roto-layer').find((frame) => frame.appFrame === 2)).toMatchObject({ source: 'generated-interpolation', nearestRealKeyFrame: 1 });
+  });
+
   it('36.11 draws renderer-owned paper before merged real-key alpha repaint output', () => {
     seedRotoPaper();
     physicPaintStore.applyCanvas({
