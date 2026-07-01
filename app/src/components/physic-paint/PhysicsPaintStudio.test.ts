@@ -104,6 +104,7 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
       'rotoInterpolationSettings',
       'onRotoInterpolationEnabledChange',
       'onRotoInterpolationCountChange',
+      'onRotoInterpolationModeChange',
       'onDuplicateRotoKey',
       'onInsertRotoFrame',
       'onDeleteRotoFrame',
@@ -677,7 +678,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(updateBlock).toContain('rotoInterpolationSettings: refreshedSettings');
     expect(workflowStripBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
     expect(workflowStripBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
-    expect(workflowStripBlock).toContain('onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode })}');
+    expect(workflowStripBlock).toContain('onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode: mode as PhysicPaintRotoInterpolationMode })}');
     expect(workflowStripBlock).not.toContain('onRotoInterpolationMotionChange=');
   });
 

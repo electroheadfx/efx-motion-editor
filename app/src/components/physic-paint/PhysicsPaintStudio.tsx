@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoInterpolationMode } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore, registerRotoAlphaCanvasFrame } from '../../stores/physicPaintStore';
@@ -2727,7 +2727,7 @@ export function PhysicsPaintStudio() {
       ...currentSettings,
       ...patch,
       enabled,
-      mode: 'blend',
+      mode: patch.mode ?? currentSettings.mode,
     };
     seedStoreRotoRealKeysFromLaunchContext(launchContext);
     physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, nextSettings);
@@ -2941,6 +2941,7 @@ export function PhysicsPaintStudio() {
           rotoInterpolationSettings={launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined}
           onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}
           onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}
+          onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode: mode as PhysicPaintRotoInterpolationMode })}
           onDuplicateRotoKey={duplicateRotoKey}
           onInsertRotoFrame={insertRotoFrame}
           onDeleteRotoFrame={deleteRotoFrame}
