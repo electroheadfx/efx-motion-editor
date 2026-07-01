@@ -237,38 +237,55 @@ describe('physicsPaintWorkflowState', () => {
     expect(getPreviewFps('custom')).toBe(24);
   });
 
-  it('maps count 2 consecutive real keys to two generated in-betweens per adjacent pair', () => {
-    expect(getExpandedRotoRealKeyFrames([1, 2, 3], { enabled: true, inBetweenCount: 2, mode: 'blend' })).toEqual([
-      { sourceFrame: 1, frame: 1 },
-      { sourceFrame: 2, frame: 4 },
-      { sourceFrame: 3, frame: 7 },
+  it('maps source real keys to generated display frames without shifting source storage (UAT Test 8 Setup A)', () => {
+    const sourceRealKeys = [0, 1];
+
+    expect(getExpandedRotoRealKeyFrames(sourceRealKeys, { enabled: true, inBetweenCount: 1, mode: 'duplicate' })).toEqual([
+      { sourceFrame: 0, frame: 0, displayFrame: 0, kind: 'real-key' },
+      { sourceFrame: 0, fromSourceFrame: 0, toSourceFrame: 1, frame: 1, displayFrame: 1, generatedFrame: 1, kind: 'generated-interpolation', mode: 'duplicate', renderOnly: true },
+      { sourceFrame: 1, frame: 2, displayFrame: 2, kind: 'real-key' },
     ]);
-    expect(getRotoInterpolationSpanFrames([1, 2, 3], { enabled: true, inBetweenCount: 2, mode: 'blend' }).map(span => ({
-      fromFrame: span.fromFrame,
-      toFrame: span.toFrame,
-      frame: span.frame,
-      ordinal: span.ordinal,
-      total: span.total,
-      t: span.t,
-      sourceFromFrame: span.sourceFromFrame,
-      sourceToFrame: span.sourceToFrame,
-    }))).toEqual([
-      { fromFrame: 1, toFrame: 4, frame: 2, ordinal: 1, total: 2, t: 1 / 3, sourceFromFrame: 1, sourceToFrame: 2 },
-      { fromFrame: 1, toFrame: 4, frame: 3, ordinal: 2, total: 2, t: 2 / 3, sourceFromFrame: 1, sourceToFrame: 2 },
-      { fromFrame: 4, toFrame: 7, frame: 5, ordinal: 1, total: 2, t: 1 / 3, sourceFromFrame: 2, sourceToFrame: 3 },
-      { fromFrame: 4, toFrame: 7, frame: 6, ordinal: 2, total: 2, t: 2 / 3, sourceFromFrame: 2, sourceToFrame: 3 },
-    ]);
+    expect(sourceRealKeys).toEqual([0, 1]);
   });
 
-  it('preserves user-authored real-key gaps while adding count-based in-betweens per pair', () => {
-    expect(getExpandedRotoRealKeyFrames([1, 3, 4], { enabled: true, inBetweenCount: 2, mode: 'blend' })).toEqual([
-      { sourceFrame: 1, frame: 1 },
-      { sourceFrame: 3, frame: 5 },
-      { sourceFrame: 4, frame: 8 },
+  it('maps sparse source real keys to count-based display slots while preserving original coordinates (UAT Test 8 Setup B)', () => {
+    const sourceRealKeys = [0, 1, 3];
+
+    expect(getExpandedRotoRealKeyFrames(sourceRealKeys, { enabled: true, inBetweenCount: 2, mode: 'blend' })).toEqual([
+      { sourceFrame: 0, frame: 0, displayFrame: 0, kind: 'real-key' },
+      { sourceFrame: 0, fromSourceFrame: 0, toSourceFrame: 1, frame: 1, displayFrame: 1, generatedFrame: 1, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 0, fromSourceFrame: 0, toSourceFrame: 1, frame: 2, displayFrame: 2, generatedFrame: 2, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 1, frame: 3, displayFrame: 3, kind: 'real-key' },
+      { sourceFrame: 1, fromSourceFrame: 1, toSourceFrame: 3, frame: 4, displayFrame: 4, generatedFrame: 4, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 1, fromSourceFrame: 1, toSourceFrame: 3, frame: 5, displayFrame: 5, generatedFrame: 5, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 3, frame: 6, displayFrame: 6, kind: 'real-key' },
+      { sourceFrame: 3, fromSourceFrame: 3, toSourceFrame: undefined, frame: 7, displayFrame: 7, generatedFrame: 7, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 3, fromSourceFrame: 3, toSourceFrame: undefined, frame: 8, displayFrame: 8, generatedFrame: 8, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
     ]);
-    expect(getRotoInterpolationSpanFrames([1, 3, 4], { enabled: true, inBetweenCount: 2, mode: 'blend' }).map(span => span.frame)).toEqual([2, 3, 6, 7]);
-    expect(getRotoInterpolationSpanFrames([1, 4], { enabled: false, inBetweenCount: 3, mode: 'blend' })).toEqual([]);
-    expect(getRotoInterpolationSpanFrames([4], { enabled: true, inBetweenCount: 3, mode: 'blend' })).toEqual([]);
+    expect(sourceRealKeys).toEqual([0, 1, 3]);
+  });
+
+  it('restores original source real-key layout exactly when interpolation is disabled', () => {
+    expect(getExpandedRotoRealKeyFrames([0, 1, 3], { enabled: false, inBetweenCount: 2, mode: 'blend' })).toEqual([
+      { sourceFrame: 0, frame: 0, displayFrame: 0, kind: 'real-key' },
+      { sourceFrame: 1, frame: 1, displayFrame: 1, kind: 'real-key' },
+      { sourceFrame: 3, frame: 3, displayFrame: 3, kind: 'real-key' },
+    ]);
+    expect(getRotoInterpolationSpanFrames([0, 1, 3], { enabled: false, inBetweenCount: 2, mode: 'blend' })).toEqual([]);
+  });
+
+  it('preserves interpolation enabled, count, and accepted mode settings for duplicate/hold and alpha blend', () => {
+    expect(getRotoInterpolationSpanFrames([0, 1], { enabled: true, inBetweenCount: 1, mode: 'duplicate' }).map(span => ({
+      fromSourceFrame: span.fromSourceFrame,
+      toSourceFrame: span.toSourceFrame,
+      displayFrame: span.displayFrame,
+      generatedFrame: span.generatedFrame,
+      mode: span.mode,
+      renderOnly: span.renderOnly,
+    }))).toEqual([
+      { fromSourceFrame: 0, toSourceFrame: 1, displayFrame: 1, generatedFrame: 1, mode: 'duplicate', renderOnly: true },
+    ]);
+    expect(getRotoInterpolationSpanFrames([0, 1], { enabled: true, inBetweenCount: 1, mode: 'blend' }).map(span => span.mode)).toEqual(['blend']);
   });
 
   it('finds the nearest real Roto key for generated-only frame opens', async () => {
