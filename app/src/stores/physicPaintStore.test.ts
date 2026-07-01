@@ -714,6 +714,22 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).toBe(makeAlphaFrame(0, 2, 'alpha-real-two').dataUrl);
   });
 
+  it('normalizes visible hold and alpha-blend modes to the selected generated render branch', () => {
+    const previous = makeAlphaFrame(0, 1, 'alpha-previous');
+    const next = makeAlphaFrame(0, 4, 'alpha-next');
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, previous);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, next);
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 1, mode: 'hold' as never, position: 0, deform: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1')).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+    expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).toBe(previous.dataUrl);
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 1, mode: 'alpha-blend' as never, position: 0, deform: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1')).toEqual({ enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 });
+    expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).not.toBe(previous.dataUrl);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toContainEqual(expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 0.5 }));
+  });
+
   it('renders blend interpolation as generated PNG data derived from both neighboring alpha sources', () => {
     const settings = { enabled: true, inBetweenCount: 1, mode: 'blend' as const, position: 33, deform: 44 };
     const first = makeAlphaFrame(0, 1, 'alpha-first');
