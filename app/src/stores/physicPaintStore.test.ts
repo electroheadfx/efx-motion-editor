@@ -484,6 +484,58 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
   });
 
+  it('regenerates generated Roto frames on project load from source real keys and saved settings', () => {
+    const realOne = makeAlphaFrame(0, 1, 'saved-real-one');
+    const realFour = makeAlphaFrame(0, 4, 'saved-real-four');
+
+    physicPaintStore.loadFromMceOutputs([{
+      layer_id: 'layer-1',
+      frames: [realOne, realFour],
+      workflow_mode: 'roto',
+      editable_source: 'roto',
+      roto_cache_metadata: [
+        { ...realOne, source: 'real-key' },
+        { ...realFour, source: 'real-key' },
+      ],
+      roto_interpolation_settings: { enabled: true, inBetweenCount: 2, mode: 'blend', deform: 35, position: 45 },
+    }]);
+
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1')).toEqual({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 35, position: 45 });
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 4]);
+    expect(physicPaintStore.getFrame('layer-1', 1)?.dataUrl).toBe(realOne.dataUrl);
+    expect(physicPaintStore.getFrame('layer-1', 4)?.dataUrl).toBe(realFour.dataUrl);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 1, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', nearestRealKeyFrame: 1, fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 1 / 3 }),
+      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', nearestRealKeyFrame: 1, fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 2 / 3 }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+    ]);
+  });
+
+  it('keeps interpolation disabled after project load and does not regenerate generated Roto frames', () => {
+    const realOne = makeAlphaFrame(0, 1, 'disabled-real-one');
+    const realFour = makeAlphaFrame(0, 4, 'disabled-real-four');
+
+    physicPaintStore.loadFromMceOutputs([{
+      layer_id: 'layer-1',
+      frames: [realOne, realFour],
+      workflow_mode: 'roto',
+      editable_source: 'roto',
+      roto_cache_metadata: [
+        { ...realOne, source: 'real-key' },
+        { ...realFour, source: 'real-key' },
+      ],
+      roto_interpolation_settings: { enabled: false, inBetweenCount: 2, mode: 'blend', deform: 35, position: 45 },
+    }]);
+
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1')).toEqual({ enabled: false, inBetweenCount: 2, mode: 'blend', deform: 35, position: 45 });
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([1, 4]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 1, source: 'real-key' }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+    ]);
+  });
+
   it('serializes and hydrates rendered output by layer and app frame', () => {
     physicPaintStore.setFrame('layer-1', 12, makeFrame(0, 12));
     physicPaintStore.setFrame('layer-1', 10, makeFrame(0, 10));
