@@ -86,7 +86,7 @@ export interface PhysicsPaintPlayRange {
   markerRatio: number;
 }
 
-export type RotoInterpolationMode = 'duplicate' | 'blend';
+export type RotoInterpolationMode = 'duplicate' | 'hold' | 'blend' | 'alpha-blend';
 
 export interface RotoInterpolationSettings {
   enabled?: boolean;
@@ -100,17 +100,29 @@ export interface RotoInterpolationSpanFrame {
   fromFrame: number;
   toFrame: number;
   frame: number;
+  displayFrame: number;
+  generatedFrame: number;
   ordinal: number;
   total: number;
   t: number;
+  sourceFrame: number;
+  fromSourceFrame: number;
+  toSourceFrame?: number;
   sourceFromFrame?: number;
   sourceToFrame?: number;
+  mode: Extract<RotoInterpolationMode, 'duplicate' | 'blend'>;
+  kind: 'generated-interpolation';
+  renderOnly: true;
 }
 
-export interface RotoExpandedRealKeyFrame {
-  sourceFrame: number;
-  frame: number;
-}
+export type RotoExpandedRealKeyFrame =
+  | {
+      sourceFrame: number;
+      frame: number;
+      displayFrame: number;
+      kind: 'real-key';
+    }
+  | RotoInterpolationSpanFrame;
 
 export interface RotoDuplicateKeyResult {
   sourceFrame: number;
@@ -306,48 +318,50 @@ export function getPlayRangeMarker(startFrame: number, frameCount: number, curre
 }
 
 export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoExpandedRealKeyFrame[] {
-  const sortedKeys = normalizeRealRotoKeyFrames(realKeys);
+  const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
   const inBetweenCount = settings.enabled === true ? clampNonNegativeInteger(settings.inBetweenCount, 0) : 0;
-  let displayFrame: number | null = null;
-  return sortedKeys.map((sourceFrame, index) => {
-    if (index === 0 || displayFrame === null) {
-      displayFrame = sourceFrame;
-    } else {
-      const previousSourceFrame = sortedKeys[index - 1];
-      const sourceGap = Math.max(1, sourceFrame - previousSourceFrame);
-      const preservedExtraSpacing = Math.max(0, sourceGap - 1);
-      displayFrame += inBetweenCount + 1 + preservedExtraSpacing;
+  const mode = normalizeRotoInterpolationMode(settings.mode);
+  const expanded: RotoExpandedRealKeyFrame[] = [];
+  let displayFrame = 0;
+
+  sourceKeys.forEach((sourceFrame, index) => {
+    if (index === 0 && sourceFrame > 0) displayFrame = sourceFrame;
+    expanded.push({ sourceFrame, frame: displayFrame, displayFrame, kind: 'real-key' });
+    if (settings.enabled === true && inBetweenCount > 0 && (index < sourceKeys.length - 1 || sourceKeys.length > 2)) {
+      const toSourceFrame = sourceKeys[index + 1];
+      for (let ordinal = 1; ordinal <= inBetweenCount; ordinal++) {
+        const generatedFrame = displayFrame + ordinal;
+        expanded.push({
+          sourceFrame,
+          fromFrame: displayFrame,
+          toFrame: displayFrame + inBetweenCount + 1,
+          frame: generatedFrame,
+          displayFrame: generatedFrame,
+          generatedFrame,
+          ordinal,
+          total: inBetweenCount,
+          t: ordinal / (inBetweenCount + 1),
+          fromSourceFrame: sourceFrame,
+          toSourceFrame,
+          sourceFromFrame: sourceFrame,
+          sourceToFrame: toSourceFrame,
+          mode,
+          kind: 'generated-interpolation',
+          renderOnly: true,
+        });
+      }
+      displayFrame += inBetweenCount + 1;
+    } else if (index < sourceKeys.length - 1) {
+      displayFrame = sourceKeys[index + 1];
     }
-    return { sourceFrame, frame: displayFrame };
   });
+
+  return expanded;
 }
 
 export function getRotoInterpolationSpanFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoInterpolationSpanFrame[] {
-  const displayKeys = getExpandedRotoRealKeyFrames(realKeys, settings);
-  const inBetweenCount = settings.enabled === true ? clampNonNegativeInteger(settings.inBetweenCount, 0) : 0;
-  if (settings.enabled !== true || displayKeys.length < 2 || inBetweenCount < 1) return [];
-
-  const spans: RotoInterpolationSpanFrame[] = [];
-  for (let index = 0; index < displayKeys.length - 1; index++) {
-    const fromFrame = displayKeys[index].frame;
-    const toFrame = displayKeys[index + 1].frame;
-    const sourceFromFrame = displayKeys[index].sourceFrame;
-    const sourceToFrame = displayKeys[index + 1].sourceFrame;
-    for (let ordinal = 1; ordinal <= inBetweenCount; ordinal++) {
-      const frame = fromFrame + ordinal;
-      spans.push({
-        fromFrame,
-        toFrame,
-        frame,
-        ordinal,
-        total: inBetweenCount,
-        t: ordinal / (inBetweenCount + 1),
-        sourceFromFrame,
-        sourceToFrame,
-      });
-    }
-  }
-  return spans;
+  if (settings.enabled !== true) return [];
+  return getExpandedRotoRealKeyFrames(realKeys, settings).filter((frame): frame is RotoInterpolationSpanFrame => frame.kind === 'generated-interpolation');
 }
 
 export function getNearestRealRotoKeyFrame(frame: number, realKeys: number[]): number | null {
@@ -496,6 +510,11 @@ function normalizeSelectedRealKey(selectedFrame: number, sortedKeys: number[]): 
   if (sortedKeys.length === 0) return clampNonNegativeInteger(selectedFrame, 0);
   if (sortedKeys.includes(selectedFrame)) return selectedFrame;
   return getNearestRealRotoKeyFrame(selectedFrame, sortedKeys) ?? sortedKeys[0];
+}
+
+function normalizeRotoInterpolationMode(mode: RotoInterpolationSettings['mode']): Extract<RotoInterpolationMode, 'duplicate' | 'blend'> {
+  if (mode === 'duplicate' || mode === 'hold') return 'duplicate';
+  return 'blend';
 }
 
 function clampNonNegativeInteger(value: unknown, fallback: number): number {

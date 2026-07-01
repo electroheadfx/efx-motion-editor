@@ -242,7 +242,7 @@ describe('physicsPaintWorkflowState', () => {
 
     expect(getExpandedRotoRealKeyFrames(sourceRealKeys, { enabled: true, inBetweenCount: 1, mode: 'duplicate' })).toEqual([
       { sourceFrame: 0, frame: 0, displayFrame: 0, kind: 'real-key' },
-      { sourceFrame: 0, fromSourceFrame: 0, toSourceFrame: 1, frame: 1, displayFrame: 1, generatedFrame: 1, kind: 'generated-interpolation', mode: 'duplicate', renderOnly: true },
+      { sourceFrame: 0, fromFrame: 0, toFrame: 2, fromSourceFrame: 0, toSourceFrame: 1, sourceFromFrame: 0, sourceToFrame: 1, frame: 1, displayFrame: 1, generatedFrame: 1, ordinal: 1, total: 1, t: 0.5, kind: 'generated-interpolation', mode: 'duplicate', renderOnly: true },
       { sourceFrame: 1, frame: 2, displayFrame: 2, kind: 'real-key' },
     ]);
     expect(sourceRealKeys).toEqual([0, 1]);
@@ -253,14 +253,14 @@ describe('physicsPaintWorkflowState', () => {
 
     expect(getExpandedRotoRealKeyFrames(sourceRealKeys, { enabled: true, inBetweenCount: 2, mode: 'blend' })).toEqual([
       { sourceFrame: 0, frame: 0, displayFrame: 0, kind: 'real-key' },
-      { sourceFrame: 0, fromSourceFrame: 0, toSourceFrame: 1, frame: 1, displayFrame: 1, generatedFrame: 1, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
-      { sourceFrame: 0, fromSourceFrame: 0, toSourceFrame: 1, frame: 2, displayFrame: 2, generatedFrame: 2, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 0, fromFrame: 0, toFrame: 3, fromSourceFrame: 0, toSourceFrame: 1, sourceFromFrame: 0, sourceToFrame: 1, frame: 1, displayFrame: 1, generatedFrame: 1, ordinal: 1, total: 2, t: 1 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 0, fromFrame: 0, toFrame: 3, fromSourceFrame: 0, toSourceFrame: 1, sourceFromFrame: 0, sourceToFrame: 1, frame: 2, displayFrame: 2, generatedFrame: 2, ordinal: 2, total: 2, t: 2 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
       { sourceFrame: 1, frame: 3, displayFrame: 3, kind: 'real-key' },
-      { sourceFrame: 1, fromSourceFrame: 1, toSourceFrame: 3, frame: 4, displayFrame: 4, generatedFrame: 4, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
-      { sourceFrame: 1, fromSourceFrame: 1, toSourceFrame: 3, frame: 5, displayFrame: 5, generatedFrame: 5, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 1, fromFrame: 3, toFrame: 6, fromSourceFrame: 1, toSourceFrame: 3, sourceFromFrame: 1, sourceToFrame: 3, frame: 4, displayFrame: 4, generatedFrame: 4, ordinal: 1, total: 2, t: 1 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 1, fromFrame: 3, toFrame: 6, fromSourceFrame: 1, toSourceFrame: 3, sourceFromFrame: 1, sourceToFrame: 3, frame: 5, displayFrame: 5, generatedFrame: 5, ordinal: 2, total: 2, t: 2 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
       { sourceFrame: 3, frame: 6, displayFrame: 6, kind: 'real-key' },
-      { sourceFrame: 3, fromSourceFrame: 3, toSourceFrame: undefined, frame: 7, displayFrame: 7, generatedFrame: 7, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
-      { sourceFrame: 3, fromSourceFrame: 3, toSourceFrame: undefined, frame: 8, displayFrame: 8, generatedFrame: 8, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 3, fromFrame: 6, toFrame: 9, fromSourceFrame: 3, toSourceFrame: undefined, sourceFromFrame: 3, sourceToFrame: undefined, frame: 7, displayFrame: 7, generatedFrame: 7, ordinal: 1, total: 2, t: 1 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
+      { sourceFrame: 3, fromFrame: 6, toFrame: 9, fromSourceFrame: 3, toSourceFrame: undefined, sourceFromFrame: 3, sourceToFrame: undefined, frame: 8, displayFrame: 8, generatedFrame: 8, ordinal: 2, total: 2, t: 2 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
     ]);
     expect(sourceRealKeys).toEqual([0, 1, 3]);
   });
