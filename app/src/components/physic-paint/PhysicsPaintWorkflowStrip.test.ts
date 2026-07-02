@@ -199,29 +199,27 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(mapBlock).toContain('isDisplayRealKey || isOccupiedFrame(props.occupiedRotoFrames, frame)');
   });
 
-  it('36.12 UAT Test 8/D-18 exposes count and accepted duplicate/hold plus alpha blend mode controls in the visible strip', () => {
+  it('36.12 UAT Test 8/D-18 exposes Duplicate-only count controls in the visible strip', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
     expect(studioSource()).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
-    expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
+    expect(code).not.toContain('onRotoInterpolationModeChange?:');
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).not.toContain('<span>Interpolation</span>');
     expect(rotoControlsBlock).toContain('Blend size={14}');
     expect(rotoControlsBlock).toContain('Generated in-between frames per real-key pair');
     expect(rotoControlsBlock).toContain('min="1"');
-    expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-select');
-    expect(rotoControlsBlock).toContain('aria-label="Generated in-between mode"');
-    expect(rotoControlsBlock).toContain('Duplicate');
-    expect(rotoControlsBlock).toContain('Blend');
+    expect(rotoControlsBlock).not.toContain('physics-paint-roto-interpolation-select');
+    expect(rotoControlsBlock).not.toContain('aria-label="Generated in-between mode"');
+    expect(rotoControlsBlock).not.toContain('Duplicate');
+    expect(rotoControlsBlock).not.toContain('value="blend"');
     expect(rotoControlsBlock).not.toContain('In-betweens</span>');
     expect(rotoControlsBlock).not.toContain('Per adjacent real-key pair');
     expect(rotoControlsBlock).not.toContain('<span>Interpolation mode</span>');
-    expect(rotoControlsBlock).toContain("value=\"duplicate\"");
-    expect(rotoControlsBlock).toContain("value=\"blend\"");
     expect(rotoControlsBlock).not.toContain('Interpolation gap frames');
     expect(rotoControlsBlock).not.toContain('Gaps');
   });
@@ -291,7 +289,6 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       'isRotoCachedPlaybackActive',
       'onRotoInterpolationEnabledChange',
       'onRotoInterpolationCountChange',
-      'onRotoInterpolationModeChange',
       'onRotoInterpolationMotionChange',
       'onDuplicateRotoKey',
       'onInsertRotoFrame',
@@ -396,35 +393,39 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(sessionCode).toContain('normalizeCachedFrames(input.cachedRotoFrames, input.canvasSize)');
   });
 
-  it('36.12 UAT Test 8/D-19 renders compact Roto interpolation controls with visible count and mode selection', () => {
+  it('36.12 UAT Test 8/D-19 renders compact Duplicate-only Roto interpolation count controls', () => {
     const code = source();
     const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
     expect(studioSource()).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
-    expect(code).toContain('onRotoInterpolationModeChange?: (mode: NonNullable<RotoInterpolationSettings[\'mode\']>) => void');
+    expect(code).not.toContain('onRotoInterpolationModeChange?:');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).not.toContain('<span>Interpolation</span>');
     expect(rotoControlsBlock).toContain('Blend size={14}');
     expect(rotoControlsBlock).toContain('Generated in-between frames per real-key pair');
-    expect(rotoControlsBlock).toContain('aria-label="Generated in-between mode"');
-    expect(rotoControlsBlock).toContain('Duplicate');
-    expect(rotoControlsBlock).toContain('Blend');
+    expect(rotoControlsBlock).not.toContain('aria-label="Generated in-between mode"');
+    expect(rotoControlsBlock).not.toContain('Duplicate');
+    expect(rotoControlsBlock).not.toContain('value="blend"');
     expect(rotoControlsBlock).not.toContain('Per adjacent real-key pair');
     expect(rotoControlsBlock).not.toContain('<span>Interpolation mode</span>');
     expect(rotoControlsBlock).not.toContain('Gaps');
   });
 
-  it('36.12 Studio wires visible interpolation count and mode through store-owned regeneration and compact status copy', () => {
+  it('36.12 Studio wires visible interpolation count through store-owned regeneration and compact status copy', () => {
     const studioCode = studioSource();
     const toggleBlock = studioCode.slice(studioCode.indexOf('const updateRotoInterpolationSettings'), studioCode.indexOf('const goToFirstFrame'));
     const stripStart = studioCode.lastIndexOf('<PhysicsPaintWorkflowStrip');
     const stripPropsBlock = studioCode.slice(stripStart, studioCode.indexOf('/>', stripStart));
 
-    expect(toggleBlock).toContain('mode: patch.mode ?? currentSettings.mode');
+    expect(toggleBlock).toContain("mode: 'duplicate'");
+    expect(toggleBlock).not.toContain('mode: patch.mode ?? currentSettings.mode');
     expect(toggleBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, nextSettings)');
     expect(toggleBlock).toContain('const refreshedRotoFrames = refreshedSettings.enabled && storeRotoFrames.length > 0\n      ? storeRotoFrames\n      : fallbackRealKeys;');
+    expect(toggleBlock).toContain('getRealRotoSourceFrameNumbers(refreshedRotoFrames)');
+    expect(toggleBlock).toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
+    expect(toggleBlock).toContain('startFrame: nextCurrentFrame');
     expect(toggleBlock).not.toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');
     expect(toggleBlock).toContain('physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId)');
     expect(toggleBlock).toContain('Generated in-betweens could not regenerate. Real keys were kept.');
@@ -433,7 +434,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(toggleBlock).toContain('Generated in-betweens off — real Roto keys only.');
     expect(stripPropsBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
     expect(stripPropsBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
-    expect(stripPropsBlock).toContain('onRotoInterpolationModeChange={(mode) => updateRotoInterpolationSettings({ mode: mode as PhysicPaintRotoInterpolationMode })}');
+    expect(stripPropsBlock).not.toContain('onRotoInterpolationModeChange=');
     expect(stripPropsBlock).not.toContain('onRotoInterpolationMotionChange=');
   });
 
@@ -638,9 +639,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(rotoControlsBlock).toContain('onRotoInterpolationEnabledChange');
     expect(rotoControlsBlock).toContain('Blend size={14}');
     expect(rotoControlsBlock).toContain('Generated in-between frames per real-key pair');
-    expect(rotoControlsBlock).toContain('aria-label="Generated in-between mode"');
-    expect(rotoControlsBlock).toContain('Duplicate');
-    expect(rotoControlsBlock).toContain('Blend');
+    expect(rotoControlsBlock).not.toContain('aria-label="Generated in-between mode"');
+    expect(rotoControlsBlock).not.toContain('Duplicate');
+    expect(rotoControlsBlock).not.toContain('value="blend"');
     expect(rotoControlsBlock).not.toContain('Per adjacent real-key pair');
     expect(rotoControlsBlock).not.toContain('<span>Interpolation mode</span>');
     expect(rotoControlsBlock).not.toContain('Interpolation gap frames');
