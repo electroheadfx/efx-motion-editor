@@ -137,7 +137,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [ ] **Phase 36.9: Physics Paint Roto Cached Playback Auto-Play** - Animators can optionally preview cached Roto frames with Play/Stop automation if manual stepping is not enough. (planned; final UAT confirmation pending)
 - [x] **Phase 36.10: Physics Paint Roto Missing Background Preview Export** - Missing Roto frames render consistently as transparent or background-only in preview/export, and final UAT Test 5 passed after saved-project Roto paper/background recovery. (completed 2026-06-27)
 - [x] **Phase 36.11: Physics Paint Roto Repaint Cached Real Key** - Existing cached real Roto keys reopen with their alpha paint as an additive base layer for repainting without restoring old stroke scripts. (completed 2026-06-29)
-- [ ] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (planned)
+- [x] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (completed 2026-07-02)
 - [ ] **Phase 36.13: Physics Paint Roto Timeline UI From Pencil** - Roto timeline controls match the corrected Pencil design after behavior is stable. (planned)
 - [ ] **Phase 36.14: Physics Paint Roto State Machine Readiness** - Maintenance phase to evaluate XState/state-machine ownership after remaining user-facing 36.x Roto features are integrated. (deferred)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
@@ -356,7 +356,7 @@ Use `SPECS/36.x-phases/phase-36.12-generated-interpolation/spec-36.12-generated-
 **Goal:** As a stop-motion animator, I want generated in-between Roto frames between real keys, so that I can preview smoother motion without making generated frames editable.
 **Requirements**: 36.12-GENERATED-FRAMES, 36.12-REAL-KEY-AUTHORITY, 36.12-STALE-REGENERATION
 **Depends on:** Phase 36.11
-**Plans:** 4/5 plans executed
+**Plans:** 11/11 plans executed
 
 Planning notes:
 
@@ -384,7 +384,11 @@ Plans:
 
 **Wave 4** *(blocked on Waves 2-3 integration)*
 
-- [ ] 36.12-05-PLAN.md — Wire Studio end-to-end and run user-owned live generated interpolation UAT.
+- [x] 36.12-05-PLAN.md — Wire Studio end-to-end and run user-owned live generated interpolation UAT.
+
+**Gap-closure Waves 5–10**
+
+- [x] 36.12-06 through 36.12-11 — Closed UAT Test 8 source/display, persistence, playback, preview/export, UI cleanup, live toggle-off, and compact source-sequence blockers.
 
 ### Phase 36.13: Physics Paint Roto Timeline UI From Pencil
 
@@ -804,7 +808,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 3/3 | UAT pending |  |
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 5/5 | Complete    | 2026-06-27 |
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
-| 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 4/5 | In Progress|  |
+| 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
 | 36.14. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |

@@ -1289,17 +1289,34 @@ export function PhysicsPaintStudio() {
   }, []);
 
   const upsertCachedRotoFrameInLaunchContext = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null) => {
-    confirmedCachedRotoFramesRef.current.set(renderedFrame.appFrame, renderedFrame);
+    const sourceFrame = renderedFrame.sourceFrame ?? renderedFrame.appFrame;
+    const normalizedRenderedFrame = { ...renderedFrame, appFrame: sourceFrame };
+    confirmedCachedRotoFramesRef.current.set(sourceFrame, normalizedRenderedFrame);
     setLaunchContext((current) => {
       if (!current) return current;
-      const frameForCache = { ...renderedFrame, source: 'real-key' as const, sourceFrame: renderedFrame.appFrame, displayFrame: renderedFrame.appFrame };
-      physicPaintStore.upsertRealRotoKeyFrame(current.layerId, renderedFrame.appFrame, frameForCache, backgroundOnly);
+      const previousDisplayFrame = current.startFrame;
+      const frameForCache = { ...normalizedRenderedFrame, source: 'real-key' as const, sourceFrame, displayFrame: sourceFrame };
+      physicPaintStore.upsertRealRotoKeyFrame(current.layerId, sourceFrame, frameForCache, backgroundOnly);
       const manualFrames = upsertCachedRotoCacheFrame(current.cachedRotoFrames, frameForCache, backgroundOnly, onionFrame);
       const storeFrames = physicPaintStore.getRotoCacheFrames(current.layerId);
       const settings = physicPaintStore.getRotoInterpolationSettings(current.layerId);
+      const refreshedRotoFrames = settings.enabled && storeFrames.length > 0 ? storeFrames : manualFrames;
+      const refreshedRealKeyFrames = refreshedRotoFrames
+        .filter((frame) => frame.source === 'real-key')
+        .map((frame) => settings.enabled ? frame.displayFrame ?? frame.appFrame : frame.sourceFrame ?? frame.appFrame)
+        .sort((a, b) => a - b);
+      const nextDisplayFrame = refreshedRotoFrames.find((frame) => frame.source === 'real-key' && (frame.sourceFrame ?? frame.appFrame) === sourceFrame)?.appFrame ?? sourceFrame;
+      confirmedCachedRotoFramesRef.current = new Map(refreshedRotoFrames.filter((frame) => frame.source === 'real-key').map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
+      setOccupiedRotoFrames(refreshedRealKeyFrames);
+      setSavedRotoFrames(refreshedRealKeyFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` })));
+      setEditableRotoFrames((frames) => {
+        const withoutStaleFrames = frames.filter((frame) => frame !== previousDisplayFrame && frame !== sourceFrame && frame !== nextDisplayFrame);
+        return backgroundOnly ? withoutStaleFrames : addOccupiedRotoFrame(withoutStaleFrames, nextDisplayFrame);
+      });
       return {
         ...current,
-        cachedRotoFrames: settings.enabled && storeFrames.length > 0 ? storeFrames : manualFrames,
+        startFrame: nextDisplayFrame,
+        cachedRotoFrames: refreshedRotoFrames,
         rotoInterpolationSettings: settings,
       };
     });

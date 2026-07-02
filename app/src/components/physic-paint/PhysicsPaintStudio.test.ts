@@ -1019,9 +1019,14 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('const upsertCachedRotoFrameInLaunchContext = useCallback');
     expect(upsertHelperBlock).toContain("source: 'real-key'");
     expect(upsertHelperBlock).toContain('onionDataUrl: onionFrame.dataUrl');
-    expect(upsertCallbackBlock).toContain('confirmedCachedRotoFramesRef.current.set(renderedFrame.appFrame, renderedFrame)');
-    expect(upsertCallbackBlock).toContain('const manualFrames = upsertCachedRotoCacheFrame(current.cachedRotoFrames, frameForCache, backgroundOnly, onionFrame)');
-    expect(upsertCallbackBlock).toContain('cachedRotoFrames: settings.enabled && storeFrames.length > 0 ? storeFrames : manualFrames');
+    expect(upsertCallbackBlock).toContain('const sourceFrame = renderedFrame.sourceFrame ?? renderedFrame.appFrame');
+    expect(upsertCallbackBlock).toContain('confirmedCachedRotoFramesRef.current.set(sourceFrame, normalizedRenderedFrame)');
+    expect(upsertCallbackBlock).toContain('const refreshedRotoFrames = settings.enabled && storeFrames.length > 0 ? storeFrames : manualFrames');
+    expect(upsertCallbackBlock).toContain('const nextDisplayFrame = refreshedRotoFrames.find');
+    expect(upsertCallbackBlock).toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
+    expect(upsertCallbackBlock).toContain('setSavedRotoFrames(refreshedRealKeyFrames.map');
+    expect(upsertCallbackBlock).toContain('startFrame: nextDisplayFrame');
+    expect(upsertCallbackBlock).toContain('cachedRotoFrames: refreshedRotoFrames');
     expect(flushBlock).toContain('upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame)');
     expect(flushBlock).not.toContain('savePendingRotoFrames()');
   });
@@ -1125,7 +1130,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(resetBlock).toContain('confirmedCachedRotoFramesRef.current = new Map(getRealCachedRotoFrames(context).map((frame) => [frame.appFrame, frame]))');
     expect(findBlock.indexOf('rotoPreviewFramesRef.current.get(appFrame)')).toBeLessThan(findBlock.indexOf('confirmedCachedRotoFramesRef.current.get(appFrame)'));
     expect(findBlock.indexOf('context.cachedRotoFrames?.find')).toBeLessThan(findBlock.indexOf('confirmedCachedRotoFramesRef.current.get(appFrame)'));
-    expect(upsertCallbackBlock).toContain('confirmedCachedRotoFramesRef.current.set(renderedFrame.appFrame, renderedFrame)');
+    expect(upsertCallbackBlock).toContain('confirmedCachedRotoFramesRef.current.set(sourceFrame, normalizedRenderedFrame)');
     expect(text).toContain('confirmedCachedRotoFramesRef.current.delete(appFrame)');
     expect(snapshotBlock).toContain('rotoPreviewFramesRef.current.delete(appFrame)');
     expect(snapshotBlock).not.toContain('confirmedCachedRotoFramesRef.current.delete(appFrame)');

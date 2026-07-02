@@ -4,17 +4,17 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.12
 current_phase_name: Physics Paint Roto Generated Interpolation
-status: executing
-stopped_at: Phase 36.12 UI-SPEC approved
-last_updated: "2026-07-01T07:23:31.102Z"
-last_activity: 2026-07-01
-last_activity_desc: Phase 36.12 execution resumed (wave continue)
+status: ready_for_verify
+stopped_at: Phase 36.12 implementation closed; awaiting user verify-work
+last_updated: "2026-07-02T00:00:00.000Z"
+last_activity: 2026-07-02
+last_activity_desc: Phase 36.12 implementation closed after approved live UAT
 progress:
   total_phases: 18
   completed_phases: 14
   total_plans: 86
-  completed_plans: 80
-  percent: 78
+  completed_plans: 91
+  percent: 86
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: 36.12 (Physics Paint Roto Generated Interpolation) — EXECUTING
+Phase: 36.12 (Physics Paint Roto Generated Interpolation) — READY FOR VERIFY
 Previous phase: 36.11 — Physics Paint Roto Repaint Cached Real Key complete
 Plan: 1 of 5
-Status: Executing Phase 36.12
-Last activity: 2026-07-01 — Phase 36.12 execution resumed (wave continue)
-Next recommended action: Plan Phase 36.12 Physics Paint Roto Generated Interpolation
+Status: Phase 36.12 implementation closed; user will run verify-work
+Last activity: 2026-07-02 — Phase 36.12 implementation closed after approved live UAT
+Next recommended action: Run `/gsd-verify-work 36.12` for independent final verification
 
 Progress: [████████████████████] 75/75 plans executed; 14/18 phases complete (78%)
 
@@ -136,6 +136,7 @@ None yet.
 - Phase 36.9 cached playback has green automated checks and Plan 03 summary prepared, but final user UAT confirmation is still pending for the real-key-only fix that should remove empty trailing playback frames.
 - Phase 36.10 completed: UAT Test 5 passed after user verified save/close/reopen preserves Physics Paint Roto strokes and paper/background metadata.
 - Phase 36.11 completed: user approved additive cached real-key repaint after old cache visibility, new paint preview layering, paper/background proportions, save merge, and same-session navigation cache refresh were verified.
+- Phase 36.12 completed: user approved generated render-only Roto interpolation after duplicate mapping, parent preview/export, persistence, live toggle-off, and compact source-sequence key creation blockers were resolved. User will run `/gsd-verify-work` next.
 - Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
 ### Quick Tasks Completed
@@ -173,5 +174,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-29T18:12:04.187Z
-Stopped at: Phase 36.12 UI-SPEC approved
-Resume file: .planning/phases/36.12-physics-paint-roto-generated-interpolation/36.12-UI-SPEC.md
+Stopped at: Phase 36.12 implementation closed; awaiting user verify-work
+Resume file: .planning/phases/36.12-physics-paint-roto-generated-interpolation/36.12-11-SUMMARY.md

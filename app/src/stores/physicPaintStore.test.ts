@@ -456,22 +456,23 @@ describe('physicPaintStore', () => {
     ]);
   });
 
-  it('preserves a distant real key saved while interpolation is enabled through disable and save/load', () => {
+  it('appends a distant real key saved while interpolation is enabled into compact source order through disable and save/load', () => {
     const circle = makeAlphaFrame(0, 0, 'circle');
     const square = makeAlphaFrame(0, 1, 'square');
     const crossed = makeAlphaFrame(0, 2, 'crossed-lines');
-    const distant = makeAlphaFrame(0, 29, 'distant-real-key');
+    const distant = makeAlphaFrame(0, 37, 'distant-real-key');
+    const appendedSourceFrame = 3;
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, circle);
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, square);
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, crossed);
     physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 });
 
-    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 29, distant);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', appendedSourceFrame, { ...distant, appFrame: appendedSourceFrame });
 
-    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 1, 2, 29]);
-    expect(physicPaintStore.getFrame('layer-1', 29)?.dataUrl).toBe(distant.dataUrl);
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 1, 2, 3]);
+    expect(physicPaintStore.getFrame('layer-1', appendedSourceFrame)?.dataUrl).toBe(distant.dataUrl);
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual(expect.arrayContaining([
-      expect.objectContaining({ source: 'real-key', sourceFrame: 29, dataUrl: distant.dataUrl }),
+      expect.objectContaining({ appFrame: 12, source: 'real-key', sourceFrame: appendedSourceFrame, displayFrame: 12, dataUrl: distant.dataUrl }),
     ]));
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: false });
@@ -480,19 +481,19 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0 }),
       expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1, displayFrame: 1 }),
       expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 2, displayFrame: 2 }),
-      expect.objectContaining({ appFrame: 29, source: 'real-key', sourceFrame: 29, displayFrame: 29, dataUrl: distant.dataUrl }),
+      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: appendedSourceFrame, displayFrame: 3, dataUrl: distant.dataUrl }),
     ]);
 
     const saved = physicPaintStore.toMceOutputs();
     physicPaintStore.loadFromMceOutputs(saved);
 
-    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 1, 2, 29]);
-    expect(physicPaintStore.getFrame('layer-1', 29)?.dataUrl).toBe(distant.dataUrl);
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 1, 2, 3]);
+    expect(physicPaintStore.getFrame('layer-1', appendedSourceFrame)?.dataUrl).toBe(distant.dataUrl);
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
       expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0 }),
       expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1, displayFrame: 1 }),
       expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 2, displayFrame: 2 }),
-      expect.objectContaining({ appFrame: 29, source: 'real-key', sourceFrame: 29, displayFrame: 29, dataUrl: distant.dataUrl }),
+      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: appendedSourceFrame, displayFrame: 3, dataUrl: distant.dataUrl }),
     ]);
   });
 

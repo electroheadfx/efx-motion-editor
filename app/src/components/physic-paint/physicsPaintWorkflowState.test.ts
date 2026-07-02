@@ -288,12 +288,12 @@ describe('physicsPaintWorkflowState', () => {
     ]);
   });
 
-  it('preserves empty and distant display frames as source-frame save targets while interpolation is enabled', () => {
+  it('maps new real keys created while interpolation is enabled to the next compact source slot', () => {
     const settings = { enabled: true, inBetweenCount: 3, mode: 'duplicate' as const };
 
-    expect(getSourceRotoFrameForDisplayFrame(12, [0, 1, 2], settings)).toBe(12);
-    expect(getSourceRotoFrameForDisplayFrame(29, [0, 1, 2], settings)).toBe(29);
-    expect(getSourceRotoFrameForDisplayFrame(21, [0, 1, 2, 29], { ...settings, enabled: false })).toBe(21);
+    expect(getSourceRotoFrameForDisplayFrame(12, [0, 1, 2], settings)).toBe(3);
+    expect(getSourceRotoFrameForDisplayFrame(29, [0, 1, 2, 3], settings)).toBe(4);
+    expect(getSourceRotoFrameForDisplayFrame(21, [0, 1, 2, 3, 4], { ...settings, enabled: false })).toBe(21);
   });
 
   it('preserves interpolation enabled, count, and accepted mode settings for duplicate/hold and alpha blend', () => {
