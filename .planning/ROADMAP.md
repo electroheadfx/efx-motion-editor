@@ -399,7 +399,7 @@ Use `SPECS/36.x-phases/phase-36.13-dynamic-interpolation-spacing/spec-36.13-dyna
 **Mode:** mvp
 **Requirements**: 36.13-SOURCE-DISPLAY-MODEL, 36.13-SEGMENT-SPACING-OVERRIDES, 36.13-PERSISTENCE, 36.13-PREVIEW-EXPORT-PARITY
 **Depends on:** Phase 36.12
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Planning notes:
 
@@ -411,7 +411,29 @@ Planning notes:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 36.13 to break down)
+**Wave 1**
+
+- [ ] 36.13-01-PLAN.md — Define and test override-aware source/display spacing contracts.
+
+**Wave 2** *(blocked on Wave 1 source/display helpers)*
+
+- [ ] 36.13-02-PLAN.md — Persist and regenerate custom segment spacing in the Physics Paint store.
+
+**Wave 3** *(blocked on Waves 1-2 store/settings contract)*
+
+- [ ] 36.13-03-PLAN.md — Rebase, drop, and create custom spacing through Roto key utility transactions.
+
+**Wave 4** *(blocked on Waves 1-3 model/store/transaction support)*
+
+- [ ] 36.13-04-PLAN.md — Wire far-empty save/paste and compact custom-span feedback into Studio and workflow strip.
+
+**Wave 5** *(blocked on Waves 2 and 4 generated cache/UI wiring)*
+
+- [ ] 36.13-05-PLAN.md — Prove onion-skin real-key anchors and preview/export parity for custom spans.
+
+**Wave 6** *(blocked on all implementation waves)*
+
+- [ ] 36.13-06-PLAN.md — Run final automated gate and user-owned live UAT.
 
 ### Phase 36.14: Physics Paint Roto Timeline UI From Pencil
 
