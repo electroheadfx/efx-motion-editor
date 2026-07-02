@@ -370,7 +370,6 @@ export function getSourceRotoFrameForDisplayFrame(displayFrame: number, realKeys
   const entry = getExpandedRotoRealKeyFrames(sourceKeys, settings).find((candidate) => candidate.kind === 'real-key' && candidate.displayFrame === displayFrame);
   if (entry?.kind === 'real-key') return entry.sourceFrame;
   if (mode === 'existing-only') return null;
-  if (settings.enabled === true && displayFrame > 0 && sourceKeys.length > 0) return Math.max(...sourceKeys) + 1;
   return displayFrame;
 }
 
