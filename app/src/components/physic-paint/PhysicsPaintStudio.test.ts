@@ -673,6 +673,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('physicPaintStore.upsertRealRotoKeyFrame(context.layerId, sourceFrame, frame, frame.backgroundOnly === true)');
     expect(updateBlock).toContain('seedStoreRotoRealKeysFromLaunchContext(launchContext)');
     expect(updateBlock).toContain('mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames)');
+    expect(updateBlock).toContain('const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));');
+    expect(updateBlock).toContain(': compactRealKeys;');
     expect(updateBlock).toContain('const refreshedRealKeyFrames = refreshedSettings.enabled');
     expect(updateBlock).toContain('getRealRotoSourceFrameNumbers(refreshedRotoFrames)');
     expect(updateBlock).toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
@@ -687,6 +689,9 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(updateBlock).toContain('setLaunchContext((current) => current ? {');
     expect(updateBlock).toContain('cachedRotoFrames: refreshedRotoFrames');
     expect(updateBlock).toContain('rotoInterpolationSettings: refreshedSettings');
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+    expect(resultBlock).toContain("} else if (detail.kind === 'update-roto-interpolation-settings') {");
+    expect(resultBlock).toContain("setApplyMessage((message) => message || 'Generated in-between settings synced.');");
     expect(text).toContain('rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId)');
     expect(workflowStripBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
     expect(workflowStripBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');

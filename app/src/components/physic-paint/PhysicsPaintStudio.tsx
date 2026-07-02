@@ -176,8 +176,12 @@ function getRealCachedRotoFrames(context: PhysicPaintLaunchContext | null): Phys
     .map((frame) => normalizeCachedRotoRealKeyDisplayFrame(frame));
 }
 
+function getRotoInterpolationEnabled(context: PhysicPaintLaunchContext | null): boolean {
+  return context?.rotoInterpolationSettings?.enabled === true;
+}
+
 function getRealCachedRotoDisplayFrameNumbers(context: PhysicPaintLaunchContext | null): number[] {
-  return context?.cachedRotoFrames?.filter((frame) => frame.source === 'real-key').map((frame) => frame.displayFrame ?? frame.appFrame).sort((a, b) => a - b) ?? [];
+  return context?.cachedRotoFrames?.filter((frame) => frame.source === 'real-key').map((frame) => getRotoInterpolationEnabled(context) ? frame.displayFrame ?? frame.appFrame : frame.sourceFrame ?? frame.appFrame).sort((a, b) => a - b) ?? [];
 }
 
 function getRealCachedRotoSourceFrameNumbers(context: PhysicPaintLaunchContext | null): number[] {
@@ -267,7 +271,7 @@ function hydrateLaunchContextRotoInterpolation(context: PhysicPaintLaunchContext
   const fallbackFrames = mergeRotoCacheFramesPreservingLaunchRealKeys(context.cachedRotoFrames, storeRotoFrames);
   const cachedRotoFrames = refreshedSettings.enabled && storeRotoFrames.length > 0
     ? storeRotoFrames
-    : fallbackFrames.filter((frame) => frame.source === 'real-key');
+    : fallbackFrames.filter((frame) => frame.source === 'real-key').map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));
   return { ...context, cachedRotoFrames, rotoInterpolationSettings: refreshedSettings };
 }
 
@@ -2024,6 +2028,8 @@ export function PhysicsPaintStudio() {
       pendingRotoKeyActionMessageRef.current = null;
     } else if (detail.kind === 'update-play-render-options') {
       setApplyMessage(detail.appliedFrameCount > 0 ? 'Play options updated. Cached frames cleared; use Render play.' : 'Play options already up to date.');
+    } else if (detail.kind === 'update-roto-interpolation-settings') {
+      setApplyMessage((message) => message || 'Generated in-between settings synced.');
     } else if (detail.kind === 'apply-play-canvas') {
       const count = detail.appliedFrameCount;
       const frame = detail.startFrame;
@@ -2826,9 +2832,10 @@ export function PhysicsPaintStudio() {
     const storeRotoFrames = physicPaintStore.getRotoCacheFrames(launchContext.layerId);
     const refreshedSettings = physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
     const fallbackRealKeys = mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames).filter((frame) => frame.source === 'real-key');
+    const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));
     const refreshedRotoFrames = refreshedSettings.enabled && storeRotoFrames.length > 0
       ? storeRotoFrames
-      : fallbackRealKeys;
+      : compactRealKeys;
     const refreshedRealKeyFrames = refreshedSettings.enabled
       ? refreshedRotoFrames.filter((frame) => frame.source === 'real-key').map((frame) => frame.displayFrame ?? frame.appFrame).sort((a, b) => a - b)
       : getRealRotoSourceFrameNumbers(refreshedRotoFrames);

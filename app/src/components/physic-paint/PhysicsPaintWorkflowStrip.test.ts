@@ -186,17 +186,25 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(css).toContain('.physics-paint-roto-interpolation-status');
   });
 
-  it('uses materialized generated cache frames as the Roto interpolation display mapping', () => {
+  it('uses materialized generated cache frames only while Roto interpolation is enabled', () => {
     const code = source();
     const mapBlock = getRotoMapBlock(code);
 
-    expect(code).toContain('const materializedGeneratedRotoFrames = useMemo');
-    expect(code).toContain('const hasMaterializedGeneratedRotoFrames = materializedGeneratedRotoFrames.length > 0');
-    expect(code).toContain('hasMaterializedGeneratedRotoFrames ? realCachedRotoFrameNumbers : getRealRotoFrames');
+    expect(code).toContain('function normalizeRotoCacheForDisabledInterpolation');
+    expect(code).toContain(".filter(frame => frame.source !== 'generated-interpolation')");
+    expect(code).toContain('return { ...frame, appFrame: sourceFrame, sourceFrame, displayFrame: sourceFrame };');
+    expect(code).toContain('const displayCachedRotoFrames = useMemo(() => getDisplayRotoCacheFrames(props.cachedRotoFrames, interpolationEnabled)');
+    expect(code).toContain('const materializedGeneratedRotoFrames = useMemo(() => interpolationEnabled ? displayCachedRotoFrames');
+    expect(code).toContain('const hasMaterializedGeneratedRotoFrames = interpolationEnabled && materializedGeneratedRotoFrames.length > 0');
+    expect(code).toContain('const displayOccupiedRotoFrames = useMemo(() => !interpolationEnabled && realCachedRotoFrames.length > 0 ? realCachedRotoFrameNumbers : props.occupiedRotoFrames');
+    expect(code).toContain('const displaySavedRotoFrames = useMemo(() => !interpolationEnabled && realCachedRotoFrames.length > 0 ? realCachedRotoFrameNumbers.map');
+    expect(code).toContain('hasMaterializedGeneratedRotoFrames || (!interpolationEnabled && realCachedRotoFrames.length > 0)');
+    expect(code).toContain('? realCachedRotoFrameNumbers : getRealRotoFrames');
     expect(code).toContain('hasMaterializedGeneratedRotoFrames ? realRotoFrames.map(frame => ({ sourceFrame: frame, frame })) : getExpandedRotoRealKeyFrames');
     expect(code).toContain('hasMaterializedGeneratedRotoFrames ? [] : getRotoInterpolationSpanFrames');
     expect(mapBlock).toContain('const isDisplayRealKey = realCachedRotoFrameNumbers.includes(frame)');
-    expect(mapBlock).toContain('isDisplayRealKey || isOccupiedFrame(props.occupiedRotoFrames, frame)');
+    expect(mapBlock).toContain('isDisplayRealKey || isOccupiedFrame(displayOccupiedRotoFrames, frame)');
+    expect(mapBlock).toContain('isDisplayRealKey || isSavedFrame(displaySavedRotoFrames, frame)');
   });
 
   it('36.12 UAT Test 8/D-18 exposes Duplicate-only count controls in the visible strip', () => {
@@ -422,7 +430,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(toggleBlock).toContain("mode: 'duplicate'");
     expect(toggleBlock).not.toContain('mode: patch.mode ?? currentSettings.mode');
     expect(toggleBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, nextSettings)');
-    expect(toggleBlock).toContain('const refreshedRotoFrames = refreshedSettings.enabled && storeRotoFrames.length > 0\n      ? storeRotoFrames\n      : fallbackRealKeys;');
+    expect(toggleBlock).toContain('const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));');
+    expect(toggleBlock).toContain('const refreshedRotoFrames = refreshedSettings.enabled && storeRotoFrames.length > 0\n      ? storeRotoFrames\n      : compactRealKeys;');
     expect(toggleBlock).toContain('getRealRotoSourceFrameNumbers(refreshedRotoFrames)');
     expect(toggleBlock).toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
     expect(toggleBlock).toContain('startFrame: nextCurrentFrame');
