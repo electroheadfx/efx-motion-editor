@@ -5,16 +5,16 @@ milestone_name: Standalone Physics Paint
 current_phase: 36.12
 current_phase_name: Physics Paint Roto Generated Interpolation
 status: ready_for_verify
-stopped_at: Phase 36.12 implementation closed; awaiting user verify-work
-last_updated: "2026-07-02T00:00:00.000Z"
+stopped_at: Phase 36.13 context gathered
+last_updated: "2026-07-02T17:10:41.143Z"
 last_activity: 2026-07-02
 last_activity_desc: Phase 36.12 implementation closed after approved live UAT
 progress:
   total_phases: 19
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 86
-  completed_plans: 91
-  percent: 74
+  completed_plans: 86
+  percent: 79
 ---
 
 # Project State
@@ -174,6 +174,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T18:12:04.187Z
-Stopped at: Phase 36.12 implementation closed; awaiting user verify-work
-Resume file: .planning/phases/36.12-physics-paint-roto-generated-interpolation/36.12-11-SUMMARY.md
+Last session: 2026-07-02T17:10:41.134Z
+Stopped at: Phase 36.13 context gathered
+Resume file: .planning/phases/36.13-physics-paint-roto-dynamic-interpolation-spacing/36.13-CONTEXT.md
