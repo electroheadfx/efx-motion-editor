@@ -10,11 +10,11 @@ last_updated: "2026-07-02T00:00:00.000Z"
 last_activity: 2026-07-02
 last_activity_desc: Phase 36.12 implementation closed after approved live UAT
 progress:
-  total_phases: 18
+  total_phases: 19
   completed_phases: 14
   total_plans: 86
   completed_plans: 91
-  percent: 86
+  percent: 74
 ---
 
 # Project State
@@ -35,7 +35,7 @@ Status: Phase 36.12 implementation closed; user will run verify-work
 Last activity: 2026-07-02 — Phase 36.12 implementation closed after approved live UAT
 Next recommended action: Run `/gsd-verify-work 36.12` for independent final verification
 
-Progress: [████████████████████] 75/75 plans executed; 14/18 phases complete (78%)
+Progress: [████████████████████] 75/75 plans executed; 14/19 phases complete (74%)
 
 ## Performance Metrics
 
@@ -132,7 +132,7 @@ None yet.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
 - Phase 36.7 completed: Roto key utility UAT passed for Duplicate, Insert, Delete, Copy, Paste, generated/empty guards, dirty save-before-action, focused regressions, typecheck, and user-story coverage.
 - Phase 36.8 completed: Roto session/key state boundary refactor passed focused regressions, full app tests, typecheck, package build, and user-approved Roto key utility UAT.
-- Phase 36.9 State Machine Readiness is deferred to Phase 36.14 maintenance; Phase 36.8 is the state boundary foundation while remaining user-facing Roto features are prioritized first.
+- Phase 36.9 State Machine Readiness is deferred to Phase 36.15 maintenance; Phase 36.8 is the state boundary foundation while remaining user-facing Roto features are prioritized first.
 - Phase 36.9 cached playback has green automated checks and Plan 03 summary prepared, but final user UAT confirmation is still pending for the real-key-only fix that should remove empty trailing playback frames.
 - Phase 36.10 completed: UAT Test 5 passed after user verified save/close/reopen preserves Physics Paint Roto strokes and paper/background metadata.
 - Phase 36.11 completed: user approved additive cached real-key repaint after old cache visibility, new paint preview layering, paper/background proportions, save merge, and same-session navigation cache refresh were verified.
@@ -161,6 +161,7 @@ None yet.
 - Phase 36.8 inserted after Phase 36: Physics Paint Roto State Refactor (URGENT)
 - Phase 36.9 inserted after Phase 36: Physics Paint Roto State Machine Readiness (URGENT)
 - Phase 36.x order updated: inserted Phase 36.11 Repaint Cached Real Key, shifted Generated Interpolation to 36.12, Timeline UI From Pencil to 36.13, and deferred State Machine Readiness to 36.14 maintenance after remaining user-facing Roto features; Phase 36.8 is the state boundary foundation
+- Phase 36.x order updated: inserted Phase 36.13 Dynamic Interpolation Spacing, shifted Timeline UI From Pencil to 36.14, and deferred State Machine Readiness to 36.15 maintenance after custom per-segment interpolation spacing is stabilized.
 
 ## Deferred Items
 

@@ -138,8 +138,9 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.10: Physics Paint Roto Missing Background Preview Export** - Missing Roto frames render consistently as transparent or background-only in preview/export, and final UAT Test 5 passed after saved-project Roto paper/background recovery. (completed 2026-06-27)
 - [x] **Phase 36.11: Physics Paint Roto Repaint Cached Real Key** - Existing cached real Roto keys reopen with their alpha paint as an additive base layer for repainting without restoring old stroke scripts. (completed 2026-06-29)
 - [x] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (completed 2026-07-02)
-- [ ] **Phase 36.13: Physics Paint Roto Timeline UI From Pencil** - Roto timeline controls match the corrected Pencil design after behavior is stable. (planned)
-- [ ] **Phase 36.14: Physics Paint Roto State Machine Readiness** - Maintenance phase to evaluate XState/state-machine ownership after remaining user-facing 36.x Roto features are integrated. (deferred)
+- [ ] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, and export. (planned)
+- [ ] **Phase 36.14: Physics Paint Roto Timeline UI From Pencil** - Roto timeline controls match the corrected Pencil design after behavior is stable. (planned)
+- [ ] **Phase 36.15: Physics Paint Roto State Machine Readiness** - Maintenance phase to evaluate XState/state-machine ownership after remaining user-facing 36.x Roto features are integrated. (deferred)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
 
 ## Phase Details
@@ -390,13 +391,35 @@ Plans:
 
 - [x] 36.12-06 through 36.12-11 — Closed UAT Test 8 source/display, persistence, playback, preview/export, UI cleanup, live toggle-off, and compact source-sequence blockers.
 
-### Phase 36.13: Physics Paint Roto Timeline UI From Pencil
+### Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing
 
-Use `SPECS/36.x-phases/phase-36.13-timeline-ui/spec-36.13-timeline-ui.md` and the referenced Pencil/timeline files as the source of truth for this phase.
+Use `SPECS/36.x-phases/phase-36.13-dynamic-interpolation-spacing/spec-36.13-dynamic-interpolation-spacing.md` as the source of truth for this phase.
+
+**Goal:** As a stop-motion animator, I want intentionally distant real Roto keys to create remembered per-segment interpolation spacing, so that custom timing survives global in-between count changes, interpolation toggles, save/load, preview, and export.
+**Mode:** mvp
+**Requirements**: 36.13-SOURCE-DISPLAY-MODEL, 36.13-SEGMENT-SPACING-OVERRIDES, 36.13-PERSISTENCE, 36.13-PREVIEW-EXPORT-PARITY
+**Depends on:** Phase 36.12
+**Plans:** 0 plans
+
+Planning notes:
+
+- Real Roto keys remain authoritative; generated interpolation frames remain derived/render-only.
+- Adjacent source real keys use the global in-between count unless a segment has an explicit spacing override.
+- A real key intentionally created farther away than the global spacing records custom per-segment spacing and must not be collapsed by later global count changes.
+- The source/display model must cover hydration, parent bridge sync, project save/load, close/reopen, preview, and export.
+- Keep this as an MVP behavior correction before the final Pencil timeline UI pass.
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 36.13 to break down)
+
+### Phase 36.14: Physics Paint Roto Timeline UI From Pencil
+
+Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and the referenced Pencil/timeline files as the source of truth for this phase.
 
 **Goal:** As a stop-motion animator, I want the Roto timeline controls to match the corrected Pencil design, so that the timeline is discoverable without cluttering the top bar.
-**Requirements**: 36.13-PENCIL-LAYOUT, 36.13-CONTROL-GROUPING, 36.13-VISUAL-STATES, 36.13-REGRESSION
-**Depends on:** Phase 36.12
+**Requirements**: 36.14-PENCIL-LAYOUT, 36.14-CONTROL-GROUPING, 36.14-VISUAL-STATES, 36.14-REGRESSION
+**Depends on:** Phase 36.13
 **Plans:** 0 plans
 
 Planning notes:
@@ -408,11 +431,11 @@ Planning notes:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 36.13 to break down)
+- [ ] TBD (run /gsd-plan-phase 36.14 to break down)
 
-### Phase 36.14: Physics Paint Roto State Machine Readiness
+### Phase 36.15: Physics Paint Roto State Machine Readiness
 
-Deferred maintenance phase after the remaining user-facing 36.x Roto features are integrated. Phase 36.8 is the current state-boundary foundation; do not evaluate XState/state-machine ownership before cached playback, missing-frame rules, repaint cached real keys, generated interpolation, and the Pencil timeline UI pass have stabilized the user-facing workflow.
+Deferred maintenance phase after the remaining user-facing 36.x Roto features are integrated. Phase 36.8 is the current state-boundary foundation; do not evaluate XState/state-machine ownership before cached playback, missing-frame rules, repaint cached real keys, generated interpolation, dynamic interpolation spacing, and the Pencil timeline UI pass have stabilized the user-facing workflow.
 
 Context:
 Phase 36.8 extracted a compact Preact-native Signals/controller state boundary for Roto key/session/cache coherence. That boundary is the foundation for the remaining user-facing Roto phases and should be extended incrementally before deciding whether XState/state-machine ownership is justified.
@@ -422,8 +445,8 @@ Evaluate whether XState is the right state-machine layer for Physics Paint Roto 
 
 Scope:
 
-- Build on Phase 36.8's Roto state boundary after Phases 36.9-36.13 are integrated.
-- Identify the final Roto workflow states and guarded transitions across cached playback, missing-frame preview/export, repaint cached real keys, generated interpolation, real-key utilities, dirty save-before-action, save failures, deletion, paste, blank keys, and navigation blocking/resume.
+- Build on Phase 36.8's Roto state boundary after Phases 36.9-36.14 are integrated.
+- Identify the final Roto workflow states and guarded transitions across cached playback, missing-frame preview/export, repaint cached real keys, generated interpolation, dynamic interpolation spacing, real-key utilities, dirty save-before-action, save failures, deletion, paste, blank keys, and navigation blocking/resume.
 - Decide whether XState is warranted based on concrete transition complexity and test readability.
 - If adopted, wrap or replace the controller internals without changing PhysicsPaintStudio UI props/placement/labels.
 - Keep Signals where they remain useful for Preact rendering and derived UI state.
@@ -441,7 +464,7 @@ Architecture constraints:
 TDD requirements:
 
 - Tests must cover the stabilized state transition graph and guarded actions before UI rewiring.
-- Existing Phase 36.7-36.13 Roto regression tests must continue to pass.
+- Existing Phase 36.7-36.14 Roto regression tests must continue to pass.
 - Add source-contract tests that PhysicsPaintStudio consumes the compact boundary instead of regaining scattered useState/useEffect orchestration.
 
 Success criteria:
@@ -453,13 +476,13 @@ Success criteria:
 - No new feature scope. (DEFERRED)
 
 **Goal:** Evaluate XState/state-machine ownership for the stabilized Roto workflow only after remaining user-facing 36.x Roto features are integrated.
-**Requirements**: 36.14-DECISION, 36.14-TRANSITION-GRAPH, 36.14-BOUNDARY-CONTRACT
-**Depends on:** Phase 36.13
+**Requirements**: 36.15-DECISION, 36.15-TRANSITION-GRAPH, 36.15-BOUNDARY-CONTRACT
+**Depends on:** Phase 36.14
 **Plans:** 0 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 36.14 to break down)
+- [ ] TBD (run /gsd-plan-phase 36.15 to break down)
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
@@ -809,6 +832,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 5/5 | Complete    | 2026-06-27 |
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
-| 36.13. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
-| 36.14. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |
+| 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 0/TBD | Not started | - |
+| 36.14. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
+| 36.15. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
