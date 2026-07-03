@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.12
-current_phase_name: Physics Paint Roto Generated Interpolation
-status: ready_for_verify
+current_phase: 36.13
+current_phase_name: physics-paint-roto-dynamic-interpolation-spacing
+status: executing
 stopped_at: Phase 36.13 context gathered
-last_updated: "2026-07-02T17:10:41.143Z"
-last_activity: 2026-07-02
-last_activity_desc: Phase 36.12 implementation closed after approved live UAT
+last_updated: "2026-07-03T06:33:27.885Z"
+last_activity: 2026-07-03
+last_activity_desc: Phase 36.13 execution started
 progress:
   total_phases: 19
   completed_phases: 15
-  total_plans: 86
+  total_plans: 92
   completed_plans: 86
   percent: 79
 ---
@@ -24,15 +24,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.12 — Physics Paint Roto Generated Interpolation
+**Current focus:** Phase 36.13 — physics-paint-roto-dynamic-interpolation-spacing
 
 ## Current Position
 
-Phase: 36.12 (Physics Paint Roto Generated Interpolation) — READY FOR VERIFY
+Phase: 36.13 (physics-paint-roto-dynamic-interpolation-spacing) — EXECUTING
 Previous phase: 36.11 — Physics Paint Roto Repaint Cached Real Key complete
-Plan: 1 of 5
-Status: Phase 36.12 implementation closed; user will run verify-work
-Last activity: 2026-07-02 — Phase 36.12 implementation closed after approved live UAT
+Plan: 1 of 6
+Status: Executing Phase 36.13
+Last activity: 2026-07-03 — Phase 36.13 execution started
 Next recommended action: Run `/gsd-verify-work 36.12` for independent final verification
 
 Progress: [████████████████████] 75/75 plans executed; 14/19 phases complete (74%)
