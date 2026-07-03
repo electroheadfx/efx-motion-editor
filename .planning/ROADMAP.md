@@ -399,7 +399,7 @@ Use `SPECS/36.x-phases/phase-36.13-dynamic-interpolation-spacing/spec-36.13-dyna
 **Mode:** mvp
 **Requirements**: 36.13-SOURCE-DISPLAY-MODEL, 36.13-SEGMENT-SPACING-OVERRIDES, 36.13-PERSISTENCE, 36.13-PREVIEW-EXPORT-PARITY
 **Depends on:** Phase 36.12
-**Plans:** 1/6 plans executed
+**Plans:** 2/6 plans executed
 
 Planning notes:
 
@@ -417,7 +417,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 source/display helpers)*
 
-- [ ] 36.13-02-PLAN.md — Persist and regenerate custom segment spacing in the Physics Paint store.
+- [x] 36.13-02-PLAN.md — Persist and regenerate custom segment spacing in the Physics Paint store.
 
 **Wave 3** *(blocked on Waves 1-2 store/settings contract)*
 
@@ -854,7 +854,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 5/5 | Complete    | 2026-06-27 |
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
-| 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 1/6 | In Progress|  |
+| 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 2/6 | In Progress|  |
 | 36.14. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
 | 36.15. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
