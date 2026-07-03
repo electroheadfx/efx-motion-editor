@@ -1,8 +1,8 @@
 import { signal } from '@preact/signals';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, normalizePhysicPaintPlayScriptRanges } from '../types/physicPaint';
-import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/physicsPaintWorkflowState';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, normalizePhysicPaintPlayScriptRanges, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
+import { getExpandedRotoRealKeyFrames, inferRotoSegmentSpacingOverrides } from '../components/physic-paint/physicsPaintWorkflowState';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -106,7 +106,10 @@ function getRotoCacheFrameSourceOrder(source: PhysicPaintRotoCacheFrame['source'
 }
 
 function _cloneRotoInterpolationSettings(settings: PhysicPaintRotoInterpolationSettings): PhysicPaintRotoInterpolationSettings {
-  return { ...settings };
+  return {
+    ...settings,
+    ...(settings.segmentSpacingOverrides ? { segmentSpacingOverrides: settings.segmentSpacingOverrides.map(override => ({ ...override })) } : {}),
+  };
 }
 
 function _makeRotoCacheFrame(
@@ -206,15 +209,67 @@ function _clearCachedFramesForRange(layerId: string, range: Pick<PhysicPaintPlay
   if (layerFrames.size === 0) _frames.delete(layerId);
 }
 
-function _normalizeRotoInterpolationSettings(settings: Partial<PhysicPaintRotoInterpolationSettings> | null | undefined): PhysicPaintRotoInterpolationSettings {
+function _normalizeRotoInterpolationSettings(settings: Partial<PhysicPaintRotoInterpolationSettings> | null | undefined, realKeys?: readonly number[]): PhysicPaintRotoInterpolationSettings {
   const source = settings ?? {};
   const mode = (source as { mode?: unknown }).mode;
-  return {
+  const normalized: PhysicPaintRotoInterpolationSettings = {
     enabled: source.enabled === true,
     inBetweenCount: clampRotoInBetweenCount(source.inBetweenCount),
     mode: mode === 'blend' || mode === 'alpha-blend' ? 'blend' : 'duplicate',
     position: clampPercentLikeCount(source.position),
     deform: clampPercentLikeCount(source.deform),
+  };
+  const overrides = normalizeRotoSegmentSpacingOverrides(source.segmentSpacingOverrides, realKeys);
+  if (overrides.length > 0) normalized.segmentSpacingOverrides = overrides;
+  return normalized;
+}
+
+function normalizeRotoSegmentSpacingOverrides(value: unknown, realKeys?: readonly number[]): PhysicPaintRotoSegmentSpacingOverride[] {
+  if (!Array.isArray(value)) return [];
+  const adjacentSegments = realKeys ? getAdjacentSourceSegmentKeys(realKeys) : null;
+  const seen = new Set<string>();
+  const overrides: PhysicPaintRotoSegmentSpacingOverride[] = [];
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
+    const entry = candidate as Partial<PhysicPaintRotoSegmentSpacingOverride>;
+    const fromSourceFrame = entry.fromSourceFrame;
+    const toSourceFrame = entry.toSourceFrame;
+    if (typeof fromSourceFrame !== 'number' || !Number.isInteger(fromSourceFrame) || fromSourceFrame < 0) continue;
+    if (typeof toSourceFrame !== 'number' || !Number.isInteger(toSourceFrame) || toSourceFrame < 0) continue;
+    if (toSourceFrame <= fromSourceFrame) continue;
+    const key = `${fromSourceFrame}:${toSourceFrame}`;
+    if (seen.has(key)) continue;
+    if (adjacentSegments && !adjacentSegments.has(key)) continue;
+    seen.add(key);
+    overrides.push({
+      fromSourceFrame,
+      toSourceFrame,
+      inBetweenCount: clampRotoInBetweenCount(entry.inBetweenCount),
+    });
+  }
+  return overrides.sort((a, b) => a.fromSourceFrame - b.fromSourceFrame || a.toSourceFrame - b.toSourceFrame);
+}
+
+function getAdjacentSourceSegmentKeys(realKeys: readonly number[]): Set<string> {
+  const sorted = Array.from(new Set(realKeys.filter(frame => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
+  const segments = new Set<string>();
+  for (let index = 0; index < sorted.length - 1; index++) segments.add(`${sorted[index]}:${sorted[index + 1]}`);
+  return segments;
+}
+
+function _mergeInferredRotoInterpolationSettings(settings: PhysicPaintRotoInterpolationSettings, realKeys: readonly number[]): PhysicPaintRotoInterpolationSettings {
+  if (!settings.enabled) return _cloneRotoInterpolationSettings(settings);
+  const explicit = normalizeRotoSegmentSpacingOverrides(settings.segmentSpacingOverrides, realKeys);
+  const bySegment = new Map(explicit.map(override => [`${override.fromSourceFrame}:${override.toSourceFrame}`, override]));
+  for (const inferred of inferRotoSegmentSpacingOverrides([...realKeys], settings)) {
+    if (inferred.toSourceFrame - inferred.fromSourceFrame <= settings.inBetweenCount + 1) continue;
+    const key = `${inferred.fromSourceFrame}:${inferred.toSourceFrame}`;
+    if (!bySegment.has(key)) bySegment.set(key, inferred);
+  }
+  const overrides = Array.from(bySegment.values()).sort((a, b) => a.fromSourceFrame - b.fromSourceFrame || a.toSourceFrame - b.toSourceFrame);
+  return {
+    ...settings,
+    ...(overrides.length > 0 ? { segmentSpacingOverrides: overrides } : {}),
   };
 }
 
@@ -857,10 +912,19 @@ export const physicPaintStore = {
       }
       _pruneFramesOutsideRotoCacheMetadata(output.layer_id);
       if (output.roto_interpolation_settings !== undefined) {
-        const settings = _normalizeRotoInterpolationSettings(output.roto_interpolation_settings);
-        _rotoInterpolationSettings.set(output.layer_id, settings);
-        if (!settings.enabled || _getRealRotoKeyFrames(output.layer_id).length >= 2) {
-          _tryRegenerateGeneratedRotoCache(output.layer_id, settings);
+        const realKeys = _getRealRotoKeyFrames(output.layer_id);
+        const settings = _normalizeRotoInterpolationSettings(output.roto_interpolation_settings, realKeys);
+        const hasExplicitOverrides = Array.isArray(output.roto_interpolation_settings.segmentSpacingOverrides) && output.roto_interpolation_settings.segmentSpacingOverrides.length > 0;
+        const hasPersistedGeneratedMetadata = Array.isArray(output.roto_cache_metadata) && output.roto_cache_metadata.some(frame => frame?.source === 'generated-interpolation');
+        const persistedGeneratedValid = hasPersistedGeneratedMetadata && Array.isArray(output.roto_cache_metadata) && output.roto_cache_metadata
+          .filter(frame => frame?.source === 'generated-interpolation')
+          .every(frame => frame && isPhysicPaintRotoCacheFrame(frame) && realKeys.includes(frame.fromSourceFrame ?? -1) && (frame.toSourceFrame === undefined || realKeys.includes(frame.toSourceFrame)));
+        const nextSettings = hasExplicitOverrides || !persistedGeneratedValid
+          ? _mergeInferredRotoInterpolationSettings(settings, realKeys)
+          : settings;
+        _rotoInterpolationSettings.set(output.layer_id, nextSettings);
+        if (!nextSettings.enabled || realKeys.length >= 2) {
+          _tryRegenerateGeneratedRotoCache(output.layer_id, nextSettings);
         }
       }
       const metadata = _metadataFromMce(output);
@@ -877,7 +941,7 @@ export const physicPaintStore = {
   },
 
   getRotoInterpolationSettings(layerId: string): PhysicPaintRotoInterpolationSettings {
-    return { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, ...(_rotoInterpolationSettings.get(layerId) ?? {}) };
+    return _cloneRotoInterpolationSettings({ ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, ...(_rotoInterpolationSettings.get(layerId) ?? {}) });
   },
 
   getRotoInterpolationFailureStatus(layerId: string): string | null {
@@ -885,7 +949,14 @@ export const physicPaintStore = {
   },
 
   setRotoInterpolationSettings(layerId: string, settings: Partial<PhysicPaintRotoInterpolationSettings>): PhysicPaintRenderedFrame[] {
-    const normalized = _normalizeRotoInterpolationSettings(settings);
+    const realKeys = _getRealRotoKeyFrames(layerId);
+    const current = _rotoInterpolationSettings.get(layerId);
+    const source = {
+      ...(current ?? {}),
+      ...settings,
+      segmentSpacingOverrides: settings.segmentSpacingOverrides ?? current?.segmentSpacingOverrides,
+    };
+    const normalized = _normalizeRotoInterpolationSettings(source, realKeys);
     _rotoInterpolationSettings.set(layerId, normalized);
     const { changed, generatedFrames } = _tryRegenerateGeneratedRotoCache(layerId, normalized);
     if (changed || _rotoInterpolationSettings.has(layerId)) _notifyVisualChange();
@@ -906,7 +977,7 @@ export const physicPaintStore = {
     }
     if (layerFrames.size === 0) _frames.delete(layerId);
     if (generatedMetadata.size === 0) _rotoGeneratedCacheMetadata.delete(layerId);
-    if (settings) _rotoInterpolationSettings.set(layerId, _cloneRotoInterpolationSettings(settings));
+    if (settings) _rotoInterpolationSettings.set(layerId, _mergeInferredRotoInterpolationSettings(_normalizeRotoInterpolationSettings(settings, _getRealRotoKeyFrames(layerId)), _getRealRotoKeyFrames(layerId)));
     if (removed || added || settings) _notifyVisualChange();
     return true;
   },

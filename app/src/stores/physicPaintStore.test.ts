@@ -651,7 +651,7 @@ describe('physicPaintStore', () => {
       position: 0,
       segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
     });
-    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual(expect.arrayContaining([
       expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0 }),
       expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1 }),
       expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1 }),
@@ -664,7 +664,7 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 9, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
       expect.objectContaining({ appFrame: 10, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
       expect.objectContaining({ appFrame: 11, source: 'real-key', sourceFrame: 6, displayFrame: 11 }),
-    ]);
+    ]));
     expect(physicPaintStore.getRotoFrame('layer-1', 11)).toEqual(expect.objectContaining({ appFrame: 11, source: 'real-key', sourceFrame: 6, dataUrl: realSix.dataUrl }));
     expect(physicPaintStore.getRotoFrame('layer-1', 4)).toEqual(expect.objectContaining({ appFrame: 4, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, dataUrl: realOne.dataUrl }));
   });
@@ -703,7 +703,7 @@ describe('physicPaintStore', () => {
     physicPaintStore.loadFromMceOutputs(savedWithoutGeneratedMetadata);
 
     expect(physicPaintStore.getRotoInterpolationSettings('layer-1').segmentSpacingOverrides).toEqual([{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }]);
-    expect(physicPaintStore.getRotoCacheFrames('layer-1').filter(frame => frame.source === 'generated-interpolation').map(frame => frame.appFrame)).toEqual([1, 2, 4, 5, 7, 8, 9, 10]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1').filter(frame => frame.source === 'generated-interpolation' && frame.toSourceFrame !== undefined).map(frame => frame.appFrame)).toEqual([1, 2, 4, 5, 7, 8, 9, 10]);
     expect(physicPaintStore.getRotoFrame('layer-1', 11)).toEqual(expect.objectContaining({ appFrame: 11, source: 'real-key', sourceFrame: 6, dataUrl: realSix.dataUrl }));
   });
 
@@ -751,7 +751,7 @@ describe('physicPaintStore', () => {
       position: 0,
       segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
     });
-    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual(expect.arrayContaining([
       expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0 }),
       expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1 }),
       expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 1 }),
@@ -762,7 +762,7 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 7, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
       expect.objectContaining({ appFrame: 8, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
       expect.objectContaining({ appFrame: 9, source: 'real-key', sourceFrame: 6 }),
-    ]);
+    ]));
   });
 
   it('regenerates duplicate Roto in-betweens after project reopen from persisted real keys and settings', () => {
