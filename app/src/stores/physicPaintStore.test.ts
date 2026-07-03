@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { clampPhysicPaintFrameCount } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, clampPhysicPaintFrameCount } from '../types/physicPaint';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
 
@@ -619,6 +619,149 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', nearestRealKeyFrame: 1, fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 1 / 3 }),
       expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', nearestRealKeyFrame: 1, fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 2 / 3 }),
       expect.objectContaining({ appFrame: 4, source: 'real-key' }),
+    ]);
+  });
+
+  it('D-01/D-02 infers custom spacing from distant source-key gaps while compact segments stay global-controlled on load', () => {
+    const realZero = makeAlphaFrame(0, 0, 'source-zero');
+    const realOne = makeAlphaFrame(0, 1, 'source-one');
+    const realTwo = makeAlphaFrame(0, 2, 'source-two');
+    const realSix = makeAlphaFrame(0, 6, 'source-six');
+
+    physicPaintStore.loadFromMceOutputs([{
+      layer_id: 'layer-1',
+      frames: [realZero, realOne, realTwo, realSix],
+      workflow_mode: 'roto',
+      editable_source: 'roto',
+      roto_cache_metadata: [
+        { ...realZero, source: 'real-key' },
+        { ...realOne, source: 'real-key' },
+        { ...realTwo, source: 'real-key' },
+        { ...realSix, source: 'real-key' },
+        { ...makeAlphaFrame(0, 4, 'stale-generated'), appFrame: 4, source: 'generated-interpolation', nearestRealKeyFrame: 99, fromSourceFrame: 99, toSourceFrame: 100, interpolationT: 0.5 },
+      ],
+      roto_interpolation_settings: { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 },
+    }]);
+
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1')).toEqual({
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+    });
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0 }),
+      expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1 }),
+      expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1 }),
+      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 1, displayFrame: 3 }),
+      expect.objectContaining({ appFrame: 4, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2 }),
+      expect.objectContaining({ appFrame: 5, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2 }),
+      expect.objectContaining({ appFrame: 6, source: 'real-key', sourceFrame: 2, displayFrame: 6 }),
+      expect.objectContaining({ appFrame: 7, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
+      expect.objectContaining({ appFrame: 8, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
+      expect.objectContaining({ appFrame: 9, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
+      expect.objectContaining({ appFrame: 10, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
+      expect.objectContaining({ appFrame: 11, source: 'real-key', sourceFrame: 6, displayFrame: 11 }),
+    ]);
+    expect(physicPaintStore.getRotoFrame('layer-1', 11)).toEqual(expect.objectContaining({ appFrame: 11, source: 'real-key', sourceFrame: 6, dataUrl: realSix.dataUrl }));
+    expect(physicPaintStore.getRotoFrame('layer-1', 4)).toEqual(expect.objectContaining({ appFrame: 4, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, dataUrl: realOne.dataUrl }));
+  });
+
+  it('D-04 serializes source-endpoint overrides and rebuilds generated cache without trusting stale generated metadata', () => {
+    const realZero = makeAlphaFrame(0, 0, 'explicit-zero');
+    const realOne = makeAlphaFrame(0, 1, 'explicit-one');
+    const realTwo = makeAlphaFrame(0, 2, 'explicit-two');
+    const realSix = makeAlphaFrame(0, 6, 'explicit-six');
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, realZero);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, realOne);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, realTwo);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, realSix);
+    physicPaintStore.setRotoInterpolationSettings('layer-1', {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+    });
+
+    const saved = physicPaintStore.toMceOutputs();
+    expect(saved[0]).toEqual(expect.objectContaining({
+      roto_interpolation_settings: expect.objectContaining({
+        segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+      }),
+    }));
+    const savedWithoutGeneratedMetadata = saved.map(output => ({
+      ...output,
+      frames: output.frames.filter(frame => frame.source !== 'generated-interpolation'),
+      roto_cache_metadata: output.roto_cache_metadata?.filter(frame => frame.source !== 'generated-interpolation'),
+    }));
+
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(savedWithoutGeneratedMetadata);
+
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1').segmentSpacingOverrides).toEqual([{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1').filter(frame => frame.source === 'generated-interpolation').map(frame => frame.appFrame)).toEqual([1, 2, 4, 5, 7, 8, 9, 10]);
+    expect(physicPaintStore.getRotoFrame('layer-1', 11)).toEqual(expect.objectContaining({ appFrame: 11, source: 'real-key', sourceFrame: 6, dataUrl: realSix.dataUrl }));
+  });
+
+  it('D-09 clamps excessive custom spacing and bounds generated cache output', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeAlphaFrame(0, 2, 'bounded-two'));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, makeAlphaFrame(0, 6, 'bounded-six'));
+
+    const generated = physicPaintStore.setRotoInterpolationSettings('layer-1', {
+      enabled: true,
+      inBetweenCount: 1,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 50 }],
+    });
+
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1').segmentSpacingOverrides).toEqual([{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES }]);
+    expect(generated).toHaveLength(PHYSIC_PAINT_MAX_APPLY_FRAMES);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1').filter(frame => frame.source === 'generated-interpolation')).toHaveLength(PHYSIC_PAINT_MAX_APPLY_FRAMES);
+  });
+
+  it('preserves custom segment spacing when the global count changes and invalidates the visual version', () => {
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, makeAlphaFrame(0, 0, 'global-zero'));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeAlphaFrame(0, 1, 'global-one'));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeAlphaFrame(0, 2, 'global-two'));
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, makeAlphaFrame(0, 6, 'global-six'));
+    physicPaintStore.setRotoInterpolationSettings('layer-1', {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+    });
+    const before = physicPaintVersion.value;
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 });
+
+    expect(physicPaintVersion.value).toBeGreaterThan(before);
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1')).toEqual({
+      enabled: true,
+      inBetweenCount: 1,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+    });
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0 }),
+      expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1 }),
+      expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 1 }),
+      expect.objectContaining({ appFrame: 3, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2 }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key', sourceFrame: 2 }),
+      expect.objectContaining({ appFrame: 5, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
+      expect.objectContaining({ appFrame: 6, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
+      expect.objectContaining({ appFrame: 7, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
+      expect.objectContaining({ appFrame: 8, source: 'generated-interpolation', fromSourceFrame: 2, toSourceFrame: 6 }),
+      expect.objectContaining({ appFrame: 9, source: 'real-key', sourceFrame: 6 }),
     ]);
   });
 
