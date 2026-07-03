@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
+import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../types/physicPaint';
 import {
   applyRotoKeyUtilityTransactionToLocalState,
   buildRotoKeyUtilityTransaction,
@@ -39,6 +39,123 @@ function blankFrame(appFrame: number): PhysicPaintRotoCacheFrame {
 function operationNames(operations: readonly RotoKeyUtilityOperation[]): string[] {
   return [...operations].sort();
 }
+
+describe('physicsPaintRotoKeyController segment spacing override transactions', () => {
+  it('36.13 D-10 rebases duplicate overrides through copied and shifted source keys', () => {
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'duplicate',
+      currentFrame: 2,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,real-zero'),
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(6, 'data:image/png;base64,real-six'),
+      ],
+      cachedRotoFrames: [],
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+      ],
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(transaction.realKeyFrameNumbers).toEqual([0, 2, 3, 7]);
+    expect(transaction.frameMappings).toEqual([
+      { fromFrame: 6, toFrame: 7, mode: 'move' },
+      { fromFrame: 2, toFrame: 3, mode: 'copy' },
+    ]);
+    expect(transaction.segmentSpacingOverrides).toEqual<PhysicPaintRotoSegmentSpacingOverride[]>([
+      { fromSourceFrame: 3, toSourceFrame: 7, inBetweenCount: 4 },
+    ]);
+  });
+
+  it('36.13 D-10 rebases insert overrides through shifted adjacent source keys', () => {
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'insert',
+      currentFrame: 3,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,real-zero'),
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(6, 'data:image/png;base64,real-six'),
+      ],
+      cachedRotoFrames: [],
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+      ],
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(transaction.realKeyFrameNumbers).toEqual([0, 2, 3, 7]);
+    expect(transaction.frameMappings).toEqual([
+      { fromFrame: 6, toFrame: 7, mode: 'move' },
+    ]);
+    expect(transaction.segmentSpacingOverrides).toEqual<PhysicPaintRotoSegmentSpacingOverride[]>([
+      { fromSourceFrame: 2, toSourceFrame: 7, inBetweenCount: 4 },
+    ]);
+  });
+
+  it('36.13 D-11 drops overrides touching the deleted key instead of transferring custom timing to the merged segment', () => {
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'delete',
+      currentFrame: 2,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,real-zero'),
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(6, 'data:image/png;base64,real-six'),
+      ],
+      cachedRotoFrames: [],
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+      ],
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(transaction.realKeyFrameNumbers).toEqual([0, 5]);
+    expect(transaction.frameMappings).toEqual([
+      { fromFrame: 6, toFrame: 5, mode: 'move' },
+    ]);
+    expect(transaction.segmentSpacingOverrides).toEqual([]);
+  });
+
+  it('36.13 D-12 creates a previous-segment override when paste resolves a far empty display target', () => {
+    const copiedFrame = frame(2, 'data:image/png;base64,real-two');
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'paste',
+      currentFrame: 11,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,real-zero'),
+        copiedFrame,
+      ],
+      cachedRotoFrames: [],
+      copiedKeyFrame: copiedFrame,
+      pasteTarget: {
+        displayFrame: 11,
+        sourceFrame: 6,
+        previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+      },
+      segmentSpacingOverrides: [],
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(transaction.realKeyFrameNumbers).toEqual([0, 2, 6]);
+    expect(transaction.activeFrame).toBe(6);
+    expect(transaction.frameMappings).toEqual([{ fromFrame: 2, toFrame: 6, mode: 'copy' }]);
+    expect(transaction.segmentSpacingOverrides).toEqual<PhysicPaintRotoSegmentSpacingOverride[]>([
+      { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+    ]);
+  });
+
+  it('36.13 D-13 blocks generated-frame copy state while allowing paste only from a copied real key', () => {
+    const state = deriveRotoKeyUtilityActionState({
+      currentFrame: 4,
+      realKeyFrameNumbers: [2, 6],
+      generatedFrameNumbers: [4],
+      hasCopiedRotoKey: false,
+    });
+
+    expect(state.currentIsGenerated).toBe(true);
+    expect(state.canCopy).toBe(false);
+    expect(state.disabledReason).toBe('Generated frame 4 is render-only. Use timeline navigation or playback; edit a real Roto key to paint.');
+  });
+});
 
 describe('physicsPaintRotoKeyController transaction coherence', () => {
   it('D-02/D-04/D-10 inserts a clean blank real key and excludes stale generated/reference payloads', () => {
