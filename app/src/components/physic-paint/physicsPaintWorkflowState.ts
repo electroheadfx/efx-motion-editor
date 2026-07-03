@@ -4,6 +4,7 @@ import {
   PHYSIC_PAINT_MIN_APPLY_FRAMES,
   clampPhysicPaintFrameCount,
   type PhysicPaintRotoCacheFrame,
+  type PhysicPaintRotoSegmentSpacingOverride,
 } from '../../types/physicPaint';
 
 export type PhysicsPaintWorkflowMode = 'roto' | 'play';
@@ -88,12 +89,19 @@ export interface PhysicsPaintPlayRange {
 
 export type RotoInterpolationMode = 'duplicate' | 'hold' | 'blend' | 'alpha-blend';
 
+export interface RotoSegmentSpacingOverride {
+  fromSourceFrame: number;
+  toSourceFrame: number;
+  inBetweenCount: number;
+}
+
 export interface RotoInterpolationSettings {
   enabled?: boolean;
   inBetweenCount?: number;
   mode?: RotoInterpolationMode;
   position?: number;
   deform?: number;
+  segmentSpacingOverrides?: readonly (RotoSegmentSpacingOverride | PhysicPaintRotoSegmentSpacingOverride)[];
 }
 
 export interface RotoInterpolationSpanFrame {
@@ -147,6 +155,12 @@ export interface RotoReplaceKeyResult {
   targetFrame: number;
   frames: number[];
   replaced: boolean;
+}
+
+export interface RotoFarEmptyDisplaySaveTarget {
+  displayFrame: number;
+  sourceFrame: number;
+  previousSegmentOverride: RotoSegmentSpacingOverride | null;
 }
 
 export interface RotoKeySourceEligibilityInput {
@@ -319,7 +333,8 @@ export function getPlayRangeMarker(startFrame: number, frameCount: number, curre
 
 export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoExpandedRealKeyFrame[] {
   const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
-  const inBetweenCount = settings.enabled === true ? clampPositiveInteger(settings.inBetweenCount, 1) : 0;
+  const globalInBetweenCount = settings.enabled === true ? clampPositiveInteger(settings.inBetweenCount, 1) : 0;
+  const overrides = normalizeRotoSegmentSpacingOverrides(settings.segmentSpacingOverrides, sourceKeys);
   const mode = normalizeRotoInterpolationMode(settings.mode);
   const expanded: RotoExpandedRealKeyFrame[] = [];
   let displayFrame = 0;
@@ -327,8 +342,9 @@ export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoI
   sourceKeys.forEach((sourceFrame, index) => {
     if (index === 0 && sourceFrame > 0) displayFrame = sourceFrame;
     expanded.push({ sourceFrame, frame: displayFrame, displayFrame, kind: 'real-key' });
-    if (settings.enabled === true && inBetweenCount > 0 && (index < sourceKeys.length - 1 || sourceKeys.length > 2)) {
+    if (settings.enabled === true && globalInBetweenCount > 0 && (index < sourceKeys.length - 1 || sourceKeys.length > 2)) {
       const toSourceFrame = sourceKeys[index + 1];
+      const inBetweenCount = getSegmentInBetweenCount(sourceFrame, toSourceFrame, globalInBetweenCount, overrides);
       for (let ordinal = 1; ordinal <= inBetweenCount; ordinal++) {
         const generatedFrame = displayFrame + ordinal;
         expanded.push({
@@ -364,14 +380,80 @@ export function getRotoInterpolationSpanFrames(realKeys: number[], settings: Rot
   return getExpandedRotoRealKeyFrames(realKeys, settings).filter((frame): frame is RotoInterpolationSpanFrame => frame.kind === 'generated-interpolation');
 }
 
+export function inferRotoSegmentSpacingOverrides(realKeys: number[], settings: RotoInterpolationSettings): RotoSegmentSpacingOverride[] {
+  if (settings.enabled !== true) return [];
+  const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
+  const globalInBetweenCount = clampPositiveInteger(settings.inBetweenCount, 1);
+  const overrides: RotoSegmentSpacingOverride[] = [];
+  for (let index = 0; index < sourceKeys.length - 1; index++) {
+    const fromSourceFrame = sourceKeys[index];
+    const toSourceFrame = sourceKeys[index + 1];
+    const sourceGap = toSourceFrame - fromSourceFrame;
+    if (sourceGap > globalInBetweenCount) {
+      overrides.push({ fromSourceFrame, toSourceFrame, inBetweenCount: clampRotoInBetweenCount(sourceGap) });
+    }
+  }
+  return overrides;
+}
+
+export function normalizeRotoSegmentSpacingOverrides(value: unknown, realKeys?: readonly number[]): RotoSegmentSpacingOverride[] {
+  if (!Array.isArray(value)) return [];
+  const adjacentSegments = realKeys ? getAdjacentSourceSegments(normalizeRealRotoKeyFrames([...realKeys])) : null;
+  const seen = new Set<string>();
+  const overrides: RotoSegmentSpacingOverride[] = [];
+  for (const candidate of value) {
+    if (!isRecord(candidate)) continue;
+    if (!isNonNegativeInteger(candidate.fromSourceFrame) || !isNonNegativeInteger(candidate.toSourceFrame)) continue;
+    if (candidate.toSourceFrame <= candidate.fromSourceFrame) continue;
+    if (!isPositiveFrameCount(candidate.inBetweenCount)) continue;
+    const key = `${candidate.fromSourceFrame}:${candidate.toSourceFrame}`;
+    if (seen.has(key)) continue;
+    if (adjacentSegments && !adjacentSegments.has(key)) continue;
+    seen.add(key);
+    overrides.push({
+      fromSourceFrame: candidate.fromSourceFrame,
+      toSourceFrame: candidate.toSourceFrame,
+      inBetweenCount: candidate.inBetweenCount,
+    });
+  }
+  return overrides.sort((a, b) => a.fromSourceFrame - b.fromSourceFrame || a.toSourceFrame - b.toSourceFrame);
+}
+
 export function getSourceRotoFrameForDisplayFrame(displayFrame: number, realKeys: number[], settings: RotoInterpolationSettings, mode: 'existing-or-next' | 'existing-only' = 'existing-or-next'): number | null {
   if (!isNonNegativeInteger(displayFrame)) return null;
   const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
   const entry = getExpandedRotoRealKeyFrames(sourceKeys, settings).find((candidate) => candidate.kind === 'real-key' && candidate.displayFrame === displayFrame);
   if (entry?.kind === 'real-key') return entry.sourceFrame;
   if (mode === 'existing-only') return null;
-  if (settings.enabled === true && sourceKeys.length > 0) return Math.max(...sourceKeys) + 1;
+  if (settings.enabled === true && sourceKeys.length > 0) {
+    const realEntries = getExpandedRotoRealKeyFrames(sourceKeys, settings).filter((candidate): candidate is Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }> => candidate.kind === 'real-key');
+    const lastDisplayFrame = realEntries[realEntries.length - 1]?.displayFrame ?? -1;
+    if (displayFrame === lastDisplayFrame + clampPositiveInteger(settings.inBetweenCount, 1) + 1) return Math.max(...sourceKeys) + 1;
+    return resolveRotoFarEmptyDisplaySaveTarget(displayFrame, sourceKeys, settings).sourceFrame;
+  }
   return displayFrame;
+}
+
+export function resolveRotoFarEmptyDisplaySaveTarget(displayFrame: number, realKeys: number[], settings: RotoInterpolationSettings): RotoFarEmptyDisplaySaveTarget {
+  const safeDisplayFrame = clampNonNegativeInteger(displayFrame, 0);
+  const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
+  if (settings.enabled !== true || sourceKeys.length === 0) {
+    return { displayFrame: safeDisplayFrame, sourceFrame: safeDisplayFrame, previousSegmentOverride: null };
+  }
+  const realEntries = getExpandedRotoRealKeyFrames(sourceKeys, settings).filter((entry): entry is Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }> => entry.kind === 'real-key');
+  const previous = [...realEntries].reverse().find((entry) => entry.displayFrame < safeDisplayFrame) ?? realEntries[realEntries.length - 1];
+  if (!previous) return { displayFrame: safeDisplayFrame, sourceFrame: safeDisplayFrame, previousSegmentOverride: null };
+  const generatedInBetweenCount = clampRotoInBetweenCount(Math.max(1, safeDisplayFrame - previous.displayFrame - 1));
+  const sourceFrame = previous.sourceFrame + generatedInBetweenCount;
+  return {
+    displayFrame: safeDisplayFrame,
+    sourceFrame,
+    previousSegmentOverride: {
+      fromSourceFrame: previous.sourceFrame,
+      toSourceFrame: sourceFrame,
+      inBetweenCount: generatedInBetweenCount,
+    },
+  };
 }
 
 export function getNearestRealRotoKeyFrame(frame: number, realKeys: number[]): number | null {
@@ -522,6 +604,20 @@ function normalizeSelectedRealKey(selectedFrame: number, sortedKeys: number[]): 
   return getNearestRealRotoKeyFrame(selectedFrame, sortedKeys) ?? sortedKeys[0];
 }
 
+function getSegmentInBetweenCount(fromSourceFrame: number, toSourceFrame: number | undefined, globalInBetweenCount: number, overrides: readonly RotoSegmentSpacingOverride[]): number {
+  if (toSourceFrame === undefined) return globalInBetweenCount;
+  const override = overrides.find((candidate) => candidate.fromSourceFrame === fromSourceFrame && candidate.toSourceFrame === toSourceFrame);
+  return override?.inBetweenCount ?? globalInBetweenCount;
+}
+
+function getAdjacentSourceSegments(sourceKeys: readonly number[]): Set<string> {
+  const segments = new Set<string>();
+  for (let index = 0; index < sourceKeys.length - 1; index++) {
+    segments.add(`${sourceKeys[index]}:${sourceKeys[index + 1]}`);
+  }
+  return segments;
+}
+
 function normalizeRotoInterpolationMode(mode: RotoInterpolationSettings['mode']): Extract<RotoInterpolationMode, 'duplicate' | 'blend'> {
   if (mode === 'duplicate' || mode === 'hold') return 'duplicate';
   return 'blend';
@@ -537,6 +633,23 @@ function clampPositiveInteger(value: unknown, fallback: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.max(1, Math.trunc(numeric));
+}
+
+function clampRotoInBetweenCount(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  const integer = Math.trunc(numeric);
+  if (integer < PHYSIC_PAINT_MIN_APPLY_FRAMES) return PHYSIC_PAINT_MIN_APPLY_FRAMES;
+  if (integer > PHYSIC_PAINT_MAX_APPLY_FRAMES) return PHYSIC_PAINT_MAX_APPLY_FRAMES;
+  return integer;
+}
+
+function isPositiveFrameCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= PHYSIC_PAINT_MIN_APPLY_FRAMES && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

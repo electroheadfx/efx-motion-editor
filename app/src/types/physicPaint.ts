@@ -31,12 +31,19 @@ export interface PhysicPaintPlayMotionSettings {
   strokePosition: number;
 }
 
+export interface PhysicPaintRotoSegmentSpacingOverride {
+  fromSourceFrame: number;
+  toSourceFrame: number;
+  inBetweenCount: number;
+}
+
 export interface PhysicPaintRotoInterpolationSettings {
   enabled: boolean;
   inBetweenCount: number;
   mode: PhysicPaintRotoInterpolationMode;
   deform: number;
   position: number;
+  segmentSpacingOverrides?: PhysicPaintRotoSegmentSpacingOverride[];
 }
 
 export interface PhysicPaintRotoCacheFrame extends PhysicPaintRenderedFrame {
@@ -420,8 +427,27 @@ export function isPhysicPaintRotoInterpolationSettings(value: unknown): value is
     isRotoInBetweenFrameCount(value.inBetweenCount) &&
     (value.mode === 'duplicate' || value.mode === 'blend') &&
     isPercentInteger(value.deform) &&
-    isPercentInteger(value.position)
+    isPercentInteger(value.position) &&
+    optionalRotoSegmentSpacingOverrides(value.segmentSpacingOverrides)
   );
+}
+
+export function normalizePhysicPaintRotoSegmentSpacingOverrides(value: unknown): PhysicPaintRotoSegmentSpacingOverride[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const overrides: PhysicPaintRotoSegmentSpacingOverride[] = [];
+  for (const candidate of value) {
+    if (!isPhysicPaintRotoSegmentSpacingOverride(candidate)) continue;
+    const key = `${candidate.fromSourceFrame}:${candidate.toSourceFrame}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    overrides.push({
+      fromSourceFrame: candidate.fromSourceFrame,
+      toSourceFrame: candidate.toSourceFrame,
+      inBetweenCount: candidate.inBetweenCount,
+    });
+  }
+  return overrides.sort((a, b) => a.fromSourceFrame - b.fromSourceFrame || a.toSourceFrame - b.toSourceFrame);
 }
 
 export function isPhysicPaintRotoBackgroundMetadata(value: unknown): value is PhysicPaintRotoBackgroundMetadata {
@@ -565,6 +591,27 @@ function optionalRotoCacheFrames(value: unknown): boolean {
 
 function optionalRotoInterpolationSettings(value: unknown): boolean {
   return value === undefined || isPhysicPaintRotoInterpolationSettings(value);
+}
+
+function optionalRotoSegmentSpacingOverrides(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  const seen = new Set<string>();
+  for (const candidate of value) {
+    if (!isPhysicPaintRotoSegmentSpacingOverride(candidate)) return false;
+    const key = `${candidate.fromSourceFrame}:${candidate.toSourceFrame}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
+}
+
+function isPhysicPaintRotoSegmentSpacingOverride(value: unknown): value is PhysicPaintRotoSegmentSpacingOverride {
+  if (!isRecord(value)) return false;
+  if (!isNonNegativeInteger(value.fromSourceFrame)) return false;
+  if (!isNonNegativeInteger(value.toSourceFrame)) return false;
+  if (value.toSourceFrame <= value.fromSourceFrame) return false;
+  return isRotoInBetweenFrameCount(value.inBetweenCount);
 }
 
 function optionalFrameCount(value: unknown): boolean {
