@@ -9,6 +9,7 @@ import {
   isPhysicPaintRotoBackgroundMetadata,
   isPhysicPaintRotoCacheFrame,
   isPhysicPaintRotoInterpolationSettings,
+  normalizePhysicPaintRotoSegmentSpacingOverrides,
   normalizePhysicPaintPlayScriptRanges,
 } from './physicPaint';
 
@@ -109,6 +110,35 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 1.5, mode: 'blend', deform: 10, position: 20 })).toBe(false);
     expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1, mode: 'blend', deform: 10, position: 20 })).toBe(false);
     expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'warp', deform: 10, position: 20 })).toBe(false);
+  });
+
+
+
+  it('D-04 validates durable Roto segment spacing overrides on interpolation settings', () => {
+    expect(isPhysicPaintRotoInterpolationSettings({
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'blend',
+      deform: 10,
+      position: 20,
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+    })).toBe(true);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, segmentSpacingOverrides: [{ fromSourceFrame: -1, toSourceFrame: 6, inBetweenCount: 4 }] })).toBe(false);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, segmentSpacingOverrides: [{ fromSourceFrame: 6, toSourceFrame: 2, inBetweenCount: 4 }] })).toBe(false);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 1.5 }] })).toBe(false);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 }] })).toBe(false);
+  });
+
+  it('D-04 normalizes stored Roto segment spacing overrides without duplicate or malformed segments', () => {
+    expect(normalizePhysicPaintRotoSegmentSpacingOverrides([
+      { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+      { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 5 },
+      { fromSourceFrame: 1, toSourceFrame: 2, inBetweenCount: 1.5 },
+      { fromSourceFrame: 0, toSourceFrame: 1, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 },
+      { fromSourceFrame: 4, toSourceFrame: 3, inBetweenCount: 1 },
+    ])).toEqual([
+      { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+    ]);
   });
 
   it('validates generated Roto cache frames separately from real keys', () => {

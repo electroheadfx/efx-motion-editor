@@ -15,10 +15,13 @@ import {
   insertRotoKeyFrame,
   getRotoCellFill,
   getRotoInterpolationSpanFrames,
+  inferRotoSegmentSpacingOverrides,
+  normalizeRotoSegmentSpacingOverrides,
   getRotoCellStateLabel,
   getExpandedRotoRealKeyFrames,
   getRotoCellViewModel,
   getSourceRotoFrameForDisplayFrame,
+  resolveRotoFarEmptyDisplaySaveTarget,
   getRotoMissingFrameStatus,
   getRotoPendingLabel,
   getRotoReplacementSuccessLabel,
@@ -30,7 +33,7 @@ import {
   type RotoCellFill,
   type RotoCellOverlay,
 } from './physicsPaintWorkflowState';
-import type { PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 
 describe('physicsPaintWorkflowState', () => {
   it('returns active primary action labels for Roto and Play workflow tabs (D-10, D-11, D-12, D-16)', () => {
@@ -294,6 +297,77 @@ describe('physicsPaintWorkflowState', () => {
     expect(getSourceRotoFrameForDisplayFrame(12, [0, 1, 2], settings)).toBe(3);
     expect(getSourceRotoFrameForDisplayFrame(29, [0, 1, 2, 3], settings)).toBe(4);
     expect(getSourceRotoFrameForDisplayFrame(21, [0, 1, 2, 3, 4], { ...settings, enabled: false })).toBe(21);
+  });
+
+
+
+  it('D-01/D-02 infers custom spacing only for distant adjacent source-key gaps', () => {
+    expect(inferRotoSegmentSpacingOverrides([0, 1, 2], { enabled: true, inBetweenCount: 2, mode: 'duplicate' })).toEqual([]);
+    expect(inferRotoSegmentSpacingOverrides([0, 1, 2, 6], { enabled: true, inBetweenCount: 2, mode: 'duplicate' })).toEqual([
+      { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+    ]);
+    expect(inferRotoSegmentSpacingOverrides([0, 1, 2, 6], { enabled: false, inBetweenCount: 2, mode: 'duplicate' })).toEqual([]);
+  });
+
+  it('D-04 normalizes source-endpoint overrides and rejects malformed or non-adjacent segments', () => {
+    expect(normalizeRotoSegmentSpacingOverrides([
+      { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+      { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 3 },
+      { fromSourceFrame: 6, toSourceFrame: 2, inBetweenCount: 4 },
+      { fromSourceFrame: 0, toSourceFrame: 2, inBetweenCount: 2 },
+      { fromSourceFrame: 1, toSourceFrame: 2, inBetweenCount: 1.5 },
+      { fromSourceFrame: 2, toSourceFrame: 7, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 10 },
+    ], [0, 1, 2, 6, 7])).toEqual([
+      { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+    ]);
+  });
+
+  it('D-01 through D-04 maps compact and custom source keys to literal display real-key positions', () => {
+    expect(getExpandedRotoRealKeyFrames([0, 1, 2], { enabled: true, inBetweenCount: 2, mode: 'blend' })
+      .filter((entry) => entry.kind === 'real-key')
+      .map((entry) => ({ sourceFrame: entry.sourceFrame, displayFrame: entry.displayFrame }))).toEqual([
+        { sourceFrame: 0, displayFrame: 0 },
+        { sourceFrame: 1, displayFrame: 3 },
+        { sourceFrame: 2, displayFrame: 6 },
+      ]);
+
+    expect(getExpandedRotoRealKeyFrames([0, 1, 2, 6], {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'blend',
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+    }).filter((entry) => entry.kind === 'real-key').map((entry) => ({ sourceFrame: entry.sourceFrame, displayFrame: entry.displayFrame }))).toEqual([
+      { sourceFrame: 0, displayFrame: 0 },
+      { sourceFrame: 1, displayFrame: 3 },
+      { sourceFrame: 2, displayFrame: 6 },
+      { sourceFrame: 6, displayFrame: 11 },
+    ]);
+
+    expect(getExpandedRotoRealKeyFrames([0, 1, 2, 6], { enabled: false, inBetweenCount: 2, mode: 'blend' })
+      .filter((entry) => entry.kind === 'real-key')
+      .map((entry) => entry.displayFrame)).toEqual([0, 1, 2, 6]);
+  });
+
+  it('D-04 preserves custom segment spacing when global interpolation count changes', () => {
+    const overrides = [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }];
+
+    expect(getExpandedRotoRealKeyFrames([0, 1, 2, 6], { enabled: true, inBetweenCount: 1, mode: 'blend', segmentSpacingOverrides: overrides })
+      .filter((entry) => entry.kind === 'real-key')
+      .map((entry) => entry.displayFrame)).toEqual([0, 2, 4, 9]);
+    expect(getExpandedRotoRealKeyFrames([0, 1, 2, 6], { enabled: true, inBetweenCount: 3, mode: 'blend', segmentSpacingOverrides: overrides })
+      .filter((entry) => entry.kind === 'real-key')
+      .map((entry) => entry.displayFrame)).toEqual([0, 4, 8, 13]);
+    expect(getRotoInterpolationSpanFrames([0, 1, 2, 6], { enabled: true, inBetweenCount: 3, mode: 'blend', segmentSpacingOverrides: overrides })
+      .filter((entry) => entry.fromSourceFrame === 2 && entry.toSourceFrame === 6)
+      .map((entry) => entry.displayFrame)).toEqual([9, 10, 11, 12]);
+  });
+
+  it('D-03 resolves far empty display saves to compressed source keys and a previous-segment override', () => {
+    expect(resolveRotoFarEmptyDisplaySaveTarget(11, [0, 1, 2], { enabled: true, inBetweenCount: 2, mode: 'duplicate' })).toEqual({
+      displayFrame: 11,
+      sourceFrame: 6,
+      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+    });
   });
 
   it('preserves interpolation enabled, count, and accepted mode settings for duplicate/hold and alpha blend', () => {
