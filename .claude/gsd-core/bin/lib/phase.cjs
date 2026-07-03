@@ -32,7 +32,7 @@ const coreUtilsMod = require("./core-utils.cjs");
 const { toPosixPath, generateSlugInternal, readSubdirectories } = coreUtilsMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-id.cjs is an export= CommonJS module
 const phaseIdMod = require("./phase-id.cjs");
-const { escapeRegex, normalizePhaseName, phaseMarkdownRegexSource, comparePhaseNum, phaseTokenMatches, OPTIONAL_PROJECT_CODE_PREFIX_SOURCE, } = phaseIdMod;
+const { escapeRegex, normalizePhaseName, phaseMarkdownRegexSource, comparePhaseNum, phaseTokenMatches, OPTIONAL_PROJECT_CODE_PREFIX_SOURCE, OPTIONAL_PHASE_TAG_SOURCE, } = phaseIdMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-locator.cjs is an export= CommonJS module
 const phaseLocatorMod = require("./phase-locator.cjs");
 const { findPhaseInternal, getArchivedPhaseDirs } = phaseLocatorMod;
@@ -181,7 +181,7 @@ function cmdPhaseNextDecimal(cwd, basePhase, raw) {
         if (node_fs_1.default.existsSync(roadmapPath)) {
             try {
                 const roadmapContent = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
-                const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${phaseMarkdownRegexSource(normalized)}\\.(\\d+)\\s*:`, 'gi');
+                const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${phaseMarkdownRegexSource(normalized)}\\.(\\d+)${OPTIONAL_PHASE_TAG_SOURCE}\\s*:`, 'gi');
                 let pm;
                 while ((pm = phasePattern.exec(roadmapContent)) !== null) {
                     decimalSet.add(parseInt(pm[1], 10));
@@ -221,7 +221,7 @@ function getRoadmapModeForPhase(cwd, phaseNum) {
     const milestoneContent = extractCurrentMilestone(rawContent, cwd);
     const fullContent = stripShippedMilestones(rawContent);
     const escapedPhase = phaseMarkdownRegexSource(phaseNum);
-    const phaseHeader = new RegExp(`#{2,4}\\s*Phase\\s+${escapedPhase}\\s*:`, 'i');
+    const phaseHeader = new RegExp(`#{2,4}\\s*Phase\\s+${escapedPhase}${OPTIONAL_PHASE_TAG_SOURCE}\\s*:`, 'i');
     for (const content of [milestoneContent, fullContent]) {
         const headerMatch = content.match(phaseHeader);
         if (!headerMatch || headerMatch.index === undefined)
@@ -578,7 +578,8 @@ function cmdPhaseAdd(cwd, description, raw, customId) {
             // Three sources are scanned so that a phase in ANY representation
             // (section header, roadmap bullet, or on-disk directory) is counted:
             // 1) Section headers: ### Phase N: / ## Phase N: / #### Phase N:
-            const headerPattern = /#{2,4}\s*Phase\s+(\d+)[A-Z]?(?:\.\d+)*:/gi;
+            // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+            const headerPattern = /#{2,4}\s*Phase\s+(\d+)[A-Z]?(?:\.\d+)*(?:\s*\([^)\n]*\))?:/gi;
             // 2) Roadmap bullet entries: - [ ] **Phase N: ...** (all checkbox variants)
             // The lookahead accepts colon, decimal-dot, whitespace, bold-close asterisk,
             // or end-of-line so titleless forms ("- [ ] **Phase 11**", "- [ ] Phase 11")
@@ -662,7 +663,8 @@ function cmdPhaseAddBatch(cwd, descriptions, raw) {
         const content = extractCurrentMilestone(rawContent, cwd);
         let maxPhase = 0;
         if (config.phase_naming !== 'custom') {
-            const phasePattern = /#{2,4}\s*Phase\s+(\d+)[A-Z]?(?:\.\d+)*:/gi;
+            // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+            const phasePattern = /#{2,4}\s*Phase\s+(\d+)[A-Z]?(?:\.\d+)*(?:\s*\([^)\n]*\))?:/gi;
             let m;
             while ((m = phasePattern.exec(content)) !== null) {
                 const num = parseInt(m[1], 10);
@@ -740,14 +742,14 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
         const content = extractCurrentMilestone(rawContent, cwd);
         const normalizedAfter = normalizePhaseName(afterPhase);
         const afterPhaseEscaped = phaseMarkdownRegexSource(normalizedAfter);
-        const targetPattern = new RegExp(`#{2,4}\\s*Phase\\s+${afterPhaseEscaped}:`, 'i');
+        const targetPattern = new RegExp(`#{2,4}\\s*Phase\\s+${afterPhaseEscaped}${OPTIONAL_PHASE_TAG_SOURCE}:`, 'i');
         const headingMatch = targetPattern.test(content);
-        const bulletPattern = new RegExp(`-\\s*\\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+${afterPhaseEscaped}[:\\s]`, 'i');
+        const bulletPattern = new RegExp(`-\\s*\\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+${afterPhaseEscaped}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s]`, 'i');
         const anyHeadingPattern = /#{2,4}\s*Phase\s+\d/i;
         const roadmapHasHeadingPhases = anyHeadingPattern.test(content);
         const isBulletStyle = !headingMatch && bulletPattern.test(content) && !roadmapHasHeadingPhases;
         if (!headingMatch && !isBulletStyle) {
-            const checklistPattern = new RegExp(`-\\s*\\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+${afterPhaseEscaped}[:\\s]`, 'i');
+            const checklistPattern = new RegExp(`-\\s*\\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+${afterPhaseEscaped}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s]`, 'i');
             if (checklistPattern.test(content)) {
                 error(`Phase ${afterPhase} exists in roadmap summary but is missing a detail section (### Phase ${afterPhase}: ...).`);
             }
@@ -769,7 +771,7 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
         catch {
             /* intentionally empty */
         }
-        const rmPhasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${phaseMarkdownRegexSource(normalizedBase)}\\.(\\d+)\\s*:`, 'gi');
+        const rmPhasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${phaseMarkdownRegexSource(normalizedBase)}\\.(\\d+)${OPTIONAL_PHASE_TAG_SOURCE}\\s*:`, 'gi');
         let rmMatch;
         while ((rmMatch = rmPhasePattern.exec(rawContent)) !== null) {
             decimalSet.add(parseInt(rmMatch[1], 10));
@@ -785,13 +787,13 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
         (0, shell_command_projection_cjs_1.platformWriteSync)(node_path_1.default.join(dirPath, '.gitkeep'), '');
         let updatedContent;
         if (isBulletStyle) {
-            const boldBulletPattern = new RegExp(`-\\s*\\[[ x]\\]\\s*\\*\\*Phase\\s+${afterPhaseEscaped}:`, 'i');
+            const boldBulletPattern = new RegExp(`-\\s*\\[[ x]\\]\\s*\\*\\*Phase\\s+${afterPhaseEscaped}${OPTIONAL_PHASE_TAG_SOURCE}:`, 'i');
             const useBold = boldBulletPattern.test(content);
             const phaseLabel = useBold
                 ? `**Phase ${_decimalPhase}: ${description}**`
                 : `Phase ${_decimalPhase}: ${description}`;
             const bulletEntry = `\n- [ ] ${phaseLabel}`;
-            const targetBulletPattern = new RegExp(`(-\\s*\\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+${afterPhaseEscaped}[:\\s][^\\n]*)`, 'i');
+            const targetBulletPattern = new RegExp(`(-\\s*\\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+${afterPhaseEscaped}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s][^\\n]*)`, 'i');
             const bulletMatchResult = rawContent.match(targetBulletPattern);
             if (!bulletMatchResult) {
                 error(`Could not find Phase ${afterPhase} bullet line`);
@@ -811,7 +813,7 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
         }
         else {
             const phaseEntry = `\n### Phase ${_decimalPhase}: ${description} (INSERTED)\n\n**Goal:** [Urgent work - to be planned]\n**Requirements**: TBD\n**Depends on:** Phase ${afterPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run ${(0, runtime_slash_cjs_1.formatGsdSlash)('plan-phase', (0, runtime_slash_cjs_1.resolveRuntime)(cwd))} ${_decimalPhase} to break down)\n`;
-            const headerPattern = new RegExp(`(#{2,4}\\s*Phase\\s+${afterPhaseEscaped}:[^\\n]*\\n)`, 'i');
+            const headerPattern = new RegExp(`(#{2,4}\\s*Phase\\s+${afterPhaseEscaped}${OPTIONAL_PHASE_TAG_SOURCE}:[^\\n]*\\n)`, 'i');
             const headerMatch = rawContent.match(headerPattern);
             if (!headerMatch) {
                 error(`Could not find Phase ${afterPhase} header`);
@@ -940,11 +942,13 @@ function updateRoadmapAfterPhaseRemoval(roadmapPath, targetPhase, isDecimal, rem
     withPlanningLock(cwd, () => {
         let content = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
         const escaped = escapeRegex(targetPhase);
-        content = content.replace(new RegExp(`\\n?(?<h>#{2,4})\\s*Phase\\s+${escaped}\\s*:[\\s\\S]*?(?=\\n\\k<h>(?!#)\\s+Phase\\s+[^\\n:]+\\s*:|$)`, 'i'), '');
-        content = content.replace(new RegExp(`\\n?-\\s*\\[[ x]\\]\\s*.*Phase\\s+${escaped}[:\\s][^\\n]*`, 'gi'), '');
+        content = content.replace(new RegExp(`\\n?(?<h>#{2,4})\\s*Phase\\s+${escaped}${OPTIONAL_PHASE_TAG_SOURCE}\\s*:[\\s\\S]*?(?=\\n\\k<h>(?!#)\\s+Phase\\s+[^\\n:]+\\s*:|$)`, 'i'), '');
+        content = content.replace(new RegExp(`\\n?-\\s*\\[[ x]\\]\\s*.*Phase\\s+${escaped}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s][^\\n]*`, 'gi'), '');
         content = content.replace(new RegExp(`\\n?\\|\\s*${escaped}\\.?\\s[^|]*\\|[^\\n]*`, 'gi'), '');
         if (!isDecimal) {
-            content = content.replace(/(#{2,4}\s*Phase\s+)(\d+(?:\.\d+)?)(\s*:)/gi, (_match, prefix, num, suffix) => `${prefix}${decrementRoadmapPhaseToken(num, removedInt)}${suffix}`);
+            // #1729: fold an optional pre-colon ( ) tag into the suffix capture so it
+            // is re-emitted verbatim — a tagged later phase still gets renumbered.
+            content = content.replace(/(#{2,4}\s*Phase\s+)(\d+(?:\.\d+)?)((?:\s*\([^)\n]*\))?\s*:)/gi, (_match, prefix, num, suffix) => `${prefix}${decrementRoadmapPhaseToken(num, removedInt)}${suffix}`);
             content = content.replace(/(-\s*\[[ x]\]\s*.*?Phase\s+)(\d+)(\s*:|\s+)/gi, (_match, prefix, num, suffix) => `${prefix}${decrementRoadmapPhaseNumber(num, removedInt)}${suffix}`);
             content = content.replace(/(\|\s*)(\d+)(\.\s)/g, (_match, prefix, num, suffix) => `${prefix}${decrementRoadmapPhaseNumber(num, removedInt)}${suffix}`);
             content = content.replace(/(?<![0-9-])(\d{2})-(\d{2})(?=(?:(?:-[A-Za-z][A-Za-z0-9-]*)?-(?:PLAN|SUMMARY)\.md)|(?![0-9-]))/g, (_match, phaseNum, planNum) => `${decrementRoadmapPaddedPhaseNumber(phaseNum, removedInt)}-${planNum}`);
@@ -1047,7 +1051,7 @@ function phaseDisplayNameFromRoadmap(roadmapContent, phaseNum) {
     if (!roadmapContent || !phaseNum)
         return null;
     const phaseEscaped = phaseMarkdownRegexSource(phaseNum);
-    const heading = roadmapContent.match(new RegExp(`^#{2,4}\\s*Phase\\s+${phaseEscaped}\\s*:\\s*([^\\n]+)`, 'im'));
+    const heading = roadmapContent.match(new RegExp(`^#{2,4}\\s*Phase\\s+${phaseEscaped}${OPTIONAL_PHASE_TAG_SOURCE}\\s*:\\s*([^\\n]+)`, 'im'));
     if (!heading)
         return null;
     const name = heading[1].replace(/\(INSERTED\)/i, '').trim();
@@ -1128,7 +1132,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                 const originalRoadmapContent = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
                 roadmapContent = originalRoadmapContent;
                 const phaseEscaped = phaseMarkdownRegexSource(phaseNum);
-                const checkboxPattern = new RegExp(`(-\\s*\\[)[ ](\\]\\s*.*Phase\\s+${phaseEscaped}[:\\s][^\\n]*)`, 'i');
+                const checkboxPattern = new RegExp(`(-\\s*\\[)[ ](\\]\\s*.*Phase\\s+${phaseEscaped}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s][^\\n]*)`, 'i');
                 roadmapContent = roadmapContent.replace(checkboxPattern, `$1x$2 (completed ${today})`);
                 const tableRowPattern = new RegExp(`^(\\|\\s*${phaseEscaped}\\.?\\s[^|]*(?:\\|[^\\n]*))$`, 'im');
                 roadmapContent = roadmapContent.replace(tableRowPattern, (fullRow) => {
@@ -1170,7 +1174,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                 if (node_fs_1.default.existsSync(reqPath)) {
                     const phaseEsc = phaseMarkdownRegexSource(phaseNum);
                     const currentMilestoneRoadmap = extractCurrentMilestone(roadmapContent, cwd);
-                    const phaseSectionMatch = currentMilestoneRoadmap.match(new RegExp(`(#{2,4}\\s*Phase\\s+${phaseEsc}[:\\s][\\s\\S]*?)(?=#{2,4}\\s*Phase\\s+|$)`, 'i'));
+                    const phaseSectionMatch = currentMilestoneRoadmap.match(new RegExp(`(#{2,4}\\s*Phase\\s+${phaseEsc}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s][\\s\\S]*?)(?=#{2,4}\\s*Phase\\s+|$)`, 'i'));
                     const sectionText = phaseSectionMatch ? phaseSectionMatch[1] : '';
                     const reqMatch = sectionText.match(/\*\*Requirements:?\*\*[^\S\n]*:?[^\S\n]*([^\n]+)/i);
                     const originalReqContent = node_fs_1.default.readFileSync(reqPath, 'utf-8');
@@ -1288,15 +1292,21 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                 try {
                     const roadmapForPhases = extractCurrentMilestone(roadmapContent, cwd);
                     // #1591: match BOTH heading-style phases (`### Phase N:`) AND
-                    // checkbox-list items (`- [ ] Phase N:` / `- [x] Phase N:`). When
-                    // the active milestone's checklist is `- [ ]` items inside a
-                    // <details> block (and the next phase has no directory yet, so the
-                    // disk-based resolver finds nothing), this roadmap-enumeration
-                    // fallback is the only path that can find the next phase. The prior
-                    // heading-only pattern missed checkbox items → is_last_phase=true on
-                    // a mid-milestone phase. The marker alternation is the only change;
-                    // the number/name captures are unchanged.
-                    const phasePattern = /(?:#{2,4}|-\s*\[[ xX]\])\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
+                    // checkbox-list items, INCLUDING the canonical bold form the roadmap
+                    // template emits (`- [ ] **Phase N: Name**`). When the active
+                    // milestone's checklist is `- [ ]` items inside a <details> block
+                    // (and the next phase has no directory yet, so the disk-based
+                    // resolver finds nothing), this roadmap-enumeration fallback is the
+                    // only path that can find the next phase. The prior heading-only
+                    // pattern missed checkbox items, and a checkbox-only broadening still
+                    // missed the bold template rows → is_last_phase=true on a mid-milestone
+                    // phase. Allow optional `**`/`__` emphasis after the marker and stop
+                    // the name capture at emphasis so bold names slug cleanly; the number
+                    // capture is unchanged.
+                    // #1729: `(?:\s*\([^)\n]*\))?` after the number tolerates a pre-colon
+                    // ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE) so
+                    // `### Phase N (Cluster B): X` resolves. Captures are unchanged.
+                    const phasePattern = /(?:#{2,4}|-\s*\[[ xX]\])\s*(?:\*\*|__)?\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)(?:\s*\([^)\n]*\))?\s*:\s*([^\n*]+)/gi;
                     let pm;
                     while ((pm = phasePattern.exec(roadmapForPhases)) !== null) {
                         if (comparePhaseNum(pm[1], phaseNum) > 0) {

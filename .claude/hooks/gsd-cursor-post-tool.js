@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.7.0-rc.1
+// gsd-hook-version: 1.7.0-rc.2
 // gsd-cursor-post-tool.js — Cursor postToolUse hook (issue #777)
 //
 // Cursor invokes this script after each tool call completes.

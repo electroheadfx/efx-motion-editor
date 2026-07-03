@@ -40,7 +40,7 @@ const configLoaderMod = require("./config-loader.cjs");
 const { loadConfig, CONFIG_DEFAULTS } = configLoaderMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseIdMod = require("./phase-id.cjs");
-const { normalizePhaseName, phaseTokenMatches, escapeRegex, getMilestoneFromPhaseId } = phaseIdMod;
+const { normalizePhaseName, phaseTokenMatches, escapeRegex, getMilestoneFromPhaseId, OPTIONAL_PHASE_TAG_SOURCE } = phaseIdMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseLocatorMod = require("./phase-locator.cjs");
 const { findPhaseInternal } = phaseLocatorMod;
@@ -992,7 +992,8 @@ function checkMilestonePrefixMismatches(roadmapContent, { getMilestoneFromPhaseI
     }
     for (const section of sections) {
         const content = roadmapContent.slice(section.start, section.end);
-        const phaseRx = /#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+([\w][\w.-]*)\s*:/gi;
+        // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+        const phaseRx = /#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+([\w][\w.-]*)(?:\s*\([^)\n]*\))?\s*:/gi;
         let pm;
         while ((pm = phaseRx.exec(content)) !== null) {
             const phaseId = pm[1];
@@ -1351,7 +1352,7 @@ function cmdValidateHealth(cwd, options, raw) {
                 stateContent.match(/Current Phase:\s*(\S+)/i);
             if (currentPhaseMatch) {
                 const statePhase = currentPhaseMatch[1].replace(/^0+/, '');
-                const phaseCheckboxRe = new RegExp(`-\\s*\\[x\\].*Phase\\s+0*${escapeRegex(statePhase)}[:\\s]`, 'i');
+                const phaseCheckboxRe = new RegExp(`-\\s*\\[x\\].*Phase\\s+0*${escapeRegex(statePhase)}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s]`, 'i');
                 if (phaseCheckboxRe.test(roadmapContentFull)) {
                     const stateStatus = stateContent.match(/\*\*Status:\*\*\s*(.+)/i);
                     const statusVal = stateStatus ? stateStatus[1].trim().toLowerCase() : '';
@@ -1509,7 +1510,8 @@ function cmdValidateHealth(cwd, options, raw) {
             if (isMarkedComplete) {
                 const roadmapRaw = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
                 const scopedContent = extractCurrentMilestone(roadmapRaw, cwd);
-                const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
+                // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+                const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)(?:\s*\([^)\n]*\))?\s*:\s*([^\n]+)/gi;
                 const unstarted = [];
                 let pm;
                 // Non-hoisted: load-order matters (circular dep guard)

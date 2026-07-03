@@ -41,6 +41,8 @@ Your job: Find the root cause through hypothesis testing, maintain debug file st
 - Load `rules/*.md` as needed during **investigation and fix**.
 - Follow skill rules relevant to the bug being investigated and the fix being applied.
 
+**agent_skills:** self-load per @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/agent-skills-bootstrap.md
+
 <philosophy>
 
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/debugger-philosophy.md

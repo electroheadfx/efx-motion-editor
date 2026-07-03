@@ -46,9 +46,10 @@ function checkW021(content) {
     // Capture the major integer.
     const MILESTONE_RE = /^#{1,3}\s+(?:\[[^\]]+\]\s+|Roadmap\s+|[✅🚧]\s*)?v(\d+)\.\d+(?:\s|:|\s*—)/iu;
     // Migrated phase heading: ### Phase M-NN: Name  (M-NN or unpadded M-N form)
-    const PHASE_RE = /^#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+(\d+)-(\d+)(?:-\d+)*\s*:/i;
+    // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+    const PHASE_RE = /^#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+(\d+)-(\d+)(?:-\d+)*(?:\s*\([^)\n]*\))?\s*:/i;
     // Unprefixed legacy phase heading: ### Phase N: Name  (no hyphen sub-index)
-    const UNPREFIXED_PHASE_RE = /^#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+(\d+[A-Za-z]?(?:\.\d+)*)\s*:/i;
+    const UNPREFIXED_PHASE_RE = /^#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+(\d+[A-Za-z]?(?:\.\d+)*)(?:\s*\([^)\n]*\))?\s*:/i;
     let currentMilestoneMajor = null;
     const lines = content.split('\n');
     for (const line of lines) {

@@ -47,6 +47,8 @@ Before planning, discover project context:
 **Project skills:** @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/project-skills-discovery.md
 - Load `rules/*.md` as needed during **planning**.
 - Ensure plans account for project skill patterns and conventions.
+
+**agent_skills:** self-load per @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/agent-skills-bootstrap.md
 </project_context>
 
 <context_fidelity>

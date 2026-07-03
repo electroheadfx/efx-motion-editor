@@ -67,6 +67,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.readHostVersion = readHostVersion;
 exports.loadRegistry = loadRegistry;
 const fs = __importStar(require("node:fs"));
 const os = __importStar(require("node:os"));
@@ -110,17 +111,33 @@ function _setValidatorForTest(v) {
 function _setGeneratorForTest(g) {
     _generatorOverride = g;
 }
-/** Resolve the running GSD version; fail-closed to '0.0.0' if it cannot be read. */
-function readHostVersion() {
+/**
+ * Resolve the running GSD version; fail-closed to '0.0.0' if it cannot be read.
+ *
+ * Prefer the authoritative `gsd-core/VERSION` the installer writes for EVERY runtime
+ * (libDir = gsd-core/bin/lib/, so `../../VERSION` = gsd-core/VERSION). This is reliable
+ * across all installed layouts — including runtimes that get no marker package.json, and
+ * local installs where the walked-up `../../../package.json` would resolve to the USER's
+ * own project and report a wrong version (#1920). Fall back to the runtime-root
+ * package.json for the dev/source tree, then fail-closed. Mirrors resolveVersionFrom()
+ * (#1383). `libDir` is injectable for tests; it defaults to this module's directory.
+ */
+function readHostVersion(libDir = __dirname) {
+    const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
     try {
-        // gsd-core/bin/lib/ -> repo/package root is three levels up.
+        const v = fs.readFileSync(path.join(libDir, '..', '..', 'VERSION'), 'utf8').trim();
+        if (SEMVER_PREFIX.test(v))
+            return v;
+    }
+    catch { /* not an installed tree (no gsd-core/VERSION) */ }
+    try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
-        const pkg = require('../../../package.json');
-        return typeof pkg.version === 'string' && pkg.version ? pkg.version : '0.0.0';
+        const pkg = require(path.join(libDir, '..', '..', '..', 'package.json'));
+        if (pkg && typeof pkg.version === 'string' && SEMVER_PREFIX.test(pkg.version))
+            return pkg.version;
     }
-    catch {
-        return '0.0.0';
-    }
+    catch { /* runtime root has no package.json */ }
+    return '0.0.0';
 }
 /**
  * Canonicalize a directory path for dedup/scope-escalation comparison. #1459 finding 1 (HIGH): the dedup
@@ -779,4 +796,5 @@ function loadRegistry(options = {}) {
         return withOverlayMeta(base, meta);
     }
 }
-module.exports = { loadRegistry, _setValidatorForTest, _setGeneratorForTest };
+// readHostVersion is exported for the #1920 regression (VERSION-first host-version resolution).
+module.exports = { loadRegistry, readHostVersion, _setValidatorForTest, _setGeneratorForTest };

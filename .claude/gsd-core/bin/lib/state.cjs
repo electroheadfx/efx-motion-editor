@@ -35,7 +35,7 @@ const { extractFrontmatter, reconstructFrontmatter } = frontmatter;
 const scanPhasePlans = require("./plan-scan.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const stateTransitionMod = require("./state-transition.cjs");
-const { transitionCore, applyStatePreservation } = stateTransitionMod;
+const { transitionCore, applyStatePreservation, sliceCurrentPositionSection } = stateTransitionMod;
 const state_document_cjs_1 = require("./state-document.cjs");
 const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
 const STATE_PROGRESS_RESYNC_FIELDS = new Set([
@@ -1293,7 +1293,8 @@ function buildStateFrontmatter(bodyContent, cwd) {
                     // truth for total_phases (#549).
                     let roadmapPhaseCount = 0;
                     if (roadmapScope !== null) {
-                        const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)\s*:/gi;
+                        // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+                        const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)(?:\s*\([^)\n]*\))?\s*:/gi;
                         let m;
                         while ((m = phaseHeadingPattern.exec(roadmapScope)) !== null) {
                             // Only count tokens that contain at least one digit — excludes
@@ -2245,7 +2246,8 @@ function cmdStateSync(cwd, options, raw) {
     try {
         let roadmapPhaseCount = 0;
         if (syncRoadmapScope !== null) {
-            const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)\s*:/gi;
+            // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+            const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)(?:\s*\([^)\n]*\))?\s*:/gi;
             let m;
             while ((m = phaseHeadingPattern.exec(syncRoadmapScope)) !== null) {
                 // Only count tokens that contain at least one digit — excludes
@@ -2321,12 +2323,29 @@ function cmdStatePrune(cwd, options, raw) {
     }
     const keepRecent = parseInt(String(options.keepRecent), 10) || 3;
     const dryRun = !!options.dryRun;
-    // #1760: the canonical STATE.md template emits `Phase: [X] of [Y]`, not
-    // `Current Phase:`. Read both (mirroring buildStateFrontmatter /
-    // resolvePhaseIdForCompletePhase) so prune engages on template-conformant
-    // STATE.md instead of bailing with "Only 0 phases — nothing to prune".
+    // Resolve the current phase via the same canonical chain buildStateFrontmatter
+    // uses (frontmatter `current_phase` → `Current Phase` field → prose `Phase: X
+    // of Y`), so prune engages on template-conformant STATE.md instead of bailing
+    // "Only 0 phases" (#1760).
+    // #1776: scope ONLY the prose `Phase:` term to the canonical `## Current
+    // Position` section. Over the whole body, `stateExtractField`'s pipe-table
+    // fallback matches any `| Phase | N |` row (e.g. a historical verification
+    // table), resolving a stale phase and computing a wrong cutoff. Frontmatter and
+    // the explicit `Current Phase` field are unambiguous, so they stay document-wide;
+    // the shared extractor is not narrowed for any other caller.
     const rawState = node_fs_1.default.readFileSync(statePath, 'utf-8');
-    const currentPhaseRaw = (0, state_document_cjs_1.stateExtractField)(rawState, 'Current Phase') || (0, state_document_cjs_1.stateExtractField)(rawState, 'Phase');
+    const fm = extractFrontmatter(rawState);
+    const body = stripFrontmatter(rawState);
+    // Mirror buildStateFrontmatter's fmScalar: only string/number/boolean
+    // frontmatter scalars are usable (an object/array `current_phase` is ignored,
+    // which also avoids a base-to-string on a non-primitive).
+    const fmRawPhase = fm.current_phase;
+    const fmCurrentPhase = typeof fmRawPhase === 'string' ? (fmRawPhase.trim() || null)
+        : typeof fmRawPhase === 'number' || typeof fmRawPhase === 'boolean' ? String(fmRawPhase)
+            : null;
+    const positionSection = sliceCurrentPositionSection(body);
+    const prosePhase = positionSection !== null ? parseProsePhaseField((0, state_document_cjs_1.stateExtractField)(positionSection, 'Phase')).phase : null;
+    const currentPhaseRaw = fmCurrentPhase ?? (0, state_document_cjs_1.stateExtractField)(body, 'Current Phase') ?? prosePhase;
     const currentPhase = parseInt(String(currentPhaseRaw), 10) || 0;
     const cutoff = currentPhase - keepRecent;
     if (cutoff <= 0) {
