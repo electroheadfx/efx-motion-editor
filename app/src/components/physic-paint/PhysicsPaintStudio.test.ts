@@ -48,6 +48,36 @@ function getUseEffectBlocks(text: string): string[] {
 }
 
 describe('PhysicsPaintStudio Roto session boundary contract', () => {
+  it('36.13/D-05/D-09 wires far-empty saves through source-target compression and keeps generated saves render-only', () => {
+    const text = source();
+    const importBlock = text.slice(0, text.indexOf("from './physicsPaintWorkflowState';") + 35);
+    const saveBlock = text.slice(text.indexOf('const saveRotoFrame = useCallback'), text.indexOf('const updateSelectedPlayOptions'));
+    const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame'));
+
+    expect(importBlock).toContain('resolveRotoFarEmptyDisplaySaveTarget');
+    expect(text).toContain('function mergeRotoSegmentSpacingOverride');
+    expect(text).toContain('function resolveRotoSaveTargetForDisplayFrame');
+    expect(saveBlock).toContain('currentFrameIsGeneratedRoto');
+    expect(saveBlock).toContain('Generated frame ${currentFrame} is render-only');
+    expect(saveBlock).toContain('resolveRotoSaveTargetForDisplayFrame(currentFrame');
+    expect(saveBlock).toContain('physicPaintStore.setRotoInterpolationSettings');
+    expect(saveBlock).toContain('segmentSpacingOverrides');
+    expect(saveBlock).toContain('PHYSIC_PAINT_MAX_APPLY_FRAMES');
+    expect(flushBlock).toContain('options.sourceFrameOverride ?? resolveRotoSourceFrameForDisplayFrame(frame)');
+    expect(flushBlock).toContain('sourceFrameOverride?: number');
+  });
+
+  it('36.13/D-08/D-12 persists transaction segment spacing overrides before local/generated cache refresh', () => {
+    const text = source();
+    const applyBlock = text.slice(text.indexOf('const applyRotoKeyUtilityTransaction = useCallback'), text.indexOf('const executeRotoSessionEffects'));
+    const persistBlock = text.slice(text.indexOf('const persistRotoKeyFrameTransaction = useCallback'), text.indexOf('const restoreRotoFrameFromSessionEffect'));
+
+    expect(text).toContain('function persistRotoSegmentSpacingOverrides');
+    expect(applyBlock).toContain('persistRotoSegmentSpacingOverrides(transaction.segmentSpacingOverrides)');
+    expect(applyBlock).toContain('physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
+    expect(persistBlock).toContain('rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId)');
+  });
+
   it('uses store display-frame Roto cache while interpolation is enabled', () => {
     const text = source();
     const hydrateBlock = text.slice(text.indexOf('function hydrateLaunchContextRotoInterpolation'), text.indexOf('function applyLaunchContext'));

@@ -34,6 +34,23 @@ function getCssRule(css: string, selector: string): string {
 }
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
+  it('36.13/D-14/D-17 shows compact custom-span and generated render-only guidance without reset/apply-all controls', () => {
+    const code = source();
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const rotoStatusBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('{confirmation ?'));
+    const customSpanRule = getCssRule(css, '.physics-paint-roto-custom-span-status');
+
+    expect(code).toContain('function getSelectedRotoCustomSpanStatus');
+    expect(code).toContain('Custom span: ${customSpan.inBetweenCount} in-betweens');
+    expect(rotoStatusBlock).toContain('physics-paint-roto-custom-span-status');
+    expect(rotoStatusBlock).toContain('getSelectedRotoCustomSpanStatus');
+    expect(rotoStatusBlock).toContain('Generated frame {frame} is render-only');
+    expect(customSpanRule).toContain('border');
+    expect(customSpanRule).toContain('font-size');
+    expect(code).not.toMatch(/reset custom|Reset custom|apply to all|Apply to all|apply-all|reset-spacing/i);
+    expect(code).not.toMatch(/toast|tutorial|blocking overlay/i);
+  });
+
   it('exports the workflow strip component and props', () => {
     const code = source();
 
