@@ -1,4 +1,4 @@
-import type { PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
+import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../types/physicPaint';
 
 export type RotoKeyUtilityOperation = 'copy' | 'duplicate' | 'insert' | 'delete' | 'paste';
 export type RotoKeyUtilityActionStateExposure =
@@ -58,6 +58,7 @@ export interface RotoKeyUtilityTransaction {
   activeRestore: RotoKeyUtilityActiveRestore;
   cleanup: RotoKeyUtilityCleanup;
   frameMappings: RotoKeyUtilityFrameMapping[];
+  segmentSpacingOverrides: PhysicPaintRotoSegmentSpacingOverride[];
   successMessage: string;
 }
 
@@ -72,12 +73,20 @@ export interface RotoKeyUtilityActionStateInput {
   flushInFlight?: boolean;
 }
 
+export interface RotoKeyUtilityPasteTarget {
+  displayFrame: number;
+  sourceFrame: number;
+  previousSegmentOverride: PhysicPaintRotoSegmentSpacingOverride | null;
+}
+
 export interface RotoKeyUtilityTransactionInput {
   operation: Exclude<RotoKeyUtilityOperation, 'copy'>;
   currentFrame: number;
   realKeyFrames: readonly PhysicPaintRotoCacheFrame[];
   cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
   copiedKeyFrame?: PhysicPaintRotoCacheFrame | null;
+  pasteTarget?: RotoKeyUtilityPasteTarget | null;
+  segmentSpacingOverrides?: readonly PhysicPaintRotoSegmentSpacingOverride[];
   canvasSize?: { width: number; height: number };
   buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
 }
@@ -168,7 +177,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
   const displayToSourceFrame = new Map(input.realKeyFrames
     .filter((frame) => frame.source === 'real-key')
     .map((frame) => [frame.displayFrame ?? frame.appFrame, frame.sourceFrame ?? frame.appFrame]));
-  const currentFrame = displayToSourceFrame.get(requestedFrame) ?? requestedFrame;
+  const currentFrame = normalizeFrame(input.pasteTarget?.sourceFrame) ?? displayToSourceFrame.get(requestedFrame) ?? requestedFrame;
   const realFramesByFrame = new Map(normalizeRealKeyFrames(input.realKeyFrames, canvasSize).map((frame) => [frame.appFrame, frame]));
   const generatedFrames = collectGeneratedFrames(input.cachedRotoFrames);
   const referenceFrames = collectReferenceFrames(input.cachedRotoFrames, currentFrame);
@@ -205,6 +214,11 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
       frameMappings,
       changedFrames: normalizeFrameNumbers([targetFrame, ...frameMappings.filter((mapping) => mapping.mode === 'move').map((mapping) => mapping.toFrame)]),
       removedFrames: generatedFrames,
+      segmentSpacingOverrides: rebaseRotoSegmentSpacingOverrides({
+        overrides: input.segmentSpacingOverrides,
+        frameMappings,
+        deletedFrame: null,
+      }),
       successMessage: `Duplicated to frame ${targetFrame}.`,
     });
   }
@@ -219,15 +233,21 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
       if (!payload) throw new Error(`No cached payload for shifted frame ${originalFrame}.`);
       return normalizeRealKeyFrame(payload, frameNumber, canvasSize);
     });
+    const frameMappings = shiftedFrames.map((frame) => ({ fromFrame: frame, toFrame: frame + 1, mode: 'move' as const }));
     return makeTransaction({
       operation: input.operation,
       realKeyFrames,
       activeFrame: currentFrame,
       activeRestore: { kind: 'blank-real-key', frame: currentFrame },
       cleanup: cleanup(generatedFrames, normalizeFrameNumbers([...referenceFrames, currentFrame]), backgroundOnlySupportFrames, []),
-      frameMappings: shiftedFrames.map((frame) => ({ fromFrame: frame, toFrame: frame + 1, mode: 'move' as const })),
+      frameMappings,
       changedFrames: normalizeFrameNumbers([currentFrame, ...shiftedFrames.map((frame) => frame + 1)]),
       removedFrames: normalizeFrameNumbers([...generatedFrames, currentFrame]),
+      segmentSpacingOverrides: rebaseRotoSegmentSpacingOverrides({
+        overrides: input.segmentSpacingOverrides,
+        frameMappings,
+        deletedFrame: null,
+      }),
       successMessage: `Inserted blank key before frame ${currentFrame}.`,
     });
   }
@@ -244,15 +264,21 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
       })
       .sort((a, b) => a.appFrame - b.appFrame);
     const nextHasCurrentFrame = realKeyFrames.some((frame) => frame.appFrame === currentFrame);
+    const frameMappings = shiftedFrames.map((frame) => ({ fromFrame: frame, toFrame: frame - 1, mode: 'move' as const }));
     return makeTransaction({
       operation: input.operation,
       realKeyFrames,
       activeFrame: currentFrame,
       activeRestore: nextHasCurrentFrame ? { kind: 'load-real-key', frame: currentFrame } : { kind: 'clear-blank', frame: currentFrame },
       cleanup: cleanup(generatedFrames, referenceFrames, backgroundOnlySupportFrames, [currentFrame]),
-      frameMappings: shiftedFrames.map((frame) => ({ fromFrame: frame, toFrame: frame - 1, mode: 'move' as const })),
+      frameMappings,
       changedFrames: normalizeFrameNumbers(shiftedFrames.map((frame) => frame - 1)),
       removedFrames: normalizeFrameNumbers([currentFrame, ...shiftedFrames, ...generatedFrames]),
+      segmentSpacingOverrides: rebaseRotoSegmentSpacingOverrides({
+        overrides: input.segmentSpacingOverrides,
+        frameMappings,
+        deletedFrame: currentFrame,
+      }),
       successMessage: `Deleted key ${currentFrame}.`,
     });
   }
@@ -261,15 +287,23 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
   if (!copiedKeyFrame) throw new Error('Copy a real Roto key before pasting.');
   const pastedFrame = normalizeRealKeyFrame(copiedKeyFrame, currentFrame, canvasSize);
   const realKeyFrames = normalizeRealKeyFrames([...Array.from(realFramesByFrame.values()).filter((frame) => frame.appFrame !== currentFrame), pastedFrame], canvasSize);
+  const frameMappings: RotoKeyUtilityFrameMapping[] = [{ fromFrame: copiedKeyFrame.appFrame, toFrame: currentFrame, mode: 'copy' }];
+  const nextOverrides = rebaseRotoSegmentSpacingOverrides({
+    overrides: input.segmentSpacingOverrides,
+    frameMappings,
+    deletedFrame: null,
+    replacementOverride: input.pasteTarget?.previousSegmentOverride ?? null,
+  });
   return makeTransaction({
     operation: input.operation,
     realKeyFrames,
     activeFrame: currentFrame,
     activeRestore: { kind: 'load-real-key', frame: currentFrame },
     cleanup: cleanup(generatedFrames.filter((frame) => frame === currentFrame), referenceFrames.filter((frame) => frame === currentFrame), backgroundOnlySupportFrames.filter((frame) => frame === currentFrame), []),
-    frameMappings: [{ fromFrame: copiedKeyFrame.appFrame, toFrame: currentFrame, mode: 'copy' }],
+    frameMappings,
     changedFrames: [currentFrame],
     removedFrames: generatedFrames.filter((frame) => frame === currentFrame),
+    segmentSpacingOverrides: nextOverrides,
     successMessage: `Pasted key to frame ${currentFrame}.`,
   });
 }
@@ -343,6 +377,52 @@ function cleanup(generatedFrames: readonly number[], referenceFrames: readonly n
     backgroundOnlySupportFrames: normalizeFrameNumbers(backgroundOnlySupportFrames),
     deletedFrames: normalizeFrameNumbers(deletedFrames),
   };
+}
+
+interface RebaseRotoSegmentSpacingOverridesInput {
+  overrides?: readonly PhysicPaintRotoSegmentSpacingOverride[];
+  frameMappings: readonly RotoKeyUtilityFrameMapping[];
+  deletedFrame: number | null;
+  replacementOverride?: PhysicPaintRotoSegmentSpacingOverride | null;
+}
+
+export function rebaseRotoSegmentSpacingOverrides({
+  overrides,
+  frameMappings,
+  deletedFrame,
+  replacementOverride = null,
+}: RebaseRotoSegmentSpacingOverridesInput): PhysicPaintRotoSegmentSpacingOverride[] {
+  const mappedFrames = new Map<number, number>();
+  for (const mapping of frameMappings) {
+    const fromFrame = normalizeFrame(mapping.fromFrame);
+    const toFrame = normalizeFrame(mapping.toFrame);
+    if (fromFrame !== null && toFrame !== null) mappedFrames.set(fromFrame, toFrame);
+  }
+
+  const next = new Map<string, PhysicPaintRotoSegmentSpacingOverride>();
+  for (const override of overrides ?? []) {
+    if (deletedFrame !== null && (override.fromSourceFrame === deletedFrame || override.toSourceFrame === deletedFrame)) continue;
+    const rebased = normalizeRotoSegmentSpacingOverride({
+      ...override,
+      fromSourceFrame: mappedFrames.get(override.fromSourceFrame) ?? override.fromSourceFrame,
+      toSourceFrame: mappedFrames.get(override.toSourceFrame) ?? override.toSourceFrame,
+    });
+    if (rebased) next.set(`${rebased.fromSourceFrame}:${rebased.toSourceFrame}`, rebased);
+  }
+
+  const normalizedReplacement = normalizeRotoSegmentSpacingOverride(replacementOverride);
+  if (normalizedReplacement) next.set(`${normalizedReplacement.fromSourceFrame}:${normalizedReplacement.toSourceFrame}`, normalizedReplacement);
+
+  return Array.from(next.values()).sort((a, b) => a.fromSourceFrame - b.fromSourceFrame || a.toSourceFrame - b.toSourceFrame);
+}
+
+function normalizeRotoSegmentSpacingOverride(value: PhysicPaintRotoSegmentSpacingOverride | null | undefined): PhysicPaintRotoSegmentSpacingOverride | null {
+  if (!value) return null;
+  const fromSourceFrame = normalizeFrame(value.fromSourceFrame);
+  const toSourceFrame = normalizeFrame(value.toSourceFrame);
+  if (fromSourceFrame === null || toSourceFrame === null || toSourceFrame <= fromSourceFrame) return null;
+  if (!Number.isInteger(value.inBetweenCount) || value.inBetweenCount < 1) return null;
+  return { fromSourceFrame, toSourceFrame, inBetweenCount: value.inBetweenCount };
 }
 
 function normalizeRealKeyFrames(frames: readonly PhysicPaintRotoCacheFrame[], canvasSize?: { width: number; height: number }): PhysicPaintRotoCacheFrame[] {
