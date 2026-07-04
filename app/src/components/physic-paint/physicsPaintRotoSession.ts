@@ -1,5 +1,5 @@
 import { batch, computed, signal, type Signal } from '@preact/signals';
-import type { PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
+import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../types/physicPaint';
 import {
   buildRotoKeyUtilityTransaction,
   deriveRotoKeyUtilityActionState,
@@ -58,6 +58,8 @@ export interface RotoSessionInput {
   canvasSize?: { width: number; height: number };
   buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
   resolveSourceFrameForDisplayFrame?: (displayFrame: number) => number | null;
+  resolvePasteTargetForDisplayFrame?: (displayFrame: number) => { displayFrame: number; sourceFrame: number; previousSegmentOverride: PhysicPaintRotoSegmentSpacingOverride | null } | null;
+  segmentSpacingOverrides?: readonly PhysicPaintRotoSegmentSpacingOverride[];
   keyActionInFlight?: boolean;
   applyStatus?: 'idle' | 'applying' | 'success' | 'error';
   flushInFlight?: boolean;
@@ -240,7 +242,8 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
 
   function runKeyTransaction(action: RotoSessionActionName, operation: RotoSessionPendingKeyAction): RotoSessionActionResult {
     const displayFrame = currentFrame.peek();
-    const sourceFrame = input.resolveSourceFrameForDisplayFrame?.(displayFrame) ?? displayFrame;
+    const pasteTarget = operation === 'paste' ? input.resolvePasteTargetForDisplayFrame?.(displayFrame) ?? null : null;
+    const sourceFrame = pasteTarget?.sourceFrame ?? input.resolveSourceFrameForDisplayFrame?.(displayFrame) ?? displayFrame;
     const effects: RotoSessionEffect[] = [];
     try {
       const transaction = buildRotoKeyUtilityTransaction({
@@ -249,6 +252,8 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
         realKeyFrames: realKeyFrames.peek(),
         cachedRotoFrames: cachedRotoFrames.peek(),
         copiedKeyFrame: copiedKey.peek()?.cachedFrame ?? null,
+        pasteTarget,
+        segmentSpacingOverrides: input.segmentSpacingOverrides,
         canvasSize: input.canvasSize,
         buildBlankRotoFrame: input.buildBlankRotoFrame,
       });

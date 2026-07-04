@@ -286,6 +286,92 @@ describe('physicsPaintRotoSession generated interpolation render-only boundary',
   });
 });
 
+describe('physicsPaintRotoSession segment spacing override transactions', () => {
+  it('36.13 D-10 propagates rebased duplicate overrides through replaceKeys transaction output', () => {
+    const session = createRotoSession({
+      currentFrame: 2,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,real-zero'),
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(6, 'data:image/png;base64,real-six'),
+      ],
+      cachedRotoFrames: [],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    const result = session.duplicateKey();
+    const replaceKeys = result.effects.find((effect) => effect.type === 'replaceKeys');
+
+    expect(result.ok).toBe(true);
+    expect(replaceKeys).toMatchObject({
+      transaction: {
+        segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 7, inBetweenCount: 4 }],
+      },
+    });
+    expect(result.transaction?.segmentSpacingOverrides).toEqual([{ fromSourceFrame: 3, toSourceFrame: 7, inBetweenCount: 4 }]);
+    expect(session.realKeyFrameNumbers.value).toEqual([0, 2, 3, 7]);
+  });
+
+  it('36.13 D-11 propagates deleted-key override drops without custom merged timing', () => {
+    const session = createRotoSession({
+      currentFrame: 2,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,real-zero'),
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(6, 'data:image/png;base64,real-six'),
+      ],
+      cachedRotoFrames: [],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    const result = session.deleteKey();
+    const replaceKeys = result.effects.find((effect) => effect.type === 'replaceKeys');
+
+    expect(result.ok).toBe(true);
+    expect(replaceKeys).toMatchObject({ transaction: { segmentSpacingOverrides: [] } });
+    expect(result.transaction?.segmentSpacingOverrides).toEqual([]);
+    expect(session.realKeyFrameNumbers.value).toEqual([0, 5]);
+  });
+
+  it('36.13 D-12 resolves far-empty paste targets and propagates previous-segment custom spacing', () => {
+    const session = createRotoSession({
+      currentFrame: 2,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,real-zero'),
+        frame(2, 'data:image/png;base64,real-two'),
+      ],
+      cachedRotoFrames: [],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      segmentSpacingOverrides: [],
+      resolvePasteTargetForDisplayFrame: (displayFrame) => displayFrame === 11
+        ? { displayFrame, sourceFrame: 6, previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 } }
+        : null,
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(session.copyKey().ok).toBe(true);
+    session.requestFrame(11);
+    const result = session.pasteKey();
+    const replaceKeys = result.effects.find((effect) => effect.type === 'replaceKeys');
+
+    expect(result.ok).toBe(true);
+    expect(session.currentFrame.value).toBe(6);
+    expect(session.realKeyFrameNumbers.value).toEqual([0, 2, 6]);
+    expect(replaceKeys).toMatchObject({
+      transaction: {
+        segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+      },
+    });
+  });
+});
+
 describe('physicsPaintRotoSession boundary clean key transactions', () => {
   it('36.8-REG-01 D-01/D-04/D-06/D-07/D-12/D-14/D-15 inserts a blank key that stays clean until markDirty', () => {
     const session = createRotoSession({
