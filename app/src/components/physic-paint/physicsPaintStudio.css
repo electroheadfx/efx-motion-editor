@@ -1558,6 +1558,19 @@ button.destructive {
   font-size: 12px;
 }
 
+.physics-paint-roto-custom-span-status {
+  justify-self: start;
+  margin: 0;
+  padding: 1px 6px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 999px;
+  color: #bfdbfe;
+  background: rgba(37, 99, 235, 0.14);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
 .physics-paint-timeline {
   display: flex;
   flex-direction: column;
