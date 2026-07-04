@@ -450,6 +450,15 @@ export function resolveRotoFarEmptyDisplaySaveTarget(displayFrame: number, realK
   const realEntries = getExpandedRotoRealKeyFrames(sourceKeys, settings).filter((entry): entry is Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }> => entry.kind === 'real-key');
   const previous = [...realEntries].reverse().find((entry) => entry.displayFrame < safeDisplayFrame) ?? realEntries[realEntries.length - 1];
   if (!previous) return { displayFrame: safeDisplayFrame, sourceFrame: safeDisplayFrame, previousSegmentOverride: null };
+  const globalInBetweenCount = clampPositiveInteger(settings.inBetweenCount, 1);
+  const normalNextDisplayFrame = previous.displayFrame + globalInBetweenCount + 1;
+  if (safeDisplayFrame === normalNextDisplayFrame) {
+    return {
+      displayFrame: safeDisplayFrame,
+      sourceFrame: previous.sourceFrame + 1,
+      previousSegmentOverride: null,
+    };
+  }
   const generatedInBetweenCount = clampRotoInBetweenCount(Math.max(1, safeDisplayFrame - previous.displayFrame - 1));
   const sourceFrame = previous.sourceFrame + generatedInBetweenCount;
   return {

@@ -456,6 +456,59 @@ describe('physicPaintStore', () => {
     ]);
   });
 
+  it('UAT truth table reconstructs normal and custom source/display projections through toggle and save/load', () => {
+    const zero = makeAlphaFrame(0, 0, 'zero');
+    const one = makeAlphaFrame(0, 1, 'one');
+    const two = makeAlphaFrame(0, 2, 'two');
+    const normal = makeAlphaFrame(0, 9, 'normal');
+    physicPaintStore.upsertRealRotoKeyFrame('normal-layer', 0, zero);
+    physicPaintStore.upsertRealRotoKeyFrame('normal-layer', 1, one);
+    physicPaintStore.upsertRealRotoKeyFrame('normal-layer', 2, two);
+    physicPaintStore.upsertRealRotoKeyFrame('normal-layer', 3, { ...normal, appFrame: 3 });
+    physicPaintStore.setRotoInterpolationSettings('normal-layer', { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 });
+
+    expect(physicPaintStore.getRotoInterpolationSettings('normal-layer').segmentSpacingOverrides).toBeUndefined();
+    expect(physicPaintStore.getRotoCacheFrames('normal-layer').filter(frame => frame.source === 'real-key').map(frame => frame.appFrame)).toEqual([0, 3, 6, 9]);
+
+    physicPaintStore.setRotoInterpolationSettings('normal-layer', { enabled: false });
+    expect(physicPaintStore.getRotoCacheFrames('normal-layer').filter(frame => frame.source === 'real-key').map(frame => frame.appFrame)).toEqual([0, 1, 2, 3]);
+    physicPaintStore.setRotoInterpolationSettings('normal-layer', { enabled: true });
+    expect(physicPaintStore.getRotoCacheFrames('normal-layer').filter(frame => frame.source === 'real-key').map(frame => frame.appFrame)).toEqual([0, 3, 6, 9]);
+
+    const custom = makeAlphaFrame(0, 14, 'custom');
+    physicPaintStore.upsertRealRotoKeyFrame('custom-layer', 0, zero);
+    physicPaintStore.upsertRealRotoKeyFrame('custom-layer', 1, one);
+    physicPaintStore.upsertRealRotoKeyFrame('custom-layer', 2, two);
+    physicPaintStore.upsertRealRotoKeyFrame('custom-layer', 9, { ...custom, appFrame: 9 });
+    physicPaintStore.setRotoInterpolationSettings('custom-layer', {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 9, inBetweenCount: 7 }],
+    });
+
+    expect(physicPaintStore.getRotoCacheFrames('custom-layer').filter(frame => frame.source === 'real-key').map(frame => frame.appFrame)).toEqual([0, 3, 6, 14]);
+    expect(physicPaintStore.getRotoInterpolationSettings('custom-layer').segmentSpacingOverrides).toEqual([
+      { fromSourceFrame: 2, toSourceFrame: 9, inBetweenCount: 7 },
+    ]);
+
+    physicPaintStore.setRotoInterpolationSettings('custom-layer', { enabled: false });
+    expect(physicPaintStore.getRotoCacheFrames('custom-layer').filter(frame => frame.source === 'real-key').map(frame => frame.appFrame)).toEqual([0, 1, 2, 9]);
+    physicPaintStore.setRotoInterpolationSettings('custom-layer', { enabled: true });
+    expect(physicPaintStore.getRotoCacheFrames('custom-layer').filter(frame => frame.source === 'real-key').map(frame => frame.appFrame)).toEqual([0, 3, 6, 14]);
+
+    const saved = physicPaintStore.toMceOutputs();
+    physicPaintStore.loadFromMceOutputs(saved);
+
+    expect(physicPaintStore.getRotoInterpolationSettings('custom-layer').segmentSpacingOverrides).toEqual([
+      { fromSourceFrame: 2, toSourceFrame: 9, inBetweenCount: 7 },
+    ]);
+    expect(physicPaintStore.getRotoCacheFrames('custom-layer').filter(frame => frame.source === 'real-key').map(frame => frame.appFrame)).toEqual([0, 3, 6, 14]);
+    expect(physicPaintStore.getRotoCacheFrames('normal-layer').filter(frame => frame.source === 'real-key').map(frame => frame.appFrame)).toEqual([0, 3, 6, 9]);
+  });
+
   it('UAT keeps a far-empty saved key at display #14 with a custom previous segment', () => {
     const zero = makeAlphaFrame(0, 0, 'zero');
     const one = makeAlphaFrame(0, 1, 'one');
