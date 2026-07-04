@@ -291,11 +291,11 @@ describe('physicsPaintWorkflowState', () => {
     ]);
   });
 
-  it('maps new real keys created while interpolation is enabled to compressed source targets', () => {
+  it('maps new real keys created while interpolation is enabled to custom-spaced source targets', () => {
     const settings = { enabled: true, inBetweenCount: 3, mode: 'duplicate' as const };
 
     expect(getSourceRotoFrameForDisplayFrame(12, [0, 1, 2], settings)).toBe(3);
-    expect(getSourceRotoFrameForDisplayFrame(29, [0, 1, 2, 3], settings)).toBe(4);
+    expect(getSourceRotoFrameForDisplayFrame(29, [0, 1, 2, 3], settings)).toBe(19);
     expect(getSourceRotoFrameForDisplayFrame(21, [0, 1, 2, 3, 4], { ...settings, enabled: false })).toBe(21);
   });
 
@@ -362,13 +362,13 @@ describe('physicsPaintWorkflowState', () => {
       .map((entry) => entry.displayFrame)).toEqual([9, 10, 11, 12]);
   });
 
-  it('D-03 resolves far empty display saves to compact source keys and a previous-segment override', () => {
+  it('D-03 resolves far empty display saves to custom-spaced source keys and a previous-segment override', () => {
     const target = resolveRotoFarEmptyDisplaySaveTarget(11, [0, 1, 2], { enabled: true, inBetweenCount: 2, mode: 'duplicate' });
 
     expect(target).toEqual({
       displayFrame: 11,
-      sourceFrame: 3,
-      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 3, inBetweenCount: 4 },
+      sourceFrame: 6,
+      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
     });
     expect(getExpandedRotoRealKeyFrames([0, 1, 2, target.sourceFrame], {
       enabled: true,
@@ -378,13 +378,13 @@ describe('physicsPaintWorkflowState', () => {
     }).filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame)).toEqual([0, 3, 6, 11]);
   });
 
-  it('UAT far-empty save keeps the new real key at display #14 and disables to the next compact source key', () => {
+  it('UAT far-empty save keeps the new real key at display #14 and preserves custom spacing when interpolation is off', () => {
     const target = resolveRotoFarEmptyDisplaySaveTarget(14, [0, 1, 2, 3], { enabled: true, inBetweenCount: 2, mode: 'duplicate' });
 
     expect(target).toEqual({
       displayFrame: 14,
-      sourceFrame: 4,
-      previousSegmentOverride: { fromSourceFrame: 3, toSourceFrame: 4, inBetweenCount: 4 },
+      sourceFrame: 7,
+      previousSegmentOverride: { fromSourceFrame: 3, toSourceFrame: 7, inBetweenCount: 4 },
     });
     expect(getExpandedRotoRealKeyFrames([0, 1, 2, 3, target.sourceFrame], {
       enabled: true,
@@ -397,13 +397,15 @@ describe('physicsPaintWorkflowState', () => {
       inBetweenCount: 2,
       mode: 'duplicate',
       segmentSpacingOverrides: target.previousSegmentOverride ? [target.previousSegmentOverride] : [],
-    }).filter((entry) => entry.fromSourceFrame === 3 && entry.toSourceFrame === 4).map((entry) => entry.displayFrame)).toEqual([10, 11, 12, 13]);
-    expect(getExpandedRotoRealKeyFrames([0, 1, 2, 3, target.sourceFrame], {
+    }).filter((entry) => entry.fromSourceFrame === 3 && entry.toSourceFrame === 7).map((entry) => entry.displayFrame)).toEqual([10, 11, 12, 13]);
+    const disabledEntries = getExpandedRotoRealKeyFrames([0, 1, 2, 3, target.sourceFrame], {
       enabled: false,
       inBetweenCount: 2,
       mode: 'duplicate',
       segmentSpacingOverrides: target.previousSegmentOverride ? [target.previousSegmentOverride] : [],
-    }).filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame)).toEqual([0, 1, 2, 3, 4]);
+    });
+    expect(disabledEntries.filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame)).toEqual([0, 1, 2, 3, 7]);
+    expect(disabledEntries.filter((entry) => entry.kind === 'generated-interpolation')).toEqual([]);
   });
 
   it('preserves interpolation enabled, count, and accepted mode settings for duplicate/hold and alpha blend', () => {

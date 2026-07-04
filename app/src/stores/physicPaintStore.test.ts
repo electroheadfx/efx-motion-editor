@@ -474,27 +474,27 @@ describe('physicPaintStore', () => {
       mode: 'duplicate' as const,
       deform: 0,
       position: 0,
-      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 4, inBetweenCount: 4 }],
+      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 7, inBetweenCount: 4 }],
     };
-    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, { ...five, appFrame: 4 });
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 7, { ...five, appFrame: 7 });
     physicPaintStore.setRotoInterpolationSettings('layer-1', customSettings);
 
-    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 1, 2, 3, 4]);
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 1, 2, 3, 7]);
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual(expect.arrayContaining([
       expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0, dataUrl: zero.dataUrl }),
       expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 1, displayFrame: 3, dataUrl: one.dataUrl }),
       expect.objectContaining({ appFrame: 6, source: 'real-key', sourceFrame: 2, displayFrame: 6, dataUrl: two.dataUrl }),
       expect.objectContaining({ appFrame: 9, source: 'real-key', sourceFrame: 3, displayFrame: 9, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 10, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 4, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 11, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 4, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 12, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 4, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 13, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 4, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 4, displayFrame: 14, dataUrl: five.dataUrl }),
+      expect.objectContaining({ appFrame: 10, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 11, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 12, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 13, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 7, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 7, displayFrame: 14, dataUrl: five.dataUrl }),
     ]));
     expect(physicPaintStore.getRotoInterpolationSettings('layer-1').segmentSpacingOverrides).toEqual([
-      { fromSourceFrame: 3, toSourceFrame: 4, inBetweenCount: 4 },
+      { fromSourceFrame: 3, toSourceFrame: 7, inBetweenCount: 4 },
     ]);
-    expect(physicPaintStore.getRotoFrame('layer-1', 14)).toEqual(expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 4, dataUrl: five.dataUrl }));
+    expect(physicPaintStore.getRotoFrame('layer-1', 14)).toEqual(expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 7, dataUrl: five.dataUrl }));
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: false });
 
@@ -503,7 +503,7 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1, displayFrame: 1, dataUrl: one.dataUrl }),
       expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 2, displayFrame: 2, dataUrl: two.dataUrl }),
       expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 3, displayFrame: 3, dataUrl: three.dataUrl }),
-      expect.objectContaining({ appFrame: 4, source: 'real-key', sourceFrame: 4, displayFrame: 4, dataUrl: five.dataUrl }),
+      expect.objectContaining({ appFrame: 7, source: 'real-key', sourceFrame: 7, displayFrame: 7, dataUrl: five.dataUrl }),
     ]);
   });
 

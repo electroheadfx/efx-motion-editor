@@ -191,14 +191,6 @@ function getRealCachedRotoSourceFrameNumbers(context: PhysicPaintLaunchContext |
     .sort((a, b) => a - b) ?? [];
 }
 
-function getRealRotoSourceFrameNumbers(frames: readonly PhysicPaintRotoCacheFrame[]): number[] {
-  return Array.from(new Set(frames
-    .filter((frame) => frame.source === 'real-key')
-    .map((frame) => frame.sourceFrame ?? frame.appFrame)
-    .filter((frame) => Number.isInteger(frame) && frame >= 0)))
-    .sort((a, b) => a - b);
-}
-
 function normalizeCachedRotoRealKeyDisplayFrame(frame: PhysicPaintRotoCacheFrame): PhysicPaintRotoCacheFrame {
   const sourceFrame = frame.sourceFrame ?? frame.appFrame;
   const displayFrame = frame.displayFrame ?? frame.appFrame;
@@ -2910,12 +2902,13 @@ export function PhysicsPaintStudio() {
     const refreshedSettings = physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
     const fallbackRealKeys = mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames).filter((frame) => frame.source === 'real-key');
     const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));
-    const refreshedRotoFrames = refreshedSettings.enabled && storeRotoFrames.length > 0
-      ? storeRotoFrames
+    const refreshedRotoFrames = storeRotoFrames.length > 0
+      ? storeRotoFrames.filter((frame) => refreshedSettings.enabled || frame.source === 'real-key')
       : compactRealKeys;
-    const refreshedRealKeyFrames = refreshedSettings.enabled
-      ? refreshedRotoFrames.filter((frame) => frame.source === 'real-key').map((frame) => frame.displayFrame ?? frame.appFrame).sort((a, b) => a - b)
-      : getRealRotoSourceFrameNumbers(refreshedRotoFrames);
+    const refreshedRealKeyFrames = refreshedRotoFrames
+      .filter((frame) => frame.source === 'real-key')
+      .map((frame) => frame.displayFrame ?? frame.appFrame)
+      .sort((a, b) => a - b);
     if (!refreshedSettings.enabled) {
       setOccupiedRotoFrames(refreshedRealKeyFrames);
       setSavedRotoFrames(refreshedRealKeyFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` })));

@@ -88,8 +88,8 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(text).toContain('function seedStoreRotoRealKeysFromLaunchContext');
     expect(hydrateBlock).toContain('refreshedSettings.enabled && storeRotoFrames.length > 0');
     expect(hydrateBlock).toContain('? storeRotoFrames');
-    expect(updateBlock).toContain('refreshedSettings.enabled && storeRotoFrames.length > 0');
-    expect(updateBlock).toContain('? storeRotoFrames');
+    expect(updateBlock).toContain('storeRotoFrames.length > 0');
+    expect(updateBlock).toContain('storeRotoFrames.filter((frame) => refreshedSettings.enabled || frame.source === \'real-key\')');
     expect(updateBlock).not.toContain('? mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames)');
   });
 
@@ -723,8 +723,10 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(updateBlock).toContain('mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames)');
     expect(updateBlock).toContain('const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));');
     expect(updateBlock).toContain(': compactRealKeys;');
-    expect(updateBlock).toContain('const refreshedRealKeyFrames = refreshedSettings.enabled');
-    expect(updateBlock).toContain('getRealRotoSourceFrameNumbers(refreshedRotoFrames)');
+    expect(updateBlock).toContain('const refreshedRotoFrames = storeRotoFrames.length > 0');
+    expect(updateBlock).toContain("storeRotoFrames.filter((frame) => refreshedSettings.enabled || frame.source === 'real-key')");
+    expect(updateBlock).toContain('const refreshedRealKeyFrames = refreshedRotoFrames');
+    expect(updateBlock).toContain('.map((frame) => frame.displayFrame ?? frame.appFrame)');
     expect(updateBlock).toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
     expect(updateBlock).toContain('setSavedRotoFrames(refreshedRealKeyFrames.map');
     expect(updateBlock).toContain('startFrame: nextCurrentFrame');

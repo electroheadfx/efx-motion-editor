@@ -333,7 +333,8 @@ export function getPlayRangeMarker(startFrame: number, frameCount: number, curre
 
 export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoExpandedRealKeyFrame[] {
   const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
-  const globalInBetweenCount = settings.enabled === true ? clampPositiveInteger(settings.inBetweenCount, 1) : 0;
+  const interpolationEnabled = settings.enabled === true;
+  const globalInBetweenCount = interpolationEnabled ? clampPositiveInteger(settings.inBetweenCount, 1) : 0;
   const overrides = normalizeRotoSegmentSpacingOverrides(settings.segmentSpacingOverrides, sourceKeys);
   const mode = normalizeRotoInterpolationMode(settings.mode);
   const expanded: RotoExpandedRealKeyFrame[] = [];
@@ -342,9 +343,14 @@ export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoI
   sourceKeys.forEach((sourceFrame, index) => {
     if (index === 0 && sourceFrame > 0) displayFrame = sourceFrame;
     expanded.push({ sourceFrame, frame: displayFrame, displayFrame, kind: 'real-key' });
-    if (settings.enabled === true && globalInBetweenCount > 0 && (index < sourceKeys.length - 1 || sourceKeys.length > 2)) {
-      const toSourceFrame = sourceKeys[index + 1];
-      const inBetweenCount = getSegmentInBetweenCount(sourceFrame, toSourceFrame, globalInBetweenCount, overrides);
+    const toSourceFrame = sourceKeys[index + 1];
+    const isLastSourceKey = index >= sourceKeys.length - 1;
+    const override = getSegmentOverride(sourceFrame, toSourceFrame, overrides);
+    const shouldGenerateSpan = interpolationEnabled && globalInBetweenCount > 0 && (!isLastSourceKey || sourceKeys.length > 2);
+    const inBetweenCount = shouldGenerateSpan
+      ? override?.inBetweenCount ?? globalInBetweenCount
+      : 0;
+    if (shouldGenerateSpan) {
       for (let ordinal = 1; ordinal <= inBetweenCount; ordinal++) {
         const generatedFrame = displayFrame + ordinal;
         expanded.push({
@@ -367,9 +373,10 @@ export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoI
         });
       }
       displayFrame += inBetweenCount + 1;
-    } else if (index < sourceKeys.length - 1) {
-      displayFrame = sourceKeys[index + 1];
+      return;
     }
+
+    if (!isLastSourceKey) displayFrame = override ? displayFrame + override.inBetweenCount : toSourceFrame;
   });
 
   return expanded;
@@ -444,7 +451,7 @@ export function resolveRotoFarEmptyDisplaySaveTarget(displayFrame: number, realK
   const previous = [...realEntries].reverse().find((entry) => entry.displayFrame < safeDisplayFrame) ?? realEntries[realEntries.length - 1];
   if (!previous) return { displayFrame: safeDisplayFrame, sourceFrame: safeDisplayFrame, previousSegmentOverride: null };
   const generatedInBetweenCount = clampRotoInBetweenCount(Math.max(1, safeDisplayFrame - previous.displayFrame - 1));
-  const sourceFrame = previous.sourceFrame + 1;
+  const sourceFrame = previous.sourceFrame + generatedInBetweenCount;
   return {
     displayFrame: safeDisplayFrame,
     sourceFrame,
@@ -604,10 +611,9 @@ function normalizeSelectedRealKey(selectedFrame: number, sortedKeys: number[]): 
   return getNearestRealRotoKeyFrame(selectedFrame, sortedKeys) ?? sortedKeys[0];
 }
 
-function getSegmentInBetweenCount(fromSourceFrame: number, toSourceFrame: number | undefined, globalInBetweenCount: number, overrides: readonly RotoSegmentSpacingOverride[]): number {
-  if (toSourceFrame === undefined) return globalInBetweenCount;
-  const override = overrides.find((candidate) => candidate.fromSourceFrame === fromSourceFrame && candidate.toSourceFrame === toSourceFrame);
-  return override?.inBetweenCount ?? globalInBetweenCount;
+function getSegmentOverride(fromSourceFrame: number, toSourceFrame: number | undefined, overrides: readonly RotoSegmentSpacingOverride[]): RotoSegmentSpacingOverride | undefined {
+  if (toSourceFrame === undefined) return undefined;
+  return overrides.find((candidate) => candidate.fromSourceFrame === fromSourceFrame && candidate.toSourceFrame === toSourceFrame);
 }
 
 function getAdjacentSourceSegments(sourceKeys: readonly number[]): Set<string> {

@@ -448,8 +448,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(toggleBlock).not.toContain('mode: patch.mode ?? currentSettings.mode');
     expect(toggleBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, nextSettings)');
     expect(toggleBlock).toContain('const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));');
-    expect(toggleBlock).toContain('const refreshedRotoFrames = refreshedSettings.enabled && storeRotoFrames.length > 0\n      ? storeRotoFrames\n      : compactRealKeys;');
-    expect(toggleBlock).toContain('getRealRotoSourceFrameNumbers(refreshedRotoFrames)');
+    expect(toggleBlock).toContain('const refreshedRotoFrames = storeRotoFrames.length > 0');
+    expect(toggleBlock).toContain("storeRotoFrames.filter((frame) => refreshedSettings.enabled || frame.source === 'real-key')");
+    expect(toggleBlock).toContain(".map((frame) => frame.displayFrame ?? frame.appFrame)");
     expect(toggleBlock).toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
     expect(toggleBlock).toContain('startFrame: nextCurrentFrame');
     expect(toggleBlock).not.toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');
