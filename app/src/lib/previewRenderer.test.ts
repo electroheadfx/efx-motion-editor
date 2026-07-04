@@ -289,6 +289,42 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     expect(physicPaintStore.getRotoCacheFrames('roto-layer').find((frame) => frame.appFrame === 2)).toMatchObject({ source: 'generated-interpolation', nearestRealKeyFrame: 1 });
   });
 
+  it('36.13-PREVIEW-EXPORT-PARITY draws store-regenerated custom 2 -> 6 span output at override-aware display positions after save/load', () => {
+    seedRotoPaper();
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 0, { frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,cmVhbC0w' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 2, { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,cmVhbC0y' });
+    physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 6, { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cmVhbC02' });
+    physicPaintStore.setRotoInterpolationSettings('roto-layer', {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
+    });
+    const persisted = structuredClone(physicPaintStore.toMceOutputs());
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(persisted);
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([makeRotoLayer()], 10, [], 24, true, 1, 10);
+    renderer.renderFrame([makeRotoLayer()], 10, [], 24, true, 1, 10);
+
+    expect(physicPaintStore.getRotoFrame('roto-layer', 10)).toMatchObject({
+      source: 'generated-interpolation',
+      appFrame: 10,
+      fromSourceFrame: 2,
+      toSourceFrame: 6,
+      dataUrl: 'data:image/png;base64,cmVhbC0y',
+    });
+    const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
+    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,cmVhbC0y');
+
+    expect(paperIndex).toBeGreaterThanOrEqual(0);
+    expect(generatedAlphaIndex).toBeGreaterThanOrEqual(0);
+    expect(paperIndex).toBeLessThan(generatedAlphaIndex);
+  });
+
   it('36.11 draws renderer-owned paper before merged real-key alpha repaint output', () => {
     seedRotoPaper();
     physicPaintStore.applyCanvas({
