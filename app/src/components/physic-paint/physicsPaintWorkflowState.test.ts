@@ -378,6 +378,42 @@ describe('physicsPaintWorkflowState', () => {
     }).filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame)).toEqual([0, 3, 6, 11]);
   });
 
+  it('UAT truth table resolves normal and custom display saves from one source/display model', () => {
+    const settings = { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const };
+    const realDisplays = (sourceKeys: number[], overrides: PhysicPaintRotoSegmentSpacingOverride[] = []) => getExpandedRotoRealKeyFrames(sourceKeys, {
+      ...settings,
+      segmentSpacingOverrides: overrides,
+    }).filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame);
+    const offDisplays = (sourceKeys: number[], overrides: PhysicPaintRotoSegmentSpacingOverride[] = []) => getExpandedRotoRealKeyFrames(sourceKeys, {
+      ...settings,
+      enabled: false,
+      segmentSpacingOverrides: overrides,
+    }).filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame);
+
+    expect(realDisplays([0, 1, 2])).toEqual([0, 3, 6]);
+    expect(offDisplays([0, 1, 2])).toEqual([0, 1, 2]);
+
+    const normalTarget = resolveRotoFarEmptyDisplaySaveTarget(9, [0, 1, 2], settings);
+    expect(normalTarget).toEqual({
+      displayFrame: 9,
+      sourceFrame: 3,
+      previousSegmentOverride: null,
+    });
+    expect(realDisplays([0, 1, 2, normalTarget.sourceFrame])).toEqual([0, 3, 6, 9]);
+    expect(offDisplays([0, 1, 2, normalTarget.sourceFrame])).toEqual([0, 1, 2, 3]);
+
+    const customTarget = resolveRotoFarEmptyDisplaySaveTarget(14, [0, 1, 2], settings);
+    const customOverrides = customTarget.previousSegmentOverride ? [customTarget.previousSegmentOverride] : [];
+    expect(customTarget).toEqual({
+      displayFrame: 14,
+      sourceFrame: 9,
+      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 9, inBetweenCount: 7 },
+    });
+    expect(realDisplays([0, 1, 2, customTarget.sourceFrame], customOverrides)).toEqual([0, 3, 6, 14]);
+    expect(offDisplays([0, 1, 2, customTarget.sourceFrame], customOverrides)).toEqual([0, 1, 2, 9]);
+    expect(realDisplays([0, 1, 2, customTarget.sourceFrame], customOverrides)).toEqual([0, 3, 6, 14]);
+  });
+
   it('UAT far-empty save keeps the new real key at display #14 and preserves custom spacing when interpolation is off', () => {
     const target = resolveRotoFarEmptyDisplaySaveTarget(14, [0, 1, 2, 3], { enabled: true, inBetweenCount: 2, mode: 'duplicate' });
 

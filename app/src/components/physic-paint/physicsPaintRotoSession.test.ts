@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 import { buildRotoKeyUtilityTransaction } from './physicsPaintRotoKeyController';
 import { createRotoSession, type RotoSessionEffect } from './physicsPaintRotoSession';
+import { resolveRotoFarEmptyDisplaySaveTarget } from './physicsPaintWorkflowState';
 
 function frame(appFrame: number, dataUrl: string, source: PhysicPaintRotoCacheFrame['source'] = 'real-key'): PhysicPaintRotoCacheFrame {
   return {
@@ -369,6 +370,76 @@ describe('physicsPaintRotoSession segment spacing override transactions', () => 
         segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
       },
     });
+  });
+
+  it('UAT truth table pastes at normal display #9 exactly like Save current', () => {
+    const settings = { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const };
+    const saveTarget = resolveRotoFarEmptyDisplaySaveTarget(9, [0, 1, 2], settings);
+    const realKeyFrames = [
+      { ...frame(0, 'data:image/png;base64,real-zero'), sourceFrame: 0, displayFrame: 0 },
+      { ...frame(3, 'data:image/png;base64,real-one'), sourceFrame: 1, displayFrame: 3 },
+      { ...frame(6, 'data:image/png;base64,real-two'), sourceFrame: 2, displayFrame: 6 },
+    ];
+    const session = createRotoSession({
+      currentFrame: 6,
+      realKeyFrames,
+      cachedRotoFrames: realKeyFrames,
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      segmentSpacingOverrides: [],
+      resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoFarEmptyDisplaySaveTarget(displayFrame, [0, 1, 2], settings),
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(saveTarget).toEqual({ displayFrame: 9, sourceFrame: 3, previousSegmentOverride: null });
+    expect(session.copyKey().ok).toBe(true);
+    session.requestFrame(9);
+    const result = session.pasteKey();
+
+    expect(result.ok).toBe(true);
+    expect(result.transaction).toMatchObject({
+      realKeyFrameNumbers: [0, 1, 2, 3],
+      activeFrame: 3,
+      segmentSpacingOverrides: [],
+    });
+    expect(result.transaction?.frameMappings).toEqual([{ fromFrame: 2, toFrame: 3, mode: 'copy' }]);
+  });
+
+  it('UAT truth table pastes at custom display #14 exactly like Save current', () => {
+    const settings = { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const };
+    const saveTarget = resolveRotoFarEmptyDisplaySaveTarget(14, [0, 1, 2], settings);
+    const realKeyFrames = [
+      { ...frame(0, 'data:image/png;base64,real-zero'), sourceFrame: 0, displayFrame: 0 },
+      { ...frame(3, 'data:image/png;base64,real-one'), sourceFrame: 1, displayFrame: 3 },
+      { ...frame(6, 'data:image/png;base64,real-two'), sourceFrame: 2, displayFrame: 6 },
+    ];
+    const session = createRotoSession({
+      currentFrame: 6,
+      realKeyFrames,
+      cachedRotoFrames: realKeyFrames,
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      segmentSpacingOverrides: [],
+      resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoFarEmptyDisplaySaveTarget(displayFrame, [0, 1, 2], settings),
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(saveTarget).toEqual({
+      displayFrame: 14,
+      sourceFrame: 9,
+      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 9, inBetweenCount: 7 },
+    });
+    expect(session.copyKey().ok).toBe(true);
+    session.requestFrame(14);
+    const result = session.pasteKey();
+
+    expect(result.ok).toBe(true);
+    expect(result.transaction).toMatchObject({
+      realKeyFrameNumbers: [0, 1, 2, 9],
+      activeFrame: 9,
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 9, inBetweenCount: 7 }],
+    });
+    expect(result.transaction?.frameMappings).toEqual([{ fromFrame: 2, toFrame: 9, mode: 'copy' }]);
   });
 });
 
