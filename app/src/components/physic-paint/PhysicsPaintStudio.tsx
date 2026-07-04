@@ -230,7 +230,7 @@ function resolveRotoSaveTargetForDisplayFrame(
   const target = resolveRotoFarEmptyDisplaySaveTarget(displayFrame, [...realSourceFrames], settings);
   return {
     displayFrame: target.displayFrame,
-    sourceFrame: Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, target.sourceFrame),
+    sourceFrame: target.sourceFrame,
     previousSegmentOverride: target.previousSegmentOverride,
   };
 }
@@ -1827,16 +1827,16 @@ export function PhysicsPaintStudio() {
     } : current);
   }, []);
 
-  const persistRotoSegmentSpacingOverrides = useCallback((overrides: readonly PhysicPaintRotoSegmentSpacingOverride[] | undefined) => {
+  function persistRotoSegmentSpacingOverrides(overrides: readonly PhysicPaintRotoSegmentSpacingOverride[] | undefined) {
     if (!launchContext || !overrides) return;
     physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, { segmentSpacingOverrides: [...overrides] });
-  }, [launchContext]);
+  }
 
   const persistRotoKeyFrameTransaction = useCallback(async (transaction: RotoKeyUtilityTransaction) => {
     if (!launchContext || actionContext?.bridgeMode === 'Unavailable') throw new Error('App bridge is not connected.');
     if (transaction.realKeyFrames.length !== transaction.realKeyFrameNumbers.length) throw new Error('Roto key cache is incomplete after the action.');
     const operationId = `${launchContext.operationId}:roto-keys:${Date.now()}`;
-    const payload: PhysicPaintApplyPayload = {
+    const payload: PhysicPaintApplyPayload & { rotoInterpolationSettings: PhysicPaintRotoInterpolationSettings } = {
       operationId,
       kind: 'replace-roto-key-frames',
       layerId: launchContext.layerId,
@@ -1888,7 +1888,7 @@ export function PhysicsPaintStudio() {
     const refreshedCacheFrames = physicPaintStore.getRotoCacheFrames(launchContext.layerId);
     const refreshedRealKeyFrames = refreshedCacheFrames.filter((frame) => frame.source === 'real-key').map((frame) => frame.displayFrame ?? frame.appFrame);
     syncRotoKeyFrameLists(refreshedRealKeyFrames, refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames);
-  }, [launchContext, persistRotoSegmentSpacingOverrides, syncRotoKeyFrameLists]);
+  }, [launchContext, syncRotoKeyFrameLists]);
 
   const executeRotoSessionEffects = useCallback(async (effects: readonly RotoSessionEffect[]) => {
     let replacedRotoKeys = false;
@@ -2200,8 +2200,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(`Generated frame ${currentFrame} is render-only. Navigate to an empty/custom position to create a real Roto key.`);
       return null;
     }
-    const saveTarget = resolveRotoSaveTargetForDisplayFrame(
-      currentFrame,
+    const saveTarget = resolveRotoSaveTargetForDisplayFrame(currentFrame,
       getRealCachedRotoSourceFrameNumbers(launchContext),
       physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
     );
@@ -2220,7 +2219,11 @@ export function PhysicsPaintStudio() {
     }
     dirtyRotoFramesRef.current.add(currentFrame);
     syncPendingRotoFrames();
-    return flushRotoFrame(currentFrame, { force: true, advanceToFrame, sourceFrameOverride: saveTarget.sourceFrame, onPayload: options.onPayload });
+    const sourceFrameOverride = Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, saveTarget.sourceFrame);
+    if (sourceFrameOverride !== currentFrame) {
+      return flushRotoFrame(currentFrame, { force: true, advanceToFrame, sourceFrameOverride, onPayload: options.onPayload });
+    }
+    return flushRotoFrame(currentFrame, { force: true, advanceToFrame, onPayload: options.onPayload });
   }, [cachedRotoRepaintBaseFrame, currentFrame, currentFrameIsGeneratedRoto, flushRotoFrame, launchContext, readyToApply, snapshotCurrentRotoFrame, syncPendingRotoFrames]);
 
   const updateSelectedPlayOptions = useCallback(async () => {

@@ -216,7 +216,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   );
   const interpolationSettings = props.rotoInterpolationSettings ?? { enabled: false, inBetweenCount: 1, mode: 'duplicate' as const, deform: 0, position: 0 };
   const interpolationEnabled = interpolationSettings.enabled === true;
-  const selectedRotoCustomSpanStatus = getSelectedRotoCustomSpanStatus(props.currentFrame, interpolationSettings);
   const displayCachedRotoFrames = useMemo(() => getDisplayRotoCacheFrames(props.cachedRotoFrames, interpolationEnabled), [interpolationEnabled, props.cachedRotoFrames]);
   const materializedGeneratedRotoFrames = useMemo(() => interpolationEnabled ? displayCachedRotoFrames.filter(frame => frame.source === 'generated-interpolation').map(frame => frame.appFrame) : [], [displayCachedRotoFrames, interpolationEnabled]);
   const hasMaterializedGeneratedRotoFrames = interpolationEnabled && materializedGeneratedRotoFrames.length > 0;
@@ -627,8 +626,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           </div>
           <p class="physics-paint-roto-status">{rotoMissingStatusLabel ?? currentRotoCell.label}</p>
           {props.onRotoInterpolationEnabledChange ? <p class="physics-paint-roto-interpolation-status">{interpolationStatus}</p> : null}
-          {selectedRotoCustomSpanStatus ? <p class="physics-paint-roto-custom-span-status">{selectedRotoCustomSpanStatus}</p> : null}
-          <p class="physics-paint-roto-interpolation-status">Dirty frames save when leaving.</p>
+          {getSelectedRotoCustomSpanStatus(props.currentFrame, interpolationSettings) ? <p class="physics-paint-roto-custom-span-status">{getSelectedRotoCustomSpanStatus(props.currentFrame, interpolationSettings)}</p> : null}
+          <p class="physics-paint-roto-interpolation-status">{'Generated frame {frame} is render-only. Dirty frames save when leaving.'}</p>
           {currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false ? <p class="physics-paint-roto-key-status">{getGeneratedRotoDisabledStatus(currentRotoCell.frame)}</p> : null}
           {keyUtilitiesDisabledByBusyState ? <p class="physics-paint-roto-key-status">{getRotoKeyBusyStatus(props.rotoSavingFrame ?? props.currentFrame)}</p> : null}
           {rotoPendingLabel ? <p class="physics-paint-roto-key-status">{rotoPendingLabel}</p> : null}
