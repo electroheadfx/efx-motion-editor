@@ -210,6 +210,10 @@ function normalizeCachedRotoRealKeySourceFrame(frame: PhysicPaintRotoCacheFrame)
   return { ...frame, appFrame: sourceFrame, source: 'real-key', sourceFrame, displayFrame: sourceFrame };
 }
 
+function getRotoOnionAnchorDisplayFrame(frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame, 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame'>>): number {
+  return frame.displayFrame ?? frame.appFrame;
+}
+
 function mergeRotoSegmentSpacingOverride(
   existing: readonly PhysicPaintRotoSegmentSpacingOverride[] | undefined,
   override: PhysicPaintRotoSegmentSpacingOverride | null,
@@ -2547,12 +2551,13 @@ export function PhysicsPaintStudio() {
     const count = clampOnionCount(onion.count);
     const candidates = new Map<number, RenderedFramePayload & { onionKind?: PhysicsPaintWorkflowOnionPreviewFrame['kind'] }>();
     const frames: PhysicsPaintWorkflowOnionPreviewFrame[] = [];
-    const addOnionCandidate = (frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame, 'backgroundOnly' | 'onionDataUrl' | 'source'>>) => {
+    const addOnionCandidate = (frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame, 'backgroundOnly' | 'onionDataUrl' | 'source' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame'>>) => {
       if (frame.source && frame.source !== 'real-key') return;
       if (frame.backgroundOnly) return;
-      candidates.set(frame.appFrame, typeof frame.onionDataUrl === 'string'
-        ? { ...frame, dataUrl: frame.onionDataUrl, onionKind: 'stroke-preview' }
-        : { ...frame, onionKind: frame.source === 'real-key' ? 'cached-composite' : 'stroke-preview' });
+      const anchorFrame = getRotoOnionAnchorDisplayFrame(frame);
+      candidates.set(anchorFrame, typeof frame.onionDataUrl === 'string'
+        ? { ...frame, appFrame: anchorFrame, source: 'real-key', dataUrl: frame.onionDataUrl, onionKind: 'stroke-preview' }
+        : { ...frame, appFrame: anchorFrame, source: 'real-key', onionKind: frame.source === 'real-key' ? 'cached-composite' : 'stroke-preview' });
     };
     const addFrame = (frame: RenderedFramePayload & { onionKind?: PhysicsPaintWorkflowOnionPreviewFrame['kind'] }, direction: 'previous' | 'next', distance: number) => {
       frames.push({

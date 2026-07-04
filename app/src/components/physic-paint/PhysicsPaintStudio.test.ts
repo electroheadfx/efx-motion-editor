@@ -337,6 +337,22 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(onionBlock).toContain('dirtyRotoFramesRef.current.has(frameNumber) || !candidates.has(frameNumber)');
   });
 
+  it('D-18/D-19/D-20 resolves onion anchors from real source keys for custom dynamic spans', () => {
+    const text = source();
+    const onionBlock = text.slice(text.indexOf('const buildOnionPreviewFrames = useCallback'), text.indexOf('const convertPlayToRoto = useCallback'));
+
+    // Source keys 0/1/2/6 with global 2 and custom 2 -> 6 = 4 display as real keys 0/3/6/11.
+    // Generated display frames 7/8/9/10 can be current previews, but they must not become anchors.
+    expect(onionBlock).toContain('const anchorFrame = getRotoOnionAnchorDisplayFrame(frame)');
+    expect(onionBlock).toContain('candidates.set(anchorFrame');
+    expect(onionBlock).toContain("if (frame.source && frame.source !== 'real-key') return;");
+    expect(onionBlock).toContain("source: 'real-key'");
+    expect(onionBlock).not.toContain('candidates.set(frame.appFrame');
+    expect(onionBlock).toContain('fromSourceFrame');
+    expect(onionBlock).toContain('toSourceFrame');
+    expect(onionBlock).toContain('displayFrame');
+  });
+
   it('renders onion frames above cached current-frame references inside the overlay', () => {
     const css = styles();
     const onionRuleStart = css.indexOf('.physics-paint-onion-frame {');
