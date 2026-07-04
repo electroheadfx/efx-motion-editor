@@ -33,7 +33,7 @@ import {
   type RotoCellFill,
   type RotoCellOverlay,
 } from './physicsPaintWorkflowState';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, type PhysicPaintRotoCacheFrame, type PhysicPaintRotoSegmentSpacingOverride } from '../../types/physicPaint';
 
 describe('physicsPaintWorkflowState', () => {
   it('returns active primary action labels for Roto and Play workflow tabs (D-10, D-11, D-12, D-16)', () => {
