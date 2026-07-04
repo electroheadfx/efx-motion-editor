@@ -1319,7 +1319,7 @@ export function PhysicsPaintStudio() {
     setIsPlaying(false);
   }, []);
 
-  const upsertCachedRotoFrameInLaunchContext = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null) => {
+  const upsertCachedRotoFrameInLaunchContext = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null, interpolationSettings?: PhysicPaintRotoInterpolationSettings) => {
     const sourceFrame = renderedFrame.sourceFrame ?? renderedFrame.appFrame;
     const normalizedRenderedFrame = { ...renderedFrame, appFrame: sourceFrame };
     confirmedCachedRotoFramesRef.current.set(sourceFrame, normalizedRenderedFrame);
@@ -1328,6 +1328,7 @@ export function PhysicsPaintStudio() {
       const previousDisplayFrame = current.startFrame;
       const frameForCache = { ...normalizedRenderedFrame, source: 'real-key' as const, sourceFrame, displayFrame: sourceFrame };
       physicPaintStore.upsertRealRotoKeyFrame(current.layerId, sourceFrame, frameForCache, backgroundOnly);
+      if (interpolationSettings) physicPaintStore.setRotoInterpolationSettings(current.layerId, interpolationSettings);
       const manualFrames = upsertCachedRotoCacheFrame(current.cachedRotoFrames, frameForCache, backgroundOnly, onionFrame);
       const storeFrames = physicPaintStore.getRotoCacheFrames(current.layerId);
       const settings = physicPaintStore.getRotoInterpolationSettings(current.layerId);
@@ -1621,7 +1622,7 @@ export function PhysicsPaintStudio() {
     }, 5000);
   }, [syncPendingRotoFrames]);
 
-  const flushRotoFrame = useCallback(async (frame: number, options: { force?: boolean; advanceToFrame?: number | null; sourceFrameOverride?: number; onPayload?: (payload: PhysicPaintApplyPayload) => void } = {}) => {
+  const flushRotoFrame = useCallback(async (frame: number, options: { force?: boolean; advanceToFrame?: number | null; sourceFrameOverride?: number; rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings; onPayload?: (payload: PhysicPaintApplyPayload) => void } = {}) => {
     if (!actionContext || !Number.isInteger(frame) || frame < 0) return null;
     if (!options.force && !dirtyRotoFramesRef.current.has(frame)) return null;
     if (rotoFlushInFlightRef.current) return rotoFlushInFlightRef.current;
@@ -1721,7 +1722,7 @@ export function PhysicsPaintStudio() {
           editableState,
           renderedFrame,
           rotoBackground: buildRotoBackgroundMetadata(settings),
-          rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
+          rotoInterpolationSettings: options.rotoInterpolationSettings ?? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
           ...(backgroundOnly ? { backgroundOnly: true } : {}),
           ...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {}),
         };
@@ -1739,7 +1740,7 @@ export function PhysicsPaintStudio() {
           if (cachedRepaintBase) {
             pendingCachedRotoMergeFrameRef.current = { frame, renderedFrame, backgroundOnly, onionFrame };
           } else {
-            upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame);
+            upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame, options.rotoInterpolationSettings);
           }
         }
         syncPendingRotoFrames();
@@ -2208,12 +2209,13 @@ export function PhysicsPaintStudio() {
       getRealCachedRotoSourceFrameNumbers(launchContext),
       physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
     );
-    if (saveTarget.previousSegmentOverride) {
-      const currentSettings = physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
-      physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, {
-        segmentSpacingOverrides: mergeRotoSegmentSpacingOverride(currentSettings.segmentSpacingOverrides, saveTarget.previousSegmentOverride),
-      });
-    }
+    const currentSettings = physicPaintStore.getRotoInterpolationSettings(launchContext.layerId);
+    const nextRotoInterpolationSettings = saveTarget.previousSegmentOverride
+      ? {
+          ...currentSettings,
+          segmentSpacingOverrides: mergeRotoSegmentSpacingOverride(currentSettings.segmentSpacingOverrides, saveTarget.previousSegmentOverride),
+        }
+      : currentSettings;
     const snapshotHasLiveOverlay = snapshotCurrentRotoFrame();
     const cachedRepaintBase = cachedRotoRepaintBaseFrame?.appFrame === currentFrame ? cachedRotoRepaintBaseFrame : null;
     if (cachedRepaintBase && !dirtyRotoFramesRef.current.has(currentFrame) && !snapshotHasLiveOverlay) {
@@ -2225,9 +2227,9 @@ export function PhysicsPaintStudio() {
     syncPendingRotoFrames();
     const sourceFrameOverride = Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, saveTarget.sourceFrame);
     if (sourceFrameOverride !== currentFrame) {
-      return flushRotoFrame(currentFrame, { force: true, advanceToFrame, sourceFrameOverride, onPayload: options.onPayload });
+      return flushRotoFrame(currentFrame, { force: true, advanceToFrame, sourceFrameOverride, rotoInterpolationSettings: nextRotoInterpolationSettings, onPayload: options.onPayload });
     }
-    return flushRotoFrame(currentFrame, { force: true, advanceToFrame, onPayload: options.onPayload });
+    return flushRotoFrame(currentFrame, { force: true, advanceToFrame, rotoInterpolationSettings: nextRotoInterpolationSettings, onPayload: options.onPayload });
   }, [cachedRotoRepaintBaseFrame, currentFrame, currentFrameIsGeneratedRoto, flushRotoFrame, launchContext, readyToApply, snapshotCurrentRotoFrame, syncPendingRotoFrames]);
 
   const updateSelectedPlayOptions = useCallback(async () => {

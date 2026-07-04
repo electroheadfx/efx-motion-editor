@@ -456,6 +456,57 @@ describe('physicPaintStore', () => {
     ]);
   });
 
+  it('UAT keeps a far-empty saved key at display #14 with a custom previous segment', () => {
+    const zero = makeAlphaFrame(0, 0, 'zero');
+    const one = makeAlphaFrame(0, 1, 'one');
+    const two = makeAlphaFrame(0, 2, 'two');
+    const three = makeAlphaFrame(0, 3, 'three');
+    const five = makeAlphaFrame(0, 14, 'painted-five');
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, zero);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, one);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, two);
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 3, three);
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 });
+
+    const customSettings = {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate' as const,
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 4, inBetweenCount: 4 }],
+    };
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 4, { ...five, appFrame: 4 });
+    physicPaintStore.setRotoInterpolationSettings('layer-1', customSettings);
+
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 1, 2, 3, 4]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0, dataUrl: zero.dataUrl }),
+      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 1, displayFrame: 3, dataUrl: one.dataUrl }),
+      expect.objectContaining({ appFrame: 6, source: 'real-key', sourceFrame: 2, displayFrame: 6, dataUrl: two.dataUrl }),
+      expect.objectContaining({ appFrame: 9, source: 'real-key', sourceFrame: 3, displayFrame: 9, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 10, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 4, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 11, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 4, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 12, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 4, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 13, source: 'generated-interpolation', fromSourceFrame: 3, toSourceFrame: 4, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 4, displayFrame: 14, dataUrl: five.dataUrl }),
+    ]));
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1').segmentSpacingOverrides).toEqual([
+      { fromSourceFrame: 3, toSourceFrame: 4, inBetweenCount: 4 },
+    ]);
+    expect(physicPaintStore.getRotoFrame('layer-1', 14)).toEqual(expect.objectContaining({ appFrame: 14, source: 'real-key', sourceFrame: 4, dataUrl: five.dataUrl }));
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: false });
+
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ appFrame: 0, source: 'real-key', sourceFrame: 0, displayFrame: 0, dataUrl: zero.dataUrl }),
+      expect.objectContaining({ appFrame: 1, source: 'real-key', sourceFrame: 1, displayFrame: 1, dataUrl: one.dataUrl }),
+      expect.objectContaining({ appFrame: 2, source: 'real-key', sourceFrame: 2, displayFrame: 2, dataUrl: two.dataUrl }),
+      expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 3, displayFrame: 3, dataUrl: three.dataUrl }),
+      expect.objectContaining({ appFrame: 4, source: 'real-key', sourceFrame: 4, displayFrame: 4, dataUrl: five.dataUrl }),
+    ]);
+  });
+
   it('appends a distant real key saved while interpolation is enabled into compact source order through disable and save/load', () => {
     const circle = makeAlphaFrame(0, 0, 'circle');
     const square = makeAlphaFrame(0, 1, 'square');

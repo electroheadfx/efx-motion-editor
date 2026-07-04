@@ -60,8 +60,10 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(saveBlock).toContain('currentFrameIsGeneratedRoto');
     expect(saveBlock).toContain('Generated frame ${currentFrame} is render-only');
     expect(saveBlock).toContain('resolveRotoSaveTargetForDisplayFrame(currentFrame');
-    expect(saveBlock).toContain('physicPaintStore.setRotoInterpolationSettings');
-    expect(saveBlock).toContain('segmentSpacingOverrides');
+    expect(saveBlock).toContain('nextRotoInterpolationSettings');
+    expect(saveBlock).toContain('segmentSpacingOverrides: mergeRotoSegmentSpacingOverride');
+    expect(saveBlock).toContain('rotoInterpolationSettings: nextRotoInterpolationSettings');
+    expect(saveBlock).not.toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, {');
     expect(saveBlock).toContain('PHYSIC_PAINT_MAX_APPLY_FRAMES');
     expect(flushBlock).toContain('options.sourceFrameOverride ?? resolveRotoSourceFrameForDisplayFrame(frame)');
     expect(flushBlock).toContain('sourceFrameOverride?: number');

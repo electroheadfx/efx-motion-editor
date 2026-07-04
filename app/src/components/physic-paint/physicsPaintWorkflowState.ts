@@ -444,7 +444,7 @@ export function resolveRotoFarEmptyDisplaySaveTarget(displayFrame: number, realK
   const previous = [...realEntries].reverse().find((entry) => entry.displayFrame < safeDisplayFrame) ?? realEntries[realEntries.length - 1];
   if (!previous) return { displayFrame: safeDisplayFrame, sourceFrame: safeDisplayFrame, previousSegmentOverride: null };
   const generatedInBetweenCount = clampRotoInBetweenCount(Math.max(1, safeDisplayFrame - previous.displayFrame - 1));
-  const sourceFrame = previous.sourceFrame + generatedInBetweenCount;
+  const sourceFrame = previous.sourceFrame + 1;
   return {
     displayFrame: safeDisplayFrame,
     sourceFrame,

@@ -362,12 +362,48 @@ describe('physicsPaintWorkflowState', () => {
       .map((entry) => entry.displayFrame)).toEqual([9, 10, 11, 12]);
   });
 
-  it('D-03 resolves far empty display saves to compressed source keys and a previous-segment override', () => {
-    expect(resolveRotoFarEmptyDisplaySaveTarget(11, [0, 1, 2], { enabled: true, inBetweenCount: 2, mode: 'duplicate' })).toEqual({
+  it('D-03 resolves far empty display saves to compact source keys and a previous-segment override', () => {
+    const target = resolveRotoFarEmptyDisplaySaveTarget(11, [0, 1, 2], { enabled: true, inBetweenCount: 2, mode: 'duplicate' });
+
+    expect(target).toEqual({
       displayFrame: 11,
-      sourceFrame: 6,
-      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+      sourceFrame: 3,
+      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 3, inBetweenCount: 4 },
     });
+    expect(getExpandedRotoRealKeyFrames([0, 1, 2, target.sourceFrame], {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      segmentSpacingOverrides: target.previousSegmentOverride ? [target.previousSegmentOverride] : [],
+    }).filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame)).toEqual([0, 3, 6, 11]);
+  });
+
+  it('UAT far-empty save keeps the new real key at display #14 and disables to the next compact source key', () => {
+    const target = resolveRotoFarEmptyDisplaySaveTarget(14, [0, 1, 2, 3], { enabled: true, inBetweenCount: 2, mode: 'duplicate' });
+
+    expect(target).toEqual({
+      displayFrame: 14,
+      sourceFrame: 4,
+      previousSegmentOverride: { fromSourceFrame: 3, toSourceFrame: 4, inBetweenCount: 4 },
+    });
+    expect(getExpandedRotoRealKeyFrames([0, 1, 2, 3, target.sourceFrame], {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      segmentSpacingOverrides: target.previousSegmentOverride ? [target.previousSegmentOverride] : [],
+    }).filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame)).toEqual([0, 3, 6, 9, 14]);
+    expect(getRotoInterpolationSpanFrames([0, 1, 2, 3, target.sourceFrame], {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      segmentSpacingOverrides: target.previousSegmentOverride ? [target.previousSegmentOverride] : [],
+    }).filter((entry) => entry.fromSourceFrame === 3 && entry.toSourceFrame === 4).map((entry) => entry.displayFrame)).toEqual([10, 11, 12, 13]);
+    expect(getExpandedRotoRealKeyFrames([0, 1, 2, 3, target.sourceFrame], {
+      enabled: false,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      segmentSpacingOverrides: target.previousSegmentOverride ? [target.previousSegmentOverride] : [],
+    }).filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame)).toEqual([0, 1, 2, 3, 4]);
   });
 
   it('preserves interpolation enabled, count, and accepted mode settings for duplicate/hold and alpha blend', () => {
