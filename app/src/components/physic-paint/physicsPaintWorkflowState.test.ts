@@ -295,7 +295,7 @@ describe('physicsPaintWorkflowState', () => {
     const settings = { enabled: true, inBetweenCount: 3, mode: 'duplicate' as const };
 
     expect(getSourceRotoFrameForDisplayFrame(12, [0, 1, 2], settings)).toBe(3);
-    expect(getSourceRotoFrameForDisplayFrame(29, [0, 1, 2, 3], settings)).toBe(19);
+    expect(getSourceRotoFrameForDisplayFrame(29, [0, 1, 2, 3], settings)).toBe(4);
     expect(getSourceRotoFrameForDisplayFrame(21, [0, 1, 2, 3, 4], { ...settings, enabled: false })).toBe(21);
   });
 

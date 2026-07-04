@@ -903,7 +903,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('const saveRotoFrame = useCallback');
     expect(saveBlock).toContain('snapshotCurrentRotoFrame()');
     expect(saveBlock).toContain('dirtyRotoFramesRef.current.add(currentFrame)');
-    expect(saveBlock).toContain('return flushRotoFrame(currentFrame, { force: true, advanceToFrame, onPayload: options.onPayload })');
+    expect(saveBlock).toContain('return flushRotoFrame(currentFrame, { force: true, advanceToFrame, rotoInterpolationSettings: nextRotoInterpolationSettings, onPayload: options.onPayload })');
     expect(beforeUnloadBlock).toContain('snapshotCurrentRotoFrame()');
     expect(beforeUnloadBlock).not.toContain('flushRotoFrame(currentFrame');
     expect(beforeUnloadBlock).not.toContain('event.preventDefault()');
@@ -1048,7 +1048,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
     const saveBlock = text.slice(text.indexOf('const saveRotoFrame = useCallback'), text.indexOf('const updateSelectedPlayOptions = useCallback'));
 
-    expect(saveBlock).toContain('flushRotoFrame(currentFrame, { force: true, advanceToFrame, onPayload: options.onPayload })');
+    expect(saveBlock).toContain('flushRotoFrame(currentFrame, { force: true, advanceToFrame, rotoInterpolationSettings: nextRotoInterpolationSettings, onPayload: options.onPayload })');
     expect(saveBlock).not.toContain('savePendingRotoFrames()');
     expect(saveBlock).not.toContain('savePlay()');
     expect(flushBlock).toContain("kind: 'apply-canvas'");
@@ -1075,7 +1075,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(upsertCallbackBlock).toContain('setSavedRotoFrames(refreshedRealKeyFrames.map');
     expect(upsertCallbackBlock).toContain('startFrame: nextDisplayFrame');
     expect(upsertCallbackBlock).toContain('cachedRotoFrames: refreshedRotoFrames');
-    expect(flushBlock).toContain('upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame)');
+    expect(flushBlock).toContain('upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame, options.rotoInterpolationSettings)');
     expect(flushBlock).not.toContain('savePendingRotoFrames()');
   });
 
@@ -1101,7 +1101,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(flushBlock).toContain('renderedFrame,');
     expect(flushBlock).toContain("kind: 'apply-canvas'");
     expect(flushBlock).toContain('pendingCachedRotoMergeFrameRef.current = { frame, renderedFrame, backgroundOnly, onionFrame }');
-    expect(flushBlock).toContain('} else {\n            upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame);\n          }');
+    expect(flushBlock).toContain('} else {\n            upsertCachedRotoFrameInLaunchContext(renderedFrame, backgroundOnly, onionFrame, options.rotoInterpolationSettings);\n          }');
     expect(flushBlock).not.toContain('engine.load(cachedRepaintBase');
     expect(flushBlock).not.toContain('reconstructCachedRoto');
   });
@@ -1350,7 +1350,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(coordinatorBlock).toContain('pendingRotoAdvanceRef.current = targetFrame');
     expect(coordinatorBlock).toContain('return false');
     expect(coordinatorBlock).not.toContain('if (saveOnLeaveSourceFrameRef.current !== null && rotoFlushInFlightRef.current)');
-    expect(saveBlock).toContain('return flushRotoFrame(currentFrame, { force: true, advanceToFrame, onPayload: options.onPayload })');
+    expect(saveBlock).toContain('return flushRotoFrame(currentFrame, { force: true, advanceToFrame, rotoInterpolationSettings: nextRotoInterpolationSettings, onPayload: options.onPayload })');
     expect(text).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
   });
 
