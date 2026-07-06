@@ -195,6 +195,24 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// #2002 — self-healing runtime build. The compiled ./lib/*.cjs modules this
+// entrypoint require()s below are gitignored build artifacts (ADR-457), shipped
+// prebuilt in the npm tarball. The Claude Code plugin-marketplace channel never
+// runs `npm run build:lib` or bin/install.js, so on that path they can be
+// absent and every command dies at module load. Compile them once (lock-guarded,
+// idempotent, a no-op when already built) before the ./lib requires run.
+const { ensureRuntimeBuild } = require('./ensure-runtime-build.cjs');
+try {
+  ensureRuntimeBuild();
+} catch (bootErr) {
+  process.stderr.write((bootErr && bootErr.message ? bootErr.message : String(bootErr)) + '\n');
+  // Fatal bootstrap failure before the CLI's ExitError/runMain machinery (which
+  // lives in ./lib) is available to load, so a direct exit is the only option.
+  // eslint-disable-next-line n/no-process-exit
+  process.exit(1);
+}
+
 const { ExitError, runMain } = require('./lib/cli-exit.cjs');
 const io = require('./lib/io.cjs');
 const { error, ERROR_REASON, setJsonErrorMode, output } = io;
@@ -259,6 +277,7 @@ const { routePhasesCommand } = require('./lib/phases-command-router.cjs');
 const { routeValidateCommand } = require('./lib/validate-command-router.cjs');
 const { routeRoadmapCommand } = require('./lib/roadmap-command-router.cjs');
 const { routeAgentCommand } = require('./lib/agent-command-router.cjs');
+const smartEntryMod = require('./lib/smart-entry.cjs');
 const { routeCheckCommand } = require('./lib/check-command-router.cjs');
 const { routeTaskCommand } = require('./lib/task-command-router.cjs');
 const { parseNamedArgs, parseMultiwordArg } = require('./lib/command-arg-projection.cjs');
@@ -665,7 +684,7 @@ async function main() {
     'from-gsd2, frontmatter, gap-analysis, generate-claude-md, generate-claude-profile, ' +
     'generate-dev-preferences, generate-slug, graphify, history-digest, init, intel, ' +
     'capability, classify-confidence, git, learnings, list-seeds, list-todos, loop, milestone, package-legitimacy, phase, phase-plan-index, phases, profile-questionnaire, ' +
-    'profile-sample, progress, project-instruction-file, prompt-budget, requirements, research-plan, research-store, resolve-granularity, resolve-model, roadmap, scaffold, state, ' +
+    'profile-sample, progress, project-instruction-file, prompt-budget, requirements, research-plan, research-store, resolve-granularity, resolve-model, roadmap, scaffold, smart-entry, state, ' +
     'task, template, user-story, validate, verify, verify-path-exists, verify-summary, eval, workstream, worktree\n\n' +
     'Global flags:\n' +
     '  --raw              Emit raw output without post-processing\n' +
@@ -830,6 +849,11 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
   switch (command) {
     case 'agent': {
       routeAgentCommand({ args, raw });
+      break;
+    }
+
+    case 'smart-entry': {
+      smartEntryMod.runSmartEntry(cwd, args, raw);
       break;
     }
 

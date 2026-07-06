@@ -20,6 +20,7 @@ exports.CLUSTERS = void 0;
 exports.allClusteredSkills = allClusteredSkills;
 exports.CLUSTERS = Object.freeze({
     core_loop: Object.freeze([
+        'next',
         'new-project',
         'discuss-phase',
         'plan-phase',

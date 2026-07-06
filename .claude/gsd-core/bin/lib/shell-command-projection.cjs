@@ -56,16 +56,20 @@ const node_child_process_1 = __importDefault(require("node:child_process"));
  * runtime/shell combination.
  *
  * Current evidence-backed policy:
- * - Gemini on Windows requires `& ` for quoted node/bash runners.
- * - Claude Code on Windows does NOT: its hook commands execute under bash/Git
- *   Bash and `& ` breaks there (#3413).
+ * - Claude Code on Windows does NOT need it: its hook commands execute under
+ *   bash/Git Bash and `& ` breaks there (#3413).
+ * - #1928: Gemini CLI — the ONLY runtime with a verified need for the `& `
+ *   prefix on Windows — was removed (Google sunset it 2026-06-18). No currently
+ *   supported runtime has a verified need, so this seam is now inert. It is
+ *   retained (not deleted) so a future runtime with a verified need is a
+ *   one-line re-enable, per the conservative policy below. Note: Antigravity —
+ *   the Gemini-backend successor — never matched the old `runtime === 'gemini'`
+ *   check, so its behavior (no prefix) is unchanged.
  *
  * Keep the policy conservative until another runtime has a verified need.
  */
-function hookCommandNeedsPowerShellCallOperator(opts = {}) {
-    const platform = opts.platform || process.platform;
-    const runtime = opts.runtime || 'generic';
-    return platform === 'win32' && runtime === 'gemini';
+function hookCommandNeedsPowerShellCallOperator(_opts = {}) {
+    return false;
 }
 /**
  * Project a fully-assembled hook command string for the target runtime.
@@ -121,7 +125,7 @@ function formatManagedHookScriptToken(scriptPath, opts = {}) {
 function projectLocalHookPrefix({ runtime = 'claude', dirName }) {
     if (!dirName)
         return dirName;
-    return (runtime === 'gemini' || runtime === 'antigravity')
+    return (runtime === 'antigravity')
         ? dirName
         : `"$CLAUDE_PROJECT_DIR"/${dirName}`;
 }

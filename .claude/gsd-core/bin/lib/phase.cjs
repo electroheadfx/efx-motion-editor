@@ -1135,7 +1135,10 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                 const checkboxPattern = new RegExp(`(-\\s*\\[)[ ](\\]\\s*.*Phase\\s+${phaseEscaped}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s][^\\n]*)`, 'i');
                 roadmapContent = roadmapContent.replace(checkboxPattern, `$1x$2 (completed ${today})`);
                 const tableRowPattern = new RegExp(`^(\\|\\s*${phaseEscaped}\\.?\\s[^|]*(?:\\|[^\\n]*))$`, 'im');
-                roadmapContent = roadmapContent.replace(tableRowPattern, (fullRow) => {
+                // Scope the Progress-row search to the ## Progress section so the regex
+                // doesn't bind to an earlier table (e.g. | Phase | Requirements | Count |)
+                // whose rows also start with the phase number. (#2012)
+                const updateProgressRow = (fullRow) => {
                     const cells = fullRow.split('|').slice(1, -1);
                     const dateShape = /^\d{4}-\d{2}-\d{2}$/;
                     if (cells.length === 5) {
@@ -1153,7 +1156,16 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
                         cells[3] = dateShape.test(existingDate4) ? cells[3] : ` ${today} `;
                     }
                     return '|' + cells.join('|') + '|';
-                });
+                };
+                const progressIdx = roadmapContent.indexOf('## Progress');
+                if (progressIdx >= 0) {
+                    const beforeProgress = roadmapContent.slice(0, progressIdx);
+                    const progressSection = roadmapContent.slice(progressIdx);
+                    roadmapContent = beforeProgress + progressSection.replace(tableRowPattern, updateProgressRow);
+                }
+                else {
+                    roadmapContent = roadmapContent.replace(tableRowPattern, updateProgressRow);
+                }
                 const planCountPattern = new RegExp(`(#{2,4}\\s*Phase\\s+${phaseEscaped}[\\s\\S]*?\\*\\*Plans:\\*\\*\\s*)[^\\n]+`, 'i');
                 roadmapContent = roadmapContent.replace(planCountPattern, `$1${summaryCount}/${planCount} plans complete`);
                 const phaseInfoSummaries = phaseInfo['summaries'];

@@ -32,8 +32,14 @@ const { planningPaths, withPlanningLock, findContextMdIn } = planningWorkspace;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const scanPhasePlans = require("./plan-scan.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
+const coreUtils = require("./core-utils.cjs");
+const { countMatchedSummaries } = coreUtils;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const frontmatter = require("./frontmatter.cjs");
 const { extractFrontmatter, parseMustHavesBlock } = frontmatter;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const verificationMod = require("./verification.cjs");
+const { readVerificationStatus } = verificationMod;
 // ─── coerceTruthToString ──────────────────────────────────────────────────────
 /**
  * Coerce an arbitrary YAML scalar/object into a string for cross-cutting
@@ -410,12 +416,21 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
         error(`Phase ${phaseNum} not found`);
     }
     const planCount = phaseInfo.plans.length;
-    const summaryCount = phaseInfo.summaries.length;
+    // Count only summaries that pair with a real plan (#1988): stray non-plan
+    // summaries (30-FIX-CR02-SUMMARY.md, 30-GAPCLOSURE-SUMMARY.md, …) must not
+    // inflate summary_count and silently flip the phase to Complete.
+    const summaryCount = countMatchedSummaries(phaseInfo.plans, phaseInfo.summaries);
     if (planCount === 0) {
         output({ updated: false, reason: 'No plans found', plan_count: 0, summary_count: 0 }, raw, 'no plans');
         return;
     }
-    const isComplete = summaryCount >= planCount;
+    // Verification gate (#2022): do NOT check the phase checkbox or stamp a
+    // completion date until the phase's verification status is 'passed', matching
+    // cmdPhaseComplete's gate (phase.cts:1436). Previously the checkbox fired the
+    // moment the last plan summary landed — before gsd-verifier had verified.
+    const phaseDir = node_path_1.default.join(cwd, phaseInfo.directory);
+    const verificationPassed = readVerificationStatus(phaseDir).status === 'passed';
+    const isComplete = summaryCount >= planCount && verificationPassed;
     const status = isComplete ? 'Complete' : summaryCount > 0 ? 'In Progress' : 'Planned';
     const today = clock_cjs_1.realClock.today();
     if (!node_fs_1.default.existsSync(roadmapPath)) {

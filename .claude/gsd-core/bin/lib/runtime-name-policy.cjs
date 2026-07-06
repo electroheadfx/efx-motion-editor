@@ -29,7 +29,6 @@ const FALLBACK_ALIASES = {
     claude: ['claude', 'claude-code', 'claude-cli'],
     opencode: ['opencode', 'open-code', 'opencode-cli'],
     kilo: ['kilo', 'kilo-cli'],
-    gemini: ['gemini', 'gemini-cli', 'gemini-code'],
     codex: ['codex', 'codex-app', 'codex-cli', 'codex_desktop', 'codex-desktop'],
     copilot: ['copilot', 'copilot-cli', 'github-copilot'],
     antigravity: ['antigravity', 'antigravity-cli', 'antigravity-agent'],
@@ -114,7 +113,7 @@ function resolveRuntimeNameFromCandidates(...candidates) {
  *   claude                      → .claude/CLAUDE.md
  *   codex, opencode, kilo, kimi → AGENTS.md
  *   copilot                     → .github/copilot-instructions.md
- *   antigravity, gemini         → GEMINI.md
+ *   antigravity                 → GEMINI.md
  *   unknown / future runtimes   → AGENTS.md (safe cross-agent default)
  *
  * Source-of-truth references for each runtime's read path:
@@ -126,7 +125,9 @@ function resolveRuntimeNameFromCandidates(...candidates) {
  *     'copilot-instructions' writes the same `.github/copilot-instructions.md`.)
  *   - codex/opencode/kilo/kimi: AGENTS.md is the documented cross-agent
  *     instruction file (agentsmd/agents.md convention).
- *   - antigravity/gemini: GEMINI.md is Gemini CLI's contextFileName.
+ *   - antigravity: GEMINI.md is Antigravity CLI's contextFileName (the Gemini
+ *     CLI runtime that historically shared this file was removed — #1928;
+ *     Google sunset Gemini CLI 2026-06-18 and Antigravity CLI is its successor).
  *
  * Aliases are normalized via `canonicalizeRuntimeName` first, so inputs like
  * `codex-cli` resolve to `codex` → `AGENTS.md`. Replaces the prior codex-only
@@ -139,7 +140,7 @@ function getProjectInstructionFile(runtime) {
         return '.claude/CLAUDE.md';
     if (canonical === 'copilot')
         return '.github/copilot-instructions.md';
-    if (canonical === 'antigravity' || canonical === 'gemini')
+    if (canonical === 'antigravity')
         return 'GEMINI.md';
     // codex, opencode, kilo, kimi, AND unknown/future runtimes all default to
     // root AGENTS.md (the safe cross-agent instruction file).
@@ -180,7 +181,7 @@ function getDirName(runtime) {
  *
  * Voice: these are the SHORT UI labels, intentionally distinct from the
  * descriptor `title` (the long product name — e.g. "OpenAI Codex CLI",
- * "GitHub Copilot", "Gemini CLI") which serves documentation/registry display,
+ * "GitHub Copilot") which serves documentation/registry display,
  * not the install console. A future slice may relocate this to a
  * `runtime.label` descriptor field; until then this table is the source.
  *
@@ -195,7 +196,6 @@ function getDirName(runtime) {
 const RUNTIME_LABELS = {
     claude: 'Claude Code',
     opencode: 'OpenCode',
-    gemini: 'Gemini',
     kilo: 'Kilo',
     codex: 'Codex',
     copilot: 'Copilot',
@@ -231,7 +231,7 @@ function getRuntimeLabel(runtime) {
  * bin/install.js (ADR-1239 Phase B / #1679, AC2 slice 2) — the add-a-host tax:
  * a new runtime meant remembering to add a branch here. Values are preserved
  * BYTE-FOR-BYTE from the prior chain; golden install parity asserts generated
- * hook output is unchanged across all 16 runtimes.
+ * hook output is unchanged across all 15 runtimes.
  *
  * Two runtimes are intentionally absent (handled by the caller, NOT this table):
  *   - `claude`     → the default; falls through to `DEFAULT_FRAGMENT`.
@@ -244,7 +244,6 @@ const DEFAULT_CONFIG_HOME_FRAGMENT = "'.claude'";
 const GLOBAL_CONFIG_HOME_FRAGMENTS = {
     copilot: "'.copilot'",
     opencode: "'.config', 'opencode'",
-    gemini: "'.gemini'",
     kilo: "'.config', 'kilo'",
     codex: "'.codex'",
     cursor: "'.cursor'",
@@ -277,7 +276,7 @@ function getGlobalConfigHomeFragment(runtime) {
  * removes).
  */
 const RUNTIME_FLAG_IDS = Object.freeze([
-    'opencode', 'kilo', 'gemini', 'codex', 'copilot', 'antigravity', 'cursor',
+    'opencode', 'kilo', 'codex', 'copilot', 'antigravity', 'cursor',
     'windsurf', 'augment', 'trae', 'qwen', 'hermes', 'codebuddy', 'cline', 'kimi',
 ]);
 /**
@@ -303,7 +302,6 @@ function runtimeFlags(runtime) {
  */
 const DEFAULT_NEW_PROJECT_COMMAND = '/gsd-new-project';
 const RUNTIME_NEW_PROJECT_COMMANDS = {
-    gemini: '/gsd:new-project',
     codex: '$gsd-new-project',
     cursor: 'gsd-new-project (mention the skill name)',
     kimi: '/skill:gsd-new-project',

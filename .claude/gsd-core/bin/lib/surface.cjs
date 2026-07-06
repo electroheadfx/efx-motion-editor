@@ -466,16 +466,25 @@ function _syncGsdDir(stagedDir, destDir, kind, manifest) {
         //   - agents: only gsd-* are GSD-owned
         //   - flat command dirs: only `${kindPrefix}`-prefixed are GSD-owned
         //   - namespaced command dirs: the whole dir is GSD-owned
-        for (const file of node_fs_1.default.readdirSync(destDir).filter(f => f.endsWith('.md'))) {
-            if (kindName === 'agents' && !file.startsWith('gsd-'))
-                continue;
-            if (kindName === 'commands' && !namespacedByDir && kindPrefix && !file.startsWith(kindPrefix))
-                continue;
-            if (!stagedDestNames.has(file)) {
-                try {
-                    node_fs_1.default.unlinkSync(node_path_1.default.join(destDir, file));
+        //
+        // Manifest gate (#2018): when the manifest is empty/absent (e.g. an unresolvable
+        // install source root yields an empty staged dir), the staged set is untrustworthy.
+        // Skills are guarded by pruneSkillDirs' manifest-membership check; agents must be
+        // guarded here — skip the prune loop entirely so an empty manifest never deletes
+        // every gsd-* agent. Copying (above) still runs so genuinely new agents are added.
+        const shouldPruneAgents = !(kindName === 'agents' && (!manifest || manifest.size === 0));
+        if (shouldPruneAgents) {
+            for (const file of node_fs_1.default.readdirSync(destDir).filter(f => f.endsWith('.md'))) {
+                if (kindName === 'agents' && !file.startsWith('gsd-'))
+                    continue;
+                if (kindName === 'commands' && !namespacedByDir && kindPrefix && !file.startsWith(kindPrefix))
+                    continue;
+                if (!stagedDestNames.has(file)) {
+                    try {
+                        node_fs_1.default.unlinkSync(node_path_1.default.join(destDir, file));
+                    }
+                    catch { /* ignore */ }
                 }
-                catch { /* ignore */ }
             }
         }
     }
