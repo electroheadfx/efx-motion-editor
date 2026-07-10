@@ -33,6 +33,8 @@ const rotoPlayConversionControllerPath = fileURLToPath(new URL('./useRotoPlayCon
 const engineLifecyclePath = fileURLToPath(new URL('./usePhysicsPaintEngineLifecycle.ts', import.meta.url));
 const canvasMountPath = fileURLToPath(new URL('./PhysicsPaintCanvasMount.tsx', import.meta.url));
 const canvasSizingPath = fileURLToPath(new URL('./physicsPaintCanvasSizing.ts', import.meta.url));
+const parentBridgePath = fileURLToPath(new URL('./usePhysicsPaintParentBridge.ts', import.meta.url));
+const launchContextPath = fileURLToPath(new URL('./physicsPaintLaunchContext.ts', import.meta.url));
 const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}\n${playPreviewControllerSource()}\n${playLifecycleTransactionsSource()}\n${engineLifecycleSource()}\n${canvasMountSource()}\n${canvasSizingSource()}`;
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
@@ -63,6 +65,8 @@ const rotoPlayConversionControllerSource = () => readFileSync(rotoPlayConversion
 const engineLifecycleSource = () => readFileSync(engineLifecyclePath, 'utf8');
 const canvasMountSource = () => readFileSync(canvasMountPath, 'utf8');
 const canvasSizingSource = () => readFileSync(canvasSizingPath, 'utf8');
+const parentBridgeSource = () => readFileSync(parentBridgePath, 'utf8');
+const launchContextSource = () => readFileSync(launchContextPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
   const blocks: string[] = [];
@@ -236,12 +240,21 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(broadCoherenceEffects).toEqual([]);
   });
 
-  it('D-02/D-13 keeps bridge/canvas/window APIs in Studio and out of the session boundary', () => {
+  it('D-02/D-13 keeps bridge/canvas/window APIs in focused external boundaries and out of the session boundary', () => {
     const text = source();
+    const bridge = parentBridgeSource();
     const session = rotoSessionSource();
 
     expect(text).toContain('sendPhysicPaintApplyPayload');
     expect(text).toContain('sendPhysicPaintFrameSyncMessage');
+    expect(text).toContain('usePhysicsPaintLaunchBridge(applyIncomingLaunchContext)');
+    expect(text).toContain('usePhysicsPaintApplyResultBridge(bridgeMode, handleApplyResult)');
+    expect(bridge).toContain("coreApi.invoke('get_physics_paint_launch_context')");
+    expect(bridge).toContain('PHYSIC_PAINT_LAUNCH_EVENT');
+    expect(bridge).toContain("event.origin !== window.location.origin");
+    expect(bridge).toContain('isPhysicPaintApplyResult(event.payload)');
+    expect(bridge).toContain('unlisten?.()');
+    expect(launchContextSource()).toContain('applyPhysicsPaintLaunchContext');
     expect(text).toContain('appWindow.onCloseRequested');
     expect(text).toContain('engine.save()');
     expect(text).toContain('engine.load(');
@@ -560,7 +573,7 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
     const text = source();
 
     expect(text).toContain('function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoBackgroundMetadata): PhysicsPaintStudioSettings');
-    expect(text).toContain("else if (getLaunchWorkflowMode(context) === 'roto' && context.rotoBackground) setSettings?.(applyRotoBackgroundMetadataToSettings(context.rotoBackground))");
+    expect(text).toContain("if (getLaunchWorkflowMode(launch) === 'roto' && launch.rotoBackground) return applyRotoBackgroundMetadataToSettings(launch.rotoBackground)");
     expect(text).toContain('function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void');
     expect(text).toContain('engine.setBgMode(metadata.background)');
     expect(text).toContain('engine.setPaperGrain(metadata.paperGrain)');
@@ -570,17 +583,19 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
 
   it('fetches the stored Tauri launch context after mount so editable Play state and cached frames are not lost on reopen', () => {
     const text = source();
+    const bridge = parentBridgeSource();
+    const launch = launchContextSource();
 
-    expect(text).toContain("coreApi.invoke('get_physics_paint_launch_context')");
-    expect(text).toContain('isPhysicPaintLaunchContext(storedContext)');
+    expect(bridge).toContain("coreApi.invoke('get_physics_paint_launch_context')");
+    expect(bridge).toContain('isPhysicPaintLaunchContext(storedContext)');
     expect(text).toContain('const applyIncomingLaunchContext = useCallback');
-    expect(text).toContain('applyIncomingLaunchContext(storedContext)');
-    expect(text).toContain('applyIncomingLaunchContext(event.payload)');
-    expect(text).toContain('setSavedPlayCacheDirty?.(getLaunchWorkflowMode(context) === \'play\' && context.playCacheStatus !== \'cached\')');
+    expect(bridge).toContain('applyIncomingLaunchContext(storedContext)');
+    expect(bridge).toContain('applyIncomingLaunchContext(event.payload)');
+    expect(launch).toContain("setters.setSavedPlayCacheDirty(getLaunchWorkflowMode(context) === 'play' && context.playCacheStatus !== 'cached')");
   });
 
   it('accepts saved Play source metadata through the parsed launch context path', () => {
-    const text = source();
+    const text = launchContextSource();
 
     expect(text).toContain('workflowMode: workflowMode === \'play\' ? \'play\' : \'roto\'');
     expect(text).toContain('playStartFrame: Number.isInteger(playStartFrame) && playStartFrame >= 0 ? playStartFrame : undefined');
@@ -608,7 +623,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 
     expect(playEditCacheControllerSource()).toContain('const [localPreviewFrame, setLocalPreviewFrameState]');
     expect(playFrameTransactionsSource()).toContain('const previewFrame = context?.previewFrame');
-    expect(text).toContain('setLocalPlayPreviewFrame?.(getLaunchPlayPreviewFrame(context))');
+    expect(launchContextSource()).toContain('setters.setLocalPlayPreviewFrame(getLaunchPlayPreviewFrame(context))');
     expect(text).toContain('currentPreviewFrame={localPlayPreviewFrame}');
   });
 
@@ -1447,7 +1462,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   it('clears save-on-leave source tracking on terminal paths while preserving the apply-result origin guard (D-12, D-16)', () => {
     const text = source();
     const timeoutBlock = rotoApplyLifecycleSource().slice(rotoApplyLifecycleSource().indexOf('const startApplyTimeout = useCallback'), rotoApplyLifecycleSource().indexOf('useEffect(() => clearApplyTimeout'));
-    const listenerBlock = text.slice(text.indexOf('const handleMessageResult ='), text.indexOf('window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT'));
+    const bridge = parentBridgeSource();
+    const listenerBlock = bridge.slice(bridge.indexOf('const handleMessageResult ='), bridge.indexOf('window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT'));
 
     const controller = rotoApplyResultControllerSource();
     expect(controller).toContain('input.saveOnLeaveSourceFrameRef.current = null');

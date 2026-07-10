@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../types/physicPaint';
-import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../lib/physicPaintBridge';
+import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
+import { PHYSIC_PAINT_APPLY_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore, registerRotoAlphaCanvasFrame } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
@@ -30,19 +30,20 @@ import { useRotoCloseLifecycle } from './useRotoCloseLifecycle';
 import { useRotoSaveController } from './useRotoSaveController';
 import { useRotoEditBufferController } from './useRotoEditBufferController';
 import { usePlayEditCacheController } from './usePlayEditCacheController';
-import { getActivePlayStartFrame, getLaunchPlayPreviewFrame, getPlayFrameCountFromAssignments, getPlayFrameEditAssignments, normalizePlayWiggle } from './playFrameTransactions';
+import { getActivePlayStartFrame, getPlayFrameCountFromAssignments, getPlayFrameEditAssignments, normalizePlayWiggle } from './playFrameTransactions';
 import { applyRenderedPlayCache, markPlayLaunchCacheStale, normalizePlayMotionUpdate, resolvePlayFrameCountUpdate, resolvePlayOptionsUpdate } from './playLifecycleTransactions';
 import { usePlayPreviewController } from './usePlayPreviewController';
 import { useRotoPlayConversionController } from './useRotoPlayConversionController';
 import { PhysicsPaintCanvasMount } from './PhysicsPaintCanvasMount';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize, resizePhysicsPaintState } from './physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './usePhysicsPaintEngineLifecycle';
+import { applyPhysicsPaintLaunchContext, getLaunchWorkflowMode, parsePhysicsPaintLaunchContext } from './physicsPaintLaunchContext';
+import { usePhysicsPaintApplyResultBridge, usePhysicsPaintBridgeMode, usePhysicsPaintLaunchBridge, type PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
 import './physicsPaintStudio.css';
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
 const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 50 };
 const ONION_DEPTH_OPACITY = [0.5, 0.25, 0.15] as const;
 const PLAY_LIMIT_TOAST_DISMISS_MS = 5000;
-type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type RenderedFramePayload = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
 type PreviewBackgroundEngine = EfxPaintEngine & {
@@ -72,27 +73,7 @@ type PhysicsPaintStudioSettings = {
 interface PhysicsPaintActionContext {
   engine: EfxPaintEngine;
   launchContext: PhysicPaintLaunchContext;
-  bridgeMode: BridgeMode;
-}
-
-const nonEmptyParam = (params: URLSearchParams, ...keys: string[]) => {
-  for (const key of keys) {
-    const value = params.get(key);
-    if (value && value.trim().length > 0) return value.trim();
-  }
-  return null;
-};
-
-const appendParams = (target: URLSearchParams, raw: string) => {
-  const trimmed = raw.replace(/^[?#]/, '');
-  if (!trimmed) return;
-  const params = new URLSearchParams(trimmed);
-  params.forEach((value, key) => target.set(key, value));
-};
-
-function getLaunchWorkflowMode(context: PhysicPaintLaunchContext | null): PhysicsPaintWorkflowMode {
-  if (context?.workflowMode === 'play' || context?.editableSource === 'play') return 'play';
-  return 'roto';
+  bridgeMode: PhysicsPaintBridgeMode;
 }
 
 function withoutRotoGapLimit(context: PhysicPaintLaunchContext): PhysicPaintLaunchContext {
@@ -107,87 +88,7 @@ function getRotoOnionAnchorDisplayFrame(frame: RenderedFramePayload & Partial<Pi
   return frame.displayFrame ?? frame.appFrame;
 }
 
-function applyLaunchContext(
-  context: PhysicPaintLaunchContext,
-  setLaunchContext: (context: PhysicPaintLaunchContext) => void,
-  setFramesToApply: (frameCount: number) => void,
-  setWorkflowMode: (mode: PhysicsPaintWorkflowMode) => void,
-  setLocalPlayPreviewFrame?: (frame: number) => void,
-  setSavedPlayCacheDirty?: (dirty: boolean) => void,
-  setPlayWiggle?: (wiggle: AnimationWiggleConfig) => void,
-  setSettings?: (settings: PhysicsPaintStudioSettings) => void,
-) {
-  setLaunchContext(context);
-  setFramesToApply(clampPhysicPaintFrameCount(context.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES));
-  setWorkflowMode(getLaunchWorkflowMode(context));
-  setLocalPlayPreviewFrame?.(getLaunchPlayPreviewFrame(context));
-  setSavedPlayCacheDirty?.(getLaunchWorkflowMode(context) === 'play' && context.playCacheStatus !== 'cached');
-  setPlayWiggle?.(normalizePlayWiggle(context.playRenderOptions?.motion ?? context.playMotion));
-  if (context.playRenderOptions) setSettings?.(applyRenderOptionsSnapshotToSettings(context.playRenderOptions));
-  else if (getLaunchWorkflowMode(context) === 'roto' && context.rotoBackground) setSettings?.(applyRotoBackgroundMetadataToSettings(context.rotoBackground));
-}
-
-function parseLaunchContext(location: Location): PhysicPaintLaunchContext | null {
-  const params = new URLSearchParams(location.search);
-  appendParams(params, location.hash);
-
-  const encodedContext = nonEmptyParam(params, 'context');
-  if (encodedContext) {
-    try {
-      const parsed = JSON.parse(encodedContext);
-      if (isPhysicPaintLaunchContext(parsed)) return parsed;
-    } catch {
-      // Continue with flat query/hash parameters.
-    }
-  }
-
-  const layerId = nonEmptyParam(params, 'layerId', 'layer', 'physicPaintLayerId');
-  const operationId = nonEmptyParam(params, 'operationId', 'op', 'requestId');
-  const startFrameRaw = nonEmptyParam(params, 'startFrame', 'frame', 'currentFrame');
-  const startFrame = Number(startFrameRaw);
-  if (!layerId || !operationId || !Number.isInteger(startFrame) || startFrame < 0) return null;
-
-  const width = Number(nonEmptyParam(params, 'width', 'w'));
-  const height = Number(nonEmptyParam(params, 'height', 'h'));
-  const fps = Number(nonEmptyParam(params, 'fps'));
-  const workflowMode = nonEmptyParam(params, 'workflowMode');
-  const playStartFrame = Number(nonEmptyParam(params, 'playStartFrame'));
-  const playFrameCount = Number(nonEmptyParam(params, 'playFrameCount'));
-  const editableSource = nonEmptyParam(params, 'editableSource');
-
-  return {
-    layerId,
-    operationId,
-    startFrame,
-    layerName: nonEmptyParam(params, 'layerName', 'name') ?? undefined,
-    width: Number.isFinite(width) && width > 0 ? width : undefined,
-    height: Number.isFinite(height) && height > 0 ? height : undefined,
-    fps: Number.isFinite(fps) && fps > 0 ? fps : undefined,
-    workflowMode: workflowMode === 'play' ? 'play' : 'roto',
-    playStartFrame: Number.isInteger(playStartFrame) && playStartFrame >= 0 ? playStartFrame : undefined,
-    playFrameCount: Number.isInteger(playFrameCount) && playFrameCount > 0 ? playFrameCount : undefined,
-    editableSource: editableSource === 'play' ? 'play' : editableSource === 'roto' ? 'roto' : undefined,
-    selectedPlayScriptId: nonEmptyParam(params, 'selectedPlayScriptId', 'playScriptId') ?? undefined,
-    previewFrame: Number.isInteger(Number(nonEmptyParam(params, 'previewFrame'))) && Number(nonEmptyParam(params, 'previewFrame')) >= 0 ? Number(nonEmptyParam(params, 'previewFrame')) : undefined,
-  };
-}
-
-async function detectBridgeMode(): Promise<BridgeMode> {
-  try {
-    const eventApi = await import('@tauri-apps/api/event');
-    if (typeof eventApi.emit === 'function') return 'Tauri';
-  } catch {
-    // Browser fallback below is expected outside Tauri.
-  }
-
-  if (typeof window !== 'undefined' && window.opener) {
-    return 'Browser fallback';
-  }
-
-  return 'Unavailable';
-}
-
-async function sendPhysicPaintFrameSyncMessage(frame: number, bridgeMode: BridgeMode): Promise<void> {
+async function sendPhysicPaintFrameSyncMessage(frame: number, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
   const message = { type: 'physic-paint:seek-frame' as const, frame };
   if (bridgeMode === 'Tauri') {
     try {
@@ -203,7 +104,7 @@ async function sendPhysicPaintFrameSyncMessage(frame: number, bridgeMode: Bridge
   window.dispatchEvent?.(new MessageEvent('message', { data: message }));
 }
 
-async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPayload, bridgeMode: BridgeMode): Promise<void> {
+async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPayload, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
   if (bridgeMode === 'Tauri') {
     const eventApi = await import('@tauri-apps/api/event');
     if (typeof eventApi.emitTo !== 'function') throw new Error('Tauri event emitTo API is unavailable');
@@ -410,8 +311,8 @@ export function PhysicsPaintStudio() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [animFrame, setAnimFrame] = useState(0);
   const [animTotal, setAnimTotal] = useState(0);
-  const [launchContext, setLaunchContext] = useState<PhysicPaintLaunchContext | null>(() => parseLaunchContext(window.location));
-  const [bridgeMode, setBridgeMode] = useState<BridgeMode>('Unavailable');
+  const [launchContext, setLaunchContext] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
+  const bridgeMode = usePhysicsPaintBridgeMode();
   const [lastError, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
@@ -635,15 +536,23 @@ export function PhysicsPaintStudio() {
     return Number.isInteger(playFrame) && playFrame >= 0 ? { playFrame } : null;
   }, []);
 
-  useEffect(() => {
-    detectBridgeMode().then(setBridgeMode).catch(() => setBridgeMode('Unavailable'));
-  }, []);
-
   const applyIncomingLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
     const hydratedContext = hydrateRotoLaunchContext(context, physicPaintStore);
     const preserveCloseAfterRotoSave = closeAfterRotoSaveRequestedRef.current;
     resetRotoSessionForLaunch(hydratedContext, { preserveCloseAfterRotoSave });
-    applyLaunchContext(hydratedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle, setSettings);
+    applyPhysicsPaintLaunchContext(hydratedContext, {
+      setLaunchContext,
+      setFramesToApply,
+      setWorkflowMode,
+      setLocalPlayPreviewFrame,
+      setSavedPlayCacheDirty,
+      setPlayWiggle,
+      setSettings,
+    }, (launch) => {
+      if (launch.playRenderOptions) return applyRenderOptionsSnapshotToSettings(launch.playRenderOptions);
+      if (getLaunchWorkflowMode(launch) === 'roto' && launch.rotoBackground) return applyRotoBackgroundMetadataToSettings(launch.rotoBackground);
+      return null;
+    });
     const readyEngine = engineRef.current;
     if (readyEngine && getLaunchWorkflowMode(hydratedContext) === 'roto') loadCachedRotoReferenceFrame(hydratedContext.startFrame, readyEngine as PreviewBackgroundEngine);
     if (!preserveCloseAfterRotoSave) {
@@ -659,43 +568,7 @@ export function PhysicsPaintStudio() {
     }
   }, [loadCachedRotoReferenceFrame, resetRotoSessionForLaunch]);
 
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-
-    const installLaunchListener = async () => {
-      try {
-        const coreApi = await import('@tauri-apps/api/core');
-        if (typeof coreApi.invoke === 'function') {
-          const storedContext = await coreApi.invoke('get_physics_paint_launch_context');
-          if (!disposed && isPhysicPaintLaunchContext(storedContext)) {
-            console.info('[PhysicsPaintStudio] launch context fetched', storedContext);
-            applyIncomingLaunchContext(storedContext);
-          }
-        }
-
-        const eventApi = await import('@tauri-apps/api/event');
-        if (typeof eventApi.listen !== 'function') return;
-        unlisten = await eventApi.listen(PHYSIC_PAINT_LAUNCH_EVENT, (event) => {
-          if (isPhysicPaintLaunchContext(event.payload)) {
-            console.info('[PhysicsPaintStudio] launch context received', event.payload);
-            applyIncomingLaunchContext(event.payload);
-          } else {
-            console.warn('[PhysicsPaintStudio] invalid launch context', event.payload);
-          }
-        });
-        if (disposed) unlisten?.();
-      } catch (error) {
-        console.warn('[PhysicsPaintStudio] Tauri launch listener unavailable', error);
-      }
-    };
-
-    void installLaunchListener();
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [applyIncomingLaunchContext]);
+  usePhysicsPaintLaunchBridge(applyIncomingLaunchContext);
 
   const updateSetting = useCallback(<K extends keyof PhysicsPaintStudioSettings>(key: K, value: PhysicsPaintStudioSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -1348,47 +1221,7 @@ export function PhysicsPaintStudio() {
     }
   }, [canvasHeight, canvasWidth, handleRotoApplyResult, matchApplyResult]);
 
-  useEffect(() => {
-    const handleResult = (event: Event) => {
-      handleApplyResult((event as CustomEvent<PhysicPaintApplyResult>).detail);
-    };
-    const handleMessageResult = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (isPhysicPaintApplyResultMessage(event.data)) handleApplyResult(event.data.payload);
-    };
-
-    window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleResult);
-    window.addEventListener('message', handleMessageResult);
-    return () => {
-      window.removeEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleResult);
-      window.removeEventListener('message', handleMessageResult);
-    };
-  }, [handleApplyResult]);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-
-    const installApplyResultListener = async () => {
-      if (bridgeMode !== 'Tauri') return;
-      try {
-        const eventApi = await import('@tauri-apps/api/event');
-        if (typeof eventApi.listen !== 'function') return;
-        unlisten = await eventApi.listen(PHYSIC_PAINT_APPLY_RESULT_EVENT, (event) => {
-          handleApplyResult(event.payload as PhysicPaintApplyResult);
-        });
-        if (disposed) unlisten?.();
-      } catch (error) {
-        console.warn('[PhysicsPaintStudio] Tauri apply-result listener unavailable', error);
-      }
-    };
-
-    void installApplyResultListener();
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [bridgeMode, handleApplyResult]);
+  usePhysicsPaintApplyResultBridge(bridgeMode, handleApplyResult);
 
   const updateSelectedPlayOptions = useCallback(async () => {
     if (!actionContext || workflowMode !== 'play') return null;

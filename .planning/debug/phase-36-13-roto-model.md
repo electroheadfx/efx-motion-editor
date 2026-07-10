@@ -900,3 +900,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract parent launch context acquisition/event listener and browser/Tauri apply-result listeners into focused bridge lifecycle hooks.
 - Then extract settings/tool actions, session file/dev export, onion/navigation/keyboard helpers, and final JSX composition.
+
+## 2026-07-10 — Cluster: extract parent bridge lifecycle
+
+### Selected cluster
+- Ownership moved: URL launch-context parsing/application, bridge-mode detection, stored Tauri launch fetch, launch event listener, browser custom/postMessage apply-result listeners, Tauri apply-result listener, origin/payload validation, diagnostics, and cleanup.
+- From: Studio-local helpers/state/effects and listener installation.
+- To: pure `physicsPaintLaunchContext.ts` and focused `usePhysicsPaintParentBridge.ts`.
+
+### Why this is safe
+- The bridge hook consumes existing launch hydration/reset/cache/reference and Play/Roto result dispatch callbacks.
+- Stored launch and event launch use the same apply path; close-save continuation and status-reset rules remain unchanged.
+- Browser messages remain same-origin filtered, custom results remain validated, and Tauri listeners preserve disposal cleanup and diagnostics.
+- Effects synchronize only with external bridge/event sources.
+
+### Ownership removed from Studio
+- Removed URL parse/application helpers, bridge mode state/detection effect, incoming launch callback body, stored/event launch effect, and browser/Tauri result listener effects.
+- Studio now receives bridge mode from the hook and supplies thin launch/result callbacks.
+- No internal workflow synchronization effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/physicsPaintLaunchContext.ts`
+- `app/src/components/physic-paint/physicsPaintLaunchContext.test.ts`
+- `app/src/components/physic-paint/usePhysicsPaintParentBridge.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2066 lines.
+- `PhysicsPaintStudio.tsx` after: 1899 lines.
+- Cluster delta: -167 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 1305 lines.
+
+### Tests run
+- Launch-context tests cover raw URL/query/hash parsing and deterministic state application.
+- Full Physics Paint suite passed with 305 tests across 24 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract settings/tool/physics/background actions and persisted Roto background metadata into a focused engine-actions hook.
+- Then extract session file/dev export, onion/navigation/keyboard helpers, readiness/status derivation, and final JSX composition.
