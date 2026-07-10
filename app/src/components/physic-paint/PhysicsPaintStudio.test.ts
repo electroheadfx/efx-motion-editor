@@ -15,6 +15,8 @@ const rotoKeyUtilitiesPath = fileURLToPath(new URL('./useRotoKeyUtilities.ts', i
 const rotoReferenceControllerPath = fileURLToPath(new URL('./useRotoReferenceController.ts', import.meta.url));
 const rotoCacheTransactionsPath = fileURLToPath(new URL('./rotoCacheTransactions.ts', import.meta.url));
 const rotoLaunchHydrationPath = fileURLToPath(new URL('./rotoLaunchHydration.ts', import.meta.url));
+const rotoApplyLifecyclePath = fileURLToPath(new URL('./useRotoApplyLifecycle.ts', import.meta.url));
+const rotoApplyTransactionsPath = fileURLToPath(new URL('./rotoApplyTransactions.ts', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
@@ -27,6 +29,8 @@ const rotoKeyUtilitiesSource = () => readFileSync(rotoKeyUtilitiesPath, 'utf8');
 const rotoReferenceControllerSource = () => readFileSync(rotoReferenceControllerPath, 'utf8');
 const rotoCacheTransactionsSource = () => readFileSync(rotoCacheTransactionsPath, 'utf8');
 const rotoLaunchHydrationSource = () => readFileSync(rotoLaunchHydrationPath, 'utf8');
+const rotoApplyLifecycleSource = () => readFileSync(rotoApplyLifecyclePath, 'utf8');
+const rotoApplyTransactionsSource = () => readFileSync(rotoApplyTransactionsPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
   const blocks: string[] = [];
@@ -963,8 +967,9 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
-    expect(text).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
-    expect(text).toContain('const closeAfterRotoSaveRequestedRef = useRef(false)');
+    expect(text).toContain("import { useRotoApplyLifecycle } from './useRotoApplyLifecycle'");
+    expect(rotoApplyLifecycleSource()).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
+    expect(rotoApplyLifecycleSource()).toContain('const closeAfterRotoSaveRequestedRef = useRef(false)');
     expect(text).not.toContain('closeAfterRotoSaveReady');
     expect(saveCloseBlock).toContain('if (closeAfterRotoSaveRequestedRef.current) return');
     expect(saveCloseBlock).toContain('closeAfterRotoSaveRequestedRef.current = true');
@@ -979,7 +984,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(saveCloseBlock).toContain("if (payload.kind === 'apply-canvas') payload.closeWindowAfterApply = true");
     expect(saveCloseBlock.indexOf('closeAfterApplyOperationIdRef.current = payload.operationId')).toBeLessThan(saveCloseBlock.indexOf('if (!payload?.operationId)'));
     expect(saveCloseBlock).not.toContain('closePhysicsPaintWindow()');
-    expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current && pendingApply?.operationId === detail.operationId');
+    expect(rotoApplyTransactionsSource()).toContain('snapshot.closeAfterRotoSaveRequested && pendingApply.operationId === detail.operationId');
     expect(resultBlock).toContain('if (shouldCloseAfterSave)');
     expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(resultBlock).toContain('closeGuardBypassRef.current = true');
@@ -990,9 +995,10 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
-    const timeoutBlock = text.slice(text.indexOf('const startApplyTimeout = useCallback'), text.indexOf('const flushRotoFrame = useCallback'));
+    const lifecycle = rotoApplyLifecycleSource();
+    const timeoutBlock = lifecycle.slice(lifecycle.indexOf('const startApplyTimeout = useCallback'), lifecycle.indexOf('useEffect(() => clearApplyTimeout'));
     const closeListenerBlock = text.slice(text.indexOf('appWindow.onCloseRequested'), text.indexOf('const handlePhysicsPaintKeyDown = useCallback'));
-    const cleanupBlock = text.slice(text.indexOf('useEffect(() => {\n    return () => {\n      if (applyTimeoutRef.current)'), text.indexOf('const missingConditions = useMemo'));
+    const cleanupBlock = text.slice(text.indexOf('useEffect(() => {\n    return () => {\n      pendingRotoAdvanceRef.current'), text.indexOf('const missingConditions = useMemo'));
 
     expect(closeListenerBlock).toContain('closeGuardBypassRef.current || closeAfterRotoSaveRequestedRef.current');
     expect(saveCloseBlock).toContain("setRotoClosePromptState('error')");
@@ -1002,8 +1008,10 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(resultBlock).toContain("setRotoClosePromptState('error')");
     expect(resultBlock).toContain('closeAfterApplyOperationIdRef.current = null');
     expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
-    expect(timeoutBlock).toContain("setRotoClosePromptState('error')");
-    expect(timeoutBlock).toContain('closeAfterApplyOperationIdRef.current = null');
+    expect(timeoutBlock).toContain('input.onTimeout(transition)');
+    expect(text).toContain("if (transition.closeFailed) {");
+    expect(text).toContain("setRotoClosePromptState('error')");
+    expect(text).toContain('closeAfterApplyOperationIdRef.current = null');
     expect(cleanupBlock).toContain('closeAfterApplyOperationIdRef.current = null');
     expect(cleanupBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(cleanupBlock).toContain('closeGuardBypassRef.current = false');
@@ -1332,7 +1340,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(resultBlock).not.toContain('void navigateToSyncedFrame(nextFrame)');
     expect(resultBlock).toContain('const nextFrame = pendingRotoAdvanceRef.current');
     expect(resultBlock).toContain('pendingRotoAdvanceRef.current = null');
-    expect(resultBlock).toContain('if (!detail.ok)');
+    expect(resultBlock).toContain('if (!transition.ok)');
     expect(resultBlock).toContain('saveOnLeaveRenderedFrameRef.current = null');
     expect(coordinatorBlock).toContain('const saveOnLeaveSourceFrame = saveOnLeaveSourceFrameRef.current');
     expect(coordinatorBlock).toContain('if (saveOnLeaveSourceFrame !== null && activeOperationIdRef.current)');
@@ -1346,34 +1354,35 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   it('keeps Phase 36.6 failed save-on-leave on the dirty source and clears queued navigation (D-10, D-11, D-12)', () => {
     const text = source();
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
-    const timeoutBlock = text.slice(text.indexOf('const startApplyTimeout = useCallback'), text.indexOf('const flushRotoFrame = useCallback'));
+    const timeoutBlock = rotoApplyLifecycleSource().slice(rotoApplyLifecycleSource().indexOf('const startApplyTimeout = useCallback'), rotoApplyLifecycleSource().indexOf('useEffect(() => clearApplyTimeout'));
 
     expect(resultBlock).toContain('const nextFrame = pendingRotoAdvanceRef.current');
-    expect(resultBlock).toContain('if (!detail.ok)');
+    expect(resultBlock).toContain('if (!transition.ok)');
     expect(resultBlock).toContain('pendingRotoAdvanceRef.current = null');
     expect(resultBlock).toContain('saveOnLeaveSourceFrameRef.current');
     expect(resultBlock).toContain('saveOnLeaveRenderedFrameRef.current = null');
     expect(resultBlock).toContain('saveOnLeaveDeleteFrameRef.current = null');
-    expect(resultBlock).toContain('Could not save frame');
-    expect(resultBlock).toContain('try navigating again to retry');
+    expect(rotoApplyTransactionsSource()).toContain('Could not save frame ${saveOnLeaveSourceFrame}');
+    expect(rotoApplyTransactionsSource()).toContain('try navigating again to retry');
     expect(resultBlock.indexOf('return;')).toBeLessThan(resultBlock.indexOf('void openSyncedRotoFrameAfterSave(nextFrame)'));
     expect(timeoutBlock).toContain('pendingRotoAdvanceRef.current = null');
-    expect(timeoutBlock).toContain('saveOnLeaveSourceFrameRef.current');
-    expect(timeoutBlock).toContain('Could not save frame');
+    expect(timeoutBlock).toContain('transitionRotoApplyTimeout(getSnapshot(), operationId)');
+    expect(rotoApplyTransactionsSource()).toContain('Could not save frame ${saveOnLeaveSourceFrame}');
     expect(text).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');
-    expect(text).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
+    expect(rotoApplyLifecycleSource()).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
   });
 
   it('clears save-on-leave source tracking on terminal paths while preserving the apply-result origin guard (D-12, D-16)', () => {
     const text = source();
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
-    const timeoutBlock = text.slice(text.indexOf('const startApplyTimeout = useCallback'), text.indexOf('const flushRotoFrame = useCallback'));
+    const timeoutBlock = rotoApplyLifecycleSource().slice(rotoApplyLifecycleSource().indexOf('const startApplyTimeout = useCallback'), rotoApplyLifecycleSource().indexOf('useEffect(() => clearApplyTimeout'));
     const listenerBlock = text.slice(text.indexOf('const handleMessageResult ='), text.indexOf('window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT'));
 
     expect(resultBlock).toContain('saveOnLeaveSourceFrameRef.current = null');
     expect(resultBlock).toContain('saveOnLeaveRenderedFrameRef.current = null');
     expect(resultBlock).toContain('saveOnLeaveDeleteFrameRef.current = null');
-    expect(timeoutBlock).toContain('saveOnLeaveSourceFrameRef.current = null');
+    expect(timeoutBlock).toContain('pendingRotoAdvanceRef.current = null');
+    expect(text).toContain('saveOnLeaveRenderedFrameRef.current = null');
     expect(listenerBlock).toContain('if (event.origin !== window.location.origin) return');
     expect(listenerBlock).toContain('isPhysicPaintApplyResultMessage(event.data)');
   });
@@ -1383,16 +1392,16 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
 
-    expect(text).toContain("const pendingApplyRef = useRef<Pick<PhysicPaintApplyPayload, 'operationId' | 'kind' | 'startFrame'> | null>(null)");
+    expect(rotoApplyLifecycleSource()).toContain('const pendingApplyRef = useRef<PendingPhysicPaintApply | null>(null)');
     const savePlayBlock = text.slice(text.indexOf('const savePlay = useCallback'), text.indexOf('const savePendingRotoFrames = useCallback'));
 
-    expect(flushBlock).toContain('pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: frame }');
-    expect(savePlayBlock).toContain('pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: payload.startFrame }');
-    expect(savePlayBlock.indexOf('pendingApplyRef.current = { operationId, kind: payload.kind, startFrame: payload.startFrame }')).toBeLessThan(savePlayBlock.indexOf('await sendPhysicPaintApplyPayload(payload, bridgeMode)'));
-    expect(resultBlock).toContain('const pendingApply = pendingApplyRef.current');
-    expect(resultBlock).toContain('detail.kind !== pendingApply.kind || detail.startFrame !== pendingApply.startFrame');
-    expect(resultBlock.indexOf('detail.kind !== pendingApply.kind')).toBeLessThan(resultBlock.indexOf('activeOperationIdRef.current = null'));
-    expect(resultBlock).toContain('pendingApplyRef.current = null');
+    expect(flushBlock).toContain('registerPendingApply(payload)');
+    expect(savePlayBlock).toContain('registerPendingApply(payload)');
+    expect(savePlayBlock.indexOf('registerPendingApply(payload)')).toBeLessThan(savePlayBlock.indexOf('await sendPhysicPaintApplyPayload(payload, bridgeMode)'));
+    expect(resultBlock).toContain('const transition = matchApplyResult(detail)');
+    expect(rotoApplyTransactionsSource()).toContain('detail.kind !== pendingApply.kind || detail.startFrame !== pendingApply.startFrame');
+    expect(rotoApplyLifecycleSource()).toContain("if (transition.type === 'accepted') clearActiveApply()");
+    expect(rotoApplyLifecycleSource()).toContain('pendingApplyRef.current = null');
   });
 
   it('does not mutate local marker ownership after deleted Roto save-on-leave frames apply', () => {

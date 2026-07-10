@@ -523,3 +523,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract Roto save/apply lifecycle ownership around timeout, flush, pending apply bookkeeping, success/failure result handling, and navigation continuation.
 - Split pure payload/result transactions from external bridge/engine actions rather than creating one monolithic hook.
+
+## 2026-07-10 — Cluster: extract Roto apply lifecycle state and matching
+
+### Selected cluster
+- Ownership moved: pending-apply construction, operation/kind/frame result matching, timeout transition data, close-after-save detection, active operation tracking, save-on-leave/advance bookkeeping, and timer setup/cleanup.
+- From: Studio-local refs plus `startApplyTimeout` transition logic and apply-result matching preamble.
+- To: pure `rotoApplyTransactions.ts` and focused external `useRotoApplyLifecycle.ts`.
+
+### Why this is safe
+- Pure transactions encode only pending/result/timeout decisions and status copy.
+- The hook owns the browser timeout as an external lifecycle boundary and exposes explicit setters/getters/actions used by existing Studio workflows.
+- Play-specific result handling, Roto rendering/merge, bridge sends, session success/failure effects, navigation continuation, and close execution remain in Studio.
+- Existing operation/kind/start-frame mismatch rejection, timeout messages, dirty retry behavior, and close-after-save detection are preserved.
+
+### Ownership removed from Studio
+- Removed direct declarations for active/pending apply, timeout, pending advance, save-on-leave rendered/delete state, close operation/request/bypass state, and associated cleanup branches.
+- Studio now asks the lifecycle controller to begin/match/clear/timeout operations and consumes pure transition results.
+- No state-mirroring effect was added; the hook has only timeout cleanup.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/rotoApplyTransactions.ts`
+- `app/src/components/physic-paint/rotoApplyTransactions.test.ts`
+- `app/src/components/physic-paint/useRotoApplyLifecycle.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2824 lines.
+- `PhysicsPaintStudio.tsx` after: 2807 lines.
+- Cluster delta: -17 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 397 lines.
+
+### Tests run
+- Pure transaction tests cover pending construction, exact/mismatched result matching, timeout transitions, close-after-save detection, and failure copy.
+- Full Debug 01 focused suite passed with 210 tests across 12 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract `flushRotoFrame` and `saveRotoFrame` payload/render construction behind a focused save controller, keeping engine capture/merge and bridge sends explicit.
+- Then extract successful Roto apply-result side effects and navigation continuation against the new lifecycle boundary.
