@@ -565,3 +565,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract `flushRotoFrame` and `saveRotoFrame` payload/render construction behind a focused save controller, keeping engine capture/merge and bridge sends explicit.
 - Then extract successful Roto apply-result side effects and navigation continuation against the new lifecycle boundary.
+
+## 2026-07-10 — Cluster: extract Roto save controller and payload planning
+
+### Selected cluster
+- Ownership moved: flush guards/in-flight serialization, delete/apply-canvas plan construction, source override resolution, rendered-frame preparation, cached repaint merge path, background-only/editable markers, bridge send orchestration, save-on-leave tracking, timeout startup, engine restoration, Save current, and Save pending.
+- From: `flushRotoFrame`, `saveRotoFrame`, and `savePendingRotoFrames` in Studio.
+- To: pure `rotoSaveTransactions.ts` and focused `useRotoSaveController.ts`.
+
+### Why this is safe
+- Pure transactions decide delete versus apply-canvas payload shape and preserve source/display/settings/background metadata.
+- The controller receives engine, canvas, cache/reference, session, lifecycle, bridge, and status dependencies explicitly.
+- Existing captured-frame reuse, cached alpha merge, transparent output, background-only handling, dirty/editable bookkeeping, advance request timing, error copy, and previous engine-state restoration are preserved.
+- Successful apply-result side effects remain in Studio as the next isolated boundary.
+
+### Ownership removed from Studio
+- Removed the large flush/save/save-pending callback bodies and their detailed payload/render branches.
+- Studio now configures one save controller and consumes `flushFrame`, `saveFrame`, and `savePendingFrames` actions.
+- No internal workflow effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/rotoSaveTransactions.ts`
+- `app/src/components/physic-paint/rotoSaveTransactions.test.ts`
+- `app/src/components/physic-paint/useRotoSaveController.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2807 lines.
+- `PhysicsPaintStudio.tsx` after: 2667 lines.
+- Cluster delta: -140 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 537 lines.
+
+### Tests run
+- Pure transaction tests cover delete/apply-canvas planning, source overrides, background/onion metadata, generated/dirty guards, and payload construction.
+- Full Debug 01 focused suite passed with 218 tests across 13 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract successful and failed Roto apply-result side effects, cached-merge completion, session success/failure transitions, navigation continuation, and close-after-save execution into a focused result controller.
+- Keep Play result copy in Studio and reuse `useRotoApplyLifecycle` matching/clear operations.
