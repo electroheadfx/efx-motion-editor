@@ -9,12 +9,16 @@ const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'Physi
 const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowState.ts');
 const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoSession.ts');
 const rotoCacheTransactionsSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'rotoCacheTransactions.ts');
+const engineLifecycleSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'usePhysicsPaintEngineLifecycle.ts');
+const canvasMountSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintCanvasMount.tsx');
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
 const studioSource = () => readFileSync(studioSourcePath, 'utf8');
 const workflowStateSource = () => readFileSync(workflowStateSourcePath, 'utf8');
 const rotoSessionSource = () => readFileSync(rotoSessionSourcePath, 'utf8');
 const rotoCacheTransactionsSource = () => readFileSync(rotoCacheTransactionsSourcePath, 'utf8');
+const engineLifecycleSource = () => readFileSync(engineLifecycleSourcePath, 'utf8');
+const canvasMountSource = () => readFileSync(canvasMountSourcePath, 'utf8');
 
 function getRotoControlsBlock(code: string): string {
   return code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
@@ -403,11 +407,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('remounts the physics engine when bounded working canvas dimensions change', () => {
     const studioCode = studioSource();
 
-    expect(studioCode).toContain('const projectCanvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH');
+    expect(studioCode).toContain('const projectCanvasWidth = launchContext?.width ?? DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH');
     expect(studioCode).toContain('const workingCanvasSize = getPhysicsPaintWorkingSize(projectCanvasWidth, projectCanvasHeight)');
     expect(studioCode).toContain('const canvasKey = `${canvasWidth}x${canvasHeight}`');
-    expect(studioCode).toContain('setEngine(null);');
-    expect(studioCode).toContain('setCanvasMounted(false);');
+    expect(engineLifecycleSource()).toContain('setEngine(null);');
+    expect(engineLifecycleSource()).toContain('setCanvasMounted(false);');
     expect(studioCode).toContain('key={canvasKey}');
   });
 
@@ -759,7 +763,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(shellRule).toContain('height: 100%');
     expect(shellRule).toContain('max-width: 100%');
     expect(shellRule).toContain('max-height: 100%');
-    expect(studioSource()).toContain('getContainedCanvasDisplaySize(rect.width, rect.height, props.width, props.height)');
+    expect(canvasMountSource()).toContain('getContainedCanvasDisplaySize(rect.width, rect.height, props.width, props.height)');
     expect(css).not.toContain('calc((100vh - 274px) * 1.538)');
   });
 
@@ -1023,7 +1027,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const effectBlocks = [...studio.matchAll(/useEffect\(\(\) => \{([\s\S]*?)\n  \}, \[[^\]]*\]\);/g)].map((match) => match[1]);
 
     expect(effectCount).toBeLessThanOrEqual(22);
-    expect(studio).toContain('}, [canvasKey]);');
+    expect(studio).toContain('usePhysicsPaintEngineLifecycle({');
+    expect(engineLifecycleSource()).toContain('}, [input.canvasKey]);');
     for (const block of effectBlocks) {
       const coordinatesRotoKeyUtilities = /buildRotoKeyUtilityTransaction|applyRotoKeyUtilityTransactionToLocalState|rotoKeyActionInFlight|pendingRotoKeyActionMessageRef|dirty-save-before-action|generatedFrames|deletedFrames|activeRestore/.test(block);
       expect(coordinatesRotoKeyUtilities).toBe(false);

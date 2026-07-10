@@ -857,3 +857,46 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract engine/canvas mount, restore, preview-background, tablet input, and render-setting synchronization into focused external lifecycle hooks.
 - Then extract parent launch/apply bridge listeners, settings/tool actions, session file/dev export, onion/navigation/keyboard helpers, and final composition.
+
+## 2026-07-10 — Cluster: extract engine and canvas lifecycle
+
+### Selected cluster
+- Ownership moved: engine/canvas state, imperative engine ref, canvas-key reset, canvas mounting/measurement/readiness/error handling, tablet-pressure listener/pen bridge, editable-state resize/restore, Roto background engine sync, Play render-options engine sync, and lifecycle cleanup.
+- From: Studio-local state/effects plus CanvasMountProbe and sizing helpers.
+- To: `usePhysicsPaintEngineLifecycle.ts`, `PhysicsPaintCanvasMount.tsx`, and pure `physicsPaintCanvasSizing.ts`.
+
+### Why this is safe
+- Effects synchronize only with external engine/canvas/Tauri boundaries.
+- Editable state is resized with the same point scaling before load; restore errors keep the same user copy.
+- Roto paper metadata and Play render options call the same engine APIs with unchanged values.
+- Canvas aspect/measurement, readiness, paper texture scale, native pen input, and canvas-key remount behavior remain unchanged.
+- Parent launch/apply listeners and settings actions remain separate.
+
+### Ownership removed from Studio
+- Removed engine/canvas state/ref lifecycle effects, tablet listener, restore/sync effects, CanvasMountProbe component, and sizing/resize helpers.
+- Studio now consumes lifecycle state/ref and renders the extracted canvas mount component.
+- No internal workflow control effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/usePhysicsPaintEngineLifecycle.ts`
+- `app/src/components/physic-paint/PhysicsPaintCanvasMount.tsx`
+- `app/src/components/physic-paint/physicsPaintCanvasSizing.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2232 lines.
+- `PhysicsPaintStudio.tsx` after: 2066 lines.
+- Cluster delta: -166 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 1138 lines.
+
+### Tests run
+- Full Physics Paint suite passed with 303 tests across 23 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract parent launch context acquisition/event listener and browser/Tauri apply-result listeners into focused bridge lifecycle hooks.
+- Then extract settings/tool actions, session file/dev export, onion/navigation/keyboard helpers, and final JSX composition.

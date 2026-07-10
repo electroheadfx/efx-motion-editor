@@ -1,6 +1,5 @@
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../types/physicPaint';
@@ -35,12 +34,10 @@ import { getActivePlayStartFrame, getLaunchPlayPreviewFrame, getPlayFrameCountFr
 import { applyRenderedPlayCache, markPlayLaunchCacheStale, normalizePlayMotionUpdate, resolvePlayFrameCountUpdate, resolvePlayOptionsUpdate } from './playLifecycleTransactions';
 import { usePlayPreviewController } from './usePlayPreviewController';
 import { useRotoPlayConversionController } from './useRotoPlayConversionController';
+import { PhysicsPaintCanvasMount } from './PhysicsPaintCanvasMount';
+import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize, resizePhysicsPaintState } from './physicsPaintCanvasSizing';
+import { usePhysicsPaintEngineLifecycle } from './usePhysicsPaintEngineLifecycle';
 import './physicsPaintStudio.css';
-
-const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
-const DEFAULT_CANVAS_WIDTH = 1000;
-const DEFAULT_CANVAS_HEIGHT = 650;
-const PHYSICS_PAINT_WORKING_LONG_EDGE = 1000;
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
 const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 50 };
 const ONION_DEPTH_OPACITY = [0.5, 0.25, 0.15] as const;
@@ -48,7 +45,6 @@ const PLAY_LIMIT_TOAST_DISMISS_MS = 5000;
 type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type RenderedFramePayload = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
-type SerializedPhysicsPaintProject = ReturnType<EfxPaintEngine['save']>;
 type PreviewBackgroundEngine = EfxPaintEngine & {
   setBackgroundImageUrl: (dataUrl: string) => void;
   resetBackground: () => void;
@@ -105,29 +101,6 @@ function withoutRotoGapLimit(context: PhysicPaintLaunchContext): PhysicPaintLaun
   delete next.maxPlayFrameCount;
   delete next.maxPlayFrameCountReason;
   return next;
-}
-
-function resizePhysicsPaintState(state: SerializedPhysicsPaintProject, width: number, height: number): SerializedPhysicsPaintProject {
-  if (state.width === width && state.height === height) return state;
-  const scaleX = width / state.width;
-  const scaleY = height / state.height;
-  return {
-    ...state,
-    width,
-    height,
-    strokes: state.strokes.map((stroke) => ({
-      ...stroke,
-      pts: stroke.pts.map((point) => [
-        Math.round(point[0] * scaleX * 100) / 100,
-        Math.round(point[1] * scaleY * 100) / 100,
-        point[2],
-        point[3],
-        point[4],
-        point[5],
-        point[6],
-      ]),
-    })),
-  };
 }
 
 function getRotoOnionAnchorDisplayFrame(frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame, 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame'>>): number {
@@ -253,79 +226,6 @@ function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
   if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return false;
   if (target.isContentEditable) return false;
   return !Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
-}
-
-function getPhysicsPaintWorkingSize(projectWidth: number, projectHeight: number): { width: number; height: number } {
-  if (projectWidth <= 0 || projectHeight <= 0) return { width: DEFAULT_CANVAS_WIDTH, height: DEFAULT_CANVAS_HEIGHT };
-  const scale = Math.min(1, PHYSICS_PAINT_WORKING_LONG_EDGE / Math.max(projectWidth, projectHeight));
-  return {
-    width: Math.max(1, Math.round(projectWidth * scale)),
-    height: Math.max(1, Math.round(projectHeight * scale)),
-  };
-}
-
-function getContainedCanvasDisplaySize(containerWidth: number, containerHeight: number, canvasWidth: number, canvasHeight: number): { width: number; height: number } | null {
-  if (containerWidth <= 0 || containerHeight <= 0 || canvasWidth <= 0 || canvasHeight <= 0) return null;
-  const canvasRatio = canvasWidth / canvasHeight;
-  const containerRatio = containerWidth / containerHeight;
-  if (containerRatio > canvasRatio) return { width: containerHeight * canvasRatio, height: containerHeight };
-  return { width: containerWidth, height: containerWidth / canvasRatio };
-}
-
-function CanvasMountProbe(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: (input: { pressure: number; tiltX?: number; tiltY?: number }) => void) => void; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
-  const shellRef = useRef<HTMLDivElement>(null);
-  const [mountError, setMountError] = useState<string | null>(null);
-  const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
-
-  useEffect(() => {
-    const shell = shellRef.current;
-    const region = shell?.parentElement;
-    const updateDisplaySize = () => {
-      if (!region) return;
-      const rect = region.getBoundingClientRect();
-      setDisplaySize(getContainedCanvasDisplaySize(rect.width, rect.height, props.width, props.height));
-    };
-    updateDisplaySize();
-    const resizeObserver = region ? new ResizeObserver(updateDisplaySize) : null;
-    if (region) resizeObserver?.observe(region);
-    const frame = window.requestAnimationFrame(() => {
-      const mounted = Boolean(shellRef.current?.querySelector('canvas'));
-      props.onCanvasMounted(mounted);
-      if (!mounted) setMountError(CANVAS_MOUNT_ERROR);
-      updateDisplaySize();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      resizeObserver?.disconnect();
-    };
-  }, [props.height, props.width]);
-
-  return (
-    <div class="demo-canvas-shell" ref={shellRef} style={{ aspectRatio: `${props.width} / ${props.height}`, ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}) }}>
-      <EfxPaintCanvas
-        width={props.width}
-        height={props.height}
-        papers={[
-          { name: 'canvas1', url: '/img/paper_1.jpg' },
-          { name: 'canvas2', url: '/img/paper_2.jpg' },
-          { name: 'canvas3', url: '/img/paper_3.jpg' },
-        ]}
-        defaultPaper="canvas1"
-        paperTextureScale={props.paperTextureScale}
-        class="paint-canvas"
-        onNativePenInputReady={props.onNativePenInputReady}
-        getStrokeMetadata={props.getStrokeMetadata}
-        onEngineReady={(engine) => {
-          engine.setTool('paint');
-          setMountError(null);
-          props.onCanvasMounted(true);
-          props.onEngineReady(engine);
-        }}
-      />
-      {mountError ? <p class="demo-error">{mountError}</p> : null}
-    </div>
-  );
 }
 
 function shouldPersistRotoFrame(state: ReturnType<EfxPaintEngine['save']>): boolean {
@@ -506,15 +406,7 @@ function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoBackgrou
   };
 }
 
-function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void {
-  engine.setBgMode(metadata.background);
-  engine.setPaperGrain(metadata.paperGrain);
-  engine.setEmbossStrength(metadata.grainStrength);
-}
-
 export function PhysicsPaintStudio() {
-  const [engine, setEngine] = useState<EfxPaintEngine | null>(null);
-  const [canvasMounted, setCanvasMounted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [animFrame, setAnimFrame] = useState(0);
   const [animTotal, setAnimTotal] = useState(0);
@@ -543,8 +435,6 @@ export function PhysicsPaintStudio() {
   const workflowModeRef = useRef<PhysicsPaintWorkflowMode>(workflowMode);
   const pendingRotoKeyActionMessageRef = useRef<string | null>(null);
   const closeGuardBypassRef = useRef(false);
-  const nativePenInputHandlerRef = useRef<((input: { pressure: number; tiltX?: number; tiltY?: number }) => void) | null>(null);
-  const engineRef = useRef<EfxPaintEngine | null>(null);
   const saveOnLeaveRenderedFrameRef = useRef<{ renderedFrame: RenderedFramePayload; backgroundOnly: boolean; onionFrame?: RenderedFramePayload | null } | null>(null);
   const pendingCachedRotoMergeFrameRef = useRef<{ frame: number; renderedFrame: RenderedFramePayload; backgroundOnly: boolean; onionFrame?: RenderedFramePayload | null } | null>(null);
   const saveOnLeaveDeleteFrameRef = useRef<number | null>(null);
@@ -587,13 +477,37 @@ export function PhysicsPaintStudio() {
     },
   });
 
-  const projectCanvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH;
-  const projectCanvasHeight = launchContext?.height ?? DEFAULT_CANVAS_HEIGHT;
+  const projectCanvasWidth = launchContext?.width ?? DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH;
+  const projectCanvasHeight = launchContext?.height ?? DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT;
   const workingCanvasSize = getPhysicsPaintWorkingSize(projectCanvasWidth, projectCanvasHeight);
   const canvasWidth = workingCanvasSize.width;
   const canvasHeight = workingCanvasSize.height;
   const paperTextureScale = canvasWidth / projectCanvasWidth;
   const canvasKey = `${canvasWidth}x${canvasHeight}`;
+  const {
+    engine,
+    engineRef,
+    canvasMounted,
+    setCanvasMounted,
+    handleEngineReady,
+    handleNativePenInputReady,
+  } = usePhysicsPaintEngineLifecycle({
+    canvasKey,
+    canvasWidth,
+    canvasHeight,
+    launchContext,
+    setLastError,
+    clearExternalState: () => {
+      pendingRotoAdvanceRef.current = null;
+      saveOnLeaveSourceFrameRef.current = null;
+      saveOnLeaveRenderedFrameRef.current = null;
+      saveOnLeaveDeleteFrameRef.current = null;
+      closeAfterApplyOperationIdRef.current = null;
+      closeAfterRotoSaveRequestedRef.current = false;
+      closeGuardBypassRef.current = false;
+      pendingCachedRotoMergeFrameRef.current = null;
+    },
+  });
   const currentFrame = launchContext?.startFrame ?? 0;
   const previewFps = getPreviewFps(launchContext?.fps);
   const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
@@ -685,11 +599,6 @@ export function PhysicsPaintStudio() {
     loadCachedRotoReferenceFrame,
   } = rotoReferenceController;
 
-  useEffect(() => {
-    setEngine(null);
-    setCanvasMounted(false);
-  }, [canvasKey]);
-
   const resetRotoSessionForLaunch = useCallback((context: PhysicPaintLaunchContext, options: { preserveCloseAfterRotoSave?: boolean } = {}) => {
     if (getLaunchWorkflowMode(context) !== 'roto') return;
     rotoEditBuffer.resetForLaunch();
@@ -715,10 +624,6 @@ export function PhysicsPaintStudio() {
       setRotoClosePromptMessage(null);
     }
   }, []);
-
-  useEffect(() => {
-    engineRef.current = engine;
-  }, [engine]);
 
   useEffect(() => {
     workflowModeRef.current = workflowMode;
@@ -758,34 +663,6 @@ export function PhysicsPaintStudio() {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    const installTabletPressureListener = async () => {
-      try {
-        const eventApi = await import('@tauri-apps/api/event');
-        if (typeof eventApi.listen !== 'function') return;
-        unlisten = await eventApi.listen<{ pressure: number; tilt_x: number; tilt_y: number }>('tablet:pressure', (event) => {
-          nativePenInputHandlerRef.current?.({
-            pressure: event.payload.pressure,
-            tiltX: event.payload.tilt_x,
-            tiltY: event.payload.tilt_y,
-          });
-        });
-        if (disposed) unlisten?.();
-      } catch (error) {
-        console.warn('[PhysicsPaintStudio] native tablet pressure listener unavailable', error);
-      }
-    };
-
-    void installTabletPressureListener();
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-
     const installLaunchListener = async () => {
       try {
         const coreApi = await import('@tauri-apps/api/core');
@@ -819,47 +696,6 @@ export function PhysicsPaintStudio() {
       unlisten?.();
     };
   }, [applyIncomingLaunchContext]);
-
-  useEffect(() => {
-    if (!engine) return;
-    if (launchContext?.editableState) {
-      try {
-        engine.load(resizePhysicsPaintState(launchContext.editableState, canvasWidth, canvasHeight));
-      } catch (error) {
-        console.error('[PhysicsPaintStudio] failed to restore editable state', error);
-        setLastError('Could not restore the previous physics paint state for this layer.');
-      }
-    }
-    if (getLaunchWorkflowMode(launchContext) === 'roto' && launchContext?.rotoBackground) {
-      applyRotoBackgroundMetadataToEngine(engine, launchContext.rotoBackground);
-    }
-  }, [canvasHeight, canvasWidth, engine, launchContext?.editableState, launchContext?.rotoBackground, launchContext?.workflowMode, launchContext?.editableSource]);
-
-  useEffect(() => {
-    if (!engine || !launchContext?.playRenderOptions) return;
-    const options = launchContext.playRenderOptions;
-    engine.setTool(options.tool === 'erase' ? 'erase' : 'paint');
-    engine.setPhysicsMode(options.tool === 'physics-paint' ? 'local' : null);
-    engine.setColorHex(options.color);
-    engine.setBrushOpacity(options.opacity);
-    engine.setBrushSize(options.brushSize);
-    engine.setBgMode(options.background);
-    engine.setPaperGrain(options.paperGrain);
-    engine.setEmbossStrength(options.grainStrength);
-  }, [engine, launchContext?.playRenderOptions]);
-
-  useEffect(() => {
-    return () => {
-      pendingRotoAdvanceRef.current = null;
-      saveOnLeaveSourceFrameRef.current = null;
-      saveOnLeaveRenderedFrameRef.current = null;
-      saveOnLeaveDeleteFrameRef.current = null;
-      closeAfterApplyOperationIdRef.current = null;
-      closeAfterRotoSaveRequestedRef.current = false;
-      closeGuardBypassRef.current = false;
-      pendingCachedRotoMergeFrameRef.current = null;
-    };
-  }, []);
 
   const updateSetting = useCallback(<K extends keyof PhysicsPaintStudioSettings>(key: K, value: PhysicsPaintStudioSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -2052,19 +1888,17 @@ export function PhysicsPaintStudio() {
               />
             )) : null}
           >
-            <CanvasMountProbe
+            <PhysicsPaintCanvasMount
               key={canvasKey}
               width={canvasWidth}
               height={canvasHeight}
               paperTextureScale={paperTextureScale}
               onEngineReady={(readyEngine) => {
-                setEngine(readyEngine);
+                handleEngineReady(readyEngine);
                 if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine);
               }}
               onCanvasMounted={setCanvasMounted}
-              onNativePenInputReady={(handler) => {
-                nativePenInputHandlerRef.current = handler;
-              }}
+              onNativePenInputReady={handleNativePenInputReady}
               getStrokeMetadata={getStrokeMetadata}
             />
           </PhysicsPaintCanvasStack>

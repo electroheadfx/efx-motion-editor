@@ -30,7 +30,10 @@ const playPreviewControllerPath = fileURLToPath(new URL('./usePlayPreviewControl
 const playLifecycleTransactionsPath = fileURLToPath(new URL('./playLifecycleTransactions.ts', import.meta.url));
 const rotoPlayConversionTransactionsPath = fileURLToPath(new URL('./rotoPlayConversionTransactions.ts', import.meta.url));
 const rotoPlayConversionControllerPath = fileURLToPath(new URL('./useRotoPlayConversionController.ts', import.meta.url));
-const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}\n${playPreviewControllerSource()}\n${playLifecycleTransactionsSource()}`;
+const engineLifecyclePath = fileURLToPath(new URL('./usePhysicsPaintEngineLifecycle.ts', import.meta.url));
+const canvasMountPath = fileURLToPath(new URL('./PhysicsPaintCanvasMount.tsx', import.meta.url));
+const canvasSizingPath = fileURLToPath(new URL('./physicsPaintCanvasSizing.ts', import.meta.url));
+const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}\n${playPreviewControllerSource()}\n${playLifecycleTransactionsSource()}\n${engineLifecycleSource()}\n${canvasMountSource()}\n${canvasSizingSource()}`;
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
 const bridgeSource = () => readFileSync(bridgePath, 'utf8');
@@ -57,6 +60,9 @@ const playPreviewControllerSource = () => readFileSync(playPreviewControllerPath
 const playLifecycleTransactionsSource = () => readFileSync(playLifecycleTransactionsPath, 'utf8');
 const rotoPlayConversionTransactionsSource = () => readFileSync(rotoPlayConversionTransactionsPath, 'utf8');
 const rotoPlayConversionControllerSource = () => readFileSync(rotoPlayConversionControllerPath, 'utf8');
+const engineLifecycleSource = () => readFileSync(engineLifecyclePath, 'utf8');
+const canvasMountSource = () => readFileSync(canvasMountPath, 'utf8');
+const canvasSizingSource = () => readFileSync(canvasSizingPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
   const blocks: string[] = [];
@@ -277,6 +283,27 @@ describe('PhysicsPaintStudio Play/Roto conversion boundary contract', () => {
   });
 });
 
+describe('PhysicsPaintStudio external engine lifecycle boundary contract', () => {
+  it('moves engine, canvas, tablet, restore, render synchronization, and cleanup ownership into focused modules', () => {
+    const studio = readFileSync(sourcePath, 'utf8');
+    const lifecycle = engineLifecycleSource();
+    const canvasMount = canvasMountSource();
+
+    expect(studio).toContain("from './usePhysicsPaintEngineLifecycle'");
+    expect(studio).toContain("from './PhysicsPaintCanvasMount'");
+    expect(studio).toContain('const {\n    engine,\n    engineRef,\n    canvasMounted,');
+    expect(studio).not.toContain("eventApi.listen<{ pressure: number; tilt_x: number; tilt_y: number }>('tablet:pressure'");
+    expect(lifecycle).toContain('engineRef.current = engine');
+    expect(lifecycle).toContain("eventApi.listen<{ pressure: number; tilt_x: number; tilt_y: number }>('tablet:pressure'");
+    expect(lifecycle).toContain('engine.load(resizePhysicsPaintState(input.launchContext.editableState, input.canvasWidth, input.canvasHeight))');
+    expect(lifecycle).toContain('applyRotoBackgroundMetadataToEngine(engine, input.launchContext.rotoBackground)');
+    expect(lifecycle).toContain('applyPlayRenderOptionsToEngine(engine, input.launchContext.playRenderOptions)');
+    expect(lifecycle).toContain('useEffect(() => input.clearExternalState, [])');
+    expect(canvasMount).toContain('<EfxPaintCanvas');
+    expect(canvasMount).toContain("const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas'");
+  });
+});
+
 describe('PhysicsPaintStudio onion preview contract', () => {
   it('captures transparent Roto frames once and reuses that active-frame payload for save output and onion preview', () => {
     const text = source();
@@ -301,12 +328,12 @@ describe('PhysicsPaintStudio onion preview contract', () => {
 
   it('sizes the standalone canvas shell from project canvas dimensions', () => {
     const text = source();
-    const mountProbeBlock = text.slice(text.indexOf('function CanvasMountProbe'), text.indexOf('function shouldPersistRotoFrame'));
+    const mountProbeBlock = canvasMountSource();
 
-    expect(text).toContain('const PHYSICS_PAINT_WORKING_LONG_EDGE = 1000');
+    expect(text).toContain('export const PHYSICS_PAINT_WORKING_LONG_EDGE = 1000');
     expect(text).toContain('function getPhysicsPaintWorkingSize(projectWidth: number, projectHeight: number): { width: number; height: number }');
     expect(text).toContain('const scale = Math.min(1, PHYSICS_PAINT_WORKING_LONG_EDGE / Math.max(projectWidth, projectHeight))');
-    expect(text).toContain('const projectCanvasWidth = launchContext?.width ?? DEFAULT_CANVAS_WIDTH');
+    expect(text).toContain('const projectCanvasWidth = launchContext?.width ?? DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH');
     expect(text).toContain('const workingCanvasSize = getPhysicsPaintWorkingSize(projectCanvasWidth, projectCanvasHeight)');
     expect(text).toContain('function getContainedCanvasDisplaySize(containerWidth: number, containerHeight: number, canvasWidth: number, canvasHeight: number)');
     expect(mountProbeBlock).toContain('const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null)');
@@ -327,10 +354,10 @@ describe('PhysicsPaintStudio onion preview contract', () => {
   it('rescales editable project states into the bounded working canvas before loading them', () => {
     const text = source();
 
-    expect(text).toContain('function resizePhysicsPaintState(state: SerializedPhysicsPaintProject, width: number, height: number): SerializedPhysicsPaintProject');
+    expect(text).toContain('export function resizePhysicsPaintState(state: SerializedPhysicsPaintProject, width: number, height: number): SerializedPhysicsPaintProject');
     expect(text).toContain('const scaleX = width / state.width');
     expect(text).toContain('const scaleY = height / state.height');
-    expect(text).toContain('engine.load(resizePhysicsPaintState(launchContext.editableState, canvasWidth, canvasHeight))');
+    expect(text).toContain('engine.load(resizePhysicsPaintState(input.launchContext.editableState, input.canvasWidth, input.canvasHeight))');
     expect(text).toContain('const state = resizePhysicsPaintState(parsePhysicsPaintStateFile(String(reader.result ?? \'\')), canvasWidth, canvasHeight)');
   });
 
@@ -538,7 +565,7 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
     expect(text).toContain('engine.setBgMode(metadata.background)');
     expect(text).toContain('engine.setPaperGrain(metadata.paperGrain)');
     expect(text).toContain('engine.setEmbossStrength(metadata.grainStrength)');
-    expect(text).toContain("if (getLaunchWorkflowMode(launchContext) === 'roto' && launchContext?.rotoBackground)");
+    expect(text).toContain("if (getLaunchWorkflowMode(input.launchContext) === 'roto' && input.launchContext?.rotoBackground)");
   });
 
   it('fetches the stored Tauri launch context after mount so editable Play state and cached frames are not lost on reopen', () => {
@@ -1051,7 +1078,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const lifecycle = rotoApplyLifecycleSource();
     const timeoutBlock = lifecycle.slice(lifecycle.indexOf('const startApplyTimeout = useCallback'), lifecycle.indexOf('useEffect(() => clearApplyTimeout'));
     const closeListenerBlock = closeLifecycle.slice(closeLifecycle.indexOf('appWindow.onCloseRequested'), closeLifecycle.indexOf('return {', closeLifecycle.indexOf('appWindow.onCloseRequested')));
-    const cleanupBlock = text.slice(text.indexOf('useEffect(() => {\n    return () => {\n      pendingRotoAdvanceRef.current'), text.indexOf('const missingConditions = useMemo'));
+    const cleanupBlock = text.slice(text.indexOf('clearExternalState: () => {'), text.indexOf('const currentFrame = launchContext?.startFrame'));
 
     expect(closeListenerBlock).toContain('input.closeGuardBypassRef.current || input.closeAfterRotoSaveRequestedRef.current');
     expect(saveCloseBlock).toContain("setRotoClosePromptState('error')");
