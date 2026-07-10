@@ -18,10 +18,11 @@ const rotoLaunchHydrationPath = fileURLToPath(new URL('./rotoLaunchHydration.ts'
 const rotoApplyLifecyclePath = fileURLToPath(new URL('./useRotoApplyLifecycle.ts', import.meta.url));
 const rotoApplyTransactionsPath = fileURLToPath(new URL('./rotoApplyTransactions.ts', import.meta.url));
 const rotoApplyResultControllerPath = fileURLToPath(new URL('./useRotoApplyResultController.ts', import.meta.url));
+const rotoCloseLifecyclePath = fileURLToPath(new URL('./useRotoCloseLifecycle.ts', import.meta.url));
 const rotoApplyResultTransactionsPath = fileURLToPath(new URL('./rotoApplyResultTransactions.ts', import.meta.url));
 const rotoSaveControllerPath = fileURLToPath(new URL('./useRotoSaveController.ts', import.meta.url));
 const rotoSaveTransactionsPath = fileURLToPath(new URL('./rotoSaveTransactions.ts', import.meta.url));
-const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}`;
+const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}`;
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
 const bridgeSource = () => readFileSync(bridgePath, 'utf8');
@@ -36,6 +37,7 @@ const rotoLaunchHydrationSource = () => readFileSync(rotoLaunchHydrationPath, 'u
 const rotoApplyLifecycleSource = () => readFileSync(rotoApplyLifecyclePath, 'utf8');
 const rotoApplyTransactionsSource = () => readFileSync(rotoApplyTransactionsPath, 'utf8');
 const rotoApplyResultControllerSource = () => readFileSync(rotoApplyResultControllerPath, 'utf8');
+const rotoCloseLifecycleSource = () => readFileSync(rotoCloseLifecyclePath, 'utf8');
 const rotoApplyResultTransactionsSource = () => readFileSync(rotoApplyResultTransactionsPath, 'utf8');
 const rotoSaveControllerSource = () => readFileSync(rotoSaveControllerPath, 'utf8');
 const rotoSaveTransactionsSource = () => readFileSync(rotoSaveTransactionsPath, 'utf8');
@@ -929,15 +931,15 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('blocks only dirty current Roto native closes and renders the exact three explicit choices', () => {
     const text = source();
-    const closeBlock = text.slice(text.indexOf('const closePhysicsPaintWindow = useCallback'), text.indexOf('const handlePhysicsPaintKeyDown = useCallback'));
+    const closeLifecycle = rotoCloseLifecycleSource();
     const promptBlock = text.slice(text.indexOf('physics-paint-roto-close-confirmation'), text.indexOf('{shortcutsVisible'));
 
-    expect(text).toContain("type RotoClosePromptState = 'idle' | 'prompt' | 'saving' | 'error'");
+    expect(closeLifecycle).toContain("export type RotoClosePromptState = 'idle' | 'prompt' | 'saving' | 'error'");
     expect(text).toContain('const closeGuardBypassRef = useRef(false)');
-    expect(closeBlock).toContain('snapshotCurrentRotoFrame()');
-    expect(closeBlock).toContain("workflowMode === 'roto' && dirtyRotoFramesRef.current.has(currentFrame)");
-    expect(closeBlock).toContain('event.preventDefault()');
-    expect(closeBlock).toContain("setRotoClosePromptState('prompt')");
+    expect(closeLifecycle).toContain('input.snapshotCurrentRotoFrame()');
+    expect(closeLifecycle).toContain("input.workflowMode === 'roto' && input.dirtyFramesRef.current.has(input.currentFrame)");
+    expect(closeLifecycle).toContain('event.preventDefault()');
+    expect(closeLifecycle).toContain("setRotoClosePromptState('prompt')");
     expect(promptBlock).toContain('Close without saving');
     expect(promptBlock).toContain('Cancel');
     expect(promptBlock).toContain('Close saving');
@@ -972,20 +974,20 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('saves dirty close through Save current and closes only after the matching successful apply result', () => {
     const text = source();
-    const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
+    const saveCloseBlock = rotoCloseLifecycleSource().slice(rotoCloseLifecycleSource().indexOf('const saveAndCloseRotoFrame = useCallback'), rotoCloseLifecycleSource().indexOf('useEffect(() => {', rotoCloseLifecycleSource().indexOf('const saveAndCloseRotoFrame = useCallback')));
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
     expect(text).toContain("import { useRotoApplyLifecycle } from './useRotoApplyLifecycle'");
     expect(rotoApplyLifecycleSource()).toContain('const closeAfterApplyOperationIdRef = useRef<string | null>(null)');
     expect(rotoApplyLifecycleSource()).toContain('const closeAfterRotoSaveRequestedRef = useRef(false)');
     expect(text).not.toContain('closeAfterRotoSaveReady');
-    expect(saveCloseBlock).toContain('if (closeAfterRotoSaveRequestedRef.current) return');
-    expect(saveCloseBlock).toContain('closeAfterRotoSaveRequestedRef.current = true');
+    expect(saveCloseBlock).toContain('if (input.closeAfterRotoSaveRequestedRef.current) return');
+    expect(saveCloseBlock).toContain('input.closeAfterRotoSaveRequestedRef.current = true');
     expect(saveCloseBlock).toContain('closeGuardBypassRef.current = true');
     expect(saveCloseBlock).toContain("setRotoClosePromptState('idle')");
     expect(saveCloseBlock).toContain('setRotoClosePromptMessage(null)');
     expect(saveCloseBlock).not.toContain("setRotoClosePromptState('saving')");
     expect(saveCloseBlock).not.toContain("setRotoClosePromptMessage('Saving current frame…')");
-    expect(saveCloseBlock).toContain('const payload = await saveRotoFrame(null, {');
+    expect(saveCloseBlock).toContain('const payload = await input.saveCurrentRotoFrame({');
     expect(saveCloseBlock).toContain('onPayload: (payload) => {');
     expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = payload.operationId');
     expect(saveCloseBlock).toContain("if (payload.kind === 'apply-canvas') payload.closeWindowAfterApply = true");
@@ -1000,16 +1002,17 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('recovers dirty close prompt state after send errors, failed apply results, timeouts, and cleanup', () => {
     const text = source();
-    const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
+    const closeLifecycle = rotoCloseLifecycleSource();
+    const saveCloseBlock = closeLifecycle.slice(closeLifecycle.indexOf('const saveAndCloseRotoFrame = useCallback'), closeLifecycle.indexOf('useEffect(() => {', closeLifecycle.indexOf('const saveAndCloseRotoFrame = useCallback')));
     const lifecycle = rotoApplyLifecycleSource();
     const timeoutBlock = lifecycle.slice(lifecycle.indexOf('const startApplyTimeout = useCallback'), lifecycle.indexOf('useEffect(() => clearApplyTimeout'));
-    const closeListenerBlock = text.slice(text.indexOf('appWindow.onCloseRequested'), text.indexOf('const handlePhysicsPaintKeyDown = useCallback'));
+    const closeListenerBlock = closeLifecycle.slice(closeLifecycle.indexOf('appWindow.onCloseRequested'), closeLifecycle.indexOf('return {', closeLifecycle.indexOf('appWindow.onCloseRequested')));
     const cleanupBlock = text.slice(text.indexOf('useEffect(() => {\n    return () => {\n      pendingRotoAdvanceRef.current'), text.indexOf('const missingConditions = useMemo'));
 
-    expect(closeListenerBlock).toContain('closeGuardBypassRef.current || closeAfterRotoSaveRequestedRef.current');
+    expect(closeListenerBlock).toContain('input.closeGuardBypassRef.current || input.closeAfterRotoSaveRequestedRef.current');
     expect(saveCloseBlock).toContain("setRotoClosePromptState('error')");
     expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = null');
-    expect(saveCloseBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
+    expect(saveCloseBlock).toContain('input.closeAfterRotoSaveRequestedRef.current = false');
     expect(saveCloseBlock).toContain('closeGuardBypassRef.current = false');
     expect(rotoApplyResultControllerSource()).toContain("input.setClosePromptState('error')");
     expect(rotoApplyResultControllerSource()).toContain('input.closeAfterApplyOperationIdRef.current = null');

@@ -27,6 +27,7 @@ import { useRotoCachedPlayback } from './useRotoCachedPlayback';
 import { useRotoReferenceController } from './useRotoReferenceController';
 import { useRotoApplyLifecycle } from './useRotoApplyLifecycle';
 import { useRotoApplyResultController } from './useRotoApplyResultController';
+import { useRotoCloseLifecycle } from './useRotoCloseLifecycle';
 import { useRotoSaveController } from './useRotoSaveController';
 import './physicsPaintStudio.css';
 
@@ -40,7 +41,6 @@ const ONION_DEPTH_OPACITY = [0.5, 0.25, 0.15] as const;
 const PLAY_LIMIT_TOAST_DISMISS_MS = 5000;
 type BridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
-type RotoClosePromptState = 'idle' | 'prompt' | 'saving' | 'error';
 type RenderedFramePayload = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
 type SerializedPhysicsPaintProject = ReturnType<EfxPaintEngine['save']>;
 type PreviewBackgroundEngine = EfxPaintEngine & {
@@ -586,8 +586,6 @@ export function PhysicsPaintStudio() {
   const [cachedPlayPreviewUrl, setCachedPlayPreviewUrl] = useState<string | null>(null);
   const [savedPlayCacheDirty, setSavedPlayCacheDirty] = useState(false);
   const [playLimitToast, setPlayLimitToast] = useState<string | null>(null);
-  const [rotoClosePromptState, setRotoClosePromptState] = useState<RotoClosePromptState>('idle');
-  const [rotoClosePromptMessage, setRotoClosePromptMessage] = useState<string | null>(null);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const playerRef = useRef<AnimationPlayer | null>(null);
   const rotoFrameStatesRef = useRef<Map<number, ReturnType<EfxPaintEngine['save']>>>(new Map());
@@ -1398,20 +1396,6 @@ export function PhysicsPaintStudio() {
     setIsPlaying(false);
   }, [rotoCachedPlayback.stop]);
 
-  const closePhysicsPaintWindow = useCallback(async () => {
-    try {
-      const windowApi = await import('@tauri-apps/api/window');
-      const appWindow = windowApi.getCurrentWindow();
-      if (typeof appWindow.close === 'function') {
-        await appWindow.close();
-        return;
-      }
-    } catch {
-      // Browser fallback below is expected outside Tauri.
-    }
-    window.close();
-  }, []);
-
   const { flushRotoFrame, saveRotoFrame, savePendingRotoFrames } = useRotoSaveController({
     getActionContext: () => actionContext,
     getCurrentFrame: () => currentFrame,
@@ -1460,6 +1444,26 @@ export function PhysicsPaintStudio() {
     setApplyMessage,
     setLastError,
     setSavingFrame: setRotoSavingFrame,
+  });
+
+  const {
+    rotoClosePromptState,
+    rotoClosePromptMessage,
+    setRotoClosePromptState,
+    setRotoClosePromptMessage,
+    closePhysicsPaintWindow,
+    closeWithoutSavingRotoFrame,
+    cancelRotoClose,
+    saveAndCloseRotoFrame,
+  } = useRotoCloseLifecycle({
+    workflowMode,
+    currentFrame,
+    dirtyFramesRef: dirtyRotoFramesRef,
+    closeGuardBypassRef,
+    closeAfterApplyOperationIdRef,
+    closeAfterRotoSaveRequestedRef,
+    snapshotCurrentRotoFrame,
+    saveCurrentRotoFrame: (options) => saveRotoFrame(null, options),
   });
 
   const navigateToSyncedFrame = useCallback(async (frame: number) => {
@@ -2160,90 +2164,6 @@ export function PhysicsPaintStudio() {
       setLastError(message);
     }
   }, [actionContext, currentFrame, framesToApply, playWiggle, settings, startApplyTimeout]);
-
-  useEffect(() => {
-    const handleBeforeUnload = (_event: BeforeUnloadEvent) => {
-      if (workflowMode !== 'roto') return;
-      snapshotCurrentRotoFrame();
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [snapshotCurrentRotoFrame, workflowMode]);
-
-  const closeWithoutSavingRotoFrame = useCallback(() => {
-    closeAfterApplyOperationIdRef.current = null;
-    closeGuardBypassRef.current = true;
-    setRotoClosePromptState('idle');
-    setRotoClosePromptMessage(null);
-    void closePhysicsPaintWindow();
-  }, [closePhysicsPaintWindow]);
-
-  const cancelRotoClose = useCallback(() => {
-    closeAfterApplyOperationIdRef.current = null;
-    closeGuardBypassRef.current = false;
-    setRotoClosePromptState('idle');
-    setRotoClosePromptMessage(null);
-  }, []);
-
-  const saveAndCloseRotoFrame = useCallback(async () => {
-    if (closeAfterRotoSaveRequestedRef.current) return;
-    closeAfterRotoSaveRequestedRef.current = true;
-    closeGuardBypassRef.current = true;
-    setRotoClosePromptState('idle');
-    setRotoClosePromptMessage(null);
-    try {
-      const payload = await saveRotoFrame(null, {
-        onPayload: (payload) => {
-          closeAfterApplyOperationIdRef.current = payload.operationId;
-          if (payload.kind === 'apply-canvas') payload.closeWindowAfterApply = true;
-        },
-      });
-      if (!payload?.operationId) {
-        closeAfterApplyOperationIdRef.current = null;
-        closeAfterRotoSaveRequestedRef.current = false;
-        closeGuardBypassRef.current = false;
-        setRotoClosePromptState('error');
-        setRotoClosePromptMessage('Could not save before closing. Try Save current, then close again.');
-      }
-    } catch (error) {
-      closeAfterApplyOperationIdRef.current = null;
-      closeAfterRotoSaveRequestedRef.current = false;
-      closeGuardBypassRef.current = false;
-      const detail = error instanceof Error ? error.message : String(error);
-      setRotoClosePromptState('error');
-      setRotoClosePromptMessage(`Could not save before closing. ${detail}`);
-    }
-  }, [saveRotoFrame]);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    const installCloseHandler = async () => {
-      try {
-        const windowApi = await import('@tauri-apps/api/window');
-        const appWindow = windowApi.getCurrentWindow();
-        if (typeof appWindow.onCloseRequested !== 'function') return;
-        unlisten = await appWindow.onCloseRequested(async (event) => {
-          if (disposed || workflowMode !== 'roto') return;
-          if (closeGuardBypassRef.current || closeAfterRotoSaveRequestedRef.current) return;
-          snapshotCurrentRotoFrame();
-          const isCurrentRotoFrameDirty = workflowMode === 'roto' && dirtyRotoFramesRef.current.has(currentFrame);
-          if (!isCurrentRotoFrameDirty) return;
-          event.preventDefault();
-          setRotoClosePromptState('prompt');
-          setRotoClosePromptMessage(null);
-        });
-        if (disposed) unlisten?.();
-      } catch (error) {
-        console.warn('[PhysicsPaintStudio] Tauri close listener unavailable', error);
-      }
-    };
-    void installCloseHandler();
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [currentFrame, snapshotCurrentRotoFrame, workflowMode]);
 
   const handlePhysicsPaintKeyDown = useCallback((event: KeyboardEvent) => {
     if (!isPhysicsPaintShortcutTarget(event.target)) return;

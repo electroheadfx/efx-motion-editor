@@ -647,3 +647,44 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 
 ### Next suggested slice
 - Continue only with another coherent Debug 01 ownership extraction if needed; dynamic-spacing behavior and Debug 02+ remain out of scope.
+
+## 2026-07-10 — Cluster: extract Roto close lifecycle
+
+### Selected cluster
+- Ownership moved: close prompt state/message, native close listener, dirty-current guard, snapshot-only beforeunload boundary, close-without-save, cancel, save-and-close initiation, Tauri close action, and browser fallback.
+- From: Studio-local state, callbacks, and two window/Tauri effects.
+- To: focused `useRotoCloseLifecycle.ts`.
+
+### Why this is safe
+- The hook consumes existing apply lifecycle/result controller refs and save action, preserving operation matching and close continuation.
+- Native close remains guarded only for dirty current Roto frames; clean frames and non-Roto workflows are not intercepted.
+- Beforeunload remains snapshot-only and never flushes or prevents browser unload.
+- Exact prompt choices/copy, send/timeout/result recovery, close bypass, and browser fallback are preserved.
+
+### Ownership removed from Studio
+- Removed close prompt state declarations, close callbacks, window close implementation, beforeunload effect, and Tauri onCloseRequested effect.
+- Studio now consumes close state/actions and retains only JSX wiring.
+- The extracted effects synchronize only with external window/Tauri lifecycle.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/useRotoCloseLifecycle.ts`
+- `app/src/components/physic-paint/useRotoCloseLifecycle.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2634 lines.
+- `PhysicsPaintStudio.tsx` after: 2554 lines.
+- Cluster delta: -80 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 650 lines.
+
+### Tests run
+- Focused close tests cover snapshot-only unload, dirty native prompt, bypass/cancel/save continuation, and browser fallback wiring.
+- Full Debug 01 focused suite passed with 223 tests across 14 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract transient Roto edit-buffer ownership: dirty/editable/captured/preview/frame-state maps, snapshot/mark-dirty/clear/undo transitions, and pending-session synchronization.
+- Keep engine canvas capture as injected external actions and avoid replacing one Studio monolith with one controller monolith.
