@@ -885,6 +885,21 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(statusStackBlock).not.toContain("props.rotoCachedPlaybackStatus ?? 'Missing frames play transparent/background.'");
   });
 
+  it('keeps cached Roto playback as a source-agnostic callback boundary', () => {
+    const code = source();
+    const studio = studioSource();
+
+    expect(code).not.toContain('useRotoCachedPlayback');
+    expect(code).not.toContain('setInterval');
+    expect(code).not.toContain('clearInterval');
+    expect(code).toContain('onToggleRotoPlayback?: () => void');
+    expect(code).toContain('onRotoPlaybackLoopChange?: (loop: boolean) => void');
+    expect(code).toContain('onRotoPlaybackFpsChange?: (fps: number) => void');
+    expect(studio).toContain('onToggleRotoPlayback={rotoCachedPlayback.toggle}');
+    expect(studio).toContain('onRotoPlaybackLoopChange={rotoCachedPlayback.setLoop}');
+    expect(studio).toContain('onRotoPlaybackFpsChange={rotoCachedPlayback.updateFps}');
+  });
+
   it('keeps cached Roto playback UI inside existing Preact CSS scope without render or save-all actions', () => {
     const code = source();
     const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
@@ -937,7 +952,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain("restore.kind === 'blank-real-key'");
     expect(studio).toContain('setCachedRotoReferenceUrl(null);');
     expect(studio).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
-    expect(studio).toContain('setCachedRotoPlaybackFrame(null)');
+    expect(studio).toContain('rotoCachedPlayback.stop();');
     expect(studio).toContain("restore.kind === 'load-real-key'");
     expect(studio).toContain('syncRotoKeyFrameLists');
     expect(studio).toContain('cachedRotoFrames: [...cacheFrames].sort');

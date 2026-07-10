@@ -439,3 +439,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract cached Roto playback ownership: display-frame lookup projection, playback sequence construction, timer lifecycle, loop/FPS actions, and status derivation.
 - Keep the timer as an external-boundary hook and avoid introducing state-mirroring effects.
+
+## 2026-07-10 — Cluster: extract cached Roto playback hook
+
+### Selected cluster
+- Ownership moved: playback active/frame/status/loop/FPS state, FPS clamping, timer lifecycle, sequence playback, stop/toggle/restart/reset actions, and non-Roto cleanup.
+- From: Studio-local state, timer ref, callbacks, and cleanup branches.
+- To: focused `useRotoCachedPlayback.ts` hook.
+
+### Why this is safe
+- Cached frame lookup remains supplied by Studio, preserving existing launch/store/preview precedence and session display-frame sequence.
+- The hook owns the browser interval as a legitimate external lifecycle boundary and cleans it on unmount or workflow exit.
+- Existing status strings, missing-frame behavior, immediate first frame, looping, active FPS restart, navigation/edit stop behavior, and launch reset behavior are preserved.
+- No cache mutation, interpolation generation, Save/Paste, or dynamic-spacing policy moved into playback.
+
+### Ownership removed from Studio
+- Removed five playback state declarations, the playback timer ref, FPS clamp constants/helper, start/stop/toggle/FPS callbacks, timer cleanup branches, and the workflow-mode cleanup effect.
+- Studio now provides frame lookup and render callbacks and consumes one hook result for CanvasStack, WorkflowStrip, keyboard, navigation, and status wiring.
+- No internal state-mirroring effect was added; the hook has only timer cleanup and external workflow-boundary cleanup.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/useRotoCachedPlayback.ts`
+- `app/src/components/physic-paint/useRotoCachedPlayback.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2933 lines.
+- `PhysicsPaintStudio.tsx` after: 2858 lines.
+- Cluster delta: -75 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 346 lines.
+
+### Tests run
+- Focused hook behavior coverage includes FPS clamp, empty cache, missing frames, immediate playback, loop, stop, active FPS restart, and launch reset.
+- Full Debug 01 focused suite passed with 201 tests across 10 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract cached Roto display/reference lookup and repaint-base loading into a focused cache/reference controller or hook.
+- Preserve engine preview-base operations as explicit external actions and keep dirty/live-overlay decisions transactionally visible.
