@@ -6,8 +6,6 @@ import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunch
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore, registerRotoAlphaCanvasFrame } from '../../stores/physicPaintStore';
-import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
-import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
 import { clampOnionCount, getPreviewFps, getSourceRotoFrameForDisplayFrame, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 import type { RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from './physicsPaintRotoKeyController';
 import type { RotoSessionEffect } from './physicsPaintRotoSession';
@@ -30,14 +28,15 @@ import { useRotoCloseLifecycle } from './useRotoCloseLifecycle';
 import { useRotoSaveController } from './useRotoSaveController';
 import { useRotoEditBufferController } from './useRotoEditBufferController';
 import { usePlayEditCacheController } from './usePlayEditCacheController';
-import { getActivePlayStartFrame, getPlayFrameCountFromAssignments, getPlayFrameEditAssignments, normalizePlayWiggle } from './playFrameTransactions';
+import { getActivePlayStartFrame, normalizePlayWiggle } from './playFrameTransactions';
 import { applyRenderedPlayCache, markPlayLaunchCacheStale, normalizePlayMotionUpdate, resolvePlayFrameCountUpdate, resolvePlayOptionsUpdate } from './playLifecycleTransactions';
 import { usePlayPreviewController } from './usePlayPreviewController';
 import { useRotoPlayConversionController } from './useRotoPlayConversionController';
 import { PhysicsPaintCanvasMount } from './PhysicsPaintCanvasMount';
-import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize, resizePhysicsPaintState } from './physicsPaintCanvasSizing';
+import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './usePhysicsPaintEngineLifecycle';
 import { usePhysicsPaintEngineActions } from './usePhysicsPaintEngineActions';
+import { usePhysicsPaintSessionController } from './usePhysicsPaintSessionController';
 import { useRotoBackgroundMetadataSync } from './useRotoBackgroundMetadataSync';
 import {
   applyPlayRenderOptionsSnapshotToSettings,
@@ -67,14 +66,6 @@ interface PhysicsPaintActionContext {
   engine: EfxPaintEngine;
   launchContext: PhysicPaintLaunchContext;
   bridgeMode: PhysicsPaintBridgeMode;
-}
-
-function withoutRotoGapLimit(context: PhysicPaintLaunchContext): PhysicPaintLaunchContext {
-  if (context.workflowMode === 'play') return context;
-  const next = { ...context };
-  delete next.maxPlayFrameCount;
-  delete next.maxPlayFrameCountReason;
-  return next;
 }
 
 function getRotoOnionAnchorDisplayFrame(frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame, 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame'>>): number {
@@ -1194,106 +1185,28 @@ export function PhysicsPaintStudio() {
     }
   }, [actionContext, capturePendingPlayFrameEdits, currentFrame, framesToApply, playPreviewController.renderFrames, playPreviewController.stopPlayOnly, playWiggle, readyToApply, settings, startApplyTimeout]);
 
-  const saveEditableState = useCallback(async () => {
-    if (!engine) return;
-    try {
-      if (workflowMode === 'play') capturePendingPlayFrameEdits();
-      const editableState = workflowMode === 'play'
-        ? annotatePlayState(engine.save())
-        : engine.save();
-      if (workflowMode === 'play') engine.load(editableState);
-      const result = await downloadPhysicsPaintState(editableState);
-      if (result.status === 'cancelled') {
-        setApplyStatus('idle');
-        setApplyMessage(result.message);
-        setLastError(null);
-        return;
-      }
-      setApplyStatus('success');
-      setApplyMessage(result.message);
-      setLastError(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setApplyStatus('error');
-      setApplyMessage(message);
-      setLastError(message);
-    }
-  }, [capturePendingPlayFrameEdits, engine, workflowMode]);
-
-  const loadEditableState = useCallback((event: Event) => {
-    if (!engine) return;
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const state = resizePhysicsPaintState(parsePhysicsPaintStateFile(String(reader.result ?? '')), canvasWidth, canvasHeight);
-        engine.load(state);
-        if (workflowMode === 'play') {
-          const assignments = getPlayFrameEditAssignments(state);
-          const frameCount = getPlayFrameCountFromAssignments(assignments, framesToApply);
-          const previewFrame = assignments.values().next().value ?? 0;
-          restorePlayFrameEdits(assignments, previewFrame, state.strokes.length);
-          setLatestPlayFrames([]);
-          setCachedPlayPreviewUrl(null);
-          setSavedPlayCacheDirty(true);
-          setLocalPlayPreviewFrame(previewFrame);
-          setFramesToApply(frameCount);
-          bumpPlayFramesVersion();
-          setLaunchContext((current) => current ? {
-            ...withoutRotoGapLimit(current),
-            workflowMode: 'play',
-            editableSource: 'play',
-            playFrameCount: frameCount,
-            playCacheStatus: 'stale',
-            cachedPlayFrames: [],
-            previewFrame,
-          } : current);
-        }
-        setApplyStatus('success');
-        setApplyMessage('Loaded editable JSON state.');
-        setLastError(null);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        setApplyStatus('error');
-        setApplyMessage(message);
-        setLastError(message);
-      }
-    };
-    reader.readAsText(file);
-    (event.target as HTMLInputElement).value = '';
-  }, [engine, framesToApply, workflowMode]);
-
-  const exportDebugProof = useCallback(() => {
-    if (!engine || !launchContext) return;
-    try {
-      const canvas = engine.exportCompositeCanvas();
-      const frame: RenderedFramePayload = {
-        frameIndex: 0,
-        appFrame: currentFrame,
-        dataUrl: canvas.toDataURL('image/png'),
-        width: canvas.width,
-        height: canvas.height,
-      };
-      const still = buildPhysicsPaintStillExport(frame);
-      const manifest = buildPhysicsPaintDebugManifest({
-        layerId: launchContext.layerId,
-        operationId: `${launchContext.operationId}:debug:${Date.now()}`,
-        startFrame: currentFrame,
-        frameCount: 1,
-        frames: [frame],
-        fps: previewFps,
-      });
-      setApplyStatus('success');
-      setApplyMessage(`Debug proof ready: ${still.file} and ${manifest.file}.`);
-      setLastError(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setApplyStatus('error');
-      setApplyMessage(message);
-      setLastError(message);
-    }
-  }, [currentFrame, engine, launchContext, previewFps]);
+  const { saveEditableState, loadEditableState, exportDebugProof } = usePhysicsPaintSessionController({
+    engine,
+    workflowMode,
+    framesToApply,
+    canvasSize: { width: canvasWidth, height: canvasHeight },
+    launchContext,
+    currentFrame,
+    previewFps,
+    capturePendingPlayFrameEdits,
+    annotatePlayState,
+    restorePlayFrameEdits,
+    clearLatestPlayFrames: () => setLatestPlayFrames([]),
+    setCachedPlayPreviewUrl,
+    setSavedPlayCacheDirty,
+    setLocalPlayPreviewFrame,
+    setFramesToApply,
+    bumpPlayFramesVersion,
+    setLaunchContext,
+    setApplyStatus,
+    setApplyMessage,
+    setLastError,
+  });
 
   const buildOnionPreviewFrames = useCallback((): PhysicsPaintWorkflowOnionPreviewFrame[] => {
     if (isPlaying || !launchContext) return [];

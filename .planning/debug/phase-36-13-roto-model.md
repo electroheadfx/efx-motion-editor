@@ -988,3 +988,44 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract editable session save/load and debug proof export into a focused utility hook/controller.
 - Then extract onion preview/navigation/keyboard/readiness helpers and final JSX composition toward the 400–600 line target.
+
+## 2026-07-10 — Cluster: extract session and debug export controller
+
+### Selected cluster
+- Ownership moved: editable state download, FileReader load/error/input reset, working-canvas resize/load, Play assignment/frame-count/preview/cache restoration, Roto direct load, and debug still/manifest export/status copy.
+- From: Studio-local save/load/export callbacks.
+- To: focused `usePhysicsPaintSessionController.ts`.
+
+### Why this is safe
+- Browser download and FileReader remain explicit external actions.
+- Loaded states use the same resize helper before engine load.
+- Play restoration preserves assignment parsing, preview selection, frame count, cache stale/reset, workflow metadata, and Roto gap-limit removal; Roto loads do not alter Play state.
+- Save cancellation and debug proof fields/copy remain unchanged.
+
+### Ownership removed from Studio
+- Removed saveEditableState, loadEditableState, and exportDebugProof callback bodies.
+- Studio now supplies engine/canvas/workflow/edit-cache/status dependencies and consumes three controller actions.
+- No lifecycle effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/usePhysicsPaintSessionController.ts`
+- `app/src/components/physic-paint/usePhysicsPaintSessionController.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 1752 lines.
+- `PhysicsPaintStudio.tsx` after: 1665 lines.
+- Cluster delta: -87 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 1539 lines.
+
+### Tests run
+- Controller tests cover Play and Roto load paths, FileReader errors/input reset, save cancellation, and debug export wiring.
+- Full Physics Paint suite passed with 312 tests across 27 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract Roto/Play navigation actions, onion preview projection, keyboard shortcuts, readiness/status derivation, and Play limit toast into focused pure/controller boundaries.
+- Then move the large JSX tree into a presentational composition component, leaving Studio as dependency wiring.

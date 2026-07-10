@@ -31,6 +31,7 @@ const playLifecycleTransactionsPath = fileURLToPath(new URL('./playLifecycleTran
 const rotoPlayConversionTransactionsPath = fileURLToPath(new URL('./rotoPlayConversionTransactions.ts', import.meta.url));
 const rotoPlayConversionControllerPath = fileURLToPath(new URL('./useRotoPlayConversionController.ts', import.meta.url));
 const engineLifecyclePath = fileURLToPath(new URL('./usePhysicsPaintEngineLifecycle.ts', import.meta.url));
+const sessionControllerPath = fileURLToPath(new URL('./usePhysicsPaintSessionController.ts', import.meta.url));
 const canvasMountPath = fileURLToPath(new URL('./PhysicsPaintCanvasMount.tsx', import.meta.url));
 const canvasSizingPath = fileURLToPath(new URL('./physicsPaintCanvasSizing.ts', import.meta.url));
 const parentBridgePath = fileURLToPath(new URL('./usePhysicsPaintParentBridge.ts', import.meta.url));
@@ -63,6 +64,7 @@ const playLifecycleTransactionsSource = () => readFileSync(playLifecycleTransact
 const rotoPlayConversionTransactionsSource = () => readFileSync(rotoPlayConversionTransactionsPath, 'utf8');
 const rotoPlayConversionControllerSource = () => readFileSync(rotoPlayConversionControllerPath, 'utf8');
 const engineLifecycleSource = () => readFileSync(engineLifecyclePath, 'utf8');
+const sessionControllerSource = () => readFileSync(sessionControllerPath, 'utf8');
 const canvasMountSource = () => readFileSync(canvasMountPath, 'utf8');
 const canvasSizingSource = () => readFileSync(canvasSizingPath, 'utf8');
 const parentBridgeSource = () => readFileSync(parentBridgePath, 'utf8');
@@ -371,7 +373,10 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).toContain('const scaleX = width / state.width');
     expect(text).toContain('const scaleY = height / state.height');
     expect(text).toContain('engine.load(resizePhysicsPaintState(input.launchContext.editableState, input.canvasWidth, input.canvasHeight))');
-    expect(text).toContain('const state = resizePhysicsPaintState(parsePhysicsPaintStateFile(String(reader.result ?? \'\')), canvasWidth, canvasHeight)');
+    expect(sessionControllerSource()).toContain('const state = resizePhysicsPaintState(');
+    expect(sessionControllerSource()).toContain('parsePhysicsPaintStateFile(contents)');
+    expect(sessionControllerSource()).toContain('input.canvasSize.width');
+    expect(sessionControllerSource()).toContain('input.canvasSize.height');
   });
 
   it('clips the onion overlay to measured canvas bounds, not the full canvas stack', () => {
@@ -667,10 +672,10 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
-    expect(text).toContain('function withoutRotoGapLimit');
-    expect(text).toContain("if (context.workflowMode === 'play') return context;");
-    expect(text).toContain('delete next.maxPlayFrameCount');
-    expect(text).toContain('...withoutRotoGapLimit(current)');
+    expect(sessionControllerSource()).toContain('function makeLoadedPlayLaunchContext');
+    expect(sessionControllerSource()).toContain('delete next.maxPlayFrameCount');
+    expect(sessionControllerSource()).toContain('delete next.maxPlayFrameCountReason');
+    expect(sessionControllerSource()).toContain('makeLoadedPlayLaunchContext(current, frameCount, previewFrame)');
     expect(workflowStripBlock).toContain('maxPlayFrameCount={launchContext?.maxPlayFrameCount}');
     expect(workflowStripBlock).toContain('maxPlayFrameCountReason={launchContext?.maxPlayFrameCountReason}');
     expect(workflowStripBlock).toContain('onPlayLimit={showPlayLimitToast}');
@@ -710,36 +715,34 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('savedPlayCacheDirty');
   });
 
-  it('allows Play canvas drawing on selected frames and marks cached scripts stale', () => {
+  it('delegates editable session persistence and debug proof export to the focused controller', () => {
     const text = source();
-    const saveEditableStateBlock = text.slice(text.indexOf('const saveEditableState = useCallback'), text.indexOf('const loadEditableState = useCallback'));
+    const controller = sessionControllerSource();
 
-    expect(text).toContain('function annotatePlayFrameStrokes');
-    expect(playEditCacheControllerSource()).toContain('const editAssignmentsRef = useRef<Map<number, number>>(new Map())');
-    expect(playEditCacheControllerSource()).toContain('const beginFrameEdit = useCallback');
-    expect(playEditCacheControllerSource()).toContain('editBaselineRef.current = { frame: localPreviewFrame, strokeCount: input.engine.getStrokeCount() }');
-    expect(text).toContain('engine.getStrokeCount()');
-    expect(text).not.toContain('engine.save().strokes.length');
-    expect(text).toContain('setSavedPlayCacheDirty(true)');
-    expect(text).toContain("onInputIntent={workflowMode === 'play' ? beginPlayFrameEdit : beginRotoFrameEdit}");
-    expect(text).not.toContain('inputDisabled={!canEditCurrentPlayFrame}');
-    expect(saveEditableStateBlock).toContain('capturePendingPlayFrameEdits()');
-    expect(saveEditableStateBlock).toContain('annotatePlayState(engine.save())');
-    expect(saveEditableStateBlock).toContain('downloadPhysicsPaintState(editableState)');
+    expect(text).toContain("import { usePhysicsPaintSessionController } from './usePhysicsPaintSessionController'");
+    expect(text).toContain('const { saveEditableState, loadEditableState, exportDebugProof } = usePhysicsPaintSessionController');
+    expect(controller).toContain('capturePendingPlayFrameEdits()');
+    expect(controller).toContain('annotatePlayState(engine.save())');
+    expect(controller).toContain('downloadPhysicsPaintState(editableState)');
+    expect(controller).toContain("result.status === 'cancelled'");
+    expect(controller).toContain('reader.onerror');
+    expect(controller).toContain("inputElement.value = ''");
+    expect(controller).toContain('resizePhysicsPaintState(');
+    expect(controller).toContain('buildPhysicsPaintDebugProof');
   });
 
-  it('rebuilds Play editing context when loading a saved editable state', () => {
-    const text = source();
-    const loadEditableStateBlock = text.slice(text.indexOf('const loadEditableState = useCallback'), text.indexOf('const exportDebugProof = useCallback'));
+  it('rebuilds Play editing context while loading Roto state directly into the engine', () => {
+    const controller = sessionControllerSource();
 
-    expect(text).toContain('function getPlayFrameEditAssignments');
-    expect(text).toContain('function getPlayFrameCountFromAssignments');
-    expect(loadEditableStateBlock).toContain('const assignments = getPlayFrameEditAssignments(state)');
-    expect(loadEditableStateBlock).toContain('restorePlayFrameEdits(assignments, previewFrame, state.strokes.length)');
+    expect(controller).toContain('const assignments = getPlayFrameEditAssignments(state)');
+    expect(controller).toContain('restorePlayFrameEdits(assignments, previewFrame, state.strokes.length)');
     expect(playEditCacheControllerSource()).toContain('editBaselineRef.current = { frame, strokeCount }');
-    expect(loadEditableStateBlock).toContain("playCacheStatus: 'stale'");
-    expect(loadEditableStateBlock).toContain('cachedPlayFrames: []');
-    expect(loadEditableStateBlock).toContain('setSavedPlayCacheDirty(true)');
+    expect(controller).toContain("playCacheStatus: 'stale'");
+    expect(controller).toContain('cachedPlayFrames: []');
+    expect(controller).toContain('clearLatestPlayFrames()');
+    expect(controller).toContain('setSavedPlayCacheDirty(true)');
+    expect(controller).toContain("if (input.workflowMode === 'play')");
+    expect(controller).toContain('engine.load(state)');
   });
 
   it('uses the selected cached Play frame as the edit background without keeping the preview overlay alive', () => {
