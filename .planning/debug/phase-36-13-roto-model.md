@@ -481,3 +481,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract cached Roto display/reference lookup and repaint-base loading into a focused cache/reference controller or hook.
 - Preserve engine preview-base operations as explicit external actions and keep dirty/live-overlay decisions transactionally visible.
+
+## 2026-07-10 — Cluster: extract cached Roto reference controller
+
+### Selected cluster
+- Ownership moved: cached display/reference lookup precedence, cached reference URL state, repaint-base state, dirty-frame refusal, and engine preview-base loading/reset behavior.
+- From: Studio-local state plus `findCachedRotoDisplayFrame`, `findCachedRotoReferenceFrame`, and `loadCachedRotoReferenceFrame`.
+- To: focused `useRotoReferenceController.ts`.
+
+### Why this is safe
+- The controller preserves lookup order: generated launch/store display frame, live preview real key, launch/store real key, confirmed display fallback, then generic store frame fallback.
+- Engine operations remain explicit through an injected preview-background interface.
+- Dirty frames still refuse cached reload, cached repaint bases remain available for merge, and successful loads clear stale dirty/live-overlay markers before syncing pending state.
+- No Save/apply transaction, interpolation spacing, playback, or bridge lifecycle changed.
+
+### Ownership removed from Studio
+- Removed cached reference/repaint-base state declarations and the three lookup/load functions.
+- Studio now supplies current context, cache maps, dirty/live-overlay sets, store lookups, engine settings, and status/sync callbacks to one controller.
+- Existing external current-frame/engine loading effect remains thin and calls the controller action.
+- No broad internal workflow effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/useRotoReferenceController.ts`
+- `app/src/components/physic-paint/useRotoReferenceController.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2858 lines.
+- `PhysicsPaintStudio.tsx` after: 2824 lines.
+- Cluster delta: -34 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 380 lines.
+
+### Tests run
+- Focused controller tests cover lookup precedence, dirty refusal/repaint preservation, successful engine load/cleanup/status, and empty-cache reset.
+- Full Debug 01 focused suite passed with 200 tests across 10 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract Roto save/apply lifecycle ownership around timeout, flush, pending apply bookkeeping, success/failure result handling, and navigation continuation.
+- Split pure payload/result transactions from external bridge/engine actions rather than creating one monolithic hook.
