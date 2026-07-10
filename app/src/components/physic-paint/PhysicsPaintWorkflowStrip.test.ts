@@ -456,7 +456,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(cacheTransactions).toContain('const frames = storeFrames.length > 0');
     expect(cacheTransactions).toContain("storeFrames.filter((frame) => enabled || frame.source === 'real-key')");
     expect(cacheTransactions).toContain('realDisplayFrames: realKeys.map((frame) => frame.displayFrame ?? frame.appFrame)');
-    expect(toggleBlock).toContain('setEditableRotoFrames((frames) => frames.filter((frame) => cacheRefresh.realDisplayFrames.includes(frame)))');
+    expect(toggleBlock).toContain('rotoEditBuffer.setEditableFrameList((frames) => frames.filter((frame) => cacheRefresh.realDisplayFrames.includes(frame)))');
     expect(toggleBlock).not.toContain('setOccupiedRotoFrames');
     expect(toggleBlock).toContain('startFrame: transaction.nextCurrentFrame');
     expect(toggleBlock).not.toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');

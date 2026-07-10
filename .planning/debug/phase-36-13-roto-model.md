@@ -688,3 +688,46 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract transient Roto edit-buffer ownership: dirty/editable/captured/preview/frame-state maps, snapshot/mark-dirty/clear/undo transitions, and pending-session synchronization.
 - Keep engine canvas capture as injected external actions and avoid replacing one Studio monolith with one controller monolith.
+
+## 2026-07-10 — Cluster: extract transient Roto edit buffer
+
+### Selected cluster
+- Ownership moved: dirty frames, editable engine states, preview/captured frames, live overlay action counts, editable-frame markers, snapshot persistence, dirty/begin-edit transitions, overlay undo, Roto clear behavior, and launch reset.
+- From: Studio-local refs/state and snapshot/mark/clear/undo helper bodies.
+- To: pure `rotoEditBufferTransactions.ts` and focused `useRotoEditBufferController.ts`.
+
+### Why this is safe
+- Pure transactions own collection updates and cached-base-preserving decisions.
+- Engine save/capture/clear/reset and transparent canvas export remain explicit injected actions.
+- Generated frames remain render-only, cached repaint bases remain preserved until live overlay changes, empty/non-persistable snapshots are removed, and editable markers still reflect actual content.
+- Play clear/undo branches and user-facing status copy remain in Studio.
+
+### Ownership removed from Studio
+- Removed direct transient Roto map/set declarations and most add/remove/dirty/snapshot/clear/undo bookkeeping.
+- Studio now supplies engine capture and consumes controller refs/actions shared with save/reference/key/close controllers.
+- No state-mirroring effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/rotoEditBufferTransactions.ts`
+- `app/src/components/physic-paint/rotoEditBufferTransactions.test.ts`
+- `app/src/components/physic-paint/useRotoEditBufferController.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2554 lines.
+- `PhysicsPaintStudio.tsx` after: 2521 lines.
+- Cluster delta: -33 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 683 lines.
+
+### Tests run
+- Pure edit-buffer tests cover dirty/overlay increments, undo-to-empty, cached-base clear preservation, normal clear/delete, snapshot persistence, and launch reset.
+- Full Physics Paint suite passed with 289 tests across 20 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract Play editing/cache/preview/render ownership into focused controllers, starting with pure frame assignment/cache selectors before interval/render bridge actions.
+- Then extract engine/canvas lifecycle, parent bridge/listeners, settings actions, and final composition helpers toward the 400–600 line target.
