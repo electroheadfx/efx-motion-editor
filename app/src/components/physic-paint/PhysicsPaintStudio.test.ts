@@ -17,6 +17,8 @@ const rotoCacheTransactionsPath = fileURLToPath(new URL('./rotoCacheTransactions
 const rotoLaunchHydrationPath = fileURLToPath(new URL('./rotoLaunchHydration.ts', import.meta.url));
 const rotoApplyLifecyclePath = fileURLToPath(new URL('./useRotoApplyLifecycle.ts', import.meta.url));
 const rotoApplyTransactionsPath = fileURLToPath(new URL('./rotoApplyTransactions.ts', import.meta.url));
+const rotoApplyResultControllerPath = fileURLToPath(new URL('./useRotoApplyResultController.ts', import.meta.url));
+const rotoApplyResultTransactionsPath = fileURLToPath(new URL('./rotoApplyResultTransactions.ts', import.meta.url));
 const rotoSaveControllerPath = fileURLToPath(new URL('./useRotoSaveController.ts', import.meta.url));
 const rotoSaveTransactionsPath = fileURLToPath(new URL('./rotoSaveTransactions.ts', import.meta.url));
 const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}`;
@@ -33,6 +35,8 @@ const rotoCacheTransactionsSource = () => readFileSync(rotoCacheTransactionsPath
 const rotoLaunchHydrationSource = () => readFileSync(rotoLaunchHydrationPath, 'utf8');
 const rotoApplyLifecycleSource = () => readFileSync(rotoApplyLifecyclePath, 'utf8');
 const rotoApplyTransactionsSource = () => readFileSync(rotoApplyTransactionsPath, 'utf8');
+const rotoApplyResultControllerSource = () => readFileSync(rotoApplyResultControllerPath, 'utf8');
+const rotoApplyResultTransactionsSource = () => readFileSync(rotoApplyResultTransactionsPath, 'utf8');
 const rotoSaveControllerSource = () => readFileSync(rotoSaveControllerPath, 'utf8');
 const rotoSaveTransactionsSource = () => readFileSync(rotoSaveTransactionsPath, 'utf8');
 
@@ -766,8 +770,9 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(updateBlock).toContain('cachedRotoFrames: cacheRefresh.frames');
     expect(updateBlock).toContain('rotoInterpolationSettings: transaction.settings');
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
-    expect(resultBlock).toContain("} else if (detail.kind === 'update-roto-interpolation-settings') {");
-    expect(resultBlock).toContain("setApplyMessage((message) => message || 'Generated in-between settings synced.');");
+    expect(resultBlock).toContain('if (handleRotoApplyResult(transition)) return;');
+    expect(resultBlock).not.toContain("detail.kind === 'update-roto-interpolation-settings'");
+    expect(rotoApplyResultControllerSource()).toContain("setApplyMessage((message) => message || 'Generated in-between settings synced.');");
     expect(text).toContain('rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId)');
     expect(workflowStripBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
     expect(workflowStripBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
@@ -989,14 +994,13 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(rotoApplyTransactionsSource()).toContain('snapshot.closeAfterRotoSaveRequested && pendingApply.operationId === detail.operationId');
     expect(resultBlock).toContain('if (shouldCloseAfterSave)');
     expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
-    expect(resultBlock).toContain('closeGuardBypassRef.current = true');
-    expect(resultBlock).toContain('void closePhysicsPaintWindow()');
+    expect(rotoApplyResultControllerSource()).toContain('input.closeGuardBypassRef.current = true');
+    expect(rotoApplyResultControllerSource()).toContain('void input.closeWindow()');
   });
 
   it('recovers dirty close prompt state after send errors, failed apply results, timeouts, and cleanup', () => {
     const text = source();
     const saveCloseBlock = text.slice(text.indexOf('const saveAndCloseRotoFrame = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const saveAndCloseRotoFrame = useCallback')));
-    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
     const lifecycle = rotoApplyLifecycleSource();
     const timeoutBlock = lifecycle.slice(lifecycle.indexOf('const startApplyTimeout = useCallback'), lifecycle.indexOf('useEffect(() => clearApplyTimeout'));
     const closeListenerBlock = text.slice(text.indexOf('appWindow.onCloseRequested'), text.indexOf('const handlePhysicsPaintKeyDown = useCallback'));
@@ -1007,9 +1011,9 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(saveCloseBlock).toContain('closeAfterApplyOperationIdRef.current = null');
     expect(saveCloseBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
     expect(saveCloseBlock).toContain('closeGuardBypassRef.current = false');
-    expect(resultBlock).toContain("setRotoClosePromptState('error')");
-    expect(resultBlock).toContain('closeAfterApplyOperationIdRef.current = null');
-    expect(resultBlock).toContain('closeAfterRotoSaveRequestedRef.current = false');
+    expect(rotoApplyResultControllerSource()).toContain("input.setClosePromptState('error')");
+    expect(rotoApplyResultControllerSource()).toContain('input.closeAfterApplyOperationIdRef.current = null');
+    expect(rotoApplyResultControllerSource()).toContain('input.closeAfterRotoSaveRequestedRef.current = false');
     expect(timeoutBlock).toContain('input.onTimeout(transition)');
     expect(text).toContain("if (transition.closeFailed) {");
     expect(text).toContain("setRotoClosePromptState('error')");
@@ -1148,19 +1152,17 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   });
 
   it('36.11 clears live repaint overlay only after the merged cached frame is accepted', () => {
-    const text = source();
-    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
-
-    expect(resultBlock).toContain('const mergedFrame = pendingCachedRotoMergeFrameRef.current?.frame === frame ? pendingCachedRotoMergeFrameRef.current : null');
-    expect(resultBlock).toContain('upsertCachedRotoFrameInLaunchContext(mergedFrame.renderedFrame, mergedFrame.backgroundOnly, mergedFrame.onionFrame)');
-    expect(resultBlock).toContain('setCachedRotoReferenceUrl(null)');
-    expect(resultBlock).toContain('setCachedRotoRepaintBaseFrame(mergedFrame.renderedFrame)');
-    expect(resultBlock).toContain('rotoFrameStatesRef.current.delete(frame)');
-    expect(resultBlock).toContain('liveRotoOverlayActionCountRef.current.delete(frame)');
-    expect(resultBlock).toContain('removeEditableRotoFrame(frame)');
-    expect(resultBlock).toContain('engine.setBgMode(settings.background)');
-    expect(resultBlock).toContain('engine.clear()');
-    expect(resultBlock).toContain('(engine as PreviewBackgroundEngine).setPreviewBaseImageUrl(mergedFrame.renderedFrame.dataUrl)');
+    const controller = rotoApplyResultControllerSource();
+    expect(controller).toContain('const mergedFrame = input.pendingCachedMergeFrameRef.current?.frame === frame ? input.pendingCachedMergeFrameRef.current : null');
+    expect(controller).toContain('input.upsertCachedFrame(mergedFrame)');
+    expect(controller).toContain('input.setCachedReferenceUrl(null)');
+    expect(controller).toContain('input.setCachedRepaintBaseFrame(mergedFrame.renderedFrame)');
+    expect(controller).toContain('input.frameStatesRef.current.delete(frame)');
+    expect(controller).toContain('input.liveOverlayActionCountsRef.current.delete(frame)');
+    expect(controller).toContain('input.removeEditableFrame(frame)');
+    expect(controller).toContain('engine.setBgMode(input.getBackgroundMode())');
+    expect(controller).toContain('engine.clear()');
+    expect(controller).toContain('input.restorePreviewBase(engine, mergedFrame.renderedFrame.dataUrl)');
   });
 
   it('36.11 keeps accepted cached repaint saves in a confirmed in-session source for timeline navigation', () => {
@@ -1324,7 +1326,6 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const coordinatorBlock = text.slice(text.indexOf('const requestRotoFrameNavigation = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
     const internalAdvanceBlock = text.slice(text.indexOf('const openSyncedRotoFrameAfterSave = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
-    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
     const saveBlock = rotoSaveControllerSource();
 
     expect(text).toContain('const openSyncedRotoFrameAfterSave = useCallback');
@@ -1335,12 +1336,13 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(internalAdvanceBlock).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current)');
     expect(internalAdvanceBlock).not.toContain("applyStatus === 'applying'");
     expect(internalAdvanceBlock).not.toContain('rotoFlushInFlightRef.current');
-    expect(resultBlock).toContain('void openSyncedRotoFrameAfterSave(nextFrame).then(() => {');
-    expect(resultBlock).not.toContain('void navigateToSyncedFrame(nextFrame)');
-    expect(resultBlock).toContain('const nextFrame = pendingRotoAdvanceRef.current');
-    expect(resultBlock).toContain('pendingRotoAdvanceRef.current = null');
-    expect(resultBlock).toContain('if (!transition.ok)');
-    expect(resultBlock).toContain('saveOnLeaveRenderedFrameRef.current = null');
+    const controller = rotoApplyResultControllerSource();
+    expect(controller).toContain('void input.openFrameAfterSave(nextFrame).then(() => {');
+    expect(controller).not.toContain('void navigateToSyncedFrame(nextFrame)');
+    expect(controller).toContain('const nextFrame = input.pendingAdvanceRef.current');
+    expect(controller).toContain('input.pendingAdvanceRef.current = null');
+    expect(controller).toContain("completion.type === 'failure'");
+    expect(controller).toContain('input.saveOnLeaveRenderedFrameRef.current = null');
     expect(coordinatorBlock).toContain('const saveOnLeaveSourceFrame = saveOnLeaveSourceFrameRef.current');
     expect(coordinatorBlock).toContain('if (saveOnLeaveSourceFrame !== null && activeOperationIdRef.current)');
     expect(coordinatorBlock).toContain('pendingRotoAdvanceRef.current = targetFrame');
@@ -1352,18 +1354,18 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('keeps Phase 36.6 failed save-on-leave on the dirty source and clears queued navigation (D-10, D-11, D-12)', () => {
     const text = source();
-    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
     const timeoutBlock = rotoApplyLifecycleSource().slice(rotoApplyLifecycleSource().indexOf('const startApplyTimeout = useCallback'), rotoApplyLifecycleSource().indexOf('useEffect(() => clearApplyTimeout'));
 
-    expect(resultBlock).toContain('const nextFrame = pendingRotoAdvanceRef.current');
-    expect(resultBlock).toContain('if (!transition.ok)');
-    expect(resultBlock).toContain('pendingRotoAdvanceRef.current = null');
-    expect(resultBlock).toContain('saveOnLeaveSourceFrameRef.current');
-    expect(resultBlock).toContain('saveOnLeaveRenderedFrameRef.current = null');
-    expect(resultBlock).toContain('saveOnLeaveDeleteFrameRef.current = null');
+    const controller = rotoApplyResultControllerSource();
+    expect(controller).toContain('const nextFrame = input.pendingAdvanceRef.current');
+    expect(controller).toContain("completion.type === 'failure'");
+    expect(controller).toContain('input.pendingAdvanceRef.current = null');
+    expect(controller).toContain('input.saveOnLeaveSourceFrameRef.current');
+    expect(controller).toContain('input.saveOnLeaveRenderedFrameRef.current = null');
+    expect(controller).toContain('input.saveOnLeaveDeleteFrameRef.current = null');
     expect(rotoApplyTransactionsSource()).toContain('Could not save frame ${saveOnLeaveSourceFrame}');
     expect(rotoApplyTransactionsSource()).toContain('try navigating again to retry');
-    expect(resultBlock.indexOf('return;')).toBeLessThan(resultBlock.indexOf('void openSyncedRotoFrameAfterSave(nextFrame)'));
+    expect(controller.indexOf('return true;')).toBeLessThan(controller.indexOf('void input.openFrameAfterSave(nextFrame)'));
     expect(timeoutBlock).toContain('pendingRotoAdvanceRef.current = null');
     expect(timeoutBlock).toContain('transitionRotoApplyTimeout(getSnapshot(), operationId)');
     expect(rotoApplyTransactionsSource()).toContain('Could not save frame ${saveOnLeaveSourceFrame}');
@@ -1373,17 +1375,42 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('clears save-on-leave source tracking on terminal paths while preserving the apply-result origin guard (D-12, D-16)', () => {
     const text = source();
-    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
     const timeoutBlock = rotoApplyLifecycleSource().slice(rotoApplyLifecycleSource().indexOf('const startApplyTimeout = useCallback'), rotoApplyLifecycleSource().indexOf('useEffect(() => clearApplyTimeout'));
     const listenerBlock = text.slice(text.indexOf('const handleMessageResult ='), text.indexOf('window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT'));
 
-    expect(resultBlock).toContain('saveOnLeaveSourceFrameRef.current = null');
-    expect(resultBlock).toContain('saveOnLeaveRenderedFrameRef.current = null');
-    expect(resultBlock).toContain('saveOnLeaveDeleteFrameRef.current = null');
+    const controller = rotoApplyResultControllerSource();
+    expect(controller).toContain('input.saveOnLeaveSourceFrameRef.current = null');
+    expect(controller).toContain('input.saveOnLeaveRenderedFrameRef.current = null');
+    expect(controller).toContain('input.saveOnLeaveDeleteFrameRef.current = null');
     expect(timeoutBlock).toContain('pendingRotoAdvanceRef.current = null');
     expect(text).toContain('saveOnLeaveRenderedFrameRef.current = null');
     expect(listenerBlock).toContain('if (event.origin !== window.location.origin) return');
     expect(listenerBlock).toContain('isPhysicPaintApplyResultMessage(event.data)');
+  });
+
+  it('delegates Roto apply-result completion while retaining Play-specific result copy in Studio', () => {
+    const text = source();
+    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+    const controller = rotoApplyResultControllerSource();
+    const transactions = rotoApplyResultTransactionsSource();
+
+    expect(text).toContain("from './useRotoApplyResultController'");
+    expect(text).toContain('const { handleRotoApplyResult } = useRotoApplyResultController({');
+    expect(resultBlock).toContain('if (handleRotoApplyResult(transition)) return;');
+    expect(resultBlock).toContain("detail.kind === 'update-play-render-options'");
+    expect(resultBlock).toContain("detail.kind === 'apply-play-canvas'");
+    expect(resultBlock).toContain("detail.kind === 'convert-play-to-roto'");
+    expect(resultBlock).toContain("detail.kind === 'convert-roto-to-play'");
+    expect(resultBlock).not.toContain("detail.kind === 'apply-canvas'");
+    expect(resultBlock).not.toContain("detail.kind === 'delete-roto-frame'");
+    expect(controller).not.toContain('useEffect');
+    expect(controller).toContain('input.onSessionSaveSucceeded(frame)');
+    expect(controller).toContain('input.setCachedRepaintBaseFrame(mergedFrame.renderedFrame)');
+    expect(controller).toContain('input.restorePreviewBase(engine, mergedFrame.renderedFrame.dataUrl)');
+    expect(controller).toContain('void input.openFrameAfterSave(nextFrame).then(() => {');
+    expect(controller).toContain('void input.closeWindow()');
+    expect(transactions).toContain("'replace-roto-key-frames'");
+    expect(transactions).toContain("'update-roto-interpolation-settings'");
   });
 
   it('validates apply result kind and frame before clearing Roto save-on-leave state', () => {
@@ -1404,14 +1431,14 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   });
 
   it('does not mutate local marker ownership after deleted Roto save-on-leave frames apply', () => {
-    const text = source();
-    const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
+    const controller = rotoApplyResultControllerSource();
 
-    expect(resultBlock).toContain('const deletedFrame = saveOnLeaveDeleteFrameRef.current === frame');
-    expect(resultBlock).toContain('removeCachedRotoFrameFromLaunchContext(frame)');
-    expect(resultBlock).toContain('if (deletedFrame) removeEditableRotoFrame(frame)');
-    expect(resultBlock).not.toContain('setSavedRotoFrames');
-    expect(resultBlock).not.toContain('setOccupiedRotoFrames');
+    expect(source()).toContain('if (handleRotoApplyResult(transition)) return;');
+    expect(controller).toContain('const deletedFrame = input.saveOnLeaveDeleteFrameRef.current === frame');
+    expect(controller).toContain('input.removeCachedFrame(frame)');
+    expect(controller).toContain('if (deletedFrame) input.removeEditableFrame(frame)');
+    expect(controller).not.toContain('setSavedRotoFrames');
+    expect(controller).not.toContain('setOccupiedRotoFrames');
   });
 
   it('disables Roto canvas input while save-on-leave is applying or the current display frame is generated', () => {

@@ -607,3 +607,43 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract successful and failed Roto apply-result side effects, cached-merge completion, session success/failure transitions, navigation continuation, and close-after-save execution into a focused result controller.
 - Keep Play result copy in Studio and reuse `useRotoApplyLifecycle` matching/clear operations.
+
+## 2026-07-10 — Cluster: extract Roto apply-result completion
+
+### Selected cluster
+- Ownership moved: Roto result-kind classification, failed save/session retry cleanup, close-save failure recovery, key/interpolation success copy, apply-canvas/delete cache completion, session success effects, dirty/captured cleanup, cached repaint merge acceptance, preview-base restoration, editable marker removal, queued advance navigation/status, and close-after-save execution.
+- From: the Roto branches of `handleApplyResult` in Studio.
+- To: pure `rotoApplyResultTransactions.ts` and focused `useRotoApplyResultController.ts`.
+
+### Why this is safe
+- Exact operation/kind/start-frame matching remains owned by `useRotoApplyLifecycle` before the result controller runs.
+- The pure transaction classifies only Roto result kinds and preserves existing failure diagnostics and success copy.
+- The controller receives session, cache, engine, navigation, close, refs, and status dependencies explicitly and performs the existing side effects in their original order.
+- Play result copy and Play-specific branches remain in Studio.
+- No internal workflow `useEffect` was added.
+
+### Ownership removed from Studio
+- Removed Roto apply failure cleanup, save-on-leave retry/session synchronization, close-save failure handling, replace-key/interpolation success branches, apply-canvas/delete completion, cached repaint finalization, queued navigation, and close continuation from `handleApplyResult`.
+- Studio now matches the result, delegates accepted Roto results, and retains only mismatch plus Play result handling.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/rotoApplyResultTransactions.ts`
+- `app/src/components/physic-paint/rotoApplyResultTransactions.test.ts`
+- `app/src/components/physic-paint/useRotoApplyResultController.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2667 lines.
+- `PhysicsPaintStudio.tsx` after: 2634 lines.
+- Cluster delta: -33 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 570 lines.
+
+### Tests run
+- Pure result transaction tests cover Roto/Play classification, save failure diagnostics/close continuation, apply/delete completion, key/interpolation success copy, and Play passthrough.
+- Focused Studio/result tests passed with 91 tests across 2 files.
+- Full Debug 01 matrix, typecheck, and `git diff --check` are recorded in the completion report after final validation.
+
+### Next suggested slice
+- Continue only with another coherent Debug 01 ownership extraction if needed; dynamic-spacing behavior and Debug 02+ remain out of scope.
