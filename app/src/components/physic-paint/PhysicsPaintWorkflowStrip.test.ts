@@ -388,12 +388,13 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps Roto key transactions authoritative after local apply instead of re-reading stale cache state', () => {
     const studioCode = studioSource();
-    const applyBlock = studioCode.slice(studioCode.indexOf('const applyRotoKeyUtilityTransaction'), studioCode.indexOf('const runRotoKeyAction'));
+    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'useRotoKeyUtilities.ts'), 'utf8');
+    const applyBlock = studioCode.slice(studioCode.indexOf('const applyRotoKeyFrames = useCallback'), studioCode.indexOf('const persistRotoKeyFrameTransaction'));
     const resultBlock = studioCode.slice(studioCode.indexOf("if (detail.kind === 'replace-roto-key-frames')"), studioCode.indexOf("} else if (detail.kind === 'update-play-render-options')"));
 
     expect(applyBlock).toContain('physicPaintStore.replaceRotoKeyFrames({');
-    expect(applyBlock).toContain('const refreshedCacheFrames = physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
-    expect(applyBlock).toContain('syncRotoKeyFrameLists(refreshedRealKeyFrames, refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames)');
+    expect(applyBlock).toContain('physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
+    expect(adapter).toContain('input.syncRotoKeyFrameLists(refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames)');
     expect(resultBlock).not.toContain('syncRotoKeyFrameLists(getRealRotoKeyFramesForStudio())');
   });
 
@@ -444,21 +445,23 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const stripStart = studioCode.lastIndexOf('<PhysicsPaintWorkflowStrip');
     const stripPropsBlock = studioCode.slice(stripStart, studioCode.indexOf('/>', stripStart));
 
-    expect(toggleBlock).toContain("mode: 'duplicate'");
+    expect(toggleBlock).toContain('rotoTimelineActions.updateInterpolationSettings(currentFrame, patch)');
     expect(toggleBlock).not.toContain('mode: patch.mode ?? currentSettings.mode');
-    expect(toggleBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, nextSettings)');
+    expect(studioCode).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, settings)');
     expect(toggleBlock).toContain('const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));');
     expect(toggleBlock).toContain('const refreshedRotoFrames = storeRotoFrames.length > 0');
-    expect(toggleBlock).toContain("storeRotoFrames.filter((frame) => refreshedSettings.enabled || frame.source === 'real-key')");
+    expect(toggleBlock).toContain("storeRotoFrames.filter((frame) => transaction.settings.enabled || frame.source === 'real-key')");
     expect(toggleBlock).toContain(".map((frame) => frame.displayFrame ?? frame.appFrame)");
-    expect(toggleBlock).toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
-    expect(toggleBlock).toContain('startFrame: nextCurrentFrame');
+    expect(toggleBlock).toContain('setEditableRotoFrames((frames) => frames.filter((frame) => refreshedRealKeyFrames.includes(frame)))');
+    expect(toggleBlock).not.toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
+    expect(toggleBlock).toContain('startFrame: transaction.nextCurrentFrame');
     expect(toggleBlock).not.toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');
-    expect(toggleBlock).toContain('physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId)');
-    expect(toggleBlock).toContain('Generated in-betweens could not regenerate. Real keys were kept.');
-    expect(toggleBlock).toContain('Generated in-betweens on — render-only frames refresh from real keys.');
-    expect(toggleBlock).toContain('Generated in-betweens on — save at least two real Roto keys.');
-    expect(toggleBlock).toContain('Generated in-betweens off — real Roto keys only.');
+    expect(studioCode).toContain('physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId)');
+    expect(toggleBlock).toContain('setApplyMessage(transaction.status)');
+    expect(toggleBlock).not.toContain('Generated in-betweens could not regenerate. Real keys were kept.');
+    expect(toggleBlock).not.toContain('Generated in-betweens on — render-only frames refresh from real keys.');
+    expect(toggleBlock).not.toContain('Generated in-betweens on — save at least two real Roto keys.');
+    expect(toggleBlock).not.toContain('Generated in-betweens off — real Roto keys only.');
     expect(stripPropsBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
     expect(stripPropsBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
     expect(stripPropsBlock).not.toContain('onRotoInterpolationModeChange=');
@@ -898,17 +901,19 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('wires D-08/D-09 Studio Roto key utilities through one session result runner', () => {
     const studio = studioSource();
+    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'useRotoKeyUtilities.ts'), 'utf8');
 
-    expect(studio).toContain('const runRotoSessionResult = useCallback(async');
-    expect(studio).toContain('setRotoKeyActionInFlight(true)');
-    expect(studio).toContain('runRotoSessionResult(rotoSession.duplicateKey()');
-    expect(studio).toContain('runRotoSessionResult(rotoSession.insertBlankKey()');
-    expect(studio).toContain('runRotoSessionResult(rotoSession.deleteKey()');
-    expect(studio).toContain('runRotoSessionResult(rotoSession.copyKey()');
-    expect(studio).toContain('runRotoSessionResult(rotoSession.pasteKey()');
-    expect(studio).toContain('case \'saveFrame\'');
-    expect(studio).toContain('dirtyRotoFramesRef.current = new Set(rotoSession.dirtyFrames.value)');
-    expect(studio).toContain('keyActionInFlight={rotoKeyActionInFlight}');
+    expect(studio).toContain('useRotoKeyUtilities');
+    expect(adapter).toContain('const runSessionResult = useCallback(async');
+    expect(adapter).toContain('setKeyActionInFlight(true)');
+    expect(adapter).toContain('void runSessionResult(session.duplicateKey())');
+    expect(adapter).toContain('void runSessionResult(session.insertBlankKey())');
+    expect(adapter).toContain('void runSessionResult(session.deleteKey())');
+    expect(adapter).toContain('void runSessionResult(session.copyKey())');
+    expect(adapter).toContain('void runSessionResult(session.pasteKey())');
+    expect(adapter).toContain("case 'saveFrame'");
+    expect(adapter).toContain('input.setDirtyFrames(new Set(sourceSession.dirtyFrames.value))');
+    expect(studio).toContain('keyActionInFlight={rotoKeyUtilities.keyActionInFlight}');
     expect(studio).toContain('rotoKeyState={{ actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null }}');
   });
 
@@ -930,7 +935,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
     expect(studio).toContain('setCachedRotoPlaybackFrame(null)');
     expect(studio).toContain("restore.kind === 'load-real-key'");
-    expect(studio).toContain('syncRotoKeyFrameLists(refreshedRealKeyFrames, refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames)');
+    expect(studio).toContain('syncRotoKeyFrameLists');
     expect(studio).toContain('cachedRotoFrames: [...cacheFrames].sort');
     expect(studio).not.toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
     expect(studio).not.toContain('localByFrame.get(frame) ?? preservedByFrame.get(frame)');
@@ -958,16 +963,17 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const session = rotoSessionSource();
     const controller = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoKeyController.ts'), 'utf8');
 
-    expect(studio).toContain("from './physicsPaintRotoKeyController'");
+    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'useRotoKeyUtilities.ts'), 'utf8');
+
     expect(studio).not.toContain('deriveRotoKeyUtilityActionState');
     expect(studio).not.toContain('buildRotoKeyUtilityTransaction');
-    expect(studio).toContain('applyRotoKeyUtilityTransactionToLocalState');
-    expect(studio).toContain('const applyRotoKeyUtilityTransaction = useCallback');
-    expect(studio).toContain('persistRotoKeyFrameTransaction(effect.transaction)');
-    expect(studio).toContain('effect.restore');
-    expect(studio).toContain('let replacedRotoKeys = false');
-    expect(studio).toContain('replacedRotoKeys = true');
-    expect(studio).toContain('if (!replacedRotoKeys) for (const frame of effect.frames)');
+    expect(adapter).toContain('applyRotoKeyUtilityTransactionToLocalState');
+    expect(adapter).toContain('const applyTransaction = useCallback');
+    expect(adapter).toContain('await input.persistRotoKeyFrameTransaction(effect.transaction)');
+    expect(adapter).toContain('input.restoreFrame(effect)');
+    expect(adapter).toContain('let replacedRotoKeys = false');
+    expect(adapter).toContain('replacedRotoKeys = true');
+    expect(adapter).toContain('if (!replacedRotoKeys) for (const frame of effect.frames)');
     expect(session).toContain('deriveRotoKeyUtilityActionState');
     expect(session).toContain('buildRotoKeyUtilityTransaction');
     expect(session).toContain('transaction.activeRestore');

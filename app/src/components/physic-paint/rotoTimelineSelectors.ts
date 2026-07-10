@@ -1,0 +1,89 @@
+import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
+import type { PhysicsPaintWorkflowStripFrameMarker } from './PhysicsPaintWorkflowStrip';
+import {
+  createRotoSourceDisplayModel,
+  getRotoDisplayProjection,
+  type RotoDisplayProjection,
+  type RotoSourceDisplayModel,
+} from './rotoSourceDisplayModel';
+
+export interface RotoTimelineSelectorInput {
+  cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
+  interpolationSettings?: Partial<PhysicPaintRotoInterpolationSettings> | null;
+  currentFrame: number;
+}
+
+export interface RotoTimelineView {
+  model: RotoSourceDisplayModel;
+  projection: RotoDisplayProjection;
+  occupiedRotoFrames: number[];
+  savedRotoFrames: PhysicsPaintWorkflowStripFrameMarker[];
+  cachedRotoFrames: PhysicPaintRotoCacheFrame[];
+  currentFrameIsGenerated: boolean;
+}
+
+export function selectRealCachedRotoFrames(contextCachedRotoFrames: readonly PhysicPaintRotoCacheFrame[] | undefined): PhysicPaintRotoCacheFrame[] {
+  return contextCachedRotoFrames
+    ?.filter((frame) => frame.source === 'real-key')
+    .map((frame) => {
+      const sourceFrame = frame.sourceFrame ?? frame.appFrame;
+      const displayFrame = frame.displayFrame ?? frame.appFrame;
+      return { ...frame, appFrame: displayFrame, source: 'real-key', sourceFrame, displayFrame };
+    }) ?? [];
+}
+
+export function selectRealCachedRotoSourceFrameNumbers(contextCachedRotoFrames: readonly PhysicPaintRotoCacheFrame[] | undefined): number[] {
+  return contextCachedRotoFrames
+    ?.filter((frame) => frame.source === 'real-key')
+    .map((frame) => frame.sourceFrame ?? frame.appFrame)
+    .sort((a, b) => a - b) ?? [];
+}
+
+export function selectRotoTimelineView(input: RotoTimelineSelectorInput): RotoTimelineView {
+  const model = createRotoSourceDisplayModel({
+    realSourceFrames: selectRealSourceFrames(input.cachedRotoFrames),
+    settings: normalizeTimelineSettings(input.interpolationSettings),
+  });
+  const projection = getRotoDisplayProjection(model);
+  const realKeyDisplayFrames = projection.realKeys.map((key) => key.displayFrame);
+  const occupiedRotoFrames = normalizeFrameNumbers(realKeyDisplayFrames);
+  const savedRotoFrames = realKeyDisplayFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` }));
+  const cachedRotoFrames = [...(input.cachedRotoFrames ?? [])];
+  const currentFrameIsGenerated = projection.generatedFrames.some((frame) => frame.displayFrame === input.currentFrame)
+    || cachedRotoFrames.some((frame) => frame.source === 'generated-interpolation' && frame.appFrame === input.currentFrame);
+
+  return {
+    model,
+    projection,
+    occupiedRotoFrames,
+    savedRotoFrames,
+    cachedRotoFrames,
+    currentFrameIsGenerated,
+  };
+}
+
+export function selectRealSourceFrames(cachedRotoFrames: readonly PhysicPaintRotoCacheFrame[] | undefined): number[] {
+  return Array.from(new Set((cachedRotoFrames ?? [])
+    .filter((frame) => frame.source === 'real-key')
+    .map((frame) => frame.sourceFrame ?? frame.appFrame)
+    .filter((frame) => Number.isInteger(frame) && frame >= 0)))
+    .sort((a, b) => a - b);
+}
+
+function normalizeFrameNumbers(frames: readonly number[]): number[] {
+  return Array.from(new Set(frames.filter((frame) => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
+}
+
+function normalizeTimelineSettings(settings: Partial<PhysicPaintRotoInterpolationSettings> | null | undefined): PhysicPaintRotoInterpolationSettings {
+  const inBetweenCount = settings?.inBetweenCount;
+  const deform = settings?.deform;
+  const position = settings?.position;
+  return {
+    enabled: settings?.enabled === true,
+    inBetweenCount: Number.isInteger(inBetweenCount) && inBetweenCount !== undefined && inBetweenCount >= 1 ? inBetweenCount : 1,
+    mode: settings?.mode === 'blend' ? 'blend' : 'duplicate',
+    deform: Number.isInteger(deform) && deform !== undefined ? deform : 0,
+    position: Number.isInteger(position) && position !== undefined ? position : 0,
+    ...(settings?.segmentSpacingOverrides ? { segmentSpacingOverrides: settings.segmentSpacingOverrides } : {}),
+  };
+}
