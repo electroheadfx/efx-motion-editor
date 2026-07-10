@@ -13,6 +13,7 @@ const preactWrapperPath = fileURLToPath(new URL('../../../../packages/efx-physic
 const rotoSessionPath = fileURLToPath(new URL('./physicsPaintRotoSession.ts', import.meta.url));
 const rotoKeyUtilitiesPath = fileURLToPath(new URL('./useRotoKeyUtilities.ts', import.meta.url));
 const rotoCacheTransactionsPath = fileURLToPath(new URL('./rotoCacheTransactions.ts', import.meta.url));
+const rotoLaunchHydrationPath = fileURLToPath(new URL('./rotoLaunchHydration.ts', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
@@ -23,6 +24,7 @@ const preactWrapperSource = () => readFileSync(preactWrapperPath, 'utf8');
 const rotoSessionSource = () => readFileSync(rotoSessionPath, 'utf8');
 const rotoKeyUtilitiesSource = () => readFileSync(rotoKeyUtilitiesPath, 'utf8');
 const rotoCacheTransactionsSource = () => readFileSync(rotoCacheTransactionsPath, 'utf8');
+const rotoLaunchHydrationSource = () => readFileSync(rotoLaunchHydrationPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
   const blocks: string[] = [];
@@ -84,13 +86,14 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
 
   it('uses store display-frame Roto cache while interpolation is enabled', () => {
     const text = source();
-    const hydrateBlock = text.slice(text.indexOf('function hydrateLaunchContextRotoInterpolation'), text.indexOf('function applyLaunchContext'));
     const updateBlock = text.slice(text.indexOf('const updateRotoInterpolationSettings = useCallback'), text.indexOf('const goToFirstFrame'));
     const cacheTransactions = rotoCacheTransactionsSource();
+    const launchHydration = rotoLaunchHydrationSource();
 
-    expect(text).toContain('function seedStoreRotoRealKeysFromLaunchContext');
-    expect(hydrateBlock).toContain('refreshedSettings.enabled && storeRotoFrames.length > 0');
-    expect(hydrateBlock).toContain('? storeRotoFrames');
+    expect(text).toContain("from './rotoLaunchHydration'");
+    expect(text).not.toContain('function seedStoreRotoRealKeysFromLaunchContext');
+    expect(launchHydration).toContain('settings.enabled && storeFrames.length > 0');
+    expect(launchHydration).toContain('? storeFrames');
     expect(updateBlock).toContain('refreshRotoInterpolationCache(');
     expect(updateBlock).toContain('transaction.settings.enabled');
     expect(cacheTransactions).toContain('storeFrames.length > 0');
@@ -725,12 +728,13 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(updateBlock).toContain("kind: 'update-roto-interpolation-settings'");
     expect(updateBlock).toContain('settings: transaction.settings');
     expect(updateBlock).toContain('void sendPhysicPaintApplyPayload(payload, bridgeMode)');
-    expect(text).toContain('function hydrateLaunchContextRotoInterpolation(context: PhysicPaintLaunchContext): PhysicPaintLaunchContext');
-    expect(text).toContain('const hydratedContext = hydrateLaunchContextRotoInterpolation(context)');
-    expect(text).toContain('function seedStoreRotoRealKeysFromLaunchContext(context: PhysicPaintLaunchContext): void');
-    expect(text).toContain('const sourceFrame = frame.sourceFrame ?? frame.appFrame;');
-    expect(text).toContain('physicPaintStore.upsertRealRotoKeyFrame(context.layerId, sourceFrame, frame, frame.backgroundOnly === true)');
-    expect(updateBlock).toContain('seedStoreRotoRealKeysFromLaunchContext(launchContext)');
+    const launchHydration = rotoLaunchHydrationSource();
+    expect(text).not.toContain('function hydrateLaunchContextRotoInterpolation');
+    expect(text).toContain('const hydratedContext = hydrateRotoLaunchContext(context, physicPaintStore)');
+    expect(launchHydration).toContain('export function seedRotoLaunchRealKeys');
+    expect(launchHydration).toContain('const sourceFrame = frame.sourceFrame ?? frame.appFrame;');
+    expect(launchHydration).toContain('store.upsertRealRotoKeyFrame(context.layerId, sourceFrame, frame, frame.backgroundOnly === true)');
+    expect(updateBlock).toContain('seedRotoLaunchRealKeys(launchContext, physicPaintStore)');
     expect(updateBlock).toContain('const cacheRefresh = refreshRotoInterpolationCache(');
     expect(updateBlock).toContain('transaction.settings.enabled');
     expect(cacheTransactions).toContain('mergeRotoCacheFramesPreservingLaunchRealKeys(launchFrames, storeFrames)');

@@ -20,7 +20,8 @@ import { PhysicsPaintWorkflowStrip, type PhysicsPaintWorkflowOnionPreviewFrame, 
 import { useRotoTimelineActions } from './useRotoTimelineActions';
 import { useRotoTimelineModel } from './useRotoTimelineModel';
 import { selectRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers } from './rotoTimelineSelectors';
-import { mergeRotoCacheFramesPreservingLaunchRealKeys, normalizeCachedRotoRealKeySourceFrame, refreshRotoInterpolationCache, removeCachedRotoCacheFrame, upsertCachedRotoCacheFrame } from './rotoCacheTransactions';
+import { refreshRotoInterpolationCache, removeCachedRotoCacheFrame, upsertCachedRotoCacheFrame } from './rotoCacheTransactions';
+import { hydrateRotoLaunchContext, seedRotoLaunchRealKeys } from './rotoLaunchHydration';
 import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
 import './physicsPaintStudio.css';
 
@@ -178,30 +179,6 @@ function getPlayFrameCountFromAssignments(assignments: Map<number, number>, fall
 
 function getRotoOnionAnchorDisplayFrame(frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame, 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame'>>): number {
   return frame.displayFrame ?? frame.appFrame;
-}
-
-function seedStoreRotoRealKeysFromLaunchContext(context: PhysicPaintLaunchContext): void {
-  const existingSources = new Set(physicPaintStore.getRealRotoKeyFrames(context.layerId));
-  for (const frame of context.cachedRotoFrames ?? []) {
-    if (frame.source !== 'real-key') continue;
-    const sourceFrame = frame.sourceFrame ?? frame.appFrame;
-    if (existingSources.has(sourceFrame)) continue;
-    physicPaintStore.upsertRealRotoKeyFrame(context.layerId, sourceFrame, frame, frame.backgroundOnly === true);
-    existingSources.add(sourceFrame);
-  }
-}
-
-function hydrateLaunchContextRotoInterpolation(context: PhysicPaintLaunchContext): PhysicPaintLaunchContext {
-  if (!context.rotoInterpolationSettings) return context;
-  seedStoreRotoRealKeysFromLaunchContext(context);
-  physicPaintStore.setRotoInterpolationSettings(context.layerId, context.rotoInterpolationSettings);
-  const refreshedSettings = physicPaintStore.getRotoInterpolationSettings(context.layerId);
-  const storeRotoFrames = physicPaintStore.getRotoCacheFrames(context.layerId);
-  const fallbackFrames = mergeRotoCacheFramesPreservingLaunchRealKeys(context.cachedRotoFrames, storeRotoFrames);
-  const cachedRotoFrames = refreshedSettings.enabled && storeRotoFrames.length > 0
-    ? storeRotoFrames
-    : fallbackFrames.filter((frame) => frame.source === 'real-key').map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));
-  return { ...context, cachedRotoFrames, rotoInterpolationSettings: refreshedSettings };
 }
 
 function applyLaunchContext(
@@ -761,7 +738,7 @@ export function PhysicsPaintStudio() {
   }, []);
 
   const applyIncomingLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
-    const hydratedContext = hydrateLaunchContextRotoInterpolation(context);
+    const hydratedContext = hydrateRotoLaunchContext(context, physicPaintStore);
     const preserveCloseAfterRotoSave = closeAfterRotoSaveRequestedRef.current;
     resetRotoSessionForLaunch(hydratedContext, { preserveCloseAfterRotoSave });
     applyLaunchContext(hydratedContext, setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty, setPlayWiggle, setSettings);
@@ -2661,7 +2638,7 @@ export function PhysicsPaintStudio() {
 
   const updateRotoInterpolationSettings = useCallback((patch: Partial<PhysicPaintRotoInterpolationSettings>) => {
     if (!launchContext) return;
-    seedStoreRotoRealKeysFromLaunchContext(launchContext);
+    seedRotoLaunchRealKeys(launchContext, physicPaintStore);
     const transaction = rotoTimelineActions.updateInterpolationSettings(currentFrame, patch);
     const cacheRefresh = refreshRotoInterpolationCache(
       launchContext.cachedRotoFrames,

@@ -397,3 +397,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Move launch-context Roto interpolation hydration and store seeding behind a focused launch hydrator/controller boundary.
 - Keep launch listener lifecycle and initial engine/reference loading in Studio while removing store/cache policy from the component.
+
+## 2026-07-10 — Cluster: extract Roto launch hydration controller
+
+### Selected cluster
+- Functions/ownership moved: launch real-key seeding and interpolation-aware launch cache hydration.
+- From: `seedStoreRotoRealKeysFromLaunchContext` and `hydrateLaunchContextRotoInterpolation` in Studio.
+- To: dependency-injected `seedRotoLaunchRealKeys` and `hydrateRotoLaunchContext` in `rotoLaunchHydration.ts`.
+
+### Why this is safe
+- The controller receives the existing store API explicitly and preserves operation order: seed missing real keys, apply settings, read refreshed settings/cache, then select store display frames or compact real-key fallback.
+- Tauri/browser launch listeners, component reset, status reset, and initial engine reference loading remain in Studio.
+- The interpolation toggle reuses the same explicit seed action without adding lifecycle synchronization.
+- No spacing, regeneration, Save/Paste, or bridge behavior changed.
+
+### Ownership removed from Studio
+- Studio no longer loops over launch cache frames to decide which real source keys enter the store.
+- Studio no longer owns interpolation hydration cache selection or source-key fallback compaction.
+- Studio retains one controller call at launch receipt and one seed action before interpolation updates.
+- No state or effects were added; two local helpers were deleted.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/rotoLaunchHydration.ts`
+- `app/src/components/physic-paint/rotoLaunchHydration.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2956 lines.
+- `PhysicsPaintStudio.tsx` after: 2933 lines.
+- Cluster delta: -23 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 271 lines.
+
+### Tests run
+- Focused hydration + Studio + WorkflowStrip suite passed with 138 tests.
+- Full Debug 01 focused suite passed with 196 tests across 9 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract cached Roto playback ownership: display-frame lookup projection, playback sequence construction, timer lifecycle, loop/FPS actions, and status derivation.
+- Keep the timer as an external-boundary hook and avoid introducing state-mirroring effects.
