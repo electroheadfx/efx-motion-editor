@@ -20,7 +20,7 @@ import { PhysicsPaintWorkflowStrip, type PhysicsPaintWorkflowOnionPreviewFrame, 
 import { useRotoTimelineActions } from './useRotoTimelineActions';
 import { useRotoTimelineModel } from './useRotoTimelineModel';
 import { selectRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers } from './rotoTimelineSelectors';
-import { mergeRotoCacheFramesPreservingLaunchRealKeys, normalizeCachedRotoRealKeySourceFrame, removeCachedRotoCacheFrame, upsertCachedRotoCacheFrame } from './rotoCacheTransactions';
+import { mergeRotoCacheFramesPreservingLaunchRealKeys, normalizeCachedRotoRealKeySourceFrame, refreshRotoInterpolationCache, removeCachedRotoCacheFrame, upsertCachedRotoCacheFrame } from './rotoCacheTransactions';
 import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
 import './physicsPaintStudio.css';
 
@@ -2663,24 +2663,19 @@ export function PhysicsPaintStudio() {
     if (!launchContext) return;
     seedStoreRotoRealKeysFromLaunchContext(launchContext);
     const transaction = rotoTimelineActions.updateInterpolationSettings(currentFrame, patch);
-    const storeRotoFrames = physicPaintStore.getRotoCacheFrames(launchContext.layerId);
-    const fallbackRealKeys = mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames).filter((frame) => frame.source === 'real-key');
-    const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));
-    const refreshedRotoFrames = storeRotoFrames.length > 0
-      ? storeRotoFrames.filter((frame) => transaction.settings.enabled || frame.source === 'real-key')
-      : compactRealKeys;
-    const refreshedRealKeyFrames = refreshedRotoFrames
-      .filter((frame) => frame.source === 'real-key')
-      .map((frame) => frame.displayFrame ?? frame.appFrame)
-      .sort((a, b) => a - b);
+    const cacheRefresh = refreshRotoInterpolationCache(
+      launchContext.cachedRotoFrames,
+      physicPaintStore.getRotoCacheFrames(launchContext.layerId),
+      transaction.settings.enabled,
+    );
     if (!transaction.settings.enabled) {
-      setEditableRotoFrames((frames) => frames.filter((frame) => refreshedRealKeyFrames.includes(frame)));
-      confirmedCachedRotoFramesRef.current = new Map(refreshedRotoFrames.filter((frame) => frame.source === 'real-key').map((frame) => [frame.sourceFrame ?? frame.appFrame, normalizeCachedRotoRealKeySourceFrame(frame)]));
+      setEditableRotoFrames((frames) => frames.filter((frame) => cacheRefresh.realDisplayFrames.includes(frame)));
+      confirmedCachedRotoFramesRef.current = new Map(cacheRefresh.confirmedRealKeys);
     }
     setLaunchContext((current) => current ? {
       ...current,
       startFrame: transaction.nextCurrentFrame,
-      cachedRotoFrames: refreshedRotoFrames,
+      cachedRotoFrames: cacheRefresh.frames,
       rotoInterpolationSettings: transaction.settings,
     } : current);
     if (transaction.nextCurrentFrame !== currentFrame) void sendPhysicPaintFrameSyncMessage(transaction.nextCurrentFrame, bridgeMode);

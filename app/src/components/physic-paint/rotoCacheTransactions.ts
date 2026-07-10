@@ -35,6 +35,34 @@ export function removeCachedRotoCacheFrame(
   return (frames ?? []).filter((frame) => frame.appFrame !== appFrame);
 }
 
+export interface RotoInterpolationCacheRefresh {
+  frames: PhysicPaintRotoCacheFrame[];
+  realDisplayFrames: number[];
+  confirmedRealKeys: Array<[number, PhysicPaintRotoCacheFrame]>;
+}
+
+export function refreshRotoInterpolationCache(
+  launchFrames: readonly PhysicPaintRotoCacheFrame[] | undefined,
+  storeFrames: readonly PhysicPaintRotoCacheFrame[],
+  enabled: boolean,
+): RotoInterpolationCacheRefresh {
+  const fallbackRealKeys = mergeRotoCacheFramesPreservingLaunchRealKeys(launchFrames, storeFrames)
+    .filter((frame) => frame.source === 'real-key')
+    .map(normalizeCachedRotoRealKeySourceFrame);
+  const frames = storeFrames.length > 0
+    ? storeFrames.filter((frame) => enabled || frame.source === 'real-key').map((frame) => ({ ...frame }))
+    : fallbackRealKeys;
+  const realKeys = frames.filter((frame) => frame.source === 'real-key');
+  return {
+    frames,
+    realDisplayFrames: realKeys.map((frame) => frame.displayFrame ?? frame.appFrame).sort((a, b) => a - b),
+    confirmedRealKeys: realKeys.map((frame) => [
+      frame.sourceFrame ?? frame.appFrame,
+      normalizeCachedRotoRealKeySourceFrame(frame),
+    ]),
+  };
+}
+
 export function mergeRotoCacheFramesPreservingLaunchRealKeys(
   launchFrames: readonly PhysicPaintRotoCacheFrame[] | undefined,
   storeFrames: readonly PhysicPaintRotoCacheFrame[],

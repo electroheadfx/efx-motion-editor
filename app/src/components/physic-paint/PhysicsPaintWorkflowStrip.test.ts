@@ -8,11 +8,13 @@ const rightPanelSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'P
 const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudio.tsx');
 const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowState.ts');
 const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoSession.ts');
+const rotoCacheTransactionsSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'rotoCacheTransactions.ts');
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
 const studioSource = () => readFileSync(studioSourcePath, 'utf8');
 const workflowStateSource = () => readFileSync(workflowStateSourcePath, 'utf8');
 const rotoSessionSource = () => readFileSync(rotoSessionSourcePath, 'utf8');
+const rotoCacheTransactionsSource = () => readFileSync(rotoCacheTransactionsSourcePath, 'utf8');
 
 function getRotoControlsBlock(code: string): string {
   return code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
@@ -442,18 +444,20 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('36.12 Studio wires visible interpolation count through store-owned regeneration and compact status copy', () => {
     const studioCode = studioSource();
     const toggleBlock = studioCode.slice(studioCode.indexOf('const updateRotoInterpolationSettings'), studioCode.indexOf('const goToFirstFrame'));
+    const cacheTransactions = rotoCacheTransactionsSource();
     const stripStart = studioCode.lastIndexOf('<PhysicsPaintWorkflowStrip');
     const stripPropsBlock = studioCode.slice(stripStart, studioCode.indexOf('/>', stripStart));
 
     expect(toggleBlock).toContain('rotoTimelineActions.updateInterpolationSettings(currentFrame, patch)');
     expect(toggleBlock).not.toContain('mode: patch.mode ?? currentSettings.mode');
     expect(studioCode).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, settings)');
-    expect(toggleBlock).toContain('const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));');
-    expect(toggleBlock).toContain('const refreshedRotoFrames = storeRotoFrames.length > 0');
-    expect(toggleBlock).toContain("storeRotoFrames.filter((frame) => transaction.settings.enabled || frame.source === 'real-key')");
-    expect(toggleBlock).toContain(".map((frame) => frame.displayFrame ?? frame.appFrame)");
-    expect(toggleBlock).toContain('setEditableRotoFrames((frames) => frames.filter((frame) => refreshedRealKeyFrames.includes(frame)))');
-    expect(toggleBlock).not.toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
+    expect(toggleBlock).toContain('const cacheRefresh = refreshRotoInterpolationCache(');
+    expect(cacheTransactions).toContain('.map(normalizeCachedRotoRealKeySourceFrame)');
+    expect(cacheTransactions).toContain('const frames = storeFrames.length > 0');
+    expect(cacheTransactions).toContain("storeFrames.filter((frame) => enabled || frame.source === 'real-key')");
+    expect(cacheTransactions).toContain('realDisplayFrames: realKeys.map((frame) => frame.displayFrame ?? frame.appFrame)');
+    expect(toggleBlock).toContain('setEditableRotoFrames((frames) => frames.filter((frame) => cacheRefresh.realDisplayFrames.includes(frame)))');
+    expect(toggleBlock).not.toContain('setOccupiedRotoFrames');
     expect(toggleBlock).toContain('startFrame: transaction.nextCurrentFrame');
     expect(toggleBlock).not.toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');
     expect(studioCode).toContain('physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId)');

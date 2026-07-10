@@ -355,3 +355,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract Roto hydration, interpolation-toggle, and refresh orchestration behind an explicit action/controller boundary.
 - Keep external cache/store writes explicit and preserve the current regeneration and source/display contracts.
+
+## 2026-07-10 — Cluster: centralize interpolation cache refresh decisions
+
+### Selected cluster
+- Ownership moved: enabled store-display cache selection, disabled real-key compaction, editable display-key derivation, and confirmed source-key map derivation.
+- From: `updateRotoInterpolationSettings` inside `PhysicsPaintStudio.tsx`.
+- To: `refreshRotoInterpolationCache` in `rotoCacheTransactions.ts`.
+
+### Why this is safe
+- The extracted function is a pure calculation over launch frames, store frames, and the enabled flag.
+- Store writes, interpolation transaction creation, frame-sync bridge messages, apply payload transmission, and UI status updates remain explicit in Studio.
+- Existing store precedence, generated-frame filtering, source-key normalization, and OFF navigation semantics are preserved.
+- No dynamic-spacing policy or internal workflow effect changed.
+
+### Ownership removed from Studio
+- Studio no longer decides which cache frames survive an interpolation toggle.
+- Studio no longer derives real display frames or confirmed source-key cache entries from refreshed frames.
+- Studio consumes one atomic refresh result and retains only state/ref assignment plus external bridge synchronization.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/rotoCacheTransactions.ts`
+- `app/src/components/physic-paint/rotoCacheTransactions.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2961 lines.
+- `PhysicsPaintStudio.tsx` after: 2956 lines.
+- Cluster delta: -5 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 248 lines.
+
+### Tests run
+- Focused cache + Studio suite passed with 91 tests.
+- Full Debug 01 focused suite passed with 192 tests across 8 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Move launch-context Roto interpolation hydration and store seeding behind a focused launch hydrator/controller boundary.
+- Keep launch listener lifecycle and initial engine/reference loading in Studio while removing store/cache policy from the component.

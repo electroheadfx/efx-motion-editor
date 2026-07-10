@@ -86,13 +86,15 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     const text = source();
     const hydrateBlock = text.slice(text.indexOf('function hydrateLaunchContextRotoInterpolation'), text.indexOf('function applyLaunchContext'));
     const updateBlock = text.slice(text.indexOf('const updateRotoInterpolationSettings = useCallback'), text.indexOf('const goToFirstFrame'));
+    const cacheTransactions = rotoCacheTransactionsSource();
 
     expect(text).toContain('function seedStoreRotoRealKeysFromLaunchContext');
     expect(hydrateBlock).toContain('refreshedSettings.enabled && storeRotoFrames.length > 0');
     expect(hydrateBlock).toContain('? storeRotoFrames');
-    expect(updateBlock).toContain('storeRotoFrames.length > 0');
-    expect(updateBlock).toContain('storeRotoFrames.filter((frame) => transaction.settings.enabled || frame.source === \'real-key\')');
-    expect(updateBlock).not.toContain('? mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames)');
+    expect(updateBlock).toContain('refreshRotoInterpolationCache(');
+    expect(updateBlock).toContain('transaction.settings.enabled');
+    expect(cacheTransactions).toContain('storeFrames.length > 0');
+    expect(cacheTransactions).toContain("storeFrames.filter((frame) => enabled || frame.source === 'real-key')");
   });
 
   it('D-03/D-17 consumes one compact key utility adapter boundary for Roto session state', () => {
@@ -714,6 +716,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
     const updateBlock = text.slice(text.indexOf('const updateRotoInterpolationSettings = useCallback'), text.indexOf('const goToFirstFrame = useCallback'));
+    const cacheTransactions = rotoCacheTransactionsSource();
 
     expect(text).toContain('const updateRotoInterpolationSettings = useCallback');
     expect(updateBlock).toContain('rotoTimelineActions.updateInterpolationSettings(currentFrame, patch)');
@@ -728,16 +731,16 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('const sourceFrame = frame.sourceFrame ?? frame.appFrame;');
     expect(text).toContain('physicPaintStore.upsertRealRotoKeyFrame(context.layerId, sourceFrame, frame, frame.backgroundOnly === true)');
     expect(updateBlock).toContain('seedStoreRotoRealKeysFromLaunchContext(launchContext)');
-    expect(updateBlock).toContain('mergeRotoCacheFramesPreservingLaunchRealKeys(launchContext.cachedRotoFrames, storeRotoFrames)');
-    expect(updateBlock).toContain('const compactRealKeys = fallbackRealKeys.map((frame) => normalizeCachedRotoRealKeySourceFrame(frame));');
-    expect(updateBlock).toContain(': compactRealKeys;');
-    expect(updateBlock).toContain('const refreshedRotoFrames = storeRotoFrames.length > 0');
-    expect(updateBlock).toContain("storeRotoFrames.filter((frame) => transaction.settings.enabled || frame.source === 'real-key')");
-    expect(updateBlock).toContain('const refreshedRealKeyFrames = refreshedRotoFrames');
-    expect(updateBlock).toContain('.map((frame) => frame.displayFrame ?? frame.appFrame)');
-    expect(updateBlock).toContain('setEditableRotoFrames((frames) => frames.filter((frame) => refreshedRealKeyFrames.includes(frame)))');
-    expect(updateBlock).not.toContain('setOccupiedRotoFrames(refreshedRealKeyFrames)');
-    expect(updateBlock).not.toContain('setSavedRotoFrames(refreshedRealKeyFrames.map');
+    expect(updateBlock).toContain('const cacheRefresh = refreshRotoInterpolationCache(');
+    expect(updateBlock).toContain('transaction.settings.enabled');
+    expect(cacheTransactions).toContain('mergeRotoCacheFramesPreservingLaunchRealKeys(launchFrames, storeFrames)');
+    expect(cacheTransactions).toContain('.map(normalizeCachedRotoRealKeySourceFrame)');
+    expect(cacheTransactions).toContain('const frames = storeFrames.length > 0');
+    expect(cacheTransactions).toContain("storeFrames.filter((frame) => enabled || frame.source === 'real-key')");
+    expect(cacheTransactions).toContain('realDisplayFrames: realKeys.map((frame) => frame.displayFrame ?? frame.appFrame)');
+    expect(updateBlock).toContain('setEditableRotoFrames((frames) => frames.filter((frame) => cacheRefresh.realDisplayFrames.includes(frame)))');
+    expect(updateBlock).not.toContain('setOccupiedRotoFrames');
+    expect(updateBlock).not.toContain('setSavedRotoFrames');
     expect(updateBlock).toContain('startFrame: transaction.nextCurrentFrame');
     expect(updateBlock).not.toContain('physicPaintStore.regenerateRotoInterpolationCache(launchContext.layerId)');
     expect(text).toContain('getFailureStatus: () => launchContext ? physicPaintStore.getRotoInterpolationFailureStatus(launchContext.layerId) : null');
@@ -746,7 +749,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(updateBlock).not.toContain('Generated in-betweens on — save at least two real Roto keys.');
     expect(updateBlock).not.toContain('Generated in-betweens off — real Roto keys only.');
     expect(updateBlock).toContain('setLaunchContext((current) => current ? {');
-    expect(updateBlock).toContain('cachedRotoFrames: refreshedRotoFrames');
+    expect(updateBlock).toContain('cachedRotoFrames: cacheRefresh.frames');
     expect(updateBlock).toContain('rotoInterpolationSettings: transaction.settings');
     const resultBlock = text.slice(text.indexOf('const handleApplyResult = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const handleApplyResult = useCallback')));
     expect(resultBlock).toContain("} else if (detail.kind === 'update-roto-interpolation-settings') {");
