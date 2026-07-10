@@ -1,29 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../types/physicPaint';
+import type { PhysicPaintLaunchContext } from '../../types/physicPaint';
 import { resizePhysicsPaintState } from './physicsPaintCanvasSizing';
 import type { NativePenInputHandler } from './PhysicsPaintCanvasMount';
+import { applyPlayRenderOptionsToEngine, applyRotoBackgroundMetadataToEngine } from './physicsPaintStudioSettings';
 
 function getLaunchWorkflowMode(context: PhysicPaintLaunchContext | null): 'play' | 'roto' {
   if (context?.workflowMode === 'play' || context?.editableSource === 'play') return 'play';
   return 'roto';
-}
-
-function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void {
-  engine.setBgMode(metadata.background);
-  engine.setPaperGrain(metadata.paperGrain);
-  engine.setEmbossStrength(metadata.grainStrength);
-}
-
-function applyPlayRenderOptionsToEngine(engine: EfxPaintEngine, options: PhysicPaintPlayRenderOptionsSnapshot): void {
-  engine.setTool(options.tool === 'erase' ? 'erase' : 'paint');
-  engine.setPhysicsMode(options.tool === 'physics-paint' ? 'local' : null);
-  engine.setColorHex(options.color);
-  engine.setBrushOpacity(options.opacity);
-  engine.setBrushSize(options.brushSize);
-  engine.setBgMode(options.background);
-  engine.setPaperGrain(options.paperGrain);
-  engine.setEmbossStrength(options.grainStrength);
 }
 
 export function usePhysicsPaintEngineLifecycle(input: {

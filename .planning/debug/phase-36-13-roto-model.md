@@ -942,3 +942,49 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract settings/tool/physics/background actions and persisted Roto background metadata into a focused engine-actions hook.
 - Then extract session file/dev export, onion/navigation/keyboard helpers, readiness/status derivation, and final JSX composition.
+
+## 2026-07-10 — Cluster: extract settings and engine actions
+
+### Selected cluster
+- Ownership moved: Studio settings type/defaults, Play render option build/apply, Roto background metadata build/apply, tool/color/brush/background/material/physics actions, and persisted Roto background synchronization.
+- From: Studio-local type/helpers/state callbacks and metadata effect.
+- To: `physicsPaintStudioSettings.ts`, `usePhysicsPaintEngineActions.ts`, and `useRotoBackgroundMetadataSync.ts`.
+
+### Why this is safe
+- Engine actions call the same APIs with the same values and preserve settings updates/status behavior.
+- Play tool mapping and option snapshots remain byte-for-byte equivalent in meaning.
+- Roto photo background still persists as transparent metadata and white still carries `#ffffff`.
+- The metadata effect is isolated to an external store synchronization boundary.
+
+### Ownership removed from Studio
+- Removed settings type/default/conversion helpers and the individual engine action callback bodies.
+- Studio now consumes one engine-actions result and shared settings utilities used by engine/Play/conversion controllers.
+- No workflow-control effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/physicsPaintStudioSettings.ts`
+- `app/src/components/physic-paint/physicsPaintStudioSettings.test.ts`
+- `app/src/components/physic-paint/usePhysicsPaintEngineActions.ts`
+- `app/src/components/physic-paint/usePhysicsPaintEngineActions.test.ts`
+- `app/src/components/physic-paint/useRotoBackgroundMetadataSync.ts`
+- `app/src/components/physic-paint/usePhysicsPaintEngineLifecycle.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 1899 lines.
+- `PhysicsPaintStudio.tsx` after: 1752 lines.
+- Cluster delta: -147 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 1452 lines.
+
+### Tests run
+- Settings tests cover defaults, Play tool mapping/snapshot application, and Roto background metadata conversion/application.
+- Engine action tests cover method invocation and settings state transitions.
+- Full Physics Paint suite passed with 310 tests across 26 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract editable session save/load and debug proof export into a focused utility hook/controller.
+- Then extract onion preview/navigation/keyboard/readiness helpers and final JSX composition toward the 400–600 line target.

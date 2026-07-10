@@ -1,8 +1,8 @@
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
+import type { BgMode, EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT } from '../../lib/physicPaintBridge';
 import { physicPaintStore, registerRotoAlphaCanvasFrame } from '../../stores/physicPaintStore';
@@ -37,6 +37,16 @@ import { useRotoPlayConversionController } from './useRotoPlayConversionControll
 import { PhysicsPaintCanvasMount } from './PhysicsPaintCanvasMount';
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize, resizePhysicsPaintState } from './physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './usePhysicsPaintEngineLifecycle';
+import { usePhysicsPaintEngineActions } from './usePhysicsPaintEngineActions';
+import { useRotoBackgroundMetadataSync } from './useRotoBackgroundMetadataSync';
+import {
+  applyPlayRenderOptionsSnapshotToSettings,
+  applyRotoBackgroundMetadataToSettings,
+  buildPlayRenderOptionsSnapshot,
+  buildRotoBackgroundMetadata,
+  makeInitialPhysicsPaintStudioSettings,
+  type PhysicsPaintStudioSettings,
+} from './physicsPaintStudioSettings';
 import { applyPhysicsPaintLaunchContext, getLaunchWorkflowMode, parsePhysicsPaintLaunchContext } from './physicsPaintLaunchContext';
 import { usePhysicsPaintApplyResultBridge, usePhysicsPaintBridgeMode, usePhysicsPaintLaunchBridge, type PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
 import './physicsPaintStudio.css';
@@ -51,23 +61,6 @@ type PreviewBackgroundEngine = EfxPaintEngine & {
   resetBackground: () => void;
   setPreviewBaseImageUrl: (dataUrl: string) => void;
   clearPreviewBaseImage: () => void;
-};
-
-type PhysicsPaintStudioSettings = {
-  tool: ToolType;
-  color: string;
-  size: number;
-  opacity: number;
-  background: BgMode;
-  paperGrain: string;
-  grainStrength: number;
-  edgeDetail: number;
-  pickup: number;
-  eraseStrength: number;
-  smoothing: number;
-  spread: number;
-  physicsMode: 'local' | null;
-  activePhysicsAction: 'last' | 'all' | null;
 };
 
 interface PhysicsPaintActionContext {
@@ -237,76 +230,6 @@ function PhysicsPaintCanvasStack(props: { children: ComponentChildren; cachedPla
   );
 }
 
-function makeInitialSettings(): PhysicsPaintStudioSettings {
-  return {
-    tool: 'paint',
-    color: '#103c65',
-    size: 6,
-    opacity: 100,
-    background: 'canvas1',
-    paperGrain: 'canvas1',
-    grainStrength: 0.45,
-    edgeDetail: 4,
-    pickup: 0,
-    eraseStrength: 50,
-    smoothing: 0,
-    spread: 50,
-    physicsMode: 'local',
-    activePhysicsAction: null,
-  };
-}
-
-function getRenderTool(settings: PhysicsPaintStudioSettings): PhysicPaintPlayRenderOptionsSnapshot['tool'] {
-  if (settings.tool === 'erase') return 'erase';
-  return settings.physicsMode === 'local' ? 'physics-paint' : 'normal-paint';
-}
-
-function buildPlayRenderOptionsSnapshot(settings: PhysicsPaintStudioSettings, motion: AnimationWiggleConfig): PhysicPaintPlayRenderOptionsSnapshot {
-  return {
-    tool: getRenderTool(settings),
-    color: settings.color,
-    opacity: settings.opacity,
-    brushSize: settings.size,
-    background: settings.background,
-    paperGrain: settings.paperGrain,
-    grainStrength: settings.grainStrength,
-    motion: normalizePlayWiggle(motion),
-  };
-}
-
-function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings): PhysicPaintRotoBackgroundMetadata {
-  const background = settings.background === 'photo' ? 'transparent' : settings.background;
-  return {
-    background,
-    paperGrain: settings.paperGrain,
-    grainStrength: settings.grainStrength,
-    ...(background === 'white' ? { color: '#ffffff' } : {}),
-  };
-}
-
-function applyRenderOptionsSnapshotToSettings(snapshot: PhysicPaintPlayRenderOptionsSnapshot): PhysicsPaintStudioSettings {
-  return {
-    ...makeInitialSettings(),
-    tool: snapshot.tool === 'erase' ? 'erase' : 'paint',
-    physicsMode: snapshot.tool === 'physics-paint' ? 'local' : null,
-    color: snapshot.color,
-    opacity: snapshot.opacity,
-    size: snapshot.brushSize,
-    background: snapshot.background,
-    paperGrain: snapshot.paperGrain,
-    grainStrength: snapshot.grainStrength,
-  };
-}
-
-function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoBackgroundMetadata): PhysicsPaintStudioSettings {
-  return {
-    ...makeInitialSettings(),
-    background: metadata.background,
-    paperGrain: metadata.paperGrain,
-    grainStrength: metadata.grainStrength,
-  };
-}
-
 export function PhysicsPaintStudio() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [animFrame, setAnimFrame] = useState(0);
@@ -317,7 +240,7 @@ export function PhysicsPaintStudio() {
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [framesToApply, setFramesToApply] = useState(() => clampPhysicPaintFrameCount(launchContext?.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES));
-  const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialSettings());
+  const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialPhysicsPaintStudioSettings());
   const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>(() => getLaunchWorkflowMode(launchContext));
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [onion, setOnion] = useState<PhysicsPaintOnionState>(DEFAULT_ONION_STATE);
@@ -549,7 +472,7 @@ export function PhysicsPaintStudio() {
       setPlayWiggle,
       setSettings,
     }, (launch) => {
-      if (launch.playRenderOptions) return applyRenderOptionsSnapshotToSettings(launch.playRenderOptions);
+      if (launch.playRenderOptions) return applyPlayRenderOptionsSnapshotToSettings(launch.playRenderOptions);
       if (getLaunchWorkflowMode(launch) === 'roto' && launch.rotoBackground) return applyRotoBackgroundMetadataToSettings(launch.rotoBackground);
       return null;
     });
@@ -570,85 +493,22 @@ export function PhysicsPaintStudio() {
 
   usePhysicsPaintLaunchBridge(applyIncomingLaunchContext);
 
-  const updateSetting = useCallback(<K extends keyof PhysicsPaintStudioSettings>(key: K, value: PhysicsPaintStudioSettings[K]) => {
-    setSettings((current) => ({ ...current, [key]: value }));
-  }, []);
-
-  const selectTool = useCallback((tool: ToolType, physicsMode: 'local' | null = settings.physicsMode) => {
-    if (!engine) return;
-    engine.setTool(tool);
-    engine.setPhysicsMode(physicsMode);
-    setSettings((current) => ({ ...current, tool, physicsMode }));
-  }, [engine, settings.physicsMode]);
-
-  const setBrushColor = useCallback((color: string, opacity: number) => {
-    if (!engine) return;
-    engine.setColorHex(color);
-    engine.setBrushOpacity(opacity);
-    setSettings((current) => ({ ...current, color, opacity }));
-  }, [engine]);
-
-  const setBrushSize = useCallback((size: number) => {
-    engine?.setBrushSize(size);
-    updateSetting('size', size);
-  }, [engine, updateSetting]);
-
-  const setBrushOpacity = useCallback((opacity: number) => {
-    engine?.setBrushOpacity(opacity);
-    updateSetting('opacity', opacity);
-  }, [engine, updateSetting]);
-
-  const setBackground = useCallback((background: BgMode) => {
-    engine?.setBgMode(background);
-    updateSetting('background', background);
-  }, [engine, updateSetting]);
-
-  const setPaperGrain = useCallback((paperGrain: string) => {
-    engine?.setPaperGrain(paperGrain);
-    updateSetting('paperGrain', paperGrain);
-  }, [engine, updateSetting]);
-
-  const setGrainStrength = useCallback((grainStrength: number) => {
-    engine?.setEmbossStrength(grainStrength);
-    updateSetting('grainStrength', grainStrength);
-  }, [engine, updateSetting]);
-
-  const setEdgeDetail = useCallback((edgeDetail: number) => {
-    engine?.setEdgeDetail(edgeDetail);
-    updateSetting('edgeDetail', edgeDetail);
-  }, [engine, updateSetting]);
-
-  const setPickup = useCallback((pickup: number) => {
-    engine?.setPickup(pickup);
-    updateSetting('pickup', pickup);
-  }, [engine, updateSetting]);
-
-  const setSpread = useCallback((spread: number) => {
-    engine?.setLocalSpreadStrength(spread);
-    updateSetting('spread', spread);
-  }, [engine, updateSetting]);
-
-  const setSmoothing = useCallback((smoothing: number) => {
-    engine?.setAntiAlias(smoothing);
-    updateSetting('smoothing', smoothing);
-  }, [engine, updateSetting]);
-
-  const setEraseStrength = useCallback((eraseStrength: number) => {
-    engine?.setEraseStrength(eraseStrength);
-    updateSetting('eraseStrength', eraseStrength);
-  }, [engine, updateSetting]);
-
-  const startPhysics = useCallback((mode: 'last' | 'all') => {
-    if (!engine) return;
-    setSettings((current) => ({ ...current, activePhysicsAction: mode }));
-    engine.startPhysics(mode);
-  }, [engine]);
-
-  const stopPhysics = useCallback(() => {
-    if (!engine) return;
-    setSettings((current) => ({ ...current, activePhysicsAction: null }));
-    engine.stopPhysics();
-  }, [engine]);
+  const {
+    selectTool,
+    setBrushColor,
+    setBrushSize,
+    setBrushOpacity,
+    setBackground,
+    setPaperGrain,
+    setGrainStrength,
+    setEdgeDetail,
+    setPickup,
+    setSpread,
+    setSmoothing,
+    setEraseStrength,
+    startPhysics,
+    stopPhysics,
+  } = usePhysicsPaintEngineActions({ engine, settings, setSettings });
 
   const rotoKeyUtilities = useRotoKeyUtilities<ReturnType<EfxPaintEngine['save']>, RenderedFramePayload>({
     currentFrame,
@@ -706,14 +566,7 @@ export function PhysicsPaintStudio() {
     }
   }, [cachedRotoRepaintBaseFrame, currentFrame, engine, rotoSession, syncPendingRotoFrames, workflowMode]);
 
-  const persistRotoBackgroundMetadata = useCallback(() => {
-    if (!launchContext || workflowMode !== 'roto') return;
-    physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, buildRotoBackgroundMetadata(settings));
-  }, [launchContext, settings, workflowMode]);
-
-  useEffect(() => {
-    persistRotoBackgroundMetadata();
-  }, [persistRotoBackgroundMetadata]);
+  useRotoBackgroundMetadataSync({ launchContext, workflowMode, settings });
 
   function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null {
     return findCachedRotoDisplayFrame(appFrame);

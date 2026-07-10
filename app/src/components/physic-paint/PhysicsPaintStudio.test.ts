@@ -410,10 +410,13 @@ describe('PhysicsPaintStudio onion preview contract', () => {
   it('persists Roto background metadata from standalone paper settings without creating cached cells', () => {
     const text = source();
 
-    expect(text).toContain('function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings): PhysicPaintRotoBackgroundMetadata');
-    expect(text).toContain('physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, buildRotoBackgroundMetadata(settings))');
+    const metadataSync = readFileSync(fileURLToPath(new URL('./useRotoBackgroundMetadataSync.ts', import.meta.url)), 'utf8');
+    const settings = readFileSync(fileURLToPath(new URL('./physicsPaintStudioSettings.ts', import.meta.url)), 'utf8');
+
+    expect(settings).toContain('export function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings): PhysicPaintRotoBackgroundMetadata');
+    expect(metadataSync).toContain('physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, buildRotoBackgroundMetadata(settings))');
     expect(text).toContain('backgroundMetadata: input.getBackgroundMetadata(),');
-    expect(text).toContain('persistRotoBackgroundMetadata();');
+    expect(text).toContain('useRotoBackgroundMetadataSync({ launchContext, workflowMode, settings });');
     expect(text).not.toContain('setFrame(launchContext.layerId, currentFrame, buildRotoBackgroundMetadata');
   });
 
@@ -572,13 +575,16 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
   it('restores saved Roto paper metadata from launch context without using Play render options', () => {
     const text = source();
 
-    expect(text).toContain('function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoBackgroundMetadata): PhysicsPaintStudioSettings');
+    const settings = readFileSync(fileURLToPath(new URL('./physicsPaintStudioSettings.ts', import.meta.url)), 'utf8');
+    const lifecycle = readFileSync(fileURLToPath(new URL('./usePhysicsPaintEngineLifecycle.ts', import.meta.url)), 'utf8');
+
+    expect(settings).toContain('export function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoBackgroundMetadata): PhysicsPaintStudioSettings');
     expect(text).toContain("if (getLaunchWorkflowMode(launch) === 'roto' && launch.rotoBackground) return applyRotoBackgroundMetadataToSettings(launch.rotoBackground)");
-    expect(text).toContain('function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void');
-    expect(text).toContain('engine.setBgMode(metadata.background)');
-    expect(text).toContain('engine.setPaperGrain(metadata.paperGrain)');
-    expect(text).toContain('engine.setEmbossStrength(metadata.grainStrength)');
-    expect(text).toContain("if (getLaunchWorkflowMode(input.launchContext) === 'roto' && input.launchContext?.rotoBackground)");
+    expect(settings).toContain('export function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void');
+    expect(settings).toContain('engine.setBgMode(metadata.background)');
+    expect(settings).toContain('engine.setPaperGrain(metadata.paperGrain)');
+    expect(settings).toContain('engine.setEmbossStrength(metadata.grainStrength)');
+    expect(lifecycle).toContain("if (getLaunchWorkflowMode(input.launchContext) === 'roto' && input.launchContext?.rotoBackground)");
   });
 
   it('fetches the stored Tauri launch context after mount so editable Play state and cached frames are not lost on reopen', () => {
@@ -753,7 +759,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const text = source();
     const updateBlock = text.slice(text.indexOf('const updateSelectedPlayOptions = useCallback'), text.indexOf('const savePlay = useCallback'));
 
-    expect(text).toContain('function buildPlayRenderOptionsSnapshot');
+    expect(readFileSync(fileURLToPath(new URL('./physicsPaintStudioSettings.ts', import.meta.url)), 'utf8')).toContain('export function buildPlayRenderOptionsSnapshot');
     expect(bridgeSource()).toContain('playRenderOptions: structuredClone(containingRange.renderOptions)');
     expect(updateBlock).toContain("kind: 'update-play-render-options'");
     expect(updateBlock).toContain('buildPlayRenderOptionsSnapshot(settings, playWiggle)');
