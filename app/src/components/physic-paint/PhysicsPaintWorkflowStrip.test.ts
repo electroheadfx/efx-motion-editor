@@ -576,38 +576,37 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('filters canvas onion preview overlays by count, direction toggles, and live preview state', () => {
     const code = studioSource();
+    const projection = readFileSync(fileURLToPath(new URL('./rotoOnionPreview.ts', import.meta.url)), 'utf8');
 
-    expect(code).toContain('const buildOnionPreviewFrames = useCallback');
-    expect(code).toContain('const count = clampOnionCount(onion.count)');
-    expect(code).toContain('const previousFrames = [...candidates.values()]');
-    expect(code).toContain('.filter((frame) => frame.appFrame < currentFrame)');
-    expect(code).toContain('.slice(0, count)');
-    expect(code).toContain("previousFrames.forEach((frame, index) => addFrame(frame, 'previous', index + 1))");
-    expect(code).toContain("nextFrames.forEach((frame, index) => addFrame(frame, 'next', index + 1))");
+    expect(code).toContain('const onionPreviewFrames = projectRotoOnionPreviewFrames({');
+    expect(projection).toContain('const count = clampOnionCount(input.onion.count)');
+    expect(projection).toContain(".filter((frame) => frame.appFrame < input.currentFrame)");
+    expect(projection).toContain('.slice(0, count)');
+    expect(projection).toContain("project(frame, 'previous', index + 1)");
+    expect(projection).toContain("project(frame, 'next', index + 1)");
     expect(code).toContain('onionPreviewFrames.map');
   });
 
   it('builds canvas onion previews from Roto sources and does not reuse saved Play frames as yellow overlays', () => {
     const code = studioSource();
-    const builderIndex = code.indexOf('const buildOnionPreviewFrames = useCallback');
-    const builderBlock = code.slice(builderIndex, builderIndex + 2800);
+    const builderBlock = readFileSync(fileURLToPath(new URL('./rotoOnionPreview.ts', import.meta.url)), 'utf8');
     const savePlayIndex = code.indexOf('const savePlay = useCallback');
     const savePlayBlock = code.slice(savePlayIndex, savePlayIndex + 3600);
 
     expect(code).toContain('rotoFrameStatesRef');
     expect(code).toContain('rotoPreviewFramesRef');
     expect(code).toContain('snapshotCurrentRotoFrame');
-    expect(builderBlock).toContain('launchContext.cachedRotoFrames ?? []');
+    expect(code).toContain('launchFrames: launchContext?.cachedRotoFrames');
     expect(builderBlock).toContain("if (frame.source && frame.source !== 'real-key') return;");
     expect(builderBlock).toContain('if (frame.backgroundOnly) return;');
     expect(builderBlock).toContain("onionKind: 'stroke-preview'");
     expect(builderBlock).toContain("onionKind: frame.source === 'real-key' ? 'cached-composite' : 'stroke-preview'");
-    expect(builderBlock).toContain('physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
-    expect(builderBlock).toContain('rotoPreviewFramesRef.current');
-    expect(builderBlock).toContain('addOnionCandidate(frame)');
-    expect(builderBlock.indexOf('launchContext.cachedRotoFrames ?? []')).toBeLessThan(builderBlock.indexOf('rotoPreviewFramesRef.current'));
-    expect(builderBlock).toContain("addFrame(frame, 'previous', index + 1)");
-    expect(builderBlock).toContain("addFrame(frame, 'next', index + 1)");
+    expect(code).toContain('storeFrames: launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : []');
+    expect(code).toContain('previewFrames: rotoPreviewFramesRef.current');
+    expect(builderBlock).toContain('addCandidate(frame)');
+    expect(builderBlock.indexOf('input.launchFrames ?? []')).toBeLessThan(builderBlock.indexOf('input.previewFrames ?? []'));
+    expect(builderBlock).toContain("project(frame, 'previous', index + 1)");
+    expect(builderBlock).toContain("project(frame, 'next', index + 1)");
     expect(builderBlock).not.toContain('latestPlayFrames.forEach');
     expect(builderBlock).not.toContain("addFrame(frame, 'play')");
     expect(builderBlock).not.toContain('physicPaintStore.getFrames');

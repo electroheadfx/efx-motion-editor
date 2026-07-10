@@ -33,6 +33,10 @@ const rotoPlayConversionControllerPath = fileURLToPath(new URL('./useRotoPlayCon
 const engineLifecyclePath = fileURLToPath(new URL('./usePhysicsPaintEngineLifecycle.ts', import.meta.url));
 const sessionControllerPath = fileURLToPath(new URL('./usePhysicsPaintSessionController.ts', import.meta.url));
 const canvasMountPath = fileURLToPath(new URL('./PhysicsPaintCanvasMount.tsx', import.meta.url));
+const onionPreviewPath = fileURLToPath(new URL('./rotoOnionPreview.ts', import.meta.url));
+const studioSelectorsPath = fileURLToPath(new URL('./physicsPaintStudioSelectors.ts', import.meta.url));
+const playLimitToastPath = fileURLToPath(new URL('./usePlayLimitToast.ts', import.meta.url));
+const rotoNavigationActionsPath = fileURLToPath(new URL('./rotoNavigationActions.ts', import.meta.url));
 const canvasSizingPath = fileURLToPath(new URL('./physicsPaintCanvasSizing.ts', import.meta.url));
 const parentBridgePath = fileURLToPath(new URL('./usePhysicsPaintParentBridge.ts', import.meta.url));
 const launchContextPath = fileURLToPath(new URL('./physicsPaintLaunchContext.ts', import.meta.url));
@@ -429,10 +433,11 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     const text = source();
 
     expect(text).toContain('const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 50 }');
-    expect(text).toContain('const ONION_DEPTH_OPACITY = [0.5, 0.25, 0.15] as const');
+    expect(readFileSync(onionPreviewPath, 'utf8')).toContain('const ONION_DEPTH_OPACITY = [0.5, 0.25, 0.15] as const');
     expect(text).toContain('useState<PhysicsPaintOnionState>(DEFAULT_ONION_STATE)');
-    expect(text).toContain("frame.direction === 'previous' && onion.previous");
-    expect(text).toContain("frame.direction === 'next' && onion.next");
+    const onionProjection = readFileSync(onionPreviewPath, 'utf8');
+    expect(onionProjection).toContain("frame.direction === 'previous' && input.onion.previous");
+    expect(onionProjection).toContain("frame.direction === 'next' && input.onion.next");
     expect(text).toContain('style={{ opacity: getOnionFrameOpacity(frame.distance) }}');
   });
 
@@ -441,24 +446,23 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     const types = readFileSync(fileURLToPath(new URL('../../types/physicPaint.ts', import.meta.url)), 'utf8');
     const store = readFileSync(fileURLToPath(new URL('../../stores/physicPaintStore.ts', import.meta.url)), 'utf8');
     const flushBlock = rotoSaveControllerSource();
-    const onionBlock = text.slice(text.indexOf('const buildOnionPreviewFrames = useCallback'), text.indexOf('const convertPlayToRoto = useCallback'));
+    const onionBlock = readFileSync(onionPreviewPath, 'utf8');
 
     expect(types).toContain('onionDataUrl?: string');
     expect(store).toContain('payload.onionDataUrl');
     expect(flushBlock).toContain('input.setPreviewFrame(frame, save.onionFrame ?? save.renderedFrame)');
     expect(rotoSaveTransactionsSource()).toContain("...(input.onionFrame?.dataUrl ? { onionDataUrl: input.onionFrame.dataUrl } : {})");
-    expect(onionBlock).toContain('const addOnionCandidate = (frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame');
+    expect(onionBlock).toContain('const addCandidate = (frame: RotoOnionFrame) =>');
     expect(onionBlock).toContain("if (frame.source && frame.source !== 'real-key') return;");
     expect(onionBlock).toContain('if (frame.backgroundOnly) return;');
     expect(onionBlock).toContain("onionKind: 'stroke-preview'");
     expect(onionBlock).toContain("frame.source === 'real-key' ? 'cached-composite' : 'stroke-preview'");
-    expect(onionBlock).toContain('physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
-    expect(onionBlock).toContain('dirtyRotoFramesRef.current.has(frameNumber) || !candidates.has(frameNumber)');
+    expect(text).toContain('storeFrames: launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : []');
+    expect(onionBlock).toContain('input.dirtyFrames?.has(frameNumber) || !candidates.has(frameNumber)');
   });
 
   it('D-18/D-19/D-20 resolves onion anchors from real source keys for custom dynamic spans', () => {
-    const text = source();
-    const onionBlock = text.slice(text.indexOf('const buildOnionPreviewFrames = useCallback'), text.indexOf('const convertPlayToRoto = useCallback'));
+    const onionBlock = readFileSync(onionPreviewPath, 'utf8');
 
     // Source keys 0/1/2/6 with global 2 and custom 2 -> 6 = 4 display as real keys 0/3/6/11.
     // Generated display frames 7/8/9/10 can be current previews, but they must not become anchors.
@@ -623,8 +627,8 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
     expect(playEditCacheControllerSource()).toContain('latestFramesRef.current = frames');
     expect(text).toContain('setLatestPlayFrames(frames)');
     expect(playEditCacheControllerSource()).toContain('setFramesVersion((version) => version + 1)');
-    expect(text).toContain('new Set(latestPlayFramesRef.current.map((frame) => frame.appFrame))');
-    expect(text).toContain('playFramesVersion');
+    expect(readFileSync(studioSelectorsPath, 'utf8')).toContain('new Set(input.latestFrames.map((frame) => frame.appFrame))');
+    expect(text).toContain('selectPlayConversionMissingFrames({');
   });
 });
 
@@ -678,7 +682,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(sessionControllerSource()).toContain('makeLoadedPlayLaunchContext(current, frameCount, previewFrame)');
     expect(workflowStripBlock).toContain('maxPlayFrameCount={launchContext?.maxPlayFrameCount}');
     expect(workflowStripBlock).toContain('maxPlayFrameCountReason={launchContext?.maxPlayFrameCountReason}');
-    expect(workflowStripBlock).toContain('onPlayLimit={showPlayLimitToast}');
+    expect(workflowStripBlock).toContain('onPlayLimit={playLimitToast.show}');
     expect(workflowStripBlock).toContain('startFrame={launchContext?.startFrame ?? 0}');
     expect(workflowStripBlock).not.toContain("maxPlayFrameCount={workflowMode === 'play' ? undefined");
   });
@@ -686,9 +690,10 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
   it('surfaces Play duration bound warnings as a dismissible top-canvas toast', () => {
     const text = source();
 
-    expect(text).toContain('const [playLimitToast, setPlayLimitToast]');
-    expect(text).toContain('const showPlayLimitToast = useCallback');
-    expect(text).toContain('PLAY_LIMIT_TOAST_DISMISS_MS');
+    const toastHook = readFileSync(playLimitToastPath, 'utf8');
+    expect(text).toContain('const playLimitToast = usePlayLimitToast()');
+    expect(toastHook).toContain('export const PLAY_LIMIT_TOAST_DISMISS_MS = 5000');
+    expect(toastHook).toContain('window.setTimeout(dismiss, PLAY_LIMIT_TOAST_DISMISS_MS)');
     expect(text).toContain('physics-paint-canvas-toast');
     expect(text).toContain('Dismiss Play duration warning');
   });
@@ -919,7 +924,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const requestNavigationBlock = text.slice(text.indexOf('const requestRotoFrameNavigation = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
     const canvasStackBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('<CanvasMountProbe'));
 
-    expect(text).toContain("if (applyStatus === 'applying' || (isPlaying && !rotoCachedPlayback.isActive)) missing.push('Apply operation is still running')");
+    expect(readFileSync(studioSelectorsPath, 'utf8')).toContain("input.applyStatus === 'applying' || (input.isPlaying && !input.rotoPlaybackActive)");
     expect(navigateBlock).toContain('rotoCachedPlayback.stop()');
     expect(requestNavigationBlock).toContain('const result = rotoSession.requestFrame(targetFrame)');
     expect(requestNavigationBlock).toContain('executeRotoSessionEffects(result.effects)');
@@ -1383,9 +1388,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const coordinatorBlock = text.slice(text.indexOf('const requestRotoFrameNavigation = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const requestRotoFrameNavigation = useCallback'));
-    const keyboardBlock = text.slice(text.indexOf('const handlePhysicsPaintKeyDown = useCallback'), text.indexOf('const onionPreviewFrames = buildOnionPreviewFrames'));
-    const frameNavStart = text.indexOf('const goToFirstFrame = useCallback');
-    const frameNavBlock = text.slice(frameNavStart, text.indexOf('return (', frameNavStart));
+    const keyboardBlock = text.slice(text.indexOf('const handlePhysicsPaintKeyDown = useCallback'), text.indexOf('const onionPreviewFrames = projectRotoOnionPreviewFrames'));
+    const frameNavBlock = readFileSync(rotoNavigationActionsPath, 'utf8');
     const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
@@ -1402,10 +1406,10 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('saveOnLeaveSourceFrameRef.current = effect.frame');
     expect(navigateBlock).toContain('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
     expect(navigateBlock).not.toContain('flushRotoFrame(sourceFrame');
-    expect(frameNavBlock).toContain('void requestRotoFrameNavigation(0)');
-    expect(frameNavBlock).toContain('void requestRotoFrameNavigation(Math.max(0, currentFrame - 1))');
-    expect(frameNavBlock).toContain('void requestRotoFrameNavigation(currentFrame + 1)');
-    expect(frameNavBlock).toContain('void requestRotoFrameNavigation(Math.max(currentFrame, highestSavedFrame, playEndFrame, framesToApply - 1))');
+    expect(frameNavBlock).toContain('first: 0');
+    expect(frameNavBlock).toContain('previous: Math.max(0, input.currentFrame - 1)');
+    expect(frameNavBlock).toContain('next: input.currentFrame + 1');
+    expect(frameNavBlock).toContain('last: Math.max(input.currentFrame, highestSavedFrame, playEndFrame, input.framesToApply - 1)');
     expect(keyboardBlock).toContain('void requestRotoFrameNavigation(nextFrame)');
     expect(keyboardBlock).toContain('void requestRotoFrameNavigation(currentFrame)');
     expect(keyboardBlock).not.toContain('void navigateToSyncedFrame(nextFrame)');

@@ -1029,3 +1029,50 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract Roto/Play navigation actions, onion preview projection, keyboard shortcuts, readiness/status derivation, and Play limit toast into focused pure/controller boundaries.
 - Then move the large JSX tree into a presentational composition component, leaving Studio as dependency wiring.
+
+## 2026-07-11 — Cluster: extract interaction and derived selectors
+
+### Selected cluster
+- Ownership moved: navigation target derivation, onion candidate/anchor/filter/order/opacity projection, readiness/missing conditions, Play conversion availability/cache status, Roto playback availability, and Play limit toast timer/actions.
+- From: Studio-local helpers, derived blocks, and timer state.
+- To: `rotoNavigationActions.ts`, `rotoOnionPreview.ts`, `physicsPaintStudioSelectors.ts`, and `usePlayLimitToast.ts`.
+
+### Why this is safe
+- Navigation still routes through the existing save-before-navigation/session coordinator and preserves frame sync/engine/reference behavior.
+- Onion projection keeps real-key-only anchors, dirty preview precedence, direction/count filtering, ordering, and opacity depth.
+- Readiness strings and cache/conversion booleans are pure derivations from existing inputs.
+- Toast timing remains the same 5000 ms external timer boundary.
+
+### Ownership removed from Studio
+- Removed navigation target helpers, onion builder/opacity/anchor logic, readiness/cache/conversion derivations, and toast timer implementation.
+- Studio consumes focused selectors/actions while retaining keyboard dispatch and external navigation side effects.
+- No state-mirroring effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/rotoNavigationActions.ts`
+- `app/src/components/physic-paint/rotoNavigationActions.test.ts`
+- `app/src/components/physic-paint/rotoOnionPreview.ts`
+- `app/src/components/physic-paint/rotoOnionPreview.test.ts`
+- `app/src/components/physic-paint/physicsPaintStudioSelectors.ts`
+- `app/src/components/physic-paint/physicsPaintStudioSelectors.test.ts`
+- `app/src/components/physic-paint/usePlayLimitToast.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 1665 lines.
+- `PhysicsPaintStudio.tsx` after: 1602 lines.
+- Cluster delta: -63 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 1602 lines.
+
+### Tests run
+- Focused tests cover navigation target routing, onion projection/opacity, readiness/cache/conversion selectors, and toast wiring.
+- Full Physics Paint suite passed with 320 tests across 30 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Move the TopBar/ToolRail/Canvas/RightPanel/WorkflowStrip/confirmation/shortcuts JSX tree into a presentational `PhysicsPaintStudioView` component with cohesive view-model props.
+- Then audit remaining Studio helpers/callbacks and extract keyboard/navigation coordination or orchestration bundles until the 400–600 line target is reached.
