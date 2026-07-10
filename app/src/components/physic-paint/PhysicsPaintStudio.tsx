@@ -20,6 +20,7 @@ import { PhysicsPaintWorkflowStrip, type PhysicsPaintWorkflowOnionPreviewFrame, 
 import { useRotoTimelineActions } from './useRotoTimelineActions';
 import { useRotoTimelineModel } from './useRotoTimelineModel';
 import { selectRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers } from './rotoTimelineSelectors';
+import { mergeRotoCacheFramesPreservingLaunchRealKeys, normalizeCachedRotoRealKeySourceFrame, removeCachedRotoCacheFrame, upsertCachedRotoCacheFrame } from './rotoCacheTransactions';
 import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
 import './physicsPaintStudio.css';
 
@@ -175,50 +176,8 @@ function getPlayFrameCountFromAssignments(assignments: Map<number, number>, fall
   return clampPhysicPaintFrameCount(Math.max(...assignments.values()) + 1);
 }
 
-function normalizeCachedRotoRealKeySourceFrame(frame: PhysicPaintRotoCacheFrame): PhysicPaintRotoCacheFrame {
-  const sourceFrame = frame.sourceFrame ?? frame.appFrame;
-  return { ...frame, appFrame: sourceFrame, source: 'real-key', sourceFrame, displayFrame: sourceFrame };
-}
-
 function getRotoOnionAnchorDisplayFrame(frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame, 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame'>>): number {
   return frame.displayFrame ?? frame.appFrame;
-}
-
-function upsertCachedRotoCacheFrame(frames: PhysicPaintRotoCacheFrame[] | undefined, renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null): PhysicPaintRotoCacheFrame[] {
-  const sourceFrame = renderedFrame.sourceFrame ?? renderedFrame.appFrame;
-  const displayFrame = renderedFrame.displayFrame ?? renderedFrame.appFrame;
-  const cachedFrame: PhysicPaintRotoCacheFrame = {
-    ...renderedFrame,
-    appFrame: displayFrame,
-    source: 'real-key',
-    sourceFrame,
-    displayFrame,
-    ...(backgroundOnly ? { backgroundOnly: true } : {}),
-    ...(onionFrame?.dataUrl ? { onionDataUrl: onionFrame.dataUrl } : {}),
-  };
-  return [
-    ...(frames ?? []).filter((frame) => (frame.sourceFrame ?? frame.appFrame) !== sourceFrame),
-    cachedFrame,
-  ].sort((a, b) => a.appFrame - b.appFrame || a.frameIndex - b.frameIndex);
-}
-
-function removeCachedRotoCacheFrame(frames: PhysicPaintRotoCacheFrame[] | undefined, appFrame: number): PhysicPaintRotoCacheFrame[] {
-  return (frames ?? []).filter((frame) => frame.appFrame !== appFrame);
-}
-
-function mergeRotoCacheFramesPreservingLaunchRealKeys(launchFrames: PhysicPaintRotoCacheFrame[] | undefined, storeFrames: PhysicPaintRotoCacheFrame[]): PhysicPaintRotoCacheFrame[] {
-  const merged = new Map<number, PhysicPaintRotoCacheFrame>();
-  const storeRealKeySources = new Set(storeFrames.filter((frame) => frame.source === 'real-key').map((frame) => frame.sourceFrame ?? frame.appFrame));
-  for (const frame of launchFrames ?? []) {
-    if (frame.source !== 'real-key') continue;
-    const sourceFrame = frame.sourceFrame ?? frame.appFrame;
-    if (!storeRealKeySources.has(sourceFrame)) merged.set(sourceFrame, normalizeCachedRotoRealKeySourceFrame(frame));
-  }
-  for (const frame of storeFrames) {
-    if (frame.source === 'real-key') merged.set(frame.sourceFrame ?? frame.appFrame, normalizeCachedRotoRealKeySourceFrame(frame));
-    else merged.set(frame.appFrame, { ...frame });
-  }
-  return Array.from(merged.values()).sort((a, b) => a.appFrame - b.appFrame || a.frameIndex - b.frameIndex);
 }
 
 function seedStoreRotoRealKeysFromLaunchContext(context: PhysicPaintLaunchContext): void {

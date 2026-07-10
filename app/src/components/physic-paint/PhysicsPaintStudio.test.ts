@@ -12,6 +12,7 @@ const packageTypesPath = fileURLToPath(new URL('../../../../packages/efx-physic-
 const preactWrapperPath = fileURLToPath(new URL('../../../../packages/efx-physic-paint/src/preact.tsx', import.meta.url));
 const rotoSessionPath = fileURLToPath(new URL('./physicsPaintRotoSession.ts', import.meta.url));
 const rotoKeyUtilitiesPath = fileURLToPath(new URL('./useRotoKeyUtilities.ts', import.meta.url));
+const rotoCacheTransactionsPath = fileURLToPath(new URL('./rotoCacheTransactions.ts', import.meta.url));
 const source = () => readFileSync(sourcePath, 'utf8');
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
@@ -21,6 +22,7 @@ const packageTypesSource = () => readFileSync(packageTypesPath, 'utf8');
 const preactWrapperSource = () => readFileSync(preactWrapperPath, 'utf8');
 const rotoSessionSource = () => readFileSync(rotoSessionPath, 'utf8');
 const rotoKeyUtilitiesSource = () => readFileSync(rotoKeyUtilitiesPath, 'utf8');
+const rotoCacheTransactionsSource = () => readFileSync(rotoCacheTransactionsPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
   const blocks: string[] = [];
@@ -1069,13 +1071,15 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('keeps saved Roto PNGs in the standalone cache for navigation reference after Save current', () => {
     const text = source();
-    const upsertHelperBlock = text.slice(text.indexOf('function upsertCachedRotoCacheFrame'), text.indexOf('function removeCachedRotoCacheFrame'));
+    const cacheTransactions = rotoCacheTransactionsSource();
     const upsertCallbackBlock = text.slice(text.indexOf('const upsertCachedRotoFrameInLaunchContext = useCallback'), text.indexOf('const removeCachedRotoFrameFromLaunchContext = useCallback'));
     const flushBlock = text.slice(text.indexOf('const flushRotoFrame = useCallback'), text.indexOf('const navigateToSyncedFrame = useCallback'));
 
     expect(text).toContain('const upsertCachedRotoFrameInLaunchContext = useCallback');
-    expect(upsertHelperBlock).toContain("source: 'real-key'");
-    expect(upsertHelperBlock).toContain('onionDataUrl: onionFrame.dataUrl');
+    expect(text).toContain("from './rotoCacheTransactions'");
+    expect(text).not.toContain('function upsertCachedRotoCacheFrame');
+    expect(cacheTransactions).toContain("source: 'real-key'");
+    expect(cacheTransactions).toContain('onionDataUrl: onionFrame.dataUrl');
     expect(upsertCallbackBlock).toContain('const sourceFrame = renderedFrame.sourceFrame ?? renderedFrame.appFrame');
     expect(upsertCallbackBlock).toContain('confirmedCachedRotoFramesRef.current.set(sourceFrame, normalizedRenderedFrame)');
     expect(upsertCallbackBlock).toContain('const refreshedRotoFrames = settings.enabled && storeFrames.length > 0 ? storeFrames : manualFrames');

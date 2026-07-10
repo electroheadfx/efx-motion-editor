@@ -314,3 +314,44 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Move `normalizeCachedRotoRealKeySourceFrame` into `rotoTimelineSelectors.ts` as a shared source-key normalization selector/helper.
 - Consume it from cache merge, hydration fallback, and interpolation-toggle compaction without changing those transaction or regeneration paths.
+
+## 2026-07-10 — Cluster: extract pure Roto cache transactions
+
+### Selected cluster
+- Functions/ownership moved: `normalizeCachedRotoRealKeySourceFrame`, `upsertCachedRotoCacheFrame`, `removeCachedRotoCacheFrame`, and `mergeRotoCacheFramesPreservingLaunchRealKeys`.
+- From: `PhysicsPaintStudio.tsx` local helpers.
+- To: new pure module `rotoCacheTransactions.ts`.
+
+### Why this is safe
+- The moved functions are deterministic cache-array transformations with no store, engine, canvas, bridge, component state, or lifecycle effects.
+- Existing call sites and source/display identity semantics remain unchanged.
+- The merge keeps store real-key precedence, preserves generated store frames, and restores only launch real keys missing from the store.
+- No interpolation spacing, regeneration, hydration scheduling, or Save/Paste policy changed.
+
+### Ownership removed from Studio
+- Studio no longer defines source-key normalization, source-identity cache upsert, display-key cache removal, or launch/store cache merge policy.
+- Studio retains only orchestration callbacks that update refs/context and invoke the extracted transactions.
+- No state or effects were added; four local helper implementations were deleted.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/rotoCacheTransactions.ts`
+- `app/src/components/physic-paint/rotoCacheTransactions.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 3002 lines.
+- `PhysicsPaintStudio.tsx` after: 2961 lines.
+- Cluster delta: -41 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 243 lines.
+
+### Tests run
+- Focused cache + Studio suite passed with 89 tests.
+- Full Debug 01 focused suite passed with 190 tests across 8 files.
+- Typecheck: `pnpm --dir "/Users/lmarques/Dev/efx-motion-editor/app" exec tsc --noEmit --pretty false` passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract Roto hydration, interpolation-toggle, and refresh orchestration behind an explicit action/controller boundary.
+- Keep external cache/store writes explicit and preserve the current regeneration and source/display contracts.
