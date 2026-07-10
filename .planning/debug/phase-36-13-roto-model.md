@@ -773,3 +773,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract cached/live Play preview interval, AnimationPlayer lifecycle, Save Play render/apply, frame-count/wiggle launch updates, and selected Play options update into focused render/preview controllers.
 - Keep Play/Roto conversion actions separate for the following cluster.
+
+## 2026-07-10 — Cluster: extract Play render and preview lifecycle
+
+### Selected cluster
+- Ownership moved: cached/live Play preview, preview interval/timer cleanup, AnimationPlayer lifecycle, playing/progress state, render capture timeout, Save Play rendering/apply flow, selected option update, frame-count/wiggle cache invalidation, and related launch/cache state planning.
+- From: Studio-local timer/player refs, preview/save/options callbacks, and update branches.
+- To: pure `playLifecycleTransactions.ts` and focused `usePlayPreviewController.ts`.
+
+### Why this is safe
+- Pure transactions preserve selected script range/start-frame mapping, option equality, frame-count limits, wiggle normalization, and cached/stale launch updates.
+- The controller owns browser interval and AnimationPlayer lifecycle as external boundaries.
+- Immediate cached preview, live editable annotation, background reset, capture appFrame mapping, render timeout, apply registration/send ordering, and status strings remain unchanged.
+- Roto cached playback stop integration remains explicit; conversion actions stay separate.
+
+### Ownership removed from Studio
+- Removed cached preview timer/player lifecycle details and most preview/save/options/frame-count/wiggle callback bodies.
+- Studio now supplies engine, edit-cache controller, apply lifecycle, bridge, settings, and launch dependencies and consumes preview/render actions/state.
+- No broad state-mirroring effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/playLifecycleTransactions.ts`
+- `app/src/components/physic-paint/playLifecycleTransactions.test.ts`
+- `app/src/components/physic-paint/usePlayPreviewController.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2412 lines.
+- `PhysicsPaintStudio.tsx` after: 2315 lines.
+- Cluster delta: -97 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 889 lines.
+
+### Tests run
+- Pure lifecycle tests cover frame-count limits, option equality/cache invalidation, render frame mapping, and launch cache planning.
+- Full Physics Paint suite passed with 296 tests across 22 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract Play-to-Roto and Roto-to-Play conversion payload/state ownership into pure transactions and a focused bridge controller.
+- Then extract engine/canvas lifecycle, parent bridge/listeners, settings actions, session file/dev export, and final composition helpers.

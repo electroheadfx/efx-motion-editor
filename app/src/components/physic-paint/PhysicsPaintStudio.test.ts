@@ -26,7 +26,9 @@ const rotoEditBufferControllerPath = fileURLToPath(new URL('./useRotoEditBufferC
 const rotoEditBufferTransactionsPath = fileURLToPath(new URL('./rotoEditBufferTransactions.ts', import.meta.url));
 const playFrameTransactionsPath = fileURLToPath(new URL('./playFrameTransactions.ts', import.meta.url));
 const playEditCacheControllerPath = fileURLToPath(new URL('./usePlayEditCacheController.ts', import.meta.url));
-const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}`;
+const playPreviewControllerPath = fileURLToPath(new URL('./usePlayPreviewController.ts', import.meta.url));
+const playLifecycleTransactionsPath = fileURLToPath(new URL('./playLifecycleTransactions.ts', import.meta.url));
+const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}\n${playPreviewControllerSource()}\n${playLifecycleTransactionsSource()}`;
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
 const bridgeSource = () => readFileSync(bridgePath, 'utf8');
@@ -49,6 +51,8 @@ const rotoEditBufferControllerSource = () => readFileSync(rotoEditBufferControll
 const rotoEditBufferTransactionsSource = () => readFileSync(rotoEditBufferTransactionsPath, 'utf8');
 const playFrameTransactionsSource = () => readFileSync(playFrameTransactionsPath, 'utf8');
 const playEditCacheControllerSource = () => readFileSync(playEditCacheControllerPath, 'utf8');
+const playPreviewControllerSource = () => readFileSync(playPreviewControllerPath, 'utf8');
+const playLifecycleTransactionsSource = () => readFileSync(playLifecycleTransactionsPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
   const blocks: string[] = [];
@@ -563,8 +567,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(playEditCacheControllerSource()).toContain('const [cacheDirty, setCacheDirty]');
     expect(playEditCacheControllerSource()).toContain('const loadCachedPreviewFrame = useCallback');
     expect(playEditCacheControllerSource()).toContain('const getCachedFramesForRange = useCallback');
-    expect(text).toContain('const cachedPreviewTimerRef = useRef<number | null>(null)');
-    expect(text).toContain('Previewing cached ${safeFrameCount} frames at ${previewFps} fps.');
+    expect(playPreviewControllerSource()).toContain('const cachedTimerRef = useRef<number | null>(null)');
+    expect(playPreviewControllerSource()).toContain('Previewing cached ${safeFrameCount} frames at ${input.previewFps} fps.');
     expect(playFrameTransactionsSource()).toContain('input.latestFrames.find((frame) => frame.appFrame === appFrame)');
     expect(playFrameTransactionsSource()).toContain('input.context.cachedPlayFrames?.find((frame) => frame.appFrame === appFrame)');
     expect(playFrameTransactionsSource()).toContain('input.getStoredFrame(input.context.layerId, appFrame)');
@@ -676,7 +680,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(bridgeSource()).toContain('playRenderOptions: structuredClone(containingRange.renderOptions)');
     expect(updateBlock).toContain("kind: 'update-play-render-options'");
     expect(updateBlock).toContain('buildPlayRenderOptionsSnapshot(settings, playWiggle)');
-    expect(updateBlock).toContain('JSON.stringify(launchContext.playRenderOptions ?? null) !== JSON.stringify(renderOptions)');
+    expect(playLifecycleTransactionsSource()).toContain('JSON.stringify(input.context.playRenderOptions ?? null) !== JSON.stringify(input.renderOptions)');
     expect(updateBlock).toContain('setCachedPlayPreviewUrl(null)');
     expect(updateBlock).toContain('setSavedPlayCacheDirty(true)');
     expect(updateBlock).not.toContain('playerRef.current?.play');
@@ -684,13 +688,12 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
   });
 
   it('previews dirty Play edits with selected-frame annotations before saving', () => {
-    const text = source();
-    const previewBlock = text.slice(text.indexOf('const playPreview = useCallback'), text.indexOf('const stopPreview = useCallback'));
+    const previewBlock = playPreviewControllerSource();
 
-    expect(previewBlock).toContain('capturePendingPlayFrameEdits()');
-    expect(previewBlock).toContain('const previewState = annotatePlayState(engine.save())');
-    expect(previewBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
-    expect(previewBlock).toContain('engine.load(previewState)');
+    expect(previewBlock).toContain('input.capturePendingFrameEdits()');
+    expect(previewBlock).toContain('const previewState = input.annotateState(input.engine.save())');
+    expect(previewBlock).toContain('(input.engine as PreviewEngine).resetBackground()');
+    expect(previewBlock).toContain('input.engine.load(previewState)');
     expect(previewBlock).toContain('playerRef.current.play');
   });
 
@@ -718,7 +721,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const savePlayBlock = text.slice(text.indexOf('const savePlay = useCallback'), text.indexOf('const savePendingRotoFrames'));
 
     expect(savePlayBlock).toContain('const playStartFrame = getActivePlayStartFrame(launchContext, currentFrame)');
-    expect(savePlayBlock).toContain('appFrame: playStartFrame + frameIndex');
+    expect(playPreviewControllerSource()).toContain('appFrame: options.startFrame + frameIndex');
     expect(savePlayBlock).toContain('startFrame: playStartFrame');
     expect(savePlayBlock).toContain('latestPlayFramesRef.current = frames');
     expect(savePlayBlock).toContain('setLatestPlayFrames(frames)');
