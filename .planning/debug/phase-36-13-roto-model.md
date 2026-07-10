@@ -1076,3 +1076,43 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Move the TopBar/ToolRail/Canvas/RightPanel/WorkflowStrip/confirmation/shortcuts JSX tree into a presentational `PhysicsPaintStudioView` component with cohesive view-model props.
 - Then audit remaining Studio helpers/callbacks and extract keyboard/navigation coordination or orchestration bundles until the 400–600 line target is reached.
+
+## 2026-07-11 — Cluster: extract Studio presentation view
+
+### Selected cluster
+- Ownership moved: main layout, TopBar, ToolRail, canvas mount/overlays/toast, RightPanel, WorkflowStrip, Roto close confirmation, and shortcuts help JSX.
+- From: the Studio return tree.
+- To: typed presentational `PhysicsPaintStudioView.tsx` with grouped layout/topBar/toolRail/canvas/rightPanel/workflow/status/action props.
+
+### Why this is safe
+- DOM structure, classes, ARIA attributes, visible copy, event handlers, and child component prop wiring are preserved.
+- Studio retains all hooks/controllers, derived values, and action callbacks.
+- Grouped typed props avoid an untyped bag and keep presentation ownership cohesive.
+
+### Ownership removed from Studio
+- Studio no longer owns the large UI tree and now returns one view component.
+- Layout-specific source contracts inspect the view source while orchestration contracts remain on Studio.
+- No behavior or lifecycle effect changed.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/PhysicsPaintStudioView.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 1602 lines.
+- `PhysicsPaintStudio.tsx` after: 1379 lines.
+- Cluster delta: -223 lines.
+- `PhysicsPaintStudioView.tsx`: 168 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative Studio reduction: 1825 lines.
+
+### Tests run
+- Full Physics Paint suite passed with 320 tests across 30 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Audit the remaining Studio orchestration and group controller configuration into focused Roto, Play, bridge, and view-model coordinator hooks.
+- Keep Studio itself as top-level state selection/dependency wiring and drive it to the 400–600 line target without moving all logic into one monolith.

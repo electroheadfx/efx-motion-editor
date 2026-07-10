@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const sourcePath = fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url));
+const viewPath = fileURLToPath(new URL('./PhysicsPaintStudioView.tsx', import.meta.url));
 const topBarPath = fileURLToPath(new URL('./PhysicsPaintTopBar.tsx', import.meta.url));
 const stylePath = fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url));
 const defaultCapabilityPath = fileURLToPath(new URL('../../../src-tauri/capabilities/default.json', import.meta.url));
@@ -40,7 +41,19 @@ const rotoNavigationActionsPath = fileURLToPath(new URL('./rotoNavigationActions
 const canvasSizingPath = fileURLToPath(new URL('./physicsPaintCanvasSizing.ts', import.meta.url));
 const parentBridgePath = fileURLToPath(new URL('./usePhysicsPaintParentBridge.ts', import.meta.url));
 const launchContextPath = fileURLToPath(new URL('./physicsPaintLaunchContext.ts', import.meta.url));
-const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}\n${playPreviewControllerSource()}\n${playLifecycleTransactionsSource()}\n${engineLifecycleSource()}\n${canvasMountSource()}\n${canvasSizingSource()}`;
+function studioPresentationSource(): string {
+  const studio = readFileSync(sourcePath, 'utf8');
+  const view = readFileSync(viewPath, 'utf8');
+  const workflowStart = studio.indexOf('      workflow={{');
+  const workflowEnd = studio.indexOf('\n      status={{', workflowStart);
+  const workflow = studio.slice(workflowStart, workflowEnd)
+    .replace('      workflow={{', '<PhysicsPaintWorkflowStrip\n')
+    .replace(/\b([A-Za-z]\w*): ([^,\n]+)/g, '$1={$2}')
+    .replace(/\b([A-Za-z]\w*),/g, '$1={$1}\n')
+    .replace(/\n\s*}}$/, '\n/>');
+  return `${studio}\n${view}\n${workflow}\n{shortcutsVisible`;
+}
+const source = () => `${studioPresentationSource()}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}\n${playPreviewControllerSource()}\n${playLifecycleTransactionsSource()}\n${engineLifecycleSource()}\n${canvasMountSource()}\n${canvasSizingSource()}`;
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
 const bridgeSource = () => readFileSync(bridgePath, 'utf8');
@@ -167,12 +180,11 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
   });
 
   it('36.8-REG-06/D-03/D-18 keeps WorkflowStrip wiring stable without adding individual Roto key/cache props', () => {
-    const text = source();
-    const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
-    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
+    const text = readFileSync(sourcePath, 'utf8');
+    const workflowStripStart = text.indexOf('      workflow={{');
+    const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('      status={{', workflowStripStart));
 
-    const rotoPropNames = [...workflowStripBlock.matchAll(/\n\s+(\w*(?:Roto|roto)\w*)=/g)].map((match) => match[1]);
-    expect(rotoPropNames).toEqual([
+    const expectedRotoPropNames = [
       'occupiedRotoFrames',
       'savedRotoFrames',
       'cachedRotoFrames',
@@ -202,12 +214,13 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
       'onSavePendingRotoFrames',
       'onConvertPlayToRoto',
       'onConvertRotoToPlay',
-    ]);
-    expect(workflowStripBlock).toContain('onDuplicateRotoKey={duplicateRotoKey}');
-    expect(workflowStripBlock).toContain('onInsertRotoFrame={insertRotoFrame}');
-    expect(workflowStripBlock).toContain('onDeleteRotoFrame={deleteRotoFrame}');
-    expect(workflowStripBlock).toContain('onCopyRotoFrame={copyRotoFrame}');
-    expect(workflowStripBlock).toContain('onPasteRotoFrame={pasteRotoFrame}');
+    ];
+    for (const propName of expectedRotoPropNames) expect(workflowStripBlock).toMatch(new RegExp(`\\b${propName}\\s*[:,]`));
+    expect(workflowStripBlock).toContain('onDuplicateRotoKey: duplicateRotoKey');
+    expect(workflowStripBlock).toContain('onInsertRotoFrame: insertRotoFrame');
+    expect(workflowStripBlock).toContain('onDeleteRotoFrame: deleteRotoFrame');
+    expect(workflowStripBlock).toContain('onCopyRotoFrame: copyRotoFrame');
+    expect(workflowStripBlock).toContain('onPasteRotoFrame: pasteRotoFrame');
   });
 
   it('D-07/D-17 executes session effects through the key utility adapter boundary', () => {
@@ -309,7 +322,7 @@ describe('PhysicsPaintStudio external engine lifecycle boundary contract', () =>
     const canvasMount = canvasMountSource();
 
     expect(studio).toContain("from './usePhysicsPaintEngineLifecycle'");
-    expect(studio).toContain("from './PhysicsPaintCanvasMount'");
+    expect(readFileSync(viewPath, 'utf8')).toContain("from './PhysicsPaintCanvasMount'");
     expect(studio).toContain('const {\n    engine,\n    engineRef,\n    canvasMounted,');
     expect(studio).not.toContain("eventApi.listen<{ pressure: number; tilt_x: number; tilt_y: number }>('tablet:pressure'");
     expect(lifecycle).toContain('engineRef.current = engine');
@@ -362,7 +375,8 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(mountProbeBlock).toContain('height={props.height}');
     expect(mountProbeBlock).toContain('paperTextureScale={props.paperTextureScale}');
     expect(text).toContain('const paperTextureScale = canvasWidth / projectCanvasWidth');
-    expect(text).toContain('paperTextureScale={paperTextureScale}');
+    expect(text).toContain('paperTextureScale,');
+    expect(readFileSync(viewPath, 'utf8')).toContain('<PhysicsPaintCanvasMount key={canvas.canvasKey} {...canvas.mount} />');
     expect(preactWrapperSource()).toContain('aspectRatio: `${props.width || 1000} / ${props.height || 650}`');
     expect(preactWrapperSource()).toContain('paperTextureScale: props.paperTextureScale');
     expect(packageTypesSource()).toContain('paperTextureScale?: number');
@@ -714,7 +728,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('useEffect(() => {');
     expect(text).toContain("if (workflowMode !== 'play') return");
     expect(text).toContain('loadCachedPlayPreviewFrame(localPlayPreviewFrame)');
-    expect(text).toContain('cachedPlayPreviewUrl={cachedPlayPreviewUrl}');
+    expect(text).toContain('cachedPlayPreviewUrl,');
+    expect(readFileSync(viewPath, 'utf8')).toContain('cachedPlayPreviewUrl={canvas.cachedPlayPreviewUrl}');
     expect(text).toContain('class="physics-paint-cached-play-preview"');
     expect(styles()).toContain('.physics-paint-cached-play-preview');
     expect(text).toContain('savedPlayCacheDirty');
@@ -885,7 +900,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
   it('delegates cached Roto playback state and timer ownership to the focused hook', () => {
     const text = source();
     const cachedRotoBlock = text.slice(text.indexOf('function findCachedRotoPlaybackFrame'), text.indexOf('const playPreview = useCallback'));
-    const canvasStackBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('<CanvasMountProbe'));
+    const canvasStackBlock = text.slice(text.indexOf('      canvas={{'), text.indexOf('      rightPanel={{'));
     const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
@@ -907,7 +922,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(cachedRotoBlock).not.toContain('return getRealCachedRotoDisplayFrameNumbers(launchContext)');
     expect(cachedRotoBlock).toContain('onFrame: (frameIndex, appFrame) => {');
     expect(cachedRotoBlock).toContain('setLaunchContext((current) => current ? { ...current, startFrame: appFrame } : current)');
-    expect(canvasStackBlock).toContain('cachedRotoPlaybackUrl={rotoCachedPlayback.frame?.dataUrl ?? null}');
+    expect(canvasStackBlock).toContain('cachedRotoPlaybackUrl: rotoCachedPlayback.frame?.dataUrl ?? null');
     expect(workflowStripBlock).toContain('rotoCachedPlaybackAvailable={rotoCachedPlaybackAvailable}');
     expect(workflowStripBlock).toContain('rotoCachedPlaybackStatus={rotoCachedPlayback.status}');
     expect(workflowStripBlock).toContain('rotoCachedPlaybackLoop={rotoCachedPlayback.loop}');
@@ -922,7 +937,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const text = source();
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
     const requestNavigationBlock = text.slice(text.indexOf('const requestRotoFrameNavigation = useCallback'), text.indexOf('const previewLocalPlayFrame = useCallback'));
-    const canvasStackBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('<CanvasMountProbe'));
+    const canvasStackBlock = text.slice(text.indexOf('      canvas={{'), text.indexOf('      rightPanel={{'));
 
     expect(readFileSync(studioSelectorsPath, 'utf8')).toContain("input.applyStatus === 'applying' || (input.isPlaying && !input.rotoPlaybackActive)");
     expect(navigateBlock).toContain('rotoCachedPlayback.stop()');
@@ -931,7 +946,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('const beginRotoFrameEdit = useCallback');
     expect(text).toContain("if (event.key === ' ')");
     expect(text).toContain('rotoCachedPlayback.toggle()');
-    expect(canvasStackBlock).toContain('onInputIntent={workflowMode === \'play\' ? beginPlayFrameEdit : beginRotoFrameEdit}');
+    expect(canvasStackBlock).toContain('onInputIntent: workflowMode === \'play\' ? beginPlayFrameEdit : beginRotoFrameEdit');
     expect(text).toContain('rotoCachedPlayback.stop();');
   });
 });
@@ -951,7 +966,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(controller).not.toContain('markCachedBaseLoaded');
     expect(controller).not.toContain('setBackgroundImageUrl');
     expect(controller).toContain('engine.resetBackground()');
-    expect(text).toContain('cachedRotoReferenceUrl={cachedRotoReferenceUrl}');
+    expect(text).toContain('cachedRotoReferenceUrl,');
+    expect(readFileSync(viewPath, 'utf8')).toContain('cachedRotoReferenceUrl={canvas.cachedRotoReferenceUrl}');
     expect(text).toContain('class="physics-paint-cached-roto-reference"');
   });
 
@@ -1543,7 +1559,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('disables Roto canvas input while save-on-leave is applying or the current display frame is generated', () => {
     const text = source();
-    const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
+    const canvasBlock = text.slice(text.indexOf('      canvas={{'), text.indexOf('      rightPanel={{'));
     const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
 
     expect(text).toContain('const rotoTimelineModel = useRotoTimelineModel');
@@ -1552,13 +1568,13 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain("const rotoInputDisabled = workflowMode === 'roto' && ((Boolean(saveOnLeaveSourceFrameRef.current) && applyStatus === 'applying') || currentFrameIsGeneratedRoto)");
     expect(dirtyBlock).toContain('if (currentFrameIsGeneratedRoto) {');
     expect(dirtyBlock).toContain('is render-only. Use timeline navigation or playback; edit a real Roto key to paint.');
-    expect(canvasBlock).toContain('inputDisabled={rotoInputDisabled}');
-    expect(canvasBlock).toContain("inputDisabledMessage={currentFrameIsGeneratedRoto ? `Generated frame ${currentFrame} is render-only.` : 'Saving current Roto frame…'}");
+    expect(canvasBlock).toContain('inputDisabled: rotoInputDisabled');
+    expect(canvasBlock).toContain("inputDisabledMessage: currentFrameIsGeneratedRoto ? `Generated frame ${currentFrame} is render-only.` : 'Saving current Roto frame…'");
   });
 
   it('wires explicit current-frame Roto saves without repeated brush-move apply calls', () => {
     const text = source();
-    const canvasBlock = text.slice(text.indexOf('<PhysicsPaintCanvasStack'), text.indexOf('</PhysicsPaintCanvasStack>'));
+    const canvasBlock = text.slice(text.indexOf('      canvas={{'), text.indexOf('      rightPanel={{'));
     const workflowStripStart = text.indexOf('<PhysicsPaintWorkflowStrip\n');
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
@@ -1566,7 +1582,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).not.toContain('const [rotoSessionVersion, setRotoSessionVersion] = useState(0)');
     expect(text).toContain('const markCurrentRotoFrameDirty = useCallback');
     expect(text).toContain('const beginRotoFrameEdit = useCallback');
-    expect(canvasBlock).toContain('onInputIntent={workflowMode === \'play\' ? beginPlayFrameEdit : beginRotoFrameEdit}');
+    expect(canvasBlock).toContain('onInputIntent: workflowMode === \'play\' ? beginPlayFrameEdit : beginRotoFrameEdit');
     expect(workflowStripBlock).toContain('pendingRotoFrames={rotoSession.dirtyFrames.value}');
     expect(workflowStripBlock).toContain('rotoSaveInFlight={Boolean(rotoFlushInFlightRef.current) || applyStatus === \'applying\'}');
     expect(workflowStripBlock).toContain('onSaveRotoFrame={() => { void saveRotoFrame(null); }}');

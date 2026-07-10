@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const rightPanelSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintRightPanel.tsx');
 const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudio.tsx');
+const studioViewSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudioView.tsx');
 const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowState.ts');
 const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoSession.ts');
 const rotoCacheTransactionsSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'rotoCacheTransactions.ts');
@@ -13,7 +14,13 @@ const engineLifecycleSourcePath = resolve(dirname(fileURLToPath(import.meta.url)
 const canvasMountSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintCanvasMount.tsx');
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
-const studioSource = () => readFileSync(studioSourcePath, 'utf8');
+const studioSource = () => {
+  const raw = `${readFileSync(studioSourcePath, 'utf8')}\n${readFileSync(studioViewSourcePath, 'utf8')}`;
+  const normalizedProps = raw
+    .replace(/\b([A-Za-z]\w*): ([^,\n]+)/g, '$1={$2}')
+    .replace(/\b([A-Za-z]\w*),/g, '$1={$1}');
+  return `${raw}\n${normalizedProps}`;
+};
 const workflowStateSource = () => readFileSync(workflowStateSourcePath, 'utf8');
 const rotoSessionSource = () => readFileSync(rotoSessionSourcePath, 'utf8');
 const rotoCacheTransactionsSource = () => readFileSync(rotoCacheTransactionsSourcePath, 'utf8');
@@ -236,7 +243,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
     expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
-    expect(studioSource()).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
+    expect(studioSource()).toContain('onRotoInterpolationCountChange: (inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })');
     expect(code).not.toContain('onRotoInterpolationModeChange?:');
     expect(rotoControlsBlock).toContain('props.onRotoInterpolationEnabledChange ?');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
@@ -412,7 +419,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studioCode).toContain('const canvasKey = `${canvasWidth}x${canvasHeight}`');
     expect(engineLifecycleSource()).toContain('setEngine(null);');
     expect(engineLifecycleSource()).toContain('setCanvasMounted(false);');
-    expect(studioCode).toContain('key={canvasKey}');
+    expect(studioCode).toContain('key={canvas.canvasKey}');
+    expect(studioCode).toContain('canvasKey,');
   });
 
   it('passes bounded working canvas dimensions into Roto session transaction building', () => {
@@ -431,7 +439,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
     expect(code).toContain('onRotoInterpolationEnabledChange?: (enabled: boolean) => void');
     expect(code).toContain('onRotoInterpolationCountChange?: (count: number) => void');
-    expect(studioSource()).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
+    expect(studioSource()).toContain('onRotoInterpolationCountChange: (inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })');
     expect(code).not.toContain('onRotoInterpolationModeChange?:');
     expect(rotoControlsBlock).toContain('physics-paint-roto-interpolation-controls');
     expect(rotoControlsBlock).not.toContain('<span>Interpolation</span>');
@@ -449,8 +457,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const studioCode = studioSource();
     const toggleBlock = studioCode.slice(studioCode.indexOf('const updateRotoInterpolationSettings'), studioCode.indexOf('const goToFirstFrame'));
     const cacheTransactions = rotoCacheTransactionsSource();
-    const stripStart = studioCode.lastIndexOf('<PhysicsPaintWorkflowStrip');
-    const stripPropsBlock = studioCode.slice(stripStart, studioCode.indexOf('/>', stripStart));
+    const stripStart = studioCode.indexOf('      workflow={{');
+    const stripPropsBlock = studioCode.slice(stripStart, studioCode.indexOf('      status={{', stripStart));
 
     expect(toggleBlock).toContain('rotoTimelineActions.updateInterpolationSettings(currentFrame, patch)');
     expect(toggleBlock).not.toContain('mode: patch.mode ?? currentSettings.mode');
@@ -470,8 +478,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(toggleBlock).not.toContain('Generated in-betweens on — render-only frames refresh from real keys.');
     expect(toggleBlock).not.toContain('Generated in-betweens on — save at least two real Roto keys.');
     expect(toggleBlock).not.toContain('Generated in-betweens off — real Roto keys only.');
-    expect(stripPropsBlock).toContain('onRotoInterpolationEnabledChange={(enabled) => updateRotoInterpolationSettings({ enabled })}');
-    expect(stripPropsBlock).toContain('onRotoInterpolationCountChange={(inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })}');
+    expect(stripPropsBlock).toContain('onRotoInterpolationEnabledChange: (enabled) => updateRotoInterpolationSettings({ enabled })');
+    expect(stripPropsBlock).toContain('onRotoInterpolationCountChange: (inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })');
     expect(stripPropsBlock).not.toContain('onRotoInterpolationModeChange=');
     expect(stripPropsBlock).not.toContain('onRotoInterpolationMotionChange=');
   });
@@ -936,7 +944,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(adapter).toContain("case 'saveFrame'");
     expect(adapter).toContain('input.setDirtyFrames(new Set(sourceSession.dirtyFrames.value))');
     expect(studio).toContain('keyActionInFlight={rotoKeyUtilities.keyActionInFlight}');
-    expect(studio).toContain('rotoKeyState={{ actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null }}');
+    expect(studio).toContain('rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null }');
   });
 
   it('persists D-08/D-09 Roto key utilities through the parent app bridge', () => {
