@@ -9,7 +9,7 @@ import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT
 import { physicPaintStore, registerRotoAlphaCanvasFrame } from '../../stores/physicPaintStore';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport } from './physicsPaintDevExport';
-import { clampOnionCount, getPreviewFps, getSourceRotoFrameForDisplayFrame, isPhysicsPaintDevExportEnabled, PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
+import { clampOnionCount, getPreviewFps, getSourceRotoFrameForDisplayFrame, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 import type { RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from './physicsPaintRotoKeyController';
 import type { RotoSessionEffect } from './physicsPaintRotoSession';
 import { mergeCachedRotoAlphaFrame } from './physicsPaintRotoAlphaMerge';
@@ -34,6 +34,7 @@ import { usePlayEditCacheController } from './usePlayEditCacheController';
 import { getActivePlayStartFrame, getLaunchPlayPreviewFrame, getPlayFrameCountFromAssignments, getPlayFrameEditAssignments, normalizePlayWiggle } from './playFrameTransactions';
 import { applyRenderedPlayCache, markPlayLaunchCacheStale, normalizePlayMotionUpdate, resolvePlayFrameCountUpdate, resolvePlayOptionsUpdate } from './playLifecycleTransactions';
 import { usePlayPreviewController } from './usePlayPreviewController';
+import { useRotoPlayConversionController } from './useRotoPlayConversionController';
 import './physicsPaintStudio.css';
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
@@ -561,6 +562,7 @@ export function PhysicsPaintStudio() {
     pendingRotoAdvanceRef,
     saveOnLeaveSourceFrameRef,
     registerPendingApply,
+    clearActiveApply,
     matchApplyResult,
     startApplyTimeout,
   } = useRotoApplyLifecycle({
@@ -1812,119 +1814,34 @@ export function PhysicsPaintStudio() {
     return frames.sort((a, b) => b.distance - a.distance);
   }, [currentFrame, isPlaying, launchContext, onion.count]);
 
-  const convertPlayToRoto = useCallback(async () => {
-    if (!actionContext) return;
-    const { engine, launchContext, bridgeMode } = actionContext;
-    const frameCount = clampPhysicPaintFrameCount(framesToApply);
-    const expectedFrames = Array.from({ length: frameCount }, (_, index) => currentFrame + index);
-    const playFramesByAppFrame = new Map(latestPlayFramesRef.current.map((frame) => [frame.appFrame, frame]));
-    const hasAllFrames = expectedFrames.every((frame) => playFramesByAppFrame.has(frame));
-    if (!hasAllFrames) {
-      setApplyStatus('error');
-      setApplyMessage(PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE);
-      setLastError(PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE);
-      return;
-    }
-    const frames = expectedFrames.map((frame) => playFramesByAppFrame.get(frame)!);
-    const operationId = `${launchContext.operationId}:convert-play-to-roto:${Date.now()}`;
-    const payload: PhysicPaintApplyPayload = {
-      operationId,
-      kind: 'convert-play-to-roto',
-      layerId: launchContext.layerId,
-      startFrame: currentFrame,
-      frameCount,
-      frames,
-      editableState: engine.save(),
-    };
-    try {
-      setApplyStatus('applying');
-      setApplyMessage('Applying physics paint output...');
-      setLastError(null);
-      activeOperationIdRef.current = operationId;
-      registerPendingApply(payload);
-      await sendPhysicPaintApplyPayload(payload, bridgeMode);
-      startApplyTimeout(operationId);
-      expectedFrames.forEach((frame) => {
-        const renderedFrame = playFramesByAppFrame.get(frame);
-        if (renderedFrame) physicPaintStore.setFrame(launchContext.layerId, frame, renderedFrame);
-      });
-      setLaunchContext((current) => current ? {
-        ...current,
-        cachedRotoFrames: physicPaintStore.getRotoCacheFrames(current.layerId),
-      } : current);
+  const { convertPlayToRoto, convertRotoToPlay } = useRotoPlayConversionController({
+    getActionContext: () => actionContext,
+    getCurrentFrame: () => currentFrame,
+    getRequestedFrameCount: () => framesToApply,
+    getLatestPlayFrames: () => latestPlayFramesRef.current,
+    getPlayWiggle: () => playWiggle,
+    getRenderOptions: () => buildPlayRenderOptionsSnapshot(settings, playWiggle),
+    registerPendingApply,
+    startApplyTimeout,
+    clearActiveApply,
+    sendApplyPayload: sendPhysicPaintApplyPayload,
+    getCachedRotoFrames: (layerId) => physicPaintStore.getRotoCacheFrames(layerId),
+    setFrame: (layerId, frame, renderedFrame) => physicPaintStore.setFrame(layerId, frame, renderedFrame),
+    setEditableState: (layerId, state) => physicPaintStore.setEditableState(layerId, state),
+    removeFrameRange: (layerId, startFrame, frameCount) => physicPaintStore.removeFrameRange(layerId, startFrame, frameCount),
+    resetLatestPlayFrames: () => {
       latestPlayFramesRef.current = [];
       setLatestPlayFrames([]);
-      setWorkflowMode('roto');
-    } catch (error) {
-      activeOperationIdRef.current = null;
-      pendingApplyRef.current = null;
-      const detail = error instanceof Error ? error.message : String(error);
-      const message = `Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. ${detail}`;
-      setApplyStatus('error');
-      setApplyMessage(message);
-      setLastError(message);
-    }
-  }, [actionContext, currentFrame, framesToApply, startApplyTimeout]);
-
-  const convertRotoToPlay = useCallback(async () => {
-    if (!actionContext) return;
-    const { engine, launchContext, bridgeMode } = actionContext;
-    const frameCount = clampPhysicPaintFrameCount(framesToApply);
-    const startFrame = currentFrame;
-    const renderOptions = buildPlayRenderOptionsSnapshot(settings, playWiggle);
-    const operationId = `${launchContext.operationId}:convert-roto-to-play:${Date.now()}`;
-    const payload: PhysicPaintApplyPayload = {
-      operationId,
-      kind: 'convert-roto-to-play',
-      layerId: launchContext.layerId,
-      startFrame,
-      frameCount,
-      editableState: engine.save(),
-      playScriptId: launchContext.selectedPlayScriptId,
-      playMotion: playWiggle,
-      renderOptions,
-    };
-    try {
-      setApplyStatus('applying');
-      setApplyMessage('Applying physics paint output...');
-      setLastError(null);
-      activeOperationIdRef.current = operationId;
-      registerPendingApply(payload);
-      await sendPhysicPaintApplyPayload(payload, bridgeMode);
-      startApplyTimeout(operationId);
-      physicPaintStore.setEditableState(launchContext.layerId, payload.editableState);
-      physicPaintStore.removeFrameRange(launchContext.layerId, startFrame, frameCount);
-      latestPlayFramesRef.current = [];
-      setLatestPlayFrames([]);
-      setCachedPlayPreviewUrl(null);
-      setSavedPlayCacheDirty(true);
-      resetPlayFrameEdits();
-      setLaunchContext((current) => current ? {
-        ...withoutRotoGapLimit(current),
-        workflowMode: 'play',
-        editableSource: 'play',
-        startFrame,
-        playStartFrame: startFrame,
-        playFrameCount: frameCount,
-        selectedPlayScriptId: current.selectedPlayScriptId ?? `play-${startFrame}-${frameCount}`,
-        playCacheStatus: 'stale',
-        playMotion: playWiggle,
-        playRenderOptions: renderOptions,
-        cachedPlayFrames: [],
-        cachedRotoFrames: physicPaintStore.getRotoCacheFrames(current.layerId),
-        previewFrame: 0,
-      } : current);
-      setWorkflowMode('play');
-    } catch (error) {
-      activeOperationIdRef.current = null;
-      pendingApplyRef.current = null;
-      const detail = error instanceof Error ? error.message : String(error);
-      const message = `Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. ${detail}`;
-      setApplyStatus('error');
-      setApplyMessage(message);
-      setLastError(message);
-    }
-  }, [actionContext, currentFrame, framesToApply, playWiggle, settings, startApplyTimeout]);
+    },
+    resetPlayPreview: () => setCachedPlayPreviewUrl(null),
+    markPlayCacheDirty: () => setSavedPlayCacheDirty(true),
+    resetPlayFrameEdits,
+    setLaunchContext,
+    setWorkflowMode,
+    setApplyStatus,
+    setApplyMessage,
+    setLastError,
+  });
 
   const handlePhysicsPaintKeyDown = useCallback((event: KeyboardEvent) => {
     if (!isPhysicsPaintShortcutTarget(event.target)) return;

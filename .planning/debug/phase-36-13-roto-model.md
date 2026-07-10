@@ -815,3 +815,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract Play-to-Roto and Roto-to-Play conversion payload/state ownership into pure transactions and a focused bridge controller.
 - Then extract engine/canvas lifecycle, parent bridge/listeners, settings actions, session file/dev export, and final composition helpers.
+
+## 2026-07-10 — Cluster: extract Play/Roto conversion controller
+
+### Selected cluster
+- Ownership moved: Play-to-Roto missing-frame validation/range planning/payload/context transition and Roto-to-Play payload/context/cache transition, plus bridge registration/send/timeout/error cleanup and store writes/removals.
+- From: `convertPlayToRoto` and `convertRotoToPlay` in Studio.
+- To: pure `rotoPlayConversionTransactions.ts` and focused `useRotoPlayConversionController.ts`.
+
+### Why this is safe
+- Pure transactions preserve expected frame ordering, canonical missing-frame copy, operation IDs, payload fields, selected script metadata, render options/wiggle, start frame, frame count, preview frame, and cache status transitions.
+- The controller receives engine/store/edit-cache/apply lifecycle/bridge dependencies explicitly.
+- Existing registration-before-send, timeout startup, error cleanup, store writes/removals, latest Play reset, and cached Roto refresh remain unchanged.
+- Roto source/display/interpolation modules were not modified.
+
+### Ownership removed from Studio
+- Removed both conversion callback bodies and their detailed payload/context/store branches.
+- Studio now consumes two controller actions and retains UI wiring only.
+- No internal workflow effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/rotoPlayConversionTransactions.ts`
+- `app/src/components/physic-paint/rotoPlayConversionTransactions.test.ts`
+- `app/src/components/physic-paint/useRotoPlayConversionController.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2315 lines.
+- `PhysicsPaintStudio.tsx` after: 2232 lines.
+- Cluster delta: -83 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 972 lines.
+
+### Tests run
+- Pure conversion tests cover missing Play frames, ordered payloads, Play-to-Roto context, and Roto-to-Play context/cache planning.
+- Full Physics Paint suite passed with 302 tests across 23 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract engine/canvas mount, restore, preview-background, tablet input, and render-setting synchronization into focused external lifecycle hooks.
+- Then extract parent launch/apply bridge listeners, settings/tool actions, session file/dev export, onion/navigation/keyboard helpers, and final composition.

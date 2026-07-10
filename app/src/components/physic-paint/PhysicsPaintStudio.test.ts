@@ -28,6 +28,8 @@ const playFrameTransactionsPath = fileURLToPath(new URL('./playFrameTransactions
 const playEditCacheControllerPath = fileURLToPath(new URL('./usePlayEditCacheController.ts', import.meta.url));
 const playPreviewControllerPath = fileURLToPath(new URL('./usePlayPreviewController.ts', import.meta.url));
 const playLifecycleTransactionsPath = fileURLToPath(new URL('./playLifecycleTransactions.ts', import.meta.url));
+const rotoPlayConversionTransactionsPath = fileURLToPath(new URL('./rotoPlayConversionTransactions.ts', import.meta.url));
+const rotoPlayConversionControllerPath = fileURLToPath(new URL('./useRotoPlayConversionController.ts', import.meta.url));
 const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}\n${playPreviewControllerSource()}\n${playLifecycleTransactionsSource()}`;
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
@@ -53,6 +55,8 @@ const playFrameTransactionsSource = () => readFileSync(playFrameTransactionsPath
 const playEditCacheControllerSource = () => readFileSync(playEditCacheControllerPath, 'utf8');
 const playPreviewControllerSource = () => readFileSync(playPreviewControllerPath, 'utf8');
 const playLifecycleTransactionsSource = () => readFileSync(playLifecycleTransactionsPath, 'utf8');
+const rotoPlayConversionTransactionsSource = () => readFileSync(rotoPlayConversionTransactionsPath, 'utf8');
+const rotoPlayConversionControllerSource = () => readFileSync(rotoPlayConversionControllerPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
   const blocks: string[] = [];
@@ -239,6 +243,37 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(session).not.toContain('physicPaintBridge');
     expect(session).not.toContain('@efxlab/efx-physic-paint');
     expect(session).not.toContain('PhysicsPaintStudio');
+  });
+});
+
+describe('PhysicsPaintStudio Play/Roto conversion boundary contract', () => {
+  it('moves conversion payload plans and bridge lifecycle into the focused controller', () => {
+    const text = source();
+    const transactions = rotoPlayConversionTransactionsSource();
+    const controller = rotoPlayConversionControllerSource();
+
+    expect(text).toContain("from './useRotoPlayConversionController'");
+    expect(text).toContain('const { convertPlayToRoto, convertRotoToPlay } = useRotoPlayConversionController');
+    expect(text).not.toContain('const convertPlayToRoto = useCallback');
+    expect(text).not.toContain('const convertRotoToPlay = useCallback');
+    expect(transactions).toContain('PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE');
+    expect(transactions).toContain("kind: 'convert-play-to-roto'");
+    expect(transactions).toContain("kind: 'convert-roto-to-play'");
+    expect(controller).toContain('input.registerPendingApply(payload)');
+    expect(controller).toContain('input.startApplyTimeout(payload.operationId)');
+    expect(controller).toContain('input.clearActiveApply()');
+  });
+
+  it('preserves conversion storage, cache reset, workflow, and metadata ownership in the bridge controller', () => {
+    const controller = rotoPlayConversionControllerSource();
+    const transactions = rotoPlayConversionTransactionsSource();
+
+    for (const call of ['input.setFrame(', 'input.setEditableState(', 'input.removeFrameRange(', 'input.resetLatestPlayFrames()', 'input.resetPlayPreview()', 'input.markPlayCacheDirty()', 'input.resetPlayFrameEdits()', "input.setWorkflowMode('roto')", "input.setWorkflowMode('play')"]) {
+      expect(controller).toContain(call);
+    }
+    for (const field of ['selectedPlayScriptId', 'playMotion', 'playRenderOptions', 'previewFrame: 0', 'cachedRotoFrames']) {
+      expect(transactions).toContain(field);
+    }
   });
 });
 
@@ -731,7 +766,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(savePlayBlock).toContain('playScriptId: launchContext.selectedPlayScriptId');
     expect(savePlayBlock).toContain('playMotion: playWiggle');
     expect(savePlayBlock).toContain('renderOptions,');
-    expect(savePlayBlock).toContain('playRenderOptions: renderOptions');
+    expect(savePlayBlock).toContain('renderOptions,');
+    expect(playLifecycleTransactionsSource()).toContain('playRenderOptions: input.renderOptions');
     expect(savePlayBlock).toContain('annotatePlayState(engine.save())');
     expect(savePlayBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
     expect(savePlayBlock).not.toContain('strokeStyleOverride');
