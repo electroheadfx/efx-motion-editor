@@ -731,3 +731,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract Play editing/cache/preview/render ownership into focused controllers, starting with pure frame assignment/cache selectors before interval/render bridge actions.
 - Then extract engine/canvas lifecycle, parent bridge/listeners, settings actions, and final composition helpers toward the 400–600 line target.
+
+## 2026-07-10 — Cluster: extract Play edit/cache ownership
+
+### Selected cluster
+- Ownership moved: Play stroke-frame annotation/parsing/count, preview/start-frame normalization, wiggle normalization, cached frame/range selection, latest frame cache/ref/version, local preview frame/ref, cached preview URL/dirty state, selected-script dirty action, pending edit capture, begin-frame-edit, cached background load, local preview, and editable-state restore/reset.
+- From: Studio-local helpers, state/refs, and edit/cache callbacks.
+- To: pure `playFrameTransactions.ts` and focused `usePlayEditCacheController.ts`.
+
+### Why this is safe
+- Pure selectors preserve selected script start-frame math and launch/store fallback order.
+- The controller receives engine preview-background actions explicitly and keeps stroke assignment tied to engine stroke count.
+- Cached/stale semantics, local preview isolation from editor sync, background clearing/loading, dirty invalidation, and editable-state annotation remain unchanged.
+- Animation/render/apply lifecycle and conversion actions remain separate.
+
+### Ownership removed from Studio
+- Removed Play assignment/count helpers and most latest/local/cached edit state declarations and callback bodies.
+- Studio now consumes controller state/actions for preview, edit intent, save-state annotation, cache status, and conversion availability.
+- No broad internal synchronization effect was added.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/playFrameTransactions.ts`
+- `app/src/components/physic-paint/playFrameTransactions.test.ts`
+- `app/src/components/physic-paint/usePlayEditCacheController.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 2521 lines.
+- `PhysicsPaintStudio.tsx` after: 2412 lines.
+- Cluster delta: -109 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative reduction: 792 lines.
+
+### Tests run
+- Pure Play tests cover stroke assignment round-trip, frame-count derivation, wiggle/start/preview normalization, and cached range lookup.
+- Full Physics Paint suite passed with 292 tests across 21 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract cached/live Play preview interval, AnimationPlayer lifecycle, Save Play render/apply, frame-count/wiggle launch updates, and selected Play options update into focused render/preview controllers.
+- Keep Play/Roto conversion actions separate for the following cluster.

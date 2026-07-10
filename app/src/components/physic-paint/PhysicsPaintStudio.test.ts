@@ -24,7 +24,9 @@ const rotoSaveControllerPath = fileURLToPath(new URL('./useRotoSaveController.ts
 const rotoSaveTransactionsPath = fileURLToPath(new URL('./rotoSaveTransactions.ts', import.meta.url));
 const rotoEditBufferControllerPath = fileURLToPath(new URL('./useRotoEditBufferController.ts', import.meta.url));
 const rotoEditBufferTransactionsPath = fileURLToPath(new URL('./rotoEditBufferTransactions.ts', import.meta.url));
-const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}`;
+const playFrameTransactionsPath = fileURLToPath(new URL('./playFrameTransactions.ts', import.meta.url));
+const playEditCacheControllerPath = fileURLToPath(new URL('./usePlayEditCacheController.ts', import.meta.url));
+const source = () => `${readFileSync(sourcePath, 'utf8')}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}`;
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
 const bridgeSource = () => readFileSync(bridgePath, 'utf8');
@@ -45,6 +47,8 @@ const rotoSaveControllerSource = () => readFileSync(rotoSaveControllerPath, 'utf
 const rotoSaveTransactionsSource = () => readFileSync(rotoSaveTransactionsPath, 'utf8');
 const rotoEditBufferControllerSource = () => readFileSync(rotoEditBufferControllerPath, 'utf8');
 const rotoEditBufferTransactionsSource = () => readFileSync(rotoEditBufferTransactionsPath, 'utf8');
+const playFrameTransactionsSource = () => readFileSync(playFrameTransactionsPath, 'utf8');
+const playEditCacheControllerSource = () => readFileSync(playEditCacheControllerPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
   const blocks: string[] = [];
@@ -523,10 +527,10 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
   it('keeps Play frame conversion availability separate from cleared onion preview state', () => {
     const text = source();
 
-    expect(text).toContain('const [playFramesVersion, setPlayFramesVersion] = useState(0)');
-    expect(text).toContain('latestPlayFramesRef.current = frames');
+    expect(playEditCacheControllerSource()).toContain('const [framesVersion, setFramesVersion] = useState(0)');
+    expect(playEditCacheControllerSource()).toContain('latestFramesRef.current = frames');
     expect(text).toContain('setLatestPlayFrames(frames)');
-    expect(text).toContain('setPlayFramesVersion((version) => version + 1)');
+    expect(playEditCacheControllerSource()).toContain('setFramesVersion((version) => version + 1)');
     expect(text).toContain('new Set(latestPlayFramesRef.current.map((frame) => frame.appFrame))');
     expect(text).toContain('playFramesVersion');
   });
@@ -536,18 +540,18 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
   it('initializes local preview frame from saved Play launch context', () => {
     const text = source();
 
-    expect(text).toContain('const [localPlayPreviewFrame, setLocalPlayPreviewFrame]');
-    expect(text).toContain('const previewFrame = context?.previewFrame');
-    expect(text).toContain('setLocalPlayPreviewFrame?.(getLaunchPreviewFrame(context))');
+    expect(playEditCacheControllerSource()).toContain('const [localPreviewFrame, setLocalPreviewFrameState]');
+    expect(playFrameTransactionsSource()).toContain('const previewFrame = context?.previewFrame');
+    expect(text).toContain('setLocalPlayPreviewFrame?.(getLaunchPlayPreviewFrame(context))');
     expect(text).toContain('currentPreviewFrame={localPlayPreviewFrame}');
   });
 
   it('keeps local Play scrub separate from editor frame sync', () => {
     const text = source();
-    const localPreviewBlock = text.slice(text.indexOf('const previewLocalPlayFrame = useCallback'), text.indexOf('const handleApplyResult = useCallback'));
+    const localPreviewBlock = playEditCacheControllerSource();
 
-    expect(localPreviewBlock).toContain('setLocalPlayPreviewFrame');
-    expect(localPreviewBlock).toContain('loadCachedPlayPreviewFrame');
+    expect(localPreviewBlock).toContain('setLocalPreviewFrame(previewFrame)');
+    expect(localPreviewBlock).toContain('loadCachedPreviewFrame(previewFrame)');
     expect(localPreviewBlock).not.toContain('sendPhysicPaintFrameSyncMessage');
     expect(text).toContain('onPreviewPlayFrame={previewLocalPlayFrame}');
     expect(text).not.toContain('onInspectPlayFrame={navigateToSyncedFrame}');
@@ -556,16 +560,16 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
   it('uses cached saved Play frames while clean and switches to live preview after clear/remake', () => {
     const text = source();
 
-    expect(text).toContain('const [savedPlayCacheDirty, setSavedPlayCacheDirty]');
-    expect(text).toContain('function loadCachedPlayPreviewFrame');
-    expect(text).toContain('function getCachedPlayFramesForRange');
+    expect(playEditCacheControllerSource()).toContain('const [cacheDirty, setCacheDirty]');
+    expect(playEditCacheControllerSource()).toContain('const loadCachedPreviewFrame = useCallback');
+    expect(playEditCacheControllerSource()).toContain('const getCachedFramesForRange = useCallback');
     expect(text).toContain('const cachedPreviewTimerRef = useRef<number | null>(null)');
     expect(text).toContain('Previewing cached ${safeFrameCount} frames at ${previewFps} fps.');
-    expect(text).toContain('latestPlayFramesRef.current.find((frame) => frame.appFrame === appFrame)');
-    expect(text).toContain('launchContext.cachedPlayFrames?.find((frame) => frame.appFrame === appFrame)');
-    expect(text).toContain('physicPaintStore.getFrame(launchContext.layerId, appFrame)');
-    expect(text).toContain('setCachedPlayPreviewUrl(cachedFrame?.dataUrl ?? null)');
-    expect(text).toContain('if (savedPlayCacheDirty)');
+    expect(playFrameTransactionsSource()).toContain('input.latestFrames.find((frame) => frame.appFrame === appFrame)');
+    expect(playFrameTransactionsSource()).toContain('input.context.cachedPlayFrames?.find((frame) => frame.appFrame === appFrame)');
+    expect(playFrameTransactionsSource()).toContain('input.getStoredFrame(input.context.layerId, appFrame)');
+    expect(playEditCacheControllerSource()).toContain('setCachedPreviewUrl(cachedFrame?.dataUrl ?? null)');
+    expect(playEditCacheControllerSource()).toContain('if (cacheDirty)');
     expect(text).toContain('setCachedPlayPreviewUrl(null)');
     expect(text).toContain('setSavedPlayCacheDirty(true)');
     expect(text).toContain('markSelectedPlayCacheDirty');
@@ -624,16 +628,16 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const saveEditableStateBlock = text.slice(text.indexOf('const saveEditableState = useCallback'), text.indexOf('const loadEditableState = useCallback'));
 
     expect(text).toContain('function annotatePlayFrameStrokes');
-    expect(text).toContain('const playFrameEditAssignmentsRef = useRef<Map<number, number>>(new Map())');
-    expect(text).toContain('const beginPlayFrameEdit = useCallback');
-    expect(text).toContain('playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount }');
+    expect(playEditCacheControllerSource()).toContain('const editAssignmentsRef = useRef<Map<number, number>>(new Map())');
+    expect(playEditCacheControllerSource()).toContain('const beginFrameEdit = useCallback');
+    expect(playEditCacheControllerSource()).toContain('editBaselineRef.current = { frame: localPreviewFrame, strokeCount: input.engine.getStrokeCount() }');
     expect(text).toContain('engine.getStrokeCount()');
     expect(text).not.toContain('engine.save().strokes.length');
     expect(text).toContain('setSavedPlayCacheDirty(true)');
     expect(text).toContain("onInputIntent={workflowMode === 'play' ? beginPlayFrameEdit : beginRotoFrameEdit}");
     expect(text).not.toContain('inputDisabled={!canEditCurrentPlayFrame}');
     expect(saveEditableStateBlock).toContain('capturePendingPlayFrameEdits()');
-    expect(saveEditableStateBlock).toContain('annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
+    expect(saveEditableStateBlock).toContain('annotatePlayState(engine.save())');
     expect(saveEditableStateBlock).toContain('downloadPhysicsPaintState(editableState)');
   });
 
@@ -644,28 +648,24 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('function getPlayFrameEditAssignments');
     expect(text).toContain('function getPlayFrameCountFromAssignments');
     expect(loadEditableStateBlock).toContain('const assignments = getPlayFrameEditAssignments(state)');
-    expect(loadEditableStateBlock).toContain('playFrameEditAssignmentsRef.current = assignments');
-    expect(loadEditableStateBlock).toContain('playFrameEditBaselineRef.current = { frame: previewFrame, strokeCount: state.strokes.length }');
+    expect(loadEditableStateBlock).toContain('restorePlayFrameEdits(assignments, previewFrame, state.strokes.length)');
+    expect(playEditCacheControllerSource()).toContain('editBaselineRef.current = { frame, strokeCount }');
     expect(loadEditableStateBlock).toContain("playCacheStatus: 'stale'");
     expect(loadEditableStateBlock).toContain('cachedPlayFrames: []');
     expect(loadEditableStateBlock).toContain('setSavedPlayCacheDirty(true)');
   });
 
   it('uses the selected cached Play frame as the edit background without keeping the preview overlay alive', () => {
-    const text = source();
-    const loadBlock = text.slice(text.indexOf('function loadCachedPlayPreviewFrame'), text.indexOf('function getCachedPlayFramesForRange'));
-    const editBlock = text.slice(text.indexOf('const beginPlayFrameEdit = useCallback'), text.indexOf('const showPlayLimitToast'));
+    const controller = playEditCacheControllerSource();
 
-    expect(text).toContain('type PreviewBackgroundEngine = EfxPaintEngine &');
-    expect(loadBlock).toContain('findCachedPlayPreviewFrame(previewFrame)');
-    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).clearPreviewBaseImage()');
-    expect(loadBlock).toContain('(engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl)');
-    expect(editBlock).toContain('const cachedFrame = savedPlayCacheDirty ? null : findCachedPlayPreviewFrame(localPlayPreviewFrame)');
-    expect(editBlock).toContain('(engine as PreviewBackgroundEngine).clearPreviewBaseImage()');
-    expect(editBlock).toContain('(engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl)');
-    expect(editBlock).toContain('if (cachedPlayPreviewUrl) setCachedPlayPreviewUrl(null)');
-    expect(editBlock).toContain('playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount }');
-    expect(editBlock).toContain('setSavedPlayCacheDirty(true)');
+    expect(controller).toContain('type PreviewBackgroundEngine = EfxPaintEngine &');
+    expect(controller).toContain('const cachedFrame = findCachedFrame(previewFrame)');
+    expect(controller).toContain('previewEngine.clearPreviewBaseImage()');
+    expect(controller).toContain('previewEngine.setBackgroundImageUrl(cachedFrame.dataUrl)');
+    expect(controller).toContain('const cachedFrame = cacheDirty ? null : findCachedFrame(localPreviewFrame)');
+    expect(controller).toContain('if (cachedPreviewUrl) setCachedPreviewUrl(null)');
+    expect(controller).toContain('editBaselineRef.current = { frame: localPreviewFrame, strokeCount: input.engine.getStrokeCount() }');
+    expect(controller).toContain('setCacheDirty(true)');
   });
 
   it('updates selected Play options without rendering and clears cached preview only when options changed', () => {
@@ -688,7 +688,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const previewBlock = text.slice(text.indexOf('const playPreview = useCallback'), text.indexOf('const stopPreview = useCallback'));
 
     expect(previewBlock).toContain('capturePendingPlayFrameEdits()');
-    expect(previewBlock).toContain('const previewState = annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
+    expect(previewBlock).toContain('const previewState = annotatePlayState(engine.save())');
     expect(previewBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
     expect(previewBlock).toContain('engine.load(previewState)');
     expect(previewBlock).toContain('playerRef.current.play');
@@ -729,7 +729,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(savePlayBlock).toContain('playMotion: playWiggle');
     expect(savePlayBlock).toContain('renderOptions,');
     expect(savePlayBlock).toContain('playRenderOptions: renderOptions');
-    expect(savePlayBlock).toContain('annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)');
+    expect(savePlayBlock).toContain('annotatePlayState(engine.save())');
     expect(savePlayBlock).toContain('(engine as PreviewBackgroundEngine).resetBackground()');
     expect(savePlayBlock).not.toContain('strokeStyleOverride');
     expect(text).not.toContain('function buildPlayStrokeStyleOverride');

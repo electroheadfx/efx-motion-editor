@@ -30,6 +30,8 @@ import { useRotoApplyResultController } from './useRotoApplyResultController';
 import { useRotoCloseLifecycle } from './useRotoCloseLifecycle';
 import { useRotoSaveController } from './useRotoSaveController';
 import { useRotoEditBufferController } from './useRotoEditBufferController';
+import { usePlayEditCacheController } from './usePlayEditCacheController';
+import { getActivePlayStartFrame, getLaunchPlayPreviewFrame, getPlayFrameCountFromAssignments, getPlayFrameEditAssignments, normalizePlayWiggle } from './playFrameTransactions';
 import './physicsPaintStudio.css';
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
@@ -94,31 +96,6 @@ function getLaunchWorkflowMode(context: PhysicPaintLaunchContext | null): Physic
   return 'roto';
 }
 
-function getLaunchPreviewFrame(context: PhysicPaintLaunchContext | null): number {
-  const previewFrame = context?.previewFrame;
-  if (!Number.isInteger(previewFrame) || previewFrame === undefined || previewFrame < 0) return 0;
-  return previewFrame;
-}
-
-function normalizePlayWiggle(value: Partial<AnimationWiggleConfig> | null | undefined): AnimationWiggleConfig {
-  return {
-    strokeDeformation: clampPercentInteger(value?.strokeDeformation),
-    strokePosition: clampPercentInteger(value?.strokePosition),
-  };
-}
-
-function clampPercentInteger(value: unknown): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) return 0;
-  return Math.max(0, Math.min(100, Math.trunc(numeric)));
-}
-
-function getActivePlayStartFrame(context: PhysicPaintLaunchContext, fallbackFrame: number): number {
-  return Number.isInteger(context.playStartFrame) && context.playStartFrame !== undefined && context.playStartFrame >= 0
-    ? context.playStartFrame
-    : fallbackFrame;
-}
-
 function withoutRotoGapLimit(context: PhysicPaintLaunchContext): PhysicPaintLaunchContext {
   if (context.workflowMode === 'play') return context;
   const next = { ...context };
@@ -150,32 +127,6 @@ function resizePhysicsPaintState(state: SerializedPhysicsPaintProject, width: nu
   };
 }
 
-function annotatePlayFrameStrokes(state: SerializedPhysicsPaintProject, assignments: Map<number, number>): SerializedPhysicsPaintProject {
-  if (assignments.size === 0) return state;
-  return {
-    ...state,
-    strokes: state.strokes.map((stroke, index) => {
-      const playFrame = assignments.get(index);
-      if (typeof playFrame !== 'number' || !Number.isInteger(playFrame) || playFrame < 0) return stroke;
-      return { ...stroke, playFrame };
-    }),
-  };
-}
-
-function getPlayFrameEditAssignments(state: SerializedPhysicsPaintProject): Map<number, number> {
-  const assignments = new Map<number, number>();
-  state.strokes.forEach((stroke, index) => {
-    const playFrame = stroke.playFrame;
-    if (typeof playFrame === 'number' && Number.isInteger(playFrame) && playFrame >= 0) assignments.set(index, playFrame);
-  });
-  return assignments;
-}
-
-function getPlayFrameCountFromAssignments(assignments: Map<number, number>, fallback: number): number {
-  if (assignments.size === 0) return fallback;
-  return clampPhysicPaintFrameCount(Math.max(...assignments.values()) + 1);
-}
-
 function getRotoOnionAnchorDisplayFrame(frame: RenderedFramePayload & Partial<Pick<PhysicPaintRotoCacheFrame, 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame'>>): number {
   return frame.displayFrame ?? frame.appFrame;
 }
@@ -193,7 +144,7 @@ function applyLaunchContext(
   setLaunchContext(context);
   setFramesToApply(clampPhysicPaintFrameCount(context.playFrameCount ?? PHYSIC_PAINT_DEFAULT_APPLY_FRAMES));
   setWorkflowMode(getLaunchWorkflowMode(context));
-  setLocalPlayPreviewFrame?.(getLaunchPreviewFrame(context));
+  setLocalPlayPreviewFrame?.(getLaunchPlayPreviewFrame(context));
   setSavedPlayCacheDirty?.(getLaunchWorkflowMode(context) === 'play' && context.playCacheStatus !== 'cached');
   setPlayWiggle?.(normalizePlayWiggle(context.playRenderOptions?.motion ?? context.playMotion));
   if (context.playRenderOptions) setSettings?.(applyRenderOptionsSnapshotToSettings(context.playRenderOptions));
@@ -583,21 +534,12 @@ export function PhysicsPaintStudio() {
   const liveRotoOverlayActionCountRef = { get current() { return rotoEditBuffer.bufferRef.current.liveOverlayActionCounts; } };
   const dirtyRotoFramesRef = { get current() { return rotoEditBuffer.bufferRef.current.dirtyFrames; }, set current(frames) { rotoEditBuffer.replaceDirtyFrames(frames); } };
   const [rotoSavingFrame, setRotoSavingFrame] = useState<number | null>(null);
-  const [latestPlayFrames, setLatestPlayFrames] = useState<RenderedFramePayload[]>([]);
-  const [playFramesVersion, setPlayFramesVersion] = useState(0);
-  const [localPlayPreviewFrame, setLocalPlayPreviewFrame] = useState(() => getLaunchPreviewFrame(launchContext));
-  const [cachedPlayPreviewUrl, setCachedPlayPreviewUrl] = useState<string | null>(null);
-  const [savedPlayCacheDirty, setSavedPlayCacheDirty] = useState(false);
   const [playLimitToast, setPlayLimitToast] = useState<string | null>(null);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const playerRef = useRef<AnimationPlayer | null>(null);
   const confirmedCachedRotoFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map());
-  const latestPlayFramesRef = useRef<RenderedFramePayload[]>([]);
   const cachedPreviewTimerRef = useRef<number | null>(null);
-  const playFrameEditBaselineRef = useRef<{ frame: number; strokeCount: number } | null>(null);
-  const playFrameEditAssignmentsRef = useRef<Map<number, number>>(new Map());
   const workflowModeRef = useRef<PhysicsPaintWorkflowMode>(workflowMode);
-  const localPlayPreviewFrameRef = useRef(localPlayPreviewFrame);
   const pendingRotoKeyActionMessageRef = useRef<string | null>(null);
   const closeGuardBypassRef = useRef(false);
   const nativePenInputHandlerRef = useRef<((input: { pressure: number; tiltX?: number; tiltY?: number }) => void) | null>(null);
@@ -656,6 +598,37 @@ export function PhysicsPaintStudio() {
     if (!engine || !launchContext) return null;
     return { engine, launchContext, bridgeMode };
   }, [bridgeMode, engine, launchContext]);
+  const playEditCache = usePlayEditCacheController<RenderedFramePayload>({
+    launchContext,
+    currentFrame,
+    workflowMode,
+    engine,
+    getStoredFrame: (layerId, appFrame) => physicPaintStore.getFrame(layerId, appFrame),
+    setApplyMessage,
+  });
+  const {
+    latestFrames: latestPlayFrames,
+    latestFramesRef: latestPlayFramesRef,
+    framesVersion: playFramesVersion,
+    localPreviewFrame: localPlayPreviewFrame,
+    localPreviewFrameRef,
+    cachedPreviewUrl: cachedPlayPreviewUrl,
+    cacheDirty: savedPlayCacheDirty,
+    setLatestFrames: setLatestPlayFrames,
+    setLocalPreviewFrame: setLocalPlayPreviewFrame,
+    setCachedPreviewUrl: setCachedPlayPreviewUrl,
+    setCacheDirty: setSavedPlayCacheDirty,
+    bumpFramesVersion: bumpPlayFramesVersion,
+    loadCachedPreviewFrame: loadCachedPlayPreviewFrame,
+    getCachedFramesForRange: getCachedPlayFramesForRange,
+    markSelectedCacheDirty: markSelectedPlayCacheDirty,
+    capturePendingFrameEdits: capturePendingPlayFrameEdits,
+    beginFrameEdit: beginPlayFrameEdit,
+    previewLocalFrame: previewLocalPlayFrame,
+    annotateState: annotatePlayState,
+    resetFrameEdits: resetPlayFrameEdits,
+    restoreFrameEdits: restorePlayFrameEdits,
+  } = playEditCache;
   const resolveRotoSourceFrameForDisplayFrame = useCallback((displayFrame: number) => {
     if (!launchContext) return displayFrame;
     return getSourceRotoFrameForDisplayFrame(
@@ -749,13 +722,9 @@ export function PhysicsPaintStudio() {
     workflowModeRef.current = workflowMode;
   }, [workflowMode]);
 
-  useEffect(() => {
-    localPlayPreviewFrameRef.current = localPlayPreviewFrame;
-  }, [localPlayPreviewFrame]);
-
   const getStrokeMetadata = useCallback(() => {
     if (workflowModeRef.current !== 'play') return null;
-    const playFrame = localPlayPreviewFrameRef.current;
+    const playFrame = localPreviewFrameRef.current;
     return Number.isInteger(playFrame) && playFrame >= 0 ? { playFrame } : null;
   }, []);
 
@@ -1041,38 +1010,6 @@ export function PhysicsPaintStudio() {
     persistRotoBackgroundMetadata();
   }, [persistRotoBackgroundMetadata]);
 
-  function findCachedPlayPreviewFrame(previewFrame: number): RenderedFramePayload | null {
-    if (!launchContext) return null;
-    const playStartFrame = getActivePlayStartFrame(launchContext, currentFrame);
-    const appFrame = playStartFrame + previewFrame;
-    return latestPlayFramesRef.current.find((frame) => frame.appFrame === appFrame)
-      ?? launchContext.cachedPlayFrames?.find((frame) => frame.appFrame === appFrame)
-      ?? physicPaintStore.getFrame(launchContext.layerId, appFrame);
-  }
-
-  function loadCachedPlayPreviewFrame(previewFrame: number): boolean {
-    if (!launchContext) return false;
-    if (savedPlayCacheDirty) {
-      setCachedPlayPreviewUrl(null);
-      if (engine && workflowMode === 'play') (engine as PreviewBackgroundEngine).clearPreviewBaseImage();
-      return false;
-    }
-    const cachedFrame = findCachedPlayPreviewFrame(previewFrame);
-    setCachedPlayPreviewUrl(cachedFrame?.dataUrl ?? null);
-    if (engine && workflowMode === 'play') {
-      (engine as PreviewBackgroundEngine).clearPreviewBaseImage();
-      if (cachedFrame?.dataUrl) (engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl);
-    }
-    return Boolean(cachedFrame);
-  }
-
-  function getCachedPlayFramesForRange(frameCount: number): RenderedFramePayload[] | null {
-    if (!launchContext || savedPlayCacheDirty) return null;
-    const safeFrameCount = clampPhysicPaintFrameCount(frameCount);
-    const frames = Array.from({ length: safeFrameCount }, (_, index) => findCachedPlayPreviewFrame(index));
-    return frames.every(Boolean) ? frames as RenderedFramePayload[] : null;
-  }
-
   function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null {
     return findCachedRotoDisplayFrame(appFrame);
   }
@@ -1116,37 +1053,6 @@ export function PhysicsPaintStudio() {
     if (workflowMode !== 'roto') return;
     loadCachedRotoReferenceFrame(currentFrame, engine as PreviewBackgroundEngine | null);
   }, [currentFrame, engine, loadCachedRotoReferenceFrame, launchContext, workflowMode]);
-
-  const markSelectedPlayCacheDirty = useCallback(() => {
-    if (!launchContext?.selectedPlayScriptId) return;
-    setSavedPlayCacheDirty(true);
-  }, [launchContext?.selectedPlayScriptId]);
-
-  const capturePendingPlayFrameEdits = useCallback(() => {
-    if (!engine || workflowMode !== 'play') return;
-    const baseline = playFrameEditBaselineRef.current;
-    if (!baseline) return;
-    const strokeCount = engine.getStrokeCount();
-    for (let index = baseline.strokeCount; index < strokeCount; index += 1) {
-      if (!playFrameEditAssignmentsRef.current.has(index)) {
-        playFrameEditAssignmentsRef.current.set(index, baseline.frame);
-      }
-    }
-    playFrameEditBaselineRef.current = { frame: baseline.frame, strokeCount };
-  }, [engine, workflowMode]);
-
-  const beginPlayFrameEdit = useCallback(() => {
-    if (!engine || workflowMode !== 'play') return;
-    capturePendingPlayFrameEdits();
-    const strokeCount = engine.getStrokeCount();
-    playFrameEditBaselineRef.current = { frame: localPlayPreviewFrame, strokeCount };
-    const cachedFrame = savedPlayCacheDirty ? null : findCachedPlayPreviewFrame(localPlayPreviewFrame);
-    (engine as PreviewBackgroundEngine).clearPreviewBaseImage();
-    if (cachedFrame?.dataUrl) (engine as PreviewBackgroundEngine).setBackgroundImageUrl(cachedFrame.dataUrl);
-    if (cachedPlayPreviewUrl) setCachedPlayPreviewUrl(null);
-    setSavedPlayCacheDirty(true);
-    markSelectedPlayCacheDirty();
-  }, [cachedPlayPreviewUrl, capturePendingPlayFrameEdits, engine, localPlayPreviewFrame, markSelectedPlayCacheDirty, savedPlayCacheDirty, workflowMode]);
 
   const showPlayLimitToast = useCallback((message: string) => {
     setPlayLimitToast(message);
@@ -1337,7 +1243,7 @@ export function PhysicsPaintStudio() {
     setAnimFrame(0);
     setApplyMessage(`Previewing ${safeFrameCount} frames at ${previewFps} fps.`);
     capturePendingPlayFrameEdits();
-    const previewState = annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current);
+    const previewState = annotatePlayState(engine.save());
     (engine as PreviewBackgroundEngine).resetBackground();
     engine.load(previewState);
     playerRef.current.play({
@@ -1580,17 +1486,6 @@ export function PhysicsPaintStudio() {
     return result.effects.some((effect) => effect.type === 'saveFrame');
   }, [executeRotoSessionEffects, navigateToSyncedFrame, rotoSession, runRotoSessionResult, snapshotCurrentRotoFrame, workflowMode]);
 
-  const previewLocalPlayFrame = useCallback((frame: number) => {
-    capturePendingPlayFrameEdits();
-    const previewFrame = Math.max(0, Math.trunc(frame));
-    setLocalPlayPreviewFrame(previewFrame);
-    if (engine && workflowMode === 'play') {
-      playFrameEditBaselineRef.current = { frame: previewFrame, strokeCount: engine.getStrokeCount() };
-    }
-    loadCachedPlayPreviewFrame(previewFrame);
-    setApplyMessage(`Previewing Play frame ${previewFrame}.`);
-  }, [capturePendingPlayFrameEdits, engine, loadCachedPlayPreviewFrame, workflowMode]);
-
   const { handleRotoApplyResult } = useRotoApplyResultController({
     pendingKeyActionMessageRef: pendingRotoKeyActionMessageRef,
     pendingAdvanceRef: pendingRotoAdvanceRef,
@@ -1757,7 +1652,7 @@ export function PhysicsPaintStudio() {
         setLatestPlayFrames([]);
         setCachedPlayPreviewUrl(null);
         setSavedPlayCacheDirty(true);
-        setPlayFramesVersion((version) => version + 1);
+        bumpPlayFramesVersion();
         setApplyMessage('Play options updated. Cached frames cleared; use Render play.');
       } else {
         setApplyMessage('Play options already up to date.');
@@ -1782,7 +1677,7 @@ export function PhysicsPaintStudio() {
     const playStartFrame = getActivePlayStartFrame(launchContext, currentFrame);
     const renderOptions = buildPlayRenderOptionsSnapshot(settings, playWiggle);
     capturePendingPlayFrameEdits();
-    const editableState = annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current);
+    const editableState = annotatePlayState(engine.save());
     (engine as PreviewBackgroundEngine).resetBackground();
     engine.load(editableState);
 
@@ -1838,9 +1733,8 @@ export function PhysicsPaintStudio() {
       setCachedPlayPreviewUrl(frames[0]?.dataUrl ?? null);
       setSavedPlayCacheDirty(false);
       setLocalPlayPreviewFrame(0);
-      setPlayFramesVersion((version) => version + 1);
-      playFrameEditAssignmentsRef.current = new Map();
-      playFrameEditBaselineRef.current = null;
+      bumpPlayFramesVersion();
+      resetPlayFrameEdits();
       setLaunchContext((current) => current ? {
         ...withoutRotoGapLimit(current),
         workflowMode: 'play',
@@ -1878,7 +1772,7 @@ export function PhysicsPaintStudio() {
     try {
       if (workflowMode === 'play') capturePendingPlayFrameEdits();
       const editableState = workflowMode === 'play'
-        ? annotatePlayFrameStrokes(engine.save(), playFrameEditAssignmentsRef.current)
+        ? annotatePlayState(engine.save())
         : engine.save();
       if (workflowMode === 'play') engine.load(editableState);
       const result = await downloadPhysicsPaintState(editableState);
@@ -1912,15 +1806,13 @@ export function PhysicsPaintStudio() {
           const assignments = getPlayFrameEditAssignments(state);
           const frameCount = getPlayFrameCountFromAssignments(assignments, framesToApply);
           const previewFrame = assignments.values().next().value ?? 0;
-          playFrameEditAssignmentsRef.current = assignments;
-          playFrameEditBaselineRef.current = { frame: previewFrame, strokeCount: state.strokes.length };
-          latestPlayFramesRef.current = [];
+          restorePlayFrameEdits(assignments, previewFrame, state.strokes.length);
           setLatestPlayFrames([]);
           setCachedPlayPreviewUrl(null);
           setSavedPlayCacheDirty(true);
           setLocalPlayPreviewFrame(previewFrame);
           setFramesToApply(frameCount);
-          setPlayFramesVersion((version) => version + 1);
+          bumpPlayFramesVersion();
           setLaunchContext((current) => current ? {
             ...withoutRotoGapLimit(current),
             workflowMode: 'play',
@@ -2103,8 +1995,7 @@ export function PhysicsPaintStudio() {
       setLatestPlayFrames([]);
       setCachedPlayPreviewUrl(null);
       setSavedPlayCacheDirty(true);
-      playFrameEditAssignmentsRef.current = new Map();
-      playFrameEditBaselineRef.current = null;
+      resetPlayFrameEdits();
       setLaunchContext((current) => current ? {
         ...withoutRotoGapLimit(current),
         workflowMode: 'play',
