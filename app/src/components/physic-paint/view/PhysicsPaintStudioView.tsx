@@ -1,7 +1,7 @@
 import type { ComponentChildren, ComponentProps } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import { drawRotoFrameComposite, resolveMissingRotoFrameDraw } from '../../../lib/rotoFrameDraw';
+import { drawMissingRotoBackground, resolveMissingRotoFrameDraw } from '../../../lib/rotoFrameDraw';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
@@ -25,7 +25,7 @@ interface PhysicsPaintCanvasStackViewProps {
   onInputIntent?: () => void;
 }
 
-function PhysicsPaintRotoPlaybackCanvas(props: { dataUrl: string; width: number; height: number; background: PhysicPaintRotoBackgroundMetadata }) {
+function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: number; background: PhysicPaintRotoBackgroundMetadata }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -34,26 +34,26 @@ function PhysicsPaintRotoPlaybackCanvas(props: { dataUrl: string; width: number;
     const context = canvas.getContext('2d');
     if (!context) return;
     const instruction = resolveMissingRotoFrameDraw('playback', 0, { mode: 'paper', metadata: props.background });
-    const paint = new Image();
+    if (instruction.kind !== 'background-only') {
+      context.clearRect(0, 0, props.width, props.height);
+      return;
+    }
     const paper = props.background.background.startsWith('canvas') ? new Image() : null;
     let cancelled = false;
     const render = () => {
-      if (cancelled || !paint.complete || (paper && !paper.complete)) return;
+      if (cancelled || (paper && !paper.complete)) return;
       context.clearRect(0, 0, props.width, props.height);
-      if (instruction.kind === 'background-only') drawRotoFrameComposite(context, instruction, props.width, props.height, paper, null, paint);
-      else context.drawImage(paint, 0, 0, props.width, props.height);
+      drawMissingRotoBackground(context, instruction, props.width, props.height, paper, null);
     };
-    paint.onload = render;
-    paint.src = props.dataUrl;
     if (paper) {
       paper.onload = render;
       paper.src = `/img/paper_${props.background.background.slice(-1)}.jpg`;
     }
     render();
     return () => { cancelled = true; };
-  }, [props.background, props.dataUrl, props.height, props.width]);
+  }, [props.background.background, props.background.color, props.background.grainStrength, props.background.paperGrain, props.height, props.width]);
 
-  return <canvas ref={canvasRef} class="physics-paint-cached-roto-playback" width={props.width} height={props.height} aria-hidden="true" />;
+  return <canvas class="physics-paint-cached-roto-playback-background" ref={canvasRef} width={props.width} height={props.height} aria-hidden="true" />;
 }
 
 function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
@@ -94,14 +94,14 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
         >
           {!props.cachedRotoPlaybackActive && props.cachedRotoReferenceUrl ? <img class="physics-paint-cached-roto-reference" src={props.cachedRotoReferenceUrl} alt="" /> : null}
           {!props.cachedRotoPlaybackActive && props.cachedPlayPreviewUrl ? <img class="physics-paint-cached-play-preview" src={props.cachedPlayPreviewUrl} alt="" /> : null}
-          {props.cachedRotoPlaybackUrl && props.cachedRotoPlaybackComposition ? (
-            <PhysicsPaintRotoPlaybackCanvas
-              dataUrl={props.cachedRotoPlaybackUrl}
+          {props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition ? (
+            <PhysicsPaintRotoPlaybackBackground
               width={props.cachedRotoPlaybackComposition.width}
               height={props.cachedRotoPlaybackComposition.height}
               background={props.cachedRotoPlaybackComposition.background}
             />
           ) : null}
+          {props.cachedRotoPlaybackUrl ? <img class="physics-paint-cached-roto-playback" src={props.cachedRotoPlaybackUrl} alt="" /> : null}
           {!props.cachedRotoPlaybackActive ? props.onionOverlay : null}
         </div>
       ) : null}

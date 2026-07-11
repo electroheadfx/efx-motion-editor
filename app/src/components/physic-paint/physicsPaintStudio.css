@@ -2029,6 +2029,7 @@ button.destructive {
 
 .physics-paint-cached-play-preview,
 .physics-paint-cached-roto-reference,
+.physics-paint-cached-roto-playback-background,
 .physics-paint-cached-roto-playback {
   position: absolute;
   inset: 0;
@@ -2041,6 +2042,10 @@ button.destructive {
   z-index: 1;
   outline: 1px dashed rgba(91, 216, 143, 0.72);
   outline-offset: -2px;
+}
+
+.physics-paint-cached-roto-playback-background {
+  z-index: 4;
 }
 
 .physics-paint-cached-roto-playback {

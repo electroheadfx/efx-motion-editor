@@ -1051,7 +1051,11 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     const view = readFileSync(viewPath, 'utf8');
     expect(view).toContain("physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}");
     expect(view).toContain('!props.cachedRotoPlaybackActive && props.cachedRotoReferenceUrl');
-    expect(view).toContain('class="physics-paint-cached-roto-playback"');
+    expect(view).toContain('class="physics-paint-cached-roto-playback" src={props.cachedRotoPlaybackUrl}');
+    expect(view).toContain('class="physics-paint-cached-roto-playback-background"');
+    expect(view).not.toContain('const paint = new Image()');
+    expect(view).not.toContain('drawRotoFrameComposite(context');
+    expect(view).toContain("[props.background.background, props.background.color, props.background.grainStrength, props.background.paperGrain, props.height, props.width]");
     const css = styles();
     expect(css).toContain('.physics-paint-canvas-stack.cached-roto-playback-active > .demo-canvas-shell .paint-canvas > canvas');
     expect(css).toContain('visibility: hidden');
