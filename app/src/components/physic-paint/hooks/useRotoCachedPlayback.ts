@@ -53,19 +53,20 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     timerRef.current = null;
   }, []);
 
-  const stop = useCallback(() => {
+  const finishPlayback = useCallback(() => {
     clearTimer();
-    setIsActive(false);
     setFrame(null);
+    setIsActive(false);
     inputRef.current.setIsPlaying(false);
   }, [clearTimer]);
 
+  const stop = useCallback(() => {
+    finishPlayback();
+  }, [finishPlayback]);
+
   const resetForLaunch = useCallback(() => {
-    clearTimer();
-    setFrame(null);
-    setIsActive(false);
-    inputRef.current.setIsPlaying(false);
-  }, [clearTimer]);
+    finishPlayback();
+  }, [finishPlayback]);
 
   const start = useCallback((requestedFps = fps) => {
     const currentInput = inputRef.current;
@@ -94,14 +95,12 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
           frameIndex = 0;
           return;
         }
-        clearTimer();
-        setIsActive(false);
-        inputRef.current.setIsPlaying(false);
+        finishPlayback();
       }
     };
     showNextFrame();
     if (cachedFrames.length > 1) timerRef.current = window.setInterval(showNextFrame, 1000 / playbackFps);
-  }, [clearTimer, fps, loop]);
+  }, [clearTimer, finishPlayback, fps, loop]);
 
   const toggle = useCallback(() => {
     if (isActive) {

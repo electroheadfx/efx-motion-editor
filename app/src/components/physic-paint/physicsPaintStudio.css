@@ -2006,7 +2006,7 @@ button.destructive {
   max-height: 100%;
 }
 
-.physics-paint-canvas-stack.cached-roto-playback-active > .demo-canvas-shell {
+.physics-paint-canvas-stack.cached-roto-playback-active > .demo-canvas-shell .paint-canvas > canvas {
   visibility: hidden;
 }
 

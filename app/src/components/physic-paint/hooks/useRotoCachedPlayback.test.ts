@@ -132,6 +132,38 @@ describe('useRotoCachedPlayback', () => {
     vi.useRealTimers();
   });
 
+  it('clears the final transient frame before revealing editable state and ignores stale ticks after Stop', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const transitions: string[] = [];
+    const setIsPlaying = vi.fn((playing: boolean) => transitions.push(`playing:${playing}`));
+    const harness = createHarness({
+      initialFps: 2,
+      workflowMode: 'roto',
+      getFrames: () => [{ appFrame: 8, frame: { id: 'first' } }, { appFrame: 9, frame: { id: 'last' } }],
+      onStart: vi.fn(),
+      onFrame: vi.fn(),
+      setIsPlaying,
+    });
+
+    let playback = harness.render();
+    playback.start();
+    playback = harness.render();
+    expect(playback.frame).toEqual({ id: 'first' });
+
+    vi.advanceTimersByTime(500);
+    playback = harness.render();
+    expect(playback.isActive).toBe(false);
+    expect(playback.frame).toBeNull();
+    expect(transitions[transitions.length - 1]).toBe('playing:false');
+
+    vi.advanceTimersByTime(2_000);
+    playback = harness.render();
+    expect(playback.frame).toBeNull();
+    expect(playback.isActive).toBe(false);
+    expect(setIsPlaying).toHaveBeenCalledTimes(2);
+  });
+
   it('restarts active playback at a clamped FPS and resets for a new launch', () => {
     vi.useFakeTimers();
     installWindowTimers();
