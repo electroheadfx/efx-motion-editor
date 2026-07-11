@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T17:28:00Z
+updated: 2026-07-11T18:38:00Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -46,10 +46,19 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Current Focus
 
-- hypothesis: "Confirmed and self-verified: shell-wide hiding removed shared paper, and natural completion retained the final transient frame after playback activity ended."
-- test: "Live Tauri UAT of cached Roto playback paper preservation and Stop restoration after automated gates."
-- expecting: "Playback shows cached images over the normal paper with no editable/reference/onion pixels; Stop leaves only the unchanged selected editable visual, with selection/utilities frozen throughout."
-- next_action: "Commit the atomic code/test fix and debug artifact, then await live UAT; do not mark Debug 01 accepted."
+- hypothesis: "Commit 97571142 exposes the .paint-canvas CSS fallback during playback; that fallback uses `center / cover`, while stopped rendering shows the engine dry canvas whose paper is tiled at intrinsic image size multiplied by paperTextureScale. Hiding all three engine canvases therefore switches paper renderers and geometry even though shell and playback overlay bounds stay correct."
+- test: "Add a failing view contract requiring the retained .paint-canvas paper surface to use the engine's repeat/origin/texture-scale contract through a CSS custom property supplied by PhysicsPaintCanvasMount, while continuing to hide engine canvas children during playback."
+- expecting: "Before the fix, the test fails on `cover` and missing paper scale ownership; after the fix, the same retained .paint-canvas element is aspect-fitted by the existing shell and renders the paper with repeated intrinsic-scale tiles matching the engine canvas."
+- next_action: "Await live Tauri UAT of paper geometry during cached playback; do not mark Debug 01 accepted until the user confirms visual equivalence and clean teardown."
+- reasoning_checkpoint:
+  hypothesis: "Playback paper is enlarged because commit 97571142 hides the engine dry canvas (normal paper renderer) and reveals a different CSS fallback using background-size: cover; paint remains fitted because the cached image overlay uses measured canvas bounds and object-fit: contain."
+  confirming_evidence:
+    - "The engine loads paper with loadPaperTexture(url, width, height, paperTextureScale), which repeats tiles from origin using intrinsic image dimensions times paperTextureScale."
+    - "The active playback selector hides every .paint-canvas direct canvas child, including the dry canvas that contains normal paper and paint."
+    - "The surviving .paint-canvas fallback is `center / cover`, exactly predicting one enlarged/cropped texture while shell and overlay geometry remain unchanged."
+  falsification_test: "If a red contract shows the fallback already repeats at the engine tile scale, or live geometry uses different shell/overlay bounds rather than a renderer switch, this hypothesis is wrong."
+  fix_rationale: "Keep the existing aspect-fitted .paint-canvas element as the playback paper surface, but make its background obey the same repeat, origin, and paperTextureScale contract as the engine instead of cover; this changes no state or playback lifecycle."
+  blind_spots: "CSS background decoding/rasterization may differ subtly from canvas drawImage despite identical source size and scale; live Tauri UAT is required for pixel-level visual confirmation."
 - reasoning_checkpoint:
   hypothesis: "Commit 520f2bfa causes missing paper by hiding .demo-canvas-shell, the common ancestor of both the .paint-canvas paper/background and editable engine canvases; natural cached playback completion causes post-Stop stacking because it sets isActive/isPlaying false without clearing frame, while the view mounts playback whenever frame remains non-null."
   confirming_evidence:
@@ -95,6 +104,12 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
   failure_output: "RED reproduced independently: view contract expected canvas-only suppression but commit hid .demo-canvas-shell; lifecycle expected null transient frame after natural Stop but received { id: 'last' }. Both focused tests now pass after minimal production edits."
 
 ## Evidence
+
+- timestamp: 2026-07-11T18:08:00Z
+  checked: Live UAT after commit 97571142 and current playback suppression CSS
+  found: Playback and teardown now work, and cached orange paint remains approximately fitted, but the paper becomes coarse/cropped. The active selector hides every direct canvas child of .paint-canvas, while the surviving .paint-canvas element uses the raw CSS fallback `background: url('/img/paper_1.jpg') center / cover, #fff`. Normal rendering also passes paperTextureScale into the engine, indicating at least one hidden canvas owns the intended scaled paper rendering.
+  implication: The new symptom is predicted by exposing the fallback `cover` background after hiding all engine canvases. The paper that looks correct stopped is likely canvas-rendered, not the CSS fallback; identify which canvas owns paper versus editable paint before changing suppression.
+
 
 - timestamp: 2026-07-11T11:12:00Z
   checked: Manual timeline click/navigation trace
@@ -186,6 +201,16 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
   found: Focused playback/view/Stop matrix passes 149/149; broader Physics Paint matrix passes 335/335 across 34 files; app typecheck passes; app production build passes (1086 modules); git diff --check passes. Instrumentation scan found only established dev-export DEBUG identifiers and generated-frame status constants, with no temporary console/debugger instrumentation.
   implication: The minimal view/controller changes are automated-ready for another live Tauri UAT checkpoint.
 
+- timestamp: 2026-07-11T18:20:00Z
+  checked: Red-green playback paper geometry contract
+  found: The focused playback view test failed 1/1 against the fallback `center / cover` background and missing scale ownership. After passing the existing paperTextureScale through a CSS custom property and changing the retained .paint-canvas background to repeat from origin at 512px times that scale, the same test passes 1/1 while the canvas-child suppression and exclusive playback overlay remain unchanged.
+  implication: Root cause is confirmed as a renderer/style-contract switch, not shell aspect-fit, overlay bounds, DPR, transform, or teardown state. The correction is limited to the extracted canvas mount and CSS view layer.
+
+- timestamp: 2026-07-11T18:30:00Z
+  checked: Automated validation for playback paper geometry correction
+  found: Focused playback/view/teardown suite passes 149/149; Physics Paint component matrix passes 335/335 across 34 files; app typecheck passes; app build passes with 1086 modules; git diff --check passes; instrumentation scan reports no temporary console/debugger markers. A combined command including the durable-core DOM test completed all 337 assertions but exited on its known post-test `window is not defined` bridge timer harness error, so the clean component matrix is the authoritative broader gate for this CSS/view-only change.
+  implication: The minimal paper-rendering correction is automated-ready for live Tauri visual UAT; teardown and exclusive playback ownership tests remain green.
+
 ## Eliminated
 
 - hypothesis: A stale pendingFrameSyncRef survives navigation and overwrites the later durable-core reopen launch.
@@ -194,12 +219,13 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Resolution
 
-- root_cause: The Debug 01 extraction introduced four state/lifecycle boundary errors, and the follow-up ownership correction exposed a fifth visual boundary error: incoming stale Roto launch echoes replaced local selection; cached playback mutated canonical editable selection; interpolation seek raced persistence; the async launch listener was disposed by callback churn; and after playback was made transient-only, PhysicsPaintCanvasStack still rendered the editable engine/preview-base/live-alpha canvas and cached reference while adding the transient playback image, causing additive frame composition.
-- fix: Added explicit pending self-sync ownership; kept playback out of editable selection; serialized interpolation persistence before seek; stabilized the launch listener; and made cached Roto playback the exclusive visual owner while active by hiding (not unmounting) the editable canvas shell, suppressing cached reference/Play preview/onion overlays, and using a dedicated top playback layer. Stop continues clearing transient frame/activity and thereby reveals the unchanged selected editable visual once.
-- verification: Previous correction gates remain recorded. Second live-UAT issues each reproduced red 1/1 before production edits and green 1/1 after: shared paper stays visible while editable canvas children are hidden, and natural/manual Stop clear the transient frame before editable reveal with stale timers canceled. Focused playback/view/Stop matrix 149/149; broader Physics Paint matrix 335/335 across 34 files; pnpm --dir app typecheck passed; pnpm --dir app build passed (1086 modules); git diff --check passed; instrumentation scan clean apart from established dev-export DEBUG identifiers. Live Tauri UAT pending.
+- root_cause: The Debug 01 extraction introduced state/lifecycle and visual-owner boundary errors. The latest live-UAT paper sizing defect came specifically from commit 97571142 hiding all three engine canvas children during playback: stopped rendering displayed the engine dry canvas paper tiled from origin at intrinsic image size times paperTextureScale, while playback exposed the separate .paint-canvas CSS fallback using `center / cover`, enlarging and cropping the texture even though shell aspect-fit and cached paint overlay bounds remained correct.
+- fix: Preserved the exclusive playback canvas-child suppression and teardown behavior, but made the retained .paint-canvas paper surface follow the engine paper geometry contract: repeat from origin at 512px intrinsic tile size multiplied by the existing paperTextureScale, passed through the extracted PhysicsPaintCanvasMount as a CSS custom property. No Studio state, canonical selection, utility state, or playback lifecycle behavior changed.
+- verification: New paper contract reproduced red 1/1 before the correction and green 1/1 after. Focused playback/view/teardown suite 149/149; Physics Paint component matrix 335/335 across 34 files; pnpm --dir app typecheck passed; pnpm --dir app build passed (1086 modules); git diff --check passed; temporary instrumentation scan clean. Combined durable-core run completed 337 assertions but retained its known post-test window teardown harness error. Live Tauri visual UAT pending; Debug 01 not accepted.
 - files_changed:
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
   - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
+  - app/src/components/physic-paint/engine/PhysicsPaintCanvasMount.tsx
   - app/src/components/physic-paint/hooks/useRotoCachedPlayback.ts
   - app/src/components/physic-paint/hooks/useRotoCachedPlayback.test.ts
   - app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
