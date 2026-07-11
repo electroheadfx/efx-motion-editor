@@ -1214,3 +1214,55 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract Roto edit-buffer, snapshot/cache mutation, save/apply-result, and close persistence orchestration into a separate persistence coordinator with narrow navigation/session ports.
 - Move touched Roto pure modules into `roto/` and thin lifecycle adapters into `hooks/` without absorbing key/navigation policy.
+
+## 2026-07-11 — Cluster: extract Roto persistence foundation
+
+### Selected cluster
+- Ownership moved: transient edit-buffer creation/refs, confirmed real-key reference storage, cached-reference composition, launch-context cache upsert/removal, and persistence-owned launch reset.
+- From: direct setup and cache mutation blocks in `PhysicsPaintStudio.tsx`.
+- To: bounded `hooks/useRotoFramePersistenceCoordinator.ts` with narrow store, launch-context, pending-state, and status ports.
+- Touched cache/edit transactions moved into `roto/`; touched lifecycle adapters moved into `hooks/`.
+
+### Why this is safe
+- Cache normalization, real-key upsert, interpolation-store precedence, editable-marker updates, cached reference lookup, and launch reset behavior are preserved.
+- Save-on-leave, apply-result, close, key-session, playback, interpolation, and navigation policy remain outside this coordinator where their dependencies are still cyclic.
+- The coordinator is 93 lines; it deliberately does not become a persistence mega-hook.
+- No workflow effect was added.
+
+### Ownership removed from Studio
+- Removed direct edit-buffer and confirmed-frame ref construction.
+- Removed direct cached-reference controller composition.
+- Removed Studio-local cached-frame launch-context upsert/removal implementations.
+- Reduced launch reset to delegation for persistence-owned state.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/hooks/useRotoFramePersistenceCoordinator.ts`
+- `app/src/components/physic-paint/hooks/useRotoEditBufferController.ts`
+- `app/src/components/physic-paint/hooks/useRotoReferenceController.ts`
+- `app/src/components/physic-paint/hooks/useRotoReferenceController.test.ts`
+- `app/src/components/physic-paint/hooks/useRotoSaveController.ts`
+- `app/src/components/physic-paint/roto/rotoCacheTransactions.ts`
+- `app/src/components/physic-paint/roto/rotoCacheTransactions.test.ts`
+- `app/src/components/physic-paint/roto/rotoEditBufferTransactions.ts`
+- `app/src/components/physic-paint/roto/rotoEditBufferTransactions.test.ts`
+- `app/src/components/physic-paint/rotoLaunchHydration.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 1100 lines.
+- `PhysicsPaintStudio.tsx` after: 1067 lines.
+- Cluster delta: -33 lines.
+- `hooks/useRotoFramePersistenceCoordinator.ts`: 93 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative Studio reduction: 2137 lines.
+
+### Tests run
+- Focused Roto transactions/reference, Studio, and WorkflowStrip tests passed with 157 tests across 5 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract the coupled Roto save-on-leave, key-session, playback, restore, and frame-navigation orchestration behind a navigation coordinator with narrow persistence ports.
+- Remove `rotoKeyUtilitiesExternalRef` late binding rather than moving it into another module unchanged.

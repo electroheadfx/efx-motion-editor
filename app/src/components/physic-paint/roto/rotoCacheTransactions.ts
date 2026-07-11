@@ -1,4 +1,4 @@
-import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
+import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 
 export function normalizeCachedRotoRealKeySourceFrame(frame: PhysicPaintRotoCacheFrame): PhysicPaintRotoCacheFrame {
   const sourceFrame = frame.sourceFrame ?? frame.appFrame;

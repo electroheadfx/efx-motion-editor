@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintRotoCacheFrame, PhysicPaintRenderedFrame } from '../../types/physicPaint';
-import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
+import type { PhysicPaintRotoCacheFrame, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
 
 export type RotoReferenceFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'source' | 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
 

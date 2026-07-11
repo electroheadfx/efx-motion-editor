@@ -1,5 +1,5 @@
 import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
-import { mergeRotoCacheFramesPreservingLaunchRealKeys, normalizeCachedRotoRealKeySourceFrame } from './rotoCacheTransactions';
+import { mergeRotoCacheFramesPreservingLaunchRealKeys, normalizeCachedRotoRealKeySourceFrame } from './roto/rotoCacheTransactions';
 
 export interface RotoLaunchHydrationStore {
   getRealRotoKeyFrames(layerId: string): number[];

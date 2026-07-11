@@ -1,6 +1,6 @@
 import { useCallback, type MutableRef } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import {
   buildApplyCanvasPayload,
   buildDeleteRotoFramePayload,
@@ -13,7 +13,7 @@ import {
   type RotoEditableState,
   type RotoFlushOptions,
   type RotoRenderedFrame,
-} from './rotoSaveTransactions';
+} from '../rotoSaveTransactions';
 
 interface RotoRenderedSave {
   renderedFrame: RotoRenderedFrame;

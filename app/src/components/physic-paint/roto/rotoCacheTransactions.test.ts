@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
+import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import {
   mergeRotoCacheFramesPreservingLaunchRealKeys,
   normalizeCachedRotoRealKeySourceFrame,

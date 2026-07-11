@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'preact/hooks';
-import type { RotoEditableState, RotoRenderedFrame } from './rotoSaveTransactions';
+import type { RotoEditableState, RotoRenderedFrame } from '../rotoSaveTransactions';
 import {
   addEditableRotoFrame,
   clearCachedRepaintOverlay,
@@ -10,7 +10,7 @@ import {
   resetRotoEditBuffer,
   snapshotRotoFrame,
   undoRotoOverlay,
-} from './rotoEditBufferTransactions';
+} from '../roto/rotoEditBufferTransactions';
 
 export function useRotoEditBufferController<State extends RotoEditableState, Frame extends RotoRenderedFrame>() {
   const bufferRef = useRef(createRotoEditBuffer<State, Frame>());
