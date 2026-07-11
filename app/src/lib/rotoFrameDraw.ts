@@ -68,6 +68,21 @@ export function resolveMissingRotoFrameDraw(
   };
 }
 
+export function drawRotoFrameComposite(
+  ctx: CanvasRenderingContext2D,
+  instruction: Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }>,
+  width: number,
+  height: number,
+  paperTexture: CanvasImageSource | null,
+  paperCanvas: HTMLCanvasElement | null,
+  paintSource: CanvasImageSource | null,
+): void {
+  ctx.save();
+  drawMissingRotoBackground(ctx, instruction, width, height, paperTexture, paperCanvas);
+  ctx.restore();
+  if (paintSource) ctx.drawImage(paintSource, 0, 0, width, height);
+}
+
 export function drawMissingRotoBackground(
   ctx: CanvasRenderingContext2D,
   instruction: Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }>,

@@ -1,6 +1,36 @@
 import { describe, expect, it, vi } from 'vitest';
 import { physicPaintStore } from '../stores/physicPaintStore';
-import { getMissingRotoFrameSpan, resolveMissingRotoFrameDraw } from './rotoFrameDraw';
+import { drawRotoFrameComposite, getMissingRotoFrameSpan, resolveMissingRotoFrameDraw } from './rotoFrameDraw';
+
+describe('drawRotoFrameComposite', () => {
+  it('composes persisted paper before transparent paint at authoritative project dimensions', () => {
+    const operations: string[] = [];
+    const context = {
+      drawImage: (source: { id?: string }, ...args: number[]) => operations.push(`draw:${source.id ?? 'source'}:${args.join(',')}`),
+      fillRect: () => operations.push('fill'),
+      createPattern: () => ({ id: 'pattern' }),
+      save: () => operations.push('save'),
+      restore: () => operations.push('restore'),
+      globalAlpha: 1,
+      fillStyle: '',
+    } as unknown as CanvasRenderingContext2D;
+    const instruction = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
+      mode: 'paper',
+      metadata: { background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0.65 },
+    });
+
+    if (instruction.kind !== 'background-only') throw new Error('expected paper background');
+    drawRotoFrameComposite(context, instruction, 1600, 900, { id: 'paper' } as unknown as CanvasImageSource, null, { id: 'alpha' } as unknown as CanvasImageSource);
+
+    expect(operations).toEqual([
+      'save',
+      'fill',
+      'fill',
+      'restore',
+      'draw:alpha:0,0,1600,900',
+    ]);
+  });
+});
 
 describe('resolveMissingRotoFrameDraw', () => {
   it('resolves missing transparent Roto frames as playback-only no-op without store mutation', () => {

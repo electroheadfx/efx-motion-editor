@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T18:38:00Z
+updated: 2026-07-11T19:35:00Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -46,10 +46,19 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Current Focus
 
-- hypothesis: "Commit 97571142 exposes the .paint-canvas CSS fallback during playback; that fallback uses `center / cover`, while stopped rendering shows the engine dry canvas whose paper is tiled at intrinsic image size multiplied by paperTextureScale. Hiding all three engine canvases therefore switches paper renderers and geometry even though shell and playback overlay bounds stay correct."
-- test: "Add a failing view contract requiring the retained .paint-canvas paper surface to use the engine's repeat/origin/texture-scale contract through a CSS custom property supplied by PhysicsPaintCanvasMount, while continuing to hide engine canvas children during playback."
-- expecting: "Before the fix, the test fails on `cover` and missing paper scale ownership; after the fix, the same retained .paint-canvas element is aspect-fitted by the existing shell and renders the paper with repeated intrinsic-scale tiles matching the engine canvas."
-- next_action: "Await live Tauri UAT of paper geometry during cached playback; do not mark Debug 01 accepted until the user confirms visual equivalence and clean teardown."
+- hypothesis: "Cached playback mismatches because transparent persisted Roto PNGs are being composed over a CSS-owned paper approximation instead of the project-space paper compositor used by EFX Motion Editor preview/export. The authoritative contract is persisted rotoBackground metadata + project dimensions + selected intrinsic texture at the PreviewRenderer's fixed 0.18 paper opacity, followed by the alpha PNG; stopped engine parity comes from its equivalent working-to-project texture scale."
+- test: "Add a behavioral view/compositor test with a 1600x900 project frame and 1000x563 working canvas (non-default 0.625 paperTextureScale) requiring cached playback to render through a shared project-sized paper+alpha canvas contract and forbidding CSS background ownership while active."
+- expecting: "Current code fails because it renders an <img> over .paint-canvas CSS paper and never invokes a compositor with persisted background metadata or project dimensions. After the minimal fix, PreviewRenderer and Physics Paint playback share the paper draw primitive/contract; playback canvas backing dimensions are 1600x900, paper precedes alpha, and exclusive owner/teardown behavior remains unchanged."
+- next_action: "Write and run the focused red rendering-contract test before production edits."
+- reasoning_checkpoint:
+  hypothesis: "Transparent cached Roto PNGs display wrong paper scale because playback bypasses the persisted-frame/editor PreviewRenderer compositor and delegates paper to CSS, creating a second non-authoritative background owner."
+  confirming_evidence:
+    - "Roto export forces bgMode transparent, proving cached/persisted PNGs are paint-only alpha at project dimensions."
+    - "PreviewRenderer/export draw persisted rotoBackground paper first in project space at fixed 0.18 texture opacity, then draw the alpha PNG."
+    - "Playback hides engine canvases and renders the alpha PNG over .paint-canvas CSS background, with no persisted background metadata or project-size compositor input."
+  falsification_test: "If the current playback path already invokes the same project-space paper draw primitive with persisted metadata and 1600x900 backing dimensions before alpha, this hypothesis is false."
+  fix_rationale: "Move playback composition onto the existing renderer-owned paper draw contract and remove CSS paper ownership during playback, preserving alpha frame geometry and one visual owner."
+  blind_spots: "Automated canvas operation tests cannot prove browser texture decode is pixel-identical to live Tauri; live UAT remains required after gates."
 - reasoning_checkpoint:
   hypothesis: "Playback paper is enlarged because commit 97571142 hides the engine dry canvas (normal paper renderer) and reveals a different CSS fallback using background-size: cover; paint remains fitted because the cached image overlay uses measured canvas bounds and object-fit: contain."
   confirming_evidence:
@@ -211,6 +220,21 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
   found: Focused playback/view/teardown suite passes 149/149; Physics Paint component matrix passes 335/335 across 34 files; app typecheck passes; app build passes with 1086 modules; git diff --check passes; instrumentation scan reports no temporary console/debugger markers. A combined command including the durable-core DOM test completed all 337 assertions but exited on its known post-test `window is not defined` bridge timer harness error, so the clean component matrix is the authoritative broader gate for this CSS/view-only change.
   implication: The minimal paper-rendering correction is automated-ready for live Tauri visual UAT; teardown and exclusive playback ownership tests remain green.
 
+- timestamp: 2026-07-11T19:35:00Z
+  checked: Red-green authoritative Roto frame composition and automated gates
+  found: The new project-space compositor test failed 1/1 because no shared frame compositor existed. A minimal drawRotoFrameComposite primitive now owns paper-before-alpha composition and is used by both PreviewRenderer (therefore editor preview/export) and Physics Paint cached playback. Playback uses a project-sized canvas backing store from launch width/height plus persisted rotoBackground metadata, while retaining exclusive transient ownership and existing Stop/natural-completion teardown. The Physics Paint matrix passes 335/335 across 34 files; editor compositor/export tests pass 25 with 19 existing todos; focused contract/playback tests pass 112/112; typecheck, production build (1086 modules), git diff --check, and instrumentation scan pass.
+  implication: Cached playback now follows the persisted frame contract rather than CSS paper emulation. Live Tauri UAT is still required before Debug 01 acceptance.
+
+- timestamp: 2026-07-11T19:18:00Z
+  checked: Persisted frame, editor preview/export, stopped engine, and cached playback rendering contracts
+  found: Roto save explicitly switches the engine to transparent and exports only dry+wet paint alpha at project dimensions; persisted PNGs therefore do not own paper. EFX Motion Editor PreviewRenderer is the authoritative compositor: for every real/generated Roto frame it creates project-sized paper output from persisted rotoBackground metadata, draws white plus the selected intrinsic paper texture at 0.18 opacity, then draws the transparent cached PNG over it into the logical project frame. Export delegates through the same PreviewRenderer. Stopped Physics Paint instead shows the engine dry canvas, whose working size is aspect-preserving and whose paper texture is scaled by workingWidth/projectWidth so its intrinsic texture maps to project-space geometry. Cached playback currently bypasses both contracts by hiding engine canvases and placing the transparent PNG over a CSS-owned paper surface.
+  implication: The alpha PNG and persisted metadata are behaving as designed. The mismatch is duplicate background ownership: CSS cannot guarantee parity with the project-sized PreviewRenderer compositor (including texture opacity/rasterization/project-space dimensions), while stopped engine parity depends on its own canvas texture transform. Cached playback must compose the transparent frame through a shared authoritative project-space paper+alpha rendering path, not style the mount background.
+
+- timestamp: 2026-07-11T19:00:00Z
+  checked: Live Tauri UAT after commit 27efa329
+  found: The stopped/editable EFX Paint frame retains correct paper/background geometry and texture, but cached Roto playback still renders paper at the wrong scale despite the CSS fallback reproducing a 512px tile size and paperTextureScale.
+  implication: The CSS renderer-equivalence hypothesis is falsified. The defect must be investigated as a source/compositing contract mismatch: cached playback must reuse the authoritative persisted EFX Paint / EFX Motion Editor frame rendering source or compositor rather than approximate engine paper in CSS.
+
 ## Eliminated
 
 - hypothesis: A stale pendingFrameSyncRef survives navigation and overwrites the later durable-core reopen launch.
@@ -219,9 +243,9 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Resolution
 
-- root_cause: The Debug 01 extraction introduced state/lifecycle and visual-owner boundary errors. The latest live-UAT paper sizing defect came specifically from commit 97571142 hiding all three engine canvas children during playback: stopped rendering displayed the engine dry canvas paper tiled from origin at intrinsic image size times paperTextureScale, while playback exposed the separate .paint-canvas CSS fallback using `center / cover`, enlarging and cropping the texture even though shell aspect-fit and cached paint overlay bounds remained correct.
-- fix: Preserved the exclusive playback canvas-child suppression and teardown behavior, but made the retained .paint-canvas paper surface follow the engine paper geometry contract: repeat from origin at 512px intrinsic tile size multiplied by the existing paperTextureScale, passed through the extracted PhysicsPaintCanvasMount as a CSS custom property. No Studio state, canonical selection, utility state, or playback lifecycle behavior changed.
-- verification: New paper contract reproduced red 1/1 before the correction and green 1/1 after. Focused playback/view/teardown suite 149/149; Physics Paint component matrix 335/335 across 34 files; pnpm --dir app typecheck passed; pnpm --dir app build passed (1086 modules); git diff --check passed; temporary instrumentation scan clean. Combined durable-core run completed 337 assertions but retained its known post-test window teardown harness error. Live Tauri visual UAT pending; Debug 01 not accepted.
+- root_cause: Persisted Roto PNGs are intentionally transparent paint-only alpha at project dimensions; paper/background is separately persisted as rotoBackground metadata. EFX Motion Editor preview and export authoritatively compose project-sized paper first (selected intrinsic texture at fixed 0.18 opacity) and alpha PNG second. Physics Paint cached playback bypassed that contract and instead placed the alpha PNG over a CSS-owned paper approximation, creating duplicate background ownership and mismatched raster/scale despite matching nominal tile size and paperTextureScale.
+- fix: Added a shared drawRotoFrameComposite paper-before-alpha primitive used by PreviewRenderer and cached Physics Paint playback. Playback now renders into a canvas whose backing dimensions are the launch project width/height and whose paper source comes from persisted rotoBackground metadata; the CSS fallback no longer owns the visible playback composition. Exclusive playback visual ownership, frozen editable selection/utilities, and Stop/natural completion teardown remain unchanged.
+- verification: Behavioral project-space composition test was red 1/1 before the shared primitive and green after. Focused rendering/playback suite 112/112; Physics Paint component matrix 335/335 across 34 files; editor PreviewRenderer/export contract suite 25 passed with 19 existing todos; pnpm --dir app typecheck passed; pnpm --dir app build passed (1086 modules); git diff --check and temporary instrumentation scan passed. Live Tauri comparison pending; Debug 01 not accepted.
 - files_changed:
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
   - app/src/components/physic-paint/PhysicsPaintStudio.test.ts

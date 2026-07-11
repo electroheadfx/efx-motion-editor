@@ -20,7 +20,7 @@ import {applyMotionBlur} from './glMotionBlur';
 import {motionBlurStore} from '../stores/motionBlurStore';
 import {VelocityCache, isStationary} from './motionBlurEngine';
 import {interpolateAt} from './keyframeEngine';
-import {drawMissingRotoBackground, resolveMissingRotoFrameDraw} from './rotoFrameDraw';
+import {drawRotoFrameComposite, resolveMissingRotoFrameDraw} from './rotoFrameDraw';
 import type {MissingRotoFrameBackgroundState} from './rotoFrameDraw';
 
 /**
@@ -405,20 +405,14 @@ export class PreviewRenderer {
         const realKeyBackgroundDraw = renderedFrame ? resolveRealRotoFrameBackgroundDrawForLayer(layer) : null;
         const source = renderedFrame ? this.getPhysicPaintImageSource(paintLayerId, paintLookupFrame, renderedFrame) : null;
         const backgroundDraw = realKeyBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null);
-        if (backgroundDraw) {
-          const paperTexture = this.getPaperTextureSource(backgroundDraw.paperTexture);
-          const paperCanvas = this.getProjectPaperCanvas(backgroundDraw.paperTexture, paperTexture);
+        if (backgroundDraw || source) {
+          const paperTexture = backgroundDraw ? this.getPaperTextureSource(backgroundDraw.paperTexture) : null;
+          const paperCanvas = backgroundDraw ? this.getProjectPaperCanvas(backgroundDraw.paperTexture, paperTexture) : null;
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
           ctx.globalAlpha = effectiveOpacity;
-          drawMissingRotoBackground(ctx, backgroundDraw, logicalW, logicalH, paperTexture, paperCanvas);
-          ctx.restore();
-        }
-        if (source) {
-          ctx.save();
-          ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
-          ctx.globalAlpha = effectiveOpacity;
-          ctx.drawImage(source, 0, 0, logicalW, logicalH);
+          if (backgroundDraw) drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, paperTexture, paperCanvas, source);
+          else if (source) ctx.drawImage(source, 0, 0, logicalW, logicalH);
           ctx.restore();
         }
       } else if (layer.type === 'paint') {
