@@ -2,6 +2,7 @@ import type { PhysicPaintRotoSegmentSpacingOverride } from '../../../types/physi
 import {
   getExpandedRotoRealKeyFrames,
   normalizeRotoSegmentSpacingOverrides,
+  resolveRotoFarEmptyDisplaySaveTarget,
   type RotoExpandedRealKeyFrame,
   type RotoFarEmptyDisplaySaveTarget,
   type RotoInterpolationSettings,
@@ -60,36 +61,7 @@ export function resolveRotoRealKeySaveTarget(
   model: RotoSourceDisplayModel,
   displayFrame: number,
 ): RotoFarEmptyDisplaySaveTarget {
-  const safeDisplayFrame = normalizeDisplayFrame(displayFrame);
-  if (model.settings.enabled !== true || model.realSourceFrames.length === 0) {
-    return { displayFrame: safeDisplayFrame, sourceFrame: safeDisplayFrame, previousSegmentOverride: null };
-  }
-
-  const realKeys = getRotoDisplayProjection(model).realKeys;
-  const previous = [...realKeys].reverse().find((entry) => entry.displayFrame < safeDisplayFrame) ?? realKeys[realKeys.length - 1];
-  if (!previous) return { displayFrame: safeDisplayFrame, sourceFrame: safeDisplayFrame, previousSegmentOverride: null };
-
-  const globalInBetweenCount = normalizeInBetweenCount(model.settings.inBetweenCount);
-  const normalNextDisplayFrame = previous.displayFrame + globalInBetweenCount + 1;
-  if (safeDisplayFrame === normalNextDisplayFrame) {
-    return {
-      displayFrame: safeDisplayFrame,
-      sourceFrame: previous.sourceFrame + 1,
-      previousSegmentOverride: null,
-    };
-  }
-
-  const customInBetweenCount = normalizeInBetweenCount(Math.max(1, safeDisplayFrame - previous.displayFrame - 1));
-  const sourceFrame = previous.sourceFrame + Math.max(1, customInBetweenCount - globalInBetweenCount);
-  return {
-    displayFrame: safeDisplayFrame,
-    sourceFrame,
-    previousSegmentOverride: {
-      fromSourceFrame: previous.sourceFrame,
-      toSourceFrame: sourceFrame,
-      inBetweenCount: customInBetweenCount,
-    },
-  };
+  return resolveRotoFarEmptyDisplaySaveTarget(displayFrame, model.realSourceFrames, model.settings);
 }
 
 export function upsertRotoRealKeySource(
@@ -130,12 +102,4 @@ function mergeRotoSegmentSpacingOverride(
 
 function normalizeRealSourceFrames(frames: readonly number[]): number[] {
   return Array.from(new Set(frames.filter((frame) => Number.isInteger(frame) && frame >= 0))).sort((a, b) => a - b);
-}
-
-function normalizeDisplayFrame(frame: number): number {
-  return Number.isInteger(frame) && frame >= 0 ? frame : 0;
-}
-
-function normalizeInBetweenCount(value: unknown): number {
-  return Number.isInteger(value) && typeof value === 'number' && value >= 1 ? value : 1;
 }

@@ -426,8 +426,8 @@ describe('physicsPaintRotoSession segment spacing override transactions', () => 
 
     expect(saveTarget).toEqual({
       displayFrame: 14,
-      sourceFrame: 9,
-      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 9, inBetweenCount: 7 },
+      sourceFrame: 7,
+      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 7, inBetweenCount: 7 },
     });
     expect(session.copyKey().ok).toBe(true);
     session.requestFrame(14);
@@ -435,11 +435,11 @@ describe('physicsPaintRotoSession segment spacing override transactions', () => 
 
     expect(result.ok).toBe(true);
     expect(result.transaction).toMatchObject({
-      realKeyFrameNumbers: [0, 1, 2, 9],
-      activeFrame: 9,
-      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 9, inBetweenCount: 7 }],
+      realKeyFrameNumbers: [0, 1, 2, 7],
+      activeFrame: 7,
+      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 7, inBetweenCount: 7 }],
     });
-    expect(result.transaction?.frameMappings).toEqual([{ fromFrame: 2, toFrame: 9, mode: 'copy' }]);
+    expect(result.transaction?.frameMappings).toEqual([{ fromFrame: 2, toFrame: 7, mode: 'copy' }]);
   });
 });
 

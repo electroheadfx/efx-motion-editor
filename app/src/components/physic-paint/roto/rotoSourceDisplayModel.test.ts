@@ -6,6 +6,7 @@ import {
   upsertRotoRealKeySource,
   type RotoSourceDisplayModel,
 } from './rotoSourceDisplayModel';
+import { getSourceRotoFrameForDisplayFrame, resolveRotoFarEmptyDisplaySaveTarget } from './physicsPaintRotoWorkflow';
 
 const baseModel = (): RotoSourceDisplayModel => createRotoSourceDisplayModel({
   realSourceFrames: [0, 1, 2],
@@ -81,5 +82,14 @@ describe('rotoSourceDisplayModel', () => {
     });
 
     expect(getRotoDisplayProjection(hydrated)).toEqual(getRotoDisplayProjection(live));
+  });
+
+  it('uses one canonical durable source target across every display-to-source boundary', () => {
+    const model = baseModel();
+    const settings = { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const };
+    const canonicalTarget = resolveRotoRealKeySaveTarget(model, 11);
+
+    expect(resolveRotoFarEmptyDisplaySaveTarget(11, model.realSourceFrames, settings)).toEqual(canonicalTarget);
+    expect(getSourceRotoFrameForDisplayFrame(11, model.realSourceFrames, settings)).toBe(canonicalTarget.sourceFrame);
   });
 });

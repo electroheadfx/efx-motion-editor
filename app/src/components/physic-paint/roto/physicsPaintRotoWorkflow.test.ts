@@ -66,7 +66,7 @@ describe('physicsPaintRotoWorkflow', () => {
     const settings = { enabled: true, inBetweenCount: 3, mode: 'duplicate' as const };
 
     expect(getSourceRotoFrameForDisplayFrame(12, [0, 1, 2], settings)).toBe(3);
-    expect(getSourceRotoFrameForDisplayFrame(29, [0, 1, 2, 3], settings)).toBe(19);
+    expect(getSourceRotoFrameForDisplayFrame(29, [0, 1, 2, 3], settings)).toBe(16);
     expect(getSourceRotoFrameForDisplayFrame(21, [0, 1, 2, 3, 4], { ...settings, enabled: false })).toBe(21);
   });
 
@@ -141,8 +141,8 @@ describe('physicsPaintRotoWorkflow', () => {
 
     expect(target).toEqual({
       displayFrame: 11,
-      sourceFrame: 6,
-      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
+      sourceFrame: 4,
+      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 4, inBetweenCount: 4 },
     });
     expect(getExpandedRotoRealKeyFrames([0, 1, 2, target.sourceFrame], {
       enabled: true,
@@ -181,11 +181,11 @@ describe('physicsPaintRotoWorkflow', () => {
     const customOverrides = customTarget.previousSegmentOverride ? [customTarget.previousSegmentOverride] : [];
     expect(customTarget).toEqual({
       displayFrame: 14,
-      sourceFrame: 9,
-      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 9, inBetweenCount: 7 },
+      sourceFrame: 7,
+      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 7, inBetweenCount: 7 },
     });
     expect(realDisplays([0, 1, 2, customTarget.sourceFrame], customOverrides)).toEqual([0, 3, 6, 14]);
-    expect(offDisplays([0, 1, 2, customTarget.sourceFrame], customOverrides)).toEqual([0, 1, 2, 9]);
+    expect(offDisplays([0, 1, 2, customTarget.sourceFrame], customOverrides)).toEqual([0, 1, 2, 7]);
     expect(realDisplays([0, 1, 2, customTarget.sourceFrame], customOverrides)).toEqual([0, 3, 6, 14]);
   });
 
@@ -195,8 +195,8 @@ describe('physicsPaintRotoWorkflow', () => {
 
     expect(target).toEqual({
       displayFrame: 14,
-      sourceFrame: 7,
-      previousSegmentOverride: { fromSourceFrame: 3, toSourceFrame: 7, inBetweenCount: 4 },
+      sourceFrame: 5,
+      previousSegmentOverride: { fromSourceFrame: 3, toSourceFrame: 5, inBetweenCount: 4 },
     });
     expect(getExpandedRotoRealKeyFrames([0, 1, 2, 3, target.sourceFrame], {
       enabled: true,
@@ -209,14 +209,14 @@ describe('physicsPaintRotoWorkflow', () => {
       inBetweenCount: 2,
       mode: 'duplicate',
       segmentSpacingOverrides: target.previousSegmentOverride ? [target.previousSegmentOverride] : [],
-    }).filter((entry) => entry.fromSourceFrame === 3 && entry.toSourceFrame === 7).map((entry) => entry.displayFrame)).toEqual([10, 11, 12, 13]);
+    }).filter((entry) => entry.fromSourceFrame === 3 && entry.toSourceFrame === 5).map((entry) => entry.displayFrame)).toEqual([10, 11, 12, 13]);
     const disabledEntries = getExpandedRotoRealKeyFrames([0, 1, 2, 3, target.sourceFrame], {
       enabled: false,
       inBetweenCount: 2,
       mode: 'duplicate',
       segmentSpacingOverrides: target.previousSegmentOverride ? [target.previousSegmentOverride] : [],
     });
-    expect(disabledEntries.filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame)).toEqual([0, 1, 2, 3, 7]);
+    expect(disabledEntries.filter((entry) => entry.kind === 'real-key').map((entry) => entry.displayFrame)).toEqual([0, 1, 2, 3, 5]);
     expect(disabledEntries.filter((entry) => entry.kind === 'generated-interpolation')).toEqual([]);
   });
 

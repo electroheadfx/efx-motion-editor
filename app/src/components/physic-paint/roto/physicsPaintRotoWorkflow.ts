@@ -138,7 +138,7 @@ export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoI
       return;
     }
 
-    if (!isLastSourceKey) displayFrame = override ? displayFrame + override.inBetweenCount : toSourceFrame;
+    if (!isLastSourceKey) displayFrame = interpolationEnabled && override ? displayFrame + override.inBetweenCount : toSourceFrame;
   });
 
   return expanded;
@@ -222,7 +222,7 @@ export function resolveRotoFarEmptyDisplaySaveTarget(displayFrame: number, realK
     };
   }
   const generatedInBetweenCount = clampRotoInBetweenCount(Math.max(1, safeDisplayFrame - previous.displayFrame - 1));
-  const sourceFrame = previous.sourceFrame + generatedInBetweenCount;
+  const sourceFrame = previous.sourceFrame + Math.max(1, generatedInBetweenCount - globalInBetweenCount);
   return {
     displayFrame: safeDisplayFrame,
     sourceFrame,

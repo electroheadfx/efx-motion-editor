@@ -1,8 +1,8 @@
 ---
-status: complete
+status: awaiting_human_verify
 trigger: "Focused debug series: read SPECS/issues/phase-36.13-dynamic-interpolation-debug/README.md, then run only 01-physics-paint-studio-refactor.md on branch phase-36.13-debugs. Current main/36.13 implementation is buggy and not UAT-accepted. Goal: identify why PhysicsPaintStudio.tsx / current Roto state model causes inconsistent dynamic interpolation behavior; map current ownership of Roto source/display state; propose and begin the smallest refactor/model extraction required before more 36.13 fixes."
 created: 2026-07-05
-updated: 2026-07-05
+updated: 2026-07-11T16:00:00Z
 ---
 
 # Debug Session: Phase 36.13 Roto Model
@@ -27,12 +27,25 @@ updated: 2026-07-05
 
 ## Current Focus
 
-- hypothesis: `PhysicsPaintStudio.tsx` and adjacent helpers split Roto source/display ownership across component-local state, effects, store helpers, workflow strip inputs, bridge payloads, and render/export paths, so Save/Paste/toggle/hydration take divergent transaction/projection routes.
-- test: Inspect Roto-related state, effects, helpers, and tests; map current ownership; identify a pure model seam and first safe extraction that does not alter broad behavior.
-- expecting: A clear current/target ownership map, classification of existing Roto-related `useEffect` blocks, smallest extraction plan, exact files to create/change, first tests to write, and only the first safe extraction step if the map is clear.
-- next_action: gather initial evidence from PhysicsPaintStudio.tsx, Roto helpers, and existing tests
+- debug: `02-source-display-contract`
+- hypothesis: Confirmed and fixed: legacy far-target conversion stored display-derived source identity, and the shared projector applied custom display overrides while interpolation was OFF.
+- test: Final automated gate results supplied after the minimal shared contract corrections.
+- expecting: Focused Debug 02 tests, full Physics Paint regression matrix, typecheck, build, and diff check all pass; live visible UAT remains user-owned.
+- next_action: Stop before Debug 03 and await live UAT/explicit approval for the next debug.
 - reasoning_checkpoint:
-- tdd_checkpoint: TDD mode enabled; write/identify first tests before implementation.
+    hypothesis: "Two shared pure contract divergences caused the inconsistent durable model: far display targets resolved to an inflated source identity, and OFF projection applied ON-only display spacing overrides."
+    confirming_evidence:
+      - "The RED parity test observed source 6 / override 2->6=4 instead of canonical source 4 / override 2->4=4."
+      - "The first GREEN run isolated OFF projection values 9 and 7, exactly explained by applying overrides 7 and 4 to source displays 2 and 3."
+      - "After both minimal shared corrections, the focused suite passed all 47 tests and the full Physics Paint matrix passed all 336 tests."
+    falsification_test: "Any focused source/display assertion, full Physics Paint regression, typecheck, build, or diff check failure after the corrections would have disproved completion."
+    fix_rationale: "The corrections unify every caller behind one durable display-to-source resolver and restrict segment overrides to interpolation-ON display projection, preserving OFF source coordinates."
+    blind_spots: "Live visible UAT has not run; automated-ready does not equal Phase 36.13 UAT acceptance."
+- tdd_checkpoint:
+    test_file: `app/src/components/physic-paint/roto/rotoSourceDisplayModel.test.ts`
+    test_name: `uses one canonical durable source target across every display-to-source boundary`
+    status: `green`
+    failure_output: `RED previously received sourceFrame 6 and toSourceFrame 6; final focused Debug 02 suite passed 47 tests across 3 files.`
 
 ## Evidence
 
@@ -1460,3 +1473,88 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Debug 01 status
 - Automated architecture acceptance criteria are satisfied.
 - This does not claim live visible UAT acceptance for Phase 36.13; user-owned UAT remains pending.
+
+## 2026-07-11 — Debug 02 investigation: source/display contract
+
+### Evidence
+- timestamp: 2026-07-11T14:45:18Z
+  checked: `rotoSourceDisplayModel.ts` and its focused tests
+  found: `RotoSourceDisplayModel.realSourceFrames` is the pure canonical ordered real-key sequence; `settings.segmentSpacingOverrides` is keyed by adjacent `{fromSourceFrame,toSourceFrame}` identity. `getRotoDisplayProjection` owns both projections: enabled uses `getExpandedRotoRealKeyFrames`, disabled maps each durable source frame directly to the same display frame.
+  implication: The pure model expresses the intended Debug 02 contract for `0/1/2 -> ON 0/3/6`, far display `11 -> source 4 + override 2->4=4`, OFF `0/1/2/4`, and re-enabled ON `0/3/6/11`.
+- timestamp: 2026-07-11T14:45:18Z
+  checked: `rotoKeyTransactions.ts` and `rotoTimelineSelectors.ts`
+  found: `saveRotoRealKeyTransaction` delegates display-to-source conversion to `resolveRotoRealKeySaveTarget`, while the final timeline selector reconstructs its model from cached real-key `sourceFrame` values plus persisted interpolation settings and projects through `getRotoDisplayProjection`.
+  implication: The first proven divergence, if present, must be at persistence/cache/hydration boundaries that supply source keys or overrides, not in the basic pure projection assertions already covered.
+- timestamp: 2026-07-11T14:45:18Z
+  checked: `physicsPaintRotoWorkflow.ts`, `PhysicsPaintStudio.tsx`, `useRotoTimelineActions.ts`, and `useRotoSaveController.ts`
+  found: The legacy resolver computes far source identity as `previous.sourceFrame + generatedInBetweenCount`, yielding source `6` for display `11`; the canonical resolver computes only excess source spacing beyond the global count, yielding source `4`. Studio still uses legacy `getSourceRotoFrameForDisplayFrame` as its general persistence source resolver, while Save and live Paste target calculation use the canonical timeline transaction.
+  implication: The same visible target can enter persistence through two contradictory source identities before any Debug 03 Save-specific, Debug 04 Paste-specific, or Debug 05 refresh behavior occurs.
+- timestamp: 2026-07-11T14:45:18Z
+  checked: `physicPaintStore.ts`, `rotoLaunchHydration.ts`, and `rotoCacheTransactions.ts`
+  found: The store keys durable real frames by `sourceFrame`, regenerates displays from those keys plus settings, and hydration seeds launch real keys by `sourceFrame`. OFF cache normalization deliberately maps `appFrame/displayFrame` back to source identity.
+  implication: Once a boundary chooses source `6` instead of canonical source `4`, OFF projection and reload faithfully preserve the wrong durable spacing; refresh cannot repair the semantic mismatch.
+- timestamp: 2026-07-11T14:45:18Z
+  checked: focused TDD test execution
+  found: Added `uses one canonical durable source target across every display-to-source boundary` to `rotoSourceDisplayModel.test.ts`. Both the pnpm one-shot Vitest command and direct local Vitest binary invocation were blocked by the harness approval gate before execution.
+  implication: The test is written to expose the confirmed contradiction, but RED execution is not yet recorded; no production fix may be applied.
+
+### Current Debug 02 status
+- Investigation in progress; no production fix applied.
+- First exact divergence found: the extracted canonical `resolveRotoRealKeySaveTarget` maps display `11` from source `0/1/2` to durable source `4` with override `2->4 = 4`, but legacy `resolveRotoFarEmptyDisplaySaveTarget` maps the same truth table to durable source `6` with override `2->6 = 4`. The Debug 02 specification requires source `0/1/2/4` and OFF projection `0/1/2/4`.
+- This is a source/display contract divergence, not a Save/Paste/refresh symptom: two pure display-to-source boundaries encode different durable models before any operation-specific persistence or UI refresh runs.
+- Next action: identify every caller of both resolvers and determine which live boundaries still use the legacy mapping; then write one focused integration-level failing test proving the final timeline/hydration input receives the wrong durable source identity.
+
+## 2026-07-11 — Debug 02 GREEN implementation in progress
+
+### Minimal shared contract fix
+- Changed `resolveRotoFarEmptyDisplaySaveTarget` so a custom far target stores only the durable source spacing beyond the global interpolation spacing: `previousSource + max(1, customInBetweens - globalInBetweens)`.
+- Changed `resolveRotoRealKeySaveTarget` to delegate to that shared resolver, eliminating duplicate calculations while preserving the pure model/transaction boundary.
+- No Save-, Paste-, toggle-, refresh-, hydration-, Studio-, or effect-specific production branch was added or changed.
+
+### Canonical truth table after the change
+- Start durable source: `0 / 1 / 2`.
+- Global in-betweens: `2`.
+- Interpolation ON real display: `0 / 3 / 6`.
+- Far visible target `11`: durable source `4`, override `2 -> 4 = 4`.
+- Interpolation OFF real display: `0 / 1 / 2 / 4`.
+- Re-enabled/hydrated interpolation ON real display: `0 / 3 / 6 / 11`.
+
+### Files changed so far
+- `app/src/components/physic-paint/roto/physicsPaintRotoWorkflow.ts`
+- `app/src/components/physic-paint/roto/rotoSourceDisplayModel.ts`
+- `app/src/components/physic-paint/roto/rotoSourceDisplayModel.test.ts`
+- `app/src/components/physic-paint/roto/physicsPaintRotoWorkflow.test.ts`
+- `app/src/components/physic-paint/roto/physicsPaintRotoSession.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Verification state
+- User-confirmed RED: parity test observed source `6` / override `2->6=4` instead of canonical source `4` / override `2->4=4`.
+- User-confirmed first GREEN run: `rotoSourceDisplayModel.test.ts` passed 5 tests and `physicsPaintRotoSession.test.ts` passed 21 tests; `physicsPaintRotoWorkflow.test.ts` isolated two OFF projection failures, receiving final positions `9` and `7` instead of `7` and `5`.
+- Root cause of the post-fix failures: test helpers supply durable source keys correctly; `getExpandedRotoRealKeyFrames` incorrectly applied `segmentSpacingOverrides` when interpolation was disabled. The two received values are the direct results of `2 + override 7 = 9` and `3 + override 4 = 7`.
+- Minimal shared contract correction applied: OFF projection now advances to `toSourceFrame` directly; overrides affect display spacing only while interpolation is enabled.
+- Final focused Debug 02 suite: passed `47` tests across `3` files.
+- Full `app/src/components/physic-paint` regression matrix: passed `336` tests across `34` files.
+- Typecheck: `pnpm --dir app typecheck` passed.
+- Build: `pnpm --dir app build` passed; only the existing Vite CJS deprecation warning was emitted.
+- Diff check: `git diff --check` passed.
+- Automated status: Debug 02 is automated-ready.
+- Live visible UAT: pending and user-owned; Phase 36.13 is not UAT-accepted.
+- Next suggested debug if explicitly approved after UAT review: `03-save-current-far-key.md`.
+- Stop boundary remains Debug 02; Debug 03 was not started.
+
+### Debug 02 completion summary
+- status: Automated-ready; awaiting live visible UAT.
+- canonical source owner: `RotoSourceDisplayModel.realSourceFrames` with adjacent source-key overrides in `settings.segmentSpacingOverrides`.
+- canonical ON/OFF projection owner: `getRotoDisplayProjection`, backed by the shared expanded-real-key projection logic.
+- contract before: The legacy far-target resolver could persist source `6` for visible display `11`, while the canonical model required source `4`; the shared lower projector could also apply ON-only override spacing while OFF.
+- contract after: Visible display `11` resolves to durable source `4` with override `2->4=4`; ON projects real keys at `0/3/6/11`, OFF projects durable real keys at `0/1/2/4`, and hydration/re-enable reconstructs the same ON projection.
+- exact divergence: `resolveRotoFarEmptyDisplaySaveTarget` and `resolveRotoRealKeySaveTarget` encoded contradictory durable source identities; `getExpandedRotoRealKeyFrames` then treated segment display overrides as OFF source-coordinate advances.
+- files changed for Debug 02: `app/src/components/physic-paint/roto/physicsPaintRotoWorkflow.ts`, `app/src/components/physic-paint/roto/rotoSourceDisplayModel.ts`, `app/src/components/physic-paint/roto/rotoSourceDisplayModel.test.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoWorkflow.test.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoSession.test.ts`, `.planning/debug/phase-36-13-roto-model.md`.
+- focused tests: `47` passed across `3` files.
+- broader tests: `336` passed across `34` Physics Paint files.
+- typecheck: passed.
+- build: passed with Vite CJS deprecation warning only.
+- diff check: passed.
+- live UAT: pending; do not mark Phase 36.13 accepted.
+- next suggested debug: `03-save-current-far-key.md`, only after explicit approval.
+- safe to clear context: yes; resume from this artifact and do not infer Debug 03 approval.
