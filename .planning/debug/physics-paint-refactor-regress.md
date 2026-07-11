@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T23:05:00Z
+updated: 2026-07-11T14:06:20Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -46,25 +46,25 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Current Focus
 
-- hypothesis: "Ranked async-lifecycle hypotheses after failed live UAT: A. Physics playback receives a wrong/undefined persisted texture key, so the shared helper never starts a valid load. Prediction: runtime composition metadata differs from PreviewRenderer's persisted metadata or resolves outside canvas1–canvas3. B. Root-relative `/img/paper_N.jpg` fails in the Tauri child window; `failedTextures` then permanently marks the key resolved-without-raster and suppresses retry. Prediction: deterministic child-window URL/load failure leaves every later get call null even when the asset becomes available. C. Texture Image resolves, but the global listener design or effect callback identity fails to repaint the mounted canvas. Prediction: fake Image onload fires and cache fills while visible canvas remains base-only, or stale callbacks repaint after metadata switch/unmount. D. Shared paper canvas is correctly generated and copied, but another clear/layer/CSS covers it. Prediction: mounted background backing pixels are textured immediately after callback while final visible seam is white. E. Texture pixels exist but scale makes them imperceptible. Prediction: pixel seam proves non-white texture before any scale investigation."
-- test: "Build a deterministic mounted async lifecycle test around PhysicsPaintRotoPlaybackBackground + getProjectPaperCanvas using fake Image and canvas pixel/call state: initial white/base, onload textured redraw, metadata switch isolation, and unmount/Stop stale-callback rejection. In parallel inspect exact runtime metadata and proven asset URL mechanism."
-- expecting: "The RED result must assert the visible mounted canvas remains white after texture resolution or is repainted by a stale callback; metadata and URL probes distinguish A/B from C before any production edit."
-- next_action: "Read metadata construction, asset URL helpers, child-window bootstrap, and relevant tests; then add the smallest mounted async lifecycle test and run it RED before production changes."
+- hypothesis: "The Tauri command boundary strips `rotoBackground` because Rust's `PhysicsPaintLaunchContext` omits the TypeScript field. Physics playback therefore receives no background metadata, never mounts its paper raster, and displays the white canvas shell beneath the transparent cached paint animation."
+- test: "Deserialize a realistic TypeScript launch payload containing `rotoBackground` into the Rust launch struct, serialize it back exactly as the child fetch receives it, and assert the metadata object survives unchanged."
+- expecting: "Before the native field exists, the round-trip output has no `rotoBackground`; after adding the serde field, the exact background, paperGrain, grainStrength, and color values survive."
+- next_action: "Await live Tauri UAT after rebuilding/relaunching the native app so the corrected Rust launch contract is active."
 - ranked_hypotheses:
-  A: "Wrong/undefined persisted paper texture key reaches shared helper."
-  B: "Root-relative texture URL fails in Tauri child window and failedTextures suppresses retry."
-  C: "Image resolves but listener/effect lifecycle does not repaint mounted canvas or permits stale repaint."
-  D: "Generated paper raster is cleared or covered after a correct async draw."
-  E: "Texture exists but scale makes it visually imperceptible; consider only after pixel proof."
+  A: "Confirmed: Rust command deserialization silently drops `rotoBackground` because the native launch struct omits it."
+  B: "Texture asset URL fails in the child window after valid metadata arrives."
+  C: "Resolved texture does not repaint the mounted playback canvas."
+  D: "A later layer covers an otherwise correct paper raster."
 - reasoning_checkpoint:
-  hypothesis: "The white-only playback is caused by an unowned async texture resource lifecycle: getProjectPaperCanvas mixes lookup/loading with a global never-removed callback set, while Physics playback only guards callbacks with a cancelled closure and has no subscription identity or retry-safe failure state."
+  hypothesis: "The white-only playback is caused at the native transport boundary, before browser rendering: TypeScript sends `rotoBackground`, but Tauri deserializes into a Rust struct without that field and silently discards it."
   confirming_evidence:
-    - "Live UAT proves the synchronous base draw reaches the mounted playback canvas while only the later texture invalidation is absent."
-    - "The shared helper stores every render callback globally forever, returns no unsubscribe, and permanently suppresses future loads after one error; main and child windows cannot share module caches."
-    - "The new deterministic resource test is RED because no owned subscribe/unsubscribe API exists, and turns GREEN only when onload delivers a textured shared canvas to the current subscriber while stale subscribers remain untouched."
-  falsification_test: "If the mounted/resource seam receives a non-null textured paper canvas after Image.onload but live playback remains white, callback lifecycle is not causal and layering/CSS must be investigated next."
-  fix_rationale: "A texture-keyed subscribeProjectPaperCanvas resource owns loading, immediate base notification, resolved raster notification, unsubscribe, metadata-switch isolation, and retry after errors; the playback effect returns unsubscribe directly and copies only the shared raster."
-  blind_spots: "The deterministic fake Image proves lifecycle and visible draw inputs but cannot execute Tauri WebKit networking/rasterization; live UAT remains required."
+    - "`createPhysicPaintLaunchContext` includes `rotoBackground`, while Rust `PhysicsPaintLaunchContext` jumped from `playMotion` to `previewFrame` with no corresponding serde field."
+    - "The child fetches and receives the Rust-stored clone, so the dropped field cannot be recovered from the URL or browser state."
+    - "Physics playback only mounts its paper composition when `launchContext.rotoBackground` exists; without it, the transparent cached PNG animates over the white shell exactly as seen in live UAT."
+    - "The exact native RED test returned `left: None` versus the full expected `rotoBackground` object; adding the serde field makes the same test pass."
+  falsification_test: "If a rebuilt Tauri app now delivers `rotoBackground` but playback remains white, capture the child payload and image load result; asset loading becomes the next boundary."
+  fix_rationale: "Preserve the existing TypeScript/editor paper renderer and add only the missing native launch-contract field so the child receives the authoritative persisted metadata."
+  blind_spots: "Live UAT requires a native rebuild/relaunch; hot browser code alone cannot activate the changed Rust command struct."
 
 - reasoning_checkpoint:
   hypothesis: "66febfa8 caused total paint loss by replacing a live-proven declarative PNG image with an unproven imperative decode/draw canvas; it also coupled paper and paint readiness and used an unverified paper geometry contract."
@@ -344,14 +344,8 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Resolution
 
-- root_cause: The shared paper raster pixels were correct, but its async texture lifecycle was not owned. `getProjectPaperCanvas(..., render)` added component/renderer callbacks to one global `resolutionListeners` set that was never removed, exposed no subscription identity, and marked a texture permanently resolved-without-raster after one Image error through `failedTextures`. Physics playback cleanup only flipped a captured `cancelled` flag. In the separate Tauri child-window document/module cache, the initial call therefore painted the synchronous white base while texture readiness/retry/invalidation was not represented as a scoped resource capable of reliably repainting the currently mounted canvas. Metadata was correct (`launchContext.rotoBackground.background`, same persisted value used by PreviewRenderer), and the exact `/img/paper_N.jpg` URL is proven in the same child window by stopped EfxPaintCanvas, ruling out metadata, layering, and scale for this white-only symptom.
-- fix: Kept one shared `projectPaperRaster.ts` implementation and split lookup from owned resource lifecycle. Added `subscribeProjectPaperCanvas(paperTexture, width, height, listener) => unsubscribe`, keyed listeners by texture, immediately emits base/null then emits the exact cached textured canvas on Image.onload, removes listeners on metadata change/unmount/Stop, and allows retry after Image.onerror instead of permanently suppressing the texture. Physics playback returns this unsubscribe directly from its focused external-resource effect and redraws its full backing dimensions from the shared canvas. PreviewRenderer preloading uses the same subscription API and disposes subscriptions. The declarative cached paint image, playback progression, ownership suppression, and Stop lifecycle are unchanged.
-- verification: Exact async RED command `pnpm --dir app exec vitest run src/lib/projectPaperRaster.test.ts` failed 1/2 with `TypeError: subscribeProjectPaperCanvas is not a function`; the same command passes 2/2 GREEN and proves initial base-only output, resolved textured redraw, metadata-switch isolation, and unsubscribe/late-callback rejection. Focused paper/playback suite passes 109/109. Full Physics Paint matrix passes 335/335 across 34 files. PreviewRenderer/roto paper suite passes 15/15 (requested export test path is absent). `pnpm --dir app typecheck` passes. `pnpm --dir app build` passes with 1086 modules. `git diff --check` passes. Scan finds no `resolutionListeners`, `failedTextures`, temporary debug instrumentation, debugger, or console.log in changed production files. Live Tauri texture UAT remains pending; Debug 01 is not accepted.
+- root_cause: TypeScript correctly included persisted `rotoBackground` metadata in `PhysicPaintLaunchContext`, but Tauri's Rust `PhysicsPaintLaunchContext` omitted the field. Serde silently ignored the unknown incoming property when `open_physics_paint_window` deserialized the command payload. Rust then stored, returned, and emitted a launch context with no `rotoBackground`. Physics Paint cached playback consequently did not mount its paper composition and rendered the transparent cached animation over the white canvas shell. The earlier browser renderer and callback fixes could not solve a field that never reached the child window.
+- fix: Added `#[serde(rename = "rotoBackground", skip_serializing_if = "Option::is_none")] roto_background: Option<Value>` to the native launch contract. No paper-renderer values, asset URLs, playback timing, or visual ownership were changed in this correction.
+- verification: Exact native RED command `cargo test --manifest-path app/src-tauri/Cargo.toml preserves_roto_background_round_trip -- --nocapture` failed with `left: None` and the full expected metadata object on the right. The same command passes after the field addition. Full native suite passes 14/14. Focused playback/paper tests pass 101/101. Physics Paint component matrix passes 335/335 across 34 files. `pnpm --dir app typecheck` and `pnpm --dir app build` pass; build transforms 1086 modules. `git diff --check` passes. `cargo fmt --check` reports unrelated pre-existing formatting drift across multiple Rust files, so no broad formatting changes were applied. Live Tauri UAT after a native rebuild/relaunch remains required; Debug 01 is not accepted.
 - files_changed:
-  - app/src/lib/projectPaperRaster.ts
-  - app/src/lib/projectPaperRaster.test.ts
-  - app/src/lib/previewRenderer.ts
-  - app/src/lib/previewRenderer.test.ts
-  - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
-  - app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
-  - app/src/components/physic-paint/physicsPaintStudio.css
+  - app/src-tauri/src/lib.rs
