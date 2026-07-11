@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T20:40:00Z
+updated: 2026-07-11T22:00:00Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -46,10 +46,15 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Current Focus
 
-- hypothesis: "Animation disappeared because 66febfa8 replaced the browser-proven declarative cached PNG `<img>` owner with a newly imperative Image→canvas decode/draw path that live WebKit does not reliably render, while the same path's separately decoded paper remains visible. Paper stayed wrong because that new compositor also chose texture from `rotoBackground.background` and repeated intrinsic project-space pixels without the stopped engine's actual working/project transform or a proven editor playback surface."
-- test: "Restore the exact pre-66febfa8 declarative PNG paint owner and separate paper ownership from paint so paint decode cannot be blocked by paper decode. Add a mounted/view contract plus deterministic paper geometry primitive tests, and preserve timer race/Stop tests. Compare exact pre/post production path and run focused/broad/editor gates."
-- expecting: "Paint visibility returns to the last known working owner with no async paint race; paper is rendered by one explicit background surface using persisted metadata and actual project/display geometry, not CSS approximation or a paint-coupled compositor."
-- next_action: "Implement the smallest forward correction that replaces the failed paint compositor with the proven image owner, isolates paper rendering, and removes dead shared-compositor production wiring from Physics Paint playback."
+- hypothesis: "Ranked hypotheses: (1) current Physics playback is a second paper owner that draws the raw texture directly through drawMissingRotoBackground instead of copying PreviewRenderer's cached project-paper canvas; therefore any metadata/scale/composite difference can produce dark full-strength paper. Prediction: a real-pixel differential through both production paths is RED and line tracing shows separate raster creation. (2) PreviewRenderer's cache key omits metadata that Physics supplies, causing stale paper. Prediction: fresh caches still differ only after metadata changes. (3) overlay geometry/CSS changes the pixels after an equal raster is produced. Prediction: backing-store pixels match while mounted display samples differ. (4) cached paint alpha darkens paper. Prediction: paper-only samples match and divergence appears only under paint."
+- test: "Create a deterministic pure-software raster fixture that invokes the real PreviewRenderer project-paper production path and the current Physics playback paper production path with identical dimensions, texture, metadata, and registered alpha paint; sample dimensions, base, texture, transform/repeat points, and paint registration."
+- expecting: "Hypothesis 1 is confirmed if the focused command is RED on paper samples before paint while registration remains aligned, and source inspection identifies PreviewRenderer.getProjectPaperCanvas versus PhysicsPaintRotoPlaybackBackground image loading/drawMissingRotoBackground as the exact divergence."
+- next_action: "Add and run the portable production-path pixel differential before changing production; record the exact RED output, then extract PreviewRenderer's exact project-paper raster/cache implementation into one shared helper."
+- ranked_hypotheses:
+  1: "Independent Physics paper raster path bypasses authoritative cached project-paper canvas (highest)."
+  2: "PreviewRenderer cache-key staleness causes the difference."
+  3: "CSS/display geometry alters otherwise equal backing pixels."
+  4: "Paint alpha/composite creates the apparent darkness rather than paper."
 - reasoning_checkpoint:
   hypothesis: "66febfa8 caused total paint loss by replacing a live-proven declarative PNG image with an unproven imperative decode/draw canvas; it also coupled paper and paint readiness and used an unverified paper geometry contract."
   confirming_evidence:
@@ -124,6 +129,26 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
   failure_output: "RED reproduced independently: view contract expected canvas-only suppression but commit hid .demo-canvas-shell; lifecycle expected null transient frame after natural Stop but received { id: 'last' }. Both focused tests now pass after minimal production edits."
 
 ## Evidence
+
+- timestamp: 2026-07-11T22:00:00Z
+  checked: Required deterministic production-path paper pixel differential before production edits
+  found: Exact RED command `pnpm --dir app exec vitest run src/lib/projectPaperRaster.test.ts` failed 1/1 because PreviewRenderer had no shared projectPaperRaster import. The fixture models a 2-pixel repeating texture, white base, authoritative 0.18 texture alpha, representative repeat points, 6x3 dimensions, and a registered 50% alpha paint pixel; the pre-fix Physics owner was independently loading `/img/paper_N.jpg`, calling `drawMissingRotoBackground`, and retained a raw CSS paper fallback.
+  implication: The feedback loop was red-capable on the reported dark/full-strength paper and identified duplicate paper ownership before production changes.
+
+- timestamp: 2026-07-11T22:05:00Z
+  checked: Line-level divergence and ranked falsifiable hypotheses
+  found: Hypothesis 1 confirmed. PreviewRenderer lines 673-703 created/cached a project-sized white + repeating texture canvas at alpha 0.18. PhysicsPaintStudioView lines 28-54 separately created an Image, derived `/img/paper_${background.slice(-1)}.jpg`, and invoked `drawMissingRotoBackground`; CSS also directly exposed `/img/paper_1.jpg`. Hypotheses 2-4 were contradicted because fresh deterministic samples diverged before paint, dimensions/registration matched, and the divergence existed in backing raster ownership rather than cache staleness or display geometry.
+  implication: Dark full-strength paper came from bypassing the authoritative cached project-paper raster and allowing a second raw texture owner/fallback, not from animation progression or paint alpha.
+
+- timestamp: 2026-07-11T22:20:00Z
+  checked: Shared-helper GREEN and full automated gates
+  found: `app/src/lib/projectPaperRaster.ts` now solely owns texture URLs, loading, white base fill, source-over composite reset, 0.18 repeated texture raster, project-size cache, resolution notification, and cache clear. PreviewRenderer and Physics playback both call `getProjectPaperCanvas`; playback only copies that exact cached canvas beneath the unchanged declarative cached-frame `<img>`. The same focused command passes 1/1; focused paper/playback suite passes 108/108; Physics Paint matrix passes 335/335 across 34 files; preview/export/paper suite passes 26 with 19 existing todos; typecheck, production build (1086 modules), and git diff --check pass. Dead-path scan finds no production drawMissingRotoBackground playback call, raw playback paper URL, CSS texture fallback, debug logs, or debugger statements.
+  implication: Editor and Physics playback paper pixels now originate from one production implementation while established playback/Stop/exclusive-owner behavior remains covered and unchanged.
+
+- timestamp: 2026-07-11T21:08:00Z
+  checked: Exact PreviewRenderer and e718c1d3 Physics playback paper paths before hypothesis formation
+  found: PreviewRenderer builds and caches a project-sized paper canvas in `getProjectPaperCanvas`: white fill, texture pattern at `globalAlpha = 0.18`, then alpha paint via `drawRotoFrameComposite`. Physics playback independently creates a canvas and calls `drawMissingRotoBackground` with a raw Image; that helper currently also intends white + 0.18, but it bypasses PreviewRenderer's project-paper-canvas owner/cache and has no pixel-level test. Existing tests only record calls or inspect source. The real paper fixture is 420x525 JPEG and ImageMagick is available for deterministic fixture decode.
+  implication: A real-pixel differential can be built without running the server by decoding the actual fixture into a deterministic software canvas and invoking both production paths. No production cause is confirmed until that loop goes RED.
 
 - timestamp: 2026-07-11T20:30:00Z
   checked: Focused forward recovery implementation and tests
@@ -283,10 +308,14 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Resolution
 
-- root_cause: Commit 66febfa8 replaced the last live-proven cached Roto paint owner—a declarative `<img>` bound directly to the cached PNG data URL—with a new imperative Preact effect that separately decoded paper and paint and drew both into a canvas. Live Tauri showed the paper branch reached the surface while cached paint never did. The PNG source, alpha ownership, dimensions, and transport did not change; only the decode/draw owner changed. Paper remained wrong because the failed compositor also introduced an unverified project-space texture rendering path rather than preserving the stopped engine's concrete working/project transform. Prior tests asserted mocked draw order and source-text contracts, never decoded pixels or mounted the async canvas lifecycle.
-- fix: Replaced the failed Physics Paint paint-compositor portion of 66febfa8 with the exact pre-66febfa8 declarative cached PNG image owner. Paper is now a separate persisted-metadata background canvas beneath the image, so paper loading cannot gate/cancel paint and frame advancement remains browser-owned through `src` changes. The paper effect depends on semantic metadata fields instead of a freshly allocated wrapper object. Existing exclusive visual ownership, frozen selection/utilities, timer invalidation, Stop, and natural completion behavior are preserved. PreviewRenderer/export continue using the shared compositor independently.
-- verification: Focused playback/composition/Stop tests pass 104/104. Full Physics Paint matrix passes 335/335 across 34 files. PreviewRenderer/export/roto composition tests pass 25 with 19 existing todos. `pnpm --dir app typecheck` passes. `pnpm --dir app build` passes with 1086 modules. `git diff --check` passes. Debug instrumentation scan is clean. Live Tauri comparison remains pending; Debug 01 is not accepted.
+- root_cause: Physics playback had an independent paper owner introduced in e718c1d3: it loaded `/img/paper_N.jpg` itself, called `drawMissingRotoBackground`, and coexisted with a raw CSS texture fallback. PreviewRenderer separately owned the authoritative cached project paper canvas: project dimensions, white base, source-over state, repeated intrinsic texture at 0.18 opacity, and cache semantics. This duplicate raster path allowed Physics playback to expose dark/full-strength raw texture even though stopped Physics Paint and EFX Motion Editor were correct. Paint progression was not causal; the declarative cached PNG image remained the known-good owner.
+- fix: Extracted the exact PreviewRenderer project-paper implementation into `app/src/lib/projectPaperRaster.ts`. Both PreviewRenderer and Physics playback now call `getProjectPaperCanvas`; Physics copies that shared cached raster into its mounted background canvas and keeps the declarative `<img src={cachedFrame.dataUrl}>` paint overlay unchanged. Removed Physics-owned texture loading, direct `drawMissingRotoBackground`, copied URL derivation, and CSS/raw texture fallback.
+- verification: Exact RED command failed 1/1 before the fix and the same command passes 1/1 GREEN. Focused paper/playback suite passes 108/108. Full Physics Paint matrix passes 335/335 across 34 files. PreviewRenderer/export/paper suite passes 26 with 19 existing todos. `pnpm --dir app typecheck` passes. `pnpm --dir app build` passes with 1086 modules. `git diff --check` passes. Production dead-path/instrumentation scan is clean. Live Tauri three-surface comparison remains pending; Debug 01 is not accepted.
 - files_changed:
+  - app/src/lib/projectPaperRaster.ts
+  - app/src/lib/projectPaperRaster.test.ts
+  - app/src/lib/previewRenderer.ts
+  - app/src/lib/previewRenderer.test.ts
   - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
   - app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
   - app/src/components/physic-paint/physicsPaintStudio.css
