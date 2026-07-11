@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T15:38:00Z
+updated: 2026-07-11T16:47:00Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -46,10 +46,20 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Current Focus
 
-- hypothesis: "Four extracted-boundary ownership/lifecycle errors caused the regressions: stale launch echoes could replace local selection, playback preview mutated editable selection, interpolation seek raced persistence, and callback churn disposed the async launch listener."
-- test: "Automated regression suites and build gates now exercise all four corrected boundaries."
-- expecting: "Final diff review confirms only minimal boundary fixes, behavioral tests, and the preserved ToolRail asset correction before the authorized atomic commit."
-- next_action: "Await live Tauri UAT confirmation for manual navigation, persistent interpolation disable, and playback utility freeze before resolving/archive."
+- hypothesis: "Confirmed: cached Roto playback was additive because PhysicsPaintCanvasStack left the editable engine/preview-base/live-alpha shell and cached reference visible while adding the transient playback image."
+- test: "Focused red/green render-ownership contract plus focused/broad Physics Paint tests, typecheck, build, diff check, and live Tauri UAT."
+- expecting: "During playback only the transient cached frame is visible; canonical selected frame and utilities stay frozen; Stop reveals the selected editable visual once."
+- next_action: "Await live Tauri UAT for exclusive playback composition and Stop restoration; do not mark Debug 01 accepted yet."
+- reasoning_checkpoint:
+  hypothesis: "The transient playback image composites with frame 1 because the view has no exclusive visual-owner state: it leaves the editable engine canvas/preview base/live alpha and cached reference visible while adding the playback image."
+  confirming_evidence:
+    - "Live UAT shows the frozen selected blue frame simultaneously with the advancing green playback frame."
+    - "Studio always passes cachedRotoReferenceUrl and mounts PhysicsPaintCanvasMount while passing cachedRotoPlaybackUrl."
+    - "CanvasStack renders all owners together, and CSS places the second engine canvas at z-index 4 above the z-index 3 overlay."
+  falsification_test: "If a focused view contract already suppresses every editable/reference visual owner while playback is active, or if adding that suppression does not eliminate the red composition test, this hypothesis is wrong."
+  fix_rationale: "Make playback-active select the transient cached image as the sole Roto visual owner while preserving the mounted engine/session state invisibly; Stop already clears frame/isActive, so the selected editable visual is revealed once without canonical state mutation."
+  blind_spots: "DOM/source tests cannot inspect real engine pixel alpha composition; live Tauri UAT remains required after automated gates."
+
 - reasoning_checkpoint:
   hypothesis: "Four extracted-boundary ownership/lifecycle errors caused the regressions: stale launch echoes could replace local selection, playback preview mutated editable selection, interpolation seek raced persistence, and callback churn disposed the async launch listener."
   confirming_evidence:
@@ -117,6 +127,26 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
   found: The unchanged integration test now receives reopenContext, resets the editable session, loads the saved PNG through the preview-base path, clears stale strokes, and passes both durable-core tests.
   implication: Stable external listener ownership fixes the relaunch/reset regression and validates the exact production mechanism.
 
+- timestamp: 2026-07-11T16:05:00Z
+  checked: Live Tauri UAT after the first automated-ready checkpoint
+  found: Manual navigation, interpolation disable, utility freeze, playback advancement, and tool stability now work. During cached Roto playback, however, the originally selected first-frame blue drawing remains visibly rendered while a green playback frame animates over it, producing additive frame-1-plus-playback composition.
+  implication: Canonical editable state freezing is correct, but visual ownership during playback remains wrong. The transient playback frame must visually replace/suppress editable Roto canvas/reference output while playing, and Stop must reveal the selected editable frame once without changing canonical selection.
+
+- timestamp: 2026-07-11T16:18:00Z
+  checked: Studio-to-view render ownership and canvas stack CSS
+  found: Studio passes rotoCachedPlayback.frame.dataUrl as cachedRotoPlaybackUrl while always passing cachedRotoReferenceUrl and always mounting PhysicsPaintCanvasMount. PhysicsPaintCanvasStack renders the engine canvas first, then the cached reference, Play preview, cached Roto playback image, and onion children together inside one overlay. No prop or class represents exclusive Roto playback composition. CSS places engine canvases at z-index 2/4 and the overlay at z-index 3; cached playback has no distinct z-index, while cached reference is z-index 1 within the overlay.
+  implication: The live screenshot is predicted directly by the render tree: playback adds an image but does not hide the editable engine canvas or reference layers, and the upper engine canvas can remain above the playback overlay. The defect is visual-owner selection at the extracted Studio/View boundary, not playback frame advancement or canonical selection state.
+
+- timestamp: 2026-07-11T16:42:00Z
+  checked: Red behavioral render-ownership contract
+  found: The focused command `pnpm --dir app exec vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts -t "delegates cached Roto playback state"` fails 1/1 because Studio provides no cachedRotoPlaybackActive visual-owner state. The test also requires reference suppression, a dedicated playback image class, and hiding the mounted editable shell while active.
+  implication: The regression has a deterministic sub-second red-capable test at the actual Studio/View composition seam before production edits.
+
+- timestamp: 2026-07-11T16:43:00Z
+  checked: Minimal exclusive visual-owner fix against focused regression
+  found: Studio now passes rotoCachedPlayback.isActive to the view; CanvasStack keeps the engine mounted but hides its shell while active, suppresses cached reference/Play preview/onion children, and renders the transient cached Roto frame with a dedicated top-layer class. The same focused command passes 1/1. Stop already clears frame and isActive synchronously through the playback hook, so the unchanged selected engine/reference visual is revealed without launchContext mutation or reload.
+  implication: The fix addresses only rendering ownership, preserves Preact controller state and Stop semantics, and does not restore ownership to Studio or add effects.
+
 ## Eliminated
 
 - hypothesis: A stale pendingFrameSyncRef survives navigation and overwrites the later durable-core reopen launch.
@@ -125,12 +155,14 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Resolution
 
-- root_cause: The Debug 01 extraction introduced four boundary errors: incoming stale Roto launch echoes unconditionally replaced locally selected startFrame; cached playback wrote preview frames into canonical editable launchContext.startFrame; interpolation frame synchronization could run before settings persistence and rehydrate stale enabled settings; and the async Tauri launch listener effect depended on an unstable callback, repeatedly disposing listener installation during render churn.
-- fix: Added explicit pending self-sync frame ownership consumed by incoming Roto launches; removed playback writes to editable selection; awaited interpolation apply persistence before dependent frame sync; installed the external launch listener once and dispatched through a latest-callback ref; captured browser window targets for safe async cleanup; preserved the ToolRail asset import correction.
-- verification: Focused Physics Paint regression matrix 236/236; broader Physics Paint matrix 469/469; durable cached relaunch 2/2; pnpm --dir app typecheck passed; pnpm --dir app build passed; git diff --check passed; no DEBUG-36-13 instrumentation remains. Live Tauri UAT pending.
+- root_cause: The Debug 01 extraction introduced four state/lifecycle boundary errors, and the follow-up ownership correction exposed a fifth visual boundary error: incoming stale Roto launch echoes replaced local selection; cached playback mutated canonical editable selection; interpolation seek raced persistence; the async launch listener was disposed by callback churn; and after playback was made transient-only, PhysicsPaintCanvasStack still rendered the editable engine/preview-base/live-alpha canvas and cached reference while adding the transient playback image, causing additive frame composition.
+- fix: Added explicit pending self-sync ownership; kept playback out of editable selection; serialized interpolation persistence before seek; stabilized the launch listener; and made cached Roto playback the exclusive visual owner while active by hiding (not unmounting) the editable canvas shell, suppressing cached reference/Play preview/onion overlays, and using a dedicated top playback layer. Stop continues clearing transient frame/activity and thereby reveals the unchanged selected editable visual once.
+- verification: Previous focused 236/236 and broad 469/469 gates passed for the first correction. Follow-up exclusive-composition regression went red 1/1 then green 1/1; focused playback/view matrix 148/148; broader current Physics Paint matrix 334/334; pnpm --dir app typecheck passed; pnpm --dir app build passed; git diff --check passed; no DEBUG instrumentation remains. Live Tauri UAT pending.
 - files_changed:
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
   - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
+  - app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
+  - app/src/components/physic-paint/physicsPaintStudio.css
   - app/src/components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.ts
   - app/src/components/physic-paint/hooks/useRotoPersistenceIntegration.ts
   - app/src/components/physic-paint/hooks/useRotoInterpolationController.ts
