@@ -491,7 +491,8 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).toContain('function getContainedCanvasDisplaySize(containerWidth: number, containerHeight: number, canvasWidth: number, canvasHeight: number)');
     expect(mountProbeBlock).toContain('const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null)');
     expect(mountProbeBlock).toContain('setDisplaySize(getContainedCanvasDisplaySize(rect.width, rect.height, props.width, props.height))');
-    expect(mountProbeBlock).toContain('style={{ aspectRatio: `${props.width} / ${props.height}`, ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}) }}');
+    expect(mountProbeBlock).toContain('aspectRatio: `${props.width} / ${props.height}`');
+    expect(mountProbeBlock).toContain('style={shellStyle}');
     expect(mountProbeBlock).toContain('width={props.width}');
     expect(mountProbeBlock).toContain('height={props.height}');
     expect(mountProbeBlock).toContain('paperTextureScale={props.paperTextureScale}');
@@ -1056,7 +1057,12 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(css).toContain('visibility: hidden');
     expect(css).not.toContain('.physics-paint-canvas-stack.cached-roto-playback-active > .demo-canvas-shell {\n  visibility: hidden;');
     expect(css).toContain('.paint-canvas {');
-    expect(css).toContain("background: url('/img/paper_1.jpg') center / cover, #fff;");
+    expect(css).toContain("background-image: url('/img/paper_1.jpg');");
+    expect(css).toContain('background-position: 0 0;');
+    expect(css).toContain('background-repeat: repeat;');
+    expect(css).toContain('background-size: calc(var(--physics-paint-paper-texture-scale, 1) * 512px) auto;');
+    expect(css).not.toContain("background: url('/img/paper_1.jpg') center / cover, #fff;");
+    expect(canvasMountSource()).toContain("'--physics-paint-paper-texture-scale': props.paperTextureScale");
     expect(css).toContain('.physics-paint-cached-roto-playback {');
     expect(workflowStripBlock).toContain('rotoCachedPlaybackAvailable');
     expect(workflowStripBlock).toContain('rotoCachedPlaybackStatus: rotoCachedPlayback.status');

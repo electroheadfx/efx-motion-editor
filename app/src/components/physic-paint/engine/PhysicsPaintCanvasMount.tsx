@@ -1,3 +1,4 @@
+import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
@@ -36,8 +37,14 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
     };
   }, [props.height, props.width]);
 
+  const shellStyle = {
+    aspectRatio: `${props.width} / ${props.height}`,
+    '--physics-paint-paper-texture-scale': props.paperTextureScale,
+    ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}),
+  } as JSX.CSSProperties;
+
   return (
-    <div class="demo-canvas-shell" ref={shellRef} style={{ aspectRatio: `${props.width} / ${props.height}`, ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}) }}>
+    <div class="demo-canvas-shell" ref={shellRef} style={shellStyle}>
       <EfxPaintCanvas
         width={props.width}
         height={props.height}

@@ -65,7 +65,11 @@ body:has(.demo-shell) {
   height: auto !important;
   border-radius: 4px;
   overflow: hidden;
-  background: url('/img/paper_1.jpg') center / cover, #fff;
+  background-color: #fff;
+  background-image: url('/img/paper_1.jpg');
+  background-position: 0 0;
+  background-repeat: repeat;
+  background-size: calc(var(--physics-paint-paper-texture-scale, 1) * 512px) auto;
 }
 
 .demo-error,
