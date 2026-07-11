@@ -1266,3 +1266,54 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract the coupled Roto save-on-leave, key-session, playback, restore, and frame-navigation orchestration behind a navigation coordinator with narrow persistence ports.
 - Remove `rotoKeyUtilitiesExternalRef` late binding rather than moving it into another module unchanged.
+
+## 2026-07-11 — Cluster: extract Roto navigation coordinator
+
+### Selected cluster
+- Ownership moved: Roto key utility/session composition, cached playback composition, save-on-leave navigation requests, queued destinations, launch reset, and first/previous/next/last navigation action composition.
+- From: direct key/playback/navigation composition in `PhysicsPaintStudio.tsx`.
+- To: bounded `hooks/useRotoNavigationCoordinator.ts` using explicit persistence, display, and runtime ports defined in `roto/rotoCoordinatorPorts.ts`.
+- Touched key/playback hooks moved into `hooks/`; touched navigation actions moved into `roto/`.
+
+### Why this is safe
+- Ordinary synchronized opening and post-save opening remain distinct concrete integration paths.
+- Save-before-navigation still snapshots once, queues destinations while an operation is active, executes session effects, and opens the saved destination without re-snapshotting.
+- Key persistence, source restoration, canvas clearing, and bridge/store mutations remain explicit port implementations in Studio pending the next composition cleanup.
+- `rotoKeyUtilitiesExternalRef` was removed entirely rather than relocated.
+- No internal Roto `useEffect` was introduced.
+
+### Ownership removed from Studio
+- Removed direct `useRotoKeyUtilities` composition and action extraction.
+- Removed direct `useRotoCachedPlayback` composition and playback frame projection helpers.
+- Removed Studio-local request-navigation and navigation-action construction.
+- Replaced broad late-bound external utility ownership with narrow typed ports.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/hooks/useRotoNavigationCoordinator.ts`
+- `app/src/components/physic-paint/hooks/useRotoKeyUtilities.ts`
+- `app/src/components/physic-paint/hooks/useRotoCachedPlayback.ts`
+- `app/src/components/physic-paint/hooks/useRotoCachedPlayback.test.ts`
+- `app/src/components/physic-paint/roto/rotoCoordinatorPorts.ts`
+- `app/src/components/physic-paint/roto/rotoNavigationActions.ts`
+- `app/src/components/physic-paint/roto/rotoNavigationActions.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 1067 lines.
+- `PhysicsPaintStudio.tsx` after: 1044 lines.
+- Cluster delta: -23 lines.
+- `hooks/useRotoNavigationCoordinator.ts`: 109 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative Studio reduction: 2160 lines.
+
+### Tests run
+- Focused playback/navigation, Studio, and WorkflowStrip tests passed with 147 tests across 4 files.
+- Typecheck passed.
+- `git diff --check` passed.
+- Source audit confirms `rotoKeyUtilitiesExternalRef` no longer exists.
+
+### Next suggested slice
+- Extract keyboard dispatch and final typed view-model construction into thin hooks.
+- Then move the remaining concrete Roto persistence/display port implementations and apply/close composition into focused integration controllers until Studio reaches the target.

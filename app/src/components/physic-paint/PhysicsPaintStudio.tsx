@@ -15,8 +15,7 @@ import { useRotoTimelineModel } from './useRotoTimelineModel';
 import { selectRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers } from './rotoTimelineSelectors';
 import { refreshRotoInterpolationCache } from './roto/rotoCacheTransactions';
 import { hydrateRotoLaunchContext, seedRotoLaunchRealKeys } from './rotoLaunchHydration';
-import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
-import { useRotoCachedPlayback } from './useRotoCachedPlayback';
+import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoApplyLifecycle } from './useRotoApplyLifecycle';
 import { useRotoApplyResultController } from './useRotoApplyResultController';
@@ -31,7 +30,6 @@ import { usePhysicsPaintEngineActions } from './usePhysicsPaintEngineActions';
 import { usePhysicsPaintSessionController } from './usePhysicsPaintSessionController';
 import { useRotoBackgroundMetadataSync } from './useRotoBackgroundMetadataSync';
 import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './rotoOnionPreview';
-import { createRotoNavigationActions, getRotoNavigationTargets } from './rotoNavigationActions';
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './physicsPaintStudioSelectors';
 import { usePlayLimitToast } from './hooks/usePlayLimitToast';
 import {
@@ -80,6 +78,7 @@ export function PhysicsPaintStudio() {
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [onion, setOnion] = useState<PhysicsPaintOnionState>(DEFAULT_ONION_STATE);
   const [playWiggle, setPlayWiggle] = useState<AnimationWiggleConfig>(() => normalizePlayWiggle(launchContext?.playMotion ?? DEFAULT_PLAY_WIGGLE));
+  const resetRotoKeySessionRef = useRef<() => void>(() => {});
   const rotoPersistence = useRotoFramePersistenceCoordinator({
     workflowMode,
     backgroundMode: settings.background,
@@ -93,7 +92,7 @@ export function PhysicsPaintStudio() {
       getInterpolationSettings: (layerId) => physicPaintStore.getRotoInterpolationSettings(layerId),
       setInterpolationSettings: (layerId, interpolationSettings) => physicPaintStore.setRotoInterpolationSettings(layerId, interpolationSettings),
     },
-    syncPending: () => rotoKeyUtilitiesExternalRef.current?.resetSession(),
+    syncPending: () => resetRotoKeySessionRef.current(),
     setApplyMessage,
   });
   const rotoEditBuffer = rotoPersistence.editBuffer;
@@ -113,11 +112,10 @@ export function PhysicsPaintStudio() {
   const saveOnLeaveRenderedFrameRef = useRef<{ renderedFrame: RenderedFramePayload; backgroundOnly: boolean; onionFrame?: RenderedFramePayload | null } | null>(null);
   const pendingCachedRotoMergeFrameRef = useRef<{ frame: number; renderedFrame: RenderedFramePayload; backgroundOnly: boolean; onionFrame?: RenderedFramePayload | null } | null>(null);
   const saveOnLeaveDeleteFrameRef = useRef<number | null>(null);
-  const rotoKeyUtilitiesExternalRef = useRef<(Pick<RotoKeyUtilitiesInput<ReturnType<EfxPaintEngine['save']>, RenderedFramePayload>, 'syncRotoKeyFrameLists' | 'applyRotoKeyFrames' | 'persistRotoKeyFrameTransaction' | 'handleSaveFrameEffect' | 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'> & { resetSession: () => void }) | null>(null);
   const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null);
-  const resetRotoCachedPlaybackRef = useRef<() => void>(() => {});
+  const resetRotoNavigationForLaunchRef = useRef<() => void>(() => {});
   const syncPendingRotoFrames = useCallback(() => {
-    rotoKeyUtilitiesExternalRef.current?.resetSession();
+    resetRotoKeySessionRef.current();
   }, []);
   const {
     activeOperationIdRef,
@@ -245,8 +243,7 @@ export function PhysicsPaintStudio() {
       pendingApplyRef.current = null;
     }
     rotoFlushInFlightRef.current = null;
-    resetRotoCachedPlaybackRef.current();
-    rotoKeyUtilitiesExternalRef.current?.resetSession();
+    resetRotoNavigationForLaunchRef.current();
     setRotoSavingFrame(null);
     resetCachedRotoReference();
     if (!options.preserveCloseAfterRotoSave) {
@@ -316,50 +313,58 @@ export function PhysicsPaintStudio() {
     stopPhysics,
   } = usePhysicsPaintEngineActions({ engine, settings, setSettings });
 
-  const rotoKeyUtilities = useRotoKeyUtilities<ReturnType<EfxPaintEngine['save']>, RenderedFramePayload>({
-    currentFrame,
-    realKeyFrames: selectRealCachedRotoFrames(launchContext?.cachedRotoFrames),
-    cachedRotoFrames: launchContext?.cachedRotoFrames,
-    dirtyFrames: dirtyRotoFramesRef.current,
-    canvasSize: { width: canvasWidth, height: canvasHeight },
-    applyStatus,
-    flushInFlight: Boolean(rotoFlushInFlightRef.current),
-    buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
-    resolveSourceFrameForDisplayFrame: resolveRotoSourceFrameForDisplayFrame,
-    resolvePasteTargetForDisplayFrame: (displayFrame) => launchContext ? rotoTimelineActions.saveRealKeyAtDisplayFrame(displayFrame).target : null,
-    segmentSpacingOverrides: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).segmentSpacingOverrides : undefined,
-    getEditableStates: () => rotoFrameStatesRef.current,
-    setEditableStates: (states) => { rotoFrameStatesRef.current = states; },
-    getPreviewFrames: () => rotoPreviewFramesRef.current,
-    setPreviewFrames: (frames) => { rotoPreviewFramesRef.current = frames as Map<number, RenderedFramePayload>; },
-    getEditableState: (frame) => rotoFrameStatesRef.current.get(frame) ?? null,
-    setDirtyFrames: (frames) => { dirtyRotoFramesRef.current = frames; },
-    syncPendingRotoFrames,
-    syncRotoKeyFrameLists: (cacheFrames) => rotoKeyUtilitiesExternalRef.current?.syncRotoKeyFrameLists(cacheFrames),
-    applyRotoKeyFrames: (transaction) => rotoKeyUtilitiesExternalRef.current?.applyRotoKeyFrames(transaction) ?? [],
-    persistRotoKeyFrameTransaction: (transaction) => rotoKeyUtilitiesExternalRef.current?.persistRotoKeyFrameTransaction(transaction) ?? Promise.resolve(),
-    handleSaveFrameEffect: (effect, session) => rotoKeyUtilitiesExternalRef.current?.handleSaveFrameEffect(effect, session) ?? Promise.resolve(false),
-    restoreFrame: (effect) => rotoKeyUtilitiesExternalRef.current?.restoreFrame(effect),
-    clearCanvas: (frame) => rotoKeyUtilitiesExternalRef.current?.clearCanvas(frame),
-    showCachedReference: (frame) => setCachedRotoReferenceUrl(frame.dataUrl),
-    navigate: (frame) => rotoKeyUtilitiesExternalRef.current?.navigate(frame) ?? Promise.resolve(),
-    clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, frame, 1); },
-    clearCachedReferenceFrame: (frame) => rotoKeyUtilitiesExternalRef.current?.clearCachedReferenceFrame(frame),
-    clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, frame); },
-    snapshotCurrentRotoFrame: () => { snapshotCurrentRotoFrame(); },
-    setApplyMessage,
-    setApplyStatus,
-    setLastError,
-    setRotoSavingFrame,
+  const rotoNavigation = useRotoNavigationCoordinator<ReturnType<EfxPaintEngine['save']>, RenderedFramePayload>({
+    workflowMode,
+    keyUtilities: {
+      currentFrame,
+      realKeyFrames: selectRealCachedRotoFrames(launchContext?.cachedRotoFrames),
+      cachedRotoFrames: launchContext?.cachedRotoFrames,
+      dirtyFrames: dirtyRotoFramesRef.current,
+      canvasSize: { width: canvasWidth, height: canvasHeight },
+      applyStatus,
+      flushInFlight: Boolean(rotoFlushInFlightRef.current),
+      buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
+      resolveSourceFrameForDisplayFrame: resolveRotoSourceFrameForDisplayFrame,
+      resolvePasteTargetForDisplayFrame: (displayFrame) => launchContext ? rotoTimelineActions.saveRealKeyAtDisplayFrame(displayFrame).target : null,
+      segmentSpacingOverrides: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).segmentSpacingOverrides : undefined,
+      getEditableStates: () => rotoFrameStatesRef.current,
+      setEditableStates: (states) => { rotoFrameStatesRef.current = states; },
+      getPreviewFrames: () => rotoPreviewFramesRef.current,
+      setPreviewFrames: (frames) => { rotoPreviewFramesRef.current = frames as Map<number, RenderedFramePayload>; },
+      getEditableState: (frame) => rotoFrameStatesRef.current.get(frame) ?? null,
+      setDirtyFrames: (frames) => { dirtyRotoFramesRef.current = frames; },
+      syncPendingRotoFrames,
+      showCachedReference: (frame) => setCachedRotoReferenceUrl(frame.dataUrl),
+      clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, frame, 1); },
+      clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, frame); },
+      snapshotCurrentRotoFrame: () => { snapshotCurrentRotoFrame(); },
+      setApplyMessage,
+      setApplyStatus,
+      setLastError,
+      setRotoSavingFrame,
+    },
+    playback: {
+      initialFps: getPreviewFps(launchContext?.fps),
+      getFrame: findCachedRotoDisplayFrame,
+      onStart: (frameCount) => setAnimTotal(frameCount),
+      onFrame: (frameIndex, appFrame) => {
+        setAnimFrame(frameIndex);
+        setLaunchContext((current) => current ? { ...current, startFrame: appFrame } : current);
+      },
+      setIsPlaying,
+    },
   });
+  const rotoKeyUtilities = rotoNavigation.keyUtilities;
   const rotoSession = rotoKeyUtilities.session;
   const executeRotoSessionEffects = rotoKeyUtilities.executeSessionEffects;
-  const runRotoSessionResult = rotoKeyUtilities.runSessionResult;
   const duplicateRotoKey = rotoKeyUtilities.duplicateKey;
   const insertRotoFrame = rotoKeyUtilities.insertBlankKey;
   const deleteRotoFrame = rotoKeyUtilities.deleteKey;
   const copyRotoFrame = rotoKeyUtilities.copyKey;
   const pasteRotoFrame = rotoKeyUtilities.pasteKey;
+  const rotoCachedPlayback = rotoNavigation.playback;
+  resetRotoKeySessionRef.current = rotoKeyUtilities.resetSession;
+  resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
 
   const undo = useCallback(() => {
     engine?.undo();
@@ -374,26 +379,7 @@ export function PhysicsPaintStudio() {
 
   useRotoBackgroundMetadataSync({ launchContext, workflowMode, settings });
 
-  function findCachedRotoPlaybackFrame(appFrame: number): RenderedFramePayload | null {
-    return findCachedRotoDisplayFrame(appFrame);
-  }
-
-  function getRotoCachedPlaybackFrames(): Array<{ appFrame: number; frame: RenderedFramePayload | null }> {
-    return rotoSession.playbackFrameNumbers.value.map((appFrame) => ({ appFrame, frame: findCachedRotoPlaybackFrame(appFrame) }));
-  }
-
-  const rotoCachedPlayback = useRotoCachedPlayback({
-    initialFps: getPreviewFps(launchContext?.fps),
-    workflowMode,
-    getFrames: getRotoCachedPlaybackFrames,
-    onStart: (frameCount) => setAnimTotal(frameCount),
-    onFrame: (frameIndex, appFrame) => {
-      setAnimFrame(frameIndex);
-      setLaunchContext((current) => current ? { ...current, startFrame: appFrame } : current);
-    },
-    setIsPlaying,
-  });
-  resetRotoCachedPlaybackRef.current = rotoCachedPlayback.resetForLaunch;
+  const getRotoCachedPlaybackFrames = () => rotoSession.playbackFrameNumbers.value.map((appFrame) => ({ appFrame, frame: findCachedRotoDisplayFrame(appFrame) }));
   const missingConditions = selectPhysicsPaintMissingConditions({
     engineReady: Boolean(engine),
     canvasMounted,
@@ -680,12 +666,11 @@ export function PhysicsPaintStudio() {
     }
   }, [currentFrame, engine]);
 
-  rotoKeyUtilitiesExternalRef.current = {
-    resetSession: rotoKeyUtilities.resetSession,
-    syncRotoKeyFrameLists,
-    applyRotoKeyFrames,
-    persistRotoKeyFrameTransaction,
-    handleSaveFrameEffect: async (effect) => {
+  rotoNavigation.configurePersistencePort({
+    syncKeyFrameLists: syncRotoKeyFrameLists,
+    applyKeyFrames: applyRotoKeyFrames,
+    persistKeyFrameTransaction: persistRotoKeyFrameTransaction,
+    saveFrameBeforeContinuation: async (effect) => {
       saveOnLeaveSourceFrameRef.current = effect.frame;
       setRotoSavingFrame(effect.frame);
       pendingRotoAdvanceRef.current = effect.after.type === 'navigate' ? effect.after.frame : null;
@@ -696,6 +681,8 @@ export function PhysicsPaintStudio() {
         : `Saving frame ${effect.frame} before ${actionCopy ?? 'key action'}...`);
       return Boolean(await flushRotoFrame(effect.frame, { force: true, advanceToFrame: effect.after.type === 'navigate' ? effect.after.frame : null }));
     },
+  });
+  rotoNavigation.configureDisplayPort({
     restoreFrame: restoreRotoFrameFromSessionEffect,
     clearCanvas: (frame) => {
       setCachedRotoReferenceUrl(null);
@@ -704,31 +691,19 @@ export function PhysicsPaintStudio() {
         engine.clear();
       }
     },
-    navigate: openSyncedRotoFrameAfterSave,
+    openAfterSave: openSyncedRotoFrameAfterSave,
     clearCachedReferenceFrame: removeCachedRotoFrameFromLaunchContext,
-  };
+  });
+  rotoNavigation.configureRuntimePort({
+    navigateToSyncedFrame,
+    snapshotCurrentFrame: () => { snapshotCurrentRotoFrame(); },
+    getSaveOnLeaveSourceFrame: () => saveOnLeaveSourceFrameRef.current,
+    hasActiveOperation: () => Boolean(activeOperationIdRef.current),
+    queuePendingAdvance: (frame) => { pendingRotoAdvanceRef.current = frame; },
+  });
 
-  const requestRotoFrameNavigation = useCallback(async (targetFrame: number) => {
-    if (!Number.isInteger(targetFrame) || targetFrame < 0) return false;
-    if (workflowMode !== 'roto') return navigateToSyncedFrame(targetFrame);
-    const saveOnLeaveSourceFrame = saveOnLeaveSourceFrameRef.current;
-    if (saveOnLeaveSourceFrame !== null && activeOperationIdRef.current) {
-      pendingRotoAdvanceRef.current = targetFrame;
-      return false;
-    }
-    snapshotCurrentRotoFrame();
-    const result = rotoSession.requestFrame(targetFrame);
-    if (!result.ok) {
-      if (result.message) setApplyMessage(result.message);
-      return false;
-    }
-    if (result.effects.some((effect) => effect.type === 'navigate')) {
-      await executeRotoSessionEffects(result.effects);
-      return true;
-    }
-    await runRotoSessionResult(result);
-    return result.effects.some((effect) => effect.type === 'saveFrame');
-  }, [executeRotoSessionEffects, navigateToSyncedFrame, rotoSession, runRotoSessionResult, snapshotCurrentRotoFrame, workflowMode]);
+
+  const requestRotoFrameNavigation = rotoNavigation.requestNavigation;
 
   const { handleRotoApplyResult } = useRotoApplyResultController({
     pendingKeyActionMessageRef: pendingRotoKeyActionMessageRef,
@@ -996,9 +971,11 @@ export function PhysicsPaintStudio() {
     rotoCachedPlayback.setStatus(transaction.status);
   }, [bridgeMode, currentFrame, launchContext, rotoCachedPlayback.setStatus, rotoTimelineActions]);
 
-  const rotoNavigationActions = createRotoNavigationActions({
-    getTargets: () => getRotoNavigationTargets({ currentFrame, framesToApply, savedFrames: timelineSavedRotoFrames, playFrames: latestPlayFrames }),
-    requestNavigation: requestRotoFrameNavigation,
+  const rotoNavigationActions = rotoNavigation.createNavigationActions({
+    currentFrame,
+    framesToApply,
+    savedFrames: timelineSavedRotoFrames,
+    playFrames: latestPlayFrames,
   });
   const { goToFirstFrame, goToPreviousFrame, goToNextFrame, goToLastFrame } = rotoNavigationActions;
 

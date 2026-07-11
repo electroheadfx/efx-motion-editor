@@ -406,7 +406,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps Roto key transactions authoritative after local apply instead of re-reading stale cache state', () => {
     const studioCode = studioSource();
-    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'useRotoKeyUtilities.ts'), 'utf8');
+    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/useRotoKeyUtilities.ts'), 'utf8');
     const applyBlock = studioCode.slice(studioCode.indexOf('const applyRotoKeyFrames = useCallback'), studioCode.indexOf('const persistRotoKeyFrameTransaction'));
     const resultBlock = studioCode.slice(studioCode.indexOf("if (detail.kind === 'replace-roto-key-frames')"), studioCode.indexOf("} else if (detail.kind === 'update-play-render-options')"));
 
@@ -939,9 +939,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('wires D-08/D-09 Studio Roto key utilities through one session result runner', () => {
     const studio = studioSource();
-    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'useRotoKeyUtilities.ts'), 'utf8');
+    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/useRotoKeyUtilities.ts'), 'utf8');
 
-    expect(studio).toContain('useRotoKeyUtilities');
+    expect(studio).toContain('useRotoNavigationCoordinator');
     expect(adapter).toContain('const runSessionResult = useCallback(async');
     expect(adapter).toContain('setKeyActionInFlight(true)');
     expect(adapter).toContain('void runSessionResult(session.duplicateKey())');
@@ -1003,7 +1003,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const session = rotoSessionSource();
     const controller = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoKeyController.ts'), 'utf8');
 
-    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'useRotoKeyUtilities.ts'), 'utf8');
+    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/useRotoKeyUtilities.ts'), 'utf8');
 
     expect(studio).not.toContain('deriveRotoKeyUtilityActionState');
     expect(studio).not.toContain('buildRotoKeyUtilityTransaction');
