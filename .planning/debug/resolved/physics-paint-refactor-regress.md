@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T14:06:20Z
+updated: 2026-07-11T14:11:44Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -49,7 +49,7 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 - hypothesis: "The Tauri command boundary strips `rotoBackground` because Rust's `PhysicsPaintLaunchContext` omits the TypeScript field. Physics playback therefore receives no background metadata, never mounts its paper raster, and displays the white canvas shell beneath the transparent cached paint animation."
 - test: "Deserialize a realistic TypeScript launch payload containing `rotoBackground` into the Rust launch struct, serialize it back exactly as the child fetch receives it, and assert the metadata object survives unchanged."
 - expecting: "Before the native field exists, the round-trip output has no `rotoBackground`; after adding the serde field, the exact background, paperGrain, grainStrength, and color values survive."
-- next_action: "Await live Tauri UAT after rebuilding/relaunching the native app so the corrected Rust launch contract is active."
+- next_action: "Resolved after live Tauri UAT confirmed manual navigation, interpolation, stable playback utilities, clean playback composition/teardown, and correct paper background."
 - ranked_hypotheses:
   A: "Confirmed: Rust command deserialization silently drops `rotoBackground` because the native launch struct omits it."
   B: "Texture asset URL fails in the child window after valid metadata arrives."
@@ -346,6 +346,6 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 - root_cause: TypeScript correctly included persisted `rotoBackground` metadata in `PhysicPaintLaunchContext`, but Tauri's Rust `PhysicsPaintLaunchContext` omitted the field. Serde silently ignored the unknown incoming property when `open_physics_paint_window` deserialized the command payload. Rust then stored, returned, and emitted a launch context with no `rotoBackground`. Physics Paint cached playback consequently did not mount its paper composition and rendered the transparent cached animation over the white canvas shell. The earlier browser renderer and callback fixes could not solve a field that never reached the child window.
 - fix: Added `#[serde(rename = "rotoBackground", skip_serializing_if = "Option::is_none")] roto_background: Option<Value>` to the native launch contract. No paper-renderer values, asset URLs, playback timing, or visual ownership were changed in this correction.
-- verification: Exact native RED command `cargo test --manifest-path app/src-tauri/Cargo.toml preserves_roto_background_round_trip -- --nocapture` failed with `left: None` and the full expected metadata object on the right. The same command passes after the field addition. Full native suite passes 14/14. Focused playback/paper tests pass 101/101. Physics Paint component matrix passes 335/335 across 34 files. `pnpm --dir app typecheck` and `pnpm --dir app build` pass; build transforms 1086 modules. `git diff --check` passes. `cargo fmt --check` reports unrelated pre-existing formatting drift across multiple Rust files, so no broad formatting changes were applied. Live Tauri UAT after a native rebuild/relaunch remains required; Debug 01 is not accepted.
+- verification: Exact native RED command `cargo test --manifest-path app/src-tauri/Cargo.toml preserves_roto_background_round_trip -- --nocapture` failed with `left: None` and the full expected metadata object on the right. The same command passes after the field addition. Full native suite passes 14/14. Focused playback/paper tests pass 101/101. Physics Paint component matrix passes 335/335 across 34 files. `pnpm --dir app typecheck` and `pnpm --dir app build` pass; build transforms 1086 modules. `git diff --check` passes. `cargo fmt --check` reports unrelated pre-existing formatting drift across multiple Rust files, so no broad formatting changes were applied. Live Tauri UAT passed after a native rebuild/relaunch: the user confirmed the playback animation and paper background now work. Debug 01 is accepted.
 - files_changed:
   - app/src-tauri/src/lib.rs
