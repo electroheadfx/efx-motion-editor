@@ -223,7 +223,7 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 - timestamp: 2026-07-11T19:35:00Z
   checked: Red-green authoritative Roto frame composition and automated gates
   found: The new project-space compositor test failed 1/1 because no shared frame compositor existed. A minimal drawRotoFrameComposite primitive now owns paper-before-alpha composition and is used by both PreviewRenderer (therefore editor preview/export) and Physics Paint cached playback. Playback uses a project-sized canvas backing store from launch width/height plus persisted rotoBackground metadata, while retaining exclusive transient ownership and existing Stop/natural-completion teardown. The Physics Paint matrix passes 335/335 across 34 files; editor compositor/export tests pass 25 with 19 existing todos; focused contract/playback tests pass 112/112; typecheck, production build (1086 modules), git diff --check, and instrumentation scan pass.
-  implication: Cached playback now follows the persisted frame contract rather than CSS paper emulation. Live Tauri UAT is still required before Debug 01 acceptance.
+  implication: Cached playback now follows the persisted frame contract rather than CSS paper emulation. Implementation committed as 66febfa8. Live Tauri UAT is still required before Debug 01 acceptance.
 
 - timestamp: 2026-07-11T19:18:00Z
   checked: Persisted frame, editor preview/export, stopped engine, and cached playback rendering contracts
