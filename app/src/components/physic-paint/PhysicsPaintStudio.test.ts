@@ -41,6 +41,9 @@ const rotoNavigationActionsPath = fileURLToPath(new URL('./rotoNavigationActions
 const canvasSizingPath = fileURLToPath(new URL('./physicsPaintCanvasSizing.ts', import.meta.url));
 const parentBridgePath = fileURLToPath(new URL('./usePhysicsPaintParentBridge.ts', import.meta.url));
 const launchContextPath = fileURLToPath(new URL('./physicsPaintLaunchContext.ts', import.meta.url));
+const bridgeTransportPath = fileURLToPath(new URL('./bridge/physicsPaintBridgeTransport.ts', import.meta.url));
+const rotoCanvasFramesPath = fileURLToPath(new URL('./roto/rotoCanvasFrames.ts', import.meta.url));
+const studioKeyboardPath = fileURLToPath(new URL('./physicsPaintStudioKeyboard.ts', import.meta.url));
 function studioPresentationSource(): string {
   const studio = readFileSync(sourcePath, 'utf8');
   const view = readFileSync(viewPath, 'utf8');
@@ -86,6 +89,9 @@ const canvasMountSource = () => readFileSync(canvasMountPath, 'utf8');
 const canvasSizingSource = () => readFileSync(canvasSizingPath, 'utf8');
 const parentBridgeSource = () => readFileSync(parentBridgePath, 'utf8');
 const launchContextSource = () => readFileSync(launchContextPath, 'utf8');
+const bridgeTransportSource = () => readFileSync(bridgeTransportPath, 'utf8');
+const rotoCanvasFramesSource = () => readFileSync(rotoCanvasFramesPath, 'utf8');
+const studioKeyboardSource = () => readFileSync(studioKeyboardPath, 'utf8');
 
 function getUseEffectBlocks(text: string): string[] {
   const blocks: string[] = [];
@@ -264,8 +270,13 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     const bridge = parentBridgeSource();
     const session = rotoSessionSource();
 
+    expect(text).toContain("from './bridge/physicsPaintBridgeTransport'");
     expect(text).toContain('sendPhysicPaintApplyPayload');
     expect(text).toContain('sendPhysicPaintFrameSyncMessage');
+    expect(text).not.toContain('async function sendPhysicPaintApplyPayload');
+    expect(text).not.toContain('async function sendPhysicPaintFrameSyncMessage');
+    expect(bridgeTransportSource()).toContain("await eventApi.emitTo('main', PHYSIC_PAINT_APPLY_EVENT, payload)");
+    expect(bridgeTransportSource()).toContain("window.opener.postMessage({ type: PHYSIC_PAINT_APPLY_EVENT, payload }, window.location.origin)");
     expect(text).toContain('usePhysicsPaintLaunchBridge(applyIncomingLaunchContext)');
     expect(text).toContain('usePhysicsPaintApplyResultBridge(bridgeMode, handleApplyResult)');
     expect(bridge).toContain("coreApi.invoke('get_physics_paint_launch_context')");
@@ -281,6 +292,33 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(session).not.toContain('physicPaintBridge');
     expect(session).not.toContain('@efxlab/efx-physic-paint');
     expect(session).not.toContain('PhysicsPaintStudio');
+  });
+});
+
+describe('PhysicsPaintStudio extracted utility boundaries', () => {
+  it('keeps shortcut filtering pure and wired through the keyboard module', () => {
+    const studio = readFileSync(sourcePath, 'utf8');
+    const keyboard = studioKeyboardSource();
+
+    expect(studio).toContain("import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard'");
+    expect(studio).toContain('if (!isPhysicsPaintShortcutTarget(event.target)) return;');
+    expect(studio).not.toContain('function isPhysicsPaintShortcutTarget');
+    expect(keyboard).toContain('export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean');
+    expect(keyboard).not.toContain('useEffect');
+  });
+
+  it('owns Roto canvas/frame construction in the cohesive Roto module while Studio keeps call-site wiring', () => {
+    const studio = readFileSync(sourcePath, 'utf8');
+    const canvasFrames = rotoCanvasFramesSource();
+
+    expect(studio).toContain("from './roto/rotoCanvasFrames'");
+    expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, frame)');
+    expect(studio).toContain('buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame');
+    for (const helper of ['addOccupiedRotoFrame', 'exportTransparentStrokeCanvas', 'buildRotoFrameFromCanvas', 'drawCanvasAtSize', 'buildBlankRotoFrame', 'buildRotoOutputFrame']) {
+      expect(canvasFrames).toContain(`export function ${helper}`);
+      expect(studio).not.toContain(`function ${helper}`);
+    }
+    expect(canvasFrames).toContain('export type RenderedFramePayload');
   });
 });
 
@@ -342,10 +380,13 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const startRotoCachedPlayback'));
     const flushBlock = rotoSaveControllerSource();
 
-    expect(text).toContain('function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement');
-    expect(text).toContain("engine.setBgMode('transparent')");
-    expect(text).toContain('return engine.exportCompositeCanvas()');
-    expect(text).toContain('engine.load(state)');
+    expect(text).toContain("from './roto/rotoCanvasFrames'");
+    expect(text).not.toContain('function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement');
+    expect(rotoCanvasFramesSource()).toContain('export function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement');
+    expect(rotoCanvasFramesSource()).toContain("engine.setBgMode('transparent')");
+    expect(rotoCanvasFramesSource()).toContain('return engine.exportCompositeCanvas()');
+    expect(rotoCanvasFramesSource()).toContain('engine.load(state)');
+    expect(rotoCanvasFramesSource()).toContain('registerRotoAlphaCanvasFrame(dataUrl, outputCanvas)');
     expect(text).toContain('const confirmedCachedRotoFramesRef = useRef<Map<number, RenderedFramePayload>>');
     expect(text).toContain('capturedFrames: new Map()');
     expect(snapshotBlock).toContain('? buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width: canvasWidth, height: canvasHeight })');
@@ -1354,12 +1395,15 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   });
 
   it('persists paper/background-only Roto frames without marking them editable-session pink', () => {
-    const text = source();
-    const predicateBlock = text.slice(text.indexOf('function shouldPersistRotoFrame'), text.indexOf('const WORKING_PIXEL_LIMIT'));
+    const text = readFileSync(sourcePath, 'utf8');
+    const predicates = rotoSaveTransactionsSource();
     const flushBlock = rotoSaveControllerSource();
 
-    expect(predicateBlock).toContain("state.strokes.length > 0 || state.settings.bgMode !== 'transparent'");
-    expect(predicateBlock).toContain("state.strokes.length === 0 && state.settings.bgMode !== 'transparent'");
+    expect(text).toContain("import { isBackgroundOnlyRotoFrame, shouldPersistRotoFrame } from './rotoSaveTransactions'");
+    expect(text).not.toContain('function shouldPersistRotoFrame');
+    expect(text).not.toContain('function isBackgroundOnlyRotoFrame');
+    expect(predicates).toContain("state.strokes.length > 0 || state.settings.bgMode !== 'transparent'");
+    expect(predicates).toContain("state.strokes.length === 0 && state.settings.bgMode !== 'transparent'");
     expect(flushBlock).toContain('if (save.backgroundOnly) input.removeEditableFrame(frame)');
     expect(flushBlock).toContain('if (save.backgroundOnly) input.removeEditableFrame(frame)');
     expect(flushBlock).toContain('input.removeEditableFrame(frame)');

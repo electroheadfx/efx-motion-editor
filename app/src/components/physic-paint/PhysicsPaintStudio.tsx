@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { BgMode, EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../../types/physicPaint';
-import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_EVENT } from '../../lib/physicPaintBridge';
-import { physicPaintStore, registerRotoAlphaCanvasFrame } from '../../stores/physicPaintStore';
+import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame, type PhysicPaintRotoInterpolationSettings } from '../../types/physicPaint';
+import { physicPaintStore } from '../../stores/physicPaintStore';
 import { clampOnionCount, getPreviewFps, getSourceRotoFrameForDisplayFrame, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 import type { RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from './physicsPaintRotoKeyController';
 import type { RotoSessionEffect } from './physicsPaintRotoSession';
@@ -47,12 +46,15 @@ import {
   type PhysicsPaintStudioSettings,
 } from './physicsPaintStudioSettings';
 import { applyPhysicsPaintLaunchContext, getLaunchWorkflowMode, parsePhysicsPaintLaunchContext } from './physicsPaintLaunchContext';
+import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
+import { sendPhysicPaintApplyPayload, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { addOccupiedRotoFrame, buildBlankRotoFrame, buildRotoFrameFromCanvas, buildRotoOutputFrame, exportTransparentStrokeCanvas, type RenderedFramePayload } from './roto/rotoCanvasFrames';
+import { isBackgroundOnlyRotoFrame, shouldPersistRotoFrame } from './rotoSaveTransactions';
 import { usePhysicsPaintApplyResultBridge, usePhysicsPaintBridgeMode, usePhysicsPaintLaunchBridge, type PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
 import './physicsPaintStudio.css';
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
 const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 50 };
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
-type RenderedFramePayload = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl'>>;
 type PreviewBackgroundEngine = EfxPaintEngine & {
   setBackgroundImageUrl: (dataUrl: string) => void;
   resetBackground: () => void;
@@ -64,105 +66,6 @@ interface PhysicsPaintActionContext {
   engine: EfxPaintEngine;
   launchContext: PhysicPaintLaunchContext;
   bridgeMode: PhysicsPaintBridgeMode;
-}
-
-async function sendPhysicPaintFrameSyncMessage(frame: number, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
-  const message = { type: 'physic-paint:seek-frame' as const, frame };
-  if (bridgeMode === 'Tauri') {
-    try {
-      const eventApi = await import('@tauri-apps/api/event');
-      await eventApi.emit?.('physic-paint:seek-frame', message);
-      await eventApi.emitTo?.('main', 'physic-paint:seek-frame', message);
-      return;
-    } catch {
-      // Browser fallback below keeps development and non-Tauri windows synced.
-    }
-  }
-  window.opener?.postMessage?.(message, '*');
-  window.dispatchEvent?.(new MessageEvent('message', { data: message }));
-}
-
-async function sendPhysicPaintApplyPayload(payload: PhysicPaintApplyPayload, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
-  if (bridgeMode === 'Tauri') {
-    const eventApi = await import('@tauri-apps/api/event');
-    if (typeof eventApi.emitTo !== 'function') throw new Error('Tauri event emitTo API is unavailable');
-    await eventApi.emitTo('main', PHYSIC_PAINT_APPLY_EVENT, payload);
-    return;
-  }
-
-  if (bridgeMode === 'Browser fallback') {
-    if (!window.opener) throw new Error('Browser fallback bridge is unavailable');
-    window.opener.postMessage({ type: PHYSIC_PAINT_APPLY_EVENT, payload }, window.location.origin);
-    return;
-  }
-
-  throw new Error('App bridge is not connected');
-}
-
-function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return true;
-  const tagName = target.tagName.toLowerCase();
-  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return false;
-  if (target.isContentEditable) return false;
-  return !Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
-}
-
-function shouldPersistRotoFrame(state: ReturnType<EfxPaintEngine['save']>): boolean {
-  return state.strokes.length > 0 || state.settings.bgMode !== 'transparent';
-}
-
-function isBackgroundOnlyRotoFrame(state: ReturnType<EfxPaintEngine['save']>): boolean {
-  return state.strokes.length === 0 && state.settings.bgMode !== 'transparent';
-}
-
-function addOccupiedRotoFrame(frames: number[], frame: number): number[] {
-  return [...new Set([...frames, frame])].sort((a, b) => a - b);
-}
-
-function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement {
-  const state = engine.save();
-  const background = state.settings.bgMode as BgMode;
-  try {
-    engine.setBgMode('transparent');
-    return engine.exportCompositeCanvas();
-  } finally {
-    engine.setBgMode(background);
-    engine.load(state);
-  }
-}
-
-function buildRotoFrameFromCanvas(canvas: HTMLCanvasElement, appFrame: number, size?: { width: number; height: number }): RenderedFramePayload {
-  const outputCanvas = size ? drawCanvasAtSize(canvas, size) : canvas;
-  const dataUrl = outputCanvas.toDataURL('image/png');
-  registerRotoAlphaCanvasFrame(dataUrl, outputCanvas);
-  return {
-    frameIndex: 0,
-    appFrame,
-    dataUrl,
-    width: outputCanvas.width,
-    height: outputCanvas.height,
-  };
-}
-
-function drawCanvasAtSize(canvas: HTMLCanvasElement, size: { width: number; height: number }): HTMLCanvasElement {
-  if (canvas.width === size.width && canvas.height === size.height) return canvas;
-  const output = document.createElement('canvas');
-  output.width = size.width;
-  output.height = size.height;
-  const context = output.getContext('2d');
-  context?.drawImage(canvas, 0, 0, size.width, size.height);
-  return output;
-}
-
-function buildBlankRotoFrame(width: number, height: number, appFrame: number): RenderedFramePayload {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  return buildRotoFrameFromCanvas(canvas, appFrame);
-}
-
-function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): RenderedFramePayload {
-  return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height });
 }
 
 export function PhysicsPaintStudio() {

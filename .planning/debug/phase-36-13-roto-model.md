@@ -1116,3 +1116,49 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Audit the remaining Studio orchestration and group controller configuration into focused Roto, Play, bridge, and view-model coordinator hooks.
 - Keep Studio itself as top-level state selection/dependency wiring and drive it to the 400–600 line target without moving all logic into one monolith.
+
+## 2026-07-11 — Cluster: extract pure Studio utilities
+
+### Selected cluster
+- Ownership moved: outbound parent transport, Roto canvas/frame rendering helpers, occupied-frame insertion, and shortcut target filtering.
+- From: module-level helpers in `PhysicsPaintStudio.tsx`.
+- To: `bridge/physicsPaintBridgeTransport.ts`, `roto/rotoCanvasFrames.ts`, and `physicsPaintStudioKeyboard.ts`.
+- Reused the canonical Roto persistence predicates from `rotoSaveTransactions.ts` instead of retaining duplicate Studio definitions.
+
+### Why this is safe
+- Bridge transport preserves the existing Tauri emit, browser opener, same-origin apply, and frame-sync fallback behavior.
+- Roto canvas export preserves temporary transparent background switching, engine-state restoration, output sizing, alpha-canvas registration, and rendered-frame metadata.
+- Shortcut filtering preserves input, textarea, select, contenteditable, and nested editable-target guards.
+- No lifecycle or internal workflow effect was added.
+
+### Ownership removed from Studio
+- Removed all module-level bridge transport implementations.
+- Removed all module-level Roto canvas/frame implementations and duplicate save predicates.
+- Removed the module-level shortcut target predicate.
+- Studio retains only imports and orchestration call sites for these utilities.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/bridge/physicsPaintBridgeTransport.ts`
+- `app/src/components/physic-paint/roto/rotoCanvasFrames.ts`
+- `app/src/components/physic-paint/roto/rotoCanvasFrames.test.ts`
+- `app/src/components/physic-paint/physicsPaintStudioKeyboard.ts`
+- `app/src/components/physic-paint/physicsPaintStudioKeyboard.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 1379 lines.
+- `PhysicsPaintStudio.tsx` after: 1282 lines.
+- Cluster delta: -97 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative Studio reduction: 1922 lines.
+
+### Tests run
+- Focused utility, Studio, and WorkflowStrip tests passed with 150 tests across 4 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract Play edit/cache, preview/render, persistence, and Play-facing session orchestration behind a focused coordinator with narrow ports.
+- Move touched Play modules into `play/` and thin adapters into `hooks/` without creating a replacement monolith.

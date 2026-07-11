@@ -12,6 +12,8 @@ const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '
 const rotoCacheTransactionsSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'rotoCacheTransactions.ts');
 const engineLifecycleSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'usePhysicsPaintEngineLifecycle.ts');
 const canvasMountSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintCanvasMount.tsx');
+const bridgeTransportSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'bridge/physicsPaintBridgeTransport.ts');
+const rotoCanvasFramesSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'roto/rotoCanvasFrames.ts');
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
 const studioSource = () => {
@@ -26,6 +28,8 @@ const rotoSessionSource = () => readFileSync(rotoSessionSourcePath, 'utf8');
 const rotoCacheTransactionsSource = () => readFileSync(rotoCacheTransactionsSourcePath, 'utf8');
 const engineLifecycleSource = () => readFileSync(engineLifecycleSourcePath, 'utf8');
 const canvasMountSource = () => readFileSync(canvasMountSourcePath, 'utf8');
+const bridgeTransportSource = () => readFileSync(bridgeTransportSourcePath, 'utf8');
+const rotoCanvasFramesSource = () => readFileSync(rotoCanvasFramesSourcePath, 'utf8');
 
 function getRotoControlsBlock(code: string): string {
   return code.slice(code.indexOf("props.mode === 'roto'"), code.indexOf('physics-paint-play-controls'));
@@ -745,6 +749,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('rotoSavingFrame={rotoSavingFrame}');
     expect(studio).toContain('setRotoSavingFrame(null)');
     expect(studio).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);\n    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);');
+    expect(studio).toContain("from './bridge/physicsPaintBridgeTransport'");
+    expect(bridgeTransportSource()).toContain("await eventApi.emitTo?.('main', 'physic-paint:seek-frame', message)");
     expect(studio).toContain('currentFrame={currentFrame}');
     expect(studio).not.toContain('currentFrame={effectiveCurrentFrame}');
     expect(statusStackBlock).toContain('Dirty frames save when leaving.');
@@ -958,8 +964,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(bridge).toContain('physicPaintStore.replaceRotoKeyFrames(payload)');
     expect(studio).toContain("kind: 'replace-roto-key-frames'");
     expect(studio).toContain('await sendPhysicPaintApplyPayload(payload');
+    expect(bridgeTransportSource()).toContain("await eventApi.emitTo('main', PHYSIC_PAINT_APPLY_EVENT, payload)");
     expect(studio).toContain('pendingRotoKeyActionMessageRef');
     expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, frame)');
+    expect(rotoCanvasFramesSource()).toContain('export function buildBlankRotoFrame');
     expect(studio).toContain("restore.kind === 'blank-real-key'");
     expect(studio).toContain('setCachedRotoReferenceUrl(null);');
     expect(studio).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
