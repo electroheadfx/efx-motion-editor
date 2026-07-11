@@ -22,7 +22,7 @@ import {
   type RotoMissingFrameStatusKind,
 } from './physicsPaintWorkflowState';
 import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
-import type { RotoKeyUtilityActionState } from './physicsPaintRotoKeyController';
+import type { RotoKeyUtilityActionState } from './roto/physicsPaintRotoKeyController';
 
 const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';

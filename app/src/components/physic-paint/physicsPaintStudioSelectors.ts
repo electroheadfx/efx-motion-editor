@@ -1,6 +1,6 @@
 import type { PhysicPaintRenderedFrame } from '../../types/physicPaint';
 import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
-import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
+import type { PhysicsPaintBridgeMode } from './bridge/usePhysicsPaintParentBridge';
 import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 
 export type PhysicsPaintApplyReadinessInput = {

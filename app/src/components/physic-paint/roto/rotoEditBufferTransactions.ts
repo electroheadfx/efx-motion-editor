@@ -1,4 +1,4 @@
-import type { RotoEditableState, RotoRenderedFrame } from '../rotoSaveTransactions';
+import type { RotoEditableState, RotoRenderedFrame } from '../roto/rotoSaveTransactions';
 
 export interface RotoEditBuffer<State = RotoEditableState, Frame = RotoRenderedFrame> {
   dirtyFrames: Set<number>;

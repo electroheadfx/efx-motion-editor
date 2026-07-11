@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'preact/hooks';
-import type { RotoEditableState, RotoRenderedFrame } from '../rotoSaveTransactions';
+import type { RotoEditableState, RotoRenderedFrame } from '../roto/rotoSaveTransactions';
 import {
   addEditableRotoFrame,
   clearCachedRepaintOverlay,

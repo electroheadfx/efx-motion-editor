@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoSegmentSpacingOverride } from '../../../types/physicPaint';
-import { applyRotoKeyUtilityTransactionToLocalState, type RotoKeyUtilityTransaction } from '../physicsPaintRotoKeyController';
-import { createRotoSession, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedKey, type RotoSessionEffect } from '../physicsPaintRotoSession';
+import { applyRotoKeyUtilityTransactionToLocalState, type RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
+import { createRotoSession, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedKey, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 
 export interface RotoKeyUtilitiesInput<TEditable, TPreview extends { appFrame: number }> {
   currentFrame: number;

@@ -1404,3 +1404,59 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract launch/apply-result lifecycle integration and cross-workflow session/conversion composition into bounded hooks.
 - Run the full Physics Paint matrix and finish the composition-only Studio audit at 400–540 lines.
+
+## 2026-07-11 — Cluster: finalize Studio composition and ownership directories
+
+### Selected cluster
+- Ownership moved: launch hydration/reset/bridge integration, workflow-mode metadata adapter, Roto/general apply-result handling, result bridge, session/conversion composition, and interpolation update/cache refresh.
+- From: remaining integration blocks in `PhysicsPaintStudio.tsx`.
+- To: `hooks/usePhysicsPaintLaunchIntegration.ts`, `hooks/usePhysicsPaintApplyResultController.ts`, `hooks/usePhysicsPaintWorkflowIntegration.ts`, and `hooks/useRotoInterpolationController.ts`.
+- Final organization pass grouped clearly extracted pure Roto modules under `roto/`, thin adapters under `hooks/`, canvas/engine ownership under `engine/`, parent transport/listeners under `bridge/`, and presentation under `view/`.
+
+### Why this is safe
+- Launch hydration, close-after-save preservation, editable metadata, apply-result messages, conversion/session actions, and interpolation publication retain their existing controller and transaction paths.
+- Studio has no `useEffect`; remaining effects are isolated external boundaries for bridge/window/timer/engine/store synchronization.
+- No Roto internal repair effect was introduced.
+- New final integration modules are 18–117 lines; previously extracted controllers remain below 400 lines.
+- Directory moves changed imports and source-contract paths only.
+
+### Ownership removed from Studio
+- Studio no longer owns launch bridge callbacks, apply-result branching, session/conversion controller composition, or interpolation synchronization implementation.
+- Studio now owns composition-local state, top-level dependency selection, focused coordinator wiring, and one presentational return.
+- Extracted modules are no longer flat under the component root.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.ts`
+- `app/src/components/physic-paint/hooks/usePhysicsPaintApplyResultController.ts`
+- `app/src/components/physic-paint/hooks/usePhysicsPaintWorkflowIntegration.ts`
+- `app/src/components/physic-paint/hooks/useRotoInterpolationController.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.tsx`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- Extracted Roto models/tests moved into `app/src/components/physic-paint/roto/`.
+- Extracted lifecycle/controller files/tests moved into `app/src/components/physic-paint/hooks/`.
+- Canvas/engine files/tests moved into `app/src/components/physic-paint/engine/`.
+- Parent bridge hook moved into `app/src/components/physic-paint/bridge/`.
+- Presentation remains grouped under `app/src/components/physic-paint/view/`.
+- Affected imports in `app/src/lib/physicPaintBridge.ts` and adjacent Physics Paint modules were updated.
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 766 lines.
+- `PhysicsPaintStudio.tsx` after: 531 lines.
+- Cluster delta: -235 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative Studio reduction: 2673 lines.
+
+### Final validation
+- Full Physics Paint matrix passed with 331 tests across 32 files after the final directory organization.
+- Typecheck passed.
+- `git diff --check` passed.
+- Studio target passed: 531 lines, within 400–540.
+- Effect audit passed: no `useEffect` remains in Studio; hook effects are external lifecycle synchronization only.
+- Monolith audit passed: no new production extraction file exceeds 400 lines.
+- Unrelated `.gitignore` and `.planning/config.json` changes remain excluded.
+
+### Debug 01 status
+- Automated architecture acceptance criteria are satisfied.
+- This does not claim live visible UAT acceptance for Phase 36.13; user-owned UAT remains pending.

@@ -5,7 +5,7 @@ import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import { clampPhysicPaintFrameCount } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
-import type { PhysicsPaintBridgeMode } from '../usePhysicsPaintParentBridge';
+import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 import type { PhysicsPaintStudioSettings } from '../physicsPaintStudioSettings';
 import { buildPlayRenderOptionsSnapshot } from '../physicsPaintStudioSettings';
 import { selectCurrentPlayCacheStatus, selectPlayConversionMissingFrames } from '../physicsPaintStudioSelectors';

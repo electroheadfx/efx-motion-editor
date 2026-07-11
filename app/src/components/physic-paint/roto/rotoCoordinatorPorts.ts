@@ -1,6 +1,6 @@
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
-import type { RotoKeyUtilityTransaction } from '../physicsPaintRotoKeyController';
-import type { RotoSession, RotoSessionEffect } from '../physicsPaintRotoSession';
+import type { RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
+import type { RotoSession, RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 
 export interface RotoKeyPersistencePort {
   syncKeyFrameLists: (cacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;

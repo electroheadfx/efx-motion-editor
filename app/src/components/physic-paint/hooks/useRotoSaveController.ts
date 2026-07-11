@@ -13,7 +13,7 @@ import {
   type RotoEditableState,
   type RotoFlushOptions,
   type RotoRenderedFrame,
-} from '../rotoSaveTransactions';
+} from '../roto/rotoSaveTransactions';
 
 interface RotoRenderedSave {
   renderedFrame: RotoRenderedFrame;

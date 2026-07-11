@@ -2,15 +2,15 @@ import { useCallback, type Dispatch, type MutableRef, type StateUpdater } from '
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
-import type { RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from '../physicsPaintRotoKeyController';
-import type { RotoSessionEffect } from '../physicsPaintRotoSession';
-import { mergeCachedRotoAlphaFrame } from '../physicsPaintRotoAlphaMerge';
+import type { RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
+import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
+import { mergeCachedRotoAlphaFrame } from '../roto/physicsPaintRotoAlphaMerge';
 import { buildRotoBackgroundMetadata, type PhysicsPaintStudioSettings } from '../physicsPaintStudioSettings';
 import { sendPhysicPaintApplyPayload, sendPhysicPaintFrameSyncMessage } from '../bridge/physicsPaintBridgeTransport';
 import { buildRotoOutputFrame, exportTransparentStrokeCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
-import { isBackgroundOnlyRotoFrame, type RotoEditableState } from '../rotoSaveTransactions';
-import type { PhysicsPaintBridgeMode } from '../usePhysicsPaintParentBridge';
-import { useRotoCloseLifecycle } from '../useRotoCloseLifecycle';
+import { isBackgroundOnlyRotoFrame, type RotoEditableState } from '../roto/rotoSaveTransactions';
+import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
+import { useRotoCloseLifecycle } from '../hooks/useRotoCloseLifecycle';
 import { useRotoSaveController } from './useRotoSaveController';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';

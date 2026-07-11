@@ -1,6 +1,6 @@
 import type { PhysicPaintApplyPayload } from '../../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_EVENT } from '../../../lib/physicPaintBridge';
-import type { PhysicsPaintBridgeMode } from '../usePhysicsPaintParentBridge';
+import type { PhysicsPaintBridgeMode } from './usePhysicsPaintParentBridge';
 
 export async function sendPhysicPaintFrameSyncMessage(frame: number, bridgeMode: PhysicsPaintBridgeMode): Promise<void> {
   const message = { type: 'physic-paint:seek-frame' as const, frame };
