@@ -1362,3 +1362,45 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract the remaining concrete Roto persistence/display port implementations, apply-result/close lifecycle composition, and launch/bridge integration into bounded controllers.
 - Finish with a composition-only Studio audit and full Physics Paint matrix.
+
+## 2026-07-11 — Cluster: extract Roto editing and persistence integration
+
+### Selected cluster
+- Ownership moved: Roto undo/dirty/edit/clear/snapshot actions, external cached-reference synchronization, save-controller composition, close lifecycle, synchronized frame opening, key cache/store/bridge persistence, engine restore, and navigation port configuration.
+- From: concrete Roto integration blocks in `PhysicsPaintStudio.tsx`.
+- To: `hooks/useRotoFrameEditingController.ts` and `hooks/useRotoPersistenceIntegration.ts`.
+
+### Why this is safe
+- Normal navigation and post-save opening remain distinct: only normal navigation snapshots and respects active save/apply blocking.
+- Save-on-leave, queued destinations, real-key replacement, cached repaint alpha merging, source restoration, close choices, and bridge messages preserve their existing paths.
+- The only moved effect is the existing external engine/reference synchronization effect; no internal Roto repair effect was added.
+- New controllers are bounded at 136 and 254 lines.
+
+### Ownership removed from Studio
+- Removed Studio-local Roto edit actions and snapshot rendering.
+- Removed direct save and close controller configuration.
+- Removed synchronized frame opening, key persistence, restore, and navigation-port implementations.
+- Studio retains top-level coordinator composition and apply-result/interpolation wiring.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/hooks/useRotoFrameEditingController.ts`
+- `app/src/components/physic-paint/hooks/useRotoPersistenceIntegration.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 977 lines.
+- `PhysicsPaintStudio.tsx` after: 766 lines.
+- Cluster delta: -211 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative Studio reduction: 2438 lines.
+
+### Tests run
+- Directly verified focused Roto, Studio, and WorkflowStrip tests passed with 161 tests across 6 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract launch/apply-result lifecycle integration and cross-workflow session/conversion composition into bounded hooks.
+- Run the full Physics Paint matrix and finish the composition-only Studio audit at 400–540 lines.

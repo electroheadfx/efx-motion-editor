@@ -1,0 +1,136 @@
+import { useCallback, useEffect, type MutableRef } from 'preact/hooks';
+import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
+import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
+import { buildBlankRotoFrame, buildRotoFrameFromCanvas, exportTransparentStrokeCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
+import { shouldPersistRotoFrame, type RotoEditableState } from '../rotoSaveTransactions';
+
+interface RotoEditBufferPort<TEditable> {
+  dirtyFramesRef: MutableRef<Set<number>>;
+  markDirty: (frame: number) => void;
+  undoOverlay: (frame: number) => 'empty' | 'dirty' | 'unchanged';
+  clearCachedOverlay: (frame: number) => void;
+  clearFrame: (frame: number) => void;
+  snapshotFrame: (input: {
+    frame: number;
+    state: TEditable;
+    capturedFrame: RenderedFramePayload;
+    hasCachedReference: boolean;
+    shouldPersist: boolean;
+  }) => boolean;
+}
+
+interface RotoSessionEditingPort {
+  markLiveOverlayDirty: (frame: number) => void;
+  markLiveOverlayEmpty: (frame: number) => void;
+}
+
+interface RotoReferenceEditingPort {
+  cachedReferenceUrl: string | null;
+  cachedRepaintBaseFrame: RenderedFramePayload | null;
+  clearReference: () => void;
+  setReferenceUrl: (url: string | null) => void;
+  loadReferenceFrame: (frame: number, engine: PreviewBackgroundEngine | null) => void;
+}
+
+interface RotoEditingStatusPort {
+  setApplyStatus: (status: 'idle' | 'applying' | 'success' | 'error') => void;
+  setApplyMessage: (message: string) => void;
+}
+
+type PreviewBackgroundEngine = EfxPaintEngine & {
+  resetBackground: () => void;
+};
+
+export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditableState> {
+  workflowMode: PhysicsPaintWorkflowMode;
+  currentFrame: number;
+  currentFrameIsGenerated: boolean;
+  canvasSize: { width: number; height: number };
+  engine: EfxPaintEngine | null;
+  launchContext: PhysicPaintLaunchContext | null;
+  editBuffer: RotoEditBufferPort<TEditable>;
+  session: RotoSessionEditingPort;
+  reference: RotoReferenceEditingPort;
+  playback: { stop: () => void };
+  syncPendingFrames: () => void;
+  status: RotoEditingStatusPort;
+}
+
+export function useRotoFrameEditingController<TEditable extends RotoEditableState>(input: UseRotoFrameEditingControllerInput<TEditable>) {
+  const snapshotCurrentFrame = useCallback(() => {
+    if (!input.engine || !input.launchContext) return false;
+    const state = input.engine.save() as TEditable;
+    const hasCachedReference = Boolean(
+      input.reference.cachedReferenceUrl
+      || input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame,
+    );
+    const persist = shouldPersistRotoFrame(state);
+    const shouldCapture = !(hasCachedReference && !input.editBuffer.dirtyFramesRef.current.has(input.currentFrame)) && persist;
+    const capturedFrame = shouldCapture
+      ? buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(input.engine), input.currentFrame, input.canvasSize)
+      : buildBlankRotoFrame(input.canvasSize.width, input.canvasSize.height, input.currentFrame);
+    return input.editBuffer.snapshotFrame({
+      frame: input.currentFrame,
+      state,
+      capturedFrame,
+      hasCachedReference,
+      shouldPersist: persist,
+    });
+  }, [input]);
+
+  const undo = useCallback(() => {
+    input.engine?.undo();
+    if (input.workflowMode === 'roto' && input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame) {
+      if (input.editBuffer.undoOverlay(input.currentFrame) === 'empty') {
+        input.session.markLiveOverlayEmpty(input.currentFrame);
+        input.syncPendingFrames();
+      }
+    }
+  }, [input]);
+
+  const markCurrentFrameDirty = useCallback(() => {
+    if (input.workflowMode !== 'roto') return;
+    if (input.currentFrameIsGenerated) {
+      input.status.setApplyMessage(`Generated frame ${input.currentFrame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.`);
+      return;
+    }
+    input.editBuffer.markDirty(input.currentFrame);
+    input.session.markLiveOverlayDirty(input.currentFrame);
+    input.reference.clearReference();
+    input.playback.stop();
+    (input.engine as PreviewBackgroundEngine | null)?.resetBackground?.();
+    input.syncPendingFrames();
+  }, [input]);
+
+  const beginFrameEdit = useCallback(() => {
+    input.playback.stop();
+    markCurrentFrameDirty();
+  }, [input.playback, markCurrentFrameDirty]);
+
+  const clearCurrentFrame = useCallback(() => {
+    if (!input.engine || !input.launchContext || input.workflowMode !== 'roto') return false;
+    input.engine.clear();
+    if (input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame) {
+      input.editBuffer.clearCachedOverlay(input.currentFrame);
+      input.session.markLiveOverlayEmpty(input.currentFrame);
+      input.syncPendingFrames();
+      input.status.setApplyStatus('success');
+      input.status.setApplyMessage(`Cleared live repaint strokes for frame ${input.currentFrame}; cached base preserved.`);
+      return true;
+    }
+    input.editBuffer.clearFrame(input.currentFrame);
+    input.syncPendingFrames();
+    if (!input.reference.cachedRepaintBaseFrame) input.reference.setReferenceUrl(null);
+    input.status.setApplyStatus('success');
+    input.status.setApplyMessage(`Cleared roto frame ${input.currentFrame}.`);
+    return true;
+  }, [input]);
+
+  useEffect(() => {
+    if (input.workflowMode !== 'roto') return;
+    input.reference.loadReferenceFrame(input.currentFrame, input.engine as PreviewBackgroundEngine | null);
+  }, [input.currentFrame, input.engine, input.launchContext, input.reference.loadReferenceFrame, input.workflowMode]);
+
+  return { undo, beginFrameEdit, clearCurrentFrame, snapshotCurrentFrame };
+}

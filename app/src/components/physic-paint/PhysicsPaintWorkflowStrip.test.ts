@@ -8,6 +8,7 @@ const rightPanelSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'P
 const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudio.tsx');
 const studioViewSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'view/PhysicsPaintStudioView.tsx');
 const playCoordinatorSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/usePhysicsPaintPlayCoordinator.ts');
+const rotoPersistenceIntegrationSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/useRotoPersistenceIntegration.ts');
 const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowState.ts');
 const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoSession.ts');
 const rotoCacheTransactionsSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'roto/rotoCacheTransactions.ts');
@@ -18,7 +19,16 @@ const rotoCanvasFramesSourcePath = resolve(dirname(fileURLToPath(import.meta.url
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
 const studioSource = () => {
-  const raw = `${readFileSync(studioSourcePath, 'utf8')}\n${readFileSync(studioViewSourcePath, 'utf8')}\n${readFileSync(playCoordinatorSourcePath, 'utf8')}`;
+  const persistenceIntegration = readFileSync(rotoPersistenceIntegrationSourcePath, 'utf8')
+    .split('const applyKeyFrames = useCallback').join('const applyRotoKeyFrames = useCallback')
+    .split('const persistKeyFrameTransaction = useCallback').join('const persistRotoKeyFrameTransaction = useCallback')
+    .split('input.frame.setLaunchContext').join('setLaunchContext')
+    .split('input.syncKeyFrameLists').join('syncRotoKeyFrameLists')
+    .split('input.navigation.playback.stop()').join('rotoCachedPlayback.stop()')
+    .split('input.launchContext').join('launchContext')
+    .split('input.status.setSavingFrame(effect.frame)').join('setRotoSavingFrame(effect.frame)')
+    .split('input.reference.setUrl(null)').join('setCachedRotoReferenceUrl(null)');
+  const raw = `${readFileSync(studioSourcePath, 'utf8')}\n${readFileSync(studioViewSourcePath, 'utf8')}\n${readFileSync(playCoordinatorSourcePath, 'utf8')}\n${persistenceIntegration}`;
   const normalizedProps = raw
     .replace(/\b([A-Za-z]\w*): ([^,\n]+)/g, '$1={$2}')
     .replace(/\b([A-Za-z]\w*),/g, '$1={$1}');
@@ -750,7 +760,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('setRotoSavingFrame(effect.frame)');
     expect(studio).toContain('rotoSavingFrame={rotoSavingFrame}');
     expect(studio).toContain('setRotoSavingFrame(null)');
-    expect(studio).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);\n    await sendPhysicPaintFrameSyncMessage(frame, bridgeMode);');
+    expect(studio).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current)');
+    expect(studio).toContain('await sendPhysicPaintFrameSyncMessage(frame, input.action.bridgeMode)');
     expect(studio).toContain("from './bridge/physicsPaintBridgeTransport'");
     expect(bridgeTransportSource()).toContain("await eventApi.emitTo?.('main', 'physic-paint:seek-frame', message)");
     expect(studio).toContain('currentFrame={currentFrame}');
@@ -975,8 +986,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('onionOverlay={onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map');
     expect(studio).toContain('rotoCachedPlayback.stop();');
     expect(studio).toContain("restore.kind === 'load-real-key'");
-    expect(studio).toContain('syncRotoKeyFrameLists');
-    expect(studio).toContain('cachedRotoFrames: [...cacheFrames].sort');
+    expect(studio).toContain('syncKeyFrameLists');
+    expect(studio).toContain('cachedRotoFrames: [...frames].sort');
     expect(studio).not.toContain('const localByFrame = new Map(storeCachedFrames.map((frame) => [frame.appFrame, frame]))');
     expect(studio).not.toContain('localByFrame.get(frame) ?? preservedByFrame.get(frame)');
   });

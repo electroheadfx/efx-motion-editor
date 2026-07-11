@@ -25,6 +25,8 @@ const rotoApplyResultTransactionsPath = fileURLToPath(new URL('./rotoApplyResult
 const rotoSaveControllerPath = fileURLToPath(new URL('./hooks/useRotoSaveController.ts', import.meta.url));
 const rotoSaveTransactionsPath = fileURLToPath(new URL('./rotoSaveTransactions.ts', import.meta.url));
 const rotoPersistenceCoordinatorPath = fileURLToPath(new URL('./hooks/useRotoFramePersistenceCoordinator.ts', import.meta.url));
+const rotoPersistenceIntegrationPath = fileURLToPath(new URL('./hooks/useRotoPersistenceIntegration.ts', import.meta.url));
+const rotoFrameEditingControllerPath = fileURLToPath(new URL('./hooks/useRotoFrameEditingController.ts', import.meta.url));
 const rotoEditBufferControllerPath = fileURLToPath(new URL('./hooks/useRotoEditBufferController.ts', import.meta.url));
 const rotoEditBufferTransactionsPath = fileURLToPath(new URL('./roto/rotoEditBufferTransactions.ts', import.meta.url));
 const playFrameTransactionsPath = fileURLToPath(new URL('./play/playFrameTransactions.ts', import.meta.url));
@@ -56,7 +58,7 @@ function studioPresentationSource(): string {
   return `${studio}\n${view}\n${normalizedProps}\n{shortcutsVisible`;
 }
 const rotoNavigationCoordinatorSource = () => readFileSync(rotoNavigationCoordinatorPath, 'utf8');
-const source = () => `${studioPresentationSource()}
+const source = () => `${rotoPersistenceIntegrationSource()}\n${rotoFrameEditingControllerSource()}\n${studioPresentationSource()}
 ${rotoNavigationCoordinatorSource()}\n${rotoPersistenceCoordinatorSource()}\n${rotoReferenceControllerSource()}\n${rotoCloseLifecycleSource()}\n${rotoSaveControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playCoordinatorSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}\n${playPreviewControllerSource()}\n${playLifecycleTransactionsSource()}\n${engineLifecycleSource()}\n${canvasMountSource()}\n${canvasSizingSource()}`;
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
@@ -77,6 +79,50 @@ const rotoApplyResultTransactionsSource = () => readFileSync(rotoApplyResultTran
 const rotoSaveControllerSource = () => readFileSync(rotoSaveControllerPath, 'utf8');
 const rotoSaveTransactionsSource = () => readFileSync(rotoSaveTransactionsPath, 'utf8');
 const rotoPersistenceCoordinatorSource = () => readFileSync(rotoPersistenceCoordinatorPath, 'utf8');
+const rotoPersistenceIntegrationSource = () => readFileSync(rotoPersistenceIntegrationPath, 'utf8')
+  .split('input.launchContext').join('launchContext')
+  .split('input.reference.cachedRepaintBaseFrame').join('cachedRotoRepaintBaseFrame')
+  .split('rotoCachedPlayback.stop()').join('rotoCachedPlayback.stop()')
+  .split('input.reference.clearUrl()').join('clearCachedRotoReferenceUrl()')
+  .split('input.navigation.playback.stop()').join('rotoCachedPlayback.stop()')
+  .split('input.reference.setUrl(null)').join('setCachedRotoReferenceUrl(null)')
+  .split('input.status.setSavingFrame(effect.frame)').join('setRotoSavingFrame(effect.frame)')
+  .split('input.frame.snapshotCurrent()').join('snapshotCurrentRotoFrame()')
+  .split('input.lifecycle.flushInFlightRef.current').join('rotoFlushInFlightRef.current')
+  .split('input.status.applyStatus').join('applyStatus')
+  .split('input.frame.setLaunchContext').join('setLaunchContext')
+  .split('input.action.bridgeMode').join('bridgeMode')
+  .split('input.reference.loadFrame').join('loadCachedRotoReferenceFrame')
+  .split('input.engine').join('engine')
+  .split('input.frame.current').join('currentFrame')
+  .split('input.editBuffer.frameStatesRef').join('rotoFrameStatesRef')
+  .split('input.lifecycle.saveOnLeaveSourceFrameRef').join('saveOnLeaveSourceFrameRef')
+  .split('input.lifecycle.activeOperationIdRef').join('activeOperationIdRef')
+  .split('input.lifecycle.pendingAdvanceRef').join('pendingRotoAdvanceRef')
+  .split('input.status.setApplyStatus').join('setApplyStatus')
+  .split('input.status.setApplyMessage').join('setApplyMessage')
+  .split('const openFrame = useCallback').join('const navigateToSyncedFrame = useCallback')
+  .split('const openAfterSave = useCallback').join('const openSyncedRotoFrameAfterSave = useCallback')
+  .split('const applyKeyFrames = useCallback').join('const applyRotoKeyFrames = useCallback')
+  .split('const persistKeyFrameTransaction = useCallback').join('const persistRotoKeyFrameTransaction = useCallback')
+  .split('const restoreFrame = useCallback').join('const restoreRotoFrameFromSessionEffect = useCallback');
+const rotoFrameEditingControllerSource = () => readFileSync(rotoFrameEditingControllerPath, 'utf8')
+  .split('input.workflowMode').join('workflowMode')
+  .split('input.currentFrame').join('currentFrame')
+  .split('input.engine').join('engine')
+  .split('input.reference.cachedRepaintBaseFrame').join('cachedRotoRepaintBaseFrame')
+  .split('input.reference.cachedReferenceUrl').join('cachedRotoReferenceUrl')
+  .split('input.reference.clearReference()').join('clearCachedRotoReferenceUrl()')
+  .split('input.editBuffer.markDirty(currentFrame)').join('rotoEditBuffer.markDirty(appFrame)')
+  .split('input.editBuffer.snapshotFrame').join('rotoEditBuffer.snapshotFrame')
+  .split('input.session.markLiveOverlayEmpty').join('rotoSession.markLiveOverlayEmpty')
+  .split('input.session.markLiveOverlayDirty').join('rotoSession.markLiveOverlayDirty')
+  .split('input.editBuffer.clearCachedOverlay').join('rotoEditBuffer.clearCachedOverlay')
+  .split('input.editBuffer.clearFrame').join('rotoEditBuffer.clearFrame')
+  .split('const beginFrameEdit = useCallback').join('const beginRotoFrameEdit = useCallback')
+  .split('const markCurrentFrameDirty = useCallback').join('const markCurrentRotoFrameDirty = useCallback')
+  .split('input.currentFrameIsGenerated').join('currentFrameIsGeneratedRoto')
+  .split('input.reference.setReferenceUrl').join('setCachedRotoReferenceUrl');
 const rotoEditBufferControllerSource = () => readFileSync(rotoEditBufferControllerPath, 'utf8');
 const rotoEditBufferTransactionsSource = () => readFileSync(rotoEditBufferTransactionsPath, 'utf8');
 const playFrameTransactionsSource = () => readFileSync(playFrameTransactionsPath, 'utf8');
@@ -145,8 +191,9 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
 
   it('36.13/D-08/D-12 persists transaction segment spacing overrides before local/generated cache refresh', () => {
     const text = source();
-    const applyBlock = text.slice(text.indexOf('const applyRotoKeyFrames = useCallback'), text.indexOf('const persistRotoKeyFrameTransaction = useCallback'));
-    const persistBlock = text.slice(text.indexOf('const persistRotoKeyFrameTransaction = useCallback'), text.indexOf('const restoreRotoFrameFromSessionEffect'));
+    const integration = rotoPersistenceIntegrationSource();
+    const applyBlock = integration.slice(integration.indexOf('const applyRotoKeyFrames = useCallback'), integration.indexOf('const persistRotoKeyFrameTransaction = useCallback'));
+    const persistBlock = integration.slice(integration.indexOf('const persistRotoKeyFrameTransaction = useCallback'), integration.indexOf('const restoreRotoFrameFromSessionEffect'));
 
     expect(text).toContain('useRotoKeyUtilities');
     expect(applyBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, { segmentSpacingOverrides: [...transaction.segmentSpacingOverrides] })');
@@ -243,7 +290,7 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     }
     expect(text).toContain('saveFrameBeforeContinuation: async (effect) =>');
     expect(text).toContain('persistRotoKeyFrameTransaction');
-    expect(text).toContain('restoreFrame: restoreRotoFrameFromSessionEffect');
+    expect(text).toContain('restoreFrame');
     expect(text).toContain('openAfterSave: openSyncedRotoFrameAfterSave');
   });
 
@@ -317,7 +364,7 @@ describe('PhysicsPaintStudio extracted utility boundaries', () => {
 
     expect(studio).toContain("from './roto/rotoCanvasFrames'");
     expect(studio).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, frame)');
-    expect(studio).toContain('buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame');
+    expect(rotoFrameEditingControllerSource()).toContain('buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), currentFrame');
     for (const helper of ['addOccupiedRotoFrame', 'exportTransparentStrokeCanvas', 'buildRotoFrameFromCanvas', 'drawCanvasAtSize', 'buildBlankRotoFrame', 'buildRotoOutputFrame']) {
       expect(canvasFrames).toContain(`export function ${helper}`);
       expect(studio).not.toContain(`function ${helper}`);
@@ -381,7 +428,7 @@ describe('PhysicsPaintStudio external engine lifecycle boundary contract', () =>
 describe('PhysicsPaintStudio onion preview contract', () => {
   it('captures transparent Roto frames once and reuses that active-frame payload for save output and onion preview', () => {
     const text = source();
-    const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const startRotoCachedPlayback'));
+    const snapshotBlock = rotoFrameEditingControllerSource();
     const flushBlock = rotoSaveControllerSource();
 
     expect(text).toContain("from './roto/rotoCanvasFrames'");
@@ -393,7 +440,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(rotoCanvasFramesSource()).toContain('registerRotoAlphaCanvasFrame(dataUrl, outputCanvas)');
     expect(text).toContain('const confirmedFramesRef = useRef<Map<number, RenderedFramePayload>>');
     expect(text).toContain('capturedFrames: new Map()');
-    expect(snapshotBlock).toContain('? buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width: canvasWidth, height: canvasHeight })');
+    expect(snapshotBlock).toContain('buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), currentFrame, input.canvasSize)');
     expect(snapshotBlock).toContain('rotoEditBuffer.snapshotFrame({');
     expect(rotoEditBufferTransactionsSource()).toContain('buffer.capturedFrames.set(frame, input.capturedFrame)');
     expect(rotoEditBufferTransactionsSource()).toContain('buffer.previewFrames.set(frame, input.capturedFrame)');
@@ -1248,12 +1295,11 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
 
   it('D-02/D-03/36.11-ALPHA-ONLY-MERGE merges cached real-key base with live transparent output only on dirty cached-key repaint save', () => {
     const text = source();
-    const importsBlock = text.slice(0, text.indexOf('const CANVAS_MOUNT_ERROR'));
     const controller = rotoReferenceControllerSource();
     const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
     const flushBlock = rotoSaveControllerSource();
 
-    expect(importsBlock).toContain("import { mergeCachedRotoAlphaFrame } from './physicsPaintRotoAlphaMerge'");
+    expect(rotoPersistenceIntegrationSource()).toContain("import { mergeCachedRotoAlphaFrame } from '../physicsPaintRotoAlphaMerge'");
     expect(text).toContain('const reference = useRotoReferenceController<RenderedFramePayload>({');
     expect(controller).toContain('input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null)');
     expect(controller.indexOf('input.dirtyFrames.has(appFrame)')).toBeLessThan(controller.indexOf('const cachedFrame = input.getReferenceFrame(appFrame)'));
@@ -1261,8 +1307,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(dirtyBlock).toContain('clearCachedRotoReferenceUrl()');
     expect(flushBlock).toContain('const cachedRepaintBase = input.getCachedRepaintFrame(frame)');
     expect(flushBlock).toContain('}, [input])');
-    expect(text).toContain('const liveAlphaCanvas = exportTransparentStrokeCanvas(saveEngine)');
-    expect(text).toContain('mergeCachedRotoAlphaFrame(cachedRepaintBase, liveAlphaCanvas, sourceFrame, { width: canvasWidth, height: canvasHeight })');
+    expect(text).toContain('const liveAlphaCanvas = exportTransparentStrokeCanvas(engine)');
+    expect(text).toContain('mergeCachedRotoAlphaFrame(cachedRepaintBase, liveAlphaCanvas, sourceFrame, input.frame.canvasSize)');
     expect(text).toContain('const renderedFrame = cachedRepaintBase\n        ? await mergeCachedRotoAlphaFrame');
     expect(flushBlock).toContain('input.setPreviewFrame(frame, save.onionFrame ?? save.renderedFrame)');
     expect(flushBlock).toContain('renderedFrame,');
@@ -1290,9 +1336,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   });
 
   it('D-02 keeps the cached repaint base outside editable stroke/script state restoration', () => {
-    const text = source();
     const controller = rotoReferenceControllerSource();
-    const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const startRotoCachedPlayback'));
+    const snapshotBlock = rotoFrameEditingControllerSource();
 
     expect(controller).toContain('input.setRepaintBaseFrame(cachedFrame)');
     expect(controller).toContain('input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null)');
@@ -1301,7 +1346,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(controller).not.toContain('engine.load(cachedFrame');
     expect(controller).not.toContain('editableState');
     expect(controller).not.toContain('strokes');
-    expect(snapshotBlock).toContain('cachedRotoRepaintBaseFrame?.appFrame === appFrame');
+    expect(snapshotBlock).toContain('cachedRotoRepaintBaseFrame?.appFrame === currentFrame');
     expect(snapshotBlock).not.toContain('cachedRotoRepaintBaseFrame.strokes');
     expect(snapshotBlock).not.toContain('rotoFrameStatesRef.current.set(appFrame, cachedRotoRepaintBaseFrame');
   });
@@ -1336,7 +1381,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const resetBlock = text.slice(text.indexOf('const resetRotoSessionForLaunch = useCallback'), text.indexOf('useEffect(() => {', text.indexOf('const resetRotoSessionForLaunch = useCallback')));
     const findBlock = rotoReferenceControllerSource();
     const upsertCallbackBlock = rotoPersistenceCoordinatorSource().slice(rotoPersistenceCoordinatorSource().indexOf('const upsertCachedFrame = useCallback'), rotoPersistenceCoordinatorSource().indexOf('const removeCachedFrame = useCallback'));
-    const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const startRotoCachedPlayback'));
+    const snapshotBlock = rotoFrameEditingControllerSource();
 
     expect(text).toContain('const confirmedFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map())');
     expect(resetBlock).toContain('rotoPersistence.resetForLaunch(context.cachedRotoFrames)');
@@ -1372,8 +1417,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   });
 
   it('36.11 D-06/D-12 protects cached-base Clear as live-overlay-only without removing saved real-key/cache state', () => {
-    const text = source();
-    const clearBlock = text.slice(text.indexOf('const clearActiveSource = useCallback'), text.indexOf('const dryPaint = useCallback'));
+    const clearBlock = rotoFrameEditingControllerSource();
 
     expect(clearBlock).toContain('if (cachedRotoRepaintBaseFrame?.appFrame === currentFrame) {');
     expect(clearBlock).toContain('rotoSession.markLiveOverlayEmpty(currentFrame)');
@@ -1405,7 +1449,8 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const predicates = rotoSaveTransactionsSource();
     const flushBlock = rotoSaveControllerSource();
 
-    expect(text).toContain("import { isBackgroundOnlyRotoFrame, shouldPersistRotoFrame } from './rotoSaveTransactions'");
+    expect(rotoPersistenceIntegrationSource()).toContain("import { isBackgroundOnlyRotoFrame, type RotoEditableState } from '../rotoSaveTransactions'");
+    expect(rotoFrameEditingControllerSource()).toContain("import { shouldPersistRotoFrame, type RotoEditableState } from '../rotoSaveTransactions'");
     expect(text).not.toContain('function shouldPersistRotoFrame');
     expect(text).not.toContain('function isBackgroundOnlyRotoFrame');
     expect(predicates).toContain("state.strokes.length > 0 || state.settings.bgMode !== 'transparent'");
@@ -1422,11 +1467,11 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const workflowStripStart = text.indexOf('    workflow: {');
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
-    const snapshotBlock = text.slice(text.indexOf('const snapshotCurrentRotoFrame = useCallback'), text.indexOf('const toggleRotoCachedPlayback'));
+    const snapshotBlock = rotoFrameEditingControllerSource();
 
     expect(text).toContain('const editableRotoFrames = rotoEditBuffer.editableFrames');
     expect(rotoEditBufferTransactionsSource()).toContain('export function hasEditableRotoContent');
-    expect(snapshotBlock).toContain('const hasCachedReference = Boolean(cachedRotoReferenceUrl || cachedRotoRepaintBaseFrame?.appFrame === appFrame)');
+    expect(snapshotBlock).toContain('const hasCachedReference = Boolean(');
     expect(snapshotBlock).toContain('rotoEditBuffer.snapshotFrame({');
     expect(rotoEditBufferTransactionsSource()).toContain('editable: hasEditableRotoContent(input.state)');
     expect(text).toContain('const rotoTimelineModel = useRotoTimelineModel');
@@ -1490,17 +1535,16 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const text = source();
     const coordinatorBlock = rotoNavigationCoordinatorSource();
     const navigateBlock = text.slice(text.indexOf('const navigateToSyncedFrame = useCallback'), text.indexOf('const syncRotoKeyFrameLists = useCallback'));
-    const internalAdvanceBlock = text.slice(text.indexOf('const openSyncedRotoFrameAfterSave = useCallback'), text.indexOf('const syncRotoKeyFrameLists = useCallback'));
     const saveBlock = rotoSaveControllerSource();
 
     expect(text).toContain('const openSyncedRotoFrameAfterSave = useCallback');
-    expect(navigateBlock).toContain("if (rotoFlushInFlightRef.current || applyStatus === 'applying') return false");
-    expect(internalAdvanceBlock).toContain('rotoCachedPlayback.stop()');
-    expect(internalAdvanceBlock).toContain('loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine)');
-    expect(internalAdvanceBlock).toContain('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
-    expect(internalAdvanceBlock).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current)');
-    expect(internalAdvanceBlock).not.toContain("applyStatus === 'applying'");
-    expect(internalAdvanceBlock).not.toContain('rotoFlushInFlightRef.current');
+    expect(navigateBlock).toContain("if (snapshot && (rotoFlushInFlightRef.current || applyStatus === 'applying')) return false");
+    expect(readFileSync(rotoPersistenceIntegrationPath, 'utf8')).toContain('input.navigation.playback.stop()');
+    expect(rotoPersistenceIntegrationSource()).toContain('loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine)');
+    expect(rotoPersistenceIntegrationSource()).toContain('await sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
+    expect(rotoPersistenceIntegrationSource()).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current)');
+    expect(readFileSync(rotoPersistenceIntegrationPath, 'utf8')).toContain("if (snapshot && (input.lifecycle.flushInFlightRef.current || input.status.applyStatus === 'applying')) return false");
+    expect(readFileSync(rotoPersistenceIntegrationPath, 'utf8')).toContain('const openAfterSave = useCallback((frame: number) => openFrame(frame, false)');
     const controller = rotoApplyResultControllerSource();
     expect(controller).toContain('void input.openFrameAfterSave(nextFrame).then(() => {');
     expect(controller).not.toContain('void navigateToSyncedFrame(nextFrame)');
@@ -1619,7 +1663,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('const currentFrameIsGeneratedRoto = workflowMode === \'roto\' && rotoTimelineModel.currentFrameIsGenerated.value');
     expect(text).not.toContain("const currentFrameIsGeneratedRoto = currentRotoDisplayFrame?.source === 'generated-interpolation'");
     expect(text).toContain("const rotoInputDisabled = workflowMode === 'roto' && ((Boolean(saveOnLeaveSourceFrameRef.current) && applyStatus === 'applying') || currentFrameIsGeneratedRoto)");
-    expect(dirtyBlock).toContain('if (currentFrameIsGeneratedRoto) {');
+    expect(readFileSync(rotoFrameEditingControllerPath, 'utf8')).toContain('if (input.currentFrameIsGenerated) {');
     expect(dirtyBlock).toContain('is render-only. Use timeline navigation or playback; edit a real Roto key to paint.');
     expect(canvasBlock).toContain('inputDisabled: rotoInputDisabled');
     expect(canvasBlock).toContain("inputDisabledMessage: currentFrameIsGeneratedRoto ? `Generated frame ${currentFrame} is render-only.` : 'Saving current Roto frame…'");
@@ -1644,7 +1688,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
   it('36.8-REG-09 keeps Copy read-only and preserves copied editable state for Paste', () => {
     const text = source();
     const adapter = rotoKeyUtilitiesSource();
-    const sessionBlock = text.slice(text.indexOf('useRotoNavigationCoordinator'), text.indexOf('const undo = useCallback'));
+    const sessionBlock = readFileSync(sourcePath, 'utf8').slice(readFileSync(sourcePath, 'utf8').indexOf('useRotoNavigationCoordinator'), readFileSync(sourcePath, 'utf8').indexOf('const rotoFrameEditing'));
 
     expect(text).not.toContain('copiedRotoEditableStateRef');
     expect(adapter).toContain('copiedEditableStateRef.current = input.getEditableState(input.currentFrame)');
@@ -1658,7 +1702,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
 
     expect(dirtyBlock).toContain('clearCachedRotoReferenceUrl()');
-    expect(dirtyBlock).toContain('rotoCachedPlayback.stop();');
+    expect(dirtyBlock).toContain('input.playback.stop();');
     expect(dirtyBlock).toContain('(engine as PreviewBackgroundEngine | null)?.resetBackground?.()');
     expect(text).not.toContain('suppressRotoOnionOverlay');
     expect(text).not.toContain('setSuppressRotoOnionOverlay');
