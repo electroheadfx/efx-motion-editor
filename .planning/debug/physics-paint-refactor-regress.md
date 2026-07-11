@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T16:47:00Z
+updated: 2026-07-11T17:28:00Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -46,10 +46,20 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Current Focus
 
-- hypothesis: "Confirmed: cached Roto playback was additive because PhysicsPaintCanvasStack left the editable engine/preview-base/live-alpha shell and cached reference visible while adding the transient playback image."
-- test: "Focused red/green render-ownership contract plus focused/broad Physics Paint tests, typecheck, build, diff check, and live Tauri UAT."
-- expecting: "During playback only the transient cached frame is visible; canonical selected frame and utilities stay frozen; Stop reveals the selected editable visual once."
-- next_action: "Await live Tauri UAT for exclusive playback composition and Stop restoration; do not mark Debug 01 accepted yet."
+- hypothesis: "Confirmed and self-verified: shell-wide hiding removed shared paper, and natural completion retained the final transient frame after playback activity ended."
+- test: "Live Tauri UAT of cached Roto playback paper preservation and Stop restoration after automated gates."
+- expecting: "Playback shows cached images over the normal paper with no editable/reference/onion pixels; Stop leaves only the unchanged selected editable visual, with selection/utilities frozen throughout."
+- next_action: "Commit the atomic code/test fix and debug artifact, then await live UAT; do not mark Debug 01 accepted."
+- reasoning_checkpoint:
+  hypothesis: "Commit 520f2bfa causes missing paper by hiding .demo-canvas-shell, the common ancestor of both the .paint-canvas paper/background and editable engine canvases; natural cached playback completion causes post-Stop stacking because it sets isActive/isPlaying false without clearing frame, while the view mounts playback whenever frame remains non-null."
+  confirming_evidence:
+    - "The .paint-canvas CSS owns the paper background and is nested inside the hidden .demo-canvas-shell."
+    - "The new view test fails because canvas-only suppression does not exist and the shell-wide visibility:hidden rule does."
+    - "The lifecycle test fails with frame { id: 'last' } after isActive becomes false on the final non-loop tick."
+  falsification_test: "If changing suppression to .paint-canvas > canvas still removes paper, or if clearing the transient frame before releasing playback does not make both manual/natural Stop tests immune to later timer advancement, the hypothesis is wrong."
+  fix_rationale: "Keep the shared .paint-canvas element visible and hide only editable engine canvas children; use one finalization path that first invalidates future interval callbacks, then clears frame, then releases active/global playback so the view cannot render both owners."
+  blind_spots: "The hook test uses fake interval timers and cannot observe browser paint between batched Preact state updates; live Tauri UAT remains required for visual ordering."
+
 - reasoning_checkpoint:
   hypothesis: "The transient playback image composites with frame 1 because the view has no exclusive visual-owner state: it leaves the editable engine canvas/preview base/live alpha and cached reference visible while adding the playback image."
   confirming_evidence:
@@ -78,7 +88,11 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
   falsification_test: "If removing playback writes, preserving one pending local selection across its stale launch echo, and persisting interpolation before seek do not make the exact behavioral tests pass, the ownership/order hypothesis is wrong."
   fix_rationale: "Keep launchContext.startFrame editable-only, make cached playback transient-only, and serialize interpolation persistence before dependent navigation so stale projections cannot win."
   blind_spots: "Live parent may emit more than one stale launch echo; automated tests cover the one-response bridge contract and live UAT must confirm the real event sequence."
-- tdd_checkpoint: RED tests required before production fixes
+- tdd_checkpoint:
+  test_file: "app/src/components/physic-paint/PhysicsPaintStudio.test.ts; app/src/components/physic-paint/hooks/useRotoCachedPlayback.test.ts"
+  test_name: "delegates cached Roto playback state and timer ownership to the focused hook; clears the final transient frame before revealing editable state and ignores stale ticks after Stop"
+  status: "green"
+  failure_output: "RED reproduced independently: view contract expected canvas-only suppression but commit hid .demo-canvas-shell; lifecycle expected null transient frame after natural Stop but received { id: 'last' }. Both focused tests now pass after minimal production edits."
 
 ## Evidence
 
@@ -147,6 +161,31 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
   found: Studio now passes rotoCachedPlayback.isActive to the view; CanvasStack keeps the engine mounted but hides its shell while active, suppresses cached reference/Play preview/onion children, and renders the transient cached Roto frame with a dedicated top-layer class. The same focused command passes 1/1. Stop already clears frame and isActive synchronously through the playback hook, so the unchanged selected engine/reference visual is revealed without launchContext mutation or reload.
   implication: The fix addresses only rendering ownership, preserves Preact controller state and Stop semantics, and does not restore ownership to Studio or add effects.
 
+- timestamp: 2026-07-11T17:05:00Z
+  checked: Second live Tauri UAT after commit 520f2bfa
+  found: Cached Roto playback now suppresses the selected editable paint, but playback also loses the normal paper/background. On Stop, the last cached playback frame remains visibly stacked over the original selected editable frame.
+  implication: Exclusive ownership is suppressing a shared background layer too broadly, and Stop ordering/lifecycle permits both transient playback and editable owners to be visible after playback ends. Diagnose paper ownership and timer/frame cleanup before editing.
+
+- timestamp: 2026-07-11T17:12:00Z
+  checked: Paper/background DOM ownership after commit 520f2bfa
+  found: PhysicsPaintCanvasMount renders .demo-canvas-shell containing EfxPaintCanvas.paint-canvas. The .paint-canvas element owns the fallback paper texture/background, while its canvas children own engine paint/reference/live pixels. Commit 520f2bfa applies visibility:hidden to the entire .demo-canvas-shell during cached playback.
+  implication: The missing paper is directly caused by hiding the common ancestor. Playback must keep the shell/.paint-canvas visible and suppress only the engine canvas children plus external cached reference, Play preview, and onion overlays.
+
+- timestamp: 2026-07-11T17:14:00Z
+  checked: Cached playback Stop and natural-completion lifecycle
+  found: Manual stop clears the interval, then queues setIsActive(false), setFrame(null), and setIsPlaying(false). Natural non-loop completion clears the interval and sets activity/global playing false but never clears frame. The view renders the transient image whenever frame is non-null, independently of cachedRotoPlaybackActive.
+  implication: Natural completion persistently reveals editable content while retaining the last transient image, exactly producing both owners stacked. Manual Stop also lacks an explicit single lifecycle transition contract and can expose render batching/order ambiguity. The transient frame must be cleared before playback activity/global playing are released, and timer callbacks must be invalidated before any reveal.
+
+- timestamp: 2026-07-11T17:20:00Z
+  checked: Red-to-green paper ownership and Stop lifecycle regressions
+  found: The paper test failed 1/1 against shell-wide hiding and passes 1/1 after targeting only .paint-canvas > canvas. The Stop test failed 1/1 with the final frame still non-null and passes 1/1 after routing manual Stop, reset, and natural completion through cancellation → frame clear → activity/global playing release.
+  implication: Both live-UAT failures are reproduced at their owning boundaries and corrected without changing canonical selection, utilities, Studio ownership, or adding effects.
+
+- timestamp: 2026-07-11T17:28:00Z
+  checked: Automated validation after the second live-UAT corrections
+  found: Focused playback/view/Stop matrix passes 149/149; broader Physics Paint matrix passes 335/335 across 34 files; app typecheck passes; app production build passes (1086 modules); git diff --check passes. Instrumentation scan found only established dev-export DEBUG identifiers and generated-frame status constants, with no temporary console/debugger instrumentation.
+  implication: The minimal view/controller changes are automated-ready for another live Tauri UAT checkpoint.
+
 ## Eliminated
 
 - hypothesis: A stale pendingFrameSyncRef survives navigation and overwrites the later durable-core reopen launch.
@@ -157,10 +196,12 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 - root_cause: The Debug 01 extraction introduced four state/lifecycle boundary errors, and the follow-up ownership correction exposed a fifth visual boundary error: incoming stale Roto launch echoes replaced local selection; cached playback mutated canonical editable selection; interpolation seek raced persistence; the async launch listener was disposed by callback churn; and after playback was made transient-only, PhysicsPaintCanvasStack still rendered the editable engine/preview-base/live-alpha canvas and cached reference while adding the transient playback image, causing additive frame composition.
 - fix: Added explicit pending self-sync ownership; kept playback out of editable selection; serialized interpolation persistence before seek; stabilized the launch listener; and made cached Roto playback the exclusive visual owner while active by hiding (not unmounting) the editable canvas shell, suppressing cached reference/Play preview/onion overlays, and using a dedicated top playback layer. Stop continues clearing transient frame/activity and thereby reveals the unchanged selected editable visual once.
-- verification: Previous focused 236/236 and broad 469/469 gates passed for the first correction. Follow-up exclusive-composition regression went red 1/1 then green 1/1; focused playback/view matrix 148/148; broader current Physics Paint matrix 334/334; pnpm --dir app typecheck passed; pnpm --dir app build passed; git diff --check passed; no DEBUG instrumentation remains. Live Tauri UAT pending.
+- verification: Previous correction gates remain recorded. Second live-UAT issues each reproduced red 1/1 before production edits and green 1/1 after: shared paper stays visible while editable canvas children are hidden, and natural/manual Stop clear the transient frame before editable reveal with stale timers canceled. Focused playback/view/Stop matrix 149/149; broader Physics Paint matrix 335/335 across 34 files; pnpm --dir app typecheck passed; pnpm --dir app build passed (1086 modules); git diff --check passed; instrumentation scan clean apart from established dev-export DEBUG identifiers. Live Tauri UAT pending.
 - files_changed:
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
   - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
+  - app/src/components/physic-paint/hooks/useRotoCachedPlayback.ts
+  - app/src/components/physic-paint/hooks/useRotoCachedPlayback.test.ts
   - app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
   - app/src/components/physic-paint/physicsPaintStudio.css
   - app/src/components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.ts
