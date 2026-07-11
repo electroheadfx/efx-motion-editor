@@ -1,8 +1,8 @@
 ---
-status: verifying
+status: awaiting_human_verify
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T15:35:00Z
+updated: 2026-07-11T15:38:00Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -49,7 +49,7 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 - hypothesis: "Four extracted-boundary ownership/lifecycle errors caused the regressions: stale launch echoes could replace local selection, playback preview mutated editable selection, interpolation seek raced persistence, and callback churn disposed the async launch listener."
 - test: "Automated regression suites and build gates now exercise all four corrected boundaries."
 - expecting: "Final diff review confirms only minimal boundary fixes, behavioral tests, and the preserved ToolRail asset correction before the authorized atomic commit."
-- next_action: "Review git status/diff/log, populate Resolution, stage only regression files plus ToolRail, and create the atomic commit."
+- next_action: "Await live Tauri UAT confirmation for manual navigation, persistent interpolation disable, and playback utility freeze before resolving/archive."
 - reasoning_checkpoint:
   hypothesis: "Four extracted-boundary ownership/lifecycle errors caused the regressions: stale launch echoes could replace local selection, playback preview mutated editable selection, interpolation seek raced persistence, and callback churn disposed the async launch listener."
   confirming_evidence:
