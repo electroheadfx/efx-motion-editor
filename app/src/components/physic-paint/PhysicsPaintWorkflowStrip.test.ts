@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const rightPanelSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintRightPanel.tsx');
 const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudio.tsx');
-const studioViewSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudioView.tsx');
+const studioViewSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'view/PhysicsPaintStudioView.tsx');
 const playCoordinatorSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/usePhysicsPaintPlayCoordinator.ts');
 const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowState.ts');
 const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoSession.ts');
@@ -462,8 +462,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const studioCode = studioSource();
     const toggleBlock = studioCode.slice(studioCode.indexOf('const updateRotoInterpolationSettings'), studioCode.indexOf('const goToFirstFrame'));
     const cacheTransactions = rotoCacheTransactionsSource();
-    const stripStart = studioCode.indexOf('      workflow={{');
-    const stripPropsBlock = studioCode.slice(stripStart, studioCode.indexOf('      status={{', stripStart));
+    const stripStart = studioCode.indexOf('    workflow: {');
+    const stripPropsBlock = studioCode.slice(stripStart, studioCode.indexOf('    status:', stripStart));
 
     expect(toggleBlock).toContain('rotoTimelineActions.updateInterpolationSettings(currentFrame, patch)');
     expect(toggleBlock).not.toContain('mode: patch.mode ?? currentSettings.mode');

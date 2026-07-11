@@ -1,10 +1,10 @@
 import type { ComponentChildren, ComponentProps } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { PhysicsPaintCanvasMount } from './PhysicsPaintCanvasMount';
-import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
-import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
-import { PhysicsPaintTopBar } from './PhysicsPaintTopBar';
-import { PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
+import { PhysicsPaintCanvasMount } from '../PhysicsPaintCanvasMount';
+import { PhysicsPaintRightPanel } from '../PhysicsPaintRightPanel';
+import { PhysicsPaintToolRail } from '../PhysicsPaintToolRail';
+import { PhysicsPaintTopBar } from '../PhysicsPaintTopBar';
+import { PhysicsPaintWorkflowStrip } from '../PhysicsPaintWorkflowStrip';
 
 interface PhysicsPaintCanvasStackViewProps {
   children: ComponentChildren;

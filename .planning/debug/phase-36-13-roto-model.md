@@ -1317,3 +1317,48 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract keyboard dispatch and final typed view-model construction into thin hooks.
 - Then move the remaining concrete Roto persistence/display port implementations and apply/close composition into focused integration controllers until Studio reaches the target.
+
+## 2026-07-11 — Cluster: extract keyboard and view model
+
+### Selected cluster
+- Ownership moved: keyboard command dispatch, shortcut target filtering, adjacent saved-frame selection, keyboard callback adaptation, and final typed Studio view-prop construction.
+- From: the final interaction and prop-construction blocks in `PhysicsPaintStudio.tsx`.
+- To: `view/physicsPaintStudioKeyboard.ts`, `hooks/usePhysicsPaintStudioKeyboard.ts`, and `hooks/usePhysicsPaintStudioViewModel.ts`.
+- The presentational view moved into `view/PhysicsPaintStudioView.tsx` as its ownership was touched.
+
+### Why this is safe
+- Shortcut precedence, preventDefault behavior, Play/Roto dispatch, saved-key navigation, and editable-target guards are preserved in a pure dispatcher with focused tests.
+- The keyboard hook is a 20-line callback adapter; the view-model hook is an 11-line typed identity boundary with no business state.
+- The presentational view remains unchanged apart from its path.
+- No Roto workflow effect was added.
+
+### Ownership removed from Studio
+- Removed the full keydown branching implementation.
+- Removed inline grouped `PhysicsPaintStudioViewProps` construction.
+- Studio now calls the keyboard and view-model boundaries and returns one presentational view.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/hooks/usePhysicsPaintStudioKeyboard.ts`
+- `app/src/components/physic-paint/hooks/usePhysicsPaintStudioViewModel.ts`
+- `app/src/components/physic-paint/view/physicsPaintStudioKeyboard.ts`
+- `app/src/components/physic-paint/view/physicsPaintStudioKeyboard.test.ts`
+- `app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 1044 lines.
+- `PhysicsPaintStudio.tsx` after: 977 lines.
+- Cluster delta: -67 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative Studio reduction: 2227 lines.
+
+### Tests run
+- Focused keyboard, Studio, and WorkflowStrip tests passed with 146 tests across 3 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract the remaining concrete Roto persistence/display port implementations, apply-result/close lifecycle composition, and launch/bridge integration into bounded controllers.
+- Finish with a composition-only Studio audit and full Physics Paint matrix.
