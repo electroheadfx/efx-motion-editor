@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { drawProjectPaperRaster } from './projectPaperRaster';
+import { drawProjectPaperRaster, subscribeProjectPaperCanvas } from './projectPaperRaster';
 
 interface Pixel { r: number; g: number; b: number; a: number }
 
@@ -72,5 +72,71 @@ describe('authoritative project paper raster parity', () => {
     expect(sharedPhysicsPaper[1]).toEqual(editorPaper[1]);
     expect(sharedPhysicsPaper[2]).toEqual(editorPaper[2]);
     expect(sharedPhysicsComposite[width + 3]).toEqual(editorComposite[width + 3]);
+  });
+
+  it('repaints a mounted playback surface after async texture resolution and ignores stale subscriptions', () => {
+    const images: Array<{ src: string; onload: null | (() => void); onerror: null | (() => void); width: number; height: number }> = [];
+    const visibleDraws: string[] = [];
+    const originalImage = globalThis.Image;
+    const originalDocument = globalThis.document;
+
+    class FakeImage {
+      onload: null | (() => void) = null;
+      onerror: null | (() => void) = null;
+      width = 2;
+      height = 1;
+      private source = '';
+      constructor() { images.push(this); }
+      set src(value: string) { this.source = value; }
+      get src() { return this.source; }
+    }
+
+    const makeCanvas = () => {
+      const canvas = { width: 0, height: 0 } as HTMLCanvasElement;
+      const context = {
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        fillStyle: '#fff',
+        save() {},
+        restore() {},
+        fillRect() {},
+        createPattern() { return 'textured-pattern'; },
+        drawImage() {},
+      } as unknown as CanvasRenderingContext2D;
+      Object.assign(canvas, { getContext: () => context });
+      return canvas;
+    };
+
+    Object.assign(globalThis, {
+      Image: FakeImage,
+      document: { createElement: () => makeCanvas() },
+    });
+
+    try {
+      const unsubscribeOld = subscribeProjectPaperCanvas('canvas2', 6, 3, (paperCanvas) => {
+        visibleDraws.push(paperCanvas ? 'old:textured' : 'old:white');
+      });
+      expect(visibleDraws).toEqual(['old:white']);
+      expect(images[0]?.src).toBe('/img/paper_2.jpg');
+
+      unsubscribeOld();
+      const unsubscribeCurrent = subscribeProjectPaperCanvas('canvas3', 6, 3, (paperCanvas) => {
+        visibleDraws.push(paperCanvas ? 'current:textured' : 'current:white');
+      });
+      expect(visibleDraws).toEqual(['old:white', 'current:white']);
+      expect(images[1]?.src).toBe('/img/paper_3.jpg');
+
+      images[0]?.onload?.();
+      expect(visibleDraws).toEqual(['old:white', 'current:white']);
+
+      images[1]?.onload?.();
+      expect(visibleDraws).toEqual(['old:white', 'current:white', 'current:textured']);
+
+      unsubscribeCurrent();
+      images[1]?.onload?.();
+      expect(visibleDraws).toEqual(['old:white', 'current:white', 'current:textured']);
+    } finally {
+      Object.assign(globalThis, { Image: originalImage, document: originalDocument });
+    }
   });
 });

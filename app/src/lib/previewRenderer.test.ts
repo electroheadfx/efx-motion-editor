@@ -177,7 +177,7 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
 
     expect(source).toContain("import {drawRotoFrameComposite, resolveMissingRotoFrameDraw} from './rotoFrameDraw'");
     expect(source).toContain('resolveMissingRotoFrameDrawForLayer(layer, paintLookupFrame)');
-    expect(source).toContain('drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, paperTexture, paperCanvas, source)');
+    expect(source).toContain('drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, null, paperCanvas, source)');
   });
 
   it('checks cached real frames before resolving missing transparent or background-only frames', () => {

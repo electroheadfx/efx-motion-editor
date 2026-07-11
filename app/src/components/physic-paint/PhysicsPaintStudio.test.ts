@@ -1057,7 +1057,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(view).not.toContain('drawRotoFrameComposite(context');
     expect(view).not.toContain('drawMissingRotoBackground');
     expect(view).not.toContain('paper.src = `/img/paper_');
-    expect(view).toContain('getProjectPaperCanvas(props.background.background, props.width, props.height, render)');
+    expect(view).toContain('subscribeProjectPaperCanvas(props.background.background, props.width, props.height');
     expect(view).toContain("[props.background.background, props.background.color, props.background.grainStrength, props.background.paperGrain, props.height, props.width]");
     const css = styles();
     expect(css).toContain('.physics-paint-canvas-stack.cached-roto-playback-active > .demo-canvas-shell .paint-canvas > canvas');

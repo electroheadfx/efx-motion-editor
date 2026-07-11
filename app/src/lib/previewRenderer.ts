@@ -22,7 +22,7 @@ import {VelocityCache, isStationary} from './motionBlurEngine';
 import {interpolateAt} from './keyframeEngine';
 import {drawRotoFrameComposite, resolveMissingRotoFrameDraw} from './rotoFrameDraw';
 import type {MissingRotoFrameBackgroundState} from './rotoFrameDraw';
-import {clearProjectPaperRasterCache, getProjectPaperCanvas, isProjectPaperTextureResolved} from './projectPaperRaster';
+import {clearProjectPaperRasterCache, getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperCanvas} from './projectPaperRaster';
 
 /**
  * Create a Canvas 2D gradient from GradientData.
@@ -168,6 +168,7 @@ export class PreviewRenderer {
   private videoReadyHandlers: Map<string, () => void>; // layerId -> shared loadeddata/seeked handler
   private offscreenCanvas: HTMLCanvasElement | null = null; // reusable offscreen canvas for video rasterization
   private blurOffscreen: HTMLCanvasElement | null = null; // reusable offscreen canvas for per-layer/generator blur
+  private paperTextureSubscriptions = new Map<string, () => void>();
   private velocityCache = new VelocityCache();
 
   /** Callback invoked after an image finishes loading (triggers re-render) */
@@ -197,8 +198,11 @@ export class PreviewRenderer {
 
   preloadPaperTextures(paperGrains: string[]): void {
     for (const paperGrain of paperGrains) {
-      const url = getPaperTextureUrl(paperGrain);
-      if (url) this.getPaperTextureSource(paperGrain);
+      if (!getPaperTextureUrl(paperGrain) || this.paperTextureSubscriptions.has(paperGrain)) continue;
+      const unsubscribe = subscribeProjectPaperCanvas(paperGrain, projectStore.width.peek(), projectStore.height.peek(), (canvas) => {
+        if (canvas) this.onImageLoaded?.();
+      });
+      this.paperTextureSubscriptions.set(paperGrain, unsubscribe);
     }
   }
 
@@ -405,7 +409,7 @@ export class PreviewRenderer {
         const source = renderedFrame ? this.getPhysicPaintImageSource(paintLayerId, paintLookupFrame, renderedFrame) : null;
         const backgroundDraw = realKeyBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null);
         if (backgroundDraw || source) {
-          const paperCanvas = backgroundDraw ? getProjectPaperCanvas(backgroundDraw.paperTexture, projectStore.width.peek(), projectStore.height.peek(), this.onImageLoaded ?? undefined) : null;
+          const paperCanvas = backgroundDraw ? getProjectPaperCanvas(backgroundDraw.paperTexture, projectStore.width.peek(), projectStore.height.peek()) : null;
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
           ctx.globalAlpha = effectiveOpacity;
@@ -1213,6 +1217,8 @@ export class PreviewRenderer {
     }
     this.videoElements.clear();
     this.videoReadyHandlers.clear();
+    for (const unsubscribe of this.paperTextureSubscriptions.values()) unsubscribe();
+    this.paperTextureSubscriptions.clear();
     this.imageCache.clear();
     clearProjectPaperRasterCache();
     this.loadingImages.clear();

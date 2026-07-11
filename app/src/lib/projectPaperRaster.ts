@@ -7,8 +7,7 @@ const PAPER_TEXTURE_URLS: Record<string, string> = {
 const textureCache = new Map<string, HTMLImageElement>();
 const paperCanvasCache = new Map<string, HTMLCanvasElement>();
 const loadingTextures = new Map<string, HTMLImageElement>();
-const failedTextures = new Set<string>();
-const resolutionListeners = new Set<() => void>();
+const textureListeners = new Map<string, Set<() => void>>();
 
 export function drawProjectPaperRaster(
   context: CanvasRenderingContext2D,
@@ -37,32 +36,38 @@ export function drawProjectPaperRaster(
   context.restore();
 }
 
+function notifyTextureListeners(paperTexture: string): void {
+  const listeners = textureListeners.get(paperTexture);
+  if (!listeners) return;
+  for (const listener of [...listeners]) listener();
+}
+
+function ensurePaperTextureLoading(paperTexture: string, url: string): void {
+  if (textureCache.has(paperTexture) || loadingTextures.has(paperTexture)) return;
+  const image = new Image();
+  loadingTextures.set(paperTexture, image);
+  image.onload = () => {
+    loadingTextures.delete(paperTexture);
+    textureCache.set(paperTexture, image);
+    notifyTextureListeners(paperTexture);
+  };
+  image.onerror = () => {
+    loadingTextures.delete(paperTexture);
+    notifyTextureListeners(paperTexture);
+  };
+  image.src = url;
+}
+
 export function getProjectPaperCanvas(
   paperTexture: string | undefined,
   width: number,
   height: number,
-  onResolved?: () => void,
 ): HTMLCanvasElement | null {
   const url = paperTexture ? PAPER_TEXTURE_URLS[paperTexture] : undefined;
-  if (!url || width <= 0 || height <= 0) return null;
-  if (onResolved) resolutionListeners.add(onResolved);
-  const texture = textureCache.get(paperTexture!);
+  if (!url || !paperTexture || width <= 0 || height <= 0) return null;
+  const texture = textureCache.get(paperTexture);
   if (!texture) {
-    if (!loadingTextures.has(paperTexture!) && !failedTextures.has(paperTexture!)) {
-      const image = new Image();
-      loadingTextures.set(paperTexture!, image);
-      image.onload = () => {
-        loadingTextures.delete(paperTexture!);
-        textureCache.set(paperTexture!, image);
-        for (const listener of resolutionListeners) listener();
-      };
-      image.onerror = () => {
-        loadingTextures.delete(paperTexture!);
-        failedTextures.add(paperTexture!);
-        for (const listener of resolutionListeners) listener();
-      };
-      image.src = url;
-    }
+    ensurePaperTextureLoading(paperTexture, url);
     return null;
   }
   const cacheKey = `${paperTexture}:${width}x${height}`;
@@ -78,8 +83,30 @@ export function getProjectPaperCanvas(
   return canvas;
 }
 
+export function subscribeProjectPaperCanvas(
+  paperTexture: string | undefined,
+  width: number,
+  height: number,
+  listener: (canvas: HTMLCanvasElement | null) => void,
+): () => void {
+  const url = paperTexture ? PAPER_TEXTURE_URLS[paperTexture] : undefined;
+  if (!url || !paperTexture || width <= 0 || height <= 0) {
+    listener(null);
+    return () => {};
+  }
+  const notify = () => listener(getProjectPaperCanvas(paperTexture, width, height));
+  const listeners = textureListeners.get(paperTexture) ?? new Set<() => void>();
+  listeners.add(notify);
+  textureListeners.set(paperTexture, listeners);
+  notify();
+  return () => {
+    listeners.delete(notify);
+    if (listeners.size === 0) textureListeners.delete(paperTexture);
+  };
+}
+
 export function isProjectPaperTextureResolved(paperTexture: string): boolean {
-  return !PAPER_TEXTURE_URLS[paperTexture] || textureCache.has(paperTexture) || failedTextures.has(paperTexture);
+  return !PAPER_TEXTURE_URLS[paperTexture] || textureCache.has(paperTexture);
 }
 
 export function clearProjectPaperRasterCache(): void {

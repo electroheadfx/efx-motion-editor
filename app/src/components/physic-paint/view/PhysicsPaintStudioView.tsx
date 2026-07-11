@@ -1,7 +1,7 @@
 import type { ComponentChildren, ComponentProps } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import { getProjectPaperCanvas } from '../../../lib/projectPaperRaster';
+import { subscribeProjectPaperCanvas } from '../../../lib/projectPaperRaster';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
@@ -33,15 +33,12 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
     if (!canvas) return;
     const context = canvas.getContext('2d');
     if (!context) return;
-    let cancelled = false;
-    const render = () => {
-      if (cancelled) return;
-      const paperCanvas = getProjectPaperCanvas(props.background.background, props.width, props.height, render);
-      context.clearRect(0, 0, props.width, props.height);
-      if (paperCanvas) context.drawImage(paperCanvas, 0, 0, props.width, props.height);
-    };
-    render();
-    return () => { cancelled = true; };
+    return subscribeProjectPaperCanvas(props.background.background, props.width, props.height, (paperCanvas) => {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = props.background.color ?? '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      if (paperCanvas) context.drawImage(paperCanvas, 0, 0, canvas.width, canvas.height);
+    });
   }, [props.background.background, props.background.color, props.background.grainStrength, props.background.paperGrain, props.height, props.width]);
 
   return <canvas class="physics-paint-cached-roto-playback-background" ref={canvasRef} width={props.width} height={props.height} aria-hidden="true" />;
