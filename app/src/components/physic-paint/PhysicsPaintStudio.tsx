@@ -496,7 +496,7 @@ export function PhysicsPaintStudio() {
       },
     canvas: {
         toastMessage: playLimitToast.message, onDismissToast: playLimitToast.dismiss, cachedPlayPreviewUrl, cachedRotoReferenceUrl,
-        cachedRotoPlaybackUrl: rotoCachedPlayback.frame?.dataUrl ?? null, inputDisabled: rotoInputDisabled,
+        cachedRotoPlaybackUrl: rotoCachedPlayback.frame?.dataUrl ?? null, cachedRotoPlaybackActive: rotoCachedPlayback.isActive, inputDisabled: rotoInputDisabled,
         inputDisabledMessage: currentFrameIsGeneratedRoto ? `Generated frame ${currentFrame} is render-only.` : 'Saving current Roto frame…',
         onInputIntent: workflowMode === 'play' ? beginPlayFrameEdit : beginRotoFrameEdit,
         onionOverlay: onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (

@@ -2006,6 +2006,10 @@ button.destructive {
   max-height: 100%;
 }
 
+.physics-paint-canvas-stack.cached-roto-playback-active > .demo-canvas-shell {
+  visibility: hidden;
+}
+
 .physics-paint-onion-overlay.canvas-region {
   inset: auto;
   z-index: 3;
@@ -2020,7 +2024,8 @@ button.destructive {
 }
 
 .physics-paint-cached-play-preview,
-.physics-paint-cached-roto-reference {
+.physics-paint-cached-roto-reference,
+.physics-paint-cached-roto-playback {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -2032,6 +2037,10 @@ button.destructive {
   z-index: 1;
   outline: 1px dashed rgba(91, 216, 143, 0.72);
   outline-offset: -2px;
+}
+
+.physics-paint-cached-roto-playback {
+  z-index: 5;
 }
 
 

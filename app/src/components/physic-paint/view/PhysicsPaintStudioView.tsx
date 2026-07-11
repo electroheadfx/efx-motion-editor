@@ -11,6 +11,7 @@ interface PhysicsPaintCanvasStackViewProps {
   cachedPlayPreviewUrl?: string | null;
   cachedRotoReferenceUrl?: string | null;
   cachedRotoPlaybackUrl?: string | null;
+  cachedRotoPlaybackActive?: boolean;
   inputDisabled?: boolean;
   inputDisabledMessage?: string;
   onionOverlay: ComponentChildren;
@@ -45,7 +46,7 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
   }, []);
 
   return (
-    <div class="physics-paint-canvas-stack" ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
+    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
       {props.children}
       {canvasBounds ? (
         <div
@@ -53,10 +54,10 @@ function PhysicsPaintCanvasStack(props: PhysicsPaintCanvasStackViewProps) {
           aria-hidden="true"
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
-          {props.cachedRotoReferenceUrl ? <img class="physics-paint-cached-roto-reference" src={props.cachedRotoReferenceUrl} alt="" /> : null}
-          {props.cachedPlayPreviewUrl ? <img class="physics-paint-cached-play-preview" src={props.cachedPlayPreviewUrl} alt="" /> : null}
-          {props.cachedRotoPlaybackUrl ? <img class="physics-paint-cached-play-preview" src={props.cachedRotoPlaybackUrl} alt="" /> : null}
-          {props.onionOverlay}
+          {!props.cachedRotoPlaybackActive && props.cachedRotoReferenceUrl ? <img class="physics-paint-cached-roto-reference" src={props.cachedRotoReferenceUrl} alt="" /> : null}
+          {!props.cachedRotoPlaybackActive && props.cachedPlayPreviewUrl ? <img class="physics-paint-cached-play-preview" src={props.cachedPlayPreviewUrl} alt="" /> : null}
+          {props.cachedRotoPlaybackUrl ? <img class="physics-paint-cached-roto-playback" src={props.cachedRotoPlaybackUrl} alt="" /> : null}
+          {!props.cachedRotoPlaybackActive ? props.onionOverlay : null}
         </div>
       ) : null}
     </div>
@@ -115,6 +116,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
             cachedPlayPreviewUrl={canvas.cachedPlayPreviewUrl}
             cachedRotoReferenceUrl={canvas.cachedRotoReferenceUrl}
             cachedRotoPlaybackUrl={canvas.cachedRotoPlaybackUrl}
+            cachedRotoPlaybackActive={canvas.cachedRotoPlaybackActive}
             inputDisabled={canvas.inputDisabled}
             inputDisabledMessage={canvas.inputDisabledMessage}
             onInputIntent={canvas.onInputIntent}
