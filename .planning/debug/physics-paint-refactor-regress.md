@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T22:00:00Z
+updated: 2026-07-11T23:05:00Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -46,15 +46,26 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Current Focus
 
-- hypothesis: "Ranked hypotheses: (1) current Physics playback is a second paper owner that draws the raw texture directly through drawMissingRotoBackground instead of copying PreviewRenderer's cached project-paper canvas; therefore any metadata/scale/composite difference can produce dark full-strength paper. Prediction: a real-pixel differential through both production paths is RED and line tracing shows separate raster creation. (2) PreviewRenderer's cache key omits metadata that Physics supplies, causing stale paper. Prediction: fresh caches still differ only after metadata changes. (3) overlay geometry/CSS changes the pixels after an equal raster is produced. Prediction: backing-store pixels match while mounted display samples differ. (4) cached paint alpha darkens paper. Prediction: paper-only samples match and divergence appears only under paint."
-- test: "Create a deterministic pure-software raster fixture that invokes the real PreviewRenderer project-paper production path and the current Physics playback paper production path with identical dimensions, texture, metadata, and registered alpha paint; sample dimensions, base, texture, transform/repeat points, and paint registration."
-- expecting: "Hypothesis 1 is confirmed if the focused command is RED on paper samples before paint while registration remains aligned, and source inspection identifies PreviewRenderer.getProjectPaperCanvas versus PhysicsPaintRotoPlaybackBackground image loading/drawMissingRotoBackground as the exact divergence."
-- next_action: "Add and run the portable production-path pixel differential before changing production; record the exact RED output, then extract PreviewRenderer's exact project-paper raster/cache implementation into one shared helper."
+- hypothesis: "Ranked async-lifecycle hypotheses after failed live UAT: A. Physics playback receives a wrong/undefined persisted texture key, so the shared helper never starts a valid load. Prediction: runtime composition metadata differs from PreviewRenderer's persisted metadata or resolves outside canvas1–canvas3. B. Root-relative `/img/paper_N.jpg` fails in the Tauri child window; `failedTextures` then permanently marks the key resolved-without-raster and suppresses retry. Prediction: deterministic child-window URL/load failure leaves every later get call null even when the asset becomes available. C. Texture Image resolves, but the global listener design or effect callback identity fails to repaint the mounted canvas. Prediction: fake Image onload fires and cache fills while visible canvas remains base-only, or stale callbacks repaint after metadata switch/unmount. D. Shared paper canvas is correctly generated and copied, but another clear/layer/CSS covers it. Prediction: mounted background backing pixels are textured immediately after callback while final visible seam is white. E. Texture pixels exist but scale makes them imperceptible. Prediction: pixel seam proves non-white texture before any scale investigation."
+- test: "Build a deterministic mounted async lifecycle test around PhysicsPaintRotoPlaybackBackground + getProjectPaperCanvas using fake Image and canvas pixel/call state: initial white/base, onload textured redraw, metadata switch isolation, and unmount/Stop stale-callback rejection. In parallel inspect exact runtime metadata and proven asset URL mechanism."
+- expecting: "The RED result must assert the visible mounted canvas remains white after texture resolution or is repainted by a stale callback; metadata and URL probes distinguish A/B from C before any production edit."
+- next_action: "Read metadata construction, asset URL helpers, child-window bootstrap, and relevant tests; then add the smallest mounted async lifecycle test and run it RED before production changes."
 - ranked_hypotheses:
-  1: "Independent Physics paper raster path bypasses authoritative cached project-paper canvas (highest)."
-  2: "PreviewRenderer cache-key staleness causes the difference."
-  3: "CSS/display geometry alters otherwise equal backing pixels."
-  4: "Paint alpha/composite creates the apparent darkness rather than paper."
+  A: "Wrong/undefined persisted paper texture key reaches shared helper."
+  B: "Root-relative texture URL fails in Tauri child window and failedTextures suppresses retry."
+  C: "Image resolves but listener/effect lifecycle does not repaint mounted canvas or permits stale repaint."
+  D: "Generated paper raster is cleared or covered after a correct async draw."
+  E: "Texture exists but scale makes it visually imperceptible; consider only after pixel proof."
+- reasoning_checkpoint:
+  hypothesis: "The white-only playback is caused by an unowned async texture resource lifecycle: getProjectPaperCanvas mixes lookup/loading with a global never-removed callback set, while Physics playback only guards callbacks with a cancelled closure and has no subscription identity or retry-safe failure state."
+  confirming_evidence:
+    - "Live UAT proves the synchronous base draw reaches the mounted playback canvas while only the later texture invalidation is absent."
+    - "The shared helper stores every render callback globally forever, returns no unsubscribe, and permanently suppresses future loads after one error; main and child windows cannot share module caches."
+    - "The new deterministic resource test is RED because no owned subscribe/unsubscribe API exists, and turns GREEN only when onload delivers a textured shared canvas to the current subscriber while stale subscribers remain untouched."
+  falsification_test: "If the mounted/resource seam receives a non-null textured paper canvas after Image.onload but live playback remains white, callback lifecycle is not causal and layering/CSS must be investigated next."
+  fix_rationale: "A texture-keyed subscribeProjectPaperCanvas resource owns loading, immediate base notification, resolved raster notification, unsubscribe, metadata-switch isolation, and retry after errors; the playback effect returns unsubscribe directly and copies only the shared raster."
+  blind_spots: "The deterministic fake Image proves lifecycle and visible draw inputs but cannot execute Tauri WebKit networking/rasterization; live UAT remains required."
+
 - reasoning_checkpoint:
   hypothesis: "66febfa8 caused total paint loss by replacing a live-proven declarative PNG image with an unproven imperative decode/draw canvas; it also coupled paper and paint readiness and used an unverified paper geometry contract."
   confirming_evidence:
@@ -129,6 +140,31 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
   failure_output: "RED reproduced independently: view contract expected canvas-only suppression but commit hid .demo-canvas-shell; lifecycle expected null transient frame after natural Stop but received { id: 'last' }. Both focused tests now pass after minimal production edits."
 
 ## Evidence
+
+- timestamp: 2026-07-11T23:05:00Z
+  checked: Live Tauri UAT after commits 91e8fdfc / d18da3a7
+  found: Cached Roto paint animation still works, but Physics playback background is plain white with the paper texture completely absent. The shared renderer's synchronous white base reaches playback, while its asynchronous texture layer does not resolve, invalidate, or repaint there. Stopped Physics Paint and EFX Motion Editor continue to show correct paper.
+  implication: The prior duplicate-renderer fix preserved paint and established the shared synchronous base, but automated tests did not exercise the mounted async Image lifecycle. Diagnose metadata, child-window asset URL/load behavior, failed retry state, and subscription cleanup before editing raster appearance.
+
+- timestamp: 2026-07-11T23:08:00Z
+  checked: Exact 91e8fdfc shared helper and mounted playback effect
+  found: getProjectPaperCanvas registers every supplied callback in a global resolutionListeners Set and never removes it; it returns null while loading, permanently suppresses retries after any image error through failedTextures, and uses root-relative `/img/paper_N.jpg`. Physics playback clears its visible canvas on every render call and only draws when a shared paper canvas exists; cleanup merely sets a local cancelled flag and does not unsubscribe. PreviewRenderer and the child window have separate JavaScript globals/documents, so a texture loaded in the main window cannot populate the child window module cache.
+  implication: The callback leak is definite, while causality for white-only output remains unconfirmed. Candidate B predicts child-window URL failure plus permanent suppression; candidate C predicts successful onload but missed/stale visible repaint. A mounted async RED seam is required to distinguish them.
+
+- timestamp: 2026-07-11T23:15:00Z
+  checked: Deterministic async lifecycle RED seam
+  found: Exact command `pnpm --dir app exec vitest run src/lib/projectPaperRaster.test.ts` fails 1/2 at the new mounted-surface resource seam with `TypeError: subscribeProjectPaperCanvas is not a function`. The test requires immediate base-only visibility, a later textured canvas after fake Image.onload, and no stale repaint after metadata switch/unsubscribe.
+  implication: The current API cannot express owned subscription cleanup and the prior pure raster parity test was insufficient. Production must expose one resource lifecycle that returns unsubscribe and drives the visible redraw, then the same command must turn GREEN.
+
+- timestamp: 2026-07-11T23:18:00Z
+  checked: Metadata and child-window URL hypothesis differentiation
+  found: Physics playback composition passes `launchContext.rotoBackground` unchanged; PreviewRenderer reads the persisted store metadata derived from the same rotoBackground/editable-state contract. The authoritative texture selector for both is `background` (canvas1/canvas2/canvas3), while `paperGrain` is engine emboss metadata. Stopped Physics Paint in the same child window successfully loads the exact root-relative `/img/paper_N.jpg` URLs through EfxPaintCanvas, ruling out invalid child-window URL resolution for this live case. Main and child windows do have separate module/Image caches, so main-window preload cannot satisfy playback, but the child URL itself is proven valid.
+  implication: Hypothesis A is contradicted by shared metadata ownership and correct stopped paper; hypothesis B is contradicted for the reported run by the same child window loading the same URLs. Hypothesis C is highest: the shared helper's unowned global callback lifecycle is the remaining divergence. D and E remain downstream checks after textured pixels are proven.
+
+- timestamp: 2026-07-11T23:35:00Z
+  checked: Async lifecycle GREEN and full automated gates
+  found: `subscribeProjectPaperCanvas` now returns unsubscribe, emits null/base immediately, emits the exact shared textured project canvas on Image.onload, scopes listeners by texture, removes them on cleanup, and does not permanently blacklist an early error. Physics playback returns unsubscribe from its resource effect and redraws the full backing canvas; PreviewRenderer preloads/disposes through the same resource. The exact RED command now passes 2/2. Focused suite passes 109/109; Physics Paint passes 335/335 across 34 files; PreviewRenderer/roto paper suite passes 15/15; typecheck and build pass (1086 modules); diff check and lifecycle/debug scan are clean.
+  implication: Hypothesis C is confirmed at the deterministic lifecycle seam. Metadata and URL candidates are ruled out for the reported run; layering and scale are contradicted because the test proves the resolved shared raster reaches the visible draw callback and production dimensions are unchanged. Live Tauri UAT is the remaining acceptance gate.
 
 - timestamp: 2026-07-11T22:00:00Z
   checked: Required deterministic production-path paper pixel differential before production edits
@@ -308,9 +344,9 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Resolution
 
-- root_cause: Physics playback had an independent paper owner introduced in e718c1d3: it loaded `/img/paper_N.jpg` itself, called `drawMissingRotoBackground`, and coexisted with a raw CSS texture fallback. PreviewRenderer separately owned the authoritative cached project paper canvas: project dimensions, white base, source-over state, repeated intrinsic texture at 0.18 opacity, and cache semantics. This duplicate raster path allowed Physics playback to expose dark/full-strength raw texture even though stopped Physics Paint and EFX Motion Editor were correct. Paint progression was not causal; the declarative cached PNG image remained the known-good owner.
-- fix: Extracted the exact PreviewRenderer project-paper implementation into `app/src/lib/projectPaperRaster.ts`. Both PreviewRenderer and Physics playback now call `getProjectPaperCanvas`; Physics copies that shared cached raster into its mounted background canvas and keeps the declarative `<img src={cachedFrame.dataUrl}>` paint overlay unchanged. Removed Physics-owned texture loading, direct `drawMissingRotoBackground`, copied URL derivation, and CSS/raw texture fallback.
-- verification: Exact RED command failed 1/1 before the fix and the same command passes 1/1 GREEN. Focused paper/playback suite passes 108/108. Full Physics Paint matrix passes 335/335 across 34 files. PreviewRenderer/export/paper suite passes 26 with 19 existing todos. `pnpm --dir app typecheck` passes. `pnpm --dir app build` passes with 1086 modules. `git diff --check` passes. Production dead-path/instrumentation scan is clean. Live Tauri three-surface comparison remains pending; Debug 01 is not accepted.
+- root_cause: The shared paper raster pixels were correct, but its async texture lifecycle was not owned. `getProjectPaperCanvas(..., render)` added component/renderer callbacks to one global `resolutionListeners` set that was never removed, exposed no subscription identity, and marked a texture permanently resolved-without-raster after one Image error through `failedTextures`. Physics playback cleanup only flipped a captured `cancelled` flag. In the separate Tauri child-window document/module cache, the initial call therefore painted the synchronous white base while texture readiness/retry/invalidation was not represented as a scoped resource capable of reliably repainting the currently mounted canvas. Metadata was correct (`launchContext.rotoBackground.background`, same persisted value used by PreviewRenderer), and the exact `/img/paper_N.jpg` URL is proven in the same child window by stopped EfxPaintCanvas, ruling out metadata, layering, and scale for this white-only symptom.
+- fix: Kept one shared `projectPaperRaster.ts` implementation and split lookup from owned resource lifecycle. Added `subscribeProjectPaperCanvas(paperTexture, width, height, listener) => unsubscribe`, keyed listeners by texture, immediately emits base/null then emits the exact cached textured canvas on Image.onload, removes listeners on metadata change/unmount/Stop, and allows retry after Image.onerror instead of permanently suppressing the texture. Physics playback returns this unsubscribe directly from its focused external-resource effect and redraws its full backing dimensions from the shared canvas. PreviewRenderer preloading uses the same subscription API and disposes subscriptions. The declarative cached paint image, playback progression, ownership suppression, and Stop lifecycle are unchanged.
+- verification: Exact async RED command `pnpm --dir app exec vitest run src/lib/projectPaperRaster.test.ts` failed 1/2 with `TypeError: subscribeProjectPaperCanvas is not a function`; the same command passes 2/2 GREEN and proves initial base-only output, resolved textured redraw, metadata-switch isolation, and unsubscribe/late-callback rejection. Focused paper/playback suite passes 109/109. Full Physics Paint matrix passes 335/335 across 34 files. PreviewRenderer/roto paper suite passes 15/15 (requested export test path is absent). `pnpm --dir app typecheck` passes. `pnpm --dir app build` passes with 1086 modules. `git diff --check` passes. Scan finds no `resolutionListeners`, `failedTextures`, temporary debug instrumentation, debugger, or console.log in changed production files. Live Tauri texture UAT remains pending; Debug 01 is not accepted.
 - files_changed:
   - app/src/lib/projectPaperRaster.ts
   - app/src/lib/projectPaperRaster.test.ts
