@@ -88,6 +88,7 @@ export interface UseRotoPersistenceIntegrationInput<TEditable extends RotoEditab
   lifecycle: {
     activeOperationIdRef: MutableRef<string | null>;
     pendingAdvanceRef: MutableRef<number | null>;
+    pendingFrameSyncRef: MutableRef<number | null>;
     saveOnLeaveSourceFrameRef: MutableRef<number | null>;
     saveOnLeaveRenderedFrameRef: MutableRef<RenderedSave | null>;
     pendingCachedMergeFrameRef: MutableRef<(RenderedSave & { frame: number }) | null>;
@@ -187,6 +188,7 @@ export function useRotoPersistenceIntegration<TEditable extends RotoEditableStat
       }
     }
     input.frame.setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
+    input.lifecycle.pendingFrameSyncRef.current = frame;
     await sendPhysicPaintFrameSyncMessage(frame, input.action.bridgeMode);
     return true;
   }, [input]);

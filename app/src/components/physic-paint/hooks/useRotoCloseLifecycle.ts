@@ -79,12 +79,14 @@ export function useRotoCloseLifecycle(input: RotoCloseLifecycleInput) {
   }, [input]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const handleBeforeUnload = (_event: BeforeUnloadEvent) => {
       if (input.workflowMode !== 'roto') return;
       input.snapshotCurrentRotoFrame();
     };
+    const targetWindow = window;
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    return () => targetWindow.removeEventListener('beforeunload', handleBeforeUnload);
   }, [input]);
 
   useEffect(() => {

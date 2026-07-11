@@ -16,6 +16,7 @@ type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUr
 
 interface LaunchLifecyclePorts {
   pendingAdvanceRef: MutableRef<number | null>;
+  pendingFrameSyncRef: MutableRef<number | null>;
   saveOnLeaveSourceFrameRef: MutableRef<number | null>;
   saveOnLeaveRenderedFrameRef: MutableRef<unknown | null>;
   pendingCachedMergeFrameRef: MutableRef<unknown | null>;
@@ -89,7 +90,12 @@ export function usePhysicsPaintLaunchIntegration(input: {
   }, [input]);
 
   const applyIncomingLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
-    const hydratedContext = hydrateRotoLaunchContext(context, physicPaintStore);
+    const pendingFrame = input.lifecycle.pendingFrameSyncRef.current;
+    input.lifecycle.pendingFrameSyncRef.current = null;
+    const incomingContext = pendingFrame !== null && getLaunchWorkflowMode(context) === 'roto'
+      ? { ...context, startFrame: pendingFrame }
+      : context;
+    const hydratedContext = hydrateRotoLaunchContext(incomingContext, physicPaintStore);
     const preserveClose = input.lifecycle.closeAfterRotoSaveRequestedRef.current;
     resetRotoSessionForLaunch(hydratedContext, preserveClose);
     applyPhysicsPaintLaunchContext(hydratedContext, input.state, (launch) => {

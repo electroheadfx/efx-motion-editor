@@ -89,6 +89,7 @@ export function PhysicsPaintStudio() {
   const closeGuardBypassRef = useRef(false);
   const saveOnLeaveRenderedFrameRef = useRef<{ renderedFrame: RenderedFramePayload; backgroundOnly: boolean; onionFrame?: RenderedFramePayload | null } | null>(null);
   const pendingCachedRotoMergeFrameRef = useRef<{ frame: number; renderedFrame: RenderedFramePayload; backgroundOnly: boolean; onionFrame?: RenderedFramePayload | null } | null>(null);
+  const pendingFrameSyncRef = useRef<number | null>(null);
   const saveOnLeaveDeleteFrameRef = useRef<number | null>(null);
   const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null);
   const resetRotoNavigationForLaunchRef = useRef<() => void>(() => {});
@@ -227,9 +228,8 @@ export function PhysicsPaintStudio() {
       initialFps: getPreviewFps(launchContext?.fps),
       getFrame: findCachedRotoDisplayFrame,
       onStart: (frameCount) => setAnimTotal(frameCount),
-      onFrame: (frameIndex, appFrame) => {
+      onFrame: (frameIndex) => {
         setAnimFrame(frameIndex);
-        setLaunchContext((current) => current ? { ...current, startFrame: appFrame } : current);
       },
       setIsPlaying,
     },
@@ -350,7 +350,7 @@ export function PhysicsPaintStudio() {
     },
     session: { savingFrame: rotoSession.savingFrame, requestFrame: rotoSession.requestFrame },
     lifecycle: {
-      activeOperationIdRef, pendingAdvanceRef: pendingRotoAdvanceRef,
+      activeOperationIdRef, pendingAdvanceRef: pendingRotoAdvanceRef, pendingFrameSyncRef,
       saveOnLeaveSourceFrameRef, saveOnLeaveRenderedFrameRef,
       pendingCachedMergeFrameRef: pendingCachedRotoMergeFrameRef,
       saveOnLeaveDeleteFrameRef, flushInFlightRef: rotoFlushInFlightRef,
@@ -371,7 +371,7 @@ export function PhysicsPaintStudio() {
   const { getStrokeMetadata } = usePhysicsPaintLaunchIntegration({
     workflowMode, localPreviewFrameRef, engineRef,
     lifecycle: {
-      pendingAdvanceRef: pendingRotoAdvanceRef, saveOnLeaveSourceFrameRef, saveOnLeaveRenderedFrameRef,
+      pendingAdvanceRef: pendingRotoAdvanceRef, pendingFrameSyncRef, saveOnLeaveSourceFrameRef, saveOnLeaveRenderedFrameRef,
       pendingCachedMergeFrameRef: pendingCachedRotoMergeFrameRef, saveOnLeaveDeleteFrameRef, pendingApplyRef,
       activeOperationIdRef, closeAfterApplyOperationIdRef, closeAfterRotoSaveRequestedRef, closeGuardBypassRef,
       flushInFlightRef: rotoFlushInFlightRef,

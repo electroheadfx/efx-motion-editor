@@ -173,6 +173,31 @@ function getUseEffectBlocks(text: string): string[] {
   return blocks;
 }
 
+describe('PhysicsPaintStudio refactor regression ownership contract', () => {
+  it('keeps manual Roto selection canonical across frame-sync launch echoes', () => {
+    expect(studioPresentationSource()).toContain('pendingFrameSyncRef');
+    expect(rotoPersistenceIntegrationSource()).toContain('input.lifecycle.pendingFrameSyncRef.current = frame');
+    const launch = readFileSync(launchIntegrationPath, 'utf8');
+    expect(launch).toContain('const pendingFrame = input.lifecycle.pendingFrameSyncRef.current');
+    expect(launch).toContain('startFrame: pendingFrame');
+  });
+
+  it('keeps cached Roto playback transient and freezes editable utility projection', () => {
+    const studio = studioPresentationSource();
+    const playbackStart = studio.indexOf('playback: {');
+    const playbackBlock = studio.slice(playbackStart, studio.indexOf('const rotoKeyUtilities', playbackStart));
+    expect(playbackBlock).not.toContain('setLaunchContext');
+    expect(studio).toContain('rotoPlaybackActive: rotoCachedPlayback.isActive');
+  });
+
+  it('persists interpolation disable before syncing a remapped frame', () => {
+    const controller = readFileSync(interpolationControllerPath, 'utf8');
+    expect(controller).toContain('const updateRotoInterpolationSettings = useCallback(async');
+    expect(controller.indexOf('await input.sendApplyPayload')).toBeGreaterThan(-1);
+    expect(controller.indexOf('await input.sendFrameSync')).toBeGreaterThan(controller.indexOf('await input.sendApplyPayload'));
+  });
+});
+
 describe('PhysicsPaintStudio Roto session boundary contract', () => {
   it('36.13/D-05/D-09 wires far-empty saves through source-target compression and keeps generated saves render-only', () => {
     const text = source();
@@ -714,8 +739,9 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
     expect(bridge).toContain("coreApi.invoke('get_physics_paint_launch_context')");
     expect(bridge).toContain('isPhysicPaintLaunchContext(storedContext)');
     expect(text).toContain('const applyIncomingLaunchContext = useCallback');
-    expect(bridge).toContain('applyIncomingLaunchContext(storedContext)');
-    expect(bridge).toContain('applyIncomingLaunchContext(event.payload)');
+    expect(bridge).toContain('applyIncomingLaunchContextRef.current(storedContext)');
+    expect(bridge).toContain('applyIncomingLaunchContextRef.current(event.payload)');
+    expect(bridge).toContain('applyIncomingLaunchContextRef.current = applyIncomingLaunchContext');
     expect(launch).toContain("setters.setSavedPlayCacheDirty(getLaunchWorkflowMode(context) === 'play' && context.playCacheStatus !== 'cached')");
   });
 
@@ -954,10 +980,10 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(updateBlock).toContain('input.updateSettings(input.currentFrame, patch)');
     expect(updateBlock).toContain("kind: 'update-roto-interpolation-settings'");
     expect(updateBlock).toContain('settings: transaction.settings');
-    expect(updateBlock).toContain('void input.sendApplyPayload(payload, input.bridgeMode)');
+    expect(updateBlock).toContain('await input.sendApplyPayload(payload, input.bridgeMode)');
     const launchHydration = rotoLaunchHydrationSource();
     expect(text).not.toContain('function hydrateLaunchContextRotoInterpolation');
-    expect(text).toContain('const hydratedContext = hydrateRotoLaunchContext(context, physicPaintStore)');
+    expect(text).toContain('const hydratedContext = hydrateRotoLaunchContext(incomingContext, physicPaintStore)');
     expect(launchHydration).toContain('export function seedRotoLaunchRealKeys');
     expect(launchHydration).toContain('const sourceFrame = frame.sourceFrame ?? frame.appFrame;');
     expect(launchHydration).toContain('store.upsertRealRotoKeyFrame(context.layerId, sourceFrame, frame, frame.backgroundOnly === true)');
@@ -1017,8 +1043,8 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(cachedRotoBlock).toContain('RotoCachedPlaybackFrame<TPreview>');
     expect(cachedRotoBlock).toContain('keyUtilities.session.playbackFrameNumbers.value.map');
     expect(cachedRotoBlock).not.toContain('return getRealCachedRotoDisplayFrameNumbers(launchContext)');
-    expect(text).toContain('onFrame: (frameIndex, appFrame) => {');
-    expect(text).toContain('setLaunchContext((current) => current ? { ...current, startFrame: appFrame } : current)');
+    expect(text).toContain('onFrame: (frameIndex) => {');
+    expect(text).not.toContain('setLaunchContext((current) => current ? { ...current, startFrame: appFrame } : current)');
     expect(canvasStackBlock).toContain('cachedRotoPlaybackUrl: rotoCachedPlayback.frame?.dataUrl ?? null');
     expect(workflowStripBlock).toContain('rotoCachedPlaybackAvailable');
     expect(workflowStripBlock).toContain('rotoCachedPlaybackStatus: rotoCachedPlayback.status');

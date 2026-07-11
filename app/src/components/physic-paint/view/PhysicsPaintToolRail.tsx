@@ -1,12 +1,12 @@
 import type { ToolType } from '@efxlab/efx-physic-paint';
-import paintModeNormalIcon from '../../assets/physics-paint-ui/icons/paint-mode-normal.svg';
-import paintModePhysicsIcon from '../../assets/physics-paint-ui/icons/paint-mode-physics.svg';
-import eraserIcon from '../../assets/physics-paint-ui/icons/LineiconsEraser.svg';
-import undoIcon from '../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
-import clearCanvasIcon from '../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
-import physicsLastStrokeIcon from '../../assets/physics-paint-ui/icons/physics-last-stroke.svg';
-import physicsAllActivePaintIcon from '../../assets/physics-paint-ui/icons/physics-all-active-paint.svg';
-import physicsDryPaintIcon from '../../assets/physics-paint-ui/icons/physics-dry-paint.svg';
+import paintModeNormalIcon from '../../../assets/physics-paint-ui/icons/paint-mode-normal.svg';
+import paintModePhysicsIcon from '../../../assets/physics-paint-ui/icons/paint-mode-physics.svg';
+import eraserIcon from '../../../assets/physics-paint-ui/icons/LineiconsEraser.svg';
+import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
+import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
+import physicsLastStrokeIcon from '../../../assets/physics-paint-ui/icons/physics-last-stroke.svg';
+import physicsAllActivePaintIcon from '../../../assets/physics-paint-ui/icons/physics-all-active-paint.svg';
+import physicsDryPaintIcon from '../../../assets/physics-paint-ui/icons/physics-dry-paint.svg';
 
 export type PhysicsPaintRailAction =
   | 'paint'

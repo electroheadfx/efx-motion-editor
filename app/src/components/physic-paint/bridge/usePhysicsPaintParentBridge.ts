@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../../lib/physicPaintBridge';
@@ -29,6 +29,8 @@ export function usePhysicsPaintBridgeMode(): PhysicsPaintBridgeMode {
 }
 
 export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context: PhysicPaintLaunchContext) => void): void {
+  const applyIncomingLaunchContextRef = useRef(applyIncomingLaunchContext);
+  applyIncomingLaunchContextRef.current = applyIncomingLaunchContext;
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
@@ -39,7 +41,7 @@ export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context
           const storedContext = await coreApi.invoke('get_physics_paint_launch_context');
           if (!disposed && isPhysicPaintLaunchContext(storedContext)) {
             console.info('[PhysicsPaintStudio] launch context fetched', storedContext);
-            applyIncomingLaunchContext(storedContext);
+            applyIncomingLaunchContextRef.current(storedContext);
           }
         }
         const eventApi = await import('@tauri-apps/api/event');
@@ -47,7 +49,7 @@ export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context
         unlisten = await eventApi.listen(PHYSIC_PAINT_LAUNCH_EVENT, (event) => {
           if (isPhysicPaintLaunchContext(event.payload)) {
             console.info('[PhysicsPaintStudio] launch context received', event.payload);
-            applyIncomingLaunchContext(event.payload);
+            applyIncomingLaunchContextRef.current(event.payload);
           } else {
             console.warn('[PhysicsPaintStudio] invalid launch context', event.payload);
           }
@@ -59,7 +61,7 @@ export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context
     };
     void installLaunchListener();
     return () => { disposed = true; unlisten?.(); };
-  }, [applyIncomingLaunchContext]);
+  }, []);
 }
 
 export function usePhysicsPaintApplyResultBridge(
@@ -76,11 +78,12 @@ export function usePhysicsPaintApplyResultBridge(
       if (event.origin !== window.location.origin) return;
       if (isPhysicPaintApplyResultMessage(event.data)) handleApplyResult(event.data.payload);
     };
+    const targetWindow = window;
     window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleCustomResult);
     window.addEventListener('message', handleMessageResult);
     return () => {
-      window.removeEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleCustomResult);
-      window.removeEventListener('message', handleMessageResult);
+      targetWindow.removeEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleCustomResult);
+      targetWindow.removeEventListener('message', handleMessageResult);
     };
   }, [handleApplyResult]);
 

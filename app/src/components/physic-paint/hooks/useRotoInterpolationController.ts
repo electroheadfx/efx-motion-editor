@@ -21,7 +21,7 @@ export function useRotoInterpolationController(input: {
   setLastError: (message: string | null) => void;
   setPlaybackStatus: (message: string) => void;
 }) {
-  const updateRotoInterpolationSettings = useCallback((patch: Partial<PhysicPaintRotoInterpolationSettings>) => {
+  const updateRotoInterpolationSettings = useCallback(async (patch: Partial<PhysicPaintRotoInterpolationSettings>) => {
     const launchContext = input.launchContext;
     if (!launchContext) return;
     seedRotoLaunchRealKeys(launchContext, input.seedStore);
@@ -32,7 +32,6 @@ export function useRotoInterpolationController(input: {
       input.replaceConfirmedFrames(new Map(cacheRefresh.confirmedRealKeys));
     }
     input.setLaunchContext((current) => current ? { ...current, startFrame: transaction.nextCurrentFrame, cachedRotoFrames: cacheRefresh.frames, rotoInterpolationSettings: transaction.settings } : current);
-    if (transaction.nextCurrentFrame !== input.currentFrame) void input.sendFrameSync(transaction.nextCurrentFrame, input.bridgeMode);
     const payload: PhysicPaintApplyPayload = {
       kind: 'update-roto-interpolation-settings',
       operationId: `${launchContext.operationId}:roto-interpolation:${Date.now()}`,
@@ -40,12 +39,16 @@ export function useRotoInterpolationController(input: {
       startFrame: transaction.nextCurrentFrame,
       settings: transaction.settings,
     };
-    void input.sendApplyPayload(payload, input.bridgeMode).catch((error) => {
+    try {
+      await input.sendApplyPayload(payload, input.bridgeMode);
+      if (transaction.nextCurrentFrame !== input.currentFrame) await input.sendFrameSync(transaction.nextCurrentFrame, input.bridgeMode);
+    } catch (error) {
       const message = `Could not sync interpolation settings to EFX Motion. ${error instanceof Error ? error.message : String(error)}`;
       input.setApplyStatus('error');
       input.setApplyMessage(message);
       input.setLastError(message);
-    });
+      return;
+    }
     input.setApplyStatus(transaction.failureStatus ? 'error' : 'success');
     input.setApplyMessage(transaction.status);
     input.setLastError(transaction.failureStatus);
