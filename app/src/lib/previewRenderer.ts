@@ -22,6 +22,7 @@ import {VelocityCache, isStationary} from './motionBlurEngine';
 import {interpolateAt} from './keyframeEngine';
 import {drawRotoFrameComposite, resolveMissingRotoFrameDraw} from './rotoFrameDraw';
 import type {MissingRotoFrameBackgroundState} from './rotoFrameDraw';
+import {clearProjectPaperRasterCache, getProjectPaperCanvas, isProjectPaperTextureResolved} from './projectPaperRaster';
 
 /**
  * Create a Canvas 2D gradient from GradientData.
@@ -167,13 +168,12 @@ export class PreviewRenderer {
   private videoReadyHandlers: Map<string, () => void>; // layerId -> shared loadeddata/seeked handler
   private offscreenCanvas: HTMLCanvasElement | null = null; // reusable offscreen canvas for video rasterization
   private blurOffscreen: HTMLCanvasElement | null = null; // reusable offscreen canvas for per-layer/generator blur
-  private paperCanvasCache: Map<string, HTMLCanvasElement>;
   private velocityCache = new VelocityCache();
 
   /** Callback invoked after an image finishes loading (triggers re-render) */
   onImageLoaded: (() => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>, sharedPaperCanvasCache?: Map<string, HTMLCanvasElement>) {
+  constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -181,7 +181,6 @@ export class PreviewRenderer {
     }
     this.ctx = ctx;
     this.imageCache = sharedImageCache ?? new Map();
-    this.paperCanvasCache = sharedPaperCanvasCache ?? new Map();
     this.loadingImages = new Set();
     this.failedImages = new Set();
     this.videoElements = new Map();
@@ -193,7 +192,7 @@ export class PreviewRenderer {
    * this renderer's image cache. Used for GL transition dual-capture rendering.
    */
   cloneForCanvas(canvas: HTMLCanvasElement): PreviewRenderer {
-    return new PreviewRenderer(canvas, this.imageCache, this.paperCanvasCache);
+    return new PreviewRenderer(canvas, this.imageCache);
   }
 
   preloadPaperTextures(paperGrains: string[]): void {
@@ -406,12 +405,11 @@ export class PreviewRenderer {
         const source = renderedFrame ? this.getPhysicPaintImageSource(paintLayerId, paintLookupFrame, renderedFrame) : null;
         const backgroundDraw = realKeyBackgroundDraw ?? (missingDraw?.kind === 'background-only' ? missingDraw : null);
         if (backgroundDraw || source) {
-          const paperTexture = backgroundDraw ? this.getPaperTextureSource(backgroundDraw.paperTexture) : null;
-          const paperCanvas = backgroundDraw ? this.getProjectPaperCanvas(backgroundDraw.paperTexture, paperTexture) : null;
+          const paperCanvas = backgroundDraw ? getProjectPaperCanvas(backgroundDraw.paperTexture, projectStore.width.peek(), projectStore.height.peek(), this.onImageLoaded ?? undefined) : null;
           ctx.save();
           ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
           ctx.globalAlpha = effectiveOpacity;
-          if (backgroundDraw) drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, paperTexture, paperCanvas, source);
+          if (backgroundDraw) drawRotoFrameComposite(ctx, backgroundDraw, logicalW, logicalH, null, paperCanvas, source);
           else if (source) ctx.drawImage(source, 0, 0, logicalW, logicalH);
           ctx.restore();
         }
@@ -664,42 +662,7 @@ export class PreviewRenderer {
   }
 
   isPaperTextureResolved(paperGrain: string): boolean {
-    const url = getPaperTextureUrl(paperGrain);
-    if (!url) return true;
-    const cacheKey = `physic-paint-paper:${paperGrain}`;
-    return this.imageCache.has(cacheKey) || this.failedImages.has(cacheKey);
-  }
-
-  private getProjectPaperCanvas(paperTexture: string | undefined, texture: HTMLImageElement | null): HTMLCanvasElement | null {
-    if (!paperTexture || !texture) return null;
-    const width = projectStore.width.peek();
-    const height = projectStore.height.peek();
-    if (width <= 0 || height <= 0) return null;
-    const cacheKey = `${paperTexture}:${width}x${height}`;
-    const cached = this.paperCanvasCache.get(cacheKey);
-    if (cached) return cached;
-    const paperCanvas = document.createElement('canvas');
-    paperCanvas.width = width;
-    paperCanvas.height = height;
-    const paperCtx = paperCanvas.getContext('2d');
-    if (!paperCtx) return null;
-    paperCtx.fillStyle = '#fff';
-    paperCtx.fillRect(0, 0, width, height);
-    paperCtx.globalAlpha = 0.18;
-    const pattern = typeof paperCtx.createPattern === 'function' ? paperCtx.createPattern(texture, 'repeat') : null;
-    if (pattern) {
-      paperCtx.fillStyle = pattern;
-      paperCtx.fillRect(0, 0, width, height);
-    } else {
-      for (let y = 0; y < height; y += texture.height) {
-        for (let x = 0; x < width; x += texture.width) {
-          paperCtx.drawImage(texture, x, y);
-        }
-      }
-    }
-    paperCtx.globalAlpha = 1;
-    this.paperCanvasCache.set(cacheKey, paperCanvas);
-    return paperCanvas;
+    return isProjectPaperTextureResolved(paperGrain);
   }
 
   /** Check if an image is already cached (for debug logging) */
@@ -1251,7 +1214,7 @@ export class PreviewRenderer {
     this.videoElements.clear();
     this.videoReadyHandlers.clear();
     this.imageCache.clear();
-    this.paperCanvasCache.clear();
+    clearProjectPaperRasterCache();
     this.loadingImages.clear();
     this.failedImages.clear();
     this.offscreenCanvas = null;

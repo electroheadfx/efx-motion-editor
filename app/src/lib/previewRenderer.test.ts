@@ -17,6 +17,7 @@ vi.mock('../stores/projectStore', () => ({
 }));
 
 import { PreviewRenderer } from './previewRenderer';
+import { clearProjectPaperRasterCache } from './projectPaperRaster';
 
 const root = resolve(__dirname, '../..');
 const readSource = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -156,6 +157,7 @@ function seedRotoPaper(): void {
 beforeEach(() => {
   _setPhysicPaintMarkDirtyCallback(() => {});
   physicPaintStore.reset();
+  clearProjectPaperRasterCache();
   offscreenOperations = [];
   vi.stubGlobal('window', { devicePixelRatio: 1 });
   vi.stubGlobal('document', { createElement: (tag: string) => tag === 'canvas' ? new TestCanvas(offscreenOperations) : {} });

@@ -1,7 +1,7 @@
 import type { ComponentChildren, ComponentProps } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import { drawMissingRotoBackground, resolveMissingRotoFrameDraw } from '../../../lib/rotoFrameDraw';
+import { getProjectPaperCanvas } from '../../../lib/projectPaperRaster';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { PhysicsPaintRightPanel } from './PhysicsPaintRightPanel';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
@@ -33,22 +33,13 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
     if (!canvas) return;
     const context = canvas.getContext('2d');
     if (!context) return;
-    const instruction = resolveMissingRotoFrameDraw('playback', 0, { mode: 'paper', metadata: props.background });
-    if (instruction.kind !== 'background-only') {
-      context.clearRect(0, 0, props.width, props.height);
-      return;
-    }
-    const paper = props.background.background.startsWith('canvas') ? new Image() : null;
     let cancelled = false;
     const render = () => {
-      if (cancelled || (paper && !paper.complete)) return;
+      if (cancelled) return;
+      const paperCanvas = getProjectPaperCanvas(props.background.background, props.width, props.height, render);
       context.clearRect(0, 0, props.width, props.height);
-      drawMissingRotoBackground(context, instruction, props.width, props.height, paper, null);
+      if (paperCanvas) context.drawImage(paperCanvas, 0, 0, props.width, props.height);
     };
-    if (paper) {
-      paper.onload = render;
-      paper.src = `/img/paper_${props.background.background.slice(-1)}.jpg`;
-    }
     render();
     return () => { cancelled = true; };
   }, [props.background.background, props.background.color, props.background.grainStrength, props.background.paperGrain, props.height, props.width]);
