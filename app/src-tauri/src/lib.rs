@@ -71,6 +71,8 @@ struct PhysicsPaintLaunchContext {
     play_cache_status: Option<String>,
     #[serde(rename = "playMotion", skip_serializing_if = "Option::is_none")]
     play_motion: Option<Value>,
+    #[serde(rename = "rotoBackground", skip_serializing_if = "Option::is_none")]
+    roto_background: Option<Value>,
     #[serde(rename = "previewFrame", skip_serializing_if = "Option::is_none")]
     preview_frame: Option<u32>,
     #[serde(rename = "cachedPlayFrames", default, skip_serializing_if = "Vec::is_empty")]
@@ -575,6 +577,7 @@ mod tests {
             selected_play_script_id: Some("play-12-5".into()),
             play_cache_status: Some("cached".into()),
             play_motion: Some(serde_json::json!({ "strokeDeformation": 30, "strokePosition": 40 })),
+            roto_background: None,
             preview_frame: Some(1),
             cached_play_frames: vec![PhysicsPaintRenderedFrame {
                 frame_index: 1,
@@ -645,5 +648,26 @@ mod tests {
         assert_eq!(cloned.cached_roto_frames[0].rendered.app_frame, 4);
         assert_eq!(cloned.cached_roto_frames[0].source, "real-key");
         assert!(cloned.editable_state.is_none());
+    }
+
+    #[test]
+    fn physics_paint_launch_context_preserves_roto_background_round_trip() {
+        let input = serde_json::json!({
+            "operationId": "op-roto-paper",
+            "layerId": "layer-1",
+            "startFrame": 4,
+            "workflowMode": "roto",
+            "rotoBackground": {
+                "background": "canvas2",
+                "paperGrain": "canvas3",
+                "grainStrength": 0.65,
+                "color": "#f7f3ed"
+            }
+        });
+
+        let context: PhysicsPaintLaunchContext = serde_json::from_value(input.clone()).unwrap();
+        let output = serde_json::to_value(context).unwrap();
+
+        assert_eq!(output.get("rotoBackground"), input.get("rotoBackground"));
     }
 }
