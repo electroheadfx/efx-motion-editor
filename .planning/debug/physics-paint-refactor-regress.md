@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: "Run a focused GSD debug for regressions introduced by the Phase 36.13 Debug 01 PhysicsPaintStudio refactor."
 created: 2026-07-11
-updated: 2026-07-11T19:35:00Z
+updated: 2026-07-11T20:40:00Z
 ---
 
 # Physics Paint Refactor Regressions
@@ -46,10 +46,21 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Current Focus
 
-- hypothesis: "Cached playback mismatches because transparent persisted Roto PNGs are being composed over a CSS-owned paper approximation instead of the project-space paper compositor used by EFX Motion Editor preview/export. The authoritative contract is persisted rotoBackground metadata + project dimensions + selected intrinsic texture at the PreviewRenderer's fixed 0.18 paper opacity, followed by the alpha PNG; stopped engine parity comes from its equivalent working-to-project texture scale."
-- test: "Add a behavioral view/compositor test with a 1600x900 project frame and 1000x563 working canvas (non-default 0.625 paperTextureScale) requiring cached playback to render through a shared project-sized paper+alpha canvas contract and forbidding CSS background ownership while active."
-- expecting: "Current code fails because it renders an <img> over .paint-canvas CSS paper and never invokes a compositor with persisted background metadata or project dimensions. After the minimal fix, PreviewRenderer and Physics Paint playback share the paper draw primitive/contract; playback canvas backing dimensions are 1600x900, paper precedes alpha, and exclusive owner/teardown behavior remains unchanged."
-- next_action: "Write and run the focused red rendering-contract test before production edits."
+- hypothesis: "Animation disappeared because 66febfa8 replaced the browser-proven declarative cached PNG `<img>` owner with a newly imperative Image→canvas decode/draw path that live WebKit does not reliably render, while the same path's separately decoded paper remains visible. Paper stayed wrong because that new compositor also chose texture from `rotoBackground.background` and repeated intrinsic project-space pixels without the stopped engine's actual working/project transform or a proven editor playback surface."
+- test: "Restore the exact pre-66febfa8 declarative PNG paint owner and separate paper ownership from paint so paint decode cannot be blocked by paper decode. Add a mounted/view contract plus deterministic paper geometry primitive tests, and preserve timer race/Stop tests. Compare exact pre/post production path and run focused/broad/editor gates."
+- expecting: "Paint visibility returns to the last known working owner with no async paint race; paper is rendered by one explicit background surface using persisted metadata and actual project/display geometry, not CSS approximation or a paint-coupled compositor."
+- next_action: "Implement the smallest forward correction that replaces the failed paint compositor with the proven image owner, isolates paper rendering, and removes dead shared-compositor production wiring from Physics Paint playback."
+- reasoning_checkpoint:
+  hypothesis: "66febfa8 caused total paint loss by replacing a live-proven declarative PNG image with an unproven imperative decode/draw canvas; it also coupled paper and paint readiness and used an unverified paper geometry contract."
+  confirming_evidence:
+    - "The exact pre-66febfa8 `<img src={frame.dataUrl}>` path displayed and advanced paint in live UAT; the exact post-66febfa8 canvas path displays zero paint."
+    - "The cached source remains the same validated PNG data URL and has no blob, revocation, or CORS boundary; only the visual decode/draw owner changed."
+    - "66febfa8 tests mocked draw calls/source text and never decoded pixels or mounted the async Preact canvas path."
+  falsification_test: "If restoring the same declarative image owner still produces zero paint with the same cached data URLs, the owner-change diagnosis is false and the source PNG itself must be inspected from live runtime capture."
+  fix_rationale: "Returning paint to the last known-good browser-owned image path removes the new failure mechanism instead of layering retries on it; separating paper keeps paper decode/geometry from gating paint visibility."
+  blind_spots: "Automated DOM tests cannot execute the exact Tauri WebKit decoder; live UAT is still mandatory, and exact stopped/editor paper parity must be visually confirmed."
+- known_good_boundary: "Before 66febfa8, cached animation paint was visible and correctly registered; only paper geometry was wrong. Preserve that paint path unless runtime evidence proves an equivalent replacement."
+- failed_implementation_hypothesis: "66febfa8 project-space shared compositor is rejected by live UAT until its runtime decode/draw lifecycle is proven."
 - reasoning_checkpoint:
   hypothesis: "Transparent cached Roto PNGs display wrong paper scale because playback bypasses the persisted-frame/editor PreviewRenderer compositor and delegates paper to CSS, creating a second non-authoritative background owner."
   confirming_evidence:
@@ -113,6 +124,31 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
   failure_output: "RED reproduced independently: view contract expected canvas-only suppression but commit hid .demo-canvas-shell; lifecycle expected null transient frame after natural Stop but received { id: 'last' }. Both focused tests now pass after minimal production edits."
 
 ## Evidence
+
+- timestamp: 2026-07-11T20:30:00Z
+  checked: Focused forward recovery implementation and tests
+  found: Physics Paint playback paint is again rendered by the exact declarative `<img src={frame.dataUrl}>` owner that was live-proven before 66febfa8. Paper is a separate project-sized background canvas beneath it, so paper decode can no longer gate or cancel paint visibility. The background effect depends on semantic metadata fields rather than the freshly allocated wrapper object. Focused playback/composition/Stop tests pass 104/104.
+  implication: Failed 66febfa8 paint-compositor wiring has been replaced rather than layered with retries. Paint and paper now have distinct runtime owners: cached PNG image for paint, persisted metadata project-space canvas for paper.
+
+- timestamp: 2026-07-11T20:22:00Z
+  checked: Cached frame production, alpha registry, and pre-66febfa8 visual owner
+  found: Cached Roto frames are validated PNG data URLs with optional intrinsic width/height; save/export produces transparent alpha canvases and registers their live canvases for interpolation. The pre-66febfa8 playback path bound the exact `frame.dataUrl` declaratively to an `<img>`, which live UAT proved visible. No blob URL creation, revocation, or cross-origin URL participates in this path. Paper metadata is separate and belongs outside the cached PNG. 66febfa8 retained the same data URL but moved its decode/draw into an imperative effect.
+  implication: Source format, alpha ownership, blob revocation, and cross-origin hypotheses are eliminated for the disappearing paint. The regression is caused by replacing the browser-owned declarative image surface with the new imperative async canvas path. Safest recovery is to restore the proven image owner for paint while assigning paper to a separate precise canvas/background owner, rather than stacking more decode logic into the failed compositor.
+
+- timestamp: 2026-07-11T20:15:00Z
+  checked: Concrete composition metadata wiring and current playback lifecycle
+  found: Studio supplies paint from `rotoCachedPlayback.frame?.dataUrl`, project dimensions from `launchContext.width/height`, and background from `launchContext.rotoBackground`. Working engine dimensions are separately aspect-fitted by `getPhysicsPaintWorkingSize`, with `paperTextureScale = workingWidth / projectWidth`. The async playback effect is recreated on every `dataUrl`, background object identity, width, or height change; cleanup only flips a local boolean and does not abort decode. Existing playback state clears timer/frame before releasing active state, but the compositor itself has no generation token proving an older image cannot draw into a reused canvas after a newer frame mounts.
+  implication: Dimension domains are intentionally distinct, but paint visibility now depends on an untested async decode/effect path. Race safety must be proven at the mounted surface, not inferred from playback timer teardown.
+
+- timestamp: 2026-07-11T20:12:00Z
+  checked: Exact 66febfa8 runtime diff and its new tests
+  found: 66febfa8 replaced the proven `<img src={cachedRotoPlaybackUrl}>` playback owner with `PhysicsPaintRotoPlaybackCanvas`, which creates fresh paint/paper `Image` objects in a Preact effect and paints only after both report `complete`. The new compositor unit test uses plain object draw sources and records mocked operation order; PreviewRenderer tests assert source text; no test mounts the async canvas path, decodes a PNG, advances frames, reads pixels, or exercises cleanup races.
+  implication: Prior green gates could not detect a decoded-pixel failure in the new production path. The regression boundary is exactly the newly introduced async canvas component, while the pre-66febfa8 image playback path is the last known paint-visible owner.
+
+- timestamp: 2026-07-11T20:05:00Z
+  checked: Live Tauri UAT after commit 66febfa8
+  found: Playback displays a full fitted canvas containing only an incorrectly scaled/coarse gray paper texture. No cached Roto paint or animation pixels are visible at any playback frame. The user identifies this as a major regression. Before 66febfa8, cached animation paint was visible, correctly registered, advanced, and stopped correctly; only paper scale was wrong.
+  implication: The shared-compositor implementation hypothesis in 66febfa8 failed in the real runtime. Because paper renders while paint does not, the failure boundary is likely between cached alpha-frame source/decode and the compositor's paint draw/invalidation lifecycle, not playback activation or shell visibility. Production changes from 66febfa8 must be replaced or cleanly forward-reverted unless proven correct by decoded-pixel and race tests.
 
 - timestamp: 2026-07-11T18:08:00Z
   checked: Live UAT after commit 97571142 and current playback suppression CSS
@@ -237,26 +273,20 @@ Open Physics Paint in Roto mode on branch `phase-36.13-debugs`. Starting at fram
 
 ## Eliminated
 
+- hypothesis: The shared project-space compositor introduced by 66febfa8 is an automated-verified correction suitable for live playback.
+  evidence: Live Tauri UAT shows its playback surface contains only coarse paper and zero cached paint, whereas the immediately preceding state displayed and advanced paint correctly. Prior mocked operation/contract tests did not verify decoded frame pixels on the mounted surface.
+  timestamp: 2026-07-11T20:05:00Z
+
 - hypothesis: A stale pendingFrameSyncRef survives navigation and overwrites the later durable-core reopen launch.
   evidence: The failing durable-core scenario performs no openFrame/navigation call before the genuine reopen launch, so the only writer of pendingFrameSyncRef is never reached.
   timestamp: 2026-07-11T15:02:00Z
 
 ## Resolution
 
-- root_cause: Persisted Roto PNGs are intentionally transparent paint-only alpha at project dimensions; paper/background is separately persisted as rotoBackground metadata. EFX Motion Editor preview and export authoritatively compose project-sized paper first (selected intrinsic texture at fixed 0.18 opacity) and alpha PNG second. Physics Paint cached playback bypassed that contract and instead placed the alpha PNG over a CSS-owned paper approximation, creating duplicate background ownership and mismatched raster/scale despite matching nominal tile size and paperTextureScale.
-- fix: Added a shared drawRotoFrameComposite paper-before-alpha primitive used by PreviewRenderer and cached Physics Paint playback. Playback now renders into a canvas whose backing dimensions are the launch project width/height and whose paper source comes from persisted rotoBackground metadata; the CSS fallback no longer owns the visible playback composition. Exclusive playback visual ownership, frozen editable selection/utilities, and Stop/natural completion teardown remain unchanged.
-- verification: Behavioral project-space composition test was red 1/1 before the shared primitive and green after. Focused rendering/playback suite 112/112; Physics Paint component matrix 335/335 across 34 files; editor PreviewRenderer/export contract suite 25 passed with 19 existing todos; pnpm --dir app typecheck passed; pnpm --dir app build passed (1086 modules); git diff --check and temporary instrumentation scan passed. Live Tauri comparison pending; Debug 01 not accepted.
+- root_cause: Commit 66febfa8 replaced the last live-proven cached Roto paint owner—a declarative `<img>` bound directly to the cached PNG data URL—with a new imperative Preact effect that separately decoded paper and paint and drew both into a canvas. Live Tauri showed the paper branch reached the surface while cached paint never did. The PNG source, alpha ownership, dimensions, and transport did not change; only the decode/draw owner changed. Paper remained wrong because the failed compositor also introduced an unverified project-space texture rendering path rather than preserving the stopped engine's concrete working/project transform. Prior tests asserted mocked draw order and source-text contracts, never decoded pixels or mounted the async canvas lifecycle.
+- fix: Replaced the failed Physics Paint paint-compositor portion of 66febfa8 with the exact pre-66febfa8 declarative cached PNG image owner. Paper is now a separate persisted-metadata background canvas beneath the image, so paper loading cannot gate/cancel paint and frame advancement remains browser-owned through `src` changes. The paper effect depends on semantic metadata fields instead of a freshly allocated wrapper object. Existing exclusive visual ownership, frozen selection/utilities, timer invalidation, Stop, and natural completion behavior are preserved. PreviewRenderer/export continue using the shared compositor independently.
+- verification: Focused playback/composition/Stop tests pass 104/104. Full Physics Paint matrix passes 335/335 across 34 files. PreviewRenderer/export/roto composition tests pass 25 with 19 existing todos. `pnpm --dir app typecheck` passes. `pnpm --dir app build` passes with 1086 modules. `git diff --check` passes. Debug instrumentation scan is clean. Live Tauri comparison remains pending; Debug 01 is not accepted.
 - files_changed:
-  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
   - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
-  - app/src/components/physic-paint/engine/PhysicsPaintCanvasMount.tsx
-  - app/src/components/physic-paint/hooks/useRotoCachedPlayback.ts
-  - app/src/components/physic-paint/hooks/useRotoCachedPlayback.test.ts
   - app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
   - app/src/components/physic-paint/physicsPaintStudio.css
-  - app/src/components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.ts
-  - app/src/components/physic-paint/hooks/useRotoPersistenceIntegration.ts
-  - app/src/components/physic-paint/hooks/useRotoInterpolationController.ts
-  - app/src/components/physic-paint/bridge/usePhysicsPaintParentBridge.ts
-  - app/src/components/physic-paint/hooks/useRotoCloseLifecycle.ts
-  - app/src/components/physic-paint/view/PhysicsPaintToolRail.tsx
