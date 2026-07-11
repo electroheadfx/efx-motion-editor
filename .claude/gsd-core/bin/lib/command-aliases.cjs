@@ -284,6 +284,14 @@ exports.INIT_COMMAND_ALIASES = [
         "mutation": false
     },
     {
+        "canonical": "init.onboard",
+        "aliases": [
+            "init onboard"
+        ],
+        "subcommand": "onboard",
+        "mutation": false
+    },
+    {
         "canonical": "init.quick",
         "aliases": [
             "init quick"

@@ -42,6 +42,7 @@ const PROFILES = Object.freeze({
     standard: Object.freeze([
         // Core loop
         'new-project',
+        'onboard',
         'discuss-phase',
         'plan-phase',
         'execute-phase',
@@ -819,6 +820,7 @@ module.exports = {
     writeActiveProfile,
     // Shared internals
     parseRequires,
+    parseCallsAgents,
     cleanupStagedSkills,
     // Back-compat / deprecated
     MINIMAL_SKILL_ALLOWLIST,

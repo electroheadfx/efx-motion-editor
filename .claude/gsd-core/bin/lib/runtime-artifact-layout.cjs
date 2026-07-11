@@ -278,27 +278,34 @@ function getRegistry() {
 function dispatchKindEntry(entry, runtime, configDir, scope) {
     const { kind, destSubpath, prefix, nesting, converter } = entry;
     const nested = nesting === 'nested';
+    let result;
     switch (kind) {
         case 'commands':
-            if (converter == null) {
-                return commandsKind(destSubpath, prefix, configDir);
-            }
-            return convertedCommandsKind(destSubpath, prefix, converter, configDir);
+            result = converter == null
+                ? commandsKind(destSubpath, prefix, configDir)
+                : convertedCommandsKind(destSubpath, prefix, converter, configDir);
+            break;
         case 'agents':
-            if (converter == null) {
-                return agentsKind(destSubpath, prefix, configDir);
-            }
-            return convertedAgentsKind(destSubpath, prefix, converter, configDir, scope);
+            result = converter == null
+                ? agentsKind(destSubpath, prefix, configDir)
+                : convertedAgentsKind(destSubpath, prefix, converter, configDir, scope);
+            break;
         case 'skills':
             if (converter == null) {
                 throw new TypeError(`resolveRuntimeArtifactLayout: skills entry for '${runtime}' has converter=null (converter is required for skills)`);
             }
-            return skillsKind(destSubpath, prefix, converter, runtime, configDir, nested, scope);
+            result = skillsKind(destSubpath, prefix, converter, runtime, configDir, nested, scope);
+            break;
         case 'kimi-agents':
-            return kimiAgentsKind(destSubpath, prefix, configDir);
+            result = kimiAgentsKind(destSubpath, prefix, configDir);
+            break;
         default:
             throw new TypeError(`resolveRuntimeArtifactLayout: unknown kind '${kind}' in descriptor for runtime '${runtime}'`);
     }
+    if (typeof entry.home === 'string' && entry.home !== '') {
+        result.home = node_path_1.default.join(node_os_1.default.homedir(), entry.home);
+    }
+    return result;
 }
 /**
  * Resolve the artifact layout for a given runtime and config directory.

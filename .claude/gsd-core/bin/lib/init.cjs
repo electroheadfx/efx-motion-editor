@@ -54,15 +54,18 @@ const { checkAgentsInstalled } = agentInstallCheck;
 const gitBaseBranch = require("./git-base-branch.cjs");
 const { gitWorktreeInfoInternal } = gitBaseBranch;
 const resolution_cjs_1 = require("./resolution.cjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- onboard-projection.cjs is an export= CommonJS module
+const onboardProjection = require("./onboard-projection.cjs");
+const { REQUIRED_CODEBASE_MAP_FILES, buildOnboardProjection, hasCodeFilesInternal, hasPackageFileInternal, listCodebaseMapFiles, } = onboardProjection;
 const { output, error } = io;
 const { loadConfig, loadConfigResolved } = configLoader;
 const { resolveModelInternal, resolveGranularityInternal, assertValidGranularityOverride } = modelResolver;
 const { findPhaseInternal } = phaseLocator;
 const { getRoadmapPhaseInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, } = roadmapParser;
 const { pathExistsInternal, generateSlugInternal, toPosixPath } = coreUtils;
-const { normalizePhaseName, phaseTokenMatches, stripProjectCodePrefix } = phaseId;
+const { escapeRegex, normalizePhaseName, phaseTokenMatches, stripProjectCodePrefix, PHASE_NUMBER_TOKEN_SOURCE } = phaseId;
 const { pruneOrphanedWorktrees } = worktreeSafety;
-const { planningPaths, planningDir, planningRoot, getActiveWorkstream, findContextMdIn, } = planningWorkspace;
+const { planningPaths, planningDir, planningRoot, listAvailableWorkstreams, getActiveWorkstream, findContextMdIn, } = planningWorkspace;
 const { determinePhaseStatus } = commandsMod;
 const { extractFrontmatter } = frontmatterMod;
 const { readVerificationStatus } = verificationMod;
@@ -71,6 +74,35 @@ const { evaluateUatPassed } = uatPredicateMod;
 void stripShippedMilestones;
 // Accept all bold/colon variants of the Requirements header (#2769)
 const REQUIREMENTS_HEADER_RE = /^\*\*Requirements:?\*\*[^\S\n]*:?[^\S\n]*([^\n]*)$/m;
+// #2056: normalizePhaseName() strips ANY [A-Z][A-Z0-9_]*- prefix as a project
+// code (e.g. 'MEM-01' → '01'), so a foreign-prefixed workstream/task id would
+// collapse to its numeric suffix and resolve to an unrelated numeric phase via
+// the dir/roadmap fallback. init plan-phase must require EXACT prefixed
+// evidence — a phase dir whose token literally IS the prefixed query, or a
+// roadmap entry literally headed with it — before accepting such a match. The
+// configured project_code's own prefix (e.g. LKML-01 under project_code: LKML)
+// is never foreign and always passes through.
+function parsePhasePrefix(phase) {
+    const match = String(phase).match(/^([A-Z][A-Z0-9_]*)-(?=\d)/i);
+    return match ? match[1] : null;
+}
+function isForeignPrefixedPhaseQuery(phase, projectCode) {
+    const prefix = parsePhasePrefix(phase);
+    if (!prefix)
+        return false;
+    const configured = typeof projectCode === 'string' ? projectCode.trim() : '';
+    return !configured || prefix.toUpperCase() !== configured.toUpperCase();
+}
+function phaseInfoMatchesExactPrefix(phaseInfo, phase) {
+    const num = phaseInfo?.['phase_number'];
+    const numStr = typeof num === 'string' ? num : (typeof num === 'number' ? String(num) : '');
+    return numStr.toUpperCase() === phase.toUpperCase();
+}
+function roadmapPhaseMatchesExactPrefix(roadmapPhase, phase) {
+    const sectionRaw = roadmapPhase?.['section'];
+    const section = typeof sectionRaw === 'string' ? sectionRaw : '';
+    return new RegExp(`^#{2,4}\\s*Phase\\s+${escapeRegex(phase)}(?:\\b|\\s|:)`, 'i').test(section);
+}
 function listPhaseSummaryFiles(phaseDir) {
     return scanPhasePlans(phaseDir)['summaryFiles'];
 }
@@ -329,8 +361,18 @@ function cmdInitPlanPhase(cwd, phase, raw, options = {}) {
         error('phase required for init plan-phase');
     }
     const config = loadConfig(cwd);
+    const foreignPrefixedPhase = isForeignPrefixedPhaseQuery(phase, config.project_code);
     let phaseInfo = findPhaseInternal(cwd, phase);
-    const roadmapPhase = getRoadmapPhaseInternal(cwd, phase);
+    // #2056: a foreign-prefixed query must only match a phase whose token literally
+    // IS the prefixed query (e.g. a real 'MEM-01-*' dir); otherwise the numeric
+    // fallback ('MEM-01' → '01') would resolve to the unrelated numeric phase.
+    if (foreignPrefixedPhase && !phaseInfoMatchesExactPrefix(phaseInfo, phase)) {
+        phaseInfo = null;
+    }
+    let roadmapPhase = getRoadmapPhaseInternal(cwd, phase);
+    if (foreignPrefixedPhase && !roadmapPhaseMatchesExactPrefix(roadmapPhase, phase)) {
+        roadmapPhase = null;
+    }
     if (phaseInfo?.['archived'] && roadmapPhase?.['found']) {
         phaseInfo = null;
     }
@@ -479,84 +521,23 @@ function cmdInitNewProject(cwd, raw) {
     const hasFirecrawl = !!(process.env['FIRECRAWL_API_KEY'] || node_fs_1.default.existsSync(firecrawlKeyFile));
     const exaKeyFile = node_path_1.default.join(homedir, '.gsd', 'exa_api_key');
     const hasExaSearch = !!(process.env['EXA_API_KEY'] || node_fs_1.default.existsSync(exaKeyFile));
-    let hasCode = false;
-    let hasPackageFile = false;
-    try {
-        const codeExtensions = new Set([
-            '.ts', '.js', '.py', '.go', '.rs', '.swift', '.java',
-            '.kt', '.kts',
-            '.c', '.cpp', '.h',
-            '.cs',
-            '.rb',
-            '.php',
-            '.dart',
-            '.m', '.mm',
-            '.scala',
-            '.groovy',
-            '.lua',
-            '.r', '.R',
-            '.zig',
-            '.ex', '.exs',
-            '.clj',
-        ]);
-        const skipDirs = new Set([
-            'node_modules', '.git', '.planning', '.claude', '.codex',
-            '__pycache__', 'target', 'dist', 'build',
-        ]);
-        function findCodeFiles(dir, depth) {
-            if (depth > 3)
-                return false;
-            let entries;
-            try {
-                entries = node_fs_1.default.readdirSync(dir, { withFileTypes: true });
-            }
-            catch {
-                return false;
-            }
-            for (const entry of entries) {
-                if (entry.isFile() && codeExtensions.has(node_path_1.default.extname(entry.name)))
-                    return true;
-                if (entry.isDirectory() && !skipDirs.has(entry.name)) {
-                    if (findCodeFiles(node_path_1.default.join(dir, entry.name), depth + 1))
-                        return true;
-                }
-            }
-            return false;
-        }
-        hasCode = findCodeFiles(cwd, 0);
-    }
-    catch {
-        /* intentionally empty — best-effort detection */
-    }
-    hasPackageFile =
-        pathExistsInternal(cwd, 'package.json') ||
-            pathExistsInternal(cwd, 'requirements.txt') ||
-            pathExistsInternal(cwd, 'Cargo.toml') ||
-            pathExistsInternal(cwd, 'go.mod') ||
-            pathExistsInternal(cwd, 'Package.swift') ||
-            pathExistsInternal(cwd, 'build.gradle') ||
-            pathExistsInternal(cwd, 'build.gradle.kts') ||
-            pathExistsInternal(cwd, 'pom.xml') ||
-            pathExistsInternal(cwd, 'Gemfile') ||
-            pathExistsInternal(cwd, 'composer.json') ||
-            pathExistsInternal(cwd, 'pubspec.yaml') ||
-            pathExistsInternal(cwd, 'CMakeLists.txt') ||
-            pathExistsInternal(cwd, 'Makefile') ||
-            pathExistsInternal(cwd, 'build.zig') ||
-            pathExistsInternal(cwd, 'mix.exs') ||
-            pathExistsInternal(cwd, 'project.clj');
+    const hasCode = hasCodeFilesInternal(cwd);
+    const hasPackageFile = hasPackageFileInternal(cwd);
+    const isBrownfield = hasCode || hasPackageFile;
+    const codebaseMapFiles = listCodebaseMapFiles(cwd);
+    const hasCodebaseMap = codebaseMapFiles.length === REQUIRED_CODEBASE_MAP_FILES.length;
     const result = {
         researcher_model: resolveModelInternal(cwd, 'gsd-project-researcher'),
         synthesizer_model: resolveModelInternal(cwd, 'gsd-research-synthesizer'),
         roadmapper_model: resolveModelInternal(cwd, 'gsd-roadmapper'),
         commit_docs: config.commit_docs,
         project_exists: pathExistsInternal(cwd, '.planning/PROJECT.md'),
-        has_codebase_map: pathExistsInternal(cwd, '.planning/codebase'),
+        has_codebase_map: hasCodebaseMap,
         planning_exists: pathExistsInternal(cwd, '.planning'),
         has_existing_code: hasCode,
         has_package_file: hasPackageFile,
-        is_brownfield: hasCode || hasPackageFile,
-        needs_codebase_map: (hasCode || hasPackageFile) && !pathExistsInternal(cwd, '.planning/codebase'),
+        is_brownfield: isBrownfield,
+        needs_codebase_map: isBrownfield && !hasCodebaseMap,
         ...getInitGitState(cwd),
         brave_search_available: hasBraveSearch,
         firecrawl_available: hasFirecrawl,
@@ -631,6 +612,9 @@ function cmdInitQuick(cwd, description, raw) {
         executor_model: resolveModelInternal(cwd, 'gsd-executor'),
         checker_model: resolveModelInternal(cwd, 'gsd-plan-checker'),
         verifier_model: resolveModelInternal(cwd, 'gsd-verifier'),
+        // #2072: the quick review step spawns gsd-code-reviewer; resolve its own model
+        // so model_overrides / models.verification apply (was reusing executor_model).
+        reviewer_model: resolveModelInternal(cwd, 'gsd-code-reviewer'),
         commit_docs: config.commit_docs,
         branch_name: quickBranchName,
         quick_id: quickId,
@@ -653,6 +637,19 @@ function cmdInitIngestDocs(cwd, raw) {
         ...getInitGitState(cwd),
         project_path: '.planning/PROJECT.md',
         commit_docs: config.commit_docs,
+    };
+    output(withProjectRoot(cwd, result), raw);
+}
+function cmdInitOnboard(cwd, raw, options = {}) {
+    const config = loadConfig(cwd);
+    const workflowConfig = (config.workflow ?? {});
+    const result = {
+        ...buildOnboardProjection(cwd, {
+            commitDocs: !!config.commit_docs,
+            fast: options['fast'] === true,
+            textMode: options['text'] === true || !!config.text_mode || !!workflowConfig['text_mode'],
+        }),
+        ...getInitGitState(cwd),
     };
     output(withProjectRoot(cwd, result), raw);
 }
@@ -919,8 +916,8 @@ function cmdInitMilestoneOp(cwd, raw) {
         const roadmapPath = node_path_1.default.join(planningDir(cwd), 'ROADMAP.md');
         const roadmapRaw = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
         const currentSection = extractCurrentMilestone(roadmapRaw, cwd);
-        // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
-        const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)(?:\s*\([^)\n]*\))?\s*:/gi;
+        // #1729: `(?:\s*\([^)\n]{0,200}\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+        const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+(${PHASE_NUMBER_TOKEN_SOURCE})(?:\\s*\\([^)\\n]{0,200}\\))?\\s*:`, 'gi');
         let m;
         while ((m = phasePattern.exec(currentSection)) !== null) {
             if (/^999(?:\.|$)/.test(m[1]))
@@ -941,7 +938,7 @@ function cmdInitMilestoneOp(cwd, raw) {
         for (const e of entries) {
             if (!e.isDirectory())
                 continue;
-            const m = stripProjectCodePrefix(e.name).match(/^(\d+[A-Z]?(?:\.\d+)*)/);
+            const m = stripProjectCodePrefix(e.name).match(new RegExp(`^(${PHASE_NUMBER_TOKEN_SOURCE})`));
             if (!m)
                 continue;
             diskPhaseDirs.set(canonicalizePhase(m[1]), e.name);
@@ -1069,13 +1066,13 @@ function cmdInitManager(cwd, raw) {
         }
     })();
     const _checkboxStates = new Map();
-    const _cbPattern = /-\s*\[(x| )\]\s*.*Phase\s+(\d+[A-Z]?(?:\.\d+)*)[:\s]/gi;
+    const _cbPattern = new RegExp(`-\\s*\\[(x| )\\]\\s*.*Phase\\s+(${PHASE_NUMBER_TOKEN_SOURCE})[:\\s]`, 'gi');
     let _cbMatch;
     while ((_cbMatch = _cbPattern.exec(content)) !== null) {
         _checkboxStates.set(_cbMatch[2], _cbMatch[1].toLowerCase() === 'x');
     }
-    // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
-    const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)(?:\s*\([^)\n]*\))?\s*:\s*([^\n]+)/gi;
+    // #1729: `(?:\s*\([^)\n]{0,200}\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+    const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+(${PHASE_NUMBER_TOKEN_SOURCE})(?:\\s*\\([^)\\n]{0,200}\\))?\\s*:\\s*([^\\n]+)`, 'gi');
     const phases = [];
     let match;
     while ((match = phasePattern.exec(content)) !== null) {
@@ -1193,7 +1190,7 @@ function cmdInitManager(cwd, raw) {
         .filter((p) => p['phase_complete'] === true)
         .map((p) => normalizePhaseNumber(p['number'])));
     const phaseMap = new Map(phases.map((p) => [normalizePhaseNumber(p['number']), p]));
-    const _allCompletedPattern = /-\s*\[x\]\s*.*Phase\s+(\d+[A-Z]?(?:\.\d+)*)[:\s]/gi;
+    const _allCompletedPattern = new RegExp(`-\\s*\\[x\\]\\s*.*Phase\\s+(${PHASE_NUMBER_TOKEN_SOURCE})[:\\s]`, 'gi');
     let _allMatch;
     while ((_allMatch = _allCompletedPattern.exec(rawContent)) !== null) {
         const phaseNum = normalizePhaseNumber(_allMatch[1]);
@@ -1225,7 +1222,7 @@ function cmdInitManager(cwd, raw) {
             phase['deps_satisfied'] = true;
         }
         else {
-            const depNums = phase['depends_on'].match(/\d+[A-Z]?(?:\.\d+)*/gi) || [];
+            const depNums = phase['depends_on'].match(new RegExp(`${PHASE_NUMBER_TOKEN_SOURCE}`, 'gi')) || [];
             phase['deps_satisfied'] = depNums.every((n) => completedNums.has(normalizePhaseNumber(n)));
             phase['dep_phases'] = depNums;
         }
@@ -1364,18 +1361,7 @@ function cmdInitProgress(cwd, raw) {
     // reporting a stale root milestone. Require an explicit workstream instead.
     // Mirror planningDir's resolution (GSD_WORKSTREAM env > stored active pointer) so
     // an explicit --ws (which sets GSD_WORKSTREAM) satisfies the check.
-    const _wsRoot = node_path_1.default.join(planningRoot(cwd), 'workstreams');
-    let _availableWorkstreams = [];
-    try {
-        _availableWorkstreams = node_fs_1.default
-            .readdirSync(_wsRoot, { withFileTypes: true })
-            .filter((e) => e.isDirectory())
-            .map((e) => e.name)
-            .sort();
-    }
-    catch {
-        /* no workstreams dir → flat mode */
-    }
+    const _availableWorkstreams = listAvailableWorkstreams(cwd);
     const _resolvedWorkstream = process.env['GSD_WORKSTREAM'] || getActiveWorkstream(cwd);
     if (_availableWorkstreams.length > 0 && !_resolvedWorkstream) {
         error(`init.progress requires a workstream in workstream mode — no active workstream is set, so root STATE.md (likely stale) would be reported. ` +
@@ -1391,14 +1377,14 @@ function cmdInitProgress(cwd, raw) {
     const roadmapCheckboxStates = new Map();
     try {
         const roadmapContent = extractCurrentMilestone(node_fs_1.default.readFileSync(node_path_1.default.join(planningDir(cwd), 'ROADMAP.md'), 'utf-8'), cwd);
-        // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
-        const headingPattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)(?:\s*\([^)\n]*\))?\s*:\s*([^\n]+)/gi;
+        // #1729: `(?:\s*\([^)\n]{0,200}\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+        const headingPattern = new RegExp(`#{2,4}\\s*Phase\\s+(${PHASE_NUMBER_TOKEN_SOURCE})(?:\\s*\\([^)\\n]{0,200}\\))?\\s*:\\s*([^\\n]+)`, 'gi');
         let hm;
         while ((hm = headingPattern.exec(roadmapContent)) !== null) {
             roadmapPhaseNums.add(hm[1]);
             roadmapPhaseNames.set(hm[1], hm[2].replace(/\(INSERTED\)/i, '').trim());
         }
-        const cbPattern = /-\s*\[(x| )\]\s*.*Phase\s+(\d+[A-Z]?(?:\.\d+)*)[:\s]/gi;
+        const cbPattern = new RegExp(`-\\s*\\[(x| )\\]\\s*.*Phase\\s+(${PHASE_NUMBER_TOKEN_SOURCE})[:\\s]`, 'gi');
         let cbm;
         while ((cbm = cbPattern.exec(roadmapContent)) !== null) {
             roadmapCheckboxStates.set(cbm[2], cbm[1].toLowerCase() === 'x');
@@ -1416,14 +1402,14 @@ function cmdInitProgress(cwd, raw) {
             .map((e) => e.name)
             .filter(isDirInMilestone)
             .sort((a, b) => {
-            const pa = a.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
-            const pb = b.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
+            const pa = a.match(new RegExp(`^(${PHASE_NUMBER_TOKEN_SOURCE})`, 'i'));
+            const pb = b.match(new RegExp(`^(${PHASE_NUMBER_TOKEN_SOURCE})`, 'i'));
             if (!pa || !pb)
                 return a.localeCompare(b);
             return parseInt(pa[1], 10) - parseInt(pb[1], 10);
         });
         for (const dir of dirs) {
-            const dirMatch = dir.match(/^(\d+[A-Z]?(?:\.\d+)*)-?(.*)/i);
+            const dirMatch = dir.match(new RegExp(`^(${PHASE_NUMBER_TOKEN_SOURCE})-?(.*)`, 'i'));
             const phaseNumber = dirMatch ? dirMatch[1] : dir;
             const phaseName = dirMatch && dirMatch[2] ? dirMatch[2] : null;
             seenPhaseNums.add(phaseNumber.replace(/^0+/, '') || '0');
@@ -1915,10 +1901,23 @@ function buildSkillManifest(cwd, skillsDir = null) {
                 kind: 'skills',
             },
             {
-                root: '~/.codex/skills',
+                // ADR-1239 upgrade 3 (#2088): Codex's canonical skill root is
+                // $HOME/.agents/skills (per codex core-skills loader.rs), resolved via
+                // the skills-kind `home` override in getGlobalSkillsBase.
+                root: '~/.agents/skills',
                 path: (0, runtime_homes_cjs_1.getGlobalSkillsBase)('codex'),
                 scope: 'global',
                 kind: 'skills',
+            },
+            {
+                // Codex's deprecated fallback skill root ($CODEX_HOME/skills). Kept as a
+                // discovery-only legacy root so pre-move installs remain inventoried;
+                // GSD no longer installs here (#2088).
+                root: '~/.codex/skills',
+                path: node_path_1.default.join((0, runtime_homes_cjs_1.getGlobalConfigDir)('codex'), 'skills'),
+                scope: 'global',
+                kind: 'skills',
+                deprecated: true,
             },
             {
                 root: '.claude/gsd-core/skills',
@@ -2099,6 +2098,7 @@ module.exports = {
     cmdInitNewMilestone,
     cmdInitQuick,
     cmdInitIngestDocs,
+    cmdInitOnboard,
     cmdInitResume,
     cmdInitVerifyWork,
     cmdInitPhaseOp,

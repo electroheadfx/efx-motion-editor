@@ -209,6 +209,7 @@ const RUNTIME_LABELS = {
     kimi: 'Kimi CLI',
     codebuddy: 'CodeBuddy',
     cline: 'Cline',
+    zcode: 'ZCode',
 };
 /**
  * Map a canonical runtime id to its short display label for the
@@ -255,6 +256,7 @@ const GLOBAL_CONFIG_HOME_FRAGMENTS = {
     codebuddy: "'.codebuddy'",
     cline: "'.cline'",
     kimi: "'.config', 'agents'",
+    zcode: "'.zcode'",
 };
 /**
  * Return the global config-home path-fragment source snippet for a runtime
@@ -277,7 +279,7 @@ function getGlobalConfigHomeFragment(runtime) {
  */
 const RUNTIME_FLAG_IDS = Object.freeze([
     'opencode', 'kilo', 'codex', 'copilot', 'antigravity', 'cursor',
-    'windsurf', 'augment', 'trae', 'qwen', 'hermes', 'codebuddy', 'cline', 'kimi',
+    'windsurf', 'augment', 'trae', 'qwen', 'hermes', 'codebuddy', 'cline', 'kimi', 'zcode',
 ]);
 /**
  * Return a frozen map of `is<Runtime>` boolean predicates for the given runtime

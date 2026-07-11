@@ -19,7 +19,7 @@ const configLoaderMod = require("./config-loader.cjs");
 const { loadConfig } = configLoaderMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseIdMod = require("./phase-id.cjs");
-const { escapeRegex, normalizePhaseName, extractPhaseToken } = phaseIdMod;
+const { escapeRegex, normalizePhaseName, extractPhaseToken, parsePhaseFromProse, PHASE_NUMBER_TOKEN_SOURCE } = phaseIdMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const roadmapParserMod = require("./roadmap-parser.cjs");
 const { getMilestoneInfo, getMilestonePhaseFilter, extractCurrentMilestone } = roadmapParserMod;
@@ -972,19 +972,13 @@ function matchSessionSection(body) {
         || body.match(/(?:^|\n)##[ \t]*Session Continuity[ \t]*\n([\s\S]*?)(?=\n##|$)/i); // allow-adhoc-markdown: read-only session-continuity section extract in state.cts; pending collectSection migration #1372
 }
 function parseProsePhaseField(value) {
-    if (!value)
-        return { phase: null, name: null };
-    const phaseMatch = value.match(/\b(\d+[A-Z]?(?:\.\d+)*)\b/i);
-    const parenName = value.match(/\(([^)]+)\)/);
-    const dashName = value.match(/—\s*([^(\n]+?)(?:\s*\(|$)/);
-    const rawName = parenName?.[1] ?? dashName?.[1] ?? null;
-    const name = rawName && !/^(?:complete|executing|not started)$/i.test(rawName.trim())
-        ? rawName.trim()
-        : null;
-    return {
-        phase: phaseMatch ? phaseMatch[1] : null,
-        name,
-    };
+    // #2121 Phase 2 (#2125): delegate to the canonical anchored parser so this
+    // module holds no independent prose phase-id regex. Drives #2111 — the
+    // anchored parser returns { phase: null } for a "Milestone vX.Y complete"
+    // body line (the old unanchored regex mined the minor-version digit, e.g.
+    // v0.5 -> "5"), so syncStateFrontmatter's #905 guard preserves the real
+    // current_phase instead of clobbering it.
+    return parsePhaseFromProse(value);
 }
 function parseProseLastActivityField(value) {
     if (!value)
@@ -1257,6 +1251,7 @@ function buildStateFrontmatter(bodyContent, cwd) {
                         // exclusion below). Project-code-aware via phaseKeyFromDir.
                         if (retiredPhaseNums.size > 0 && retiredPhaseNums.has(phaseKeyFromDir(dir)))
                             continue;
+                        // phase-id-owner: dir-name dedup grouping; diverges from extractPhaseToken/phaseKeyFromDir on project-code-prefixed and multi-segment milestone dirs. Kept local.
                         const m = dir.match(/^0*(\d+[A-Za-z]?(?:\.\d+)*)/);
                         const key = m ? m[1].toLowerCase() : dir;
                         if (!seenPhaseNums.has(key)) {
@@ -1293,8 +1288,8 @@ function buildStateFrontmatter(bodyContent, cwd) {
                     // truth for total_phases (#549).
                     let roadmapPhaseCount = 0;
                     if (roadmapScope !== null) {
-                        // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
-                        const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)(?:\s*\([^)\n]*\))?\s*:/gi;
+                        // #1729: `(?:\s*\([^)\n]{0,200}\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+                        const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)(?:\s*\([^)\n]{0,200}\))?\s*:/gi;
                         let m;
                         while ((m = phaseHeadingPattern.exec(roadmapScope)) !== null) {
                             // Only count tokens that contain at least one digit — excludes
@@ -2222,7 +2217,7 @@ function cmdStateSync(cwd, options, raw) {
         if (completed)
             diskCompletedPhases++;
         // Track the highest phase with incomplete plans (or any plans)
-        const phaseMatch = dir.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
+        const phaseMatch = dir.match(new RegExp(`^(${PHASE_NUMBER_TOKEN_SOURCE})`, 'i'));
         if (phaseMatch && plans > 0) {
             if (summaries < plans) {
                 // Incomplete phase — this is likely the current one
@@ -2246,8 +2241,8 @@ function cmdStateSync(cwd, options, raw) {
     try {
         let roadmapPhaseCount = 0;
         if (syncRoadmapScope !== null) {
-            // #1729: `(?:\s*\([^)\n]*\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
-            const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)(?:\s*\([^)\n]*\))?\s*:/gi;
+            // #1729: `(?:\s*\([^)\n]{0,200}\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+            const phaseHeadingPattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)(?:\s*\([^)\n]{0,200}\))?\s*:/gi;
             let m;
             while ((m = phaseHeadingPattern.exec(syncRoadmapScope)) !== null) {
                 // Only count tokens that contain at least one digit — excludes
@@ -2530,9 +2525,13 @@ function resolvePhaseIdForCompletePhase(content, overridePhase) {
         (0, state_document_cjs_1.stateExtractField)(content, 'Current Phase') ||
         (0, state_document_cjs_1.stateExtractField)(content, 'Phase') ||
         '';
-    // Accept canonical phase token only (e.g. 3, 03, 3A, 3.3, 10.2)
-    const phaseMatch = String(candidate).match(/(\d+[A-Z]?(?:\.\d+)*)/i);
-    return phaseMatch ? phaseMatch[1] : null;
+    // #2125: parse via the canonical anchored parser so a narrative `Phase:`
+    // body line (e.g. "Milestone v0.5 complete") does not mine a bogus token —
+    // the old unanchored regex yielded "0.5" and rewrote STATE.md as
+    // "Phase 0.5 complete". A canonical token at the start of the value
+    // (3, 03, 3A, 3.3, 10.2, "3 of 5", "1 — Setup") is preserved; a milestone
+    // closure line yields null, so the caller's "unable to resolve" guard fires.
+    return parsePhaseFromProse(candidate).phase;
 }
 function cmdStateCompletePhase(cwd, raw, overridePhase) {
     const statePath = planningPaths(cwd).state;
@@ -2556,8 +2555,9 @@ function cmdStateCompletePhase(cwd, raw, overridePhase) {
     // The handler is now a no-op in that case so re-invocation from downstream
     // workflows cannot regress the project state.
     const existingCurrentPhaseRaw = (0, state_document_cjs_1.stateExtractField)(content, 'Current Phase') || '';
-    const existingCurrentPhaseMatch = String(existingCurrentPhaseRaw).match(/(\d+[A-Z]?(?:\.\d+)*)/i);
-    const existingCurrentPhase = existingCurrentPhaseMatch ? existingCurrentPhaseMatch[1] : null;
+    // #2125: same canonical parser as resolvePhaseIdForCompletePhase so the two
+    // sites cannot diverge on the token they extract.
+    const existingCurrentPhase = parsePhaseFromProse(existingCurrentPhaseRaw).phase;
     if (existingCurrentPhase && existingCurrentPhase !== resolvedPhase) {
         output({ updated: [], phase: resolvedPhase, idempotent: true, note: 'phase already superseded; no-op' }, raw, 'false');
         return;

@@ -23,6 +23,9 @@ const { planningDir } = planningWorkspace;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const frontmatter = require("./frontmatter.cjs");
 const { extractFrontmatter } = frontmatter;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const phaseIdMod = require("./phase-id.cjs");
+const { PHASE_NUMBER_TOKEN_SOURCE } = phaseIdMod;
 const security_cjs_1 = require("./security.cjs");
 // Terminal UAT states: `complete` (legacy) and `resolved` (post-gap-closure
 // per workflows/execute-phase.md). Hoisted outside scanUatGaps so the Set is
@@ -357,7 +360,7 @@ function scanUatGaps(planDir) {
     const results = [];
     for (const dir of dirs) {
         const phaseDir = node_path_1.default.join(phasesDir, dir);
-        const phaseMatch = dir.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
+        const phaseMatch = dir.match(new RegExp(`^(${PHASE_NUMBER_TOKEN_SOURCE})`, 'i'));
         const phaseNum = phaseMatch ? phaseMatch[1] : dir;
         let files;
         try {
@@ -420,7 +423,7 @@ function scanVerificationGaps(planDir) {
     const results = [];
     for (const dir of dirs) {
         const phaseDir = node_path_1.default.join(phasesDir, dir);
-        const phaseMatch = dir.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
+        const phaseMatch = dir.match(new RegExp(`^(${PHASE_NUMBER_TOKEN_SOURCE})`, 'i'));
         const phaseNum = phaseMatch ? phaseMatch[1] : dir;
         let files;
         try {
@@ -475,7 +478,7 @@ function scanContextQuestions(planDir) {
     const results = [];
     for (const dir of dirs) {
         const phaseDir = node_path_1.default.join(phasesDir, dir);
-        const phaseMatch = dir.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
+        const phaseMatch = dir.match(new RegExp(`^(${PHASE_NUMBER_TOKEN_SOURCE})`, 'i'));
         const phaseNum = phaseMatch ? phaseMatch[1] : dir;
         let files;
         try {

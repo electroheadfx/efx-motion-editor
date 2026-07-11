@@ -179,14 +179,23 @@
  *
  * Loop Extension Point Queries (ADR-857 phase 3c):
  *   loop render-hooks <point>            Resolve + render active Capability hooks at a loop point
+ *                                        [--config-dir <path>] [--runtime <r>] [--active-cap <capId>]
  *                                        Returns JSON envelope { point, activeHooks, rendered }
  *                                        Valid points: discuss:pre/post, plan:pre/post,
  *                                        execute:pre/wave:pre/wave:post/post, verify:pre/post, ship:pre/post
+ *                                        --runtime: override the auto-detected runtime (#2003) so the config
+ *                                                   dir resolves to that runtime's home even when
+ *                                                   .planning/config.json persists a different runtime.
  *
  * Capability State (ADR-857 phase 4b):
- *   capability state [--config-dir <path>]  Resolve per-capability install/surface/hook-activation state
+ *   capability state [--config-dir <path>] [--runtime <r>]  Resolve per-capability install/surface/hook-activation state
  *                                           Returns JSON envelope { runtimeConfigDir, capabilities[] }
  *                                           --config-dir: runtime config dir (default: auto-detect current runtime)
+ *                                           --runtime: override the auto-detected runtime (#2003); bypasses the
+ *                                                      GSD_RUNTIME → config.runtime → 'claude' precedence so a
+ *                                                      repo with a persisted runtime can still resolve another
+ *                                                      runtime's config dir (e.g. driving Claude Code from a
+ *                                                      repo that persists runtime:"codex").
  *
  * GSD-2 Migration:
  *   from-gsd2 [--path <dir>] [--force] [--dry-run]
@@ -679,7 +688,7 @@ async function main() {
   // phase / roadmap / milestone / progress / etc.
   const TOP_LEVEL_USAGE = 'Usage: gsd-tools <command> [args] [--raw] [--pick <field>] [--cwd <path>] [--ws <name>] [--json-errors]\n' +
     'Commands: agent, agent-skills, assumption-delta, audit-open, audit-uat, check, check-commit, commit, commit-to-subrepo, pr-subrepo, ' +
-    'config-ensure-section, config-get, config-new-project, config-path, config-set, migrate-config, ' +
+    'config-ensure-section, config-get, config-new-project, config-path, config-set, migrate-config, normalize-test-command, ' +
     'current-timestamp, detect-custom-files, docs-init, drift-guard, effort, extract-messages, find-phase, ' +
     'from-gsd2, frontmatter, gap-analysis, generate-claude-md, generate-claude-profile, ' +
     'generate-dev-preferences, generate-slug, graphify, history-digest, init, intel, ' +
@@ -1282,6 +1291,16 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
       break;
     }
 
+    case 'normalize-test-command': {
+      // #1857: rewrite a resolved test command to a one-shot form so a
+      // watch-mode runner (vitest/jest) cannot hang a verification gate. Shared
+      // by the regression gate and the post-merge gate. args[1] is the raw
+      // resolved command; --cwd (already parsed into `cwd`) locates package.json.
+      const testCommandNormalizer = require('./lib/normalize-test-command.cjs');
+      testCommandNormalizer.cmdNormalizeTestCommand(cwd, args[1]);
+      break;
+    }
+
     case 'dispatch-should-flatten': {
       // #1708 / #853: typed query replacing the `RUNTIME === 'codex'` prose rule.
       //
@@ -1598,9 +1617,28 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
           }
           loopActiveCap = value;
         }
+        // --runtime <r> (#2003): explicit runtime override so the config-dir
+        // resolution bypasses the persisted-runtime fallback (GSD_RUNTIME →
+        // config.runtime). Mirrors the --config-dir dual-form (--runtime X /
+        // --runtime=X) and the capability-set --runtime precedent.
+        let loopRuntime = undefined;
+        const runtimeEqArg = args.find(arg => arg.startsWith('--runtime='));
+        const runtimeIdx = args.indexOf('--runtime');
+        if (runtimeEqArg) {
+          const value = runtimeEqArg.slice('--runtime='.length).trim();
+          if (!value) error('Missing value for --runtime', ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+          loopRuntime = value;
+        } else if (runtimeIdx !== -1) {
+          const value = args[runtimeIdx + 1];
+          if (!value || value.startsWith('--')) {
+            error('Missing value for --runtime', ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+          }
+          loopRuntime = value;
+        }
         loopResolver.cmdLoopRenderHooks(cwd, args[2], raw, {
           configDir: loopConfigDir ? path.resolve(loopConfigDir) : undefined,
           activeCap: loopActiveCap,
+          runtime: loopRuntime,
         });
       } else {
         error(
@@ -1752,7 +1790,24 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
           configDir = configDirVal;
         }
         const resolvedConfigDir = configDir ? path.resolve(configDir) : null;
-        capabilityState.cmdCapabilityState(cwd, resolvedConfigDir, raw, {});
+        // --runtime <r> (#2003): explicit runtime override so the config-dir
+        // resolution bypasses the persisted-runtime fallback. Dual-form like
+        // --config-dir (--runtime X / --runtime=X).
+        let stateRuntime = undefined;
+        const stateRuntimeEqArg = args.find(arg => arg.startsWith('--runtime='));
+        const stateRuntimeIdx = args.indexOf('--runtime');
+        if (stateRuntimeEqArg) {
+          const value = stateRuntimeEqArg.slice('--runtime='.length).trim();
+          if (!value) error('Missing value for --runtime', ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+          stateRuntime = value;
+        } else if (stateRuntimeIdx !== -1) {
+          const value = args[stateRuntimeIdx + 1];
+          if (!value || value.startsWith('--')) {
+            error('Missing value for --runtime', ERROR_REASON ? ERROR_REASON.USAGE : undefined);
+          }
+          stateRuntime = value;
+        }
+        capabilityState.cmdCapabilityState(cwd, resolvedConfigDir, raw, { runtime: stateRuntime });
       } else if (capSubcommand === 'set') {
         // capability set <id> [--on|--off|--enable|--disable] [--gate <key>=<bool>]... [--config-dir <dir>] [--runtime <r>] [--scope <s>]
         const capId = args[2];
@@ -2095,6 +2150,28 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
             }
           }
         } catch { /* best-effort — list still works without the inactive annotation */ }
+        // Issue #2045 (DEFECT 3): derive each capability's SURFACED state from the
+        // SAME resolver `capability state` uses (resolveCapabilityRuntimeState), so
+        // `list` and `state` stop disagreeing. `list` previously derived `status`
+        // purely from ledger-entry existence — an installed-but-not-surfaced cap
+        // reported active in `list` and absent in `state`. Surfaced is evaluated at
+        // the default runtime config dir (the resolver resolves it when undefined),
+        // matching `capability state <id>` with no --config-dir. Best-effort: a
+        // resolver failure leaves surfacedById empty (rows report surfaced:null).
+        const surfacedById = {};
+        // surfacedById is keyed by capId only (NOT `${scope} ${capId}`): surface
+        // state is single-source — one runtime config dir → one .gsd-surface.json
+        // → one surfaced truth per capId — and the loader dedupes overlay caps to
+        // one registry entry per id (first-party-wins). So a cap installed in both
+        // scopes correctly shares one surfaced value across its list rows.
+        try {
+          const surfaceState = capabilityState.resolveCapabilityRuntimeState(cwd, undefined);
+          for (const cap of (surfaceState && surfaceState.capabilities) || []) {
+            if (cap && typeof cap.id === 'string') {
+              surfacedById[cap.id] = cap.surfaced === true;
+            }
+          }
+        } catch { /* best-effort — list still works without the surfaced annotation */ }
         for (const capId of Object.keys(fp)) {
           const cap = fp[capId] || {};
           rows.push({
@@ -2105,6 +2182,7 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
             source: 'first-party',
             scope: 'first-party',
             status: 'active',
+            surfaced: Object.prototype.hasOwnProperty.call(surfacedById, capId) ? surfacedById[capId] === true : null,
             title: cap.title || null,
           });
         }
@@ -2154,6 +2232,12 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
               scope: sc,
               status,
               reason,
+              // Issue #2045 (DEFECT 3): surfaced reflects surface composition, so
+              // list and state agree. An inactive (unconsented/incompatible) cap is
+              // surfaced:false by definition; otherwise defer to the resolver.
+              surfaced: status === 'active'
+                ? (Object.prototype.hasOwnProperty.call(surfacedById, capId) ? surfacedById[capId] === true : null)
+                : false,
               title: manifest.title || null,
             });
           }

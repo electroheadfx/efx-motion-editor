@@ -32,6 +32,9 @@ const { planningDir } = planningWorkspace;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const frontmatter = require("./frontmatter.cjs");
 const { extractFrontmatter } = frontmatter;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const phaseIdMod = require("./phase-id.cjs");
+const { PHASE_NUMBER_TOKEN_SOURCE } = phaseIdMod;
 const security_cjs_1 = require("./security.cjs");
 // ─── cmdAuditUat ─────────────────────────────────────────────────────────────
 function cmdAuditUat(cwd, raw) {
@@ -48,7 +51,7 @@ function cmdAuditUat(cwd, raw) {
         .filter(isDirInMilestone)
         .sort();
     for (const dir of dirs) {
-        const phaseMatch = dir.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
+        const phaseMatch = dir.match(new RegExp(`^(${PHASE_NUMBER_TOKEN_SOURCE})`, 'i'));
         const phaseNum = phaseMatch ? phaseMatch[1] : dir;
         const phaseDir = node_path_1.default.join(phasesDir, dir);
         const files = node_fs_1.default.readdirSync(phaseDir);

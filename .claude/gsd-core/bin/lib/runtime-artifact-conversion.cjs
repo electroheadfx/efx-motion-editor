@@ -2277,7 +2277,7 @@ function rewriteStagedSkillBodies(stagedDir, opts) {
     const resolvedTarget = node_path_1.default.resolve(configDir).replace(/\\/g, '/');
     const homeDir = homedir().replace(/\\/g, '/');
     const isGlobal = scope === 'global';
-    const isOpencode = runtime === 'opencode';
+    const isOpencode = false; // #2087: opencode installs via the combined-family engine path, never through the generic rewrite
     const isWindowsHost = platform === 'win32';
     const pathPrefix = computePathPrefix({ isGlobal, isOpencode, isWindowsHost, resolvedTarget, homeDir });
     const attribution = resolveAttribution ? resolveAttribution(runtime) : undefined;
@@ -2290,10 +2290,12 @@ function rewriteStagedSkillBodies(stagedDir, opts) {
  * attribution from opts, then delegates to applyRuntimeContentRewritesForCommandsInPlace
  * (single copy+rewrite owner).
  *
- * @internal — symmetric companion to rewriteStagedSkillBodies; retained as the deep-seam
- * API for command bodies. No production caller today (install rewrites commands via
- * copyWithPathReplacement → applyRuntimeContentRewritesForCommandsInPlace). Kept for
- * API symmetry + test coverage.
+ * @internal — symmetric companion to rewriteStagedSkillBodies; the deep-seam API for
+ * command bodies. Production callers: applySurface (surface.cts) and the install path
+ * in createRuntimeArtifactInstallPlan (runtime-artifact-install-plan.cts) — both keep
+ * the returned temp dir alive until they have copied its contents out, then clean it up
+ * in their own finally. (A test that treats this as a throwaway shared-tmp path will
+ * race those live temp dirs under --test-concurrency; see #1575/#2090.)
  *
  * @returns {string} path to the temp dir (caller is responsible for cleanup)
  */
@@ -2304,7 +2306,7 @@ function rewriteStagedCommandBodies(stagedDir, opts) {
     const resolvedTarget = node_path_1.default.resolve(configDir).replace(/\\/g, '/');
     const homeDir = homedir().replace(/\\/g, '/');
     const isGlobal = scope === 'global';
-    const isOpencode = runtime === 'opencode';
+    const isOpencode = false; // #2087: opencode installs via the combined-family engine path, never through the generic rewrite
     const isWindowsHost = platform === 'win32';
     const pathPrefix = computePathPrefix({ isGlobal, isOpencode, isWindowsHost, resolvedTarget, homeDir });
     const attribution = resolveAttribution ? resolveAttribution(runtime) : undefined;
@@ -2425,6 +2427,11 @@ module.exports = {
     neutralizeAgentReferences,
     convertClaudeCommandToOpencodeSkill,
     convertClaudeCommandToKiloSkill,
+    // #2087 — opencode/kilo command-frontmatter converters, exported so the
+    // layout-driven `convertedCommandsKind` can resolve them by name (routes the
+    // opencode/kilo command install through the engine instead of the bespoke path).
+    convertClaudeToOpencodeFrontmatter,
+    convertClaudeToKiloFrontmatter,
     readGsdCommandNames,
     transformContentToHyphen,
     // #1383: version resolver (exported for regression test of the Codex

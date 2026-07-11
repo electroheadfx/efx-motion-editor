@@ -10,7 +10,7 @@ const capabilities = {
   "ai-integration": {
     "id": "ai-integration",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "AI design contract",
     "description": "AI-SPEC design contract workflow for phases that build AI systems; owns the AI integration command, agents, and workflow.ai_integration_phase activation key.",
     "tier": "full",
@@ -39,6 +39,11 @@ const capabilities = {
         "type": "boolean",
         "default": true,
         "description": "Prompt for an AI-SPEC design contract before planning phases that involve AI systems."
+      },
+      "workflow.api_coverage_gate": {
+        "type": "boolean",
+        "default": true,
+        "description": "Require an explicit API-coverage decision (full-by-default, opt-out-not-opt-in) before a phase that integrates an external API/SDK/service can seal. At plan:pre the planner is prompted to enumerate the API surface into COVERAGE.md; at verify:pre a blocking gate fails the seal unless the matrix exists with every non-integrated capability an explicit, reasoned opt-out. Independent of ai_integration_phase (applies to any external-API integration, not only AI)."
       }
     },
     "steps": [
@@ -57,13 +62,40 @@ const capabilities = {
         "onError": "skip"
       }
     ],
-    "contributions": [],
-    "gates": []
+    "contributions": [
+      {
+        "point": "plan:pre",
+        "into": "planner",
+        "fragment": {
+          "path": "fragments/api-coverage-plan-pre.md",
+          "inline": "# API Coverage Decision Checkpoint\n\n> Full API Coverage by Default — Opt Out, Never Opt In. Fires when a phase\n> integrates an external API / SDK / service. Most non-API phases will not fire\n> it — that is the point.\n\n## Why this exists\n\n\"We integrated the API\" too often silently means \"we integrated whatever the\nfirst use case exercised.\" Every un-built capability is then an invisible hole,\ndiscovered later by a user who reasonably expected it to work. The phase sealed\ngreen because its tasks completed; nobody decided the gaps were acceptable,\nbecause nobody enumerated them. This checkpoint makes the surface **visible and\ndecided** before the phase can seal.\n\n## Detect whether this phase integrates an external API\n\nThe detector is a deterministic scan over the phase scope. It strips fenced\ncode blocks first, so a trigger term inside a code snippet does not fire. It\nreturns a typed result: `{ detected, signals[], terms }`. Run it on the phase\nscope (the concatenation of this phase's ROADMAP section + the PLAN body):\n\n```bash\nSCOPE=\"$(cat \"${PHASE_DIR}\"/*-PLAN.md 2>/dev/null) $(gsd_run query roadmap.get-phase \"${PHASE}\" 2>/dev/null || true)\"\nAPI_COVERAGE_JSON=$(printf '%s' \"$SCOPE\" | node gsd-core/bin/lib/api-coverage.cjs --json 2>/dev/null || echo '{\"detected\":false,\"signals\":[]}')\n```\n\nRead `API_COVERAGE_JSON.detected`. Act on it only — do **not** pattern-match the\nprose yourself.\n\n**If `detected` is `false`:** this phase does not integrate an external API. Skip\nthe checkpoint entirely and continue planning. Do not raise it with the user.\n\n**If `detected` is `true`:** an external-API integration is in scope. You MUST\nproduce a **coverage matrix** before the plan is finalized.\n\n## Produce the coverage matrix\n\nEnumerate the external API's full **capability surface** — the verb/endpoint/method\nlist (e.g. for a music service: `search`, `play`, `pause`, `skip`, `set_volume`,\n`get_playlist`, `create_playlist`, `add_to_playlist`, …). For each capability\nrecord a decision, starting from **full coverage** as the default:\n\n| capability | decision | reason |\n|---|---|---|\n| `<capability-id>` | `INTEGRATE` \\| `OPT-OUT` | `<one-line reason if OPT-OUT>` |\n\nRules:\n\n- **`INTEGRATE` is the default.** Every capability starts as INTEGRATE; the\n  matrix is the *subtraction record*.\n- **Every `OPT-OUT` MUST carry a one-line reason** (`not needed`, `not needed\n  yet`, `explicitly out of scope`, …). An opt-out without a reason is an\n  un-decided hole — the exact failure mode this gate exists to close.\n- **A second integration against the same need** (e.g. a second platform for the\n  same capability) starts from the **same full-coverage baseline** as the first.\n  Do not carry over the first integration's opt-outs silently — re-decide each\n  capability for the new surface, so a first-class/fallback asymmetry cannot\n  accumulate.\n\nWrite the matrix to `${PHASE_DIR}/COVERAGE.md` (canonical markdown-table form):\n\n```markdown\n# API Coverage — <service>\n\n> Full coverage by default. Opt-outs are explicit, reasoned decisions.\n\n| capability | decision | reason |\n|---|---|---|\n| search | INTEGRATE | |\n| playlists | INTEGRATE | |\n| skip | OPT-OUT | not needed yet — tracked for follow-up phase |\n```\n\nA fenced ` ```coverage ` JSON block is also accepted for machine-generated\nmatrices; the markdown table is preferred (human-editable, diff-friendly).\n\n## The seal-time gate\n\nThis checkpoint is enforced. At `verify:pre` the `api-coverage.verify-pre` gate\nruns `check api-coverage.verify-pre <phase-dir>`:\n\n- If `COVERAGE.md` exists, it is validated — every row needs a valid decision and\n  every `OPT-OUT` a reason. A malformed/partial matrix **blocks the seal**.\n- If `COVERAGE.md` is absent, the detector runs again over the phase scope. If a\n  strong external-API-integration signal is found, the seal is **blocked** until a\n  matrix is produced. If no signal is found, the phase is treated as a non-API\n  phase and the seal proceeds.\n\nSo: an API-integrating phase cannot seal without a decided matrix. Produce it at\nplan time; do not leave it for seal time.\n\n## Tuning the vocabulary (optional)\n\nThe trigger vocabulary is a curated, additive-only set in\n`gsd-core/bin/lib/api-coverage.cjs` (`DEFAULT_API_COVERAGE_TERMS`). To widen it\nfor a project, override at the call site:\n\n```bash\nprintf '%s' \"$SCOPE\" | node gsd-core/bin/lib/api-coverage.cjs --json \\\n  --verbs integrate,wrap,connect,embed --nouns api,sdk,rest,grpc,webhook,plugin\n```\n\nThe whole checkpoint is toggleable via `workflow.api_coverage_gate` in\n`.planning/config.json`.\n"
+        },
+        "produces": [
+          "COVERAGE.md"
+        ],
+        "consumes": [
+          "CONTEXT.md"
+        ],
+        "when": "workflow.api_coverage_gate",
+        "onError": "skip"
+      }
+    ],
+    "gates": [
+      {
+        "point": "verify:pre",
+        "check": {
+          "query": "api-coverage.verify-pre"
+        },
+        "when": "workflow.api_coverage_gate",
+        "blocking": true,
+        "onError": "halt"
+      }
+    ]
   },
   "antigravity": {
     "id": "antigravity",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Antigravity",
     "description": "Google Antigravity IDE — nested under ~/.gemini/antigravity; probed across 1.x and 2.x layouts; Gemini hook event dialect; flat skill layout; tier-1 support.",
     "tier": "core",
@@ -97,6 +129,14 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToAntigravitySkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToAntigravityAgent"
           }
         ],
         "local": [
@@ -107,6 +147,14 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToAntigravitySkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToAntigravityAgent"
           }
         ]
       },
@@ -141,7 +189,7 @@ const capabilities = {
   "assumption-delta": {
     "id": "assumption-delta",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Assumption-delta architecture checkpoint",
     "description": "Rarely-firing advisory checkpoint that triggers when a phase makes something plural, optional, or chosen that used to be singular, required, or derived. Surfaces one identity-model question (promote the new general representation to primary, or add it alongside?) so a silent primary-key drift does not accumulate into a later user-facing bug. Non-blocking; fires only on a detected signal.",
     "tier": "full",
@@ -187,7 +235,7 @@ const capabilities = {
   "audit": {
     "id": "audit",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Audit",
     "description": "Open-artifact audit and UAT-gap audit for milestone close gates; exposes `gsd-tools audit-uat` (cross-phase UAT outstanding items) and `gsd-tools audit-open` (structured open-artifact scan across debug, tasks, threads, todos, seeds, UAT, verification, context-questions).",
     "tier": "full",
@@ -224,7 +272,7 @@ const capabilities = {
   "augment": {
     "id": "augment",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Augment Code",
     "description": "Augment Code CLI — commands + nested-skill artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -327,7 +375,7 @@ const capabilities = {
   "claude": {
     "id": "claude",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Claude Code",
     "description": "Anthropic Claude Code — primary development runtime; tier-1 support with full hook surface and skills-based global install.",
     "tier": "core",
@@ -405,13 +453,117 @@ const capabilities = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "node"
+      },
+      "hostBehaviors": {
+        "attributionSource": "settings-json-commit",
+        "authorsCanonicalWorkflow": true,
+        "localInstallStyle": "legacy-flat",
+        "permissionsSchema": "claude",
+        "settingsFileByScope": {
+          "local": "settings.local.json",
+          "global": "settings.json"
+        },
+        "sourceMarkerFile": ".gsd-source",
+        "agentFrontmatterExtensions": [
+          "effort"
+        ],
+        "ownsClaudePaths": true,
+        "nativeModelAliases": true,
+        "skillsGlobalOnboarding": true
       }
     }
+  },
+  "claude-orchestration": {
+    "id": "claude-orchestration",
+    "role": "feature",
+    "version": "1.7.0-rc.5",
+    "title": "Claude orchestration (Workflow backend)",
+    "description": "Default-off, BETA, claude-only capability that adopts Claude Code's Workflow tool (the engine behind /effort ultracode) as an optional parallel-execution backend for the GSD loop. When the runtime exposes the Workflow tool and claude_orchestration.execution_backend resolves to 'workflow', execute-phase emits a generated Workflow script (waves -> parallel() barriers, plans -> agent({ agentType: 'gsd-executor', isolation: 'worktree' }), files_modified overlap -> separate sequential stages, resumeFromRunId wired to the phase run id, shared token budget) that composes the SAME gsd-executor agent and worktree isolation the inline path uses, restoring the wave parallelism the #853 backgrounded-agent nesting limitation forces inline on Claude Code. (The plan-checker and verifier remain inline until separately wired — this capability delivers the parallel-execution backend, not those gates.) Also folds the ultraplan plan-offload under one runtime gate (plan:* surface). On any runtime lacking the Workflow tool, or when the capability is disabled, behaviour is byte-identical to today (inline/manual dispatch). Detection + emission live in gsd-core/bin/lib/claude-orchestration.cjs (pure, fail-closed). Mirrors the existing gsd-ultraplan-phase BETA-isolation posture.",
+    "tier": "full",
+    "requires": [],
+    "engines": {
+      "gsd": ">=1.7.0"
+    },
+    "runtimeCompat": {
+      "supported": [
+        "claude"
+      ],
+      "unsupported": []
+    },
+    "skills": [],
+    "agents": [],
+    "hooks": [],
+    "commands": [
+      {
+        "family": "claude-orchestration",
+        "module": "claude-orchestration-command-router.cjs",
+        "router": "routeClaudeOrchestrationCommand",
+        "subcommands": [
+          "detect-backend",
+          "emit-workflow"
+        ]
+      }
+    ],
+    "activationKey": "claude_orchestration.enabled",
+    "config": {
+      "claude_orchestration.enabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "Master toggle for the Claude orchestration capability. Default-off + BETA: the Workflow-tool execution backend and the ultraplan plan-offload surface are inert unless this is true. When false, loop behaviour is byte-identical to a non-Claude runtime (inline/manual dispatch)."
+      },
+      "claude_orchestration.execution_backend": {
+        "type": "enum",
+        "values": [
+          "auto",
+          "workflow",
+          "inline"
+        ],
+        "default": "auto",
+        "description": "Which execute-phase dispatch backend to use when the capability is enabled. 'auto' (default) activates the Workflow backend only when the runtime is Claude AND the Workflow tool is detected AND the Agent SDK meets claude_orchestration.min_agent_sdk_version; otherwise it falls back to inline. 'workflow' forces the Workflow backend when the tool is present AND the Agent SDK meets the floor (still fails closed to inline if the tool is absent or the SDK is too old — the floor applies in both modes). 'inline' forces today's manual one-agent-per-message dispatch regardless of tool availability."
+      },
+      "claude_orchestration.min_agent_sdk_version": {
+        "type": "string",
+        "default": "0.3.149",
+        "description": "Minimum Agent SDK version required to activate the Workflow backend under execution_backend='auto'. Defaults to 0.3.149 (the release that introduced the Workflow tool). Raise to pin a higher floor; the detection seam fails closed to inline for any runtime reporting an older or unknown version."
+      }
+    },
+    "steps": [],
+    "contributions": [
+      {
+        "point": "execute:wave:post",
+        "into": "executor",
+        "fragment": {
+          "path": "fragments/execute-wave-post.md",
+          "inline": "# Claude orchestration — Workflow execution backend (BETA)\n\n> Injected at `execute:wave:post` `into: executor` only when\n> `claude_orchestration.enabled` is true. Default-off; `onError: skip`.\n\n## When this contribution is active\n\nThe Claude orchestration capability is **default-off and BETA**. It activates only\nwhen ALL of the following hold:\n\n1. `claude_orchestration.enabled` is `true` in `.planning/config.json`, AND\n2. the active runtime is **Claude Code** (the Workflow tool is Claude / Agent\n   SDK-specific), AND\n3. `claude_orchestration.execution_backend` resolves to `workflow` — either\n   explicitly, or via `auto` — **and** the Agent SDK version is\n   `>= claude_orchestration.min_agent_sdk_version` (default `0.3.149`). The SDK\n   floor applies in both `auto` and `workflow` modes (fail-closed: a pre-release\n   or older SDK never activates the preview backend).\n\nDetection is fail-closed: any miss degrades to **inline, manual, one-agent-per-\nmessage dispatch** — exactly today's behaviour. On a non-Claude runtime this\ncontribution is a no-op.\n\n## What the executor does when the Workflow backend is active\n\nInstead of the orchestrator fanning out one `Agent(subagent_type=gsd-executor,\nisolation=worktree, run_in_background=true)` per message (which on Claude Code\ncannot nest further subagents — #853 — and so degrades to sequential inline\nexecution), execute-phase **emits a generated Workflow script** and lets the main\nloop orchestrate it:\n\n- **waves → one or more sequential `parallel()` barriers** — each wave is a\n  barrier group; when plans within a wave share `files_modified`, they are split\n  into separate sequential stages within that wave's barrier (the next wave\n  still waits for the previous wave to complete).\n- **plans → `agent(brief, { agentType: 'gsd-executor', isolation: 'worktree' })`**\n  — the SAME executor agent and worktree isolation the inline path uses, so the\n  produced `SUMMARY.md` and commits are identical.\n- **`files_modified` overlap → separate sequential stages** — two plans that\n  touch the same file are placed in different stages within the wave (the same\n  overlap rule execute-phase already applies inline).\n- **`resumeFromRunId`** — wired to the phase run id, so an interrupted phase\n  resumes without re-running completed plans.\n- **`budget(tokens)`** — a shared token pool across the whole phase when the\n  orchestrator passes a `budgetTokens` value to `emitWorkflowScript` (it is a\n  function parameter, not a config key; the orchestrator decides the budget).\n\nThe emitter is a pure function exposed through the capability command surface:\n`gsd-tools claude-orchestration emit-workflow --waves <manifest.json> --run-id <id>\n[--phase-dir <dir>] [--budget <n>]` (or `require('gsd-core/bin/lib/claude-orchestration.cjs').emitWorkflowScript`\ndirectly). It maps the phase's wave/plan manifest to the Workflow script string\nand never invokes the Workflow tool itself; the orchestrator runs the emitted\nscript. Detection is resolved by the orchestrator calling the pure\n`detectWorkflowBackend` with the LIVE host descriptor (the CLI\n`gsd-tools claude-orchestration detect-backend` is a simulation harness that\nassumes a capable host unless `--no-nested-dispatch` is passed — it does not probe\nthe real runtime; the orchestrator supplies the real descriptor).\n\n## Fallback contract\n\nIf detection resolves to `inline` (tool absent, SDK too old, runtime not Claude,\nor the capability disabled), execute-phase MUST proceed with the standard inline\nwave dispatch. The executor MUST NOT assume parallelism, a shared budget, or\nresume-from-run-id semantics in that mode.\n"
+        },
+        "produces": [],
+        "consumes": [
+          "PLAN.md"
+        ],
+        "when": "claude_orchestration.enabled",
+        "onError": "skip"
+      },
+      {
+        "point": "plan:post",
+        "into": "planner",
+        "fragment": {
+          "path": "fragments/plan-post.md",
+          "inline": "# Claude orchestration — ultraplan plan-offload ownership (BETA)\n\n> Injected at `plan:post` `into: planner` only when\n> `claude_orchestration.enabled` is true. Default-off; `onError: skip`.\n\n## Ownership declaration\n\nThe `gsd-ultraplan-phase` plan-offload surface (offloading GSD's plan phase to\nClaude Code's ultraplan cloud) is **owned by this capability**, not by a\nstandalone BETA skill. Both surfaces share one runtime gate\n(`claude_orchestration.enabled`), one BETA boundary, and one Claude-Code-only\ndetection seam.\n\n## When the planner should consider ultraplan offload\n\nWhen this contribution is active (capability enabled, Claude Code runtime), the\nplanner MAY offer the `/gsd-ultraplan-phase` path as an alternative to local\n`/gsd-plan-phase` for phases where cloud-assisted planning adds value. This is\nadvisory, not mandatory — the stable local planner remains the default.\n\n## Fallback contract\n\nIf the capability is disabled, or the runtime is not Claude Code, ultraplan\noffload is **not surfaced** and the planner proceeds with the standard local\n`/gsd-plan-phase`. The `gsd-ultraplan-phase` command itself remains installed\n(its own runtime gate already no-ops on non-Claude runtimes); this contribution\nonly governs whether the capability manifest advertises it as part of the\norchestration surface.\n"
+        },
+        "produces": [],
+        "consumes": [
+          "CONTEXT.md"
+        ],
+        "when": "claude_orchestration.enabled",
+        "onError": "skip"
+      }
+    ],
+    "gates": []
   },
   "cline": {
     "id": "cline",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Cline",
     "description": "Cline (VS Code extension) — global-only nested-skill layout; cline-rules hook surface (.clinerules); no hook events emitted; tier-2 support.",
     "tier": "core",
@@ -466,13 +618,21 @@ const capabilities = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "node"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "/gsd-update --reapply",
+        "frontmatterDialect": "cline",
+        "skipSharedHooksInstall": true,
+        "localTargetIsProjectRoot": true,
+        "clineRulesSurface": true,
+        "localCommandsViaRules": true
       }
     }
   },
   "code-review": {
     "id": "code-review",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Code review",
     "description": "Source-file code review and review-fix workflow support for completed execution work.",
     "tier": "full",
@@ -533,7 +693,7 @@ const capabilities = {
   "codebuddy": {
     "id": "codebuddy",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "CodeBuddy",
     "description": "CodeBuddy (Tencent) — converted commands + skills artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -636,7 +796,7 @@ const capabilities = {
   "codex": {
     "id": "codex",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "OpenAI Codex CLI",
     "description": "OpenAI Codex CLI — shell-var command style; per-agent sandbox tiers; config.toml + hooks.json hook surface; tier-1 support.",
     "tier": "core",
@@ -662,7 +822,8 @@ const capabilities = {
             "prefix": "gsd-",
             "nesting": "flat",
             "recursive": false,
-            "converter": "convertClaudeCommandToCodexSkill"
+            "converter": "convertClaudeCommandToCodexSkill",
+            "home": ".agents"
           }
         ],
         "local": [
@@ -672,7 +833,8 @@ const capabilities = {
             "prefix": "gsd-",
             "nesting": "flat",
             "recursive": false,
-            "converter": "convertClaudeCommandToCodexSkill"
+            "converter": "convertClaudeCommandToCodexSkill",
+            "home": ".agents"
           }
         ]
       },
@@ -684,7 +846,11 @@ const capabilities = {
       "installSurface": "codex-toml",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": [],
+      "extendedHookEvents": [
+        "SubagentStop",
+        "Stop",
+        "PreCompact"
+      ],
       "hostIntegration": {
         "embeddingMode": "declarative",
         "commandSurface": "slash-file",
@@ -701,13 +867,20 @@ const capabilities = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "node"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "$gsd-update --reapply",
+        "tomlConfigInstall": true,
+        "cleanupSkillSidecars": true,
+        "agentTomlFiles": true,
+        "frontmatterDialect": "codex"
       }
     }
   },
   "copilot": {
     "id": "copilot",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "GitHub Copilot",
     "description": "GitHub Copilot (VS Code) — markdown config format; copilot-inline hook surface; no hook events emitted; flat skill nesting (unconfirmed recursive loader); tier-2 support.",
     "tier": "core",
@@ -735,6 +908,14 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCopilotSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCopilotAgent"
           }
         ],
         "local": [
@@ -745,6 +926,14 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCopilotSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCopilotAgent"
           }
         ]
       },
@@ -772,13 +961,16 @@ const capabilities = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "undocumented"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "/gsd-update --reapply"
       }
     }
   },
   "cursor": {
     "id": "cursor",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Cursor",
     "description": "Cursor IDE — skills + converted commands artifact layout; hooks.json surface; Claude hook event dialect; recursive skill loader (flat nesting); tier-2 support.",
     "tier": "core",
@@ -875,13 +1067,30 @@ const capabilities = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "node"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "gsd-update --reapply (mention the skill name)",
+        "frontmatterDialect": "cursor",
+        "hooksJsonSurface": true,
+        "skipSharedHooksInstall": true,
+        "reportCommandsDir": true,
+        "skipUpdateBannerCommand": true,
+        "skipSettingsUi": true,
+        "managedHookEvents": [
+          "sessionStart",
+          "postToolUse",
+          "preToolUse",
+          "stop",
+          "subagentStart",
+          "subagentStop"
+        ]
       }
     }
   },
   "drift": {
     "id": "drift",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Drift detection gates",
     "description": "Drift detection gates for the planning loop. At execute:wave:post: a blocking schema drift gate (detects schema files changed without a database push) and a non-blocking codebase drift gate (detects structural additions not reflected in STRUCTURE.md). At plan:pre: a non-blocking, warn-only codebase drift gate (gated on workflow.plan_drift_precheck) that flags a stale codebase map before planning, so plans are authored against a fresh STRUCTURE.md instead of discovering drift mid-execution.",
     "tier": "full",
@@ -959,7 +1168,7 @@ const capabilities = {
   "external-job": {
     "id": "external-job",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Async external-job scheduler adapter",
     "description": "Default-off producer of the async external-job manifest (#1164). At execute:wave:post an executor can externalize long-running compute (SLURM first, scheduler-pluggable), commit a .planning/async-jobs/<job>.json manifest, defer SUMMARY.md, and return external_job_waiting. The core loop (#1165) consumes the manifest; this capability is the only thing that writes it. NOTE on contribution point: #1164 specifies execute:wave:pre, but execute-phase.md only dispatches execute:wave:post today (wave:pre is declared in the loop host contract but not rendered); wiring wave:pre dispatch is a core-loop change #1164 explicitly puts out of scope, so this capability registers at wave:post and the executor honors the runtime_budget classification guidance before running any tagged task. The adapter (scripts/slurm-adapter.cjs) reads external_job.submit_timeout_ms / poll_timeout_ms / artifact_dir through the canonical capability-config seam (env override > config > registry default).",
     "tier": "full",
@@ -1042,7 +1251,7 @@ const capabilities = {
   "gap-analysis": {
     "id": "gap-analysis",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Post-planning gap analysis",
     "description": "Proactive, non-blocking post-planning coverage report. After all PLAN.md files are generated, cross-references every REQ-ID and D-ID from REQUIREMENTS.md and CONTEXT.md against plan bodies. Emits a Source | Item | Status table. Does not block phase advancement.",
     "tier": "standard",
@@ -1083,7 +1292,7 @@ const capabilities = {
   "graphify": {
     "id": "graphify",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Knowledge graph",
     "description": "Build, query, and inspect the project knowledge graph in `.planning/graphs/`; exposes graphify CLI subcommands (build, query, status, diff) and the /gsd-graphify skill.",
     "tier": "full",
@@ -1124,7 +1333,7 @@ const capabilities = {
   "hermes": {
     "id": "hermes",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Hermes Agent",
     "description": "Hermes Agent (NousResearch) — skills nest under skills/gsd/ category bucket; nested skill layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -1173,6 +1382,21 @@ const capabilities = {
       "writesSharedSettings": true,
       "permissionWriter": null,
       "extendedHookEvents": [],
+      "extensionEvents": "hermes",
+      "hostBehaviors": {
+        "skillFrontmatterVersion": true,
+        "skillsManifestPrefix": "skills/gsd/",
+        "trackCategoryDescription": true,
+        "writeCategoryDescription": true,
+        "reportSkillsCount": true,
+        "legacyCommandsGsdCleanup": true,
+        "brandingRewrites": {
+          "CLAUDE.md": "HERMES.md",
+          "Claude Code": "Hermes Agent",
+          ".claude/": ".hermes/"
+        },
+        "reapplyCommand": "gsd-update --reapply (mention the skill name)"
+      },
       "hostIntegration": {
         "embeddingMode": "imperative",
         "commandSurface": "slash-programmatic",
@@ -1195,7 +1419,7 @@ const capabilities = {
   "intel": {
     "id": "intel",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Codebase intelligence",
     "description": "Code-intelligence store for codebase querying, diff, snapshot, and API-surface extraction; exposes `gsd-tools intel` subcommands (query, status, update, diff, snapshot, patch-meta, validate, extract-exports, api-surface) and backs `/gsd-map-codebase` and `gsd-intel-updater`.",
     "tier": "full",
@@ -1247,7 +1471,7 @@ const capabilities = {
   "kilo": {
     "id": "kilo",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Kilo Code",
     "description": "Kilo Code — XDG-based config dir; global skills at ~/.kilo/skills (separate from XDG config); flat command/ + skills artifact layout; no lifecycle hook registration; tier-2 support.",
     "tier": "core",
@@ -1334,13 +1558,21 @@ const capabilities = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "bun"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "/gsd-update --reapply",
+        "attributionConfigResolver": "kilo",
+        "flatCommandDir": "command",
+        "combinedFamilyInstall": true,
+        "frontmatterDialect": "kilo",
+        "skipUpdateBannerCommand": true
       }
     }
   },
   "kimi": {
     "id": "kimi",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Kimi CLI",
     "description": "Kimi CLI (Moonshot AI) — generic agents root at ~/.config/agents; skills + kimi-agents artifact layout; no hook surface; no hook events; tier-2 support.",
     "tier": "core",
@@ -1414,7 +1646,7 @@ const capabilities = {
   "mempalace": {
     "id": "mempalace",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "MemPalace memory",
     "description": "Cross-session, cross-project memory: deliberate recall before discuss/plan and verbatim capture + temporal-KG sync at phase boundaries, via the MemPalace MCP server and CLI.",
     "tier": "full",
@@ -1588,7 +1820,7 @@ const capabilities = {
   "nyquist": {
     "id": "nyquist",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Nyquist validation",
     "description": "Validation coverage audit that maps executed work back to tests and manual-only evidence.",
     "tier": "full",
@@ -1638,7 +1870,7 @@ const capabilities = {
   "opencode": {
     "id": "opencode",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "OpenCode",
     "description": "OpenCode — XDG-based config dir; flat command/ + skills artifact layout; settings-json config format; no lifecycle hook registration; tier-2 support.",
     "tier": "core",
@@ -1712,22 +1944,38 @@ const capabilities = {
           "namedDispatch": true,
           "nested": "undocumented",
           "maxDepth": "undocumented",
-          "background": false,
+          "background": true,
           "subagentToolkit": "full",
-          "backgroundDispatch": "undocumented"
+          "backgroundDispatch": true
         },
         "modelMode": "active",
         "hookBus": "host",
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "bun"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "/gsd-update --reapply",
+        "attributionConfigResolver": "opencode",
+        "flatCommandDir": "command",
+        "combinedFamilyInstall": true,
+        "frontmatterDialect": "opencode",
+        "nativePlugin": {
+          "dir": "plugins",
+          "file": "gsd-core.js",
+          "source": ".opencode/plugins/gsd-core.js"
+        },
+        "skipHomePrefixSubstitution": true,
+        "skipSettingsUi": true,
+        "skipUpdateBannerCommand": true,
+        "skipCodexSkillsManifest": true
       }
     }
   },
   "pattern-mapper": {
     "id": "pattern-mapper",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Pattern mapping",
     "description": "Optional codebase-pattern mapping before planning; owns the pattern mapper agent and workflow.pattern_mapper activation key.",
     "tier": "full",
@@ -1781,7 +2029,7 @@ const capabilities = {
   "profile-pipeline": {
     "id": "profile-pipeline",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Developer profiling pipeline",
     "description": "Developer behavioral profiling from Claude Code session history; scans session JSONL files, extracts and samples user messages, and generates profile artifacts (USER-PROFILE.md, dev-preferences.md, CLAUDE.md sections). Exposes eight `gsd-tools` commands: scan-sessions, extract-messages, profile-sample (pipeline phase) and write-profile, profile-questionnaire, generate-dev-preferences, generate-claude-profile, generate-claude-md (output phase). Backs the /gsd-profile-user skill and gsd-user-profiler agent.",
     "tier": "full",
@@ -1858,7 +2106,7 @@ const capabilities = {
   "qwen": {
     "id": "qwen",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Qwen Code",
     "description": "Qwen Code (Alibaba) — nested-skill artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -1933,7 +2181,7 @@ const capabilities = {
   "research": {
     "id": "research",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Phase research",
     "description": "Optional phase research before planning; owns the phase researcher agent and workflow.research activation key.",
     "tier": "standard",
@@ -1985,7 +2233,7 @@ const capabilities = {
   "schema-gate": {
     "id": "schema-gate",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Schema push detection gate",
     "description": "Detects ORM schema-relevant files in the phase scope during planning and injects a mandatory [BLOCKING] schema push task into the plan. Prevents false-positive verification where build/types pass because TypeScript types come from config, not the live database.",
     "tier": "full",
@@ -2031,7 +2279,7 @@ const capabilities = {
   "security": {
     "id": "security",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Security enforcement",
     "description": "Threat mitigation verification and ship-time security blocking for phases with security enforcement enabled.",
     "tier": "full",
@@ -2130,7 +2378,7 @@ const capabilities = {
   "tdd": {
     "id": "tdd",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Test-driven development",
     "description": "Injects TDD heuristics into the planner and enforces RED/GREEN gate compliance on type:tdd plans after execution. Owns workflow.tdd_mode; the --tdd CLI flag is the ephemeral override.",
     "tier": "full",
@@ -2183,7 +2431,7 @@ const capabilities = {
   "trae": {
     "id": "trae",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Trae IDE",
     "description": "Trae IDE — nested-skill artifact layout; no hook surface (profile-marker-only config); tier-2 support.",
     "tier": "core",
@@ -2269,7 +2517,7 @@ const capabilities = {
   "ui": {
     "id": "ui",
     "role": "feature",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "UI design contracts",
     "description": "UI-SPEC design contract + retrospective UI audit for frontend phases.",
     "tier": "full",
@@ -2364,7 +2612,7 @@ const capabilities = {
   "windsurf": {
     "id": "windsurf",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Windsurf",
     "description": "Windsurf (Codeium) — workspace workflow artifact layout for slash commands; no hook surface; no hook events; tier-2 support.",
     "tier": "core",
@@ -2437,6 +2685,108 @@ const capabilities = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "undocumented"
+      }
+    }
+  },
+  "zcode": {
+    "id": "zcode",
+    "role": "runtime",
+    "version": "1.7.0-rc.5",
+    "title": "ZCode",
+    "description": "ZCode (Z.ai) — desktop Agentic Development Environment for GLM-5.2; Claude-shaped nested skills at ~/.zcode/skills/<name>/SKILL.md, slash commands, named subagents, native MCP; declarative plugin surface; profile-marker install; tier-2 community support.",
+    "tier": "core",
+    "requires": [],
+    "engines": {
+      "gsd": ">=1.6.0"
+    },
+    "runtime": {
+      "configHome": {
+        "kind": "dot-home",
+        "name": ".zcode",
+        "env": [
+          "ZCODE_CONFIG_DIR"
+        ]
+      },
+      "localConfigDir": ".zcode",
+      "configFormat": "none",
+      "artifactLayout": {
+        "global": [
+          {
+            "kind": "skills",
+            "destSubpath": "skills",
+            "prefix": "gsd-",
+            "nesting": "nested",
+            "recursive": false,
+            "converter": "convertClaudeCommandToClaudeSkill"
+          },
+          {
+            "kind": "commands",
+            "destSubpath": "commands",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": null
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": null
+          }
+        ],
+        "local": [
+          {
+            "kind": "skills",
+            "destSubpath": "skills",
+            "prefix": "gsd-",
+            "nesting": "nested",
+            "recursive": false,
+            "converter": "convertClaudeCommandToClaudeSkill"
+          },
+          {
+            "kind": "commands",
+            "destSubpath": "commands",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": null
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": null
+          }
+        ]
+      },
+      "commandStyle": "slash-hyphen",
+      "hooksSurface": "none",
+      "sandboxTier": "none",
+      "supportTier": 2,
+      "installSurface": "profile-marker-only",
+      "writesSharedSettings": false,
+      "permissionWriter": null,
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": false,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "electron"
       }
     }
   }
@@ -2612,6 +2962,23 @@ const byLoopPoint = {
     ],
     "contributions": [
       {
+        "capId": "ai-integration",
+        "point": "plan:pre",
+        "into": "planner",
+        "fragment": {
+          "path": "fragments/api-coverage-plan-pre.md",
+          "inline": "# API Coverage Decision Checkpoint\n\n> Full API Coverage by Default — Opt Out, Never Opt In. Fires when a phase\n> integrates an external API / SDK / service. Most non-API phases will not fire\n> it — that is the point.\n\n## Why this exists\n\n\"We integrated the API\" too often silently means \"we integrated whatever the\nfirst use case exercised.\" Every un-built capability is then an invisible hole,\ndiscovered later by a user who reasonably expected it to work. The phase sealed\ngreen because its tasks completed; nobody decided the gaps were acceptable,\nbecause nobody enumerated them. This checkpoint makes the surface **visible and\ndecided** before the phase can seal.\n\n## Detect whether this phase integrates an external API\n\nThe detector is a deterministic scan over the phase scope. It strips fenced\ncode blocks first, so a trigger term inside a code snippet does not fire. It\nreturns a typed result: `{ detected, signals[], terms }`. Run it on the phase\nscope (the concatenation of this phase's ROADMAP section + the PLAN body):\n\n```bash\nSCOPE=\"$(cat \"${PHASE_DIR}\"/*-PLAN.md 2>/dev/null) $(gsd_run query roadmap.get-phase \"${PHASE}\" 2>/dev/null || true)\"\nAPI_COVERAGE_JSON=$(printf '%s' \"$SCOPE\" | node gsd-core/bin/lib/api-coverage.cjs --json 2>/dev/null || echo '{\"detected\":false,\"signals\":[]}')\n```\n\nRead `API_COVERAGE_JSON.detected`. Act on it only — do **not** pattern-match the\nprose yourself.\n\n**If `detected` is `false`:** this phase does not integrate an external API. Skip\nthe checkpoint entirely and continue planning. Do not raise it with the user.\n\n**If `detected` is `true`:** an external-API integration is in scope. You MUST\nproduce a **coverage matrix** before the plan is finalized.\n\n## Produce the coverage matrix\n\nEnumerate the external API's full **capability surface** — the verb/endpoint/method\nlist (e.g. for a music service: `search`, `play`, `pause`, `skip`, `set_volume`,\n`get_playlist`, `create_playlist`, `add_to_playlist`, …). For each capability\nrecord a decision, starting from **full coverage** as the default:\n\n| capability | decision | reason |\n|---|---|---|\n| `<capability-id>` | `INTEGRATE` \\| `OPT-OUT` | `<one-line reason if OPT-OUT>` |\n\nRules:\n\n- **`INTEGRATE` is the default.** Every capability starts as INTEGRATE; the\n  matrix is the *subtraction record*.\n- **Every `OPT-OUT` MUST carry a one-line reason** (`not needed`, `not needed\n  yet`, `explicitly out of scope`, …). An opt-out without a reason is an\n  un-decided hole — the exact failure mode this gate exists to close.\n- **A second integration against the same need** (e.g. a second platform for the\n  same capability) starts from the **same full-coverage baseline** as the first.\n  Do not carry over the first integration's opt-outs silently — re-decide each\n  capability for the new surface, so a first-class/fallback asymmetry cannot\n  accumulate.\n\nWrite the matrix to `${PHASE_DIR}/COVERAGE.md` (canonical markdown-table form):\n\n```markdown\n# API Coverage — <service>\n\n> Full coverage by default. Opt-outs are explicit, reasoned decisions.\n\n| capability | decision | reason |\n|---|---|---|\n| search | INTEGRATE | |\n| playlists | INTEGRATE | |\n| skip | OPT-OUT | not needed yet — tracked for follow-up phase |\n```\n\nA fenced ` ```coverage ` JSON block is also accepted for machine-generated\nmatrices; the markdown table is preferred (human-editable, diff-friendly).\n\n## The seal-time gate\n\nThis checkpoint is enforced. At `verify:pre` the `api-coverage.verify-pre` gate\nruns `check api-coverage.verify-pre <phase-dir>`:\n\n- If `COVERAGE.md` exists, it is validated — every row needs a valid decision and\n  every `OPT-OUT` a reason. A malformed/partial matrix **blocks the seal**.\n- If `COVERAGE.md` is absent, the detector runs again over the phase scope. If a\n  strong external-API-integration signal is found, the seal is **blocked** until a\n  matrix is produced. If no signal is found, the phase is treated as a non-API\n  phase and the seal proceeds.\n\nSo: an API-integrating phase cannot seal without a decided matrix. Produce it at\nplan time; do not leave it for seal time.\n\n## Tuning the vocabulary (optional)\n\nThe trigger vocabulary is a curated, additive-only set in\n`gsd-core/bin/lib/api-coverage.cjs` (`DEFAULT_API_COVERAGE_TERMS`). To widen it\nfor a project, override at the call site:\n\n```bash\nprintf '%s' \"$SCOPE\" | node gsd-core/bin/lib/api-coverage.cjs --json \\\n  --verbs integrate,wrap,connect,embed --nouns api,sdk,rest,grpc,webhook,plugin\n```\n\nThe whole checkpoint is toggleable via `workflow.api_coverage_gate` in\n`.planning/config.json`.\n"
+        },
+        "produces": [
+          "COVERAGE.md"
+        ],
+        "consumes": [
+          "CONTEXT.md"
+        ],
+        "when": "workflow.api_coverage_gate",
+        "onError": "skip"
+      },
+      {
         "capId": "assumption-delta",
         "point": "plan:pre",
         "into": "planner",
@@ -2712,6 +3079,21 @@ const byLoopPoint = {
     ],
     "contributions": [
       {
+        "capId": "claude-orchestration",
+        "point": "plan:post",
+        "into": "planner",
+        "fragment": {
+          "path": "fragments/plan-post.md",
+          "inline": "# Claude orchestration — ultraplan plan-offload ownership (BETA)\n\n> Injected at `plan:post` `into: planner` only when\n> `claude_orchestration.enabled` is true. Default-off; `onError: skip`.\n\n## Ownership declaration\n\nThe `gsd-ultraplan-phase` plan-offload surface (offloading GSD's plan phase to\nClaude Code's ultraplan cloud) is **owned by this capability**, not by a\nstandalone BETA skill. Both surfaces share one runtime gate\n(`claude_orchestration.enabled`), one BETA boundary, and one Claude-Code-only\ndetection seam.\n\n## When the planner should consider ultraplan offload\n\nWhen this contribution is active (capability enabled, Claude Code runtime), the\nplanner MAY offer the `/gsd-ultraplan-phase` path as an alternative to local\n`/gsd-plan-phase` for phases where cloud-assisted planning adds value. This is\nadvisory, not mandatory — the stable local planner remains the default.\n\n## Fallback contract\n\nIf the capability is disabled, or the runtime is not Claude Code, ultraplan\noffload is **not surfaced** and the planner proceeds with the standard local\n`/gsd-plan-phase`. The `gsd-ultraplan-phase` command itself remains installed\n(its own runtime gate already no-ops on non-Claude runtimes); this contribution\nonly governs whether the capability manifest advertises it as part of the\norchestration surface.\n"
+        },
+        "produces": [],
+        "consumes": [
+          "CONTEXT.md"
+        ],
+        "when": "claude_orchestration.enabled",
+        "onError": "skip"
+      },
+      {
         "capId": "external-job",
         "point": "plan:post",
         "into": "planner",
@@ -2751,6 +3133,21 @@ const byLoopPoint = {
   "execute:wave:post": {
     "steps": [],
     "contributions": [
+      {
+        "capId": "claude-orchestration",
+        "point": "execute:wave:post",
+        "into": "executor",
+        "fragment": {
+          "path": "fragments/execute-wave-post.md",
+          "inline": "# Claude orchestration — Workflow execution backend (BETA)\n\n> Injected at `execute:wave:post` `into: executor` only when\n> `claude_orchestration.enabled` is true. Default-off; `onError: skip`.\n\n## When this contribution is active\n\nThe Claude orchestration capability is **default-off and BETA**. It activates only\nwhen ALL of the following hold:\n\n1. `claude_orchestration.enabled` is `true` in `.planning/config.json`, AND\n2. the active runtime is **Claude Code** (the Workflow tool is Claude / Agent\n   SDK-specific), AND\n3. `claude_orchestration.execution_backend` resolves to `workflow` — either\n   explicitly, or via `auto` — **and** the Agent SDK version is\n   `>= claude_orchestration.min_agent_sdk_version` (default `0.3.149`). The SDK\n   floor applies in both `auto` and `workflow` modes (fail-closed: a pre-release\n   or older SDK never activates the preview backend).\n\nDetection is fail-closed: any miss degrades to **inline, manual, one-agent-per-\nmessage dispatch** — exactly today's behaviour. On a non-Claude runtime this\ncontribution is a no-op.\n\n## What the executor does when the Workflow backend is active\n\nInstead of the orchestrator fanning out one `Agent(subagent_type=gsd-executor,\nisolation=worktree, run_in_background=true)` per message (which on Claude Code\ncannot nest further subagents — #853 — and so degrades to sequential inline\nexecution), execute-phase **emits a generated Workflow script** and lets the main\nloop orchestrate it:\n\n- **waves → one or more sequential `parallel()` barriers** — each wave is a\n  barrier group; when plans within a wave share `files_modified`, they are split\n  into separate sequential stages within that wave's barrier (the next wave\n  still waits for the previous wave to complete).\n- **plans → `agent(brief, { agentType: 'gsd-executor', isolation: 'worktree' })`**\n  — the SAME executor agent and worktree isolation the inline path uses, so the\n  produced `SUMMARY.md` and commits are identical.\n- **`files_modified` overlap → separate sequential stages** — two plans that\n  touch the same file are placed in different stages within the wave (the same\n  overlap rule execute-phase already applies inline).\n- **`resumeFromRunId`** — wired to the phase run id, so an interrupted phase\n  resumes without re-running completed plans.\n- **`budget(tokens)`** — a shared token pool across the whole phase when the\n  orchestrator passes a `budgetTokens` value to `emitWorkflowScript` (it is a\n  function parameter, not a config key; the orchestrator decides the budget).\n\nThe emitter is a pure function exposed through the capability command surface:\n`gsd-tools claude-orchestration emit-workflow --waves <manifest.json> --run-id <id>\n[--phase-dir <dir>] [--budget <n>]` (or `require('gsd-core/bin/lib/claude-orchestration.cjs').emitWorkflowScript`\ndirectly). It maps the phase's wave/plan manifest to the Workflow script string\nand never invokes the Workflow tool itself; the orchestrator runs the emitted\nscript. Detection is resolved by the orchestrator calling the pure\n`detectWorkflowBackend` with the LIVE host descriptor (the CLI\n`gsd-tools claude-orchestration detect-backend` is a simulation harness that\nassumes a capable host unless `--no-nested-dispatch` is passed — it does not probe\nthe real runtime; the orchestrator supplies the real descriptor).\n\n## Fallback contract\n\nIf detection resolves to `inline` (tool absent, SDK too old, runtime not Claude,\nor the capability disabled), execute-phase MUST proceed with the standard inline\nwave dispatch. The executor MUST NOT assume parallelism, a shared budget, or\nresume-from-run-id semantics in that mode.\n"
+        },
+        "produces": [],
+        "consumes": [
+          "PLAN.md"
+        ],
+        "when": "claude_orchestration.enabled",
+        "onError": "skip"
+      },
       {
         "capId": "external-job",
         "point": "execute:wave:post",
@@ -2850,7 +3247,18 @@ const byLoopPoint = {
   "verify:pre": {
     "steps": [],
     "contributions": [],
-    "gates": []
+    "gates": [
+      {
+        "capId": "ai-integration",
+        "point": "verify:pre",
+        "check": {
+          "query": "api-coverage.verify-pre"
+        },
+        "when": "workflow.api_coverage_gate",
+        "blocking": true,
+        "onError": "halt"
+      }
+    ]
   },
   "verify:post": {
     "steps": [
@@ -2960,7 +3368,11 @@ const byLoopPoint = {
 
 const configKeys = {
   "workflow.ai_integration_phase": "ai-integration",
+  "workflow.api_coverage_gate": "ai-integration",
   "workflow.assumption_delta": "assumption-delta",
+  "claude_orchestration.enabled": "claude-orchestration",
+  "claude_orchestration.execution_backend": "claude-orchestration",
+  "claude_orchestration.min_agent_sdk_version": "claude-orchestration",
   "workflow.code_review": "code-review",
   "workflow.code_review_depth": "code-review",
   "workflow.drift_threshold": "drift",
@@ -3006,11 +3418,40 @@ const configSchema = {
     "default": true,
     "description": "Prompt for an AI-SPEC design contract before planning phases that involve AI systems."
   },
+  "workflow.api_coverage_gate": {
+    "owner": "ai-integration",
+    "type": "boolean",
+    "default": true,
+    "description": "Require an explicit API-coverage decision (full-by-default, opt-out-not-opt-in) before a phase that integrates an external API/SDK/service can seal. At plan:pre the planner is prompted to enumerate the API surface into COVERAGE.md; at verify:pre a blocking gate fails the seal unless the matrix exists with every non-integrated capability an explicit, reasoned opt-out. Independent of ai_integration_phase (applies to any external-API integration, not only AI)."
+  },
   "workflow.assumption_delta": {
     "owner": "assumption-delta",
     "type": "boolean",
     "default": true,
     "description": "Enable the assumption-delta architecture checkpoint during planning. When a pluralization/optional/chosen signal is detected in the phase scope, the planner is prompted to re-ask whether the primary key / identity model still names the right thing. Advisory (non-blocking)."
+  },
+  "claude_orchestration.enabled": {
+    "owner": "claude-orchestration",
+    "type": "boolean",
+    "default": false,
+    "description": "Master toggle for the Claude orchestration capability. Default-off + BETA: the Workflow-tool execution backend and the ultraplan plan-offload surface are inert unless this is true. When false, loop behaviour is byte-identical to a non-Claude runtime (inline/manual dispatch)."
+  },
+  "claude_orchestration.execution_backend": {
+    "owner": "claude-orchestration",
+    "type": "enum",
+    "default": "auto",
+    "description": "Which execute-phase dispatch backend to use when the capability is enabled. 'auto' (default) activates the Workflow backend only when the runtime is Claude AND the Workflow tool is detected AND the Agent SDK meets claude_orchestration.min_agent_sdk_version; otherwise it falls back to inline. 'workflow' forces the Workflow backend when the tool is present AND the Agent SDK meets the floor (still fails closed to inline if the tool is absent or the SDK is too old — the floor applies in both modes). 'inline' forces today's manual one-agent-per-message dispatch regardless of tool availability.",
+    "values": [
+      "auto",
+      "workflow",
+      "inline"
+    ]
+  },
+  "claude_orchestration.min_agent_sdk_version": {
+    "owner": "claude-orchestration",
+    "type": "string",
+    "default": "0.3.149",
+    "description": "Minimum Agent SDK version required to activate the Workflow backend under execution_backend='auto'. Defaults to 0.3.149 (the release that introduced the Workflow tool). Raise to pin a higher floor; the detection seam fails closed to inline for any runtime reporting an older or unknown version."
   },
   "workflow.code_review": {
     "owner": "code-review",
@@ -3258,7 +3699,7 @@ const runtimes = {
   "antigravity": {
     "id": "antigravity",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Antigravity",
     "description": "Google Antigravity IDE — nested under ~/.gemini/antigravity; probed across 1.x and 2.x layouts; Gemini hook event dialect; flat skill layout; tier-1 support.",
     "tier": "core",
@@ -3292,6 +3733,14 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToAntigravitySkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToAntigravityAgent"
           }
         ],
         "local": [
@@ -3302,6 +3751,14 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToAntigravitySkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToAntigravityAgent"
           }
         ]
       },
@@ -3336,7 +3793,7 @@ const runtimes = {
   "augment": {
     "id": "augment",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Augment Code",
     "description": "Augment Code CLI — commands + nested-skill artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -3439,7 +3896,7 @@ const runtimes = {
   "claude": {
     "id": "claude",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Claude Code",
     "description": "Anthropic Claude Code — primary development runtime; tier-1 support with full hook surface and skills-based global install.",
     "tier": "core",
@@ -3517,13 +3974,30 @@ const runtimes = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "node"
+      },
+      "hostBehaviors": {
+        "attributionSource": "settings-json-commit",
+        "authorsCanonicalWorkflow": true,
+        "localInstallStyle": "legacy-flat",
+        "permissionsSchema": "claude",
+        "settingsFileByScope": {
+          "local": "settings.local.json",
+          "global": "settings.json"
+        },
+        "sourceMarkerFile": ".gsd-source",
+        "agentFrontmatterExtensions": [
+          "effort"
+        ],
+        "ownsClaudePaths": true,
+        "nativeModelAliases": true,
+        "skillsGlobalOnboarding": true
       }
     }
   },
   "cline": {
     "id": "cline",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Cline",
     "description": "Cline (VS Code extension) — global-only nested-skill layout; cline-rules hook surface (.clinerules); no hook events emitted; tier-2 support.",
     "tier": "core",
@@ -3578,13 +4052,21 @@ const runtimes = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "node"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "/gsd-update --reapply",
+        "frontmatterDialect": "cline",
+        "skipSharedHooksInstall": true,
+        "localTargetIsProjectRoot": true,
+        "clineRulesSurface": true,
+        "localCommandsViaRules": true
       }
     }
   },
   "codebuddy": {
     "id": "codebuddy",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "CodeBuddy",
     "description": "CodeBuddy (Tencent) — converted commands + skills artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -3687,7 +4169,7 @@ const runtimes = {
   "codex": {
     "id": "codex",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "OpenAI Codex CLI",
     "description": "OpenAI Codex CLI — shell-var command style; per-agent sandbox tiers; config.toml + hooks.json hook surface; tier-1 support.",
     "tier": "core",
@@ -3713,7 +4195,8 @@ const runtimes = {
             "prefix": "gsd-",
             "nesting": "flat",
             "recursive": false,
-            "converter": "convertClaudeCommandToCodexSkill"
+            "converter": "convertClaudeCommandToCodexSkill",
+            "home": ".agents"
           }
         ],
         "local": [
@@ -3723,7 +4206,8 @@ const runtimes = {
             "prefix": "gsd-",
             "nesting": "flat",
             "recursive": false,
-            "converter": "convertClaudeCommandToCodexSkill"
+            "converter": "convertClaudeCommandToCodexSkill",
+            "home": ".agents"
           }
         ]
       },
@@ -3735,7 +4219,11 @@ const runtimes = {
       "installSurface": "codex-toml",
       "writesSharedSettings": false,
       "permissionWriter": null,
-      "extendedHookEvents": [],
+      "extendedHookEvents": [
+        "SubagentStop",
+        "Stop",
+        "PreCompact"
+      ],
       "hostIntegration": {
         "embeddingMode": "declarative",
         "commandSurface": "slash-file",
@@ -3752,13 +4240,20 @@ const runtimes = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "node"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "$gsd-update --reapply",
+        "tomlConfigInstall": true,
+        "cleanupSkillSidecars": true,
+        "agentTomlFiles": true,
+        "frontmatterDialect": "codex"
       }
     }
   },
   "copilot": {
     "id": "copilot",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "GitHub Copilot",
     "description": "GitHub Copilot (VS Code) — markdown config format; copilot-inline hook surface; no hook events emitted; flat skill nesting (unconfirmed recursive loader); tier-2 support.",
     "tier": "core",
@@ -3786,6 +4281,14 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCopilotSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCopilotAgent"
           }
         ],
         "local": [
@@ -3796,6 +4299,14 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCopilotSkill"
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeAgentToCopilotAgent"
           }
         ]
       },
@@ -3823,13 +4334,16 @@ const runtimes = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "undocumented"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "/gsd-update --reapply"
       }
     }
   },
   "cursor": {
     "id": "cursor",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Cursor",
     "description": "Cursor IDE — skills + converted commands artifact layout; hooks.json surface; Claude hook event dialect; recursive skill loader (flat nesting); tier-2 support.",
     "tier": "core",
@@ -3926,13 +4440,30 @@ const runtimes = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "node"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "gsd-update --reapply (mention the skill name)",
+        "frontmatterDialect": "cursor",
+        "hooksJsonSurface": true,
+        "skipSharedHooksInstall": true,
+        "reportCommandsDir": true,
+        "skipUpdateBannerCommand": true,
+        "skipSettingsUi": true,
+        "managedHookEvents": [
+          "sessionStart",
+          "postToolUse",
+          "preToolUse",
+          "stop",
+          "subagentStart",
+          "subagentStop"
+        ]
       }
     }
   },
   "hermes": {
     "id": "hermes",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Hermes Agent",
     "description": "Hermes Agent (NousResearch) — skills nest under skills/gsd/ category bucket; nested skill layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -3981,6 +4512,21 @@ const runtimes = {
       "writesSharedSettings": true,
       "permissionWriter": null,
       "extendedHookEvents": [],
+      "extensionEvents": "hermes",
+      "hostBehaviors": {
+        "skillFrontmatterVersion": true,
+        "skillsManifestPrefix": "skills/gsd/",
+        "trackCategoryDescription": true,
+        "writeCategoryDescription": true,
+        "reportSkillsCount": true,
+        "legacyCommandsGsdCleanup": true,
+        "brandingRewrites": {
+          "CLAUDE.md": "HERMES.md",
+          "Claude Code": "Hermes Agent",
+          ".claude/": ".hermes/"
+        },
+        "reapplyCommand": "gsd-update --reapply (mention the skill name)"
+      },
       "hostIntegration": {
         "embeddingMode": "imperative",
         "commandSurface": "slash-programmatic",
@@ -4003,7 +4549,7 @@ const runtimes = {
   "kilo": {
     "id": "kilo",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Kilo Code",
     "description": "Kilo Code — XDG-based config dir; global skills at ~/.kilo/skills (separate from XDG config); flat command/ + skills artifact layout; no lifecycle hook registration; tier-2 support.",
     "tier": "core",
@@ -4090,13 +4636,21 @@ const runtimes = {
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "bun"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "/gsd-update --reapply",
+        "attributionConfigResolver": "kilo",
+        "flatCommandDir": "command",
+        "combinedFamilyInstall": true,
+        "frontmatterDialect": "kilo",
+        "skipUpdateBannerCommand": true
       }
     }
   },
   "kimi": {
     "id": "kimi",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Kimi CLI",
     "description": "Kimi CLI (Moonshot AI) — generic agents root at ~/.config/agents; skills + kimi-agents artifact layout; no hook surface; no hook events; tier-2 support.",
     "tier": "core",
@@ -4170,7 +4724,7 @@ const runtimes = {
   "opencode": {
     "id": "opencode",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "OpenCode",
     "description": "OpenCode — XDG-based config dir; flat command/ + skills artifact layout; settings-json config format; no lifecycle hook registration; tier-2 support.",
     "tier": "core",
@@ -4244,22 +4798,38 @@ const runtimes = {
           "namedDispatch": true,
           "nested": "undocumented",
           "maxDepth": "undocumented",
-          "background": false,
+          "background": true,
           "subagentToolkit": "full",
-          "backgroundDispatch": "undocumented"
+          "backgroundDispatch": true
         },
         "modelMode": "active",
         "hookBus": "host",
         "stateIO": "filesystem",
         "transport": "mcp",
         "runtime": "bun"
+      },
+      "hostBehaviors": {
+        "reapplyCommand": "/gsd-update --reapply",
+        "attributionConfigResolver": "opencode",
+        "flatCommandDir": "command",
+        "combinedFamilyInstall": true,
+        "frontmatterDialect": "opencode",
+        "nativePlugin": {
+          "dir": "plugins",
+          "file": "gsd-core.js",
+          "source": ".opencode/plugins/gsd-core.js"
+        },
+        "skipHomePrefixSubstitution": true,
+        "skipSettingsUi": true,
+        "skipUpdateBannerCommand": true,
+        "skipCodexSkillsManifest": true
       }
     }
   },
   "qwen": {
     "id": "qwen",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Qwen Code",
     "description": "Qwen Code (Alibaba) — nested-skill artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
     "tier": "core",
@@ -4334,7 +4904,7 @@ const runtimes = {
   "trae": {
     "id": "trae",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Trae IDE",
     "description": "Trae IDE — nested-skill artifact layout; no hook surface (profile-marker-only config); tier-2 support.",
     "tier": "core",
@@ -4420,7 +4990,7 @@ const runtimes = {
   "windsurf": {
     "id": "windsurf",
     "role": "runtime",
-    "version": "1.7.0-rc.3",
+    "version": "1.7.0-rc.5",
     "title": "Windsurf",
     "description": "Windsurf (Codeium) — workspace workflow artifact layout for slash commands; no hook surface; no hook events; tier-2 support.",
     "tier": "core",
@@ -4495,6 +5065,108 @@ const runtimes = {
         "runtime": "undocumented"
       }
     }
+  },
+  "zcode": {
+    "id": "zcode",
+    "role": "runtime",
+    "version": "1.7.0-rc.5",
+    "title": "ZCode",
+    "description": "ZCode (Z.ai) — desktop Agentic Development Environment for GLM-5.2; Claude-shaped nested skills at ~/.zcode/skills/<name>/SKILL.md, slash commands, named subagents, native MCP; declarative plugin surface; profile-marker install; tier-2 community support.",
+    "tier": "core",
+    "requires": [],
+    "engines": {
+      "gsd": ">=1.6.0"
+    },
+    "runtime": {
+      "configHome": {
+        "kind": "dot-home",
+        "name": ".zcode",
+        "env": [
+          "ZCODE_CONFIG_DIR"
+        ]
+      },
+      "localConfigDir": ".zcode",
+      "configFormat": "none",
+      "artifactLayout": {
+        "global": [
+          {
+            "kind": "skills",
+            "destSubpath": "skills",
+            "prefix": "gsd-",
+            "nesting": "nested",
+            "recursive": false,
+            "converter": "convertClaudeCommandToClaudeSkill"
+          },
+          {
+            "kind": "commands",
+            "destSubpath": "commands",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": null
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": null
+          }
+        ],
+        "local": [
+          {
+            "kind": "skills",
+            "destSubpath": "skills",
+            "prefix": "gsd-",
+            "nesting": "nested",
+            "recursive": false,
+            "converter": "convertClaudeCommandToClaudeSkill"
+          },
+          {
+            "kind": "commands",
+            "destSubpath": "commands",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": null
+          },
+          {
+            "kind": "agents",
+            "destSubpath": "agents",
+            "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": null
+          }
+        ]
+      },
+      "commandStyle": "slash-hyphen",
+      "hooksSurface": "none",
+      "sandboxTier": "none",
+      "supportTier": 2,
+      "installSurface": "profile-marker-only",
+      "writesSharedSettings": false,
+      "permissionWriter": null,
+      "extendedHookEvents": [],
+      "hostIntegration": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": {
+          "namedDispatch": true,
+          "nested": "undocumented",
+          "maxDepth": "undocumented",
+          "background": false,
+          "subagentToolkit": "full",
+          "backgroundDispatch": false
+        },
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "electron"
+      }
+    }
   }
 };
 
@@ -4508,6 +5180,11 @@ const commandFamilies = {
     "capId": "audit",
     "module": "audit-command-router.cjs",
     "router": "routeAuditUat"
+  },
+  "claude-orchestration": {
+    "capId": "claude-orchestration",
+    "module": "claude-orchestration-command-router.cjs",
+    "router": "routeClaudeOrchestrationCommand"
   },
   "extract-messages": {
     "capId": "profile-pipeline",
@@ -4648,6 +5325,7 @@ const _requiresGraph = {
   "audit": [],
   "augment": [],
   "claude": [],
+  "claude-orchestration": [],
   "cline": [],
   "code-review": [],
   "codebuddy": [],
@@ -4676,7 +5354,8 @@ const _requiresGraph = {
   "tdd": [],
   "trae": [],
   "ui": [],
-  "windsurf": []
+  "windsurf": [],
+  "zcode": []
 };
 
 function requiresClosure(id) {

@@ -296,6 +296,14 @@ function getGlobalSkillsBase(runtime) {
     const runtimeEntry = getRegistry().runtimes[runtime];
     const descriptor = runtimeEntry?.runtime;
     const globalSkillsKind = descriptor?.artifactLayout?.global?.find((entry) => entry.kind === 'skills');
+    // ADR-1239 upgrade 3 (#2088): honor a skills-kind `home` override (e.g. Codex
+    // → $HOME/.agents/skills, independent of $CODEX_HOME) so the reported skills
+    // root matches where the installer actually writes (the artifact layout /
+    // _resolveSkillsRootDir). Without this, `--skills-root` and the sync-skills
+    // workflow would look under configHome/skills while skills live under ~/.agents.
+    if (globalSkillsKind?.home && globalSkillsKind?.destSubpath) {
+        return node_path_1.default.join(node_os_1.default.homedir(), globalSkillsKind.home, globalSkillsKind.destSubpath);
+    }
     if (descriptor?.configHome && globalSkillsKind?.destSubpath) {
         return resolveSkillsBaseFromDescriptor(descriptor.configHome, { env: process.env, home: node_os_1.default.homedir(), existsSync: node_fs_1.default.existsSync }, globalSkillsKind.destSubpath);
     }
