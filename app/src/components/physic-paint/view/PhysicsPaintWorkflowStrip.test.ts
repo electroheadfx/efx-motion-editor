@@ -5,18 +5,18 @@ import { describe, expect, it } from 'vitest';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const rightPanelSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintRightPanel.tsx');
-const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudio.tsx');
-const studioViewSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'view/PhysicsPaintStudioView.tsx');
-const playCoordinatorSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/usePhysicsPaintPlayCoordinator.ts');
-const rotoPersistenceIntegrationSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/useRotoPersistenceIntegration.ts');
-const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowState.ts');
-const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'roto/physicsPaintRotoSession.ts');
-const rotoCacheTransactionsSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'roto/rotoCacheTransactions.ts');
-const engineLifecycleSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'engine/usePhysicsPaintEngineLifecycle.ts');
-const canvasMountSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'engine/PhysicsPaintCanvasMount.tsx');
-const bridgeTransportSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'bridge/physicsPaintBridgeTransport.ts');
-const rotoCanvasFramesSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'roto/rotoCanvasFrames.ts');
-const rotoInterpolationControllerSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/useRotoInterpolationController.ts');
+const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../PhysicsPaintStudio.tsx');
+const studioViewSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudioView.tsx');
+const playCoordinatorSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/usePhysicsPaintPlayCoordinator.ts');
+const rotoPersistenceIntegrationSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/useRotoPersistenceIntegration.ts');
+const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowPresentation.ts');
+const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../roto/physicsPaintRotoSession.ts');
+const rotoCacheTransactionsSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../roto/rotoCacheTransactions.ts');
+const engineLifecycleSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../engine/usePhysicsPaintEngineLifecycle.ts');
+const canvasMountSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../engine/PhysicsPaintCanvasMount.tsx');
+const bridgeTransportSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../bridge/physicsPaintBridgeTransport.ts');
+const rotoCanvasFramesSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../roto/rotoCanvasFrames.ts');
+const rotoInterpolationControllerSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/useRotoInterpolationController.ts');
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
 const studioSource = () => {
@@ -65,7 +65,7 @@ function getCssRule(css: string, selector: string): string {
 describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('36.13/D-14/D-17 shows compact custom-span and generated render-only guidance without reset/apply-all controls', () => {
     const code = source();
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
     const rotoStatusBlock = code.slice(code.indexOf('physics-paint-roto-status-stack'), code.indexOf('{confirmation ?'));
     const customSpanRule = getCssRule(css, '.physics-paint-roto-custom-span-status');
 
@@ -185,7 +185,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('renders Play as frame cells from the script start and colors cached ranges distinctly', () => {
     const code = source();
 
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
 
     expect(code).toContain('const PLAY_TIMELINE_CELL_WIDTH');
     expect(code).toContain('buildPlayFrameCells(props.startFrame, safeFrameCount)');
@@ -204,7 +204,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('renders Roto interpolation as connector lines and filters generated cache from square cells', () => {
     const code = source();
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
     const rotoBlock = code.slice(code.indexOf('props.mode === \'roto\''), code.indexOf('physics-paint-lane physics-paint-play-lane'));
 
     expect(code).toContain('rotoInterpolationSettings?: RotoInterpolationSettings');
@@ -221,7 +221,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps Roto interpolation explanatory copy out of the strict Phase 36.3 Roto strip', () => {
     const code = source();
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
     const rotoControlsBlock = getRotoControlsBlock(code);
 
     expect(code).not.toContain('getRotoInterpolationStatusCopy');
@@ -396,7 +396,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps Phase 36.7 key utilities inside existing Preact/CSS scope only (D-14)', () => {
     const code = source();
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
 
     expect(code).not.toMatch(/from ['"]react['"]/);
     expect(code).not.toMatch(/from ['"]@radix-ui\//);
@@ -417,7 +417,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps Roto key transactions authoritative after local apply instead of re-reading stale cache state', () => {
     const studioCode = studioSource();
-    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/useRotoKeyUtilities.ts'), 'utf8');
+    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/useRotoKeyUtilities.ts'), 'utf8');
     const applyBlock = studioCode.slice(studioCode.indexOf('const applyRotoKeyFrames = useCallback'), studioCode.indexOf('const persistRotoKeyFrameTransaction'));
     const resultBlock = studioCode.slice(studioCode.indexOf("if (detail.kind === 'replace-roto-key-frames')"), studioCode.indexOf("} else if (detail.kind === 'update-play-render-options')"));
 
@@ -600,7 +600,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('filters canvas onion preview overlays by count, direction toggles, and live preview state', () => {
     const code = studioSource();
-    const projection = readFileSync(fileURLToPath(new URL('./roto/rotoOnionPreview.ts', import.meta.url)), 'utf8');
+    const projection = readFileSync(fileURLToPath(new URL('../roto/rotoOnionPreview.ts', import.meta.url)), 'utf8');
 
     expect(code).toContain('const onionPreviewFrames = projectRotoOnionPreviewFrames({');
     expect(projection).toContain('const count = clampOnionCount(input.onion.count)');
@@ -613,7 +613,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('builds canvas onion previews from Roto sources and does not reuse saved Play frames as yellow overlays', () => {
     const code = studioSource();
-    const builderBlock = readFileSync(fileURLToPath(new URL('./roto/rotoOnionPreview.ts', import.meta.url)), 'utf8');
+    const builderBlock = readFileSync(fileURLToPath(new URL('../roto/rotoOnionPreview.ts', import.meta.url)), 'utf8');
     const coordinator = readFileSync(playCoordinatorSourcePath, 'utf8');
     const savePlayIndex = coordinator.indexOf('const savePlay = useCallback');
     const savePlayBlock = coordinator.slice(savePlayIndex, savePlayIndex + 4200);
@@ -656,7 +656,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('renders Phase 36.5 Roto cell semantics from the view model in the existing strip (D-02, D-03, D-04)', () => {
     const code = source();
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
     const rotoMapBlock = getRotoMapBlock(code);
 
     expect(code).toContain('getRotoCellViewModel');
@@ -763,7 +763,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).toContain('setRotoSavingFrame(null)');
     expect(studio).toContain('setLaunchContext((current) => current ? { ...current, startFrame: frame } : current)');
     expect(studio).toContain('await sendPhysicPaintFrameSyncMessage(frame, input.action.bridgeMode)');
-    expect(studio).toContain("from './bridge/physicsPaintBridgeTransport'");
+    expect(studio).toContain("from '../bridge/physicsPaintBridgeTransport'");
     expect(bridgeTransportSource()).toContain("await eventApi.emitTo?.('main', 'physic-paint:seek-frame', message)");
     expect(studio).toContain('currentFrame={currentFrame}');
     expect(studio).not.toContain('currentFrame={effectiveCurrentFrame}');
@@ -784,7 +784,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('keeps the physics paint canvas bounded inside the canvas region', () => {
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
     const shellRule = getCssRule(css, '.physics-paint-canvas-stack > .demo-canvas-shell');
 
     expect(shellRule).toContain('height: 100%');
@@ -795,7 +795,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('keeps current Roto CSS as an outline without adding a fourth fill color', () => {
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
     const currentRule = getCssRule(css, '.physics-paint-roto-cell.current');
 
     expect(css).toContain('.physics-paint-roto-cell.roto-fill-empty');
@@ -808,7 +808,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   });
 
   it('covers Phase 36.5 CSS semantics for fills, overlays, and legend swatches (D-03, D-04)', () => {
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
     const currentRule = getCssRule(css, '.physics-paint-roto-cell.current');
     const dirtyRule = getCssRule(css, '.physics-paint-roto-cell.dirty::after');
     const pendingRule = getCssRule(css, '.physics-paint-roto-cell.pending');
@@ -933,7 +933,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('keeps cached Roto playback UI inside existing Preact CSS scope without render or save-all actions', () => {
     const code = source();
-    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintStudio.css'), 'utf8');
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'), 'utf8');
     const rotoControlsIndex = code.indexOf("props.mode === 'roto'");
     const rotoControlsBlock = code.slice(rotoControlsIndex, rotoControlsIndex + 3200);
 
@@ -951,7 +951,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('wires D-08/D-09 Studio Roto key utilities through one session result runner', () => {
     const studio = studioSource();
-    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/useRotoKeyUtilities.ts'), 'utf8');
+    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/useRotoKeyUtilities.ts'), 'utf8');
 
     expect(studio).toContain('useRotoNavigationCoordinator');
     expect(adapter).toContain('const runSessionResult = useCallback(async');
@@ -969,9 +969,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
   it('persists D-08/D-09 Roto key utilities through the parent app bridge', () => {
     const studio = studioSource();
-    const store = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../stores/physicPaintStore.ts'), 'utf8');
-    const bridge = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../lib/physicPaintBridge.ts'), 'utf8');
-    const types = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../types/physicPaint.ts'), 'utf8');
+    const store = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../stores/physicPaintStore.ts'), 'utf8');
+    const bridge = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../lib/physicPaintBridge.ts'), 'utf8');
+    const types = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../types/physicPaint.ts'), 'utf8');
 
     expect(types).toContain("kind: 'replace-roto-key-frames'");
     expect(store).toContain('replaceRotoKeyFrames(payload');
@@ -1013,9 +1013,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('delegates D-01 through D-10 Roto key transaction layout and restore decisions to the session/controller boundary', () => {
     const studio = studioSource();
     const session = rotoSessionSource();
-    const controller = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'roto/physicsPaintRotoKeyController.ts'), 'utf8');
+    const controller = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../roto/physicsPaintRotoKeyController.ts'), 'utf8');
 
-    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/useRotoKeyUtilities.ts'), 'utf8');
+    const adapter = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/useRotoKeyUtilities.ts'), 'utf8');
 
     expect(studio).not.toContain('deriveRotoKeyUtilityActionState');
     expect(studio).not.toContain('buildRotoKeyUtilityTransaction');

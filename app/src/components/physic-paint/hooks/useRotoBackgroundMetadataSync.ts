@@ -1,8 +1,8 @@
 import { useEffect } from 'preact/hooks';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
-import type { PhysicsPaintStudioSettings } from '../physicsPaintStudioSettings';
-import { buildRotoBackgroundMetadata } from '../physicsPaintStudioSettings';
+import type { PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
+import { buildRotoBackgroundMetadata } from '../engine/physicsPaintStudioSettings';
 
 export function persistRotoBackgroundMetadata(
   launchContext: PhysicPaintLaunchContext | null,

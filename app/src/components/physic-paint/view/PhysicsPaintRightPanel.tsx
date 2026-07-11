@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ToolType } from '@efxlab/efx-physic-paint';
-import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../lib/colorUtils';
-import { loadFavoriteColors, loadRecentColors, saveFavoriteColors } from '../../lib/paintPreferences';
-import { clampOnionCount, clampOnionOpacity, type PhysicsPaintApplyStatus, type PhysicsPaintOnionState } from './physicsPaintWorkflowState';
+import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
+import { loadFavoriteColors, loadRecentColors, saveFavoriteColors } from '../../../lib/paintPreferences';
+import { clampOnionCount, clampOnionOpacity, type PhysicsPaintApplyStatus, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;

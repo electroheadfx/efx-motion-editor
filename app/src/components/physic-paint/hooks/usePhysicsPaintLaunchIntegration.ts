@@ -4,10 +4,10 @@ import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { PendingPhysicPaintApply } from '../roto/rotoApplyTransactions';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
-import { applyPhysicsPaintLaunchContext, getLaunchWorkflowMode } from '../physicsPaintLaunchContext';
+import { applyPhysicsPaintLaunchContext, getLaunchWorkflowMode } from '../bridge/physicsPaintLaunchContext';
 import { hydrateRotoLaunchContext } from '../roto/rotoLaunchHydration';
-import { applyPlayRenderOptionsSnapshotToSettings, applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../physicsPaintStudioSettings';
-import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
+import { applyPlayRenderOptionsSnapshotToSettings, applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
+import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { usePhysicsPaintLaunchBridge } from '../bridge/usePhysicsPaintParentBridge';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';

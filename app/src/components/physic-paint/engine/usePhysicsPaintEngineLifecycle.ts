@@ -3,7 +3,7 @@ import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { resizePhysicsPaintState } from './physicsPaintCanvasSizing';
 import type { NativePenInputHandler } from './PhysicsPaintCanvasMount';
-import { applyPlayRenderOptionsToEngine, applyRotoBackgroundMetadataToEngine } from '../physicsPaintStudioSettings';
+import { applyPlayRenderOptionsToEngine, applyRotoBackgroundMetadataToEngine } from '../engine/physicsPaintStudioSettings';
 
 function getLaunchWorkflowMode(context: PhysicPaintLaunchContext | null): 'play' | 'roto' {
   if (context?.workflowMode === 'play' || context?.editableSource === 'play') return 'play';

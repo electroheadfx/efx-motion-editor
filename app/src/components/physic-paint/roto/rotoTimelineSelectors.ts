@@ -1,5 +1,5 @@
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import type { PhysicsPaintWorkflowStripFrameMarker } from '../PhysicsPaintWorkflowStrip';
+import type { PhysicsPaintWorkflowStripFrameMarker } from '../view/PhysicsPaintWorkflowStrip';
 import {
   createRotoSourceDisplayModel,
   getRotoDisplayProjection,

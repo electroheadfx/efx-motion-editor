@@ -2,7 +2,7 @@ import {
   clampPhysicPaintFrameCount,
   isPhysicPaintRenderedFrame,
   type PhysicPaintRenderedFrame,
-} from '../../types/physicPaint';
+} from '../../../types/physicPaint';
 
 export const PHYSICS_PAINT_DEBUG_EXPORT_KIND = 'physics-paint-debug-export';
 export const PHYSICS_PAINT_DEBUG_MANIFEST_FILENAME = 'manifest.json';

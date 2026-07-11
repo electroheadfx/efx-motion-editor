@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const sourcePath = fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url));
 const viewPath = fileURLToPath(new URL('./view/PhysicsPaintStudioView.tsx', import.meta.url));
-const topBarPath = fileURLToPath(new URL('./PhysicsPaintTopBar.tsx', import.meta.url));
+const topBarPath = fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx', import.meta.url));
 const stylePath = fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url));
 const defaultCapabilityPath = fileURLToPath(new URL('../../../src-tauri/capabilities/default.json', import.meta.url));
 const bridgePath = fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url));
@@ -40,12 +40,12 @@ const engineLifecyclePath = fileURLToPath(new URL('./engine/usePhysicsPaintEngin
 const sessionControllerPath = fileURLToPath(new URL('./hooks/usePhysicsPaintSessionController.ts', import.meta.url));
 const canvasMountPath = fileURLToPath(new URL('./engine/PhysicsPaintCanvasMount.tsx', import.meta.url));
 const onionPreviewPath = fileURLToPath(new URL('./roto/rotoOnionPreview.ts', import.meta.url));
-const studioSelectorsPath = fileURLToPath(new URL('./physicsPaintStudioSelectors.ts', import.meta.url));
+const studioSelectorsPath = fileURLToPath(new URL('./view/physicsPaintStudioSelectors.ts', import.meta.url));
 const playLimitToastPath = fileURLToPath(new URL('./hooks/usePlayLimitToast.ts', import.meta.url));
 const rotoNavigationActionsPath = fileURLToPath(new URL('./roto/rotoNavigationActions.ts', import.meta.url));
 const canvasSizingPath = fileURLToPath(new URL('./engine/physicsPaintCanvasSizing.ts', import.meta.url));
 const parentBridgePath = fileURLToPath(new URL('./bridge/usePhysicsPaintParentBridge.ts', import.meta.url));
-const launchContextPath = fileURLToPath(new URL('./physicsPaintLaunchContext.ts', import.meta.url));
+const launchContextPath = fileURLToPath(new URL('./bridge/physicsPaintLaunchContext.ts', import.meta.url));
 const bridgeTransportPath = fileURLToPath(new URL('./bridge/physicsPaintBridgeTransport.ts', import.meta.url));
 const rotoCanvasFramesPath = fileURLToPath(new URL('./roto/rotoCanvasFrames.ts', import.meta.url));
 const studioKeyboardPath = fileURLToPath(new URL('./view/physicsPaintStudioKeyboard.ts', import.meta.url));
@@ -530,7 +530,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     const text = source();
 
     const metadataSync = readFileSync(fileURLToPath(new URL('./hooks/useRotoBackgroundMetadataSync.ts', import.meta.url)), 'utf8');
-    const settings = readFileSync(fileURLToPath(new URL('./physicsPaintStudioSettings.ts', import.meta.url)), 'utf8');
+    const settings = readFileSync(fileURLToPath(new URL('./engine/physicsPaintStudioSettings.ts', import.meta.url)), 'utf8');
 
     expect(settings).toContain('export function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings): PhysicPaintRotoBackgroundMetadata');
     expect(metadataSync).toContain('physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, buildRotoBackgroundMetadata(settings))');
@@ -694,7 +694,7 @@ describe('PhysicsPaintStudio Play relaunch hydration contract', () => {
   it('restores saved Roto paper metadata from launch context without using Play render options', () => {
     const text = source();
 
-    const settings = readFileSync(fileURLToPath(new URL('./physicsPaintStudioSettings.ts', import.meta.url)), 'utf8');
+    const settings = readFileSync(fileURLToPath(new URL('./engine/physicsPaintStudioSettings.ts', import.meta.url)), 'utf8');
     const lifecycle = readFileSync(fileURLToPath(new URL('./engine/usePhysicsPaintEngineLifecycle.ts', import.meta.url)), 'utf8');
 
     expect(settings).toContain('export function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoBackgroundMetadata): PhysicsPaintStudioSettings');
@@ -877,7 +877,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
   it('updates selected Play options without rendering and clears cached preview only when options changed', () => {
     const updateBlock = playCoordinatorSource().slice(playCoordinatorSource().indexOf('const updateSelectedOptions = useCallback'), playCoordinatorSource().indexOf('const savePlay = useCallback'));
 
-    expect(readFileSync(fileURLToPath(new URL('./physicsPaintStudioSettings.ts', import.meta.url)), 'utf8')).toContain('export function buildPlayRenderOptionsSnapshot');
+    expect(readFileSync(fileURLToPath(new URL('./engine/physicsPaintStudioSettings.ts', import.meta.url)), 'utf8')).toContain('export function buildPlayRenderOptionsSnapshot');
     expect(bridgeSource()).toContain('playRenderOptions: structuredClone(containingRange.renderOptions)');
     expect(updateBlock).toContain("kind: 'update-play-render-options'");
     expect(updateBlock).toContain('buildPlayRenderOptionsSnapshot(input.settings, input.playWiggle)');

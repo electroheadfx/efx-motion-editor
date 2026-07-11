@@ -1,5 +1,5 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
-import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowState';
+import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 
 export interface PhysicsPaintTopBarProps {
   brushSize: number;

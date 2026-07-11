@@ -6,7 +6,7 @@ import {
   type RotoFarEmptyDisplaySaveTarget,
   type RotoInterpolationSettings,
   type RotoSegmentSpacingOverride,
-} from '../physicsPaintWorkflowState';
+} from './physicsPaintRotoWorkflow';
 
 export interface RotoSourceDisplayModel {
   realSourceFrames: number[];

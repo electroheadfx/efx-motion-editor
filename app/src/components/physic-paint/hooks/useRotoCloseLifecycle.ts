@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type MutableRef } from 'preact/hooks';
 import type { PhysicPaintApplyPayload } from '../../../types/physicPaint';
-import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
+import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
 export type RotoClosePromptState = 'idle' | 'prompt' | 'saving' | 'error';
 

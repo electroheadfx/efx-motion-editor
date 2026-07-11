@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { PhysicPaintLaunchContext } from '../../types/physicPaint';
-import { applyPhysicsPaintLaunchContext, getLaunchWorkflowMode, parsePhysicsPaintLaunchContext } from './physicsPaintLaunchContext';
+import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
+import { applyPhysicsPaintLaunchContext, getLaunchWorkflowMode, parsePhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
 
 function makeLocation(search: string, hash = ''): Location {
   return { search, hash } as Location;

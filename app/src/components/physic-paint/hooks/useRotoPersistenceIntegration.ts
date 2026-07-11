@@ -5,7 +5,7 @@ import { physicPaintStore } from '../../../stores/physicPaintStore';
 import type { RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
 import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import { mergeCachedRotoAlphaFrame } from '../roto/physicsPaintRotoAlphaMerge';
-import { buildRotoBackgroundMetadata, type PhysicsPaintStudioSettings } from '../physicsPaintStudioSettings';
+import { buildRotoBackgroundMetadata, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { sendPhysicPaintApplyPayload, sendPhysicPaintFrameSyncMessage } from '../bridge/physicsPaintBridgeTransport';
 import { buildRotoOutputFrame, exportTransparentStrokeCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { isBackgroundOnlyRotoFrame, type RotoEditableState } from '../roto/rotoSaveTransactions';

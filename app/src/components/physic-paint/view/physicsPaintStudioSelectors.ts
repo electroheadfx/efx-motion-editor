@@ -1,7 +1,7 @@
-import type { PhysicPaintRenderedFrame } from '../../types/physicPaint';
-import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
-import type { PhysicsPaintBridgeMode } from './bridge/usePhysicsPaintParentBridge';
-import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
+import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { clampPhysicPaintFrameCount } from '../../../types/physicPaint';
+import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
+import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowPresentation';
 
 export type PhysicsPaintApplyReadinessInput = {
   engineReady: boolean;

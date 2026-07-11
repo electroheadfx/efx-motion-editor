@@ -1,7 +1,7 @@
 import { useCallback } from 'preact/hooks';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import type { Dispatch, StateUpdater } from 'preact/hooks';
-import type { PhysicsPaintStudioSettings } from '../physicsPaintStudioSettings';
+import type { PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 
 export function usePhysicsPaintEngineActions(input: {
   engine: EfxPaintEngine | null;

@@ -3,7 +3,7 @@ import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { addOccupiedRotoFrame, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { removeCachedRotoCacheFrame, upsertCachedRotoCacheFrame } from '../roto/rotoCacheTransactions';
-import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
+import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { useRotoEditBufferController } from './useRotoEditBufferController';
 import { useRotoReferenceController } from './useRotoReferenceController';
 

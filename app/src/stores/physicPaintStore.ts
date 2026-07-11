@@ -2,7 +2,7 @@ import { signal } from '@preact/signals';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMotionSettings, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintPlayScriptRange, PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings, PhysicPaintWorkflowMetadata } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, normalizePhysicPaintPlayScriptRanges, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
-import { getExpandedRotoRealKeyFrames, inferRotoSegmentSpacingOverrides } from '../components/physic-paint/physicsPaintWorkflowState';
+import { getExpandedRotoRealKeyFrames, inferRotoSegmentSpacingOverrides } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 
 let _markProjectDirty: (() => void) | null = null;

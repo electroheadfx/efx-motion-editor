@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, type PhysicPaintRenderedFrame } from '../../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, type PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import {
   PHYSICS_PAINT_DEBUG_EXPORT_KIND,
   buildPhysicsPaintDebugManifest,

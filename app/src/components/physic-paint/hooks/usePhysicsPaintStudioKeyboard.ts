@@ -1,5 +1,5 @@
 import { useCallback } from 'preact/hooks';
-import type { PhysicsPaintWorkflowStripFrameMarker } from '../PhysicsPaintWorkflowStrip';
+import type { PhysicsPaintWorkflowStripFrameMarker } from '../view/PhysicsPaintWorkflowStrip';
 import {
   dispatchPhysicsPaintStudioKeyDown,
   type PhysicsPaintStudioKeyboardActions,

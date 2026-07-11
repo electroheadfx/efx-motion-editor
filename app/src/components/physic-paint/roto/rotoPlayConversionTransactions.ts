@@ -7,7 +7,7 @@ import type {
   PhysicPaintRenderedFrame,
 } from '../../../types/physicPaint';
 import { clampPhysicPaintFrameCount } from '../../../types/physicPaint';
-import { PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE } from '../physicsPaintWorkflowState';
+import { PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE } from '../play/physicsPaintPlayWorkflow';
 
 export interface PlayToRotoConversionPlan {
   type: 'convert';

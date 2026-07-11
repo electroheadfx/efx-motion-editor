@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { buildRotoKeyUtilityTransaction } from './physicsPaintRotoKeyController';
 import { createRotoSession, type RotoSessionEffect } from './physicsPaintRotoSession';
-import { resolveRotoFarEmptyDisplaySaveTarget } from '../physicsPaintWorkflowState';
+import { resolveRotoFarEmptyDisplaySaveTarget } from './physicsPaintRotoWorkflow';
 
 function frame(appFrame: number, dataUrl: string, source: PhysicPaintRotoCacheFrame['source'] = 'real-key'): PhysicPaintRotoCacheFrame {
   return {

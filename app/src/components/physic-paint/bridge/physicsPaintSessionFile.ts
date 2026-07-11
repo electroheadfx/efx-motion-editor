@@ -1,7 +1,7 @@
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
-import { isSerializedProject } from '../../types/physicPaint';
+import { isSerializedProject } from '../../../types/physicPaint';
 
 export const SAVE_STATE_SUCCESS_COPY = 'Saved editable JSON state.';
 export const SAVE_STATE_CANCELLED_COPY = 'Save state cancelled.';

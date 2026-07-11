@@ -1,7 +1,7 @@
 import { useCallback, useEffect, type MutableRef } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
-import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
+import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { buildBlankRotoFrame, buildRotoFrameFromCanvas, exportTransparentStrokeCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { shouldPersistRotoFrame, type RotoEditableState } from '../roto/rotoSaveTransactions';
 

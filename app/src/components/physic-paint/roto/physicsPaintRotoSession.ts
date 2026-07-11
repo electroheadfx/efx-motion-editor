@@ -8,7 +8,7 @@ import {
   type RotoKeyUtilityOperation,
   type RotoKeyUtilityTransaction,
 } from '../roto/physicsPaintRotoKeyController';
-import { getRotoReplacementSuccessLabel } from '../physicsPaintWorkflowState';
+import { getRotoReplacementSuccessLabel } from '../view/physicsPaintWorkflowPresentation';
 
 export type RotoSessionActionName = 'duplicateKey' | 'insertBlankKey' | 'deleteKey' | 'copyKey' | 'pasteKey' | 'requestFrame' | 'markDirty' | 'markCachedBaseLoaded' | 'markLiveOverlayDirty' | 'markLiveOverlayEmpty' | 'onSaveSucceeded' | 'onSaveFailed';
 export type RotoSessionSaveReason = 'beforeNavigate' | 'beforeAction';

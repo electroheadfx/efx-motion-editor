@@ -1,5 +1,5 @@
-import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
-import type { PhysicsPaintWorkflowStripFrameMarker } from '../PhysicsPaintWorkflowStrip';
+import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowPresentation';
+import type { PhysicsPaintWorkflowStripFrameMarker } from './PhysicsPaintWorkflowStrip';
 
 export interface PhysicsPaintStudioKeyboardState {
   currentFrame: number;

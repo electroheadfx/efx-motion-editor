@@ -2,11 +2,11 @@ import { useCallback } from 'preact/hooks';
 import type { Dispatch, StateUpdater } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
-import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport, type PhysicsPaintDebugManifest, type PhysicsPaintStillExport } from '../physicsPaintDevExport';
+import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport, type PhysicsPaintDebugManifest, type PhysicsPaintStillExport } from '../engine/physicsPaintDevExport';
 import { resizePhysicsPaintState } from '../engine/physicsPaintCanvasSizing';
-import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from '../physicsPaintSessionFile';
+import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from '../bridge/physicsPaintSessionFile';
 import { getPlayFrameCountFromAssignments, getPlayFrameEditAssignments } from '../play/playFrameTransactions';
-import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
+import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
 type EditableState = ReturnType<EfxPaintEngine['save']>;
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';

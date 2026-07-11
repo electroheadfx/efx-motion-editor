@@ -3,26 +3,18 @@ import { Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Ro
 // Source contract: a one-frame Play gap opened at frame 11 yields buildPlayFrameCells(11, 1) === [11].
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
-  PHYSIC_PAINT_DEFAULT_APPLY_FRAMES,
-  PHYSIC_PAINT_MAX_APPLY_FRAMES,
-  PHYSIC_PAINT_MIN_APPLY_FRAMES,
-  PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE,
-  getPhysicsPaintSourceLabel,
-  getPlayRangeMarker,
-  getExpandedRotoRealKeyFrames,
-  getRotoCellFill,
-  getRotoCellViewModel,
-  getRotoInterpolationSpanFrames,
-  getRotoPendingLabel,
-  getMissingRotoFrameStatusLabel,
-  type PhysicsPaintOnionState,
-  type PhysicsPaintWorkflowMode,
-  type RotoCellViewModel,
-  type RotoInterpolationSettings,
-  type RotoMissingFrameStatusKind,
-} from './physicsPaintWorkflowState';
-import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
-import type { RotoKeyUtilityActionState } from './roto/physicsPaintRotoKeyController';
+  getPhysicsPaintSourceLabel, getRotoCellFill, getRotoCellViewModel,
+  getRotoPendingLabel, getMissingRotoFrameStatusLabel,
+  type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode,
+  type RotoCellViewModel, type RotoMissingFrameStatusKind,
+} from './physicsPaintWorkflowPresentation';
+import { PLAY_TO_ROTO_MISSING_FRAMES_MESSAGE, getPlayRangeMarker } from '../play/physicsPaintPlayWorkflow';
+import {
+  PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_MIN_APPLY_FRAMES,
+  getExpandedRotoRealKeyFrames, getRotoInterpolationSpanFrames, type RotoInterpolationSettings,
+} from '../roto/physicsPaintRotoWorkflow';
+import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 
 const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';

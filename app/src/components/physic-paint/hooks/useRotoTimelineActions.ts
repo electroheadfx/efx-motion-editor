@@ -1,6 +1,6 @@
 import { useCallback } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import { getSourceRotoFrameForDisplayFrame } from '../physicsPaintWorkflowState';
+import { getSourceRotoFrameForDisplayFrame } from '../roto/physicsPaintRotoWorkflow';
 import { saveRotoRealKeyTransaction, updateRotoInterpolationSettingsTransaction } from '../roto/rotoKeyTransactions';
 import type { RotoSourceDisplayModel } from '../roto/rotoSourceDisplayModel';
 

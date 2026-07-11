@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
+import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 
 const MIN_ROTO_PLAYBACK_FPS = 1;
 const MAX_ROTO_PLAYBACK_FPS = 60;

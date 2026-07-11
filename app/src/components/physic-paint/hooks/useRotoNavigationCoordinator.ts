@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'preact/hooks';
-import type { PhysicsPaintWorkflowStripFrameMarker } from '../PhysicsPaintWorkflowStrip';
-import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
+import type { PhysicsPaintWorkflowStripFrameMarker } from '../view/PhysicsPaintWorkflowStrip';
+import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import type { RotoSessionActionResult } from '../roto/physicsPaintRotoSession';
 import { createRotoFrameDisplayPort, createRotoKeyPersistencePort } from '../roto/rotoCoordinatorPorts';
 import { createRotoNavigationActions, getRotoNavigationTargets } from '../roto/rotoNavigationActions';

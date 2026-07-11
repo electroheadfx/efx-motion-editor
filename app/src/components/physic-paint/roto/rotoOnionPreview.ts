@@ -1,6 +1,6 @@
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
-import { clampOnionCount, type PhysicsPaintOnionState } from '../physicsPaintWorkflowState';
-import type { PhysicsPaintWorkflowOnionPreviewFrame } from '../PhysicsPaintWorkflowStrip';
+import { clampOnionCount, type PhysicsPaintOnionState } from '../view/physicsPaintWorkflowPresentation';
+import type { PhysicsPaintWorkflowOnionPreviewFrame } from '../view/PhysicsPaintWorkflowStrip';
 
 export type RotoOnionFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionDataUrl' | 'source'>>;
 

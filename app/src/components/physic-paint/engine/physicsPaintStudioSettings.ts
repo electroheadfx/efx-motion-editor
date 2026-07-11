@@ -1,7 +1,7 @@
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../types/physicPaint';
-import { normalizePlayWiggle } from './play/playFrameTransactions';
+import type { PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import { normalizePlayWiggle } from '../play/playFrameTransactions';
 
 export type PhysicsPaintStudioSettings = {
   tool: ToolType;
