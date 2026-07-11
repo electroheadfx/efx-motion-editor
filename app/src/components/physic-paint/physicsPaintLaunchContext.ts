@@ -2,7 +2,7 @@ import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintLaunchContext } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, isPhysicPaintLaunchContext } from '../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
-import { getLaunchPlayPreviewFrame, normalizePlayWiggle } from './playFrameTransactions';
+import { getLaunchPlayPreviewFrame, normalizePlayWiggle } from './play/playFrameTransactions';
 
 export interface PhysicsPaintLaunchStateSetters<Settings> {
   setLaunchContext: (context: PhysicPaintLaunchContext) => void;

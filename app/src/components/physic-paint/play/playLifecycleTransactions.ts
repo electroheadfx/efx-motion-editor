@@ -1,6 +1,6 @@
 import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRenderedFrame } from '../../types/physicPaint';
-import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
+import type { PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { clampPhysicPaintFrameCount } from '../../../types/physicPaint';
 import { getActivePlayStartFrame, normalizePlayWiggle } from './playFrameTransactions';
 
 export function resolvePlayFrameCountUpdate(input: {

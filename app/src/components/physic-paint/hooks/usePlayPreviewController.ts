@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import { AnimationPlayer, type AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintRenderedFrame } from '../../types/physicPaint';
-import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
+import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { clampPhysicPaintFrameCount } from '../../../types/physicPaint';
 
 type PreviewEngine = EfxPaintEngine & { resetBackground: () => void };
 type PlayState = ReturnType<EfxPaintEngine['save']>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot } from '../../types/physicPaint';
+import type { PhysicPaintLaunchContext, PhysicPaintPlayRenderOptionsSnapshot } from '../../../types/physicPaint';
 import { applyRenderedPlayCache, markPlayLaunchCacheStale, resolvePlayFrameCountUpdate, resolvePlayOptionsUpdate } from './playLifecycleTransactions';
 
 const renderOptions: PhysicPaintPlayRenderOptionsSnapshot = {

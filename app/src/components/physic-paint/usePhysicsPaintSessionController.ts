@@ -5,7 +5,7 @@ import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../t
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport, type PhysicsPaintDebugManifest, type PhysicsPaintStillExport } from './physicsPaintDevExport';
 import { resizePhysicsPaintState } from './physicsPaintCanvasSizing';
 import { downloadPhysicsPaintState, parsePhysicsPaintStateFile } from './physicsPaintSessionFile';
-import { getPlayFrameCountFromAssignments, getPlayFrameEditAssignments } from './playFrameTransactions';
+import { getPlayFrameCountFromAssignments, getPlayFrameEditAssignments } from './play/playFrameTransactions';
 import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
 
 type EditableState = ReturnType<EfxPaintEngine['save']>;

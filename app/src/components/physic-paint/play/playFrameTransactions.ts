@@ -1,6 +1,6 @@
 import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../types/physicPaint';
-import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount } from '../../types/physicPaint';
+import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount } from '../../../types/physicPaint';
 
 export type PlayFrameState = {
   strokes: Array<{ playFrame?: number }>;

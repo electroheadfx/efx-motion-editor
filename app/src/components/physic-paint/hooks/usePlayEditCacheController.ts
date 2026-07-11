@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../types/physicPaint';
-import { clampPhysicPaintFrameCount } from '../../types/physicPaint';
-import type { PhysicsPaintWorkflowMode } from './physicsPaintWorkflowState';
-import { annotatePlayFrameStrokes, findCachedPlayFrame, getCachedPlayFramesForRange, getLaunchPlayPreviewFrame } from './playFrameTransactions';
+import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { clampPhysicPaintFrameCount } from '../../../types/physicPaint';
+import type { PhysicsPaintWorkflowMode } from '../physicsPaintWorkflowState';
+import { annotatePlayFrameStrokes, findCachedPlayFrame, getCachedPlayFramesForRange, getLaunchPlayPreviewFrame } from '../play/playFrameTransactions';
 
 type PreviewBackgroundEngine = EfxPaintEngine & {
   setBackgroundImageUrl: (dataUrl: string) => void;

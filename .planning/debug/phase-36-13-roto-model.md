@@ -1162,3 +1162,55 @@ Rule: no more Roto dynamic-spacing patches inside broad `PhysicsPaintStudio.tsx`
 ### Next suggested slice
 - Extract Play edit/cache, preview/render, persistence, and Play-facing session orchestration behind a focused coordinator with narrow ports.
 - Move touched Play modules into `play/` and thin adapters into `hooks/` without creating a replacement monolith.
+
+## 2026-07-11 — Cluster: extract Play coordinator
+
+### Selected cluster
+- Ownership moved: Play edit/cache and preview controller composition, frame-count and wiggle updates, selected Play option persistence, Play render/apply, cached-preview synchronization, and Play cache/conversion derivations.
+- From: Play orchestration blocks in `PhysicsPaintStudio.tsx`.
+- To: bounded `hooks/usePhysicsPaintPlayCoordinator.ts` with explicit apply-lifecycle and bridge ports.
+- Pure Play transactions moved into `play/`; thin Play adapters and the toast hook moved into `hooks/` as their ownership was touched.
+
+### Why this is safe
+- Existing edit annotation, cached-preview precedence, animation playback/rendering, payload construction, apply timeout registration, cache invalidation, and error copy are preserved.
+- Cross-workflow Play/Roto conversion and generic session import/export remain outside the Play coordinator.
+- The only coordinator effect is the existing cached-preview synchronization with the external engine; no internal Roto repair effect was added.
+- The coordinator is 209 lines and does not replace Studio with a mega-hook.
+
+### Ownership removed from Studio
+- Removed direct `usePlayEditCacheController` and `usePlayPreviewController` composition.
+- Removed Studio-local Play frame-count, wiggle, option-update, save/render, cached-preview synchronization, and Play cache status/conversion derivation blocks.
+- Studio consumes one focused Play state/action boundary while retaining cross-workflow wiring.
+
+### Files changed in this cluster
+- `app/src/components/physic-paint/hooks/usePhysicsPaintPlayCoordinator.ts`
+- `app/src/components/physic-paint/hooks/usePlayEditCacheController.ts`
+- `app/src/components/physic-paint/hooks/usePlayPreviewController.ts`
+- `app/src/components/physic-paint/hooks/usePlayLimitToast.ts`
+- `app/src/components/physic-paint/play/playFrameTransactions.ts`
+- `app/src/components/physic-paint/play/playFrameTransactions.test.ts`
+- `app/src/components/physic-paint/play/playLifecycleTransactions.ts`
+- `app/src/components/physic-paint/play/playLifecycleTransactions.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx`
+- `app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `app/src/components/physic-paint/PhysicsPaintWorkflowStrip.test.ts`
+- `app/src/components/physic-paint/physicsPaintLaunchContext.ts`
+- `app/src/components/physic-paint/physicsPaintStudioSettings.ts`
+- `app/src/components/physic-paint/usePhysicsPaintSessionController.ts`
+- `.planning/debug/phase-36-13-roto-model.md`
+
+### Line-count update
+- `PhysicsPaintStudio.tsx` before: 1282 lines.
+- `PhysicsPaintStudio.tsx` after: 1100 lines.
+- Cluster delta: -182 lines.
+- `hooks/usePhysicsPaintPlayCoordinator.ts`: 209 lines.
+- Original Debug 01 baseline: 3204 lines; cumulative Studio reduction: 2104 lines.
+
+### Tests run
+- Focused Play transaction, Studio, and WorkflowStrip tests passed with 148 tests across 4 files.
+- Typecheck passed.
+- `git diff --check` passed.
+
+### Next suggested slice
+- Extract Roto edit-buffer, snapshot/cache mutation, save/apply-result, and close persistence orchestration into a separate persistence coordinator with narrow navigation/session ports.
+- Move touched Roto pure modules into `roto/` and thin lifecycle adapters into `hooks/` without absorbing key/navigation policy.

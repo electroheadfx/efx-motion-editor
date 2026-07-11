@@ -7,6 +7,7 @@ const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPain
 const rightPanelSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintRightPanel.tsx');
 const studioSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudio.tsx');
 const studioViewSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintStudioView.tsx');
+const playCoordinatorSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'hooks/usePhysicsPaintPlayCoordinator.ts');
 const workflowStateSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintWorkflowState.ts');
 const rotoSessionSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintRotoSession.ts');
 const rotoCacheTransactionsSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'rotoCacheTransactions.ts');
@@ -17,7 +18,7 @@ const rotoCanvasFramesSourcePath = resolve(dirname(fileURLToPath(import.meta.url
 const source = () => readFileSync(sourcePath, 'utf8');
 const rightPanelSource = () => readFileSync(rightPanelSourcePath, 'utf8');
 const studioSource = () => {
-  const raw = `${readFileSync(studioSourcePath, 'utf8')}\n${readFileSync(studioViewSourcePath, 'utf8')}`;
+  const raw = `${readFileSync(studioSourcePath, 'utf8')}\n${readFileSync(studioViewSourcePath, 'utf8')}\n${readFileSync(playCoordinatorSourcePath, 'utf8')}`;
   const normalizedProps = raw
     .replace(/\b([A-Za-z]\w*): ([^,\n]+)/g, '$1={$2}')
     .replace(/\b([A-Za-z]\w*),/g, '$1={$1}');
@@ -540,7 +541,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studioCode).toContain('const [playWiggle, setPlayWiggle]');
     expect(studioCode).toContain('playWiggle={playWiggle}');
     expect(studioCode).toContain('onPlayWiggleChange={updatePlayWiggle}');
-    expect(studioCode).toContain('wiggle: playWiggle');
+    expect(studioCode).toContain('wiggle: input.playWiggle');
   });
 
   it('clamps Play frame count input to maxPlayFrameCount in the animation panel', () => {
@@ -602,8 +603,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
   it('builds canvas onion previews from Roto sources and does not reuse saved Play frames as yellow overlays', () => {
     const code = studioSource();
     const builderBlock = readFileSync(fileURLToPath(new URL('./rotoOnionPreview.ts', import.meta.url)), 'utf8');
-    const savePlayIndex = code.indexOf('const savePlay = useCallback');
-    const savePlayBlock = code.slice(savePlayIndex, savePlayIndex + 3600);
+    const coordinator = readFileSync(playCoordinatorSourcePath, 'utf8');
+    const savePlayIndex = coordinator.indexOf('const savePlay = useCallback');
+    const savePlayBlock = coordinator.slice(savePlayIndex, savePlayIndex + 4200);
 
     expect(code).toContain('rotoFrameStatesRef');
     expect(code).toContain('rotoPreviewFramesRef');
@@ -622,7 +624,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(builderBlock).not.toContain('latestPlayFrames.forEach');
     expect(builderBlock).not.toContain("addFrame(frame, 'play')");
     expect(builderBlock).not.toContain('physicPaintStore.getFrames');
-    expect(savePlayBlock).toContain('setLatestPlayFrames(frames)');
+    expect(savePlayBlock).toContain('editCache.setLatestFrames(frames)');
   });
 
   it('renders gray, green, and pink Roto cells from real-key cache metadata only (D-03, D-11 through D-16)', () => {
