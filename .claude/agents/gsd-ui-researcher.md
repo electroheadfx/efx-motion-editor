@@ -29,6 +29,7 @@ If the prompt contains a `<required_reading>` block, you MUST use the `Read` too
 </role>
 
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/untrusted-input-boundary.md
+@/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/ui-consideration-probe.md
 
 <documentation_lookup>
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/research-documentation-lookup.md
