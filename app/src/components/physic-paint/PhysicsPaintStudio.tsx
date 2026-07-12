@@ -57,7 +57,7 @@ export function PhysicsPaintStudio() {
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [onion, setOnion] = useState<PhysicsPaintOnionState>(DEFAULT_ONION_STATE);
   const [playWiggle, setPlayWiggle] = useState<AnimationWiggleConfig>(() => normalizePlayWiggle(launchContext?.playMotion ?? DEFAULT_PLAY_WIGGLE));
-  const resetRotoKeySessionRef = useRef<() => void>(() => {});
+  const resetRotoKeySessionRef = useRef<(options?: { clearClipboard?: boolean }) => void>(() => {});
   const rotoPersistence = useRotoFramePersistenceCoordinator({
     workflowMode,
     backgroundMode: settings.background,
@@ -94,7 +94,7 @@ export function PhysicsPaintStudio() {
   const rotoFlushInFlightRef = useRef<Promise<PhysicPaintApplyPayload | null> | null>(null);
   const resetRotoNavigationForLaunchRef = useRef<() => void>(() => {});
   const syncPendingRotoFrames = useCallback(() => {
-    resetRotoKeySessionRef.current();
+    resetRotoKeySessionRef.current({ clearClipboard: false });
   }, []);
   const { activeOperationIdRef, pendingApplyRef, closeAfterApplyOperationIdRef, closeAfterRotoSaveRequestedRef, pendingRotoAdvanceRef, saveOnLeaveSourceFrameRef, registerPendingApply, clearActiveApply, matchApplyResult, startApplyTimeout } = useRotoApplyLifecycle({
     onTimeout: (transition) => {

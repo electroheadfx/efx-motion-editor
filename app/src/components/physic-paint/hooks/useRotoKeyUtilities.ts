@@ -43,7 +43,7 @@ export interface RotoKeyUtilitiesInput<TEditable, TPreview extends { appFrame: n
 export interface RotoKeyUtilities {
   session: RotoSession;
   keyActionInFlight: boolean;
-  resetSession: () => void;
+  resetSession: (options?: { clearClipboard?: boolean }) => void;
   executeSessionEffects: (effects: readonly RotoSessionEffect[]) => Promise<void>;
   runSessionResult: (result: RotoSessionActionResult, sourceSession?: RotoSession) => Promise<void>;
   duplicateKey: () => void;
@@ -89,9 +89,11 @@ export function useRotoKeyUtilities<TEditable, TPreview extends { appFrame: numb
     sessionVersion,
   ]);
 
-  const resetSession = useCallback(() => {
-    copiedKeyRef.current = null;
-    copiedEditableStateRef.current = null;
+  const resetSession = useCallback((options?: { clearClipboard?: boolean }) => {
+    if (options?.clearClipboard !== false) {
+      copiedKeyRef.current = null;
+      copiedEditableStateRef.current = null;
+    }
     setSessionVersion((version) => version + 1);
   }, []);
 
@@ -127,7 +129,17 @@ export function useRotoKeyUtilities<TEditable, TPreview extends { appFrame: numb
         case 'replaceKeys':
           applyTransaction(effect.transaction);
           replacedRotoKeys = true;
-          await input.persistRotoKeyFrameTransaction(effect.transaction);
+          if (effect.transaction.operation === 'paste' || effect.transaction.operation === 'delete') {
+            void input.persistRotoKeyFrameTransaction(effect.transaction).catch((error) => {
+              const detail = error instanceof Error ? error.message : String(error);
+              const message = `Could not persist Roto key changes. ${detail}`;
+              input.setApplyStatus('error');
+              input.setApplyMessage(message);
+              input.setLastError(message);
+            });
+          } else {
+            await input.persistRotoKeyFrameTransaction(effect.transaction);
+          }
           break;
         case 'restoreFrame':
           input.restoreFrame(effect);
@@ -172,7 +184,10 @@ export function useRotoKeyUtilities<TEditable, TPreview extends { appFrame: numb
       input.setLastError(null);
       input.setDirtyFrames(new Set(sourceSession.dirtyFrames.value));
       copiedKeyRef.current = sourceSession.copiedKey.value;
-      if (hasSessionEffects) input.syncPendingRotoFrames();
+      if (hasSessionEffects) {
+        input.syncPendingRotoFrames();
+        setSessionVersion((version) => version + 1);
+      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       const message = `Could not complete Roto session action. ${detail}`;

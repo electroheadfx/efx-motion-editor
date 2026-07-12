@@ -36,25 +36,31 @@ export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context
     let unlisten: (() => void) | undefined;
     const installLaunchListener = async () => {
       try {
+        let launchEventReceived = false;
+        const eventApi = await import('@tauri-apps/api/event');
+        if (typeof eventApi.listen === 'function') {
+          unlisten = await eventApi.listen(PHYSIC_PAINT_LAUNCH_EVENT, (event) => {
+            if (isPhysicPaintLaunchContext(event.payload)) {
+              launchEventReceived = true;
+              console.info('[PhysicsPaintStudio] launch context received', event.payload);
+              applyIncomingLaunchContextRef.current(event.payload);
+            } else {
+              console.warn('[PhysicsPaintStudio] invalid launch context', event.payload);
+            }
+          });
+          if (disposed) {
+            unlisten?.();
+            return;
+          }
+        }
         const coreApi = await import('@tauri-apps/api/core');
         if (typeof coreApi.invoke === 'function') {
           const storedContext = await coreApi.invoke('get_physics_paint_launch_context');
-          if (!disposed && isPhysicPaintLaunchContext(storedContext)) {
+          if (!disposed && !launchEventReceived && isPhysicPaintLaunchContext(storedContext)) {
             console.info('[PhysicsPaintStudio] launch context fetched', storedContext);
             applyIncomingLaunchContextRef.current(storedContext);
           }
         }
-        const eventApi = await import('@tauri-apps/api/event');
-        if (typeof eventApi.listen !== 'function') return;
-        unlisten = await eventApi.listen(PHYSIC_PAINT_LAUNCH_EVENT, (event) => {
-          if (isPhysicPaintLaunchContext(event.payload)) {
-            console.info('[PhysicsPaintStudio] launch context received', event.payload);
-            applyIncomingLaunchContextRef.current(event.payload);
-          } else {
-            console.warn('[PhysicsPaintStudio] invalid launch context', event.payload);
-          }
-        });
-        if (disposed) unlisten?.();
       } catch (error) {
         console.warn('[PhysicsPaintStudio] Tauri launch listener unavailable', error);
       }

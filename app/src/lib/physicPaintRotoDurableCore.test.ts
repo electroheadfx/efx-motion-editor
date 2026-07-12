@@ -1,4 +1,5 @@
 import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
 import { useState } from 'preact/hooks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
@@ -7,7 +8,7 @@ import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from '../stores/physicPaintStore';
-import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoInterpolationSettings } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../types/physicPaint';
 import type { McePhysicPaintOutput, RuntimePhysicPaintOutput } from '../types/project';
 import { useRotoKeyUtilities, type RotoKeyUtilities } from '../components/physic-paint/hooks/useRotoKeyUtilities';
 import { PhysicsPaintWorkflowStrip } from '../components/physic-paint/view/PhysicsPaintWorkflowStrip';
@@ -27,6 +28,7 @@ const fsMock = vi.hoisted(() => ({
 const paintHarness = vi.hoisted(() => ({
   engine: null as TestPaintEngine | null,
   storedLaunchContext: null as PhysicPaintLaunchContext | null,
+  storedLaunchContextPromise: null as Promise<PhysicPaintLaunchContext | null> | null,
   launchListeners: [] as Array<(event: { payload: unknown }) => void>,
 }));
 
@@ -60,7 +62,9 @@ vi.mock('@tauri-apps/api/event', () => ({
   }),
 }));
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(async (command: string) => command === 'get_physics_paint_launch_context' ? paintHarness.storedLaunchContext : null),
+  invoke: vi.fn(async (command: string) => command === 'get_physics_paint_launch_context'
+    ? paintHarness.storedLaunchContextPromise ?? paintHarness.storedLaunchContext
+    : null),
   isTauri: vi.fn(() => false),
 }));
 vi.mock('@tauri-apps/api/window', () => ({
@@ -541,6 +545,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     physicPaintStore.reset();
     paintHarness.engine = makeEngine(editableState, savedDataUrl);
     paintHarness.storedLaunchContext = null;
+    paintHarness.storedLaunchContextPromise = null;
     paintHarness.launchListeners = [];
     mockLayers([physicLayer()]);
   });
@@ -552,6 +557,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     physicPaintStore.reset();
     paintHarness.engine = null;
     paintHarness.storedLaunchContext = null;
+    paintHarness.storedLaunchContextPromise = null;
     paintHarness.launchListeners = [];
   });
 
@@ -864,6 +870,220 @@ describe('Phase 36.3 durable Roto cache core', () => {
     });
     expect(reopenedTimeline.model.realSourceFrames).toEqual([0, 1, 2, 3, targetFrame]);
     expect(reopenedTimeline.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, targetFrame]);
+  });
+
+  it('refreshes rendered Copy and Delete availability immediately after Paste and Delete without awaiting persistence completion', async () => {
+    installDom('', () => {});
+    const copiedPaint = pngDataUrl('debug-05-post-paste-copy');
+    const initialFrames = [0, 1, 2, 3].map((frame) => ({
+      frameIndex: 0,
+      appFrame: frame,
+      sourceFrame: frame,
+      displayFrame: frame,
+      source: 'real-key' as const,
+      dataUrl: frame === 3 ? copiedPaint : pngDataUrl(`debug-05-post-paste-${frame}`),
+      width: 1000,
+      height: 650,
+    }));
+    const settings: PhysicPaintRotoInterpolationSettings = { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 };
+    let resolvePersistence!: () => void;
+    const persistencePending = new Promise<void>((resolve) => { resolvePersistence = resolve; });
+    const probeState: { utilities: RotoKeyUtilities | null } = { utilities: null };
+
+    function Probe() {
+      const [currentFrame, setCurrentFrame] = useState(9);
+      const [cacheFrames, setCacheFrames] = useState<PhysicPaintRotoCacheFrame[]>(initialFrames);
+      const view = selectRotoTimelineView({ cachedRotoFrames: cacheFrames, currentFrame, interpolationSettings: settings });
+      const projectedFrames = selectProjectedRealCachedRotoFrames(cacheFrames, view.projection);
+      probeState.utilities = useRotoKeyUtilities({
+        currentFrame,
+        realKeyFrames: projectedFrames,
+        cachedRotoFrames: cacheFrames,
+        dirtyFrames: new Set(),
+        canvasSize: { width: 1000, height: 650 },
+        applyStatus: 'idle',
+        flushInFlight: false,
+        buildBlankRotoFrame: (frame) => ({ ...buildBlankRotoFrame(1000, 650, frame), source: 'real-key' }),
+        resolveSourceFrameForDisplayFrame: (displayFrame) => view.projection.realKeys.find((key) => key.displayFrame === displayFrame)?.sourceFrame ?? displayFrame,
+        resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoRealKeySaveTarget(view.model, displayFrame),
+        segmentSpacingOverrides: settings.segmentSpacingOverrides,
+        getEditableStates: () => new Map(), setEditableStates: () => {}, getPreviewFrames: () => new Map(), setPreviewFrames: () => {},
+        getEditableState: () => null, setDirtyFrames: () => {}, syncPendingRotoFrames: () => {},
+        syncRotoKeyFrameLists: (frames) => { if (frames) setCacheFrames([...frames]); },
+        applyRotoKeyFrames: (transaction) => transaction.realKeyFrames,
+        persistRotoKeyFrameTransaction: () => persistencePending,
+        handleSaveFrameEffect: async () => true, restoreFrame: () => {}, clearCanvas: () => {}, showCachedReference: () => {},
+        navigate: async (frame) => { setCurrentFrame(frame); }, clearGeneratedFrame: () => {}, clearCachedReferenceFrame: () => {}, clearDeletedFrame: () => {},
+        setApplyMessage: () => {}, setApplyStatus: () => {}, setLastError: () => {}, snapshotCurrentRotoFrame: () => {}, setRotoSavingFrame: () => {},
+      });
+      const availability = probeState.utilities.session.actionAvailability.value;
+      return h(PhysicsPaintWorkflowStrip, {
+        mode: 'roto', currentFrame, startFrame: 0, frameCount: 1, isPlaying: false, ready: true,
+        occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame), savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
+        cachedRotoFrames: projectedFrames, editableRotoFrames: [], pendingRotoFrames: [], rotoInterpolationSettings: settings,
+        onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
+        onCopyRotoFrame: probeState.utilities.copyKey, onPasteRotoFrame: probeState.utilities.pasteKey,
+        onDeleteRotoFrame: probeState.utilities.deleteKey, hasCopiedRotoKey: probeState.utilities.session.copiedKey.value !== null,
+        rotoKeyState: { actionAvailability: availability, hasCopiedRotoKey: probeState.utilities.session.copiedKey.value !== null },
+        onSaveRotoFrame: () => {}, onSavePendingRotoFrames: () => {}, onSavePlay: () => {}, onFrameCountChange: () => {}, onPlayPreview: () => {}, onStopPreview: () => {},
+        onNavigateToSyncedFrame: setCurrentFrame, onGoToFirstFrame: () => {}, onGoToPreviousFrame: () => {}, onGoToNextFrame: () => {}, onGoToLastFrame: () => {},
+        onInspectPlayFrame: () => {}, onOnionChange: () => {},
+      });
+    }
+
+    const root = new TestElement('div');
+    render(h(Probe, {}), root as unknown as Element);
+    await flushPreact();
+    fire(findButton(root, 'Copy Roto key at frame 9')!, 'Click');
+    await flushPreact();
+    fire(findRotoCell(root, 12)!, 'Click');
+    await flushPreact();
+    fire(findButton(root, 'Paste Roto key to frame 12')!, 'Click');
+    await flushPreact();
+
+    fire(findRotoCell(root, 9)!, 'Click');
+    await flushPreact();
+    expect(findButton(root, 'Copy Roto key at frame 9')?.getAttribute('disabled')).toBeNull();
+    expect(findButton(root, 'Delete Roto key at frame 9')?.getAttribute('disabled')).toBeNull();
+    fire(findRotoCell(root, 8)!, 'Click');
+    await flushPreact();
+    expect(findButton(root, 'Copy Roto key at frame 8')?.getAttribute('disabled')).not.toBeNull();
+    expect(findButton(root, 'Delete Roto key at frame 8')?.getAttribute('disabled')).not.toBeNull();
+    fire(findRotoCell(root, 15)!, 'Click');
+    await flushPreact();
+    expect(findButton(root, 'Paste Roto key to frame 15')?.getAttribute('disabled')).toBeNull();
+
+    fire(findRotoCell(root, 9)!, 'Click');
+    await flushPreact();
+    fire(findButton(root, 'Delete Roto key at frame 9')!, 'Click');
+    await flushPreact();
+    fire(findRotoCell(root, 6)!, 'Click');
+    await flushPreact();
+    expect(findButton(root, 'Copy Roto key at frame 6')?.getAttribute('disabled')).toBeNull();
+    expect(findButton(root, 'Delete Roto key at frame 6')?.getAttribute('disabled')).toBeNull();
+    fire(findRotoCell(root, 5)!, 'Click');
+    await flushPreact();
+    expect(findButton(root, 'Copy Roto key at frame 5')?.getAttribute('disabled')).not.toBeNull();
+    expect(findButton(root, 'Delete Roto key at frame 5')?.getAttribute('disabled')).not.toBeNull();
+    fire(findRotoCell(root, 15)!, 'Click');
+    await flushPreact();
+    expect(findButton(root, 'Copy Roto key at frame 15')?.getAttribute('disabled')).not.toBeNull();
+    expect(findButton(root, 'Delete Roto key at frame 15')?.getAttribute('disabled')).not.toBeNull();
+
+    resolvePersistence();
+    await flushPreact();
+  });
+
+  it('registers the launch listener before stored context resolves and preserves the newer event', async () => {
+    installDom('', () => {});
+    const storedContext: PhysicPaintLaunchContext = {
+      operationId: 'debug-05-stored-context',
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: 6,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+    };
+    const eventContext: PhysicPaintLaunchContext = {
+      ...storedContext,
+      operationId: 'debug-05-event-context',
+      startFrame: 9,
+    };
+    let resolveStoredLaunchContext!: (context: PhysicPaintLaunchContext | null) => void;
+    paintHarness.storedLaunchContextPromise = new Promise((resolve) => { resolveStoredLaunchContext = resolve; });
+    const appliedContexts: PhysicPaintLaunchContext[] = [];
+    const { usePhysicsPaintLaunchBridge } = await import('../components/physic-paint/bridge/usePhysicsPaintParentBridge');
+
+    function Probe() {
+      usePhysicsPaintLaunchBridge((context) => { appliedContexts.push(context); });
+      return h('div', { 'data-testid': 'launch-bridge-probe' });
+    }
+
+    const root = new TestElement('div');
+    await act(async () => {
+      render(h(Probe, {}), root as unknown as Element);
+      await flushPreact();
+    });
+    for (let attempt = 0; attempt < 10 && paintHarness.launchListeners.length === 0; attempt += 1) {
+      await flushPreact();
+    }
+
+    expect(paintHarness.launchListeners).toHaveLength(1);
+    paintHarness.launchListeners[0]({ payload: eventContext });
+    expect(appliedContexts).toEqual([eventContext]);
+
+    resolveStoredLaunchContext(storedContext);
+    await flushPreact();
+    expect(appliedContexts).toEqual([eventContext]);
+
+    render(null as unknown as VNode, root as unknown as Element);
+    await flushPreact();
+    expect(paintHarness.launchListeners).toHaveLength(0);
+  });
+
+  it('renders immediate Copy and Delete availability after selecting a real projected key, while generated and empty frames stay disabled', async () => {
+    const sourceFrames = [0, 1, 2, 3].map((frame) => ({
+      frameIndex: 0,
+      appFrame: frame,
+      sourceFrame: frame,
+      displayFrame: frame,
+      source: 'real-key' as const,
+      dataUrl: pngDataUrl(`debug-05-native-navigation-source-${frame}`),
+      width: 1000,
+      height: 650,
+    }));
+    for (const frame of sourceFrames) physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', frame.appFrame, frame);
+    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+    });
+    const makeLaunchContext = (startFrame: number): PhysicPaintLaunchContext => ({
+      operationId: `debug-05-native-navigation-${startFrame}`,
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: physicPaintStore.getRotoCacheFrames('phys-layer-1'),
+      rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings('phys-layer-1'),
+    });
+    const fullLaunchContext = makeLaunchContext(6);
+    paintHarness.storedLaunchContext = fullLaunchContext;
+    const { root } = installDom(encodeURIComponent(JSON.stringify(fullLaunchContext)), () => {});
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+
+    render(h(PhysicsPaintStudio, {}), root as unknown as Element);
+    await flushPreact();
+    fire(findRotoCell(root, 9)!, 'Click');
+    await flushPreact();
+
+    expect(findButton(root, 'Copy Roto key at frame 9'), visibleText(root)).not.toBeNull();
+    expect(findButton(root, 'Copy Roto key at frame 9')?.getAttribute('disabled')).toBeNull();
+    expect(findButton(root, 'Duplicate Roto key at frame 9')?.getAttribute('disabled')).toBeNull();
+    expect(findButton(root, 'Delete Roto key at frame 9')?.getAttribute('disabled')).toBeNull();
+    fire(findRotoCell(root, 8)!, 'Click');
+    await flushPreact();
+    expect(findButton(root, 'Copy Roto key at frame 8')?.getAttribute('disabled')).not.toBeNull();
+    expect(findButton(root, 'Delete Roto key at frame 8')?.getAttribute('disabled')).not.toBeNull();
+    fire(findRotoCell(root, 12)!, 'Click');
+    await flushPreact();
+    expect(findButton(root, 'Copy Roto key at frame 12')?.getAttribute('disabled')).not.toBeNull();
+    expect(findButton(root, 'Delete Roto key at frame 12')?.getAttribute('disabled')).not.toBeNull();
+
+    const reopened = selectRotoTimelineView({
+      cachedRotoFrames: makeLaunchContext(9).cachedRotoFrames,
+      currentFrame: 9,
+      interpolationSettings: makeLaunchContext(9).rotoInterpolationSettings,
+    });
+    expect(reopened.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9]);
+    expect(reopened.currentFrameIsGenerated).toBe(false);
   });
 
   it.each([
