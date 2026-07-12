@@ -32,6 +32,18 @@ export function selectRealCachedRotoFrames(contextCachedRotoFrames: readonly Phy
     }) ?? [];
 }
 
+export function selectProjectedRealCachedRotoFrames(
+  contextCachedRotoFrames: readonly PhysicPaintRotoCacheFrame[] | undefined,
+  projection: RotoDisplayProjection,
+): PhysicPaintRotoCacheFrame[] {
+  const framesBySource = new Map(selectRealCachedRotoFrames(contextCachedRotoFrames)
+    .map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
+  return projection.realKeys.flatMap((key) => {
+    const frame = framesBySource.get(key.sourceFrame);
+    return frame ? [{ ...frame, appFrame: key.displayFrame, sourceFrame: key.sourceFrame, displayFrame: key.displayFrame }] : [];
+  });
+}
+
 export function selectRealCachedRotoSourceFrameNumbers(contextCachedRotoFrames: readonly PhysicPaintRotoCacheFrame[] | undefined): number[] {
   return contextCachedRotoFrames
     ?.filter((frame) => frame.source === 'real-key')

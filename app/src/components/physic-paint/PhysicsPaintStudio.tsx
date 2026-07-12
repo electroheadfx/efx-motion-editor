@@ -12,7 +12,7 @@ import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyb
 import { usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions } from './hooks/useRotoTimelineActions';
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
-import { selectRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
+import { selectProjectedRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoApplyLifecycle } from './hooks/useRotoApplyLifecycle';
@@ -198,7 +198,7 @@ export function PhysicsPaintStudio() {
     workflowMode,
     keyUtilities: {
       currentFrame,
-      realKeyFrames: selectRealCachedRotoFrames(launchContext?.cachedRotoFrames),
+      realKeyFrames: selectProjectedRealCachedRotoFrames(launchContext?.cachedRotoFrames, rotoTimelineModel.view.value.projection),
       cachedRotoFrames: launchContext?.cachedRotoFrames,
       dirtyFrames: dirtyRotoFramesRef.current,
       canvasSize: { width: canvasWidth, height: canvasHeight },

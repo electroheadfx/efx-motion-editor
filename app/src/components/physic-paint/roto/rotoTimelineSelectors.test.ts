@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { saveRotoRealKeyTransaction } from './rotoKeyTransactions';
-import { selectRealCachedRotoFrames, selectRotoTimelineView } from './rotoTimelineSelectors';
+import { selectProjectedRealCachedRotoFrames, selectRealCachedRotoFrames, selectRotoTimelineView } from './rotoTimelineSelectors';
 import { createRotoTimelineModel } from '../hooks/useRotoTimelineModel';
 
 function frame(appFrame: number, sourceFrame: number, source: PhysicPaintRotoCacheFrame['source'] = 'real-key'): PhysicPaintRotoCacheFrame {
@@ -24,6 +24,27 @@ describe('rotoTimelineSelectors', () => {
     ])).toEqual([
       frame(0, 0),
       { ...frame(3, 1), appFrame: 3, displayFrame: 3 },
+    ]);
+  });
+
+  it('projects source-keyed cached payloads onto the same real display keys used by tool availability', () => {
+    const cachedFrames = [frame(0, 0), frame(1, 1), frame(2, 2), frame(3, 3)];
+    const view = selectRotoTimelineView({
+      cachedRotoFrames: cachedFrames,
+      currentFrame: 9,
+      interpolationSettings: { enabled: true, inBetweenCount: 2, mode: 'duplicate' },
+    });
+
+    expect(selectProjectedRealCachedRotoFrames(cachedFrames, view.projection).map((candidate) => ({
+      appFrame: candidate.appFrame,
+      sourceFrame: candidate.sourceFrame,
+      displayFrame: candidate.displayFrame,
+      dataUrl: candidate.dataUrl,
+    }))).toEqual([
+      { appFrame: 0, sourceFrame: 0, displayFrame: 0, dataUrl: 'data:image/png;base64,real-key-0' },
+      { appFrame: 3, sourceFrame: 1, displayFrame: 3, dataUrl: 'data:image/png;base64,real-key-1' },
+      { appFrame: 6, sourceFrame: 2, displayFrame: 6, dataUrl: 'data:image/png;base64,real-key-2' },
+      { appFrame: 9, sourceFrame: 3, displayFrame: 9, dataUrl: 'data:image/png;base64,real-key-3' },
     ]);
   });
 

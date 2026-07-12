@@ -13,46 +13,44 @@ describe('rotoKeyTransactions', () => {
       currentSettings: { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 },
     });
 
-    expect(transaction.sourceFrameOverride).toBe(3);
+    expect(transaction.sourceFrameOverride).toBe(9);
     expect(transaction.interpolationSettings.segmentSpacingOverrides).toEqual([]);
-    expect(transaction.model.realSourceFrames).toEqual([0, 1, 2, 3]);
+    expect(transaction.model.realSourceFrames).toEqual([0, 1, 2, 9]);
     expect(getRotoDisplayProjection(transaction.model, { enabled: true }).realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9]);
-    expect(getRotoDisplayProjection(transaction.model, { enabled: false }).realKeys.map((key) => key.displayFrame)).toEqual([0, 1, 2, 3]);
+    expect(getRotoDisplayProjection(transaction.model, { enabled: false }).realKeys.map((key) => key.displayFrame)).toEqual([0, 1, 2, 9]);
   });
 
-  it('derives custom Save current source state for a far display target', () => {
+  it.each([false, true])('preserves absolute far Save identity from interpolation enabled=%s', (enabled) => {
     const transaction = saveRotoRealKeyTransaction({
       model: createRotoSourceDisplayModel({
         realSourceFrames: [0, 1, 2, 3],
-        settings: { enabled: true, inBetweenCount: 2, mode: 'duplicate' },
+        settings: { enabled, inBetweenCount: 2, mode: 'duplicate' },
       }),
       displayFrame: 14,
-      currentSettings: { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 },
-    });
-
-    expect(transaction.sourceFrameOverride).toBe(5);
-    expect(transaction.interpolationSettings.segmentSpacingOverrides).toEqual([
-      { fromSourceFrame: 3, toSourceFrame: 5, inBetweenCount: 4 },
-    ]);
-    expect(transaction.model.realSourceFrames).toEqual([0, 1, 2, 3, 5]);
-    expect(getRotoDisplayProjection(transaction.model, { enabled: true }).realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, 14]);
-    expect(getRotoDisplayProjection(transaction.model, { enabled: false }).realKeys.map((key) => key.displayFrame)).toEqual([0, 1, 2, 3, 5]);
-  });
-
-  it('keeps Save current OFF-start targets as source/display frames without custom overrides', () => {
-    const transaction = saveRotoRealKeyTransaction({
-      model: createRotoSourceDisplayModel({
-        realSourceFrames: [0, 1, 2, 3],
-        settings: { enabled: false, inBetweenCount: 2, mode: 'duplicate' },
-      }),
-      displayFrame: 14,
-      currentSettings: { enabled: false, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 },
+      currentSettings: { enabled, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 },
     });
 
     expect(transaction.sourceFrameOverride).toBe(14);
-    expect(transaction.interpolationSettings.segmentSpacingOverrides).toEqual([]);
+    expect(transaction.interpolationSettings.segmentSpacingOverrides).toEqual([
+      { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+    ]);
     expect(transaction.model.realSourceFrames).toEqual([0, 1, 2, 3, 14]);
+    expect(getRotoDisplayProjection(transaction.model, { enabled: true }).realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, 14]);
     expect(getRotoDisplayProjection(transaction.model, { enabled: false }).realKeys.map((key) => key.displayFrame)).toEqual([0, 1, 2, 3, 14]);
+  });
+
+  it.each([0, 1, 2, 14])('keeps OFF Save frame %i as its absolute source identity', (displayFrame) => {
+    const transaction = saveRotoRealKeyTransaction({
+      model: createRotoSourceDisplayModel({
+        realSourceFrames: displayFrame === 0 ? [] : [0, 1].filter((frame) => frame < displayFrame),
+        settings: { enabled: false, inBetweenCount: 2, mode: 'duplicate' },
+      }),
+      displayFrame,
+      currentSettings: { enabled: false, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 },
+    });
+
+    expect(transaction.sourceFrameOverride).toBe(displayFrame);
+    expect(transaction.model.realSourceFrames).toContain(displayFrame);
   });
 
   it('derives Save current source override and interpolation settings outside Studio', () => {
@@ -65,11 +63,11 @@ describe('rotoKeyTransactions', () => {
       currentSettings: { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 },
     });
 
-    expect(transaction.sourceFrameOverride).toBe(4);
+    expect(transaction.sourceFrameOverride).toBe(11);
     expect(transaction.interpolationSettings.segmentSpacingOverrides).toEqual([
-      { fromSourceFrame: 2, toSourceFrame: 4, inBetweenCount: 4 },
+      { fromSourceFrame: 2, toSourceFrame: 11, inBetweenCount: 4 },
     ]);
-    expect(transaction.model.realSourceFrames).toEqual([0, 1, 2, 4]);
+    expect(transaction.model.realSourceFrames).toEqual([0, 1, 2, 11]);
   });
 
   it('derives interpolation toggle status and next current frame without Studio state', () => {

@@ -137,7 +137,7 @@ export function useRotoSaveController(input: RotoSaveControllerInput) {
         if (!cachedRepaintBase) input.setCachedReferenceUrl(null);
         if (!capturedFrame) input.resetBackground(engine);
         const save = await input.renderFrame({ engine, editableState, capturedFrame, cachedRepaintBase, frame, sourceFrame });
-        input.setPreviewFrame(frame, save.onionFrame ?? save.renderedFrame);
+        input.setPreviewFrame(sourceFrame, save.onionFrame ?? save.renderedFrame);
         if (save.backgroundOnly) input.removeEditableFrame(frame);
         else input.addEditableFrame(frame);
         input.setApplyStatus('applying');
@@ -231,7 +231,7 @@ export function useRotoSaveController(input: RotoSaveControllerInput) {
     return flushRotoFrame(currentFrame, {
       force: true,
       advanceToFrame,
-      ...(saveTransaction.sourceFrameOverride !== currentFrame ? { sourceFrameOverride: saveTransaction.sourceFrameOverride } : {}),
+      sourceFrameOverride: saveTransaction.sourceFrameOverride,
       rotoInterpolationSettings: saveTransaction.interpolationSettings,
       onPayload: options.onPayload,
     });

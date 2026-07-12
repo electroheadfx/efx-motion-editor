@@ -218,14 +218,17 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(rotoSaveTransactionsSource()).toContain('sourceFrameOverride?: number');
   });
 
-  it('36.13/D-08/D-12 persists transaction segment spacing overrides before local/generated cache refresh', () => {
+  it('36.13/D-08/D-12 applies transaction segment spacing overrides atomically with replacement before cache refresh', () => {
     const text = source();
     const integration = rotoPersistenceIntegrationSource();
     const applyBlock = integration.slice(integration.indexOf('const applyRotoKeyFrames = useCallback'), integration.indexOf('const persistRotoKeyFrameTransaction = useCallback'));
     const persistBlock = integration.slice(integration.indexOf('const persistRotoKeyFrameTransaction = useCallback'), integration.indexOf('const restoreRotoFrameFromSessionEffect'));
 
     expect(text).toContain('useRotoKeyUtilities');
-    expect(applyBlock).toContain('physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, { segmentSpacingOverrides: [...transaction.segmentSpacingOverrides] })');
+    expect(applyBlock).toContain('...physicPaintStore.getRotoInterpolationSettings(launchContext.layerId)');
+    expect(applyBlock).toContain('segmentSpacingOverrides: [...transaction.segmentSpacingOverrides]');
+    expect(applyBlock).toContain('frames: transaction.realKeyFrames, rotoInterpolationSettings');
+    expect(applyBlock).not.toContain('physicPaintStore.setRotoInterpolationSettings');
     expect(applyBlock).toContain('physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
     expect(persistBlock).toContain('rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId)');
   });
@@ -255,7 +258,7 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(text).toContain("from './hooks/useRotoNavigationCoordinator'");
     expect(adapter).toContain('createRotoSession');
     expect(text).toContain('const rotoSession = rotoKeyUtilities.session');
-    expect(text).toContain('realKeyFrames: selectRealCachedRotoFrames(launchContext?.cachedRotoFrames)');
+    expect(text).toContain('realKeyFrames: selectProjectedRealCachedRotoFrames(launchContext?.cachedRotoFrames, rotoTimelineModel.view.value.projection)');
     expect(text).toContain('rotoSession.dirtyFrames.value');
     expect(text).toContain('rotoSession.actionAvailability.value');
     expect(workflowStripBlock).toContain('hasCopiedRotoKey: rotoSession.copiedKey.value !== null');
@@ -323,14 +326,17 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(text).toContain('openAfterSave: openSyncedRotoFrameAfterSave');
   });
 
-  it('36.8-REG-08 keeps effectless Copy inside the live session so Paste enables after click', () => {
+  it('36.8-REG-08 keeps effectless Copy inside the live session without resetting copied state', () => {
     const adapter = rotoKeyUtilitiesSource();
     const resultBlock = adapter.slice(adapter.indexOf('const runSessionResult = useCallback'), adapter.indexOf('const requireCurrentRealKey'));
+    const copyBlock = adapter.slice(adapter.indexOf('const copyKey = useCallback'), adapter.indexOf('const pasteKey = useCallback'));
 
     expect(resultBlock).toContain('const hasSessionEffects = result.effects.length > 0');
     expect(resultBlock).toContain('if (hasSessionEffects) setKeyActionInFlight(true)');
     expect(resultBlock).toContain('if (hasSessionEffects) await executeSessionEffects(result.effects)');
     expect(resultBlock).toContain('if (hasSessionEffects) input.syncPendingRotoFrames()');
+    expect(copyBlock).toContain('void runSessionResult(session.copyKey())');
+    expect(copyBlock).not.toContain('input.syncPendingRotoFrames()');
   });
 
   it('36.8-REG-07/D-17 does not add broad internal Roto key/cache/session useEffect orchestration', () => {
@@ -475,7 +481,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(rotoEditBufferTransactionsSource()).toContain('buffer.previewFrames.set(frame, input.capturedFrame)');
     expect(flushBlock).toContain('const capturedFrame = input.getCapturedFrame(frame)');
     expect(flushBlock).toContain('input.renderFrame({ engine, editableState, capturedFrame, cachedRepaintBase, frame, sourceFrame })');
-    expect(flushBlock).toContain('input.setPreviewFrame(frame, save.onionFrame ?? save.renderedFrame)');
+    expect(flushBlock).toContain('input.setPreviewFrame(sourceFrame, save.onionFrame ?? save.renderedFrame)');
     expect(flushBlock).not.toContain('buildRotoOnionPreviewFrame(engine, frame, canvasWidth, canvasHeight)');
   });
 
@@ -545,8 +551,8 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     const flushBlock = rotoSaveControllerSource();
 
     expect(flushBlock).toContain('input.renderFrame({ engine, editableState, capturedFrame, cachedRepaintBase, frame, sourceFrame })');
-    expect(flushBlock).toContain('input.setPreviewFrame(frame, save.onionFrame ?? save.renderedFrame)');
-    expect(flushBlock).toContain('input.setPreviewFrame(frame, save.onionFrame ?? save.renderedFrame)');
+    expect(flushBlock).toContain('input.setPreviewFrame(sourceFrame, save.onionFrame ?? save.renderedFrame)');
+    expect(flushBlock).toContain('input.setPreviewFrame(sourceFrame, save.onionFrame ?? save.renderedFrame)');
     expect(flushBlock).toContain('renderedFrame,');
     expect(flushBlock).toContain('backgroundMetadata: input.getBackgroundMetadata(),');
     expect(rotoSaveTransactionsSource()).toContain("...(input.onionFrame?.dataUrl ? { onionDataUrl: input.onionFrame.dataUrl } : {})");
@@ -586,7 +592,7 @@ describe('PhysicsPaintStudio onion preview contract', () => {
 
     expect(types).toContain('onionDataUrl?: string');
     expect(store).toContain('payload.onionDataUrl');
-    expect(flushBlock).toContain('input.setPreviewFrame(frame, save.onionFrame ?? save.renderedFrame)');
+    expect(flushBlock).toContain('input.setPreviewFrame(sourceFrame, save.onionFrame ?? save.renderedFrame)');
     expect(rotoSaveTransactionsSource()).toContain("...(input.onionFrame?.dataUrl ? { onionDataUrl: input.onionFrame.dataUrl } : {})");
     expect(onionBlock).toContain('const addCandidate = (frame: RotoOnionFrame) =>');
     expect(onionBlock).toContain("if (frame.source && frame.source !== 'real-key') return;");
@@ -655,7 +661,7 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
     const workflowStripBlock = text.slice(workflowStripStart, text.indexOf('{shortcutsVisible', workflowStripStart));
 
     expect(text).not.toContain('function getRealCachedRotoFrames(context: PhysicPaintLaunchContext | null)');
-    expect(text).toContain('selectRealCachedRotoFrames');
+    expect(text).toContain('selectProjectedRealCachedRotoFrames');
     expect(text).not.toContain('function getSavedRotoMarkersFromLaunchContext(context: PhysicPaintLaunchContext | null)');
     expect(text).not.toContain('useState<PhysicsPaintWorkflowStripFrameMarker[]>(() => getSavedRotoMarkersFromLaunchContext(launchContext))');
     expect(text).not.toContain('useState<number[]>(() => getRealCachedRotoDisplayFrameNumbers(launchContext))');
@@ -1362,7 +1368,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).toContain('const liveAlphaCanvas = exportTransparentStrokeCanvas(engine)');
     expect(text).toContain('mergeCachedRotoAlphaFrame(cachedRepaintBase, liveAlphaCanvas, sourceFrame, input.frame.canvasSize)');
     expect(text).toContain('const renderedFrame = cachedRepaintBase\n        ? await mergeCachedRotoAlphaFrame');
-    expect(flushBlock).toContain('input.setPreviewFrame(frame, save.onionFrame ?? save.renderedFrame)');
+    expect(flushBlock).toContain('input.setPreviewFrame(sourceFrame, save.onionFrame ?? save.renderedFrame)');
     expect(flushBlock).toContain('renderedFrame,');
     expect(rotoSaveTransactionsSource()).toContain("kind: 'apply-canvas'");
     expect(flushBlock).toContain('input.pendingCachedMergeFrameRef.current = { frame, ...save }');
@@ -1746,7 +1752,7 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(adapter).toContain('copiedEditableStateRef.current = input.getEditableState(input.currentFrame)');
     expect(adapter).toContain('copiedEditableState: transaction.operation === \'paste\' ? copiedEditableStateRef.current ?? undefined : undefined');
     expect(adapter).toContain('void runSessionResult(session.pasteKey())');
-    expect(sessionBlock).toContain('realKeyFrames: selectRealCachedRotoFrames(launchContext?.cachedRotoFrames)');
+    expect(sessionBlock).toContain('realKeyFrames: selectProjectedRealCachedRotoFrames(launchContext?.cachedRotoFrames, rotoTimelineModel.view.value.projection)');
   });
 
   it('clears stale Roto reference overlays on paint input without disabling onion controls', () => {

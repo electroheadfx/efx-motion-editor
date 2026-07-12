@@ -61,7 +61,17 @@ export function resolveRotoRealKeySaveTarget(
   model: RotoSourceDisplayModel,
   displayFrame: number,
 ): RotoFarEmptyDisplaySaveTarget {
-  return resolveRotoFarEmptyDisplaySaveTarget(displayFrame, model.realSourceFrames, model.settings);
+  const projected = resolveRotoFarEmptyDisplaySaveTarget(displayFrame, model.realSourceFrames, {
+    ...model.settings,
+    enabled: true,
+  });
+  return {
+    ...projected,
+    sourceFrame: projected.displayFrame,
+    previousSegmentOverride: projected.previousSegmentOverride
+      ? { ...projected.previousSegmentOverride, toSourceFrame: projected.displayFrame }
+      : null,
+  };
 }
 
 export function upsertRotoRealKeySource(

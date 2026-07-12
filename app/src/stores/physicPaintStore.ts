@@ -1085,6 +1085,9 @@ export const physicPaintStore = {
     }
 
     const previousGenerated = _removeGeneratedRotoCache(payload.layerId);
+    if (payload.rotoInterpolationSettings) {
+      _rotoInterpolationSettings.set(payload.layerId, _normalizeRotoInterpolationSettings(payload.rotoInterpolationSettings));
+    }
     const previousSupportFrames = this.getBackgroundOnlyRotoSupportFrames(payload.layerId);
     const previousSupport = _removeBackgroundOnlyRotoSupport(payload.layerId);
     const previousRealKeys = _getRealRotoKeyFrames(payload.layerId);

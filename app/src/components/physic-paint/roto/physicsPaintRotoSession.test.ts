@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { buildRotoKeyUtilityTransaction } from './physicsPaintRotoKeyController';
 import { createRotoSession, type RotoSessionEffect } from './physicsPaintRotoSession';
-import { resolveRotoFarEmptyDisplaySaveTarget } from './physicsPaintRotoWorkflow';
+import { createRotoSourceDisplayModel, resolveRotoRealKeySaveTarget } from './rotoSourceDisplayModel';
 
 function frame(appFrame: number, dataUrl: string, source: PhysicPaintRotoCacheFrame['source'] = 'real-key'): PhysicPaintRotoCacheFrame {
   return {
@@ -340,106 +340,93 @@ describe('physicsPaintRotoSession segment spacing override transactions', () => 
     expect(session.realKeyFrameNumbers.value).toEqual([0, 5]);
   });
 
-  it('36.13 D-12 resolves far-empty paste targets and propagates previous-segment custom spacing', () => {
+  it('captures a selected real display key with its absolute source and distinct paint payload', () => {
+    const uniquePaint = 'data:image/png;base64,copy-source-three';
     const session = createRotoSession({
-      currentFrame: 2,
+      currentFrame: 9,
       realKeyFrames: [
-        frame(0, 'data:image/png;base64,real-zero'),
-        frame(2, 'data:image/png;base64,real-two'),
+        { ...frame(0, 'data:image/png;base64,real-zero'), sourceFrame: 0, displayFrame: 0 },
+        { ...frame(3, 'data:image/png;base64,real-one'), sourceFrame: 1, displayFrame: 3 },
+        { ...frame(6, 'data:image/png;base64,real-two'), sourceFrame: 2, displayFrame: 6 },
+        { ...frame(9, uniquePaint), sourceFrame: 3, displayFrame: 9 },
       ],
       cachedRotoFrames: [],
       dirtyFrames: [],
       canvasSize: { width: 100, height: 100 },
-      segmentSpacingOverrides: [],
-      resolvePasteTargetForDisplayFrame: (displayFrame) => displayFrame === 11
-        ? { displayFrame, sourceFrame: 6, previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 } }
-        : null,
       buildBlankRotoFrame: blankFrame,
     });
 
-    expect(session.copyKey().ok).toBe(true);
-    session.requestFrame(11);
-    const result = session.pasteKey();
-    const replaceKeys = result.effects.find((effect) => effect.type === 'replaceKeys');
-
-    expect(result.ok).toBe(true);
-    expect(session.currentFrame.value).toBe(6);
-    expect(session.realKeyFrameNumbers.value).toEqual([0, 2, 6]);
-    expect(replaceKeys).toMatchObject({
-      transaction: {
-        segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
-      },
+    expect(session.actionAvailability.value.canCopy).toBe(true);
+    expect(session.copyKey()).toMatchObject({ ok: true });
+    expect(session.copiedKey.value).toMatchObject({
+      frame: 3,
+      cachedFrame: { appFrame: 3, sourceFrame: 3, displayFrame: 3, dataUrl: uniquePaint },
     });
+    session.requestFrame(12);
+    expect(session.copiedKey.value?.cachedFrame.dataUrl).toBe(uniquePaint);
+    expect(session.actionAvailability.value.canPaste).toBe(true);
   });
 
-  it('UAT truth table pastes at normal display #9 exactly like Save current', () => {
+  it('keeps Copy disabled and copied state empty for a generated display frame', () => {
+    const session = createRotoSession({
+      currentFrame: 10,
+      realKeyFrames: [{ ...frame(9, 'data:image/png;base64,real-three'), sourceFrame: 3, displayFrame: 9 }],
+      cachedRotoFrames: [frame(10, 'data:image/png;base64,generated-ten', 'generated-interpolation')],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    expect(session.actionAvailability.value.canCopy).toBe(false);
+    expect(session.copyKey()).toMatchObject({ ok: false });
+    expect(session.copiedKey.value).toBeNull();
+  });
+
+  it.each([12, 14])('pastes to absolute frame %i with the same target contract as Save current', (targetFrame) => {
     const settings = { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const };
-    const saveTarget = resolveRotoFarEmptyDisplaySaveTarget(9, [0, 1, 2], settings);
+    const model = createRotoSourceDisplayModel({ realSourceFrames: [0, 1, 2, 3], settings });
+    const saveTarget = resolveRotoRealKeySaveTarget(model, targetFrame);
+    const uniquePaint = `data:image/png;base64,pasted-${targetFrame}`;
     const realKeyFrames = [
       { ...frame(0, 'data:image/png;base64,real-zero'), sourceFrame: 0, displayFrame: 0 },
       { ...frame(3, 'data:image/png;base64,real-one'), sourceFrame: 1, displayFrame: 3 },
       { ...frame(6, 'data:image/png;base64,real-two'), sourceFrame: 2, displayFrame: 6 },
+      { ...frame(9, uniquePaint), sourceFrame: 3, displayFrame: 9 },
     ];
     const session = createRotoSession({
-      currentFrame: 6,
+      currentFrame: 9,
       realKeyFrames,
       cachedRotoFrames: realKeyFrames,
       dirtyFrames: [],
       canvasSize: { width: 100, height: 100 },
       segmentSpacingOverrides: [],
-      resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoFarEmptyDisplaySaveTarget(displayFrame, [0, 1, 2], settings),
+      resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoRealKeySaveTarget(model, displayFrame),
       buildBlankRotoFrame: blankFrame,
     });
 
-    expect(saveTarget).toEqual({ displayFrame: 9, sourceFrame: 3, previousSegmentOverride: null });
-    expect(session.copyKey().ok).toBe(true);
-    session.requestFrame(9);
+    expect(session.actionAvailability.value.canCopy).toBe(true);
+    expect(session.copyKey()).toMatchObject({ ok: true });
+    expect(session.copiedKey.value?.cachedFrame.dataUrl).toBe(uniquePaint);
+    session.requestFrame(targetFrame);
+    expect(session.actionAvailability.value.canPaste).toBe(true);
     const result = session.pasteKey();
 
+    expect(saveTarget.sourceFrame).toBe(targetFrame);
     expect(result.ok).toBe(true);
     expect(result.transaction).toMatchObject({
-      realKeyFrameNumbers: [0, 1, 2, 3],
-      activeFrame: 3,
-      segmentSpacingOverrides: [],
+      realKeyFrameNumbers: [0, 1, 2, 3, targetFrame],
+      activeFrame: targetFrame,
+      segmentSpacingOverrides: targetFrame === 12
+        ? []
+        : [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
     });
-    expect(result.transaction?.frameMappings).toEqual([{ fromFrame: 2, toFrame: 3, mode: 'copy' }]);
-  });
-
-  it('UAT truth table pastes at custom display #14 exactly like Save current', () => {
-    const settings = { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const };
-    const saveTarget = resolveRotoFarEmptyDisplaySaveTarget(14, [0, 1, 2], settings);
-    const realKeyFrames = [
-      { ...frame(0, 'data:image/png;base64,real-zero'), sourceFrame: 0, displayFrame: 0 },
-      { ...frame(3, 'data:image/png;base64,real-one'), sourceFrame: 1, displayFrame: 3 },
-      { ...frame(6, 'data:image/png;base64,real-two'), sourceFrame: 2, displayFrame: 6 },
-    ];
-    const session = createRotoSession({
-      currentFrame: 6,
-      realKeyFrames,
-      cachedRotoFrames: realKeyFrames,
-      dirtyFrames: [],
-      canvasSize: { width: 100, height: 100 },
-      segmentSpacingOverrides: [],
-      resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoFarEmptyDisplaySaveTarget(displayFrame, [0, 1, 2], settings),
-      buildBlankRotoFrame: blankFrame,
+    expect(result.transaction?.realKeyFrames.find((candidate) => candidate.appFrame === targetFrame)).toMatchObject({
+      appFrame: targetFrame,
+      sourceFrame: targetFrame,
+      displayFrame: targetFrame,
+      dataUrl: uniquePaint,
     });
-
-    expect(saveTarget).toEqual({
-      displayFrame: 14,
-      sourceFrame: 7,
-      previousSegmentOverride: { fromSourceFrame: 2, toSourceFrame: 7, inBetweenCount: 7 },
-    });
-    expect(session.copyKey().ok).toBe(true);
-    session.requestFrame(14);
-    const result = session.pasteKey();
-
-    expect(result.ok).toBe(true);
-    expect(result.transaction).toMatchObject({
-      realKeyFrameNumbers: [0, 1, 2, 7],
-      activeFrame: 7,
-      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 7, inBetweenCount: 7 }],
-    });
-    expect(result.transaction?.frameMappings).toEqual([{ fromFrame: 2, toFrame: 7, mode: 'copy' }]);
+    expect(result.transaction?.frameMappings).toEqual([{ fromFrame: 3, toFrame: targetFrame, mode: 'copy' }]);
   });
 });
 

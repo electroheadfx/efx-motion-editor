@@ -96,7 +96,7 @@ export interface RotoKeyPasteTargetEligibilityInput {
 export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoInterpolationSettings): RotoExpandedRealKeyFrame[] {
   const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
   const interpolationEnabled = settings.enabled === true;
-  const globalInBetweenCount = interpolationEnabled ? clampPositiveInteger(settings.inBetweenCount, 1) : 0;
+  const globalInBetweenCount = interpolationEnabled ? clampNonNegativeInteger(settings.inBetweenCount, 1) : 0;
   const overrides = normalizeRotoSegmentSpacingOverrides(settings.segmentSpacingOverrides, sourceKeys);
   const mode = normalizeRotoInterpolationMode(settings.mode);
   const expanded: RotoExpandedRealKeyFrame[] = [];
@@ -152,7 +152,7 @@ export function getRotoInterpolationSpanFrames(realKeys: number[], settings: Rot
 export function inferRotoSegmentSpacingOverrides(realKeys: number[], settings: RotoInterpolationSettings): RotoSegmentSpacingOverride[] {
   if (settings.enabled !== true) return [];
   const sourceKeys = normalizeRealRotoKeyFrames(realKeys);
-  const globalInBetweenCount = clampPositiveInteger(settings.inBetweenCount, 1);
+  const globalInBetweenCount = clampNonNegativeInteger(settings.inBetweenCount, 1);
   const overrides: RotoSegmentSpacingOverride[] = [];
   for (let index = 0; index < sourceKeys.length - 1; index++) {
     const fromSourceFrame = sourceKeys[index];
@@ -197,7 +197,7 @@ export function getSourceRotoFrameForDisplayFrame(displayFrame: number, realKeys
   if (settings.enabled === true && sourceKeys.length > 0) {
     const realEntries = getExpandedRotoRealKeyFrames(sourceKeys, settings).filter((candidate): candidate is Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }> => candidate.kind === 'real-key');
     const lastDisplayFrame = realEntries[realEntries.length - 1]?.displayFrame ?? -1;
-    if (displayFrame === lastDisplayFrame + clampPositiveInteger(settings.inBetweenCount, 1) + 1) return Math.max(...sourceKeys) + 1;
+    if (displayFrame === lastDisplayFrame + clampNonNegativeInteger(settings.inBetweenCount, 1) + 1) return Math.max(...sourceKeys) + 1;
     return resolveRotoFarEmptyDisplaySaveTarget(displayFrame, sourceKeys, settings).sourceFrame;
   }
   return displayFrame;
@@ -212,7 +212,7 @@ export function resolveRotoFarEmptyDisplaySaveTarget(displayFrame: number, realK
   const realEntries = getExpandedRotoRealKeyFrames(sourceKeys, settings).filter((entry): entry is Extract<RotoExpandedRealKeyFrame, { kind: 'real-key' }> => entry.kind === 'real-key');
   const previous = [...realEntries].reverse().find((entry) => entry.displayFrame < safeDisplayFrame) ?? realEntries[realEntries.length - 1];
   if (!previous) return { displayFrame: safeDisplayFrame, sourceFrame: safeDisplayFrame, previousSegmentOverride: null };
-  const globalInBetweenCount = clampPositiveInteger(settings.inBetweenCount, 1);
+  const globalInBetweenCount = clampNonNegativeInteger(settings.inBetweenCount, 1);
   const normalNextDisplayFrame = previous.displayFrame + globalInBetweenCount + 1;
   if (safeDisplayFrame === normalNextDisplayFrame) {
     return {
@@ -350,12 +350,6 @@ function clampNonNegativeInteger(value: unknown, fallback: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.max(0, Math.trunc(numeric));
-}
-
-function clampPositiveInteger(value: unknown, fallback: number): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) return fallback;
-  return Math.max(1, Math.trunc(numeric));
 }
 
 function clampRotoInBetweenCount(value: unknown): number {

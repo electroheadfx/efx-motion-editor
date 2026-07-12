@@ -1,4 +1,5 @@
 import { h, render } from 'preact';
+import { useState } from 'preact/hooks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
@@ -6,8 +7,15 @@ import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore, _setPhysicPaintMarkDirtyCallback } from '../stores/physicPaintStore';
-import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoInterpolationSettings } from '../types/physicPaint';
 import type { McePhysicPaintOutput, RuntimePhysicPaintOutput } from '../types/project';
+import { useRotoKeyUtilities, type RotoKeyUtilities } from '../components/physic-paint/hooks/useRotoKeyUtilities';
+import { PhysicsPaintWorkflowStrip } from '../components/physic-paint/view/PhysicsPaintWorkflowStrip';
+import { buildBlankRotoFrame } from '../components/physic-paint/roto/rotoCanvasFrames';
+import type { RotoSessionCopiedKey } from '../components/physic-paint/roto/physicsPaintRotoSession';
+import { saveRotoRealKeyTransaction } from '../components/physic-paint/roto/rotoKeyTransactions';
+import { selectProjectedRealCachedRotoFrames, selectRotoTimelineView } from '../components/physic-paint/roto/rotoTimelineSelectors';
+import { resolveRotoRealKeySaveTarget } from '../components/physic-paint/roto/rotoSourceDisplayModel';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, applyPhysicPaintPayload, createPhysicPaintLaunchContext } from './physicPaintBridge';
 import { loadPhysicPaintData, savePhysicPaintData } from './physicPaintPersistence';
 
@@ -501,6 +509,14 @@ function findButton(root: TestElement, name: string): TestElement | null {
   })[0] ?? null;
 }
 
+function findRotoCell(root: TestElement, frame: number): TestElement | null {
+  return queryAll(root, (element) => (
+    element.localName === 'button'
+    && hasClass(element, 'physics-paint-roto-cell')
+    && element.textContent.trim() === String(frame)
+  ))[0] ?? null;
+}
+
 function visibleText(root: TestElement): string {
   return root.textContent.replace(/\s+/g, ' ').trim();
 }
@@ -655,6 +671,446 @@ describe('Phase 36.3 durable Roto cache core', () => {
     if (physicPaintStore.getFrame('phys-layer-1', 8)?.dataUrl !== savedDataUrl) failures.push('expected discarded unsaved edits not to corrupt or replace the last saved cached PNG');
 
     expect(failures).toEqual([]);
+  });
+
+  it.each([
+    { targetFrame: 12, enabled: false },
+    { targetFrame: 12, enabled: true },
+    { targetFrame: 14, enabled: false },
+    { targetFrame: 14, enabled: true },
+  ])('enables Copy then Paste immediately and persists copied paint at absolute frame $targetFrame from interpolation enabled=$enabled', async ({ targetFrame, enabled }) => {
+    installDom('', () => {});
+    const sourcePaint = pngDataUrl(`copy-source-for-${targetFrame}-${enabled ? 'on' : 'off'}`);
+    const initialDataUrls = new Map([0, 1, 2, 3].map((frame) => [frame, frame === 3 ? sourcePaint : pngDataUrl(`paste-initial-source-${frame}-${enabled ? 'on' : 'off'}`)]));
+    const sourceFrames = [0, 1, 2, 3].map((frame) => ({
+      frameIndex: 0,
+      appFrame: frame,
+      sourceFrame: frame,
+      displayFrame: frame,
+      source: 'real-key' as const,
+      dataUrl: initialDataUrls.get(frame)!,
+      width: 1000,
+      height: 650,
+    }));
+    for (const frame of sourceFrames) physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', frame.sourceFrame, frame);
+    const settings: PhysicPaintRotoInterpolationSettings = {
+      enabled,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+    };
+    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', settings);
+    const selectedSourceDisplayFrame = enabled ? 9 : 3;
+    const initialView = selectRotoTimelineView({ cachedRotoFrames: sourceFrames, currentFrame: selectedSourceDisplayFrame, interpolationSettings: settings });
+    const projectedFrames = selectProjectedRealCachedRotoFrames(sourceFrames, initialView.projection);
+    const editableStates = new Map<number, SerializedProject>([[selectedSourceDisplayFrame, editedState]]);
+    const probeState: {
+      utilities: RotoKeyUtilities | null;
+      selectFrame: ((frame: number) => void) | null;
+    } = { utilities: null, selectFrame: null };
+    let appliedTransaction: Parameters<typeof physicPaintStore.replaceRotoKeyFrames>[0] | null = null;
+    let copiedKeyAtSync: RotoSessionCopiedKey | null = null;
+
+    function Probe() {
+      const [currentFrame, setCurrentFrame] = useState(selectedSourceDisplayFrame);
+      probeState.selectFrame = setCurrentFrame;
+      probeState.utilities = useRotoKeyUtilities({
+        currentFrame,
+        realKeyFrames: projectedFrames,
+        cachedRotoFrames: sourceFrames,
+        dirtyFrames: new Set(),
+        canvasSize: { width: 1000, height: 650 },
+        applyStatus: 'idle',
+        flushInFlight: false,
+        buildBlankRotoFrame: (frame) => ({ ...buildBlankRotoFrame(1000, 650, frame), source: 'real-key' }),
+        resolveSourceFrameForDisplayFrame: (displayFrame) => initialView.projection.realKeys.find((key) => key.displayFrame === displayFrame)?.sourceFrame ?? displayFrame,
+        resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoRealKeySaveTarget(initialView.model, displayFrame),
+        segmentSpacingOverrides: settings.segmentSpacingOverrides,
+        getEditableStates: () => editableStates,
+        setEditableStates: (states) => { editableStates.clear(); for (const [frame, state] of states) editableStates.set(frame, state); },
+        getPreviewFrames: () => new Map(),
+        setPreviewFrames: () => {},
+        getEditableState: (frame) => editableStates.get(frame) ?? null,
+        setDirtyFrames: () => {},
+        syncPendingRotoFrames: () => {
+          copiedKeyAtSync = probeState.utilities?.session.copiedKey.value ?? null;
+          probeState.utilities?.resetSession();
+        },
+        syncRotoKeyFrameLists: () => {},
+        applyRotoKeyFrames: (transaction) => {
+          appliedTransaction = {
+            operationId: `debug-04-paste-${targetFrame}-${enabled ? 'on' : 'off'}`,
+            kind: 'replace-roto-key-frames',
+            layerId: 'phys-layer-1',
+            startFrame: transaction.activeFrame,
+            frames: transaction.realKeyFrames,
+            rotoInterpolationSettings: { ...settings, segmentSpacingOverrides: transaction.segmentSpacingOverrides },
+          };
+          const result = applyPhysicPaintPayload(appliedTransaction);
+          if (!result.ok) throw new Error(result.error ?? 'Paste transaction failed');
+          return physicPaintStore.getRotoCacheFrames('phys-layer-1');
+        },
+        persistRotoKeyFrameTransaction: async () => {},
+        handleSaveFrameEffect: async () => true,
+        restoreFrame: () => {},
+        clearCanvas: () => {},
+        showCachedReference: () => {},
+        navigate: async () => {},
+        clearGeneratedFrame: () => {},
+        clearCachedReferenceFrame: () => {},
+        clearDeletedFrame: () => {},
+        setApplyMessage: () => {},
+        setApplyStatus: () => {},
+        setLastError: () => {},
+        snapshotCurrentRotoFrame: () => {},
+        setRotoSavingFrame: () => {},
+      });
+      const availability = probeState.utilities.session.actionAvailability.value;
+      return h(PhysicsPaintWorkflowStrip, {
+        mode: 'roto',
+        currentFrame,
+        startFrame: 0,
+        frameCount: 1,
+        isPlaying: false,
+        ready: true,
+        occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame),
+        savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
+        cachedRotoFrames: projectedFrames,
+        editableRotoFrames: [],
+        pendingRotoFrames: [],
+        rotoInterpolationSettings: settings,
+        onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
+        onCopyRotoFrame: probeState.utilities.copyKey,
+        onPasteRotoFrame: probeState.utilities.pasteKey,
+        hasCopiedRotoKey: probeState.utilities.session.copiedKey.value !== null,
+        rotoKeyState: {
+          actionAvailability: availability,
+          hasCopiedRotoKey: probeState.utilities.session.copiedKey.value !== null,
+        },
+        onSaveRotoFrame: () => {},
+        onSavePendingRotoFrames: () => {},
+        onSavePlay: () => {},
+        onFrameCountChange: () => {},
+        onPlayPreview: () => {},
+        onStopPreview: () => {},
+        onNavigateToSyncedFrame: setCurrentFrame,
+        onGoToFirstFrame: () => {},
+        onGoToPreviousFrame: () => {},
+        onGoToNextFrame: () => {},
+        onGoToLastFrame: () => {},
+        onInspectPlayFrame: () => {},
+        onOnionChange: () => {},
+      });
+    }
+
+    const root = new TestElement('div');
+    render(h(Probe, {}), root as unknown as Element);
+    await flushPreact();
+    const sourceCell = findRotoCell(root, selectedSourceDisplayFrame);
+    expect(sourceCell).not.toBeNull();
+    fire(sourceCell!, 'Click');
+    await flushPreact();
+    const copyButton = findButton(root, `Copy Roto key at frame ${selectedSourceDisplayFrame}`);
+    expect(copyButton?.getAttribute('disabled')).toBeNull();
+    fire(copyButton!, 'Click');
+    await flushPreact();
+    expect(probeState.utilities?.session.copiedKey.value ?? copiedKeyAtSync).toMatchObject({
+      frame: 3,
+      cachedFrame: { appFrame: 3, sourceFrame: 3, displayFrame: 3, dataUrl: sourcePaint },
+    });
+    const targetCell = findRotoCell(root, targetFrame);
+    expect(targetCell).not.toBeNull();
+    fire(targetCell!, 'Click');
+    await flushPreact();
+    const pasteButton = findButton(root, `Paste Roto key to frame ${targetFrame}`);
+    expect(pasteButton?.getAttribute('disabled')).toBeNull();
+    fire(pasteButton!, 'Click');
+    await flushPreact();
+
+    const saveTransaction = saveRotoRealKeyTransaction({ model: initialView.model, displayFrame: targetFrame, currentSettings: settings });
+    expect(appliedTransaction).toMatchObject({
+      kind: 'replace-roto-key-frames',
+      startFrame: targetFrame,
+      rotoInterpolationSettings: {
+        enabled,
+        inBetweenCount: 2,
+        segmentSpacingOverrides: targetFrame === 12
+          ? []
+          : [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
+      },
+    });
+    const publishedTransaction = appliedTransaction as Parameters<typeof physicPaintStore.replaceRotoKeyFrames>[0] | null;
+    expect(publishedTransaction?.frames.map((frame) => frame.sourceFrame ?? frame.appFrame)).toEqual(saveTransaction.model.realSourceFrames);
+    expect(publishedTransaction?.rotoInterpolationSettings?.segmentSpacingOverrides).toEqual(saveTransaction.interpolationSettings.segmentSpacingOverrides);
+    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 1, 2, 3, targetFrame]);
+    expect(physicPaintStore.getFrame('phys-layer-1', targetFrame)?.dataUrl).toBe(sourcePaint);
+    expect(physicPaintStore.getFrame('phys-layer-1', targetFrame === 12 ? 4 : 5)).toBeNull();
+    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(initialDataUrls.get(3));
+
+    const projectPath = `/project-paste-${targetFrame}`;
+    const persistedOutputs = await savePhysicPaintData(projectPath, physicPaintStore.toMceOutputs() as RuntimePhysicPaintOutput[]);
+    const hydratedOutputs = await loadPhysicPaintData(projectPath, persistedOutputs);
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(hydratedOutputs!);
+    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 1, 2, 3, targetFrame]);
+    expect(physicPaintStore.getFrame('phys-layer-1', targetFrame)?.dataUrl).toBe(sourcePaint);
+    expect(physicPaintStore.getFrame('phys-layer-1', targetFrame === 12 ? 4 : 5)).toBeNull();
+    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), targetFrame, null, null, 'roto');
+    const reopenedTimeline = selectRotoTimelineView({
+      cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
+      currentFrame: targetFrame,
+      interpolationSettings: { ...reopenContext.rotoInterpolationSettings!, enabled: true },
+    });
+    expect(reopenedTimeline.model.realSourceFrames).toEqual([0, 1, 2, 3, targetFrame]);
+    expect(reopenedTimeline.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, targetFrame]);
+  });
+
+  it.each([
+    { targetFrame: 12, expectedOverrides: [] },
+    { targetFrame: 14, expectedOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }] },
+  ])('publishes rendered Studio Paste target $targetFrame with canonical timing through reopen', async ({ targetFrame, expectedOverrides }) => {
+    const sourcePaint = pngDataUrl(`rendered-studio-paste-${targetFrame}`);
+    const sourceFrames = [0, 1, 2, 3].map((frame) => ({
+      frameIndex: 0,
+      appFrame: frame,
+      sourceFrame: frame,
+      displayFrame: frame,
+      source: 'real-key' as const,
+      dataUrl: frame === 3 ? sourcePaint : pngDataUrl(`rendered-studio-source-${frame}`),
+      width: 1000,
+      height: 650,
+    }));
+    for (const frame of sourceFrames) physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', frame.appFrame, frame);
+    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+    });
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: `debug-04-rendered-studio-${targetFrame}`,
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: 9,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: physicPaintStore.getRotoCacheFrames('phys-layer-1'),
+      rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings('phys-layer-1'),
+    };
+    const applyPayloads: PhysicPaintApplyPayload[] = [];
+    const { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+      if (message.type !== PHYSIC_PAINT_APPLY_EVENT || !message.payload) return;
+      applyPayloads.push(message.payload);
+      const result = applyPhysicPaintPayload(message.payload);
+      window.dispatchEvent(new TestEvent(PHYSIC_PAINT_APPLY_RESULT_EVENT, { detail: result }));
+    });
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+
+    render(h(PhysicsPaintStudio, {}), root as unknown as Element);
+    await flushPreact();
+    fire(findRotoCell(root, 9)!, 'Click');
+    await flushPreact();
+    const copyButton = findButton(root, 'Copy Roto key at frame 9');
+    expect(copyButton?.getAttribute('disabled')).toBeNull();
+    fire(copyButton!, 'Click');
+    await flushPreact();
+    fire(findRotoCell(root, targetFrame)!, 'Click');
+    await flushPreact();
+    const pasteButton = findButton(root, `Paste Roto key to frame ${targetFrame}`);
+    expect(pasteButton?.getAttribute('disabled')).toBeNull();
+    fire(pasteButton!, 'Click');
+    await flushPreact();
+    await flushPreact();
+
+    const replacement = applyPayloads.find((payload): payload is Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-key-frames' }> => payload.kind === 'replace-roto-key-frames');
+    expect(replacement).toBeTruthy();
+    expect(replacement?.frames.map((frame) => frame.sourceFrame ?? frame.appFrame)).toEqual([0, 1, 2, 3, targetFrame]);
+    expect(replacement?.frames.find((frame) => (frame.sourceFrame ?? frame.appFrame) === targetFrame)?.dataUrl).toBe(sourcePaint);
+    expect(replacement?.rotoInterpolationSettings).toMatchObject({
+      enabled: true,
+      inBetweenCount: 2,
+    });
+    expect(replacement?.rotoInterpolationSettings?.segmentSpacingOverrides ?? []).toEqual(expectedOverrides);
+    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 1, 2, 3, targetFrame]);
+    expect(physicPaintStore.getFrame('phys-layer-1', targetFrame)?.dataUrl).toBe(sourcePaint);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1').segmentSpacingOverrides ?? []).toEqual(expectedOverrides);
+    expect(findRotoCell(root, targetFrame)).not.toBeNull();
+
+    const projectPath = `/debug-04-rendered-studio-${targetFrame}`;
+    const persistedOutputs = await savePhysicPaintData(projectPath, physicPaintStore.toMceOutputs() as RuntimePhysicPaintOutput[]);
+    const persisted = persistedOutputs[0] as McePhysicPaintOutput;
+    expect(persisted.roto_interpolation_settings?.segmentSpacingOverrides ?? []).toEqual(expectedOverrides);
+    const hydratedOutputs = await loadPhysicPaintData(projectPath, persistedOutputs);
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(hydratedOutputs!);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1').segmentSpacingOverrides ?? []).toEqual(expectedOverrides);
+    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), targetFrame, null, null, 'roto');
+    const reopenedOn = selectRotoTimelineView({
+      cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
+      currentFrame: targetFrame,
+      interpolationSettings: { ...reopenContext.rotoInterpolationSettings!, enabled: true },
+    });
+    expect(reopenedOn.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, targetFrame]);
+    const reopenedOff = selectRotoTimelineView({
+      cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
+      currentFrame: targetFrame,
+      interpolationSettings: { ...reopenContext.rotoInterpolationSettings!, enabled: false },
+    });
+    expect(reopenedOff.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 1, 2, 3, targetFrame]);
+  });
+
+  it.each([
+    { label: 'OFF', enabled: false, payloadLabel: 'off-start-unique-saved-paint' },
+    { label: 'ON', enabled: true, payloadLabel: 'on-start-unique-saved-paint' },
+  ])('preserves far Save paint identity through the $label-start Studio controller and durable reopen path', async ({ label, enabled, payloadLabel }) => {
+    const uniqueSavedDataUrl = pngDataUrl(payloadLabel);
+    const initialDataUrls = new Map([0, 1, 2, 3].map((frame) => [frame, pngDataUrl(`${label.toLowerCase()}-start-initial-source-${frame}`)]));
+    const realKeyFrames = [0, 1, 2, 3].map((frame) => ({
+      frameIndex: frame,
+      appFrame: frame,
+      sourceFrame: frame,
+      displayFrame: frame,
+      source: 'real-key' as const,
+      dataUrl: initialDataUrls.get(frame)!,
+      width: 1000,
+      height: 650,
+    }));
+    for (const frame of realKeyFrames) {
+      physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', frame.sourceFrame, frame);
+    }
+    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', {
+      enabled,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+    });
+
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: `phase-36-13-debug-03-${label.toLowerCase()}-start`,
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: enabled ? 9 : 3,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: realKeyFrames,
+      rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings('phys-layer-1'),
+    };
+    const applyPayloads: PhysicPaintApplyPayload[] = [];
+    const { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+      if (message.type !== PHYSIC_PAINT_APPLY_EVENT || !message.payload) return;
+      applyPayloads.push(message.payload);
+      const result = applyPhysicPaintPayload(message.payload);
+      window.dispatchEvent(new TestEvent(PHYSIC_PAINT_APPLY_RESULT_EVENT, { detail: result }));
+    });
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+
+    render(h(PhysicsPaintStudio, {}), root as unknown as Element);
+    await flushPreact();
+
+    const nextFrameButton = findButton(root, 'Go to next frame');
+    expect(nextFrameButton).not.toBeNull();
+    const navigationSteps = 14 - launchContext.startFrame;
+    for (let step = 0; step < navigationSteps; step += 1) {
+      fire(nextFrameButton!, 'Click');
+      await flushPreact();
+    }
+    expect(visibleText(root)).toContain('14');
+    paintHarness.engine?.__setState(editedState, uniqueSavedDataUrl);
+
+    const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
+    expect(canvasStack).toBeTruthy();
+    fire(canvasStack!, 'PointerDown');
+    await flushPreact();
+    fire(findButton(root, 'Save current')!, 'Click');
+    await flushPreact();
+
+    expect(applyPayloads).toHaveLength(1);
+    expect(applyPayloads[0]).toMatchObject({
+      kind: 'apply-canvas',
+      startFrame: 14,
+      sourceFrame: 14,
+      renderedFrame: {
+        appFrame: 14,
+        dataUrl: uniqueSavedDataUrl,
+      },
+      rotoInterpolationSettings: {
+        enabled,
+        inBetweenCount: 2,
+        segmentSpacingOverrides: [
+          { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+        ],
+      },
+    });
+    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 1, 2, 3, 14]);
+    expect(physicPaintStore.getFrame('phys-layer-1', 14)?.dataUrl).toBe(uniqueSavedDataUrl);
+    expect(physicPaintStore.getFrame('phys-layer-1', 5)).toBeNull();
+    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(initialDataUrls.get(3));
+    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).not.toBe(uniqueSavedDataUrl);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toMatchObject({
+      enabled,
+      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
+    });
+
+    const projectPath = `/project-${label.toLowerCase()}`;
+    const persistedOutputs = await savePhysicPaintData(projectPath, physicPaintStore.toMceOutputs() as RuntimePhysicPaintOutput[]);
+    const persisted = persistedOutputs[0] as McePhysicPaintOutput;
+    expect(persisted.roto_interpolation_settings).toMatchObject({
+      enabled,
+      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
+    });
+    const hydratedOutputs = await loadPhysicPaintData(projectPath, persistedOutputs);
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(hydratedOutputs!);
+    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 1, 2, 3, 14]);
+    expect(physicPaintStore.getFrame('phys-layer-1', 14)?.dataUrl).toBe(uniqueSavedDataUrl);
+    expect(physicPaintStore.getFrame('phys-layer-1', 5)).toBeNull();
+    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(initialDataUrls.get(3));
+    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).not.toBe(uniqueSavedDataUrl);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toMatchObject({
+      enabled,
+      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
+    });
+
+    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), 14, null, null, 'roto');
+    expect(reopenContext.rotoInterpolationSettings).toMatchObject({
+      enabled,
+      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
+    });
+    const reopenedSourceFrame = reopenContext.cachedRotoFrames?.find((frame) => frame.source === 'real-key' && frame.sourceFrame === 14);
+    expect(reopenedSourceFrame).toMatchObject({
+      appFrame: 14,
+      sourceFrame: 14,
+      displayFrame: 14,
+      dataUrl: uniqueSavedDataUrl,
+    });
+    expect(reopenContext.cachedRotoFrames?.filter((frame) => frame.source === 'real-key' && frame.dataUrl === uniqueSavedDataUrl)).toEqual([reopenedSourceFrame]);
+    expect(reopenContext.cachedRotoFrames?.find((frame) => frame.sourceFrame === 3)?.dataUrl).toBe(initialDataUrls.get(3));
+
+    const reopenedTimeline = selectRotoTimelineView({
+      cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
+      currentFrame: 14,
+      interpolationSettings: {
+        ...reopenContext.rotoInterpolationSettings!,
+        enabled: true,
+      },
+    });
+    expect(reopenedTimeline.model.realSourceFrames).toEqual([0, 1, 2, 3, 14]);
+    expect(reopenedTimeline.projection.realKeys.map((key) => ({ sourceFrame: key.sourceFrame, displayFrame: key.displayFrame }))).toEqual([
+      { sourceFrame: 0, displayFrame: 0 },
+      { sourceFrame: 1, displayFrame: 3 },
+      { sourceFrame: 2, displayFrame: 6 },
+      { sourceFrame: 3, displayFrame: 9 },
+      { sourceFrame: 14, displayFrame: 14 },
+    ]);
+    expect(reopenedTimeline.projection.realKeys.find((key) => key.displayFrame === 14)?.sourceFrame).toBe(14);
+    expect(reopenedSourceFrame?.dataUrl).toBe(uniqueSavedDataUrl);
   });
 
   it('preserves adjacent real-key alpha caches when background-only support is computed for a gap', () => {

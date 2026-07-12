@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: "Focused debug series: read SPECS/issues/phase-36.13-dynamic-interpolation-debug/README.md, then run only 01-physics-paint-studio-refactor.md on branch phase-36.13-debugs. Current main/36.13 implementation is buggy and not UAT-accepted. Goal: identify why PhysicsPaintStudio.tsx / current Roto state model causes inconsistent dynamic interpolation behavior; map current ownership of Roto source/display state; propose and begin the smallest refactor/model extraction required before more 36.13 fixes."
 created: 2026-07-05
-updated: 2026-07-11T16:00:00Z
+updated: 2026-07-12T00:08:00Z
 ---
 
 # Debug Session: Phase 36.13 Roto Model
@@ -27,28 +27,314 @@ updated: 2026-07-11T16:00:00Z
 
 ## Current Focus
 
-- debug: `02-source-display-contract`
-- hypothesis: Confirmed and fixed: legacy far-target conversion stored display-derived source identity, and the shared projector applied custom display overrides while interpolation was OFF.
-- test: Final automated gate results supplied after the minimal shared contract corrections.
-- expecting: Focused Debug 02 tests, full Physics Paint regression matrix, typecheck, build, and diff check all pass; live visible UAT remains user-owned.
-- next_action: Stop before Debug 03 and await live UAT/explicit approval for the next debug.
-- reasoning_checkpoint:
-    hypothesis: "Two shared pure contract divergences caused the inconsistent durable model: far display targets resolved to an inflated source identity, and OFF projection applied ON-only display spacing overrides."
-    confirming_evidence:
-      - "The RED parity test observed source 6 / override 2->6=4 instead of canonical source 4 / override 2->4=4."
-      - "The first GREEN run isolated OFF projection values 9 and 7, exactly explained by applying overrides 7 and 4 to source displays 2 and 3."
-      - "After both minimal shared corrections, the focused suite passed all 47 tests and the full Physics Paint matrix passed all 336 tests."
-    falsification_test: "Any focused source/display assertion, full Physics Paint regression, typecheck, build, or diff check failure after the corrections would have disproved completion."
-    fix_rationale: "The corrections unify every caller behind one durable display-to-source resolver and restrict segment overrides to interpolation-ON display projection, preserving OFF source coordinates."
-    blind_spots: "Live visible UAT has not run; automated-ready does not equal Phase 36.13 UAT acceptance."
+- debug: `04-paste-far-key`
+- status: automated-ready at rendered control boundary; live native UAT pending
+- prerequisite: Debug 02 Source / Display Contract is live-UAT accepted. Absolute real-key and paint/cache identities, ON/OFF projection, toggle, and close/reopen behavior are accepted and were not reopened.
+- prior_corrections_preserved: The projected real-key session input and `replace-roto-key-frames` interpolation-settings publication fixes remain necessary for Copy classification and far-key projection.
+- rendered_availability_divergence: `useRotoKeyUtilities.copyKey` captured source frame 3 and its paint payload, then unconditionally called `input.syncPendingRotoFrames()`. Studio wires that callback to `resetSession()`, which cleared `copiedKeyRef` and `copiedEditableStateRef` before the empty target was selected. The final `PhysicsPaintWorkflowStrip` received `actionAvailability.canPaste=false`, so the native Paste button rendered `disabled=true`.
+- previous_test_gap: The prior 148/354 green runs used source-text assertions and direct hook/session/controller calls. They did not click the rendered source cell, rendered Copy button, rendered empty cell, or inspect the final native Paste disabled property.
+- correction: Removed only Copy's post-action `syncPendingRotoFrames` call. The live session signal remains the canonical reactive owner; the existing ref mirror preserves copied state when selection recreates the session. Effect-bearing mutations still synchronize through the effect-gated `runSessionResult` branch.
+- copy_result: Rendered Copy immediately captures absolute source frame 3 and distinct source paint. The copied key and editable payload survive selecting empty frame 12/14. Generated-frame Copy remains disabled.
+- paste_result: The rendered Paste button enables immediately at empty 12/14 for ON and OFF starts, dispatches the Paste controller, and preserves absolute durable source/paint/cache identity 12/14 through persistence, hydration, and reopened ON projection.
+- save_paste_parity: ON-start and OFF-start Paste at 12/14 match `saveRotoRealKeyTransaction` durable source frames and spacing overrides.
+- next_action: Run live native UAT for rendered Copy followed by empty-target Paste. Do not continue into Duplicate refresh or later debugs.
 - tdd_checkpoint:
-    test_file: `app/src/components/physic-paint/roto/rotoSourceDisplayModel.test.ts`
-    test_name: `uses one canonical durable source target across every display-to-source boundary`
+    status: green
+    red_evidence: `Mounted PhysicsPaintWorkflowStrip with Studio-style sync wiring failed 4/4 at the final Paste control: disabled="true" after rendered source-cell -> Copy -> empty-cell clicks. The copied payload existed inside the live session immediately before syncPendingRotoFrames reset it.`
+    green_evidence: `Rendered availability 4/4; focused Debug 04 198/198 across 7 files; persistence/hydration 45/45 across 4 files; full Physics Paint 354/354 across 35 files; typecheck/build/diff-check passed.`
+- reasoning_checkpoint:
+    hypothesis: "Effectless Copy was incorrectly treated as a pending-frame synchronization event, and Studio's synchronization callback reset the canonical copied state before Paste availability could render."
+    confirming_evidence:
+      - "The rendered Copy button was enabled and its click populated session.copiedKey with source frame 3 and the distinct paint payload."
+      - "The next boundary called syncPendingRotoFrames, which resolves to resetSession in Studio and clears both copied refs."
+      - "After rendered empty-cell selection, the final workflow strip received canPaste=false and the native Paste button exposed disabled=true."
+      - "Removing only the post-Copy synchronization call made the identical rendered flow pass while all transaction, persistence, hydration, type, and build gates remained green."
+    fix_rationale: "Copy is a read-only session action with no pending-frame list mutation. Preserve its canonical signal/ref state and reserve pending synchronization for effect-bearing mutations."
+    blind_spots: "Live native visual UAT remains user-owned. Duplicate-after-far-key projection refresh is deliberately deferred to Debug 07. The historical 460 count has no recorded command and is not reproducible; 354 is the authoritative unique current matrix."
+
+## 2026-07-11 — Debug 02 native transport GREEN verification
+
+### Root cause
+- The TypeScript launch context included canonical cached-frame identity and interpolation provenance, but Rust `PhysicsPaintRotoCacheFrame` omitted `sourceFrame`, `displayFrame`, `fromSourceFrame`, `toSourceFrame`, `interpolationT`, and `onionDataUrl`.
+- Native serde transport silently discarded those fields. Direct persisted-ON reopen therefore hydrated display-keyed `appFrame` values as source keys and lost the custom final-span association, while persisted OFF masked the issue because OFF `appFrame` values already matched source positions.
+
+### Minimal fix
+- Added the missing optional camelCase fields to the Rust transport struct.
+- Updated manually constructed Rust fixtures to initialize the new optional fields to `None`.
+- No TypeScript hydration, store projection, timeline view, Paste, refresh, or internal Roto effect behavior changed.
+
+### GREEN evidence
+- Focused Rust transport regression: `1/1` passed.
+- Full Physics Paint matrix: `344/344` passed across `34` files.
+- `pnpm --dir app typecheck`: passed.
+- `pnpm --dir app build`: passed with `1086` modules transformed and only the existing Vite CJS deprecation warning.
+- `git diff --check`: passed.
+
+### Status
+- Debug 02 is live-UAT accepted.
+- Absolute real-key and paint/cache identities, interpolation OFF/ON spacing, toggle ON/OFF, and close/reopen in both modes are accepted.
+- Debug 02 is closed and was not reopened during Debug 04.
+- No server was run and no commit was created.
+
+## 2026-07-11 — Corrected Debug 02 contract reset
+
+### Invalidated conclusions
+- All prior Debug 02/03 conclusions and tests accepting durable source/cache frame `5` for selected frame `14` are superseded.
+- Debug 03 automated-ready status is invalidated. Debug 03 and later debugs remain blocked.
+
+### Corrected truth tables
+- OFF Save identity: selected/editable/transaction/source/cache/persisted/hydrated frames `0`, `1`, `2`, and `14` remain exactly `0`, `1`, `2`, and `14`; saving frame 2 does not replace frame 1.
+- ON spacing for compact source keys `0/1/2`: count 0 -> `0/1/2`; count 1 -> `0/2/4`; count 2 -> `0/3/6`; count 3 -> `0/4/8`.
+- Toggle is projection-only: source/cache keys remain `0/1/2`; OFF `0/1/2`; ON with count 2 `0/3/6`; OFF again `0/1/2`.
+- Far key: durable source/cache keys `0/1/2/3/14`; OFF `0/1/2/3/14`; ON count 2 plus final override `3 -> 14 = 4` projects `0/3/6/9/14`.
+
+### First divergences and corrections
+- OFF identity first diverged in `saveRotoRealKeyTransaction`, which forced `settings.enabled: true` before target resolution. The pure durable resolver now keeps `sourceFrame === selected displayFrame`; the controller always forwards that explicit absolute override.
+- ON zero-count spacing first diverged in `getExpandedRotoRealKeyFrames`, which used `clampPositiveInteger(..., 1)` and therefore converted count 0 into count 1. Projection now accepts non-negative counts and advances by exactly `count + 1`.
+- Saved preview/cache publication remains source-keyed, but the source key is now the absolute selected frame.
+
+### TDD evidence
+- RED focused run: 6 failures. OFF frame 2 resolved to 1; OFF frame 14 resolved to 9; ON/OFF far frame 14 resolved to 5; count 0 projected `0/2/4`.
+- Replaced contradictory compact-source assertions in `rotoKeyTransactions.test.ts`, `rotoSourceDisplayModel.test.ts`, and `physicPaintRotoDurableCore.test.ts`.
+- GREEN focused contract and durable integration: 23/23 tests across 3 files, including distinct ON/OFF paint payloads persisted and hydrated at absolute frame 14.
+- Full Physics Paint matrix: 344/344 tests across 34 files.
+- Typecheck: passed.
+- Build: passed; 1086 modules transformed, existing Vite CJS deprecation warning only.
+- `git diff --check`: passed.
+
+### Scope boundary
+- Debug 01 extraction preserved; no new internal Roto `useEffect`, mirrored arrays, compatibility shim, Paste work, generic refresh work, server run, or commit.
+- Live visible UAT remains required and user-owned.
+
+### Superseded historical Current Focus
+
+- debug: `03-save-current-far-key` REOPEN after second failed live UAT
+- live_uat_failure: "Timeline metadata is canonical, but painted content can appear about two positions early with interpolation OFF and can lose its expected distant association after close/reopen."
+- hypothesis: "Timeline/model identity reaches canonical source 5, while one painted-content cache boundary still retains visible display 14 instead of source 5."
+- test: Trace displayFrame/sourceFrame/paint-cache key independently through edit buffer, render, Save payload, durable store, launch cache, close/reopen hydration, and lookup; require unique paint payload assertions rather than marker-only assertions.
+- expecting: The first paint/cache key divergence is corrected so ON/OFF starts both store and hydrate the unique paint under source 5 while preserving enabled state and reconstructing display 14 when interpolation is ON.
+- next_action: Stop for live UAT. Repeat far-frame 14 paint/save from interpolation ON and OFF, close/reopen, then re-enable interpolation and confirm the same unique paint remains on the distant real key.
+- tdd_checkpoint:
+    test_file: `app/src/lib/physicPaintRotoDurableCore.test.ts`
+    test_name: `preserves a visible far Save target through the OFF-start Studio controller path`
     status: `green`
-    failure_output: `RED previously received sourceFrame 6 and toSourceFrame 6; final focused Debug 02 suite passed 47 tests across 3 files.`
+    failure_output: `RED with pre-fix resolver: payload startFrame 14, sourceFrame 14, segmentSpacingOverrides []; GREEN: sourceFrame 5, override 3->5=4, hydrated ON projection 0/3/6/9/14.`
+
+## Debug 03 Trace and Evidence
+
+- timestamp: 2026-07-11T20:00:04Z
+  checked: `PhysicsPaintWorkflowStrip -> PhysicsPaintStudio -> useRotoPersistenceIntegration -> useRotoSaveController -> useRotoTimelineActions -> saveRotoRealKeyTransaction -> upsertCachedFrame -> store/cache -> useRotoTimelineModel`
+  found: The visible cell navigation writes the selected display frame into `launchContext.startFrame`; Save current reads that exact `currentFrame`, calls `saveRealKeyAtDisplayFrame(currentFrame)`, forwards the transaction's source override and interpolation settings into the apply payload, and publishes the real key before settings inside one launch-context state updater. The publication path then refreshes cache and timeline projection from store source keys/settings.
+  implication: The live Save path does not drop the transaction result or publish settings in a separate stale render; the first divergence is inside target resolution before publication.
+- timestamp: 2026-07-11T20:00:04Z
+  checked: `resolveRotoRealKeySaveTarget` and focused RED test
+  found: Target resolution delegates to `resolveRotoFarEmptyDisplaySaveTarget` with `model.settings.enabled`. For the same visible display 14 and source keys 0/1/2/3, enabled=true yields canonical source 5 plus override 3->5=4, while enabled=false treats display 14 as literal source 14 with no override.
+  implication: Save current encodes two different durable models solely from the starting projection state, violating the required ON/OFF parity and causing OFF saves to reconstruct a different ON projection.
+
+### Ranked hypotheses
+1. Confirmed: interpolation enabled state incorrectly changes durable Save target resolution; prediction was OFF start returns source 14 while ON start returns source 5 for display 14.
+2. Eliminated: save publication ordering drops the override; trace shows the transaction settings are carried in the apply payload and applied during cache upsert before projection refresh.
+3. Eliminated for Debug 03: selected timeline target is converted before Save; trace shows `currentFrame` remains the selected visible display frame through `saveRotoFrame`.
+
+### Structured reasoning checkpoint
+
+```yaml
+reasoning_checkpoint:
+  hypothesis: "Save current produces divergent durable models because saveRotoRealKeyTransaction passes the transient interpolation enabled flag into display-to-source target resolution; OFF treats visible display 14 as source 14 while ON compresses it to source 5 with override 3->5=4."
+  confirming_evidence:
+    - "The focused RED test received sourceFrameOverride 14 instead of 5 only for the OFF-start transaction."
+    - "The complete Save trace carries the transaction source/settings unchanged through payload construction and cache/store publication, ruling out a later dropped override."
+    - "The existing ON truth table already returns source 5, OFF 0/1/2/3/5, and reconstructed ON 0/3/6/9/14."
+  falsification_test: "If resolving the Save target with canonical interpolation spacing still produced a different durable model or projection for OFF start, the hypothesis would be false."
+  fix_rationale: "Durable source identity must be independent of the transient ON/OFF projection. Resolve Save targets with canonical interpolation spacing, then preserve the actual enabled flag when building the persisted model/settings."
+  blind_spots: "Live visible UAT remains user-owned; Paste and general toggle/refresh behavior are explicitly excluded."
+```
+
+## 2026-07-11 — Debug 03 completion: Save Current Far Key
+
+### Root cause
+- `saveRotoRealKeyTransaction` resolved a visible Save target using the model's transient `settings.enabled` flag.
+- With interpolation ON, display 14 over source `0/1/2/3` compressed canonically to source `5` and created override `3 -> 5 = 4`.
+- With interpolation OFF, the same display 14 was treated as literal source `14` with no override.
+- The rest of the live Save path correctly carried and published the transaction result, so the divergence originated entirely in target resolution.
+
+### Minimal fix
+- Resolve Save current targets against canonical interpolation spacing regardless of the starting ON/OFF projection.
+- Preserve the actual enabled flag when upserting the durable model and building persisted interpolation settings.
+- No Paste, general toggle/refresh, Studio ownership, or effect changes were made.
+
+### Exact truth tables verified
+- Normal Save: source `0/1/2`, global `2`, display `9` -> durable `0/1/2/3`, ON `0/3/6/9`, OFF `0/1/2/3`, no override.
+- Far Save: source `0/1/2/3`, global `2`, display `14` -> durable `0/1/2/3/5`, override `3 -> 5 = 4`, ON `0/3/6/9/14`, OFF `0/1/2/3/5`.
+- ON/OFF start parity: both starting states now produce the same durable source sequence and override and reconstruct the same ON projection.
+
+### TDD evidence
+- RED: `rotoKeyTransactions.test.ts` failed `1` of `6` tests with `expected sourceFrameOverride 5, received 14`.
+- GREEN: focused transaction file passed `6/6` tests.
+- Focused Debug 03 matrix passed `40/40` tests across `4` files.
+
+### Broader gates
+- Full `app/src/components/physic-paint` matrix: `336/336` tests passed across `34` files.
+- `pnpm --dir app typecheck`: passed.
+- `pnpm --dir app build`: passed; `1086` modules transformed, existing Vite CJS deprecation warning only.
+- `git diff --check`: passed.
+
+### Files changed
+- `/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/roto/rotoKeyTransactions.ts`
+- `/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/roto/rotoKeyTransactions.test.ts`
+- `/Users/lmarques/Dev/efx-motion-editor/.planning/debug/phase-36-13-roto-model.md`
+
+### Reopen evidence after failed live UAT
+- Added a public Studio/controller integration test in `/Users/lmarques/Dev/efx-motion-editor/app/src/lib/physicPaintRotoDurableCore.test.ts` that launches with interpolation OFF, navigates through the visible workflow controls from frame 3 to frame 14, paints, clicks `Save current`, captures the real apply payload, applies it to the durable store, persists/loads project data, and rebuilds the reopen launch context.
+- RED was proven by temporarily restoring the pre-fix transaction behavior: the real controller payload kept `startFrame: 14` but sent `sourceFrame: 14` and `segmentSpacingOverrides: []`. This proves the controller receives the user-selected visible target 14; compaction failure occurs in the transaction resolver, not before it.
+- GREEN with the minimal existing Debug 03 fix sends `sourceFrame: 5` and override `3 -> 5 = 4`, while preserving `enabled: false` in the payload.
+- Hydration classification: **A confirmed for the failed live build**. The override was absent before persistence because the OFF-start transaction produced none. With the fix, the exact override survives apply payload -> store -> `toMceOutputs` -> `savePhysicPaintData` -> `loadPhysicPaintData` -> `loadFromMceOutputs` -> `createPhysicPaintLaunchContext`; `selectRotoTimelineView` then initializes source `0/1/2/3/5` and reconstructs ON real-key display `0/3/6/9/14`. No Debug 05/08 hydration drop was reproduced at this boundary.
+- Refresh classification: the Save publication path updates the durable store and launch-context projection in one explicit action; the controller integration test observes the canonical payload/store immediately. The reported intermittent stale visual refresh remains Debug 05 scope unless live UAT shows it prevents Save input/publication. No effect synchronization was added.
+
+### Reopen TDD and gates
+- Controller RED command: `pnpm --dir app exec vitest run src/lib/physicPaintRotoDurableCore.test.ts -t "preserves a visible far Save target through the OFF-start Studio controller path"` -> `1 failed`; received `sourceFrame: 14`, empty overrides.
+- Controller GREEN command: same command -> `1/1` passed, including durable reopen model initialization and ON projection `0/3/6/9/14`.
+- Focused Debug 03 matrix: `18/18` tests passed across `4` files.
+- Full `app/src/components/physic-paint` matrix: `336/336` tests passed across `34` files.
+- `pnpm --dir app typecheck`: passed.
+- `pnpm --dir app build`: passed; `1086` modules transformed, existing Vite CJS deprecation warning only.
+- `git diff --check`: passed.
+
+### Files changed after reopen
+- `/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/roto/rotoKeyTransactions.ts`
+- `/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/roto/rotoKeyTransactions.test.ts`
+- `/Users/lmarques/Dev/efx-motion-editor/app/src/lib/physicPaintRotoDurableCore.test.ts`
+- `/Users/lmarques/Dev/efx-motion-editor/.planning/debug/phase-36-13-roto-model.md`
+
+### Verification gap closure: ON/OFF content-bearing durable parity
+- Replaced the OFF-only public Studio/controller case with parameterized ON-start and OFF-start cases named `preserves far Save paint identity through the 'ON'-start Studio controller and durable reopen path` and `preserves far Save paint identity through the 'OFF'-start Studio controller and durable reopen path`.
+- Each case initializes source keys 0/1/2/3 with distinct paint payloads and saves a distinct ON/OFF unique paint payload at visible display 14.
+- Both public paths prove controller payload `startFrame: 14`, canonical `sourceFrame: 5`, override `3 -> 5 = 4`, and preservation of the actual starting `enabled` state.
+- Both prove the unique saved paint is durable at source/cache key 5, absent at key 14, does not replace prior source key 3, survives persistence/hydration/reopen under source 5, and maps back to visible display 14 when interpolation is re-enabled.
+- Focused Debug 03 matrix: `109/109` tests across `4` files.
+- Full Physics Paint matrix: `336/336` tests across `34` files.
+- Typecheck passed; build passed with `1086` modules transformed and the existing Vite CJS deprecation warning only; `git diff --check` passed.
+
+### Status
+- Debug 03 is automated-ready after content-bearing ON/OFF controller-boundary proof.
+- Live visible UAT is pending and user-owned; Phase 36.13 is not UAT-accepted.
+- Stop boundary honored: Debug 04 Paste was not started, Debug 05 refresh was not broadened, no internal Roto effect was added, and no commit was created.
+
+## 2026-07-11 — Debug 03 second reopen: painted-content identity
+
+### Live UAT result
+- Debug 03 live UAT failed again after timeline/model identity was corrected.
+- Corrected evidence: OFF-start paint could appear approximately two visible positions early; ON initially displayed the new paint at the expected far target, but close/reopen lost the expected distant association.
+
+### Separate identity trace
+
+| Boundary | displayFrame | sourceFrame | paint/cache key | Result |
+| --- | ---: | ---: | ---: | --- |
+| Visible selection / edit buffer | 14 | pending canonical resolution | 14 | Expected transient UI/edit coordinate. |
+| Save transaction | 14 | 5 | 14 before render | Canonical model target and override `3 -> 5 = 4` are correct. |
+| Rendered Save payload | 14 | 5 | 5 | `renderFrame` rewrites rendered `appFrame` to source 5; apply payload carries `startFrame: 14`, `sourceFrame: 5`, and rendered paint for source 5. |
+| Durable store apply | 14 | 5 | 5 | `applyCanvas -> upsertRealRotoKeyFrame` stores rendered paint under source 5; no frame 14 durable paint exists. |
+| Immediate preview cache | 14 | 5 | **14 before fix** | First divergence: `setPreviewFrame(frame, ...)` published the saved paint into the transient preview map under display 14 even though the rendered frame and durable store used source 5. |
+| Launch-context cache publication | projected UI 14 when ON | 5 | 5 | Coordinator normalizes real-key cache to source 5 and refreshes projection from store/settings. |
+| Persist / hydrate / reopen | projected UI 14 when ON; source UI 5 when OFF | 5 | 5 | Unique paint data survives serialization and hydration under source 5; reopen context exposes source/display cache identity 5, and ON projection reconstructs real key display 14. |
+
+### Root cause and first divergence
+- The timeline/key transaction and durable apply path already shared canonical source identity 5.
+- The first painted-content divergence was in `useRotoSaveController`: after rendering with canonical source 5, it inserted the saved preview/onion frame into `previewFrames` using the transient display/edit frame 14.
+- Display-keyed preview content could mask the mismatch while interpolation was ON and compete with source-keyed lookup/projection after OFF mode or reopen.
+
+### Minimal fix
+- Changed preview publication from `setPreviewFrame(frame, ...)` to `setPreviewFrame(sourceFrame, ...)`.
+- The edit buffer remains display-keyed while editing, but every saved paint/cache artifact now switches to the same canonical source identity as the real key.
+- No separate remapping rule, Paste change, Studio ownership move, or new internal Roto effect was introduced.
+
+### TDD and identity coverage
+- Extended the public Studio/controller durable integration test with separate ON-start and OFF-start cases using distinct initial paint payloads for source keys `0/1/2/3` and a distinct unique saved payload per case.
+- Both cases assert actual paint identity, not only markers/settings:
+  - payload rendered frame is keyed by source 5 and contains the case's unique data URL;
+  - durable store contains that paint at source 5, no paint at display 14, and preserves the prior source-3 payload;
+  - payload and hydrated settings preserve the actual starting enabled state;
+  - persistence/hydration preserves the unique paint under source 5;
+  - reopen launch cache exposes canonical source 5 with the same unique paint;
+  - re-enabled ON projection reconstructs real-key display 14 with that source-5 content association.
+- Updated source-contract assertions to require source-keyed preview publication.
+
+### Validation
+- Focused Debug 03 matrix: `109/109` tests across `4` files.
+- Full Physics Paint matrix: `336/336` tests across `34` files.
+- Typecheck: passed.
+- Build: passed; `1086` modules transformed, existing Vite CJS deprecation warning only.
+- `git diff --check`: passed.
+
+### Changed files for this reopen
+- `/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/hooks/useRotoSaveController.ts`
+- `/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/PhysicsPaintStudio.test.ts`
+- `/Users/lmarques/Dev/efx-motion-editor/app/src/lib/physicPaintRotoDurableCore.test.ts`
+- `/Users/lmarques/Dev/efx-motion-editor/.planning/debug/phase-36-13-roto-model.md`
+
+### Current status
+- Superseded historical Debug 03 notes above are retained as history; the corrected Debug 02 absolute contract is live-UAT accepted.
+- Debug 04 Paste is resolved and live-UAT accepted.
+- Duplicate-after-far-key stale projection is blocked for Debug 07 and was not fixed.
+- Debug 05, Debug 06, Debug 07, and Debug 08 remain unstarted.
+- No server was run and no commit was created.
+
+## 2026-07-12 — Debug 04 completion: Paste Far Key
+
+### Live UAT acceptance
+- Debug 04 live native UAT was accepted on 2026-07-12 after the custom target-14 publication correction.
+- Final accepted behavior preserves absolute source/paint key `14`, ON projection `0/3/6/9/14`, OFF projection `0/1/2/3/14`, and the same projection after close/reopen.
+- Debug 04 is resolved. No later debug was started and no commit was created.
+
+### Boundary trace
+
+| Boundary | Result |
+| --- | --- |
+| Selected display/source | ON real key display 9 maps to absolute source 3; OFF real key display/source 3. Generated blue frames remain non-copyable. |
+| Copy availability inputs | Strip used projected real displays; session previously used raw launch cache displays. Frame 9 was visible-real to the strip but absent from session real keys. |
+| Copied state | With projected session frames, Copy stores source frame 3 and the distinct source-3 paint payload; selection of empty 12/14 does not clear it. |
+| Paste target | `resolveRotoRealKeySaveTarget` returns absolute source 12 or 14, never ordinal 4/5. Target 14 carries override `3 -> 14 = 4`. |
+| Paste transaction | Real source keys become `0/1/2/3/12` or `0/1/2/3/14`; copied paint exists only at the absolute target and prior paint remains unchanged. |
+| Parent publication | Before correction, `replace-roto-key-frames` ignored transaction interpolation settings and far 14 regenerated to display 12. After correction it applies settings before cache regeneration. |
+| Persistence/hydration | Source/cache/persisted/hydrated identity remains 12/14 with distinct copied paint. |
+| Final workflow inputs | ON real displays are `0/3/6/9/12` or `0/3/6/9/14`; OFF displays include absolute 12/14. |
+
+### Rendered-path reopen and final gates
+- The earlier completion was invalidated by native UAT because it did not mount the final rendered Copy/Paste controls.
+- New RED test mounts `PhysicsPaintWorkflowStrip` with `useRotoKeyUtilities`, clicks the rendered source cell, Copy button, empty target cell, and checks the final native Paste disabled attribute.
+- RED: `4/4` cases failed with `disabled="true"` after Copy for ON/OFF and targets 12/14; the copied payload existed immediately before Studio-style pending synchronization reset the session.
+- GREEN: removed only Copy's post-action `syncPendingRotoFrames` call.
+- Rendered availability and durable transaction: `4/4` passed.
+- Focused Debug 04 matrix: `198/198` passed across `7` files.
+- Persistence/hydration matrix: `45/45` passed across `4` files.
+- Full Physics Paint matrix: `354/354` passed across `35` files using `pnpm --dir app exec vitest run src/components/physic-paint src/lib/physicPaintRotoDurableCore.test.ts`.
+- The old `460/460` report has no recorded exact command and cannot be reproduced as one unique current Vitest scope; it is retained as historical but is not authoritative.
+- `pnpm --dir app typecheck`: passed.
+- `pnpm --dir app build`: passed; `1086` modules transformed with the existing Vite CJS warning only.
+- `git diff --check`: passed.
+- Live native UAT for Copy followed by Paste was accepted on 2026-07-12.
+- A subsequent custom far-target UAT regression was traced to pre-replacement override normalization in `useRotoPersistenceIntegration.applyKeyFrames`; atomic replacement now preserves canonical override `3 -> 14 = 4` through projection, persistence, hydration, and reopen.
+- Final rendered target 12/14 controls passed `2/2`, focused Debug 04 passed `171/171`, and the full Physics Paint matrix passed `356/356`; typecheck, build, and `git diff --check` passed.
+- Debug 04 is resolved. Duplicate refresh remains deferred to Debug 07; later debugs were not started.
 
 ## Evidence
 
+- timestamp: 2026-07-11T21:06:00Z
+  checked: `hydrateRotoLaunchContext` direct ON path versus `useRotoInterpolationController.updateRotoInterpolationSettings` OFF-then-enable path
+  found: Direct hydration seeds real keys, applies launch settings, then immediately replaces launch cache with `store.getRotoCacheFrames()` whenever enabled. Toggle also seeds and updates settings, but refreshes from the post-transaction store cache. Both should share store truth; therefore the first divergence must be at launch settings/cache construction or store normalization/regeneration before workflow-strip consumption.
+  implication: Compare the exact launch-context settings and store settings/cache after `setRotoInterpolationSettings`; do not patch the view or add an effect.
+- timestamp: 2026-07-11T21:07:00Z
+  checked: `selectRotoTimelineView` and `PhysicsPaintWorkflowStrip` inputs
+  found: The timeline selector derives source keys from `cachedRotoFrames[*].sourceFrame`, but the workflow strip treats materialized enabled cache frames as authoritative display cells and bypasses pure re-expansion when generated frames exist. Thus a stale enabled launch cache ending at display 12 is rendered as-is even if durable source key 17 survives.
+  implication: The visible `0/3/6/9/12` symptom is downstream confirmation of a stale/missing override in enabled cache materialization, not proof that durable key 17 was lost.
+- timestamp: 2026-07-11T21:12:00Z
+  checked: TypeScript launch construction against Rust native `PhysicsPaintLaunchContext` / `PhysicsPaintRotoCacheFrame` transport schema
+  found: TypeScript sends each enabled real key as display-keyed `appFrame` plus canonical `sourceFrame` and `displayFrame`. The Rust frame struct omits both identity fields and all interpolation provenance, so serde silently discards them when the native launch command stores and re-emits the context.
+  implication: This is the first divergence between direct ON native hydration and OFF-then-enable. Direct ON seeds keys from display appFrames after provenance loss; OFF appFrames already equal source positions, masking the transport bug until ON launch.
+- timestamp: 2026-07-11T22:00:00Z
+  checked: GREEN verification after adding the missing Rust transport fields
+  found: Focused native launch-context transport regression passed 1/1. The full Physics Paint matrix passed 344/344 across 34 files. `pnpm --dir app typecheck` passed. `pnpm --dir app build` passed with 1086 modules and only the existing Vite CJS deprecation warning. `git diff --check` passed.
+  implication: The schema fix preserves the tested source/display identity contract and introduces no detected Physics Paint, type, build, or whitespace regression. Debug 02 is automated-ready; live native visible UAT remains pending.
 - timestamp: 2026-07-05T07:35:01Z
   observation: Initial TDD RED for `/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/rotoSourceDisplayModel.test.ts` failed because `./rotoSourceDisplayModel` did not exist, confirming the source/display boundary was missing.
   source: `pnpm --dir "/Users/lmarques/Dev/efx-motion-editor/app" exec vitest run src/components/physic-paint/rotoSourceDisplayModel.test.ts`

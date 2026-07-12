@@ -165,6 +165,7 @@ export interface PhysicPaintReplaceRotoKeyFramesPayload {
   layerId: string;
   startFrame: number;
   frames: PhysicPaintRotoCacheFrame[];
+  rotoInterpolationSettings?: PhysicPaintRotoInterpolationSettings;
 }
 
 export interface PhysicPaintApplyPlayCanvasPayload {
@@ -327,7 +328,9 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
   if (value.kind === 'delete-roto-frame') return optionalNonNegativeInteger(value.sourceFrame);
 
   if (value.kind === 'replace-roto-key-frames') {
-    return Array.isArray(value.frames) && value.frames.every((frame) => isPhysicPaintRotoCacheFrame(frame) && frame.source === 'real-key');
+    return Array.isArray(value.frames) &&
+      value.frames.every((frame) => isPhysicPaintRotoCacheFrame(frame) && frame.source === 'real-key') &&
+      optionalRotoInterpolationSettings(value.rotoInterpolationSettings);
   }
 
   if (!isSerializedProject(value.editableState)) return false;

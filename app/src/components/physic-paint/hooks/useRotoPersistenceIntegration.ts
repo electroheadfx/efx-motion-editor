@@ -203,8 +203,11 @@ export function useRotoPersistenceIntegration<TEditable extends RotoEditableStat
 
   const applyKeyFrames = useCallback((transaction: RotoKeyUtilityTransaction) => {
     if (!input.launchContext) return [];
-    if (transaction.segmentSpacingOverrides) physicPaintStore.setRotoInterpolationSettings(input.launchContext.layerId, { segmentSpacingOverrides: [...transaction.segmentSpacingOverrides] });
-    physicPaintStore.replaceRotoKeyFrames({ operationId: `${input.launchContext.operationId}:local-roto-keys:${Date.now()}`, kind: 'replace-roto-key-frames', layerId: input.launchContext.layerId, startFrame: transaction.activeFrame, frames: transaction.realKeyFrames });
+    const rotoInterpolationSettings = {
+      ...physicPaintStore.getRotoInterpolationSettings(input.launchContext.layerId),
+      segmentSpacingOverrides: [...transaction.segmentSpacingOverrides],
+    };
+    physicPaintStore.replaceRotoKeyFrames({ operationId: `${input.launchContext.operationId}:local-roto-keys:${Date.now()}`, kind: 'replace-roto-key-frames', layerId: input.launchContext.layerId, startFrame: transaction.activeFrame, frames: transaction.realKeyFrames, rotoInterpolationSettings });
     return physicPaintStore.getRotoCacheFrames(input.launchContext.layerId);
   }, [input.launchContext]);
 

@@ -220,7 +220,7 @@ export function useRotoKeyUtilities<TEditable, TPreview extends { appFrame: numb
       return;
     }
     copiedEditableStateRef.current = input.getEditableState(input.currentFrame);
-    void runSessionResult(session.copyKey()).then(() => input.syncPendingRotoFrames());
+    void runSessionResult(session.copyKey());
   }, [blocked, input, runSessionResult, session]);
 
   const pasteKey = useCallback(() => {
