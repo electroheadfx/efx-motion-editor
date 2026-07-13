@@ -53,6 +53,58 @@ describe('rotoKeyTransactions', () => {
     expect(transaction.model.realSourceFrames).toContain(displayFrame);
   });
 
+  it('keeps consecutive distant OFF keys absolute and projects the second segment with the global count', () => {
+    const settings = { enabled: false, inBetweenCount: 2, mode: 'duplicate' as const, deform: 0, position: 0 };
+    const first = saveRotoRealKeyTransaction({
+      model: createRotoSourceDisplayModel({
+        realSourceFrames: [0, 1, 2, 3],
+        settings,
+      }),
+      displayFrame: 14,
+      currentSettings: settings,
+    });
+    const second = saveRotoRealKeyTransaction({
+      model: first.model,
+      displayFrame: 15,
+      currentSettings: first.interpolationSettings,
+    });
+
+    expect(second.model.realSourceFrames).toEqual([0, 1, 2, 3, 14, 15]);
+    expect(second.interpolationSettings.segmentSpacingOverrides).toEqual([
+      { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+    ]);
+    expect(getRotoDisplayProjection(second.model, { enabled: true }).realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, 14, 17]);
+    expect(getRotoDisplayProjection(second.model, { enabled: true }).generatedFrames
+      .filter((frame) => frame.fromSourceFrame === 14 && frame.toSourceFrame === 15)
+      .map((frame) => frame.displayFrame)).toEqual([15, 16]);
+    expect(getRotoDisplayProjection(second.model, { enabled: false }).realKeys.map((key) => key.displayFrame)).toEqual([0, 1, 2, 3, 14, 15]);
+  });
+
+  it('keeps independent distant OFF segments at their absolute ON projections', () => {
+    const settings = { enabled: false, inBetweenCount: 2, mode: 'duplicate' as const, deform: 0, position: 0 };
+    const first = saveRotoRealKeyTransaction({
+      model: createRotoSourceDisplayModel({
+        realSourceFrames: [0, 1, 2, 3],
+        settings,
+      }),
+      displayFrame: 14,
+      currentSettings: settings,
+    });
+    const second = saveRotoRealKeyTransaction({
+      model: first.model,
+      displayFrame: 26,
+      currentSettings: first.interpolationSettings,
+    });
+
+    expect(second.model.realSourceFrames).toEqual([0, 1, 2, 3, 14, 26]);
+    expect(second.interpolationSettings.segmentSpacingOverrides).toEqual([
+      { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+      { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+    ]);
+    expect(getRotoDisplayProjection(second.model, { enabled: true }).realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, 14, 26]);
+    expect(getRotoDisplayProjection(second.model, { enabled: false }).realKeys.map((key) => key.displayFrame)).toEqual([0, 1, 2, 3, 14, 26]);
+  });
+
   it('derives Save current source override and interpolation settings outside Studio', () => {
     const transaction = saveRotoRealKeyTransaction({
       model: createRotoSourceDisplayModel({

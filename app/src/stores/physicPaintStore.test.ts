@@ -560,6 +560,95 @@ describe('physicPaintStore', () => {
     ]);
   });
 
+  it('preserves consecutive distant key identity and projection through ON/OFF/ON and reopen', () => {
+    const sourceFrames = [0, 1, 2, 3, 14, 15];
+    const payloads = new Map(sourceFrames.map((sourceFrame) => [sourceFrame, makeAlphaFrame(0, sourceFrame, `paint-${sourceFrame}`)]));
+    for (const sourceFrame of sourceFrames) physicPaintStore.upsertRealRotoKeyFrame('layer-1', sourceFrame, payloads.get(sourceFrame)!);
+    physicPaintStore.setRotoInterpolationSettings('layer-1', {
+      enabled: false,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
+    });
+
+    const expectRealKeys = (displayFrames: number[]) => {
+      const realKeys = physicPaintStore.getRotoCacheFrames('layer-1').filter((frame) => frame.source === 'real-key');
+      expect(realKeys.map((frame) => frame.sourceFrame)).toEqual(sourceFrames);
+      expect(realKeys.map((frame) => frame.displayFrame)).toEqual(displayFrames);
+      expect(realKeys.map((frame) => frame.dataUrl)).toEqual(sourceFrames.map((sourceFrame) => payloads.get(sourceFrame)!.dataUrl));
+      expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual(sourceFrames);
+    };
+
+    expectRealKeys([0, 1, 2, 3, 14, 15]);
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true });
+    expectRealKeys([0, 3, 6, 9, 14, 17]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')
+      .filter((frame) => frame.source === 'generated-interpolation' && frame.fromSourceFrame === 14 && frame.toSourceFrame === 15)
+      .map((frame) => frame.appFrame)).toEqual([15, 16]);
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: false });
+    expectRealKeys([0, 1, 2, 3, 14, 15]);
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true });
+    expectRealKeys([0, 3, 6, 9, 14, 17]);
+
+    const savedOn = physicPaintStore.toMceOutputs();
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(savedOn);
+    expectRealKeys([0, 3, 6, 9, 14, 17]);
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1').segmentSpacingOverrides).toEqual([
+      { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+    ]);
+
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: false });
+    const savedOff = physicPaintStore.toMceOutputs();
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(savedOff);
+    expectRealKeys([0, 1, 2, 3, 14, 15]);
+  });
+
+  it('preserves independent distant segment spacing and changes only the targeted segment', () => {
+    const sourceFrames = [0, 1, 2, 3, 14, 26];
+    for (const sourceFrame of sourceFrames) {
+      physicPaintStore.upsertRealRotoKeyFrame('layer-1', sourceFrame, makeAlphaFrame(0, sourceFrame, `independent-${sourceFrame}`));
+    }
+    physicPaintStore.setRotoInterpolationSettings('layer-1', {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+        { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+      ],
+    });
+
+    expect(physicPaintStore.getRotoCacheFrames('layer-1').filter((frame) => frame.source === 'real-key').map((frame) => frame.displayFrame)).toEqual([0, 3, 6, 9, 14, 26]);
+    physicPaintStore.setRotoInterpolationSettings('layer-1', {
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 6 },
+        { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+      ],
+    });
+
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1').segmentSpacingOverrides).toEqual([
+      { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 6 },
+      { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+    ]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1').filter((frame) => frame.source === 'real-key').map((frame) => frame.displayFrame)).toEqual([0, 3, 6, 9, 16, 28]);
+
+    const saved = physicPaintStore.toMceOutputs();
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(saved);
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual(sourceFrames);
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1').segmentSpacingOverrides).toEqual([
+      { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 6 },
+      { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+    ]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1').filter((frame) => frame.source === 'real-key').map((frame) => frame.displayFrame)).toEqual([0, 3, 6, 9, 16, 28]);
+  });
+
   it('appends a distant real key saved while interpolation is enabled into compact source order through disable and save/load', () => {
     const circle = makeAlphaFrame(0, 0, 'circle');
     const square = makeAlphaFrame(0, 1, 'square');

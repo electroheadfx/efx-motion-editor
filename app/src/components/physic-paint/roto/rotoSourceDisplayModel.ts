@@ -65,10 +65,12 @@ export function resolveRotoRealKeySaveTarget(
     ...model.settings,
     enabled: true,
   });
+  const previousSourceFrame = [...model.realSourceFrames].reverse().find((sourceFrame) => sourceFrame < displayFrame);
+  const isAdjacentOffSave = model.settings.enabled !== true && previousSourceFrame !== undefined && displayFrame === previousSourceFrame + 1;
   return {
     ...projected,
     sourceFrame: projected.displayFrame,
-    previousSegmentOverride: projected.previousSegmentOverride
+    previousSegmentOverride: projected.previousSegmentOverride && !isAdjacentOffSave
       ? { ...projected.previousSegmentOverride, toSourceFrame: projected.displayFrame }
       : null,
   };
