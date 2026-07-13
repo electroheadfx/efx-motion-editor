@@ -31,8 +31,6 @@ describe('physicsPaintRotoWorkflow', () => {
       { sourceFrame: 1, fromFrame: 3, toFrame: 6, fromSourceFrame: 1, toSourceFrame: 3, sourceFromFrame: 1, sourceToFrame: 3, frame: 4, displayFrame: 4, generatedFrame: 4, ordinal: 1, total: 2, t: 1 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
       { sourceFrame: 1, fromFrame: 3, toFrame: 6, fromSourceFrame: 1, toSourceFrame: 3, sourceFromFrame: 1, sourceToFrame: 3, frame: 5, displayFrame: 5, generatedFrame: 5, ordinal: 2, total: 2, t: 2 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
       { sourceFrame: 3, frame: 6, displayFrame: 6, kind: 'real-key' },
-      { sourceFrame: 3, fromFrame: 6, toFrame: 9, fromSourceFrame: 3, toSourceFrame: undefined, sourceFromFrame: 3, sourceToFrame: undefined, frame: 7, displayFrame: 7, generatedFrame: 7, ordinal: 1, total: 2, t: 1 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
-      { sourceFrame: 3, fromFrame: 6, toFrame: 9, fromSourceFrame: 3, toSourceFrame: undefined, sourceFromFrame: 3, sourceToFrame: undefined, frame: 8, displayFrame: 8, generatedFrame: 8, ordinal: 2, total: 2, t: 2 / 3, kind: 'generated-interpolation', mode: 'blend', renderOnly: true },
     ]);
     expect(sourceRealKeys).toEqual([0, 1, 3]);
   });

@@ -102,12 +102,16 @@ describe('rotoSaveTransactions', () => {
     })).toMatchObject({ backgroundOnly: true });
   });
 
-  it('guards generated and no-new-paint saves with exact user copy', () => {
-    expect(guardRotoSaveFrame({ readyToApply: true, hasLaunchContext: true, currentFrame: 6, generated: true, cachedRepaint: false, dirty: false, snapshotHasLiveOverlay: false })).toEqual({
-      type: 'generated',
-      message: 'Generated frame 6 is render-only. Navigate to an empty/custom position to create a real Roto key.',
+  it('guards render-only selections and no-new-paint saves with exact user copy', () => {
+    expect(guardRotoSaveFrame({ readyToApply: true, hasLaunchContext: true, currentFrame: 6, selectionKind: 'generated-interpolation', cachedRepaint: false, dirty: false, snapshotHasLiveOverlay: false })).toEqual({
+      type: 'render-only',
+      message: 'Generated frame 6 is render-only. Navigate to a real Roto key to paint.',
     });
-    expect(guardRotoSaveFrame({ readyToApply: true, hasLaunchContext: true, currentFrame: 6, generated: false, cachedRepaint: true, dirty: false, snapshotHasLiveOverlay: false })).toEqual({
+    expect(guardRotoSaveFrame({ readyToApply: true, hasLaunchContext: true, currentFrame: 10, selectionKind: 'empty', cachedRepaint: false, dirty: false, snapshotHasLiveOverlay: false })).toEqual({
+      type: 'render-only',
+      message: 'Empty frame 10 is render-only. Navigate to a real Roto key to paint.',
+    });
+    expect(guardRotoSaveFrame({ readyToApply: true, hasLaunchContext: true, currentFrame: 6, selectionKind: 'real-key', cachedRepaint: true, dirty: false, snapshotHasLiveOverlay: false })).toEqual({
       type: 'no-new-paint',
       message: 'No new paint to save for frame 6.',
     });

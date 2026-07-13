@@ -62,6 +62,8 @@ describe('rotoTimelineSelectors', () => {
       { frame: 3, saved: true, label: 'Frame 3' },
       { frame: 6, saved: true, label: 'Frame 6' },
     ]);
+    expect(view.currentFrameSelectionKind).toBe('generated-interpolation');
+    expect(view.currentFrameOwnerSourceFrame).toBe(1);
     expect(view.currentFrameIsGenerated).toBe(true);
   });
 
@@ -91,6 +93,18 @@ describe('rotoTimelineSelectors', () => {
     expect(view.model.realSourceFrames).toEqual([0, 1, 2, 4]);
     expect(view.occupiedRotoFrames).toEqual([0, 1, 2, 4]);
     expect(view.savedRotoFrames.map((marker) => marker.frame)).toEqual([0, 1, 2, 4]);
+    expect(view.currentFrameSelectionKind).toBe('real-key');
+    expect(view.currentFrameIsGenerated).toBe(false);
+  });
+
+  it('classifies a true empty selected display separately from real and generated frames', () => {
+    const view = selectRotoTimelineView({
+      cachedRotoFrames: [frame(0, 0), frame(1, 1), frame(2, 2), frame(3, 3), frame(14, 14), frame(26, 26)],
+      currentFrame: 10,
+      interpolationSettings: { enabled: false, inBetweenCount: 2, mode: 'duplicate' },
+    });
+
+    expect(view.currentFrameSelectionKind).toBe('empty');
     expect(view.currentFrameIsGenerated).toBe(false);
   });
 
@@ -104,6 +118,8 @@ describe('rotoTimelineSelectors', () => {
     expect(model.occupiedRotoFrames.value).toEqual([0, 3, 6]);
     expect(model.savedRotoFrames.value.map((marker) => marker.frame)).toEqual([0, 3, 6]);
     expect(model.cachedRotoFrames.value.map((cachedFrame) => cachedFrame.appFrame)).toEqual([0, 3, 6, 4]);
+    expect(model.currentFrameSelectionKind.value).toBe('generated-interpolation');
+    expect(model.currentFrameOwnerSourceFrame.value).toBe(1);
     expect(model.currentFrameIsGenerated.value).toBe(true);
   });
 });

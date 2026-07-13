@@ -82,9 +82,9 @@ export function clampOnionCount(value: unknown): number {
 
 export function clampOnionOpacity(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) return 60;
+  if (!Number.isFinite(numeric)) return 30;
   const integer = Math.trunc(numeric);
-  if (integer < 10) return 10;
+  if (integer < 0) return 0;
   if (integer > 100) return 100;
   return integer;
 }

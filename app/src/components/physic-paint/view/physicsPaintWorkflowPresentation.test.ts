@@ -171,10 +171,11 @@ describe('physicsPaintWorkflowPresentation', () => {
   });
 
 
-  it('clamps onion opacity to a visible percentage range', () => {
-    expect(clampOnionOpacity(undefined)).toBe(60);
-    expect(clampOnionOpacity(Number.NaN)).toBe(60);
-    expect(clampOnionOpacity(0)).toBe(10);
+  it('clamps onion opacity to the parent Onion Value percentage range', () => {
+    expect(clampOnionOpacity(undefined)).toBe(30);
+    expect(clampOnionOpacity(Number.NaN)).toBe(30);
+    expect(clampOnionOpacity(-1)).toBe(0);
+    expect(clampOnionOpacity(0)).toBe(0);
     expect(clampOnionOpacity(42.8)).toBe(42);
     expect(clampOnionOpacity(120)).toBe(100);
   });

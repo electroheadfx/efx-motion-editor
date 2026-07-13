@@ -218,6 +218,7 @@ export function PhysicsPaintRightPanel({
     .slice(0, 24);
 
   const onionCount = clampOnionCount(onion.count);
+  const onionOpacity = clampOnionOpacity(onion.opacity);
   const updateOnion = (next: Partial<PhysicsPaintOnionState>) => {
     onOnionChange({
       ...onion,
@@ -415,9 +416,14 @@ export function PhysicsPaintRightPanel({
               <label><input type="checkbox" checked={onion.next} disabled={onionDisabled} onChange={(event) => updateOnion({ next: (event.currentTarget as HTMLInputElement).checked })} /> Next</label>
             </div>
             <label class="physics-paint-option-row physics-paint-onion-value-row" for="physics-onion-count">
-              <span class="physics-paint-right-label">Onion value</span>
+              <span class="physics-paint-right-label">Onion frames</span>
               <input id="physics-onion-count" type="range" min={1} max={3} value={onionCount} disabled={onionDisabled} onInput={(event) => updateOnion({ count: Number((event.currentTarget as HTMLInputElement).value) })} />
               <output>{onionCount}</output>
+            </label>
+            <label class="physics-paint-option-row physics-paint-onion-value-row" for="physics-onion-opacity">
+              <span class="physics-paint-right-label">Onion value</span>
+              <input id="physics-onion-opacity" type="range" min={0} max={100} step={1} value={onionOpacity} disabled={onionDisabled} onInput={(event) => updateOnion({ opacity: Number((event.currentTarget as HTMLInputElement).value) })} />
+              <output>{onionOpacity}%</output>
             </label>
           </div>
         ) : (

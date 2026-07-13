@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.8.0
 milestone_name: Standalone Physics Paint
-current_phase: 36.13
-current_phase_name: physics-paint-roto-dynamic-interpolation-spacing
-status: executing
-stopped_at: Phase 36.13 context gathered
-last_updated: "2026-07-03T06:33:27.885Z"
-last_activity: 2026-07-03
-last_activity_desc: Phase 36.13 execution started
+current_phase: 36.14
+current_phase_name: physics-paint-roto-timeline-ui-from-pencil
+status: ready_to_plan
+stopped_at: Phase 36.13 completed and native UAT approved
+last_updated: "2026-07-13T23:50:00Z"
+last_activity: 2026-07-13
+last_activity_desc: Phase 36.13 completed after Debug 08 onion parity UAT
 progress:
   total_phases: 19
-  completed_phases: 15
+  completed_phases: 16
   total_plans: 92
-  completed_plans: 86
-  percent: 79
+  completed_plans: 92
+  percent: 84
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.13 — physics-paint-roto-dynamic-interpolation-spacing
+**Current focus:** Phase 36.14 — physics-paint-roto-timeline-ui-from-pencil
 
 ## Current Position
 
-Phase: 36.13 (physics-paint-roto-dynamic-interpolation-spacing) — EXECUTING
-Previous phase: 36.11 — Physics Paint Roto Repaint Cached Real Key complete
-Plan: 1 of 6
-Status: Executing Phase 36.13
-Last activity: 2026-07-03 — Phase 36.13 execution started
-Next recommended action: Run `/gsd-verify-work 36.12` for independent final verification
+Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — READY TO PLAN
+Previous phase: 36.13 — Physics Paint Roto Dynamic Interpolation Spacing complete
+Plan: 0 of TBD
+Status: Phase 36.13 completed with native UAT approval
+Last activity: 2026-07-13 — Debug 08 and Phase 36.13 accepted
+Next recommended action: Run `/gsd-plan-phase 36.14`
 
-Progress: [████████████████████] 75/75 plans executed; 14/19 phases complete (74%)
+Progress: [█████████████████░░░] 92/92 planned Phase 36.13 plans executed; 16/19 phases complete (84%)
 
 ## Performance Metrics
 
@@ -136,7 +136,8 @@ None yet.
 - Phase 36.9 cached playback has green automated checks and Plan 03 summary prepared, but final user UAT confirmation is still pending for the real-key-only fix that should remove empty trailing playback frames.
 - Phase 36.10 completed: UAT Test 5 passed after user verified save/close/reopen preserves Physics Paint Roto strokes and paper/background metadata.
 - Phase 36.11 completed: user approved additive cached real-key repaint after old cache visibility, new paint preview layering, paper/background proportions, save merge, and same-session navigation cache refresh were verified.
-- Phase 36.12 completed: user approved generated render-only Roto interpolation after duplicate mapping, parent preview/export, persistence, live toggle-off, and compact source-sequence key creation blockers were resolved. User will run `/gsd-verify-work` next.
+- Phase 36.12 completed: user approved generated render-only Roto interpolation after duplicate mapping, parent preview/export, persistence, live toggle-off, and compact source-sequence key creation blockers were resolved.
+- Phase 36.13 completed: user approved dynamic spacing, canonical persistence/preview/export parity, generated/empty non-durability, visible onion composition, real-key-depth Onion Value semantics, and generated-owner onion traversal.
 - Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
 
 ### Quick Tasks Completed
@@ -174,6 +175,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T17:10:41.134Z
-Stopped at: Phase 36.13 context gathered
-Resume file: .planning/phases/36.13-physics-paint-roto-dynamic-interpolation-spacing/36.13-CONTEXT.md
+Last session: 2026-07-13T23:50:00Z
+Stopped at: Phase 36.13 completed and native UAT approved
+Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/ (plan not created yet)

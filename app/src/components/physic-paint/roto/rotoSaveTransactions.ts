@@ -105,7 +105,7 @@ export function buildApplyCanvasPayload(input: {
 
 export type RotoSaveFrameGuard =
   | { type: 'unavailable' }
-  | { type: 'generated'; message: string }
+  | { type: 'render-only'; message: string }
   | { type: 'no-new-paint'; message: string }
   | { type: 'save' };
 
@@ -113,16 +113,17 @@ export function guardRotoSaveFrame(input: {
   readyToApply: boolean;
   hasLaunchContext: boolean;
   currentFrame: number;
-  generated: boolean;
+  selectionKind: 'real-key' | 'generated-interpolation' | 'empty';
   cachedRepaint: boolean;
   dirty: boolean;
   snapshotHasLiveOverlay: boolean;
 }): RotoSaveFrameGuard {
   if (!input.readyToApply || !input.hasLaunchContext) return { type: 'unavailable' };
-  if (input.generated) {
+  if (input.selectionKind !== 'real-key') {
+    const label = input.selectionKind === 'generated-interpolation' ? 'Generated' : 'Empty';
     return {
-      type: 'generated',
-      message: `Generated frame ${input.currentFrame} is render-only. Navigate to an empty/custom position to create a real Roto key.`,
+      type: 'render-only',
+      message: `${label} frame ${input.currentFrame} is render-only. Navigate to a real Roto key to paint.`,
     };
   }
   if (input.cachedRepaint && !input.dirty && !input.snapshotHasLiveOverlay) {

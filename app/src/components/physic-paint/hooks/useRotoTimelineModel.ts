@@ -1,7 +1,7 @@
 import { computed, signal, type Signal } from '@preact/signals';
 import { useMemo } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import { selectRotoTimelineView, type RotoTimelineView } from '../roto/rotoTimelineSelectors';
+import { selectRotoTimelineView, type RotoTimelineSelectionKind, type RotoTimelineView } from '../roto/rotoTimelineSelectors';
 
 export interface RotoTimelineModelInput {
   cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
@@ -14,6 +14,8 @@ export interface RotoTimelineModel {
   occupiedRotoFrames: Signal<number[]>;
   savedRotoFrames: Signal<RotoTimelineView['savedRotoFrames']>;
   cachedRotoFrames: Signal<PhysicPaintRotoCacheFrame[]>;
+  currentFrameSelectionKind: Signal<RotoTimelineSelectionKind>;
+  currentFrameOwnerSourceFrame: Signal<number | null>;
   currentFrameIsGenerated: Signal<boolean>;
 }
 
@@ -25,6 +27,8 @@ export function createRotoTimelineModel(input: RotoTimelineModelInput): RotoTime
     occupiedRotoFrames: computed(() => view.value.occupiedRotoFrames),
     savedRotoFrames: computed(() => view.value.savedRotoFrames),
     cachedRotoFrames: computed(() => view.value.cachedRotoFrames),
+    currentFrameSelectionKind: computed(() => view.value.currentFrameSelectionKind),
+    currentFrameOwnerSourceFrame: computed(() => view.value.currentFrameOwnerSourceFrame),
     currentFrameIsGenerated: computed(() => view.value.currentFrameIsGenerated),
   };
 }

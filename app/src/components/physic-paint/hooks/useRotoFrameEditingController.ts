@@ -4,6 +4,7 @@ import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { buildBlankRotoFrame, buildRotoFrameFromCanvas, exportTransparentStrokeCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { shouldPersistRotoFrame, type RotoEditableState } from '../roto/rotoSaveTransactions';
+import type { RotoTimelineSelectionKind } from '../roto/rotoTimelineSelectors';
 
 interface RotoEditBufferPort<TEditable> {
   dirtyFramesRef: MutableRef<Set<number>>;
@@ -45,7 +46,7 @@ type PreviewBackgroundEngine = EfxPaintEngine & {
 export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditableState> {
   workflowMode: PhysicsPaintWorkflowMode;
   currentFrame: number;
-  currentFrameIsGenerated: boolean;
+  currentFrameSelectionKind: RotoTimelineSelectionKind;
   canvasSize: { width: number; height: number };
   engine: EfxPaintEngine | null;
   launchContext: PhysicPaintLaunchContext | null;
@@ -91,8 +92,9 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
 
   const markCurrentFrameDirty = useCallback(() => {
     if (input.workflowMode !== 'roto') return;
-    if (input.currentFrameIsGenerated) {
-      input.status.setApplyMessage(`Generated frame ${input.currentFrame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.`);
+    if (input.currentFrameSelectionKind !== 'real-key') {
+      const label = input.currentFrameSelectionKind === 'generated-interpolation' ? 'Generated' : 'Empty';
+      input.status.setApplyMessage(`${label} frame ${input.currentFrame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.`);
       return;
     }
     input.editBuffer.markDirty(input.currentFrame);

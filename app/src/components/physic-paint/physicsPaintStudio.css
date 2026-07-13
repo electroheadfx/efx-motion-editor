@@ -2012,7 +2012,7 @@ button.destructive {
 
 .physics-paint-onion-overlay.canvas-region {
   inset: auto;
-  z-index: 3;
+  z-index: 5;
 }
 
 .demo-canvas-shell .paint-canvas canvas {

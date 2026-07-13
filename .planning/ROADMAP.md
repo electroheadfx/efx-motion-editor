@@ -138,7 +138,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.10: Physics Paint Roto Missing Background Preview Export** - Missing Roto frames render consistently as transparent or background-only in preview/export, and final UAT Test 5 passed after saved-project Roto paper/background recovery. (completed 2026-06-27)
 - [x] **Phase 36.11: Physics Paint Roto Repaint Cached Real Key** - Existing cached real Roto keys reopen with their alpha paint as an additive base layer for repainting without restoring old stroke scripts. (completed 2026-06-29)
 - [x] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (completed 2026-07-02)
-- [ ] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, and export. (planned)
+- [x] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, export, and real-key-depth onion skinning. (completed 2026-07-13)
 - [ ] **Phase 36.14: Physics Paint Roto Timeline UI From Pencil** - Roto timeline controls match the corrected Pencil design after behavior is stable. (planned)
 - [ ] **Phase 36.15: Physics Paint Roto State Machine Readiness** - Maintenance phase to evaluate XState/state-machine ownership after remaining user-facing 36.x Roto features are integrated. (deferred)
 - [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
@@ -399,7 +399,7 @@ Use `SPECS/36.x-phases/phase-36.13-dynamic-interpolation-spacing/spec-36.13-dyna
 **Mode:** mvp
 **Requirements**: 36.13-SOURCE-DISPLAY-MODEL, 36.13-SEGMENT-SPACING-OVERRIDES, 36.13-PERSISTENCE, 36.13-PREVIEW-EXPORT-PARITY
 **Depends on:** Phase 36.12
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans complete
 
 Planning notes:
 
@@ -433,7 +433,7 @@ Plans:
 
 **Wave 6** *(blocked on all implementation waves)*
 
-- [ ] 36.13-06-PLAN.md — Run final automated gate and user-owned live UAT.
+- [x] 36.13-06-PLAN.md — Run final automated gate and user-owned live UAT.
 
 ### Phase 36.14: Physics Paint Roto Timeline UI From Pencil
 
@@ -854,7 +854,7 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 5/5 | Complete    | 2026-06-27 |
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
-| 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 5/6 | In Progress|  |
+| 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
 | 36.14. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
 | 36.15. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |
 | 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |

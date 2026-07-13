@@ -4,6 +4,7 @@ import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 import { physicPaintStore } from '../../stores/physicPaintStore';
+import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, isPhysicsPaintDevExportEnabled, type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode } from './view/physicsPaintWorkflowPresentation';
 import { getPreviewFps } from './play/physicsPaintPlayWorkflow';
 import { getSourceRotoFrameForDisplayFrame } from './roto/physicsPaintRotoWorkflow';
@@ -38,7 +39,7 @@ import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkf
 import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import './physicsPaintStudio.css';
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
-const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 50 };
+const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
 interface PhysicsPaintActionContext { engine: EfxPaintEngine; launchContext: PhysicPaintLaunchContext; bridgeMode: PhysicsPaintBridgeMode }
@@ -55,7 +56,17 @@ export function PhysicsPaintStudio() {
   const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialPhysicsPaintStudioSettings());
   const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>(() => getLaunchWorkflowMode(launchContext));
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-  const [onion, setOnion] = useState<PhysicsPaintOnionState>(DEFAULT_ONION_STATE);
+  const [onion, setOnionState] = useState<PhysicsPaintOnionState>(() => ({
+    ...DEFAULT_ONION_STATE,
+    opacity: Math.round(paintStore.onionSkinOpacity.value * 100),
+  }));
+  const setOnion = useCallback((next: PhysicsPaintOnionState | ((current: PhysicsPaintOnionState) => PhysicsPaintOnionState)) => {
+    setOnionState((current) => {
+      const resolved = typeof next === 'function' ? next(current) : next;
+      paintStore.onionSkinOpacity.value = resolved.opacity / 100;
+      return resolved;
+    });
+  }, []);
   const [playWiggle, setPlayWiggle] = useState<AnimationWiggleConfig>(() => normalizePlayWiggle(launchContext?.playMotion ?? DEFAULT_PLAY_WIGGLE));
   const resetRotoKeySessionRef = useRef<(options?: { clearClipboard?: boolean }) => void>(() => {});
   const rotoPersistence = useRotoFramePersistenceCoordinator({
@@ -175,8 +186,11 @@ export function PhysicsPaintStudio() {
   const timelineOccupiedRotoFrames = rotoTimelineModel.occupiedRotoFrames.value;
   const timelineSavedRotoFrames = rotoTimelineModel.savedRotoFrames.value;
   const timelineCachedRotoFrames = rotoTimelineModel.cachedRotoFrames.value;
-  const currentFrameIsGeneratedRoto = workflowMode === 'roto' && rotoTimelineModel.currentFrameIsGenerated.value;
-  const rotoInputDisabled = workflowMode === 'roto' && ((Boolean(saveOnLeaveSourceFrameRef.current) && applyStatus === 'applying') || currentFrameIsGeneratedRoto);
+  const currentFrameSelectionKind = rotoTimelineModel.currentFrameSelectionKind.value;
+  const currentFrameOwnerSourceFrame = rotoTimelineModel.currentFrameOwnerSourceFrame.value;
+  const currentFrameIsGeneratedRoto = workflowMode === 'roto' && currentFrameSelectionKind === 'generated-interpolation';
+  const currentFrameIsRenderOnlyRoto = workflowMode === 'roto' && currentFrameSelectionKind !== 'real-key';
+  const rotoInputDisabled = workflowMode === 'roto' && ((Boolean(saveOnLeaveSourceFrameRef.current) && applyStatus === 'applying') || currentFrameIsRenderOnlyRoto);
   const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, setCachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame } = rotoPersistence.reference;
   const {
     selectTool,
@@ -254,7 +268,7 @@ export function PhysicsPaintStudio() {
   resetRotoKeySessionRef.current = rotoKeyUtilities.resetSession;
   resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
   const rotoFrameEditing = useRotoFrameEditingController({
-    workflowMode, currentFrame, currentFrameIsGenerated: currentFrameIsGeneratedRoto,
+    workflowMode, currentFrame, currentFrameSelectionKind,
     canvasSize: { width: canvasWidth, height: canvasHeight }, engine, launchContext,
     editBuffer: {
       dirtyFramesRef: dirtyRotoFramesRef, markDirty: rotoEditBuffer.markDirty,
@@ -334,7 +348,7 @@ export function PhysicsPaintStudio() {
       registerPendingApply, startApplyTimeout,
     },
     frame: {
-      current: currentFrame, generated: currentFrameIsGeneratedRoto,
+      current: currentFrame, selectionKind: currentFrameSelectionKind,
       canvasSize: { width: canvasWidth, height: canvasHeight },
       resolveSource: resolveRotoSourceFrameForDisplayFrame,
       snapshotCurrent: snapshotCurrentRotoFrame, setLaunchContext,
@@ -460,6 +474,7 @@ export function PhysicsPaintStudio() {
   });
   const onionPreviewFrames = projectRotoOnionPreviewFrames({
     currentFrame,
+    currentFrameOwnerSourceFrame,
     isPlaying,
     onion,
     launchFrames: launchContext?.cachedRotoFrames,
@@ -508,10 +523,10 @@ export function PhysicsPaintStudio() {
         cachedRotoPlaybackActive: rotoCachedPlayback.isActive,
         cachedRotoPlaybackComposition: launchContext?.rotoBackground ? { width: projectCanvasWidth, height: projectCanvasHeight, background: launchContext.rotoBackground } : null,
         inputDisabled: rotoInputDisabled,
-        inputDisabledMessage: currentFrameIsGeneratedRoto ? `Generated frame ${currentFrame} is render-only.` : 'Saving current Roto frame…',
+        inputDisabledMessage: currentFrameIsRenderOnlyRoto ? `${currentFrameIsGeneratedRoto ? 'Generated' : 'Empty'} frame ${currentFrame} is render-only.` : 'Saving current Roto frame…',
         onInputIntent: workflowMode === 'play' ? beginPlayFrameEdit : beginRotoFrameEdit,
         onionOverlay: onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
-          <img key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`} class={`physics-paint-onion-frame ${frame.kind === 'cached-composite' ? 'physics-paint-onion-cached-composite' : frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`} src={frame.dataUrl} style={{ opacity: getOnionFrameOpacity(frame.distance) }} alt="" />
+          <img key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`} class={`physics-paint-onion-frame ${frame.kind === 'cached-composite' ? 'physics-paint-onion-cached-composite' : frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`} src={frame.dataUrl} style={{ opacity: getOnionFrameOpacity(frame.distance, onion.opacity) }} alt="" />
         )) : null,
         canvasKey,
         mount: {

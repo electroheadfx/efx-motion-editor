@@ -199,16 +199,16 @@ describe('PhysicsPaintStudio refactor regression ownership contract', () => {
 });
 
 describe('PhysicsPaintStudio Roto session boundary contract', () => {
-  it('36.13/D-05/D-09 wires far-empty saves through source-target compression and keeps generated saves render-only', () => {
+  it('36.13/D-05/D-09 wires real-key saves through source-target compression and keeps generated/empty selections render-only', () => {
     const text = source();
     const saveBlock = rotoSaveControllerSource();
     const flushBlock = rotoSaveControllerSource();
 
     expect(text).not.toContain('function mergeRotoSegmentSpacingOverride');
     expect(text).not.toContain('function resolveRotoSaveTargetForDisplayFrame');
-    expect(saveBlock).toContain('input.getCurrentFrameIsGenerated()');
-    expect(rotoSaveTransactionsSource()).toContain('Generated frame ${input.currentFrame} is render-only');
-    expect(saveBlock).toContain('const saveTransaction = input.getCurrentFrameIsGenerated() ? null : input.saveRealKeyAtDisplayFrame(currentFrame)');
+    expect(saveBlock).toContain('input.getCurrentFrameSelectionKind()');
+    expect(rotoSaveTransactionsSource()).toContain('frame ${input.currentFrame} is render-only');
+    expect(saveBlock).toContain("const saveTransaction = selectionKind === 'real-key' ? input.saveRealKeyAtDisplayFrame(currentFrame) : null");
     expect(saveBlock).toContain('sourceFrameOverride: saveTransaction.sourceFrameOverride');
     expect(saveBlock).toContain('rotoInterpolationSettings: saveTransaction.interpolationSettings');
     expect(saveBlock).not.toContain('resolveRotoSaveTargetForDisplayFrame(currentFrame');
@@ -537,12 +537,12 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(text).not.toContain('<div class="physics-paint-onion-overlay canvas-region" aria-hidden="true">');
   });
 
-  it('keeps reference overlays above the base canvas but below the live paint cursor and stroke preview', () => {
+  it('keeps native onion overlays above both opaque engine canvases', () => {
     const css = styles();
 
     expect(css).toContain('.demo-canvas-shell .paint-canvas canvas {\n  z-index: 2 !important;');
-    expect(css).toContain('.physics-paint-onion-overlay.canvas-region {\n  inset: auto;\n  z-index: 3;');
     expect(css).toContain('.demo-canvas-shell .paint-canvas canvas + canvas {\n  z-index: 4 !important;');
+    expect(css).toContain('.physics-paint-onion-overlay.canvas-region {\n  inset: auto;\n  z-index: 5;');
     expect(css).toContain('mix-blend-mode: multiply');
     expect(css).not.toContain('mix-blend-mode: screen');
   });
@@ -574,13 +574,13 @@ describe('PhysicsPaintStudio onion preview contract', () => {
   it('defaults onion skinning off with next-frame onion disabled, while preserving manual controls', () => {
     const text = source();
 
-    expect(text).toContain('const DEFAULT_ONION_STATE: PhysicsPaintOnionState = { enabled: false, previous: true, next: false, count: 1, opacity: 50 }');
+    expect(text).toContain("const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 }");
     expect(readFileSync(onionPreviewPath, 'utf8')).toContain('const ONION_DEPTH_OPACITY = [0.5, 0.25, 0.15] as const');
-    expect(text).toContain('useState<PhysicsPaintOnionState>(DEFAULT_ONION_STATE)');
+    expect(text).toContain('opacity: Math.round(paintStore.onionSkinOpacity.value * 100)');
     const onionProjection = readFileSync(onionPreviewPath, 'utf8');
     expect(onionProjection).toContain("frame.direction === 'previous' && input.onion.previous");
     expect(onionProjection).toContain("frame.direction === 'next' && input.onion.next");
-    expect(text).toContain('style={{ opacity: getOnionFrameOpacity(frame.distance) }}');
+    expect(text).toContain('style={{ opacity: getOnionFrameOpacity(frame.distance, onion.opacity) }}');
   });
 
   it('uses saved transparent onion payloads for cached Roto key onion frames', () => {
@@ -594,13 +594,14 @@ describe('PhysicsPaintStudio onion preview contract', () => {
     expect(store).toContain('payload.onionDataUrl');
     expect(flushBlock).toContain('input.setPreviewFrame(sourceFrame, save.onionFrame ?? save.renderedFrame)');
     expect(rotoSaveTransactionsSource()).toContain("...(input.onionFrame?.dataUrl ? { onionDataUrl: input.onionFrame.dataUrl } : {})");
-    expect(onionBlock).toContain('const addCandidate = (frame: RotoOnionFrame) =>');
+    expect(onionBlock).toContain('const addRealCandidate = (frame: RotoOnionFrame) =>');
     expect(onionBlock).toContain("if (frame.source && frame.source !== 'real-key') return;");
     expect(onionBlock).toContain('if (frame.backgroundOnly) return;');
     expect(onionBlock).toContain("onionKind: 'stroke-preview'");
-    expect(onionBlock).toContain("frame.source === 'real-key' ? 'cached-composite' : 'stroke-preview'");
+    expect(onionBlock).toContain("frame.source === 'real-key' ? 'cached-composite' as const : 'stroke-preview' as const");
     expect(text).toContain('storeFrames: launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : []');
-    expect(onionBlock).toContain('input.dirtyFrames?.has(frameNumber) || !candidates.has(frameNumber)');
+    expect(onionBlock).toContain('if (!candidates.has(anchorFrame)) continue;');
+    expect(onionBlock).toContain('if (input.dirtyFrames?.has(frameNumber)) {');
   });
 
   it('D-18/D-19/D-20 resolves onion anchors from real source keys for custom dynamic spans', () => {
@@ -1712,19 +1713,19 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(controller).not.toContain('setOccupiedRotoFrames');
   });
 
-  it('disables Roto canvas input while save-on-leave is applying or the current display frame is generated', () => {
+  it('disables Roto canvas input while save-on-leave is applying or the current display is generated/empty', () => {
     const text = source();
     const canvasBlock = text.slice(text.indexOf('    canvas: {'), text.indexOf('    rightPanel: {'));
-    const dirtyBlock = text.slice(text.indexOf('const markCurrentRotoFrameDirty = useCallback'), text.indexOf('const beginRotoFrameEdit = useCallback'));
+    const editingController = readFileSync(rotoFrameEditingControllerPath, 'utf8');
 
     expect(text).toContain('const rotoTimelineModel = useRotoTimelineModel');
-    expect(text).toContain('const currentFrameIsGeneratedRoto = workflowMode === \'roto\' && rotoTimelineModel.currentFrameIsGenerated.value');
-    expect(text).not.toContain("const currentFrameIsGeneratedRoto = currentRotoDisplayFrame?.source === 'generated-interpolation'");
-    expect(text).toContain("const rotoInputDisabled = workflowMode === 'roto' && ((Boolean(saveOnLeaveSourceFrameRef.current) && applyStatus === 'applying') || currentFrameIsGeneratedRoto)");
-    expect(readFileSync(rotoFrameEditingControllerPath, 'utf8')).toContain('if (input.currentFrameIsGenerated) {');
-    expect(dirtyBlock).toContain('is render-only. Use timeline navigation or playback; edit a real Roto key to paint.');
+    expect(text).toContain('const currentFrameSelectionKind = rotoTimelineModel.currentFrameSelectionKind.value');
+    expect(text).toContain("const currentFrameIsRenderOnlyRoto = workflowMode === 'roto' && currentFrameSelectionKind !== 'real-key'");
+    expect(text).toContain("const rotoInputDisabled = workflowMode === 'roto' && ((Boolean(saveOnLeaveSourceFrameRef.current) && applyStatus === 'applying') || currentFrameIsRenderOnlyRoto)");
+    expect(editingController).toContain("if (input.currentFrameSelectionKind !== 'real-key') {");
+    expect(editingController).toContain('is render-only. Use timeline navigation or playback; edit a real Roto key to paint.');
     expect(canvasBlock).toContain('inputDisabled: rotoInputDisabled');
-    expect(canvasBlock).toContain("inputDisabledMessage: currentFrameIsGeneratedRoto ? `Generated frame ${currentFrame} is render-only.` : 'Saving current Roto frame…'");
+    expect(canvasBlock).toContain("inputDisabledMessage: currentFrameIsRenderOnlyRoto ? `${currentFrameIsGeneratedRoto ? 'Generated' : 'Empty'} frame ${currentFrame} is render-only.` : 'Saving current Roto frame…'");
   });
 
   it('wires explicit current-frame Roto saves without repeated brush-move apply calls', () => {

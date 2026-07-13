@@ -269,9 +269,7 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     seedRotoPaper();
     physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 1, { frameIndex: 0, appFrame: 1, dataUrl: 'data:image/png;base64,cmVhbC0x' });
     physicPaintStore.upsertRealRotoKeyFrame('roto-layer', 3, { frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,cmVhbC0z' });
-    physicPaintStore.replaceGeneratedRotoCache('roto-layer', [
-      { frameIndex: 0, appFrame: 2, dataUrl: 'data:image/png;base64,Z2VuZXJhdGVkLXJlb3Blbg==', source: 'generated-interpolation', nearestRealKeyFrame: 1 },
-    ]);
+    physicPaintStore.setRotoInterpolationSettings('roto-layer', { enabled: true, inBetweenCount: 1, mode: 'duplicate' });
     const persisted = structuredClone(physicPaintStore.toMceOutputs());
     physicPaintStore.reset();
     physicPaintStore.loadFromMceOutputs(persisted);
@@ -282,7 +280,7 @@ describe('PreviewRenderer missing Roto frame source contract', () => {
     renderer.renderFrame([makeRotoLayer()], 2, [], 24, true, 1, 2);
 
     const paperIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
-    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,Z2VuZXJhdGVkLXJlb3Blbg==');
+    const generatedAlphaIndex = ctx.operations.findIndex((op) => op.type === 'drawImage' && op.source === 'data:image/png;base64,cmVhbC0x');
 
     expect(paperIndex).toBeGreaterThanOrEqual(0);
     expect(generatedAlphaIndex).toBeGreaterThanOrEqual(0);

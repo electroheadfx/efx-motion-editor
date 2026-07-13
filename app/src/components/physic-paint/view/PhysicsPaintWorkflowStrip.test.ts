@@ -605,7 +605,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
     expect(code).toContain('const onionPreviewFrames = projectRotoOnionPreviewFrames({');
     expect(projection).toContain('const count = clampOnionCount(input.onion.count)');
-    expect(projection).toContain(".filter((frame) => frame.appFrame < input.currentFrame)");
+    expect(projection).toContain('const traversalFrame = ownerDisplayFrame ?? input.currentFrame');
+    expect(projection).toContain('.filter((frame) => frame.appFrame < traversalFrame)');
     expect(projection).toContain('.slice(0, count)');
     expect(projection).toContain("project(frame, 'previous', index + 1)");
     expect(projection).toContain("project(frame, 'next', index + 1)");
@@ -626,10 +627,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(builderBlock).toContain("if (frame.source && frame.source !== 'real-key') return;");
     expect(builderBlock).toContain('if (frame.backgroundOnly) return;');
     expect(builderBlock).toContain("onionKind: 'stroke-preview'");
-    expect(builderBlock).toContain("onionKind: frame.source === 'real-key' ? 'cached-composite' : 'stroke-preview'");
+    expect(builderBlock).toContain("frame.source === 'real-key' ? 'cached-composite' as const : 'stroke-preview' as const");
     expect(code).toContain('storeFrames: launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : []');
     expect(code).toContain('previewFrames: rotoPreviewFramesRef.current');
-    expect(builderBlock).toContain('addCandidate(frame)');
+    expect(builderBlock).toContain('addRealCandidate(frame)');
+    expect(builderBlock).toContain('if (!candidates.has(anchorFrame)) continue;');
     expect(builderBlock.indexOf('input.launchFrames ?? []')).toBeLessThan(builderBlock.indexOf('input.previewFrames ?? []'));
     expect(builderBlock).toContain("project(frame, 'previous', index + 1)");
     expect(builderBlock).toContain("project(frame, 'next', index + 1)");

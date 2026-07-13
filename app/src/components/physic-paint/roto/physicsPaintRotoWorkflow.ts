@@ -108,7 +108,7 @@ export function getExpandedRotoRealKeyFrames(realKeys: number[], settings: RotoI
     const toSourceFrame = sourceKeys[index + 1];
     const isLastSourceKey = index >= sourceKeys.length - 1;
     const override = getSegmentOverride(sourceFrame, toSourceFrame, overrides);
-    const shouldGenerateSpan = interpolationEnabled && globalInBetweenCount > 0 && (!isLastSourceKey || sourceKeys.length > 2);
+    const shouldGenerateSpan = interpolationEnabled && globalInBetweenCount > 0 && !isLastSourceKey;
     const inBetweenCount = shouldGenerateSpan
       ? override?.inBetweenCount ?? globalInBetweenCount
       : 0;

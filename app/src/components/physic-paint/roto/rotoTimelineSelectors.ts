@@ -13,12 +13,16 @@ export interface RotoTimelineSelectorInput {
   currentFrame: number;
 }
 
+export type RotoTimelineSelectionKind = 'real-key' | 'generated-interpolation' | 'empty';
+
 export interface RotoTimelineView {
   model: RotoSourceDisplayModel;
   projection: RotoDisplayProjection;
   occupiedRotoFrames: number[];
   savedRotoFrames: PhysicsPaintWorkflowStripFrameMarker[];
   cachedRotoFrames: PhysicPaintRotoCacheFrame[];
+  currentFrameSelectionKind: RotoTimelineSelectionKind;
+  currentFrameOwnerSourceFrame: number | null;
   currentFrameIsGenerated: boolean;
 }
 
@@ -61,8 +65,18 @@ export function selectRotoTimelineView(input: RotoTimelineSelectorInput): RotoTi
   const occupiedRotoFrames = normalizeFrameNumbers(realKeyDisplayFrames);
   const savedRotoFrames = realKeyDisplayFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` }));
   const cachedRotoFrames = [...(input.cachedRotoFrames ?? [])];
-  const currentFrameIsGenerated = projection.generatedFrames.some((frame) => frame.displayFrame === input.currentFrame)
-    || cachedRotoFrames.some((frame) => frame.source === 'generated-interpolation' && frame.appFrame === input.currentFrame);
+  const currentGeneratedFrame = projection.generatedFrames.find((frame) => frame.displayFrame === input.currentFrame);
+  const cachedCurrentGeneratedFrame = cachedRotoFrames.find((frame) => frame.source === 'generated-interpolation' && frame.appFrame === input.currentFrame);
+  const currentFrameIsGenerated = Boolean(currentGeneratedFrame || cachedCurrentGeneratedFrame);
+  const currentFrameOwnerSourceFrame = currentGeneratedFrame?.fromSourceFrame
+    ?? cachedCurrentGeneratedFrame?.fromSourceFrame
+    ?? cachedCurrentGeneratedFrame?.sourceFrame
+    ?? null;
+  const currentFrameSelectionKind: RotoTimelineSelectionKind = realKeyDisplayFrames.includes(input.currentFrame)
+    ? 'real-key'
+    : currentFrameIsGenerated
+      ? 'generated-interpolation'
+      : 'empty';
 
   return {
     model,
@@ -70,6 +84,8 @@ export function selectRotoTimelineView(input: RotoTimelineSelectorInput): RotoTi
     occupiedRotoFrames,
     savedRotoFrames,
     cachedRotoFrames,
+    currentFrameSelectionKind,
+    currentFrameOwnerSourceFrame,
     currentFrameIsGenerated,
   };
 }

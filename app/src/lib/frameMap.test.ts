@@ -122,9 +122,9 @@ describe('frameMap solid/transparent entries', () => {
     physicPaintStore.setRotoInterpolationSettings('roto-layer', { enabled: true, inBetweenCount: 3, mode: 'duplicate' });
 
     const entries = frameMap.value;
-    expect(entries).toHaveLength(12);
+    expect(entries).toHaveLength(9);
     expect(entries.slice(0, 3).map((entry) => entry.imageId)).toEqual(['circle', 'square', 'crossed']);
     expect(entries.slice(3).every((entry) => entry.imageId === 'crossed')).toBe(true);
-    expect(fxTrackLayouts.value[0]).toEqual(expect.objectContaining({ sequenceId: 'fx-roto', inFrame: 0, outFrame: 12 }));
+    expect(fxTrackLayouts.value[0]).toEqual(expect.objectContaining({ sequenceId: 'fx-roto', inFrame: 0, outFrame: 9 }));
   });
 });

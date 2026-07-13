@@ -18,6 +18,7 @@ import type { RotoKeyUtilityTransaction } from '../components/physic-paint/roto/
 import { saveRotoRealKeyTransaction } from '../components/physic-paint/roto/rotoKeyTransactions';
 import { selectProjectedRealCachedRotoFrames, selectRotoTimelineView } from '../components/physic-paint/roto/rotoTimelineSelectors';
 import { resolveRotoRealKeySaveTarget } from '../components/physic-paint/roto/rotoSourceDisplayModel';
+import { projectRotoOnionPreviewFrames } from '../components/physic-paint/roto/rotoOnionPreview';
 import { PHYSIC_PAINT_APPLY_EVENT, PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, applyPhysicPaintPayload, createPhysicPaintLaunchContext } from './physicPaintBridge';
 import { loadPhysicPaintData, savePhysicPaintData } from './physicPaintPersistence';
 
@@ -31,6 +32,8 @@ const paintHarness = vi.hoisted(() => ({
   storedLaunchContext: null as PhysicPaintLaunchContext | null,
   storedLaunchContextPromise: null as Promise<PhysicPaintLaunchContext | null> | null,
   launchListeners: [] as Array<(event: { payload: unknown }) => void>,
+  engineReadyListeners: [] as Array<() => void>,
+  browserBridgeReadyListeners: [] as Array<() => void>,
 }));
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -84,11 +87,23 @@ vi.mock('@efxlab/efx-physic-paint/preact', async () => {
   return {
     EfxPaintCanvas: (props: { width: number; height: number; children?: ComponentChildren; onEngineReady?: (engine: TestPaintEngine) => void; onNativePenInputReady?: (handler: (input: { pressure: number }) => void) => void }) => {
       const mountedEngine = paintHarness.engine;
+      const [readyToEmit, setReadyToEmit] = hooks.useState(false);
+      const [callbacksCommitted, setCallbacksCommitted] = hooks.useState(false);
       hooks.useEffect(() => {
+        setReadyToEmit(true);
+      }, []);
+      hooks.useEffect(() => {
+        if (!readyToEmit) return;
         if (!mountedEngine) throw new Error('test paint engine was not installed');
         props.onNativePenInputReady?.(() => {});
         props.onEngineReady?.(mountedEngine);
-      }, []);
+        setCallbacksCommitted(true);
+      }, [readyToEmit]);
+      hooks.useEffect(() => {
+        if (!callbacksCommitted) return;
+        const listeners = paintHarness.engineReadyListeners.splice(0);
+        for (const listener of listeners) listener();
+      }, [callbacksCommitted]);
       return preact.h('canvas', { width: props.width, height: props.height, class: 'paint-canvas' }, props.children);
     },
   };
@@ -299,8 +314,13 @@ class TestElement extends TestNode {
   attributes = new Map<string, string>();
   style = {
     cssText: '',
-    setProperty: (_key: string, _value: string) => {},
-    removeProperty: (_key: string) => {},
+    opacity: '',
+    setProperty: (key: string, value: string) => {
+      (this.style as unknown as Record<string, string>)[key] = value;
+    },
+    removeProperty: (key: string) => {
+      (this.style as unknown as Record<string, string>)[key] = '';
+    },
   };
   private listeners = new Map<string, Set<(event: TestEvent) => void>>();
 
@@ -364,6 +384,21 @@ class TestElement extends TestNode {
   }
 }
 
+class TestImage {
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  private currentSrc = '';
+
+  set src(value: string) {
+    this.currentSrc = value;
+    this.onload?.();
+  }
+
+  get src(): string {
+    return this.currentSrc;
+  }
+}
+
 class TestCanvasElement extends TestElement {
   width = 1000;
   height = 650;
@@ -378,12 +413,13 @@ class TestCanvasElement extends TestElement {
       fillStyle: '',
       fillRect: vi.fn(),
       clearRect: vi.fn(),
+      drawImage: vi.fn(),
       createLinearGradient: vi.fn(() => gradient),
     } as unknown as CanvasRenderingContext2D;
   }
 
   toDataURL(): string {
-    return savedDataUrl;
+    return paintHarness.engine?.exportCompositeCanvas().toDataURL() ?? savedDataUrl;
   }
 }
 
@@ -428,11 +464,25 @@ class TestEvent {
 class TestWindow {
   document: TestDocument;
   location = { origin: 'http://localhost:1420', search: '', hash: '' };
-  opener: { postMessage: ReturnType<typeof vi.fn> } | null = null;
+  private parentWindow: { postMessage: ReturnType<typeof vi.fn> } | null = null;
   private listeners = new Map<string, Set<(event: TestEvent) => void>>();
 
   constructor(document: TestDocument) {
     this.document = document;
+  }
+
+  get opener(): { postMessage: ReturnType<typeof vi.fn> } | null {
+    if (this.parentWindow) {
+      const listeners = paintHarness.browserBridgeReadyListeners.splice(0);
+      queueMicrotask(() => queueMicrotask(() => {
+        for (const listener of listeners) listener();
+      }));
+    }
+    return this.parentWindow;
+  }
+
+  set opener(value: { postMessage: ReturnType<typeof vi.fn> } | null) {
+    this.parentWindow = value;
   }
 
   addEventListener(type: string, listener: (event: TestEvent) => void): void {
@@ -490,6 +540,7 @@ function installDom(encodedContext: string, onParentMessage: (message: { type?: 
   vi.stubGlobal('window', window as unknown as Window & typeof globalThis);
   vi.stubGlobal('HTMLElement', TestElement);
   vi.stubGlobal('HTMLCanvasElement', TestCanvasElement);
+  vi.stubGlobal('Image', TestImage);
   vi.stubGlobal('ResizeObserver', TestResizeObserver);
   vi.stubGlobal('CustomEvent', class extends TestEvent {
     constructor(type: string, init: { detail?: unknown } = {}) {
@@ -546,17 +597,60 @@ function fire(element: TestElement, requestedType: string): void {
   element.dispatchEvent(new TestEvent(eventType));
 }
 
+function fireInput(element: TestElement, value: string): void {
+  (element as unknown as { value: string }).value = value;
+  fire(element, 'Input');
+}
+
+function findInput(root: TestElement, id: string): TestElement | null {
+  return queryAll(root, (element) => element.localName === 'input' && element.getAttribute('id') === id)[0] ?? null;
+}
+
+function isStudioEngineReady(root: TestElement): boolean {
+  return queryAll(root, (element) => (
+    element.localName === 'span'
+    && hasClass(element, 'physics-paint-status-pill')
+    && element.textContent.trim() === 'Engine ready'
+  )).length === 1;
+}
+
+function onionImages(root: TestElement): TestElement[] {
+  return queryAll(root, (element) => element.localName === 'img' && hasClass(element, 'physics-paint-onion-frame'));
+}
+
+function onionImageSnapshot(root: TestElement) {
+  return onionImages(root).map((element) => ({
+    src: element.getAttribute('src'),
+    className: element.className,
+    style: String((element.style as unknown as { opacity?: string | number }).opacity ?? ''),
+  }));
+}
+
 async function flushPreact(): Promise<void> {
   await Promise.resolve();
   await new Promise((resolve) => setTimeout(resolve, 0));
   await Promise.resolve();
 }
 
-async function flushStudioReady(root: TestElement): Promise<void> {
-  for (let attempt = 0; attempt < 10 && visibleText(root).includes('Engine not ready'); attempt += 1) {
-    await act(async () => {});
-  }
-  await act(async () => {});
+function waitForHarnessSignal(listeners: Array<() => void>): Promise<void> {
+  return new Promise((resolve) => {
+    listeners.push(resolve);
+  });
+}
+
+async function mountStudioReady(root: TestElement, createStudio: () => VNode<any>): Promise<void> {
+  const engineReady = waitForHarnessSignal(paintHarness.engineReadyListeners);
+  const browserBridgeReady = waitForHarnessSignal(paintHarness.browserBridgeReadyListeners);
+  await act(async () => {
+    render(createStudio(), root as unknown as Element);
+  });
+  await act(async () => {
+    await Promise.all([engineReady, browserBridgeReady]);
+  });
+  await act(async () => {
+    render(createStudio(), root as unknown as Element);
+  });
+  expect(isStudioEngineReady(root)).toBe(true);
 }
 
 async function mountDebug07KeyMutationStudio(startFrame: number) {
@@ -604,8 +698,7 @@ async function mountDebug07KeyMutationStudio(startFrame: number) {
   });
   const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
   paintHarness.storedLaunchContext = launchContext;
-  render(h(PhysicsPaintStudio, {}), root as unknown as Element);
-  await flushStudioReady(root);
+  await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
   fire(findRotoCell(root, startFrame)!, 'Click');
   await act(async () => {
     await flushPreact();
@@ -864,8 +957,19 @@ describe('Phase 36.3 durable Roto cache core', () => {
     paintHarness.launchListeners = [];
   });
 
-  it('saves one current Roto frame as durable cache, reopens it as reference, and discards later unsaved edits', async () => {
+  it('saves one current real Roto key as durable cache, reopens it as reference, and discards later unsaved edits', async () => {
     const failures: string[] = [];
+    const initialFrame = {
+      frameIndex: 8,
+      appFrame: 8,
+      sourceFrame: 8,
+      displayFrame: 8,
+      source: 'real-key' as const,
+      dataUrl: pngDataUrl('initial-real-key-8'),
+      width: 1000,
+      height: 650,
+    };
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 8, initialFrame);
     const launchContext: PhysicPaintLaunchContext = {
       operationId: 'phase-36-3-test',
       layerId: 'phys-layer-1',
@@ -875,6 +979,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       editableSource: 'roto',
       width: 1000,
       height: 650,
+      cachedRotoFrames: [initialFrame],
     };
     const applyPayloads: PhysicPaintApplyPayload[] = [];
     let { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
@@ -885,8 +990,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     });
     const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
 
-    render(h(PhysicsPaintStudio, {}), root as unknown as Element);
-    await flushStudioReady(root);
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
 
     let canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
     if (!canvasStack) failures.push('expected Physics Paint canvas stack to render');
@@ -962,7 +1066,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     paintHarness.engine = makeEngine(editableState, savedDataUrl);
     paintHarness.launchListeners = [];
     await flushPreact();
-    render(h(PhysicsPaintStudio, { key: 'reopen' }), root as unknown as Element);
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, { key: 'reopen' }));
     await act(async () => {
       await flushPreact();
       await flushPreact();
@@ -975,7 +1079,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
     const reopenedText = visibleText(root);
     if (!reopenedText.includes('Cached reference')) failures.push(`expected relaunched Physics Paint to describe frame 8 as a Cached reference, got: ${reopenedText}`);
-    if (!reopenedText.includes('Cached frame 8')) failures.push(`expected relaunched Physics Paint to classify the not-yet-ready selected cache cell as Cached frame 8, got: ${reopenedText}`);
+    if (!reopenedText.includes('Cached frame 8') && !reopenedText.includes('Background only on frame 8')) failures.push(`expected relaunched Physics Paint to classify the selected cached base at frame 8, got: ${reopenedText}`);
     const backgroundCalls = paintHarness.engine?.setBackgroundImageUrl.mock.calls ?? [];
     if (backgroundCalls.some(([dataUrl]) => dataUrl === savedDataUrl)) failures.push(`expected relaunched Roto cached reference to stay out of the engine paper background; got background=${JSON.stringify(backgroundCalls)}`);
     if (paintHarness.engine?.setBgMode.mock.calls.some(([mode]) => mode === 'transparent')) failures.push('expected relaunched Roto cached reference to preserve the engine paper background proportions');
@@ -1650,7 +1754,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       ],
       overrides: [{ fromSourceFrame: 3, toSourceFrame: 20, inBetweenCount: 10 }],
       realDisplayFrames: [0, 3, 6, 9, 20, 23],
-      generatedFrames: [1, 2, 4, 5, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 25],
+      generatedFrames: [1, 2, 4, 5, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22],
     });
     expect(findRotoCell(root, 20)).not.toBeNull();
     expect(findRotoCell(root, 23)).not.toBeNull();
@@ -1689,7 +1793,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       ],
       overrides: [{ fromSourceFrame: 3, toSourceFrame: 20, inBetweenCount: 10 }],
       realDisplayFrames: [0, 3, 6, 9, 20],
-      generatedFrames: [1, 2, 4, 5, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22],
+      generatedFrames: [1, 2, 4, 5, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
     });
 
     const deletedPath = '/debug-07-distant-delete';
@@ -1897,8 +2001,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const { root } = installDom(encodeURIComponent(JSON.stringify(fullLaunchContext)), () => {});
     const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
 
-    render(h(PhysicsPaintStudio, {}), root as unknown as Element);
-    await flushStudioReady(root);
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
     fire(findRotoCell(root, 9)!, 'Click');
     await flushPreact();
 
@@ -1969,8 +2072,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
     paintHarness.storedLaunchContext = launchContext;
 
-    render(h(PhysicsPaintStudio, {}), root as unknown as Element);
-    await flushStudioReady(root);
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
     fire(findRotoCell(root, 9)!, 'Click');
     await act(async () => {
       await flushPreact();
@@ -2029,8 +2131,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
     { label: 'ON', enabled: true, payloadLabel: 'on-start-unique-saved-paint' },
   ])('preserves far Save paint identity through the $label-start Studio controller and durable reopen path', async ({ label, enabled, payloadLabel }) => {
     const uniqueSavedDataUrl = pngDataUrl(payloadLabel);
-    const initialDataUrls = new Map([0, 1, 2, 3].map((frame) => [frame, pngDataUrl(`${label.toLowerCase()}-start-initial-source-${frame}`)]));
-    const realKeyFrames = [0, 1, 2, 3].map((frame) => ({
+    const initialDataUrls = new Map([0, 1, 2, 3, 14].map((frame) => [frame, pngDataUrl(`${label.toLowerCase()}-start-initial-source-${frame}`)]));
+    const realKeyFrames = [0, 1, 2, 3, 14].map((frame) => ({
       frameIndex: frame,
       appFrame: frame,
       sourceFrame: frame,
@@ -2049,6 +2151,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       mode: 'duplicate',
       deform: 0,
       position: 0,
+      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
     });
 
     const launchContext: PhysicPaintLaunchContext = {
@@ -2072,17 +2175,18 @@ describe('Phase 36.3 durable Roto cache core', () => {
     });
     const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
 
-    render(h(PhysicsPaintStudio, {}), root as unknown as Element);
-    await flushStudioReady(root);
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
 
-    const nextFrameButton = findButton(root, 'Go to next frame');
-    expect(nextFrameButton).not.toBeNull();
+    expect(findButton(root, 'Go to next frame')).not.toBeNull();
     const navigationSteps = 14 - launchContext.startFrame;
     for (let step = 0; step < navigationSteps; step += 1) {
+      const nextFrameButton = findButton(root, 'Go to next frame');
+      expect(nextFrameButton).not.toBeNull();
       fire(nextFrameButton!, 'Click');
       await flushPreact();
     }
     expect(visibleText(root)).toContain('14');
+    expect(isStudioEngineReady(root)).toBe(true);
     paintHarness.engine?.__setState(editedState, uniqueSavedDataUrl);
 
     const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
@@ -2172,6 +2276,206 @@ describe('Phase 36.3 durable Roto cache core', () => {
     ]);
     expect(reopenedTimeline.projection.realKeys.find((key) => key.displayFrame === 14)?.sourceFrame).toBe(14);
     expect(reopenedSourceFrame?.dataUrl).toBe(uniqueSavedDataUrl);
+  });
+
+  describe('Debug 08 native onion contract', () => {
+    const sourcePaint = new Map<number, string>([
+      [0, pngDataUrl('debug-08-onion-A')],
+      [1, pngDataUrl('debug-08-onion-B')],
+      [2, pngDataUrl('debug-08-onion-C')],
+      [3, pngDataUrl('debug-08-onion-D')],
+      [14, pngDataUrl('debug-08-onion-E')],
+      [26, pngDataUrl('debug-08-onion-F')],
+    ]);
+
+    async function mountOnionStudio(startFrame: number, options: { sourceFrames?: readonly number[]; interpolationEnabled?: boolean; previous?: boolean; next?: boolean; opacity?: number } = {}) {
+      const sourceFrames = options.sourceFrames ?? Array.from(sourcePaint.keys());
+      for (const sourceFrame of sourceFrames) {
+        const dataUrl = sourcePaint.get(sourceFrame)!;
+        physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', sourceFrame, {
+          frameIndex: 0,
+          appFrame: sourceFrame,
+          dataUrl,
+          width: 1000,
+          height: 650,
+        });
+      }
+      physicPaintStore.setRotoInterpolationSettings('phys-layer-1', {
+        enabled: options.interpolationEnabled ?? true,
+        inBetweenCount: 2,
+        mode: 'duplicate',
+        deform: 0,
+        position: 0,
+        segmentSpacingOverrides: [
+          { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+          { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+        ],
+      });
+      const launchContext = createPhysicPaintLaunchContext(physicLayer(), startFrame, { width: 1000, height: 650 }, null, 'roto');
+      paintHarness.storedLaunchContext = launchContext;
+      const applyPayloads: PhysicPaintApplyPayload[] = [];
+      const { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+        if (message.type !== PHYSIC_PAINT_APPLY_EVENT || !message.payload) return;
+        applyPayloads.push(message.payload);
+        const result = applyPhysicPaintPayload(message.payload);
+        window.dispatchEvent(new TestEvent(PHYSIC_PAINT_APPLY_RESULT_EVENT, { detail: result }));
+      });
+      const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+      await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
+      fire(findButton(root, 'ONION')!, 'Click');
+      await act(async () => { await flushPreact(); });
+      const findOnionToggles = () => {
+        const onionPanel = queryAll(root, (element) => hasClass(element, 'physics-paint-onion-tab-panel'))[0];
+        return queryAll(onionPanel, (element) => element.localName === 'input' && element.getAttribute('type') === 'checkbox');
+      };
+      const onionToggle = findOnionToggles()[0];
+      (onionToggle as unknown as { checked: boolean }).checked = true;
+      fire(onionToggle, 'Change');
+      await act(async () => { await flushPreact(); });
+      if (options.next !== undefined) {
+        const nextToggle = findOnionToggles()[2];
+        (nextToggle as unknown as { checked: boolean }).checked = options.next;
+        fire(nextToggle, 'Change');
+        await act(async () => { await flushPreact(); });
+      }
+      if (options.previous === false) {
+        const previousToggle = findOnionToggles()[1];
+        (previousToggle as unknown as { checked: boolean }).checked = false;
+        fire(previousToggle, 'Change');
+        await act(async () => { await flushPreact(); });
+      }
+      if (options.opacity !== undefined) fireInput(findInput(root, 'physics-onion-opacity')!, String(options.opacity));
+      await act(async () => { await flushPreact(); });
+      return { root, launchContext, applyPayloads };
+    }
+
+    it.each([
+      { label: 'before the first key', display: 0, sourceFrames: [3, 14, 26], expectedOnions: [3] },
+      { label: 'between real keys while interpolation is off', display: 10, sourceFrames: [0, 1, 2, 3, 14, 26], expectedOnions: [3, 14] },
+      { label: 'after the final key', display: 27, sourceFrames: [0, 1, 2, 3, 14, 26], expectedOnions: [26] },
+    ])('shows surrounding real onions at an empty selected display without creating a durable key: $label', async ({ display, sourceFrames, expectedOnions }) => {
+      const { root, applyPayloads } = await mountOnionStudio(display, { sourceFrames, interpolationEnabled: false, next: true });
+
+      expect(onionImageSnapshot(root).map((image) => image.src)).toEqual(expectedOnions.map((sourceFrame) => sourcePaint.get(sourceFrame)));
+      expect(paintHarness.engine?.setPreviewBaseImageUrl).not.toHaveBeenCalled();
+      expect(applyPayloads).toEqual([]);
+      expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual(sourceFrames);
+      expect(physicPaintStore.getRotoCacheFrames('phys-layer-1').some((frame) => frame.appFrame === display)).toBe(false);
+    });
+
+    it.each([
+      { label: 'generated', display: 4, interpolationEnabled: true },
+      { label: 'empty', display: 10, interpolationEnabled: false },
+    ])('keeps a $label selected display non-durable after mounted paint and Save current intent', async ({ label, display, interpolationEnabled }) => {
+      const { root, applyPayloads } = await mountOnionStudio(display, { interpolationEnabled, next: true });
+      const durableBefore = physicPaintStore.getRealRotoKeyFrames('phys-layer-1');
+      paintHarness.engine?.__setState(editedState, pngDataUrl(`debug-08-${label}-mutation-attempt`));
+      const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
+      expect(canvasStack).toBeTruthy();
+
+      fire(canvasStack!, 'PointerDown');
+      await act(async () => { await flushPreact(); });
+      fire(findButton(root, 'Save current')!, 'Click');
+      await act(async () => { await flushPreact(); });
+
+      expect(applyPayloads).toEqual([]);
+      expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual(durableBefore);
+      expect(physicPaintStore.getRotoCacheFrames('phys-layer-1').some((frame) => frame.appFrame === display && frame.source === 'real-key')).toBe(false);
+    });
+
+    it('keeps a source-keyed edited real payload from becoming its own mounted previous onion anchor', async () => {
+      const { root } = await mountOnionStudio(3);
+      const editedB = pngDataUrl('debug-08-onion-B-edited');
+      paintHarness.engine?.__setState(editedState, editedB);
+      const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
+      expect(canvasStack).toBeTruthy();
+      fire(canvasStack!, 'PointerDown');
+      await act(async () => { await flushPreact(); });
+      fire(findButton(root, 'Save current')!, 'Click');
+      await act(async () => { await flushPreact(); });
+
+      expect(onionImageSnapshot(root).map((image) => image.src)).toEqual([sourcePaint.get(0)]);
+      expect(onionImageSnapshot(root).map((image) => image.src)).not.toContain(editedB);
+    });
+
+    it('keeps a short projected previous real anchor through the mounted Studio path', async () => {
+      const { root } = await mountOnionStudio(6);
+      expect(onionImageSnapshot(root)).toEqual([
+        expect.objectContaining({ src: sourcePaint.get(1) }),
+      ]);
+    });
+
+    it('keeps the nearest distant previous real anchor across the custom generated span', async () => {
+      const { root } = await mountOnionStudio(14);
+      expect(onionImageSnapshot(root)).toEqual([
+        expect.objectContaining({ src: sourcePaint.get(3) }),
+      ]);
+    });
+
+    it.each([
+      { display: 4, owner: 1, previous: 0, next: 2 },
+      { display: 12, owner: 3, previous: 2, next: 14 },
+      { display: 20, owner: 14, previous: 3, next: 26 },
+    ])('makes generated display $display use owner $owner as the onion traversal pivot', async ({ display, owner, previous, next }) => {
+      const { root, launchContext } = await mountOnionStudio(display, { next: true });
+      const generated = launchContext.cachedRotoFrames?.find((frame) => frame.appFrame === display && frame.source === 'generated-interpolation');
+      expect(generated?.dataUrl).toBe(sourcePaint.get(owner));
+      expect(projectRotoOnionPreviewFrames({
+        currentFrame: display,
+        currentFrameOwnerSourceFrame: generated?.fromSourceFrame,
+        isPlaying: false,
+        onion: { enabled: true, previous: true, next: true, count: 1, opacity: 30 },
+        launchFrames: launchContext.cachedRotoFrames,
+        storeFrames: physicPaintStore.getRotoCacheFrames(launchContext.layerId),
+      }).map((frame) => frame.dataUrl)).toEqual([
+        sourcePaint.get(previous),
+        sourcePaint.get(next),
+      ]);
+      expect(paintHarness.engine?.setPreviewBaseImageUrl).toHaveBeenCalledWith(generated?.dataUrl);
+      const onionPanel = queryAll(root, (element) => hasClass(element, 'physics-paint-onion-tab-panel'))[0];
+      const onionToggle = queryAll(onionPanel, (element) => element.localName === 'input' && element.getAttribute('type') === 'checkbox')[0];
+      expect((onionToggle as unknown as { checked: boolean }).checked).toBe(true);
+      expect(onionImageSnapshot(root)).toEqual([
+        expect.objectContaining({ src: sourcePaint.get(previous) }),
+        expect.objectContaining({ src: sourcePaint.get(next) }),
+      ]);
+      expect(onionImageSnapshot(root).map((image) => image.src)).not.toContain(sourcePaint.get(owner));
+      expect(onionImages(root).every((image) => !image.className.includes('generated-interpolation'))).toBe(true);
+    });
+
+    it('respects Previous-only, Next-only, and both at the mounted control boundary', async () => {
+      const previousOnly = await mountOnionStudio(14);
+      expect(onionImageSnapshot(previousOnly.root).map((image) => image.src)).toEqual([sourcePaint.get(3)]);
+      render(null as unknown as VNode, previousOnly.root as unknown as Element);
+
+      const nextOnly = await mountOnionStudio(14, { previous: false, next: true });
+      expect(onionImageSnapshot(nextOnly.root).map((image) => image.src)).toEqual([sourcePaint.get(26)]);
+      render(null as unknown as VNode, nextOnly.root as unknown as Element);
+
+      const both = await mountOnionStudio(14, { next: true });
+      expect(onionImageSnapshot(both.root).map((image) => image.src)).toEqual([sourcePaint.get(3), sourcePaint.get(26)]);
+    });
+
+    it.each([
+      { opacity: 0, expected: '0' },
+      { opacity: 30, expected: '0.15' },
+      { opacity: 100, expected: '0.5' },
+    ])('applies onion opacity $opacity to overlay alpha only', async ({ opacity, expected }) => {
+      const { root, launchContext } = await mountOnionStudio(14, { opacity });
+      const beforePayload = launchContext.cachedRotoFrames?.find((frame) => frame.source === 'real-key' && frame.sourceFrame === 3)?.dataUrl;
+      expect(onionImageSnapshot(root)[0]).toEqual(expect.objectContaining({ src: beforePayload, style: expect.stringContaining(expected) }));
+      expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(beforePayload);
+    });
+
+    it('retains parent Onion Value opacity across close and reopen', async () => {
+      const first = await mountOnionStudio(14, { opacity: 67 });
+      expect(onionImageSnapshot(first.root)[0]?.style).toContain('0.335');
+      render(null as unknown as VNode, first.root as unknown as Element);
+      await flushPreact();
+
+      const reopened = await mountOnionStudio(14);
+      expect(onionImageSnapshot(reopened.root)[0]?.style).toContain('0.335');
+    });
   });
 
   it('preserves adjacent real-key alpha caches when background-only support is computed for a gap', () => {

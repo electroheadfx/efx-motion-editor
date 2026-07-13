@@ -713,14 +713,11 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 6, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, dataUrl: square.dataUrl }),
       expect.objectContaining({ appFrame: 7, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 2, dataUrl: square.dataUrl }),
       expect.objectContaining({ appFrame: 8, source: 'real-key', sourceFrame: 2, displayFrame: 8, dataUrl: crossed.dataUrl }),
-      expect.objectContaining({ appFrame: 9, source: 'generated-interpolation', fromSourceFrame: 2, dataUrl: crossed.dataUrl }),
-      expect.objectContaining({ appFrame: 10, source: 'generated-interpolation', fromSourceFrame: 2, dataUrl: crossed.dataUrl }),
-      expect.objectContaining({ appFrame: 11, source: 'generated-interpolation', fromSourceFrame: 2, dataUrl: crossed.dataUrl }),
     ]);
     expect(physicPaintStore.getRotoFrame('layer-1', 1)?.dataUrl).toBe(circle.dataUrl);
     expect(physicPaintStore.getRotoFrame('layer-1', 4)?.dataUrl).toBe(square.dataUrl);
     expect(physicPaintStore.getRotoFrame('layer-1', 8)?.dataUrl).toBe(crossed.dataUrl);
-    expect(physicPaintStore.getRotoFrame('layer-1', 11)?.dataUrl).toBe(crossed.dataUrl);
+    expect(physicPaintStore.getRotoFrame('layer-1', 9)).toBeNull();
 
     expect(physicPaintStore.deleteRotoFrame({ kind: 'delete-roto-frame', operationId: 'op-delete-crossed', layerId: 'layer-1', startFrame: 8, sourceFrame: 2 }).ok).toBe(true);
 
@@ -769,9 +766,8 @@ describe('physicPaintStore', () => {
     expect(outputs[0]).toEqual(expect.objectContaining({
       roto_cache_metadata: [
         expect.objectContaining({ appFrame: 0, source: 'real-key' }),
-        expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0 }),
       ],
-      roto_interpolation_settings: { enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 5, position: 15 },
+      roto_interpolation_settings: { enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 5, position: 15, segmentSpacingOverrides: [] },
       roto_background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
     }));
     expect(JSON.stringify(outputs)).not.toContain('editableStatesByFrame');
@@ -782,7 +778,6 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0]);
     expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
       expect.objectContaining({ appFrame: 0, source: 'real-key' }),
-      expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0 }),
     ]);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
   });
@@ -900,6 +895,71 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getRotoFrame('layer-1', 11)).toEqual(expect.objectContaining({ appFrame: 11, source: 'real-key', sourceFrame: 6, dataUrl: realSix.dataUrl }));
   });
 
+  const seedDebug08CustomRotoModel = () => {
+    const sourceFrames = [0, 1, 2, 3, 14, 26] as const;
+    const payloads = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
+    sourceFrames.forEach((sourceFrame, index) => {
+      physicPaintStore.upsertRealRotoKeyFrame('layer-1', sourceFrame, makeAlphaFrame(0, sourceFrame, payloads[index]));
+    });
+    physicPaintStore.setRotoInterpolationSettings('layer-1', {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+        { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+      ],
+    });
+    return sourceFrames;
+  };
+
+  it('Debug 08 persists only durable real Roto metadata', () => {
+    const sourceFrames = seedDebug08CustomRotoModel();
+
+    const saved = physicPaintStore.toMceOutputs();
+
+    expect(saved[0].roto_cache_metadata?.map((frame) => ({
+      appFrame: frame.appFrame,
+      source: frame.source,
+      sourceFrame: frame.sourceFrame,
+    }))).toEqual(sourceFrames.map((sourceFrame) => ({
+      appFrame: sourceFrame,
+      source: 'real-key',
+      sourceFrame,
+    })));
+    expect(saved[0].roto_interpolation_settings).toEqual(expect.objectContaining({
+      enabled: true,
+      inBetweenCount: 2,
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+        { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+      ],
+    }));
+  });
+
+  it('Debug 08 ends the custom generated sequence at final real display 26', () => {
+    seedDebug08CustomRotoModel();
+
+    const cache = physicPaintStore.getRotoCacheFrames('layer-1');
+
+    expect(cache.map((frame) => frame.appFrame)).toEqual(Array.from({ length: 27 }, (_, frame) => frame));
+    expect(cache.filter((frame) => frame.source === 'real-key').map((frame) => ({
+      displayFrame: frame.displayFrame,
+      sourceFrame: frame.sourceFrame,
+      dataUrl: frame.dataUrl,
+    }))).toEqual([
+      { displayFrame: 0, sourceFrame: 0, dataUrl: makeAlphaFrame(0, 0, 'A').dataUrl },
+      { displayFrame: 3, sourceFrame: 1, dataUrl: makeAlphaFrame(0, 1, 'B').dataUrl },
+      { displayFrame: 6, sourceFrame: 2, dataUrl: makeAlphaFrame(0, 2, 'C').dataUrl },
+      { displayFrame: 9, sourceFrame: 3, dataUrl: makeAlphaFrame(0, 3, 'D').dataUrl },
+      { displayFrame: 14, sourceFrame: 14, dataUrl: makeAlphaFrame(0, 14, 'E').dataUrl },
+      { displayFrame: 26, sourceFrame: 26, dataUrl: makeAlphaFrame(0, 26, 'F').dataUrl },
+    ]);
+    expect(physicPaintStore.getRotoFrame('layer-1', 27)).toBeNull();
+  });
+
   it('D-09 clamps excessive custom spacing and bounds generated cache output', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeAlphaFrame(0, 2, 'bounded-two'));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 6, makeAlphaFrame(0, 6, 'bounded-six'));
@@ -981,7 +1041,8 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getRotoFrame('layer-1', 0)).toEqual(expect.objectContaining({ appFrame: 0, source: 'real-key', dataUrl: realCircle.dataUrl }));
     expect(physicPaintStore.getRotoFrame('layer-1', 1)).toEqual(expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', dataUrl: realCircle.dataUrl }));
     expect(physicPaintStore.getRotoFrame('layer-1', 4)).toEqual(expect.objectContaining({ appFrame: 4, source: 'real-key', dataUrl: realSquare.dataUrl }));
-    expect(physicPaintStore.getRotoFrame('layer-1', 11)).toEqual(expect.objectContaining({ appFrame: 11, source: 'generated-interpolation', dataUrl: realCross.dataUrl }));
+    expect(physicPaintStore.getRotoFrame('layer-1', 8)).toEqual(expect.objectContaining({ appFrame: 8, source: 'real-key', dataUrl: realCross.dataUrl }));
+    expect(physicPaintStore.getRotoFrame('layer-1', 9)).toBeNull();
   });
 
   it('keeps interpolation disabled after project load and does not regenerate generated Roto frames', () => {
@@ -1233,7 +1294,6 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 3, source: 'real-key', sourceFrame: 2, displayFrame: 3 }),
       expect.objectContaining({ appFrame: 4, source: 'generated-interpolation', nearestRealKeyFrame: 2 }),
       expect.objectContaining({ appFrame: 5, source: 'real-key', sourceFrame: 4, displayFrame: 5 }),
-      expect.objectContaining({ appFrame: 6, source: 'generated-interpolation', nearestRealKeyFrame: 4 }),
     ]);
     expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).toBe(makeAlphaFrame(0, 2, 'alpha-real-two').dataUrl);
   });

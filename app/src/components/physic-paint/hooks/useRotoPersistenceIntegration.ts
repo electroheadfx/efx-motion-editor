@@ -3,6 +3,7 @@ import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import type { RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
+import type { RotoTimelineSelectionKind } from '../roto/rotoTimelineSelectors';
 import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import { mergeCachedRotoAlphaFrame } from '../roto/physicsPaintRotoAlphaMerge';
 import { buildRotoBackgroundMetadata, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
@@ -50,7 +51,7 @@ export interface UseRotoPersistenceIntegrationInput<TEditable extends RotoEditab
   };
   frame: {
     current: number;
-    generated: boolean;
+    selectionKind: RotoTimelineSelectionKind;
     canvasSize: { width: number; height: number };
     resolveSource: (frame: number) => number;
     snapshotCurrent: () => boolean;
@@ -115,7 +116,7 @@ export function useRotoPersistenceIntegration<TEditable extends RotoEditableStat
     getActionContext: input.action.getContext,
     getCurrentFrame: () => input.frame.current,
     getReadyToApply: () => input.action.readyToApply,
-    getCurrentFrameIsGenerated: () => input.frame.generated,
+    getCurrentFrameSelectionKind: () => input.frame.selectionKind,
     getCachedRepaintFrame: (frame) => input.reference.cachedRepaintBaseFrame?.appFrame === frame ? input.reference.cachedRepaintBaseFrame : null,
     getEditableState: (frame) => input.editBuffer.frameStatesRef.current.get(frame),
     setEditableState: (frame, state) => { input.editBuffer.frameStatesRef.current.set(frame, state as TEditable); },

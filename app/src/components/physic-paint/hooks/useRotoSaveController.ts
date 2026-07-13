@@ -1,6 +1,7 @@
 import { useCallback, type MutableRef } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
+import type { RotoTimelineSelectionKind } from '../roto/rotoTimelineSelectors';
 import {
   buildApplyCanvasPayload,
   buildDeleteRotoFramePayload,
@@ -29,7 +30,7 @@ export interface RotoSaveControllerInput {
   getActionContext: () => { engine: EfxPaintEngine; launchContext: PhysicPaintLaunchContext; bridgeMode: 'Tauri' | 'Browser fallback' | 'Unavailable' } | null;
   getCurrentFrame: () => number;
   getReadyToApply: () => boolean;
-  getCurrentFrameIsGenerated: () => boolean;
+  getCurrentFrameSelectionKind: () => RotoTimelineSelectionKind;
   getCachedRepaintFrame: (frame: number) => RotoRenderedFrame | null;
   getEditableState: (frame: number) => RotoEditableState | undefined;
   setEditableState: (frame: number, state: RotoEditableState) => void;
@@ -204,18 +205,19 @@ export function useRotoSaveController(input: RotoSaveControllerInput) {
   const saveRotoFrame = useCallback(async (advanceToFrame: number | null = null, options: Pick<RotoFlushOptions, 'onPayload'> = {}) => {
     const currentFrame = input.getCurrentFrame();
     if (!input.getReadyToApply() || !input.getActionContext()) return null;
-    const saveTransaction = input.getCurrentFrameIsGenerated() ? null : input.saveRealKeyAtDisplayFrame(currentFrame);
+    const selectionKind = input.getCurrentFrameSelectionKind();
+    const saveTransaction = selectionKind === 'real-key' ? input.saveRealKeyAtDisplayFrame(currentFrame) : null;
     const snapshotHasLiveOverlay = saveTransaction ? input.snapshotCurrentFrame() : false;
     const guard = guardRotoSaveFrame({
       readyToApply: input.getReadyToApply(),
       hasLaunchContext: Boolean(input.getActionContext()),
       currentFrame,
-      generated: input.getCurrentFrameIsGenerated(),
+      selectionKind,
       cachedRepaint: Boolean(input.getCachedRepaintFrame(currentFrame)),
       dirty: input.dirtyFramesRef.current.has(currentFrame),
       snapshotHasLiveOverlay,
     });
-    if (guard.type === 'generated') {
+    if (guard.type === 'render-only') {
       input.setApplyStatus('idle');
       input.setApplyMessage(guard.message);
       return null;
