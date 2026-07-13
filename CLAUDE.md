@@ -3,6 +3,12 @@
 - Please use the project-local GSD install from `.claude/gsd-core`.
 - **Please do not run the server** I do on my side
 
+# Test
+
+- utiliser vitest run
+- ne jamais lancer Vitest en mode watch
+- ne plus répéter cette contrainte dans chaque prompt GSD
+
 # Preact Development Guidelines
 
 > description: Development guidelines for writing efficient Preact code, choosing Signals over unnecessary React hooks, and keeping planning files committed during the GSD workflow.
