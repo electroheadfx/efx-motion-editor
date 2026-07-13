@@ -218,6 +218,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
         overrides: input.segmentSpacingOverrides,
         frameMappings,
         deletedFrame: null,
+        preserveToFrame: sourceFrame,
       }),
       successMessage: `Duplicated to frame ${targetFrame}.`,
     });
@@ -247,6 +248,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
         overrides: input.segmentSpacingOverrides,
         frameMappings,
         deletedFrame: null,
+        preserveToFrame: currentFrame,
       }),
       successMessage: `Inserted blank key before frame ${currentFrame}.`,
     });
@@ -278,6 +280,7 @@ export function buildRotoKeyUtilityTransaction(input: RotoKeyUtilityTransactionI
         overrides: input.segmentSpacingOverrides,
         frameMappings,
         deletedFrame: currentFrame,
+        preserveDeletedFrame: frameMappings.some((mapping) => mapping.mode === 'move' && mapping.toFrame === currentFrame),
       }),
       successMessage: `Deleted key ${currentFrame}.`,
     });
@@ -341,10 +344,6 @@ export function applyRotoKeyUtilityTransactionToLocalState<TEditable = unknown, 
     else nextEditableStates.delete(mapping.toFrame);
   }
 
-  for (const frame of transaction.realKeyFrames) {
-    nextPreviewFrames.set(frame.appFrame, { ...frame });
-  }
-
   if (transaction.activeRestore.kind === 'blank-real-key' || transaction.activeRestore.kind === 'clear-blank') {
     nextEditableStates.delete(transaction.activeRestore.frame);
     if (transaction.activeRestore.kind === 'clear-blank') nextPreviewFrames.delete(transaction.activeRestore.frame);
@@ -384,6 +383,8 @@ interface RebaseRotoSegmentSpacingOverridesInput {
   frameMappings: readonly RotoKeyUtilityFrameMapping[];
   deletedFrame: number | null;
   replacementOverride?: PhysicPaintRotoSegmentSpacingOverride | null;
+  preserveToFrame?: number | null;
+  preserveDeletedFrame?: boolean;
 }
 
 export function rebaseRotoSegmentSpacingOverrides({
@@ -391,6 +392,8 @@ export function rebaseRotoSegmentSpacingOverrides({
   frameMappings,
   deletedFrame,
   replacementOverride = null,
+  preserveToFrame = null,
+  preserveDeletedFrame = false,
 }: RebaseRotoSegmentSpacingOverridesInput): PhysicPaintRotoSegmentSpacingOverride[] {
   const mappedFrames = new Map<number, number>();
   for (const mapping of frameMappings) {
@@ -401,11 +404,13 @@ export function rebaseRotoSegmentSpacingOverrides({
 
   const next = new Map<string, PhysicPaintRotoSegmentSpacingOverride>();
   for (const override of overrides ?? []) {
-    if (deletedFrame !== null && (override.fromSourceFrame === deletedFrame || override.toSourceFrame === deletedFrame)) continue;
+    if (!preserveDeletedFrame && deletedFrame !== null && (override.fromSourceFrame === deletedFrame || override.toSourceFrame === deletedFrame)) continue;
     const rebased = normalizeRotoSegmentSpacingOverride({
       ...override,
       fromSourceFrame: mappedFrames.get(override.fromSourceFrame) ?? override.fromSourceFrame,
-      toSourceFrame: mappedFrames.get(override.toSourceFrame) ?? override.toSourceFrame,
+      toSourceFrame: override.toSourceFrame === preserveToFrame
+        ? override.toSourceFrame
+        : mappedFrames.get(override.toSourceFrame) ?? override.toSourceFrame,
     });
     if (rebased) next.set(`${rebased.fromSourceFrame}:${rebased.toSourceFrame}`, rebased);
   }

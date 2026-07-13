@@ -105,17 +105,21 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
   const [cachedRotoReferenceUrl, setCachedRotoReferenceUrl] = useState<string | null>(null);
   const [cachedRotoRepaintBaseFrame, setCachedRotoRepaintBaseFrame] = useState<Frame | null>(null);
   const inputRef = useRef(input);
+  const explicitRestorationRef = useRef<{ appFrame: number; frame: Frame | null } | null>(null);
   inputRef.current = input;
   const findDisplayFrame = useCallback((appFrame: number) => findCachedRotoDisplayFrame(appFrame, inputRef.current), []);
   const findReferenceFrame = useCallback((appFrame: number) => findCachedRotoReferenceFrame(appFrame, inputRef.current), []);
-  const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null) => {
+  const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null, refreshedFrame?: Frame | null) => {
     const currentInput = inputRef.current;
+    if (refreshedFrame !== undefined) explicitRestorationRef.current = { appFrame, frame: refreshedFrame };
+    else if (explicitRestorationRef.current?.appFrame !== appFrame) explicitRestorationRef.current = null;
+    const explicitRestoration = explicitRestorationRef.current?.appFrame === appFrame ? explicitRestorationRef.current.frame : undefined;
     return createRotoReferenceLoader({
       getWorkflowMode: () => currentInput.workflowMode,
       getSettingsBackground: () => currentInput.settingsBackground,
       dirtyFrames: currentInput.dirtyFrames,
       liveOverlayActionCounts: currentInput.liveOverlayActionCounts,
-      getReferenceFrame: findReferenceFrame,
+      getReferenceFrame: (frame) => frame === appFrame && explicitRestoration !== undefined ? explicitRestoration : findReferenceFrame(frame),
       setReferenceUrl: setCachedRotoReferenceUrl,
       setRepaintBaseFrame: setCachedRotoRepaintBaseFrame,
       syncPending: currentInput.syncPending,

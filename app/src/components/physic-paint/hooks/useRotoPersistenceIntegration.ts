@@ -26,7 +26,7 @@ interface RotoNavigationIntegrationPort {
     saveFrameBeforeContinuation: (effect: Extract<RotoSessionEffect, { type: 'saveFrame' }>) => Promise<boolean>;
   }) => void;
   configureDisplayPort: (port: {
-    restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>) => void;
+    restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>, refreshedCacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;
     clearCanvas: (frame: number) => void;
     openAfterSave: (frame: number) => Promise<boolean>;
     clearCachedReferenceFrame: (frame: number) => void;
@@ -73,7 +73,7 @@ export interface UseRotoPersistenceIntegrationInput<TEditable extends RotoEditab
     setUrl: (url: string | null) => void;
     clearUrl: () => void;
     setRepaintBaseFrame: (frame: RenderedFramePayload | null) => void;
-    loadFrame: (frame: number, engine: PreviewBackgroundEngine | null) => void;
+    loadFrame: (frame: number, engine: PreviewBackgroundEngine | null, refreshedFrame?: PhysicPaintRotoCacheFrame | null) => void;
   };
   cache: {
     confirmedFramesRef: MutableRef<Map<number, RenderedFramePayload>>;
@@ -225,11 +225,13 @@ export function useRotoPersistenceIntegration<TEditable extends RotoEditableStat
     input.action.startApplyTimeout(operationId);
   }, [input]);
 
-  const restoreFrame = useCallback((effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>) => {
+  const restoreFrame = useCallback((effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>, refreshedCacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => {
     const restore: RotoKeyUtilityActiveRestore = effect.restore;
     input.reference.setUrl(null);
-    if (restore.kind === 'load-real-key' && input.engine && effect.frame === input.frame.current) input.reference.loadFrame(restore.frame, input.engine as PreviewBackgroundEngine);
-    else if ((restore.kind === 'blank-real-key' || restore.kind === 'clear-blank') && input.engine && effect.frame === input.frame.current) {
+    input.frame.setLaunchContext((current) => current ? { ...current, startFrame: restore.frame } : current);
+    const refreshedFrame = refreshedCacheFrames?.find((frame) => (frame.displayFrame ?? frame.appFrame) === restore.frame) ?? null;
+    if ((restore.kind === 'load-real-key' || restore.kind === 'blank-real-key') && input.engine) input.reference.loadFrame(restore.frame, input.engine as PreviewBackgroundEngine, refreshedFrame);
+    else if (restore.kind === 'clear-blank' && input.engine) {
       (input.engine as PreviewBackgroundEngine).resetBackground();
       input.engine.clear();
     }

@@ -8,6 +8,7 @@ import {
   deriveRotoKeyUtilityActionState,
   type RotoKeyUtilityOperation,
 } from './physicsPaintRotoKeyController';
+import { createRotoSourceDisplayModel, getRotoDisplayProjection } from './rotoSourceDisplayModel';
 
 const controllerPath = fileURLToPath(new URL('./physicsPaintRotoKeyController.ts', import.meta.url));
 const controllerSource = () => readFileSync(controllerPath, 'utf8');
@@ -90,6 +91,106 @@ describe('physicsPaintRotoKeyController segment spacing override transactions', 
     expect(transaction.segmentSpacingOverrides).toEqual<PhysicPaintRotoSegmentSpacingOverride[]>([
       { fromSourceFrame: 2, toSourceFrame: 7, inBetweenCount: 4 },
     ]);
+  });
+
+  it('preserves the exact distant display-20 anchor when inserting a blank source 20', () => {
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'insert',
+      currentFrame: 20,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,real-zero'),
+        frame(1, 'data:image/png;base64,real-one'),
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(3, 'data:image/png;base64,real-three'),
+        frame(20, 'data:image/png;base64,real-twenty'),
+      ],
+      cachedRotoFrames: [],
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 3, toSourceFrame: 20, inBetweenCount: 10 },
+      ],
+      buildBlankRotoFrame: blankFrame,
+    });
+    const projection = getRotoDisplayProjection(createRotoSourceDisplayModel({
+      realSourceFrames: transaction.realKeyFrameNumbers,
+      settings: {
+        enabled: true,
+        inBetweenCount: 2,
+        mode: 'duplicate',
+        segmentSpacingOverrides: transaction.segmentSpacingOverrides,
+      },
+    }));
+
+    expect(transaction.realKeyFrameNumbers).toEqual([0, 1, 2, 3, 20, 21]);
+    expect(transaction.realKeyFrames.map(({ appFrame, dataUrl }) => [appFrame, dataUrl])).toEqual([
+      [0, 'data:image/png;base64,real-zero'],
+      [1, 'data:image/png;base64,real-one'],
+      [2, 'data:image/png;base64,real-two'],
+      [3, 'data:image/png;base64,real-three'],
+      [20, 'data:image/png;base64,blank-20'],
+      [21, 'data:image/png;base64,real-twenty'],
+    ]);
+    expect(transaction.frameMappings).toEqual([
+      { fromFrame: 20, toFrame: 21, mode: 'move' },
+    ]);
+    expect(transaction.segmentSpacingOverrides).toEqual<PhysicPaintRotoSegmentSpacingOverride[]>([
+      { fromSourceFrame: 3, toSourceFrame: 20, inBetweenCount: 10 },
+    ]);
+    expect(projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, 20, 23]);
+    expect(projection.generatedFrames
+      .filter((candidate) => candidate.fromSourceFrame === 20 && candidate.toSourceFrame === 21)
+      .map((candidate) => candidate.displayFrame)).toEqual([21, 22]);
+  });
+
+  it('restores the exact distant anchor and painted key after deleting the inserted blank source 20', () => {
+    const inserted = buildRotoKeyUtilityTransaction({
+      operation: 'insert',
+      currentFrame: 20,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,real-zero'),
+        frame(1, 'data:image/png;base64,real-one'),
+        frame(2, 'data:image/png;base64,real-two'),
+        frame(3, 'data:image/png;base64,real-three'),
+        frame(20, 'data:image/png;base64,real-twenty'),
+      ],
+      cachedRotoFrames: [],
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 3, toSourceFrame: 20, inBetweenCount: 10 },
+      ],
+      buildBlankRotoFrame: blankFrame,
+    });
+    const deleted = buildRotoKeyUtilityTransaction({
+      operation: 'delete',
+      currentFrame: 20,
+      realKeyFrames: inserted.realKeyFrames,
+      cachedRotoFrames: inserted.realKeyFrames,
+      segmentSpacingOverrides: inserted.segmentSpacingOverrides,
+      buildBlankRotoFrame: blankFrame,
+    });
+    const projection = getRotoDisplayProjection(createRotoSourceDisplayModel({
+      realSourceFrames: deleted.realKeyFrameNumbers,
+      settings: {
+        enabled: true,
+        inBetweenCount: 2,
+        mode: 'duplicate',
+        segmentSpacingOverrides: deleted.segmentSpacingOverrides,
+      },
+    }));
+
+    expect(deleted.realKeyFrameNumbers).toEqual([0, 1, 2, 3, 20]);
+    expect(deleted.realKeyFrames.map(({ appFrame, dataUrl }) => [appFrame, dataUrl])).toEqual([
+      [0, 'data:image/png;base64,real-zero'],
+      [1, 'data:image/png;base64,real-one'],
+      [2, 'data:image/png;base64,real-two'],
+      [3, 'data:image/png;base64,real-three'],
+      [20, 'data:image/png;base64,real-twenty'],
+    ]);
+    expect(deleted.frameMappings).toEqual([
+      { fromFrame: 21, toFrame: 20, mode: 'move' },
+    ]);
+    expect(deleted.segmentSpacingOverrides).toEqual<PhysicPaintRotoSegmentSpacingOverride[]>([
+      { fromSourceFrame: 3, toSourceFrame: 20, inBetweenCount: 10 },
+    ]);
+    expect(projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 3, 6, 9, 20]);
   });
 
   it('36.13 D-11 drops overrides touching the deleted key instead of transferring custom timing to the merged segment', () => {
@@ -417,6 +518,28 @@ describe('physicsPaintRotoKeyController transaction coherence', () => {
     });
 
     expect(transaction.realKeyFrames.find((candidate) => candidate.appFrame === 5)).toMatchObject({ width: 773, height: 505 });
+  });
+
+  it('does not publish durable transaction keys into transient preview ownership', () => {
+    const transaction = buildRotoKeyUtilityTransaction({
+      operation: 'insert',
+      currentFrame: 0,
+      realKeyFrames: [
+        frame(0, 'data:image/png;base64,paint-a'),
+        frame(1, 'data:image/png;base64,paint-b'),
+        frame(2, 'data:image/png;base64,paint-c'),
+      ],
+      cachedRotoFrames: [],
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    const next = applyRotoKeyUtilityTransactionToLocalState({
+      editableStates: new Map(),
+      previewFrames: new Map(),
+      transaction,
+    });
+
+    expect([...next.previewFrames.keys()]).toEqual([]);
   });
 
   it('D-04/D-10 applies transaction cleanup to local editable and preview maps deterministically', () => {

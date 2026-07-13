@@ -431,6 +431,43 @@ describe('physicsPaintRotoSession segment spacing override transactions', () => 
 });
 
 describe('physicsPaintRotoSession boundary clean key transactions', () => {
+  it('keeps compact projected Insert selected and restored at display frame 3 while mutating source frame 1', () => {
+    const session = createRotoSession({
+      currentFrame: 3,
+      realKeyFrames: [
+        { ...frame(0, 'data:image/png;base64,real-zero'), sourceFrame: 0, displayFrame: 0 },
+        { ...frame(3, 'data:image/png;base64,real-one'), sourceFrame: 1, displayFrame: 3 },
+        { ...frame(6, 'data:image/png;base64,real-two'), sourceFrame: 2, displayFrame: 6 },
+      ],
+      cachedRotoFrames: [],
+      dirtyFrames: [],
+      canvasSize: { width: 100, height: 100 },
+      resolveSourceFrameForDisplayFrame: (displayFrame) => new Map([[0, 0], [3, 1], [6, 2]]).get(displayFrame) ?? null,
+      buildBlankRotoFrame: blankFrame,
+    });
+
+    const result = session.insertBlankKey();
+
+    expect(result.ok).toBe(true);
+    expect(result.transaction).toMatchObject({
+      activeFrame: 1,
+      realKeyFrameNumbers: [0, 1, 2, 3],
+    });
+    expect(result.transaction?.realKeyFrames.map(({ appFrame, dataUrl }) => [appFrame, dataUrl])).toEqual([
+      [0, 'data:image/png;base64,real-zero'],
+      [1, 'data:image/png;base64,blank-1'],
+      [2, 'data:image/png;base64,real-one'],
+      [3, 'data:image/png;base64,real-two'],
+    ]);
+    expect(session.currentFrame.value).toBe(3);
+    expect(session.restoreIntent.value).toEqual({ kind: 'blank-real-key', frame: 3 });
+    expect(result.effects.find((effect) => effect.type === 'restoreFrame')).toEqual({
+      type: 'restoreFrame',
+      frame: 3,
+      restore: { kind: 'blank-real-key', frame: 3 },
+    });
+  });
+
   it('36.8-REG-01 D-01/D-04/D-06/D-07/D-12/D-14/D-15 inserts a blank key that stays clean until markDirty', () => {
     const session = createRotoSession({
       currentFrame: 5,

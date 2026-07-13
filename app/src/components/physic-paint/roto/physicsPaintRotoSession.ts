@@ -58,6 +58,7 @@ export interface RotoSessionInput {
   canvasSize?: { width: number; height: number };
   buildBlankRotoFrame: (appFrame: number) => PhysicPaintRotoCacheFrame;
   resolveSourceFrameForDisplayFrame?: (displayFrame: number) => number | null;
+  resolveDisplayFrameForSourceFrame?: (sourceFrame: number, transaction: RotoKeyUtilityTransaction) => number | null;
   resolvePasteTargetForDisplayFrame?: (displayFrame: number) => { displayFrame: number; sourceFrame: number; previousSegmentOverride: PhysicPaintRotoSegmentSpacingOverride | null } | null;
   segmentSpacingOverrides?: readonly PhysicPaintRotoSegmentSpacingOverride[];
   keyActionInFlight?: boolean;
@@ -243,12 +244,11 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   function runKeyTransaction(action: RotoSessionActionName, operation: RotoSessionPendingKeyAction): RotoSessionActionResult {
     const displayFrame = currentFrame.peek();
     const pasteTarget = operation === 'paste' ? input.resolvePasteTargetForDisplayFrame?.(displayFrame) ?? null : null;
-    const sourceFrame = pasteTarget?.sourceFrame ?? input.resolveSourceFrameForDisplayFrame?.(displayFrame) ?? displayFrame;
     const effects: RotoSessionEffect[] = [];
     try {
       const transaction = buildRotoKeyUtilityTransaction({
         operation,
-        currentFrame: sourceFrame,
+        currentFrame: displayFrame,
         realKeyFrames: realKeyFrames.peek(),
         cachedRotoFrames: cachedRotoFrames.peek(),
         copiedKeyFrame: copiedKey.peek()?.cachedFrame ?? null,
@@ -257,16 +257,24 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
         canvasSize: input.canvasSize,
         buildBlankRotoFrame: input.buildBlankRotoFrame,
       });
+      const activeDisplayFrame = operation === 'insert'
+        ? displayFrame
+        : operation === 'duplicate' && displayFrame !== transaction.activeFrame
+          ? input.resolveDisplayFrameForSourceFrame?.(transaction.activeFrame, transaction) ?? transaction.activeFrame
+          : transaction.activeFrame;
+      const activeRestore = activeDisplayFrame === transaction.activeFrame
+        ? transaction.activeRestore
+        : { ...transaction.activeRestore, frame: activeDisplayFrame };
       batch(() => {
         realKeyFrames.value = transaction.realKeyFrames;
         cachedRotoFrames.value = mergeCachedFrames(cachedRotoFrames.peek(), transaction);
         dirtyFrames.value = removeFrames(dirtyFrames.peek(), transaction.removedFrames);
-        currentFrame.value = transaction.activeFrame;
-        restoreIntent.value = transaction.activeRestore;
+        currentFrame.value = activeDisplayFrame;
+        restoreIntent.value = activeRestore;
         feedback.value = getTransactionSuccessMessage(transaction);
         failedSaveFeedback.value = null;
       });
-      effects.push(...effectsForTransaction(transaction));
+      effects.push(...effectsForTransaction(transaction, activeRestore));
       return { action, ok: true, message: getTransactionSuccessMessage(transaction), effects, transaction };
     } catch (error) {
       return failed(action, error instanceof Error ? error.message : String(error));
@@ -354,7 +362,10 @@ export function createRotoSession(input: RotoSessionInput): RotoSession {
   }
 }
 
-function effectsForTransaction(transaction: RotoKeyUtilityTransaction): RotoSessionEffect[] {
+function effectsForTransaction(
+  transaction: RotoKeyUtilityTransaction,
+  activeRestore: RotoSessionRestoreIntent = transaction.activeRestore,
+): RotoSessionEffect[] {
   const effects: RotoSessionEffect[] = [
     {
       type: 'replaceKeys',
@@ -365,10 +376,10 @@ function effectsForTransaction(transaction: RotoKeyUtilityTransaction): RotoSess
     },
   ];
 
-  if (transaction.activeRestore.kind === 'clear-blank') {
-    effects.push({ type: 'clearCanvas', frame: transaction.activeRestore.frame });
+  if (activeRestore.kind === 'clear-blank') {
+    effects.push({ type: 'clearCanvas', frame: activeRestore.frame });
   }
-  effects.push({ type: 'restoreFrame', frame: transaction.activeRestore.frame, restore: transaction.activeRestore });
+  effects.push({ type: 'restoreFrame', frame: activeRestore.frame, restore: activeRestore });
 
   if (transaction.cleanup.generatedFrames.length > 0) effects.push({ type: 'clearGeneratedFrames', frames: transaction.cleanup.generatedFrames });
   if (transaction.cleanup.referenceFrames.length > 0) effects.push({ type: 'clearCachedReferences', frames: transaction.cleanup.referenceFrames });

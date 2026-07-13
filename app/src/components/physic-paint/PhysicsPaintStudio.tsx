@@ -12,7 +12,7 @@ import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyb
 import { usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions } from './hooks/useRotoTimelineActions';
 import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
-import { selectProjectedRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
+import { selectProjectedRealCachedRotoFrames, selectRealCachedRotoSourceFrameNumbers, selectRotoTimelineView } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { useRotoApplyLifecycle } from './hooks/useRotoApplyLifecycle';
@@ -206,6 +206,14 @@ export function PhysicsPaintStudio() {
       flushInFlight: Boolean(rotoFlushInFlightRef.current),
       buildBlankRotoFrame: (frame): PhysicPaintRotoCacheFrame => ({ ...buildBlankRotoFrame(canvasWidth, canvasHeight, frame), source: 'real-key' }),
       resolveSourceFrameForDisplayFrame: resolveRotoSourceFrameForDisplayFrame,
+      resolveDisplayFrameForSourceFrame: (sourceFrame, transaction) => {
+        const projection = selectRotoTimelineView({
+          cachedRotoFrames: transaction.realKeyFrames,
+          interpolationSettings: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined,
+          currentFrame: sourceFrame,
+        }).projection;
+        return projection.realKeys.find((key) => key.sourceFrame === sourceFrame)?.displayFrame ?? null;
+      },
       resolvePasteTargetForDisplayFrame: (displayFrame) => launchContext ? rotoTimelineActions.saveRealKeyAtDisplayFrame(displayFrame).target : null,
       segmentSpacingOverrides: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).segmentSpacingOverrides : undefined,
       getEditableStates: () => rotoFrameStatesRef.current,

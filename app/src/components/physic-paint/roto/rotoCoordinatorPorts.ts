@@ -10,7 +10,7 @@ export interface RotoKeyPersistencePort {
 }
 
 export interface RotoFrameDisplayPort {
-  restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>) => void;
+  restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>, refreshedCacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;
   clearCanvas: (frame: number) => void;
   openAfterSave: (frame: number) => Promise<void | boolean>;
   clearCachedReferenceFrame: (frame: number) => void;

@@ -423,7 +423,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 
     expect(applyBlock).toContain('physicPaintStore.replaceRotoKeyFrames({');
     expect(applyBlock).toContain('physicPaintStore.getRotoCacheFrames(launchContext.layerId)');
-    expect(adapter).toContain('input.syncRotoKeyFrameLists(refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames)');
+    expect(adapter).toContain('const publishedFrames = refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames');
+    expect(adapter).toContain('input.syncRotoKeyFrameLists(publishedFrames)');
     expect(resultBlock).not.toContain('syncRotoKeyFrameLists(getRealRotoKeyFramesForStudio())');
   });
 
@@ -1021,8 +1022,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(studio).not.toContain('buildRotoKeyUtilityTransaction');
     expect(adapter).toContain('applyRotoKeyUtilityTransactionToLocalState');
     expect(adapter).toContain('const applyTransaction = useCallback');
-    expect(adapter).toContain('await input.persistRotoKeyFrameTransaction(effect.transaction)');
-    expect(adapter).toContain('input.restoreFrame(effect)');
+    expect(adapter).toContain('void input.persistRotoKeyFrameTransaction(effect.transaction).catch');
+    expect(adapter).toContain('input.restoreFrame(effect, refreshedCacheFrames)');
     expect(adapter).toContain('let replacedRotoKeys = false');
     expect(adapter).toContain('replacedRotoKeys = true');
     expect(adapter).toContain('if (!replacedRotoKeys) for (const frame of effect.frames)');

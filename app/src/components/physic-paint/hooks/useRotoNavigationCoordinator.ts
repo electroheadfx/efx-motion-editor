@@ -44,7 +44,7 @@ export function useRotoNavigationCoordinator<TEditable, TPreview extends { appFr
     applyRotoKeyFrames: (transaction) => persistencePortRef.current.applyKeyFrames(transaction),
     persistRotoKeyFrameTransaction: (transaction) => persistencePortRef.current.persistKeyFrameTransaction(transaction),
     handleSaveFrameEffect: (effect, session) => persistencePortRef.current.saveFrameBeforeContinuation(effect, session),
-    restoreFrame: (effect) => displayPortRef.current.restoreFrame(effect),
+    restoreFrame: (effect, refreshedCacheFrames) => displayPortRef.current.restoreFrame(effect, refreshedCacheFrames),
     clearCanvas: (frame) => displayPortRef.current.clearCanvas(frame),
     navigate: (frame) => displayPortRef.current.openAfterSave(frame),
     clearCachedReferenceFrame: (frame) => displayPortRef.current.clearCachedReferenceFrame(frame),

@@ -13,6 +13,7 @@ export interface RotoKeyUtilitiesInput<TEditable, TPreview extends { appFrame: n
   flushInFlight: boolean;
   buildBlankRotoFrame: (frame: number) => PhysicPaintRotoCacheFrame;
   resolveSourceFrameForDisplayFrame: (displayFrame: number) => number | null;
+  resolveDisplayFrameForSourceFrame?: (sourceFrame: number, transaction: RotoKeyUtilityTransaction) => number | null;
   resolvePasteTargetForDisplayFrame: (displayFrame: number) => { displayFrame: number; sourceFrame: number; previousSegmentOverride: PhysicPaintRotoSegmentSpacingOverride | null } | null;
   segmentSpacingOverrides?: readonly PhysicPaintRotoSegmentSpacingOverride[];
   getEditableStates: () => ReadonlyMap<number, TEditable>;
@@ -26,7 +27,7 @@ export interface RotoKeyUtilitiesInput<TEditable, TPreview extends { appFrame: n
   applyRotoKeyFrames: (transaction: RotoKeyUtilityTransaction) => readonly PhysicPaintRotoCacheFrame[];
   persistRotoKeyFrameTransaction: (transaction: RotoKeyUtilityTransaction) => Promise<void>;
   handleSaveFrameEffect: (effect: Extract<RotoSessionEffect, { type: 'saveFrame' }>, session: RotoSession) => Promise<boolean>;
-  restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>) => void;
+  restoreFrame: (effect: Extract<RotoSessionEffect, { type: 'restoreFrame' }>, refreshedCacheFrames?: readonly PhysicPaintRotoCacheFrame[]) => void;
   clearCanvas: (frame: number) => void;
   showCachedReference: (frame: PhysicPaintRotoCacheFrame) => void;
   navigate: (frame: number) => Promise<void | boolean>;
@@ -71,6 +72,7 @@ export function useRotoKeyUtilities<TEditable, TPreview extends { appFrame: numb
     flushInFlight: input.flushInFlight,
     buildBlankRotoFrame: input.buildBlankRotoFrame,
     resolveSourceFrameForDisplayFrame: input.resolveSourceFrameForDisplayFrame,
+    resolveDisplayFrameForSourceFrame: input.resolveDisplayFrameForSourceFrame,
     resolvePasteTargetForDisplayFrame: input.resolvePasteTargetForDisplayFrame,
     segmentSpacingOverrides: input.segmentSpacingOverrides,
   }), [
@@ -84,6 +86,7 @@ export function useRotoKeyUtilities<TEditable, TPreview extends { appFrame: numb
     input.flushInFlight,
     input.buildBlankRotoFrame,
     input.resolveSourceFrameForDisplayFrame,
+    input.resolveDisplayFrameForSourceFrame,
     input.resolvePasteTargetForDisplayFrame,
     input.segmentSpacingOverrides,
     sessionVersion,
@@ -97,7 +100,7 @@ export function useRotoKeyUtilities<TEditable, TPreview extends { appFrame: numb
     setSessionVersion((version) => version + 1);
   }, []);
 
-  const applyTransaction = useCallback((transaction: RotoKeyUtilityTransaction) => {
+  const applyTransaction = useCallback((transaction: RotoKeyUtilityTransaction): readonly PhysicPaintRotoCacheFrame[] => {
     const nextLocalState = applyRotoKeyUtilityTransactionToLocalState({
       editableStates: input.getEditableStates(),
       previewFrames: input.getPreviewFrames(),
@@ -107,11 +110,14 @@ export function useRotoKeyUtilities<TEditable, TPreview extends { appFrame: numb
     input.setEditableStates(nextLocalState.editableStates as Map<number, TEditable>);
     input.setPreviewFrames(nextLocalState.previewFrames as Map<number, TPreview | PhysicPaintRotoCacheFrame>);
     const refreshedCacheFrames = input.applyRotoKeyFrames(transaction);
-    input.syncRotoKeyFrameLists(refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames);
+    const publishedFrames = refreshedCacheFrames.length > 0 ? refreshedCacheFrames : transaction.realKeyFrames;
+    input.syncRotoKeyFrameLists(publishedFrames);
+    return publishedFrames;
   }, [input]);
 
   const executeSessionEffects = useCallback(async (effects: readonly RotoSessionEffect[]) => {
     let replacedRotoKeys = false;
+    let refreshedCacheFrames: readonly PhysicPaintRotoCacheFrame[] | undefined;
     for (const effect of effects) {
       switch (effect.type) {
         case 'saveFrame': {
@@ -127,22 +133,18 @@ export function useRotoKeyUtilities<TEditable, TPreview extends { appFrame: numb
           break;
         }
         case 'replaceKeys':
-          applyTransaction(effect.transaction);
+          refreshedCacheFrames = applyTransaction(effect.transaction);
           replacedRotoKeys = true;
-          if (effect.transaction.operation === 'paste' || effect.transaction.operation === 'delete') {
-            void input.persistRotoKeyFrameTransaction(effect.transaction).catch((error) => {
-              const detail = error instanceof Error ? error.message : String(error);
-              const message = `Could not persist Roto key changes. ${detail}`;
-              input.setApplyStatus('error');
-              input.setApplyMessage(message);
-              input.setLastError(message);
-            });
-          } else {
-            await input.persistRotoKeyFrameTransaction(effect.transaction);
-          }
+          void input.persistRotoKeyFrameTransaction(effect.transaction).catch((error) => {
+            const detail = error instanceof Error ? error.message : String(error);
+            const message = `Could not persist Roto key changes. ${detail}`;
+            input.setApplyStatus('error');
+            input.setApplyMessage(message);
+            input.setLastError(message);
+          });
           break;
         case 'restoreFrame':
-          input.restoreFrame(effect);
+          input.restoreFrame(effect, refreshedCacheFrames);
           break;
         case 'clearCanvas':
           input.clearCanvas(effect.frame);

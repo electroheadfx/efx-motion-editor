@@ -334,7 +334,7 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     expect(resultBlock).toContain('const hasSessionEffects = result.effects.length > 0');
     expect(resultBlock).toContain('if (hasSessionEffects) setKeyActionInFlight(true)');
     expect(resultBlock).toContain('if (hasSessionEffects) await executeSessionEffects(result.effects)');
-    expect(resultBlock).toContain('if (hasSessionEffects) input.syncPendingRotoFrames()');
+    expect(resultBlock).toMatch(/if \(hasSessionEffects\)\s*\{\s*input\.syncPendingRotoFrames\(\)/);
     expect(copyBlock).toContain('void runSessionResult(session.copyKey())');
     expect(copyBlock).not.toContain('input.syncPendingRotoFrames()');
   });
