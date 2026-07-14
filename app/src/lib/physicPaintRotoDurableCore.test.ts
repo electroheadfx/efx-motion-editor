@@ -85,7 +85,7 @@ vi.mock('@efxlab/efx-physic-paint/preact', async () => {
   const preact = await import('preact');
   const hooks = await import('preact/hooks');
   return {
-    EfxPaintCanvas: (props: { width: number; height: number; children?: ComponentChildren; onEngineReady?: (engine: TestPaintEngine) => void; onNativePenInputReady?: (handler: (input: { pressure: number }) => void) => void }) => {
+    EfxPaintCanvas: (props: { width: number; height: number; children?: ComponentChildren; onEngineReady?: (engine: TestPaintEngine) => void; onNativePenInputReady?: (handler: (input: { pressure: number }) => void) => void; onCompletedMutation?: (mutation: { kind: string; isEmpty: boolean }) => void }) => {
       const mountedEngine = paintHarness.engine;
       const [readyToEmit, setReadyToEmit] = hooks.useState(false);
       const [callbacksCommitted, setCallbacksCommitted] = hooks.useState(false);
@@ -121,6 +121,8 @@ interface TestPaintEngine {
   load: ReturnType<typeof vi.fn<(state: SerializedProject) => void>>;
   clear: ReturnType<typeof vi.fn<() => void>>;
   exportCompositeCanvas: () => { width: number; height: number; toDataURL: () => string };
+  copyLiveAlphaCanvas: () => { width: number; height: number; toDataURL: () => string };
+  setCompletedMutationListener: (listener: ((mutation: { kind: string; isEmpty: boolean }) => void) | null) => void;
   setBackgroundImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
   resetBackground: ReturnType<typeof vi.fn<() => void>>;
   setPreviewBaseImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
@@ -180,11 +182,14 @@ function pngDataUrl(label: string): string {
 function makeEngine(initialState: SerializedProject, initialDataUrl: string): TestPaintEngine {
   let state = structuredClone(initialState);
   let dataUrl = initialDataUrl;
+  let completedMutationListener: ((mutation: { kind: string; isEmpty: boolean }) => void) | null = null;
   const engine = {
     save: vi.fn(() => structuredClone(state)),
     load: vi.fn((next: SerializedProject) => { state = structuredClone(next); }),
     clear: vi.fn(() => { state = { ...state, strokes: [] }; }),
     exportCompositeCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl })),
+    copyLiveAlphaCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl })),
+    setCompletedMutationListener: vi.fn((listener: ((mutation: { kind: string; isEmpty: boolean }) => void) | null) => { completedMutationListener = listener; }),
     setBackgroundImageUrl: vi.fn(),
     resetBackground: vi.fn(),
     setPreviewBaseImageUrl: vi.fn(),
@@ -210,6 +215,7 @@ function makeEngine(initialState: SerializedProject, initialDataUrl: string): Te
     __setState: (next: SerializedProject, nextDataUrl: string) => {
       state = structuredClone(next);
       dataUrl = nextDataUrl;
+      completedMutationListener?.({ kind: 'paint', isEmpty: next.strokes.length === 0 });
     },
   } satisfies TestPaintEngine;
   return engine;
@@ -955,6 +961,31 @@ describe('Phase 36.3 durable Roto cache core', () => {
     paintHarness.storedLaunchContext = null;
     paintHarness.storedLaunchContextPromise = null;
     paintHarness.launchListeners = [];
+  });
+
+  it('automatic live pixel mutation commits through the mounted Studio engine seam without Save current', async () => {
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: 'automatic-live-pixel-mounted',
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: 4,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: [],
+    };
+    paintHarness.storedLaunchContext = launchContext;
+    const { root } = installDom(encodeURIComponent(JSON.stringify(launchContext)), () => {});
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
+    const automaticPixels = pngDataUrl('automatic-live-alpha-only');
+    paintHarness.engine?.__setState(editedState, automaticPixels);
+    await act(async () => { await flushPreact(); });
+
+    expect(physicPaintStore.getFrame('phys-layer-1', 4)?.dataUrl).toBe(automaticPixels);
+    expect(findButton(root, 'Save current')).toBeNull();
   });
 
   it('Clear current Roto frame replaces the mounted cached real key without deleting its topology', async () => {
