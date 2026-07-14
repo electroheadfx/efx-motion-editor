@@ -836,7 +836,7 @@ describe('physicPaintBridge', () => {
     });
     expect(physicPaintStore.getFrame('phys-layer-1', 8)?.frameIndex).toBe(0);
     expect(physicPaintStore.getFrame('phys-layer-1', 9)).toBeNull();
-    expect(physicPaintStore.getEditableState('phys-layer-1')?.strokes).toHaveLength(1);
+    expect(physicPaintStore.getEditableState('phys-layer-1')).toBeNull();
   });
 
   it('applies explicit Roto background metadata from standalone saves into the parent app store', () => {
@@ -1110,7 +1110,6 @@ describe('physicPaintBridge', () => {
       expect.objectContaining({
         layer_id: 'hydrated-phys-layer',
         frames: [expect.objectContaining({ appFrame: 12 })],
-        editable_state: expect.objectContaining({ strokes: expect.any(Array) }),
         workflow_mode: 'roto',
         editable_source: 'roto',
       }),
@@ -1121,7 +1120,7 @@ describe('physicPaintBridge', () => {
     const hydratedLayer = sequenceStore.sequences.peek()[0]?.layers[0];
     expect(hydratedLayer?.source).toEqual({ type: 'physic-paint', layerId: 'hydrated-phys-layer' });
     expect(physicPaintStore.getFrame('hydrated-phys-layer', 12)?.dataUrl).toContain('data:image/png');
-    expect(physicPaintStore.getEditableState('hydrated-phys-layer')?.strokes).toHaveLength(1);
+    expect(physicPaintStore.getEditableState('hydrated-phys-layer')).toBeNull();
 
     mockLayers([hydratedLayer as Layer]);
     const result = applyPhysicPaintPayload(applyCanvasPayload({ layerId: 'hydrated-phys-layer' }));

@@ -14,7 +14,6 @@ export interface PhysicsPaintStudioKeyboardActions {
   navigateRotoFrame: (frame: number) => void;
   playPreview: (frameCount: number) => void;
   savePlay: () => void;
-  saveRotoFrame: () => void;
   stopPreview: () => void;
   toggleOnion: () => void;
   adjustOnionCount: (delta: -1 | 1) => void;
@@ -53,10 +52,9 @@ export function dispatchPhysicsPaintStudioKeyDown(
     }
     return;
   }
-  if (meta && key === 's') {
+  if (meta && key === 's' && state.workflowMode === 'play') {
     event.preventDefault();
-    if (state.workflowMode === 'play') actions.savePlay();
-    else actions.saveRotoFrame();
+    actions.savePlay();
     return;
   }
   if (event.key === '?' || (event.shiftKey && event.key === '/')) {
@@ -93,11 +91,6 @@ export function dispatchPhysicsPaintStudioKeyDown(
     if (event.key === '[' || event.key === ']') {
       event.preventDefault();
       actions.adjustOnionCount(event.key === ']' ? 1 : -1);
-      return;
-    }
-    if (meta && event.key === 'Enter') {
-      event.preventDefault();
-      actions.saveRotoFrame();
       return;
     }
   }

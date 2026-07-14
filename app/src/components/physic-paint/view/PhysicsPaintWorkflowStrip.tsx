@@ -4,7 +4,7 @@ import { Blend, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, Play, Ro
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   getPhysicsPaintSourceLabel, getRotoCellFill, getRotoCellViewModel,
-  getRotoPendingLabel, getMissingRotoFrameStatusLabel,
+  getMissingRotoFrameStatusLabel,
   type PhysicsPaintOnionState, type PhysicsPaintWorkflowMode,
   type RotoCellViewModel, type RotoMissingFrameStatusKind,
 } from './physicsPaintWorkflowPresentation';
@@ -24,7 +24,7 @@ const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.'
 const GENERATED_ROTO_DISABLED_STATUS_TEMPLATE = 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.';
 const INTERPOLATION_ENABLED_STATUS = 'Generated in-betweens on — render-only frames refresh from real keys.';
 const INTERPOLATION_DISABLED_STATUS = 'Generated in-betweens off — real Roto keys only.';
-const ROTO_KEY_BUSY_STATUS_TEMPLATE = 'Finish saving frame {frame} before using key tools.';
+const ROTO_KEY_BUSY_STATUS_TEMPLATE = 'Finish the current key action before using key tools.';
 type RotoKeyUtilityAction = 'insert' | 'duplicate' | 'copy' | 'paste' | 'delete';
 export interface PhysicsPaintWorkflowRotoKeyState {
   actionAvailability: RotoKeyUtilityActionState;
@@ -36,8 +36,6 @@ const ROTO_CELL_LEGEND_ITEMS = [
   { label: 'Current', className: 'roto-fill-editable-current current' },
   { label: 'Generated', className: 'roto-fill-generated' },
   { label: 'Background only', className: 'roto-fill-background-only' },
-  { label: 'Unsaved', className: 'roto-fill-cached dirty' },
-  { label: 'Saving', className: 'roto-fill-cached pending' },
 ];
 
 export interface PhysicsPaintWorkflowStripFrameMarker {
@@ -69,9 +67,6 @@ export interface PhysicsPaintWorkflowStripProps {
   savedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[];
   cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
   editableRotoFrames?: number[];
-  pendingRotoFrames?: number[];
-  rotoSaveInFlight?: boolean;
-  rotoSavingFrame?: number | null;
   rotoInterpolationSettings?: RotoInterpolationSettings;
   playPublicationSummary?: string | null;
   statusMessage?: string | null;
@@ -101,8 +96,6 @@ export interface PhysicsPaintWorkflowStripProps {
   hasCopiedRotoKey?: boolean;
   keyActionInFlight?: boolean;
   rotoKeyState?: PhysicsPaintWorkflowRotoKeyState;
-  onSaveRotoFrame: () => void;
-  onSavePendingRotoFrames: () => void;
   onSavePlay: () => void;
   onUpdatePlayOptions?: () => void;
   currentPreviewFrame?: number;
@@ -230,15 +223,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const maxFrameCount = getMaxFrameCount();
   const safeFrameCount = Math.min(clampPhysicPaintFrameCount(props.frameCount || PHYSIC_PAINT_DEFAULT_APPLY_FRAMES), maxFrameCount);
   const playFrameCells = useMemo(() => buildPlayFrameCells(props.startFrame, safeFrameCount), [props.startFrame, safeFrameCount]);
-  const pendingRotoFrameSet = useMemo(() => new Set(props.pendingRotoFrames ?? []), [props.pendingRotoFrames]);
-  const hasPendingRotoFrames = pendingRotoFrameSet.size > 0;
   const currentRotoCell = getRotoCellViewModel({
     frame: props.currentFrame,
     currentFrame: props.currentFrame,
     cachedFrames: displayCachedRotoFrames,
     editableFrames: props.editableRotoFrames,
-    pendingFrames: props.pendingRotoFrames,
-    isSaving: Boolean(props.rotoSaveInFlight),
   });
   const rotoMissingStatusLabel = props.rotoMissingFrameStatusKind
     ? getMissingRotoFrameStatusLabel({ frame: props.currentFrame, kind: props.rotoMissingFrameStatusKind })
@@ -246,7 +235,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames, props.editableRotoFrames);
   const isCurrentRealRotoKey = realRotoFrames.includes(props.currentFrame) && currentRotoCell.isEditableTarget !== false;
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
-  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.rotoSaveInFlight) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
+  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
   const canUseVisibleSourceRotoKey = canUseSourceRotoKey || (Boolean(sessionKeyAvailability) && isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState);
   const canInsertRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
@@ -254,7 +243,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const canCopyRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canCopy || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
   const canPasteRotoKey = sessionKeyAvailability ? sessionKeyAvailability.canPaste && props.ready !== false : Boolean(props.hasCopiedRotoKey) && !keyUtilitiesDisabledByBusyState;
   const canDeleteRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canDelete || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
-  const rotoPendingLabel = getRotoPendingLabel(hasPendingRotoFrames, Boolean(props.rotoSaveInFlight), props.rotoSavingFrame);
   const playRulerStep = getPlayRulerStep(safeFrameCount);
   const playRulerTicks = playFrameCells.filter((_, index) => index % playRulerStep === 0 || index === playFrameCells.length - 1);
   const rulerTicks = props.mode === 'play' ? playRulerTicks : rotoRulerTicks;
@@ -270,14 +258,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       ? INTERPOLATION_ENABLED_STATUS
       : 'Generated in-betweens on — save at least two real Roto keys.'
     : INTERPOLATION_DISABLED_STATUS;
-  function handlePrimaryAction() {
-    if (props.mode === 'play') {
-      renderPlayFrames();
-      return;
-    }
-    props.onSaveRotoFrame();
-  }
-
   function renderPlayFrames() {
     if (props.playCacheStatus === 'cached') props.onPlayPreview(safeFrameCount);
     else props.onSavePlay();
@@ -329,8 +309,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }
 
   function getRotoKeyUtilityDisabledMessage(action: RotoKeyUtilityAction): string {
-    if (sessionKeyAvailability?.busy) return sessionKeyAvailability.disabledReason ?? 'Finish saving frame {frame} before using key tools.'.replace('{frame}', String(props.rotoSavingFrame ?? props.currentFrame));
-    if (keyUtilitiesDisabledByBusyState) return 'Finish saving frame {frame} before using key tools.'.replace('{frame}', String(props.rotoSavingFrame ?? props.currentFrame));
+    if (sessionKeyAvailability?.busy) return sessionKeyAvailability.disabledReason ?? 'Finish the current key action before using key tools.'.replace('{frame}', String(props.currentFrame));
+    if (keyUtilitiesDisabledByBusyState) return 'Finish the current key action before using key tools.'.replace('{frame}', String(props.currentFrame));
     if (currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false) return 'Generated frame {frame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.'.replace('{frame}', String(currentRotoCell.frame));
     if (action === 'paste') return sessionKeyAvailability?.pasteDisabledReason ?? 'Copy a real Roto key before pasting.';
     if (action === 'insert') return 'Select a real Roto key to insert.';
@@ -508,11 +488,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               <button type="button" class="physics-paint-nav-button" aria-label="Stop preview" disabled={!props.isPlaying} onClick={props.onStopPreview}><Square size={15} /></button>
             </div>
           )}
-          {props.mode === 'roto' ? (
-            <button class="physics-paint-render-action" title="Save the current Roto frame" aria-label="Save current" disabled={props.ready === false || !hasPendingRotoFrames || props.rotoSaveInFlight} onClick={handlePrimaryAction}>
-              Save current
-            </button>
-          ) : null}
         </div>
 
         <div class="physics-paint-state-actions" aria-hidden="true" />
@@ -539,8 +514,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     currentFrame: expandedCurrentFrame,
                     cachedFrames: cachedFramesForDisplay,
                     editableFrames: props.editableRotoFrames,
-                    pendingFrames: props.pendingRotoFrames,
-                    isSaving: Boolean(props.rotoSaveInFlight),
                   });
                   const fill = getRotoCellFill(frame, realCachedRotoFrames, props.editableRotoFrames);
                   const isDisplayRealKey = realCachedRotoFrameNumbers.includes(frame);
@@ -619,10 +592,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           <p class="physics-paint-roto-status">{rotoMissingStatusLabel ?? currentRotoCell.label}</p>
           {props.onRotoInterpolationEnabledChange ? <p class="physics-paint-roto-interpolation-status">{interpolationStatus}</p> : null}
           {getSelectedRotoCustomSpanStatus(props.currentFrame, interpolationSettings) ? <p class="physics-paint-roto-custom-span-status">{getSelectedRotoCustomSpanStatus(props.currentFrame, interpolationSettings)}</p> : null}
-          <p class="physics-paint-roto-interpolation-status">{'Generated frame {frame} is render-only. Dirty frames save when leaving.'}</p>
+          <p class="physics-paint-roto-interpolation-status">{'Generated frame {frame} is render-only. Completed real-key paint is cached automatically.'}</p>
           {currentRotoCell.baseMeaning === 'generated' || currentRotoCell.isEditableTarget === false ? <p class="physics-paint-roto-key-status">{getGeneratedRotoDisabledStatus(currentRotoCell.frame)}</p> : null}
-          {keyUtilitiesDisabledByBusyState ? <p class="physics-paint-roto-key-status">{getRotoKeyBusyStatus(props.rotoSavingFrame ?? props.currentFrame)}</p> : null}
-          {rotoPendingLabel ? <p class="physics-paint-roto-key-status">{rotoPendingLabel}</p> : null}
+          {keyUtilitiesDisabledByBusyState ? <p class="physics-paint-roto-key-status">{getRotoKeyBusyStatus(props.currentFrame)}</p> : null}
           {currentRotoFill === 'cached-only' ? (
             <>
               <p class="physics-paint-roto-key-status">Cached reference</p>

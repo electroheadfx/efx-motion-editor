@@ -789,11 +789,8 @@ async function mountRenderedKeyMutationProbe(options: {
       }).projection.realKeys.find((key) => key.sourceFrame === sourceFrame)?.displayFrame ?? null,
       resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoRealKeySaveTarget(view.model, displayFrame),
       segmentSpacingOverrides: settings.segmentSpacingOverrides,
-      getEditableStates: () => new Map(),
-      setEditableStates: () => {},
       getPreviewFrames: () => new Map(),
       setPreviewFrames: () => {},
-      getEditableState: () => null,
       setDirtyFrames: () => {},
       syncPendingRotoFrames: () => {},
       syncRotoKeyFrameLists: (frames) => { if (frames) setCacheFrames([...frames]); },
@@ -815,7 +812,6 @@ async function mountRenderedKeyMutationProbe(options: {
         return refreshedFrames;
       },
       persistRotoKeyFrameTransaction: options.persist ?? (async () => {}),
-      handleSaveFrameEffect: async () => true,
       restoreFrame: (effect, frames) => { restores.push({ effect, frames }); setCurrentFrame(effect.restore.frame); },
       clearCanvas: () => {},
       showCachedReference: () => {},
@@ -826,21 +822,19 @@ async function mountRenderedKeyMutationProbe(options: {
       setApplyMessage: () => {},
       setApplyStatus: () => {},
       setLastError: () => {},
-      snapshotCurrentRotoFrame: () => {},
-      setRotoSavingFrame: () => {},
     });
     const availability = state.utilities.session.actionAvailability.value;
     return h(PhysicsPaintWorkflowStrip, {
       mode: 'roto', currentFrame, startFrame: 0, frameCount: 1, isPlaying: false, ready: true,
       occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame),
       savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
-      cachedRotoFrames: projectedFrames, editableRotoFrames: [], pendingRotoFrames: [], rotoInterpolationSettings: settings,
+      cachedRotoFrames: projectedFrames, editableRotoFrames: [], rotoInterpolationSettings: settings,
       onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
       onInsertRotoFrame: state.utilities.insertBlankKey,
       onDuplicateRotoKey: state.utilities.duplicateKey,
       onDeleteRotoFrame: state.utilities.deleteKey,
       rotoKeyState: { actionAvailability: availability, hasCopiedRotoKey: false },
-      onSaveRotoFrame: () => {}, onSavePendingRotoFrames: () => {}, onSavePlay: () => {}, onFrameCountChange: () => {}, onPlayPreview: () => {}, onStopPreview: () => {},
+      onSavePlay: () => {}, onFrameCountChange: () => {}, onPlayPreview: () => {}, onStopPreview: () => {},
       onNavigateToSyncedFrame: setCurrentFrame, onGoToFirstFrame: () => {}, onGoToPreviousFrame: () => {}, onGoToNextFrame: () => {}, onGoToLastFrame: () => {},
       onInspectPlayFrame: () => {}, onOnionChange: () => {},
     });
@@ -915,7 +909,6 @@ function makeRotoUtilityInput(options: {
         return cacheFrames;
       },
       persistRotoKeyFrameTransaction: options.persist ?? (async () => {}),
-      handleSaveFrameEffect: async () => true,
       restoreFrame: options.restore ?? (() => {}),
       clearCanvas: () => {},
       showCachedReference: () => {},
@@ -926,8 +919,6 @@ function makeRotoUtilityInput(options: {
       setApplyMessage: () => {},
       setApplyStatus: () => {},
       setLastError: () => {},
-      snapshotCurrentRotoFrame: () => {},
-      setRotoSavingFrame: () => {},
     };
   };
   return {
@@ -1083,13 +1074,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
     fire(canvasStack!, 'PointerDown');
     await flushPreact();
-    fire(findButton(root, 'Save current')!, 'Click');
-    await flushPreact();
-    expect(applyPayloads[applyPayloads.length - 1]).toMatchObject({
-      kind: 'apply-canvas',
-      sourceFrame: 0,
-      renderedFrame: { dataUrl: pngDataUrl('clear-current-new-paint') },
-    });
+    expect(findButton(root, 'Save current')).toBeNull();
+    expect(applyPayloads).toEqual([]);
     expect(physicPaintStore.getFrame('phys-layer-1', 0)?.dataUrl).toBe(pngDataUrl('clear-current-new-paint'));
     expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(otherPaint);
     expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual(normalizedSettings);
@@ -1502,7 +1488,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const selectedSourceDisplayFrame = enabled ? 9 : 3;
     const initialView = selectRotoTimelineView({ cachedRotoFrames: sourceFrames, currentFrame: selectedSourceDisplayFrame, interpolationSettings: settings });
     const projectedFrames = selectProjectedRealCachedRotoFrames(sourceFrames, initialView.projection);
-    const editableStates = new Map<number, SerializedProject>([[selectedSourceDisplayFrame, editedState]]);
     const probeState: {
       utilities: RotoKeyUtilities | null;
       selectFrame: ((frame: number) => void) | null;
@@ -1525,11 +1510,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
         resolveSourceFrameForDisplayFrame: (displayFrame) => initialView.projection.realKeys.find((key) => key.displayFrame === displayFrame)?.sourceFrame ?? displayFrame,
         resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoRealKeySaveTarget(initialView.model, displayFrame),
         segmentSpacingOverrides: settings.segmentSpacingOverrides,
-        getEditableStates: () => editableStates,
-        setEditableStates: (states) => { editableStates.clear(); for (const [frame, state] of states) editableStates.set(frame, state); },
         getPreviewFrames: () => new Map(),
         setPreviewFrames: () => {},
-        getEditableState: (frame) => editableStates.get(frame) ?? null,
         setDirtyFrames: () => {},
         syncPendingRotoFrames: () => {
           copiedKeyAtSync = probeState.utilities?.session.copiedKey.value ?? null;
@@ -1550,7 +1532,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
           return physicPaintStore.getRotoCacheFrames('phys-layer-1');
         },
         persistRotoKeyFrameTransaction: async () => {},
-        handleSaveFrameEffect: async () => true,
         restoreFrame: () => {},
         clearCanvas: () => {},
         showCachedReference: () => {},
@@ -1561,8 +1542,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
         setApplyMessage: () => {},
         setApplyStatus: () => {},
         setLastError: () => {},
-        snapshotCurrentRotoFrame: () => {},
-        setRotoSavingFrame: () => {},
       });
       const availability = probeState.utilities.session.actionAvailability.value;
       return h(PhysicsPaintWorkflowStrip, {
@@ -1576,7 +1555,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
         savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
         cachedRotoFrames: projectedFrames,
         editableRotoFrames: [],
-        pendingRotoFrames: [],
         rotoInterpolationSettings: settings,
         onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
         onCopyRotoFrame: probeState.utilities.copyKey,
@@ -1586,8 +1564,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
           actionAvailability: availability,
           hasCopiedRotoKey: probeState.utilities.session.copiedKey.value !== null,
         },
-        onSaveRotoFrame: () => {},
-        onSavePendingRotoFrames: () => {},
         onSavePlay: () => {},
         onFrameCountChange: () => {},
         onPlayPreview: () => {},
@@ -1706,8 +1682,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
         resolveSourceFrameForDisplayFrame: (candidate) => view.projection.realKeys.find((key) => key.displayFrame === candidate)?.sourceFrame ?? candidate,
         resolvePasteTargetForDisplayFrame: (candidate) => resolveRotoRealKeySaveTarget(view.model, candidate),
         segmentSpacingOverrides: liveSettings.segmentSpacingOverrides,
-        getEditableStates: () => new Map(), setEditableStates: () => {}, getPreviewFrames: () => new Map(), setPreviewFrames: () => {},
-        getEditableState: () => null, setDirtyFrames: () => {}, syncPendingRotoFrames: () => {},
+        getPreviewFrames: () => new Map(), setPreviewFrames: () => {},
+        setDirtyFrames: () => {}, syncPendingRotoFrames: () => {},
         syncRotoKeyFrameLists: (frames) => { if (frames) setCacheFrames([...frames]); },
         applyRotoKeyFrames: (transaction) => {
           publishedTransaction = {
@@ -1726,20 +1702,20 @@ describe('Phase 36.3 durable Roto cache core', () => {
           setCacheFrames(refreshedFrames);
           return refreshedFrames;
         },
-        persistRotoKeyFrameTransaction: async () => {}, handleSaveFrameEffect: async () => true,
+        persistRotoKeyFrameTransaction: async () => {},
         restoreFrame: () => {}, clearCanvas: () => {}, showCachedReference: () => {}, navigate: async (frame) => { setCurrentFrame(frame); },
         clearGeneratedFrame: () => {}, clearCachedReferenceFrame: () => {}, clearDeletedFrame: () => {},
-        setApplyMessage: () => {}, setApplyStatus: () => {}, setLastError: () => {}, snapshotCurrentRotoFrame: () => {}, setRotoSavingFrame: () => {},
+        setApplyMessage: () => {}, setApplyStatus: () => {}, setLastError: () => {},
       });
       const availability = probeState.utilities.session.actionAvailability.value;
       return h(PhysicsPaintWorkflowStrip, {
         mode: 'roto', currentFrame, startFrame: 0, frameCount: 1, isPlaying: false, ready: true,
         occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame), savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
-        cachedRotoFrames: projectedFrames, editableRotoFrames: [], pendingRotoFrames: [], rotoInterpolationSettings: liveSettings,
+        cachedRotoFrames: projectedFrames, editableRotoFrames: [], rotoInterpolationSettings: liveSettings,
         onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
         onInsertRotoFrame: probeState.utilities.insertBlankKey,
         rotoKeyState: { actionAvailability: availability, hasCopiedRotoKey: false },
-        onSaveRotoFrame: () => {}, onSavePendingRotoFrames: () => {}, onSavePlay: () => {}, onFrameCountChange: () => {}, onPlayPreview: () => {}, onStopPreview: () => {},
+        onSavePlay: () => {}, onFrameCountChange: () => {}, onPlayPreview: () => {}, onStopPreview: () => {},
         onNavigateToSyncedFrame: setCurrentFrame, onGoToFirstFrame: () => {}, onGoToPreviousFrame: () => {}, onGoToNextFrame: () => {}, onGoToLastFrame: () => {},
         onInspectPlayFrame: () => {}, onOnionChange: () => {},
       });
@@ -1824,8 +1800,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
         resolveSourceFrameForDisplayFrame: (candidate) => view.projection.realKeys.find((key) => key.displayFrame === candidate)?.sourceFrame ?? candidate,
         resolvePasteTargetForDisplayFrame: (candidate) => resolveRotoRealKeySaveTarget(view.model, candidate),
         segmentSpacingOverrides: liveSettings.segmentSpacingOverrides,
-        getEditableStates: () => new Map(), setEditableStates: () => {}, getPreviewFrames: () => new Map(), setPreviewFrames: () => {},
-        getEditableState: () => null, setDirtyFrames: () => {}, syncPendingRotoFrames: () => {},
+        getPreviewFrames: () => new Map(), setPreviewFrames: () => {},
+        setDirtyFrames: () => {}, syncPendingRotoFrames: () => {},
         syncRotoKeyFrameLists: (frames) => { if (frames) setCacheFrames([...frames]); },
         applyRotoKeyFrames: (transaction) => {
           const payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-key-frames' }> = {
@@ -1853,21 +1829,21 @@ describe('Phase 36.3 durable Roto cache core', () => {
           setCacheFrames(refreshedFrames);
           return refreshedFrames;
         },
-        persistRotoKeyFrameTransaction: async () => {}, handleSaveFrameEffect: async () => true,
+        persistRotoKeyFrameTransaction: async () => {},
         restoreFrame: () => {}, clearCanvas: () => {}, showCachedReference: () => {}, navigate: async (frame) => { setCurrentFrame(frame); },
         clearGeneratedFrame: () => {}, clearCachedReferenceFrame: () => {}, clearDeletedFrame: () => {},
-        setApplyMessage: () => {}, setApplyStatus: () => {}, setLastError: () => {}, snapshotCurrentRotoFrame: () => {}, setRotoSavingFrame: () => {},
+        setApplyMessage: () => {}, setApplyStatus: () => {}, setLastError: () => {},
       });
       const availability = probeState.utilities.session.actionAvailability.value;
       return h(PhysicsPaintWorkflowStrip, {
         mode: 'roto', currentFrame, startFrame: 0, frameCount: 1, isPlaying: false, ready: true,
         occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame), savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
-        cachedRotoFrames: projectedFrames, editableRotoFrames: [], pendingRotoFrames: [], rotoInterpolationSettings: liveSettings,
+        cachedRotoFrames: projectedFrames, editableRotoFrames: [], rotoInterpolationSettings: liveSettings,
         onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
         onInsertRotoFrame: probeState.utilities.insertBlankKey, onDeleteRotoFrame: probeState.utilities.deleteKey,
         onDuplicateRotoKey: probeState.utilities.duplicateKey,
         rotoKeyState: { actionAvailability: availability, hasCopiedRotoKey: false },
-        onSaveRotoFrame: () => {}, onSavePendingRotoFrames: () => {}, onSavePlay: () => {}, onFrameCountChange: () => {}, onPlayPreview: () => {}, onStopPreview: () => {},
+        onSavePlay: () => {}, onFrameCountChange: () => {}, onPlayPreview: () => {}, onStopPreview: () => {},
         onNavigateToSyncedFrame: setCurrentFrame, onGoToFirstFrame: () => {}, onGoToPreviousFrame: () => {}, onGoToNextFrame: () => {}, onGoToLastFrame: () => {},
         onInspectPlayFrame: () => {}, onOnionChange: () => {},
       });
@@ -1985,25 +1961,25 @@ describe('Phase 36.3 durable Roto cache core', () => {
         resolveSourceFrameForDisplayFrame: (displayFrame) => view.projection.realKeys.find((key) => key.displayFrame === displayFrame)?.sourceFrame ?? displayFrame,
         resolvePasteTargetForDisplayFrame: (displayFrame) => resolveRotoRealKeySaveTarget(view.model, displayFrame),
         segmentSpacingOverrides: settings.segmentSpacingOverrides,
-        getEditableStates: () => new Map(), setEditableStates: () => {}, getPreviewFrames: () => new Map(), setPreviewFrames: () => {},
-        getEditableState: () => null, setDirtyFrames: () => {}, syncPendingRotoFrames: () => {},
+        getPreviewFrames: () => new Map(), setPreviewFrames: () => {},
+        setDirtyFrames: () => {}, syncPendingRotoFrames: () => {},
         syncRotoKeyFrameLists: (frames) => { if (frames) setCacheFrames([...frames]); },
         applyRotoKeyFrames: (transaction) => transaction.realKeyFrames,
         persistRotoKeyFrameTransaction: () => persistencePending,
-        handleSaveFrameEffect: async () => true, restoreFrame: () => {}, clearCanvas: () => {}, showCachedReference: () => {},
+        restoreFrame: () => {}, clearCanvas: () => {}, showCachedReference: () => {},
         navigate: async (frame) => { setCurrentFrame(frame); }, clearGeneratedFrame: () => {}, clearCachedReferenceFrame: () => {}, clearDeletedFrame: () => {},
-        setApplyMessage: () => {}, setApplyStatus: () => {}, setLastError: () => {}, snapshotCurrentRotoFrame: () => {}, setRotoSavingFrame: () => {},
+        setApplyMessage: () => {}, setApplyStatus: () => {}, setLastError: () => {},
       });
       const availability = probeState.utilities.session.actionAvailability.value;
       return h(PhysicsPaintWorkflowStrip, {
         mode: 'roto', currentFrame, startFrame: 0, frameCount: 1, isPlaying: false, ready: true,
         occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame), savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
-        cachedRotoFrames: projectedFrames, editableRotoFrames: [], pendingRotoFrames: [], rotoInterpolationSettings: settings,
+        cachedRotoFrames: projectedFrames, editableRotoFrames: [], rotoInterpolationSettings: settings,
         onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
         onCopyRotoFrame: probeState.utilities.copyKey, onPasteRotoFrame: probeState.utilities.pasteKey,
         onDeleteRotoFrame: probeState.utilities.deleteKey, hasCopiedRotoKey: probeState.utilities.session.copiedKey.value !== null,
         rotoKeyState: { actionAvailability: availability, hasCopiedRotoKey: probeState.utilities.session.copiedKey.value !== null },
-        onSaveRotoFrame: () => {}, onSavePendingRotoFrames: () => {}, onSavePlay: () => {}, onFrameCountChange: () => {}, onPlayPreview: () => {}, onStopPreview: () => {},
+        onSavePlay: () => {}, onFrameCountChange: () => {}, onPlayPreview: () => {}, onStopPreview: () => {},
         onNavigateToSyncedFrame: setCurrentFrame, onGoToFirstFrame: () => {}, onGoToPreviousFrame: () => {}, onGoToNextFrame: () => {}, onGoToLastFrame: () => {},
         onInspectPlayFrame: () => {}, onOnionChange: () => {},
       });
@@ -2264,158 +2240,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
     expect(reopenedOff.projection.realKeys.map((key) => key.displayFrame)).toEqual([0, 1, 2, 3, targetFrame]);
   });
 
-  it.each([
-    { label: 'OFF', enabled: false, payloadLabel: 'off-start-unique-saved-paint' },
-    { label: 'ON', enabled: true, payloadLabel: 'on-start-unique-saved-paint' },
-  ])('preserves far Save paint identity through the $label-start Studio controller and durable reopen path', async ({ label, enabled, payloadLabel }) => {
-    const uniqueSavedDataUrl = pngDataUrl(payloadLabel);
-    const initialDataUrls = new Map([0, 1, 2, 3, 14].map((frame) => [frame, pngDataUrl(`${label.toLowerCase()}-start-initial-source-${frame}`)]));
-    const realKeyFrames = [0, 1, 2, 3, 14].map((frame) => ({
-      frameIndex: frame,
-      appFrame: frame,
-      sourceFrame: frame,
-      displayFrame: frame,
-      source: 'real-key' as const,
-      dataUrl: initialDataUrls.get(frame)!,
-      width: 1000,
-      height: 650,
-    }));
-    for (const frame of realKeyFrames) {
-      physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', frame.sourceFrame, frame);
-    }
-    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', {
-      enabled,
-      inBetweenCount: 2,
-      mode: 'duplicate',
-      deform: 0,
-      position: 0,
-      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
-    });
-
-    const launchContext: PhysicPaintLaunchContext = {
-      operationId: `phase-36-13-debug-03-${label.toLowerCase()}-start`,
-      layerId: 'phys-layer-1',
-      layerName: 'Physic Paint',
-      startFrame: enabled ? 9 : 3,
-      workflowMode: 'roto',
-      editableSource: 'roto',
-      width: 1000,
-      height: 650,
-      cachedRotoFrames: realKeyFrames,
-      rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings('phys-layer-1'),
-    };
-    const applyPayloads: PhysicPaintApplyPayload[] = [];
-    const { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
-      if (message.type !== PHYSIC_PAINT_APPLY_EVENT || !message.payload) return;
-      applyPayloads.push(message.payload);
-      const result = applyPhysicPaintPayload(message.payload);
-      window.dispatchEvent(new TestEvent(PHYSIC_PAINT_APPLY_RESULT_EVENT, { detail: result }));
-    });
-    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
-
-    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
-
-    expect(findButton(root, 'Go to next frame')).not.toBeNull();
-    const navigationSteps = 14 - launchContext.startFrame;
-    for (let step = 0; step < navigationSteps; step += 1) {
-      const nextFrameButton = findButton(root, 'Go to next frame');
-      expect(nextFrameButton).not.toBeNull();
-      fire(nextFrameButton!, 'Click');
-      await flushPreact();
-    }
-    expect(visibleText(root)).toContain('14');
-    expect(isStudioEngineReady(root)).toBe(true);
-    paintHarness.engine?.__setState(editedState, uniqueSavedDataUrl);
-
-    const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
-    expect(canvasStack).toBeTruthy();
-    fire(canvasStack!, 'PointerDown');
-    await flushPreact();
-    fire(findButton(root, 'Save current')!, 'Click');
-    await flushPreact();
-
-    expect(applyPayloads).toHaveLength(1);
-    expect(applyPayloads[0]).toMatchObject({
-      kind: 'apply-canvas',
-      startFrame: 14,
-      sourceFrame: 14,
-      renderedFrame: {
-        appFrame: 14,
-        dataUrl: uniqueSavedDataUrl,
-      },
-      rotoInterpolationSettings: {
-        enabled,
-        inBetweenCount: 2,
-        segmentSpacingOverrides: [
-          { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
-        ],
-      },
-    });
-    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 1, 2, 3, 14]);
-    expect(physicPaintStore.getFrame('phys-layer-1', 14)?.dataUrl).toBe(uniqueSavedDataUrl);
-    expect(physicPaintStore.getFrame('phys-layer-1', 5)).toBeNull();
-    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(initialDataUrls.get(3));
-    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).not.toBe(uniqueSavedDataUrl);
-    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toMatchObject({
-      enabled,
-      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
-    });
-
-    const projectPath = `/project-${label.toLowerCase()}`;
-    const persistedOutputs = await savePhysicPaintData(projectPath, physicPaintStore.toMceOutputs() as RuntimePhysicPaintOutput[]);
-    const persisted = persistedOutputs[0] as McePhysicPaintOutput;
-    expect(persisted.roto_interpolation_settings).toMatchObject({
-      enabled,
-      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
-    });
-    const hydratedOutputs = await loadPhysicPaintData(projectPath, persistedOutputs);
-    physicPaintStore.reset();
-    physicPaintStore.loadFromMceOutputs(hydratedOutputs!);
-    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 1, 2, 3, 14]);
-    expect(physicPaintStore.getFrame('phys-layer-1', 14)?.dataUrl).toBe(uniqueSavedDataUrl);
-    expect(physicPaintStore.getFrame('phys-layer-1', 5)).toBeNull();
-    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(initialDataUrls.get(3));
-    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).not.toBe(uniqueSavedDataUrl);
-    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toMatchObject({
-      enabled,
-      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
-    });
-
-    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), 14, null, null, 'roto');
-    expect(reopenContext.rotoInterpolationSettings).toMatchObject({
-      enabled,
-      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
-    });
-    const reopenedSourceFrame = reopenContext.cachedRotoFrames?.find((frame) => frame.source === 'real-key' && frame.sourceFrame === 14);
-    expect(reopenedSourceFrame).toMatchObject({
-      appFrame: 14,
-      sourceFrame: 14,
-      displayFrame: 14,
-      dataUrl: uniqueSavedDataUrl,
-    });
-    expect(reopenContext.cachedRotoFrames?.filter((frame) => frame.source === 'real-key' && frame.dataUrl === uniqueSavedDataUrl)).toEqual([reopenedSourceFrame]);
-    expect(reopenContext.cachedRotoFrames?.find((frame) => frame.sourceFrame === 3)?.dataUrl).toBe(initialDataUrls.get(3));
-
-    const reopenedTimeline = selectRotoTimelineView({
-      cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
-      currentFrame: 14,
-      interpolationSettings: {
-        ...reopenContext.rotoInterpolationSettings!,
-        enabled: true,
-      },
-    });
-    expect(reopenedTimeline.model.realSourceFrames).toEqual([0, 1, 2, 3, 14]);
-    expect(reopenedTimeline.projection.realKeys.map((key) => ({ sourceFrame: key.sourceFrame, displayFrame: key.displayFrame }))).toEqual([
-      { sourceFrame: 0, displayFrame: 0 },
-      { sourceFrame: 1, displayFrame: 3 },
-      { sourceFrame: 2, displayFrame: 6 },
-      { sourceFrame: 3, displayFrame: 9 },
-      { sourceFrame: 14, displayFrame: 14 },
-    ]);
-    expect(reopenedTimeline.projection.realKeys.find((key) => key.displayFrame === 14)?.sourceFrame).toBe(14);
-    expect(reopenedSourceFrame?.dataUrl).toBe(uniqueSavedDataUrl);
-  });
-
   describe('Debug 08 native onion contract', () => {
     const sourcePaint = new Map<number, string>([
       [0, pngDataUrl('debug-08-onion-A')],
@@ -2513,8 +2337,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
 
       fire(canvasStack!, 'PointerDown');
       await act(async () => { await flushPreact(); });
-      fire(findButton(root, 'Save current')!, 'Click');
-      await act(async () => { await flushPreact(); });
+      expect(findButton(root, 'Save current')).toBeNull();
 
       expect(applyPayloads).toEqual([]);
       expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual(durableBefore);
@@ -2529,11 +2352,11 @@ describe('Phase 36.3 durable Roto cache core', () => {
       expect(canvasStack).toBeTruthy();
       fire(canvasStack!, 'PointerDown');
       await act(async () => { await flushPreact(); });
-      fire(findButton(root, 'Save current')!, 'Click');
-      await act(async () => { await flushPreact(); });
+      expect(findButton(root, 'Save current')).toBeNull();
 
-      expect(onionImageSnapshot(root).map((image) => image.src)).toEqual([sourcePaint.get(0)]);
-      expect(onionImageSnapshot(root).map((image) => image.src)).not.toContain(editedB);
+      const onionSources = onionImageSnapshot(root).map((image) => image.src);
+      expect(onionSources).not.toContain(editedB);
+      expect(onionSources).toHaveLength(1);
     });
 
     it('keeps a short projected previous real anchor through the mounted Studio path', async () => {

@@ -114,19 +114,12 @@ export interface PhysicsPaintStudioViewProps {
   rightPanel: ComponentProps<typeof PhysicsPaintRightPanel>;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
   status: {
-    rotoClosePromptState: 'idle' | 'prompt' | 'saving' | 'error';
-    rotoClosePromptMessage: string | null;
     shortcutsVisible: boolean;
-  };
-  actions: {
-    closeWithoutSavingRotoFrame: () => void;
-    cancelRotoClose: () => void;
-    saveAndCloseRotoFrame: () => void;
   };
 }
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
-  const { layout, topBar, toolRail, canvas, rightPanel, workflow, status, actions } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, workflow, status } = props;
   return (
     <main class="demo-shell">
       <section
@@ -173,28 +166,11 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
 
         <PhysicsPaintWorkflowStrip {...workflow} />
 
-        {status.rotoClosePromptState !== 'idle' ? (
-          <div class="physics-paint-confirmation physics-paint-roto-close-confirmation" role="dialog" aria-modal="true" aria-labelledby="physics-paint-roto-close-title">
-            <div class="physics-paint-confirmation-card">
-              <h2 id="physics-paint-roto-close-title">Close unsaved Roto frame?</h2>
-              <p>The current Roto frame has unsaved changes. Choose whether to discard this edit, keep working, or save before closing.</p>
-              {status.rotoClosePromptMessage ? (
-                <p class={`physics-paint-roto-close-message ${status.rotoClosePromptState === 'error' ? 'error' : ''}`} role="status" aria-live="polite">{status.rotoClosePromptMessage}</p>
-              ) : null}
-              <div class="physics-paint-confirmation-actions">
-                <button class="physics-paint-text-button destructive" type="button" disabled={status.rotoClosePromptState === 'saving'} onClick={actions.closeWithoutSavingRotoFrame}>Close without saving</button>
-                <button class="physics-paint-text-button" type="button" disabled={status.rotoClosePromptState === 'saving'} onClick={actions.cancelRotoClose}>Cancel</button>
-                <button class="physics-paint-text-button primary" type="button" disabled={status.rotoClosePromptState === 'saving'} onClick={actions.saveAndCloseRotoFrame}>Close saving</button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
         {status.shortcutsVisible ? (
           <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">
             <strong>Physics Paint shortcuts</strong>
-            <span>Cmd+Z undo · Cmd+S save active workflow · Esc stop preview · ? help</span>
-            <span>Roto: arrows navigate · O onion · [ ] onion count · Save current caches the painted frame</span>
+            <span>Cmd+Z undo · Esc stop preview · ? help</span>
+            <span>Roto: arrows navigate · O onion · [ ] onion count · completed paint caches automatically</span>
             <span>Play: Space/Enter preview · Cmd+S save play</span>
           </aside>
         ) : null}

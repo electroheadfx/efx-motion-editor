@@ -854,12 +854,13 @@ export const physicPaintStore = {
     const outputs = Array.from(layerIds)
       .map((layerId) => {
         const frames = _frames.get(layerId) ?? new Map<number, PhysicPaintRenderedFrame>();
+        const workflowMode = _workflowMetadata.get(layerId)?.workflowMode;
         return {
           layer_id: layerId,
           frames: Array.from(frames.entries())
             .sort(([a], [b]) => a - b)
             .map(([frame, renderedFrame]) => ({ ...renderedFrame, appFrame: frame })),
-          ...(_editableStates.has(layerId) ? { editable_state: structuredClone(_editableStates.get(layerId)!) } : {}),
+          ...(workflowMode !== 'roto' && _editableStates.has(layerId) ? { editable_state: structuredClone(_editableStates.get(layerId)!) } : {}),
           ...(_playScriptRanges.has(layerId) ? { play_script_ranges: _cloneRanges(_playScriptRanges.get(layerId)!) } : {}),
           ...((_rotoCacheMetadata.get(layerId)?.size ?? 0) > 0 ? { roto_cache_metadata: Array.from(_rotoCacheMetadata.get(layerId)!.values()).sort((a, b) => (a.sourceFrame ?? a.appFrame) - (b.sourceFrame ?? b.appFrame)).map(frame => ({ ...frame })) } : {}),
           ...(_rotoInterpolationSettings.has(layerId) ? { roto_interpolation_settings: _serializeRotoInterpolationSettings(_rotoInterpolationSettings.get(layerId)!) } : {}),
@@ -1035,7 +1036,6 @@ export const physicPaintStore = {
       return _errorResult(payload, 'Expected apply-canvas payload');
     }
 
-    _editableStates.set(payload.layerId, structuredClone(payload.editableState));
     const rotoBackground = payload.rotoBackground ?? _rotoBackgroundFromEditableState(payload.editableState);
     if (rotoBackground) {
       _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto', rotoBackground: { ...rotoBackground } });
@@ -1167,7 +1167,7 @@ export const physicPaintStore = {
       const appFrame = payload.startFrame + index;
       layerFrames.set(appFrame, { ...renderedFrame, appFrame });
     });
-    _editableStates.set(payload.layerId, structuredClone(payload.editableState));
+    _editableStates.delete(payload.layerId);
     _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
     _notifyVisualChange();
 

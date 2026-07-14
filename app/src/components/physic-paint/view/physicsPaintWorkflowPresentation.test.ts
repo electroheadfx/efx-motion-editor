@@ -3,7 +3,7 @@ import {
   clampOnionCount, clampOnionOpacity, getActivePrimaryActionLabel,
   getPhysicsPaintEngineStatusTone, getPhysicsPaintSourceLabel, getRotoCellFill,
   getRotoCellStateLabel, getRotoCellViewModel, getRotoMissingFrameStatus,
-  getRotoPendingLabel, getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
+  getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
   isPhysicsPaintDevExportEnabled, requiresDestructiveConfirmation,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
 } from './physicsPaintWorkflowPresentation';
@@ -11,7 +11,7 @@ import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 
 describe('physicsPaintWorkflowPresentation', () => {
   it('returns active primary action labels for Roto and Play workflow tabs (D-10, D-11, D-12, D-16)', () => {
-    expect(getActivePrimaryActionLabel('roto')).toBe('Save current');
+    expect(getActivePrimaryActionLabel('roto')).toBe('Automatic cache');
     expect(getActivePrimaryActionLabel('play')).toBe('Save play');
   });
 
@@ -33,12 +33,6 @@ describe('physicsPaintWorkflowPresentation', () => {
     const allSemanticFills: RotoCellFill[] = ['empty', 'cached-only', 'editable-session'];
 
     expect(getRotoCellFill(5, [], [5])).toBe('editable-session');
-    expect(getRotoPendingLabel(true, false)).toBe('Unsaved changes — click Save current to cache');
-    expect(getRotoPendingLabel(true, true)).toBe('Saving current frame…');
-    expect(getRotoPendingLabel(true, true, 7)).toBe('Saving frame 7…');
-    expect(getRotoPendingLabel(true, true, -1)).toBe('Saving current frame…');
-    expect(getRotoPendingLabel(true, true, 1.5)).toBe('Saving current frame…');
-    expect(getRotoPendingLabel(false, false)).toBeNull();
     expect(allSemanticFills).not.toContain('dirty' as RotoCellFill);
     expect(allSemanticFills).not.toContain('yellow' as RotoCellFill);
     expect(allSemanticFills).not.toContain('orange' as RotoCellFill);

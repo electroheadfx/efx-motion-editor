@@ -15,18 +15,11 @@ interface RotoApplyLifecycleInput {
 export function useRotoApplyLifecycle(input: RotoApplyLifecycleInput) {
   const activeOperationIdRef = useRef<string | null>(null);
   const pendingApplyRef = useRef<PendingPhysicPaintApply | null>(null);
-  const closeAfterApplyOperationIdRef = useRef<string | null>(null);
-  const closeAfterRotoSaveRequestedRef = useRef(false);
-  const pendingRotoAdvanceRef = useRef<number | null>(null);
-  const saveOnLeaveSourceFrameRef = useRef<number | null>(null);
   const applyTimeoutRef = useRef<number | null>(null);
 
   const getSnapshot = useCallback(() => ({
     activeOperationId: activeOperationIdRef.current,
     pendingApply: pendingApplyRef.current,
-    saveOnLeaveSourceFrame: saveOnLeaveSourceFrameRef.current,
-    closeAfterApplyOperationId: closeAfterApplyOperationIdRef.current,
-    closeAfterRotoSaveRequested: closeAfterRotoSaveRequestedRef.current,
   }), []);
 
   const clearApplyTimeout = useCallback(() => {
@@ -58,7 +51,6 @@ export function useRotoApplyLifecycle(input: RotoApplyLifecycleInput) {
       const transition = transitionRotoApplyTimeout(getSnapshot(), operationId);
       if (!transition) return;
       clearActiveApply();
-      pendingRotoAdvanceRef.current = null;
       input.onTimeout(transition);
     }, 5000);
   }, [clearActiveApply, clearApplyTimeout, getSnapshot, input]);
@@ -68,10 +60,6 @@ export function useRotoApplyLifecycle(input: RotoApplyLifecycleInput) {
   return {
     activeOperationIdRef,
     pendingApplyRef,
-    closeAfterApplyOperationIdRef,
-    closeAfterRotoSaveRequestedRef,
-    pendingRotoAdvanceRef,
-    saveOnLeaveSourceFrameRef,
     registerPendingApply,
     clearActiveApply,
     matchApplyResult,

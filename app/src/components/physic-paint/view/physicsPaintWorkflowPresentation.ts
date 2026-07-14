@@ -89,8 +89,8 @@ export function clampOnionOpacity(value: unknown): number {
   return integer;
 }
 
-export function getActivePrimaryActionLabel(mode: PhysicsPaintWorkflowMode): 'Save current' | 'Save play' {
-  return mode === 'play' ? 'Save play' : 'Save current';
+export function getActivePrimaryActionLabel(mode: PhysicsPaintWorkflowMode): 'Automatic cache' | 'Save play' {
+  return mode === 'play' ? 'Save play' : 'Automatic cache';
 }
 
 export function getRotoCellFill(
@@ -164,15 +164,6 @@ export function getMissingRotoFrameStatusLabel({ frame, kind }: { frame: number;
 
 export function getRotoReplacementSuccessLabel(frame: number): string {
   return `Frame ${clampNonNegativeInteger(frame, 0)} saved as a real Roto key`;
-}
-
-export function getRotoPendingLabel(hasPending: boolean, isSaving: boolean, savingFrame?: number | null): string | null {
-  if (isSaving) {
-    if (typeof savingFrame === 'number' && Number.isInteger(savingFrame) && savingFrame >= 0) return `Saving frame ${savingFrame}…`;
-    return 'Saving current frame…';
-  }
-  if (hasPending) return 'Unsaved changes — click Save current to cache';
-  return null;
 }
 
 export function getPhysicsPaintSourceLabel(mode: PhysicsPaintWorkflowMode): 'Roto #1' | 'Play #2' {

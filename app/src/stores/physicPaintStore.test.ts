@@ -73,7 +73,7 @@ describe('physicPaintStore', () => {
     expect(result.appliedFrameCount).toBe(1);
     expect(physicPaintStore.getFrame('layer-1', 8)?.dataUrl).toContain('data:image/png');
     expect(physicPaintStore.getFrame('layer-1', 9)).toBeNull();
-    expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
+    expect(physicPaintStore.getEditableState('layer-1')).toBeNull();
     expect(physicPaintVersion.value).toBe(before + 1);
   });
 
@@ -242,7 +242,7 @@ describe('physicPaintStore', () => {
     expect(result).toMatchObject({ ok: true, kind: 'convert-play-to-roto', appliedFrameCount: 2 });
     expect(physicPaintStore.getFrame('layer-1', 10)?.frameIndex).toBe(0);
     expect(physicPaintStore.getFrame('layer-1', 11)?.frameIndex).toBe(1);
-    expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
+    expect(physicPaintStore.getEditableState('layer-1')).toBeNull();
     expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({ workflowMode: 'roto', editableSource: 'roto' });
   });
 

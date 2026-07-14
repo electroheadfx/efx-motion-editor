@@ -1,7 +1,6 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { PhysicsPaintWorkflowStripFrameMarker } from '../view/PhysicsPaintWorkflowStrip';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
-import type { RotoSessionActionResult } from '../roto/physicsPaintRotoSession';
 import { createRotoFrameDisplayPort, createRotoKeyPersistencePort } from '../roto/rotoCoordinatorPorts';
 import { createRotoNavigationActions, getRotoNavigationTargets } from '../roto/rotoNavigationActions';
 import { useRotoCachedPlayback, type RotoCachedPlaybackFrame } from './useRotoCachedPlayback';
@@ -9,15 +8,11 @@ import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUti
 
 interface RotoNavigationRuntimePort {
   navigateToSyncedFrame: (frame: number) => Promise<boolean>;
-  snapshotCurrentFrame: () => void;
-  getSaveOnLeaveSourceFrame: () => number | null;
-  hasActiveOperation: () => boolean;
-  queuePendingAdvance: (frame: number) => void;
 }
 
-export interface UseRotoNavigationCoordinatorInput<TEditable, TPreview extends { appFrame: number }> {
+export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: number }> {
   workflowMode: PhysicsPaintWorkflowMode;
-  keyUtilities: Omit<RotoKeyUtilitiesInput<TEditable, TPreview>, 'syncRotoKeyFrameLists' | 'applyRotoKeyFrames' | 'persistRotoKeyFrameTransaction' | 'handleSaveFrameEffect' | 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'>;
+  keyUtilities: Omit<RotoKeyUtilitiesInput<TPreview>, 'syncRotoKeyFrameLists' | 'applyRotoKeyFrames' | 'persistRotoKeyFrameTransaction' | 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'>;
   playback: {
     initialFps: number;
     getFrame: (appFrame: number) => TPreview | null;
@@ -27,15 +22,11 @@ export interface UseRotoNavigationCoordinatorInput<TEditable, TPreview extends {
   };
 }
 
-export function useRotoNavigationCoordinator<TEditable, TPreview extends { appFrame: number }>(input: UseRotoNavigationCoordinatorInput<TEditable, TPreview>) {
+export function useRotoNavigationCoordinator<TPreview extends { appFrame: number }>(input: UseRotoNavigationCoordinatorInput<TPreview>) {
   const persistencePortRef = useRef(createRotoKeyPersistencePort());
   const displayPortRef = useRef(createRotoFrameDisplayPort());
   const runtimePortRef = useRef<RotoNavigationRuntimePort>({
     navigateToSyncedFrame: async () => false,
-    snapshotCurrentFrame: () => {},
-    getSaveOnLeaveSourceFrame: () => null,
-    hasActiveOperation: () => false,
-    queuePendingAdvance: () => {},
   });
 
   const keyUtilities = useRotoKeyUtilities({
@@ -43,10 +34,9 @@ export function useRotoNavigationCoordinator<TEditable, TPreview extends { appFr
     syncRotoKeyFrameLists: (frames) => persistencePortRef.current.syncKeyFrameLists(frames),
     applyRotoKeyFrames: (transaction) => persistencePortRef.current.applyKeyFrames(transaction),
     persistRotoKeyFrameTransaction: (transaction) => persistencePortRef.current.persistKeyFrameTransaction(transaction),
-    handleSaveFrameEffect: (effect, session) => persistencePortRef.current.saveFrameBeforeContinuation(effect, session),
     restoreFrame: (effect, refreshedCacheFrames) => displayPortRef.current.restoreFrame(effect, refreshedCacheFrames),
     clearCanvas: (frame) => displayPortRef.current.clearCanvas(frame),
-    navigate: (frame) => displayPortRef.current.openAfterSave(frame),
+    navigate: (frame) => displayPortRef.current.navigate(frame),
     clearCachedReferenceFrame: (frame) => displayPortRef.current.clearCachedReferenceFrame(frame),
   });
 
@@ -64,24 +54,8 @@ export function useRotoNavigationCoordinator<TEditable, TPreview extends { appFr
 
   const requestNavigation = useCallback(async (targetFrame: number) => {
     if (!Number.isInteger(targetFrame) || targetFrame < 0) return false;
-    if (input.workflowMode !== 'roto') return runtimePortRef.current.navigateToSyncedFrame(targetFrame);
-    if (runtimePortRef.current.getSaveOnLeaveSourceFrame() !== null && runtimePortRef.current.hasActiveOperation()) {
-      runtimePortRef.current.queuePendingAdvance(targetFrame);
-      return false;
-    }
-    runtimePortRef.current.snapshotCurrentFrame();
-    const result = keyUtilities.session.requestFrame(targetFrame);
-    if (!result.ok) {
-      if (result.message) input.keyUtilities.setApplyMessage(result.message);
-      return false;
-    }
-    if (result.effects.some((effect) => effect.type === 'navigate')) {
-      await keyUtilities.executeSessionEffects(result.effects);
-      return true;
-    }
-    await keyUtilities.runSessionResult(result as RotoSessionActionResult);
-    return result.effects.some((effect) => effect.type === 'saveFrame');
-  }, [input.keyUtilities, input.workflowMode, keyUtilities]);
+    return runtimePortRef.current.navigateToSyncedFrame(targetFrame);
+  }, []);
 
   const createNavigationActions = useCallback((navigation: {
     currentFrame: number;

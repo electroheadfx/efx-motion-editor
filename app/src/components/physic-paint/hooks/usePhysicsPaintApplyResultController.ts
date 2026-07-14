@@ -1,32 +1,25 @@
 import { useCallback, type MutableRef } from 'preact/hooks';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyResult } from '../../../types/physicPaint';
 import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintApplyResultBridge } from '../bridge/usePhysicsPaintParentBridge';
-import { useRotoApplyResultController, type RotoApplyResultControllerInput } from '../hooks/useRotoApplyResultController';
-import type { AcceptedRotoApplyResult } from '../roto/rotoApplyResultTransactions';
+import type { RotoApplyResultTransition } from '../roto/rotoApplyTransactions';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
-type ApplyTransition = { type: 'ignore' } | { type: 'mismatch'; message: string } | AcceptedRotoApplyResult;
+type ApplyTransition = RotoApplyResultTransition;
 
 interface GeneralResultPorts {
   matchApplyResult: (detail: PhysicPaintApplyResult | null | undefined) => ApplyTransition;
-  closeAfterApplyOperationIdRef: MutableRef<string | null>;
-  closeAfterRotoSaveRequestedRef: MutableRef<boolean>;
+  pendingKeyActionMessageRef: MutableRef<string | null>;
   setApplyStatus: (status: ApplyStatus) => void;
-  setApplyMessage: (message: string | null) => void;
+  setApplyMessage: (message: string | null | ((current: string | null) => string | null)) => void;
   setLastError: (message: string | null) => void;
-  setClosePromptState: (state: 'idle' | 'prompt' | 'saving' | 'error') => void;
-  setClosePromptMessage: (message: string | null) => void;
 }
 
-export function usePhysicsPaintApplyResultController<State>(input: {
+export function usePhysicsPaintApplyResultController(input: {
   bridgeMode: PhysicsPaintBridgeMode;
   canvasSize: { width: number; height: number };
-  roto: RotoApplyResultControllerInput<State>;
   general: GeneralResultPorts;
 }) {
-  const { handleRotoApplyResult } = useRotoApplyResultController(input.roto);
   const handleApplyResult = useCallback((detail: PhysicPaintApplyResult | null | undefined) => {
     const transition = input.general.matchApplyResult(detail);
     if (transition.type === 'ignore') return;
@@ -36,28 +29,27 @@ export function usePhysicsPaintApplyResultController<State>(input: {
       input.general.setLastError(transition.message);
       return;
     }
-    if (handleRotoApplyResult(transition)) return;
 
-    const shouldCloseAfterSave = transition.shouldCloseAfterSave;
     detail = transition.detail;
     if (!transition.ok) {
       const message = transition.message ?? 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.';
       const diagnostic = detail.error;
       const fullMessage = diagnostic ? `${message} ${diagnostic}` : message;
+      input.general.pendingKeyActionMessageRef.current = null;
       input.general.setApplyStatus('error');
       input.general.setApplyMessage(fullMessage);
       input.general.setLastError(fullMessage);
       return;
     }
-    if (shouldCloseAfterSave) {
-      input.general.closeAfterApplyOperationIdRef.current = null;
-      input.general.closeAfterRotoSaveRequestedRef.current = false;
-      input.general.setClosePromptState('idle');
-      input.general.setClosePromptMessage(null);
-    }
+
     input.general.setApplyStatus('success');
     input.general.setLastError(null);
-    if (detail.kind === 'update-play-render-options') {
+    if (detail.kind === 'replace-roto-key-frames') {
+      input.general.setApplyMessage(input.general.pendingKeyActionMessageRef.current ?? 'Roto key changes saved.');
+      input.general.pendingKeyActionMessageRef.current = null;
+    } else if (detail.kind === 'update-roto-interpolation-settings') {
+      input.general.setApplyMessage((message) => message || 'Generated in-between settings synced.');
+    } else if (detail.kind === 'update-play-render-options') {
       input.general.setApplyMessage(detail.appliedFrameCount > 0 ? 'Play options updated. Cached frames cleared; use Render play.' : 'Play options already up to date.');
     } else if (detail.kind === 'apply-play-canvas') {
       const endFrame = detail.startFrame + Math.max(0, detail.appliedFrameCount - 1);
@@ -68,10 +60,8 @@ export function usePhysicsPaintApplyResultController<State>(input: {
       const endFrame = detail.startFrame + Math.max(0, detail.appliedFrameCount - 1);
       input.general.setApplyMessage(`Converted Roto frames ${detail.startFrame}–${endFrame} to the current Play canvas source.`);
     }
-  }, [handleRotoApplyResult, input]);
+  }, [input]);
 
   usePhysicsPaintApplyResultBridge(input.bridgeMode, handleApplyResult);
   return { handleApplyResult };
 }
-
-export type PhysicsPaintApplyEngine = EfxPaintEngine;

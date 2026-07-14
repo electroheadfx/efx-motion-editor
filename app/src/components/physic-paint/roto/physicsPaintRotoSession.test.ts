@@ -49,7 +49,7 @@ describe('physicsPaintRotoSession cached-base repaint clean/no-change boundary',
     expect(session.currentFrame.value).toBe(8);
   });
 
-  it('36.11 D-11 marks only the cached-base frame dirty on the first live overlay edit and queues save-before-navigation', () => {
+  it('marks only the cached-base frame dirty while navigation remains immediate', () => {
     const session = createRotoSession({
       currentFrame: 5,
       realKeyFrames: [frame(5, 'data:image/png;base64,cached-five'), frame(8, 'data:image/png;base64,real-eight')],
@@ -65,9 +65,9 @@ describe('physicsPaintRotoSession cached-base repaint clean/no-change boundary',
 
     expect(edited.ok).toBe(true);
     expect(session.dirtyFrames.value).toEqual([5]);
-    expect(session.currentFrameIsDirty.value).toBe(true);
-    expect(effectTypes(navigate.effects)).toEqual(['saveFrame']);
-    expect(navigate.effects[0]).toMatchObject({ type: 'saveFrame', frame: 5, reason: 'beforeNavigate', after: { type: 'navigate', frame: 8 } });
+    expect(session.currentFrameIsDirty.value).toBe(false);
+    expect(effectTypes(navigate.effects)).toEqual(['navigate']);
+    expect(session.currentFrame.value).toBe(8);
   });
 
   it('36.11 D-07/D-12 returns to clean cached-base state when Undo or Clear empties the live overlay', () => {
@@ -90,142 +90,6 @@ describe('physicsPaintRotoSession cached-base repaint clean/no-change boundary',
     expect(session.currentFrameIsDirty.value).toBe(false);
     expect(effectTypes(navigate.effects)).toEqual(['navigate']);
     expect(navigate.effects).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: 'saveFrame' })]));
-  });
-});
-
-describe('physicsPaintRotoSession save orchestration boundary', () => {
-  it('36.8-REG-05 D-10 saves the dirty source before navigation and resumes only after success', () => {
-    const session = createRotoSession({
-      currentFrame: 5,
-      realKeyFrames: [frame(5, 'data:image/png;base64,real-five'), frame(8, 'data:image/png;base64,real-eight')],
-      cachedRotoFrames: [frame(5, 'data:image/png;base64,real-five'), frame(8, 'data:image/png;base64,real-eight')],
-      dirtyFrames: [5],
-      canvasSize: { width: 100, height: 100 },
-      buildBlankRotoFrame: blankFrame,
-    });
-
-    const saveResult = session.requestFrame(8);
-
-    expect(saveResult.ok).toBe(true);
-    expect(effectTypes(saveResult.effects)).toEqual(['saveFrame']);
-    expect(saveResult.effects[0]).toMatchObject({ type: 'saveFrame', frame: 5, reason: 'beforeNavigate', after: { type: 'navigate', frame: 8 } });
-    expect(session.currentFrame.value).toBe(5);
-    expect(session.savingFrame.value).toBe(5);
-    expect(session.pendingNavigationFrame.value).toBe(8);
-    expect(session.currentFrameIsDirty.value).toBe(true);
-
-    const resumed = session.onSaveSucceeded(5);
-
-    expect(resumed.ok).toBe(true);
-    expect(effectTypes(resumed.effects)).toEqual(['navigate']);
-    expect(resumed.effects[0]).toMatchObject({ type: 'navigate', frame: 8 });
-    expect(session.currentFrame.value).toBe(8);
-    expect(session.dirtyFrames.value).not.toContain(5);
-    expect(session.savingFrame.value).toBeNull();
-    expect(session.pendingNavigationFrame.value).toBeNull();
-  });
-
-  it('36.8-REG-05 D-10 saves the dirty source before a key action and defers mutation until save success', () => {
-    const session = createRotoSession({
-      currentFrame: 5,
-      realKeyFrames: [frame(5, 'data:image/png;base64,real-five'), frame(8, 'data:image/png;base64,real-eight')],
-      cachedRotoFrames: [frame(5, 'data:image/png;base64,real-five'), frame(8, 'data:image/png;base64,real-eight')],
-      dirtyFrames: [5],
-      canvasSize: { width: 100, height: 100 },
-      buildBlankRotoFrame: blankFrame,
-    });
-
-    const saveResult = session.deleteKey();
-
-    expect(saveResult.ok).toBe(true);
-    expect(effectTypes(saveResult.effects)).toEqual(['saveFrame']);
-    expect(saveResult.effects[0]).toMatchObject({ type: 'saveFrame', frame: 5, reason: 'beforeAction', after: { type: 'keyAction', operation: 'delete' } });
-    expect(session.realKeyFrameNumbers.value).toEqual([5, 8]);
-    expect(session.dirtyFrames.value).toContain(5);
-    expect(session.savingFrame.value).toBe(5);
-    expect(session.pendingKeyAction.value).toBe('delete');
-
-    const resumed = session.onSaveSucceeded(5);
-
-    expect(resumed.ok).toBe(true);
-    expect(effectTypes(resumed.effects)).toEqual(['replaceKeys', 'clearCanvas', 'restoreFrame', 'clearDeletedFrames']);
-    expect(session.realKeyFrameNumbers.value).toEqual([7]);
-    expect(session.realKeyFrames.value.find((candidate) => candidate.dataUrl === 'data:image/png;base64,real-five')).toBeUndefined();
-    expect(session.dirtyFrames.value).not.toContain(5);
-    expect(session.pendingKeyAction.value).toBeNull();
-  });
-
-  it('36.8-REG-05 D-11 keeps failed save dirty, clears queued work, and requires explicit retry', () => {
-    const session = createRotoSession({
-      currentFrame: 5,
-      realKeyFrames: [frame(5, 'data:image/png;base64,real-five'), frame(8, 'data:image/png;base64,real-eight')],
-      cachedRotoFrames: [frame(5, 'data:image/png;base64,real-five'), frame(8, 'data:image/png;base64,real-eight')],
-      dirtyFrames: [5],
-      canvasSize: { width: 100, height: 100 },
-      buildBlankRotoFrame: blankFrame,
-    });
-
-    session.requestFrame(8);
-    const failed = session.onSaveFailed(5, 'bridge unavailable');
-
-    expect(failed.ok).toBe(false);
-    expect(failed.effects).toEqual([]);
-    expect(session.currentFrame.value).toBe(5);
-    expect(session.dirtyFrames.value).toContain(5);
-    expect(session.savingFrame.value).toBeNull();
-    expect(session.pendingNavigationFrame.value).toBeNull();
-    expect(session.pendingKeyAction.value).toBeNull();
-    expect(session.feedback.value).toContain('frame 5');
-    expect(session.feedback.value).toContain('bridge unavailable');
-    expect(session.failedSaveFeedback.value).toMatchObject({ frame: 5, message: expect.stringContaining('bridge unavailable') });
-
-    const retry = session.requestFrame(8);
-    expect(effectTypes(retry.effects)).toEqual(['saveFrame']);
-    expect(retry.effects[0]).toMatchObject({ type: 'saveFrame', frame: 5, reason: 'beforeNavigate', after: { type: 'navigate', frame: 8 } });
-  });
-
-  it('36.8-REG-05 D-11 clears a failed queued key action without mutating ownership', () => {
-    const session = createRotoSession({
-      currentFrame: 5,
-      realKeyFrames: [frame(5, 'data:image/png;base64,real-five'), frame(8, 'data:image/png;base64,real-eight')],
-      cachedRotoFrames: [frame(5, 'data:image/png;base64,real-five'), frame(8, 'data:image/png;base64,real-eight')],
-      dirtyFrames: [5],
-      canvasSize: { width: 100, height: 100 },
-      buildBlankRotoFrame: blankFrame,
-    });
-
-    session.deleteKey();
-    const failed = session.onSaveFailed(5, 'disk full');
-
-    expect(failed.ok).toBe(false);
-    expect(session.realKeyFrameNumbers.value).toEqual([5, 8]);
-    expect(session.dirtyFrames.value).toContain(5);
-    expect(session.savingFrame.value).toBeNull();
-    expect(session.pendingKeyAction.value).toBeNull();
-    expect(session.pendingNavigationFrame.value).toBeNull();
-
-    const retry = session.deleteKey();
-    expect(effectTypes(retry.effects)).toEqual(['saveFrame']);
-    expect(retry.effects[0]).toMatchObject({ type: 'saveFrame', frame: 5, reason: 'beforeAction', after: { type: 'keyAction', operation: 'delete' } });
-  });
-
-  it('D-13 exposes dirty current-frame state without owning close-window prompt APIs', () => {
-    const session = createRotoSession({
-      currentFrame: 5,
-      realKeyFrames: [frame(5, 'data:image/png;base64,real-five')],
-      cachedRotoFrames: [frame(5, 'data:image/png;base64,real-five')],
-      dirtyFrames: [],
-      canvasSize: { width: 100, height: 100 },
-      buildBlankRotoFrame: blankFrame,
-    });
-
-    expect(session.currentFrameIsDirty.value).toBe(false);
-    session.markDirty(5);
-    expect(session.currentFrameIsDirty.value).toBe(true);
-    expect('requestClose' in session).toBe(false);
-    expect('confirmClose' in session).toBe(false);
-    expect('closeWindow' in session).toBe(false);
-    expect('tauriClose' in session).toBe(false);
   });
 });
 
