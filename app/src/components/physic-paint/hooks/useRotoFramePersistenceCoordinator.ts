@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import { addOccupiedRotoFrame, buildBlankRotoFrame, buildRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
+import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
+import { buildBlankRotoFrame, buildRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { mergeCachedRotoAlphaFrame } from '../roto/physicsPaintRotoAlphaMerge';
 import { createRotoLivePixelCacheTransactions } from '../roto/rotoLivePixelCacheTransactions';
 import { removeCachedRotoCacheFrame, upsertCachedRotoCacheFrame } from '../roto/rotoCacheTransactions';
@@ -13,6 +13,7 @@ interface RotoPersistenceStorePort {
   getRotoFrame: (layerId: string, frame: number) => RenderedFramePayload | null;
   getFrame: (layerId: string, frame: number) => RenderedFramePayload | null;
   upsertRealKey: (layerId: string, frame: number, renderedFrame: PhysicPaintRotoCacheFrame, backgroundOnly: boolean) => void;
+  removeRealKey: (layerId: string, frame: number) => boolean;
   getCacheFrames: (layerId: string) => PhysicPaintRotoCacheFrame[];
   getInterpolationSettings: (layerId: string) => PhysicPaintRotoInterpolationSettings;
   setInterpolationSettings: (layerId: string, settings: PhysicPaintRotoInterpolationSettings) => void;
@@ -25,6 +26,8 @@ export interface UseRotoFramePersistenceCoordinatorInput {
   setLaunchContext: (update: (current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null) => void;
   store: RotoPersistenceStorePort;
   syncPending: () => void;
+  getBackgroundMetadata: () => PhysicPaintRotoBackgroundMetadata;
+  sendCachePayload: (payload: PhysicPaintApplyPayload) => Promise<void>;
   setApplyMessage: (message: string) => void;
 }
 
@@ -33,6 +36,19 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const confirmedFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map());
   const livePixelTransactionsRef = useRef(createRotoLivePixelCacheTransactions());
   const buffer = editBuffer.bufferRef.current;
+  const parentDeliveryRef = useRef<Map<number, Promise<void>>>(new Map());
+  const parentOperationRevisionRef = useRef(0);
+  const queueParentPayload = useCallback((sourceFrame: number, payload: PhysicPaintApplyPayload) => {
+    const previous = parentDeliveryRef.current.get(sourceFrame) ?? Promise.resolve();
+    const delivery = previous
+      .catch(() => undefined)
+      .then(() => input.sendCachePayload(payload))
+      .catch((error) => { console.error('[PhysicsPaintStudio] Roto cache delivery failed', error); });
+    parentDeliveryRef.current.set(sourceFrame, delivery);
+    void delivery.then(() => {
+      if (parentDeliveryRef.current.get(sourceFrame) === delivery) parentDeliveryRef.current.delete(sourceFrame);
+    });
+  }, [input]);
   const reference = useRotoReferenceController<RenderedFramePayload>({
     workflowMode: input.workflowMode,
     settingsBackground: input.backgroundMode,
@@ -53,21 +69,37 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     input.setLaunchContext((current) => {
       if (!current || (expectedLayerId !== undefined && current.layerId !== expectedLayerId)) return current;
       confirmedFramesRef.current.set(sourceFrame, normalized);
-      const previousDisplayFrame = current.startFrame;
-      const frameForCache = { ...normalized, source: 'real-key' as const, sourceFrame, displayFrame: sourceFrame };
+      const frameForCache = { ...normalized, source: 'real-key' as const, sourceFrame, displayFrame: renderedFrame.displayFrame ?? sourceFrame };
       input.store.upsertRealKey(current.layerId, sourceFrame, frameForCache, backgroundOnly);
       if (interpolationSettings) input.store.setInterpolationSettings(current.layerId, interpolationSettings);
       const manualFrames = upsertCachedRotoCacheFrame(current.cachedRotoFrames, frameForCache, backgroundOnly, onionFrame);
       const storeFrames = input.store.getCacheFrames(current.layerId);
       const settings = input.store.getInterpolationSettings(current.layerId);
       const refreshedFrames = settings.enabled && storeFrames.length > 0 ? storeFrames : manualFrames;
-      const nextDisplayFrame = refreshedFrames.find((frame) => frame.source === 'real-key' && (frame.sourceFrame ?? frame.appFrame) === sourceFrame)?.appFrame ?? sourceFrame;
+      const nextDisplayFrame = refreshedFrames.find((frame) => frame.source === 'real-key' && (frame.sourceFrame ?? frame.appFrame) === sourceFrame)?.displayFrame ?? sourceFrame;
       confirmedFramesRef.current = new Map(refreshedFrames.filter((frame) => frame.source === 'real-key').map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
-      editBuffer.setEditableFrameList((frames) => {
-        const withoutStaleFrames = frames.filter((frame) => frame !== previousDisplayFrame && frame !== sourceFrame && frame !== nextDisplayFrame);
-        return backgroundOnly ? withoutStaleFrames : addOccupiedRotoFrame(withoutStaleFrames, nextDisplayFrame);
-      });
-      return { ...current, startFrame: nextDisplayFrame, cachedRotoFrames: refreshedFrames, rotoInterpolationSettings: settings };
+      editBuffer.acceptPixelCache(sourceFrame);
+      if (nextDisplayFrame !== sourceFrame) editBuffer.acceptPixelCache(nextDisplayFrame);
+      if (expectedLayerId !== undefined) {
+        queueParentPayload(sourceFrame, {
+          operationId: `${current.operationId}:live-pixels:${sourceFrame}:${++parentOperationRevisionRef.current}`,
+          kind: 'apply-canvas',
+          layerId: current.layerId,
+          startFrame: sourceFrame,
+          sourceFrame,
+          displayFrame: nextDisplayFrame,
+          renderedFrame: frameForCache,
+          rotoBackground: input.getBackgroundMetadata(),
+          rotoInterpolationSettings: settings,
+          ...(backgroundOnly ? { backgroundOnly: true } : {}),
+        });
+      }
+      return {
+        ...current,
+        startFrame: current.startFrame === frameForCache.displayFrame ? nextDisplayFrame : current.startFrame,
+        cachedRotoFrames: refreshedFrames,
+        rotoInterpolationSettings: settings,
+      };
     });
   }, [editBuffer, input]);
 
@@ -77,24 +109,37 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     liveAlphaCanvas: HTMLCanvasElement;
     cachedBase: RenderedFramePayload | null;
     size: { width: number; height: number };
+    displayFrame: number;
+    interpolationSettings?: PhysicPaintRotoInterpolationSettings;
     backgroundOnly?: boolean;
   }) => livePixelTransactionsRef.current.capture({
     sourceFrame: inputCapture.sourceFrame,
     produce: () => inputCapture.cachedBase
       ? mergeCachedRotoAlphaFrame(inputCapture.cachedBase, inputCapture.liveAlphaCanvas, inputCapture.sourceFrame, inputCapture.size)
       : buildRotoFrameFromCanvas(inputCapture.liveAlphaCanvas, inputCapture.sourceFrame, inputCapture.size),
-    commit: (renderedFrame) => upsertCachedFrame(renderedFrame, inputCapture.backgroundOnly === true, undefined, undefined, inputCapture.layerId),
+    commit: (renderedFrame) => upsertCachedFrame({ ...renderedFrame, displayFrame: inputCapture.displayFrame }, inputCapture.backgroundOnly === true, undefined, inputCapture.interpolationSettings, inputCapture.layerId),
   }), [upsertCachedFrame]);
 
   const removeCachedFrame = useCallback((frame: number) => {
     livePixelTransactionsRef.current.remove(frame, () => {
       confirmedFramesRef.current.delete(frame);
-      input.setLaunchContext((current) => current ? {
-        ...current,
-        cachedRotoFrames: removeCachedRotoCacheFrame(current.cachedRotoFrames, frame),
-      } : current);
+      input.setLaunchContext((current) => {
+        if (!current) return current;
+        input.store.removeRealKey(current.layerId, frame);
+        queueParentPayload(frame, {
+          operationId: `${current.operationId}:live-pixels-remove:${frame}:${++parentOperationRevisionRef.current}`,
+          kind: 'delete-roto-frame',
+          layerId: current.layerId,
+          startFrame: frame,
+          sourceFrame: frame,
+        });
+        return {
+          ...current,
+          cachedRotoFrames: removeCachedRotoCacheFrame(current.cachedRotoFrames, frame),
+        };
+      });
     });
-  }, [input]);
+  }, [input, queueParentPayload]);
 
   const clearCurrentFrame = useCallback((frame: number, size: { width: number; height: number }) => {
     livePixelTransactionsRef.current.invalidate(frame);
@@ -107,9 +152,20 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       const settings = input.store.getInterpolationSettings(current.layerId);
       confirmedFramesRef.current = new Map(refreshedFrames.filter((candidate) => candidate.source === 'real-key').map((candidate) => [candidate.sourceFrame ?? candidate.appFrame, candidate]));
       editBuffer.setEditableFrameList((frames) => frames.filter((candidate) => candidate !== frame));
+      queueParentPayload(frame, {
+        operationId: `${current.operationId}:live-pixels-clear:${frame}:${++parentOperationRevisionRef.current}`,
+        kind: 'apply-canvas',
+        layerId: current.layerId,
+        startFrame: frame,
+        sourceFrame: frame,
+        renderedFrame: blankFrame,
+        backgroundOnly: true,
+        rotoBackground: input.getBackgroundMetadata(),
+        rotoInterpolationSettings: settings,
+      });
       return { ...current, startFrame: frame, cachedRotoFrames: refreshedFrames, rotoInterpolationSettings: settings };
     });
-  }, [editBuffer, input]);
+  }, [editBuffer, input, queueParentPayload]);
 
   const resetForLaunch = useCallback((frames?: readonly PhysicPaintRotoCacheFrame[]) => {
     editBuffer.resetForLaunch();

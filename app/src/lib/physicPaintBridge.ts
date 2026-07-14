@@ -84,7 +84,10 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   if (!Number.isInteger(payload.startFrame) || payload.startFrame < 0) {
     return failureResult(payload, 'Invalid physics paint start frame');
   }
-  const generatedGuard = payload.kind === 'update-roto-interpolation-settings' ? null : getGeneratedRotoMutationGuard(payload.layerId, payload.startFrame);
+  const mutationDisplayFrame = payload.kind === 'apply-canvas'
+    ? payload.displayFrame ?? payload.startFrame
+    : payload.startFrame;
+  const generatedGuard = payload.kind === 'update-roto-interpolation-settings' ? null : getGeneratedRotoMutationGuard(payload.layerId, mutationDisplayFrame);
   if (generatedGuard) {
     return failureResult(payload, generatedGuard);
   }

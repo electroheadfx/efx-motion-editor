@@ -926,6 +926,55 @@ describe('physicPaintBridge', () => {
     }));
   });
 
+  it('updates an existing projected real key by durable source identity when its source number is a generated display', () => {
+    mockLayers([physicLayer()]);
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 0, makeFrame(0, 0));
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 1, makeFrame(0, 1));
+    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 0,
+      position: 0,
+    });
+    const updatedPaint = `data:image/png;base64,${btoa('projected-source-update')}`;
+
+    expect(physicPaintStore.getRotoFrame('phys-layer-1', 1)).toEqual(expect.objectContaining({
+      appFrame: 1,
+      source: 'generated-interpolation',
+    }));
+    expect(physicPaintStore.getRotoFrame('phys-layer-1', 3)).toEqual(expect.objectContaining({
+      appFrame: 3,
+      source: 'real-key',
+      sourceFrame: 1,
+    }));
+
+    const result = applyPhysicPaintPayload(applyCanvasPayload({
+      operationId: 'update-projected-real-source',
+      startFrame: 1,
+      sourceFrame: 1,
+      displayFrame: 3,
+      renderedFrame: {
+        ...makeFrame(0, 1),
+        dataUrl: updatedPaint,
+        source: 'real-key',
+      },
+      rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings('phys-layer-1'),
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      operationId: 'update-projected-real-source',
+      startFrame: 1,
+      appliedFrameCount: 1,
+    });
+    expect(physicPaintStore.getRotoFrame('phys-layer-1', 3)).toEqual(expect.objectContaining({
+      source: 'real-key',
+      sourceFrame: 1,
+      dataUrl: updatedPaint,
+    }));
+  });
+
   it('36.12 D-16 rejects generated interpolation apply-canvas targets before store mutation', () => {
     mockLayers([physicLayer()]);
     physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 12, makeFrame(0, 12));

@@ -94,9 +94,8 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
 
   const markCurrentFrameDirty = useCallback(() => {
     if (input.workflowMode !== 'roto') return;
-    if (input.currentFrameSelectionKind !== 'real-key') {
-      const label = input.currentFrameSelectionKind === 'generated-interpolation' ? 'Generated' : 'Empty';
-      input.status.setApplyMessage(`${label} frame ${input.currentFrame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.`);
+    if (input.currentFrameSelectionKind === 'generated-interpolation') {
+      input.status.setApplyMessage(`Generated frame ${input.currentFrame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.`);
       return;
     }
     input.editBuffer.markDirty(input.currentFrame);

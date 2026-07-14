@@ -28,11 +28,11 @@ import { useRotoBackgroundMetadataSync } from './hooks/useRotoBackgroundMetadata
 import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './roto/rotoOnionPreview';
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './view/physicsPaintStudioSelectors';
 import { usePlayLimitToast } from './hooks/usePlayLimitToast';
-import { buildPlayRenderOptionsSnapshot, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
+import { buildPlayRenderOptionsSnapshot, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { getLaunchWorkflowMode, parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { sendPhysicPaintApplyPayload, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanvasFrames';
-import { usePhysicsPaintBridgeMode, type PhysicsPaintBridgeMode } from './bridge/usePhysicsPaintParentBridge';
+import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, type PhysicsPaintBridgeMode } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
@@ -78,15 +78,20 @@ export function PhysicsPaintStudio() {
       getRotoFrame: (layerId, frame) => physicPaintStore.getRotoFrame(layerId, frame),
       getFrame: (layerId, frame) => physicPaintStore.getFrame(layerId, frame),
       upsertRealKey: (layerId, frame, renderedFrame, backgroundOnly) => physicPaintStore.upsertRealRotoKeyFrame(layerId, frame, renderedFrame, backgroundOnly),
+      removeRealKey: (layerId, frame) => physicPaintStore.removeRealRotoKeyFrame(layerId, frame),
       getCacheFrames: (layerId) => physicPaintStore.getRotoCacheFrames(layerId),
       getInterpolationSettings: (layerId) => physicPaintStore.getRotoInterpolationSettings(layerId),
       setInterpolationSettings: (layerId, interpolationSettings) => physicPaintStore.setRotoInterpolationSettings(layerId, interpolationSettings),
     },
     syncPending: () => resetRotoKeySessionRef.current(),
+    getBackgroundMetadata: () => buildRotoBackgroundMetadata(settings),
+    sendCachePayload: async (payload) => sendPhysicPaintApplyPayload(
+      payload,
+      bridgeMode === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : bridgeMode,
+    ),
     setApplyMessage,
   });
   const rotoEditBuffer = rotoPersistence.editBuffer;
-  const editableRotoFrames = rotoEditBuffer.editableFrames;
   const rotoPreviewFramesRef = { get current() { return rotoEditBuffer.bufferRef.current.previewFrames; }, set current(frames) { rotoEditBuffer.replacePreviewFrames(frames); } };
   const dirtyRotoFramesRef = { get current() { return rotoEditBuffer.bufferRef.current.dirtyFrames; }, set current(frames) { rotoEditBuffer.replaceDirtyFrames(frames); } };
   const playLimitToast = usePlayLimitToast();
@@ -160,8 +165,7 @@ export function PhysicsPaintStudio() {
   const currentFrameSelectionKind = rotoTimelineModel.currentFrameSelectionKind.value;
   const currentFrameOwnerSourceFrame = rotoTimelineModel.currentFrameOwnerSourceFrame.value;
   const currentFrameIsGeneratedRoto = workflowMode === 'roto' && currentFrameSelectionKind === 'generated-interpolation';
-  const currentFrameIsRenderOnlyRoto = workflowMode === 'roto' && currentFrameSelectionKind !== 'real-key';
-  const rotoInputDisabled = workflowMode === 'roto' && currentFrameIsRenderOnlyRoto;
+  const rotoInputDisabled = currentFrameIsGeneratedRoto;
   const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame } = rotoPersistence.reference;
   const {
     selectTool,
@@ -425,7 +429,7 @@ export function PhysicsPaintStudio() {
         cachedRotoPlaybackActive: rotoCachedPlayback.isActive,
         cachedRotoPlaybackComposition: launchContext?.rotoBackground ? { width: projectCanvasWidth, height: projectCanvasHeight, background: launchContext.rotoBackground } : null,
         inputDisabled: rotoInputDisabled,
-        inputDisabledMessage: currentFrameIsRenderOnlyRoto ? `${currentFrameIsGeneratedRoto ? 'Generated' : 'Empty'} frame ${currentFrame} is render-only.` : undefined,
+        inputDisabledMessage: currentFrameIsGeneratedRoto ? `Generated frame ${currentFrame} is render-only.` : undefined,
         onInputIntent: workflowMode === 'play' ? beginPlayFrameEdit : beginRotoFrameEdit,
         onionOverlay: onion.enabled && onionPreviewFrames.length > 0 ? onionPreviewFrames.map((frame) => (
           <img key={`${frame.direction}-${frame.source}-${frame.frame}-${frame.distance}`} class={`physics-paint-onion-frame ${frame.kind === 'cached-composite' ? 'physics-paint-onion-cached-composite' : frame.direction === 'previous' ? 'physics-paint-onion-prev' : 'physics-paint-onion-next'}`} src={frame.dataUrl} style={{ opacity: getOnionFrameOpacity(frame.distance, onion.opacity) }} alt="" />
@@ -436,12 +440,19 @@ export function PhysicsPaintStudio() {
           onEngineReady: (readyEngine) => { handleEngineReady(readyEngine); if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine); },
           onCanvasMounted: setCanvasMounted,
           onNativePenInputReady: handleNativePenInputReady,
-          onCompletedMutation: ({ isEmpty }) => {
+          onCompletedMutation: ({ kind, isEmpty }) => {
             const mutationEngine = engineRef.current;
-            if (workflowMode !== 'roto' || currentFrameSelectionKind !== 'real-key' || !mutationEngine || !launchContext) return;
-            const sourceFrame = currentFrame;
+            if (kind === 'clear' || workflowMode !== 'roto' || currentFrameSelectionKind === 'generated-interpolation' || !mutationEngine || !launchContext) return;
+            const saveTransaction = currentFrameSelectionKind === 'empty'
+              ? rotoTimelineActions.saveRealKeyAtDisplayFrame(currentFrame)
+              : null;
+            const sourceFrame = saveTransaction?.sourceFrameOverride ?? resolveRotoSourceFrameForDisplayFrame(currentFrame);
+            const displayFrame = saveTransaction?.target.displayFrame ?? currentFrame;
+            const cachedBaseSourceFrame = cachedRotoRepaintBaseFrame
+              ? cachedRotoRepaintBaseFrame.sourceFrame ?? cachedRotoRepaintBaseFrame.appFrame
+              : null;
             if (isEmpty) {
-              if (cachedRotoRepaintBaseFrame?.appFrame === sourceFrame) {
+              if (cachedRotoRepaintBaseFrame && cachedBaseSourceFrame === sourceFrame) {
                 rotoPersistence.invalidateLivePixels(sourceFrame);
                 rotoPersistence.upsertCachedFrame(cachedRotoRepaintBaseFrame, false);
               } else {
@@ -450,8 +461,16 @@ export function PhysicsPaintStudio() {
               return;
             }
             const liveAlphaCanvas = mutationEngine.copyLiveAlphaCanvas();
-            const cachedBase = cachedRotoRepaintBaseFrame?.appFrame === sourceFrame ? cachedRotoRepaintBaseFrame : null;
-            void rotoPersistence.captureLivePixels({ layerId: launchContext.layerId, sourceFrame, liveAlphaCanvas, cachedBase, size: { width: canvasWidth, height: canvasHeight } }).catch((error) => {
+            const cachedBase = cachedBaseSourceFrame === sourceFrame ? cachedRotoRepaintBaseFrame : null;
+            void rotoPersistence.captureLivePixels({
+              layerId: launchContext.layerId,
+              sourceFrame,
+              displayFrame,
+              liveAlphaCanvas,
+              cachedBase,
+              size: { width: canvasWidth, height: canvasHeight },
+              interpolationSettings: saveTransaction?.interpolationSettings,
+            }).catch((error) => {
               console.error('[PhysicsPaintStudio] Automatic Roto pixel cache failed', error);
             });
           },
@@ -466,7 +485,7 @@ export function PhysicsPaintStudio() {
       },
     workflow: {
         mode: workflowMode, currentFrame, startFrame: launchContext?.startFrame ?? 0, frameCount: framesToApply, currentPreviewFrame: localPlayPreviewFrame, maxPlayFrameCount: launchContext?.maxPlayFrameCount, maxPlayFrameCountReason: launchContext?.maxPlayFrameCountReason,
-        playCacheStatus: currentPlayCacheStatus, onPlayLimit: playLimitToast.show, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames, editableRotoFrames,
+        playCacheStatus: currentPlayCacheStatus, onPlayLimit: playLimitToast.show, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
         keyActionInFlight: rotoKeyUtilities.keyActionInFlight, rotoCachedPlaybackAvailable, rotoCachedPlaybackStatus: rotoCachedPlayback.status, rotoCachedPlaybackLoop: rotoCachedPlayback.loop, rotoCachedPlaybackFps: rotoCachedPlayback.fps, projectFps: previewFps, isRotoCachedPlaybackActive: rotoCachedPlayback.isActive,
         onToggleRotoPlayback: rotoCachedPlayback.toggle, onRotoPlaybackLoopChange: rotoCachedPlayback.setLoop, onRotoPlaybackFpsChange: rotoCachedPlayback.updateFps, rotoInterpolationSettings: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined,
         onRotoInterpolationEnabledChange: (enabled) => updateRotoInterpolationSettings({ enabled }), onRotoInterpolationCountChange: (inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount }),

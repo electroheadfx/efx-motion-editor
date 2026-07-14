@@ -5,7 +5,7 @@ export const PHYSIC_PAINT_DEFAULT_APPLY_FRAMES = 4;
 
 export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 const RENDERED_DATA_URL_PREFIX = 'data:image/png';
-const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals']);
+const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals', 'strokes']);
 
 export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'apply-play-canvas' | 'convert-play-to-roto' | 'convert-roto-to-play' | 'update-play-render-options' | 'update-roto-interpolation-settings';
 export type PhysicPaintWorkflowMode = 'roto' | 'play';
@@ -142,8 +142,9 @@ export interface PhysicPaintApplyCanvasPayload {
   layerId: string;
   startFrame: number;
   sourceFrame?: number;
+  displayFrame?: number;
   renderedFrame: PhysicPaintRenderedFrame;
-  editableState: SerializedProject;
+  editableState?: SerializedProject;
   backgroundOnly?: boolean;
   onionDataUrl?: string;
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
@@ -333,11 +334,11 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       optionalRotoInterpolationSettings(value.rotoInterpolationSettings);
   }
 
-  if (!isSerializedProject(value.editableState)) return false;
-
   if (value.kind === 'apply-canvas') {
     const sourceFrame = typeof value.sourceFrame === 'number' ? value.sourceFrame : value.startFrame;
-    return optionalNonNegativeInteger(value.sourceFrame) &&
+    return (value.editableState === undefined || isSerializedProject(value.editableState)) &&
+      optionalNonNegativeInteger(value.sourceFrame) &&
+      optionalNonNegativeInteger(value.displayFrame) &&
       isPhysicPaintRenderedFrame(value.renderedFrame, sourceFrame, 0) &&
       (value.backgroundOnly === undefined || typeof value.backgroundOnly === 'boolean') &&
       (value.onionDataUrl === undefined || isRenderedPngDataUrl(value.onionDataUrl)) &&
@@ -345,6 +346,8 @@ export function isPhysicPaintApplyPayload(value: unknown): value is PhysicPaintA
       optionalRotoInterpolationSettings(value.rotoInterpolationSettings) &&
       (value.closeWindowAfterApply === undefined || typeof value.closeWindowAfterApply === 'boolean');
   }
+
+  if (!isSerializedProject(value.editableState)) return false;
 
   if (value.kind === 'apply-play-canvas' || value.kind === 'convert-play-to-roto') {
     const frameCount = value.frameCount;

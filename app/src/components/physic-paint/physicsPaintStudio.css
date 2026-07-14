@@ -1706,24 +1706,6 @@ button.destructive {
   content: '';
 }
 
-.physics-paint-roto-cell.roto-fill-editable-current,
-.physics-paint-roto-cell.roto-fill-editable-session {
-  border-color: rgba(255, 126, 196, 0.82);
-  background: #a33d73;
-}
-
-.physics-paint-roto-cell.roto-fill-editable-current::before,
-.physics-paint-roto-cell.roto-fill-editable-session::before {
-  position: absolute;
-  top: calc(50% - 2px);
-  left: calc(50% - 2px);
-  width: 4px;
-  height: 4px;
-  border-radius: 999px;
-  background: #ffffff;
-  content: '';
-}
-
 .physics-paint-roto-cell.roto-fill-generated {
   border-color: rgba(111, 144, 255, 0.82);
   background: #365ed6;

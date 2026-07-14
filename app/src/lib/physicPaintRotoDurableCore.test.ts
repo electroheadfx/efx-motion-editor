@@ -187,7 +187,10 @@ function makeEngine(initialState: SerializedProject, initialDataUrl: string): Te
   const engine = {
     save: vi.fn(() => structuredClone(state)),
     load: vi.fn((next: SerializedProject) => { state = structuredClone(next); }),
-    clear: vi.fn(() => { state = { ...state, strokes: [] }; }),
+    clear: vi.fn(() => {
+      state = { ...state, strokes: [] };
+      completedMutationListener?.({ kind: 'clear', isEmpty: true });
+    }),
     exportCompositeCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl })),
     copyLiveAlphaCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl })),
     setCompletedMutationListener: vi.fn((listener: ((mutation: { kind: string; isEmpty: boolean }) => void) | null) => { completedMutationListener = listener; }),
@@ -828,7 +831,7 @@ async function mountRenderedKeyMutationProbe(options: {
       mode: 'roto', currentFrame, startFrame: 0, frameCount: 1, isPlaying: false, ready: true,
       occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame),
       savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
-      cachedRotoFrames: projectedFrames, editableRotoFrames: [], rotoInterpolationSettings: settings,
+      cachedRotoFrames: projectedFrames, rotoInterpolationSettings: settings,
       onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
       onInsertRotoFrame: state.utilities.insertBlankKey,
       onDuplicateRotoKey: state.utilities.duplicateKey,
@@ -992,6 +995,173 @@ describe('Phase 36.3 durable Roto cache core', () => {
     expect(physicPaintStore.getFrame('phys-layer-1', 4)?.dataUrl).toBe(automaticPixels);
   });
 
+  it('delivers the latest automatic Roto pixels to the parent store for close and reopen', async () => {
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: 'automatic-close-reopen',
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: 7,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: [],
+    };
+    paintHarness.storedLaunchContext = launchContext;
+    const parentPayloads: PhysicPaintApplyPayload[] = [];
+    const { root } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+      if (message.type === PHYSIC_PAINT_APPLY_EVENT && message.payload) parentPayloads.push(message.payload);
+    });
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
+    await act(async () => { await flushPreact(); });
+    const paintedPixels = pngDataUrl('automatic-close-reopen-pixels');
+    paintHarness.engine?.__setState(editedState, paintedPixels);
+    await act(async () => { await flushPreact(); await flushPreact(); });
+
+    expect(parentPayloads).toHaveLength(1);
+    expect(parentPayloads[0]).toMatchObject({
+      kind: 'apply-canvas',
+      layerId: 'phys-layer-1',
+      startFrame: 7,
+      sourceFrame: 7,
+      renderedFrame: expect.objectContaining({ dataUrl: paintedPixels }),
+    });
+    expect('editableState' in parentPayloads[0]).toBe(false);
+
+    physicPaintStore.reset();
+    mockLayers([physicLayer()]);
+    expect(applyPhysicPaintPayload(parentPayloads[0])).toMatchObject({ ok: true, appliedFrameCount: 1 });
+
+    const reopened = createPhysicPaintLaunchContext(physicLayer(), 7, { width: 1000, height: 650 }, null, 'roto');
+    expect(reopened.cachedRotoFrames).toEqual(expect.arrayContaining([
+      expect.objectContaining({ appFrame: 7, sourceFrame: 7, source: 'real-key', dataUrl: paintedPixels }),
+    ]));
+    expect(reopened.editableState).toBeUndefined();
+  });
+
+  it('removes an emptied automatic Roto key from the parent store before reopen', async () => {
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: 'automatic-empty-remove',
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: 5,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: [],
+    };
+    paintHarness.storedLaunchContext = launchContext;
+    const parentPayloads: PhysicPaintApplyPayload[] = [];
+    const { root } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+      if (message.type === PHYSIC_PAINT_APPLY_EVENT && message.payload) parentPayloads.push(message.payload);
+    });
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
+    await act(async () => { await flushPreact(); });
+    const paintedPixels = pngDataUrl('automatic-empty-remove-painted');
+    paintHarness.engine?.__setState(editedState, paintedPixels);
+    await act(async () => { await flushPreact(); });
+    expect(parentPayloads).toEqual([
+      expect.objectContaining({ kind: 'apply-canvas', sourceFrame: 5, renderedFrame: expect.objectContaining({ dataUrl: paintedPixels }) }),
+    ]);
+
+    parentPayloads.length = 0;
+    paintHarness.engine?.__setState({ ...editedState, strokes: [] }, pngDataUrl('automatic-empty-remove-empty'));
+    await act(async () => { await flushPreact(); await flushPreact(); });
+
+    expect(parentPayloads).toEqual([
+      expect.objectContaining({ kind: 'delete-roto-frame', sourceFrame: 5 }),
+    ]);
+    expect(physicPaintStore.getFrame('phys-layer-1', 5)).toBeNull();
+  });
+
+  it('allows first paint on an empty Roto frame and creates its real-key cache automatically', async () => {
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: 'empty-frame-first-paint',
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: 0,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: [],
+    };
+    paintHarness.storedLaunchContext = launchContext;
+    const { root } = installDom(encodeURIComponent(JSON.stringify(launchContext)), () => {});
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
+    await act(async () => { await flushPreact(); });
+
+    const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
+    expect((canvasStack?.style as unknown as { pointerEvents?: string }).pointerEvents ?? '').not.toBe('none');
+
+    const paintedPixels = pngDataUrl('empty-frame-first-paint-result');
+    fire(canvasStack!, 'PointerDown');
+    paintHarness.engine?.__setState(editedState, paintedPixels);
+    await act(async () => { await flushPreact(); });
+
+    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0]);
+    expect(physicPaintStore.getFrame('phys-layer-1', 0)?.dataUrl).toBe(paintedPixels);
+    expect(findRotoCell(root, 0)?.className).toContain('roto-fill-cached');
+    expect(findRotoCell(root, 0)?.className).toContain('roto-fill-cached-only');
+    expect(findRotoCell(root, 0)?.className).not.toContain('roto-fill-editable');
+
+    fire(findRotoCell(root, 1)!, 'Click');
+    await act(async () => { await flushPreact(); });
+    paintHarness.engine?.setPreviewBaseImageUrl.mockClear();
+    fire(findRotoCell(root, 0)!, 'Click');
+    await act(async () => { await flushPreact(); });
+
+    expect(paintHarness.engine?.setPreviewBaseImageUrl).toHaveBeenCalledWith(paintedPixels);
+  });
+
+  it('keeps cached frame 0 non-editable and allows immediate timeline navigation after programmatic canvas clears', async () => {
+    const realKeys: PhysicPaintRotoCacheFrame[] = [0, 1].map((frame) => ({
+      frameIndex: 0,
+      appFrame: frame,
+      sourceFrame: frame,
+      displayFrame: frame,
+      source: 'real-key',
+      dataUrl: pngDataUrl(`navigation-real-${frame}`),
+      width: 1000,
+      height: 650,
+    }));
+    for (const frame of realKeys) physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', frame.sourceFrame!, frame);
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: 'frame-zero-navigation-regression',
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: 0,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: physicPaintStore.getRotoCacheFrames('phys-layer-1'),
+    };
+    paintHarness.storedLaunchContext = launchContext;
+    const { root } = installDom(encodeURIComponent(JSON.stringify(launchContext)), () => {});
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
+    await act(async () => { await flushPreact(); });
+
+    const frameZero = findRotoCell(root, 0);
+    expect(frameZero?.className).not.toContain('roto-fill-editable-current');
+    expect(frameZero?.className).not.toContain('roto-fill-editable-session');
+
+    fire(findRotoCell(root, 1)!, 'Click');
+    await act(async () => { await flushPreact(); });
+
+    expect(findRotoCell(root, 1)?.className).toContain('current');
+    expect(findRotoCell(root, 0)?.className).not.toContain('current');
+  });
+
   it('Clear current Roto frame replaces the mounted cached real key without deleting its topology', async () => {
     const oldPaint = pngDataUrl('clear-current-old-paint');
     const otherPaint = pngDataUrl('clear-current-other-paint');
@@ -1048,7 +1218,14 @@ describe('Phase 36.3 durable Roto cache core', () => {
     expect(physicPaintStore.getFrame('phys-layer-1', 0)?.dataUrl).not.toBe(oldPaint);
     expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(otherPaint);
     expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual(normalizedSettings);
-    expect(applyPayloads).toEqual([]);
+    expect(applyPayloads).toEqual([
+      expect.objectContaining({
+        kind: 'apply-canvas',
+        sourceFrame: 0,
+        backgroundOnly: true,
+        renderedFrame: expect.objectContaining({ source: 'real-key', sourceFrame: 0 }),
+      }),
+    ]);
 
     const projectPath = '/clear-current-roto-frame';
     const persistedOutputs = await savePhysicPaintData(projectPath, physicPaintStore.toMceOutputs() as RuntimePhysicPaintOutput[]);
@@ -1074,8 +1251,16 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
     fire(canvasStack!, 'PointerDown');
     await flushPreact();
+    await flushPreact();
     expect(findButton(root, 'Save current')).toBeNull();
-    expect(applyPayloads).toEqual([]);
+    expect(applyPayloads).toEqual([
+      expect.objectContaining({ kind: 'apply-canvas', sourceFrame: 0, backgroundOnly: true }),
+      expect.objectContaining({
+        kind: 'apply-canvas',
+        sourceFrame: 0,
+        renderedFrame: expect.objectContaining({ dataUrl: pngDataUrl('clear-current-new-paint') }),
+      }),
+    ]);
     expect(physicPaintStore.getFrame('phys-layer-1', 0)?.dataUrl).toBe(pngDataUrl('clear-current-new-paint'));
     expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(otherPaint);
     expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual(normalizedSettings);
@@ -1554,8 +1739,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
         occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame),
         savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
         cachedRotoFrames: projectedFrames,
-        editableRotoFrames: [],
-        rotoInterpolationSettings: settings,
+               rotoInterpolationSettings: settings,
         onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
         onCopyRotoFrame: probeState.utilities.copyKey,
         onPasteRotoFrame: probeState.utilities.pasteKey,
@@ -1711,7 +1895,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       return h(PhysicsPaintWorkflowStrip, {
         mode: 'roto', currentFrame, startFrame: 0, frameCount: 1, isPlaying: false, ready: true,
         occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame), savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
-        cachedRotoFrames: projectedFrames, editableRotoFrames: [], rotoInterpolationSettings: liveSettings,
+        cachedRotoFrames: projectedFrames, rotoInterpolationSettings: liveSettings,
         onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
         onInsertRotoFrame: probeState.utilities.insertBlankKey,
         rotoKeyState: { actionAvailability: availability, hasCopiedRotoKey: false },
@@ -1838,7 +2022,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       return h(PhysicsPaintWorkflowStrip, {
         mode: 'roto', currentFrame, startFrame: 0, frameCount: 1, isPlaying: false, ready: true,
         occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame), savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
-        cachedRotoFrames: projectedFrames, editableRotoFrames: [], rotoInterpolationSettings: liveSettings,
+        cachedRotoFrames: projectedFrames, rotoInterpolationSettings: liveSettings,
         onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
         onInsertRotoFrame: probeState.utilities.insertBlankKey, onDeleteRotoFrame: probeState.utilities.deleteKey,
         onDuplicateRotoKey: probeState.utilities.duplicateKey,
@@ -1974,7 +2158,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       return h(PhysicsPaintWorkflowStrip, {
         mode: 'roto', currentFrame, startFrame: 0, frameCount: 1, isPlaying: false, ready: true,
         occupiedRotoFrames: projectedFrames.map((frame) => frame.appFrame), savedRotoFrames: projectedFrames.map((frame) => ({ frame: frame.appFrame, saved: true })),
-        cachedRotoFrames: projectedFrames, editableRotoFrames: [], rotoInterpolationSettings: settings,
+        cachedRotoFrames: projectedFrames, rotoInterpolationSettings: settings,
         onion: { enabled: false, previous: true, next: false, count: 1, opacity: 50 },
         onCopyRotoFrame: probeState.utilities.copyKey, onPasteRotoFrame: probeState.utilities.pasteKey,
         onDeleteRotoFrame: probeState.utilities.deleteKey, hasCopiedRotoKey: probeState.utilities.session.copiedKey.value !== null,
@@ -2325,23 +2509,81 @@ describe('Phase 36.3 durable Roto cache core', () => {
       expect(physicPaintStore.getRotoCacheFrames('phys-layer-1').some((frame) => frame.appFrame === display)).toBe(false);
     });
 
-    it.each([
-      { label: 'generated', display: 4, interpolationEnabled: true },
-      { label: 'empty', display: 10, interpolationEnabled: false },
-    ])('keeps a $label selected display non-durable after mounted paint and Save current intent', async ({ label, display, interpolationEnabled }) => {
-      const { root, applyPayloads } = await mountOnionStudio(display, { interpolationEnabled, next: true });
+    it('keeps a generated selected display non-durable after mounted paint intent', async () => {
+      const display = 4;
+      const { root, applyPayloads } = await mountOnionStudio(display, { interpolationEnabled: true, next: true });
       const durableBefore = physicPaintStore.getRealRotoKeyFrames('phys-layer-1');
-      paintHarness.engine?.__setState(editedState, pngDataUrl(`debug-08-${label}-mutation-attempt`));
+      paintHarness.engine?.__setState(editedState, pngDataUrl('debug-08-generated-mutation-attempt'));
       const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
       expect(canvasStack).toBeTruthy();
 
       fire(canvasStack!, 'PointerDown');
       await act(async () => { await flushPreact(); });
-      expect(findButton(root, 'Save current')).toBeNull();
 
       expect(applyPayloads).toEqual([]);
       expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual(durableBefore);
       expect(physicPaintStore.getRotoCacheFrames('phys-layer-1').some((frame) => frame.appFrame === display && frame.source === 'real-key')).toBe(false);
+    });
+
+    it('creates a durable real key after mounted paint on an empty selected display', async () => {
+      const display = 10;
+      const paint = pngDataUrl('debug-08-empty-first-paint');
+      const { root, applyPayloads } = await mountOnionStudio(display, { interpolationEnabled: false, next: true });
+      paintHarness.engine?.__setState(editedState, paint);
+      const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
+      expect(canvasStack).toBeTruthy();
+
+      fire(canvasStack!, 'PointerDown');
+      await act(async () => { await flushPreact(); });
+
+      expect(applyPayloads).toEqual([
+        expect.objectContaining({
+          kind: 'apply-canvas',
+          sourceFrame: display,
+          renderedFrame: expect.objectContaining({ dataUrl: paint }),
+        }),
+      ]);
+      expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toContain(display);
+      expect(physicPaintStore.getFrame('phys-layer-1', display)?.dataUrl).toBe(paint);
+    });
+
+    it.each([
+      { label: 'adjacent', display: 27, expectedDisplay: 29 },
+      { label: 'distant', display: 32, expectedDisplay: 32 },
+    ])('keeps a newly painted $label interpolation key focused and owned across a second brush', async ({ display, expectedDisplay }) => {
+      const firstPaint = pngDataUrl(`interpolation-${display}-first`);
+      const secondPaint = pngDataUrl(`interpolation-${display}-second`);
+      const { root, applyPayloads } = await mountOnionStudio(display, { sourceFrames: [0, 1, 2, 3, 14, 26], interpolationEnabled: true, next: true });
+      const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
+      expect(canvasStack).toBeTruthy();
+
+      paintHarness.engine?.__setState(editedState, firstPaint);
+      await act(async () => { await flushPreact(); await flushPreact(); });
+
+      expect(findRotoCell(root, expectedDisplay)?.className).toContain('current');
+      expect(findRotoCell(root, expectedDisplay)?.className).toContain('roto-fill-cached');
+      expect(physicPaintStore.getRotoCacheFrames('phys-layer-1').find((frame) => frame.source === 'real-key' && (frame.displayFrame ?? frame.appFrame) === expectedDisplay)?.dataUrl).toBe(firstPaint);
+
+      paintHarness.engine?.__setState(editedState, secondPaint);
+      await act(async () => { await flushPreact(); await flushPreact(); });
+
+      const realAtDisplay = physicPaintStore.getRotoCacheFrames('phys-layer-1').filter((frame) => frame.source === 'real-key' && (frame.displayFrame ?? frame.appFrame) === expectedDisplay);
+      expect(realAtDisplay).toHaveLength(1);
+      expect(realAtDisplay[0].dataUrl).toBe(secondPaint);
+      expect(findRotoCell(root, expectedDisplay)?.className).toContain('current');
+      expect(physicPaintStore.getRotoCacheFrames('phys-layer-1').filter((frame) => frame.source === 'generated-interpolation' && frame.appFrame > expectedDisplay)).toEqual([]);
+      expect(applyPayloads.filter((payload) => payload.kind === 'apply-canvas')).toEqual([
+        expect.objectContaining({
+          sourceFrame: display,
+          displayFrame: expectedDisplay,
+          renderedFrame: expect.objectContaining({ dataUrl: firstPaint }),
+        }),
+        expect.objectContaining({
+          sourceFrame: display,
+          displayFrame: expectedDisplay,
+          renderedFrame: expect.objectContaining({ dataUrl: secondPaint }),
+        }),
+      ]);
     });
 
     it('keeps a source-keyed edited real payload from becoming its own mounted previous onion anchor', async () => {

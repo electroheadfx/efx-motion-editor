@@ -3,10 +3,10 @@ import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 export type PhysicsPaintWorkflowMode = 'roto' | 'play';
 export type PhysicsPaintApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 export type PhysicsPaintEngineStatusTone = 'ready' | 'not-ready' | 'error';
-export type RotoCellFill = 'empty' | 'cached-only' | 'editable-session';
-export type RotoCellBaseMeaning = 'empty' | 'cached' | 'editable-current' | 'generated' | 'background-only';
+export type RotoCellFill = 'empty' | 'cached-only';
+export type RotoCellBaseMeaning = 'empty' | 'cached' | 'generated' | 'background-only';
 export type RotoCellOverlay = 'current' | 'dirty' | 'pending';
-export type RotoCellState = 'Empty' | 'Cached' | 'Current' | 'Generated' | 'Background only';
+export type RotoCellState = 'Empty' | 'Cached' | 'Generated' | 'Background only';
 export type RotoMissingFrameStatusKind = 'transparent' | 'background-only-interior' | 'background-only-dynamic';
 
 export interface RotoMissingFrameStatus {
@@ -33,7 +33,6 @@ export interface RotoCellViewModelInput {
   frame: number;
   currentFrame?: number;
   cachedFrames?: readonly PhysicPaintRotoCacheFrame[] | ReadonlySet<number> | readonly number[];
-  editableFrames?: readonly number[] | ReadonlySet<number>;
   pendingFrames?: readonly number[] | ReadonlySet<number>;
   isSaving?: boolean;
 }
@@ -41,7 +40,6 @@ export interface RotoCellViewModelInput {
 const ROTO_CELL_STATES: Record<RotoCellBaseMeaning, RotoCellState> = {
   empty: 'Empty',
   cached: 'Cached',
-  'editable-current': 'Current',
   generated: 'Generated',
   'background-only': 'Background only',
 };
@@ -49,12 +47,11 @@ const ROTO_CELL_STATES: Record<RotoCellBaseMeaning, RotoCellState> = {
 const ROTO_CELL_FILL_CLASSES: Record<RotoCellBaseMeaning, string> = {
   empty: 'roto-fill-empty',
   cached: 'roto-fill-cached',
-  'editable-current': 'roto-fill-editable-current',
   generated: 'roto-fill-generated',
   'background-only': 'roto-fill-background-only',
 };
 
-const EDITABLE_ROTO_CELL_MEANINGS = new Set<RotoCellBaseMeaning>(['empty', 'cached', 'editable-current', 'background-only']);
+const EDITABLE_ROTO_CELL_MEANINGS = new Set<RotoCellBaseMeaning>(['empty', 'cached', 'background-only']);
 
 export type PhysicsPaintWorkflowAction =
   | 'save-active-source'
@@ -96,9 +93,7 @@ export function getActivePrimaryActionLabel(mode: PhysicsPaintWorkflowMode): 'Au
 export function getRotoCellFill(
   frame: number,
   cachedFrames: readonly PhysicPaintRotoCacheFrame[] | ReadonlySet<number> | readonly number[] | undefined,
-  editableFrames: readonly number[] | ReadonlySet<number> | undefined,
 ): RotoCellFill {
-  if (hasFrame(editableFrames, frame)) return 'editable-session';
   if (hasCachedRotoFrame(cachedFrames, frame)) return 'cached-only';
   return 'empty';
 }
@@ -107,13 +102,12 @@ export function getRotoCellViewModel({
   frame,
   currentFrame,
   cachedFrames,
-  editableFrames,
   pendingFrames,
   isSaving = false,
 }: RotoCellViewModelInput): RotoCellViewModel {
   const safeFrame = Number.isInteger(frame) && frame >= 0 ? frame : 0;
   const cachedFrame = getCachedRotoFrame(cachedFrames, frame);
-  const baseMeaning = getRotoCellBaseMeaning(frame, cachedFrame, editableFrames);
+  const baseMeaning = getRotoCellBaseMeaning(cachedFrame);
   const isCurrent = Number.isInteger(frame) && frame >= 0 && frame === currentFrame;
   const isDirty = hasFrame(pendingFrames, frame);
   const isPending = isDirty && isSaving;
@@ -146,7 +140,6 @@ export function getRotoCellStateLabel(frame: number, baseMeaning: RotoCellBaseMe
 
   if (baseMeaning === 'empty') return `No Roto content on frame ${frame}`;
   if (baseMeaning === 'cached') return `Cached frame ${frame}`;
-  if (baseMeaning === 'editable-current') return `Frame ${frame}: Current`;
   if (baseMeaning === 'generated') return `Generated frame ${frame} (render-only)`;
   return `Background only on frame ${frame}`;
 }
@@ -192,12 +185,7 @@ export function isPhysicsPaintDevExportEnabled(env: { DEV?: boolean; MODE?: stri
   return env.DEV === true || env.MODE === 'development';
 }
 
-function getRotoCellBaseMeaning(
-  frame: number,
-  cachedFrame: PhysicPaintRotoCacheFrame | null,
-  editableFrames: readonly number[] | ReadonlySet<number> | undefined,
-): RotoCellBaseMeaning {
-  if (hasFrame(editableFrames, frame)) return 'editable-current';
+function getRotoCellBaseMeaning(cachedFrame: PhysicPaintRotoCacheFrame | null): RotoCellBaseMeaning {
   if (cachedFrame?.source === 'background-only-support' || cachedFrame?.backgroundOnly === true) return 'background-only';
   if (cachedFrame?.source === 'real-key') return 'cached';
   if (cachedFrame?.source === 'generated-interpolation') return 'generated';

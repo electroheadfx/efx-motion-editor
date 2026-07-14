@@ -758,7 +758,7 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
 
     expect(canvasBlock).toContain('onCompletedMutation');
     expect(text).toContain("workflowMode !== 'roto'");
-    expect(text).toContain("currentFrameSelectionKind !== 'real-key'");
+    expect(text).toContain("currentFrameSelectionKind === 'generated-interpolation'");
     expect(text).toContain('mutationEngine.copyLiveAlphaCanvas()');
     expect(text).toContain('rotoPersistence.captureLivePixels({');
     expect(text).toContain('cachedBase');
@@ -784,9 +784,10 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     expect(navigation).toContain('return runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
   });
 
-  it('keeps Roto input disabled only for generated and empty render-only displays', () => {
+  it('keeps Roto input disabled only for generated interpolation displays', () => {
     const text = studioPresentationSource();
-    expect(text).toContain("const rotoInputDisabled = workflowMode === 'roto' && currentFrameIsRenderOnlyRoto");
+    expect(text).toContain('const rotoInputDisabled = currentFrameIsGeneratedRoto');
+    expect(text).not.toContain("currentFrameSelectionKind !== 'real-key'");
     expect(text).not.toContain("rotoInputDisabled = workflowMode === 'roto' && applyStatus === 'applying'");
   });
 

@@ -33,7 +33,6 @@ export interface PhysicsPaintWorkflowRotoKeyState {
 const ROTO_CELL_LEGEND_ITEMS = [
   { label: 'Empty', className: 'roto-fill-empty' },
   { label: 'Cached', className: 'roto-fill-cached' },
-  { label: 'Current', className: 'roto-fill-editable-current current' },
   { label: 'Generated', className: 'roto-fill-generated' },
   { label: 'Background only', className: 'roto-fill-background-only' },
 ];
@@ -66,7 +65,6 @@ export interface PhysicsPaintWorkflowStripProps {
   occupiedRotoFrames?: number[];
   savedRotoFrames?: PhysicsPaintWorkflowStripFrameMarker[];
   cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
-  editableRotoFrames?: number[];
   rotoInterpolationSettings?: RotoInterpolationSettings;
   playPublicationSummary?: string | null;
   statusMessage?: string | null;
@@ -185,9 +183,7 @@ function getSelectedRotoCustomSpanStatus(currentFrame: number, settings: RotoInt
 }
 
 function getRotoFillClass(fill: ReturnType<typeof getRotoCellFill>): string {
-  if (fill === 'empty') return 'roto-fill-empty';
-  if (fill === 'cached-only') return 'roto-fill-cached-only';
-  return 'roto-fill-editable-session';
+  return fill === 'cached-only' ? 'roto-fill-cached-only' : 'roto-fill-empty';
 }
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
@@ -227,12 +223,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     frame: props.currentFrame,
     currentFrame: props.currentFrame,
     cachedFrames: displayCachedRotoFrames,
-    editableFrames: props.editableRotoFrames,
   });
   const rotoMissingStatusLabel = props.rotoMissingFrameStatusKind
     ? getMissingRotoFrameStatusLabel({ frame: props.currentFrame, kind: props.rotoMissingFrameStatusKind })
     : null;
-  const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames, props.editableRotoFrames);
+  const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames);
   const isCurrentRealRotoKey = realRotoFrames.includes(props.currentFrame) && currentRotoCell.isEditableTarget !== false;
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
@@ -513,9 +508,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     frame,
                     currentFrame: expandedCurrentFrame,
                     cachedFrames: cachedFramesForDisplay,
-                    editableFrames: props.editableRotoFrames,
                   });
-                  const fill = getRotoCellFill(frame, realCachedRotoFrames, props.editableRotoFrames);
+                  const fill = getRotoCellFill(frame, realCachedRotoFrames);
                   const isDisplayRealKey = realCachedRotoFrameNumbers.includes(frame);
                   const generatedTitle = vm.baseMeaning === 'generated' || vm.isEditableTarget === false ? getGeneratedRotoTitle(frame) : null;
                   return (

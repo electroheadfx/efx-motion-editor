@@ -214,7 +214,7 @@ export function resolveRotoFarEmptyDisplaySaveTarget(displayFrame: number, realK
   if (!previous) return { displayFrame: safeDisplayFrame, sourceFrame: safeDisplayFrame, previousSegmentOverride: null };
   const globalInBetweenCount = clampNonNegativeInteger(settings.inBetweenCount, 1);
   const normalNextDisplayFrame = previous.displayFrame + globalInBetweenCount + 1;
-  if (safeDisplayFrame === normalNextDisplayFrame) {
+  if (safeDisplayFrame <= normalNextDisplayFrame) {
     return {
       displayFrame: safeDisplayFrame,
       sourceFrame: previous.sourceFrame + 1,

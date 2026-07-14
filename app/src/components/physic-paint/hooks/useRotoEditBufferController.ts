@@ -41,6 +41,13 @@ export function useRotoEditBufferController<State extends RotoEditableState, Fra
   const setEditableFrameList = useCallback((update: (frames: number[]) => number[]) => {
     setEditableFrames(update);
   }, []);
+  const acceptPixelCache = useCallback((frame: number) => {
+    bufferRef.current.dirtyFrames.delete(frame);
+    bufferRef.current.frameStates.delete(frame);
+    bufferRef.current.previewFrames.delete(frame);
+    bufferRef.current.capturedFrames.delete(frame);
+    removeEditableFrame(frame);
+  }, [removeEditableFrame]);
   const resetForLaunch = useCallback(() => {
     resetRotoEditBuffer(bufferRef.current);
     setEditableFrames([]);
@@ -60,6 +67,7 @@ export function useRotoEditBufferController<State extends RotoEditableState, Fra
     clearFrame,
     snapshotFrame,
     setEditableFrameList,
+    acceptPixelCache,
     resetForLaunch,
     replaceFrameStates,
     replacePreviewFrames,

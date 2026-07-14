@@ -16,71 +16,63 @@ describe('physicsPaintWorkflowPresentation', () => {
   });
 
 
-  it('classifies Roto cells with exactly gray, green, and pink semantic fills (D-11 through D-16)', () => {
+  it('classifies Roto cells with pixel-only gray and green semantic fills', () => {
     const cachedFrames = [
       { frameIndex: 0, appFrame: 5, dataUrl: 'data:image/png;base64,cached-five', source: 'real-key' as const },
       { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cached-six', source: 'real-key' as const },
     ];
-    const editableFrames = [5];
 
-    expect(getRotoCellFill(5, cachedFrames, editableFrames)).toBe('editable-session');
-    expect(getRotoCellFill(6, cachedFrames, editableFrames)).toBe('cached-only');
-    expect(getRotoCellFill(7, cachedFrames, editableFrames)).toBe('empty');
+    expect(getRotoCellFill(5, cachedFrames)).toBe('cached-only');
+    expect(getRotoCellFill(6, cachedFrames)).toBe('cached-only');
+    expect(getRotoCellFill(7, cachedFrames)).toBe('empty');
   });
 
 
-  it('keeps pending, dirty, and current-frame state out of the Roto semantic fill helper (D-11 through D-16)', () => {
-    const allSemanticFills: RotoCellFill[] = ['empty', 'cached-only', 'editable-session'];
+  it('keeps current-frame state out of the pixel-only Roto semantic fill helper', () => {
+    const allSemanticFills: RotoCellFill[] = ['empty', 'cached-only'];
 
-    expect(getRotoCellFill(5, [], [5])).toBe('editable-session');
+    expect(getRotoCellFill(5, [])).toBe('empty');
+    expect(allSemanticFills).toEqual(['empty', 'cached-only']);
     expect(allSemanticFills).not.toContain('dirty' as RotoCellFill);
-    expect(allSemanticFills).not.toContain('yellow' as RotoCellFill);
-    expect(allSemanticFills).not.toContain('orange' as RotoCellFill);
     expect(allSemanticFills).not.toContain('current' as RotoCellFill);
   });
 
 
-  it('builds Roto cell view models for empty, cached, editable, generated, and background-only states', () => {
+  it('builds Roto cell view models for empty, cached, generated, and background-only states', () => {
     const cachedFrames: PhysicPaintRotoCacheFrame[] = [
       { frameIndex: 0, appFrame: 6, dataUrl: 'data:image/png;base64,cached-six', source: 'real-key' },
       { frameIndex: 0, appFrame: 8, dataUrl: 'data:image/png;base64,background-eight', source: 'background-only-support', backgroundOnly: true, nearestRealKeyFrame: 6 },
       { frameIndex: 0, appFrame: 9, dataUrl: 'data:image/png;base64,generated-nine', source: 'generated-interpolation', nearestRealKeyFrame: 6 },
     ];
-    const editableFrames = [5];
 
-    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('empty');
-    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames, editableFrames }).state).toBe('Empty');
-    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('No Roto content on frame 7');
-    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-empty');
+    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames }).baseMeaning).toBe('empty');
+    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames }).state).toBe('Empty');
+    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames }).label).toBe('No Roto content on frame 7');
+    expect(getRotoCellViewModel({ frame: 7, currentFrame: 5, cachedFrames }).fillClass).toBe('roto-fill-empty');
 
-    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('cached');
-    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames, editableFrames }).state).toBe('Cached');
-    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Cached frame 6');
-    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-cached');
+    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames }).baseMeaning).toBe('cached');
+    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames }).state).toBe('Cached');
+    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames }).label).toBe('Cached frame 6');
+    expect(getRotoCellViewModel({ frame: 6, currentFrame: 5, cachedFrames }).fillClass).toBe('roto-fill-cached');
 
-    expect(getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('editable-current');
-    expect(getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames, editableFrames }).overlays).toContain('current');
-    expect(getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Frame 5: Current');
-    expect(getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-editable-current');
-
-    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('generated');
-    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Generated frame 9 (render-only)');
-    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-generated');
-    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames, editableFrames }).isEditableTarget).toBe(false);
+    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames }).baseMeaning).toBe('generated');
+    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames }).label).toBe('Generated frame 9 (render-only)');
+    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames }).fillClass).toBe('roto-fill-generated');
+    expect(getRotoCellViewModel({ frame: 9, currentFrame: 5, cachedFrames }).isEditableTarget).toBe(false);
 
     const realAndGeneratedCollision = [
       { frameIndex: 0, appFrame: 10, dataUrl: 'data:image/png;base64,generated-ten', source: 'generated-interpolation' as const, nearestRealKeyFrame: 6 },
       { frameIndex: 0, appFrame: 10, dataUrl: 'data:image/png;base64,real-ten', source: 'real-key' as const },
     ];
-    expect(getRotoCellViewModel({ frame: 10, currentFrame: 10, cachedFrames: realAndGeneratedCollision, editableFrames: [] }).baseMeaning).toBe('cached');
-    expect(getRotoCellViewModel({ frame: 10, currentFrame: 10, cachedFrames: realAndGeneratedCollision, editableFrames: [] }).isEditableTarget).toBe(true);
+    expect(getRotoCellViewModel({ frame: 10, currentFrame: 10, cachedFrames: realAndGeneratedCollision }).baseMeaning).toBe('cached');
+    expect(getRotoCellViewModel({ frame: 10, currentFrame: 10, cachedFrames: realAndGeneratedCollision }).isEditableTarget).toBe(true);
 
-    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).baseMeaning).toBe('background-only');
-    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).state).toBe('Background only');
-    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).label).toBe('Background only on frame 8');
-    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).title).toBe('Background only on frame 8');
-    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).ariaLabel).toBe('Background only on frame 8');
-    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames, editableFrames }).fillClass).toBe('roto-fill-background-only');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames }).baseMeaning).toBe('background-only');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames }).state).toBe('Background only');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames }).label).toBe('Background only on frame 8');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames }).title).toBe('Background only on frame 8');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames }).ariaLabel).toBe('Background only on frame 8');
+    expect(getRotoCellViewModel({ frame: 8, currentFrame: 5, cachedFrames }).fillClass).toBe('roto-fill-background-only');
   });
 
 
@@ -95,46 +87,28 @@ describe('physicsPaintWorkflowPresentation', () => {
   });
 
 
-  it('keeps Roto current, dirty, and pending as overlays separate from base meanings', () => {
-    const baseMeanings: RotoCellBaseMeaning[] = ['empty', 'cached', 'editable-current', 'generated', 'background-only'];
+  it('keeps current, dirty, and pending as overlays separate from pixel-only base meanings', () => {
+    const baseMeanings: RotoCellBaseMeaning[] = ['empty', 'cached', 'generated', 'background-only'];
     const overlays: RotoCellOverlay[] = ['current', 'dirty', 'pending'];
 
-    const dirtyModel = getRotoCellViewModel({
-      frame: 5,
-      currentFrame: 5,
-      cachedFrames: [],
-      editableFrames: [5],
-      pendingFrames: [5],
-      isSaving: false,
-    });
-    const pendingModel = getRotoCellViewModel({
-      frame: 5,
-      currentFrame: 5,
-      cachedFrames: [],
-      editableFrames: [5],
-      pendingFrames: [5],
-      isSaving: true,
-    });
+    const dirtyModel = getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames: [], pendingFrames: [5], isSaving: false });
+    const pendingModel = getRotoCellViewModel({ frame: 5, currentFrame: 5, cachedFrames: [], pendingFrames: [5], isSaving: true });
 
-    expect(dirtyModel.baseMeaning).toBe('editable-current');
+    expect(dirtyModel.baseMeaning).toBe('empty');
     expect(dirtyModel.overlays).toEqual(['current', 'dirty']);
     expect(dirtyModel.label).toBe('Unsaved changes on frame 5');
-    expect(pendingModel.baseMeaning).toBe('editable-current');
+    expect(pendingModel.baseMeaning).toBe('empty');
     expect(pendingModel.overlays).toEqual(['current', 'dirty', 'pending']);
     expect(pendingModel.label).toBe('Saving frame 5...');
     expect(baseMeanings).not.toContain('current' as RotoCellBaseMeaning);
-    expect(baseMeanings).not.toContain('dirty' as RotoCellBaseMeaning);
-    expect(baseMeanings).not.toContain('pending' as RotoCellBaseMeaning);
     expect(overlays).not.toContain('cached' as RotoCellOverlay);
   });
 
 
-  it('returns Roto cell labels from base meanings and overlays', () => {
+  it('returns Roto cell labels from pixel-only base meanings and overlays', () => {
     expect(getRotoCellStateLabel(7, 'empty', [])).toBe('No Roto content on frame 7');
     expect(getRotoCellStateLabel(6, 'cached', [])).toBe('Cached frame 6');
-    expect(getRotoCellStateLabel(5, 'editable-current', ['current'])).toBe('Frame 5: Current');
-    expect(getRotoCellStateLabel(5, 'editable-current', ['current', 'dirty'])).toBe('Unsaved changes on frame 5');
-    expect(getRotoCellStateLabel(5, 'editable-current', ['current', 'dirty', 'pending'])).toBe('Saving frame 5...');
+    expect(getRotoCellStateLabel(5, 'empty', ['current', 'dirty'])).toBe('Unsaved changes on frame 5');
     expect(getRotoCellStateLabel(9, 'generated', [])).toBe('Generated frame 9 (render-only)');
     expect(getRotoCellStateLabel(8, 'background-only', [])).toBe('Background only on frame 8');
   });

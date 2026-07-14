@@ -1036,7 +1036,7 @@ export const physicPaintStore = {
       return _errorResult(payload, 'Expected apply-canvas payload');
     }
 
-    const rotoBackground = payload.rotoBackground ?? _rotoBackgroundFromEditableState(payload.editableState);
+    const rotoBackground = payload.rotoBackground ?? (payload.editableState ? _rotoBackgroundFromEditableState(payload.editableState) : null);
     if (rotoBackground) {
       _workflowMetadata.set(payload.layerId, { ...(_workflowMetadata.get(payload.layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto', rotoBackground: { ...rotoBackground } });
     }
