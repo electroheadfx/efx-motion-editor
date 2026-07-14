@@ -278,9 +278,10 @@ export function PhysicsPaintStudio() {
     session: { markLiveOverlayDirty: rotoSession.markLiveOverlayDirty, markLiveOverlayEmpty: rotoSession.markLiveOverlayEmpty },
     reference: {
       cachedReferenceUrl: cachedRotoReferenceUrl, cachedRepaintBaseFrame: cachedRotoRepaintBaseFrame,
-      clearReference: clearCachedRotoReferenceUrl, setReferenceUrl: setCachedRotoReferenceUrl,
+      clearReference: clearCachedRotoReferenceUrl, resetReference: resetCachedRotoReference, setReferenceUrl: setCachedRotoReferenceUrl,
       loadReferenceFrame: loadCachedRotoReferenceFrame,
     },
+    clearCachedFrame: rotoPersistence.clearCurrentFrame,
     playback: { stop: rotoCachedPlayback.stop }, syncPendingFrames: syncPendingRotoFrames,
     status: { setApplyStatus, setApplyMessage },
   });
@@ -329,8 +330,11 @@ export function PhysicsPaintStudio() {
   const removeCachedRotoFrameFromLaunchContext = rotoPersistence.removeCachedFrame;
   const clearActiveSource = useCallback(() => {
     if (!engine || !launchContext) return;
+    if (workflowMode === 'roto') {
+      rotoFrameEditing.clearCurrentFrame();
+      return;
+    }
     engine.clear();
-    if (rotoFrameEditing.clearCurrentFrame()) return;
     latestPlayFramesRef.current = [];
     setLatestPlayFrames([]);
     setCachedPlayPreviewUrl(null);

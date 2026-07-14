@@ -30,6 +30,7 @@ interface RotoReferenceEditingPort {
   cachedReferenceUrl: string | null;
   cachedRepaintBaseFrame: RenderedFramePayload | null;
   clearReference: () => void;
+  resetReference: () => void;
   setReferenceUrl: (url: string | null) => void;
   loadReferenceFrame: (frame: number, engine: PreviewBackgroundEngine | null) => void;
 }
@@ -53,6 +54,7 @@ export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditab
   editBuffer: RotoEditBufferPort<TEditable>;
   session: RotoSessionEditingPort;
   reference: RotoReferenceEditingPort;
+  clearCachedFrame: (frame: number, size: { width: number; height: number }) => void;
   playback: { stop: () => void };
   syncPendingFrames: () => void;
   status: RotoEditingStatusPort;
@@ -111,19 +113,16 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
   }, [input.playback, markCurrentFrameDirty]);
 
   const clearCurrentFrame = useCallback(() => {
-    if (!input.engine || !input.launchContext || input.workflowMode !== 'roto') return false;
+    if (!input.engine || !input.launchContext || input.workflowMode !== 'roto' || input.currentFrameSelectionKind !== 'real-key') return false;
+    input.playback.stop();
     input.engine.clear();
-    if (input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame) {
-      input.editBuffer.clearCachedOverlay(input.currentFrame);
-      input.session.markLiveOverlayEmpty(input.currentFrame);
-      input.syncPendingFrames();
-      input.status.setApplyStatus('success');
-      input.status.setApplyMessage(`Cleared live repaint strokes for frame ${input.currentFrame}; cached base preserved.`);
-      return true;
-    }
+    (input.engine as PreviewBackgroundEngine).clearPreviewBaseImage();
+    (input.engine as PreviewBackgroundEngine).resetBackground();
+    input.reference.resetReference();
     input.editBuffer.clearFrame(input.currentFrame);
+    input.session.markLiveOverlayEmpty(input.currentFrame);
+    input.clearCachedFrame(input.currentFrame, input.canvasSize);
     input.syncPendingFrames();
-    if (!input.reference.cachedRepaintBaseFrame) input.reference.setReferenceUrl(null);
     input.status.setApplyStatus('success');
     input.status.setApplyMessage(`Cleared roto frame ${input.currentFrame}.`);
     return true;

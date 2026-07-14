@@ -974,6 +974,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     ];
     for (const frame of realKeys) physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', frame.sourceFrame!, frame);
     physicPaintStore.setRotoInterpolationSettings('phys-layer-1', settings);
+    const normalizedSettings = physicPaintStore.getRotoInterpolationSettings('phys-layer-1');
     const launchContext: PhysicPaintLaunchContext = {
       operationId: 'clear-current-mounted-real-key',
       layerId: 'phys-layer-1',
@@ -987,7 +988,13 @@ describe('Phase 36.3 durable Roto cache core', () => {
       rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings('phys-layer-1'),
     };
     paintHarness.storedLaunchContext = launchContext;
-    const { root } = installDom(encodeURIComponent(JSON.stringify(launchContext)), () => {});
+    const applyPayloads: PhysicPaintApplyPayload[] = [];
+    const { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+      if (message.type !== PHYSIC_PAINT_APPLY_EVENT || !message.payload) return;
+      applyPayloads.push(message.payload);
+      const result = applyPhysicPaintPayload(message.payload);
+      window.dispatchEvent(new TestEvent(PHYSIC_PAINT_APPLY_RESULT_EVENT, { detail: result }));
+    });
     const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
 
     await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
@@ -1005,7 +1012,43 @@ describe('Phase 36.3 durable Roto cache core', () => {
     expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 3]);
     expect(physicPaintStore.getFrame('phys-layer-1', 0)?.dataUrl).not.toBe(oldPaint);
     expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(otherPaint);
-    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual(settings);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual(normalizedSettings);
+    expect(applyPayloads).toEqual([]);
+
+    const projectPath = '/clear-current-roto-frame';
+    const persistedOutputs = await savePhysicPaintData(projectPath, physicPaintStore.toMceOutputs() as RuntimePhysicPaintOutput[]);
+    expect(JSON.stringify(persistedOutputs)).not.toContain(oldPaint);
+    const hydratedOutputs = await loadPhysicPaintData(projectPath, persistedOutputs);
+    physicPaintStore.reset();
+    physicPaintStore.loadFromMceOutputs(hydratedOutputs!);
+    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), 0, null, null, 'roto');
+    expect(reopenContext.cachedRotoFrames?.find((frame) => frame.source === 'real-key' && (frame.sourceFrame ?? frame.appFrame) === 0)?.dataUrl).not.toBe(oldPaint);
+    expect(reopenContext.cachedRotoFrames?.find((frame) => frame.source === 'real-key' && (frame.sourceFrame ?? frame.appFrame) === 3)?.dataUrl).toBe(otherPaint);
+    expect(reopenContext.rotoInterpolationSettings).toEqual(normalizedSettings);
+
+    fire(findRotoCell(root, 1)!, 'Click');
+    await flushPreact();
+    const beforeGeneratedClear = structuredClone(physicPaintStore.toMceOutputs());
+    fire(findButton(root, 'Clear current Roto frame')!, 'Click');
+    await flushPreact();
+    expect(physicPaintStore.toMceOutputs()).toEqual(beforeGeneratedClear);
+    fire(findRotoCell(root, 0)!, 'Click');
+    await flushPreact();
+
+    paintHarness.engine?.__setState(editedState, pngDataUrl('clear-current-new-paint'));
+    const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
+    fire(canvasStack!, 'PointerDown');
+    await flushPreact();
+    fire(findButton(root, 'Save current')!, 'Click');
+    await flushPreact();
+    expect(applyPayloads[applyPayloads.length - 1]).toMatchObject({
+      kind: 'apply-canvas',
+      sourceFrame: 0,
+      renderedFrame: { dataUrl: pngDataUrl('clear-current-new-paint') },
+    });
+    expect(physicPaintStore.getFrame('phys-layer-1', 0)?.dataUrl).toBe(pngDataUrl('clear-current-new-paint'));
+    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(otherPaint);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual(normalizedSettings);
   });
 
   it('saves one current real Roto key as durable cache, reopens it as reference, and discards later unsaved edits', async () => {

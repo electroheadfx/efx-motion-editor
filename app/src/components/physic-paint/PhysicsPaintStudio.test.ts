@@ -1475,18 +1475,19 @@ describe('PhysicsPaintStudio Roto cache-first autosave contract', () => {
     expect(text).not.toContain('physics-paint-cached-base-feedback');
   });
 
-  it('36.11 D-06/D-12 protects cached-base Clear as live-overlay-only without removing saved real-key/cache state', () => {
+  it('260714-9es clears a cached real key through the controller without Delete semantics', () => {
     const clearBlock = rotoFrameEditingControllerSource();
+    const persistenceBlock = rotoPersistenceCoordinatorSource();
 
-    expect(clearBlock).toContain('if (cachedRotoRepaintBaseFrame?.appFrame === currentFrame) {');
+    expect(clearBlock).toContain("currentFrameSelectionKind !== 'real-key'");
+    expect(clearBlock).toContain('input.reference.resetReference()');
+    expect(clearBlock).toContain('rotoEditBuffer.clearFrame(currentFrame)');
     expect(clearBlock).toContain('rotoSession.markLiveOverlayEmpty(currentFrame)');
-    expect(clearBlock).toContain('setApplyMessage(`Cleared live repaint strokes for frame ${currentFrame}; cached base preserved.`)');
-    expect(clearBlock).toContain('return;');
-    const cachedBaseBranch = clearBlock.slice(clearBlock.indexOf('if (cachedRotoRepaintBaseFrame?.appFrame === currentFrame)'), clearBlock.indexOf('rotoFrameStatesRef.current.delete(currentFrame)'));
-    expect(cachedBaseBranch).not.toContain('removeEditableRotoFrame(currentFrame)');
-    expect(cachedBaseBranch).not.toContain('setSavedRotoFrames((frames) => frames.filter');
-    expect(cachedBaseBranch).not.toContain('setOccupiedRotoFrames((frames) => frames.filter');
-    expect(cachedBaseBranch).not.toContain('removeCachedRotoFrameFromLaunchContext');
+    expect(clearBlock).toContain('input.clearCachedFrame(currentFrame, input.canvasSize)');
+    expect(clearBlock).toContain('input.status.setApplyMessage(`Cleared roto frame ${currentFrame}.`)');
+    expect(persistenceBlock).toContain('input.store.upsertRealKey(current.layerId, frame, blankFrame, true)');
+    expect(clearBlock).not.toContain('delete-roto-frame');
+    expect(clearBlock).not.toContain('removeRealRotoKeyFrame');
   });
 
   it('36.11 D-07 keeps Undo/Redo live-overlay-only and never loads cached-base pixels into editable history', () => {

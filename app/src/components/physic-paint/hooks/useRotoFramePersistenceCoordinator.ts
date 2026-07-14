@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import { addOccupiedRotoFrame, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
+import { addOccupiedRotoFrame, buildBlankRotoFrame, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { removeCachedRotoCacheFrame, upsertCachedRotoCacheFrame } from '../roto/rotoCacheTransactions';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { useRotoEditBufferController } from './useRotoEditBufferController';
@@ -76,6 +76,20 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     } : current);
   }, [input]);
 
+  const clearCurrentFrame = useCallback((frame: number, size: { width: number; height: number }) => {
+    const blankFrame = { ...buildBlankRotoFrame(size.width, size.height, frame), source: 'real-key' as const, sourceFrame: frame, displayFrame: frame };
+    confirmedFramesRef.current.delete(frame);
+    input.setLaunchContext((current) => {
+      if (!current) return current;
+      input.store.upsertRealKey(current.layerId, frame, blankFrame, true);
+      const refreshedFrames = input.store.getCacheFrames(current.layerId);
+      const settings = input.store.getInterpolationSettings(current.layerId);
+      confirmedFramesRef.current = new Map(refreshedFrames.filter((candidate) => candidate.source === 'real-key').map((candidate) => [candidate.sourceFrame ?? candidate.appFrame, candidate]));
+      editBuffer.setEditableFrameList((frames) => frames.filter((candidate) => candidate !== frame));
+      return { ...current, startFrame: frame, cachedRotoFrames: refreshedFrames, rotoInterpolationSettings: settings };
+    });
+  }, [editBuffer, input]);
+
   const resetForLaunch = useCallback((frames?: readonly PhysicPaintRotoCacheFrame[]) => {
     editBuffer.resetForLaunch();
     confirmedFramesRef.current = new Map((frames ?? []).filter((frame) => frame.source === 'real-key').map((frame) => [frame.appFrame, frame]));
@@ -88,6 +102,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     reference,
     upsertCachedFrame,
     removeCachedFrame,
+    clearCurrentFrame,
     resetForLaunch,
   };
 }
