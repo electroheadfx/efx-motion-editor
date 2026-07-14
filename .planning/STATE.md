@@ -6,9 +6,9 @@ current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
 status: ready_to_plan
 stopped_at: Phase 36.13 completed and native UAT approved
-last_updated: "2026-07-14T05:10:00Z"
+last_updated: "2026-07-14T06:45:00Z"
 last_activity: 2026-07-14
-last_activity_desc: Completed quick task 260714-9es — fixed Clear current Roto frame cache reset
+last_activity_desc: Completed quick task 260714-ail — replaced manual Roto save with automatic live pixel caching
 progress:
   total_phases: 19
   completed_phases: 16
@@ -32,7 +32,7 @@ Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — READY TO PLAN
 Previous phase: 36.13 — Physics Paint Roto Dynamic Interpolation Spacing complete
 Plan: 0 of TBD
 Status: Phase 36.13 completed with native UAT approval
-Last activity: 2026-07-14 — Completed quick task 260714-9es: fixed Clear current Roto frame cache reset
+Last activity: 2026-07-14 — Completed quick task 260714-ail: replaced manual Roto save with automatic live pixel caching
 Next recommended action: Run `/gsd-plan-phase 36.14`
 
 Progress: [█████████████████░░░] 92/92 planned Phase 36.13 plans executed; 16/19 phases complete (84%)
@@ -102,24 +102,24 @@ Recent decisions affecting current work:
 - [Phase 36.2]: Plan 02 keeps Roto dirty/current state orthogonal to gray/green/pink semantic fills; missing main EFX Motion cache preview/marker propagation is carried to Plans 36.2-03/04.
 - [Phase 36.2 Plan 04]: Generated-only Roto cache frames are launch redirects, not editable targets; standalone launch opens the nearest real key when metadata is available.
 - [Phase 36.2 Plan 04]: Missing Roto frames are resolved virtually in PreviewRenderer, preserving transparent/background-only playback without writing cache metadata.
-- [Phase 36.2]: Plan 03: Dirty Roto frames flush only at explicit lifecycle boundaries: frame leave, Save pending/current, and close/unload. — Prevents repeated apply traffic during brush movement while preserving cache durability.
+- [Superseded by quick 260714-ail] Phase 36.2 Plan 03 manual lifecycle flushes at frame leave, Save pending/current, and close/unload are replaced by completed-mutation live pixel caching.
 - [Phase 36.2]: Plan 03: Cached-only Roto PNGs are repaintable visual references, not editable stroke state, and are cleared before exported replacement frames are generated. — Prevents old cache compositing into replacement Roto output.
-- [Phase 36.2]: Plan 03: Navigation is blocked while a Roto flush/apply is in flight to preserve operation ordering and avoid duplicate frame-sync races. — Preserves bridge operation matching across save-on-leave boundaries.
-- [Phase 36.2 Plan 07]: Roto close requests are prevented once, flushed through the existing apply-canvas path, then resumed via the Tauri window close API.
+- [Superseded by quick 260714-ail] Phase 36.2 Plan 03 navigation blocking during Roto flush/apply is removed; per-source-frame revisions now prevent stale cache writes without blocking navigation.
+- [Superseded by quick 260714-ail] Phase 36.2 Plan 07 close-time Roto flush/apply is removed; completed mutations already update durable flattened pixels.
 - [Phase 36.2 Plan 07]: Editable-session pink cells are driven only by real editable stroke content in the open session; cached/background-only occupancy remains separate.
 - [Phase 36.2 Plan 07]: Cached Roto references stay full opacity and use outline treatment for reference status so old cache pixels are not visually diminished.
 - [Phase 36.2 Plan 08]: Roto interpolation controls live inline in the standalone workflow strip, not in a modal or hidden shortcut path, so UAT can discover and change settings visually.
 - [Phase 36.2 Plan 08]: Generated interpolation frames remain render-only cached frames surfaced by connector/status UI; real-key cells remain the only editable targets.
 - [Phase 36.2 Plan 09]: Roto key utility controls are inline in the standalone workflow strip; generated interpolation frames stay render-only and Paste is replace-style on real keys only.
 - [Phase 36.3]: Cached Roto PNG output is the durable truth; reopen uses a full-strength visual `Cached reference`, not editable stroke restoration.
-- [Phase 36.3]: `Save current` is the validated recovery path for one Roto frame through parent preview, project save/load, and navigation preservation.
+- [Superseded by quick 260714-ail] Phase 36.3 `Save current` recovery is removed; completed live mutations automatically commit the latest flattened alpha pixels.
 - [Phase 36.3]: Phase 36.3 UI-spec fidelity debt is documented in `36.3-UI-REVIEW.md`; defer fixes to a later targeted UI cleanup, not hidden Phase 36.3 scope.
-- [Phase 36.6]: Dirty Roto save-on-leave saves the source frame, shows source-frame feedback, keeps latest queued destination, and retains dirty state on failure.
+- [Superseded by quick 260714-ail] Phase 36.6 save-on-leave and queued navigation lifecycle are removed; source-bound per-frame revisions accept only the latest automatic live-pixel commit.
 - [Phase 36.7]: Roto key utilities now operate on real-key controller transactions so Duplicate, Insert, Delete, Copy, and Paste keep cache/cell/canvas state clean.
 - [Phase 36.9]: Cached Roto Play/Stop transport lives inside the Roto navigator; Play and Stop replace each other in one icon slot, loop is an icon pressed state, fps changes restart active playback, and Space toggles playback in Roto mode.
 - [Phase 36.9]: Cached Roto playback sequences only real cached Roto key frames from launch context, excluding current/occupied/saved/background fallback frames that caused empty trailing frames.
 - [Phase 36.11]: Cached real-key repaint uses the cached alpha as a non-editable engine preview base and merges new live alpha additively on save; preview base stays out of export/cache serialization.
-- [Phase 36.11]: Same-session navigation after Save current uses a confirmed in-session cached-frame source so the latest accepted cache appears without close/reopen.
+- [Superseded by quick 260714-ail] Phase 36.11 same-session post-Save navigation is replaced by immediate automatic live-pixel commits through the same cached-frame source.
 
 ### Pending Todos
 
@@ -150,6 +150,7 @@ None yet.
 | 260615-iui | Phase 36.1 Consolidation play canvas brush cache fix | 2026-06-15 | be8f6e8 | [260615-iui-phase-36-1-consolidation-when-i-add-brus](./quick/260615-iui-phase-36-1-consolidation-when-i-add-brus/) |
 | 260626-dja | Set up Vitest coverage for app tests and run the coverage report | 2026-06-26 | 966c76ec | [260626-dja-set-up-vitest-coverage-for-app-tests-and](./quick/260626-dja-set-up-vitest-coverage-for-app-tests-and/) |
 | 260714-9es | Fix Clear current Roto frame cache reset | 2026-07-14 | 82ebc620 | [260714-9es-fix-the-clear-current-roto-frame-button-](./quick/260714-9es-fix-the-clear-current-roto-frame-button-/) |
+| 260714-ail | Replace manual Roto save with automatic live pixel caching | 2026-07-14 | f5ad4212 | [260714-ail-replace-manual-save-on-leave-rendering-w](./quick/260714-ail-replace-manual-save-on-leave-rendering-w/) |
 
 ### Roadmap Evolution
 
