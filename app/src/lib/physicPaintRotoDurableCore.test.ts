@@ -957,6 +957,57 @@ describe('Phase 36.3 durable Roto cache core', () => {
     paintHarness.launchListeners = [];
   });
 
+  it('Clear current Roto frame replaces the mounted cached real key without deleting its topology', async () => {
+    const oldPaint = pngDataUrl('clear-current-old-paint');
+    const otherPaint = pngDataUrl('clear-current-other-paint');
+    const settings: PhysicPaintRotoInterpolationSettings = {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate',
+      deform: 18,
+      position: -12,
+      segmentSpacingOverrides: [{ fromSourceFrame: 0, toSourceFrame: 3, inBetweenCount: 2 }],
+    };
+    const realKeys: PhysicPaintRotoCacheFrame[] = [
+      { frameIndex: 0, appFrame: 0, sourceFrame: 0, displayFrame: 0, source: 'real-key', dataUrl: oldPaint, width: 1000, height: 650 },
+      { frameIndex: 0, appFrame: 3, sourceFrame: 3, displayFrame: 3, source: 'real-key', dataUrl: otherPaint, width: 1000, height: 650 },
+    ];
+    for (const frame of realKeys) physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', frame.sourceFrame!, frame);
+    physicPaintStore.setRotoInterpolationSettings('phys-layer-1', settings);
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: 'clear-current-mounted-real-key',
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: 0,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: physicPaintStore.getRotoCacheFrames('phys-layer-1'),
+      rotoInterpolationSettings: physicPaintStore.getRotoInterpolationSettings('phys-layer-1'),
+    };
+    paintHarness.storedLaunchContext = launchContext;
+    const { root } = installDom(encodeURIComponent(JSON.stringify(launchContext)), () => {});
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
+    await act(async () => { await flushPreact(); });
+    expect(paintHarness.engine?.setPreviewBaseImageUrl).toHaveBeenCalledWith(oldPaint);
+
+    const clearButton = findButton(root, 'Clear current Roto frame');
+    expect(clearButton).not.toBeNull();
+    fire(clearButton!, 'Click');
+    await flushPreact();
+
+    expect(paintHarness.engine?.clear).toHaveBeenCalled();
+    expect(paintHarness.engine?.clearPreviewBaseImage).toHaveBeenCalled();
+    expect(visibleText(root)).toContain('Cleared roto frame 0.');
+    expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 3]);
+    expect(physicPaintStore.getFrame('phys-layer-1', 0)?.dataUrl).not.toBe(oldPaint);
+    expect(physicPaintStore.getFrame('phys-layer-1', 3)?.dataUrl).toBe(otherPaint);
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1')).toEqual(settings);
+  });
+
   it('saves one current real Roto key as durable cache, reopens it as reference, and discards later unsaved edits', async () => {
     const failures: string[] = [];
     const initialFrame = {
