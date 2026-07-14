@@ -8,6 +8,7 @@ import { useRef, useEffect } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import { EfxPaintEngine } from './engine/EfxPaintEngine'
 import type { EngineConfig, NativePenInput } from './types'
+import type { CompletedPaintMutation } from './engine/EfxPaintEngine'
 
 export interface EfxPaintCanvasProps extends EngineConfig {
   width?: number
@@ -15,6 +16,7 @@ export interface EfxPaintCanvasProps extends EngineConfig {
   class?: string
   onEngineReady?: (engine: EfxPaintEngine) => void
   onNativePenInputReady?: (handler: (input: NativePenInput) => void) => void
+  onCompletedMutation?: (mutation: CompletedPaintMutation) => void
 }
 
 /**
@@ -33,6 +35,8 @@ export interface EfxPaintCanvasProps extends EngineConfig {
 export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const engineRef = useRef<EfxPaintEngine | null>(null)
+  const completedMutationRef = useRef(props.onCompletedMutation)
+  completedMutationRef.current = props.onCompletedMutation
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -45,6 +49,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
       getStrokeMetadata: props.getStrokeMetadata,
     })
     engineRef.current = engine
+    engine.setCompletedMutationListener((mutation) => completedMutationRef.current?.(mutation))
     props.onNativePenInputReady?.((input) => engine.updateNativePenInput(input))
 
     // Await async init (paper texture loading) before signaling ready
@@ -53,6 +58,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
     })
 
     return () => {
+      engine.setCompletedMutationListener(null)
       engine.destroy()
       engineRef.current = null
     }

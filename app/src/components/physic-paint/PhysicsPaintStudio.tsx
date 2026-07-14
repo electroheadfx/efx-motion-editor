@@ -536,7 +536,28 @@ export function PhysicsPaintStudio() {
         mount: {
           width: canvasWidth, height: canvasHeight, paperTextureScale,
           onEngineReady: (readyEngine) => { handleEngineReady(readyEngine); if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine); },
-          onCanvasMounted: setCanvasMounted, onNativePenInputReady: handleNativePenInputReady, getStrokeMetadata,
+          onCanvasMounted: setCanvasMounted,
+          onNativePenInputReady: handleNativePenInputReady,
+          onCompletedMutation: ({ isEmpty }) => {
+            const mutationEngine = engineRef.current;
+            if (workflowMode !== 'roto' || currentFrameSelectionKind !== 'real-key' || !mutationEngine || !launchContext) return;
+            const sourceFrame = currentFrame;
+            if (isEmpty) {
+              if (cachedRotoRepaintBaseFrame?.appFrame === sourceFrame) {
+                rotoPersistence.invalidateLivePixels(sourceFrame);
+                rotoPersistence.upsertCachedFrame(cachedRotoRepaintBaseFrame, false);
+              } else {
+                rotoPersistence.removeCachedFrame(sourceFrame);
+              }
+              return;
+            }
+            const liveAlphaCanvas = mutationEngine.copyLiveAlphaCanvas();
+            const cachedBase = cachedRotoRepaintBaseFrame?.appFrame === sourceFrame ? cachedRotoRepaintBaseFrame : null;
+            void rotoPersistence.captureLivePixels({ layerId: launchContext.layerId, sourceFrame, liveAlphaCanvas, cachedBase, size: { width: canvasWidth, height: canvasHeight } }).catch((error) => {
+              console.error('[PhysicsPaintStudio] Automatic Roto pixel cache failed', error);
+            });
+          },
+          getStrokeMetadata,
         },
       },
     rightPanel: {

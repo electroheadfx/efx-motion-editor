@@ -1,14 +1,14 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import type { CompletedPaintMutation, EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import { getContainedCanvasDisplaySize } from './physicsPaintCanvasSizing';
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
 
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
-export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
+export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation) => void; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
@@ -57,6 +57,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
         paperTextureScale={props.paperTextureScale}
         class="paint-canvas"
         onNativePenInputReady={props.onNativePenInputReady}
+        onCompletedMutation={props.onCompletedMutation}
         getStrokeMetadata={props.getStrokeMetadata}
         onEngineReady={(engine) => {
           engine.setTool('paint');

@@ -63,6 +63,11 @@ type StrokeApplicationOptions = {
   physicsMode?: 'local' | null
 }
 
+export type CompletedPaintMutation = {
+  kind: ToolType | 'undo' | 'clear' | 'physics'
+  isEmpty: boolean
+}
+
 const STROKE_FINALIZATION_INPUT_GRACE_MS = 600
 const STROKE_FINALIZATION_RETRY_MS = 80
 const STROKE_FINALIZATION_DRAIN_MS = 16
@@ -130,6 +135,7 @@ export class EfxPaintEngine {
   private previewBackgroundRequestId: number = 0
   private previewBaseRequestId: number = 0
   private previewBaseEnabled: boolean = false
+  private previewBackgroundSeparated: boolean = false
   private previewBaseImage: HTMLImageElement | null = null
 
   // --- Engine State ---
@@ -165,6 +171,7 @@ export class EfxPaintEngine {
   private lastPointerInputTime: number = 0
   private readonly getStrokeMetadata?: () => StrokeMetadata | null | undefined
   private readonly paperTextureScale: number
+  private completedMutationListener: ((mutation: CompletedPaintMutation) => void) | null = null
 
   // --- Bound Event Handlers (for removeEventListener) ---
   private readonly boundPointerDown: (e: PointerEvent) => void
@@ -447,6 +454,7 @@ export class EfxPaintEngine {
       if (requestId !== this.previewBaseRequestId || this.destroyed || this.animationMode || this.state.drawing) return
       this.previewBaseImage = image
       this.previewBaseEnabled = true
+      this.previewBackgroundSeparated = true
       this.redrawPreviewBase()
       this.redrawAll()
     }
@@ -456,6 +464,7 @@ export class EfxPaintEngine {
   clearPreviewBaseImage(): void {
     this.previewBaseRequestId += 1
     this.previewBaseEnabled = false
+    this.previewBackgroundSeparated = false
     this.previewBaseImage = null
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
     this.redrawAll()
@@ -550,6 +559,10 @@ export class EfxPaintEngine {
     }, 16)
   }
 
+  setCompletedMutationListener(listener: ((mutation: CompletedPaintMutation) => void) | null): void {
+    this.completedMutationListener = listener
+  }
+
   /** Stop physics simulation and bake result */
   stopPhysics(): void {
     if (!this.state.physicsRunning) return
@@ -595,6 +608,7 @@ export class EfxPaintEngine {
         diffusionFrames: this.physicsTickCount,
         physicsMode: this.state.physicsMode === 'local' ? 'local' : null,
       })
+      this.notifyCompletedMutation('physics')
     }
   }
 
@@ -665,6 +679,7 @@ export class EfxPaintEngine {
     }
     // Remove last action
     if (this.allActions.length > 0) this.allActions.pop()
+    this.notifyCompletedMutation('undo')
   }
 
   /** Clear the canvas and all strokes */
@@ -695,6 +710,7 @@ export class EfxPaintEngine {
     }
     // Also force-clear the display canvas so stale wet composite is gone
     this.dualCanvas.displayCtx.clearRect(0, 0, this.width, this.height)
+    this.notifyCompletedMutation('clear')
   }
 
   /** Serialize the project for saving */
@@ -762,6 +778,41 @@ export class EfxPaintEngine {
     const ctx = canvas.getContext('2d')!
     ctx.clearRect(0, 0, this.width, this.height)
     ctx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
+    ctx.drawImage(this.dualCanvas.displayCanvas, 0, 0)
+    return canvas
+  }
+
+  /** Copy the completed live paint only, excluding preview base and paper/background. */
+  copyLiveAlphaCanvas(): HTMLCanvasElement {
+    this.renderVisibleWetLayer()
+    const canvas = document.createElement('canvas')
+    canvas.width = this.width
+    canvas.height = this.height
+    const ctx = canvas.getContext('2d')!
+    ctx.clearRect(0, 0, this.width, this.height)
+
+    if (this.previewBackgroundSeparated) {
+      ctx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
+    } else {
+      const dryPixels = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
+      const backgroundPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
+      const dry = dryPixels.data
+      const background = backgroundPixels.data
+      for (let index = 0; index < dry.length; index += 4) {
+        if (
+          dry[index] === background[index]
+          && dry[index + 1] === background[index + 1]
+          && dry[index + 2] === background[index + 2]
+          && dry[index + 3] === background[index + 3]
+        ) {
+          dry[index] = 0
+          dry[index + 1] = 0
+          dry[index + 2] = 0
+          dry[index + 3] = 0
+        }
+      }
+      ctx.putImageData(dryPixels, 0, 0)
+    }
     ctx.drawImage(this.dualCanvas.displayCanvas, 0, 0)
     return canvas
   }
@@ -1004,6 +1055,11 @@ export class EfxPaintEngine {
 
   private applyFinalizedStroke({ tool, points, color, opts, hasPenInput }: DeferredStrokeFinalization): void {
     this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true, hasPenInput })
+    this.notifyCompletedMutation(tool)
+  }
+
+  private notifyCompletedMutation(kind: CompletedPaintMutation['kind']): void {
+    this.completedMutationListener?.({ kind, isEmpty: this.allActions.length === 0 })
   }
 
   private strokeHasPenInput(stroke: PaintStroke): boolean {

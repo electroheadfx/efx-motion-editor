@@ -26,6 +26,7 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
         displayCanvas: { __name: 'display' },
         previewBaseCanvas: { __name: 'preview-base' },
       },
+      previewBackgroundSeparated: true,
       renderVisibleWetLayer,
       flushPendingStrokeFinalizations,
     });
@@ -38,7 +39,7 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
     expect(flushPendingStrokeFinalizations).not.toHaveBeenCalled();
   });
 
-  it('notifies after successful Undo and Clear pixel mutations', () => {
+  it('does not notify Undo when no visible mutation is available', () => {
     const listener = vi.fn();
     const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine;
     Object.assign(engine as object, {
