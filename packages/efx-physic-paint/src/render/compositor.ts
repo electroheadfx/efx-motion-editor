@@ -26,6 +26,22 @@ const DRY_ALPHA_THRESHOLD = 1
  * @param height - Canvas height
  * @param sampleHFn - Paper height sampling function (x, y) => 0-1
  */
+export function wetDisplayAlpha(
+  densityAlpha: number,
+  pixelOpacity: number,
+  paperHeight: number,
+): number {
+  const density = densityAlpha / DENSITY_NORM
+  if (pixelOpacity >= 0.90) {
+    return Math.min(255, Math.round(density * 300 * pixelOpacity))
+  }
+  const displayAlpha = Math.min(MAX_DISPLAY_ALPHA,
+    Math.round(255 * (1 - Math.exp(-DENSITY_K_DISPLAY * density))))
+  const paperStrength = 0.05 + 0.20 * (1 - Math.min(1, density * 2))
+  const paperMod = 1.0 - paperStrength * paperHeight
+  return displayAlpha * paperMod * pixelOpacity
+}
+
 export function compositeWetLayer(
   displayCtx: CanvasRenderingContext2D,
   wet: WetBuffers,
@@ -54,22 +70,7 @@ export function compositeWetLayer(
     const pixelOpacity = wet.strokeOpacity[i] || 0
     if (pixelOpacity < 0.001) continue  // No stroke deposited here -- skip
 
-    const density = wet.alpha[i] / DENSITY_NORM
-    let finalAlpha: number
-
-    if (pixelOpacity >= 0.90) {
-      // High opacity: bypass Beer-Lambert. Linear ramp reaches 255 at density ~0.85
-      // Threshold 0.90 accommodates pen pressure at max (pressureMod ~0.94)
-      finalAlpha = Math.min(255, Math.round(density * 300 * pixelOpacity))
-    } else {
-      // Partial opacity: Beer-Lambert with paper grain for watercolor look
-      const displayAlpha = Math.min(MAX_DISPLAY_ALPHA,
-        Math.round(255 * (1 - Math.exp(-DENSITY_K_DISPLAY * density))))
-      const pH = sampleHFn(px, py)
-      const paperStrength = 0.05 + 0.20 * (1 - Math.min(1, density * 2))
-      const paperMod = 1.0 - paperStrength * pH
-      finalAlpha = displayAlpha * paperMod * pixelOpacity
-    }
+    const finalAlpha = wetDisplayAlpha(wet.alpha[i], pixelOpacity, sampleHFn(px, py))
 
     const pi = i * 4
     d[pi]     = Math.round(clamp(wet.r[i], 0, 255))

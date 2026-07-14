@@ -1,4 +1,5 @@
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 
 export interface RotoAlphaMergeSize {
   width: number;
@@ -10,6 +11,7 @@ export async function mergeCachedRotoAlphaFrame(
   liveAlphaCanvas: HTMLCanvasElement,
   appFrame: number,
   size: RotoAlphaMergeSize,
+  mutationId?: number,
 ): Promise<PhysicPaintRenderedFrame> {
   const output = document.createElement('canvas');
   output.width = size.width;
@@ -24,13 +26,7 @@ export async function mergeCachedRotoAlphaFrame(
   context.drawImage(baseImage, 0, 0, size.width, size.height);
   context.drawImage(liveAlphaCanvas, 0, 0, size.width, size.height);
 
-  return {
-    frameIndex: 0,
-    appFrame,
-    dataUrl: output.toDataURL('image/png'),
-    width: size.width,
-    height: size.height,
-  };
+  return encodeRotoFrameFromCanvas(output, appFrame, undefined, mutationId);
 }
 
 function loadCachedRotoBaseImage(dataUrl: string): Promise<HTMLImageElement> {

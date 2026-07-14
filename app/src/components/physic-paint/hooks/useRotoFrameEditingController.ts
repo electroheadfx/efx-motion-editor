@@ -98,11 +98,14 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
       input.status.setApplyMessage(`Generated frame ${input.currentFrame} is render-only. Use timeline navigation or playback; edit a real Roto key to paint.`);
       return;
     }
+    const alreadyDirty = input.editBuffer.dirtyFramesRef.current.has(input.currentFrame);
     input.editBuffer.markDirty(input.currentFrame);
     input.session.markLiveOverlayDirty(input.currentFrame);
-    input.reference.clearReference();
     input.playback.stop();
-    (input.engine as PreviewBackgroundEngine | null)?.resetBackground?.();
+    if (!alreadyDirty) {
+      input.reference.clearReference();
+      (input.engine as PreviewBackgroundEngine | null)?.resetBackground?.();
+    }
     input.syncPendingFrames();
   }, [input]);
 

@@ -412,6 +412,31 @@ describe('physicPaintStore', () => {
     expect(dirtyCount).toBe(3);
   });
 
+  it('reports real-key, interpolation, and notification timing without changing the mutation', () => {
+    const samples: Array<{ stage: string; mutationId?: number; sourceFrame?: number; branch?: string }> = [];
+    physicPaintStore.setRotoInterpolationSettings('layer-1', { enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 });
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 0, makeFrame(0, 0));
+    const before = physicPaintVersion.value;
+
+    physicPaintStore.upsertRealRotoKeyFrame('layer-1', 1, makeFrame(1, 1), false, {
+      mutationId: 23,
+      record: (sample) => samples.push(sample),
+    });
+
+    expect(physicPaintVersion.value).toBe(before + 1);
+    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([0, 1]);
+    expect(physicPaintStore.getRotoCacheFrames('layer-1')).toEqual([
+      expect.objectContaining({ source: 'real-key', sourceFrame: 0 }),
+      expect.objectContaining({ source: 'generated-interpolation', fromSourceFrame: 0, toSourceFrame: 1 }),
+      expect.objectContaining({ source: 'real-key', sourceFrame: 1 }),
+    ]);
+    expect(samples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: 'store-real-key-insert', mutationId: 23, sourceFrame: 1 }),
+      expect.objectContaining({ stage: 'store-interpolation-regeneration', mutationId: 23, sourceFrame: 1, branch: 'duplicate' }),
+      expect.objectContaining({ stage: 'store-visual-notification', mutationId: 23 }),
+    ]));
+  });
+
   it('tracks real Roto keys separately from generated cache and removes deleted real key output', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', 2, makeFrame(0, 2));
     expect(physicPaintStore.getFrame('layer-1', 2)?.dataUrl).toContain('data:image/png');

@@ -121,8 +121,8 @@ interface TestPaintEngine {
   save: () => SerializedProject;
   load: ReturnType<typeof vi.fn<(state: SerializedProject) => void>>;
   clear: ReturnType<typeof vi.fn<() => void>>;
-  exportCompositeCanvas: () => { width: number; height: number; toDataURL: () => string };
-  copyLiveAlphaCanvas: () => { width: number; height: number; toDataURL: () => string };
+  exportCompositeCanvas: () => { width: number; height: number; toDataURL: () => string; toBlob: (callback: BlobCallback) => void };
+  copyLiveAlphaCanvas: () => { width: number; height: number; toDataURL: () => string; toBlob: (callback: BlobCallback) => void };
   setCompletedMutationListener: (listener: ((mutation: { kind: string; isEmpty: boolean }) => void) | null) => void;
   setBackgroundImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
   resetBackground: ReturnType<typeof vi.fn<() => void>>;
@@ -191,8 +191,8 @@ function makeEngine(initialState: SerializedProject, initialDataUrl: string): Te
       state = { ...state, strokes: [] };
       completedMutationListener?.({ kind: 'clear', isEmpty: true });
     }),
-    exportCompositeCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl })),
-    copyLiveAlphaCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl })),
+    exportCompositeCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl, toBlob: (callback: BlobCallback) => callback(new Blob(['roto-alpha'], { type: 'image/png' })) })),
+    copyLiveAlphaCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl, toBlob: (callback: BlobCallback) => callback(new Blob(['roto-alpha'], { type: 'image/png' })) })),
     setCompletedMutationListener: vi.fn((listener: ((mutation: { kind: string; isEmpty: boolean }) => void) | null) => { completedMutationListener = listener; }),
     setBackgroundImageUrl: vi.fn(),
     resetBackground: vi.fn(),
@@ -404,6 +404,17 @@ class TestElement extends TestNode {
   }
 }
 
+class TestFileReader {
+  result: string | ArrayBuffer | null = null;
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  readAsDataURL(): void {
+    this.result = paintHarness.engine?.exportCompositeCanvas().toDataURL() ?? savedDataUrl;
+    this.onload?.();
+  }
+}
+
 class TestImage {
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
@@ -440,6 +451,10 @@ class TestCanvasElement extends TestElement {
 
   toDataURL(): string {
     return paintHarness.engine?.exportCompositeCanvas().toDataURL() ?? savedDataUrl;
+  }
+
+  toBlob(callback: BlobCallback): void {
+    callback(new Blob(['roto-alpha'], { type: 'image/png' }));
   }
 }
 
@@ -561,6 +576,7 @@ function installDom(encodedContext: string, onParentMessage: (message: { type?: 
   vi.stubGlobal('HTMLElement', TestElement);
   vi.stubGlobal('HTMLCanvasElement', TestCanvasElement);
   vi.stubGlobal('Image', TestImage);
+  vi.stubGlobal('FileReader', TestFileReader);
   vi.stubGlobal('ResizeObserver', TestResizeObserver);
   vi.stubGlobal('CustomEvent', class extends TestEvent {
     constructor(type: string, init: { detail?: unknown } = {}) {
@@ -647,6 +663,8 @@ function onionImageSnapshot(root: TestElement) {
 }
 
 async function flushPreact(): Promise<void> {
+  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   await Promise.resolve();
   await new Promise((resolve) => setTimeout(resolve, 0));
   await Promise.resolve();
@@ -1064,7 +1082,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     await act(async () => { await flushPreact(); });
     const paintedPixels = pngDataUrl('automatic-empty-remove-painted');
     paintHarness.engine?.__setState(editedState, paintedPixels);
-    await act(async () => { await flushPreact(); });
+    await act(async () => { await flushPreact(); await flushPreact(); });
     expect(parentPayloads).toEqual([
       expect.objectContaining({ kind: 'apply-canvas', sourceFrame: 5, renderedFrame: expect.objectContaining({ dataUrl: paintedPixels }) }),
     ]);

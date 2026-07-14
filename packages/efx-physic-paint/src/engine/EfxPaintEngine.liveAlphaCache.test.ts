@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EfxPaintEngine } from './EfxPaintEngine';
+import { compositeWetLayer } from '../render/compositor';
+import type { BrushOpts, PenPoint, WetBuffers } from '../types';
 
 function makeCanvas() {
   const calls: string[] = [];
@@ -37,6 +39,118 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
     expect(output.calls).toEqual(['dry', 'display']);
     expect(renderVisibleWetLayer).toHaveBeenCalledOnce();
     expect(flushPendingStrokeFinalizations).not.toHaveBeenCalled();
+  });
+
+  it('reports separated snapshot stages with the active mutation id', () => {
+    const output = makeCanvas();
+    vi.stubGlobal('document', { createElement: vi.fn(() => output.canvas) });
+    const samples: Array<{ stage: string; mutationId?: number; branch?: string }> = [];
+    const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine;
+    Object.assign(engine as object, {
+      width: 12,
+      height: 8,
+      activeMutationId: 17,
+      performanceListener: (sample: { stage: string; mutationId?: number; branch?: string }) => samples.push(sample),
+      dualCanvas: {
+        dryCanvas: { __name: 'dry' },
+        displayCanvas: { __name: 'display' },
+      },
+      previewBackgroundSeparated: true,
+      renderVisibleWetLayer: vi.fn(),
+    });
+
+    engine.copyLiveAlphaCanvas();
+
+    expect(samples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: 'live-alpha-render-wet', mutationId: 17, branch: 'separated' }),
+      expect.objectContaining({ stage: 'live-alpha-allocate', mutationId: 17, branch: 'separated' }),
+      expect.objectContaining({ stage: 'live-alpha-draw-dry', mutationId: 17, branch: 'separated' }),
+      expect.objectContaining({ stage: 'live-alpha-draw-display', mutationId: 17, branch: 'separated' }),
+    ]));
+  });
+
+  it('reports primitive samples with the active mutation id', () => {
+    const samples: Array<{ stage: string; mutationId?: number; durationMs: number }> = [];
+    const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine;
+    Object.assign(engine as object, {
+      activeMutationId: 29,
+      performanceListener: (sample: { stage: string; mutationId?: number; durationMs: number }) => samples.push(sample),
+    });
+
+    const recordPaintPrimitive = (engine as unknown as { recordPaintPrimitive: (stage: string, durationMs: number) => void }).recordPaintPrimitive;
+    recordPaintPrimitive.call(engine, 'paint-transfer-pixel-loop', 12.5);
+
+    expect(samples).toEqual([
+      expect.objectContaining({ stage: 'paint-transfer-pixel-loop', mutationId: 29, durationMs: 12.5 }),
+    ]);
+  });
+
+  it('does not emit performance samples without a listener', () => {
+    const output = makeCanvas();
+    vi.stubGlobal('document', { createElement: vi.fn(() => output.canvas) });
+    const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine;
+    Object.assign(engine as object, {
+      width: 12,
+      height: 8,
+      performanceListener: null,
+      dualCanvas: {
+        dryCanvas: { __name: 'dry' },
+        displayCanvas: { __name: 'display' },
+      },
+      previewBackgroundSeparated: true,
+      renderVisibleWetLayer: vi.fn(),
+    });
+
+    expect(() => engine.copyLiveAlphaCanvas()).not.toThrow();
+  });
+
+  it('preserves displayed wet alpha when local pre-stroke preparation bakes a distant stroke', () => {
+    const wet: WetBuffers = {
+      r: new Float32Array([120]),
+      g: new Float32Array([30]),
+      b: new Float32Array([60]),
+      alpha: new Float32Array([800]),
+      wetness: new Float32Array([100]),
+      strokeOpacity: new Float32Array([1]),
+    };
+    const displayed = new Uint8ClampedArray(4);
+    compositeWetLayer({
+      createImageData: () => ({ data: displayed }),
+      putImageData: vi.fn(),
+    } as unknown as CanvasRenderingContext2D, wet, 1, 1, () => 0.5);
+
+    const dryData = new Uint8ClampedArray(4);
+    const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine & Record<string, any>;
+    const opts: BrushOpts = {
+      size: 6, opacity: 100, pressure: 70, waterAmount: 50,
+      dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0,
+    };
+    const nextPoint: PenPoint = { x: 100, y: 100, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0 };
+    Object.assign(engine, {
+      width: 1,
+      height: 1,
+      size: 1,
+      wet,
+      savedWet: {
+        r: new Float32Array(1), g: new Float32Array(1), b: new Float32Array(1),
+        alpha: new Float32Array(1), strokeOpacity: new Float32Array(1),
+      },
+      drying: { dryPos: new Float32Array(1) },
+      state: { physicsMode: 'local' },
+      performanceListener: null,
+      stopNaturalDrying: vi.fn(),
+      dualCanvas: {
+        dryCtx: {
+          getImageData: () => ({ data: dryData }),
+          putImageData: vi.fn(),
+        },
+      },
+    });
+
+    engine.prepareWetLayerForStroke(nextPoint, opts);
+
+    expect(Array.from(dryData)).toEqual(Array.from(displayed));
+    expect(wet.alpha[0]).toBe(0);
   });
 
   it('does not notify Undo when no visible mutation is available', () => {

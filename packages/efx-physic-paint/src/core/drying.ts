@@ -4,9 +4,19 @@
 //  No module-level mutable state. No DOM access (ctx passed as arg).
 // ============================================================
 
-import type { WetBuffers, SavedWetBuffers, DryingLUT } from '../types'
+import type { WetBuffers, SavedWetBuffers, DryingLUT, PaintPrimitiveTimingObserver } from '../types'
 import { LUT_SIZE } from '../types'
 import { lerp, clamp } from '../util/math'
+
+function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined, stage: string, run: () => T): T {
+  if (!observer) return run()
+  const startedAt = performance.now()
+  try {
+    return run()
+  } finally {
+    observer(stage, performance.now() - startedAt)
+  }
+}
 
 /** Threshold below which wet paint is considered fully dry */
 const DRY_ALPHA_THRESHOLD = 1
@@ -53,12 +63,14 @@ export function dryStep(
   height: number,
   drySpeed: number,
   paperHeight: Float32Array | null,
+  observePrimitive?: PaintPrimitiveTimingObserver,
 ): void {
-  const id = ctx.getImageData(0, 0, width, height)
+  const id = measurePrimitive(observePrimitive, 'dry-step-full-frame-readback', () => ctx.getImageData(0, 0, width, height))
   const d = id.data
   let changed = false
   const size = width * height
 
+  measurePrimitive(observePrimitive, 'dry-step-pixel-loop', () => {
   for (let i = 0; i < size; i++) {
     if (wet.alpha[i] < DRY_ALPHA_THRESHOLD) continue
 
@@ -127,8 +139,9 @@ export function dryStep(
       drying.dryPos[i] = 0
     }
   }
+  })
 
-  if (changed) ctx.putImageData(id, 0, 0)
+  if (changed) measurePrimitive(observePrimitive, 'dry-step-full-frame-writeback', () => ctx.putImageData(id, 0, 0))
 }
 
 /**
@@ -143,12 +156,15 @@ export function forceDryAll(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
+  observePrimitive?: PaintPrimitiveTimingObserver,
+  stagePrefix: string = 'force-dry',
 ): void {
-  const id = ctx.getImageData(0, 0, width, height)
+  const id = measurePrimitive(observePrimitive, `${stagePrefix}-full-frame-readback`, () => ctx.getImageData(0, 0, width, height))
   const d = id.data
   let changed = false
   const size = width * height
 
+  measurePrimitive(observePrimitive, `${stagePrefix}-pixel-loop`, () => {
   for (let i = 0; i < size; i++) {
     if (wet.alpha[i] < 1) continue
 
@@ -175,6 +191,7 @@ export function forceDryAll(
     if (wet.strokeOpacity) wet.strokeOpacity[i] = 0
     drying.dryPos[i] = 0
   }
+  })
 
-  if (changed) ctx.putImageData(id, 0, 0)
+  if (changed) measurePrimitive(observePrimitive, `${stagePrefix}-full-frame-writeback`, () => ctx.putImageData(id, 0, 0))
 }

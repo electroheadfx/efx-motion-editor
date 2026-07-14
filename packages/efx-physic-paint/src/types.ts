@@ -72,6 +72,9 @@ export interface BrushOpts {
   antiAlias: number        // 0=off, 1=soft(2 passes), 2=med(4 passes), 3=high(6 passes)
 }
 
+/** Optional, synchronous timing observer used only by the disabled performance profiler. */
+export type PaintPrimitiveTimingObserver = (stage: string, durationMs: number) => void
+
 // === PEN INPUT ===
 
 export interface PenPoint {

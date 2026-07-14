@@ -5,8 +5,18 @@
 //  No DOM access in this module.
 // ============================================================
 
-import type { WetBuffers, SavedWetBuffers, TmpBuffers, PenPoint } from '../types'
+import type { WetBuffers, SavedWetBuffers, TmpBuffers, PenPoint, PaintPrimitiveTimingObserver } from '../types'
 import { lerp } from '../util/math'
+
+function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined, stage: string, run: () => T): T {
+  if (!observer) return run()
+  const startedAt = performance.now()
+  try {
+    return run()
+  } finally {
+    observer(stage, performance.now() - startedAt)
+  }
+}
 
 /**
  * Edge feathering on the wet layer within bounds.
@@ -20,6 +30,7 @@ export function featherWetEdges(
   width: number,
   height: number,
   passes: number,
+  observePrimitive?: PaintPrimitiveTimingObserver,
 ): void {
   const x0 = Math.max(1, bounds.x0)
   const y0 = Math.max(1, bounds.y0)
@@ -27,37 +38,39 @@ export function featherWetEdges(
   const y1 = Math.min(height - 2, bounds.y1)
 
   for (let pass = 0; pass < passes; pass++) {
-    // Expand: for empty pixels adjacent to paint, set them to averaged neighbor values
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        const i = y * width + x
-        if (wet.alpha[i] > 1) continue // skip painted pixels
+    measurePrimitive(observePrimitive, 'paint-edge-feather-pass', () => {
+      // Expand: for empty pixels adjacent to paint, set them to averaged neighbor values
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const i = y * width + x
+          if (wet.alpha[i] > 1) continue // skip painted pixels
 
-        // Count painted neighbors and accumulate their values
-        let sumA = 0, sumR = 0, sumG = 0, sumB = 0, sumSO = 0, count = 0
-        const neighbors = [i - 1, i + 1, i - width, i + width]
-        for (const ni of neighbors) {
-          if (wet.alpha[ni] > 1) {
-            sumA += wet.alpha[ni]
-            sumR += wet.r[ni]
-            sumG += wet.g[ni]
-            sumB += wet.b[ni]
-            sumSO += wet.strokeOpacity ? wet.strokeOpacity[ni] : 1
-            count++
+          // Count painted neighbors and accumulate their values
+          let sumA = 0, sumR = 0, sumG = 0, sumB = 0, sumSO = 0, count = 0
+          const neighbors = [i - 1, i + 1, i - width, i + width]
+          for (const ni of neighbors) {
+            if (wet.alpha[ni] > 1) {
+              sumA += wet.alpha[ni]
+              sumR += wet.r[ni]
+              sumG += wet.g[ni]
+              sumB += wet.b[ni]
+              sumSO += wet.strokeOpacity ? wet.strokeOpacity[ni] : 1
+              count++
+            }
           }
-        }
-        if (count === 0) continue // no painted neighbors
+          if (count === 0) continue // no painted neighbors
 
-        // Set this pixel to a fraction of neighbor averages (feathered edge)
-        const frac = 0.35 // how much of neighbor intensity to inherit
-        wet.alpha[i] = (sumA / count) * frac
-        wet.r[i] = sumR / count
-        wet.g[i] = sumG / count
-        wet.b[i] = sumB / count
-        if (wet.strokeOpacity) wet.strokeOpacity[i] = sumSO / count
-        wet.wetness[i] = Math.max(wet.wetness[i], 100)
+          // Set this pixel to a fraction of neighbor averages (feathered edge)
+          const frac = 0.35 // how much of neighbor intensity to inherit
+          wet.alpha[i] = (sumA / count) * frac
+          wet.r[i] = sumR / count
+          wet.g[i] = sumG / count
+          wet.b[i] = sumB / count
+          if (wet.strokeOpacity) wet.strokeOpacity[i] = sumSO / count
+          wet.wetness[i] = Math.max(wet.wetness[i], 100)
+        }
       }
-    }
+    })
   }
 }
 import { hexRgb, mixSubtractive } from '../util/color'
@@ -396,9 +409,11 @@ export function transferToWetLayerClipped(
   gamma: number = 0.8,                       // D-09: granulation
   delta: number = 1.2,                       // D-09: density
   userOpacity: number = 1.0,                 // D-01: stroke opacity for Porter-Duff accumulation
+  observePrimitive?: PaintPrimitiveTimingObserver,
 ): void {
-  const offData = offCtx.getImageData(0, 0, bounds.w, bounds.h).data
+  const offData = measurePrimitive(observePrimitive, 'paint-transfer-readback', () => offCtx.getImageData(0, 0, bounds.w, bounds.h)).data
 
+  measurePrimitive(observePrimitive, 'paint-transfer-pixel-loop', () => {
   for (let ly = 0; ly < bounds.h; ly++) {
     const gy = bounds.y + ly
     if (gy < 0 || gy >= height) continue
@@ -453,4 +468,5 @@ export function transferToWetLayerClipped(
       wetBuffers.wetness[i] = Math.min(1000, wetBuffers.wetness[i] + waterAmount * 800 * (a / 255))
     }
   }
+  })
 }

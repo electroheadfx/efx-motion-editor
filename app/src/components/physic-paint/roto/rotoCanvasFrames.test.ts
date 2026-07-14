@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerRotoAlphaCanvasFrame } from '../../../stores/physicPaintStore';
-import { addOccupiedRotoFrame, buildBlankRotoFrame, drawCanvasAtSize } from './rotoCanvasFrames';
+import { addOccupiedRotoFrame, buildBlankRotoFrame, drawCanvasAtSize, encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 
 vi.mock('../../../stores/physicPaintStore', () => ({
   registerRotoAlphaCanvasFrame: vi.fn(),
@@ -17,6 +17,10 @@ class TestCanvas {
 
   toDataURL(type?: string): string {
     return `data:${type ?? 'image/png'};base64,dGVzdA==`;
+  }
+
+  toBlob(callback: BlobCallback, type?: string): void {
+    callback(new Blob(['test'], { type: type ?? 'image/png' }));
   }
 }
 
@@ -65,6 +69,31 @@ describe('rotoCanvasFrames', () => {
     expect(output.width).toBe(320);
     expect(output.height).toBe(180);
     expect(output.drawImage).toHaveBeenCalledWith(source, 0, 0, 320, 180);
+  });
+
+  it('encodes asynchronously without changing frame metadata', async () => {
+    vi.stubGlobal('FileReader', class {
+      result: string | ArrayBuffer | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      readAsDataURL(): void {
+        this.result = 'data:image/png;base64,dGVzdA==';
+        this.onload?.();
+      }
+    });
+    const canvas = new TestCanvas() as unknown as HTMLCanvasElement;
+    canvas.width = 320;
+    canvas.height = 180;
+
+    await expect(encodeRotoFrameFromCanvas(canvas, 7, undefined, 23)).resolves.toEqual({
+      frameIndex: 0,
+      appFrame: 7,
+      dataUrl: 'data:image/png;base64,dGVzdA==',
+      width: 320,
+      height: 180,
+    });
+    expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledWith('data:image/png;base64,dGVzdA==', canvas);
   });
 
   it('builds blank transparent frame metadata and registers its alpha canvas', () => {

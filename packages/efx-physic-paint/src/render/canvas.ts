@@ -204,39 +204,57 @@ export interface StrokePreview {
  * @param displayCtx - Display canvas context
  * @param preview - Preview data (null = no preview)
  */
-export function drawStrokePreview(
+type PreviewPathPoint = readonly [number, number] | Pick<PenPoint, 'x' | 'y'>
+
+function pathX(point: PreviewPathPoint): number {
+  return 'x' in point ? point.x : point[0]
+}
+
+function pathY(point: PreviewPathPoint): number {
+  return 'y' in point ? point.y : point[1]
+}
+
+function drawDashedPath(
   displayCtx: CanvasRenderingContext2D,
-  preview: StrokePreview | null,
+  points: ReadonlyArray<PreviewPathPoint>,
+  closePath: boolean,
 ): void {
-  if (!preview || preview.pts.length < 3) return
-
-  const sm = smooth(preview.pts, 2)
-  const curve = resample(sm, Math.max(3, preview.radius * 0.25))
-  if (curve.length < 3) return
-
-  const base = ribbon(curve, preview.radius, 0.8, preview.hasPenInput ?? false)
-  if (!base || base.length < 3) return
-
+  if (points.length < 2) return
   displayCtx.save()
-
-  // Dashed outline: black + white for visibility on any background
   displayCtx.lineWidth = 1.5
   displayCtx.setLineDash([5, 5])
   displayCtx.strokeStyle = 'rgba(0,0,0,0.55)'
   displayCtx.lineDashOffset = 0
   displayCtx.beginPath()
-  displayCtx.moveTo(base[0][0], base[0][1])
-  for (let i = 1; i < base.length; i++) displayCtx.lineTo(base[i][0], base[i][1])
-  displayCtx.closePath()
+  displayCtx.moveTo(pathX(points[0]), pathY(points[0]))
+  for (let i = 1; i < points.length; i++) displayCtx.lineTo(pathX(points[i]), pathY(points[i]))
+  if (closePath) displayCtx.closePath()
   displayCtx.stroke()
 
   displayCtx.strokeStyle = 'rgba(255,255,255,0.55)'
   displayCtx.lineDashOffset = 5
   displayCtx.beginPath()
-  displayCtx.moveTo(base[0][0], base[0][1])
-  for (let i = 1; i < base.length; i++) displayCtx.lineTo(base[i][0], base[i][1])
-  displayCtx.closePath()
+  displayCtx.moveTo(pathX(points[0]), pathY(points[0]))
+  for (let i = 1; i < points.length; i++) displayCtx.lineTo(pathX(points[i]), pathY(points[i]))
+  if (closePath) displayCtx.closePath()
   displayCtx.stroke()
-
   displayCtx.restore()
+}
+
+export function drawQueuedStrokePolyline(
+  displayCtx: CanvasRenderingContext2D,
+  points: readonly PenPoint[],
+): void {
+  drawDashedPath(displayCtx, points, false)
+}
+
+export function drawStrokePreview(
+  displayCtx: CanvasRenderingContext2D,
+  preview: StrokePreview | null,
+): void {
+  if (!preview || preview.pts.length < 3) return
+  const sm = smooth(preview.pts, 2)
+  const curve = resample(sm, Math.max(3, preview.radius * 0.25))
+  if (curve.length < 3) return
+  drawDashedPath(displayCtx, ribbon(curve, preview.radius, 0.8, preview.hasPenInput ?? false), true)
 }

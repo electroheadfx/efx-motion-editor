@@ -5,7 +5,17 @@
 //  No module-level mutable state. No DOM access.
 // ============================================================
 
-import type { WetBuffers, FluidBuffers, FluidConfig } from '../types'
+import type { WetBuffers, FluidBuffers, FluidConfig, PaintPrimitiveTimingObserver } from '../types'
+
+function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined, stage: string, run: () => T): T {
+  if (!observer) return run()
+  const startedAt = performance.now()
+  try {
+    return run()
+  } finally {
+    observer(stage, performance.now() - startedAt)
+  }
+}
 
 // === Core solver functions (Stam 2003) ===
 
@@ -472,6 +482,11 @@ export function fluidPhysicsStep(
  * @param bbox - Bounding box { x0, y0, x1, y1 } in canvas coordinates (already includes margin)
  * @param ticks - Number of physics ticks to run
  */
+export interface LocalFluidPhysicsContinuation {
+  step(): boolean
+  runToCompletion(): void
+}
+
 export function localFluidPhysicsStep(
   wet: WetBuffers,
   config: FluidConfig,
@@ -479,7 +494,21 @@ export function localFluidPhysicsStep(
   canvasH: number,
   bbox: { x0: number; y0: number; x1: number; y1: number },
   ticks: number,
+  observePrimitive?: PaintPrimitiveTimingObserver,
 ): void {
+  createLocalFluidPhysicsContinuation(wet, config, canvasW, canvasH, bbox, ticks, observePrimitive).runToCompletion()
+}
+
+export function createLocalFluidPhysicsContinuation(
+  wet: WetBuffers,
+  config: FluidConfig,
+  canvasW: number,
+  canvasH: number,
+  bbox: { x0: number; y0: number; x1: number; y1: number },
+  ticks: number,
+  observePrimitive?: PaintPrimitiveTimingObserver,
+): LocalFluidPhysicsContinuation {
+  function* run(): Generator<void, void, void> {
   // Clamp bbox to canvas bounds
   const x0 = Math.max(0, bbox.x0)
   const y0 = Math.max(0, bbox.y0)
@@ -495,33 +524,43 @@ export function localFluidPhysicsStep(
   const gridSize = (localW + 2) * (localH + 2)
 
   // Allocate local Stam grids
-  const u = new Float32Array(gridSize)
-  const v = new Float32Array(gridSize)
-  const u0 = new Float32Array(gridSize)
-  const v0 = new Float32Array(gridSize)
-  const p = new Float32Array(gridSize)
-  const div = new Float32Array(gridSize)
+  const allocated = measurePrimitive(observePrimitive, 'paint-local-fluid-allocate', () => ({
+    u: new Float32Array(gridSize),
+    v: new Float32Array(gridSize),
+    u0: new Float32Array(gridSize),
+    v0: new Float32Array(gridSize),
+    p: new Float32Array(gridSize),
+    div: new Float32Array(gridSize),
+    waterHeight: new Float32Array(gridSize),
+    wetMask: new Float32Array(gridSize),
+    blurMask: new Float32Array(gridSize),
+  }))
+  const { u, v, u0, v0, p, div, waterHeight, wetMask, blurMask } = allocated
+  void p
+  void div
 
   // Copy wet.alpha into local waterHeight for height equalization
-  const waterHeight = new Float32Array(gridSize)
+  measurePrimitive(observePrimitive, 'paint-local-fluid-initial-copy', () => {
   for (let cy = y0; cy <= y1; cy++) {
     for (let cx = x0; cx <= x1; cx++) {
       const localI = IX(localW, cx - x0 + 1, cy - y0 + 1)
       waterHeight[localI] = wet.alpha[cy * canvasW + cx]
     }
   }
+  })
 
   // Build local wet mask for edge darkening
-  const wetMask = new Float32Array(gridSize)
-  const blurMask = new Float32Array(gridSize)
+  measurePrimitive(observePrimitive, 'paint-local-fluid-mask-build', () => {
   for (let cy = y0; cy <= y1; cy++) {
     for (let cx = x0; cx <= x1; cx++) {
       wetMask[IX(localW, cx - x0 + 1, cy - y0 + 1)] = wet.alpha[cy * canvasW + cx] > 20 ? 1.0 : 0.0
     }
   }
-  boxBlur3x3(localW, localH, wetMask, blurMask, 3)
+  })
+  measurePrimitive(observePrimitive, 'paint-local-fluid-mask-blur', () => boxBlur3x3(localW, localH, wetMask, blurMask, 3))
 
   for (let tick = 0; tick < ticks; tick++) {
+    const tickStartedAt = observePrimitive ? performance.now() : 0
     // Clear velocity sources
     u0.fill(0)
     v0.fill(0)
@@ -536,29 +575,33 @@ export function localFluidPhysicsStep(
     }
 
     // Height equalization on local grid
-    addHeightEqualization(localW, localH, u0, v0, waterHeight, config.omega_h)
+    measurePrimitive(observePrimitive, 'paint-local-fluid-height-equalization', () => addHeightEqualization(localW, localH, u0, v0, waterHeight, config.omega_h))
 
     // Edge darkening on local grid
-    darkenEdges(localW, localH, wetMask, blurMask, u0, v0, config.darkening)
+    measurePrimitive(observePrimitive, 'paint-local-fluid-edge-darkening', () => darkenEdges(localW, localH, wetMask, blurMask, u0, v0, config.darkening))
 
     // Velocity step
-    velStep(localW, localH, u, v, u0, v0, config.viscosity, dt, iterations)
+    measurePrimitive(observePrimitive, 'paint-local-fluid-velocity-solve', () => velStep(localW, localH, u, v, u0, v0, config.viscosity, dt, iterations))
 
     // Advect wet channels (premultiplied alpha approach, same as fluidPhysicsStep)
-    const stamRA = new Float32Array(gridSize)
-    const stamGA = new Float32Array(gridSize)
-    const stamBA = new Float32Array(gridSize)
-    const stamA = new Float32Array(gridSize)
-    const stamW = new Float32Array(gridSize)
-    const stamSO = new Float32Array(gridSize)
-    const srcRA = new Float32Array(gridSize)
-    const srcGA = new Float32Array(gridSize)
-    const srcBA = new Float32Array(gridSize)
-    const srcA = new Float32Array(gridSize)
-    const srcW = new Float32Array(gridSize)
-    const srcSO = new Float32Array(gridSize)
+    const channels = measurePrimitive(observePrimitive, 'paint-local-fluid-channel-allocate', () => ({
+      stamRA: new Float32Array(gridSize),
+      stamGA: new Float32Array(gridSize),
+      stamBA: new Float32Array(gridSize),
+      stamA: new Float32Array(gridSize),
+      stamW: new Float32Array(gridSize),
+      stamSO: new Float32Array(gridSize),
+      srcRA: new Float32Array(gridSize),
+      srcGA: new Float32Array(gridSize),
+      srcBA: new Float32Array(gridSize),
+      srcA: new Float32Array(gridSize),
+      srcW: new Float32Array(gridSize),
+      srcSO: new Float32Array(gridSize),
+    }))
+    const { stamRA, stamGA, stamBA, stamA, stamW, stamSO, srcRA, srcGA, srcBA, srcA, srcW, srcSO } = channels
 
     // Copy canvas wet data to local Stam grids with premultiplication
+    measurePrimitive(observePrimitive, 'paint-local-fluid-channel-copy-in', () => {
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
         const canvasIdx = cy * canvasW + cx
@@ -572,18 +615,22 @@ export function localFluidPhysicsStep(
         stamSO[stamIdx] = (wet.strokeOpacity ? wet.strokeOpacity[canvasIdx] : 1.0) * a
       }
     }
+    })
 
     srcRA.set(stamRA); srcGA.set(stamGA); srcBA.set(stamBA)
     srcA.set(stamA); srcW.set(stamW); srcSO.set(stamSO)
 
-    advect(localW, localH, 0, stamRA, srcRA, u, v, dt)
-    advect(localW, localH, 0, stamGA, srcGA, u, v, dt)
-    advect(localW, localH, 0, stamBA, srcBA, u, v, dt)
-    advect(localW, localH, 0, stamA, srcA, u, v, dt)
-    advect(localW, localH, 0, stamW, srcW, u, v, dt)
-    advect(localW, localH, 0, stamSO, srcSO, u, v, dt)
+    measurePrimitive(observePrimitive, 'paint-local-fluid-channel-advection', () => {
+      advect(localW, localH, 0, stamRA, srcRA, u, v, dt)
+      advect(localW, localH, 0, stamGA, srcGA, u, v, dt)
+      advect(localW, localH, 0, stamBA, srcBA, u, v, dt)
+      advect(localW, localH, 0, stamA, srcA, u, v, dt)
+      advect(localW, localH, 0, stamW, srcW, u, v, dt)
+      advect(localW, localH, 0, stamSO, srcSO, u, v, dt)
+    })
 
     // Write back to canvas wet buffers (recover R = R_premul / A)
+    measurePrimitive(observePrimitive, 'paint-local-fluid-channel-writeback', () => {
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
         const canvasIdx = cy * canvasW + cx
@@ -602,5 +649,22 @@ export function localFluidPhysicsStep(
         wet.wetness[canvasIdx] = Math.max(0, stamW[stamIdx])
       }
     }
+    })
+    if (observePrimitive) observePrimitive('paint-local-fluid-tick', performance.now() - tickStartedAt)
+    yield
+  }
+  }
+
+  const iterator = run()
+  let complete = false
+  return {
+    step() {
+      if (complete) return true
+      complete = iterator.next().done === true
+      return complete
+    },
+    runToCompletion() {
+      while (!complete) complete = iterator.next().done === true
+    },
   }
 }

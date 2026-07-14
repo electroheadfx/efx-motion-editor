@@ -4,22 +4,20 @@
 //  No module-level mutable state. Offscreen canvas for mask rendering.
 // ============================================================
 
-import type { PenPoint, BrushOpts, WetBuffers } from '../types'
+import type { PenPoint, BrushOpts, WetBuffers, PaintPrimitiveTimingObserver } from '../types'
+
+function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined, stage: string, run: () => T): T {
+  if (!observer) return run()
+  const startedAt = performance.now()
+  try {
+    return run()
+  } finally {
+    observer(stage, performance.now() - startedAt)
+  }
+}
 import { lerp, clamp, curveBounds } from '../util/math'
 import { smooth, resample, ribbon, deform, deformN } from './stroke'
 import { fillFlat } from './paint'
-
-/**
- * Helper: compute effective pressure from pen point and slider value.
- * From v3.html getEffectivePressure() line 2651
- */
-function getEffectivePressure(penPoint: PenPoint, sliderValue: number, hasPenInput: boolean): number {
-  const base = sliderValue / 100
-  if (hasPenInput) {
-    return base * penPoint.p
-  }
-  return base
-}
 
 /**
  * Stroke-completion erase -- uses same ribbon+deform polygon as paint brush.
@@ -39,16 +37,19 @@ export function applyEraseStroke(
   paperHeight: Float32Array | null,
   bgMode: string,
   bgData: ImageData | null,
+  observePrimitive?: PaintPrimitiveTimingObserver,
 ): void {
   if (rawPts.length < 3) return
-  const { size, pressure } = opts
+  const { size } = opts
   const eraseStr = (opts.eraseStrength != null ? opts.eraseStrength : 50) / 100
   const edgeMul = (opts.edgeDetail != null ? opts.edgeDetail : 50) / 50
   const radius = size
-  const pMod = getEffectivePressure(rawPts[Math.floor(rawPts.length / 2)], pressure, hasPenInput)
+  const pMod = hasPenInput ? rawPts[Math.floor(rawPts.length / 2)].p : 1
 
-  const sm = smooth(rawPts, 3)
-  const curve = resample(sm, Math.max(3, radius * 0.25))
+  const curve = measurePrimitive(observePrimitive, 'erase-geometry', () => {
+    const sm = smooth(rawPts, 3)
+    return resample(sm, Math.max(3, radius * 0.25))
+  })
   if (curve.length < 3) return
 
   const variance = (1.5 + Math.sqrt(radius) * 0.9) * edgeMul
@@ -67,17 +68,19 @@ export function applyEraseStroke(
   const layers = 15
   const lAlpha = 0.04
 
-  for (let i = 0; i < layers; i++) {
-    const v = deform(baseD, variance * 0.2)
-    fillFlat(oc, v, '#fff', lAlpha)
-  }
-  for (let i = 0; i < Math.round(layers * 0.2); i++) {
-    fillFlat(oc, deform(baseD, variance * 0.5), '#fff', lAlpha * 0.5)
-  }
+  measurePrimitive(observePrimitive, 'erase-mask-raster', () => {
+    for (let i = 0; i < layers; i++) {
+      const v = deform(baseD, variance * 0.2)
+      fillFlat(oc, v, '#fff', lAlpha)
+    }
+    for (let i = 0; i < Math.round(layers * 0.2); i++) {
+      fillFlat(oc, deform(baseD, variance * 0.5), '#fff', lAlpha * 0.5)
+    }
+  })
 
   // Read the mask and apply erase
-  const maskData = oc.getImageData(0, 0, bounds.w, bounds.h).data
-  const cid = ctx.getImageData(bounds.x0, bounds.y0, bounds.w, bounds.h)
+  const maskData = measurePrimitive(observePrimitive, 'erase-mask-readback', () => oc.getImageData(0, 0, bounds.w, bounds.h)).data
+  const cid = measurePrimitive(observePrimitive, 'erase-dry-readback', () => ctx.getImageData(bounds.x0, bounds.y0, bounds.w, bounds.h))
   const cd = cid.data
   const bd = bgData ? bgData.data : null
 
@@ -85,6 +88,7 @@ export function applyEraseStroke(
   // Cubic: 0%=none, 30%~10%, 50%~25%, 70%~55%, 90%~full
   const strMul = eraseStr * eraseStr * eraseStr * 5 + eraseStr * 0.3
 
+  measurePrimitive(observePrimitive, 'erase-pixel-loop', () => {
   for (let ly = 0; ly < bounds.h; ly++) {
     const gy = bounds.y0 + ly
     if (gy < 0 || gy >= height) continue
@@ -124,5 +128,6 @@ export function applyEraseStroke(
       }
     }
   }
-  ctx.putImageData(cid, bounds.x0, bounds.y0)
+  })
+  measurePrimitive(observePrimitive, 'erase-dry-writeback', () => ctx.putImageData(cid, bounds.x0, bounds.y0))
 }

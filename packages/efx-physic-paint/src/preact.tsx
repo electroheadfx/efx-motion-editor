@@ -8,7 +8,7 @@ import { useRef, useEffect } from 'preact/hooks'
 import type { FunctionalComponent } from 'preact'
 import { EfxPaintEngine } from './engine/EfxPaintEngine'
 import type { EngineConfig, NativePenInput } from './types'
-import type { CompletedPaintMutation } from './engine/EfxPaintEngine'
+import type { CompletedPaintMutation, PaintPerformanceSample } from './engine/EfxPaintEngine'
 
 export interface EfxPaintCanvasProps extends EngineConfig {
   width?: number
@@ -17,6 +17,7 @@ export interface EfxPaintCanvasProps extends EngineConfig {
   onEngineReady?: (engine: EfxPaintEngine) => void
   onNativePenInputReady?: (handler: (input: NativePenInput) => void) => void
   onCompletedMutation?: (mutation: CompletedPaintMutation) => void
+  onPerformanceSample?: (sample: PaintPerformanceSample) => void
 }
 
 /**
@@ -36,7 +37,9 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
   const containerRef = useRef<HTMLDivElement>(null)
   const engineRef = useRef<EfxPaintEngine | null>(null)
   const completedMutationRef = useRef(props.onCompletedMutation)
+  const performanceSampleRef = useRef(props.onPerformanceSample)
   completedMutationRef.current = props.onCompletedMutation
+  performanceSampleRef.current = props.onPerformanceSample
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -50,6 +53,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
     })
     engineRef.current = engine
     engine.setCompletedMutationListener((mutation) => completedMutationRef.current?.(mutation))
+    engine.setPerformanceListener(performanceSampleRef.current ? (sample) => performanceSampleRef.current?.(sample) : null)
     props.onNativePenInputReady?.((input) => engine.updateNativePenInput(input))
 
     // Await async init (paper texture loading) before signaling ready
@@ -59,6 +63,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
 
     return () => {
       engine.setCompletedMutationListener(null)
+      engine.setPerformanceListener(null)
       engine.destroy()
       engineRef.current = null
     }

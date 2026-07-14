@@ -35,12 +35,14 @@ import { lerp } from '../util/math'
 import { createWetBuffers, createSavedWetBuffers, createTmpBuffers, clearWetLayer, featherWetEdges } from '../core/wet-layer'
 import { initDryingLUT, dryStep, forceDryAll } from '../core/drying'
 import { physicsStep } from '../core/diffusion'
-import { localFluidPhysicsStep } from '../core/fluids'
+import { createLocalFluidPhysicsContinuation, localFluidPhysicsStep } from '../core/fluids'
+import type { LocalFluidPhysicsContinuation } from '../core/fluids'
 import { loadPaperTexture, sampleH, ensureHeightMap } from '../core/paper'
-import { renderPaintStroke } from '../brush/paint'
+import { createPaintStrokeRasterContinuation, renderPaintStroke } from '../brush/paint'
+import type { PaintStrokeRasterContinuation } from '../brush/paint'
 import { applyEraseStroke } from '../brush/erase'
-import { compositeWetLayer } from '../render/compositor'
-import { setupDualCanvas, drawBg, drawBrushCursor, drawStrokePreview } from '../render/canvas'
+import { compositeWetLayer, wetDisplayAlpha } from '../render/compositor'
+import { drawBg, drawBrushCursor, drawQueuedStrokePolyline, drawStrokePreview, setupDualCanvas } from '../render/canvas'
 import type { StrokePreview, DualCanvas } from '../render/canvas'
 
 type UndoSnapshot = {
@@ -55,6 +57,8 @@ type DeferredStrokeFinalization = {
   color: string | null
   opts: BrushOpts
   hasPenInput: boolean
+  mutationId: number
+  queuedAt: number
 }
 
 type StrokeApplicationOptions = {
@@ -63,16 +67,34 @@ type StrokeApplicationOptions = {
   physicsMode?: 'local' | null
 }
 
+type ActiveStrokeFinalization = {
+  pending: DeferredStrokeFinalization
+  generation: number
+  finalizationStartedAt: number
+  phase: 'prepare' | 'raster' | 'post-raster' | 'fluid' | 'complete'
+  raster: PaintStrokeRasterContinuation | null
+  fluid: LocalFluidPhysicsContinuation | null
+}
+
+export type PaintPerformanceCategory = 'sync-cpu' | 'scheduled-wait' | 'async-elapsed' | 'input-delay'
+
+export type PaintPerformanceSample = {
+  stage: string
+  category: PaintPerformanceCategory
+  durationMs: number
+  timestamp: number
+  mutationId?: number
+  branch?: string
+  outcome?: string
+}
+
 export type CompletedPaintMutation = {
   kind: ToolType | 'undo' | 'clear' | 'physics'
   isEmpty: boolean
+  mutationId: number
 }
 
-const STROKE_FINALIZATION_INPUT_GRACE_MS = 600
-const STROKE_FINALIZATION_RETRY_MS = 80
-const STROKE_FINALIZATION_DRAIN_MS = 16
-const STROKE_FINALIZATION_MAX_DEFER_MS = 1400
-const ACTIVE_DRAWING_QUEUED_PREVIEW_LIMIT = 3
+const STROKE_FINALIZATION_IDLE_MS = 500
 
 function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
   return Math.max(0.5, (opts.size || 24) / 2)
@@ -145,14 +167,16 @@ export class EfxPaintEngine {
   private allActions: PaintStroke[] = []
   private undoStack: UndoSnapshot[] = []
   private pendingStrokeFinalizations: DeferredStrokeFinalization[] = []
+  private activeStrokeFinalization: ActiveStrokeFinalization | null = null
   private strokeFinalizationScheduled: boolean = false
-  private strokeFinalizationQueuedAt: number = 0
+  private strokeFinalizationGeneration: number = 0
 
   // --- Pointer State ---
   private rawPts: PenPoint[] = []
   private cursorX: number = -1
   private cursorY: number = -1
-  private lastPointerTime: number = 0
+  private lastPointerSampleTimeStamp: number = Number.NEGATIVE_INFINITY
+  private lastAcceptedPointerSampleTimeStamp: number = Number.NEGATIVE_INFINITY
   private previewStroke: StrokePreview | null = null
   private lastStrokeBounds: { x0: number; y0: number; x1: number; y1: number } | null = null
   private color: string = '#103c65'
@@ -169,9 +193,14 @@ export class EfxPaintEngine {
   private nativePenInput: NativePenInput | null = null
   private lastNativePenInputTime: number = 0
   private lastPointerInputTime: number = 0
+  private lastStrokeHandoffTime: number = 0
   private readonly getStrokeMetadata?: () => StrokeMetadata | null | undefined
   private readonly paperTextureScale: number
   private completedMutationListener: ((mutation: CompletedPaintMutation) => void) | null = null
+  private performanceListener: ((sample: PaintPerformanceSample) => void) | null = null
+  private nextMutationId: number = 1
+  private activeMutationId: number | null = null
+  private lastCompletedMutationId: number | null = null
 
   // --- Bound Event Handlers (for removeEventListener) ---
   private readonly boundPointerDown: (e: PointerEvent) => void
@@ -563,6 +592,32 @@ export class EfxPaintEngine {
     this.completedMutationListener = listener
   }
 
+  setPerformanceListener(listener: ((sample: PaintPerformanceSample) => void) | null): void {
+    this.performanceListener = listener
+  }
+
+  private recordPerformance(stage: string, category: PaintPerformanceCategory, startedAt: number, metadata: Pick<PaintPerformanceSample, 'mutationId' | 'branch' | 'outcome'> = {}): void {
+    if (!this.performanceListener) return
+    this.performanceListener({
+      stage,
+      category,
+      durationMs: performance.now() - startedAt,
+      timestamp: performance.now(),
+      ...metadata,
+    })
+  }
+
+  private recordPaintPrimitive(stage: string, durationMs: number): void {
+    if (!this.performanceListener) return
+    this.performanceListener({
+      stage,
+      category: 'sync-cpu',
+      durationMs,
+      timestamp: performance.now(),
+      ...(this.activeMutationId !== null ? { mutationId: this.activeMutationId } : {}),
+    })
+  }
+
   /** Stop physics simulation and bake result */
   stopPhysics(): void {
     if (!this.state.physicsRunning) return
@@ -686,7 +741,8 @@ export class EfxPaintEngine {
   clear(): void {
     this.pendingStrokeFinalizations = []
     this.strokeFinalizationScheduled = false
-    this.strokeFinalizationQueuedAt = 0
+    this.strokeFinalizationGeneration++
+    this.activeStrokeFinalization = null
     this.stopNaturalDrying()
     this.allActions = []
     this.undoStack = []
@@ -721,21 +777,18 @@ export class EfxPaintEngine {
 
   /** Load a serialized project */
   load(json: SerializedProject): void {
-    this.pendingStrokeFinalizations = []
-    this.strokeFinalizationScheduled = false
-    this.strokeFinalizationQueuedAt = 0
+    this.flushPendingStrokeFinalizations()
     this.loadProjectData(json)
   }
 
   /** Clean up all resources: intervals, rAF, event listeners */
   destroy(): void {
+    this.flushPendingStrokeFinalizations()
     this.destroyed = true
     // Cancel render loop
     if (this.rafId) cancelAnimationFrame(this.rafId)
     // Clear intervals
-    this.pendingStrokeFinalizations = []
     this.strokeFinalizationScheduled = false
-    this.strokeFinalizationQueuedAt = 0
     this.stopNaturalDrying()
     if (this.physicsInterval !== null) {
       clearInterval(this.physicsInterval)
@@ -784,18 +837,35 @@ export class EfxPaintEngine {
 
   /** Copy the completed live paint only, excluding preview base and paper/background. */
   copyLiveAlphaCanvas(): HTMLCanvasElement {
+    const mutationId = this.activeMutationId ?? this.lastCompletedMutationId ?? undefined
+    const branch = this.previewBackgroundSeparated ? 'separated' : 'background-subtraction'
+
+    const wetRenderStartedAt = this.performanceListener ? performance.now() : 0
     this.renderVisibleWetLayer()
+    this.recordPerformance('live-alpha-render-wet', 'sync-cpu', wetRenderStartedAt, { mutationId, branch })
+
+    const allocationStartedAt = this.performanceListener ? performance.now() : 0
     const canvas = document.createElement('canvas')
     canvas.width = this.width
     canvas.height = this.height
     const ctx = canvas.getContext('2d')!
     ctx.clearRect(0, 0, this.width, this.height)
+    this.recordPerformance('live-alpha-allocate', 'sync-cpu', allocationStartedAt, { mutationId, branch })
 
     if (this.previewBackgroundSeparated) {
+      const drawDryStartedAt = this.performanceListener ? performance.now() : 0
       ctx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
+      this.recordPerformance('live-alpha-draw-dry', 'sync-cpu', drawDryStartedAt, { mutationId, branch })
     } else {
+      const dryReadbackStartedAt = this.performanceListener ? performance.now() : 0
       const dryPixels = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
+      this.recordPerformance('live-alpha-dry-readback', 'sync-cpu', dryReadbackStartedAt, { mutationId, branch })
+
+      const backgroundReadbackStartedAt = this.performanceListener ? performance.now() : 0
       const backgroundPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
+      this.recordPerformance('live-alpha-background-readback', 'sync-cpu', backgroundReadbackStartedAt, { mutationId, branch })
+
+      const comparisonStartedAt = this.performanceListener ? performance.now() : 0
       const dry = dryPixels.data
       const background = backgroundPixels.data
       for (let index = 0; index < dry.length; index += 4) {
@@ -811,9 +881,16 @@ export class EfxPaintEngine {
           dry[index + 3] = 0
         }
       }
+      this.recordPerformance('live-alpha-background-compare', 'sync-cpu', comparisonStartedAt, { mutationId, branch })
+
+      const putPixelsStartedAt = this.performanceListener ? performance.now() : 0
       ctx.putImageData(dryPixels, 0, 0)
+      this.recordPerformance('live-alpha-put-pixels', 'sync-cpu', putPixelsStartedAt, { mutationId, branch })
     }
+
+    const drawDisplayStartedAt = this.performanceListener ? performance.now() : 0
     ctx.drawImage(this.dualCanvas.displayCanvas, 0, 0)
+    this.recordPerformance('live-alpha-draw-display', 'sync-cpu', drawDisplayStartedAt, { mutationId, branch })
     return canvas
   }
 
@@ -889,24 +966,17 @@ export class EfxPaintEngine {
     compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn)
 
     // Draw queued stroke outlines until their full render finalizes.
-    const queuedPreviews = this.state.drawing
-      ? this.pendingStrokeFinalizations.slice(-ACTIVE_DRAWING_QUEUED_PREVIEW_LIMIT)
-      : this.pendingStrokeFinalizations
-    for (const pending of queuedPreviews) {
-      drawStrokePreview(displayCtx, {
-        pts: pending.points,
-        color: pending.tool === 'paint' && pending.color ? pending.color : pending.tool === 'erase' ? '#ff4444' : '#888888',
-        radius: brushRenderRadius(pending.opts),
-        opacity: pending.tool === 'paint' ? pending.opts.opacity / 100 : 0.3,
-        hasPenInput: pending.hasPenInput,
-      })
-    }
+    this.drawQueuedStrokePreviews(displayCtx)
 
     // Draw stroke preview
     drawStrokePreview(displayCtx, this.previewStroke)
 
     // Draw brush cursor
     drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
+
+    // Finalized pixels yield to active input and preview rendering. Advance at most
+    // one retained FIFO continuation after the visible frame has been drawn.
+    this.runScheduledStrokeFinalizationFrame()
 
     this.rafId = requestAnimationFrame(() => this.render())
   }
@@ -915,8 +985,12 @@ export class EfxPaintEngine {
   //  PRIVATE — Deferred Stroke Finalization
   // ================================================================
 
-  private pushUndoSnapshot(): void {
+  private pushUndoSnapshot(mutationId?: number): void {
+    const readbackStartedAt = this.performanceListener ? performance.now() : 0
     const snap = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
+    this.recordPerformance('undo-dry-readback', 'sync-cpu', readbackStartedAt, { mutationId })
+
+    const wetCopyStartedAt = this.performanceListener ? performance.now() : 0
     const wetSnap = {
       r: new Float32Array(this.wet.r),
       g: new Float32Array(this.wet.g),
@@ -926,6 +1000,9 @@ export class EfxPaintEngine {
       dp: new Float32Array(this.drying.dryPos),
       so: new Float32Array(this.wet.strokeOpacity),
     }
+    this.recordPerformance('undo-wet-buffer-copy', 'sync-cpu', wetCopyStartedAt, { mutationId })
+
+    const savedCopyStartedAt = this.performanceListener ? performance.now() : 0
     const savedSnap = {
       r: new Float32Array(this.savedWet.r),
       g: new Float32Array(this.savedWet.g),
@@ -933,47 +1010,237 @@ export class EfxPaintEngine {
       a: new Float32Array(this.savedWet.alpha),
       so: new Float32Array(this.savedWet.strokeOpacity),
     }
+    this.recordPerformance('undo-saved-wet-buffer-copy', 'sync-cpu', savedCopyStartedAt, { mutationId })
+
     this.undoStack.push({ canvas: snap, wet: wetSnap, saved: savedSnap })
     if (this.undoStack.length > 25) this.undoStack.shift()
   }
 
-  private scheduleStrokeFinalization(delayMs: number = STROKE_FINALIZATION_INPUT_GRACE_MS): void {
-    if (this.strokeFinalizationScheduled || this.pendingStrokeFinalizations.length === 0) return
-    this.strokeFinalizationScheduled = true
-
-    window.setTimeout(() => {
-      this.strokeFinalizationScheduled = false
-      if (this.destroyed) return
-      const now = performance.now()
-      const inputGraceElapsed = now - this.lastPointerInputTime >= STROKE_FINALIZATION_INPUT_GRACE_MS
-      const maxDeferElapsed = now - this.strokeFinalizationQueuedAt >= STROKE_FINALIZATION_MAX_DEFER_MS
-      if (this.state.drawing || (!inputGraceElapsed && !maxDeferElapsed)) {
-        this.scheduleStrokeFinalization(STROKE_FINALIZATION_RETRY_MS)
-        return
-      }
-      this.finalizeNextPendingStroke()
-      if (this.pendingStrokeFinalizations.length > 0) {
-        this.scheduleStrokeFinalization(STROKE_FINALIZATION_DRAIN_MS)
-      } else {
-        this.strokeFinalizationQueuedAt = 0
-      }
-    }, delayMs)
+  private getQueuedStrokePreviews(): DeferredStrokeFinalization[] {
+    const active = this.activeStrokeFinalization
+    if (!active || active.phase === 'prepare' || active.phase === 'raster') {
+      return this.pendingStrokeFinalizations
+    }
+    return this.pendingStrokeFinalizations.filter((pending) => pending !== active.pending)
   }
 
-  private flushPendingStrokeFinalizations(): void {
-    while (this.pendingStrokeFinalizations.length > 0) {
-      this.finalizeNextPendingStroke()
+  private drawQueuedStrokePreview(
+    displayCtx: CanvasRenderingContext2D,
+    points: readonly PenPoint[],
+  ): void {
+    drawQueuedStrokePolyline(displayCtx, points)
+  }
+
+  private drawQueuedStrokePreviews(displayCtx: CanvasRenderingContext2D): void {
+    for (const pending of this.getQueuedStrokePreviews()) {
+      this.drawQueuedStrokePreview(displayCtx, pending.points)
+    }
+  }
+
+  private markStrokeHandoffComplete(): void {
+    this.lastStrokeHandoffTime = performance.now()
+  }
+
+  private scheduleStrokeFinalization(): void {
+    if (this.strokeFinalizationScheduled || (this.pendingStrokeFinalizations.length === 0 && !this.activeStrokeFinalization)) return
+    this.strokeFinalizationScheduled = true
+  }
+
+  private hasPendingInput(): boolean {
+    const scheduling = (navigator as Navigator & {
+      scheduling?: { isInputPending?: (options?: { includeContinuous?: boolean }) => boolean }
+    }).scheduling
+    return scheduling?.isInputPending?.({ includeContinuous: true }) ?? false
+  }
+
+  private runScheduledStrokeFinalizationFrame(): void {
+    if (!this.strokeFinalizationScheduled || this.destroyed) return
+    const lastInteractionTime = Math.max(this.lastPointerInputTime, this.lastStrokeHandoffTime)
+    if (
+      this.state.drawing ||
+      performance.now() - lastInteractionTime < STROKE_FINALIZATION_IDLE_MS ||
+      this.hasPendingInput()
+    ) return
+    this.strokeFinalizationScheduled = false
+    this.runStrokeFinalizationTurn()
+    if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
+      this.strokeFinalizationScheduled = true
+    }
+  }
+
+  public flushPendingStrokeFinalizations(): void {
+    while (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
+      this.runStrokeFinalizationTurn(true)
     }
     this.strokeFinalizationScheduled = false
-    this.strokeFinalizationQueuedAt = 0
   }
 
-  private finalizeNextPendingStroke(): void {
-    const pending = this.pendingStrokeFinalizations.shift()
-    if (!pending) return
+  private startNextStrokeFinalization(): ActiveStrokeFinalization | null {
+    const pending = this.pendingStrokeFinalizations[0]
+    if (!pending) return null
+    if (this.performanceListener) {
+      this.performanceListener({
+        stage: 'stroke-finalization-queue-wait',
+        category: 'scheduled-wait',
+        durationMs: performance.now() - pending.queuedAt,
+        timestamp: performance.now(),
+        mutationId: pending.mutationId,
+      })
+    }
+    this.activeMutationId = pending.mutationId
+    this.pushUndoSnapshot(pending.mutationId)
+    return {
+      pending,
+      generation: this.strokeFinalizationGeneration,
+      finalizationStartedAt: this.performanceListener ? performance.now() : 0,
+      phase: pending.tool === 'paint' && pending.color ? 'prepare' : 'complete',
+      raster: null,
+      fluid: null,
+    }
+  }
 
-    this.pushUndoSnapshot()
-    this.applyFinalizedStroke(pending)
+  private runStrokeFinalizationTurn(flush: boolean = false): void {
+    do {
+      const active = this.activeStrokeFinalization ?? this.startNextStrokeFinalization()
+      if (!active) return
+      this.activeStrokeFinalization = active
+      if (active.generation !== this.strokeFinalizationGeneration) {
+        this.activeStrokeFinalization = null
+        this.activeMutationId = null
+        continue
+      }
+      if (active.phase === 'complete' || active.pending.tool !== 'paint' || !active.pending.color) {
+        this.finishActiveStrokeSynchronously(active)
+        continue
+      }
+      do {
+        this.stepInteractivePaintFinalization(active)
+      } while (flush && this.activeStrokeFinalization === active)
+    } while (flush && (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization))
+  }
+
+  private finishActiveStrokeSynchronously(active: ActiveStrokeFinalization): void {
+    const { pending } = active
+    const applyStartedAt = this.performanceListener ? performance.now() : 0
+    if (pending.tool !== 'paint' || !pending.color) {
+      this.applyStrokeToEngine(pending.tool, pending.points, pending.color, pending.opts, { startNaturalDrying: true, hasPenInput: pending.hasPenInput })
+    }
+    this.recordPerformance('stroke-apply', 'sync-cpu', applyStartedAt, { mutationId: pending.mutationId })
+    this.completeActiveStrokeFinalization(active)
+  }
+
+  private completeActiveStrokeFinalization(active: ActiveStrokeFinalization): void {
+    if (active.generation !== this.strokeFinalizationGeneration) return
+    const pending = active.pending
+    if (this.pendingStrokeFinalizations[0] === pending) this.pendingStrokeFinalizations.shift()
+    this.recordPerformance('stroke-finalization', 'sync-cpu', active.finalizationStartedAt, { mutationId: pending.mutationId })
+    this.notifyCompletedMutation(pending.tool, pending.mutationId)
+    this.activeStrokeFinalization = null
+    this.activeMutationId = null
+  }
+
+  private stepInteractivePaintFinalization(active: ActiveStrokeFinalization): void {
+    const { pending } = active
+    const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
+    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
+    const renderOpts = { ...pending.opts, size: brushRenderRadius(pending.opts) }
+
+    if (active.phase === 'prepare') {
+      this.prepareWetLayerForStroke(pending.points[0], pending.opts)
+      active.raster = createPaintStrokeRasterContinuation(
+        pending.points, pending.color!, renderOpts,
+        this.dualCanvas.dryCtx, this.wet, this.paperHeight,
+        this.width, this.height, pending.hasPenInput,
+        this.state.embossStrength, this.state.embossStack,
+        pending.opts.waterAmount / 100, sampleHFn, observePrimitive,
+      )
+      active.phase = 'raster'
+      return
+    }
+
+    if (active.phase === 'raster') {
+      if (active.raster!.step()) {
+        active.phase = 'post-raster'
+        this.recordPerformance('stroke-first-raster-publication', 'scheduled-wait', pending.queuedAt, { mutationId: pending.mutationId })
+      }
+      return
+    }
+
+    if (active.phase === 'post-raster') {
+      if (pending.opts.antiAlias > 0) {
+        const brushR = brushRenderRadius(pending.opts)
+        const strokeBounds = curveBounds(pending.points, brushR + 10, this.width, this.height)
+        featherWetEdges(this.wet,
+          { x0: strokeBounds.x0, y0: strokeBounds.y0, x1: strokeBounds.x0 + strokeBounds.w, y1: strokeBounds.y0 + strokeBounds.h },
+          this.width, this.height, pending.opts.antiAlias * 2, observePrimitive)
+      }
+      const savedWetStartedAt = observePrimitive ? performance.now() : 0
+      this.lastStrokeMask.fill(0)
+      for (let i = 0; i < this.size; i++) {
+        if (this.wet.alpha[i] <= 1) continue
+        if (this.wet.alpha[i] > this.savedWet.alpha[i]) {
+          const blend = this.wet.alpha[i] / (this.savedWet.alpha[i] + this.wet.alpha[i])
+          this.savedWet.r[i] = lerp(this.savedWet.r[i], this.wet.r[i], blend)
+          this.savedWet.g[i] = lerp(this.savedWet.g[i], this.wet.g[i], blend)
+          this.savedWet.b[i] = lerp(this.savedWet.b[i], this.wet.b[i], blend)
+          this.savedWet.alpha[i] = Math.max(this.savedWet.alpha[i], this.wet.alpha[i])
+        }
+        const existingOp = this.savedWet.strokeOpacity[i]
+        const newOp = this.wet.strokeOpacity[i]
+        this.savedWet.strokeOpacity[i] = existingOp + newOp * (1 - existingOp)
+        this.lastStrokeMask[i] = 1
+      }
+      if (observePrimitive) observePrimitive('paint-saved-wet-full-frame-scan', performance.now() - savedWetStartedAt)
+
+      if (this.state.physicsMode === 'local') {
+        const brushR = brushRenderRadius(pending.opts)
+        let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
+        for (const p of pending.points) {
+          sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
+          sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
+        }
+        const waterFrac = pending.opts.waterAmount / 100
+        const spreadFrac = this.state.localSpreadStrength / 100
+        const spreadCurve = spreadFrac * spreadFrac
+        const waterCurve = waterFrac * waterFrac
+        const margin = Math.ceil(2 + waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4)
+        active.fluid = createLocalFluidPhysicsContinuation(
+          this.wet, this.fluidConfig, this.width, this.height,
+          {
+            x0: Math.max(0, Math.floor(sx0 - brushR - margin)),
+            y0: Math.max(0, Math.floor(sy0 - brushR - margin)),
+            x1: Math.min(this.width - 1, Math.ceil(sx1 + brushR + margin)),
+            y1: Math.min(this.height - 1, Math.ceil(sy1 + brushR + margin)),
+          },
+          Math.max(1, Math.ceil(spreadCurve * 10)), observePrimitive,
+        )
+        active.phase = 'fluid'
+        return
+      }
+      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry')
+      this.finishInteractivePaintFinalization(active)
+      return
+    }
+
+    if (active.phase === 'fluid' && active.fluid?.step()) {
+      this.startNaturalDrying()
+      this.finishInteractivePaintFinalization(active)
+    }
+  }
+
+  private finishInteractivePaintFinalization(active: ActiveStrokeFinalization): void {
+    const { pending } = active
+    let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
+    for (const p of pending.points) {
+      sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
+      sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
+    }
+    const brushR = brushRenderRadius(pending.opts)
+    this.lastStrokeBounds = {
+      x0: Math.floor(sx0 - brushR), y0: Math.floor(sy0 - brushR),
+      x1: Math.ceil(sx1 + brushR), y1: Math.ceil(sy1 + brushR),
+    }
+    this.completeActiveStrokeFinalization(active)
   }
 
   private renderVisibleWetLayer(): void {
@@ -1015,24 +1282,27 @@ export class EfxPaintEngine {
   }
 
   private prepareWetLayerForStroke(pt: PenPoint, opts: BrushOpts): void {
+    const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
     if (this.state.physicsMode === 'local') {
       const keepR = brushRenderRadius(opts) * 3 + 40
       const keepR2 = keepR * keepR
+      const readbackStartedAt = observePrimitive ? performance.now() : 0
       const id = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
+      if (observePrimitive) observePrimitive('paint-pre-stroke-local-full-frame-readback', performance.now() - readbackStartedAt)
       const d = id.data
       let changed = false
+      const pixelLoopStartedAt = observePrimitive ? performance.now() : 0
       for (let i = 0; i < this.size; i++) {
         if (this.wet.alpha[i] < 1) continue
         const x = i % this.width, y = (i / this.width) | 0
         const dx = x - pt.x, dy = y - pt.y
         if (dx * dx + dy * dy > keepR2) {
-          const densityAlpha = Math.min(1, this.wet.alpha[i] / 800)
           const pixelOpacity = this.wet.strokeOpacity[i]
-          const sa = densityAlpha * pixelOpacity
-          if (sa > 0.005) {
+          const displayAlpha = wetDisplayAlpha(this.wet.alpha[i], pixelOpacity, sampleH(this.paperHeight, x, y, this.width, this.height)) / 255
+          if (displayAlpha > 0.005) {
             const pi = i * 4, ma = d[pi + 3] / 255
-            const oa = Math.min(1, ma + sa * (1 - ma))
-            const bt = sa / Math.max(0.005, oa)
+            const oa = Math.min(1, ma + displayAlpha * (1 - ma))
+            const bt = displayAlpha / Math.max(0.005, oa)
             d[pi] = Math.round(clamp(lerp(d[pi], this.wet.r[i], bt), 0, 255))
             d[pi + 1] = Math.round(clamp(lerp(d[pi + 1], this.wet.g[i], bt), 0, 255))
             d[pi + 2] = Math.round(clamp(lerp(d[pi + 2], this.wet.b[i], bt), 0, 255))
@@ -1045,21 +1315,32 @@ export class EfxPaintEngine {
           this.drying.dryPos[i] = 0
         }
       }
-      if (changed) this.dualCanvas.dryCtx.putImageData(id, 0, 0)
+      if (observePrimitive) observePrimitive('paint-pre-stroke-local-pixel-loop', performance.now() - pixelLoopStartedAt)
+      if (changed) {
+        const writebackStartedAt = observePrimitive ? performance.now() : 0
+        this.dualCanvas.dryCtx.putImageData(id, 0, 0)
+        if (observePrimitive) observePrimitive('paint-pre-stroke-local-full-frame-writeback', performance.now() - writebackStartedAt)
+      }
       this.stopNaturalDrying()
       return
     }
 
-    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-pre-stroke-force-dry')
   }
 
-  private applyFinalizedStroke({ tool, points, color, opts, hasPenInput }: DeferredStrokeFinalization): void {
+  private applyFinalizedStroke({ tool, points, color, opts, hasPenInput, mutationId }: DeferredStrokeFinalization, finalizationStartedAt: number): void {
+    const applyStartedAt = this.performanceListener ? performance.now() : 0
     this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true, hasPenInput })
-    this.notifyCompletedMutation(tool)
+    this.recordPerformance('stroke-apply', 'sync-cpu', applyStartedAt, { mutationId })
+    this.recordPerformance('stroke-finalization', 'sync-cpu', finalizationStartedAt, { mutationId })
+    this.notifyCompletedMutation(tool, mutationId)
   }
 
-  private notifyCompletedMutation(kind: CompletedPaintMutation['kind']): void {
-    this.completedMutationListener?.({ kind, isEmpty: this.allActions.length === 0 })
+  private notifyCompletedMutation(kind: CompletedPaintMutation['kind'], mutationId: number = this.nextMutationId++): void {
+    this.lastCompletedMutationId = mutationId
+    const listenerStartedAt = this.performanceListener ? performance.now() : 0
+    this.completedMutationListener?.({ kind, isEmpty: this.allActions.length === 0, mutationId })
+    this.recordPerformance('completed-mutation-listener', 'sync-cpu', listenerStartedAt, { mutationId })
   }
 
   private strokeHasPenInput(stroke: PaintStroke): boolean {
@@ -1076,6 +1357,7 @@ export class EfxPaintEngine {
     if (points.length === 0) return
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
+    const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
     const hasPenInput = options.hasPenInput ?? this.state.hasPenInput
     const renderOpts = { ...opts, size: brushRenderRadius(opts) }
     const previousPhysicsMode = this.state.physicsMode
@@ -1094,6 +1376,7 @@ export class EfxPaintEngine {
         this.state.embossStrength, this.state.embossStack,
         opts.waterAmount / 100,
         sampleHFn,
+        observePrimitive,
       )
       // Edge feathering on wet layer for anti-aliased brush edges
       if (opts.antiAlias > 0) {
@@ -1103,9 +1386,10 @@ export class EfxPaintEngine {
         const featherPasses = opts.antiAlias * 2
         featherWetEdges(this.wet,
           { x0: strokeBounds.x0, y0: strokeBounds.y0, x1: strokeBounds.x0 + strokeBounds.w, y1: strokeBounds.y0 + strokeBounds.h },
-          this.width, this.height, featherPasses)
+          this.width, this.height, featherPasses, observePrimitive)
       }
       // Save clean wet layer (accumulate with previously saved data)
+      const savedWetStartedAt = observePrimitive ? performance.now() : 0
       this.lastStrokeMask.fill(0)
       for (let i = 0; i < this.size; i++) {
         if (this.wet.alpha[i] > 1) {
@@ -1123,6 +1407,7 @@ export class EfxPaintEngine {
           this.lastStrokeMask[i] = 1
         }
       }
+      if (observePrimitive) observePrimitive('paint-saved-wet-full-frame-scan', performance.now() - savedWetStartedAt)
 
       // D-05/D-07: Local physics -- run Stam solver on stroke bbox
       if (this.state.physicsMode === 'local' && points.length > 0) {
@@ -1145,16 +1430,19 @@ export class EfxPaintEngine {
 
         const localBounds = { x0: bx0, y0: by0, x1: bx1, y1: by1 }
         const ticks = Math.max(1, Math.ceil(spreadCurve * 10))
+        const localPhysicsStartedAt = observePrimitive ? performance.now() : 0
         localFluidPhysicsStep(
           this.wet, this.fluidConfig,
           this.width, this.height,
           localBounds, ticks,
+          observePrimitive,
         )
+        if (observePrimitive) observePrimitive('paint-local-fluid-total', performance.now() - localPhysicsStartedAt)
       }
 
       // Bake to canvas — in local mode, keep wet for stroke interaction
       if (this.state.physicsMode !== 'local') {
-        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry')
       } else if (options.startNaturalDrying) {
         // Start natural drying timer (research: paint dries over time via evaporation)
         this.startNaturalDrying()
@@ -1169,8 +1457,9 @@ export class EfxPaintEngine {
         this.paperHeight,
         this.state.bgMode,
         this.getDryRestoreData(),
+        observePrimitive,
       )
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'erase-final-force-dry')
     }
 
     // Compute last stroke bounding box for physics "Last" mode
@@ -1199,12 +1488,28 @@ export class EfxPaintEngine {
 
   private onPointerDown(e: PointerEvent): void {
     if (this.inputLocked) return
+    const handlerStartedAt = performance.now()
+    if (this.performanceListener) {
+      const dispatchDelay = handlerStartedAt - e.timeStamp
+      if (dispatchDelay >= 0 && dispatchDelay < 60_000) {
+        this.performanceListener({
+          stage: 'next-pointerdown-dispatch',
+          category: 'input-delay',
+          durationMs: dispatchDelay,
+          timestamp: handlerStartedAt,
+          ...(this.lastCompletedMutationId !== null ? { mutationId: this.lastCompletedMutationId } : {}),
+        })
+      }
+      this.lastCompletedMutationId = null
+    }
     e.preventDefault()
-    this.lastPointerInputTime = performance.now()
+    this.lastPointerInputTime = handlerStartedAt
     this.dualCanvas.dryCanvas.setPointerCapture(e.pointerId)
     this.state.drawing = true
-    this.lastPointerTime = performance.now()
-    this.rawPts = [this.extractPenPoint(e)]
+    this.rawPts = []
+    this.lastPointerSampleTimeStamp = Number.NEGATIVE_INFINITY
+    this.lastAcceptedPointerSampleTimeStamp = Number.NEGATIVE_INFINITY
+    this.consumePointerSamples([e])
   }
 
   private onPointerMove(e: PointerEvent): void {
@@ -1212,20 +1517,14 @@ export class EfxPaintEngine {
     const r = this.dualCanvas.dryCanvas.getBoundingClientRect()
     this.cursorX = (e.clientX - r.left) * (this.width / r.width)
     this.cursorY = (e.clientY - r.top) * (this.height / r.height)
+    this.lastPointerInputTime = performance.now()
 
     if (!this.state.drawing) return
-    this.lastPointerInputTime = performance.now()
     e.preventDefault()
 
     // Handle coalesced events for smooth strokes
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : null
-    const evList = (events && events.length > 0) ? events : [e]
-
-    for (const ev of evList) {
-      const pt = this.extractPenPoint(ev)
-      if (this.rawPts.length > 0 && distXY(pt, this.rawPts[this.rawPts.length - 1]) < 1.5) continue
-      this.rawPts.push(pt)
-    }
+    this.consumePointerSamples((events && events.length > 0) ? events : [e])
 
     // Update stroke preview
     if (this.rawPts.length >= 2) {
@@ -1241,18 +1540,24 @@ export class EfxPaintEngine {
 
   private onPointerUp(e: PointerEvent): void {
     if (!this.state.drawing) return
+    const pointerUpStartedAt = this.performanceListener ? performance.now() : 0
+    const mutationId = this.nextMutationId++
     this.lastPointerInputTime = performance.now()
+    const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : null
+    if (coalesced && coalesced.length > 0) this.consumePointerSamples(coalesced)
+    this.consumePointerSamples([e])
     this.state.drawing = false
     this.previewStroke = null
     this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
 
     if (this.rawPts.length < 3) {
       this.rawPts = []
+      this.recordPerformance('pointer-up', 'sync-cpu', pointerUpStartedAt, { mutationId, outcome: 'discarded-short-stroke' })
       return
     }
 
     const opts = { ...this.state.brushOpts }
-    const points = this.rawPts.map(p => ({ x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: p.spd }))
+    const points = Object.freeze(this.rawPts.map(p => Object.freeze({ x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: p.spd }))) as unknown as PenPoint[]
     const hasPenInput = this.state.hasPenInput
     const colorlessTools: string[] = ['erase']
     const color = colorlessTools.includes(this.state.tool) ? null : this.color
@@ -1260,7 +1565,7 @@ export class EfxPaintEngine {
     const playFrame = this.getStrokeMetadata?.()?.playFrame
     this.allActions.push({
       tool: this.state.tool,
-      points: points.map(p => ({ ...p })),
+      points: Object.freeze(points.map(p => Object.freeze({ ...p }))) as unknown as PenPoint[],
       color,
       params: opts,
       timestamp: Date.now(),
@@ -1269,21 +1574,39 @@ export class EfxPaintEngine {
       ...(Number.isInteger(playFrame) && playFrame !== undefined && playFrame >= 0 ? { playFrame } : {}),
     })
 
-    if (this.pendingStrokeFinalizations.length === 0) this.strokeFinalizationQueuedAt = performance.now()
-    this.pendingStrokeFinalizations.push({
+    const queuedAt = performance.now()
+    const pending = {
       tool: this.state.tool,
       points,
       color,
       opts,
       hasPenInput,
-    })
+      mutationId,
+      queuedAt,
+    }
+    this.pendingStrokeFinalizations.push(pending)
     this.rawPts = []
+    this.markStrokeHandoffComplete()
     this.scheduleStrokeFinalization()
+    this.recordPerformance('pointer-up', 'sync-cpu', pointerUpStartedAt, { mutationId, outcome: 'queued' })
   }
 
   private onPointerLeave(e: PointerEvent): void {
     this.cursorX = -1
     if (this.state.drawing) this.onPointerUp(e)
+  }
+
+  private consumePointerSamples(events: readonly PointerEvent[]): void {
+    for (const event of events) {
+      if (Number.isFinite(event.timeStamp) && event.timeStamp < this.lastPointerSampleTimeStamp) continue
+      const point = this.extractPenPoint(event)
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+      if (point.x < 0 || point.y < 0 || point.x > this.width || point.y > this.height) continue
+      if (Number.isFinite(event.timeStamp)) this.lastPointerSampleTimeStamp = event.timeStamp
+      if (this.rawPts.length > 0 && distXY(point, this.rawPts[this.rawPts.length - 1]) < 1.5) continue
+      this.rawPts.push(point)
+      if (Number.isFinite(event.timeStamp)) this.lastAcceptedPointerSampleTimeStamp = event.timeStamp
+    }
   }
 
   private extractPenPoint(e: PointerEvent): PenPoint {
@@ -1299,7 +1622,10 @@ export class EfxPaintEngine {
     let tiltX = e.tiltX || 0
     let tiltY = e.tiltY || 0
     const nativePenActive = this.lastNativePenInputTime > 0 && (now - this.lastNativePenInputTime) < 300
-    if (nativePenActive && this.nativePenInput) {
+    const pointerReportsPenDynamics = e.pointerType === 'pen' && (
+      pressure !== 0.5 || tiltX !== 0 || tiltY !== 0 || (e.twist || 0) !== 0
+    )
+    if (nativePenActive && this.nativePenInput && !pointerReportsPenDynamics) {
       this.state.hasPenInput = true
       pressure = this.nativePenInput.pressure
       tiltX = this.nativePenInput.tiltX ?? 0
@@ -1307,18 +1633,22 @@ export class EfxPaintEngine {
     } else if (e.pointerType === 'pen') {
       this.state.hasPenInput = true
       pressure = clamp(pressure, 0, 1)
+    } else if (nativePenActive && this.nativePenInput && e.buttons > 0) {
+      this.state.hasPenInput = true
+      pressure = this.nativePenInput.pressure
+      tiltX = this.nativePenInput.tiltX ?? 0
+      tiltY = this.nativePenInput.tiltY ?? 0
     } else {
       this.state.hasPenInput = false
       if (e.buttons > 0 && pressure === 0) pressure = 0.5
     }
 
     let speed = 0
-    if (this.rawPts.length > 0 && now - this.lastPointerTime > 0) {
+    if (this.rawPts.length > 0 && Number.isFinite(e.timeStamp) && Number.isFinite(this.lastAcceptedPointerSampleTimeStamp)) {
       const prev = this.rawPts[this.rawPts.length - 1]
-      const dt = now - this.lastPointerTime
-      speed = Math.hypot(x - prev.x, y - prev.y) / dt
+      const dt = e.timeStamp - this.lastAcceptedPointerSampleTimeStamp
+      if (dt > 0) speed = Math.hypot(x - prev.x, y - prev.y) / dt
     }
-    this.lastPointerTime = now
 
     return {
       x, y,

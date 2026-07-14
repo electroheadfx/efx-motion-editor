@@ -115,8 +115,7 @@ export function ribbon(
     const t = i / (curve.length - 1)
 
     const endTaper = Math.pow(Math.sin(t * Math.PI), tPow) * 0.7 + 0.3
-    const penPressure = curve[i].p
-    const pr = hasPenInput ? penPressure * endTaper : endTaper
+    const pr = (hasPenInput ? curve[i].p : 1) * endTaper
     const w = halfWidth * Math.max(0.1, pr)
 
     const tiltAngle = (curve[i].tx || 0) * 0.015

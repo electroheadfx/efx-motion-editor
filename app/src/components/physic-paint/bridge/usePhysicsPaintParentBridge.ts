@@ -16,6 +16,33 @@ export async function detectPhysicsPaintBridgeMode(): Promise<PhysicsPaintBridge
   return 'Unavailable';
 }
 
+export function usePhysicsPaintCloseFlush(hasPending: () => boolean, flush: () => Promise<void>): void {
+  const hasPendingRef = useRef(hasPending);
+  const flushRef = useRef(flush);
+  hasPendingRef.current = hasPending;
+  flushRef.current = flush;
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
+      const appWindow = getCurrentWindow();
+      unlisten = await appWindow.onCloseRequested(async (event) => {
+        if (!hasPendingRef.current()) return;
+        event.preventDefault();
+        try {
+          await flushRef.current();
+          if (!disposed) await appWindow.destroy();
+        } catch (error) {
+          console.error('[PhysicsPaintStudio] Could not flush pending Roto pixels before close', error);
+        }
+      });
+      if (disposed) unlisten?.();
+    }).catch(() => undefined);
+    return () => { disposed = true; unlisten?.(); };
+  }, []);
+}
+
 export function usePhysicsPaintBridgeMode(): PhysicsPaintBridgeMode {
   const [bridgeMode, setBridgeMode] = useState<PhysicsPaintBridgeMode>('Unavailable');
   useEffect(() => {

@@ -38,6 +38,21 @@ class TestCanvas {
   toDataURL(type?: string): string {
     return `data:${type ?? 'image/png'};base64,bWVyZ2Vk`;
   }
+
+  toBlob(callback: BlobCallback, type?: string): void {
+    callback(new Blob(['merged'], { type: type ?? 'image/png' }));
+  }
+}
+
+class TestFileReader {
+  result: string | ArrayBuffer | null = null;
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  readAsDataURL(): void {
+    this.result = 'data:image/png;base64,bWVyZ2Vk';
+    this.onload?.();
+  }
 }
 
 class TestImage {
@@ -82,6 +97,7 @@ function makeLiveCanvas(): HTMLCanvasElement {
 describe('mergeCachedRotoAlphaFrame', () => {
   const originalDocument = globalThis.document;
   const originalImage = globalThis.Image;
+  const originalFileReader = globalThis.FileReader;
 
   beforeEach(() => {
     operations = [];
@@ -94,12 +110,14 @@ describe('mergeCachedRotoAlphaFrame', () => {
       },
     });
     vi.stubGlobal('Image', TestImage);
+    vi.stubGlobal('FileReader', TestFileReader);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     vi.stubGlobal('document', originalDocument);
     vi.stubGlobal('Image', originalImage);
+    vi.stubGlobal('FileReader', originalFileReader);
   });
 
   it('D-01/D-03/36.11-ALPHA-ONLY-MERGE draws cached base first, live alpha second, and returns real-key frame metadata', async () => {

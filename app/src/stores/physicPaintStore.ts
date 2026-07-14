@@ -4,6 +4,7 @@ import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintPlayMo
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintRotoBackgroundMetadata, isPhysicPaintRotoCacheFrame, isPhysicPaintRotoInterpolationSettings, normalizePhysicPaintPlayScriptRanges, type PhysicPaintRotoSegmentSpacingOverride } from '../types/physicPaint';
 import { getExpandedRotoRealKeyFrames, inferRotoSegmentSpacingOverrides } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
+import type { PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 
 let _markProjectDirty: (() => void) | null = null;
 export function _setPhysicPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
@@ -143,10 +144,17 @@ function _makeRotoCacheFrame(
   };
 }
 
-function _notifyVisualChange(): void {
+function _notifyVisualChange(diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void }): void {
+  const notificationStartedAt = diagnostics ? performance.now() : 0;
   _invalidateSerializationCache();
   physicPaintVersion.value++;
+  const dirtyStartedAt = diagnostics ? performance.now() : 0;
   _markProjectDirty?.();
+  if (diagnostics) {
+    const completedAt = performance.now();
+    diagnostics.record({ stage: 'store-project-dirty', category: 'sync-cpu', durationMs: completedAt - dirtyStartedAt, timestamp: completedAt, mutationId: diagnostics.mutationId });
+    diagnostics.record({ stage: 'store-visual-notification', category: 'sync-cpu', durationMs: completedAt - notificationStartedAt, timestamp: completedAt, mutationId: diagnostics.mutationId });
+  }
 }
 
 function _metadataToMce(metadata: PhysicPaintWorkflowMetadata | undefined, editableState?: SerializedProject): Omit<PhysicPaintMceOutput, 'layer_id' | 'frames' | 'editable_state' | 'play_script_ranges'> {
@@ -810,8 +818,9 @@ export const physicPaintStore = {
     return Array.from(byDisplayFrame.values());
   },
 
-  upsertRealRotoKeyFrame(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame, backgroundOnly = false): void {
+  upsertRealRotoKeyFrame(layerId: string, frame: number, renderedFrame: PhysicPaintRenderedFrame, backgroundOnly = false, diagnostics?: { mutationId?: number; record: (sample: PhysicsPaintPerformanceSample) => void }): void {
     if (!Number.isInteger(frame) || frame < 0) return;
+    const insertionStartedAt = diagnostics ? performance.now() : 0;
     _removeBackgroundOnlyRotoSupport(layerId, [frame]);
     const settings = this.getRotoInterpolationSettings(layerId);
     const normalizedFrame = { ...renderedFrame, appFrame: frame, frameIndex: 0, source: 'real-key' as const };
@@ -819,8 +828,13 @@ export const physicPaintStore = {
     _getOrCreateRotoMetadata(layerId).set(frame, _normalizeRealRotoCacheFrame(normalizedFrame, frame, backgroundOnly || undefined));
     _workflowMetadata.set(layerId, { ...(_workflowMetadata.get(layerId) ?? {}), workflowMode: 'roto', editableSource: 'roto' });
     _pruneFramesOutsideRotoCacheMetadata(layerId);
-    if (settings.enabled) _tryRegenerateGeneratedRotoCache(layerId, settings);
-    _notifyVisualChange();
+    if (diagnostics) diagnostics.record({ stage: 'store-real-key-insert', category: 'sync-cpu', durationMs: performance.now() - insertionStartedAt, timestamp: performance.now(), mutationId: diagnostics.mutationId, sourceFrame: frame });
+    if (settings.enabled) {
+      const interpolationStartedAt = diagnostics ? performance.now() : 0;
+      _tryRegenerateGeneratedRotoCache(layerId, settings);
+      if (diagnostics) diagnostics.record({ stage: 'store-interpolation-regeneration', category: 'sync-cpu', durationMs: performance.now() - interpolationStartedAt, timestamp: performance.now(), mutationId: diagnostics.mutationId, sourceFrame: frame, branch: settings.mode });
+    }
+    _notifyVisualChange(diagnostics);
   },
 
   removeRealRotoKeyFrame(layerId: string, frame: number): boolean {

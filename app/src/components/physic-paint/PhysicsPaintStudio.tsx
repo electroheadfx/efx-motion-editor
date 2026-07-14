@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
+import type { PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 import { physicPaintStore } from '../../stores/physicPaintStore';
@@ -32,9 +33,10 @@ import { buildPlayRenderOptionsSnapshot, buildRotoBackgroundMetadata, makeInitia
 import { getLaunchWorkflowMode, parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { sendPhysicPaintApplyPayload, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanvasFrames';
-import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, type PhysicsPaintBridgeMode } from './bridge/usePhysicsPaintParentBridge';
+import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush, type PhysicsPaintBridgeMode } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
+import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from './performance/physicsPaintPerformanceTrace';
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import './physicsPaintStudio.css';
@@ -44,6 +46,10 @@ type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
 interface PhysicsPaintActionContext { engine: EfxPaintEngine; launchContext: PhysicPaintLaunchContext; bridgeMode: PhysicsPaintBridgeMode }
 export function PhysicsPaintStudio() {
+  const profilePerformance = isPhysicsPaintProfilingEnabled();
+  const recordEnginePerformance = profilePerformance
+    ? (sample: PaintPerformanceSample) => recordPhysicsPaintPerformance(sample)
+    : undefined;
   const [isPlaying, setIsPlaying] = useState(false);
   const [animFrame, setAnimFrame] = useState(0);
   const [animTotal, setAnimTotal] = useState(0);
@@ -77,7 +83,7 @@ export function PhysicsPaintStudio() {
     store: {
       getRotoFrame: (layerId, frame) => physicPaintStore.getRotoFrame(layerId, frame),
       getFrame: (layerId, frame) => physicPaintStore.getFrame(layerId, frame),
-      upsertRealKey: (layerId, frame, renderedFrame, backgroundOnly) => physicPaintStore.upsertRealRotoKeyFrame(layerId, frame, renderedFrame, backgroundOnly),
+      upsertRealKey: (layerId, frame, renderedFrame, backgroundOnly, diagnostics) => physicPaintStore.upsertRealRotoKeyFrame(layerId, frame, renderedFrame, backgroundOnly, diagnostics),
       removeRealKey: (layerId, frame) => physicPaintStore.removeRealRotoKeyFrame(layerId, frame),
       getCacheFrames: (layerId) => physicPaintStore.getRotoCacheFrames(layerId),
       getInterpolationSettings: (layerId) => physicPaintStore.getRotoInterpolationSettings(layerId),
@@ -91,6 +97,7 @@ export function PhysicsPaintStudio() {
     ),
     setApplyMessage,
   });
+  usePhysicsPaintCloseFlush(rotoPersistence.hasPendingLivePixels, rotoPersistence.flushLivePixels);
   const rotoEditBuffer = rotoPersistence.editBuffer;
   const rotoPreviewFramesRef = { get current() { return rotoEditBuffer.bufferRef.current.previewFrames; }, set current(frames) { rotoEditBuffer.replacePreviewFrames(frames); } };
   const dirtyRotoFramesRef = { get current() { return rotoEditBuffer.bufferRef.current.dirtyFrames; }, set current(frames) { rotoEditBuffer.replaceDirtyFrames(frames); } };
@@ -440,7 +447,8 @@ export function PhysicsPaintStudio() {
           onEngineReady: (readyEngine) => { handleEngineReady(readyEngine); if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine); },
           onCanvasMounted: setCanvasMounted,
           onNativePenInputReady: handleNativePenInputReady,
-          onCompletedMutation: ({ kind, isEmpty }) => {
+          onPerformanceSample: recordEnginePerformance,
+          onCompletedMutation: ({ kind, isEmpty, mutationId }) => {
             const mutationEngine = engineRef.current;
             if (kind === 'clear' || workflowMode !== 'roto' || currentFrameSelectionKind === 'generated-interpolation' || !mutationEngine || !launchContext) return;
             const saveTransaction = currentFrameSelectionKind === 'empty'
@@ -460,17 +468,21 @@ export function PhysicsPaintStudio() {
               }
               return;
             }
+            const snapshotStartedAt = profilePerformance ? performance.now() : 0;
             const liveAlphaCanvas = mutationEngine.copyLiveAlphaCanvas();
             const cachedBase = cachedBaseSourceFrame === sourceFrame ? cachedRotoRepaintBaseFrame : null;
-            void rotoPersistence.captureLivePixels({
+            const capture = rotoPersistence.captureLivePixels({
               layerId: launchContext.layerId,
               sourceFrame,
               displayFrame,
               liveAlphaCanvas,
               cachedBase,
               size: { width: canvasWidth, height: canvasHeight },
+              mutationId,
               interpolationSettings: saveTransaction?.interpolationSettings,
-            }).catch((error) => {
+            });
+            if (profilePerformance) recordPhysicsPaintPerformance({ stage: 'snapshot-handoff', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAt, timestamp: performance.now(), mutationId, sourceFrame });
+            void capture.catch((error) => {
               console.error('[PhysicsPaintStudio] Automatic Roto pixel cache failed', error);
             });
           },
