@@ -4,11 +4,11 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
-status: blocked
-stopped_at: Quick 260715-j3q automated-ready; native Undo/Redo UAT A-G required before Phase 36.14
-last_updated: "2026-07-15T12:06:06Z"
+status: ready_to_discuss
+stopped_at: Quick 260715-j3q native Undo/Redo UAT A-G approved; dedicated Roto script quick is next
+last_updated: "2026-07-15T12:34:23Z"
 last_activity: 2026-07-15
-last_activity_desc: Implemented exact 10-level Physics Paint per-brush Undo/Redo; automated gates passed and native UAT remains
+last_activity_desc: Approved exact Physics Paint Undo/Redo native UAT and reactive history-count badges
 progress:
   total_phases: 17
   completed_phases: 16
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Quick 260715-j3q native Undo/Redo UAT, then dedicated Roto paint-script reuse quick before Phase 36.14 UI integration
+**Current focus:** Dedicated Roto paint-script reuse quick before Phase 36.14 UI integration
 
 ## Current Position
 
-Phase: Pre-36.14 quick sequence — BLOCKED BY NATIVE UAT
+Phase: Pre-36.14 quick sequence — READY FOR SCRIPT QUICK
 Previous phase: 36.13 — Physics Paint Roto Dynamic Interpolation Spacing complete
 Plan: 0 of TBD
-Status: Quick 260715-j3q exact per-brush Undo/Redo is automated-ready; after native UAT A-G, run the dedicated Roto Copy Script / Apply Script quick before Phase 36.14
-Last activity: 2026-07-15 — Extracted functional Roto paint-script reuse from Phase 36.14 into a dedicated prerequisite quick
-Next recommended action: Run native UAT A-G from quick task 260715-j3q; after approval, launch the dedicated script quick with discuss, research, and validation
+Status: Quick 260715-j3q exact per-brush Undo/Redo and reactive availability badges passed native UAT
+Last activity: 2026-07-15 — User approved native Undo/Redo UAT and the reactive count-badge UI
+Next recommended action: Launch the dedicated Roto Copy Script / Apply Script quick with discussion, research, and validation
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -139,7 +139,7 @@ None yet.
 - Phase 36.13 completed: user approved dynamic spacing, canonical persistence/preview/export parity, generated/empty non-durability, visible onion composition, real-key-depth Onion Value semantics, and generated-owner onion traversal.
 - Phases 36.15 and 37 were removed as obsolete: Signals/controllers remain the accepted state boundary, and the implemented parent bridge/cache integration surpassed the former future-contract scope.
 - Phase 36.14 is the final v0.8.0 UI-only phase: corrected timeline UI, developer-status removal, existing Log routing, application selection guard, and final presentation/wiring of the prerequisite quick's Copy Script / Apply Script controls.
-- Quick 260715-j3q exact 10-level per-brush Undo/Redo is automated-ready, but native UAT A-G remains a hard blocker before the dedicated script quick begins; that script quick must pass native UAT before Phase 36.14.
+- Quick 260715-j3q exact 10-level per-brush Undo/Redo and reactive availability badges passed native UAT on 2026-07-15; the dedicated script quick is now the only prerequisite before Phase 36.14.
 
 ### Quick Tasks Completed
 
@@ -181,6 +181,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T12:06:06Z
-Stopped at: Quick 260715-j3q automated-ready; exact Undo/Redo native UAT A-G pending before the dedicated script quick
-Resume file: .planning/quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/260715-j3q-SUMMARY.md; complete native UAT, then launch the dedicated Roto script quick before Phase 36.14
+Last session: 2026-07-15T12:34:23Z
+Stopped at: Quick 260715-j3q native Undo/Redo UAT approved; dedicated Roto script quick is next
+Resume file: Launch the dedicated Roto Copy Script / Apply Script quick with discussion, research, and validation before Phase 36.14

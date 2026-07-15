@@ -102,19 +102,11 @@ None.
 
 None beyond the plan threat model. No new endpoint, authentication path, file-access boundary, dependency, or schema trust boundary was introduced.
 
-## Remaining Native UAT A-G
+## Native UAT A-G: APPROVED
 
-Automated verification establishes readiness only. Native completion still requires:
+The user approved native Undo/Redo UAT on 2026-07-15, including exact ordered restoration, queued/active responsiveness, Redo branch invalidation, the shared ten-transaction limit, cached-base overlay symmetry, visible-script parity, navigation reset safety, and the reactive Undo/Redo availability badges.
 
-A. Paint three visually distinct strokes, Undo all three, then Redo all three; confirm exact original order and pixels.
-B. During rapid queued and active cooperative finalization, alternate Undo/Redo; confirm immediate responsiveness and no stale pixel/cache publication.
-C. Undo two strokes, paint a new stroke, then attempt Redo; confirm Redo is unavailable and the new branch remains exact.
-D. Paint twelve strokes and traverse history; confirm only the latest ten logical strokes are Undo/Redo traversable.
-E. Open a cached Roto real key, add two overlays, Undo to the unchanged clean cached base, then Redo both; confirm the exact composite returns without duplicate or flattened-again pixels.
-F. After every paint, Undo, Redo, branch replacement, and reset operation, confirm getStrokes()/the active-frame script matches the visible stroke set and order.
-G. Navigate away and back/load another active frame; confirm both histories reset safely and cannot alter the prior frame.
-
-Phase 36.14 must not start until native UAT A-G pass.
+The dedicated Roto Copy Script / Apply Script quick is now the next prerequisite before Phase 36.14.
 
 ## Self-Check: PASSED
 
