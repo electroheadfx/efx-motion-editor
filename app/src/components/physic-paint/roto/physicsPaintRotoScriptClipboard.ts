@@ -8,8 +8,15 @@ import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 export interface RotoScriptSourceSnapshot {
   workflowMode: 'play' | 'roto';
   selectionKind: RotoTimelineSelectionKind;
+  layerId?: string | null;
   sourceFrame: number;
   displayFrame: number;
+}
+
+export interface RotoScriptSourceProvenance {
+  sessionId: string;
+  layerId: string;
+  sourceFrame: number;
 }
 
 export interface RotoScriptPublicationIdentity {
@@ -20,6 +27,7 @@ export interface RotoScriptPublicationIdentity {
 }
 
 export interface RotoPaintScript {
+  provenance: Readonly<RotoScriptSourceProvenance>;
   sourceFrame: number;
   sourceDisplayFrame: number;
   sourceRevision: number;
@@ -62,6 +70,7 @@ export interface RotoScriptEnginePort {
 }
 
 export interface RotoScriptClipboardControllerPorts {
+  sessionId?: string;
   getEngine: () => RotoScriptEnginePort | null;
   getSource: () => RotoScriptSourceSnapshot;
   getMotion: () => { deformation: number; position: number };
@@ -136,6 +145,8 @@ const COPY_REASONS = {
   busy: 'Finish the current script operation before copying.',
 } as const;
 
+let nextRotoScriptSessionId = 1;
+
 const APPLY_REASONS = {
   wrongMode: 'Apply Script is available only in Roto mode.',
   generated: 'Generated frames are render-only and cannot receive a script.',
@@ -162,7 +173,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   const engineState = signal<RotoScriptEnginePort | null>(ports.getEngine());
   const acceptedTargets = new WeakMap<RotoScriptEnginePort, Map<number, RotoScriptAcceptedTarget>>();
   const lockedEngines = new Set<RotoScriptEnginePort>();
-  let boundSourceFrame: number | null = null;
+  const sessionId = ports.sessionId ?? `roto-script-session-${nextRotoScriptSessionId++}`;
+  let boundSource: RotoScriptSourceProvenance | null = null;
   let sourceRevision = 0;
   let engineGeneration = 0;
   let launchGeneration = 0;
@@ -203,6 +215,21 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   function bumpSourceContentRevision(): void {
     sourceContentRevision.value += 1;
+  }
+
+  function sourceLayerId(source: RotoScriptSourceSnapshot): string {
+    return source.layerId ?? 'legacy-mounted-layer';
+  }
+
+  function provenanceFor(source: RotoScriptSourceSnapshot): RotoScriptSourceProvenance {
+    return { sessionId, layerId: sourceLayerId(source), sourceFrame: source.sourceFrame };
+  }
+
+  function isBoundSource(source: RotoScriptSourceSnapshot): boolean {
+    return Boolean(boundSource
+      && boundSource.sessionId === sessionId
+      && boundSource.layerId === sourceLayerId(source)
+      && boundSource.sourceFrame === source.sourceFrame);
   }
 
   function errorCause(cause: unknown): string | undefined {
@@ -256,7 +283,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     applyProgressState.value = null;
     status.value = null;
     error.value = null;
-    boundSourceFrame = null;
+    boundSource = null;
     sourceRevision = 0;
     resolveDisposal?.();
     resolveDisposal = null;
@@ -307,14 +334,18 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   function snapshotBoundSource(engine: Pick<RotoScriptEnginePort, 'getStrokes'>, source: RotoScriptSourceSnapshot, publishCopiedStatus = true): boolean {
+    const provenance = provenanceFor(source);
     const brushes = normalizeLogicalBrushes(engine.getStrokes());
     if (brushes.length === 0) {
-      if (boundSourceFrame === source.sourceFrame) clipboard.value = null;
+      if (isBoundSource(source)) {
+        clipboard.value = null;
+        boundSource = null;
+      }
       return false;
     }
     sourceRevision += 1;
-    boundSourceFrame = source.sourceFrame;
-    clipboard.value = deepFreezeScript({ sourceFrame: source.sourceFrame, sourceDisplayFrame: source.displayFrame, sourceRevision, brushes });
+    boundSource = provenance;
+    clipboard.value = deepFreezeScript({ provenance, sourceFrame: source.sourceFrame, sourceDisplayFrame: source.displayFrame, sourceRevision, brushes });
     if (publishCopiedStatus) status.value = `Copied ${brushes.length}`;
     return true;
   }
@@ -357,7 +388,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       if (engineState.peek() === operation.engine
         && source.workflowMode === 'roto'
         && source.selectionKind === 'real-key'
-        && source.sourceFrame === boundSourceFrame) {
+        && isBoundSource(source)) {
         snapshotBoundSource(operation.engine, source, false);
       }
     }
@@ -501,7 +532,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (disposed || disposalRequested || activeApply) return;
     const source = sourceState.value;
     const engine = engineState.peek();
-    if (!engine || source.workflowMode !== 'roto' || source.selectionKind !== 'real-key' || source.sourceFrame !== boundSourceFrame) return;
+    if (!engine || source.workflowMode !== 'roto' || source.selectionKind !== 'real-key' || !isBoundSource(source)) return;
     snapshotBoundSource(engine, source);
   }
 
@@ -546,6 +577,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const current = sourceState.peek();
     if (current.workflowMode === source.workflowMode
       && current.selectionKind === source.selectionKind
+      && current.layerId === source.layerId
       && current.sourceFrame === source.sourceFrame
       && current.displayFrame === source.displayFrame) return;
     sourceState.value = source;
@@ -559,7 +591,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   async function prepareNavigation(targetFrame: number): Promise<boolean> {
     if (disposed || disposalRequested || !Number.isInteger(targetFrame) || targetFrame < 0 || activeApply || busy.peek()) return false;
     const source = sourceState.value;
-    if (boundSourceFrame === null || source.sourceFrame !== boundSourceFrame || targetFrame === source.displayFrame) return true;
+    if (!boundSource || !isBoundSource(source) || targetFrame === source.displayFrame) return true;
     const engine = engineState.peek();
     if (!engine) return false;
     const acceptedEngineGeneration = engineGeneration;
@@ -622,12 +654,9 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   function completeLaunchReplacement(): void {
-    clipboard.value = null;
     applyProgressState.value = null;
     status.value = null;
     error.value = null;
-    boundSourceFrame = null;
-    sourceRevision = 0;
     bumpSourceContentRevision();
   }
 

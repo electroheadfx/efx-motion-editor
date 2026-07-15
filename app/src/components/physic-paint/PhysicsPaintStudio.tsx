@@ -182,6 +182,7 @@ export function PhysicsPaintStudio() {
     getSource: () => ({
       workflowMode,
       selectionKind: currentFrameSelectionKind,
+      layerId: launchContext?.layerId ?? null,
       sourceFrame: currentFrameSelectionKind === 'real-key'
         ? (currentFrameOwnerSourceFrame ?? currentFrame)
         : currentFrame,
@@ -205,6 +206,7 @@ export function PhysicsPaintStudio() {
   rotoScript.updateSource({
     workflowMode,
     selectionKind: currentFrameSelectionKind,
+    layerId: launchContext?.layerId ?? null,
     sourceFrame: currentFrameSelectionKind === 'real-key'
       ? (currentFrameOwnerSourceFrame ?? currentFrame)
       : currentFrame,
