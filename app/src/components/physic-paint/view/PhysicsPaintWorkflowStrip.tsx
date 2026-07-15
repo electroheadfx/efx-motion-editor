@@ -15,7 +15,7 @@ import {
 } from '../roto/physicsPaintRotoWorkflow';
 import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
-import type { RotoScriptOperationError } from '../roto/physicsPaintRotoScriptClipboard';
+import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 
 const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
@@ -32,19 +32,16 @@ export interface PhysicsPaintWorkflowRotoKeyState {
   hasCopiedRotoKey: boolean;
 }
 
-export interface PhysicsPaintWorkflowRotoScriptState {
-  canCopy: boolean;
-  canApply: boolean;
-  copyDisabledReason: string | null;
-  applyDisabledReason: string | null;
-  hasCopiedScript: boolean;
-  copiedSourceFrame: number | null;
-  copiedStrokeCount: number;
-  applying: boolean;
-  applyProgress: { completed: number; total: number } | null;
-  status: string | null;
-  error: RotoScriptOperationError | null;
-}
+export type PhysicsPaintWorkflowRotoScriptState = Pick<RotoScriptClipboardController,
+  | 'availability'
+  | 'hasCopiedScript'
+  | 'copiedSourceFrame'
+  | 'copiedStrokeCount'
+  | 'applying'
+  | 'applyProgress'
+  | 'status'
+  | 'error'
+>;
 const ROTO_CELL_LEGEND_ITEMS = [
   { label: 'Empty', className: 'roto-fill-empty' },
   { label: 'Cached', className: 'roto-fill-cached' },
@@ -249,6 +246,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames);
   const isCurrentRealRotoKey = realRotoFrames.includes(props.currentFrame) && currentRotoCell.isEditableTarget !== false;
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
+  const scriptAvailability = props.rotoScript?.availability.value;
+  const scriptStatus = props.rotoScript?.status.value ?? null;
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
@@ -567,8 +566,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <button type="button" class="physics-paint-roto-key-button" aria-label={`Copy Roto key at frame ${props.currentFrame}`} disabled={!canCopyRotoKey} {...getRotoKeyButtonPressProps('copy')} onClick={() => runRotoKeyUtilityAction('copy', canCopyRotoKey, props.onCopyRotoFrame)}>Copy</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label={`Paste Roto key to frame ${props.currentFrame}`} disabled={!canPasteRotoKey} {...getRotoKeyButtonPressProps('paste')} onClick={() => runRotoKeyUtilityAction('paste', canPasteRotoKey, props.onPasteRotoFrame)}>Paste</button>
                 <button type="button" class="physics-paint-roto-key-button destructive" aria-label={`Delete Roto key at frame ${props.currentFrame}`} disabled={!canDeleteRotoKey} {...getRotoKeyButtonPressProps('delete')} onClick={() => runRotoKeyUtilityAction('delete', canDeleteRotoKey, props.onDeleteRotoFrame)}>Delete</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label="Copy Roto paint script" title={props.rotoScript?.copyDisabledReason ?? 'Copy the mounted Roto paint script'} disabled={!props.rotoScript?.canCopy} onClick={props.onCopyRotoScript}>Copy Script</button>
-                <button type="button" class="physics-paint-roto-key-button" aria-label="Apply Roto paint script" title={props.rotoScript?.applyDisabledReason ?? 'Apply the copied Roto paint script'} disabled={!props.rotoScript?.canApply} onClick={props.onApplyRotoScript}>Apply Script</button>
+                <button type="button" class="physics-paint-roto-key-button" aria-label="Copy Roto paint script" title={scriptAvailability?.copyDisabledReason ?? 'Copy the mounted Roto paint script'} disabled={!scriptAvailability?.canCopy} onClick={props.onCopyRotoScript}>Copy Script</button>
+                <button type="button" class="physics-paint-roto-key-button" aria-label="Apply Roto paint script" title={scriptAvailability?.applyDisabledReason ?? 'Apply the copied Roto paint script'} disabled={!scriptAvailability?.canApply} onClick={props.onApplyRotoScript}>Apply Script</button>
               </div>
             </div>
           ) : (
@@ -623,7 +622,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           ) : null}
           {props.playPublicationSummary ? <p class="physics-paint-roto-interpolation-status">{props.playPublicationSummary}</p> : null}
           {props.statusMessage ? <p class="physics-paint-roto-interpolation-status">{props.statusMessage}</p> : null}
-          {props.rotoScript?.status ? <p class="physics-paint-roto-interpolation-status">{props.rotoScript.status}</p> : null}
+          {scriptStatus ? <p class="physics-paint-roto-interpolation-status">{scriptStatus}</p> : null}
           {props.rotoCachedPlaybackStatus ? <p class="physics-paint-roto-playback-status">{props.rotoCachedPlaybackStatus}</p> : null}
         </div>
       ) : null}

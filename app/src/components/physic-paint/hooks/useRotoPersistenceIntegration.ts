@@ -45,6 +45,7 @@ export interface UseRotoPersistenceIntegrationInput {
   };
   cache: {
     confirmedFramesRef: MutableRef<Map<number, RenderedFramePayload>>;
+    latestFramesRef: MutableRef<PhysicPaintRotoCacheFrame[]>;
     removeFrame: (frame: number) => void;
   };
   lifecycle: {
@@ -77,9 +78,11 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
 
   const syncKeyFrameLists = useCallback((frames?: readonly PhysicPaintRotoCacheFrame[]) => {
     if (!frames) return;
-    input.cache.confirmedFramesRef.current = new Map(frames.filter((frame) => frame.source === 'real-key').map((frame) => [frame.appFrame, frame]));
-    input.frame.setLaunchContext((current) => current ? { ...current, cachedRotoFrames: [...frames].sort((a, b) => a.appFrame - b.appFrame || a.frameIndex - b.frameIndex) } : current);
-  }, [input.cache.confirmedFramesRef, input.frame.setLaunchContext]);
+    const sortedFrames = [...frames].sort((a, b) => a.appFrame - b.appFrame || a.frameIndex - b.frameIndex);
+    input.cache.latestFramesRef.current = sortedFrames;
+    input.cache.confirmedFramesRef.current = new Map(sortedFrames.filter((frame) => frame.source === 'real-key').map((frame) => [frame.appFrame, frame]));
+    input.frame.setLaunchContext((current) => current ? { ...current, cachedRotoFrames: sortedFrames } : current);
+  }, [input.cache.confirmedFramesRef, input.cache.latestFramesRef, input.frame.setLaunchContext]);
 
   const applyKeyFrames = useCallback((transaction: RotoKeyUtilityTransaction) => {
     if (!input.launchContext) return [];

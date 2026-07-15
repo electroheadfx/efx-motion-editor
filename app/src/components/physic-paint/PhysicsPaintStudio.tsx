@@ -55,7 +55,15 @@ export function PhysicsPaintStudio() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [animFrame, setAnimFrame] = useState(0);
   const [animTotal, setAnimTotal] = useState(0);
-  const [launchContext, setLaunchContext] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
+  const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
+  const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(launchContext?.cachedRotoFrames ?? []);
+  const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
+    setLaunchContextState((current) => {
+      const next = typeof update === 'function' ? update(current) : update;
+      if (next !== current) latestRotoFramesRef.current = next?.cachedRotoFrames ?? [];
+      return next;
+    });
+  }, []);
   const bridgeMode = usePhysicsPaintBridgeMode();
   const [lastError, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
@@ -82,6 +90,7 @@ export function PhysicsPaintStudio() {
     workflowMode,
     backgroundMode: settings.background,
     launchContext,
+    latestFramesRef: latestRotoFramesRef,
     setLaunchContext,
     store: {
       getRotoFrame: (layerId, frame) => physicPaintStore.getRotoFrame(layerId, frame),
@@ -143,24 +152,24 @@ export function PhysicsPaintStudio() {
   const previewFps = getPreviewFps(launchContext?.fps);
   const actionContext = useMemo<PhysicsPaintActionContext | null>(() => {
     if (!engine || !launchContext) return null;
-    return { engine, launchContext, bridgeMode };
+    return { engine, launchContext: { ...launchContext, cachedRotoFrames: latestRotoFramesRef.current }, bridgeMode };
   }, [bridgeMode, engine, launchContext]);
   const resolveRotoSourceFrameForDisplayFrame = useCallback((displayFrame: number) => {
     if (!launchContext) return displayFrame;
     return getSourceRotoFrameForDisplayFrame(
       displayFrame,
-      selectRealCachedRotoSourceFrameNumbers(launchContext?.cachedRotoFrames),
+      selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current),
       physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
     ) ?? displayFrame;
-  }, [launchContext]);
+  }, [launchContext?.layerId]);
   const rotoTimelineModel = useRotoTimelineModel({
-    cachedRotoFrames: launchContext?.cachedRotoFrames,
+    cachedRotoFrames: latestRotoFramesRef.current,
     interpolationSettings: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined,
     currentFrame,
   });
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,
-    getStoreRealKeyFrames: () => launchContext ? selectRealCachedRotoSourceFrameNumbers(launchContext.cachedRotoFrames) : [],
+    getStoreRealKeyFrames: () => launchContext ? selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current) : [],
     getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
     setInterpolationSettings: (settings) => {
       if (!launchContext) return settings;
@@ -217,7 +226,7 @@ export function PhysicsPaintStudio() {
     displayFrame: currentFrame,
   });
   const mutationLocked = rotoScript.mutationLocked.value;
-  const rotoInputDisabled = currentFrameIsGeneratedRoto || rotoScript.availability.value.busy;
+  const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked;
   const {
     selectTool,
     setBrushColor,
@@ -240,8 +249,8 @@ export function PhysicsPaintStudio() {
     afterNavigation: rotoScript.completeNavigation,
     keyUtilities: {
       currentFrame,
-      realKeyFrames: selectProjectedRealCachedRotoFrames(launchContext?.cachedRotoFrames, rotoTimelineModel.view.value.projection),
-      cachedRotoFrames: launchContext?.cachedRotoFrames,
+      realKeyFrames: selectProjectedRealCachedRotoFrames(latestRotoFramesRef.current, rotoTimelineModel.view.value.projection),
+      cachedRotoFrames: latestRotoFramesRef.current,
       dirtyFrames: dirtyRotoFramesRef.current,
       canvasSize: { width: canvasWidth, height: canvasHeight },
       applyStatus,
@@ -384,7 +393,7 @@ export function PhysicsPaintStudio() {
     engine,
     launchContext,
     reference: { setUrl: setCachedRotoReferenceUrl, loadFrame: loadCachedRotoReferenceFrame },
-    cache: { confirmedFramesRef: confirmedCachedRotoFramesRef, removeFrame: removeCachedRotoFrameFromLaunchContext },
+    cache: { confirmedFramesRef: confirmedCachedRotoFramesRef, latestFramesRef: latestRotoFramesRef, removeFrame: removeCachedRotoFrameFromLaunchContext },
     lifecycle: { activeOperationIdRef, pendingFrameSyncRef, pendingKeyActionMessageRef: pendingRotoKeyActionMessageRef },
     navigation: rotoNavigation,
     status: { setApplyStatus, setApplyMessage },
@@ -457,7 +466,7 @@ export function PhysicsPaintStudio() {
     currentFrameOwnerSourceFrame,
     isPlaying,
     onion,
-    launchFrames: launchContext?.cachedRotoFrames,
+    launchFrames: latestRotoFramesRef.current,
     storeFrames: launchContext ? physicPaintStore.getRotoCacheFrames(launchContext.layerId) : [],
     previewFrames: rotoPreviewFramesRef.current,
     dirtyFrames: dirtyRotoFramesRef.current,
@@ -468,7 +477,7 @@ export function PhysicsPaintStudio() {
     frames: getRotoCachedPlaybackFrames(),
   });
   const { updateRotoInterpolationSettings } = useRotoInterpolationController({
-    launchContext, currentFrame, bridgeMode,
+    launchContext, getLatestFrames: () => latestRotoFramesRef.current, currentFrame, bridgeMode,
     updateSettings: (frame, patch) => rotoTimelineActions.updateInterpolationSettings(frame, patch),
     getStoreFrames: (layerId) => physicPaintStore.getRotoCacheFrames(layerId), seedStore: physicPaintStore,
     setEditableFrames: rotoEditBuffer.setEditableFrameList,
@@ -496,7 +505,7 @@ export function PhysicsPaintStudio() {
       },
     toolRail: {
         activeTool: settings.tool, physicsMode: settings.physicsMode, activePhysicsAction: settings.activePhysicsAction,
-        undoCount: historyAvailability.value.undo, redoCount: historyAvailability.value.redo, disabled: !engine || mutationLocked,
+        historyAvailability, disabled: !engine || mutationLocked,
         onSelectTool: selectTool, onUndo: undo, onRedo: redo, onClearFrame: clearActiveSource, onPhysicsStart: startPhysics, onPhysicsStop: stopPhysics, onDryPaint: dryPaint,
       },
     canvas: {
@@ -507,7 +516,7 @@ export function PhysicsPaintStudio() {
         inputDisabled: rotoInputDisabled,
         inputDisabledMessage: currentFrameIsGeneratedRoto
           ? `Generated frame ${currentFrame} is render-only.`
-          : rotoScript.availability.value.busy
+          : mutationLocked
             ? 'Finish the current Roto script operation.'
             : undefined,
         onInputIntent: workflowMode === 'play' ? beginPlayFrameEdit : beginRotoFrameEdit,
@@ -602,7 +611,7 @@ export function PhysicsPaintStudio() {
         onToggleRotoPlayback: rotoCachedPlayback.toggle, onRotoPlaybackLoopChange: rotoCachedPlayback.setLoop, onRotoPlaybackFpsChange: rotoCachedPlayback.updateFps, rotoInterpolationSettings: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined,
         onRotoInterpolationEnabledChange: (enabled) => updateRotoInterpolationSettings({ enabled }), onRotoInterpolationCountChange: (inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount }),
         onDuplicateRotoKey: duplicateRotoKey, onInsertRotoFrame: insertRotoFrame, onDeleteRotoFrame: deleteRotoFrame, onCopyRotoFrame: copyRotoFrame, onPasteRotoFrame: pasteRotoFrame, hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
-        rotoScript: { ...rotoScript.availability.value, hasCopiedScript: rotoScript.hasCopiedScript.value, copiedSourceFrame: rotoScript.copiedSourceFrame.value, copiedStrokeCount: rotoScript.copiedStrokeCount.value, applying: rotoScript.applying.value, applyProgress: rotoScript.applyProgress.value, status: rotoScript.status.value, error: rotoScript.error.value }, onCopyRotoScript: () => { void rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); }, onApplyRotoScript: () => { void rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
+        rotoScript, onCopyRotoScript: () => { void rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); }, onApplyRotoScript: () => { void rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
         playPublicationSummary: applyStatus === 'success' ? applyMessage : null, statusMessage: isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying, missingPlayFramesForConversion,
         onSavePlay: savePlay, onUpdatePlayOptions: updateSelectedPlayOptions, onFrameCountChange: updatePlayFrameCount, onPlayPreview: playPreview, onStopPreview: stopPreview, onPreviewPlayFrame: previewLocalPlayFrame,
         onNavigateToSyncedFrame: (frame) => { void requestRotoFrameNavigation(frame); }, onGoToFirstFrame: goToFirstFrame, onGoToPreviousFrame: goToPreviousFrame, onGoToNextFrame: goToNextFrame, onGoToLastFrame: goToLastFrame, onInspectPlayFrame: previewLocalPlayFrame, onOnionChange: setOnion, onConvertPlayToRoto: convertPlayToRoto, onConvertRotoToPlay: convertRotoToPlay,

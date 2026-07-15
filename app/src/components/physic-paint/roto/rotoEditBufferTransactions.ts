@@ -22,8 +22,10 @@ export function addEditableRotoFrame(frames: readonly number[], frame: number): 
   return frames.includes(frame) ? [...frames] : [...frames, frame].sort((a, b) => a - b);
 }
 
-export function removeEditableRotoFrame(frames: readonly number[], frame: number): number[] {
-  return frames.filter((editableFrame) => editableFrame !== frame);
+export function removeEditableRotoFrame(frames: number[], frame: number): number[] {
+  return frames.includes(frame)
+    ? frames.filter((editableFrame) => editableFrame !== frame)
+    : frames;
 }
 
 export function hasEditableRotoContent(state: { strokes: readonly unknown[] }): boolean {

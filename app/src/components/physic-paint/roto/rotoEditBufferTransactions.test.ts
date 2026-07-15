@@ -35,6 +35,8 @@ describe('Roto edit buffer transactions', () => {
     expect(addEditableRotoFrame([7, 2], 4)).toEqual([2, 4, 7]);
     expect(addEditableRotoFrame([2, 4, 7], 4)).toEqual([2, 4, 7]);
     expect(removeEditableRotoFrame([2, 4, 7], 4)).toEqual([2, 7]);
+    const unchanged = [2, 4, 7];
+    expect(removeEditableRotoFrame(unchanged, 9)).toBe(unchanged);
   });
 
   it('tracks live repaint actions and only empties dirty state after the final undo', () => {

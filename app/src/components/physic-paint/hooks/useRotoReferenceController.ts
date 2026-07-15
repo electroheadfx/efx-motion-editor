@@ -90,7 +90,7 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
 export interface UseRotoReferenceControllerInput<Frame extends RotoReferenceFrame> {
   workflowMode: PhysicsPaintWorkflowMode;
   settingsBackground: BgMode;
-  cachedRotoFrames?: readonly Frame[];
+  getCachedRotoFrames: () => readonly Frame[] | undefined;
   previewFrames: ReadonlyMap<number, Frame>;
   confirmedFrames: ReadonlyMap<number, Frame>;
   dirtyFrames: Set<number>;
@@ -107,8 +107,12 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
   const inputRef = useRef(input);
   const explicitRestorationRef = useRef<{ appFrame: number; frame: Frame | null } | null>(null);
   inputRef.current = input;
-  const findDisplayFrame = useCallback((appFrame: number) => findCachedRotoDisplayFrame(appFrame, inputRef.current), []);
-  const findReferenceFrame = useCallback((appFrame: number) => findCachedRotoReferenceFrame(appFrame, inputRef.current), []);
+  const getDisplayLookup = () => ({
+    ...inputRef.current,
+    cachedRotoFrames: inputRef.current.getCachedRotoFrames(),
+  });
+  const findDisplayFrame = useCallback((appFrame: number) => findCachedRotoDisplayFrame(appFrame, getDisplayLookup()), []);
+  const findReferenceFrame = useCallback((appFrame: number) => findCachedRotoReferenceFrame(appFrame, getDisplayLookup()), []);
   const loadCachedRotoReferenceFrame = useCallback((appFrame: number, engine: RotoReferenceEngine | null, refreshedFrame?: Frame | null) => {
     const currentInput = inputRef.current;
     if (refreshedFrame !== undefined) explicitRestorationRef.current = { appFrame, frame: refreshedFrame };

@@ -10,6 +10,49 @@ import { useRotoEditBufferController } from './useRotoEditBufferController';
 import { useRotoReferenceController } from './useRotoReferenceController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 
+function hasSameRotoCacheTopology(
+  currentFrames: readonly PhysicPaintRotoCacheFrame[] | undefined,
+  nextFrames: readonly PhysicPaintRotoCacheFrame[],
+): boolean {
+  if ((currentFrames?.length ?? 0) !== nextFrames.length) return false;
+  return nextFrames.every((next, index) => {
+    const current = currentFrames?.[index];
+    return current !== undefined
+      && current.appFrame === next.appFrame
+      && current.frameIndex === next.frameIndex
+      && current.source === next.source
+      && current.sourceFrame === next.sourceFrame
+      && current.displayFrame === next.displayFrame
+      && current.nearestRealKeyFrame === next.nearestRealKeyFrame
+      && current.fromSourceFrame === next.fromSourceFrame
+      && current.toSourceFrame === next.toSourceFrame
+      && current.interpolationT === next.interpolationT
+      && current.backgroundOnly === next.backgroundOnly;
+  });
+}
+
+function hasSameRotoInterpolationSettings(
+  current: PhysicPaintRotoInterpolationSettings | undefined,
+  next: PhysicPaintRotoInterpolationSettings,
+): boolean {
+  if (!current
+    || current.enabled !== next.enabled
+    || current.inBetweenCount !== next.inBetweenCount
+    || current.mode !== next.mode
+    || current.deform !== next.deform
+    || current.position !== next.position) return false;
+  const currentOverrides = current.segmentSpacingOverrides ?? [];
+  const nextOverrides = next.segmentSpacingOverrides ?? [];
+  return currentOverrides.length === nextOverrides.length
+    && nextOverrides.every((override, index) => {
+      const currentOverride = currentOverrides[index];
+      return currentOverride !== undefined
+        && currentOverride.fromSourceFrame === override.fromSourceFrame
+        && currentOverride.toSourceFrame === override.toSourceFrame
+        && currentOverride.inBetweenCount === override.inBetweenCount;
+    });
+}
+
 interface RotoPersistenceStorePort {
   getRotoFrame: (layerId: string, frame: number) => RenderedFramePayload | null;
   getFrame: (layerId: string, frame: number) => RenderedFramePayload | null;
@@ -24,6 +67,7 @@ export interface UseRotoFramePersistenceCoordinatorInput {
   workflowMode: PhysicsPaintWorkflowMode;
   backgroundMode: BgMode;
   launchContext: PhysicPaintLaunchContext | null;
+  latestFramesRef: { current: PhysicPaintRotoCacheFrame[] };
   setLaunchContext: (update: (current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null) => void;
   store: RotoPersistenceStorePort;
   syncPending: () => void;
@@ -39,6 +83,13 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const buffer = editBuffer.bufferRef.current;
   const parentDeliveryRef = useRef<Map<number, Promise<void>>>(new Map());
   const parentOperationRevisionRef = useRef(0);
+  const {
+    latestFramesRef,
+    setLaunchContext,
+    store,
+  } = input;
+  const inputRef = useRef(input);
+  inputRef.current = input;
   const queueParentPayload = useCallback((sourceFrame: number, payload: PhysicPaintApplyPayload, mutationId?: number) => {
     const previous = parentDeliveryRef.current.get(sourceFrame) ?? Promise.resolve();
     const profiling = isPhysicsPaintProfilingEnabled();
@@ -48,7 +99,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       .then(async () => {
         const deliveryStartedAt = profiling ? performance.now() : 0;
         if (profiling) recordPhysicsPaintPerformance({ stage: 'bridge-queue-wait', category: 'scheduled-wait', durationMs: deliveryStartedAt - queuedAt, timestamp: deliveryStartedAt, mutationId, sourceFrame });
-        await input.sendCachePayload(payload);
+        await inputRef.current.sendCachePayload(payload);
         if (profiling) recordPhysicsPaintPerformance({ stage: 'bridge-delivery', category: 'async-elapsed', durationMs: performance.now() - deliveryStartedAt, timestamp: performance.now(), mutationId, sourceFrame });
       })
       .catch((error) => { console.error('[PhysicsPaintStudio] Roto cache delivery failed', error); });
@@ -56,30 +107,30 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     void delivery.then(() => {
       if (parentDeliveryRef.current.get(sourceFrame) === delivery) parentDeliveryRef.current.delete(sourceFrame);
     });
-  }, [input]);
+  }, []);
   const reference = useRotoReferenceController<RenderedFramePayload>({
     workflowMode: input.workflowMode,
     settingsBackground: input.backgroundMode,
-    cachedRotoFrames: input.launchContext?.cachedRotoFrames,
+    getCachedRotoFrames: () => latestFramesRef.current,
     previewFrames: buffer.previewFrames,
     confirmedFrames: confirmedFramesRef.current,
     dirtyFrames: buffer.dirtyFrames,
     liveOverlayActionCounts: buffer.liveOverlayActionCounts,
-    getRotoFrame: (frame) => input.launchContext ? input.store.getRotoFrame(input.launchContext.layerId, frame) : null,
-    getFrame: (frame) => input.launchContext ? input.store.getFrame(input.launchContext.layerId, frame) : null,
-    syncPending: input.syncPending,
-    setApplyMessage: input.setApplyMessage,
+    getRotoFrame: (frame) => input.launchContext ? store.getRotoFrame(input.launchContext.layerId, frame) : null,
+    getFrame: (frame) => input.launchContext ? store.getFrame(input.launchContext.layerId, frame) : null,
+    syncPending: () => inputRef.current.syncPending(),
+    setApplyMessage: (message) => inputRef.current.setApplyMessage(message),
   });
 
   const upsertCachedFrame = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null, interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number, expectedOperationId?: string, background?: PhysicPaintRotoBackgroundMetadata) => {
     const sourceFrame = renderedFrame.sourceFrame ?? renderedFrame.appFrame;
     const normalized = { ...renderedFrame, appFrame: sourceFrame };
-    input.setLaunchContext((current) => {
+    setLaunchContext((current) => {
       if (!current || (expectedLayerId !== undefined && (current.layerId !== expectedLayerId || (expectedOperationId !== undefined && current.operationId !== expectedOperationId)))) {
         if (expectedLayerId !== undefined && expectedOperationId !== undefined) {
           const frameForCache = { ...normalized, source: 'real-key' as const, sourceFrame, displayFrame: renderedFrame.displayFrame ?? sourceFrame };
-          input.store.upsertRealKey(expectedLayerId, sourceFrame, frameForCache, backgroundOnly, isPhysicsPaintProfilingEnabled() ? { mutationId, record: recordPhysicsPaintPerformance } : undefined);
-          if (interpolationSettings) input.store.setInterpolationSettings(expectedLayerId, interpolationSettings);
+          store.upsertRealKey(expectedLayerId, sourceFrame, frameForCache, backgroundOnly, isPhysicsPaintProfilingEnabled() ? { mutationId, record: recordPhysicsPaintPerformance } : undefined);
+          if (interpolationSettings) store.setInterpolationSettings(expectedLayerId, interpolationSettings);
           queueParentPayload(sourceFrame, {
             operationId: `${expectedOperationId}:live-pixels:${sourceFrame}:${++parentOperationRevisionRef.current}`,
             kind: 'apply-canvas',
@@ -89,19 +140,19 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
             displayFrame: frameForCache.displayFrame,
             renderedFrame: frameForCache,
             backgroundOnly,
-            rotoBackground: background ?? input.getBackgroundMetadata(),
-            rotoInterpolationSettings: interpolationSettings ?? input.store.getInterpolationSettings(expectedLayerId),
+            rotoBackground: background ?? inputRef.current.getBackgroundMetadata(),
+            rotoInterpolationSettings: interpolationSettings ?? store.getInterpolationSettings(expectedLayerId),
           }, mutationId);
         }
         return current;
       }
       confirmedFramesRef.current.set(sourceFrame, normalized);
       const frameForCache = { ...normalized, source: 'real-key' as const, sourceFrame, displayFrame: renderedFrame.displayFrame ?? sourceFrame };
-      input.store.upsertRealKey(current.layerId, sourceFrame, frameForCache, backgroundOnly, isPhysicsPaintProfilingEnabled() ? { mutationId, record: recordPhysicsPaintPerformance } : undefined);
-      if (interpolationSettings) input.store.setInterpolationSettings(current.layerId, interpolationSettings);
-      const manualFrames = upsertCachedRotoCacheFrame(current.cachedRotoFrames, frameForCache, backgroundOnly, onionFrame);
-      const storeFrames = input.store.getCacheFrames(current.layerId);
-      const settings = input.store.getInterpolationSettings(current.layerId);
+      store.upsertRealKey(current.layerId, sourceFrame, frameForCache, backgroundOnly, isPhysicsPaintProfilingEnabled() ? { mutationId, record: recordPhysicsPaintPerformance } : undefined);
+      if (interpolationSettings) store.setInterpolationSettings(current.layerId, interpolationSettings);
+      const manualFrames = upsertCachedRotoCacheFrame(latestFramesRef.current, frameForCache, backgroundOnly, onionFrame);
+      const storeFrames = store.getCacheFrames(current.layerId);
+      const settings = store.getInterpolationSettings(current.layerId);
       const refreshedFrames = settings.enabled && storeFrames.length > 0 ? storeFrames : manualFrames;
       const nextDisplayFrame = refreshedFrames.find((frame) => frame.source === 'real-key' && (frame.sourceFrame ?? frame.appFrame) === sourceFrame)?.displayFrame ?? sourceFrame;
       confirmedFramesRef.current = new Map(refreshedFrames.filter((frame) => frame.source === 'real-key').map((frame) => [frame.sourceFrame ?? frame.appFrame, frame]));
@@ -116,19 +167,25 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
           sourceFrame,
           displayFrame: nextDisplayFrame,
           renderedFrame: frameForCache,
-          rotoBackground: background ?? input.getBackgroundMetadata(),
+          rotoBackground: background ?? inputRef.current.getBackgroundMetadata(),
           rotoInterpolationSettings: settings,
           ...(backgroundOnly ? { backgroundOnly: true } : {}),
         }, mutationId);
       }
+      const nextStartFrame = current.startFrame === frameForCache.displayFrame ? nextDisplayFrame : current.startFrame;
+      const sameStartFrame = nextStartFrame === current.startFrame;
+      const sameTopology = hasSameRotoCacheTopology(latestFramesRef.current, refreshedFrames);
+      const sameSettings = hasSameRotoInterpolationSettings(current.rotoInterpolationSettings, settings);
+      latestFramesRef.current = refreshedFrames;
+      if (sameStartFrame && sameTopology && sameSettings) return current;
       return {
         ...current,
-        startFrame: current.startFrame === frameForCache.displayFrame ? nextDisplayFrame : current.startFrame,
+        startFrame: nextStartFrame,
         cachedRotoFrames: refreshedFrames,
         rotoInterpolationSettings: settings,
       };
     });
-  }, [editBuffer, input]);
+  }, [editBuffer, latestFramesRef, queueParentPayload, setLaunchContext, store]);
 
   const captureLivePixels = useCallback((inputCapture: {
     layerId: string;
@@ -155,9 +212,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   const removeCachedFrame = useCallback((frame: number) => {
     livePixelTransactionsRef.current.remove(frame, () => {
       confirmedFramesRef.current.delete(frame);
-      input.setLaunchContext((current) => {
+      setLaunchContext((current) => {
         if (!current) return current;
-        input.store.removeRealKey(current.layerId, frame);
+        store.removeRealKey(current.layerId, frame);
         queueParentPayload(frame, {
           operationId: `${current.operationId}:live-pixels-remove:${frame}:${++parentOperationRevisionRef.current}`,
           kind: 'delete-roto-frame',
@@ -165,23 +222,25 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
           startFrame: frame,
           sourceFrame: frame,
         });
+        const refreshedFrames = removeCachedRotoCacheFrame(latestFramesRef.current, frame);
+        latestFramesRef.current = refreshedFrames;
         return {
           ...current,
-          cachedRotoFrames: removeCachedRotoCacheFrame(current.cachedRotoFrames, frame),
+          cachedRotoFrames: refreshedFrames,
         };
       });
     });
-  }, [input, queueParentPayload]);
+  }, [latestFramesRef, queueParentPayload, setLaunchContext, store]);
 
   const clearCurrentFrame = useCallback((frame: number, size: { width: number; height: number }) => {
     livePixelTransactionsRef.current.invalidate(frame);
     const blankFrame = { ...buildBlankRotoFrame(size.width, size.height, frame), source: 'real-key' as const, sourceFrame: frame, displayFrame: frame };
     confirmedFramesRef.current.delete(frame);
-    input.setLaunchContext((current) => {
+    setLaunchContext((current) => {
       if (!current) return current;
-      input.store.upsertRealKey(current.layerId, frame, blankFrame, true);
-      const refreshedFrames = input.store.getCacheFrames(current.layerId);
-      const settings = input.store.getInterpolationSettings(current.layerId);
+      store.upsertRealKey(current.layerId, frame, blankFrame, true);
+      const refreshedFrames = store.getCacheFrames(current.layerId);
+      const settings = store.getInterpolationSettings(current.layerId);
       confirmedFramesRef.current = new Map(refreshedFrames.filter((candidate) => candidate.source === 'real-key').map((candidate) => [candidate.sourceFrame ?? candidate.appFrame, candidate]));
       editBuffer.setEditableFrameList((frames) => frames.filter((candidate) => candidate !== frame));
       queueParentPayload(frame, {
@@ -192,12 +251,13 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         sourceFrame: frame,
         renderedFrame: blankFrame,
         backgroundOnly: true,
-        rotoBackground: input.getBackgroundMetadata(),
+        rotoBackground: inputRef.current.getBackgroundMetadata(),
         rotoInterpolationSettings: settings,
       });
+      latestFramesRef.current = refreshedFrames;
       return { ...current, startFrame: frame, cachedRotoFrames: refreshedFrames, rotoInterpolationSettings: settings };
     });
-  }, [editBuffer, input, queueParentPayload]);
+  }, [editBuffer, latestFramesRef, queueParentPayload, setLaunchContext, store]);
 
   const flushLivePixels = useCallback(async () => {
     await livePixelTransactionsRef.current.flush();
@@ -205,10 +265,12 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   }, []);
 
   const resetForLaunch = useCallback((frames?: readonly PhysicPaintRotoCacheFrame[]) => {
+    const launchFrames = [...(frames ?? [])];
+    latestFramesRef.current = launchFrames;
     editBuffer.resetForLaunch();
-    confirmedFramesRef.current = new Map((frames ?? []).filter((frame) => frame.source === 'real-key').map((frame) => [frame.appFrame, frame]));
+    confirmedFramesRef.current = new Map(launchFrames.filter((frame) => frame.source === 'real-key').map((frame) => [frame.appFrame, frame]));
     reference.resetCachedRotoReference();
-  }, [editBuffer, reference.resetCachedRotoReference]);
+  }, [editBuffer, latestFramesRef, reference.resetCachedRotoReference]);
 
   return {
     editBuffer,

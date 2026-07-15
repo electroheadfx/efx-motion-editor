@@ -1,4 +1,5 @@
-import type { ToolType } from '@efxlab/efx-physic-paint';
+import type { PaintHistoryAvailability, ToolType } from '@efxlab/efx-physic-paint';
+import type { ReadonlySignal } from '@preact/signals';
 import paintModeNormalIcon from '../../../assets/physics-paint-ui/icons/paint-mode-normal.svg';
 import paintModePhysicsIcon from '../../../assets/physics-paint-ui/icons/paint-mode-physics.svg';
 import eraserIcon from '../../../assets/physics-paint-ui/icons/LineiconsEraser.svg';
@@ -42,8 +43,7 @@ export interface PhysicsPaintToolRailProps {
   activeTool: ToolType;
   physicsMode: 'local' | null;
   activePhysicsAction?: 'last' | 'all' | null;
-  undoCount?: number;
-  redoCount?: number;
+  historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
   disabled?: boolean;
   onSelectTool: (tool: ToolType, physicsMode: 'local' | null) => void;
   onUndo: () => void;
@@ -72,8 +72,7 @@ export function PhysicsPaintToolRail({
   activeTool,
   physicsMode,
   activePhysicsAction = null,
-  undoCount = 0,
-  redoCount = 0,
+  historyAvailability,
   disabled = false,
   onSelectTool,
   onUndo,
@@ -94,7 +93,11 @@ export function PhysicsPaintToolRail({
     if (item.id === 'dry') onDryPaint();
   };
 
-  const historyCount = (item: PhysicsPaintToolRailItem) => item.id === 'undo' ? undoCount : item.id === 'redo' ? redoCount : null;
+  const historyCount = (item: PhysicsPaintToolRailItem) => item.id === 'undo'
+    ? historyAvailability?.value.undo ?? 0
+    : item.id === 'redo'
+      ? historyAvailability?.value.redo ?? 0
+      : null;
   const isDisabled = (item: PhysicsPaintToolRailItem) => disabled || historyCount(item) === 0;
 
   return (

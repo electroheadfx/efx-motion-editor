@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const sourcePath = fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url));
 const viewPath = fileURLToPath(new URL('./view/PhysicsPaintStudioView.tsx', import.meta.url));
+const workflowStripPath = fileURLToPath(new URL('./view/PhysicsPaintWorkflowStrip.tsx', import.meta.url));
 const topBarPath = fileURLToPath(new URL('./view/PhysicsPaintTopBar.tsx', import.meta.url));
 const stylePath = fileURLToPath(new URL('./physicsPaintStudio.css', import.meta.url));
 const bridgePath = fileURLToPath(new URL('../../lib/physicPaintBridge.ts', import.meta.url));
@@ -53,6 +54,7 @@ function studioPresentationSource(): string {
 const rotoNavigationCoordinatorSource = () => readFileSync(rotoNavigationCoordinatorPath, 'utf8');
 const source = () => `${rotoPersistenceIntegrationSource()}\n${rotoFrameEditingControllerSource()}\n${studioPresentationSource()}
 ${rotoNavigationCoordinatorSource()}\n${rotoPersistenceCoordinatorSource()}\n${rotoReferenceControllerSource()}\n${rotoSaveTransactionsSource()}\n${rotoEditBufferControllerSource()}\n${rotoEditBufferTransactionsSource()}\n${playCoordinatorSource()}\n${playFrameTransactionsSource()}\n${playEditCacheControllerSource()}\n${playPreviewControllerSource()}\n${playLifecycleTransactionsSource()}\n${engineLifecycleSource()}\n${canvasMountSource()}\n${canvasSizingSource()}\n${readFileSync(launchIntegrationPath, 'utf8')}\n${readFileSync(applyResultIntegrationPath, 'utf8')}\n${readFileSync(workflowIntegrationPath, 'utf8')}\n${readFileSync(interpolationControllerPath, 'utf8')}\n${sessionControllerSource()}\n${rotoPlayConversionControllerSource()}\n${rotoCacheTransactionsSource()}\n${rotoLaunchHydrationSource()}`.split("from '../").join("from './");
+const workflowStripSource = () => readFileSync(workflowStripPath, 'utf8');
 const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const styles = () => readFileSync(stylePath, 'utf8');
 const bridgeSource = () => readFileSync(bridgePath, 'utf8');
@@ -184,15 +186,16 @@ describe('PhysicsPaintStudio extracted utility boundaries', () => {
     expect(rail.indexOf("id: 'redo'")).toBeGreaterThan(rail.indexOf("id: 'undo'"));
     expect(rail).toContain("label: 'Redo'");
     expect(rail).toContain("if (item.id === 'redo') onRedo()");
-    expect(rail).toContain('undoCount?: number');
-    expect(rail).toContain('redoCount?: number');
+    expect(rail).toContain('historyAvailability?: ReadonlySignal<PaintHistoryAvailability>');
+    expect(rail).toContain('historyAvailability?.value.undo');
+    expect(rail).toContain('historyAvailability?.value.redo');
     expect(rail).toContain('historyCount(item) === 0');
     expect(rail).toContain('physics-paint-history-badge');
     expect(rail).toContain('`${item.label} (${count} available)`');
     expect(studio).toContain("import { useSignal } from '@preact/signals'");
     expect(studio).toContain('useSignal<PaintHistoryAvailability>({ undo: 0, redo: 0 })');
     expect(studio).toContain('readyEngine.setHistoryAvailabilityListener');
-    expect(studio).toContain('undoCount: historyAvailability.value.undo, redoCount: historyAvailability.value.redo');
+    expect(studio).toContain('historyAvailability, disabled: !engine || mutationLocked');
     expect(studio).toContain('disabled: !engine || mutationLocked');
     expect(studio).toContain('onUndo: undo, onRedo: redo');
     expect(styles).toContain('.physics-paint-history-badge');
@@ -366,6 +369,7 @@ describe('PhysicsPaintStudio Roto cache relaunch contract', () => {
 
     expect(text).toContain("from './hooks/useRotoFramePersistenceCoordinator'");
     expect(text).toContain('const reference = useRotoReferenceController<RenderedFramePayload>({');
+    expect(text).toContain('getCachedRotoFrames: () => latestFramesRef.current');
     expect(controller).toContain('input.setReferenceUrl(null)');
     expect(controller).toContain('engine.setBgMode(input.getSettingsBackground())');
     expect(controller).toContain('engine.setPreviewBaseImageUrl(cachedFrame.dataUrl)');
@@ -666,7 +670,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(launchHydration).toContain('export function seedRotoLaunchRealKeys');
     expect(launchHydration).toContain('const sourceFrame = frame.sourceFrame ?? frame.appFrame;');
     expect(launchHydration).toContain('store.upsertRealRotoKeyFrame(context.layerId, sourceFrame, frame, frame.backgroundOnly === true)');
-    expect(updateBlock).toContain('seedRotoLaunchRealKeys(launchContext, input.seedStore)');
+    expect(updateBlock).toContain('seedRotoLaunchRealKeys({ ...launchContext, cachedRotoFrames: latestFrames }, input.seedStore)');
     expect(updateBlock).toContain('const cacheRefresh = refreshRotoInterpolationCache(');
     expect(updateBlock).toContain('transaction.settings.enabled');
     expect(cacheTransactions).toContain('mergeRotoCacheFramesPreservingLaunchRealKeys(launchFrames, storeFrames)');
@@ -787,6 +791,9 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     expect(text).toContain("currentFrameSelectionKind !== 'generated-interpolation'");
     expect(text).toContain('mutationEngine.copyLiveAlphaCanvas()');
     expect(text).toContain('rotoPersistence.captureLivePixels({');
+    expect(text).toContain('latestFramesRef: latestRotoFramesRef');
+    expect(rotoPersistenceCoordinatorSource()).toContain('latestFramesRef.current = refreshedFrames');
+    expect(rotoPersistenceCoordinatorSource()).not.toContain('current.cachedRotoFrames = refreshedFrames');
     expect(text).toContain('claimEmptyTarget: () => launchContext ? claimRotoSelectedFrame({');
     expect(text).toContain('selectedFrame: currentFrame');
     expect(text).toContain('acceptedTarget?.sourceFrame');
@@ -819,12 +826,9 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
   it('routes mounted Copy and Apply results through the existing LOG error boundary', () => {
     const text = studioPresentationSource();
 
-    expect(text).toContain('error: rotoScript.error.value');
-    expect(text).toContain('hasCopiedScript: rotoScript.hasCopiedScript.value');
-    expect(text).toContain('copiedSourceFrame: rotoScript.copiedSourceFrame.value');
-    expect(text).toContain('copiedStrokeCount: rotoScript.copiedStrokeCount.value');
-    expect(text).toContain('applying: rotoScript.applying.value');
-    expect(text).toContain('applyProgress: rotoScript.applyProgress.value');
+    expect(text).toContain('rotoScript, onCopyRotoScript:');
+    expect(workflowStripSource()).toContain('const scriptAvailability = props.rotoScript?.availability.value');
+    expect(workflowStripSource()).toContain('const scriptStatus = props.rotoScript?.status.value ?? null');
     expect(text).toContain('rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } })');
     expect(text).toContain('rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } })');
     expect(text).not.toContain('setRotoScriptError');
@@ -833,7 +837,7 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
   it('keeps Roto input and every Studio mutation command guarded by the script operation lock', () => {
     const text = studioPresentationSource();
     expect(text).toContain('const mutationLocked = rotoScript.mutationLocked.value');
-    expect(text).toContain('const rotoInputDisabled = currentFrameIsGeneratedRoto || rotoScript.availability.value.busy');
+    expect(text).toContain('const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked');
     expect(text).toContain('isMutationLocked: () => rotoScript.mutationLocked.peek()');
     expect(text).toContain('keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked');
     expect(text).toContain('disabled: mutationLocked');

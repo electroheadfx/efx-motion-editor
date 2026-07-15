@@ -6,6 +6,7 @@ import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBrid
 
 export function useRotoInterpolationController(input: {
   launchContext: PhysicPaintLaunchContext | null;
+  getLatestFrames?: () => readonly PhysicPaintRotoCacheFrame[];
   currentFrame: number;
   bridgeMode: PhysicsPaintBridgeMode;
   updateSettings: (frame: number, patch: Partial<PhysicPaintRotoInterpolationSettings>) => { settings: PhysicPaintRotoInterpolationSettings; nextCurrentFrame: number; failureStatus: string | null; status: string };
@@ -26,9 +27,10 @@ export function useRotoInterpolationController(input: {
     if (input.isMutationLocked?.()) return;
     const launchContext = input.launchContext;
     if (!launchContext) return;
-    seedRotoLaunchRealKeys(launchContext, input.seedStore);
+    const latestFrames = [...(input.getLatestFrames?.() ?? launchContext.cachedRotoFrames ?? [])];
+    seedRotoLaunchRealKeys({ ...launchContext, cachedRotoFrames: latestFrames }, input.seedStore);
     const transaction = input.updateSettings(input.currentFrame, patch);
-    const cacheRefresh = refreshRotoInterpolationCache(launchContext.cachedRotoFrames, input.getStoreFrames(launchContext.layerId), transaction.settings.enabled);
+    const cacheRefresh = refreshRotoInterpolationCache(latestFrames, input.getStoreFrames(launchContext.layerId), transaction.settings.enabled);
     if (!transaction.settings.enabled) {
       input.setEditableFrames((frames) => frames.filter((frame) => cacheRefresh.realDisplayFrames.includes(frame)));
       input.replaceConfirmedFrames(new Map(cacheRefresh.confirmedRealKeys));

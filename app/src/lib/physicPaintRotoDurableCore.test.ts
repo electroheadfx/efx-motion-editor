@@ -3,7 +3,7 @@ import { act } from 'preact/test-utils';
 import { useState } from 'preact/hooks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
-import type { SerializedProject } from '@efxlab/efx-physic-paint';
+import type { PaintStroke, SerializedProject } from '@efxlab/efx-physic-paint';
 import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
@@ -34,7 +34,20 @@ const paintHarness = vi.hoisted(() => ({
   launchListeners: [] as Array<(event: { payload: unknown }) => void>,
   engineReadyListeners: [] as Array<() => void>,
   browserBridgeReadyListeners: [] as Array<() => void>,
+  studioRenderCount: 0,
+  engineReadyCount: 0,
 }));
+
+vi.mock('../components/physic-paint/hooks/usePhysicsPaintStudioViewModel', async () => {
+  const actual = await vi.importActual<typeof import('../components/physic-paint/hooks/usePhysicsPaintStudioViewModel')>('../components/physic-paint/hooks/usePhysicsPaintStudioViewModel');
+  return {
+    ...actual,
+    usePhysicsPaintStudioViewModel: (props: Parameters<typeof actual.usePhysicsPaintStudioViewModel>[0]) => {
+      paintHarness.studioRenderCount += 1;
+      return actual.usePhysicsPaintStudioViewModel(props);
+    },
+  };
+});
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
   exists: vi.fn(async (path: string) => fsMock.dirs.has(path) || fsMock.files.has(path)),
@@ -97,6 +110,7 @@ vi.mock('@efxlab/efx-physic-paint/preact', async () => {
         if (!mountedEngine) throw new Error('test paint engine was not installed');
         props.onNativePenInputReady?.(() => {});
         mountedEngine.setCompletedMutationListener(props.onCompletedMutation ? (mutation) => props.onCompletedMutation?.(mutation, mountedEngine) : null);
+        paintHarness.engineReadyCount += 1;
         props.onEngineReady?.(mountedEngine);
         setCallbacksCommitted(true);
       }, [readyToEmit]);
@@ -115,17 +129,19 @@ vi.mock('@efxlab/efx-physic-paint/animation', () => ({
     play() {}
     stop() {}
   },
+  transformRecordedStrokeForHeldPose: (stroke: PaintStroke) => stroke,
 }));
 
 interface TestPaintEngine {
   save: () => SerializedProject;
   load: ReturnType<typeof vi.fn<(state: SerializedProject) => void>>;
   clear: ReturnType<typeof vi.fn<() => void>>;
-  getStrokes: ReturnType<typeof vi.fn<() => []>>;
+  getStrokes: ReturnType<typeof vi.fn<() => PaintStroke[]>>;
   enqueueRecordedStroke: ReturnType<typeof vi.fn<() => number>>;
+  completeMutation: (mutationId: number, history?: { undo: number; redo: number }) => void;
   setInputLocked: ReturnType<typeof vi.fn<(locked: boolean) => void>>;
   exportCompositeCanvas: () => { width: number; height: number; toDataURL: () => string; toBlob: (callback: BlobCallback) => void };
-  copyLiveAlphaCanvas: () => { width: number; height: number; toDataURL: () => string; toBlob: (callback: BlobCallback) => void };
+  copyLiveAlphaCanvas: ReturnType<typeof vi.fn<() => { width: number; height: number; toDataURL: () => string; toBlob: (callback: BlobCallback) => void }>>;
   setCompletedMutationListener: (listener: ((mutation: { kind: string; isEmpty: boolean; mutationId: number }) => void) | null) => void;
   setHistoryAvailabilityListener: ReturnType<typeof vi.fn<(listener: (availability: { undo: number; redo: number }) => void) => void>>;
   setBackgroundImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
@@ -184,10 +200,23 @@ function pngDataUrl(label: string): string {
   return `data:image/png;base64,${btoa(label)}`;
 }
 
+function scriptStroke(mutationId: number, x = 10): PaintStroke {
+  return {
+    mutationId,
+    tool: 'paint',
+    points: [{ x, y: 20, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0 }],
+    color: '#123456',
+    params: { size: 12, opacity: 100, pressure: 100, waterAmount: 50, dryAmount: 50, edgeDetail: 50, pickup: 50, eraseStrength: 50, antiAlias: 1 },
+    timestamp: mutationId,
+  };
+}
+
 function makeEngine(initialState: SerializedProject, initialDataUrl: string): TestPaintEngine {
   let state = structuredClone(initialState);
   let dataUrl = initialDataUrl;
+  let nextMutationId = 1000;
   let completedMutationListener: ((mutation: { kind: string; isEmpty: boolean; mutationId: number }) => void) | null = null;
+  let historyAvailabilityListener: ((availability: { undo: number; redo: number }) => void) | null = null;
   const engine = {
     save: vi.fn(() => structuredClone(state)),
     load: vi.fn((next: SerializedProject) => { state = structuredClone(next); }),
@@ -196,12 +225,19 @@ function makeEngine(initialState: SerializedProject, initialDataUrl: string): Te
       completedMutationListener?.({ kind: 'clear', isEmpty: true, mutationId: 0 });
     }),
     getStrokes: vi.fn(() => []),
-    enqueueRecordedStroke: vi.fn(() => 1),
+    enqueueRecordedStroke: vi.fn(() => nextMutationId++),
+    completeMutation: (mutationId: number, history?: { undo: number; redo: number }) => {
+      if (history) historyAvailabilityListener?.(history);
+      completedMutationListener?.({ kind: 'paint', isEmpty: false, mutationId });
+    },
     setInputLocked: vi.fn(),
     exportCompositeCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl, toBlob: (callback: BlobCallback) => callback(new Blob(['roto-alpha'], { type: 'image/png' })) })),
     copyLiveAlphaCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl, toBlob: (callback: BlobCallback) => callback(new Blob(['roto-alpha'], { type: 'image/png' })) })),
     setCompletedMutationListener: vi.fn((listener: ((mutation: { kind: string; isEmpty: boolean; mutationId: number }) => void) | null) => { completedMutationListener = listener; }),
-    setHistoryAvailabilityListener: vi.fn((listener: (availability: { undo: number; redo: number }) => void) => listener({ undo: 0, redo: 0 })),
+    setHistoryAvailabilityListener: vi.fn((listener: (availability: { undo: number; redo: number }) => void) => {
+      historyAvailabilityListener = listener;
+      listener({ undo: 0, redo: 0 });
+    }),
     setBackgroundImageUrl: vi.fn(),
     resetBackground: vi.fn(),
     setPreviewBaseImageUrl: vi.fn(),
@@ -983,6 +1019,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
     paintHarness.launchListeners = [];
     paintHarness.engineReadyListeners = [];
     paintHarness.browserBridgeReadyListeners = [];
+    paintHarness.studioRenderCount = 0;
+    paintHarness.engineReadyCount = 0;
     mockLayers([physicLayer()]);
   });
 
@@ -1006,6 +1044,124 @@ describe('Phase 36.3 durable Roto cache core', () => {
     paintHarness.launchListeners = [];
     paintHarness.engineReadyListeners = [];
     paintHarness.browserBridgeReadyListeners = [];
+  });
+
+  it('keeps multi-brush Apply updates below the Studio root while preserving per-brush publication', async () => {
+    const brushes = [scriptStroke(101, 10), scriptStroke(102, 20), scriptStroke(103, 30), scriptStroke(104, 40)];
+    const baseFrame: PhysicPaintRotoCacheFrame = { frameIndex: 0, appFrame: 4, sourceFrame: 4, displayFrame: 4, source: 'real-key', dataUrl: pngDataUrl('debug-apply-base'), width: 1000, height: 650 };
+    physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 4, baseFrame);
+    const launchContext: PhysicPaintLaunchContext = {
+      operationId: 'debug-apply-script-performance',
+      layerId: 'phys-layer-1',
+      layerName: 'Physic Paint',
+      startFrame: 4,
+      workflowMode: 'roto',
+      editableSource: 'roto',
+      width: 1000,
+      height: 650,
+      cachedRotoFrames: [baseFrame],
+    };
+    paintHarness.storedLaunchContext = launchContext;
+    paintHarness.engine!.getStrokes.mockReturnValue(brushes);
+    const parentPayloads: PhysicPaintApplyPayload[] = [];
+    const { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+      if (message.type === PHYSIC_PAINT_APPLY_EVENT && message.payload) parentPayloads.push(message.payload);
+    });
+    const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
+    await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
+    await act(async () => { await flushPreact(); });
+
+    for (const brush of brushes) paintHarness.engine!.completeMutation(brush.mutationId!);
+    const copyButton = findButton(root, 'Copy Roto paint script')!;
+    fire(copyButton, 'Click');
+    await act(async () => { await flushPreact(); });
+    const applyButton = findButton(root, 'Apply Roto paint script');
+    expect(applyButton?.getAttribute('disabled')).toBeNull();
+
+    const baseline = {
+      renders: paintHarness.studioRenderCount,
+      clear: paintHarness.engine!.clear.mock.calls.length,
+      previewLoad: paintHarness.engine!.setPreviewBaseImageUrl.mock.calls.length,
+      previewClear: paintHarness.engine!.clearPreviewBaseImage.mock.calls.length,
+      backgroundReset: paintHarness.engine!.resetBackground.mock.calls.length,
+      engineReady: paintHarness.engineReadyCount,
+      liveCopies: paintHarness.engine!.copyLiveAlphaCanvas.mock.calls.length,
+      parentPayloads: parentPayloads.length,
+    };
+    const acceptedAt = new Map<number, number>();
+    const acceptedIds: number[] = [];
+    const completedLatency: number[] = [];
+    let nextApplyMutationId = 1000;
+    paintHarness.engine!.enqueueRecordedStroke.mockImplementation(() => {
+      const mutationId = nextApplyMutationId++;
+      acceptedAt.set(mutationId, performance.now());
+      acceptedIds.push(mutationId);
+      return mutationId;
+    });
+
+    fire(findButton(root, 'Apply Roto paint script')!, 'Click');
+    await act(async () => { await Promise.resolve(); });
+    expect(visibleText(root)).toContain('Applying 0/4');
+    for (let index = 0; index < brushes.length; index += 1) {
+      const mutationId = acceptedIds[index];
+      expect(mutationId).toBeDefined();
+      paintHarness.engine!.completeMutation(mutationId, { undo: index + 1, redo: 0 });
+      completedLatency.push(performance.now() - (acceptedAt.get(mutationId) ?? performance.now()));
+      await act(async () => { await flushPreact(); });
+      const expectedStatus = index === brushes.length - 1 ? 'Applied 4' : `Applying ${index + 1}/4`;
+      expect(visibleText(root)).toContain(expectedStatus);
+      expect(findButton(root, `Undo (${index + 1} available)`)).not.toBeNull();
+      expect(findButton(root, 'Redo (0 available)')).not.toBeNull();
+    }
+    await act(async () => { await flushPreact(); });
+    for (let attempt = 0; attempt < 10 && parentPayloads.length - baseline.parentPayloads < brushes.length; attempt += 1) {
+      await act(async () => { await flushPreact(); });
+    }
+
+    const metrics = {
+      brushes: brushes.length,
+      studioRenders: paintHarness.studioRenderCount - baseline.renders,
+      referenceEngineClear: paintHarness.engine!.clear.mock.calls.length - baseline.clear,
+      previewBaseLoad: paintHarness.engine!.setPreviewBaseImageUrl.mock.calls.length - baseline.previewLoad,
+      previewBaseClear: paintHarness.engine!.clearPreviewBaseImage.mock.calls.length - baseline.previewClear,
+      backgroundReset: paintHarness.engine!.resetBackground.mock.calls.length - baseline.backgroundReset,
+      engineReady: paintHarness.engineReadyCount - baseline.engineReady,
+      liveCopies: paintHarness.engine!.copyLiveAlphaCanvas.mock.calls.length - baseline.liveCopies,
+      parentPayloads: parentPayloads.length - baseline.parentPayloads,
+      acceptedToCompletedMs: completedLatency.map((value) => Number(value.toFixed(3))),
+    };
+    expect(metrics).toMatchObject({
+      brushes: 4,
+      studioRenders: 2,
+      referenceEngineClear: 0,
+      previewBaseLoad: 0,
+      previewBaseClear: 0,
+      engineReady: 0,
+      liveCopies: 4,
+      parentPayloads: 4,
+    });
+    expect(metrics.acceptedToCompletedMs).toHaveLength(4);
+    const latestPixels = physicPaintStore.getRotoCacheFrames('phys-layer-1').find((frame) => frame.sourceFrame === 4)?.dataUrl;
+    expect(latestPixels).toBeDefined();
+    fire(findButton(root, 'Go to next frame')!, 'Click');
+    await act(async () => { await flushPreact(); });
+    fire(findButton(root, 'Go to previous frame')!, 'Click');
+    await act(async () => { await flushPreact(); });
+    expect(paintHarness.engine!.setPreviewBaseImageUrl).toHaveBeenLastCalledWith(latestPixels);
+
+    window.dispatchEvent(new TestEvent('beforeunload'));
+    await act(async () => { await flushPreact(); });
+    const publishedPayload = parentPayloads[parentPayloads.length - 1];
+    const publishedFrame = publishedPayload?.kind === 'apply-canvas'
+      ? { ...publishedPayload.renderedFrame, source: 'real-key' as const }
+      : undefined;
+    expect(publishedFrame?.dataUrl).toBe(latestPixels);
+    const reopenContext = { ...launchContext, cachedRotoFrames: publishedFrame ? [publishedFrame] : [] };
+    paintHarness.storedLaunchContext = reopenContext;
+    const reopened = installDom(encodeURIComponent(JSON.stringify(reopenContext)), () => {});
+    await mountStudioReady(reopened.root, () => h(PhysicsPaintStudio, {}));
+    await act(async () => { await flushPreact(); });
+    expect(paintHarness.engine!.setPreviewBaseImageUrl).toHaveBeenLastCalledWith(latestPixels);
   });
 
   it('automatic live pixel mutation commits through the mounted Studio engine seam without Save current', async () => {
