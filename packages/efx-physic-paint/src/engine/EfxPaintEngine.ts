@@ -58,8 +58,15 @@ type DeferredStrokeFinalization = {
   color: string | null
   opts: BrushOpts
   hasPenInput: boolean
+  physicsMode: 'local' | null
+  continuationFrames: number
   mutationId: number
   queuedAt: number
+}
+
+export type RecordedStrokeGroup = {
+  primary: Readonly<PaintStroke>
+  continuations?: readonly Readonly<PaintStroke>[]
 }
 
 type PaintHistoryEntry = {
@@ -79,9 +86,10 @@ type ActiveStrokeFinalization = {
   pending: DeferredStrokeFinalization
   generation: number
   finalizationStartedAt: number
-  phase: 'prepare' | 'raster' | 'post-raster' | 'fluid' | 'complete'
+  phase: 'prepare' | 'raster' | 'post-raster' | 'fluid' | 'continuation' | 'complete'
   raster: PaintStrokeRasterContinuation | null
   fluid: LocalFluidPhysicsContinuation | null
+  continuationFrame: number
 }
 
 export type PaintPerformanceCategory = 'sync-cpu' | 'scheduled-wait' | 'async-elapsed' | 'input-delay'
@@ -1020,6 +1028,28 @@ export class EfxPaintEngine {
     return this.allActions.length
   }
 
+  /** Accept one immutable recorded logical brush through the normal mutation pipeline. */
+  enqueueRecordedStroke(group: Readonly<RecordedStrokeGroup>): number {
+    const primary = this.cloneRecordedStroke(group.primary)
+    if (primary.points.length === 0 || primary.diffusionFrames !== undefined) {
+      throw new TypeError('Recorded stroke primary must contain points and cannot be a continuation')
+    }
+
+    if ((group.continuations?.length ?? 0) > 0 && primary.tool !== 'paint') {
+      throw new TypeError('Recorded diffusion continuations require a paint primary')
+    }
+
+    const continuations = (group.continuations ?? []).map((continuation) => {
+      const cloned = this.cloneRecordedStroke(continuation)
+      if (cloned.points.length !== 0 || !Number.isFinite(cloned.diffusionFrames) || Math.trunc(cloned.diffusionFrames ?? 0) <= 0) {
+        throw new TypeError('Recorded stroke continuations must be zero-point diffusion records')
+      }
+      return cloned
+    })
+
+    return this.acceptStroke(primary, continuations)
+  }
+
   /** Lock/unlock pointer input (per D-11: painting disabled during animation) */
   setInputLocked(locked: boolean): void {
     this.inputLocked = locked
@@ -1101,6 +1131,64 @@ export class EfxPaintEngine {
       opts: { ...pending.opts },
       queuedAt: performance.now(),
     }
+  }
+
+  private cloneRecordedStroke(stroke: Readonly<PaintStroke>): PaintStroke {
+    return {
+      ...stroke,
+      points: stroke.points.map((point) => ({ ...point })),
+      params: { ...stroke.params },
+    }
+  }
+
+  private acceptStroke(
+    primaryInput: Readonly<PaintStroke>,
+    continuationInputs: readonly Readonly<PaintStroke>[] = [],
+    reservedMutationId?: number,
+  ): number {
+    const mutationId = reservedMutationId ?? this.nextMutationId++
+    const primary = this.cloneRecordedStroke(primaryInput)
+    delete primary.mutationId
+    const points = Object.freeze(primary.points.map((point) => Object.freeze({ ...point }))) as unknown as PenPoint[]
+    primary.mutationId = mutationId
+    primary.points = points
+
+    const continuations = continuationInputs.map((continuationInput) => {
+      const continuation = this.cloneRecordedStroke(continuationInput)
+      delete continuation.mutationId
+      continuation.points = []
+      return continuation
+    })
+    const actions = [primary, ...continuations]
+    this.allActions.push(...actions)
+
+    const pending: DeferredStrokeFinalization = {
+      tool: primary.tool,
+      points,
+      color: primary.color,
+      opts: { ...primary.params },
+      hasPenInput: this.strokeHasPenInput(primary),
+      physicsMode: primary.physicsMode === 'local' ? 'local' : null,
+      continuationFrames: continuations.reduce((total, continuation) => total + Math.max(0, Math.min(600, Math.trunc(continuation.diffusionFrames ?? 0))), 0),
+      mutationId,
+      queuedAt: performance.now(),
+    }
+
+    this.redoStack = []
+    this.undoStack.push({
+      mutationId,
+      actions,
+      checkpoint: null,
+      deferred: this.cloneDeferredFinalization(pending),
+    })
+    if (this.undoStack.length > 10) this.undoStack.shift()
+    this.historyEntries = [...this.undoStack]
+    this.historyIndex = this.undoStack.length
+    this.notifyHistoryAvailability()
+    this.pendingStrokeFinalizations.push(pending)
+    this.markStrokeHandoffComplete()
+    this.scheduleStrokeFinalization()
+    return mutationId
   }
 
   private captureUndoSnapshot(mutationId: number): UndoSnapshot {
@@ -1216,6 +1304,7 @@ export class EfxPaintEngine {
       phase: pending.tool === 'paint' && pending.color ? 'prepare' : 'complete',
       raster: null,
       fluid: null,
+      continuationFrame: 0,
     }
   }
 
@@ -1243,7 +1332,11 @@ export class EfxPaintEngine {
     const { pending } = active
     const applyStartedAt = this.performanceListener ? performance.now() : 0
     if (pending.tool !== 'paint' || !pending.color) {
-      this.applyStrokeToEngine(pending.tool, pending.points, pending.color, pending.opts, { startNaturalDrying: true, hasPenInput: pending.hasPenInput })
+      this.applyStrokeToEngine(pending.tool, pending.points, pending.color, pending.opts, {
+        startNaturalDrying: true,
+        hasPenInput: pending.hasPenInput,
+        physicsMode: pending.physicsMode,
+      })
     }
     this.recordPerformance('stroke-apply', 'sync-cpu', applyStartedAt, { mutationId: pending.mutationId })
     this.completeActiveStrokeFinalization(active)
@@ -1347,6 +1440,14 @@ export class EfxPaintEngine {
     if (active.phase === 'fluid' && active.fluid?.step()) {
       this.startNaturalDrying()
       this.finishInteractivePaintFinalization(active)
+      return
+    }
+
+    if (active.phase === 'continuation') {
+      const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
+      this.replayDiffusionFrame(active.continuationFrame, sampleHFn)
+      active.continuationFrame += 1
+      if (active.continuationFrame >= pending.continuationFrames) this.completeActiveStrokeFinalization(active)
     }
   }
 
@@ -1361,6 +1462,10 @@ export class EfxPaintEngine {
     this.lastStrokeBounds = {
       x0: Math.floor(sx0 - brushR), y0: Math.floor(sy0 - brushR),
       x1: Math.ceil(sx1 + brushR), y1: Math.ceil(sy1 + brushR),
+    }
+    if (pending.continuationFrames > 0) {
+      active.phase = 'continuation'
+      return
     }
     this.completeActiveStrokeFinalization(active)
   }
@@ -1450,9 +1555,9 @@ export class EfxPaintEngine {
     forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-pre-stroke-force-dry')
   }
 
-  private applyFinalizedStroke({ tool, points, color, opts, hasPenInput, mutationId }: DeferredStrokeFinalization, finalizationStartedAt: number): void {
+  private applyFinalizedStroke({ tool, points, color, opts, hasPenInput, physicsMode, mutationId }: DeferredStrokeFinalization, finalizationStartedAt: number): void {
     const applyStartedAt = this.performanceListener ? performance.now() : 0
-    this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true, hasPenInput })
+    this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true, hasPenInput, physicsMode })
     this.recordPerformance('stroke-apply', 'sync-cpu', applyStartedAt, { mutationId })
     this.recordPerformance('stroke-finalization', 'sync-cpu', finalizationStartedAt, { mutationId })
     this.notifyCompletedMutation(tool, mutationId)
@@ -1679,51 +1784,23 @@ export class EfxPaintEngine {
     }
 
     const opts = { ...this.state.brushOpts }
-    const points = Object.freeze(this.rawPts.map(p => Object.freeze({ x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: p.spd }))) as unknown as PenPoint[]
+    const points = this.rawPts.map(p => ({ x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: p.spd }))
     const hasPenInput = this.state.hasPenInput
     const colorlessTools: string[] = ['erase']
     const color = colorlessTools.includes(this.state.tool) ? null : this.color
-
     const playFrame = this.getStrokeMetadata?.()?.playFrame
-    this.allActions.push({
-      mutationId,
+    const acceptedMutationId = this.acceptStroke({
       tool: this.state.tool,
-      points: Object.freeze(points.map(p => Object.freeze({ ...p }))) as unknown as PenPoint[],
+      points,
       color,
       params: opts,
       timestamp: Date.now(),
       hasPenInput,
       physicsMode: this.state.tool === 'paint' && this.state.physicsMode === 'local' ? 'local' : null,
       ...(Number.isInteger(playFrame) && playFrame !== undefined && playFrame >= 0 ? { playFrame } : {}),
-    })
-
-    const queuedAt = performance.now()
-    const pending = {
-      tool: this.state.tool,
-      points,
-      color,
-      opts,
-      hasPenInput,
-      mutationId,
-      queuedAt,
-    }
-    this.redoStack = []
-    const historyEntry = {
-      mutationId,
-      actions: this.allActions.slice(this.allActions.findIndex((action) => action.mutationId === mutationId)),
-      checkpoint: null,
-      deferred: this.cloneDeferredFinalization(pending),
-    }
-    this.undoStack.push(historyEntry)
-    if (this.undoStack.length > 10) this.undoStack.shift()
-    this.historyEntries = [...this.undoStack]
-    this.historyIndex = this.undoStack.length
-    this.notifyHistoryAvailability()
-    this.pendingStrokeFinalizations.push(pending)
+    }, [], mutationId)
     this.rawPts = []
-    this.markStrokeHandoffComplete()
-    this.scheduleStrokeFinalization()
-    this.recordPerformance('pointer-up', 'sync-cpu', pointerUpStartedAt, { mutationId, outcome: 'queued' })
+    this.recordPerformance('pointer-up', 'sync-cpu', pointerUpStartedAt, { mutationId: acceptedMutationId, outcome: 'queued' })
   }
 
   private onPointerLeave(e: PointerEvent): void {
@@ -1814,17 +1891,19 @@ export class EfxPaintEngine {
 
   private replayDiffusion(frames: number, sampleHFn: (x: number, y: number) => number): void {
     const count = Math.max(0, Math.min(600, Math.trunc(frames)))
-    for (let i = 0; i < count; i++) {
-      physicsStep(
-        this.wet, this.drying, this.dualCanvas.dryCtx,
-        this.fluid, this.fluidConfig,
-        this.blowDX, this.blowDY,
-        this.width, this.height,
-        this.state.physicsStrength, this.state.drySpeed,
-        this.state.physicsMode, this.lastStrokeBounds,
-        i, sampleHFn, this.paperHeight,
-      )
-    }
+    for (let i = 0; i < count; i++) this.replayDiffusionFrame(i, sampleHFn)
+  }
+
+  private replayDiffusionFrame(frame: number, sampleHFn: (x: number, y: number) => number): void {
+    physicsStep(
+      this.wet, this.drying, this.dualCanvas.dryCtx,
+      this.fluid, this.fluidConfig,
+      this.blowDX, this.blowDY,
+      this.width, this.height,
+      this.state.physicsStrength, this.state.drySpeed,
+      this.state.physicsMode, this.lastStrokeBounds,
+      frame, sampleHFn, this.paperHeight,
+    )
   }
 
   // ================================================================

@@ -1,6 +1,8 @@
 // @efxlab/efx-physic-paint -- Library entry point
 export { EfxPaintEngine } from './engine/EfxPaintEngine'
-export type { CompletedPaintMutation, PaintHistoryAvailability, PaintPerformanceCategory, PaintPerformanceSample } from './engine/EfxPaintEngine'
+export type { CompletedPaintMutation, PaintHistoryAvailability, PaintPerformanceCategory, PaintPerformanceSample, RecordedStrokeGroup } from './engine/EfxPaintEngine'
+export { transformRecordedStrokeForHeldPose } from './animation/recordedStrokeMotion'
+export type { RecordedStrokeHeldPose } from './animation/recordedStrokeMotion'
 export type {
   EngineConfig,
   ToolType,
