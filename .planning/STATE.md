@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.14 — physics-paint-roto-timeline-ui-and-paint-script-reuse
+**Current focus:** Quick 260715-j3q native Undo/Redo UAT, then dedicated Roto paint-script reuse quick before Phase 36.14 UI integration
 
 ## Current Position
 
-Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — BLOCKED BY NATIVE UAT
+Phase: Pre-36.14 quick sequence — BLOCKED BY NATIVE UAT
 Previous phase: 36.13 — Physics Paint Roto Dynamic Interpolation Spacing complete
 Plan: 0 of TBD
-Status: Quick 260715-j3q exact per-brush Undo/Redo is automated-ready; native UAT A-G must pass before Phase 36.14 starts
-Last activity: 2026-07-15 — Implemented exact shared 10-transaction Physics Paint Undo/Redo with Roto, shortcut, rail, and regression coverage
-Next recommended action: Run native UAT A-G from quick task 260715-j3q; only then run `/gsd-discuss-phase 36.14`
+Status: Quick 260715-j3q exact per-brush Undo/Redo is automated-ready; after native UAT A-G, run the dedicated Roto Copy Script / Apply Script quick before Phase 36.14
+Last activity: 2026-07-15 — Extracted functional Roto paint-script reuse from Phase 36.14 into a dedicated prerequisite quick
+Next recommended action: Run native UAT A-G from quick task 260715-j3q; after approval, launch the dedicated script quick with discuss, research, and validation
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -52,7 +52,7 @@ Progress: [███████████████████░] 92/92 e
 | 34. Standalone Demo Shell | 0 | TBD | - |
 | 35. Interactive Physics Paint Controls | 0 | TBD | - |
 | 36. Session Persistence and Output Proof | 0 | TBD | - |
-| 36.14. Timeline UI and Paint Script Reuse | 0 | TBD | - |
+| 36.14. Timeline UI Integration | 0 | TBD | - |
 | 34 | 3 | - | - |
 | 35 | 7 | - | - |
 | 36.1 | 9 | - | - |
@@ -138,8 +138,8 @@ None yet.
 - Phase 36.12 completed: user approved generated render-only Roto interpolation after duplicate mapping, parent preview/export, persistence, live toggle-off, and compact source-sequence key creation blockers were resolved.
 - Phase 36.13 completed: user approved dynamic spacing, canonical persistence/preview/export parity, generated/empty non-durability, visible onion composition, real-key-depth Onion Value semantics, and generated-owner onion traversal.
 - Phases 36.15 and 37 were removed as obsolete: Signals/controllers remain the accepted state boundary, and the implemented parent bridge/cache integration surpassed the former future-contract scope.
-- Phase 36.14 is the final v0.8.0 phase: corrected timeline UI, developer-status removal, existing Log routing, application selection guard, and active-session Copy Script / Apply Script reuse.
-- Quick 260715-j3q exact 10-level per-brush Undo/Redo is automated-ready, but native UAT A-G remains a hard blocker before Phase 36.14 begins.
+- Phase 36.14 is the final v0.8.0 UI-only phase: corrected timeline UI, developer-status removal, existing Log routing, application selection guard, and final presentation/wiring of the prerequisite quick's Copy Script / Apply Script controls.
+- Quick 260715-j3q exact 10-level per-brush Undo/Redo is automated-ready, but native UAT A-G remains a hard blocker before the dedicated script quick begins; that script quick must pass native UAT before Phase 36.14.
 
 ### Quick Tasks Completed
 
@@ -168,7 +168,7 @@ None yet.
 - Phase 36.x order updated: inserted Phase 36.11 Repaint Cached Real Key, shifted Generated Interpolation to 36.12, Timeline UI From Pencil to 36.13, and deferred State Machine Readiness to 36.14 maintenance after remaining user-facing Roto features; Phase 36.8 is the state boundary foundation
 - Phase 36.x order updated: inserted Phase 36.13 Dynamic Interpolation Spacing and shifted Timeline UI From Pencil to 36.14.
 - Phases 36.15 State Machine Readiness and 37 Future Integration Contract were removed after the stabilized controller/bridge implementation made their planned scope obsolete.
-- Phase 36.14 expanded narrowly to include active-session Copy Script / Apply Script reuse through existing deterministic replay and automatic pixel caching.
+- Functional active-session Copy Script / Apply Script reuse was extracted from Phase 36.14 into a dedicated prerequisite quick; Phase 36.14 now owns only final UI presentation and wiring.
 
 ## Deferred Items
 
@@ -182,5 +182,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-15T12:06:06Z
-Stopped at: Quick 260715-j3q automated-ready; exact Undo/Redo native UAT A-G pending
-Resume file: .planning/quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/260715-j3q-SUMMARY.md; complete native UAT before `/gsd-discuss-phase 36.14`
+Stopped at: Quick 260715-j3q automated-ready; exact Undo/Redo native UAT A-G pending before the dedicated script quick
+Resume file: .planning/quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/260715-j3q-SUMMARY.md; complete native UAT, then launch the dedicated Roto script quick before Phase 36.14

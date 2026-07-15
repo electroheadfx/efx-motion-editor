@@ -51,16 +51,21 @@ The former Phase 36.6 save-on-leave lifecycle was superseded by quick task `2607
 - [x] **36.10-MISSING-BACKGROUND**: Missing Roto frames can render paper/background-only without paint content or baked real-key alpha cache pixels.
 - [x] **36.10-PREVIEW-EXPORT-PARITY**: Preview and export use the same Roto missing-frame and real-key paper compositing rules.
 
-### Physics Paint Roto Timeline UI and Paint Script Reuse
+### Physics Paint Roto Paint Script Reuse
+
+- [ ] **ROTO-SCRIPT-COPY**: User can copy the current live recorded paint script into active-session memory, with source-bound completed mutations keeping it current until navigation freezes the snapshot.
+- [ ] **ROTO-SCRIPT-APPLY**: User can repeatedly apply the copied script to real or true empty Roto frames through existing deterministic Deform/Move replay, Undo/Redo, and automatic pixel-cache publication.
+
+These functional requirements are owned by a dedicated GSD quick that must pass native UAT before Phase 36.14 begins. Phase 36.14 only presents and wires the resulting controller contract.
+
+### Physics Paint Roto Timeline UI Integration
 
 - [ ] **36.14-PENCIL-LAYOUT**: The final Roto timeline follows the corrected visual reference for color, proportions, hierarchy, ruler, cells, and compact fit-content actions while runtime geometry remains projection-driven.
-- [ ] **36.14-CONTROL-GROUPING**: Transport, quick key actions, interpolation, and fps are visibly distinct; Tools/header Log and obsolete Save controls are absent.
+- [ ] **36.14-CONTROL-GROUPING**: Transport, quick key actions, interpolation, fps, and the quick-delivered script actions are visibly distinct; Tools/header Log and obsolete Save controls are absent.
 - [ ] **36.14-VISUAL-STATES**: Real, generated, empty/background, current, disabled, active, and destructive states remain clear without a permanent developer legend.
 - [ ] **36.14-LOG-ROUTING**: The timeline shows concise latest-operation status while errors and detail appear in the existing right-panel LOG tab.
 - [ ] **36.14-SELECTION-GUARD**: Application chrome resists accidental browser text selection while inputs, editable fields, and Log text remain selectable.
-- [ ] **36.14-SCRIPT-COPY**: User can copy the current live recorded paint script into active-session memory, with source-bound completed mutations keeping it current until navigation freezes the snapshot.
-- [ ] **36.14-SCRIPT-APPLY**: User can repeatedly apply the copied script to real or true empty Roto frames through existing deterministic Deform/Move replay, Undo, and automatic pixel-cache publication.
-- [ ] **36.14-REGRESSION**: Phase 36.9–36.13 behavior and rapid-stroke/cooperative-finalization contracts remain unchanged.
+- [ ] **36.14-REGRESSION**: Phase 36.9–36.13 behavior, exact Undo/Redo, the approved script workflow, and rapid-stroke/cooperative-finalization contracts remain unchanged.
 
 ## Implemented Integration Baseline
 
@@ -119,8 +124,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | 36.14-VISUAL-STATES | Phase 36.14 | Pending |
 | 36.14-LOG-ROUTING | Phase 36.14 | Pending |
 | 36.14-SELECTION-GUARD | Phase 36.14 | Pending |
-| 36.14-SCRIPT-COPY | Phase 36.14 | Pending |
-| 36.14-SCRIPT-APPLY | Phase 36.14 | Pending |
+| ROTO-SCRIPT-COPY | Dedicated pre-36.14 GSD quick | Pending |
+| ROTO-SCRIPT-APPLY | Dedicated pre-36.14 GSD quick | Pending |
 | 36.14-REGRESSION | Phase 36.14 | Pending |
 
 **Coverage:**
@@ -131,4 +136,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-08*
-*Last updated: 2026-07-15 after the final Phase 36.14 contract update and removal of obsolete Phase 37 requirements*
+*Last updated: 2026-07-15 after extracting functional Roto paint-script reuse into a dedicated pre-36.14 GSD quick*

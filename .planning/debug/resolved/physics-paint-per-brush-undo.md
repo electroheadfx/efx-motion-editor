@@ -38,7 +38,7 @@ reproduction: "Open Physics Paint Roto, paint one or more brushes, then press Ct
 
 - Treat the immutable PaintStroke record in `allActions` as the authoritative identity of each accepted brush.
 - Bind the stroke, queued/active finalization job, Undo snapshot, completed mutation, and automatic cache publication through the same `mutationId` or equivalent stable identity.
-- Keep this internal history distinct from Phase 36.14 Copy Script / Apply Script clipboard behavior.
+- Keep this internal history distinct from the dedicated pre-36.14 Copy Script / Apply Script quick clipboard behavior.
 - Inspect `allActions.length`, `undoStack.length`, `pendingStrokeFinalizations`, `activeStrokeFinalization`, `strokeFinalizationGeneration`, queued preview ownership, visible dry/wet/saved-wet buffers, completed mutation publication, and automatic cache revision.
 - Preserve the removed immutable PaintStroke in a shape structurally capable of future Redo, but do not implement Redo.
 
@@ -50,7 +50,7 @@ reproduction: "Open Physics Paint Roto, paint one or more brushes, then press Ct
 - `EfxPaintEngine.allActions`, exposed by `getStrokes()`, is the sole mutable active-frame PaintStroke script.
 - Keep script lifetime active-frame-only; safely hand off/invalidate source work, then reset history on destination navigation. Never keep per-frame PaintStroke maps.
 - Cached-only/reopened frames remain pixel-first and do not recover scripts.
-- Phase 36.14 Copy Script / Apply Script will deep-copy `getStrokes()` into a separate volatile reusable clipboard; do not implement that workflow here.
+- the dedicated pre-36.14 Copy Script / Apply Script quick will deep-copy `getStrokes()` into a separate volatile reusable clipboard; do not implement that workflow here.
 - Never persist scripts or clipboard in `.mce`, sidecars, cache metadata, launch URLs, or bridge payloads.
 - Keep per-brush Undo; retain removed immutable history only for possible future Redo structure, without implementing Redo.
 

@@ -139,7 +139,7 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.11: Physics Paint Roto Repaint Cached Real Key** - Existing cached real Roto keys reopen with their alpha paint as an additive base layer for repainting without restoring old stroke scripts. (completed 2026-06-29)
 - [x] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (completed 2026-07-02)
 - [x] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, export, and real-key-depth onion skinning. (completed 2026-07-13)
-- [ ] **Phase 36.14: Physics Paint Roto Timeline UI and Paint Script Reuse** - Finalize the corrected Roto timeline UI and let animators reuse an in-memory recorded paint script on another real or empty frame with Motion transforms. (planned; final v0.8.0 phase)
+- [ ] **Phase 36.14: Physics Paint Roto Timeline UI Integration** - Finalize the corrected Roto timeline UI and integrate the already-approved Copy Script / Apply Script controller contract. (planned; final v0.8.0 phase)
 
 ## Phase Details
 
@@ -433,32 +433,32 @@ Plans:
 
 - [x] 36.13-06-PLAN.md — Run final automated gate and user-owned live UAT.
 
-### Phase 36.14: Physics Paint Roto Timeline UI and Paint Script Reuse
+### Phase 36.14: Physics Paint Roto Timeline UI Integration
 
 Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and the corrected TSX/HTML timeline references as the source of truth for this phase.
 
-**Goal:** As a stop-motion animator, I want a polished Roto timeline and a reusable paint-script clipboard, so that I can manage keys clearly and reuse the previous drawing motion on another frame without redrawing it manually.
+**Goal:** As a stop-motion animator, I want a polished Roto timeline that exposes established key and paint-script actions clearly without duplicating their business logic.
 **Mode:** mvp
-**Requirements**: 36.14-PENCIL-LAYOUT, 36.14-CONTROL-GROUPING, 36.14-VISUAL-STATES, 36.14-LOG-ROUTING, 36.14-SELECTION-GUARD, 36.14-SCRIPT-COPY, 36.14-SCRIPT-APPLY, 36.14-REGRESSION
-**Depends on:** Phase 36.13
+**Requirements**: 36.14-PENCIL-LAYOUT, 36.14-CONTROL-GROUPING, 36.14-VISUAL-STATES, 36.14-LOG-ROUTING, 36.14-SELECTION-GUARD, 36.14-REGRESSION
+**Depends on:** Phase 36.13 and native-UAT approval of the dedicated ROTO-SCRIPT-COPY / ROTO-SCRIPT-APPLY GSD quick
 **Plans:** 0 plans
 
 Planning notes:
 
-- This is the final v0.8.0 phase.
-- Apply the corrected timeline colors, proportions, grouping, fit-content action row, and visual hierarchy after core Roto behavior is stable.
+- This is the final v0.8.0 phase and a UI-only integration pass.
+- Apply the corrected timeline colors, proportions, grouping, fit-content action row, and visual hierarchy after core Roto and script behavior is stable.
 - Remove the permanent developer legend/status stack, obsolete `Save current`, and the unassigned Tools/header Log controls.
 - Route concise latest-operation status to the header capsule and errors/details to the existing right-panel `LOG` tab.
 - Keep transport, interpolation, and fps visibly separate; place the interpolation icon before its checkbox/count.
 - Preserve the accepted Phase 36.13 source/display projection; static reference ruler values are visual examples only.
-- Add `Copy Script` and `Apply Script` after Delete as a session-memory recorded-stroke clipboard distinct from real-key Copy/Paste.
-- Apply current Motion Deform/Move through existing deterministic replay, Undo, and automatic live pixel-cache publication.
+- Place `Copy Script` and `Apply Script` after Delete and consume the prerequisite quick's callbacks, availability, disabled reasons, status, and errors.
+- Do not implement clipboard lifetime, source mutation tracking, replay, Motion Deform/Move, Undo/Redo, empty-frame promotion, or cache publication in this phase.
 - Add a global application-chrome selection guard while preserving selectable inputs, editable fields, and Log text.
 - Do not reopen interpolation, cache, onion, preview/export, key ownership, Play persistence, or pointer-latency behavior.
 
 Plans:
 
-- [ ] TBD (run /gsd-discuss-phase 36.14, then /gsd-ui-phase 36.14 and /gsd-plan-phase 36.14 --tdd --mvp)
+- [ ] TBD after the dedicated script quick passes native UAT (then run /gsd-discuss-phase 36.14, /gsd-ui-phase 36.14, and /gsd-plan-phase 36.14 --tdd --mvp)
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
@@ -795,4 +795,4 @@ The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 3
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
-| 36.14. Physics Paint Roto Timeline UI and Paint Script Reuse | v0.8.0 | 0/TBD | Ready to discuss | - |
+| 36.14. Physics Paint Roto Timeline UI Integration | v0.8.0 | 0/TBD | Blocked on script quick native UAT | - |
