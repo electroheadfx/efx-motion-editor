@@ -572,15 +572,20 @@ function createTestRoot(): TestElement {
   return root;
 }
 
-function installDom(encodedContext: string, onParentMessage: (message: { type?: string; payload?: PhysicPaintApplyPayload }) => void): { root: TestElement; window: TestWindow; waitForParentMessage: () => Promise<{ type?: string; payload?: PhysicPaintApplyPayload }> } {
+function installDom(encodedContext: string, onParentMessage: (message: { type?: string; payload?: PhysicPaintApplyPayload }) => void): { root: TestElement; window: TestWindow; waitForParentMessage: (matches?: (message: { type?: string; payload?: PhysicPaintApplyPayload }) => boolean) => Promise<{ type?: string; payload?: PhysicPaintApplyPayload }> } {
   const document = new TestDocument();
   const window = new TestWindow(document);
-  const parentMessageWaiters: Array<(message: { type?: string; payload?: PhysicPaintApplyPayload }) => void> = [];
+  const parentMessageWaiters: Array<{
+    matches: (message: { type?: string; payload?: PhysicPaintApplyPayload }) => boolean;
+    resolve: (message: { type?: string; payload?: PhysicPaintApplyPayload }) => void;
+  }> = [];
   window.location.search = `?context=${encodedContext}`;
   window.opener = {
     postMessage: vi.fn((message: { type?: string; payload?: PhysicPaintApplyPayload }) => {
       onParentMessage(message);
-      parentMessageWaiters.shift()?.(message);
+      const waiterIndex = parentMessageWaiters.findIndex((waiter) => waiter.matches(message));
+      if (waiterIndex < 0) return;
+      parentMessageWaiters.splice(waiterIndex, 1)[0]?.resolve(message);
     }),
   };
   vi.stubGlobal('document', document as unknown as Document);
@@ -605,7 +610,7 @@ function installDom(encodedContext: string, onParentMessage: (message: { type?: 
   return {
     root,
     window,
-    waitForParentMessage: () => new Promise((resolve) => parentMessageWaiters.push(resolve)),
+    waitForParentMessage: (matches = () => true) => new Promise((resolve) => parentMessageWaiters.push({ matches, resolve })),
   };
 }
 
@@ -1232,7 +1237,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     };
     paintHarness.storedLaunchContext = launchContext;
     const applyPayloads: PhysicPaintApplyPayload[] = [];
-    const { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+    const { root, window, waitForParentMessage } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
       if (message.type !== PHYSIC_PAINT_APPLY_EVENT || !message.payload) return;
       applyPayloads.push(message.payload);
       const result = applyPhysicPaintPayload(message.payload);
@@ -1246,8 +1251,14 @@ describe('Phase 36.3 durable Roto cache core', () => {
 
     const clearButton = findButton(root, 'Clear current Roto frame');
     expect(clearButton).not.toBeNull();
+    const clearPublication = waitForParentMessage((message) => (
+      message.type === PHYSIC_PAINT_APPLY_EVENT
+      && message.payload?.kind === 'apply-canvas'
+      && message.payload.sourceFrame === 0
+      && message.payload.backgroundOnly === true
+    ));
     fire(clearButton!, 'Click');
-    await flushPreact();
+    await act(async () => { await clearPublication; });
 
     expect(paintHarness.engine?.clear).toHaveBeenCalled();
     expect(paintHarness.engine?.clearPreviewBaseImage).toHaveBeenCalled();
@@ -1285,11 +1296,17 @@ describe('Phase 36.3 durable Roto cache core', () => {
     fire(findRotoCell(root, 0)!, 'Click');
     await flushPreact();
 
-    paintHarness.engine?.__setState(editedState, pngDataUrl('clear-current-new-paint'));
+    const repaintedPixels = pngDataUrl('clear-current-new-paint');
+    const repaintPublication = waitForParentMessage((message) => (
+      message.type === PHYSIC_PAINT_APPLY_EVENT
+      && message.payload?.kind === 'apply-canvas'
+      && message.payload.sourceFrame === 0
+      && message.payload.renderedFrame.dataUrl === repaintedPixels
+    ));
+    paintHarness.engine?.__setState(editedState, repaintedPixels);
     const canvasStack = queryAll(root, (element) => hasClass(element, 'physics-paint-canvas-stack'))[0];
     fire(canvasStack!, 'PointerDown');
-    await flushPreact();
-    await flushPreact();
+    await act(async () => { await repaintPublication; });
     expect(findButton(root, 'Save current')).toBeNull();
     expect(applyPayloads).toEqual([
       expect.objectContaining({ kind: 'apply-canvas', sourceFrame: 0, backgroundOnly: true }),
