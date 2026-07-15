@@ -62,6 +62,13 @@ type DeferredStrokeFinalization = {
   queuedAt: number
 }
 
+type PaintHistoryEntry = {
+  mutationId: number
+  actions: PaintStroke[]
+  checkpoint: UndoSnapshot | null
+  deferred: DeferredStrokeFinalization | null
+}
+
 type StrokeApplicationOptions = {
   startNaturalDrying?: boolean
   hasPenInput?: boolean
@@ -90,7 +97,7 @@ export type PaintPerformanceSample = {
 }
 
 export type CompletedPaintMutation = {
-  kind: ToolType | 'undo' | 'clear' | 'physics'
+  kind: ToolType | 'undo' | 'redo' | 'clear' | 'physics'
   isEmpty: boolean
   mutationId: number
 }
@@ -166,8 +173,8 @@ export class EfxPaintEngine {
 
   // --- Stroke Recording ---
   private allActions: PaintStroke[] = []
-  private undoStack: UndoSnapshot[] = []
-  private undoneActions: PaintStroke[] = []
+  private undoStack: PaintHistoryEntry[] = []
+  private redoStack: PaintHistoryEntry[] = []
   private pendingStrokeFinalizations: DeferredStrokeFinalization[] = []
   private activeStrokeFinalization: ActiveStrokeFinalization | null = null
   private strokeFinalizationScheduled: boolean = false
@@ -714,37 +721,81 @@ export class EfxPaintEngine {
   }
 
   /** Undo last accepted stroke without forcing deferred work to finalize first. */
-  undo(): void {
-    const actionIndex = this.allActions.findLastIndex((action) => action.mutationId !== undefined)
-    if (actionIndex < 0) return
-    const action = this.allActions[actionIndex]
-    const mutationId = action.mutationId!
-    const removalCount = this.allActions.length - actionIndex
+  undo(): boolean {
+    const entry = this.undoStack.at(-1)
+    if (!entry) return false
+    const actionIndex = this.allActions.findIndex((action) => action.mutationId === entry.mutationId)
+    if (actionIndex < 0) return false
 
-    const pendingIndex = this.pendingStrokeFinalizations.findIndex((pending) => pending.mutationId === mutationId)
+    const pendingIndex = this.pendingStrokeFinalizations.findIndex((pending) => pending.mutationId === entry.mutationId)
     const active = this.activeStrokeFinalization
-    const isActive = active?.pending.mutationId === mutationId
+    const isActive = active?.pending.mutationId === entry.mutationId
+    entry.actions = this.allActions.splice(actionIndex)
+
     if (pendingIndex >= 0 && !isActive) {
+      entry.deferred = this.cloneDeferredFinalization(this.pendingStrokeFinalizations[pendingIndex])
       this.pendingStrokeFinalizations.splice(pendingIndex, 1)
-      this.undoneActions.push(...this.allActions.splice(actionIndex, removalCount))
       this.strokeFinalizationScheduled = this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization !== null
-      return
+    } else {
+      if (!entry.checkpoint) {
+        this.allActions.splice(actionIndex, 0, ...entry.actions)
+        return false
+      }
+      if (isActive) {
+        entry.deferred = this.cloneDeferredFinalization(active.pending)
+        this.strokeFinalizationGeneration++
+        this.activeStrokeFinalization = null
+        this.activeMutationId = null
+        if (pendingIndex >= 0) this.pendingStrokeFinalizations.splice(pendingIndex, 1)
+        this.strokeFinalizationScheduled = this.pendingStrokeFinalizations.length > 0
+      }
+      const postBrushCheckpoint = isActive ? null : this.captureUndoSnapshot(entry.mutationId)
+      const preBrushCheckpoint = this.undoStack.pop()!.checkpoint
+      if (!preBrushCheckpoint) return false
+      this.restoreUndoSnapshot(preBrushCheckpoint)
+      this.redoStack.push({ ...entry, checkpoint: postBrushCheckpoint })
+      this.notifyCompletedMutation('undo', entry.mutationId)
+      return true
     }
 
-    const snapshotIndex = this.undoStack.findLastIndex((snapshot) => snapshot.mutationId === mutationId)
-    if (snapshotIndex < 0) return
-    const snap = this.undoStack[snapshotIndex]
-    if (isActive) {
-      this.strokeFinalizationGeneration++
-      this.activeStrokeFinalization = null
-      this.activeMutationId = null
-      if (pendingIndex >= 0) this.pendingStrokeFinalizations.splice(pendingIndex, 1)
-      this.strokeFinalizationScheduled = this.pendingStrokeFinalizations.length > 0
+    this.undoStack.pop()
+    this.redoStack.push(entry)
+    this.notifyCompletedMutation('undo', entry.mutationId)
+    return true
+  }
+
+  redo(): boolean {
+    const entry = this.redoStack.at(-1)
+    if (!entry) return false
+
+    if (entry.deferred) {
+      this.allActions.push(...entry.actions)
+      this.pendingStrokeFinalizations.push(this.cloneDeferredFinalization(entry.deferred))
+      entry.checkpoint = null
+      this.redoStack.pop()
+      this.undoStack.push(entry)
+      this.markStrokeHandoffComplete()
+      this.scheduleStrokeFinalization()
+      this.notifyCompletedMutation('redo', entry.mutationId)
+      return true
     }
-    this.undoStack.splice(snapshotIndex, 1)
-    this.restoreUndoSnapshot(snap)
-    this.undoneActions.push(...this.allActions.splice(actionIndex, removalCount))
-    this.notifyCompletedMutation('undo', mutationId)
+
+    if (!entry.checkpoint) return false
+    const preBrushCheckpoint = this.captureUndoSnapshot(entry.mutationId)
+    this.restoreUndoSnapshot(entry.checkpoint)
+    this.allActions.push(...entry.actions)
+    this.redoStack.pop()
+    this.undoStack.push({ ...entry, checkpoint: preBrushCheckpoint })
+    this.notifyCompletedMutation('redo', entry.mutationId)
+    return true
+  }
+
+  canUndo(): boolean {
+    return this.undoStack.length > 0
+  }
+
+  canRedo(): boolean {
+    return this.redoStack.length > 0
   }
 
   private restoreUndoSnapshot(snap: UndoSnapshot): void {
@@ -773,7 +824,7 @@ export class EfxPaintEngine {
     this.stopNaturalDrying()
     this.allActions = []
     this.undoStack = []
-    this.undoneActions = []
+    this.redoStack = []
     clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
     // Clear fluid solver state
     this.fluid.u.fill(0); this.fluid.v.fill(0)
@@ -1013,7 +1064,16 @@ export class EfxPaintEngine {
   //  PRIVATE — Deferred Stroke Finalization
   // ================================================================
 
-  private pushUndoSnapshot(mutationId: number): void {
+  private cloneDeferredFinalization(pending: DeferredStrokeFinalization): DeferredStrokeFinalization {
+    return {
+      ...pending,
+      points: pending.points.map((point) => ({ ...point })),
+      opts: { ...pending.opts },
+      queuedAt: performance.now(),
+    }
+  }
+
+  private captureUndoSnapshot(mutationId: number): UndoSnapshot {
     const readbackStartedAt = this.performanceListener ? performance.now() : 0
     const snap = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
     this.recordPerformance('undo-dry-readback', 'sync-cpu', readbackStartedAt, { mutationId })
@@ -1040,8 +1100,7 @@ export class EfxPaintEngine {
     }
     this.recordPerformance('undo-saved-wet-buffer-copy', 'sync-cpu', savedCopyStartedAt, { mutationId })
 
-    this.undoStack.push({ mutationId, canvas: snap, wet: wetSnap, saved: savedSnap })
-    if (this.undoStack.length > 10) this.undoStack.shift()
+    return { mutationId, canvas: snap, wet: wetSnap, saved: savedSnap }
   }
 
   private getQueuedStrokePreviews(): DeferredStrokeFinalization[] {
@@ -1116,7 +1175,10 @@ export class EfxPaintEngine {
       })
     }
     this.activeMutationId = pending.mutationId
-    this.pushUndoSnapshot(pending.mutationId)
+    const historyEntry = this.undoStack.find((entry) => entry.mutationId === pending.mutationId)
+    if (historyEntry && !historyEntry.checkpoint) {
+      historyEntry.checkpoint = this.captureUndoSnapshot(pending.mutationId)
+    }
     return {
       pending,
       generation: this.strokeFinalizationGeneration,
@@ -1162,6 +1224,8 @@ export class EfxPaintEngine {
     const pending = active.pending
     if (this.pendingStrokeFinalizations[0] === pending) this.pendingStrokeFinalizations.shift()
     this.recordPerformance('stroke-finalization', 'sync-cpu', active.finalizationStartedAt, { mutationId: pending.mutationId })
+    const historyEntry = this.undoStack.find((entry) => entry.mutationId === pending.mutationId)
+    if (historyEntry) historyEntry.deferred = null
     this.notifyCompletedMutation(pending.tool, pending.mutationId)
     this.activeStrokeFinalization = null
     this.activeMutationId = null
@@ -1613,6 +1677,14 @@ export class EfxPaintEngine {
       mutationId,
       queuedAt,
     }
+    this.redoStack = []
+    this.undoStack.push({
+      mutationId,
+      actions: this.allActions.slice(this.allActions.findIndex((action) => action.mutationId === mutationId)),
+      checkpoint: null,
+      deferred: this.cloneDeferredFinalization(pending),
+    })
+    if (this.undoStack.length > 10) this.undoStack.shift()
     this.pendingStrokeFinalizations.push(pending)
     this.rawPts = []
     this.markStrokeHandoffComplete()
@@ -1787,7 +1859,7 @@ export class EfxPaintEngine {
 
     // Loaded state is a pixel/script baseline, never active-frame Undo/Redo history.
     this.undoStack = []
-    this.undoneActions = []
+    this.redoStack = []
 
     // Restore synchronously so loaded state is immediately available for apply/export.
     // Animated replay made apply race against setTimeout-delayed stroke restoration.
