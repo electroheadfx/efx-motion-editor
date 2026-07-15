@@ -47,6 +47,7 @@ function harness(initial: PaintStroke[] = [stroke(1)]) {
     onFirstAcceptedBrush,
     setNavigationLocked: (locked) => locks.push(locked),
   });
+  controller.updateEngine(engine);
   return {
     controller,
     engine,
@@ -95,6 +96,38 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.clipboard.value).toBeNull();
   });
 
+  it('reacts to first paint, Undo, Redo, Clear, engine replacement, and launch reset without a bound clipboard', () => {
+    const test = harness([]);
+    expect(test.controller.availability.value.canCopy).toBe(false);
+
+    test.setStrokes([stroke(1)]);
+    test.controller.observeCompletedMutation(completion(1));
+    expect(test.controller.availability.value.canCopy).toBe(true);
+
+    test.setStrokes([]);
+    test.controller.notifySourceRevision();
+    expect(test.controller.availability.value.canCopy).toBe(false);
+
+    test.setStrokes([stroke(2)]);
+    test.controller.notifySourceRevision();
+    expect(test.controller.availability.value.canCopy).toBe(true);
+
+    test.setStrokes([]);
+    test.controller.observeCompletedMutation({ kind: 'clear', isEmpty: true, mutationId: 3 });
+    expect(test.controller.availability.value.canCopy).toBe(false);
+
+    const replacement = { ...test.engine, getStrokes: () => [stroke(4)] };
+    test.controller.updateEngine(replacement);
+    expect(test.controller.availability.value.canCopy).toBe(true);
+
+    test.controller.updateEngine(test.engine);
+    test.setStrokes([]);
+    test.controller.resetForLaunch();
+    expect(test.controller.availability.value.canCopy).toBe(false);
+    test.controller.updateEngine(null);
+    expect(test.controller.availability.value.canCopy).toBe(false);
+  });
+
   it('rejects invalid sources and destinations with stable native reasons', async () => {
     const test = harness([]);
     expect(test.controller.availability.value.copyDisabledReason).toMatch(/Paint at least one brush/);
@@ -138,7 +171,11 @@ describe('Roto script clipboard controller', () => {
       return 100;
     }).mockImplementationOnce(() => { throw new Error('later failure'); });
     const applying = test.controller.applyScript();
-    expect(test.controller.getAcceptedTarget(100)).toBe(test.target);
+    expect(test.controller.getAcceptedTarget(100)).toEqual({
+      sourceFrame: 8,
+      displayFrame: 8,
+      interpolationSettings: test.target.interpolationSettings,
+    });
     expect(test.onFirstAcceptedBrush).toHaveBeenCalledTimes(1);
     test.controller.observeCompletedMutation(completion(100));
     await expect(applying).resolves.toBe(false);
@@ -146,18 +183,69 @@ describe('Roto script clipboard controller', () => {
     expect(test.submitted).toHaveLength(1);
   });
 
-  it('cancels without enqueueing more work and clears all volatile state on disposal', async () => {
+  it('settles Copy and navigation drains and releases locks on reset or disposal', async () => {
+    const copyTest = harness([stroke(1)]);
+    const copying = copyTest.controller.copyScript();
+    copyTest.controller.resetForLaunch();
+    await expect(copying).resolves.toBe(false);
+    expect(copyTest.controller.availability.value.busy).toBe(false);
+    expect(copyTest.locks[copyTest.locks.length - 1]).toBe(false);
+
+    const navigationTest = harness([stroke(1)]);
+    await copyCompletedSource(navigationTest, [1]);
+    const navigating = navigationTest.controller.prepareNavigation(9);
+    navigationTest.controller.dispose();
+    await expect(navigating).resolves.toBe(false);
+    expect(navigationTest.locks[navigationTest.locks.length - 1]).toBe(false);
+  });
+
+  it('keeps cancelled Apply navigation-protected until accepted completion and ends Failed', async () => {
     const test = harness([stroke(1), stroke(2)]);
     await copyCompletedSource(test, [1, 2]);
     test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const applying = test.controller.applyScript();
     test.controller.cancelApply();
-    expect(await applying).toBe(false);
+
+    expect(test.controller.availability.value.busy).toBe(true);
+    await expect(test.controller.prepareNavigation(9)).resolves.toBe(false);
+    expect(test.controller.status.value).toBe('Applying 0/2');
+
+    test.controller.observeCompletedMutation(completion(100));
+    await expect(applying).resolves.toBe(false);
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
+    expect(test.controller.availability.value.busy).toBe(false);
+    expect(test.controller.status.value).toBe('Failed');
+    await expect(test.controller.prepareNavigation(9)).resolves.toBe(true);
+  });
+
+  it('refreshes the bound source once after final Apply completion without partial snapshots', async () => {
+    const test = harness([stroke(1), stroke(2)]);
+    await copyCompletedSource(test, [1, 2]);
+    const originalRevision = test.controller.clipboard.value?.sourceRevision;
+    const applying = test.controller.applyScript();
+
+    test.setStrokes([stroke(1), stroke(2), stroke(100)]);
     test.controller.observeCompletedMutation(completion(100));
     await Promise.resolve();
-    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
-    test.controller.dispose();
-    expect(test.controller.clipboard.value).toBeNull();
-    expect(test.controller.status.value).toBeNull();
+    expect(test.controller.clipboard.value?.sourceRevision).toBe(originalRevision);
+
+    test.setStrokes([stroke(1), stroke(2), stroke(100), stroke(101)]);
+    test.controller.observeCompletedMutation(completion(101));
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.clipboard.value?.brushes).toHaveLength(4);
+    expect(test.controller.clipboard.value?.sourceRevision).toBe((originalRevision ?? 0) + 1);
+  });
+
+  it('captures accepted destination identity across cancellation and source changes', async () => {
+    const test = harness([stroke(1), stroke(2)]);
+    await copyCompletedSource(test, [1, 2]);
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    const applying = test.controller.applyScript();
+    test.controller.cancelApply();
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 12, displayFrame: 12 });
+
+    test.controller.observeCompletedMutation(completion(100));
+    await expect(applying).resolves.toBe(false);
+    expect(test.controller.getAcceptedTarget(100)).toEqual({ sourceFrame: 8, displayFrame: 8, interpolationSettings: undefined });
   });
 });

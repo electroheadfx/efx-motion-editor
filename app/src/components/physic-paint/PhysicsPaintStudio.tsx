@@ -194,6 +194,7 @@ export function PhysicsPaintStudio() {
     onFirstAcceptedBrush: () => beginRotoFrameEditRef.current(),
     setNavigationLocked: setRotoScriptNavigationLocked,
   });
+  rotoScript.updateEngine(engineRef.current);
   rotoScript.updateSource({
     workflowMode,
     selectionKind: currentFrameSelectionKind,
@@ -347,7 +348,7 @@ export function PhysicsPaintStudio() {
   const clearActiveSource = useCallback(() => {
     if (!engine || !launchContext) return;
     if (workflowMode === 'roto') {
-      rotoFrameEditing.clearCurrentFrame();
+      if (rotoFrameEditing.clearCurrentFrame()) rotoScript.notifySourceRevision();
       return;
     }
     engine.clear();
@@ -358,7 +359,7 @@ export function PhysicsPaintStudio() {
     markSelectedPlayCacheDirty();
     setApplyStatus('success');
     setApplyMessage(`Cleared Play canvas range ${currentFrame}–${currentFrame + clampPhysicPaintFrameCount(framesToApply) - 1}.`);
-  }, [currentFrame, engine, framesToApply, launchContext, markSelectedPlayCacheDirty, rotoFrameEditing, workflowMode]);
+  }, [currentFrame, engine, framesToApply, launchContext, markSelectedPlayCacheDirty, rotoFrameEditing, rotoScript, workflowMode]);
   const dryPaint = useCallback(() => {
     engine?.forceDry();
   }, [engine]);
@@ -497,8 +498,12 @@ export function PhysicsPaintStudio() {
         mount: {
           width: canvasWidth, height: canvasHeight, paperTextureScale,
           onEngineReady: (readyEngine) => {
-            readyEngine.setHistoryAvailabilityListener((availability) => { historyAvailability.value = availability; });
+            readyEngine.setHistoryAvailabilityListener((availability) => {
+              historyAvailability.value = availability;
+              rotoScript.notifySourceRevision();
+            });
             handleEngineReady(readyEngine);
+            rotoScript.updateEngine(readyEngine);
             if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine);
           },
           onCanvasMounted: setCanvasMounted,
@@ -509,12 +514,16 @@ export function PhysicsPaintStudio() {
             const { kind, isEmpty, mutationId } = mutation;
             const mutationEngine = engineRef.current;
             if (kind === 'clear' || workflowMode !== 'roto' || currentFrameSelectionKind === 'generated-interpolation' || !mutationEngine || !launchContext) return;
-            const saveTransaction = rotoScript.getAcceptedTarget(mutationId)
-              ?? (currentFrameSelectionKind === 'empty'
+            const acceptedTarget = rotoScript.getAcceptedTarget(mutationId);
+            const saveTransaction = acceptedTarget
+              ? null
+              : currentFrameSelectionKind === 'empty'
                 ? rotoTimelineActions.saveRealKeyAtDisplayFrame(currentFrame)
-                : null);
-            const sourceFrame = saveTransaction?.sourceFrameOverride ?? resolveRotoSourceFrameForDisplayFrame(currentFrame);
-            const displayFrame = saveTransaction?.target.displayFrame ?? currentFrame;
+                : null;
+            const sourceFrame = acceptedTarget?.sourceFrame
+              ?? saveTransaction?.sourceFrameOverride
+              ?? resolveRotoSourceFrameForDisplayFrame(currentFrame);
+            const displayFrame = acceptedTarget?.displayFrame ?? saveTransaction?.target.displayFrame ?? currentFrame;
             const cachedBaseSourceFrame = cachedRotoRepaintBaseFrame
               ? cachedRotoRepaintBaseFrame.sourceFrame ?? cachedRotoRepaintBaseFrame.appFrame
               : null;
@@ -538,7 +547,7 @@ export function PhysicsPaintStudio() {
               cachedBase,
               size: { width: canvasWidth, height: canvasHeight },
               mutationId,
-              interpolationSettings: saveTransaction?.interpolationSettings,
+              interpolationSettings: acceptedTarget?.interpolationSettings ?? saveTransaction?.interpolationSettings,
             });
             if (profilePerformance) recordPhysicsPaintPerformance({ stage: 'snapshot-handoff', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAt, timestamp: performance.now(), mutationId, sourceFrame });
             void capture.catch((error) => {
