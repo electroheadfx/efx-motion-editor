@@ -4,17 +4,17 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
-status: ready_to_plan
-stopped_at: Phase 36.13 completed and native UAT approved
-last_updated: "2026-07-14T06:45:00Z"
-last_activity: 2026-07-14
-last_activity_desc: Completed quick task 260714-ail — replaced manual Roto save with automatic live pixel caching
+status: ready_to_discuss
+stopped_at: Phase 36.14 source contract updated before discussion
+last_updated: "2026-07-15T07:31:05Z"
+last_activity: 2026-07-15
+last_activity_desc: Updated final Phase 36.14 UI and paint-script reuse contract after removing obsolete Phases 36.15 and 37
 progress:
-  total_phases: 19
+  total_phases: 17
   completed_phases: 16
   total_plans: 92
   completed_plans: 92
-  percent: 84
+  percent: 94
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences -- the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 36.14 — physics-paint-roto-timeline-ui-from-pencil
+**Current focus:** Phase 36.14 — physics-paint-roto-timeline-ui-and-paint-script-reuse
 
 ## Current Position
 
-Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — READY TO PLAN
+Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — READY TO DISCUSS
 Previous phase: 36.13 — Physics Paint Roto Dynamic Interpolation Spacing complete
 Plan: 0 of TBD
-Status: Phase 36.13 completed with native UAT approval
-Last activity: 2026-07-14 — Completed quick task 260714-ail: replaced manual Roto save with automatic live pixel caching
-Next recommended action: Run `/gsd-plan-phase 36.14`
+Status: Final v0.8.0 phase source contract updated after obsolete Phases 36.15 and 37 were removed
+Last activity: 2026-07-15 — Updated the Phase 36.14 timeline UI, Log/status, selection guard, and Copy Script / Apply Script contract
+Next recommended action: Run `/gsd-discuss-phase 36.14`
 
-Progress: [█████████████████░░░] 92/92 planned Phase 36.13 plans executed; 16/19 phases complete (84%)
+Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
 ## Performance Metrics
 
@@ -52,7 +52,7 @@ Progress: [█████████████████░░░] 92/92 p
 | 34. Standalone Demo Shell | 0 | TBD | - |
 | 35. Interactive Physics Paint Controls | 0 | TBD | - |
 | 36. Session Persistence and Output Proof | 0 | TBD | - |
-| 37. Future Integration Contract and Validation | 0 | TBD | - |
+| 36.14. Timeline UI and Paint Script Reuse | 0 | TBD | - |
 | 34 | 3 | - | - |
 | 35 | 7 | - | - |
 | 36.1 | 9 | - | - |
@@ -132,13 +132,13 @@ None yet.
 - Remaining recovery inputs after Phase 36.3: close-path polish, Roto interpolation, Roto key utilities, broader cached playback/export, missing-background rules, repaint cached real-key behavior, and UI-spec fidelity fixes from `36.3-UI-REVIEW.md`.
 - Phase 36.7 completed: Roto key utility UAT passed for Duplicate, Insert, Delete, Copy, Paste, generated/empty guards, dirty save-before-action, focused regressions, typecheck, and user-story coverage.
 - Phase 36.8 completed: Roto session/key state boundary refactor passed focused regressions, full app tests, typecheck, package build, and user-approved Roto key utility UAT.
-- Phase 36.9 State Machine Readiness is deferred to Phase 36.15 maintenance; Phase 36.8 is the state boundary foundation while remaining user-facing Roto features are prioritized first.
-- Phase 36.9 cached playback has green automated checks and Plan 03 summary prepared, but final user UAT confirmation is still pending for the real-key-only fix that should remove empty trailing playback frames.
+- Phase 36.9 completed: native UAT and verification passed for real-key-only cached playback, transport placement, loop, fps, Space toggle, and no empty trailing frames.
 - Phase 36.10 completed: UAT Test 5 passed after user verified save/close/reopen preserves Physics Paint Roto strokes and paper/background metadata.
 - Phase 36.11 completed: user approved additive cached real-key repaint after old cache visibility, new paint preview layering, paper/background proportions, save merge, and same-session navigation cache refresh were verified.
 - Phase 36.12 completed: user approved generated render-only Roto interpolation after duplicate mapping, parent preview/export, persistence, live toggle-off, and compact source-sequence key creation blockers were resolved.
 - Phase 36.13 completed: user approved dynamic spacing, canonical persistence/preview/export parity, generated/empty non-durability, visible onion composition, real-key-depth Onion Value semantics, and generated-owner onion traversal.
-- Phase 37 should stay contract/validation-only: no headless adapter, no editor-driven `renderFromStrokes`, no `forceDryAll`, and no broad editor integration.
+- Phases 36.15 and 37 were removed as obsolete: Signals/controllers remain the accepted state boundary, and the implemented parent bridge/cache integration surpassed the former future-contract scope.
+- Phase 36.14 is the final v0.8.0 phase: corrected timeline UI, developer-status removal, existing Log routing, application selection guard, and active-session Copy Script / Apply Script reuse.
 
 ### Quick Tasks Completed
 
@@ -164,7 +164,9 @@ None yet.
 - Phase 36.8 inserted after Phase 36: Physics Paint Roto State Refactor (URGENT)
 - Phase 36.9 inserted after Phase 36: Physics Paint Roto State Machine Readiness (URGENT)
 - Phase 36.x order updated: inserted Phase 36.11 Repaint Cached Real Key, shifted Generated Interpolation to 36.12, Timeline UI From Pencil to 36.13, and deferred State Machine Readiness to 36.14 maintenance after remaining user-facing Roto features; Phase 36.8 is the state boundary foundation
-- Phase 36.x order updated: inserted Phase 36.13 Dynamic Interpolation Spacing, shifted Timeline UI From Pencil to 36.14, and deferred State Machine Readiness to 36.15 maintenance after custom per-segment interpolation spacing is stabilized.
+- Phase 36.x order updated: inserted Phase 36.13 Dynamic Interpolation Spacing and shifted Timeline UI From Pencil to 36.14.
+- Phases 36.15 State Machine Readiness and 37 Future Integration Contract were removed after the stabilized controller/bridge implementation made their planned scope obsolete.
+- Phase 36.14 expanded narrowly to include active-session Copy Script / Apply Script reuse through existing deterministic replay and automatic pixel caching.
 
 ## Deferred Items
 
@@ -172,11 +174,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Editor integration | EFX editor layer integration, Tauri child-window IPC, `.mce` persistence, cached compositing | Deferred to future milestone | v0.8.0 scope |
+| macOS distribution | Developer ID signing, notarization, stapling, and Gatekeeper validation | Final release quick task after Phase 36.14 | v0.8.0 closure |
 | Architecture | Headless batch adapter replay / editor-driven renderFromStrokes / forceDryAll path | Excluded | v0.7.0 failure post-mortem |
 
 ## Session Continuity
 
-Last session: 2026-07-13T23:50:00Z
-Stopped at: Phase 36.13 completed and native UAT approved
-Resume file: .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/ (plan not created yet)
+Last session: 2026-07-15T07:31:05Z
+Stopped at: Phase 36.14 source specification and visual references updated
+Resume file: SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md; run `/gsd-discuss-phase 36.14`

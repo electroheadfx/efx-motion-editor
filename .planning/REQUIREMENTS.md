@@ -33,15 +33,17 @@ Requirements for the Standalone Physics Paint milestone. This milestone proves `
 - [x] **OUT-01**: User can export the current rendered paint result as a PNG or still image.
 - [x] **OUT-02**: User can produce a frame-sequence or cache-manifest proof from the live engine for future editor consumption.
 
-### Physics Paint Roto Save On Leave
+### Physics Paint Roto Automatic Live Pixel Caching
 
-- [x] **36.6-AC-01**: Navigating away from a clean Roto frame opens the destination immediately.
-- [x] **36.6-AC-02**: Navigating away from a dirty Roto frame saves the source frame first and opens the destination only after matching save success.
-- [x] **36.6-AC-03**: The saved source frame appears in the correct cache/timeline position.
-- [x] **36.6-AC-04**: Returning to the source frame shows the saved cached result.
-- [x] **36.6-AC-05**: Save-on-leave feedback makes the wait visible without adding modal, toast, tutorial, or extra navigation controls.
-- [x] **36.6-AC-06**: Rapid frame changes during one dirty source save keep only the latest requested destination without corrupting source or destination state.
-- [x] **36.6-FB-01**: Failed save-on-leave stays on the dirty source frame, preserves unsaved state, clears queued destination, and does not switch frames.
+The former Phase 36.6 save-on-leave lifecycle was superseded by quick task `260714-ail`.
+
+- [x] **36.6-AC-01**: Roto navigation remains immediate and does not block on manual save or save-on-leave rendering.
+- [x] **36.6-AC-02**: Each completed visible Roto mutation automatically captures immutable flattened alpha pixels for its source real frame.
+- [x] **36.6-AC-03**: The accepted source-frame revision appears in the correct cache and timeline position.
+- [x] **36.6-AC-04**: Returning to the source frame shows the latest accepted cached result.
+- [x] **36.6-AC-05**: Roto requires no `Save current`, save-pending, saving, retry, or navigation-blocking UI.
+- [x] **36.6-AC-06**: Rapid same-frame and cross-frame mutations use source-bound monotonic revisions so stale work cannot overwrite newer pixels.
+- [x] **36.6-FB-01**: Failed or stale background cache work does not discard visible editable state or publish over a newer mutation, Undo, or Clear.
 
 ### Physics Paint Roto Missing Background Preview Export
 
@@ -49,33 +51,33 @@ Requirements for the Standalone Physics Paint milestone. This milestone proves `
 - [x] **36.10-MISSING-BACKGROUND**: Missing Roto frames can render paper/background-only without paint content or baked real-key alpha cache pixels.
 - [x] **36.10-PREVIEW-EXPORT-PARITY**: Preview and export use the same Roto missing-frame and real-key paper compositing rules.
 
-### Future Integration Seam
+### Physics Paint Roto Timeline UI and Paint Script Reuse
 
-- [ ] **SEAM-01**: Developer has typed contracts for future transport/cache messages without implementing editor integration in this milestone.
-- [ ] **SEAM-02**: Developer has architecture notes explaining how later EFX Motion Editor integration will consume rendered standalone outputs as cached frames.
-- [ ] **TEST-01**: Browser/manual smoke tests prove the standalone demo runs, accepts pointer input, and exports output.
+- [ ] **36.14-PENCIL-LAYOUT**: The final Roto timeline follows the corrected visual reference for color, proportions, hierarchy, ruler, cells, and compact fit-content actions while runtime geometry remains projection-driven.
+- [ ] **36.14-CONTROL-GROUPING**: Transport, quick key actions, interpolation, and fps are visibly distinct; Tools/header Log and obsolete Save controls are absent.
+- [ ] **36.14-VISUAL-STATES**: Real, generated, empty/background, current, disabled, active, and destructive states remain clear without a permanent developer legend.
+- [ ] **36.14-LOG-ROUTING**: The timeline shows concise latest-operation status while errors and detail appear in the existing right-panel LOG tab.
+- [ ] **36.14-SELECTION-GUARD**: Application chrome resists accidental browser text selection while inputs, editable fields, and Log text remain selectable.
+- [ ] **36.14-SCRIPT-COPY**: User can copy the current live recorded paint script into active-session memory, with source-bound completed mutations keeping it current until navigation freezes the snapshot.
+- [ ] **36.14-SCRIPT-APPLY**: User can repeatedly apply the copied script to real or true empty Roto frames through existing deterministic Deform/Move replay, Undo, and automatic pixel-cache publication.
+- [ ] **36.14-REGRESSION**: Phase 36.9–36.13 behavior and rapid-stroke/cooperative-finalization contracts remain unchanged.
 
-## Future Requirements
+## Implemented Integration Baseline
 
-Deferred to later milestones.
+The former future integration seam was implemented during the v0.8.0 Roto recovery phases and is now baseline behavior.
 
-### Editor Integration
-
-- **EDIT-01**: User can create a physics paint layer/session from EFX Motion Editor.
-- **EDIT-02**: User can launch or reopen the standalone physics paint surface from the editor.
-- **EDIT-03**: Editor receives rendered physics paint stills or frame sequences through a transport path.
-- **EDIT-04**: Editor composites cached physics paint frames in preview and export.
-- **EDIT-05**: Physics paint sessions persist in `.mce` or paint sidecar data.
+- [x] **EDIT-01**: User can create a Physics Paint layer/session from EFX Motion Editor.
+- [x] **EDIT-02**: User can launch or reopen the Physics Paint surface from the editor.
+- [x] **EDIT-03**: Editor receives rendered Physics Paint stills and frame sequences through the typed parent/window bridge.
+- [x] **EDIT-04**: Editor composites cached Physics Paint frames in preview and export.
+- [x] **EDIT-05**: Physics Paint cache, background, interpolation, and source/display metadata persist through project save/load.
 
 ## Out of Scope
 
-Explicitly excluded from v0.8.0.
+Still explicitly excluded from v0.8.0.
 
 | Feature | Reason |
 |---------|--------|
-| EFX Motion Editor layer integration | v0.8.0 proves the standalone package first; editor integration should start after standalone validation. |
-| Tauri child-window IPC | Runtime app-to-window transport belongs with editor integration, likely v0.9.0. |
-| `.mce` physics paint persistence | Requires editor integration and project-format decisions. |
 | Replacing perfect-freehand | Basic fast/direct paint remains a production layer type. |
 | Replacing p5.brush | FX brush paint remains a production layer type. |
 | Headless batch adapter replay | Prior phases proved this destroys physics quality and creates O(n²) behavior. |
@@ -111,16 +113,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 | 36.10-MISSING-TRANSPARENT | Phase 36.10 | Complete |
 | 36.10-MISSING-BACKGROUND | Phase 36.10 | Complete |
 | 36.10-PREVIEW-EXPORT-PARITY | Phase 36.10 | Complete |
-| SEAM-01 | Phase 37 | Pending |
-| SEAM-02 | Phase 37 | Pending |
-| TEST-01 | Phase 37 | Pending |
+| EDIT-01 through EDIT-05 | Phases 36.1–36.13 | Complete |
+| 36.14-PENCIL-LAYOUT | Phase 36.14 | Pending |
+| 36.14-CONTROL-GROUPING | Phase 36.14 | Pending |
+| 36.14-VISUAL-STATES | Phase 36.14 | Pending |
+| 36.14-LOG-ROUTING | Phase 36.14 | Pending |
+| 36.14-SELECTION-GUARD | Phase 36.14 | Pending |
+| 36.14-SCRIPT-COPY | Phase 36.14 | Pending |
+| 36.14-SCRIPT-APPLY | Phase 36.14 | Pending |
+| 36.14-REGRESSION | Phase 36.14 | Pending |
 
 **Coverage:**
 
-- v0.8.0 requirements: 27 total
-- Mapped to phases: 27
+- v0.8.0 requirements: 37 total
+- Mapped to phases: 37
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-08*
-*Last updated: 2026-06-27 after Phase 36.10 missing-background traceability update*
+*Last updated: 2026-07-15 after the final Phase 36.14 contract update and removal of obsolete Phase 37 requirements*

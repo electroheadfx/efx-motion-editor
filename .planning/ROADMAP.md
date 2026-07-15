@@ -131,15 +131,15 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.1: Physics Paint Play-Script Timeline Markers and Sequential Playback** - Users can see saved Play script ranges, reopen/scrub them correctly, and render sequential Play animation. (completed 2026-06-16)
 - [x] **Phase 36.3: Physics Paint Roto Durable Core Recovery** - MVP/TDD recovery phase to prove one painted Roto frame can be cached into EFX Motion, appear in preview, survive project save/load, and reopen as a cached visual reference. (planned recovery) (completed 2026-06-19)
 - [x] **Phase 36.5: Physics Paint Roto Cell Semantics** - Roto timeline cells clearly distinguish empty, cached, editable/current, generated/render-only, background-only, dirty, and saving states while staying MVP-only. (completed 2026-06-20)
-- [x] **Phase 36.6: Physics Paint Roto Save On Leave** - Users can leave dirty Roto frames with source-frame save feedback and without manually pressing Save current for each frame. (completed 2026-06-20)
+- [x] **Phase 36.6: Physics Paint Roto Save On Leave** - Historical lifecycle completed in Phase 36.6 and superseded by automatic completed-mutation live pixel caching in quick task 260714-ail. (completed 2026-06-20; superseded 2026-07-14)
 - [x] **Phase 36.7: Physics Paint Roto Key Utilities** - Stop-motion animators can duplicate, insert, delete, copy, and paste real Roto keys efficiently with clean cache/cell/canvas state. (completed 2026-06-22)
 - [x] **Phase 36.8: Physics Paint Roto State Refactor** - PhysicsPaintStudio consumes a compact Roto session/key state boundary while preserving Phase 36.7 visible behavior. (completed 2026-06-25)
-- [ ] **Phase 36.9: Physics Paint Roto Cached Playback Auto-Play** - Animators can optionally preview cached Roto frames with Play/Stop automation if manual stepping is not enough. (planned; final UAT confirmation pending)
+- [x] **Phase 36.9: Physics Paint Roto Cached Playback Auto-Play** - Animators can preview real cached Roto keys with Play/Stop, loop, fps, and Space-key automation without empty trailing frames. (completed 2026-06-26)
 - [x] **Phase 36.10: Physics Paint Roto Missing Background Preview Export** - Missing Roto frames render consistently as transparent or background-only in preview/export, and final UAT Test 5 passed after saved-project Roto paper/background recovery. (completed 2026-06-27)
 - [x] **Phase 36.11: Physics Paint Roto Repaint Cached Real Key** - Existing cached real Roto keys reopen with their alpha paint as an additive base layer for repainting without restoring old stroke scripts. (completed 2026-06-29)
 - [x] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (completed 2026-07-02)
 - [x] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, export, and real-key-depth onion skinning. (completed 2026-07-13)
-- [ ] **Phase 36.14: Physics Paint Roto Timeline UI From Pencil** - Roto timeline controls match the corrected Pencil design after behavior is stable. (planned)
+- [ ] **Phase 36.14: Physics Paint Roto Timeline UI and Paint Script Reuse** - Finalize the corrected Roto timeline UI and let animators reuse an in-memory recorded paint script on another real or empty frame with Motion transforms. (planned; final v0.8.0 phase)
 
 ## Phase Details
 
@@ -274,7 +274,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 controller contracts)*
 
-- [x] 36.9-03-PLAN.md — Expose visible Play/Stop controls from the timeline references and run live UAT. (final confirmation pending after real-key-only playback fix)
+- [x] 36.9-03-PLAN.md — Expose visible Play/Stop controls from the timeline references and complete live UAT for real-key-only playback.
 
 ### Phase 36.10: Physics Paint Roto Missing Background Preview Export
 
@@ -433,25 +433,32 @@ Plans:
 
 - [x] 36.13-06-PLAN.md — Run final automated gate and user-owned live UAT.
 
-### Phase 36.14: Physics Paint Roto Timeline UI From Pencil
+### Phase 36.14: Physics Paint Roto Timeline UI and Paint Script Reuse
 
-Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and the referenced Pencil/timeline files as the source of truth for this phase.
+Use `SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md` and the corrected TSX/HTML timeline references as the source of truth for this phase.
 
-**Goal:** As a stop-motion animator, I want the Roto timeline controls to match the corrected Pencil design, so that the timeline is discoverable without cluttering the top bar.
-**Requirements**: 36.14-PENCIL-LAYOUT, 36.14-CONTROL-GROUPING, 36.14-VISUAL-STATES, 36.14-REGRESSION
+**Goal:** As a stop-motion animator, I want a polished Roto timeline and a reusable paint-script clipboard, so that I can manage keys clearly and reuse the previous drawing motion on another frame without redrawing it manually.
+**Mode:** mvp
+**Requirements**: 36.14-PENCIL-LAYOUT, 36.14-CONTROL-GROUPING, 36.14-VISUAL-STATES, 36.14-LOG-ROUTING, 36.14-SELECTION-GUARD, 36.14-SCRIPT-COPY, 36.14-SCRIPT-APPLY, 36.14-REGRESSION
 **Depends on:** Phase 36.13
 **Plans:** 0 plans
 
 Planning notes:
 
-- Apply the corrected Pencil design only after core timeline behavior is stable.
-- Reorganize and polish controls that already exist from earlier behavior phases.
-- Do not make this the first point where a core behavior becomes testable.
-- Preserve existing timeline behavior while matching layout, grouping, hierarchy, spacing, labels, and state styling.
+- This is the final v0.8.0 phase.
+- Apply the corrected timeline colors, proportions, grouping, fit-content action row, and visual hierarchy after core Roto behavior is stable.
+- Remove the permanent developer legend/status stack, obsolete `Save current`, and the unassigned Tools/header Log controls.
+- Route concise latest-operation status to the header capsule and errors/details to the existing right-panel `LOG` tab.
+- Keep transport, interpolation, and fps visibly separate; place the interpolation icon before its checkbox/count.
+- Preserve the accepted Phase 36.13 source/display projection; static reference ruler values are visual examples only.
+- Add `Copy Script` and `Apply Script` after Delete as a session-memory recorded-stroke clipboard distinct from real-key Copy/Paste.
+- Apply current Motion Deform/Move through existing deterministic replay, Undo, and automatic live pixel-cache publication.
+- Add a global application-chrome selection guard while preserving selectable inputs, editable fields, and Log text.
+- Do not reopen interpolation, cache, onion, preview/export, key ownership, Play persistence, or pointer-latency behavior.
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 36.14 to break down)
+- [ ] TBD (run /gsd-discuss-phase 36.14, then /gsd-ui-phase 36.14 and /gsd-plan-phase 36.14 --tdd --mvp)
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
@@ -493,7 +500,7 @@ Architecture constraints:
 - Effects should be boundary effects only: bridge events, canvas engine lifecycle, parent persistence, or external window communication.
 - If state moves outside PhysicsPaintStudio, use @preact/signals or justify why a pure/stateless controller is safer.
 - Expose a compact Roto session object with explicit actions/transactions so PhysicsPaintStudio and PhysicsPaintWorkflowStrip avoid large prop lists.
-- Keep the boundary state-machine-shaped enough that Phase 36.9 can wrap or replace internals with XState without UI rewiring.
+- Keep the boundary organized around compact explicit actions and transactions without requiring a future XState rewrite.
 - Keep the refactor incremental and regression-first.
 
 TDD requirements:
@@ -560,11 +567,11 @@ Plans:
 
 - [x] 36.7-05-PLAN.md — Repair Insert/Delete/Paste state-cache coherence with a regression-first Roto key controller extraction.
 
-### Phase 36.6: Physics Paint Roto Save On Leave
+### Phase 36.6: Physics Paint Roto Save On Leave (historical; superseded)
 
-Use SPECS/36.x-phases/phase-36.6-save-on-leave/spec-36.6-save-on-leave.md as the source of truth for this phase. (INSERTED)
+Historical implementation source: SPECS/36.x-phases/phase-36.6-save-on-leave/spec-36.6-save-on-leave.md. The quick task `260714-ail` superseded its runtime lifecycle with completed-mutation automatic live pixel caching. Do not restore save-on-leave, pending feedback, or navigation blocking.
 
-**Goal:** As a stop-motion animator, I want to move between Roto frames without manually pressing Save current every time, so that I can paint multiple frames without manually saving each one.
+**Historical goal:** Remove the need to press Save current for every frame. **Current accepted behavior:** completed Roto mutations update source-bound flattened pixel caches automatically while navigation remains non-blocking.
 **Mode:** mvp
 **Requirements**: 36.6-AC-01, 36.6-AC-02, 36.6-AC-03, 36.6-AC-04, 36.6-AC-05, 36.6-AC-06, 36.6-FB-01
 **Depends on:** Phase 36
@@ -576,11 +583,11 @@ Plans:
 
 **Wave 1**
 
-- [x] 36.6-01-PLAN.md — Implement the tested Roto save-on-leave navigation coordinator.
+- [x] 36.6-01-PLAN.md — Historical: implement the Roto save-on-leave navigation coordinator; superseded by quick 260714-ail.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [x] 36.6-02-PLAN.md — Add source-frame pending feedback and disabled-action wiring.
+- [x] 36.6-02-PLAN.md — Historical: add source-frame pending feedback and disabled-action wiring; removed by quick 260714-ail.
 
 ### Phase 36.5: Physics Paint Roto Cell Semantics
 
@@ -765,7 +772,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 34 → 35 → 36 → 37
+The remaining v0.8.0 execution ends with Phase 36.14 after the completed Phase 34–36.13 sequence.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -783,9 +790,9 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.2. Roto paint enhancements | v0.8.0 | 13/13 records closed | Failed/superseded | 2026-06-19 |
 | 36.3. Physics Paint Roto Durable Core Recovery | v0.8.0 | 2/2 | Complete    | 2026-06-19 |
 | 36.8. Physics Paint Roto State Refactor | v0.8.0 | 5/5 | Complete | 2026-06-25 |
-| 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 3/3 | UAT pending |  |
+| 36.9. Physics Paint Roto Cached Playback Auto-Play | v0.8.0 | 3/3 | Complete | 2026-06-26 |
 | 36.10. Physics Paint Roto Missing Background Preview Export | v0.8.0 | 5/5 | Complete    | 2026-06-27 |
 | 36.11. Physics Paint Roto Repaint Cached Real Key | v0.8.0 | 3/3 | Complete | 2026-06-29 |
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
-| 36.14. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
+| 36.14. Physics Paint Roto Timeline UI and Paint Script Reuse | v0.8.0 | 0/TBD | Ready to discuss | - |
