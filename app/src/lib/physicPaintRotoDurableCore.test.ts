@@ -679,12 +679,18 @@ async function flushPreact(): Promise<void> {
 }
 
 async function mountStudioReady(root: TestElement, createStudio: () => VNode<any>): Promise<void> {
+  const callbacksReady = new Promise<void>((resolve) => {
+    paintHarness.engineReadyListeners.push(resolve);
+  });
+  const browserBridgeReady = new Promise<void>((resolve) => {
+    paintHarness.browserBridgeReadyListeners.push(resolve);
+  });
   await act(async () => {
     render(createStudio(), root as unknown as Element);
     await flushPreact();
   });
   await act(async () => {
-    render(createStudio(), root as unknown as Element);
+    await Promise.all([callbacksReady, browserBridgeReady]);
     await flushPreact();
   });
   expect(isStudioEngineReady(root), visibleText(root)).toBe(true);

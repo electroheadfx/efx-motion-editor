@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { EfxPaintEngine } from '../../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine';
-import { initializeEfxPaintCanvasEngine } from '../../../../../packages/efx-physic-paint/src/preact';
+import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import { initializeEfxPaintCanvasEngine } from '@efxlab/efx-physic-paint/preact';
 
 function deferred() {
   let resolve!: () => void;
