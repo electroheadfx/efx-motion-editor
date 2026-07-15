@@ -93,7 +93,13 @@ export class AnimationPlayer {
     }
 
     const scheduledStrokes = orderStrokesForPlayback(strokes, usableFrames)
+    const sourceAnchors = new Map(strokes.map((stroke) => [stroke, getPlayFrameAnchor(stroke, usableFrames)]))
     if (scheduledStrokes.length > usableFrames) {
+      for (const scheduledStroke of scheduledStrokes) {
+        if (scheduledStroke.playFrameAnchor === null) {
+          scheduledStroke.playFrameAnchor = sourceAnchors.get(scheduledStroke.stroke) ?? null
+        }
+      }
       this.frameStrokes = scheduledStrokes.map(({ stroke, playFrameAnchor }, index) => {
         const startFrame = playFrameAnchor ?? Math.min(usableFrames - 1, Math.floor((index * (usableFrames + 1)) / scheduledStrokes.length))
         const endFrame = playFrameAnchor === null ? startFrame : usableFrames - 1
