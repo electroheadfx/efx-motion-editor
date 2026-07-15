@@ -1,4 +1,4 @@
-import { useCallback } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import type { Dispatch, StateUpdater } from 'preact/hooks';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
@@ -49,7 +49,7 @@ export function buildPhysicsPaintDebugProof(input: {
   return { still, manifest };
 }
 
-export function usePhysicsPaintSessionController(input: {
+export interface PhysicsPaintSessionControllerInput {
   engine: EfxPaintEngine | null;
   workflowMode: PhysicsPaintWorkflowMode;
   framesToApply: number;
@@ -70,30 +70,41 @@ export function usePhysicsPaintSessionController(input: {
   setApplyStatus: Dispatch<StateUpdater<ApplyStatus>>;
   setApplyMessage: Dispatch<StateUpdater<string | null>>;
   setLastError: Dispatch<StateUpdater<string | null>>;
-}) {
-  const setSuccess = useCallback((message: string) => {
+  isMutationLocked?: () => boolean;
+}
+
+export interface PhysicsPaintSessionControllerDependencies {
+  downloadState?: typeof downloadPhysicsPaintState;
+  createFileReader?: () => FileReader;
+}
+
+export function createPhysicsPaintSessionController(
+  input: PhysicsPaintSessionControllerInput,
+  dependencies: PhysicsPaintSessionControllerDependencies = {},
+) {
+  const setSuccess = (message: string) => {
     input.setApplyStatus('success');
     input.setApplyMessage(message);
     input.setLastError(null);
-  }, [input]);
-
-  const setFailure = useCallback((error: unknown) => {
+  };
+  const setFailure = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     input.setApplyStatus('error');
     input.setApplyMessage(message);
     input.setLastError(message);
-  }, [input]);
+  };
+  const mutationLocked = () => input.isMutationLocked?.() ?? false;
 
-  const saveEditableState = useCallback(async () => {
+  const saveEditableState = async () => {
     const engine = input.engine;
-    if (!engine) return;
+    if (!engine || mutationLocked()) return;
     try {
       if (input.workflowMode === 'play') input.capturePendingPlayFrameEdits();
       const editableState = input.workflowMode === 'play'
         ? input.annotatePlayState(engine.save())
         : engine.save();
       if (input.workflowMode === 'play') engine.load(editableState);
-      const result = await downloadPhysicsPaintState(editableState);
+      const result = await (dependencies.downloadState ?? downloadPhysicsPaintState)(editableState);
       if (result.status === 'cancelled') {
         input.setApplyStatus('idle');
         input.setApplyMessage(result.message);
@@ -104,11 +115,11 @@ export function usePhysicsPaintSessionController(input: {
     } catch (error) {
       setFailure(error);
     }
-  }, [input, setFailure, setSuccess]);
+  };
 
-  const applyLoadedState = useCallback((contents: string) => {
+  const applyLoadedState = (contents: string) => {
     const engine = input.engine;
-    if (!engine) return;
+    if (!engine || mutationLocked()) return;
     try {
       const state = resizePhysicsPaintState(
         parsePhysicsPaintStateFile(contents),
@@ -135,21 +146,27 @@ export function usePhysicsPaintSessionController(input: {
     } catch (error) {
       setFailure(error);
     }
-  }, [input, setFailure, setSuccess]);
+  };
 
-  const loadEditableState = useCallback((event: Event) => {
+  const loadEditableState = (event: Event) => {
     const inputElement = event.target as HTMLInputElement;
+    if (mutationLocked()) {
+      inputElement.value = '';
+      return;
+    }
     const file = inputElement.files?.[0];
     inputElement.value = '';
     if (!input.engine || !file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => applyLoadedState(String(reader.result ?? ''));
+    const reader = dependencies.createFileReader?.() ?? new FileReader();
+    reader.onload = () => {
+      if (!mutationLocked()) applyLoadedState(String(reader.result ?? ''));
+    };
     reader.onerror = () => setFailure(new Error('Could not read editable JSON state.'));
     reader.readAsText(file);
-  }, [applyLoadedState, input.engine, setFailure]);
+  };
 
-  const exportDebugProof = useCallback(() => {
+  const exportDebugProof = () => {
     const engine = input.engine;
     const launchContext = input.launchContext;
     if (!engine || !launchContext) return;
@@ -172,7 +189,17 @@ export function usePhysicsPaintSessionController(input: {
     } catch (error) {
       setFailure(error);
     }
-  }, [input, setFailure, setSuccess]);
+  };
 
   return { saveEditableState, loadEditableState, exportDebugProof };
+}
+
+export function usePhysicsPaintSessionController(input: PhysicsPaintSessionControllerInput) {
+  const inputRef = useRef(input);
+  inputRef.current = input;
+  const controllerRef = useRef<ReturnType<typeof createPhysicsPaintSessionController> | null>(null);
+  controllerRef.current ??= createPhysicsPaintSessionController(new Proxy(input, {
+    get: (_target, property) => inputRef.current[property as keyof PhysicsPaintSessionControllerInput],
+  }));
+  return controllerRef.current;
 }

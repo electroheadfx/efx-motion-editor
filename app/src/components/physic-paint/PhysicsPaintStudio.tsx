@@ -405,6 +405,7 @@ export function PhysicsPaintStudio() {
       capturePendingPlayFrameEdits, annotatePlayState, restorePlayFrameEdits,
       clearLatestPlayFrames: () => setLatestPlayFrames([]), setCachedPlayPreviewUrl, setSavedPlayCacheDirty,
       setLocalPlayPreviewFrame, setFramesToApply, bumpPlayFramesVersion, setLaunchContext, setApplyStatus, setApplyMessage, setLastError,
+      isMutationLocked: () => rotoScript.mutationLocked.peek(),
     },
     conversion: {
       getActionContext: () => actionContext, getCurrentFrame: () => currentFrame, getRequestedFrameCount: () => framesToApply,

@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import { createRotoScriptClipboardController, type RecordedStrokeGroup, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
 import type { RotoSaveRealKeyTransaction } from './rotoKeyTransactions';
+import { createPhysicsPaintEngineActions } from '../engine/usePhysicsPaintEngineActions';
+import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
+import { createPhysicsPaintSessionController, type PhysicsPaintSessionControllerInput } from '../hooks/usePhysicsPaintSessionController';
 
 function stroke(mutationId: number, x = 10): PaintStroke {
   return {
@@ -64,6 +67,32 @@ async function copyCompletedSource(test: ReturnType<typeof harness>, mutationIds
   const promise = test.controller.copyScript();
   for (const mutationId of mutationIds) test.controller.observeCompletedMutation(test.engine, completion(mutationId));
   expect(await promise).toBe(true);
+}
+
+function settingsActions(test: ReturnType<typeof harness>) {
+  let settings = makeInitialPhysicsPaintStudioSettings();
+  const setSettings = vi.fn((update: PhysicsPaintStudioSettings | ((current: PhysicsPaintStudioSettings) => PhysicsPaintStudioSettings)) => {
+    settings = typeof update === 'function' ? update(settings) : update;
+  });
+  const engine = Object.assign(test.engine, {
+    setTool: vi.fn(), setPhysicsMode: vi.fn(), setColorHex: vi.fn(), setBrushOpacity: vi.fn(),
+    setBrushSize: vi.fn(), setBgMode: vi.fn(), setPaperGrain: vi.fn(), setEmbossStrength: vi.fn(),
+    setEdgeDetail: vi.fn(), setPickup: vi.fn(), setLocalSpreadStrength: vi.fn(), setAntiAlias: vi.fn(),
+    setEraseStrength: vi.fn(), startPhysics: vi.fn(), stopPhysics: vi.fn(),
+  });
+  const actions = createPhysicsPaintEngineActions({
+    engine: engine as never,
+    settings,
+    setSettings,
+    isMutationLocked: () => test.controller.mutationLocked.peek(),
+  });
+  const invokeEveryAction = () => {
+    actions.selectTool('erase', 'local'); actions.setBrushColor('#abcdef', 42); actions.setBrushSize(17);
+    actions.setBrushOpacity(63); actions.setBackground('white'); actions.setPaperGrain('canvas2');
+    actions.setGrainStrength(0.65); actions.setEdgeDetail(71); actions.setPickup(29); actions.setSpread(36);
+    actions.setSmoothing(3); actions.setEraseStrength(88); actions.startPhysics('all'); actions.stopPhysics();
+  };
+  return { engine, setSettings, invokeEveryAction };
 }
 
 describe('Roto script clipboard controller', () => {
@@ -183,6 +212,49 @@ describe('Roto script clipboard controller', () => {
     expect(test.submitted).toHaveLength(1);
   });
 
+  it('blocks real engine settings actions throughout Copy drain and resumes after accepted completion', async () => {
+    const test = harness([stroke(1)]);
+    const settings = settingsActions(test);
+    const copying = test.controller.copyScript();
+
+    expect(test.controller.mutationLocked.value).toBe(true);
+    settings.invokeEveryAction();
+    expect(settings.setSettings).not.toHaveBeenCalled();
+    for (const method of [settings.engine.setTool, settings.engine.setPhysicsMode, settings.engine.setColorHex, settings.engine.setBrushOpacity,
+      settings.engine.setBrushSize, settings.engine.setBgMode, settings.engine.setPaperGrain, settings.engine.setEmbossStrength,
+      settings.engine.setEdgeDetail, settings.engine.setPickup, settings.engine.setLocalSpreadStrength, settings.engine.setAntiAlias,
+      settings.engine.setEraseStrength, settings.engine.startPhysics, settings.engine.stopPhysics]) expect(method).not.toHaveBeenCalled();
+
+    test.controller.observeCompletedMutation(test.engine, completion(1));
+    await expect(copying).resolves.toBe(true);
+    expect(test.controller.mutationLocked.value).toBe(false);
+    settings.invokeEveryAction();
+    expect(settings.engine.setTool).toHaveBeenCalledWith('erase');
+    expect(settings.setSettings).toHaveBeenCalled();
+  });
+
+  it('blocks real engine settings actions until navigation transition protection releases', async () => {
+    const test = harness([stroke(1)]);
+    await copyCompletedSource(test, [1]);
+    test.setStrokes([stroke(2)]);
+    const settings = settingsActions(test);
+    const navigating = test.controller.prepareNavigation(9);
+
+    expect(test.controller.mutationLocked.value).toBe(true);
+    settings.invokeEveryAction();
+    expect(settings.setSettings).not.toHaveBeenCalled();
+    test.controller.observeCompletedMutation(test.engine, completion(2));
+    await expect(navigating).resolves.toBe(true);
+    expect(test.controller.mutationLocked.value).toBe(true);
+    settings.invokeEveryAction();
+    expect(settings.setSettings).not.toHaveBeenCalled();
+
+    test.controller.completeNavigation();
+    expect(test.controller.mutationLocked.value).toBe(false);
+    settings.invokeEveryAction();
+    expect(settings.engine.setTool).toHaveBeenCalledWith('erase');
+  });
+
   it('keeps Copy and navigation drains locked until the accepting engine completes across reset or disposal', async () => {
     const copyTest = harness([stroke(1)]);
     const copying = copyTest.controller.copyScript();
@@ -202,6 +274,42 @@ describe('Roto script clipboard controller', () => {
     await expect(navigating).resolves.toBe(false);
     await expect(disposing).resolves.toBeUndefined();
     expect(navigationTest.locks[navigationTest.locks.length - 1]).toBe(false);
+  });
+
+  it('blocks session Save and Load through Apply cancellation drain and resumes after accepted completion', async () => {
+    const test = harness([stroke(1)]);
+    await copyCompletedSource(test, [1]);
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    const save = vi.fn(() => ({ version: 1, strokes: [] }));
+    const load = vi.fn();
+    const downloadState = vi.fn(async () => ({ status: 'saved' as const, message: 'Saved editable JSON state.' }));
+    const reader = { readAsText: vi.fn(), onload: null, onerror: null, result: '' } as unknown as FileReader;
+    const session = createPhysicsPaintSessionController({
+      engine: { save, load }, workflowMode: 'roto', framesToApply: 1, canvasSize: { width: 800, height: 520 },
+      launchContext: null, currentFrame: 8, previewFps: 24, capturePendingPlayFrameEdits: vi.fn(),
+      annotatePlayState: vi.fn((state) => state), restorePlayFrameEdits: vi.fn(), clearLatestPlayFrames: vi.fn(),
+      setCachedPlayPreviewUrl: vi.fn(), setSavedPlayCacheDirty: vi.fn(), setLocalPlayPreviewFrame: vi.fn(),
+      setFramesToApply: vi.fn(), bumpPlayFramesVersion: vi.fn(), setLaunchContext: vi.fn(), setApplyStatus: vi.fn(),
+      setApplyMessage: vi.fn(), setLastError: vi.fn(), isMutationLocked: () => test.controller.mutationLocked.peek(),
+    } as unknown as PhysicsPaintSessionControllerInput, { downloadState, createFileReader: () => reader });
+    const target = { files: [{ name: 'state.json' }], value: 'state.json' } as unknown as HTMLInputElement;
+    const applying = test.controller.applyScript();
+    test.controller.cancelApply();
+
+    await session.saveEditableState();
+    session.loadEditableState({ target } as unknown as Event);
+    expect(save).not.toHaveBeenCalled();
+    expect(downloadState).not.toHaveBeenCalled();
+    expect(reader.readAsText).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
+
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await expect(applying).resolves.toBe(false);
+    await session.saveEditableState();
+    session.loadEditableState({ target } as unknown as Event);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(downloadState).toHaveBeenCalledTimes(1);
+    expect(reader.readAsText).toHaveBeenCalledTimes(1);
   });
 
   it('keeps cancelled Apply navigation-protected until accepted completion and ends Failed', async () => {

@@ -175,6 +175,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   function beginOperation(engine: RotoScriptEnginePort): void {
     pendingOperationCount += 1;
+    mutationLocked.value = true;
     lockedEngines.add(engine);
     engine.setInputLocked(true);
     const currentEngine = engineState.peek();
@@ -194,6 +195,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       for (const lockedEngine of lockedEngines) lockedEngine.setInputLocked(false);
       lockedEngines.clear();
       ports.setNavigationLocked?.(false);
+      mutationLocked.value = false;
       busy.value = false;
       finalizeDisposalIfReady();
     }
@@ -303,7 +305,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function finishApply(operation: ActiveApplyOperation, success: boolean): void {
     if (activeApply !== operation) return;
     activeApply = null;
-    mutationLocked.value = false;
     const applied = success && !operation.cancelled;
     refreshBoundSourceAfterApply(operation, applied ? `Applied ${operation.completed}` : 'Failed');
     operation.resolve(applied);
@@ -394,7 +395,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         resolve,
       };
       activeApply = operation;
-      mutationLocked.value = true;
       enqueueNextBrush(operation);
     });
   }

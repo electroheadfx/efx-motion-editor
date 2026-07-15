@@ -43,6 +43,14 @@ export interface PhysicsPaintRightPanelProps {
 
 const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
 
+export function getPhysicsPaintSessionControlState(mutationLocked: boolean) {
+  return {
+    saveDisabled: mutationLocked,
+    loadDisabled: mutationLocked,
+    loadClass: `physics-paint-text-button physics-paint-load-state${mutationLocked ? ' disabled-control' : ''}`,
+  };
+}
+
 function normalizeHexInput(value: string): string | null {
   const match = value.trim().match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/);
   if (!match) return null;
@@ -139,6 +147,7 @@ export function PhysicsPaintRightPanel({
   const draggingColorBox = useRef(false);
   const draggingHue = useRef(false);
   const logVisible = Boolean(devExportEnabled || applyMessage || error || applyStatus === 'applying');
+  const sessionControls = getPhysicsPaintSessionControlState(engineControlsDisabled);
 
   useEffect(() => {
     void loadRecentColors().then(setRecentColors);
@@ -410,10 +419,10 @@ export function PhysicsPaintRightPanel({
               </div>
             </div>
             <div class="physics-paint-option-actions">
-              <button class="physics-paint-text-button" onClick={onSaveState}>Save state</button>
-              <label class="physics-paint-text-button physics-paint-load-state">
+              <button class="physics-paint-text-button" disabled={sessionControls.saveDisabled} onClick={onSaveState}>Save state</button>
+              <label class={sessionControls.loadClass} aria-disabled={sessionControls.loadDisabled}>
                 Load state
-                <input type="file" accept=".json" onChange={onLoadState} />
+                <input type="file" accept=".json" disabled={sessionControls.loadDisabled} onChange={onLoadState} />
               </label>
             </div>
           </div>

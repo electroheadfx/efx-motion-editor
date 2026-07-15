@@ -542,10 +542,12 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(text).toContain('const sessionActions = usePhysicsPaintSessionController(input.session)');
     expect(controller).toContain('capturePendingPlayFrameEdits()');
     expect(controller).toContain('annotatePlayState(engine.save())');
-    expect(controller).toContain('downloadPhysicsPaintState(editableState)');
+    expect(controller).toContain('(dependencies.downloadState ?? downloadPhysicsPaintState)(editableState)');
     expect(controller).toContain("result.status === 'cancelled'");
     expect(controller).toContain('reader.onerror');
     expect(controller).toContain("inputElement.value = ''");
+    expect(controller).toContain('if (!engine || mutationLocked()) return;');
+    expect(controller).toContain('if (mutationLocked()) {');
     expect(controller).toContain('resizePhysicsPaintState(');
     expect(controller).toContain('buildPhysicsPaintDebugProof');
   });
