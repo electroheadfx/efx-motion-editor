@@ -141,7 +141,6 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, export, and real-key-depth onion skinning. (completed 2026-07-13)
 - [ ] **Phase 36.14: Physics Paint Roto Timeline UI From Pencil** - Roto timeline controls match the corrected Pencil design after behavior is stable. (planned)
 - [ ] **Phase 36.15: Physics Paint Roto State Machine Readiness** - Maintenance phase to evaluate XState/state-machine ownership after remaining user-facing 36.x Roto features are integrated. (deferred)
-- [ ] **Phase 37: Future Integration Contract and Validation** - Developers have type-only transport/cache contracts and validation proof without editor integration scope creep.
 
 ## Phase Details
 
@@ -815,20 +814,6 @@ Plans:
 
 **UI hint**: yes
 
-### Phase 37: Future Integration Contract and Validation
-
-**Goal**: Developers can validate the standalone milestone and prepare the future editor seam without implementing editor integration now.
-**Depends on**: Phase 36
-**Requirements**: SEAM-01, SEAM-02, TEST-01
-**Success Criteria** (what must be TRUE):
-
-  1. Developer has typed contracts for future transport/cache messages without Tauri child-window IPC or editor runtime integration.
-  2. Developer has architecture notes explaining how later EFX Motion Editor integration will consume rendered standalone outputs as cached frames.
-  3. Browser/manual smoke tests prove the standalone demo runs, accepts pointer input, and exports output.
-  4. Developer can confirm no headless adapter, editor-driven `renderFromStrokes`, `forceDryAll`, `.mce` persistence, or existing paint-engine replacement was added in this milestone.
-
-**Plans**: TBD
-
 ## Progress
 
 **Execution Order:**
@@ -857,4 +842,3 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
 | 36.14. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
 | 36.15. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |
-| 37. Future Integration Contract and Validation | v0.8.0 | 0/TBD | Not started | - |
