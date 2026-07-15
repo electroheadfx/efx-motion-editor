@@ -168,7 +168,7 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
     const navigation = rotoNavigationCoordinatorSource();
     const session = rotoSessionSource();
 
-    expect(navigation).toContain('return runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
+    expect(navigation).toContain('return await runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
     expect(navigation).not.toContain('saveFrame');
     expect(session).not.toContain("type: 'saveFrame'");
     expect(session).not.toContain('savingFrame');
@@ -761,7 +761,7 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
 
     expect(readFileSync(studioSelectorsPath, 'utf8')).toContain("input.applyStatus === 'applying' || (input.isPlaying && !input.rotoPlaybackActive)");
     expect(navigateBlock).toContain('rotoCachedPlayback.stop()');
-    expect(requestNavigationBlock).toContain('return runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
+    expect(requestNavigationBlock).toContain('return await runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
     expect(requestNavigationBlock).not.toContain('saveFrame');
     expect(text).toContain('const beginRotoFrameEdit = useCallback');
     expect(studioKeyboardSource()).toContain("if (event.key === ' ')");
@@ -804,7 +804,7 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
       'useRotoCloseLifecycle',
       'useRotoApplyResultController',
     ]) expect(text).not.toContain(obsolete);
-    expect(navigation).toContain('return runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
+    expect(navigation).toContain('return await runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
   });
 
   it('keeps Roto input disabled for generated displays and explicit script operation locks only', () => {
