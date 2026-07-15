@@ -1361,7 +1361,7 @@ export class EfxPaintEngine {
     const renderOpts = { ...pending.opts, size: brushRenderRadius(pending.opts) }
 
     if (active.phase === 'prepare') {
-      this.prepareWetLayerForStroke(pending.points[0], pending.opts)
+      this.prepareWetLayerForStroke(pending.points[0], pending.opts, pending.physicsMode)
       active.raster = createPaintStrokeRasterContinuation(
         pending.points, pending.color!, renderOpts,
         this.dualCanvas.dryCtx, this.wet, this.paperHeight,
@@ -1407,7 +1407,7 @@ export class EfxPaintEngine {
       }
       if (observePrimitive) observePrimitive('paint-saved-wet-full-frame-scan', performance.now() - savedWetStartedAt)
 
-      if (this.state.physicsMode === 'local') {
+      if (pending.physicsMode === 'local') {
         const brushR = brushRenderRadius(pending.opts)
         let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
         for (const p of pending.points) {
@@ -1445,7 +1445,7 @@ export class EfxPaintEngine {
 
     if (active.phase === 'continuation') {
       const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
-      this.replayDiffusionFrame(active.continuationFrame, sampleHFn)
+      this.replayDiffusionFrame(active.continuationFrame, sampleHFn, pending.physicsMode)
       active.continuationFrame += 1
       if (active.continuationFrame >= pending.continuationFrames) this.completeActiveStrokeFinalization(active)
     }
@@ -1508,9 +1508,13 @@ export class EfxPaintEngine {
     this.renderVisibleWetLayer()
   }
 
-  private prepareWetLayerForStroke(pt: PenPoint, opts: BrushOpts): void {
+  private prepareWetLayerForStroke(
+    pt: PenPoint,
+    opts: BrushOpts,
+    physicsMode: 'local' | null = this.state.physicsMode === 'local' ? 'local' : null,
+  ): void {
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
-    if (this.state.physicsMode === 'local') {
+    if (physicsMode === 'local') {
       const keepR = brushRenderRadius(opts) * 3 + 40
       const keepR2 = keepR * keepR
       const readbackStartedAt = observePrimitive ? performance.now() : 0
@@ -1894,14 +1898,18 @@ export class EfxPaintEngine {
     for (let i = 0; i < count; i++) this.replayDiffusionFrame(i, sampleHFn)
   }
 
-  private replayDiffusionFrame(frame: number, sampleHFn: (x: number, y: number) => number): void {
+  private replayDiffusionFrame(
+    frame: number,
+    sampleHFn: (x: number, y: number) => number,
+    physicsMode: 'local' | 'last' | 'all' | null = this.state.physicsMode,
+  ): void {
     physicsStep(
       this.wet, this.drying, this.dualCanvas.dryCtx,
       this.fluid, this.fluidConfig,
       this.blowDX, this.blowDY,
       this.width, this.height,
       this.state.physicsStrength, this.state.drySpeed,
-      this.state.physicsMode, this.lastStrokeBounds,
+      physicsMode, this.lastStrokeBounds,
       frame, sampleHFn, this.paperHeight,
     )
   }
