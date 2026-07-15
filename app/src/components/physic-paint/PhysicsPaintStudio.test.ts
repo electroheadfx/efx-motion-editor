@@ -815,7 +815,8 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     const text = studioPresentationSource();
     expect(text).toContain('const mutationLocked = rotoScript.mutationLocked.value');
     expect(text).toContain('const rotoInputDisabled = currentFrameIsGeneratedRoto || rotoScript.availability.value.busy');
-    expect(text).toContain('isMutationLocked: rotoScript.mutationLocked.peek');
+    expect(text).toContain('isMutationLocked: () => rotoScript.mutationLocked.peek()');
+    expect(text).toContain('keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked');
     expect(text).toContain('disabled: mutationLocked');
     expect(text).toContain('engineControlsDisabled: mutationLocked');
     expect(text).toContain('if (rotoScript.mutationLocked.peek() || !engine || !launchContext) return;');

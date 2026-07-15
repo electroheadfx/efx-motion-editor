@@ -63,6 +63,15 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('onPasteRotoFrame');
   });
 
+  it('disables and handler-guards interpolation controls only while the controller mutation lock is active', () => {
+    const code = source();
+    expect(getWorkflowStripPropsInterface(code)).toContain('mutationLocked?: boolean');
+    expect(code).toContain('const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked)');
+    expect(code).toContain('disabled={interpolationControlsDisabled}');
+    expect(code).toContain('disabled={interpolationControlsDisabled || !interpolationSettings.enabled}');
+    expect(code.match(/if \(props\.mutationLocked\) return;/g)).toHaveLength(2);
+  });
+
   it('renders distinct Copy Script and Apply Script controls immediately after Delete with reasons and status', () => {
     const code = source();
     const deleteIndex = code.indexOf('>Delete</button>');

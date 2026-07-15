@@ -101,6 +101,7 @@ export interface PhysicsPaintWorkflowStripProps {
   onPasteRotoFrame?: () => void;
   hasCopiedRotoKey?: boolean;
   keyActionInFlight?: boolean;
+  mutationLocked?: boolean;
   rotoKeyState?: PhysicsPaintWorkflowRotoKeyState;
   rotoScript?: PhysicsPaintWorkflowRotoScriptState;
   onCopyRotoScript?: () => void;
@@ -241,7 +242,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const currentRotoFill = getRotoCellFill(props.currentFrame, realCachedRotoFrames);
   const isCurrentRealRotoKey = realRotoFrames.includes(props.currentFrame) && currentRotoCell.isEditableTarget !== false;
   const sessionKeyAvailability = props.rotoKeyState?.actionAvailability;
-  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
+  const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy);
+  const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
   const canUseVisibleSourceRotoKey = canUseSourceRotoKey || (Boolean(sessionKeyAvailability) && isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState);
   const canInsertRotoKey = sessionKeyAvailability ? (sessionKeyAvailability.canInsert || canUseVisibleSourceRotoKey) && props.ready !== false : canUseSourceRotoKey;
@@ -290,6 +292,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }
 
   function handleRotoInterpolationCountInput(event: Event) {
+    if (props.mutationLocked) return;
     const value = Number((event.currentTarget as HTMLInputElement).value);
     if (Number.isFinite(value)) props.onRotoInterpolationCountChange?.(Math.max(1, Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.trunc(value))));
   }
@@ -456,11 +459,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               {props.onRotoInterpolationEnabledChange ? (
                 <div class="physics-paint-roto-interpolation-controls" title={interpolationStatus}>
                   <label class="physics-paint-roto-interpolation-toggle">
-                    <input type="checkbox" aria-label="Enable generated in-betweens" checked={Boolean(interpolationSettings.enabled)} disabled={props.ready === false} onChange={(event) => props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked)} />
+                    <input type="checkbox" aria-label="Enable generated in-betweens" checked={Boolean(interpolationSettings.enabled)} disabled={interpolationControlsDisabled} onChange={(event) => {
+                      if (props.mutationLocked) return;
+                      props.onRotoInterpolationEnabledChange?.((event.currentTarget as HTMLInputElement).checked);
+                    }} />
                   </label>
                   <label class="physics-paint-roto-interpolation-count" title="Generated in-betweens">
                     <Blend size={14} aria-hidden="true" />
-                    <input type="number" min="1" max={PHYSIC_PAINT_MAX_APPLY_FRAMES} step="1" value={visibleInBetweenCount} aria-label="Generated in-between frames per real-key pair" disabled={props.ready === false || !interpolationSettings.enabled} onInput={handleRotoInterpolationCountInput} />
+                    <input type="number" min="1" max={PHYSIC_PAINT_MAX_APPLY_FRAMES} step="1" value={visibleInBetweenCount} aria-label="Generated in-between frames per real-key pair" disabled={interpolationControlsDisabled || !interpolationSettings.enabled} onInput={handleRotoInterpolationCountInput} />
                   </label>
                 </div>
               ) : null}

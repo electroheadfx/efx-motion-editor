@@ -20,8 +20,10 @@ export function useRotoInterpolationController(input: {
   setApplyMessage: (message: string) => void;
   setLastError: (message: string | null) => void;
   setPlaybackStatus: (message: string) => void;
+  isMutationLocked?: () => boolean;
 }) {
   const updateRotoInterpolationSettings = useCallback(async (patch: Partial<PhysicPaintRotoInterpolationSettings>) => {
+    if (input.isMutationLocked?.()) return;
     const launchContext = input.launchContext;
     if (!launchContext) return;
     seedRotoLaunchRealKeys(launchContext, input.seedStore);
