@@ -4,11 +4,11 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
-status: ready_to_discuss
-stopped_at: Quick 260715-j3q native Undo/Redo UAT A-G approved; dedicated Roto script quick is next
-last_updated: "2026-07-15T12:34:23Z"
+status: awaiting_native_uat
+stopped_at: Quick 260715-kgf automated verification passed; native Copy Script / Apply Script UAT A-M pending
+last_updated: "2026-07-15T17:38:59Z"
 last_activity: 2026-07-15
-last_activity_desc: Approved exact Physics Paint Undo/Redo native UAT and reactive history-count badges
+last_activity_desc: Completed automated implementation, review, and verification for Roto Copy Script / Apply Script
 progress:
   total_phases: 17
   completed_phases: 16
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: Pre-36.14 quick sequence — READY FOR SCRIPT QUICK
+Phase: Pre-36.14 quick sequence — SCRIPT QUICK AWAITING NATIVE UAT
 Previous phase: 36.13 — Physics Paint Roto Dynamic Interpolation Spacing complete
-Plan: 0 of TBD
-Status: Quick 260715-j3q exact per-brush Undo/Redo and reactive availability badges passed native UAT
-Last activity: 2026-07-15 — User approved native Undo/Redo UAT and the reactive count-badge UI
-Next recommended action: Launch the dedicated Roto Copy Script / Apply Script quick with discussion, research, and validation
+Plan: Quick 260715-kgf automated implementation and verification complete
+Status: Automated-ready; native Copy Script / Apply Script UAT A-M pending
+Last activity: 2026-07-15 — Definitive code review and quick verification passed with 14/14 must-haves and 22/22 focused coverage
+Next recommended action: Run native UAT A-M for quick 260715-kgf; keep Phase 36.14 blocked until approval
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -139,7 +139,8 @@ None yet.
 - Phase 36.13 completed: user approved dynamic spacing, canonical persistence/preview/export parity, generated/empty non-durability, visible onion composition, real-key-depth Onion Value semantics, and generated-owner onion traversal.
 - Phases 36.15 and 37 were removed as obsolete: Signals/controllers remain the accepted state boundary, and the implemented parent bridge/cache integration surpassed the former future-contract scope.
 - Phase 36.14 is the final v0.8.0 UI-only phase: corrected timeline UI, developer-status removal, existing Log routing, application selection guard, and final presentation/wiring of the prerequisite quick's Copy Script / Apply Script controls.
-- Quick 260715-j3q exact 10-level per-brush Undo/Redo and reactive availability badges passed native UAT on 2026-07-15; the dedicated script quick is now the only prerequisite before Phase 36.14.
+- Quick 260715-j3q exact 10-level per-brush Undo/Redo and reactive availability badges passed native UAT on 2026-07-15.
+- Quick 260715-kgf functional Roto Copy Script / Apply Script is automated-ready: definitive review passed, 14/14 must-haves and 22/22 focused coverage verified, and native UAT A-M remains the only completion gate before Phase 36.14.
 
 ### Quick Tasks Completed
 
@@ -181,6 +182,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T12:34:23Z
-Stopped at: Quick 260715-j3q native Undo/Redo UAT approved; dedicated Roto script quick is next
-Resume file: Launch the dedicated Roto Copy Script / Apply Script quick with discussion, research, and validation before Phase 36.14
+Last session: 2026-07-15T17:38:59Z
+Stopped at: Quick 260715-kgf automated verification passed; native Copy Script / Apply Script UAT A-M pending
+Resume file: Run native UAT A-M from `.planning/quick/260715-kgf-implement-functional-physics-paint-roto-/260715-kgf-VERIFICATION.md`; Phase 36.14 remains blocked until approval
