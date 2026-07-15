@@ -40,6 +40,7 @@ import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '.
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
+import { claimRotoSelectedFrame } from './roto/rotoKeyTransactions';
 import './physicsPaintStudio.css';
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
@@ -198,7 +199,10 @@ export function PhysicsPaintStudio() {
       cachedBase: cachedRotoRepaintBaseFrame,
       background: buildRotoBackgroundMetadata(settings),
     } : null,
-    prepareEmptyTarget: () => launchContext ? rotoTimelineActions.saveRealKeyAtDisplayFrame(currentFrame) : null,
+    claimEmptyTarget: () => launchContext ? claimRotoSelectedFrame({
+      selectedFrame: currentFrame,
+      currentSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
+    }) : null,
     onFirstAcceptedBrush: () => beginRotoFrameEditRef.current(),
     setNavigationLocked: setRotoScriptNavigationLocked,
   });

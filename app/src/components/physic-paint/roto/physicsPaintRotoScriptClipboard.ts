@@ -2,7 +2,7 @@ import { computed, signal, type ReadonlySignal, type Signal } from '@preact/sign
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import { transformRecordedStrokeForHeldPose } from '@efxlab/efx-physic-paint/animation';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import type { RotoSaveRealKeyTransaction } from './rotoKeyTransactions';
+import type { RotoSaveRealKeyTransaction, RotoSelectedFrameClaim } from './rotoKeyTransactions';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
 export interface RotoScriptSourceSnapshot {
@@ -75,7 +75,8 @@ export interface RotoScriptClipboardControllerPorts {
   getSource: () => RotoScriptSourceSnapshot;
   getMotion: () => { deformation: number; position: number };
   getPublicationIdentity?: () => RotoScriptPublicationIdentity | null;
-  prepareEmptyTarget: () => RotoSaveRealKeyTransaction | null;
+  claimEmptyTarget?: () => RotoSelectedFrameClaim | null;
+  prepareEmptyTarget?: () => RotoSelectedFrameClaim | RotoSaveRealKeyTransaction | null;
   onFirstAcceptedBrush?: () => void;
   setNavigationLocked?: (locked: boolean) => void;
 }
@@ -83,7 +84,7 @@ export interface RotoScriptClipboardControllerPorts {
 export interface RotoScriptAcceptedTarget {
   sourceFrame: number;
   displayFrame: number;
-  interpolationSettings?: RotoSaveRealKeyTransaction['interpolationSettings'];
+  interpolationSettings?: RotoSelectedFrameClaim['interpolationSettings'];
   publicationIdentity?: RotoScriptPublicationIdentity;
 }
 
@@ -122,7 +123,7 @@ interface ActiveApplyOperation {
   destinationSourceFrame: number;
   destinationDisplayFrame: number;
   publicationIdentity: RotoScriptPublicationIdentity | null;
-  preparedTarget: RotoSaveRealKeyTransaction | null;
+  preparedTarget: RotoSelectedFrameClaim | null;
   expectedMutationIds: Set<number>;
   consumedMutationIds: Set<number>;
   completed: number;
@@ -483,10 +484,17 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const source = sourceState.value;
     if (!engine || !script || source.selectionKind === 'generated-interpolation') return Promise.resolve(false);
     error.value = null;
-    let preparedTarget: RotoSaveRealKeyTransaction | null = null;
+    let preparedTarget: RotoSelectedFrameClaim | null = null;
     if (source.selectionKind === 'empty') {
       try {
-        preparedTarget = ports.prepareEmptyTarget();
+        const claimedTarget = ports.claimEmptyTarget?.() ?? ports.prepareEmptyTarget?.() ?? null;
+        preparedTarget = claimedTarget && 'target' in claimedTarget
+          ? {
+            sourceFrame: claimedTarget.sourceFrameOverride,
+            displayFrame: claimedTarget.target.displayFrame,
+            interpolationSettings: claimedTarget.interpolationSettings,
+          }
+          : claimedTarget;
       } catch (cause) {
         status.value = 'Failed';
         error.value = operationError('apply', 'apply-empty-target-failed', 'Apply Script could not prepare the empty destination', cause);
@@ -498,8 +506,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         return Promise.resolve(false);
       }
     }
-    const destinationSourceFrame = preparedTarget?.sourceFrameOverride ?? source.sourceFrame;
-    const destinationDisplayFrame = preparedTarget?.target.displayFrame ?? source.displayFrame;
+    const destinationSourceFrame = preparedTarget?.sourceFrame ?? source.sourceFrame;
+    const destinationDisplayFrame = preparedTarget?.displayFrame ?? source.displayFrame;
     beginOperation(engine);
     applyProgressState.value = { completed: 0, total: script.brushes.length };
     status.value = `Applying 0/${script.brushes.length}`;

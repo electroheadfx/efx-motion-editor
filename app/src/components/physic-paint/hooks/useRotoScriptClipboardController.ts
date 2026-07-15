@@ -15,7 +15,8 @@ export function useRotoScriptClipboardController(ports: RotoScriptClipboardContr
       getSource: () => portsRef.current.getSource(),
       getMotion: () => portsRef.current.getMotion(),
       getPublicationIdentity: () => portsRef.current.getPublicationIdentity?.() ?? null,
-      prepareEmptyTarget: () => portsRef.current.prepareEmptyTarget(),
+      claimEmptyTarget: () => portsRef.current.claimEmptyTarget?.() ?? null,
+      prepareEmptyTarget: () => portsRef.current.prepareEmptyTarget?.() ?? null,
       onFirstAcceptedBrush: () => portsRef.current.onFirstAcceptedBrush?.(),
       setNavigationLocked: (locked) => portsRef.current.setNavigationLocked?.(locked),
     });
