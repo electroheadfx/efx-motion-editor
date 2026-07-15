@@ -250,6 +250,25 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
     expect(engine.allActions).toEqual([{ mutationId: 1 }, { mutationId: 2 }]);
   });
 
+  it('publishes queued Redo without synchronously finalizing the restored payload', () => {
+    const listener = vi.fn();
+    const scheduleStrokeFinalization = vi.fn();
+    const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine & Record<string, any>;
+    const deferred = { mutationId: 2, tool: 'paint', points: [{ x: 1, y: 1 }], color: '#fff', opts: {}, hasPenInput: false, queuedAt: 0 };
+    Object.assign(engine, {
+      nextMutationId: 3, lastCompletedMutationId: null, completedMutationListener: listener, performanceListener: null,
+      undoStack: [], redoStack: [{ mutationId: 2, actions: [{ mutationId: 2 }], checkpoint: null, deferred }],
+      allActions: [], pendingStrokeFinalizations: [], strokeFinalizationScheduled: false,
+      cloneDeferredFinalization: vi.fn(() => deferred), markStrokeHandoffComplete: vi.fn(), scheduleStrokeFinalization,
+      notifyCompletedMutation: EfxPaintEngine.prototype['notifyCompletedMutation'],
+    });
+
+    expect(engine.redo()).toBe(true);
+    expect(scheduleStrokeFinalization).toHaveBeenCalledOnce();
+    expect(engine.pendingStrokeFinalizations).toEqual([deferred]);
+    expect(listener).toHaveBeenCalledWith({ kind: 'redo', isEmpty: false, mutationId: 2 });
+  });
+
   it('does not notify Undo when no visible mutation is available', () => {
     const listener = vi.fn();
     const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine;

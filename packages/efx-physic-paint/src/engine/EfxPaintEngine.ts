@@ -779,6 +779,7 @@ export class EfxPaintEngine {
       this.historyIndex = this.undoStack.length
       this.markStrokeHandoffComplete()
       this.scheduleStrokeFinalization()
+      this.notifyCompletedMutation('redo', entry.mutationId)
       return true
     }
 
