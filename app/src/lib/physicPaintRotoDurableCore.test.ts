@@ -678,12 +678,6 @@ async function flushPreact(): Promise<void> {
   await Promise.resolve();
 }
 
-function waitForHarnessSignal(listeners: Array<() => void>): Promise<void> {
-  return new Promise((resolve) => {
-    listeners.push(resolve);
-  });
-}
-
 async function mountStudioReady(root: TestElement, createStudio: () => VNode<any>): Promise<void> {
   await act(async () => {
     render(createStudio(), root as unknown as Element);
