@@ -49,6 +49,7 @@ function createHarness() {
     activeMutationId: null,
     performanceListener: null,
     completedMutationListener: null,
+    historyAvailabilityListener: null,
     undoStack: [],
     redoStack: [],
     allActions: [],
@@ -122,6 +123,27 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
 
     expect(finalized).toEqual(['brush-1', 'erase-2', 'brush-3'])
     expect(engine.undoStack).toHaveLength(3)
+  })
+
+  it('publishes exact history counts as entries move between Undo and Redo', () => {
+    const { engine } = createHarness()
+    const listener = vi.fn()
+    const before = makeSnapshot(2, 'before', 10)
+    const after = makeSnapshot(2, 'after', 20)
+    engine.undoStack = [{ mutationId: 2, actions: [{ mutationId: 2 }], checkpoint: before, deferred: null }]
+    engine.allActions = [{ mutationId: 2 }]
+    installSnapshotBuffers(engine, after)
+    engine.captureUndoSnapshot = vi.fn()
+      .mockReturnValueOnce(after)
+      .mockReturnValueOnce(before)
+
+    engine.setHistoryAvailabilityListener(listener)
+    engine.undo()
+    engine.redo()
+
+    expect(listener).toHaveBeenNthCalledWith(1, { undo: 1, redo: 0 })
+    expect(listener).toHaveBeenNthCalledWith(2, { undo: 0, redo: 1 })
+    expect(listener).toHaveBeenNthCalledWith(3, { undo: 1, redo: 0 })
   })
 
   it('moves grouped history bidirectionally without replaying finalized strokes', () => {

@@ -63,6 +63,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
 
     return () => {
       engine.setCompletedMutationListener(null)
+      engine.setHistoryAvailabilityListener(null)
       engine.setPerformanceListener(null)
       engine.destroy()
       engineRef.current = null

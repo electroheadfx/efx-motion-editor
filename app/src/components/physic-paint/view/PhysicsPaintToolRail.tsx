@@ -42,7 +42,8 @@ export interface PhysicsPaintToolRailProps {
   activeTool: ToolType;
   physicsMode: 'local' | null;
   activePhysicsAction?: 'last' | 'all' | null;
-  canUndo?: boolean;
+  undoCount?: number;
+  redoCount?: number;
   disabled?: boolean;
   onSelectTool: (tool: ToolType, physicsMode: 'local' | null) => void;
   onUndo: () => void;
@@ -71,7 +72,8 @@ export function PhysicsPaintToolRail({
   activeTool,
   physicsMode,
   activePhysicsAction = null,
-  canUndo = true,
+  undoCount = 0,
+  redoCount = 0,
   disabled = false,
   onSelectTool,
   onUndo,
@@ -92,13 +94,16 @@ export function PhysicsPaintToolRail({
     if (item.id === 'dry') onDryPaint();
   };
 
-  const isDisabled = (item: PhysicsPaintToolRailItem) => disabled || (item.id === 'undo' && !canUndo);
+  const historyCount = (item: PhysicsPaintToolRailItem) => item.id === 'undo' ? undoCount : item.id === 'redo' ? redoCount : null;
+  const isDisabled = (item: PhysicsPaintToolRailItem) => disabled || historyCount(item) === 0;
 
   return (
     <nav class="physics-paint-tool-rail" aria-label="Physics Paint tools">
       {PHYSICS_PAINT_TOOL_RAIL_ITEMS.map((item) => {
         const active = isItemActive(item, activeTool, physicsMode, activePhysicsAction);
+        const count = historyCount(item);
         const buttonDisabled = isDisabled(item);
+        const label = count === null ? item.label : `${item.label} (${count} available)`;
         const className = `physics-paint-icon-button${active ? ' active' : ''}`;
 
         if (item.id === 'physics-last' || item.id === 'physics-all') {
@@ -129,12 +134,13 @@ export function PhysicsPaintToolRail({
             type="button"
             class={className}
             disabled={buttonDisabled}
-            title={item.label}
-            aria-label={item.label}
+            title={label}
+            aria-label={label}
             aria-pressed={item.kind === 'tool' ? active : undefined}
             onClick={() => runAction(item)}
           >
             <img src={item.icon} alt="" aria-hidden="true" style={item.id === 'redo' ? { transform: 'scaleX(-1)' } : undefined} />
+            {count !== null ? <span class="physics-paint-history-badge" aria-hidden="true">{count}</span> : null}
           </button>
         );
       })}

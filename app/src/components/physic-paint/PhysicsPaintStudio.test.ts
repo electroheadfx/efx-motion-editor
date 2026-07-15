@@ -177,13 +177,24 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
 });
 
 describe('PhysicsPaintStudio extracted utility boundaries', () => {
-  it('wires adjacent accessible Undo and Redo rail actions through existing callbacks', () => {
+  it('wires adjacent accessible Undo and Redo rail actions through reactive count badges', () => {
     const studio = readFileSync(sourcePath, 'utf8');
     const rail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
+    const styles = readFileSync(stylePath, 'utf8');
     expect(rail.indexOf("id: 'redo'")).toBeGreaterThan(rail.indexOf("id: 'undo'"));
     expect(rail).toContain("label: 'Redo'");
     expect(rail).toContain("if (item.id === 'redo') onRedo()");
+    expect(rail).toContain('undoCount?: number');
+    expect(rail).toContain('redoCount?: number');
+    expect(rail).toContain('historyCount(item) === 0');
+    expect(rail).toContain('physics-paint-history-badge');
+    expect(rail).toContain('`${item.label} (${count} available)`');
+    expect(studio).toContain("import { useSignal } from '@preact/signals'");
+    expect(studio).toContain('useSignal<PaintHistoryAvailability>({ undo: 0, redo: 0 })');
+    expect(studio).toContain('readyEngine.setHistoryAvailabilityListener');
+    expect(studio).toContain('undoCount: historyAvailability.value.undo, redoCount: historyAvailability.value.redo');
     expect(studio).toContain('onUndo: undo, onRedo: redo');
+    expect(styles).toContain('.physics-paint-history-badge');
   });
 
   it('keeps shortcut filtering pure and wired through the keyboard module', () => {

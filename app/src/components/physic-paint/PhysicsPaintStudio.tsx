@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import { useSignal } from '@preact/signals';
+import type { EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { AnimationWiggleConfig } from '@efxlab/efx-physic-paint/animation';
-import type { PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../types/physicPaint';
 import { PHYSIC_PAINT_DEFAULT_APPLY_FRAMES, clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../types/physicPaint';
 import { physicPaintStore } from '../../stores/physicPaintStore';
@@ -62,6 +62,7 @@ export function PhysicsPaintStudio() {
   const [settings, setSettings] = useState<PhysicsPaintStudioSettings>(() => makeInitialPhysicsPaintStudioSettings());
   const [workflowMode, setWorkflowMode] = useState<PhysicsPaintWorkflowMode>(() => getLaunchWorkflowMode(launchContext));
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const historyAvailability = useSignal<PaintHistoryAvailability>({ undo: 0, redo: 0 });
   const [onion, setOnionState] = useState<PhysicsPaintOnionState>(() => ({
     ...DEFAULT_ONION_STATE,
     opacity: Math.round(paintStore.onionSkinOpacity.value * 100),
@@ -428,7 +429,8 @@ export function PhysicsPaintStudio() {
         onBrushSizeChange: setBrushSize, onOpacityChange: setBrushOpacity, onBackgroundChange: setBackground, onPaperGrainChange: setPaperGrain, onGrainStrengthChange: setGrainStrength,
       },
     toolRail: {
-        activeTool: settings.tool, physicsMode: settings.physicsMode, activePhysicsAction: settings.activePhysicsAction, canUndo: Boolean(engine), disabled: !engine,
+        activeTool: settings.tool, physicsMode: settings.physicsMode, activePhysicsAction: settings.activePhysicsAction,
+        undoCount: historyAvailability.value.undo, redoCount: historyAvailability.value.redo, disabled: !engine,
         onSelectTool: selectTool, onUndo: undo, onRedo: redo, onClearFrame: clearActiveSource, onPhysicsStart: startPhysics, onPhysicsStop: stopPhysics, onDryPaint: dryPaint,
       },
     canvas: {
@@ -445,7 +447,11 @@ export function PhysicsPaintStudio() {
         canvasKey,
         mount: {
           width: canvasWidth, height: canvasHeight, paperTextureScale,
-          onEngineReady: (readyEngine) => { handleEngineReady(readyEngine); if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine); },
+          onEngineReady: (readyEngine) => {
+            readyEngine.setHistoryAvailabilityListener((availability) => { historyAvailability.value = availability; });
+            handleEngineReady(readyEngine);
+            if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine);
+          },
           onCanvasMounted: setCanvasMounted,
           onNativePenInputReady: handleNativePenInputReady,
           onPerformanceSample: recordEnginePerformance,

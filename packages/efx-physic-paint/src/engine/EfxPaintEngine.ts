@@ -102,6 +102,11 @@ export type CompletedPaintMutation = {
   mutationId: number
 }
 
+export type PaintHistoryAvailability = {
+  undo: number
+  redo: number
+}
+
 const STROKE_FINALIZATION_IDLE_MS = 500
 
 function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
@@ -208,6 +213,7 @@ export class EfxPaintEngine {
   private readonly getStrokeMetadata?: () => StrokeMetadata | null | undefined
   private readonly paperTextureScale: number
   private completedMutationListener: ((mutation: CompletedPaintMutation) => void) | null = null
+  private historyAvailabilityListener: ((availability: PaintHistoryAvailability) => void) | null = null
   private performanceListener: ((sample: PaintPerformanceSample) => void) | null = null
   private nextMutationId: number = 1
   private activeMutationId: number | null = null
@@ -603,6 +609,11 @@ export class EfxPaintEngine {
     this.completedMutationListener = listener
   }
 
+  setHistoryAvailabilityListener(listener: ((availability: PaintHistoryAvailability) => void) | null): void {
+    this.historyAvailabilityListener = listener
+    if (listener) this.notifyHistoryAvailability()
+  }
+
   setPerformanceListener(listener: ((sample: PaintPerformanceSample) => void) | null): void {
     this.performanceListener = listener
   }
@@ -756,6 +767,7 @@ export class EfxPaintEngine {
       if (!preBrushCheckpoint) return false
       this.restoreUndoSnapshot(preBrushCheckpoint)
       this.redoStack.push({ ...entry, checkpoint: postBrushCheckpoint })
+      this.notifyHistoryAvailability()
       this.notifyCompletedMutation('undo', entry.mutationId)
       return true
     }
@@ -763,6 +775,7 @@ export class EfxPaintEngine {
     this.undoStack.pop()
     this.redoStack.push(entry)
     this.historyIndex = this.undoStack.length
+    this.notifyHistoryAvailability()
     return true
   }
 
@@ -777,6 +790,7 @@ export class EfxPaintEngine {
       this.redoStack.pop()
       this.undoStack.push(entry)
       this.historyIndex = this.undoStack.length
+      this.notifyHistoryAvailability()
       this.markStrokeHandoffComplete()
       this.scheduleStrokeFinalization()
       this.notifyCompletedMutation('redo', entry.mutationId)
@@ -790,6 +804,7 @@ export class EfxPaintEngine {
     this.redoStack.pop()
     this.undoStack.push({ ...entry, checkpoint: preBrushCheckpoint })
     this.historyIndex = this.undoStack.length
+    this.notifyHistoryAvailability()
     this.notifyCompletedMutation('redo', entry.mutationId)
     return true
   }
@@ -800,6 +815,14 @@ export class EfxPaintEngine {
 
   canRedo(): boolean {
     return this.redoStack.length > 0
+  }
+
+  getHistoryAvailability(): PaintHistoryAvailability {
+    return { undo: this.undoStack.length, redo: this.redoStack.length }
+  }
+
+  private notifyHistoryAvailability(): void {
+    this.historyAvailabilityListener?.(this.getHistoryAvailability())
   }
 
   private restoreUndoSnapshot(snap: UndoSnapshot): void {
@@ -831,6 +854,7 @@ export class EfxPaintEngine {
     this.redoStack = []
     this.historyEntries = []
     this.historyIndex = 0
+    this.notifyHistoryAvailability()
     clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
     // Clear fluid solver state
     this.fluid.u.fill(0); this.fluid.v.fill(0)
@@ -1694,6 +1718,7 @@ export class EfxPaintEngine {
     if (this.undoStack.length > 10) this.undoStack.shift()
     this.historyEntries = [...this.undoStack]
     this.historyIndex = this.undoStack.length
+    this.notifyHistoryAvailability()
     this.pendingStrokeFinalizations.push(pending)
     this.rawPts = []
     this.markStrokeHandoffComplete()
@@ -1871,6 +1896,7 @@ export class EfxPaintEngine {
     this.redoStack = []
     this.historyEntries = []
     this.historyIndex = 0
+    this.notifyHistoryAvailability()
 
     // Restore synchronously so loaded state is immediately available for apply/export.
     // Animated replay made apply race against setTimeout-delayed stroke restoration.

@@ -76,6 +76,8 @@ function createHarness(tool: 'paint' | 'erase' = 'paint') {
     lastCompletedMutationId: null,
     performanceListener: null,
     completedMutationListener: null,
+    historyAvailabilityListener: null,
+    redoStack: [],
     color: '#123456',
     state: {
       drawing: false,
@@ -133,6 +135,20 @@ describe('EfxPaintEngine pointer sample capture', () => {
     engine.onPointerUp(pointerEvent({ x: 36, y: 14, timeStamp: 36, buttons: 0 }))
 
     expect(xy(engine.pendingStrokeFinalizations[0].points)).toEqual([[10, 10], [20, 10], [30, 10], [36, 14]])
+  })
+
+  it('publishes Undo availability at the accepted pointer-up boundary', () => {
+    const engine = createHarness()
+    const listener = vi.fn()
+    engine.setHistoryAvailabilityListener(listener)
+    draw(engine, [{ x: 10, y: 10, timeStamp: 10 }, { x: 20, y: 10, timeStamp: 20 }, { x: 30, y: 10, timeStamp: 30 }])
+
+    engine.onPointerUp(pointerEvent({ x: 36, y: 14, timeStamp: 36, buttons: 0 }))
+
+    expect(listener).toHaveBeenNthCalledWith(1, { undo: 0, redo: 0 })
+    expect(listener).toHaveBeenNthCalledWith(2, { undo: 1, redo: 0 })
+    expect(engine.activeStrokeFinalization).toBeNull()
+    expect(engine.pendingStrokeFinalizations).toHaveLength(1)
   })
 
   it('ignores a near-duplicate release coordinate', () => {
@@ -206,7 +222,7 @@ describe('EfxPaintEngine pointer sample capture', () => {
     const queuedPoints = engine.pendingStrokeFinalizations[0].points
     const actionPoints = engine.allActions[0].points
     const rasterPoints: PenPoint[][] = []
-    engine.pushUndoSnapshot = vi.fn()
+    engine.captureUndoSnapshot = vi.fn(() => ({ mutationId: 1 }))
     engine.applyStrokeToEngine = vi.fn((_tool: string, points: PenPoint[]) => rasterPoints.push(points.map(point => ({ ...point }))))
     engine.notifyCompletedMutation = vi.fn()
 
