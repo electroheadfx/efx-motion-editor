@@ -522,6 +522,27 @@ const FRONTMATTER_SCHEMAS = {
     summary: { required: ['phase', 'plan', 'subsystem', 'tags', 'duration', 'completed'] },
     verification: { required: ['phase', 'verified', 'status', 'score'] },
 };
+/**
+ * Strip ALL frontmatter blocks from the start of `content`.
+ *
+ * Handles CRLF line endings and multiple stacked blocks (corruption
+ * recovery): greedily strips consecutive `---...---` blocks separated by
+ * optional whitespace, so a doubled/tripled frontmatter header (e.g. from a
+ * botched merge) is fully removed, not just the first block.
+ *
+ * Canonical home for this primitive (#2143 audit dedup): previously
+ * duplicated byte-identically in both `state.cts` and `state-transition.cts`.
+ */
+function stripFrontmatter(content) {
+    let result = content;
+    while (true) {
+        const stripped = result.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\s*/, '');
+        if (stripped === result)
+            break;
+        result = stripped;
+    }
+    return result;
+}
 function cmdFrontmatterGet(cwd, filePath, field, raw) {
     if (!filePath) {
         error('file path required');
@@ -654,6 +675,7 @@ module.exports = {
     parseFrontmatter: extractFrontmatter,
     reconstructFrontmatter,
     spliceFrontmatter,
+    stripFrontmatter,
     noOpObjectListSetError,
     parseMustHavesBlock,
     FRONTMATTER_SCHEMAS,

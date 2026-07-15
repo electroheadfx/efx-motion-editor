@@ -27,10 +27,16 @@ const { comparePhaseNum } = phaseIdModule;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const planningWorkspace = require("./planning-workspace.cjs");
 const { findContextMdIn } = planningWorkspace;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const shellCommandProjection = require("./shell-command-projection.cjs");
 // ─── Path helpers ────────────────────────────────────────────────────────────
-/** Normalize a relative path to always use forward slashes (cross-platform). */
+/**
+ * Normalize a relative path to always use forward slashes (cross-platform).
+ * Delegates to the single separator seam in shell-command-projection so there is
+ * exactly one implementation of native→POSIX conversion across the codebase.
+ */
 function toPosixPath(p) {
-    return p.split(node_path_1.default.sep).join('/');
+    return shellCommandProjection.toPosixPath(p);
 }
 /**
  * Scan immediate child directories for separate git repos.

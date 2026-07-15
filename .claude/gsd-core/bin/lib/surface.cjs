@@ -305,8 +305,8 @@ function applySurface(runtimeConfigDir, layout, manifest, clusterMap, registry, 
     // surface-path agents lack path-prefix rewrites and Co-Authored-By trailers,
     // diverging from a fresh install.
     const _homedirFn = opts?.homedir ?? (() => node_os_1.default.homedir());
-    const _resolvedTarget = node_path_1.default.resolve(layout.configDir).replace(/\\/g, '/');
-    const _homeDir = _homedirFn().replace(/\\/g, '/');
+    const _resolvedTarget = (0, shell_command_projection_cjs_1.posixNormalize)(node_path_1.default.resolve(layout.configDir));
+    const _homeDir = (0, shell_command_projection_cjs_1.posixNormalize)(_homedirFn());
     const _isGlobal = (layout.scope ?? 'global') === 'global';
     const _isOpencode = layout.runtime === 'opencode';
     const _isWindowsHost = (opts?.platform ?? process.platform) === 'win32';

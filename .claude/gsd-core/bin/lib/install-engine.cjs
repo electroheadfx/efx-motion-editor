@@ -27,6 +27,7 @@ const runtimeArtifactLayout = require("./runtime-artifact-layout.cjs");
 const runtimeArtifactInstallPlan = require("./runtime-artifact-install-plan.cjs");
 const runtimeNamePolicy = require("./runtime-name-policy.cjs");
 const installProfiles = require("./install-profiles.cjs");
+const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 const { processAttribution } = runtimeArtifactConversion;
 // resolveRuntimeArtifactLayout: accessed via module ref (not destructured) so
 // test stubs that monkeypatch the module's exports are seen at call time.
@@ -883,8 +884,8 @@ function installOpencodeFamilyArtifacts(runtime, configDir, scope, resolvedProfi
         isGlobal,
         isOpencode: behaviors.skipHomePrefixSubstitution === true,
         isWindowsHost: process.platform === 'win32',
-        resolvedTarget: node_path_1.default.resolve(configDir).replace(/\\/g, '/'),
-        homeDir: node_os_1.default.homedir().replace(/\\/g, '/'),
+        resolvedTarget: (0, shell_command_projection_cjs_1.posixNormalize)(node_path_1.default.resolve(configDir)),
+        homeDir: (0, shell_command_projection_cjs_1.posixNormalize)(node_os_1.default.homedir()),
     });
     const commandDir = runtimeArtifactInstallPlan.assertDestWithinConfigHome(configDir, 'command');
     installOpencodeFamilyCommands(runtime, commandDir, rawCommandsDir, pathPrefix, resolveAttribution);

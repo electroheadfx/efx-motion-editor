@@ -919,7 +919,7 @@ function cmdApiCoverageVerifyPre(projectDir, args, raw) {
     // .planning/phases/ (or a milestone archive). The raw arg is never used as a
     // path, so `..`, absolute paths, and arbitrary directories cannot reach a
     // file read. Mirrors cmdVerifySchemaDrift's token-match approach.
-    let token = phaseArg.replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+    let token = (0, shell_command_projection_cjs_1.posixNormalize)(phaseArg).split('/').filter(Boolean).pop() || '';
     // A token like ".." or "." carries no phase identity → unresolvable.
     if (token === '.' || token === '..')
         token = '';

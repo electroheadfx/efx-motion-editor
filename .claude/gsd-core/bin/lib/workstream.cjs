@@ -17,6 +17,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
+const clock_cjs_1 = require("./clock.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const io = require("./io.cjs");
 const { output, error } = io;
@@ -154,7 +155,7 @@ function cmdWorkstreamCreate(cwd, name, options, raw) {
     }
     (0, shell_command_projection_cjs_1.platformEnsureDir)(wsDir);
     (0, shell_command_projection_cjs_1.platformEnsureDir)(node_path_1.default.join(wsDir, 'phases'));
-    const today = new Date().toISOString().split('T')[0];
+    const today = clock_cjs_1.realClock.localToday();
     const stateContent = [
         '---',
         `workstream: ${slug}`,
@@ -264,7 +265,7 @@ function cmdWorkstreamComplete(cwd, name, options, raw) {
     if (active === name)
         setActiveWorkstream(cwd, null);
     const archiveDir = node_path_1.default.join(root, 'milestones');
-    const today = new Date().toISOString().split('T')[0];
+    const today = clock_cjs_1.realClock.localToday();
     let archivePath = node_path_1.default.join(archiveDir, `ws-${name}-${today}`);
     let suffix = 1;
     while (node_fs_1.default.existsSync(archivePath)) {

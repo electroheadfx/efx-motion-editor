@@ -23,6 +23,7 @@ const { stageSkillsForProfile, stageAgentsForProfile, stageAgentsForRuntimeWithC
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const runtimeArtifactConversion = require("./runtime-artifact-conversion.cjs");
 const conversionExports = runtimeArtifactConversion;
+const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 // In .cts (CommonJS output) files, `require` is available as a global.
 const _require = require;
 // ---------------------------------------------------------------------------
@@ -192,7 +193,7 @@ function kimiAgentsKind(destSubpath, prefix, configDir) {
                         continue;
                     const agentPath = node_path_1.default.join(stagedAgents, entry.name);
                     subagents.push({
-                        path: node_path_1.default.join('agents', entry.name).replace(/\\/g, '/'),
+                        path: (0, shell_command_projection_cjs_1.posixNormalize)(node_path_1.default.join('agents', entry.name)),
                         content: node_fs_1.default.readFileSync(agentPath, 'utf8'),
                     });
                 }

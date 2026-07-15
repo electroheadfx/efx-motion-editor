@@ -42,6 +42,7 @@ exports.runSmartEntry = runSmartEntry;
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const node_child_process_1 = require("node:child_process");
+const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ioMod = require("./io.cjs");
 const { output } = ioMod;
@@ -274,9 +275,9 @@ function detectSignals(cwd, now = Date.now) {
         fmScalar(fm, body, 'progress', 'Progress');
     // Blockers list: `- <text>` items under a `## Blockers` heading.
     const blockers = [];
-    const blockersMatch = body.match(/##\s*Blockers\s*\n([\s\S]*?)(?=\n##|$)/i); // allow-adhoc-markdown: read-only blockers section-collect in smart-entry.cts; mirrors state.cts (#1372), pending collectSection migration
-    if (blockersMatch) {
-        const items = blockersMatch[1].match(/^-\s+(.+)$/gm) || [];
+    const blockersSection = (0, markdown_sectionizer_cjs_1.collectSection)(body, (h) => h.level === 2 && h.text.trim().toLowerCase() === 'blockers', { levelBounded: true });
+    if (blockersSection) {
+        const items = blockersSection.body.match(/^-\s+(.+)$/gm) || [];
         for (const item of items)
             blockers.push(item.replace(/^-\s+/, '').trim());
     }

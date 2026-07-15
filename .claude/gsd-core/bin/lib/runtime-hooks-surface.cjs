@@ -267,7 +267,7 @@ function normalizeNodePath(execPath, opts) {
         return execPath;
     const env = (opts && opts.env) || process.env;
     const existsSync = (opts && opts.existsSync) || node_fs_1.default.existsSync;
-    const normalizedForMatch = execPath.replace(/\\/g, '/');
+    const normalizedForMatch = shellCmdProjection.posixNormalize(execPath);
     if (/\/fnm_multishells\/[0-9]+_[0-9]+\/node(\.exe)?$/i.test(normalizedForMatch)) {
         const candidates = [];
         if (env.FNM_DIR) {
@@ -283,11 +283,16 @@ function normalizeNodePath(execPath, opts) {
         }
         return execPath;
     }
-    if (/^\/usr\/local\/Cellar\/node(@\d+)?\/[^/]+\/bin\/node(\.exe)?$/.test(execPath)) {
-        return '/usr/local/bin/node';
-    }
-    if (/^\/opt\/homebrew\/Cellar\/node(@\d+)?\/[^/]+\/bin\/node(\.exe)?$/.test(execPath)) {
-        return '/opt/homebrew/bin/node';
+    // Homebrew (macOS Intel /usr/local, Apple Silicon /opt/homebrew, Linuxbrew
+    // /home/linuxbrew/.linuxbrew, and any custom HOMEBREW_PREFIX) pins node at
+    // <prefix>/Cellar/node(<@ver>)?/<ver>/bin/node, then deletes prior versions on
+    // `brew upgrade node`. Rewrite to the stable <prefix>/bin/node symlink, which
+    // survives the upgrade. Derive <prefix> from the path itself (more reliable
+    // than HOMEBREW_PREFIX env — the path IS the install location) so every layout
+    // is covered by one branch instead of one per known prefix (#2185).
+    const homebrewMatch = normalizedForMatch.match(/^(.+)\/Cellar\/node(@\d+)?\/[^/]+\/bin\/node(\.exe)?$/i);
+    if (homebrewMatch) {
+        return `${homebrewMatch[1]}/bin/node${homebrewMatch[3] || ''}`;
     }
     // mise pins a concrete node version at <data>/installs/node/<ver>/bin/node
     // (Windows: <data>/installs/node/<ver>/node.exe). Node realpaths
@@ -311,7 +316,7 @@ function resolveNodeRunner(opts) {
     if (!execPath)
         return null;
     const stablePath = normalizeNodePath(execPath, opts);
-    return JSON.stringify(stablePath.replace(/\\/g, '/'));
+    return JSON.stringify(shellCmdProjection.posixNormalize(stablePath));
 }
 function resolveBashRunner(opts) {
     const platform = (opts && opts.platform) || process.platform;
@@ -332,7 +337,7 @@ function resolveBashRunner(opts) {
     }
     for (const candidate of candidates) {
         if (candidate && exists(candidate)) {
-            return JSON.stringify(candidate.replace(/\\/g, '/'));
+            return JSON.stringify(shellCmdProjection.posixNormalize(candidate));
         }
     }
     return null;
@@ -372,7 +377,7 @@ function rewriteLegacyManagedNodeHookCommands(settings, absoluteRunner, opts) {
                 }
                 else {
                     _runnerToken = m[1];
-                    const runnerPath = (m[2] || m[3] || m[4] || '').replace(/\\/g, '/');
+                    const runnerPath = shellCmdProjection.posixNormalize(m[2] || m[3] || m[4] || '');
                     const stableRunner = normalizeNodePath(runnerPath);
                     if (stableRunner === runnerPath && platform !== 'win32')
                         continue;
@@ -562,10 +567,10 @@ function buildCodexHookWindowsShimIR(scriptAbsPath, absoluteRunnerToken) {
     catch {
         interpreter = absoluteRunnerToken;
     }
-    const targetAbs = scriptAbsPath.replace(/\\/g, '/');
+    const targetAbs = shellCmdProjection.posixNormalize(scriptAbsPath);
     const scriptQuoted = JSON.stringify(targetAbs);
     const cmdPath = scriptAbsPath.replace(/\.js$/, '.cmd');
-    const hookCommand = JSON.stringify(cmdPath.replace(/\\/g, '/'));
+    const hookCommand = JSON.stringify(shellCmdProjection.posixNormalize(cmdPath));
     const runnerQuoted = JSON.stringify(interpreter);
     return {
         invocation: { interpreter, target: scriptAbsPath },
@@ -584,7 +589,7 @@ function ensureCodexHooksJsonSessionStart(targetDir, opts = {}) {
     const hooksJsonPath = node_path_1.default.join(targetDir, 'hooks.json');
     if (!absoluteRunner)
         return { changed: false, wrote: false, path: hooksJsonPath };
-    const scriptPath = node_path_1.default.resolve(targetDir, 'hooks', 'gsd-check-update.js').replace(/\\/g, '/');
+    const scriptPath = shellCmdProjection.posixNormalize(node_path_1.default.resolve(targetDir, 'hooks', 'gsd-check-update.js'));
     const cmdShimPath = scriptPath.replace(/\.js$/, '.cmd');
     let managedCommand;
     if (platform === 'win32') {
@@ -614,7 +619,7 @@ function ensureCodexHooksJsonSessionStart(targetDir, opts = {}) {
     if (!managedCommand)
         return { changed: false, wrote: false, path: hooksJsonPath };
     const commandWindows = platform === 'win32'
-        ? JSON.stringify(cmdShimPath.replace(/\\/g, '/'))
+        ? JSON.stringify(shellCmdProjection.posixNormalize(cmdShimPath))
         : undefined;
     return reconcileCodexHooksJsonSessionStart(targetDir, { managedCommand, commandWindows });
 }
@@ -624,7 +629,7 @@ function ensureCodexHooksJsonEvent(targetDir, eventName, opts = {}) {
     const hooksJsonPath = node_path_1.default.join(targetDir, 'hooks.json');
     if (!absoluteRunner)
         return { changed: false, wrote: false, path: hooksJsonPath };
-    const scriptPath = node_path_1.default.resolve(targetDir, 'hooks', 'gsd-context-monitor.js').replace(/\\/g, '/');
+    const scriptPath = shellCmdProjection.posixNormalize(node_path_1.default.resolve(targetDir, 'hooks', 'gsd-context-monitor.js'));
     let managedCommand;
     if (platform === 'win32') {
         const shimIR = buildCodexHookWindowsShimIR(scriptPath, absoluteRunner);
@@ -667,6 +672,7 @@ function buildHookCommand(configDir, hookName, opts) {
         opts = {};
     const platform = opts.platform || process.platform;
     const runtime = opts.runtime || 'generic';
+    const hookShell = opts.hookShell;
     const isShellHook = hookName.endsWith('.sh');
     if (shellHookOmitsBashRunner({ platform, runtime, isShellHook })) {
         if (opts.portableHooks) {
@@ -676,7 +682,7 @@ function buildHookCommand(configDir, hookName, opts) {
             });
             return JSON.stringify(`${portableBaseDir}/hooks/${hookName}`);
         }
-        return JSON.stringify(configDir.replace(/\\/g, '/') + '/hooks/' + hookName);
+        return JSON.stringify(shellCmdProjection.posixNormalize(configDir) + '/hooks/' + hookName);
     }
     const nodeRunner = resolveNodeRunner();
     const runner = isShellHook ? resolveBashRunner(opts) : nodeRunner;
@@ -692,14 +698,16 @@ function buildHookCommand(configDir, hookName, opts) {
             scriptPath: `${portableBaseDir}/hooks/${hookName}`,
             runtime: opts.runtime || 'generic',
             platform,
+            hookShell,
         });
     }
-    const hooksPath = configDir.replace(/\\/g, '/') + '/hooks/' + hookName;
+    const hooksPath = shellCmdProjection.posixNormalize(configDir) + '/hooks/' + hookName;
     return projectManagedHookCommand({
         absoluteRunner: runner,
         scriptPath: hooksPath,
         runtime,
         platform,
+        hookShell,
     });
 }
 // ---------------------------------------------------------------------------
@@ -844,7 +852,7 @@ function writeClineArtifacts(targetDir, isGlobalInstall) {
 function buildCursorHookEntry(scriptPath) {
     return {
         type: 'command',
-        command: scriptPath.replace(/\\/g, '/'),
+        command: shellCmdProjection.posixNormalize(scriptPath),
         [GSD_CURSOR_HOOK_MARKER]: true,
     };
 }

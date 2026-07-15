@@ -33,6 +33,8 @@ SPECS
 .claude/projects/
 .claude/worktrees/
 repomix-output*.xml
+output/pdf/
+tmp/pdfs/
 
 # MemPalace per-project files (issue #185)
 mempalace.yaml

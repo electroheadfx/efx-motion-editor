@@ -26,6 +26,7 @@ const { readGsdCommandNames, transformContentToHyphen } = commandRoster;
 const runtimeNamePolicy = require("./runtime-name-policy.cjs");
 const { getDirName } = runtimeNamePolicy;
 const capabilityRegistry = require("./capability-registry.cjs");
+const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 // #1383: resolve GSD's version WITHOUT a top-level
 // `require('../../../package.json')`. That require ran at module load on every
 // gsd-tools invocation (this module sits in the gsd-tools loader chain) and
@@ -2143,8 +2144,8 @@ function computePathPrefix({ isGlobal, isOpencode, isWindowsHost: _isWindowsHost
     // Without this, path.join on Windows produces a backslash prefix that
     // leaks into markdown content and breaks cross-platform substring checks.
     // See DEFECT.WINDOWS-PATH-LEAK-IN-MARKDOWN-CONTENT in CONTEXT.md.
-    const posixTarget = String(resolvedTarget).replace(/\\/g, '/');
-    const posixHome = homeDir ? String(homeDir).replace(/\\/g, '/') : homeDir;
+    const posixTarget = (0, shell_command_projection_cjs_1.posixNormalize)(String(resolvedTarget));
+    const posixHome = homeDir ? (0, shell_command_projection_cjs_1.posixNormalize)(String(homeDir)) : homeDir;
     if (isGlobal && posixTarget.startsWith(posixHome) && !isOpencode) {
         return '$HOME' + posixTarget.slice(posixHome.length) + '/';
     }
@@ -2461,8 +2462,8 @@ function rewriteStagedSkillBodies(stagedDir, opts) {
     const { runtime, configDir, scope = 'global', homedir = () => node_os_1.default.homedir(), platform = process.platform, resolveAttribution, } = opts;
     if (!node_fs_1.default.existsSync(stagedDir))
         return;
-    const resolvedTarget = node_path_1.default.resolve(configDir).replace(/\\/g, '/');
-    const homeDir = homedir().replace(/\\/g, '/');
+    const resolvedTarget = (0, shell_command_projection_cjs_1.posixNormalize)(node_path_1.default.resolve(configDir));
+    const homeDir = (0, shell_command_projection_cjs_1.posixNormalize)(homedir());
     const isGlobal = scope === 'global';
     const isOpencode = false; // #2087: opencode installs via the combined-family engine path, never through the generic rewrite
     const isWindowsHost = platform === 'win32';
@@ -2490,8 +2491,8 @@ function rewriteStagedCommandBodies(stagedDir, opts) {
     const { runtime, configDir, scope = 'global', homedir = () => node_os_1.default.homedir(), platform = process.platform, resolveAttribution, } = opts;
     if (!node_fs_1.default.existsSync(stagedDir))
         return stagedDir;
-    const resolvedTarget = node_path_1.default.resolve(configDir).replace(/\\/g, '/');
-    const homeDir = homedir().replace(/\\/g, '/');
+    const resolvedTarget = (0, shell_command_projection_cjs_1.posixNormalize)(node_path_1.default.resolve(configDir));
+    const homeDir = (0, shell_command_projection_cjs_1.posixNormalize)(homedir());
     const isGlobal = scope === 'global';
     const isOpencode = false; // #2087: opencode installs via the combined-family engine path, never through the generic rewrite
     const isWindowsHost = platform === 'win32';

@@ -15,6 +15,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.toPosixPath = toPosixPath;
+exports.toNativePath = toNativePath;
+exports.posixNormalize = posixNormalize;
 exports.hookCommandNeedsPowerShellCallOperator = hookCommandNeedsPowerShellCallOperator;
 exports.formatHookCommandForRuntime = formatHookCommandForRuntime;
 exports.shellHookOmitsBashRunner = shellHookOmitsBashRunner;
@@ -53,25 +56,57 @@ const node_fs_1 = __importDefault(require("node:fs"));
 // at load time and become un-mockable.
 const node_child_process_1 = __importDefault(require("node:child_process"));
 /**
+ * Convert a filesystem path to POSIX form (forward slashes) by translating the
+ * platform-native separator. Single seam for native→POSIX conversion.
+ *
+ * Prefer this over `p.replace(/\\/g, '/')`: the regex form hardcodes both
+ * separators and corrupts POSIX paths containing a literal backslash (a legal
+ * filename character). Splitting on `path.sep` only ever touches real
+ * separators — a no-op on POSIX, `\`→`/` on Windows.
+ */
+function toPosixPath(p) {
+    return p.split(node_path_1.default.sep).join(node_path_1.default.posix.sep);
+}
+/**
+ * Convert a filesystem path to the platform-native separator form. No-op on
+ * POSIX; `/`→`\` on Windows. Prefer this over a
+ * `process.platform === 'win32' ? p.replace(/\//g, '\\') : p` ternary.
+ */
+function toNativePath(p) {
+    return p.split(node_path_1.default.posix.sep).join(node_path_1.default.sep);
+}
+/**
+ * Normalize ALL backslashes to forward slashes, unconditionally and independent
+ * of the running OS. Use this when emitting a path into a POSIX/bash target
+ * (which may differ from the running platform — e.g. generating a Windows config
+ * on a Linux runner) or when parsing input whose separators are unpredictable.
+ *
+ * Contrast `toPosixPath`, which is running-OS-relative (splits on `path.sep`) and
+ * is for *this machine's* filesystem paths. Do NOT use `toPosixPath` for
+ * target-platform projection — on a Linux runner it would not convert a
+ * Windows-target path's backslashes.
+ */
+function posixNormalize(p) {
+    return p.replace(/\\/g, '/');
+}
+/**
  * Return true when a managed hook command must be prefixed with PowerShell's
  * call operator so a quoted executable token is invokable by the target
  * runtime/shell combination.
  *
- * Current evidence-backed policy:
- * - Claude Code on Windows does NOT need it: its hook commands execute under
- *   bash/Git Bash and `& ` breaks there (#3413).
- * - #1928: Gemini CLI — the ONLY runtime with a verified need for the `& `
- *   prefix on Windows — was removed (Google sunset it 2026-06-18). No currently
- *   supported runtime has a verified need, so this seam is now inert. It is
- *   retained (not deleted) so a future runtime with a verified need is a
- *   one-line re-enable, per the conservative policy below. Note: Antigravity —
- *   the Gemini-backend successor — never matched the old `runtime === 'gemini'`
- *   check, so its behavior (no prefix) is unchanged.
+ * The `&`/no-`&` decision is keyed on the **effective hook-execution shell**
+ * (`opts.hookShell`), not on runtime alone — a single runtime (Claude Code)
+ * can host either Git Bash or PowerShell on Windows, and no single static
+ * command string is valid in both (#2236):
+ * - Git Bash: `"node.exe" "hook.js"` works; `& "node.exe" …` → syntax error.
+ * - PowerShell: `& "node.exe" "hook.js"` works; bare `"node.exe" …` →
+ *   `Unexpected token`.
  *
- * Keep the policy conservative until another runtime has a verified need.
+ * Default is `false` (Git Bash form) for backward compatibility. Set
+ * `opts.hookShell = 'powershell'` to emit the PowerShell call-operator form.
  */
-function hookCommandNeedsPowerShellCallOperator(_opts = {}) {
-    return false;
+function hookCommandNeedsPowerShellCallOperator(opts = {}) {
+    return opts.hookShell === 'powershell';
 }
 /**
  * Project a fully-assembled hook command string for the target runtime.
@@ -122,7 +157,7 @@ function formatManagedHookScriptToken(scriptPath, opts = {}) {
     const platform = opts.platform || process.platform;
     if (platform !== 'win32')
         return null;
-    return JSON.stringify(scriptPath.replace(/\\/g, '/'));
+    return JSON.stringify(posixNormalize(scriptPath));
 }
 function projectLocalHookPrefix({ runtime: _runtime = 'claude', dirName, hookPathStyle }) {
     if (!dirName)
@@ -140,29 +175,30 @@ function projectLocalHookPrefix({ runtime: _runtime = 'claude', dirName, hookPat
         : `"$CLAUDE_PROJECT_DIR"/${dirName}`;
 }
 function projectPortableHookBaseDir({ configDir, homeDir }) {
-    const normalizedConfigDir = String(configDir || '').replace(/\\/g, '/');
-    const normalizedHome = String(homeDir || '').replace(/\\/g, '/');
+    const normalizedConfigDir = posixNormalize(String(configDir || ''));
+    const normalizedHome = posixNormalize(String(homeDir || ''));
     if (!normalizedConfigDir || !normalizedHome)
         return normalizedConfigDir;
     return normalizedConfigDir.startsWith(normalizedHome)
         ? '$HOME' + normalizedConfigDir.slice(normalizedHome.length)
         : normalizedConfigDir;
 }
-function projectShellCommandText({ runnerToken, argTokens = [], runtime = 'generic', platform = process.platform, }) {
+function projectShellCommandText({ runnerToken, argTokens = [], runtime = 'generic', platform = process.platform, hookShell, }) {
     if (!runnerToken)
         return null;
     const parts = [runnerToken, ...argTokens.filter(Boolean)];
-    return formatHookCommandForRuntime(parts.join(' '), { platform, runtime });
+    return formatHookCommandForRuntime(parts.join(' '), { platform, runtime, hookShell });
 }
-function projectManagedHookCommand({ absoluteRunner, scriptPath, runtime = 'generic', platform = process.platform }) {
+function projectManagedHookCommand({ absoluteRunner, scriptPath, runtime = 'generic', platform = process.platform, hookShell }) {
     if (!absoluteRunner || !scriptPath)
         return null;
-    const normalizedScriptPath = platform === 'win32' ? scriptPath.replace(/\\/g, '/') : scriptPath;
+    const normalizedScriptPath = platform === 'win32' ? posixNormalize(scriptPath) : scriptPath;
     return projectShellCommandText({
         runnerToken: absoluteRunner,
         argTokens: [JSON.stringify(normalizedScriptPath)],
         runtime,
         platform,
+        hookShell,
     });
 }
 const MANAGED_HOOK_BASENAMES_BY_SURFACE = {
@@ -255,14 +291,14 @@ function isManagedHookCommand(commandText, opts = {}) {
         for (const arg of opts.args) {
             if (typeof arg !== 'string')
                 continue;
-            const argBasename = arg.replace(/\\/g, '/').split('/').pop() || '';
+            const argBasename = posixNormalize(arg).split('/').pop() || '';
             if (isManagedHookBasename(argBasename, { surface }))
                 return true;
         }
     }
-    const normalizedCommand = commandText.replace(/\\/g, '/');
+    const normalizedCommand = posixNormalize(commandText);
     if (typeof opts.configDir === 'string' && opts.configDir.length > 0) {
-        const normalizedHooksDir = `${node_path_1.default.join(opts.configDir, 'hooks').replace(/\\/g, '/')}/`;
+        const normalizedHooksDir = `${posixNormalize(node_path_1.default.join(opts.configDir, 'hooks'))}/`;
         if (!normalizedCommand.includes(normalizedHooksDir))
             return false;
     }
@@ -292,7 +328,7 @@ const ANCHORED_HOOK_SCRIPT_TOKEN = /^"\$[A-Za-z_][A-Za-z0-9_]*"\//;
 function projectLegacySettingsHookCommand({ absoluteRunner, scriptPath, scriptToken, runtime = 'generic', platform = process.platform, }) {
     if (!absoluteRunner || !scriptPath)
         return null;
-    const normalizedScriptPath = platform === 'win32' ? scriptPath.replace(/\\/g, '/') : scriptPath;
+    const normalizedScriptPath = platform === 'win32' ? posixNormalize(scriptPath) : scriptPath;
     // #1693: a script path already carrying a `"$CLAUDE_PROJECT_DIR"`-anchored
     // quoted prefix (local installs) is already a valid shell token — only the
     // variable is quoted, the rest is bare. JSON.stringify-ing it on Windows
@@ -350,7 +386,7 @@ function projectPathActionProjection({ mode = 'repair', targetDir, platform = pr
     let shellActions;
     if (isWin32) {
         const psTargetDir = escapePowerShellSingleQuoted(targetDir);
-        const bashTargetDir = escapeSingleQuotedShellLiteral(String(targetDir).replace(/\\/g, '/'));
+        const bashTargetDir = escapeSingleQuotedShellLiteral(posixNormalize(String(targetDir)));
         shellActions = [
             {
                 label: 'PowerShell',

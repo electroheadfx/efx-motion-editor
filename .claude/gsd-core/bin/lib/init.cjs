@@ -13,6 +13,7 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const node_os_1 = __importDefault(require("node:os"));
 const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
+const clock_cjs_1 = require("./clock.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- io.cjs is an export= CommonJS module
 const io = require("./io.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- config-loader.cjs is an export= CommonJS module
@@ -203,7 +204,7 @@ function getInitGitState(cwd) {
         }
         resolved = node_path_1.default.resolve(resolved);
         if (process.platform === 'win32') {
-            return resolved.replace(/\//g, '\\').toLowerCase();
+            return (0, shell_command_projection_cjs_1.toNativePath)(resolved).toLowerCase();
         }
         return resolved;
     };
@@ -213,7 +214,7 @@ function getInitGitState(cwd) {
         try {
             const prefixResult = (0, shell_command_projection_cjs_1.execGit)(['rev-parse', '--show-prefix'], { cwd, timeout: 5000 });
             if (prefixResult['exitCode'] === 0) {
-                const prefix = (typeof prefixResult['stdout'] === 'string' ? prefixResult['stdout'] : '').trim().replace(/\\/g, '/');
+                const prefix = (0, shell_command_projection_cjs_1.posixNormalize)((typeof prefixResult['stdout'] === 'string' ? prefixResult['stdout'] : '').trim());
                 inNestedSubdir = prefix.length > 0 && prefix !== '.' && prefix !== './';
                 resolvedByGitPrefix = true;
             }
@@ -230,7 +231,7 @@ function getInitGitState(cwd) {
                 }
                 else {
                     const rel = node_path_1.default.relative(rootNorm, cwdNorm);
-                    const relNorm = process.platform === 'win32' ? rel.replace(/\//g, '\\') : rel;
+                    const relNorm = (0, shell_command_projection_cjs_1.toNativePath)(rel);
                     inNestedSubdir =
                         relNorm !== '' &&
                             relNorm !== '.' &&
@@ -244,7 +245,7 @@ function getInitGitState(cwd) {
         }
     }
     if (inNestedSubdir && typeof worktreeRoot === 'string') {
-        const toComparableRaw = (p) => p.replace(/\\/g, '/').replace(/\/+$/g, '').toLowerCase();
+        const toComparableRaw = (p) => (0, shell_command_projection_cjs_1.posixNormalize)(p).replace(/\/+$/g, '').toLowerCase();
         if (toComparableRaw(worktreeRoot) === toComparableRaw(String(cwd))) {
             inNestedSubdir = false;
         }
@@ -613,8 +614,8 @@ function cmdInitQuick(cwd, description, raw) {
         quick_id: quickId,
         slug: slug,
         description: description || null,
-        date: now.toISOString().split('T')[0],
-        timestamp: now.toISOString(),
+        date: clock_cjs_1.realClock.localToday(),
+        timestamp: clock_cjs_1.realClock.nowIso(),
         quick_dir: '.planning/quick',
         task_dir: slug ? `.planning/quick/${quickId}-${slug}` : null,
         roadmap_exists: node_fs_1.default.existsSync(node_path_1.default.join(planningDir(cwd), 'ROADMAP.md')),
@@ -730,6 +731,21 @@ function cmdInitVerifyWork(cwd, phase, raw) {
 function cmdInitPhaseOp(cwd, phase, raw) {
     const config = loadConfig(cwd);
     let phaseInfo = guardedFindPhase(cwd, phase, config.project_code);
+    // #2237: surface ambiguous phase-directory collisions instead of silently
+    // taking the first match when unrelated projects share a .planning/phases/ tree.
+    if (phaseInfo?.['ambiguous_matches']) {
+        const matches = phaseInfo['ambiguous_matches'];
+        const result = {
+            phase_found: false,
+            phase_dir: null,
+            phase_number: null,
+            phase_name: null,
+            ambiguous_matches: matches,
+            warning: `Phase ${phase} is ambiguous: ${matches.length} directories match (${matches.map((m) => `"${m}"`).join(', ')}). Set a distinct project_code in .planning/config.json to scope resolution.`,
+        };
+        output(withProjectRoot(cwd, result), raw);
+        return;
+    }
     if (phaseInfo?.['archived']) {
         const roadmapPhase = guardedGetRoadmapPhase(cwd, phase, config.project_code);
         if (roadmapPhase?.['found']) {
@@ -849,7 +865,6 @@ function cmdInitPhaseOp(cwd, phase, raw) {
 }
 function cmdInitTodos(cwd, area, raw) {
     const config = loadConfig(cwd);
-    const now = new Date();
     const pendingDir = node_path_1.default.join(planningDir(cwd), 'todos', 'pending');
     let count = 0;
     const todos = [];
@@ -885,8 +900,8 @@ function cmdInitTodos(cwd, area, raw) {
     }
     const result = {
         commit_docs: config.commit_docs,
-        date: now.toISOString().split('T')[0],
-        timestamp: now.toISOString(),
+        date: clock_cjs_1.realClock.localToday(),
+        timestamp: clock_cjs_1.realClock.nowIso(),
         todo_count: count,
         todos,
         area_filter: area || null,
@@ -1007,7 +1022,6 @@ function cmdInitMilestoneOp(cwd, raw) {
 }
 function cmdInitMapCodebase(cwd, raw) {
     const config = loadConfig(cwd);
-    const now = new Date();
     const codebaseDir = node_path_1.default.join(planningRoot(cwd), 'codebase');
     let existingMaps = [];
     try {
@@ -1022,8 +1036,8 @@ function cmdInitMapCodebase(cwd, raw) {
         search_gitignored: config.search_gitignored,
         parallelization: config.parallelization,
         subagent_timeout: config.subagent_timeout,
-        date: now.toISOString().split('T')[0],
-        timestamp: now.toISOString(),
+        date: clock_cjs_1.realClock.localToday(),
+        timestamp: clock_cjs_1.realClock.nowIso(),
         codebase_dir: '.planning/codebase',
         existing_maps: existingMaps,
         has_maps: existingMaps.length > 0,
@@ -1763,7 +1777,7 @@ function buildAgentSkillsBlock(config, agentType, projectRoot, diagnostics) {
         if (entry.kind === 'directive') {
             return `- Load the \`${entry.name}\` skill via the Skill tool before proceeding (plugin-provided).`;
         }
-        return `- @${String(entry.ref).replace(/\\/g, '/')}`;
+        return `- @${(0, shell_command_projection_cjs_1.posixNormalize)(String(entry.ref))}`;
     }).join('\n');
     return `<agent_skills>\nRead these user-configured skills:\n${lines}\n</agent_skills>`;
 }

@@ -118,7 +118,7 @@ function normalizeRelPath(relPath) {
     if (typeof relPath !== 'string' || relPath.trim() === '') {
         throw new Error('migration action relPath must be a non-empty string');
     }
-    const normalized = relPath.replace(/\\/g, '/');
+    const normalized = (0, shell_command_projection_cjs_1.posixNormalize)(relPath);
     if (node_path_1.default.isAbsolute(normalized) || node_path_1.default.win32.isAbsolute(normalized)) {
         throw new Error(`migration action relPath must stay inside configDir: ${relPath}`);
     }
