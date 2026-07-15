@@ -777,6 +777,9 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     const canvasBlock = canvasMountSource();
 
     expect(canvasBlock).toContain('onCompletedMutation');
+    expect(text).toContain('rotoScript.observeCompletedMutation(mutation)');
+    expect(text.indexOf('rotoScript.observeCompletedMutation(mutation)')).toBeLessThan(text.indexOf('rotoPersistence.captureLivePixels({'));
+    expect(text).toContain('rotoScript.getAcceptedTarget(mutationId)');
     expect(text).toContain("workflowMode !== 'roto'");
     expect(text).toContain("currentFrameSelectionKind === 'generated-interpolation'");
     expect(text).toContain('mutationEngine.copyLiveAlphaCanvas()');
@@ -804,9 +807,9 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     expect(navigation).toContain('return runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
   });
 
-  it('keeps Roto input disabled only for generated interpolation displays', () => {
+  it('keeps Roto input disabled for generated displays and explicit script operation locks only', () => {
     const text = studioPresentationSource();
-    expect(text).toContain('const rotoInputDisabled = currentFrameIsGeneratedRoto');
+    expect(text).toContain('const rotoInputDisabled = currentFrameIsGeneratedRoto || rotoScript.availability.value.busy');
     expect(text).not.toContain("currentFrameSelectionKind !== 'real-key'");
     expect(text).not.toContain("rotoInputDisabled = workflowMode === 'roto' && applyStatus === 'applying'");
   });

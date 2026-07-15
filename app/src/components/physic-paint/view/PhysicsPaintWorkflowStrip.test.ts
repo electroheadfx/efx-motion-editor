@@ -63,6 +63,21 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('onPasteRotoFrame');
   });
 
+  it('renders distinct Copy Script and Apply Script controls immediately after Delete with reasons and status', () => {
+    const code = source();
+    const deleteIndex = code.indexOf('>Delete</button>');
+    const copyScriptIndex = code.indexOf('>Copy Script</button>');
+    const applyScriptIndex = code.indexOf('>Apply Script</button>');
+    expect(deleteIndex).toBeGreaterThan(-1);
+    expect(copyScriptIndex).toBeGreaterThan(deleteIndex);
+    expect(applyScriptIndex).toBeGreaterThan(copyScriptIndex);
+    expect(code).toContain('copyDisabledReason');
+    expect(code).toContain('applyDisabledReason');
+    expect(code).toContain('props.rotoScript?.status');
+    expect(code).toContain('onCopyRotoScript');
+    expect(code).toContain('onApplyRotoScript');
+  });
+
   it('keeps generated frames non-editable and real cached frames selectable', () => {
     const code = source();
     const map = getRotoMapBlock(code);

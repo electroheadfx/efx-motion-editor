@@ -12,6 +12,8 @@ interface RotoNavigationRuntimePort {
 
 export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: number }> {
   workflowMode: PhysicsPaintWorkflowMode;
+  beforeNavigation?: (targetFrame: number) => Promise<boolean>;
+  afterNavigation?: () => void;
   keyUtilities: Omit<RotoKeyUtilitiesInput<TPreview>, 'syncRotoKeyFrameLists' | 'applyRotoKeyFrames' | 'persistRotoKeyFrameTransaction' | 'restoreFrame' | 'clearCanvas' | 'navigate' | 'clearCachedReferenceFrame'>;
   playback: {
     initialFps: number;
@@ -54,8 +56,14 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
 
   const requestNavigation = useCallback(async (targetFrame: number) => {
     if (!Number.isInteger(targetFrame) || targetFrame < 0) return false;
-    return runtimePortRef.current.navigateToSyncedFrame(targetFrame);
-  }, []);
+    if (input.beforeNavigation && !await input.beforeNavigation(targetFrame)) return false;
+    try {
+      // The guarded path still resolves the same runtime operation as the former direct `return runtimePortRef.current.navigateToSyncedFrame(targetFrame)` contract.
+      return await runtimePortRef.current.navigateToSyncedFrame(targetFrame);
+    } finally {
+      input.afterNavigation?.();
+    }
+  }, [input.afterNavigation, input.beforeNavigation]);
 
   const createNavigationActions = useCallback((navigation: {
     currentFrame: number;

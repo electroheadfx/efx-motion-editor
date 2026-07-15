@@ -42,6 +42,7 @@ export interface RotoScriptClipboardControllerPorts {
   getSource: () => RotoScriptSourceSnapshot;
   getMotion: () => { deformation: number; position: number };
   prepareEmptyTarget: () => RotoSaveRealKeyTransaction | null;
+  onFirstAcceptedBrush?: () => void;
   setNavigationLocked?: (locked: boolean) => void;
 }
 
@@ -58,6 +59,7 @@ export interface RotoScriptClipboardController {
   completeNavigation: () => void;
   cancelApply: () => void;
   getAcceptedTarget: (mutationId: number) => RotoSaveRealKeyTransaction | null;
+  resetForLaunch: () => void;
   dispose: () => void;
 }
 
@@ -234,6 +236,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     };
     try {
       const mutationId = engine.enqueueRecordedStroke(transformed);
+      if (operation.nextBrushIndex === 0) ports.onFirstAcceptedBrush?.();
       operation.nextBrushIndex += 1;
       operation.expectedMutationIds.add(mutationId);
       if (operation.preparedTarget) {
@@ -298,6 +301,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   function updateSource(source: RotoScriptSourceSnapshot): void {
+    const current = sourceState.peek();
+    if (current.workflowMode === source.workflowMode
+      && current.selectionKind === source.selectionKind
+      && current.sourceFrame === source.sourceFrame
+      && current.displayFrame === source.displayFrame) return;
     sourceState.value = source;
   }
 
@@ -344,8 +352,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     return target;
   }
 
-  function dispose(): void {
-    disposed = true;
+  function resetForLaunch(): void {
     const operation = activeApply;
     if (operation) {
       operation.cancelled = true;
@@ -355,6 +362,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     clipboard.value = null;
     status.value = null;
     boundSourceFrame = null;
+    sourceRevision = 0;
     completionWaiters.clear();
     completedMutationIds.clear();
     acceptedTargets.clear();
@@ -362,6 +370,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     ports.getEngine()?.setInputLocked(false);
     ports.setNavigationLocked?.(false);
     busy.value = false;
+  }
+
+  function dispose(): void {
+    resetForLaunch();
+    disposed = true;
   }
 
   return {
@@ -377,6 +390,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     completeNavigation,
     cancelApply,
     getAcceptedTarget,
+    resetForLaunch,
     dispose,
   };
 }

@@ -38,11 +38,13 @@ function harness(initial: PaintStroke[] = [stroke(1)]) {
     }),
     setInputLocked: vi.fn((locked: boolean) => locks.push(locked)),
   };
+  const onFirstAcceptedBrush = vi.fn();
   const controller = createRotoScriptClipboardController({
     getEngine: () => engine,
     getSource: () => source,
     getMotion: () => ({ deformation: 0, position: 0 }),
     prepareEmptyTarget: () => target,
+    onFirstAcceptedBrush,
     setNavigationLocked: (locked) => locks.push(locked),
   });
   return {
@@ -51,6 +53,7 @@ function harness(initial: PaintStroke[] = [stroke(1)]) {
     submitted,
     locks,
     target,
+    onFirstAcceptedBrush,
     setStrokes: (next: PaintStroke[]) => { strokes = next; },
     setSource: (next: RotoScriptSourceSnapshot) => { source = next; controller.updateSource(next); },
   };
@@ -136,6 +139,7 @@ describe('Roto script clipboard controller', () => {
     }).mockImplementationOnce(() => { throw new Error('later failure'); });
     const applying = test.controller.applyScript();
     expect(test.controller.getAcceptedTarget(100)).toBe(test.target);
+    expect(test.onFirstAcceptedBrush).toHaveBeenCalledTimes(1);
     test.controller.observeCompletedMutation(completion(100));
     await expect(applying).resolves.toBe(false);
     expect(test.controller.status.value).toBe('Failed');
