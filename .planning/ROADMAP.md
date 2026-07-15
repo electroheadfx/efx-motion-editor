@@ -140,7 +140,6 @@ See: `milestones/v0.7.0-ROADMAP.md` for full details.
 - [x] **Phase 36.12: Physics Paint Roto Generated Interpolation** - Animators can generate render-only in-between Roto frames between real keys without making generated frames editable. (completed 2026-07-02)
 - [x] **Phase 36.13: Physics Paint Roto Dynamic Interpolation Spacing** - MVP slice for per-segment interpolation spacing overrides so intentionally distant real keys keep custom spans across toggle, save/load, preview, export, and real-key-depth onion skinning. (completed 2026-07-13)
 - [ ] **Phase 36.14: Physics Paint Roto Timeline UI From Pencil** - Roto timeline controls match the corrected Pencil design after behavior is stable. (planned)
-- [ ] **Phase 36.15: Physics Paint Roto State Machine Readiness** - Maintenance phase to evaluate XState/state-machine ownership after remaining user-facing 36.x Roto features are integrated. (deferred)
 
 ## Phase Details
 
@@ -453,57 +452,6 @@ Planning notes:
 Plans:
 
 - [ ] TBD (run /gsd-plan-phase 36.14 to break down)
-
-### Phase 36.15: Physics Paint Roto State Machine Readiness
-
-Deferred maintenance phase after the remaining user-facing 36.x Roto features are integrated. Phase 36.8 is the current state-boundary foundation; do not evaluate XState/state-machine ownership before cached playback, missing-frame rules, repaint cached real keys, generated interpolation, dynamic interpolation spacing, and the Pencil timeline UI pass have stabilized the user-facing workflow.
-
-Context:
-Phase 36.8 extracted a compact Preact-native Signals/controller state boundary for Roto key/session/cache coherence. That boundary is the foundation for the remaining user-facing Roto phases and should be extended incrementally before deciding whether XState/state-machine ownership is justified.
-
-Goal:
-Evaluate whether XState is the right state-machine layer for Physics Paint Roto and introduce it only if the stabilized 36.x transition model is clearer than a Signals/controller alone.
-
-Scope:
-
-- Build on Phase 36.8's Roto state boundary after Phases 36.9-36.14 are integrated.
-- Identify the final Roto workflow states and guarded transitions across cached playback, missing-frame preview/export, repaint cached real keys, generated interpolation, dynamic interpolation spacing, real-key utilities, dirty save-before-action, save failures, deletion, paste, blank keys, and navigation blocking/resume.
-- Decide whether XState is warranted based on concrete transition complexity and test readability.
-- If adopted, wrap or replace the controller internals without changing PhysicsPaintStudio UI props/placement/labels.
-- Keep Signals where they remain useful for Preact rendering and derived UI state.
-- Do not rewrite the whole PhysicsPaintStudio component.
-- Do not change user-visible UI.
-- Do not add new controls or feature scope.
-
-Architecture constraints:
-
-- Phase 36.8 is the state boundary foundation; later phases may extend it with state-machine-shaped actions/transactions without committing to XState yet.
-- XState, if introduced, must own transitions/rules; Signals may mirror selected derived state for Preact rendering.
-- Avoid prop drilling by exposing a compact session boundary to PhysicsPaintStudio and PhysicsPaintWorkflowStrip.
-- No broad useEffect orchestration for Roto key/cache coherence.
-
-TDD requirements:
-
-- Tests must cover the stabilized state transition graph and guarded actions before UI rewiring.
-- Existing Phase 36.7-36.14 Roto regression tests must continue to pass.
-- Add source-contract tests that PhysicsPaintStudio consumes the compact boundary instead of regaining scattered useState/useEffect orchestration.
-
-Success criteria:
-
-- Clear decision recorded: stay with Signals/controller or adopt XState.
-- If XState is adopted, transition rules are explicit, tested, and isolated from rendering.
-- PhysicsPaintStudio remains an adapter for UI wiring, persistence bridge, and canvas engine calls.
-- No user-visible UI changes.
-- No new feature scope. (DEFERRED)
-
-**Goal:** Evaluate XState/state-machine ownership for the stabilized Roto workflow only after remaining user-facing 36.x Roto features are integrated.
-**Requirements**: 36.15-DECISION, 36.15-TRANSITION-GRAPH, 36.15-BOUNDARY-CONTRACT
-**Depends on:** Phase 36.14
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (run /gsd-plan-phase 36.15 to break down)
 
 ### Phase 36.8: Physics Paint Roto State Refactor
 
@@ -841,4 +789,3 @@ Phases execute in numeric order: 34 → 35 → 36 → 37
 | 36.12. Physics Paint Roto Generated Interpolation | v0.8.0 | 11/11 | Complete | 2026-07-02 |
 | 36.13. Physics Paint Roto Dynamic Interpolation Spacing | v0.8.0 | 6/6 | Complete | 2026-07-13 |
 | 36.14. Physics Paint Roto Timeline UI From Pencil | v0.8.0 | 0/TBD | Not started | - |
-| 36.15. Physics Paint Roto State Machine Readiness | v0.8.0 | 0/TBD | Deferred maintenance | - |
