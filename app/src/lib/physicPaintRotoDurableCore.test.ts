@@ -572,12 +572,16 @@ function createTestRoot(): TestElement {
   return root;
 }
 
-function installDom(encodedContext: string, onParentMessage: (message: { type?: string; payload?: PhysicPaintApplyPayload }) => void): { root: TestElement; window: TestWindow } {
+function installDom(encodedContext: string, onParentMessage: (message: { type?: string; payload?: PhysicPaintApplyPayload }) => void): { root: TestElement; window: TestWindow; waitForParentMessage: () => Promise<{ type?: string; payload?: PhysicPaintApplyPayload }> } {
   const document = new TestDocument();
   const window = new TestWindow(document);
+  const parentMessageWaiters: Array<(message: { type?: string; payload?: PhysicPaintApplyPayload }) => void> = [];
   window.location.search = `?context=${encodedContext}`;
   window.opener = {
-    postMessage: vi.fn((message: { type?: string; payload?: PhysicPaintApplyPayload }) => onParentMessage(message)),
+    postMessage: vi.fn((message: { type?: string; payload?: PhysicPaintApplyPayload }) => {
+      onParentMessage(message);
+      parentMessageWaiters.shift()?.(message);
+    }),
   };
   vi.stubGlobal('document', document as unknown as Document);
   vi.stubGlobal('window', window as unknown as Window & typeof globalThis);
@@ -598,7 +602,11 @@ function installDom(encodedContext: string, onParentMessage: (message: { type?: 
   });
   const root = document.createElement('div');
   mountedRoots.add(root);
-  return { root, window };
+  return {
+    root,
+    window,
+    waitForParentMessage: () => new Promise((resolve) => parentMessageWaiters.push(resolve)),
+  };
 }
 
 function queryAll(root: TestNode, predicate: (element: TestElement) => boolean): TestElement[] {
@@ -1036,7 +1044,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     };
     paintHarness.storedLaunchContext = launchContext;
     const parentPayloads: PhysicPaintApplyPayload[] = [];
-    const { root } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+    const { root, waitForParentMessage } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
       if (message.type === PHYSIC_PAINT_APPLY_EVENT && message.payload) parentPayloads.push(message.payload);
     });
     const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
@@ -1044,8 +1052,9 @@ describe('Phase 36.3 durable Roto cache core', () => {
     await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
     await act(async () => { await flushPreact(); });
     const paintedPixels = pngDataUrl('automatic-close-reopen-pixels');
+    const parentPublication = waitForParentMessage();
     paintHarness.engine?.__setState(editedState, paintedPixels);
-    await act(async () => { await flushPreact(); await flushPreact(); });
+    await act(async () => { await parentPublication; });
 
     expect(parentPayloads).toHaveLength(1);
     expect(parentPayloads[0]).toMatchObject({
@@ -1082,7 +1091,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     };
     paintHarness.storedLaunchContext = launchContext;
     const parentPayloads: PhysicPaintApplyPayload[] = [];
-    const { root } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
+    const { root, waitForParentMessage } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
       if (message.type === PHYSIC_PAINT_APPLY_EVENT && message.payload) parentPayloads.push(message.payload);
     });
     const { PhysicsPaintStudio } = await import('../components/physic-paint/PhysicsPaintStudio');
@@ -1090,15 +1099,17 @@ describe('Phase 36.3 durable Roto cache core', () => {
     await mountStudioReady(root, () => h(PhysicsPaintStudio, {}));
     await act(async () => { await flushPreact(); });
     const paintedPixels = pngDataUrl('automatic-empty-remove-painted');
+    const paintedPublication = waitForParentMessage();
     paintHarness.engine?.__setState(editedState, paintedPixels);
-    await act(async () => { await flushPreact(); await flushPreact(); });
+    await act(async () => { await paintedPublication; });
     expect(parentPayloads).toEqual([
       expect.objectContaining({ kind: 'apply-canvas', sourceFrame: 5, renderedFrame: expect.objectContaining({ dataUrl: paintedPixels }) }),
     ]);
 
     parentPayloads.length = 0;
+    const removalPublication = waitForParentMessage();
     paintHarness.engine?.__setState({ ...editedState, strokes: [] }, pngDataUrl('automatic-empty-remove-empty'));
-    await act(async () => { await flushPreact(); await flushPreact(); });
+    await act(async () => { await removalPublication; });
 
     expect(parentPayloads).toEqual([
       expect.objectContaining({ kind: 'delete-roto-frame', sourceFrame: 5 }),
