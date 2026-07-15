@@ -153,6 +153,72 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
     expect(wet.alpha[0]).toBe(0);
   });
 
+  it('publishes finalized Undo only after restored surfaces are ready for automatic cache capture', () => {
+    const output = makeCanvas();
+    vi.stubGlobal('document', { createElement: vi.fn(() => output.canvas) });
+    const dryCanvas = { __name: 'after-latest' };
+    const displayCanvas = { __name: 'wet-after-latest' };
+    const mutationEvents: Array<{ kind: string; mutationId: number; copiedSurfaces: string[] }> = [];
+    const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine;
+    Object.assign(engine as object, {
+      width: 1,
+      height: 1,
+      activeMutationId: null,
+      lastCompletedMutationId: null,
+      performanceListener: null,
+      completedMutationListener: null,
+      pendingStrokeFinalizations: [],
+      activeStrokeFinalization: null,
+      strokeFinalizationScheduled: false,
+      undoStack: [{
+        mutationId: 2,
+        canvas: { id: 'before-latest' },
+        wet: {
+          r: new Float32Array([11]), g: new Float32Array([12]), b: new Float32Array([13]),
+          a: new Float32Array([14]), w: new Float32Array([15]), dp: new Float32Array([16]), so: new Float32Array([0.4]),
+        },
+        saved: {
+          r: new Float32Array([17]), g: new Float32Array([18]), b: new Float32Array([19]),
+          a: new Float32Array([20]), so: new Float32Array([0.5]),
+        },
+      }],
+      undoneActions: [],
+      allActions: [{ mutationId: 1 }, { mutationId: 2 }],
+      dualCanvas: {
+        dryCanvas,
+        displayCanvas,
+        dryCtx: {
+          putImageData: vi.fn((image: { id: string }) => { dryCanvas.__name = image.id; }),
+        },
+      },
+      previewBackgroundSeparated: true,
+      wet: {
+        r: new Float32Array([91]), g: new Float32Array([92]), b: new Float32Array([93]),
+        alpha: new Float32Array([94]), wetness: new Float32Array([95]), strokeOpacity: new Float32Array([0.9]),
+      },
+      savedWet: {
+        r: new Float32Array([97]), g: new Float32Array([98]), b: new Float32Array([99]),
+        alpha: new Float32Array([100]), strokeOpacity: new Float32Array([1]),
+      },
+      drying: { dryPos: new Float32Array([96]) },
+      renderVisibleWetLayer: vi.fn(() => { displayCanvas.__name = `wet-${engine.wet.alpha[0]}`; }),
+    });
+    engine.setCompletedMutationListener((mutation) => {
+      output.calls.length = 0;
+      engine.copyLiveAlphaCanvas();
+      mutationEvents.push({ ...mutation, copiedSurfaces: [...output.calls] });
+    });
+
+    engine.undo();
+
+    expect(mutationEvents).toEqual([{
+      kind: 'undo',
+      isEmpty: false,
+      mutationId: 2,
+      copiedSurfaces: ['before-latest', 'wet-14'],
+    }]);
+  });
+
   it('does not notify Undo when no visible mutation is available', () => {
     const listener = vi.fn();
     const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine;

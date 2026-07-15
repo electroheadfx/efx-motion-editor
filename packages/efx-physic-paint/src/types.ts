@@ -167,6 +167,7 @@ export interface DryingLUT {
 // === STROKE RECORDING ===
 
 export interface PaintStroke {
+  mutationId?: number       // stable in-memory identity for accepted brush history
   tool: ToolType
   points: PenPoint[]
   color: string | null      // '#rrggbb' or null

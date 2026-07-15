@@ -133,7 +133,7 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
   useEffect(() => {
     if (input.workflowMode !== 'roto') return;
     input.reference.loadReferenceFrame(input.currentFrame, input.engine as PreviewBackgroundEngine | null);
-  }, [input.currentFrame, input.engine, input.launchContext, input.reference.loadReferenceFrame, input.workflowMode]);
+  }, [input.currentFrame, input.engine, input.launchContext?.layerId, input.launchContext?.operationId, input.reference.loadReferenceFrame, input.workflowMode]);
 
   return { undo, beginFrameEdit, clearCurrentFrame, snapshotCurrentFrame };
 }

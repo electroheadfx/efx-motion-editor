@@ -151,6 +151,32 @@ describe('Roto live pixel cache transactions', () => {
     expect(commits).toEqual(['new']);
   });
 
+  it('advances cache revision when Undo republishes restored pixels with the same brush mutation id', async () => {
+    const finalizedEncoding = deferred<string>();
+    const commits: string[] = [];
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const finalizedWork = transactions.capture({
+      sourceFrame: 7,
+      mutationId: 2,
+      produce: () => finalizedEncoding.promise,
+      commit: (value) => commits.push(value),
+    });
+    const undoWork = transactions.capture({
+      sourceFrame: 7,
+      mutationId: 2,
+      produce: async () => 'restored-before-brush-2',
+      commit: (value) => commits.push(value),
+    });
+
+    await expect(undoWork).resolves.toBe(true);
+    finalizedEncoding.resolve('stale-finalized-brush-2');
+    await expect(finalizedWork).resolves.toBe(false);
+
+    expect(transactions.revision(7)).toBe(2);
+    expect(commits).toEqual(['restored-before-brush-2']);
+  });
+
   it('lets different source frames commit independently', async () => {
     const frameA = deferred<string>();
     const commits: string[] = [];

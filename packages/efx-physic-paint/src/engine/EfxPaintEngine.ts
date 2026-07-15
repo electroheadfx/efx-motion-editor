@@ -46,6 +46,7 @@ import { drawBg, drawBrushCursor, drawQueuedStrokePolyline, drawStrokePreview, s
 import type { StrokePreview, DualCanvas } from '../render/canvas'
 
 type UndoSnapshot = {
+  mutationId: number
   canvas: ImageData
   wet: { r: Float32Array; g: Float32Array; b: Float32Array; a: Float32Array; w: Float32Array; dp: Float32Array; so: Float32Array }
   saved: { r: Float32Array; g: Float32Array; b: Float32Array; a: Float32Array; so: Float32Array }
@@ -166,6 +167,7 @@ export class EfxPaintEngine {
   // --- Stroke Recording ---
   private allActions: PaintStroke[] = []
   private undoStack: UndoSnapshot[] = []
+  private undoneActions: PaintStroke[] = []
   private pendingStrokeFinalizations: DeferredStrokeFinalization[] = []
   private activeStrokeFinalization: ActiveStrokeFinalization | null = null
   private strokeFinalizationScheduled: boolean = false
@@ -711,11 +713,41 @@ export class EfxPaintEngine {
     }
   }
 
-  /** Undo last stroke */
+  /** Undo last accepted stroke without forcing deferred work to finalize first. */
   undo(): void {
-    this.flushPendingStrokeFinalizations()
-    if (this.undoStack.length === 0) return
-    const snap = this.undoStack.pop()!
+    const actionIndex = this.allActions.findLastIndex((action) => action.mutationId !== undefined)
+    if (actionIndex < 0) return
+    const action = this.allActions[actionIndex]
+    const mutationId = action.mutationId!
+    const removalCount = this.allActions.length - actionIndex
+
+    const pendingIndex = this.pendingStrokeFinalizations.findIndex((pending) => pending.mutationId === mutationId)
+    const active = this.activeStrokeFinalization
+    const isActive = active?.pending.mutationId === mutationId
+    if (pendingIndex >= 0 && !isActive) {
+      this.pendingStrokeFinalizations.splice(pendingIndex, 1)
+      this.undoneActions.push(...this.allActions.splice(actionIndex, removalCount))
+      this.strokeFinalizationScheduled = this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization !== null
+      return
+    }
+
+    const snapshotIndex = this.undoStack.findLastIndex((snapshot) => snapshot.mutationId === mutationId)
+    if (snapshotIndex < 0) return
+    const snap = this.undoStack[snapshotIndex]
+    if (isActive) {
+      this.strokeFinalizationGeneration++
+      this.activeStrokeFinalization = null
+      this.activeMutationId = null
+      if (pendingIndex >= 0) this.pendingStrokeFinalizations.splice(pendingIndex, 1)
+      this.strokeFinalizationScheduled = this.pendingStrokeFinalizations.length > 0
+    }
+    this.undoStack.splice(snapshotIndex, 1)
+    this.restoreUndoSnapshot(snap)
+    this.undoneActions.push(...this.allActions.splice(actionIndex, removalCount))
+    this.notifyCompletedMutation('undo', mutationId)
+  }
+
+  private restoreUndoSnapshot(snap: UndoSnapshot): void {
     this.dualCanvas.dryCtx.putImageData(snap.canvas, 0, 0)
     this.wet.r.set(snap.wet.r)
     this.wet.g.set(snap.wet.g)
@@ -723,18 +755,12 @@ export class EfxPaintEngine {
     this.wet.alpha.set(snap.wet.a)
     this.wet.wetness.set(snap.wet.w)
     this.drying.dryPos.set(snap.wet.dp)
-    if (snap.wet.so) this.wet.strokeOpacity.set(snap.wet.so)
-    // Restore savedWet so physics doesn't bring back undone strokes
-    if (snap.saved) {
-      this.savedWet.r.set(snap.saved.r)
-      this.savedWet.g.set(snap.saved.g)
-      this.savedWet.b.set(snap.saved.b)
-      this.savedWet.alpha.set(snap.saved.a)
-      this.savedWet.strokeOpacity.set(snap.saved.so)
-    }
-    // Remove last action
-    if (this.allActions.length > 0) this.allActions.pop()
-    this.notifyCompletedMutation('undo')
+    this.wet.strokeOpacity.set(snap.wet.so)
+    this.savedWet.r.set(snap.saved.r)
+    this.savedWet.g.set(snap.saved.g)
+    this.savedWet.b.set(snap.saved.b)
+    this.savedWet.alpha.set(snap.saved.a)
+    this.savedWet.strokeOpacity.set(snap.saved.so)
   }
 
   /** Clear the canvas and all strokes */
@@ -743,9 +769,11 @@ export class EfxPaintEngine {
     this.strokeFinalizationScheduled = false
     this.strokeFinalizationGeneration++
     this.activeStrokeFinalization = null
+    this.activeMutationId = null
     this.stopNaturalDrying()
     this.allActions = []
     this.undoStack = []
+    this.undoneActions = []
     clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
     // Clear fluid solver state
     this.fluid.u.fill(0); this.fluid.v.fill(0)
@@ -985,7 +1013,7 @@ export class EfxPaintEngine {
   //  PRIVATE — Deferred Stroke Finalization
   // ================================================================
 
-  private pushUndoSnapshot(mutationId?: number): void {
+  private pushUndoSnapshot(mutationId: number): void {
     const readbackStartedAt = this.performanceListener ? performance.now() : 0
     const snap = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
     this.recordPerformance('undo-dry-readback', 'sync-cpu', readbackStartedAt, { mutationId })
@@ -1012,8 +1040,8 @@ export class EfxPaintEngine {
     }
     this.recordPerformance('undo-saved-wet-buffer-copy', 'sync-cpu', savedCopyStartedAt, { mutationId })
 
-    this.undoStack.push({ canvas: snap, wet: wetSnap, saved: savedSnap })
-    if (this.undoStack.length > 25) this.undoStack.shift()
+    this.undoStack.push({ mutationId, canvas: snap, wet: wetSnap, saved: savedSnap })
+    if (this.undoStack.length > 10) this.undoStack.shift()
   }
 
   private getQueuedStrokePreviews(): DeferredStrokeFinalization[] {
@@ -1564,6 +1592,7 @@ export class EfxPaintEngine {
 
     const playFrame = this.getStrokeMetadata?.()?.playFrame
     this.allActions.push({
+      mutationId,
       tool: this.state.tool,
       points: Object.freeze(points.map(p => Object.freeze({ ...p }))) as unknown as PenPoint[],
       color,
@@ -1756,8 +1785,9 @@ export class EfxPaintEngine {
       ...(s.physicsMode === 'local' ? { physicsMode: 'local' as const } : { physicsMode: null }),
     }))
 
-    // Clear undo stack (loaded state is new baseline)
+    // Loaded state is a pixel/script baseline, never active-frame Undo/Redo history.
     this.undoStack = []
+    this.undoneActions = []
 
     // Restore synchronously so loaded state is immediately available for apply/export.
     // Animated replay made apply race against setTimeout-delayed stroke restoration.

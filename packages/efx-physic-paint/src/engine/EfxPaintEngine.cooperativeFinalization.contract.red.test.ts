@@ -22,6 +22,7 @@ function createHarness() {
     performanceListener: null,
     completedMutationListener: null,
     undoStack: [],
+    undoneActions: [],
     allActions: [],
     state: { drawing: false, physicsMode: 'local' },
     pushUndoSnapshot: vi.fn(function (this: EngineInternals) { this.undoStack.push({}) }),
@@ -92,25 +93,250 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.undoStack).toHaveLength(3)
   })
 
-  it('flushes N pending brushes before Undo and retains one snapshot per remaining brush', () => {
-    const { engine, enqueue } = createHarness()
+  it('bounds finalized Undo snapshots to the latest 10 brushes', () => {
+    const { engine } = createHarness()
+    engine.width = 1
+    engine.height = 1
+    engine.dualCanvas = {
+      dryCtx: { getImageData: vi.fn((_x: number, _y: number, _width: number, _height: number) => ({ id: engine.undoStack.length + 1 })) },
+    }
+    engine.wet = {
+      r: new Float32Array(1), g: new Float32Array(1), b: new Float32Array(1),
+      alpha: new Float32Array(1), wetness: new Float32Array(1), strokeOpacity: new Float32Array(1),
+    }
+    engine.savedWet = {
+      r: new Float32Array(1), g: new Float32Array(1), b: new Float32Array(1),
+      alpha: new Float32Array(1), strokeOpacity: new Float32Array(1),
+    }
+    engine.drying = { dryPos: new Float32Array(1) }
+
+    for (let mutationId = 1; mutationId <= 12; mutationId++) {
+      EfxPaintEngine.prototype['pushUndoSnapshot'].call(engine, mutationId)
+    }
+
+    expect(engine.undoStack).toHaveLength(10)
+    expect(engine.undoStack.map((snapshot: { mutationId: number }) => snapshot.mutationId)).toEqual([3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+  })
+
+  it('cancels the latest queued brush on Undo without rasterizing it', () => {
+    const { engine, finalized, enqueue } = createHarness()
     enqueue('brush-1')
-    enqueue('brush-2')
-    enqueue('brush-3')
+    engine.allActions = [{ mutationId: 1 }]
+    engine.strokeFinalizationScheduled = true
     engine.dualCanvas = { dryCtx: { putImageData: vi.fn() } }
     engine.wet = { r: new Float32Array(), g: new Float32Array(), b: new Float32Array(), alpha: new Float32Array(), wetness: new Float32Array(), strokeOpacity: new Float32Array() }
     engine.savedWet = { r: new Float32Array(), g: new Float32Array(), b: new Float32Array(), alpha: new Float32Array(), strokeOpacity: new Float32Array() }
     engine.drying = { dryPos: new Float32Array() }
-    engine.allActions = [{}, {}, {}]
-    engine.pushUndoSnapshot = function (this: EngineInternals) {
+    engine.pushUndoSnapshot = vi.fn(function (this: EngineInternals) {
       this.undoStack.push({ canvas: {}, wet: { r: [], g: [], b: [], a: [], w: [], dp: [], so: [] }, saved: { r: [], g: [], b: [], a: [], so: [] } })
-    }
+    })
 
     engine.undo()
 
+    expect(finalized).toEqual([])
+    expect(engine.pushUndoSnapshot).not.toHaveBeenCalled()
     expect(engine.pendingStrokeFinalizations).toHaveLength(0)
-    expect(engine.undoStack).toHaveLength(2)
-    expect(engine.allActions).toHaveLength(2)
+    expect(engine.activeStrokeFinalization).toBeNull()
+    expect(engine.strokeFinalizationScheduled).toBe(false)
+    expect(engine.undoStack).toHaveLength(0)
+    expect(engine.allActions).toHaveLength(0)
+    expect(engine.undoneActions).toEqual([{ mutationId: 1 }])
+  })
+
+  it('cancels active finalization and exactly restores its pre-brush snapshot', () => {
+    const { engine, finalized, enqueue } = createHarness()
+    enqueue('brush-1')
+    const pending = engine.pendingStrokeFinalizations[0]
+    const stale = {
+      pending,
+      generation: 0,
+      finalizationStartedAt: 0,
+      phase: 'raster',
+      raster: null,
+      fluid: null,
+    }
+    const canvas = { id: 'before-brush' }
+    engine.allActions = [{ mutationId: 1 }]
+    engine.activeStrokeFinalization = stale
+    engine.activeMutationId = 1
+    engine.strokeFinalizationScheduled = true
+    engine.undoStack = [{
+      mutationId: 1,
+      canvas,
+      wet: {
+        r: new Float32Array([1]), g: new Float32Array([2]), b: new Float32Array([3]),
+        a: new Float32Array([4]), w: new Float32Array([5]), dp: new Float32Array([6]), so: new Float32Array([0.7]),
+      },
+      saved: {
+        r: new Float32Array([7]), g: new Float32Array([8]), b: new Float32Array([9]),
+        a: new Float32Array([10]), so: new Float32Array([0.8]),
+      },
+    }]
+    engine.dualCanvas = { dryCtx: { putImageData: vi.fn() } }
+    engine.wet = {
+      r: new Float32Array([91]), g: new Float32Array([92]), b: new Float32Array([93]),
+      alpha: new Float32Array([94]), wetness: new Float32Array([95]), strokeOpacity: new Float32Array([0.9]),
+    }
+    engine.savedWet = {
+      r: new Float32Array([97]), g: new Float32Array([98]), b: new Float32Array([99]),
+      alpha: new Float32Array([100]), strokeOpacity: new Float32Array([1]),
+    }
+    engine.drying = { dryPos: new Float32Array([96]) }
+
+    engine.undo()
+    engine.completeActiveStrokeFinalization(stale)
+
+    expect(finalized).toEqual(['1'])
+    expect(engine.strokeFinalizationGeneration).toBe(1)
+    expect(engine.pendingStrokeFinalizations).toHaveLength(0)
+    expect(engine.activeStrokeFinalization).toBeNull()
+    expect(engine.activeMutationId).toBeNull()
+    expect(engine.strokeFinalizationScheduled).toBe(false)
+    expect(engine.dualCanvas.dryCtx.putImageData).toHaveBeenCalledWith(canvas, 0, 0)
+    expect(Array.from(engine.wet.r)).toEqual([1])
+    expect(Array.from(engine.wet.g)).toEqual([2])
+    expect(Array.from(engine.wet.b)).toEqual([3])
+    expect(Array.from(engine.wet.alpha)).toEqual([4])
+    expect(Array.from(engine.wet.wetness)).toEqual([5])
+    expect(Array.from(engine.drying.dryPos)).toEqual([6])
+    expect(engine.wet.strokeOpacity[0]).toBeCloseTo(0.7)
+    expect(Array.from(engine.savedWet.r)).toEqual([7])
+    expect(Array.from(engine.savedWet.g)).toEqual([8])
+    expect(Array.from(engine.savedWet.b)).toEqual([9])
+    expect(Array.from(engine.savedWet.alpha)).toEqual([10])
+    expect(engine.savedWet.strokeOpacity[0]).toBeCloseTo(0.8)
+    expect(engine.allActions).toHaveLength(0)
+    expect(engine.undoneActions).toEqual([{ mutationId: 1 }])
+  })
+
+  it('undoes the latest accepted brush when a physics continuation trails it', () => {
+    const { engine, finalized } = createHarness()
+    const loadedBaseline = { tool: 'paint', mutationId: undefined }
+    const latestBrush = { tool: 'paint', mutationId: 2 }
+    const physicsContinuation = { tool: 'paint', mutationId: undefined, points: [], diffusionFrames: 6 }
+    const latestSnapshot = {
+      mutationId: 2,
+      canvas: { id: 'before-latest' },
+      wet: {
+        r: new Float32Array([11]), g: new Float32Array([12]), b: new Float32Array([13]),
+        a: new Float32Array([14]), w: new Float32Array([15]), dp: new Float32Array([16]), so: new Float32Array([0.4]),
+      },
+      saved: {
+        r: new Float32Array([17]), g: new Float32Array([18]), b: new Float32Array([19]),
+        a: new Float32Array([20]), so: new Float32Array([0.5]),
+      },
+    }
+    engine.allActions = [loadedBaseline, latestBrush, physicsContinuation]
+    engine.undoStack = [latestSnapshot]
+    engine.dualCanvas = { dryCtx: { putImageData: vi.fn() } }
+    engine.wet = {
+      r: new Float32Array([91]), g: new Float32Array([92]), b: new Float32Array([93]),
+      alpha: new Float32Array([94]), wetness: new Float32Array([95]), strokeOpacity: new Float32Array([0.9]),
+    }
+    engine.savedWet = {
+      r: new Float32Array([97]), g: new Float32Array([98]), b: new Float32Array([99]),
+      alpha: new Float32Array([100]), strokeOpacity: new Float32Array([1]),
+    }
+    engine.drying = { dryPos: new Float32Array([96]) }
+
+    engine.undo()
+
+    expect(finalized).toEqual(['2'])
+    expect(engine.dualCanvas.dryCtx.putImageData).toHaveBeenCalledWith(latestSnapshot.canvas, 0, 0)
+    expect(engine.allActions).toEqual([loadedBaseline])
+    expect(engine.undoneActions).toEqual([latestBrush, physicsContinuation])
+  })
+
+  it('restores the latest finalized brush by identity and preserves earlier history', () => {
+    const { engine, finalized } = createHarness()
+    const firstAction = { mutationId: 1 }
+    const latestAction = { mutationId: 2 }
+    const firstSnapshot = {
+      mutationId: 1,
+      canvas: { id: 'before-first' },
+      wet: {
+        r: new Float32Array([0]), g: new Float32Array([0]), b: new Float32Array([0]),
+        a: new Float32Array([0]), w: new Float32Array([0]), dp: new Float32Array([0]), so: new Float32Array([0]),
+      },
+      saved: {
+        r: new Float32Array([0]), g: new Float32Array([0]), b: new Float32Array([0]),
+        a: new Float32Array([0]), so: new Float32Array([0]),
+      },
+    }
+    const latestSnapshot = {
+      mutationId: 2,
+      canvas: { id: 'before-latest' },
+      wet: {
+        r: new Float32Array([11]), g: new Float32Array([12]), b: new Float32Array([13]),
+        a: new Float32Array([14]), w: new Float32Array([15]), dp: new Float32Array([16]), so: new Float32Array([0.4]),
+      },
+      saved: {
+        r: new Float32Array([17]), g: new Float32Array([18]), b: new Float32Array([19]),
+        a: new Float32Array([20]), so: new Float32Array([0.5]),
+      },
+    }
+    engine.allActions = [firstAction, latestAction]
+    engine.undoStack = [firstSnapshot, latestSnapshot]
+    engine.dualCanvas = { dryCtx: { putImageData: vi.fn() } }
+    engine.wet = {
+      r: new Float32Array([91]), g: new Float32Array([92]), b: new Float32Array([93]),
+      alpha: new Float32Array([94]), wetness: new Float32Array([95]), strokeOpacity: new Float32Array([0.9]),
+    }
+    engine.savedWet = {
+      r: new Float32Array([97]), g: new Float32Array([98]), b: new Float32Array([99]),
+      alpha: new Float32Array([100]), strokeOpacity: new Float32Array([1]),
+    }
+    engine.drying = { dryPos: new Float32Array([96]) }
+
+    engine.undo()
+
+    expect(finalized).toEqual(['2'])
+    expect(engine.dualCanvas.dryCtx.putImageData).toHaveBeenCalledWith(latestSnapshot.canvas, 0, 0)
+    expect(Array.from(engine.wet.r)).toEqual([11])
+    expect(Array.from(engine.savedWet.alpha)).toEqual([20])
+    expect(engine.undoStack).toEqual([firstSnapshot])
+    expect(engine.allActions).toEqual([firstAction])
+    expect(engine.undoneActions).toEqual([latestAction])
+  })
+
+  it('resets active-frame script and removed history at the navigation Clear boundary', () => {
+    const { engine } = createHarness()
+    engine.allActions = [{ mutationId: 1 }]
+    engine.undoStack = [{ mutationId: 1 }]
+    engine.undoneActions = [{ mutationId: 0 }]
+    engine.stopNaturalDrying = vi.fn()
+    engine.wet = {
+      r: new Float32Array(1), g: new Float32Array(1), b: new Float32Array(1),
+      alpha: new Float32Array(1), wetness: new Float32Array(1), strokeOpacity: new Float32Array(1),
+    }
+    engine.savedWet = {
+      r: new Float32Array(1), g: new Float32Array(1), b: new Float32Array(1),
+      alpha: new Float32Array(1), strokeOpacity: new Float32Array(1),
+    }
+    engine.drying = { dryPos: new Float32Array(1) }
+    engine.blowDX = new Float32Array(1)
+    engine.blowDY = new Float32Array(1)
+    engine.lastStrokeMask = new Uint8Array(1)
+    engine.fluid = {
+      u: new Float32Array(1), v: new Float32Array(1), u0: new Float32Array(1),
+      v0: new Float32Array(1), p: new Float32Array(1), div: new Float32Array(1),
+    }
+    engine.bgCtx = { fillStyle: '', clearRect: vi.fn(), fillRect: vi.fn(), getImageData: vi.fn(() => ({})) }
+    engine.state.bgMode = 'transparent'
+    engine.paperTextures = new Map()
+    engine.userPhoto = null
+    engine.redrawPreviewBase = vi.fn()
+    engine.previewBaseEnabled = true
+    engine.dualCanvas = {
+      dryCtx: { clearRect: vi.fn(), putImageData: vi.fn() },
+      displayCtx: { clearRect: vi.fn() },
+    }
+
+    engine.clear()
+
+    expect(engine.getStrokes()).toEqual([])
+    expect(engine.undoStack).toEqual([])
+    expect(engine.undoneActions).toEqual([])
   })
 
   it('invalidates queued and active work on Clear so stale turns cannot publish', () => {
