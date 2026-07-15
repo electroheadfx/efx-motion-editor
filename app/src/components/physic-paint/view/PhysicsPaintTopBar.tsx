@@ -8,6 +8,7 @@ export interface PhysicsPaintTopBarProps {
   paperGrain: string;
   grainStrength: number;
   ready: boolean;
+  disabled?: boolean;
   onBrushSizeChange: (value: number) => void;
   onOpacityChange: (value: number) => void;
   onBackgroundChange: (mode: BgMode) => void;
@@ -56,6 +57,7 @@ function TopBarSlider(props: {
   max: number;
   onChange: (value: number) => void;
   numericInput?: boolean;
+  disabled?: boolean;
 }) {
   const updateValue = (value: unknown) => props.onChange(clampTopBarValue(value, props.min, props.max));
   return (
@@ -68,6 +70,7 @@ function TopBarSlider(props: {
           min={props.min}
           max={props.max}
           value={props.value}
+          disabled={props.disabled}
           onInput={(event) => updateValue((event.target as HTMLInputElement).value)}
         />
         {props.numericInput ? (
@@ -77,6 +80,7 @@ function TopBarSlider(props: {
             min={props.min}
             max={props.max}
             value={props.value}
+            disabled={props.disabled}
             aria-label={`${props.label} exact value`}
             onInput={(event) => updateValue((event.target as HTMLInputElement).value)}
             onBlur={(event) => updateValue((event.target as HTMLInputElement).value)}
@@ -98,6 +102,7 @@ export function PhysicsPaintTopBar({
   paperGrain,
   grainStrength,
   ready,
+  disabled = false,
   onBrushSizeChange,
   onOpacityChange,
   onBackgroundChange,
@@ -114,8 +119,8 @@ export function PhysicsPaintTopBar({
       </div>
 
       <div class="physics-paint-topbar-primary">
-        <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={brushSize} onChange={onBrushSizeChange} numericInput />
-        <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} />
+        <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={brushSize} onChange={onBrushSizeChange} numericInput disabled={disabled} />
+        <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} disabled={disabled} />
 
         <div class="physics-paint-topbar-control">
           <span>Background</span>
@@ -124,6 +129,7 @@ export function PhysicsPaintTopBar({
               <button
                 key={option.value}
                 type="button"
+                disabled={disabled}
                 class={`${segmentedButtonClass(background === option.value)} physics-paint-swatch-button`}
                 title={option.label}
                 aria-label={option.label}
@@ -142,6 +148,7 @@ export function PhysicsPaintTopBar({
               <button
                 key={option.value}
                 type="button"
+                disabled={disabled}
                 class={`${segmentedButtonClass(paperGrain === option.value)} physics-paint-swatch-button`}
                 title={option.label}
                 aria-label={option.label}
@@ -160,6 +167,7 @@ export function PhysicsPaintTopBar({
               <button
                 key={option.label}
                 type="button"
+                disabled={disabled}
                 class={segmentedButtonClass(grainStrength === option.value)}
                 onClick={() => onGrainStrengthChange(option.value)}
               >

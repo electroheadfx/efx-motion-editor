@@ -34,6 +34,29 @@ export interface EfxPaintCanvasProps extends EngineConfig {
  * />
  * ```
  */
+export function initializeEfxPaintCanvasEngine(input: {
+  engine: EfxPaintEngine
+  onEngineReady?: (engine: EfxPaintEngine) => void
+  beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>
+  destroy: () => void
+}): () => void {
+  let cancelled = false
+  void input.engine.init().then(() => {
+    if (!cancelled) input.onEngineReady?.(input.engine)
+  }, () => {
+    // Failed or obsolete initialization must never publish this engine as ready.
+  })
+  return () => {
+    cancelled = true
+    const preparation = input.beforeEngineDestroy?.(input.engine)
+    if (preparation && typeof preparation.then === 'function') {
+      void preparation.then(input.destroy, input.destroy)
+    } else {
+      input.destroy()
+    }
+  }
+}
+
 export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const engineRef = useRef<EfxPaintEngine | null>(null)
@@ -59,26 +82,20 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
     engine.setPerformanceListener(performanceSampleRef.current ? (sample) => performanceSampleRef.current?.(sample) : null)
     props.onNativePenInputReady?.((input) => engine.updateNativePenInput(input))
 
-    // Await async init (paper texture loading) before signaling ready
-    engine.init().then(() => {
-      props.onEngineReady?.(engine)
-    })
-
-    return () => {
-      engine.setHistoryAvailabilityListener(null)
-      engine.setPerformanceListener(null)
-      const destroy = () => {
+    return initializeEfxPaintCanvasEngine({
+      engine,
+      onEngineReady: props.onEngineReady,
+      beforeEngineDestroy: (obsoleteEngine) => {
+        obsoleteEngine.setHistoryAvailabilityListener(null)
+        obsoleteEngine.setPerformanceListener(null)
+        return beforeEngineDestroyRef.current?.(obsoleteEngine)
+      },
+      destroy: () => {
         engine.setCompletedMutationListener(null)
         engine.destroy()
         if (engineRef.current === engine) engineRef.current = null
-      }
-      const preparation = beforeEngineDestroyRef.current?.(engine)
-      if (preparation && typeof preparation.then === 'function') {
-        void preparation.then(destroy, destroy)
-      } else {
-        destroy()
-      }
-    }
+      },
+    })
   }, [])
 
   return (

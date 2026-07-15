@@ -210,6 +210,7 @@ export function PhysicsPaintStudio() {
       : currentFrame,
     displayFrame: currentFrame,
   });
+  const mutationLocked = rotoScript.mutationLocked.value;
   const rotoInputDisabled = currentFrameIsGeneratedRoto || rotoScript.availability.value.busy;
   const {
     selectTool,
@@ -226,7 +227,7 @@ export function PhysicsPaintStudio() {
     setEraseStrength,
     startPhysics,
     stopPhysics,
-  } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: () => rotoScript.mutationLocked.peek() });
+  } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: rotoScript.mutationLocked.peek });
   const rotoNavigation = useRotoNavigationCoordinator<RenderedFramePayload>({
     workflowMode,
     beforeNavigation: rotoScript.prepareNavigation,
@@ -425,7 +426,7 @@ export function PhysicsPaintStudio() {
     general: { matchApplyResult, pendingKeyActionMessageRef: pendingRotoKeyActionMessageRef, setApplyStatus, setApplyMessage, setLastError },
   });
   const handlePhysicsPaintKeyDown = usePhysicsPaintStudioKeyboard({
-    state: { currentFrame, framesToApply, isPlaying, savedPlayCacheDirty, workflowMode, mutationLocked: rotoScript.mutationLocked.value },
+    state: { currentFrame, framesToApply, isPlaying, savedPlayCacheDirty, workflowMode, mutationLocked },
     savedRotoFrames: timelineSavedRotoFrames,
     actions: {
       undo,
@@ -479,12 +480,12 @@ export function PhysicsPaintStudio() {
         onSetRightPanelCollapsed: setRightPanelCollapsed,
       },
     topBar: {
-        brushSize: settings.size, opacity: settings.opacity, background: settings.background, paperGrain: settings.paperGrain, grainStrength: settings.grainStrength, ready: readyToApply,
+        brushSize: settings.size, opacity: settings.opacity, background: settings.background, paperGrain: settings.paperGrain, grainStrength: settings.grainStrength, ready: readyToApply, disabled: mutationLocked,
         onBrushSizeChange: setBrushSize, onOpacityChange: setBrushOpacity, onBackgroundChange: setBackground, onPaperGrainChange: setPaperGrain, onGrainStrengthChange: setGrainStrength,
       },
     toolRail: {
         activeTool: settings.tool, physicsMode: settings.physicsMode, activePhysicsAction: settings.activePhysicsAction,
-        undoCount: historyAvailability.value.undo, redoCount: historyAvailability.value.redo, disabled: !engine || rotoScript.mutationLocked.value,
+        undoCount: historyAvailability.value.undo, redoCount: historyAvailability.value.redo, disabled: !engine || mutationLocked,
         onSelectTool: selectTool, onUndo: undo, onRedo: redo, onClearFrame: clearActiveSource, onPhysicsStart: startPhysics, onPhysicsStop: stopPhysics, onDryPaint: dryPaint,
       },
     canvas: {
@@ -579,7 +580,7 @@ export function PhysicsPaintStudio() {
       },
     rightPanel: {
         activeTool: settings.tool, color: settings.color, opacity: settings.opacity, edgeDetail: settings.edgeDetail, pickup: settings.pickup, spread: settings.spread, smoothing: settings.smoothing, eraseStrength: settings.eraseStrength, physicsMode: settings.physicsMode,
-        onion, onionDisabled: isPlaying, playWiggle, devExportEnabled: isPhysicsPaintDevExportEnabled(import.meta.env), devExportBusy: applyStatus === 'applying', applyStatus, applyMessage, error: lastError,
+        onion, onionDisabled: isPlaying, engineControlsDisabled: mutationLocked, playWiggle, devExportEnabled: isPhysicsPaintDevExportEnabled(import.meta.env), devExportBusy: applyStatus === 'applying', applyStatus, applyMessage, error: lastError,
         onExportDebugProof: exportDebugProof, onColorChange: setBrushColor, onEdgeDetailChange: setEdgeDetail, onPickupChange: setPickup, onSpreadChange: setSpread, onSmoothingChange: setSmoothing, onEraseStrengthChange: setEraseStrength,
         onOnionChange: setOnion, onPlayWiggleChange: updatePlayWiggle, onSaveState: saveEditableState, onLoadState: loadEditableState,
       },

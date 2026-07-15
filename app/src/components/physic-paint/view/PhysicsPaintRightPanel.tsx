@@ -21,6 +21,7 @@ export interface PhysicsPaintRightPanelProps {
   physicsMode: 'local' | null;
   onion: PhysicsPaintOnionState;
   onionDisabled?: boolean;
+  engineControlsDisabled?: boolean;
   playWiggle: PhysicsPaintPlayWiggleSettings;
   onColorChange: (color: string, opacity: number) => void;
   onEdgeDetailChange: (value: number) => void;
@@ -58,6 +59,7 @@ function PanelSlider(props: {
   max: number;
   onChange: (value: number) => void;
   suffix?: string;
+  disabled?: boolean;
 }) {
   return (
     <label class="physics-paint-option-row" for={props.id}>
@@ -68,6 +70,7 @@ function PanelSlider(props: {
         min={props.min}
         max={props.max}
         value={props.value}
+        disabled={props.disabled}
         onInput={(event) => props.onChange(Number((event.target as HTMLInputElement).value))}
       />
       <output>{props.value}{props.suffix ?? ''}</output>
@@ -81,11 +84,12 @@ function clampWiggleValue(value: unknown): number {
   return Math.max(0, Math.min(100, Math.trunc(numeric)));
 }
 
-function SmoothingButton(props: { label: string; value: number; active: boolean; onSelect: (value: number) => void }) {
+function SmoothingButton(props: { label: string; value: number; active: boolean; disabled?: boolean; onSelect: (value: number) => void }) {
   return (
     <button
       type="button"
       class={`physics-paint-segmented-button${props.active ? ' active' : ''}`}
+      disabled={props.disabled}
       onClick={() => props.onSelect(props.value)}
     >
       {props.label}
@@ -105,6 +109,7 @@ export function PhysicsPaintRightPanel({
   physicsMode,
   onion,
   onionDisabled = false,
+  engineControlsDisabled = false,
   playWiggle,
   onColorChange,
   onEdgeDetailChange,
@@ -267,6 +272,8 @@ export function PhysicsPaintRightPanel({
                 width={232}
                 height={160}
                 class="physics-paint-color-box"
+                aria-disabled={engineControlsDisabled}
+                style={{ pointerEvents: engineControlsDisabled ? 'none' : undefined }}
                 onPointerDown={(event) => {
                   draggingColorBox.current = true;
                   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -285,6 +292,8 @@ export function PhysicsPaintRightPanel({
               ref={hueRef}
               class="physics-paint-hue-strip"
               aria-label="Brush hue"
+              aria-disabled={engineControlsDisabled}
+              style={{ pointerEvents: engineControlsDisabled ? 'none' : undefined }}
               onPointerDown={(event) => {
                 draggingHue.current = true;
                 (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -302,6 +311,7 @@ export function PhysicsPaintRightPanel({
                 class="physics-paint-color-chip"
                 value={currentHex}
                 aria-label="Brush color"
+                disabled={engineControlsDisabled}
                 onInput={(event) => commitColor((event.target as HTMLInputElement).value)}
               />
               <input
@@ -310,13 +320,14 @@ export function PhysicsPaintRightPanel({
                 value={hexInput}
                 aria-label="Brush color hex value"
                 placeholder="#103c65"
+                disabled={engineControlsDisabled}
                 onInput={(event) => setHexInput((event.target as HTMLInputElement).value)}
                 onBlur={() => commitColor(hexInput)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') commitColor(hexInput);
                 }}
               />
-              <button type="button" class="physics-paint-text-button physics-paint-add-swatch" onClick={addFavorite}>+</button>
+              <button type="button" class="physics-paint-text-button physics-paint-add-swatch" disabled={engineControlsDisabled} onClick={addFavorite}>+</button>
             </div>
 
             <div class="physics-paint-swatch-grid" aria-label="Color palette">
@@ -328,6 +339,7 @@ export function PhysicsPaintRightPanel({
                   style={{ backgroundColor: swatch }}
                   title={swatch}
                   aria-label={`Use ${swatch}`}
+                  disabled={engineControlsDisabled}
                   onClick={() => commitColor(swatch)}
                 />
               ))}
@@ -383,18 +395,18 @@ export function PhysicsPaintRightPanel({
 
         {optionsTab === 'tool' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Tool">
-            <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} />
-            {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} /> : null}
-            {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} /> : null}
-            {activeTool === 'erase' ? <PanelSlider id="physics-erase-strength" label="Erase strength" min={0} max={100} value={eraseStrength} onChange={onEraseStrengthChange} /> : null}
+            <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
+            {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Color blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
+            {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
+            {activeTool === 'erase' ? <PanelSlider id="physics-erase-strength" label="Erase strength" min={0} max={100} value={eraseStrength} onChange={onEraseStrengthChange} disabled={engineControlsDisabled} /> : null}
 
             <div class="physics-paint-option-group">
               <span class="physics-paint-right-label">Brush smoothing</span>
               <div class="physics-paint-segmented-row" role="group" aria-label="Brush smoothing">
-                <SmoothingButton label="Off" value={0} active={smoothing === 0} onSelect={onSmoothingChange} />
-                <SmoothingButton label="Soft" value={1} active={smoothing === 1} onSelect={onSmoothingChange} />
-                <SmoothingButton label="Med" value={2} active={smoothing === 2} onSelect={onSmoothingChange} />
-                <SmoothingButton label="High" value={3} active={smoothing === 3} onSelect={onSmoothingChange} />
+                <SmoothingButton label="Off" value={0} disabled={engineControlsDisabled} active={smoothing === 0} onSelect={onSmoothingChange} />
+                <SmoothingButton label="Soft" value={1} disabled={engineControlsDisabled} active={smoothing === 1} onSelect={onSmoothingChange} />
+                <SmoothingButton label="Med" value={2} disabled={engineControlsDisabled} active={smoothing === 2} onSelect={onSmoothingChange} />
+                <SmoothingButton label="High" value={3} disabled={engineControlsDisabled} active={smoothing === 3} onSelect={onSmoothingChange} />
               </div>
             </div>
             <div class="physics-paint-option-actions">
