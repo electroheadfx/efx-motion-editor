@@ -133,6 +133,8 @@ interface ActiveApplyOperation {
   cancellationReason: 'user' | 'invalidated' | null;
   failure: RotoScriptOperationError | null;
   publishUi: boolean;
+  settled: Promise<void>;
+  settle: () => void;
   resolve: (success: boolean) => void;
 }
 
@@ -416,6 +418,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       }
     }
     operation.resolve(applied);
+    operation.settle();
     endOperation(operation.engine);
     finalizeDisposalIfReady();
   }
@@ -514,6 +517,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     applyProgressState.value = { completed: 0, total: script.brushes.length };
     status.value = `Applying 0/${script.brushes.length}`;
     return new Promise((resolve) => {
+      let settleOperation = () => {};
+      const settled = new Promise<void>((settle) => { settleOperation = settle; });
       const operation: ActiveApplyOperation = {
         id: engineGeneration,
         engine,
@@ -531,6 +536,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         cancellationReason: null,
         failure: null,
         publishUi: true,
+        settled,
+        settle: settleOperation,
         resolve,
       };
       activeApply = operation;
@@ -647,21 +654,14 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   async function prepareLaunchReplacement(): Promise<void> {
-    launchGeneration += 1;
     const operation = activeApply;
     if (operation) {
-      operation.cancelled = true;
-      operation.cancellationReason = 'invalidated';
-      operation.publishUi = false;
-      if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
+      await operation.settled;
+      return;
     }
-    const engine = operation?.engine ?? engineState.peek();
-    if (operation && engine) {
-      const pendingIds = Array.from(operation.expectedMutationIds).filter((mutationId) => !operation.consumedMutationIds.has(mutationId));
-      await Promise.all(pendingIds.map((mutationId) => waitForMutation(engine, mutationId)));
-    } else if (engine && engine.getStrokes().length > 0) {
-      await drainAcceptedMutations(engine);
-    }
+    launchGeneration += 1;
+    const engine = engineState.peek();
+    if (engine && engine.getStrokes().length > 0) await drainAcceptedMutations(engine);
   }
 
   function completeLaunchReplacement(): void {

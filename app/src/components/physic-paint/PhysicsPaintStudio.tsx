@@ -300,7 +300,7 @@ export function PhysicsPaintStudio() {
   resetRotoKeySessionRef.current = rotoKeyUtilities.resetSession;
   resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
   const rotoFrameEditing = useRotoFrameEditingController({
-    workflowMode, currentFrame, currentFrameSelectionKind,
+    workflowMode, currentFrame, currentFrameSourceFrame: currentFrameOwnerSourceFrame, currentFrameSelectionKind,
     canvasSize: { width: canvasWidth, height: canvasHeight }, engine, launchContext,
     editBuffer: {
       dirtyFramesRef: dirtyRotoFramesRef, markDirty: rotoEditBuffer.markDirty,

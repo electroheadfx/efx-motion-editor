@@ -53,6 +53,7 @@ type UndoRedoEngine = EfxPaintEngine & {
 export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditableState> {
   workflowMode: PhysicsPaintWorkflowMode;
   currentFrame: number;
+  currentFrameSourceFrame?: number | null;
   currentFrameSelectionKind: RotoTimelineSelectionKind;
   canvasSize: { width: number; height: number };
   engine: EfxPaintEngine | null;
@@ -60,7 +61,7 @@ export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditab
   editBuffer: RotoEditBufferPort<TEditable>;
   session: RotoSessionEditingPort;
   reference: RotoReferenceEditingPort;
-  clearCachedFrame: (frame: number, size: { width: number; height: number }) => void;
+  clearCachedFrame: (sourceFrame: number, size: { width: number; height: number }, displayFrame: number) => void;
   playback: { stop: () => void };
   syncPendingFrames: () => void;
   status: RotoEditingStatusPort;
@@ -142,10 +143,11 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     input.engine.clear();
     (input.engine as PreviewBackgroundEngine).clearPreviewBaseImage();
     (input.engine as PreviewBackgroundEngine).resetBackground();
+    const sourceFrame = input.currentFrameSourceFrame ?? input.currentFrame;
     input.reference.resetReference();
-    input.editBuffer.clearFrame(input.currentFrame);
-    input.session.markLiveOverlayEmpty(input.currentFrame);
-    input.clearCachedFrame(input.currentFrame, input.canvasSize);
+    input.editBuffer.clearFrame(sourceFrame);
+    input.session.markLiveOverlayEmpty(sourceFrame);
+    input.clearCachedFrame(sourceFrame, input.canvasSize, input.currentFrame);
     input.syncPendingFrames();
     input.status.setApplyStatus('success');
     input.status.setApplyMessage(`Cleared roto frame ${input.currentFrame}.`);

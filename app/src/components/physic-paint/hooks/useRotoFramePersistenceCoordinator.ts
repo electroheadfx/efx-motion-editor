@@ -232,30 +232,31 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     });
   }, [latestFramesRef, queueParentPayload, setLaunchContext, store]);
 
-  const clearCurrentFrame = useCallback((frame: number, size: { width: number; height: number }) => {
-    livePixelTransactionsRef.current.invalidate(frame);
-    const blankFrame = { ...buildBlankRotoFrame(size.width, size.height, frame), source: 'real-key' as const, sourceFrame: frame, displayFrame: frame };
-    confirmedFramesRef.current.delete(frame);
+  const clearCurrentFrame = useCallback((sourceFrame: number, size: { width: number; height: number }, displayFrame = sourceFrame) => {
+    livePixelTransactionsRef.current.invalidate(sourceFrame);
+    const blankFrame = { ...buildBlankRotoFrame(size.width, size.height, sourceFrame), source: 'real-key' as const, sourceFrame, displayFrame };
+    confirmedFramesRef.current.delete(sourceFrame);
     setLaunchContext((current) => {
       if (!current) return current;
-      store.upsertRealKey(current.layerId, frame, blankFrame, true);
+      store.upsertRealKey(current.layerId, sourceFrame, blankFrame, true);
       const refreshedFrames = store.getCacheFrames(current.layerId);
       const settings = store.getInterpolationSettings(current.layerId);
       confirmedFramesRef.current = new Map(refreshedFrames.filter((candidate) => candidate.source === 'real-key').map((candidate) => [candidate.sourceFrame ?? candidate.appFrame, candidate]));
-      editBuffer.setEditableFrameList((frames) => frames.filter((candidate) => candidate !== frame));
-      queueParentPayload(frame, {
-        operationId: `${current.operationId}:live-pixels-clear:${frame}:${++parentOperationRevisionRef.current}`,
+      editBuffer.setEditableFrameList((frames) => frames.filter((candidate) => candidate !== sourceFrame));
+      queueParentPayload(sourceFrame, {
+        operationId: `${current.operationId}:live-pixels-clear:${sourceFrame}:${++parentOperationRevisionRef.current}`,
         kind: 'apply-canvas',
         layerId: current.layerId,
-        startFrame: frame,
-        sourceFrame: frame,
+        startFrame: sourceFrame,
+        sourceFrame,
+        displayFrame,
         renderedFrame: blankFrame,
         backgroundOnly: true,
         rotoBackground: inputRef.current.getBackgroundMetadata(),
         rotoInterpolationSettings: settings,
       });
       latestFramesRef.current = refreshedFrames;
-      return { ...current, startFrame: frame, cachedRotoFrames: refreshedFrames, rotoInterpolationSettings: settings };
+      return { ...current, startFrame: displayFrame, cachedRotoFrames: refreshedFrames, rotoInterpolationSettings: settings };
     });
   }, [editBuffer, latestFramesRef, queueParentPayload, setLaunchContext, store]);
 
