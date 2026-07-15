@@ -25,6 +25,8 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
 }
 
 export function useRotoNavigationCoordinator<TPreview extends { appFrame: number }>(input: UseRotoNavigationCoordinatorInput<TPreview>) {
+  const inputRef = useRef(input);
+  inputRef.current = input;
   const persistencePortRef = useRef(createRotoKeyPersistencePort());
   const displayPortRef = useRef(createRotoFrameDisplayPort());
   const runtimePortRef = useRef<RotoNavigationRuntimePort>({
@@ -56,14 +58,14 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
 
   const requestNavigation = useCallback(async (targetFrame: number) => {
     if (!Number.isInteger(targetFrame) || targetFrame < 0) return false;
-    if (input.beforeNavigation && !await input.beforeNavigation(targetFrame)) return false;
+    const { beforeNavigation, afterNavigation } = inputRef.current;
+    if (beforeNavigation && !await beforeNavigation(targetFrame)) return false;
     try {
-      // The guarded path still resolves the same runtime operation as the former direct `return runtimePortRef.current.navigateToSyncedFrame(targetFrame)` contract.
       return await runtimePortRef.current.navigateToSyncedFrame(targetFrame);
     } finally {
-      input.afterNavigation?.();
+      afterNavigation?.();
     }
-  }, [input.afterNavigation, input.beforeNavigation]);
+  }, []);
 
   const createNavigationActions = useCallback((navigation: {
     currentFrame: number;

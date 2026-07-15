@@ -121,9 +121,13 @@ interface TestPaintEngine {
   save: () => SerializedProject;
   load: ReturnType<typeof vi.fn<(state: SerializedProject) => void>>;
   clear: ReturnType<typeof vi.fn<() => void>>;
+  getStrokes: ReturnType<typeof vi.fn<() => []>>;
+  enqueueRecordedStroke: ReturnType<typeof vi.fn<() => number>>;
+  setInputLocked: ReturnType<typeof vi.fn<(locked: boolean) => void>>;
   exportCompositeCanvas: () => { width: number; height: number; toDataURL: () => string; toBlob: (callback: BlobCallback) => void };
   copyLiveAlphaCanvas: () => { width: number; height: number; toDataURL: () => string; toBlob: (callback: BlobCallback) => void };
-  setCompletedMutationListener: (listener: ((mutation: { kind: string; isEmpty: boolean }) => void) | null) => void;
+  setCompletedMutationListener: (listener: ((mutation: { kind: string; isEmpty: boolean; mutationId: number }) => void) | null) => void;
+  setHistoryAvailabilityListener: ReturnType<typeof vi.fn<(listener: (availability: { undo: number; redo: number }) => void) => void>>;
   setBackgroundImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
   resetBackground: ReturnType<typeof vi.fn<() => void>>;
   setPreviewBaseImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
@@ -183,17 +187,21 @@ function pngDataUrl(label: string): string {
 function makeEngine(initialState: SerializedProject, initialDataUrl: string): TestPaintEngine {
   let state = structuredClone(initialState);
   let dataUrl = initialDataUrl;
-  let completedMutationListener: ((mutation: { kind: string; isEmpty: boolean }) => void) | null = null;
+  let completedMutationListener: ((mutation: { kind: string; isEmpty: boolean; mutationId: number }) => void) | null = null;
   const engine = {
     save: vi.fn(() => structuredClone(state)),
     load: vi.fn((next: SerializedProject) => { state = structuredClone(next); }),
     clear: vi.fn(() => {
       state = { ...state, strokes: [] };
-      completedMutationListener?.({ kind: 'clear', isEmpty: true });
+      completedMutationListener?.({ kind: 'clear', isEmpty: true, mutationId: 0 });
     }),
+    getStrokes: vi.fn(() => []),
+    enqueueRecordedStroke: vi.fn(() => 1),
+    setInputLocked: vi.fn(),
     exportCompositeCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl, toBlob: (callback: BlobCallback) => callback(new Blob(['roto-alpha'], { type: 'image/png' })) })),
     copyLiveAlphaCanvas: vi.fn(() => ({ width: state.width, height: state.height, toDataURL: () => dataUrl, toBlob: (callback: BlobCallback) => callback(new Blob(['roto-alpha'], { type: 'image/png' })) })),
-    setCompletedMutationListener: vi.fn((listener: ((mutation: { kind: string; isEmpty: boolean }) => void) | null) => { completedMutationListener = listener; }),
+    setCompletedMutationListener: vi.fn((listener: ((mutation: { kind: string; isEmpty: boolean; mutationId: number }) => void) | null) => { completedMutationListener = listener; }),
+    setHistoryAvailabilityListener: vi.fn((listener: (availability: { undo: number; redo: number }) => void) => listener({ undo: 0, redo: 0 })),
     setBackgroundImageUrl: vi.fn(),
     resetBackground: vi.fn(),
     setPreviewBaseImageUrl: vi.fn(),
@@ -219,7 +227,7 @@ function makeEngine(initialState: SerializedProject, initialDataUrl: string): Te
     __setState: (next: SerializedProject, nextDataUrl: string) => {
       state = structuredClone(next);
       dataUrl = nextDataUrl;
-      completedMutationListener?.({ kind: 'paint', isEmpty: next.strokes.length === 0 });
+      completedMutationListener?.({ kind: 'paint', isEmpty: next.strokes.length === 0, mutationId: 1 });
     },
   } satisfies TestPaintEngine;
   return engine;
@@ -677,18 +685,15 @@ function waitForHarnessSignal(listeners: Array<() => void>): Promise<void> {
 }
 
 async function mountStudioReady(root: TestElement, createStudio: () => VNode<any>): Promise<void> {
-  const engineReady = waitForHarnessSignal(paintHarness.engineReadyListeners);
-  const browserBridgeReady = waitForHarnessSignal(paintHarness.browserBridgeReadyListeners);
   await act(async () => {
     render(createStudio(), root as unknown as Element);
-  });
-  await act(async () => {
-    await Promise.all([engineReady, browserBridgeReady]);
+    await flushPreact();
   });
   await act(async () => {
     render(createStudio(), root as unknown as Element);
+    await flushPreact();
   });
-  expect(isStudioEngineReady(root)).toBe(true);
+  expect(isStudioEngineReady(root), visibleText(root)).toBe(true);
 }
 
 async function mountDebug07KeyMutationStudio(startFrame: number) {
@@ -963,6 +968,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
     paintHarness.storedLaunchContext = null;
     paintHarness.storedLaunchContextPromise = null;
     paintHarness.launchListeners = [];
+    paintHarness.engineReadyListeners = [];
+    paintHarness.browserBridgeReadyListeners = [];
     mockLayers([physicLayer()]);
   });
 
@@ -984,6 +991,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
     paintHarness.storedLaunchContext = null;
     paintHarness.storedLaunchContextPromise = null;
     paintHarness.launchListeners = [];
+    paintHarness.engineReadyListeners = [];
+    paintHarness.browserBridgeReadyListeners = [];
   });
 
   it('automatic live pixel mutation commits through the mounted Studio engine seam without Save current', async () => {
