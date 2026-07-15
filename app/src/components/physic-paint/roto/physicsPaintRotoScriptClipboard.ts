@@ -77,6 +77,7 @@ export interface RotoScriptClipboardControllerPorts {
   getPublicationIdentity?: () => RotoScriptPublicationIdentity | null;
   claimEmptyTarget?: () => RotoSelectedFrameClaim | null;
   prepareEmptyTarget?: () => RotoSelectedFrameClaim | RotoSaveRealKeyTransaction | null;
+  flushSourcePublication?: (sourceFrame: number) => Promise<void>;
   onFirstAcceptedBrush?: () => void;
   setNavigationLocked?: (locked: boolean) => void;
 }
@@ -362,6 +363,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     beginOperation(engine);
     try {
       await drainAcceptedMutations(engine);
+      await ports.flushSourcePublication?.(source.sourceFrame);
       if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) {
         if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
           status.value = 'Failed';
@@ -537,7 +539,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   function refreshBoundSource(): void {
-    if (disposed || disposalRequested || activeApply) return;
+    if (disposed || disposalRequested || activeApply || navigationLockHeld) return;
     const source = sourceState.value;
     const engine = engineState.peek();
     if (!engine || source.workflowMode !== 'roto' || source.selectionKind !== 'real-key' || !isBoundSource(source)) return;
@@ -608,6 +610,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     beginOperation(engine);
     try {
       await drainAcceptedMutations(engine);
+      await ports.flushSourcePublication?.(source.sourceFrame);
       if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) {
         completeNavigation();
         return false;

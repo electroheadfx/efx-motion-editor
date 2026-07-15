@@ -259,8 +259,12 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     });
   }, [editBuffer, latestFramesRef, queueParentPayload, setLaunchContext, store]);
 
-  const flushLivePixels = useCallback(async () => {
-    await livePixelTransactionsRef.current.flush();
+  const flushLivePixels = useCallback(async (sourceFrame?: number) => {
+    await livePixelTransactionsRef.current.flush(sourceFrame);
+    if (sourceFrame !== undefined) {
+      await parentDeliveryRef.current.get(sourceFrame);
+      return;
+    }
     await Promise.all(parentDeliveryRef.current.values());
   }, []);
 

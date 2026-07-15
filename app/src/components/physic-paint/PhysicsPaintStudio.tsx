@@ -212,6 +212,7 @@ export function PhysicsPaintStudio() {
       selectedFrame: currentFrame,
       currentSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
     }) : null,
+    flushSourcePublication: (sourceFrame) => rotoPersistence.flushLivePixels(sourceFrame),
     onFirstAcceptedBrush: () => beginRotoFrameEditRef.current(),
     setNavigationLocked: setRotoScriptNavigationLocked,
   });
