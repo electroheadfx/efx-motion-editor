@@ -13,10 +13,55 @@ import { usePhysicsPaintLaunchBridge } from '../bridge/usePhysicsPaintParentBrid
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
 
+export interface PhysicsPaintLaunchReplacementCoordinator {
+  request: (context: PhysicPaintLaunchContext) => void;
+  dispose: () => void;
+}
+
+export function createPhysicsPaintLaunchReplacementCoordinator(input: {
+  prepareReplacement: () => Promise<void>;
+  applyLatest: (context: PhysicPaintLaunchContext) => void;
+}): PhysicsPaintLaunchReplacementCoordinator {
+  let latest: PhysicPaintLaunchContext | null = null;
+  let running = false;
+  let disposed = false;
+
+  const run = async () => {
+    if (running || disposed || !latest) return;
+    running = true;
+    try {
+      await input.prepareReplacement();
+      if (disposed) return;
+      const context = latest;
+      latest = null;
+      if (context) input.applyLatest(context);
+    } catch (error) {
+      console.error('[PhysicsPaintStudio] launch replacement handoff failed', error);
+    } finally {
+      running = false;
+      if (!disposed && latest) void run();
+    }
+  };
+
+  return {
+    request: (context) => {
+      if (disposed) return;
+      latest = context;
+      void run();
+    },
+    dispose: () => {
+      disposed = true;
+      latest = null;
+    },
+  };
+}
+
 interface LaunchLifecyclePorts {
   pendingFrameSyncRef: MutableRef<number | null>;
   pendingApplyRef: MutableRef<PendingPhysicPaintApply | null>;
   activeOperationIdRef: MutableRef<string | null>;
+  prepareScriptLaunchReplacement: () => Promise<void>;
+  completeScriptLaunchReplacement: () => void;
 }
 
 interface LaunchStatePorts {
@@ -53,6 +98,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
   }, [input.localPreviewFrameRef]);
 
   const resetRotoSessionForLaunch = useCallback((context: PhysicPaintLaunchContext) => {
+    input.lifecycle.completeScriptLaunchReplacement();
     if (getLaunchWorkflowMode(context) !== 'roto') return;
     input.resetPersistenceForLaunch(context.cachedRotoFrames);
     input.lifecycle.pendingApplyRef.current = null;
@@ -60,7 +106,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.resetCachedReference();
   }, [input]);
 
-  const applyIncomingLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
+  const applySettledLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
     const pendingFrame = input.lifecycle.pendingFrameSyncRef.current;
     input.lifecycle.pendingFrameSyncRef.current = null;
     const incomingContext = pendingFrame !== null && getLaunchWorkflowMode(context) === 'roto'
@@ -81,6 +127,22 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.lifecycle.activeOperationIdRef.current = null;
     input.lifecycle.pendingApplyRef.current = null;
   }, [input, resetRotoSessionForLaunch]);
+
+  const prepareReplacementRef = useRef(input.lifecycle.prepareScriptLaunchReplacement);
+  const applySettledLaunchContextRef = useRef(applySettledLaunchContext);
+  prepareReplacementRef.current = input.lifecycle.prepareScriptLaunchReplacement;
+  applySettledLaunchContextRef.current = applySettledLaunchContext;
+  const coordinatorRef = useRef<PhysicsPaintLaunchReplacementCoordinator | null>(null);
+  if (!coordinatorRef.current) {
+    coordinatorRef.current = createPhysicsPaintLaunchReplacementCoordinator({
+      prepareReplacement: () => prepareReplacementRef.current(),
+      applyLatest: (context) => applySettledLaunchContextRef.current(context),
+    });
+  }
+  useEffect(() => () => coordinatorRef.current?.dispose(), []);
+  const applyIncomingLaunchContext = useCallback((context: PhysicPaintLaunchContext) => {
+    coordinatorRef.current?.request(context);
+  }, []);
 
   usePhysicsPaintLaunchBridge(applyIncomingLaunchContext);
   return { getStrokeMetadata };

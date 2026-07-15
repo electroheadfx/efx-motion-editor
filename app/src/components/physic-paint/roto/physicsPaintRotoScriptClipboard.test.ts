@@ -151,7 +151,7 @@ describe('Roto script clipboard controller', () => {
 
     test.controller.updateEngine(test.engine);
     test.setStrokes([]);
-    test.controller.resetForLaunch();
+    test.controller.completeLaunchReplacement();
     expect(test.controller.availability.value.canCopy).toBe(false);
     test.controller.updateEngine(null);
     expect(test.controller.availability.value.canCopy).toBe(false);
@@ -258,9 +258,11 @@ describe('Roto script clipboard controller', () => {
   it('keeps Copy and navigation drains locked until the accepting engine completes across reset or disposal', async () => {
     const copyTest = harness([stroke(1)]);
     const copying = copyTest.controller.copyScript();
-    copyTest.controller.resetForLaunch();
+    const replacing = copyTest.controller.prepareLaunchReplacement();
     expect(copyTest.controller.availability.value.busy).toBe(true);
     copyTest.controller.observeCompletedMutation(copyTest.engine, completion(1));
+    await expect(replacing).resolves.toBeUndefined();
+    copyTest.controller.completeLaunchReplacement();
     await expect(copying).resolves.toBe(false);
     expect(copyTest.controller.availability.value.busy).toBe(false);
 
@@ -390,22 +392,26 @@ describe('Roto script clipboard controller', () => {
     expect(replacement.enqueueRecordedStroke).not.toHaveBeenCalled();
   });
 
-  it('drains only accepted Apply work through launch reset on a reused engine and suppresses stale UI publication', async () => {
+  it('drains accepted Apply work before same-size reused-engine launch replacement and preserves captured publication', async () => {
     const test = harness([stroke(1), stroke(2)]);
     await copyCompletedSource(test, [1, 2]);
     test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const applying = test.controller.applyScript();
+    const acceptedBeforeDrain = test.controller.getAcceptedTarget(test.engine, 100);
 
     expect(test.controller.mutationLocked.value).toBe(true);
-    test.controller.resetForLaunch();
+    const replacing = test.controller.prepareLaunchReplacement();
     expect(test.controller.mutationLocked.value).toBe(true);
     test.controller.observeCompletedMutation(test.engine, completion(100));
+    await expect(replacing).resolves.toBeUndefined();
+    test.controller.completeLaunchReplacement();
     await Promise.resolve();
 
     await expect(applying).resolves.toBe(false);
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
     expect(test.controller.status.value).toBeNull();
-    expect(test.controller.getAcceptedTarget(test.engine, 100)?.sourceFrame).toBe(8);
+    expect(acceptedBeforeDrain?.sourceFrame).toBe(8);
+    expect(acceptedBeforeDrain?.displayFrame).toBe(8);
     expect(test.controller.getAcceptedTarget(test.engine, 101)).toBeNull();
     expect(test.controller.mutationLocked.value).toBe(false);
   });

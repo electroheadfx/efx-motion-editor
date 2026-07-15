@@ -386,17 +386,20 @@ export function PhysicsPaintStudio() {
   const requestRotoFrameNavigation = rotoNavigation.requestNavigation;
   const { getStrokeMetadata } = usePhysicsPaintLaunchIntegration({
     workflowMode, localPreviewFrameRef, engineRef,
-    lifecycle: { pendingFrameSyncRef, pendingApplyRef, activeOperationIdRef },
+    lifecycle: {
+      pendingFrameSyncRef,
+      pendingApplyRef,
+      activeOperationIdRef,
+      prepareScriptLaunchReplacement: rotoScript.prepareLaunchReplacement,
+      completeScriptLaunchReplacement: rotoScript.completeLaunchReplacement,
+    },
     state: {
       setLaunchContext, setFramesToApply, setWorkflowMode, setLocalPlayPreviewFrame, setSavedPlayCacheDirty,
       setPlayWiggle, setSettings, setApplyStatus, setApplyMessage, setLastError,
     },
     resetPersistenceForLaunch: rotoPersistence.resetForLaunch,
     resetNavigationForLaunchRef: resetRotoNavigationForLaunchRef,
-    resetCachedReference: () => {
-      rotoScript.resetForLaunch();
-      resetCachedRotoReference();
-    },
+    resetCachedReference: resetCachedRotoReference,
     loadCachedReferenceFrame: (frame, readyEngine) => { loadCachedRotoReferenceFrame(frame, readyEngine ?? null); },
   });
   const { saveEditableState, loadEditableState, exportDebugProof, convertPlayToRoto, convertRotoToPlay } = usePhysicsPaintWorkflowIntegration({

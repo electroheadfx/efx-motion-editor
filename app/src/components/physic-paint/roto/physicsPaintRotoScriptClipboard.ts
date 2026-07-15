@@ -77,7 +77,8 @@ export interface RotoScriptClipboardController {
   completeNavigation: () => void;
   cancelApply: () => void;
   getAcceptedTarget: (engine: RotoScriptEnginePort, mutationId: number) => RotoScriptAcceptedTarget | null;
-  resetForLaunch: () => void;
+  prepareLaunchReplacement: () => Promise<void>;
+  completeLaunchReplacement: () => void;
   prepareEngineDisposal: (engine: RotoScriptEnginePort) => Promise<void>;
   dispose: () => Promise<void>;
 }
@@ -502,7 +503,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     return target;
   }
 
-  function resetForLaunch(): void {
+  async function prepareLaunchReplacement(): Promise<void> {
     launchGeneration += 1;
     const operation = activeApply;
     if (operation) {
@@ -510,6 +511,16 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       operation.publishUi = false;
       if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
     }
+    const engine = operation?.engine ?? engineState.peek();
+    if (operation && engine) {
+      const pendingIds = Array.from(operation.expectedMutationIds).filter((mutationId) => !operation.consumedMutationIds.has(mutationId));
+      await Promise.all(pendingIds.map((mutationId) => waitForMutation(engine, mutationId)));
+    } else if (engine && engine.getStrokes().length > 0) {
+      await drainAcceptedMutations(engine);
+    }
+  }
+
+  function completeLaunchReplacement(): void {
     clipboard.value = null;
     status.value = null;
     boundSourceFrame = null;
@@ -555,7 +566,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     completeNavigation,
     cancelApply,
     getAcceptedTarget,
-    resetForLaunch,
+    prepareLaunchReplacement,
+    completeLaunchReplacement,
     prepareEngineDisposal,
     dispose,
   };
