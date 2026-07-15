@@ -787,6 +787,11 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     expect(text).toContain("currentFrameSelectionKind !== 'generated-interpolation'");
     expect(text).toContain('mutationEngine.copyLiveAlphaCanvas()');
     expect(text).toContain('rotoPersistence.captureLivePixels({');
+    expect(text).toContain('claimEmptyTarget: () => launchContext ? claimRotoSelectedFrame({');
+    expect(text).toContain('selectedFrame: currentFrame');
+    expect(text).toContain('acceptedTarget?.sourceFrame');
+    expect(text).toContain('acceptedTarget?.displayFrame');
+    expect(text).not.toContain('prepareEmptyTarget: () => launchContext ? rotoTimelineActions.saveRealKeyAtDisplayFrame(currentFrame)');
     expect(text).toContain('publicationIdentity?.cachedBase');
     expect(text).toContain('background: publicationIdentity?.background');
     expect(text).not.toContain('onSaveRotoFrame');

@@ -133,6 +133,33 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.copiedStrokeCount.value).toBe(0);
   });
 
+  it('preserves mounted clipboard provenance across launch echoes and foreign same-frame layers', async () => {
+    const test = harness([stroke(1, 10)]);
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 });
+    await copyCompletedSource(test);
+    const copied = test.controller.clipboard.value;
+    expect(copied?.provenance).toMatchObject({ layerId: 'layer-a', sourceFrame: 4 });
+
+    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', layerId: 'layer-a', sourceFrame: 8, displayFrame: 8 });
+    test.controller.completeLaunchReplacement();
+    expect(test.controller.clipboard.value).toBe(copied);
+    expect(test.controller.availability.value.canApply).toBe(true);
+
+    test.setStrokes([]);
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-b', sourceFrame: 4, displayFrame: 4 });
+    test.controller.notifySourceRevision();
+    expect(test.controller.clipboard.value).toBe(copied);
+
+    test.setStrokes([stroke(2, 77)]);
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 });
+    test.controller.notifySourceRevision();
+    expect(test.controller.clipboard.value?.brushes[0].primary.points[0].x).toBe(77);
+
+    test.setStrokes([]);
+    test.controller.notifySourceRevision();
+    expect(test.controller.clipboard.value).toBeNull();
+  });
+
   it('reacts to first paint, Undo, Redo, Clear, engine replacement, and launch reset without a bound clipboard', () => {
     const test = harness([]);
     expect(test.controller.availability.value.canCopy).toBe(false);
@@ -172,6 +199,37 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.availability.value.copyDisabledReason).toMatch(/Generated frames/);
     expect(test.controller.availability.value.applyDisabledReason).toMatch(/Generated frames/);
     expect(await test.controller.copyScript()).toBe(false);
+  });
+
+  it('claims an empty selected frame only on first acceptance and keeps its exact identity', async () => {
+    const test = harness([stroke(1)]);
+    await copyCompletedSource(test);
+    const claim = {
+      sourceFrame: 14,
+      displayFrame: 14,
+      interpolationSettings: { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const, deform: 0, position: 0 },
+    };
+    test.setPrepareEmptyTarget(() => claim as never);
+    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', layerId: 'layer-a', sourceFrame: 14, displayFrame: 14 });
+
+    const applying = test.controller.applyScript();
+
+    expect(test.onFirstAcceptedBrush).toHaveBeenCalledOnce();
+    expect(test.controller.getAcceptedTarget(test.engine, 100)).toEqual(claim);
+    expect(test.controller.getAcceptedTarget(test.engine, 101)).toBeNull();
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await expect(applying).resolves.toBe(true);
+  });
+
+  it('leaves an empty selected frame unclaimed when the first replay brush is rejected', async () => {
+    const test = harness([stroke(1)]);
+    await copyCompletedSource(test);
+    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', sourceFrame: 14, displayFrame: 14 });
+    test.engine.enqueueRecordedStroke.mockImplementationOnce(() => { throw new Error('rejected'); });
+
+    await expect(test.controller.applyScript()).resolves.toBe(false);
+    expect(test.onFirstAcceptedBrush).not.toHaveBeenCalled();
+    expect(test.controller.getAcceptedTarget(test.engine, 100)).toBeNull();
   });
 
   it('applies sequentially, ignores unrelated and duplicate completions, and remains reusable', async () => {

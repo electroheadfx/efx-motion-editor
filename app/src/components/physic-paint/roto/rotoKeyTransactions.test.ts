@@ -1,8 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { saveRotoRealKeyTransaction, updateRotoInterpolationSettingsTransaction } from './rotoKeyTransactions';
+import { claimRotoSelectedFrame, saveRotoRealKeyTransaction, updateRotoInterpolationSettingsTransaction } from './rotoKeyTransactions';
 import { createRotoSourceDisplayModel, getRotoDisplayProjection } from './rotoSourceDisplayModel';
 
 describe('rotoKeyTransactions', () => {
+  it('claims the selected absolute frame without changing key or spacing metadata', () => {
+    const settings = {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate' as const,
+      deform: 15,
+      position: 25,
+      segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
+    };
+
+    const claim = claimRotoSelectedFrame({ selectedFrame: 26, currentSettings: settings });
+
+    expect(claim).toEqual({ sourceFrame: 26, displayFrame: 26, interpolationSettings: settings });
+    expect(claim.interpolationSettings).not.toBe(settings);
+    expect(claim.interpolationSettings.segmentSpacingOverrides).not.toBe(settings.segmentSpacingOverrides);
+    expect(claim).not.toHaveProperty('model');
+    expect(claim).not.toHaveProperty('frameMappings');
+    expect(claim).not.toHaveProperty('sourceFrameOverride');
+    expect(claim).not.toHaveProperty('target');
+  });
+
   it('derives normal Save current source state without a custom override', () => {
     const transaction = saveRotoRealKeyTransaction({
       model: createRotoSourceDisplayModel({
