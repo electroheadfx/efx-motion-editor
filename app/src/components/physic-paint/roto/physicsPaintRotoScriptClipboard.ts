@@ -741,6 +741,7 @@ function cloneStroke(stroke: Readonly<PaintStroke>): PaintStroke {
 }
 
 function deepFreezeScript(script: RotoPaintScript): RotoPaintScript {
+  Object.freeze(script.provenance);
   for (const brush of script.brushes) {
     for (const point of brush.primary.points) Object.freeze(point);
     Object.freeze(brush.primary.points);
