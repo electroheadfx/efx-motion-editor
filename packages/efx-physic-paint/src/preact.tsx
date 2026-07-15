@@ -16,8 +16,9 @@ export interface EfxPaintCanvasProps extends EngineConfig {
   class?: string
   onEngineReady?: (engine: EfxPaintEngine) => void
   onNativePenInputReady?: (handler: (input: NativePenInput) => void) => void
-  onCompletedMutation?: (mutation: CompletedPaintMutation) => void
+  onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void
   onPerformanceSample?: (sample: PaintPerformanceSample) => void
+  beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>
 }
 
 /**
@@ -38,8 +39,10 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
   const engineRef = useRef<EfxPaintEngine | null>(null)
   const completedMutationRef = useRef(props.onCompletedMutation)
   const performanceSampleRef = useRef(props.onPerformanceSample)
+  const beforeEngineDestroyRef = useRef(props.beforeEngineDestroy)
   completedMutationRef.current = props.onCompletedMutation
   performanceSampleRef.current = props.onPerformanceSample
+  beforeEngineDestroyRef.current = props.beforeEngineDestroy
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -52,7 +55,7 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
       getStrokeMetadata: props.getStrokeMetadata,
     })
     engineRef.current = engine
-    engine.setCompletedMutationListener((mutation) => completedMutationRef.current?.(mutation))
+    engine.setCompletedMutationListener((mutation) => completedMutationRef.current?.(mutation, engine))
     engine.setPerformanceListener(performanceSampleRef.current ? (sample) => performanceSampleRef.current?.(sample) : null)
     props.onNativePenInputReady?.((input) => engine.updateNativePenInput(input))
 
@@ -62,11 +65,19 @@ export const EfxPaintCanvas: FunctionalComponent<EfxPaintCanvasProps> = (props) 
     })
 
     return () => {
-      engine.setCompletedMutationListener(null)
       engine.setHistoryAvailabilityListener(null)
       engine.setPerformanceListener(null)
-      engine.destroy()
-      engineRef.current = null
+      const destroy = () => {
+        engine.setCompletedMutationListener(null)
+        engine.destroy()
+        if (engineRef.current === engine) engineRef.current = null
+      }
+      const preparation = beforeEngineDestroyRef.current?.(engine)
+      if (preparation && typeof preparation.then === 'function') {
+        void preparation.then(destroy, destroy)
+      } else {
+        destroy()
+      }
     }
   }, [])
 

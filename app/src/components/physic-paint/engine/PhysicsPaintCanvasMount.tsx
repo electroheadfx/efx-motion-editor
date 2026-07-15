@@ -8,7 +8,7 @@ const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper
 
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
-export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
+export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
@@ -59,6 +59,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
         onNativePenInputReady={props.onNativePenInputReady}
         onCompletedMutation={props.onCompletedMutation}
         onPerformanceSample={props.onPerformanceSample}
+        beforeEngineDestroy={props.beforeEngineDestroy}
         getStrokeMetadata={props.getStrokeMetadata}
         onEngineReady={(engine) => {
           engine.setTool('paint');

@@ -777,11 +777,11 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     const canvasBlock = canvasMountSource();
 
     expect(canvasBlock).toContain('onCompletedMutation');
-    expect(text).toContain('rotoScript.observeCompletedMutation(mutation)');
-    expect(text.indexOf('rotoScript.observeCompletedMutation(mutation)')).toBeLessThan(text.indexOf('rotoPersistence.captureLivePixels({'));
-    expect(text).toContain('rotoScript.getAcceptedTarget(mutationId)');
-    expect(text).toContain("workflowMode !== 'roto'");
-    expect(text).toContain("currentFrameSelectionKind === 'generated-interpolation'");
+    expect(text).toContain('rotoScript.observeCompletedMutation(mutationEngine, mutation)');
+    expect(text.indexOf('rotoScript.observeCompletedMutation(mutationEngine, mutation)')).toBeLessThan(text.indexOf('rotoPersistence.captureLivePixels({'));
+    expect(text).toContain('rotoScript.getAcceptedTarget(mutationEngine, mutationId)');
+    expect(text).toContain("workflowMode === 'roto'");
+    expect(text).toContain("currentFrameSelectionKind !== 'generated-interpolation'");
     expect(text).toContain('mutationEngine.copyLiveAlphaCanvas()');
     expect(text).toContain('rotoPersistence.captureLivePixels({');
     expect(text).toContain('cachedBase');

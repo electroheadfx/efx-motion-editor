@@ -62,7 +62,7 @@ function harness(initial: PaintStroke[] = [stroke(1)]) {
 
 async function copyCompletedSource(test: ReturnType<typeof harness>, mutationIds = [1]) {
   const promise = test.controller.copyScript();
-  for (const mutationId of mutationIds) test.controller.observeCompletedMutation(completion(mutationId));
+  for (const mutationId of mutationIds) test.controller.observeCompletedMutation(test.engine, completion(mutationId));
   expect(await promise).toBe(true);
 }
 
@@ -73,19 +73,19 @@ describe('Roto script clipboard controller', () => {
     const copying = test.controller.copyScript();
     expect(test.controller.clipboard.value).toBeNull();
     expect(test.locks).toContain(true);
-    test.controller.observeCompletedMutation(completion(1));
+    test.controller.observeCompletedMutation(test.engine, completion(1));
     expect(await copying).toBe(true);
     expect(test.controller.status.value).toBe('Copied 1');
     expect(test.controller.clipboard.value?.brushes[0].continuations).toHaveLength(1);
     expect(Object.isFrozen(test.controller.clipboard.value?.brushes[0].primary.points[0])).toBe(true);
 
     test.setStrokes([stroke(1, 77)]);
-    test.controller.observeCompletedMutation(completion(1));
+    test.controller.observeCompletedMutation(test.engine, completion(1));
     expect(test.controller.clipboard.value?.brushes[0].primary.points[0].x).toBe(77);
 
     test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 9, displayFrame: 9 });
     test.setStrokes([stroke(9, 99)]);
-    test.controller.observeCompletedMutation(completion(9));
+    test.controller.observeCompletedMutation(test.engine, completion(9));
     expect(test.controller.clipboard.value?.sourceFrame).toBe(4);
 
     test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 4, displayFrame: 4 });
@@ -101,7 +101,7 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.availability.value.canCopy).toBe(false);
 
     test.setStrokes([stroke(1)]);
-    test.controller.observeCompletedMutation(completion(1));
+    test.controller.observeCompletedMutation(test.engine, completion(1));
     expect(test.controller.availability.value.canCopy).toBe(true);
 
     test.setStrokes([]);
@@ -113,7 +113,7 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.availability.value.canCopy).toBe(true);
 
     test.setStrokes([]);
-    test.controller.observeCompletedMutation({ kind: 'clear', isEmpty: true, mutationId: 3 });
+    test.controller.observeCompletedMutation(test.engine, { kind: 'clear', isEmpty: true, mutationId: 3 });
     expect(test.controller.availability.value.canCopy).toBe(false);
 
     const replacement = { ...test.engine, getStrokes: () => [stroke(4)] };
@@ -143,21 +143,21 @@ describe('Roto script clipboard controller', () => {
     test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const firstApply = test.controller.applyScript();
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
-    test.controller.observeCompletedMutation(completion(999));
+    test.controller.observeCompletedMutation(test.engine, completion(999));
     expect(test.controller.status.value).toBe('Applying 0/2');
-    test.controller.observeCompletedMutation(completion(100));
-    test.controller.observeCompletedMutation(completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(100));
     await Promise.resolve();
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(2);
     expect(test.controller.status.value).toBe('Applying 1/2');
-    test.controller.observeCompletedMutation(completion(101));
+    test.controller.observeCompletedMutation(test.engine, completion(101));
     await expect(firstApply).resolves.toBe(true);
     expect(test.controller.status.value).toBe('Applied 2');
 
     const secondApply = test.controller.applyScript();
-    test.controller.observeCompletedMutation(completion(102));
+    test.controller.observeCompletedMutation(test.engine, completion(102));
     await Promise.resolve();
-    test.controller.observeCompletedMutation(completion(103));
+    test.controller.observeCompletedMutation(test.engine, completion(103));
     await expect(secondApply).resolves.toBe(true);
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(4);
   });
@@ -171,31 +171,36 @@ describe('Roto script clipboard controller', () => {
       return 100;
     }).mockImplementationOnce(() => { throw new Error('later failure'); });
     const applying = test.controller.applyScript();
-    expect(test.controller.getAcceptedTarget(100)).toEqual({
+    expect(test.controller.getAcceptedTarget(test.engine, 100)).toEqual({
       sourceFrame: 8,
       displayFrame: 8,
       interpolationSettings: test.target.interpolationSettings,
     });
     expect(test.onFirstAcceptedBrush).toHaveBeenCalledTimes(1);
-    test.controller.observeCompletedMutation(completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(100));
     await expect(applying).resolves.toBe(false);
     expect(test.controller.status.value).toBe('Failed');
     expect(test.submitted).toHaveLength(1);
   });
 
-  it('settles Copy and navigation drains and releases locks on reset or disposal', async () => {
+  it('keeps Copy and navigation drains locked until the accepting engine completes across reset or disposal', async () => {
     const copyTest = harness([stroke(1)]);
     const copying = copyTest.controller.copyScript();
     copyTest.controller.resetForLaunch();
+    expect(copyTest.controller.availability.value.busy).toBe(true);
+    copyTest.controller.observeCompletedMutation(copyTest.engine, completion(1));
     await expect(copying).resolves.toBe(false);
     expect(copyTest.controller.availability.value.busy).toBe(false);
-    expect(copyTest.locks[copyTest.locks.length - 1]).toBe(false);
 
     const navigationTest = harness([stroke(1)]);
     await copyCompletedSource(navigationTest, [1]);
+    navigationTest.setStrokes([stroke(2)]);
     const navigating = navigationTest.controller.prepareNavigation(9);
-    navigationTest.controller.dispose();
+    const disposing = navigationTest.controller.dispose();
+    expect(navigationTest.controller.availability.value.busy).toBe(true);
+    navigationTest.controller.observeCompletedMutation(navigationTest.engine, completion(2));
     await expect(navigating).resolves.toBe(false);
+    await expect(disposing).resolves.toBeUndefined();
     expect(navigationTest.locks[navigationTest.locks.length - 1]).toBe(false);
   });
 
@@ -210,7 +215,7 @@ describe('Roto script clipboard controller', () => {
     await expect(test.controller.prepareNavigation(9)).resolves.toBe(false);
     expect(test.controller.status.value).toBe('Applying 0/2');
 
-    test.controller.observeCompletedMutation(completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(100));
     await expect(applying).resolves.toBe(false);
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
     expect(test.controller.availability.value.busy).toBe(false);
@@ -225,12 +230,12 @@ describe('Roto script clipboard controller', () => {
     const applying = test.controller.applyScript();
 
     test.setStrokes([stroke(1), stroke(2), stroke(100)]);
-    test.controller.observeCompletedMutation(completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(100));
     await Promise.resolve();
     expect(test.controller.clipboard.value?.sourceRevision).toBe(originalRevision);
 
     test.setStrokes([stroke(1), stroke(2), stroke(100), stroke(101)]);
-    test.controller.observeCompletedMutation(completion(101));
+    test.controller.observeCompletedMutation(test.engine, completion(101));
     await expect(applying).resolves.toBe(true);
     expect(test.controller.clipboard.value?.brushes).toHaveLength(4);
     expect(test.controller.clipboard.value?.sourceRevision).toBe((originalRevision ?? 0) + 1);
@@ -244,8 +249,69 @@ describe('Roto script clipboard controller', () => {
     test.controller.cancelApply();
     test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 12, displayFrame: 12 });
 
-    test.controller.observeCompletedMutation(completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(100));
     await expect(applying).resolves.toBe(false);
-    expect(test.controller.getAcceptedTarget(100)).toEqual({ sourceFrame: 8, displayFrame: 8, interpolationSettings: undefined });
+    expect(test.controller.getAcceptedTarget(test.engine, 100)).toEqual({ sourceFrame: 8, displayFrame: 8, interpolationSettings: undefined });
+  });
+
+  it('settles a Copy drain on its accepting engine after non-null replacement', async () => {
+    const test = harness([stroke(1)]);
+    const replacement = { ...test.engine, getStrokes: () => [stroke(9)] };
+    const copying = test.controller.copyScript();
+
+    test.controller.updateEngine(replacement);
+    expect(test.controller.availability.value.busy).toBe(true);
+    test.controller.observeCompletedMutation(test.engine, completion(1));
+
+    await expect(copying).resolves.toBe(false);
+    expect(test.controller.availability.value.busy).toBe(false);
+  });
+
+  it('never enqueues remaining Apply brushes on a replacement engine', async () => {
+    const test = harness([stroke(1), stroke(2)]);
+    await copyCompletedSource(test, [1, 2]);
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    const replacement = { ...test.engine, enqueueRecordedStroke: vi.fn(() => 900) };
+    const applying = test.controller.applyScript();
+
+    test.controller.updateEngine(replacement);
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+
+    await expect(applying).resolves.toBe(false);
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
+    expect(replacement.enqueueRecordedStroke).not.toHaveBeenCalled();
+  });
+
+  it('preserves accepted Apply through launch reset and suppresses stale UI publication', async () => {
+    const test = harness([stroke(1), stroke(2)]);
+    await copyCompletedSource(test, [1, 2]);
+    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    const applying = test.controller.applyScript();
+
+    test.controller.resetForLaunch();
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await Promise.resolve();
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(2);
+    test.controller.observeCompletedMutation(test.engine, completion(101));
+
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.status.value).toBeNull();
+    expect(test.controller.getAcceptedTarget(test.engine, 100)?.sourceFrame).toBe(8);
+    expect(test.controller.getAcceptedTarget(test.engine, 101)?.sourceFrame).toBe(8);
+  });
+
+  it('keeps Applied terminal status while refreshing a bound-source clipboard', async () => {
+    const test = harness([stroke(1), stroke(2)]);
+    await copyCompletedSource(test, [1, 2]);
+    const applying = test.controller.applyScript();
+    test.setStrokes([stroke(1), stroke(2), stroke(100)]);
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await Promise.resolve();
+    test.setStrokes([stroke(1), stroke(2), stroke(100), stroke(101)]);
+    test.controller.observeCompletedMutation(test.engine, completion(101));
+
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.status.value).toBe('Applied 2');
+    expect(test.controller.clipboard.value?.brushes).toHaveLength(4);
   });
 });

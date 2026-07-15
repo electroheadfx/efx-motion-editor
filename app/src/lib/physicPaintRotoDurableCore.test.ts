@@ -85,7 +85,7 @@ vi.mock('@efxlab/efx-physic-paint/preact', async () => {
   const preact = await import('preact');
   const hooks = await import('preact/hooks');
   return {
-    EfxPaintCanvas: (props: { width: number; height: number; children?: ComponentChildren; onEngineReady?: (engine: TestPaintEngine) => void; onNativePenInputReady?: (handler: (input: { pressure: number }) => void) => void; onCompletedMutation?: (mutation: { kind: string; isEmpty: boolean }) => void }) => {
+    EfxPaintCanvas: (props: { width: number; height: number; children?: ComponentChildren; onEngineReady?: (engine: TestPaintEngine) => void; onNativePenInputReady?: (handler: (input: { pressure: number }) => void) => void; onCompletedMutation?: (mutation: { kind: string; isEmpty: boolean }, engine: TestPaintEngine) => void }) => {
       const mountedEngine = paintHarness.engine;
       const [readyToEmit, setReadyToEmit] = hooks.useState(false);
       const [callbacksCommitted, setCallbacksCommitted] = hooks.useState(false);
@@ -96,7 +96,7 @@ vi.mock('@efxlab/efx-physic-paint/preact', async () => {
         if (!readyToEmit) return;
         if (!mountedEngine) throw new Error('test paint engine was not installed');
         props.onNativePenInputReady?.(() => {});
-        mountedEngine.setCompletedMutationListener(props.onCompletedMutation ?? null);
+        mountedEngine.setCompletedMutationListener(props.onCompletedMutation ? (mutation) => props.onCompletedMutation?.(mutation, mountedEngine) : null);
         props.onEngineReady?.(mountedEngine);
         setCallbacksCommitted(true);
       }, [readyToEmit]);

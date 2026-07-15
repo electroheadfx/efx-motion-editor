@@ -71,11 +71,30 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     setApplyMessage: input.setApplyMessage,
   });
 
-  const upsertCachedFrame = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null, interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number) => {
+  const upsertCachedFrame = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null, interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number, expectedOperationId?: string) => {
     const sourceFrame = renderedFrame.sourceFrame ?? renderedFrame.appFrame;
     const normalized = { ...renderedFrame, appFrame: sourceFrame };
     input.setLaunchContext((current) => {
-      if (!current || (expectedLayerId !== undefined && current.layerId !== expectedLayerId)) return current;
+      if (!current || (expectedLayerId !== undefined && (current.layerId !== expectedLayerId || (expectedOperationId !== undefined && current.operationId !== expectedOperationId)))) {
+        if (expectedLayerId !== undefined && expectedOperationId !== undefined) {
+          const frameForCache = { ...normalized, source: 'real-key' as const, sourceFrame, displayFrame: renderedFrame.displayFrame ?? sourceFrame };
+          input.store.upsertRealKey(expectedLayerId, sourceFrame, frameForCache, backgroundOnly, isPhysicsPaintProfilingEnabled() ? { mutationId, record: recordPhysicsPaintPerformance } : undefined);
+          if (interpolationSettings) input.store.setInterpolationSettings(expectedLayerId, interpolationSettings);
+          queueParentPayload(sourceFrame, {
+            operationId: `${expectedOperationId}:live-pixels:${sourceFrame}:${++parentOperationRevisionRef.current}`,
+            kind: 'apply-canvas',
+            layerId: expectedLayerId,
+            startFrame: sourceFrame,
+            sourceFrame,
+            displayFrame: frameForCache.displayFrame,
+            renderedFrame: frameForCache,
+            backgroundOnly,
+            rotoBackground: input.getBackgroundMetadata(),
+            rotoInterpolationSettings: interpolationSettings ?? input.store.getInterpolationSettings(expectedLayerId),
+          }, mutationId);
+        }
+        return current;
+      }
       confirmedFramesRef.current.set(sourceFrame, normalized);
       const frameForCache = { ...normalized, source: 'real-key' as const, sourceFrame, displayFrame: renderedFrame.displayFrame ?? sourceFrame };
       input.store.upsertRealKey(current.layerId, sourceFrame, frameForCache, backgroundOnly, isPhysicsPaintProfilingEnabled() ? { mutationId, record: recordPhysicsPaintPerformance } : undefined);
@@ -121,6 +140,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     mutationId?: number;
     interpolationSettings?: PhysicPaintRotoInterpolationSettings;
     backgroundOnly?: boolean;
+    operationId?: string;
   }) => livePixelTransactionsRef.current.capture({
     sourceFrame: inputCapture.sourceFrame,
     mutationId: inputCapture.mutationId,
@@ -128,7 +148,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     produce: () => inputCapture.cachedBase
       ? mergeCachedRotoAlphaFrame(inputCapture.cachedBase, inputCapture.liveAlphaCanvas, inputCapture.sourceFrame, inputCapture.size, inputCapture.mutationId)
       : encodeRotoFrameFromCanvas(inputCapture.liveAlphaCanvas, inputCapture.sourceFrame, inputCapture.size, inputCapture.mutationId),
-    commit: (renderedFrame) => upsertCachedFrame({ ...renderedFrame, displayFrame: inputCapture.displayFrame }, inputCapture.backgroundOnly === true, undefined, inputCapture.interpolationSettings, inputCapture.layerId, inputCapture.mutationId),
+    commit: (renderedFrame) => upsertCachedFrame({ ...renderedFrame, displayFrame: inputCapture.displayFrame }, inputCapture.backgroundOnly === true, undefined, inputCapture.interpolationSettings, inputCapture.layerId, inputCapture.mutationId, inputCapture.operationId),
   }), [upsertCachedFrame]);
 
   const removeCachedFrame = useCallback((frame: number) => {

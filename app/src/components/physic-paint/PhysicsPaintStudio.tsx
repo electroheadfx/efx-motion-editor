@@ -190,6 +190,7 @@ export function PhysicsPaintStudio() {
       deformation: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).deform : 0,
       position: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId).position : 0,
     }),
+    getPublicationIdentity: () => launchContext ? { operationId: launchContext.operationId, layerId: launchContext.layerId } : null,
     prepareEmptyTarget: () => launchContext ? rotoTimelineActions.saveRealKeyAtDisplayFrame(currentFrame) : null,
     onFirstAcceptedBrush: () => beginRotoFrameEditRef.current(),
     setNavigationLocked: setRotoScriptNavigationLocked,
@@ -509,12 +510,18 @@ export function PhysicsPaintStudio() {
           onCanvasMounted: setCanvasMounted,
           onNativePenInputReady: handleNativePenInputReady,
           onPerformanceSample: recordEnginePerformance,
-          onCompletedMutation: (mutation) => {
-            rotoScript.observeCompletedMutation(mutation);
+          beforeEngineDestroy: rotoScript.prepareEngineDisposal,
+          onCompletedMutation: (mutation, mutationEngine) => {
+            rotoScript.observeCompletedMutation(mutationEngine, mutation);
             const { kind, isEmpty, mutationId } = mutation;
-            const mutationEngine = engineRef.current;
-            if (kind === 'clear' || workflowMode !== 'roto' || currentFrameSelectionKind === 'generated-interpolation' || !mutationEngine || !launchContext) return;
-            const acceptedTarget = rotoScript.getAcceptedTarget(mutationId);
+            const acceptedTarget = rotoScript.getAcceptedTarget(mutationEngine, mutationId);
+            const publicationIdentity = acceptedTarget?.publicationIdentity;
+            const canPublishCapturedApply = Boolean(publicationIdentity);
+            const canPublishCurrentEngine = mutationEngine === engineRef.current
+              && workflowMode === 'roto'
+              && currentFrameSelectionKind !== 'generated-interpolation'
+              && Boolean(launchContext);
+            if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
             const saveTransaction = acceptedTarget
               ? null
               : currentFrameSelectionKind === 'empty'
@@ -540,7 +547,8 @@ export function PhysicsPaintStudio() {
             const liveAlphaCanvas = mutationEngine.copyLiveAlphaCanvas();
             const cachedBase = cachedBaseSourceFrame === sourceFrame ? cachedRotoRepaintBaseFrame : null;
             const capture = rotoPersistence.captureLivePixels({
-              layerId: launchContext.layerId,
+              layerId: publicationIdentity?.layerId ?? launchContext.layerId,
+              operationId: publicationIdentity?.operationId,
               sourceFrame,
               displayFrame,
               liveAlphaCanvas,
