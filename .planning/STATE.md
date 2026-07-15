@@ -4,11 +4,11 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
-status: awaiting_native_uat
-stopped_at: Quick 260715-kgf automated verification passed; native Copy Script / Apply Script UAT A-M pending
-last_updated: "2026-07-15T17:38:59Z"
+status: ready_to_execute
+stopped_at: Quick 260715-kgf native UAT found 3 gaps; Plan 04 diagnosed, validated, and ready to execute
+last_updated: "2026-07-15T18:58:51Z"
 last_activity: 2026-07-15
-last_activity_desc: Completed automated implementation, review, and verification for Roto Copy Script / Apply Script
+last_activity_desc: Diagnosed Copy Script navigation lifetime and selected-empty-frame Apply gaps; validated repair Plan 04
 progress:
   total_phases: 17
   completed_phases: 16
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: Pre-36.14 quick sequence — SCRIPT QUICK AWAITING NATIVE UAT
+Phase: Pre-36.14 quick sequence — SCRIPT QUICK UAT REPAIR READY
 Previous phase: 36.13 — Physics Paint Roto Dynamic Interpolation Spacing complete
-Plan: Quick 260715-kgf automated implementation and verification complete
-Status: Automated-ready; native Copy Script / Apply Script UAT A-M pending
-Last activity: 2026-07-15 — Definitive code review and quick verification passed with 14/14 must-haves and 22/22 focused coverage
-Next recommended action: Run native UAT A-M for quick 260715-kgf; keep Phase 36.14 blocked until approval
+Plan: Quick 260715-kgf Plan 04 gap closure ready
+Status: Native UAT found 3 major gaps; diagnosed and plan-checked
+Last activity: 2026-07-15 — Captured UAT failures for empty-frame Apply, clipboard navigation lifetime, and unintended Insert-like key behavior
+Next recommended action: Execute `.planning/quick/260715-kgf-implement-functional-physics-paint-roto-/260715-kgf-04-PLAN.md`, then resume native UAT; keep Phase 36.14 blocked
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -140,7 +140,7 @@ None yet.
 - Phases 36.15 and 37 were removed as obsolete: Signals/controllers remain the accepted state boundary, and the implemented parent bridge/cache integration surpassed the former future-contract scope.
 - Phase 36.14 is the final v0.8.0 UI-only phase: corrected timeline UI, developer-status removal, existing Log routing, application selection guard, and final presentation/wiring of the prerequisite quick's Copy Script / Apply Script controls.
 - Quick 260715-j3q exact 10-level per-brush Undo/Redo and reactive availability badges passed native UAT on 2026-07-15.
-- Quick 260715-kgf functional Roto Copy Script / Apply Script is automated-ready: definitive review passed, 14/14 must-haves and 22/22 focused coverage verified, and native UAT A-M remains the only completion gate before Phase 36.14.
+- Quick 260715-kgf functional Roto Copy Script / Apply Script reached automated-ready, but native UAT found three major gaps: clipboard cleared by same-session launch echoes, Apply disabled on empty/free frames as a consequence, and empty Apply showing Insert-like key ownership. Diagnosed gap-closure Plan 04 is validated and ready to execute.
 
 ### Quick Tasks Completed
 
@@ -182,6 +182,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T17:38:59Z
-Stopped at: Quick 260715-kgf automated verification passed; native Copy Script / Apply Script UAT A-M pending
-Resume file: Run native UAT A-M from `.planning/quick/260715-kgf-implement-functional-physics-paint-roto-/260715-kgf-VERIFICATION.md`; Phase 36.14 remains blocked until approval
+Last session: 2026-07-15T18:58:51Z
+Stopped at: Quick 260715-kgf native UAT gaps diagnosed; Plan 04 validated and ready to execute
+Resume file: Execute `.planning/quick/260715-kgf-implement-functional-physics-paint-roto-/260715-kgf-04-PLAN.md`, then resume `.planning/quick/260715-kgf-implement-functional-physics-paint-roto-/260715-kgf-UAT.md`; Phase 36.14 remains blocked
