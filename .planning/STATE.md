@@ -4,11 +4,11 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
-status: ready_to_discuss
-stopped_at: Phase 36.14 source contract updated before discussion
-last_updated: "2026-07-15T07:31:05Z"
+status: blocked
+stopped_at: Quick 260715-j3q automated-ready; native Undo/Redo UAT A-G required before Phase 36.14
+last_updated: "2026-07-15T12:06:06Z"
 last_activity: 2026-07-15
-last_activity_desc: Updated final Phase 36.14 UI and paint-script reuse contract after removing obsolete Phases 36.15 and 37
+last_activity_desc: Implemented exact 10-level Physics Paint per-brush Undo/Redo; automated gates passed and native UAT remains
 progress:
   total_phases: 17
   completed_phases: 16
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — READY TO DISCUSS
+Phase: 36.14 (physics-paint-roto-timeline-ui-from-pencil) — BLOCKED BY NATIVE UAT
 Previous phase: 36.13 — Physics Paint Roto Dynamic Interpolation Spacing complete
 Plan: 0 of TBD
-Status: Final v0.8.0 phase source contract updated after obsolete Phases 36.15 and 37 were removed
-Last activity: 2026-07-15 — Updated the Phase 36.14 timeline UI, Log/status, selection guard, and Copy Script / Apply Script contract
-Next recommended action: Run `/gsd-discuss-phase 36.14`
+Status: Quick 260715-j3q exact per-brush Undo/Redo is automated-ready; native UAT A-G must pass before Phase 36.14 starts
+Last activity: 2026-07-15 — Implemented exact shared 10-transaction Physics Paint Undo/Redo with Roto, shortcut, rail, and regression coverage
+Next recommended action: Run native UAT A-G from quick task 260715-j3q; only then run `/gsd-discuss-phase 36.14`
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -139,6 +139,7 @@ None yet.
 - Phase 36.13 completed: user approved dynamic spacing, canonical persistence/preview/export parity, generated/empty non-durability, visible onion composition, real-key-depth Onion Value semantics, and generated-owner onion traversal.
 - Phases 36.15 and 37 were removed as obsolete: Signals/controllers remain the accepted state boundary, and the implemented parent bridge/cache integration surpassed the former future-contract scope.
 - Phase 36.14 is the final v0.8.0 phase: corrected timeline UI, developer-status removal, existing Log routing, application selection guard, and active-session Copy Script / Apply Script reuse.
+- Quick 260715-j3q exact 10-level per-brush Undo/Redo is automated-ready, but native UAT A-G remains a hard blocker before Phase 36.14 begins.
 
 ### Quick Tasks Completed
 
@@ -151,6 +152,7 @@ None yet.
 | 260626-dja | Set up Vitest coverage for app tests and run the coverage report | 2026-06-26 | 966c76ec | [260626-dja-set-up-vitest-coverage-for-app-tests-and](./quick/260626-dja-set-up-vitest-coverage-for-app-tests-and/) |
 | 260714-9es | Fix Clear current Roto frame cache reset | 2026-07-14 | 82ebc620 | [260714-9es-fix-the-clear-current-roto-frame-button-](./quick/260714-9es-fix-the-clear-current-roto-frame-button-/) |
 | 260714-ail | Replace manual Roto save with automatic live pixel caching | 2026-07-14 | f5ad4212 | [260714-ail-replace-manual-save-on-leave-rendering-w](./quick/260714-ail-replace-manual-save-on-leave-rendering-w/) |
+| 260715-j3q | Add exact 10-level Physics Paint per-brush Undo/Redo | 2026-07-15 | cf0a336f | [260715-j3q-add-exact-10-level-physics-paint-per-bru](./quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/) |
 
 ### Roadmap Evolution
 
@@ -179,6 +181,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T07:31:05Z
-Stopped at: Phase 36.14 source specification and visual references updated
-Resume file: SPECS/36.x-phases/phase-36.14-timeline-ui/spec-36.14-timeline-ui.md; run `/gsd-discuss-phase 36.14`
+Last session: 2026-07-15T12:06:06Z
+Stopped at: Quick 260715-j3q automated-ready; exact Undo/Redo native UAT A-G pending
+Resume file: .planning/quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/260715-j3q-SUMMARY.md; complete native UAT before `/gsd-discuss-phase 36.14`
