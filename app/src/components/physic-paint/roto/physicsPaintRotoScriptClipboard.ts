@@ -34,6 +34,22 @@ export interface RotoScriptActionAvailability {
   busy: boolean;
 }
 
+export type RotoScriptOperationErrorCode =
+  | 'copy-drain-failed'
+  | 'copy-source-invalidated'
+  | 'apply-empty-target-failed'
+  | 'apply-enqueue-failed'
+  | 'apply-cancelled'
+  | 'apply-partial-failure'
+  | 'apply-invalidated';
+
+export interface RotoScriptOperationError {
+  operation: 'copy' | 'apply';
+  code: RotoScriptOperationErrorCode;
+  message: string;
+  cause?: string;
+}
+
 export interface RecordedStrokeGroup {
   primary: Readonly<PaintStroke>;
   continuations?: readonly Readonly<PaintStroke>[];
@@ -65,6 +81,7 @@ export interface RotoScriptAcceptedTarget {
 export interface RotoScriptClipboardController {
   clipboard: Signal<RotoPaintScript | null>;
   status: Signal<string | null>;
+  error: Signal<RotoScriptOperationError | null>;
   availability: ReadonlySignal<RotoScriptActionAvailability>;
   mutationLocked: ReadonlySignal<boolean>;
   copyScript: () => Promise<boolean>;
@@ -97,6 +114,8 @@ interface ActiveApplyOperation {
   completed: number;
   nextBrushIndex: number;
   cancelled: boolean;
+  cancellationReason: 'user' | 'invalidated' | null;
+  failure: RotoScriptOperationError | null;
   publishUi: boolean;
   resolve: (success: boolean) => void;
 }
@@ -122,6 +141,7 @@ const APPLY_REASONS = {
 export function createRotoScriptClipboardController(ports: RotoScriptClipboardControllerPorts): RotoScriptClipboardController {
   const clipboard = signal<RotoPaintScript | null>(null);
   const status = signal<string | null>(null);
+  const error = signal<RotoScriptOperationError | null>(null);
   const busy = signal(false);
   const mutationLocked = signal(false);
   const sourceContentRevision = signal(0);
@@ -174,6 +194,22 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     sourceContentRevision.value += 1;
   }
 
+  function errorCause(cause: unknown): string | undefined {
+    if (cause instanceof Error && cause.message.trim()) return cause.message;
+    if (typeof cause === 'string' && cause.trim()) return cause;
+    return undefined;
+  }
+
+  function operationError(
+    operation: RotoScriptOperationError['operation'],
+    code: RotoScriptOperationErrorCode,
+    message: string,
+    cause?: unknown,
+  ): RotoScriptOperationError {
+    const safeCause = errorCause(cause);
+    return safeCause ? { operation, code, message: `${message}: ${safeCause}`, cause: safeCause } : { operation, code, message };
+  }
+
   function beginOperation(engine: RotoScriptEnginePort): void {
     pendingOperationCount += 1;
     mutationLocked.value = true;
@@ -207,6 +243,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     disposed = true;
     clipboard.value = null;
     status.value = null;
+    error.value = null;
     boundSourceFrame = null;
     sourceRevision = 0;
     resolveDisposal?.();
@@ -277,13 +314,25 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const source = sourceState.value;
     const acceptedEngineGeneration = engineGeneration;
     const acceptedLaunchGeneration = launchGeneration;
+    error.value = null;
     beginOperation(engine);
     try {
       await drainAcceptedMutations(engine);
-      if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) return false;
-      return snapshotBoundSource(engine, source);
-    } catch {
-      if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) status.value = 'Failed';
+      if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) {
+        if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
+          status.value = 'Failed';
+          error.value = operationError('copy', 'copy-source-invalidated', 'Copy Script could not finish because its mounted source changed.');
+        }
+        return false;
+      }
+      const copied = snapshotBoundSource(engine, source);
+      if (copied) error.value = null;
+      return copied;
+    } catch (cause) {
+      if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
+        status.value = 'Failed';
+        error.value = operationError('copy', 'copy-drain-failed', 'Copy Script could not finish accepted paint work', cause);
+      }
       return false;
     } finally {
       endOperation(engine);
@@ -308,6 +357,17 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     activeApply = null;
     const applied = success && !operation.cancelled;
     refreshBoundSourceAfterApply(operation, applied ? `Applied ${operation.completed}` : 'Failed');
+    if (operation.publishUi && launchGeneration === operation.launchGeneration && !disposalRequested) {
+      if (applied) {
+        error.value = null;
+      } else {
+        error.value = operation.failure ?? (operation.cancellationReason === 'user'
+          ? operationError('apply', 'apply-cancelled', `Apply Script was cancelled after ${operation.completed} of ${operation.script.brushes.length} brushes completed.`)
+          : operation.completed > 0
+            ? operationError('apply', 'apply-partial-failure', `Apply Script stopped after ${operation.completed} of ${operation.script.brushes.length} brushes.`)
+            : operationError('apply', 'apply-invalidated', 'Apply Script could not finish because its mounted target changed.'));
+      }
+    }
     operation.resolve(applied);
     endOperation(operation.engine);
     finalizeDisposalIfReady();
@@ -317,6 +377,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (activeApply !== operation) return;
     if (operation.cancelled || disposalRequested || launchGeneration !== operation.launchGeneration || engineState.peek() !== operation.engine || engineGeneration !== operation.id) {
       operation.cancelled = true;
+      operation.cancellationReason ??= 'invalidated';
       if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
       return;
     }
@@ -338,6 +399,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     };
     if (activeApply !== operation || operation.cancelled || launchGeneration !== operation.launchGeneration) {
       operation.cancelled = true;
+      operation.cancellationReason ??= 'invalidated';
       if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
       return;
     }
@@ -357,7 +419,15 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         interpolationSettings: operation.preparedTarget?.interpolationSettings,
         publicationIdentity: operation.publicationIdentity ?? undefined,
       });
-    } catch {
+    } catch (cause) {
+      operation.failure = operationError(
+        'apply',
+        operation.completed > 0 ? 'apply-partial-failure' : 'apply-enqueue-failed',
+        operation.completed > 0
+          ? `Apply Script stopped after ${operation.completed} of ${operation.script.brushes.length} brushes`
+          : 'Apply Script could not enqueue its first brush',
+        cause,
+      );
       finishApply(operation, false);
     }
   }
@@ -368,10 +438,21 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const script = clipboard.value;
     const source = sourceState.value;
     if (!engine || !script || source.selectionKind === 'generated-interpolation') return Promise.resolve(false);
-    const preparedTarget = source.selectionKind === 'empty' ? ports.prepareEmptyTarget() : null;
-    if (source.selectionKind === 'empty' && !preparedTarget) {
-      status.value = 'Failed';
-      return Promise.resolve(false);
+    error.value = null;
+    let preparedTarget: RotoSaveRealKeyTransaction | null = null;
+    if (source.selectionKind === 'empty') {
+      try {
+        preparedTarget = ports.prepareEmptyTarget();
+      } catch (cause) {
+        status.value = 'Failed';
+        error.value = operationError('apply', 'apply-empty-target-failed', 'Apply Script could not prepare the empty destination', cause);
+        return Promise.resolve(false);
+      }
+      if (!preparedTarget) {
+        status.value = 'Failed';
+        error.value = operationError('apply', 'apply-empty-target-failed', 'Apply Script could not prepare the empty destination as a real Roto key.');
+        return Promise.resolve(false);
+      }
     }
     const destinationSourceFrame = preparedTarget?.sourceFrameOverride ?? source.sourceFrame;
     const destinationDisplayFrame = preparedTarget?.target.displayFrame ?? source.displayFrame;
@@ -392,6 +473,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         completed: 0,
         nextBrushIndex: 0,
         cancelled: false,
+        cancellationReason: null,
+        failure: null,
         publishUi: true,
         resolve,
       };
@@ -439,6 +522,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     }
     if (activeApply?.engine === previousEngine) {
       activeApply.cancelled = true;
+      activeApply.cancellationReason = 'invalidated';
       if (activeApply.expectedMutationIds.size === activeApply.consumedMutationIds.size) finishApply(activeApply, false);
     }
   }
@@ -493,6 +577,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const operation = activeApply;
     if (!operation || operation.cancelled) return;
     operation.cancelled = true;
+    operation.cancellationReason = 'user';
     if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
   }
 
@@ -508,6 +593,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const operation = activeApply;
     if (operation) {
       operation.cancelled = true;
+      operation.cancellationReason = 'invalidated';
       operation.publishUi = false;
       if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
     }
@@ -523,6 +609,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function completeLaunchReplacement(): void {
     clipboard.value = null;
     status.value = null;
+    error.value = null;
     boundSourceFrame = null;
     sourceRevision = 0;
     bumpSourceContentRevision();
@@ -531,6 +618,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   async function prepareEngineDisposal(engine: RotoScriptEnginePort): Promise<void> {
     if (activeApply?.engine === engine) {
       activeApply.cancelled = true;
+      activeApply.cancellationReason = 'invalidated';
       activeApply.publishUi = false;
     }
     if (engine.getStrokes().length > 0) await drainAcceptedMutations(engine);
@@ -543,6 +631,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const operation = activeApply;
     if (operation) {
       operation.cancelled = true;
+      operation.cancellationReason = 'invalidated';
       operation.publishUi = false;
       if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
     }
@@ -554,6 +643,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   return {
     clipboard,
     status,
+    error,
     availability,
     mutationLocked,
     copyScript,

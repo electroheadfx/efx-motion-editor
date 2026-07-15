@@ -811,6 +811,15 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     expect(navigation).toContain('return await runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
   });
 
+  it('routes mounted Copy and Apply results through the existing LOG error boundary', () => {
+    const text = studioPresentationSource();
+
+    expect(text).toContain('error: rotoScript.error.value');
+    expect(text).toContain('rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } })');
+    expect(text).toContain('rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } })');
+    expect(text).not.toContain('setRotoScriptError');
+  });
+
   it('keeps Roto input and every Studio mutation command guarded by the script operation lock', () => {
     const text = studioPresentationSource();
     expect(text).toContain('const mutationLocked = rotoScript.mutationLocked.value');

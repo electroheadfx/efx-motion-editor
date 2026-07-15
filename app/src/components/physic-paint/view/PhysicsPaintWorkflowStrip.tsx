@@ -15,6 +15,7 @@ import {
 } from '../roto/physicsPaintRotoWorkflow';
 import { clampPhysicPaintFrameCount, type PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
+import type { RotoScriptOperationError } from '../roto/physicsPaintRotoScriptClipboard';
 
 const RENDER_ACTION_LABEL = 'Render play';
 const RENDER_ACTION_HELP = 'Preview cached Play frames, or render and save the Play cache when it is stale.';
@@ -37,6 +38,7 @@ export interface PhysicsPaintWorkflowRotoScriptState {
   copyDisabledReason: string | null;
   applyDisabledReason: string | null;
   status: string | null;
+  error: RotoScriptOperationError | null;
 }
 const ROTO_CELL_LEGEND_ITEMS = [
   { label: 'Empty', className: 'roto-fill-empty' },

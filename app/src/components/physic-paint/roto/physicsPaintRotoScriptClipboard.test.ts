@@ -42,11 +42,12 @@ function harness(initial: PaintStroke[] = [stroke(1)]) {
     setInputLocked: vi.fn((locked: boolean) => locks.push(locked)),
   };
   const onFirstAcceptedBrush = vi.fn();
+  let prepareEmptyTarget = () => target as RotoSaveRealKeyTransaction | null;
   const controller = createRotoScriptClipboardController({
     getEngine: () => engine,
     getSource: () => source,
     getMotion: () => ({ deformation: 0, position: 0 }),
-    prepareEmptyTarget: () => target,
+    prepareEmptyTarget: () => prepareEmptyTarget(),
     onFirstAcceptedBrush,
     setNavigationLocked: (locked) => locks.push(locked),
   });
@@ -60,6 +61,7 @@ function harness(initial: PaintStroke[] = [stroke(1)]) {
     onFirstAcceptedBrush,
     setStrokes: (next: PaintStroke[]) => { strokes = next; },
     setSource: (next: RotoScriptSourceSnapshot) => { source = next; controller.updateSource(next); },
+    setPrepareEmptyTarget: (next: () => RotoSaveRealKeyTransaction | null) => { prepareEmptyTarget = next; },
   };
 }
 
@@ -209,7 +211,81 @@ describe('Roto script clipboard controller', () => {
     test.controller.observeCompletedMutation(test.engine, completion(100));
     await expect(applying).resolves.toBe(false);
     expect(test.controller.status.value).toBe('Failed');
+    expect(test.controller.error.value).toEqual({
+      operation: 'apply',
+      code: 'apply-partial-failure',
+      message: 'Apply Script stopped after 1 of 2 brushes: later failure',
+      cause: 'later failure',
+    });
     expect(test.submitted).toHaveLength(1);
+  });
+
+  it('publishes detailed empty-target and enqueue failures through the stable error contract', async () => {
+    const emptyTarget = harness([stroke(1)]);
+    await copyCompletedSource(emptyTarget, [1]);
+    emptyTarget.setSource({ workflowMode: 'roto', selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
+    emptyTarget.setPrepareEmptyTarget(() => null);
+
+    await expect(emptyTarget.controller.applyScript()).resolves.toBe(false);
+    expect(emptyTarget.controller.status.value).toBe('Failed');
+    expect(emptyTarget.controller.error.value).toEqual({
+      operation: 'apply',
+      code: 'apply-empty-target-failed',
+      message: 'Apply Script could not prepare the empty destination as a real Roto key.',
+    });
+
+    const enqueueFailure = harness([stroke(1)]);
+    await copyCompletedSource(enqueueFailure, [1]);
+    enqueueFailure.engine.enqueueRecordedStroke.mockImplementationOnce(() => { throw new Error('queue offline'); });
+
+    await expect(enqueueFailure.controller.applyScript()).resolves.toBe(false);
+    expect(enqueueFailure.controller.error.value).toEqual({
+      operation: 'apply',
+      code: 'apply-enqueue-failed',
+      message: 'Apply Script could not enqueue its first brush: queue offline',
+      cause: 'queue offline',
+    });
+  });
+
+  it('reports cancellation and partial failure details, then clears prior errors on success', async () => {
+    const cancelled = harness([stroke(1), stroke(2)]);
+    await copyCompletedSource(cancelled, [1, 2]);
+    const cancelledApply = cancelled.controller.applyScript();
+    cancelled.controller.cancelApply();
+    cancelled.controller.observeCompletedMutation(cancelled.engine, completion(100));
+    await expect(cancelledApply).resolves.toBe(false);
+    expect(cancelled.controller.error.value).toEqual({
+      operation: 'apply',
+      code: 'apply-cancelled',
+      message: 'Apply Script was cancelled after 1 of 2 brushes completed.',
+    });
+
+    cancelled.engine.enqueueRecordedStroke.mockImplementationOnce(() => 101).mockImplementationOnce(() => 102);
+    const successfulApply = cancelled.controller.applyScript();
+    cancelled.controller.observeCompletedMutation(cancelled.engine, completion(101));
+    await Promise.resolve();
+    cancelled.controller.observeCompletedMutation(cancelled.engine, completion(102));
+    await expect(successfulApply).resolves.toBe(true);
+    expect(cancelled.controller.error.value).toBeNull();
+  });
+
+  it('suppresses stale launch and disposal failures from the current error contract', async () => {
+    const staleLaunch = harness([stroke(1)]);
+    const copying = staleLaunch.controller.copyScript();
+    const replacing = staleLaunch.controller.prepareLaunchReplacement();
+    staleLaunch.controller.observeCompletedMutation(staleLaunch.engine, completion(1));
+    await replacing;
+    staleLaunch.controller.completeLaunchReplacement();
+    await expect(copying).resolves.toBe(false);
+    expect(staleLaunch.controller.error.value).toBeNull();
+
+    const disposed = harness([stroke(1)]);
+    const disposedCopy = disposed.controller.copyScript();
+    const disposal = disposed.controller.dispose();
+    disposed.controller.observeCompletedMutation(disposed.engine, completion(1));
+    await expect(disposedCopy).resolves.toBe(false);
+    await disposal;
+    expect(disposed.controller.error.value).toBeNull();
   });
 
   it('blocks real engine settings actions throughout Copy drain and resumes after accepted completion', async () => {
