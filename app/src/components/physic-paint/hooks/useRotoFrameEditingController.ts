@@ -10,6 +10,7 @@ interface RotoEditBufferPort<TEditable> {
   dirtyFramesRef: MutableRef<Set<number>>;
   markDirty: (frame: number) => void;
   undoOverlay: (frame: number) => 'empty' | 'dirty' | 'unchanged';
+  redoOverlay?: (frame: number) => boolean;
   clearCachedOverlay: (frame: number) => void;
   clearFrame: (frame: number) => void;
   snapshotFrame: (input: {
@@ -42,6 +43,11 @@ interface RotoEditingStatusPort {
 
 type PreviewBackgroundEngine = EfxPaintEngine & {
   resetBackground: () => void;
+};
+
+type UndoRedoEngine = EfxPaintEngine & {
+  undo: () => boolean;
+  redo: () => boolean;
 };
 
 export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditableState> {
@@ -83,13 +89,26 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
   }, [input]);
 
   const undo = useCallback(() => {
-    input.engine?.undo();
+    input.playback.stop();
+    if (!(input.engine as UndoRedoEngine | null)?.undo()) return false;
     if (input.workflowMode === 'roto' && input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame) {
-      if (input.editBuffer.undoOverlay(input.currentFrame) === 'empty') {
-        input.session.markLiveOverlayEmpty(input.currentFrame);
-        input.syncPendingFrames();
-      }
+      const ownership = input.editBuffer.undoOverlay(input.currentFrame);
+      if (ownership === 'empty') input.session.markLiveOverlayEmpty(input.currentFrame);
+      else if (ownership === 'dirty') input.session.markLiveOverlayDirty(input.currentFrame);
+      if (ownership !== 'unchanged') input.syncPendingFrames();
     }
+    return true;
+  }, [input]);
+
+  const redo = useCallback(() => {
+    input.playback.stop();
+    if (!(input.engine as UndoRedoEngine | null)?.redo()) return false;
+    if (input.workflowMode === 'roto' && input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame) {
+      input.editBuffer.redoOverlay?.(input.currentFrame);
+      input.session.markLiveOverlayDirty(input.currentFrame);
+      input.syncPendingFrames();
+    }
+    return true;
   }, [input]);
 
   const markCurrentFrameDirty = useCallback(() => {
@@ -135,5 +154,5 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     input.reference.loadReferenceFrame(input.currentFrame, input.engine as PreviewBackgroundEngine | null);
   }, [input.currentFrame, input.engine, input.launchContext?.layerId, input.launchContext?.operationId, input.reference.loadReferenceFrame, input.workflowMode]);
 
-  return { undo, beginFrameEdit, clearCurrentFrame, snapshotCurrentFrame };
+  return { undo, redo, beginFrameEdit, clearCurrentFrame, snapshotCurrentFrame };
 }

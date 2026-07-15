@@ -169,7 +169,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         {status.shortcutsVisible ? (
           <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">
             <strong>Physics Paint shortcuts</strong>
-            <span>Cmd+Z undo · Esc stop preview · ? help</span>
+            <span>Cmd+Z undo · Cmd+Shift+Z / Ctrl+Y redo · Esc stop preview · ? help</span>
             <span>Roto: arrows navigate · O onion · [ ] onion count · completed paint caches automatically</span>
             <span>Play: Space/Enter preview · Cmd+S save play</span>
           </aside>

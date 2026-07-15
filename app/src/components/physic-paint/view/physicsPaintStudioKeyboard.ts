@@ -20,6 +20,7 @@ export interface PhysicsPaintStudioKeyboardActions {
   toggleRotoPlayback: () => void;
   toggleShortcuts: () => void;
   undo: () => void;
+  redo: () => void;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -40,6 +41,16 @@ export function dispatchPhysicsPaintStudioKeyDown(
   const key = event.key.toLowerCase();
   const meta = event.metaKey || event.ctrlKey;
 
+  if (meta && event.shiftKey && key === 'z') {
+    event.preventDefault();
+    actions.redo();
+    return;
+  }
+  if (event.ctrlKey && key === 'y') {
+    event.preventDefault();
+    actions.redo();
+    return;
+  }
   if (meta && key === 'z') {
     event.preventDefault();
     actions.undo();

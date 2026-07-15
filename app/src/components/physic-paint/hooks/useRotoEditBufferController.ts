@@ -7,6 +7,7 @@ import {
   createRotoEditBuffer,
   markRotoFrameDirty,
   removeEditableRotoFrame,
+  redoRotoOverlay,
   resetRotoEditBuffer,
   snapshotRotoFrame,
   undoRotoOverlay,
@@ -24,6 +25,7 @@ export function useRotoEditBufferController<State extends RotoEditableState, Fra
   }, []);
   const markDirty = useCallback((frame: number) => markRotoFrameDirty(bufferRef.current, frame), []);
   const undoOverlay = useCallback((frame: number) => undoRotoOverlay(bufferRef.current, frame), []);
+  const redoOverlay = useCallback((frame: number) => redoRotoOverlay(bufferRef.current, frame), []);
   const clearCachedOverlay = useCallback((frame: number) => {
     clearCachedRepaintOverlay(bufferRef.current, frame);
     removeEditableFrame(frame);
@@ -63,6 +65,7 @@ export function useRotoEditBufferController<State extends RotoEditableState, Fra
     removeEditableFrame,
     markDirty,
     undoOverlay,
+    redoOverlay,
     clearCachedOverlay,
     clearFrame,
     snapshotFrame,

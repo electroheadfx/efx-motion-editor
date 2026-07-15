@@ -248,7 +248,7 @@ export function PhysicsPaintStudio() {
     canvasSize: { width: canvasWidth, height: canvasHeight }, engine, launchContext,
     editBuffer: {
       dirtyFramesRef: dirtyRotoFramesRef, markDirty: rotoEditBuffer.markDirty,
-      undoOverlay: rotoEditBuffer.undoOverlay, clearCachedOverlay: rotoEditBuffer.clearCachedOverlay,
+      undoOverlay: rotoEditBuffer.undoOverlay, redoOverlay: rotoEditBuffer.redoOverlay, clearCachedOverlay: rotoEditBuffer.clearCachedOverlay,
       clearFrame: rotoEditBuffer.clearFrame, snapshotFrame: rotoEditBuffer.snapshotFrame,
     },
     session: { markLiveOverlayDirty: rotoSession.markLiveOverlayDirty, markLiveOverlayEmpty: rotoSession.markLiveOverlayEmpty },
@@ -261,7 +261,7 @@ export function PhysicsPaintStudio() {
     playback: { stop: rotoCachedPlayback.stop }, syncPendingFrames: syncPendingRotoFrames,
     status: { setApplyStatus, setApplyMessage },
   });
-  const { undo, beginFrameEdit: beginRotoFrameEdit } = rotoFrameEditing;
+  const { undo, redo, beginFrameEdit: beginRotoFrameEdit } = rotoFrameEditing;
   useRotoBackgroundMetadataSync({ launchContext, workflowMode, settings });
   const getRotoCachedPlaybackFrames = () => rotoSession.playbackFrameNumbers.value.map((appFrame) => ({ appFrame, frame: findCachedRotoDisplayFrame(appFrame) }));
   const missingConditions = selectPhysicsPaintMissingConditions({
@@ -374,6 +374,7 @@ export function PhysicsPaintStudio() {
     savedRotoFrames: timelineSavedRotoFrames,
     actions: {
       undo,
+      redo,
       stopPreview,
       savePlay: () => { void savePlay(); },
       toggleShortcuts: () => setShortcutsVisible((visible) => !visible),
@@ -428,7 +429,7 @@ export function PhysicsPaintStudio() {
       },
     toolRail: {
         activeTool: settings.tool, physicsMode: settings.physicsMode, activePhysicsAction: settings.activePhysicsAction, canUndo: Boolean(engine), disabled: !engine,
-        onSelectTool: selectTool, onUndo: undo, onClearFrame: clearActiveSource, onPhysicsStart: startPhysics, onPhysicsStop: stopPhysics, onDryPaint: dryPaint,
+        onSelectTool: selectTool, onUndo: undo, onRedo: redo, onClearFrame: clearActiveSource, onPhysicsStart: startPhysics, onPhysicsStop: stopPhysics, onDryPaint: dryPaint,
       },
     canvas: {
         toastMessage: playLimitToast.message, onDismissToast: playLimitToast.dismiss, cachedPlayPreviewUrl, cachedRotoReferenceUrl,

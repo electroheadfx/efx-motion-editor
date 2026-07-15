@@ -47,6 +47,13 @@ export function undoRotoOverlay<State, Frame>(buffer: RotoEditBuffer<State, Fram
   return 'empty';
 }
 
+export function redoRotoOverlay<State, Frame>(buffer: RotoEditBuffer<State, Frame>, frame: number): boolean {
+  const count = buffer.liveOverlayActionCounts.get(frame) ?? 0;
+  buffer.liveOverlayActionCounts.set(frame, count + 1);
+  buffer.dirtyFrames.add(frame);
+  return true;
+}
+
 export function clearCachedRepaintOverlay<State, Frame>(buffer: RotoEditBuffer<State, Frame>, frame: number): void {
   buffer.frameStates.delete(frame);
   buffer.previewFrames.delete(frame);
