@@ -107,6 +107,9 @@ describe('Roto script clipboard controller', () => {
     test.controller.observeCompletedMutation(test.engine, completion(1));
     expect(await copying).toBe(true);
     expect(test.controller.status.value).toBe('Copied 1');
+    expect(test.controller.hasCopiedScript.value).toBe(true);
+    expect(test.controller.copiedSourceFrame.value).toBe(4);
+    expect(test.controller.copiedStrokeCount.value).toBe(1);
     expect(test.controller.clipboard.value?.brushes[0].continuations).toHaveLength(1);
     expect(Object.isFrozen(test.controller.clipboard.value?.brushes[0].primary.points[0])).toBe(true);
 
@@ -125,6 +128,9 @@ describe('Roto script clipboard controller', () => {
     test.setStrokes([]);
     test.controller.notifySourceRevision();
     expect(test.controller.clipboard.value).toBeNull();
+    expect(test.controller.hasCopiedScript.value).toBe(false);
+    expect(test.controller.copiedSourceFrame.value).toBeNull();
+    expect(test.controller.copiedStrokeCount.value).toBe(0);
   });
 
   it('reacts to first paint, Undo, Redo, Clear, engine replacement, and launch reset without a bound clipboard', () => {
@@ -173,17 +179,23 @@ describe('Roto script clipboard controller', () => {
     await copyCompletedSource(test, [1, 2]);
     test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const firstApply = test.controller.applyScript();
+    expect(test.controller.applying.value).toBe(true);
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
     test.controller.observeCompletedMutation(test.engine, completion(999));
     expect(test.controller.status.value).toBe('Applying 0/2');
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
     test.controller.observeCompletedMutation(test.engine, completion(100));
     test.controller.observeCompletedMutation(test.engine, completion(100));
     await Promise.resolve();
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(2);
     expect(test.controller.status.value).toBe('Applying 1/2');
+    expect(test.controller.applyProgress.value).toEqual({ completed: 1, total: 2 });
     test.controller.observeCompletedMutation(test.engine, completion(101));
     await expect(firstApply).resolves.toBe(true);
     expect(test.controller.status.value).toBe('Applied 2');
+    expect(test.controller.applying.value).toBe(false);
+    expect(test.controller.applyProgress.value).toBeNull();
 
     const secondApply = test.controller.applyScript();
     test.controller.observeCompletedMutation(test.engine, completion(102));
@@ -252,8 +264,13 @@ describe('Roto script clipboard controller', () => {
     await copyCompletedSource(cancelled, [1, 2]);
     const cancelledApply = cancelled.controller.applyScript();
     cancelled.controller.cancelApply();
+    expect(cancelled.controller.applying.value).toBe(true);
+    expect(cancelled.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
     cancelled.controller.observeCompletedMutation(cancelled.engine, completion(100));
+    expect(cancelled.controller.applyProgress.value).toEqual({ completed: 1, total: 2 });
     await expect(cancelledApply).resolves.toBe(false);
+    expect(cancelled.controller.applying.value).toBe(false);
+    expect(cancelled.controller.applyProgress.value).toBeNull();
     expect(cancelled.controller.error.value).toEqual({
       operation: 'apply',
       code: 'apply-cancelled',
@@ -461,9 +478,13 @@ describe('Roto script clipboard controller', () => {
     const applying = test.controller.applyScript();
 
     test.controller.updateEngine(replacement);
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+    test.controller.observeCompletedMutation(replacement, completion(100));
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
     test.controller.observeCompletedMutation(test.engine, completion(100));
 
     await expect(applying).resolves.toBe(false);
+    expect(test.controller.applyProgress.value).toBeNull();
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
     expect(replacement.enqueueRecordedStroke).not.toHaveBeenCalled();
   });
@@ -478,8 +499,10 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.mutationLocked.value).toBe(true);
     const replacing = test.controller.prepareLaunchReplacement();
     expect(test.controller.mutationLocked.value).toBe(true);
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
     test.controller.observeCompletedMutation(test.engine, completion(100));
     await expect(replacing).resolves.toBeUndefined();
+    expect(test.controller.applyProgress.value).toBeNull();
     test.controller.completeLaunchReplacement();
     await Promise.resolve();
 

@@ -815,6 +815,11 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     const text = studioPresentationSource();
 
     expect(text).toContain('error: rotoScript.error.value');
+    expect(text).toContain('hasCopiedScript: rotoScript.hasCopiedScript.value');
+    expect(text).toContain('copiedSourceFrame: rotoScript.copiedSourceFrame.value');
+    expect(text).toContain('copiedStrokeCount: rotoScript.copiedStrokeCount.value');
+    expect(text).toContain('applying: rotoScript.applying.value');
+    expect(text).toContain('applyProgress: rotoScript.applyProgress.value');
     expect(text).toContain('rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } })');
     expect(text).toContain('rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } })');
     expect(text).not.toContain('setRotoScriptError');

@@ -37,6 +37,11 @@ export interface PhysicsPaintWorkflowRotoScriptState {
   canApply: boolean;
   copyDisabledReason: string | null;
   applyDisabledReason: string | null;
+  hasCopiedScript: boolean;
+  copiedSourceFrame: number | null;
+  copiedStrokeCount: number;
+  applying: boolean;
+  applyProgress: { completed: number; total: number } | null;
   status: string | null;
   error: RotoScriptOperationError | null;
 }

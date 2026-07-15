@@ -80,6 +80,11 @@ export interface RotoScriptAcceptedTarget {
 
 export interface RotoScriptClipboardController {
   clipboard: Signal<RotoPaintScript | null>;
+  hasCopiedScript: ReadonlySignal<boolean>;
+  copiedSourceFrame: ReadonlySignal<number | null>;
+  copiedStrokeCount: ReadonlySignal<number>;
+  applying: ReadonlySignal<boolean>;
+  applyProgress: ReadonlySignal<{ completed: number; total: number } | null>;
   status: Signal<string | null>;
   error: Signal<RotoScriptOperationError | null>;
   availability: ReadonlySignal<RotoScriptActionAvailability>;
@@ -140,6 +145,12 @@ const APPLY_REASONS = {
 
 export function createRotoScriptClipboardController(ports: RotoScriptClipboardControllerPorts): RotoScriptClipboardController {
   const clipboard = signal<RotoPaintScript | null>(null);
+  const hasCopiedScript = computed(() => clipboard.value !== null);
+  const copiedSourceFrame = computed(() => clipboard.value?.sourceFrame ?? null);
+  const copiedStrokeCount = computed(() => clipboard.value?.brushes.length ?? 0);
+  const applyProgressState = signal<{ completed: number; total: number } | null>(null);
+  const applying = computed(() => applyProgressState.value !== null);
+  const applyProgress = computed(() => applyProgressState.value);
   const status = signal<string | null>(null);
   const error = signal<RotoScriptOperationError | null>(null);
   const busy = signal(false);
@@ -242,6 +253,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (!disposalRequested || pendingOperationCount > 0 || activeApply) return;
     disposed = true;
     clipboard.value = null;
+    applyProgressState.value = null;
     status.value = null;
     error.value = null;
     boundSourceFrame = null;
@@ -355,6 +367,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function finishApply(operation: ActiveApplyOperation, success: boolean): void {
     if (activeApply !== operation) return;
     activeApply = null;
+    applyProgressState.value = null;
     const applied = success && !operation.cancelled;
     refreshBoundSourceAfterApply(operation, applied ? `Applied ${operation.completed}` : 'Failed');
     if (operation.publishUi && launchGeneration === operation.launchGeneration && !disposalRequested) {
@@ -457,6 +470,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const destinationSourceFrame = preparedTarget?.sourceFrameOverride ?? source.sourceFrame;
     const destinationDisplayFrame = preparedTarget?.target.displayFrame ?? source.displayFrame;
     beginOperation(engine);
+    applyProgressState.value = { completed: 0, total: script.brushes.length };
     status.value = `Applying 0/${script.brushes.length}`;
     return new Promise((resolve) => {
       const operation: ActiveApplyOperation = {
@@ -501,6 +515,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       && !operation.consumedMutationIds.has(mutation.mutationId)) {
       operation.consumedMutationIds.add(mutation.mutationId);
       operation.completed += 1;
+      applyProgressState.value = { completed: operation.completed, total: operation.script.brushes.length };
       if (!operation.cancelled && operation.publishUi && launchGeneration === operation.launchGeneration) {
         status.value = `Applying ${operation.completed}/${operation.script.brushes.length}`;
       }
@@ -608,6 +623,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   function completeLaunchReplacement(): void {
     clipboard.value = null;
+    applyProgressState.value = null;
     status.value = null;
     error.value = null;
     boundSourceFrame = null;
@@ -642,6 +658,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   return {
     clipboard,
+    hasCopiedScript,
+    copiedSourceFrame,
+    copiedStrokeCount,
+    applying,
+    applyProgress,
     status,
     error,
     availability,

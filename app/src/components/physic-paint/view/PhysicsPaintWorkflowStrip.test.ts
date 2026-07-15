@@ -83,6 +83,11 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('copyDisabledReason');
     expect(code).toContain('applyDisabledReason');
     expect(code).toContain('props.rotoScript?.status');
+    for (const field of ['hasCopiedScript', 'copiedSourceFrame', 'copiedStrokeCount', 'applying', 'applyProgress']) {
+      expect(code.slice(code.indexOf('export interface PhysicsPaintWorkflowRotoScriptState'), code.indexOf('const ROTO_CELL_LEGEND_ITEMS'))).toContain(field);
+    }
+    expect(code).not.toContain('props.rotoScript?.applyProgress');
+    expect(code).not.toContain('props.rotoScript?.copiedSourceFrame');
     expect(code).toContain('onCopyRotoScript');
     expect(code).toContain('onApplyRotoScript');
   });
