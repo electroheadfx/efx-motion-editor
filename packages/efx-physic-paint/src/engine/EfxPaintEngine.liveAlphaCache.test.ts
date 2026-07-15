@@ -172,6 +172,10 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
       strokeFinalizationScheduled: false,
       undoStack: [{
         mutationId: 2,
+        actions: [{ mutationId: 2 }],
+        deferred: null,
+        checkpoint: {
+        mutationId: 2,
         canvas: { id: 'before-latest' },
         wet: {
           r: new Float32Array([11]), g: new Float32Array([12]), b: new Float32Array([13]),
@@ -181,8 +185,9 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
           r: new Float32Array([17]), g: new Float32Array([18]), b: new Float32Array([19]),
           a: new Float32Array([20]), so: new Float32Array([0.5]),
         },
+        },
       }],
-      undoneActions: [],
+      redoStack: [],
       allActions: [{ mutationId: 1 }, { mutationId: 2 }],
       dualCanvas: {
         dryCanvas,
@@ -201,6 +206,7 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
         alpha: new Float32Array([100]), strokeOpacity: new Float32Array([1]),
       },
       drying: { dryPos: new Float32Array([96]) },
+      captureUndoSnapshot: vi.fn(() => ({ mutationId: 2 })),
       renderVisibleWetLayer: vi.fn(() => { displayCanvas.__name = `wet-${engine.wet.alpha[0]}`; }),
     });
     engine.setCompletedMutationListener((mutation) => {
@@ -217,6 +223,31 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
       mutationId: 2,
       copiedSurfaces: ['before-latest', 'wet-14'],
     }]);
+  });
+
+  it('publishes finalized Redo after restored surfaces are ready for automatic cache capture', () => {
+    const listener = vi.fn();
+    const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine & Record<string, any>;
+    Object.assign(engine, {
+      nextMutationId: 3,
+      completedMutationListener: listener,
+      undoStack: [],
+      redoStack: [{ mutationId: 2, actions: [{ mutationId: 2 }], deferred: null, checkpoint: {
+        mutationId: 2, canvas: { id: 'after-latest' },
+        wet: { r: new Float32Array([1]), g: new Float32Array([2]), b: new Float32Array([3]), a: new Float32Array([4]), w: new Float32Array([5]), dp: new Float32Array([6]), so: new Float32Array([0.7]) },
+        saved: { r: new Float32Array([7]), g: new Float32Array([8]), b: new Float32Array([9]), a: new Float32Array([10]), so: new Float32Array([0.8]) },
+      } }],
+      allActions: [{ mutationId: 1 }],
+      captureUndoSnapshot: vi.fn(() => ({ mutationId: 2 })),
+      restoreUndoSnapshot: vi.fn(),
+      notifyCompletedMutation: EfxPaintEngine.prototype['notifyCompletedMutation'],
+      performanceListener: null,
+      lastCompletedMutationId: null,
+    });
+
+    expect(engine.redo()).toBe(true);
+    expect(listener).toHaveBeenCalledWith({ kind: 'redo', isEmpty: false, mutationId: 2 });
+    expect(engine.allActions).toEqual([{ mutationId: 1 }, { mutationId: 2 }]);
   });
 
   it('does not notify Undo when no visible mutation is available', () => {

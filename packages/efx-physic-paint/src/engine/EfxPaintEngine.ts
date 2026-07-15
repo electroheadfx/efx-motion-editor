@@ -175,6 +175,8 @@ export class EfxPaintEngine {
   private allActions: PaintStroke[] = []
   private undoStack: PaintHistoryEntry[] = []
   private redoStack: PaintHistoryEntry[] = []
+  private historyEntries: PaintHistoryEntry[] = []
+  private historyIndex: number = 0
   private pendingStrokeFinalizations: DeferredStrokeFinalization[] = []
   private activeStrokeFinalization: ActiveStrokeFinalization | null = null
   private strokeFinalizationScheduled: boolean = false
@@ -760,7 +762,7 @@ export class EfxPaintEngine {
 
     this.undoStack.pop()
     this.redoStack.push(entry)
-    this.notifyCompletedMutation('undo', entry.mutationId)
+    this.historyIndex = this.undoStack.length
     return true
   }
 
@@ -774,9 +776,9 @@ export class EfxPaintEngine {
       entry.checkpoint = null
       this.redoStack.pop()
       this.undoStack.push(entry)
+      this.historyIndex = this.undoStack.length
       this.markStrokeHandoffComplete()
       this.scheduleStrokeFinalization()
-      this.notifyCompletedMutation('redo', entry.mutationId)
       return true
     }
 
@@ -786,6 +788,7 @@ export class EfxPaintEngine {
     this.allActions.push(...entry.actions)
     this.redoStack.pop()
     this.undoStack.push({ ...entry, checkpoint: preBrushCheckpoint })
+    this.historyIndex = this.undoStack.length
     this.notifyCompletedMutation('redo', entry.mutationId)
     return true
   }
@@ -825,6 +828,8 @@ export class EfxPaintEngine {
     this.allActions = []
     this.undoStack = []
     this.redoStack = []
+    this.historyEntries = []
+    this.historyIndex = 0
     clearWetLayer(this.wet, this.savedWet, this.drying.dryPos, this.blowDX, this.blowDY, this.lastStrokeMask)
     // Clear fluid solver state
     this.fluid.u.fill(0); this.fluid.v.fill(0)
@@ -1678,13 +1683,16 @@ export class EfxPaintEngine {
       queuedAt,
     }
     this.redoStack = []
-    this.undoStack.push({
+    const historyEntry = {
       mutationId,
       actions: this.allActions.slice(this.allActions.findIndex((action) => action.mutationId === mutationId)),
       checkpoint: null,
       deferred: this.cloneDeferredFinalization(pending),
-    })
+    }
+    this.undoStack.push(historyEntry)
     if (this.undoStack.length > 10) this.undoStack.shift()
+    this.historyEntries = [...this.undoStack]
+    this.historyIndex = this.undoStack.length
     this.pendingStrokeFinalizations.push(pending)
     this.rawPts = []
     this.markStrokeHandoffComplete()
@@ -1860,6 +1868,8 @@ export class EfxPaintEngine {
     // Loaded state is a pixel/script baseline, never active-frame Undo/Redo history.
     this.undoStack = []
     this.redoStack = []
+    this.historyEntries = []
+    this.historyIndex = 0
 
     // Restore synchronously so loaded state is immediately available for apply/export.
     // Animated replay made apply race against setTimeout-delayed stroke restoration.

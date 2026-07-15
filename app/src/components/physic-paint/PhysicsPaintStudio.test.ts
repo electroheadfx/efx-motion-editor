@@ -177,6 +177,15 @@ describe('PhysicsPaintStudio Roto session boundary contract', () => {
 });
 
 describe('PhysicsPaintStudio extracted utility boundaries', () => {
+  it('wires adjacent accessible Undo and Redo rail actions through existing callbacks', () => {
+    const studio = readFileSync(sourcePath, 'utf8');
+    const rail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
+    expect(rail.indexOf("id: 'redo'")).toBeGreaterThan(rail.indexOf("id: 'undo'"));
+    expect(rail).toContain("label: 'Redo'");
+    expect(rail).toContain("if (item.id === 'redo') onRedo()");
+    expect(studio).toContain('onUndo: undo, onRedo: redo');
+  });
+
   it('keeps shortcut filtering pure and wired through the keyboard module', () => {
     const studio = readFileSync(sourcePath, 'utf8');
     const keyboard = studioKeyboardSource();

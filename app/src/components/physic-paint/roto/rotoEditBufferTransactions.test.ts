@@ -6,6 +6,7 @@ import {
   createRotoEditBuffer,
   markRotoFrameDirty,
   removeEditableRotoFrame,
+  redoRotoOverlay,
   resetRotoEditBuffer,
   snapshotRotoFrame,
   undoRotoOverlay,
@@ -46,6 +47,15 @@ describe('Roto edit buffer transactions', () => {
     expect(undoRotoOverlay(buffer, 9)).toBe('empty');
     expect(buffer.dirtyFrames.has(9)).toBe(false);
     expect(buffer.liveOverlayActionCounts.has(9)).toBe(false);
+  });
+
+  it('restores live repaint ownership symmetrically on redo', () => {
+    const buffer = createRotoEditBuffer<State, Frame>();
+    expect(redoRotoOverlay(buffer, 9)).toBe(true);
+    expect(buffer.dirtyFrames.has(9)).toBe(true);
+    expect(buffer.liveOverlayActionCounts.get(9)).toBe(1);
+    expect(redoRotoOverlay(buffer, 9)).toBe(true);
+    expect(buffer.liveOverlayActionCounts.get(9)).toBe(2);
   });
 
   it('clears only live repaint ownership when preserving a cached base', () => {

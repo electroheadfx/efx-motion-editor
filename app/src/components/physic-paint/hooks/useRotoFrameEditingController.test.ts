@@ -38,6 +38,7 @@ function createHarness() {
       dirtyFramesRef: { current: dirtyFrames },
       markDirty,
       undoOverlay: vi.fn((_frame: number): 'unchanged' => 'unchanged'),
+      redoOverlay: vi.fn(() => true),
       clearCachedOverlay: vi.fn(),
       clearFrame: vi.fn(),
       snapshotFrame: vi.fn(() => false),
@@ -100,6 +101,7 @@ describe('Roto frame editing controller', () => {
         dirtyFramesRef: { current: new Set<number>() },
         markDirty: vi.fn(),
         undoOverlay: vi.fn((_frame: number): 'unchanged' => 'unchanged'),
+        redoOverlay: vi.fn(() => true),
         clearCachedOverlay: vi.fn(),
         clearFrame: vi.fn(),
         snapshotFrame: vi.fn(() => false),
@@ -129,6 +131,32 @@ describe('Roto frame editing controller', () => {
 
     expect(loadReferenceFrame).toHaveBeenCalledTimes(1);
     expect(loadReferenceFrame).toHaveBeenCalledWith(4, engine);
+  });
+
+  it('applies cached-base overlay ownership only after successful Undo and Redo', () => {
+    const undo = vi.fn(() => true);
+    const redo = vi.fn(() => true);
+    const undoOverlay = vi.fn((): 'empty' => 'empty');
+    const redoOverlay = vi.fn(() => true);
+    const markLiveOverlayEmpty = vi.fn();
+    const markLiveOverlayDirty = vi.fn();
+    const syncPendingFrames = vi.fn();
+    const controller = useRotoFrameEditingController({
+      workflowMode: 'roto', currentFrame: 4, currentFrameSelectionKind: 'real-key', canvasSize: { width: 1000, height: 650 },
+      engine: { undo, redo } as never, launchContext: null,
+      editBuffer: { dirtyFramesRef: { current: new Set([4]) }, markDirty: vi.fn(), undoOverlay, redoOverlay, clearCachedOverlay: vi.fn(), clearFrame: vi.fn(), snapshotFrame: vi.fn(() => false) },
+      session: { markLiveOverlayDirty, markLiveOverlayEmpty },
+      reference: { cachedReferenceUrl: 'base', cachedRepaintBaseFrame: { appFrame: 4 } as never, clearReference: vi.fn(), resetReference: vi.fn(), setReferenceUrl: vi.fn(), loadReferenceFrame: vi.fn() },
+      clearCachedFrame: vi.fn(), playback: { stop: vi.fn() }, syncPendingFrames,
+      status: { setApplyStatus: vi.fn(), setApplyMessage: vi.fn() },
+    });
+
+    expect(controller.undo()).toBe(true);
+    expect(markLiveOverlayEmpty).toHaveBeenCalledWith(4);
+    expect(controller.redo()).toBe(true);
+    expect(redoOverlay).toHaveBeenCalledWith(4);
+    expect(markLiveOverlayDirty).toHaveBeenCalledWith(4);
+    expect(syncPendingFrames).toHaveBeenCalledTimes(2);
   });
 
   it('transitions the cached reference only on the first edit intent for a dirty frame', () => {

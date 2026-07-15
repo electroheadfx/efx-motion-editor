@@ -7,6 +7,34 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+function makeSnapshot(mutationId: number, id: string, value: number) {
+  return {
+    mutationId,
+    canvas: { id },
+    wet: {
+      r: new Float32Array([value + 1]), g: new Float32Array([value + 2]), b: new Float32Array([value + 3]),
+      a: new Float32Array([value + 4]), w: new Float32Array([value + 5]), dp: new Float32Array([value + 6]), so: new Float32Array([value / 100]),
+    },
+    saved: {
+      r: new Float32Array([value + 7]), g: new Float32Array([value + 8]), b: new Float32Array([value + 9]),
+      a: new Float32Array([value + 10]), so: new Float32Array([(value + 1) / 100]),
+    },
+  }
+}
+
+function installSnapshotBuffers(engine: EngineInternals, snapshot: ReturnType<typeof makeSnapshot>) {
+  engine.dualCanvas = { dryCtx: { putImageData: vi.fn() } }
+  engine.wet = {
+    r: new Float32Array(snapshot.wet.r), g: new Float32Array(snapshot.wet.g), b: new Float32Array(snapshot.wet.b),
+    alpha: new Float32Array(snapshot.wet.a), wetness: new Float32Array(snapshot.wet.w), strokeOpacity: new Float32Array(snapshot.wet.so),
+  }
+  engine.savedWet = {
+    r: new Float32Array(snapshot.saved.r), g: new Float32Array(snapshot.saved.g), b: new Float32Array(snapshot.saved.b),
+    alpha: new Float32Array(snapshot.saved.a), strokeOpacity: new Float32Array(snapshot.saved.so),
+  }
+  engine.drying = { dryPos: new Float32Array(snapshot.wet.dp) }
+}
+
 function createHarness() {
   const finalized: string[] = []
   const engine = Object.create(EfxPaintEngine.prototype) as EngineInternals
@@ -22,10 +50,10 @@ function createHarness() {
     performanceListener: null,
     completedMutationListener: null,
     undoStack: [],
-    undoneActions: [],
+    redoStack: [],
     allActions: [],
     state: { drawing: false, physicsMode: 'local' },
-    pushUndoSnapshot: vi.fn(function (this: EngineInternals) { this.undoStack.push({}) }),
+    captureUndoSnapshot: vi.fn((mutationId: number) => makeSnapshot(mutationId, `before-${mutationId}`, mutationId * 10)),
     notifyCompletedMutation: vi.fn((_kind: string, id: number) => finalized.push(String(id))),
     recordPerformance: vi.fn(),
     stepInteractivePaintFinalization(this: EngineInternals, active: any) {
@@ -45,10 +73,13 @@ function createHarness() {
   })
 
   function enqueue(id: string, tool: 'paint' | 'erase' = 'paint', playFrame = 0) {
-    engine.pendingStrokeFinalizations.push({
+    const mutationId = Number(id.replace(/\D/g, '')) || 1
+    const pending = {
       id, tool, color: tool === 'paint' ? '#123456' : null, points: [{ x: 1, y: 1 }], opts: {},
-      hasPenInput: false, mutationId: Number(id.replace(/\D/g, '')) || 1, queuedAt: performance.now(), playFrame,
-    })
+      hasPenInput: false, mutationId, queuedAt: performance.now(), playFrame,
+    }
+    engine.pendingStrokeFinalizations.push(pending)
+    engine.undoStack.push({ mutationId, actions: [{ mutationId }], checkpoint: null, deferred: pending })
   }
 
   return { engine, finalized, enqueue }
@@ -93,29 +124,30 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.undoStack).toHaveLength(3)
   })
 
-  it('bounds finalized Undo snapshots to the latest 10 brushes', () => {
+  it('moves grouped history bidirectionally without replaying finalized strokes', () => {
     const { engine } = createHarness()
-    engine.width = 1
-    engine.height = 1
-    engine.dualCanvas = {
-      dryCtx: { getImageData: vi.fn((_x: number, _y: number, _width: number, _height: number) => ({ id: engine.undoStack.length + 1 })) },
-    }
-    engine.wet = {
-      r: new Float32Array(1), g: new Float32Array(1), b: new Float32Array(1),
-      alpha: new Float32Array(1), wetness: new Float32Array(1), strokeOpacity: new Float32Array(1),
-    }
-    engine.savedWet = {
-      r: new Float32Array(1), g: new Float32Array(1), b: new Float32Array(1),
-      alpha: new Float32Array(1), strokeOpacity: new Float32Array(1),
-    }
-    engine.drying = { dryPos: new Float32Array(1) }
+    const before = makeSnapshot(2, 'before', 10)
+    const after = makeSnapshot(2, 'after', 20)
+    engine.undoStack = [{ mutationId: 2, actions: [{ mutationId: 2 }, { diffusionFrames: 6 }], checkpoint: before, deferred: null }]
+    engine.allActions = [{ mutationId: 1 }, { mutationId: 2 }, { diffusionFrames: 6 }]
+    installSnapshotBuffers(engine, after)
+    engine.captureUndoSnapshot = vi.fn()
+      .mockReturnValueOnce(after)
+      .mockReturnValueOnce(before)
+    engine.redrawAll = vi.fn()
+    engine.renderAllStrokes = vi.fn()
 
-    for (let mutationId = 1; mutationId <= 12; mutationId++) {
-      EfxPaintEngine.prototype['pushUndoSnapshot'].call(engine, mutationId)
-    }
+    expect(engine.undo()).toBe(true)
+    expect(engine.allActions).toEqual([{ mutationId: 1 }])
+    expect(engine.undoStack).toHaveLength(0)
+    expect(engine.redoStack).toHaveLength(1)
 
-    expect(engine.undoStack).toHaveLength(10)
-    expect(engine.undoStack.map((snapshot: { mutationId: number }) => snapshot.mutationId)).toEqual([3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(engine.redo()).toBe(true)
+    expect(engine.allActions).toEqual([{ mutationId: 1 }, { mutationId: 2 }, { diffusionFrames: 6 }])
+    expect(engine.undoStack).toHaveLength(1)
+    expect(engine.redoStack).toHaveLength(0)
+    expect(engine.redrawAll).not.toHaveBeenCalled()
+    expect(engine.renderAllStrokes).not.toHaveBeenCalled()
   })
 
   it('cancels the latest queued brush on Undo without rasterizing it', () => {
@@ -127,20 +159,16 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.wet = { r: new Float32Array(), g: new Float32Array(), b: new Float32Array(), alpha: new Float32Array(), wetness: new Float32Array(), strokeOpacity: new Float32Array() }
     engine.savedWet = { r: new Float32Array(), g: new Float32Array(), b: new Float32Array(), alpha: new Float32Array(), strokeOpacity: new Float32Array() }
     engine.drying = { dryPos: new Float32Array() }
-    engine.pushUndoSnapshot = vi.fn(function (this: EngineInternals) {
-      this.undoStack.push({ canvas: {}, wet: { r: [], g: [], b: [], a: [], w: [], dp: [], so: [] }, saved: { r: [], g: [], b: [], a: [], so: [] } })
-    })
 
     engine.undo()
 
     expect(finalized).toEqual([])
-    expect(engine.pushUndoSnapshot).not.toHaveBeenCalled()
     expect(engine.pendingStrokeFinalizations).toHaveLength(0)
     expect(engine.activeStrokeFinalization).toBeNull()
     expect(engine.strokeFinalizationScheduled).toBe(false)
     expect(engine.undoStack).toHaveLength(0)
     expect(engine.allActions).toHaveLength(0)
-    expect(engine.undoneActions).toEqual([{ mutationId: 1 }])
+    expect(engine.redoStack[0].actions).toEqual([{ mutationId: 1 }])
   })
 
   it('cancels active finalization and exactly restores its pre-brush snapshot', () => {
@@ -161,6 +189,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.activeMutationId = 1
     engine.strokeFinalizationScheduled = true
     engine.undoStack = [{
+      mutationId: 1, actions: [{ mutationId: 1 }], checkpoint: {
       mutationId: 1,
       canvas,
       wet: {
@@ -171,7 +200,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
         r: new Float32Array([7]), g: new Float32Array([8]), b: new Float32Array([9]),
         a: new Float32Array([10]), so: new Float32Array([0.8]),
       },
-    }]
+    }, deferred: pending }]
     engine.dualCanvas = { dryCtx: { putImageData: vi.fn() } }
     engine.wet = {
       r: new Float32Array([91]), g: new Float32Array([92]), b: new Float32Array([93]),
@@ -206,7 +235,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(Array.from(engine.savedWet.alpha)).toEqual([10])
     expect(engine.savedWet.strokeOpacity[0]).toBeCloseTo(0.8)
     expect(engine.allActions).toHaveLength(0)
-    expect(engine.undoneActions).toEqual([{ mutationId: 1 }])
+    expect(engine.redoStack[0].actions).toEqual([{ mutationId: 1 }])
   })
 
   it('undoes the latest accepted brush when a physics continuation trails it', () => {
@@ -227,7 +256,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
       },
     }
     engine.allActions = [loadedBaseline, latestBrush, physicsContinuation]
-    engine.undoStack = [latestSnapshot]
+    engine.undoStack = [{ mutationId: 2, actions: [latestBrush, physicsContinuation], checkpoint: latestSnapshot, deferred: null }]
     engine.dualCanvas = { dryCtx: { putImageData: vi.fn() } }
     engine.wet = {
       r: new Float32Array([91]), g: new Float32Array([92]), b: new Float32Array([93]),
@@ -244,7 +273,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(finalized).toEqual(['2'])
     expect(engine.dualCanvas.dryCtx.putImageData).toHaveBeenCalledWith(latestSnapshot.canvas, 0, 0)
     expect(engine.allActions).toEqual([loadedBaseline])
-    expect(engine.undoneActions).toEqual([latestBrush, physicsContinuation])
+    expect(engine.redoStack[0].actions).toEqual([latestBrush, physicsContinuation])
   })
 
   it('restores the latest finalized brush by identity and preserves earlier history', () => {
@@ -276,7 +305,10 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
       },
     }
     engine.allActions = [firstAction, latestAction]
-    engine.undoStack = [firstSnapshot, latestSnapshot]
+    engine.undoStack = [
+      { mutationId: 1, actions: [firstAction], checkpoint: firstSnapshot, deferred: null },
+      { mutationId: 2, actions: [latestAction], checkpoint: latestSnapshot, deferred: null },
+    ]
     engine.dualCanvas = { dryCtx: { putImageData: vi.fn() } }
     engine.wet = {
       r: new Float32Array([91]), g: new Float32Array([92]), b: new Float32Array([93]),
@@ -294,16 +326,16 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     expect(engine.dualCanvas.dryCtx.putImageData).toHaveBeenCalledWith(latestSnapshot.canvas, 0, 0)
     expect(Array.from(engine.wet.r)).toEqual([11])
     expect(Array.from(engine.savedWet.alpha)).toEqual([20])
-    expect(engine.undoStack).toEqual([firstSnapshot])
+    expect(engine.undoStack).toEqual([{ mutationId: 1, actions: [firstAction], checkpoint: firstSnapshot, deferred: null }])
     expect(engine.allActions).toEqual([firstAction])
-    expect(engine.undoneActions).toEqual([latestAction])
+    expect(engine.redoStack[0].actions).toEqual([latestAction])
   })
 
   it('resets active-frame script and removed history at the navigation Clear boundary', () => {
     const { engine } = createHarness()
     engine.allActions = [{ mutationId: 1 }]
     engine.undoStack = [{ mutationId: 1 }]
-    engine.undoneActions = [{ mutationId: 0 }]
+    engine.redoStack = [{ mutationId: 0 }]
     engine.stopNaturalDrying = vi.fn()
     engine.wet = {
       r: new Float32Array(1), g: new Float32Array(1), b: new Float32Array(1),
@@ -336,7 +368,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
 
     expect(engine.getStrokes()).toEqual([])
     expect(engine.undoStack).toEqual([])
-    expect(engine.undoneActions).toEqual([])
+    expect(engine.redoStack).toEqual([])
   })
 
   it('invalidates queued and active work on Clear so stale turns cannot publish', () => {

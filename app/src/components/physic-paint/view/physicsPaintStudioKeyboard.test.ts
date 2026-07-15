@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
+import { dispatchPhysicsPaintStudioKeyDown, isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
 
 class TestHTMLElement {
   tagName: string;
@@ -16,6 +16,29 @@ class TestHTMLElement {
     return this.closestMatch;
   }
 }
+
+describe('Physics Paint Undo/Redo shortcuts', () => {
+  it.each([
+    [{ metaKey: true, shiftKey: true, key: 'z' }, 'redo'],
+    [{ ctrlKey: true, shiftKey: true, key: 'Z' }, 'redo'],
+    [{ ctrlKey: true, key: 'y' }, 'redo'],
+    [{ metaKey: true, key: 'z' }, 'undo'],
+    [{ ctrlKey: true, key: 'z' }, 'undo'],
+  ])('dispatches $1 exclusively to $2', (init, expected) => {
+    vi.stubGlobal('HTMLElement', TestHTMLElement);
+    const preventDefault = vi.fn();
+    const actions = {
+      undo: vi.fn(), redo: vi.fn(), stopPreview: vi.fn(), savePlay: vi.fn(), toggleShortcuts: vi.fn(),
+      toggleRotoPlayback: vi.fn(), navigateRotoFrame: vi.fn(), toggleOnion: vi.fn(), adjustOnionCount: vi.fn(),
+      findCachedPlayFrames: vi.fn(), playPreview: vi.fn(),
+    };
+    dispatchPhysicsPaintStudioKeyDown({ target: null, preventDefault, metaKey: false, ctrlKey: false, shiftKey: false, ...init } as unknown as KeyboardEvent,
+      { currentFrame: 0, framesToApply: 1, isPlaying: false, savedPlayCacheDirty: false, workflowMode: 'roto' }, actions, []);
+    expect(actions[expected as 'undo' | 'redo']).toHaveBeenCalledOnce();
+    expect(actions[expected === 'undo' ? 'redo' : 'undo']).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+});
 
 describe('isPhysicsPaintShortcutTarget', () => {
   const originalHTMLElement = globalThis.HTMLElement;
