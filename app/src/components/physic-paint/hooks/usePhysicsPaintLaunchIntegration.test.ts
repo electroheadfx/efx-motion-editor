@@ -97,6 +97,38 @@ describe('Physics Paint launch replacement coordinator', () => {
     expect(controller.availability.value.busy).toBe(false);
   });
 
+  it('keeps an established mounted clipboard through coalesced navigation and delayed launch contexts', async () => {
+    const engine = {
+      getStrokes: () => [stroke(1)],
+      enqueueRecordedStroke: vi.fn(() => 100),
+      setInputLocked: vi.fn(),
+    };
+    const controller = createRotoScriptClipboardController({
+      sessionId: 'mounted-session',
+      getEngine: () => engine,
+      getSource: () => ({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 }),
+      getMotion: () => ({ deformation: 0, position: 0 }),
+      prepareEmptyTarget: () => null,
+    });
+    controller.updateEngine(engine);
+    const copying = controller.copyScript();
+    controller.observeCompletedMutation(engine, completion(1));
+    await expect(copying).resolves.toBe(true);
+    const copied = controller.clipboard.value;
+    const coordinator = createPhysicsPaintLaunchReplacementCoordinator({
+      prepareReplacement: controller.prepareLaunchReplacement,
+      applyLatest: () => controller.completeLaunchReplacement(),
+    });
+
+    coordinator.request({ ...launch('navigation', 8), layerId: 'layer-a' });
+    coordinator.request({ ...launch('delayed', 4), layerId: 'layer-b' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(controller.clipboard.value).toBe(copied);
+    expect(controller.clipboard.value?.provenance).toEqual({ sessionId: 'mounted-session', layerId: 'layer-a', sourceFrame: 4 });
+  });
+
   it('waits for the cooperative handoff before applying a replacement launch', async () => {
     const drain = deferred();
     const events: string[] = [];
