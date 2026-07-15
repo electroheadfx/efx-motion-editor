@@ -269,6 +269,41 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
     expect(listener).toHaveBeenCalledWith({ kind: 'redo', isEmpty: false, mutationId: 2 });
   });
 
+  it('keeps recorded submission on the cooperative completion and live-alpha boundary', () => {
+    const listener = vi.fn();
+    const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine & Record<string, any>;
+    const flushPendingStrokeFinalizations = vi.fn();
+    const renderPartialStrokes = vi.fn();
+    const renderAllStrokes = vi.fn();
+    Object.assign(engine, {
+      nextMutationId: 12, allActions: [], undoStack: [], redoStack: [], historyEntries: [], historyIndex: 0,
+      pendingStrokeFinalizations: [], activeStrokeFinalization: null, strokeFinalizationScheduled: false,
+      strokeFinalizationGeneration: 0, performanceListener: null, completedMutationListener: listener,
+      historyAvailabilityListener: null, markStrokeHandoffComplete: vi.fn(), scheduleStrokeFinalization: vi.fn(),
+      flushPendingStrokeFinalizations, renderPartialStrokes, renderAllStrokes,
+      state: { drawing: false, physicsMode: 'local' }, activeMutationId: null, lastCompletedMutationId: null,
+    });
+    const mutationId = engine.enqueueRecordedStroke({ primary: {
+      mutationId: 99, tool: 'paint', color: '#123456', timestamp: 1, hasPenInput: true, physicsMode: 'local',
+      params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 },
+      points: [
+        { x: 1, y: 1, p: 0.5, tx: 1, ty: 2, tw: 3, spd: 4 },
+        { x: 2, y: 2, p: 0.5, tx: 1, ty: 2, tw: 3, spd: 4 },
+        { x: 3, y: 3, p: 0.5, tx: 1, ty: 2, tw: 3, spd: 4 },
+      ],
+    } });
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(flushPendingStrokeFinalizations).not.toHaveBeenCalled();
+    expect(renderPartialStrokes).not.toHaveBeenCalled();
+    expect(renderAllStrokes).not.toHaveBeenCalled();
+
+    const active = { pending: engine.pendingStrokeFinalizations[0], generation: 0 };
+    engine.completeActiveStrokeFinalization(active);
+
+    expect(listener).toHaveBeenCalledWith({ kind: 'paint', isEmpty: false, mutationId });
+  });
+
   it('does not notify Undo when no visible mutation is available', () => {
     const listener = vi.fn();
     const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine;

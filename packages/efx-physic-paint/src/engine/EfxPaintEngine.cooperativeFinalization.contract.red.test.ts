@@ -86,7 +86,144 @@ function createHarness() {
   return { engine, finalized, enqueue }
 }
 
+function makeRecordedStroke(overrides: Record<string, unknown> = {}) {
+  return {
+    mutationId: 800,
+    tool: 'paint',
+    points: [
+      { x: 1, y: 2, p: 0.25, tx: 3, ty: 4, tw: 5, spd: 6 },
+      { x: 7, y: 8, p: 0.75, tx: 9, ty: 10, tw: 11, spd: 12 },
+      { x: 13, y: 14, p: 0.5, tx: 15, ty: 16, tw: 17, spd: 18 },
+    ],
+    color: '#123456',
+    params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 },
+    timestamp: 1234,
+    hasPenInput: true,
+    playFrame: 7,
+    physicsMode: 'local',
+    ...overrides,
+  }
+}
+
+function installRecordedAcceptanceHarness(engine: EngineInternals) {
+  Object.assign(engine, {
+    nextMutationId: 20,
+    historyEntries: [],
+    historyIndex: 0,
+    redoStack: [],
+    markStrokeHandoffComplete: vi.fn(),
+    scheduleStrokeFinalization: vi.fn(),
+    notifyHistoryAvailability: vi.fn(),
+  })
+}
+
 describe('EfxPaintEngine cooperative finalization contracts', () => {
+  it('accepts immutable recorded brushes with fresh identity and grouped continuations', () => {
+    const { engine } = createHarness()
+    installRecordedAcceptanceHarness(engine)
+    const primary = makeRecordedStroke()
+    const continuation = makeRecordedStroke({ mutationId: 801, points: [], diffusionFrames: 6, playFrame: 9 })
+
+    const mutationId = engine.enqueueRecordedStroke({ primary, continuations: [continuation] })
+    primary.points[0].x = 999
+    primary.params.size = 99
+    continuation.diffusionFrames = 99
+
+    expect(mutationId).toBe(20)
+    expect(engine.allActions).toHaveLength(2)
+    expect(engine.allActions[0]).toMatchObject({
+      mutationId: 20, tool: 'paint', color: '#123456', timestamp: 1234,
+      hasPenInput: true, playFrame: 7, physicsMode: 'local',
+    })
+    expect(engine.allActions[0].points[0].x).toBe(1)
+    expect(engine.allActions[0].params.size).toBe(6)
+    expect(engine.allActions[1]).toMatchObject({ points: [], diffusionFrames: 6, playFrame: 9 })
+    expect(engine.allActions[1]).not.toHaveProperty('mutationId')
+    expect(engine.undoStack).toHaveLength(1)
+    expect(engine.undoStack[0].actions).toEqual(engine.allActions)
+    expect(engine.pendingStrokeFinalizations).toHaveLength(1)
+    expect(engine.pendingStrokeFinalizations[0]).toMatchObject({ mutationId: 20, continuationFrames: 6, physicsMode: 'local' })
+  })
+
+  it('rejects malformed recorded continuation ownership without accepting work', () => {
+    const { engine } = createHarness()
+    installRecordedAcceptanceHarness(engine)
+    const continuation = makeRecordedStroke({ points: [], diffusionFrames: 4 })
+
+    expect(() => engine.enqueueRecordedStroke({ primary: continuation })).toThrow(/primary/i)
+    expect(() => engine.enqueueRecordedStroke({ primary: makeRecordedStroke(), continuations: [makeRecordedStroke()] })).toThrow(/continuation/i)
+    expect(() => engine.enqueueRecordedStroke({ primary: makeRecordedStroke({ tool: 'erase', color: null }), continuations: [continuation] })).toThrow(/paint primary/i)
+    expect(engine.allActions).toEqual([])
+    expect(engine.undoStack).toEqual([])
+    expect(engine.pendingStrokeFinalizations).toEqual([])
+  })
+
+  it('gives each recorded brush independent exact history, clears Redo, and caps Undo at ten', () => {
+    const { engine } = createHarness()
+    installRecordedAcceptanceHarness(engine)
+    engine.redoStack = [{ mutationId: 1 }]
+
+    const mutationIds = Array.from({ length: 11 }, (_, index) => engine.enqueueRecordedStroke({
+      primary: makeRecordedStroke({ timestamp: index, color: `#${String(index).padStart(6, '0')}` }),
+    }))
+
+    expect(mutationIds).toEqual(Array.from({ length: 11 }, (_, index) => 20 + index))
+    expect(engine.redoStack).toEqual([])
+    expect(engine.undoStack).toHaveLength(10)
+    expect(engine.undoStack.map((entry: any) => entry.mutationId)).toEqual(mutationIds.slice(1))
+    expect(engine.pendingStrokeFinalizations.map((pending: any) => pending.mutationId)).toEqual(mutationIds)
+  })
+
+  it('keeps recorded outlines FIFO and publishes completion only after continuation work', () => {
+    const { engine, finalized } = createHarness()
+    installRecordedAcceptanceHarness(engine)
+    const first = engine.enqueueRecordedStroke({
+      primary: makeRecordedStroke({ color: '#first' }),
+      continuations: [makeRecordedStroke({ points: [], diffusionFrames: 2 })],
+    })
+    const second = engine.enqueueRecordedStroke({ primary: makeRecordedStroke({ color: '#second' }) })
+    engine.state.drawing = true
+
+    expect(engine.getQueuedStrokePreviews().map((pending: any) => pending.mutationId)).toEqual([first, second])
+
+    engine.state.drawing = false
+    const firstPending = engine.pendingStrokeFinalizations[0]
+    const active = {
+      pending: firstPending,
+      generation: engine.strokeFinalizationGeneration,
+      finalizationStartedAt: 0,
+      phase: 'continuation',
+      raster: null,
+      fluid: null,
+      continuationFrame: 0,
+    }
+    engine.activeStrokeFinalization = active
+    engine.replayDiffusionFrame = vi.fn()
+    engine.stepInteractivePaintFinalization = EfxPaintEngine.prototype['stepInteractivePaintFinalization']
+    engine.completeActiveStrokeFinalization = EfxPaintEngine.prototype['completeActiveStrokeFinalization']
+    engine.notifyCompletedMutation = vi.fn((_kind: string, id: number) => finalized.push(String(id)))
+
+    engine.stepInteractivePaintFinalization(active)
+    expect(finalized).toEqual([])
+    expect(engine.pendingStrokeFinalizations[0]).toBe(firstPending)
+    engine.stepInteractivePaintFinalization(active)
+    expect(finalized).toEqual([String(first)])
+    expect(engine.pendingStrokeFinalizations[0].mutationId).toBe(second)
+  })
+
+  it('invalidates stale recorded finalization generations before completion publication', () => {
+    const { engine, finalized } = createHarness()
+    installRecordedAcceptanceHarness(engine)
+    engine.enqueueRecordedStroke({ primary: makeRecordedStroke() })
+    const stale = engine.startNextStrokeFinalization()
+    engine.activeStrokeFinalization = stale
+    engine.strokeFinalizationGeneration += 1
+
+    engine.runStrokeFinalizationTurn()
+
+    expect(finalized).toEqual([])
+    expect(engine.activeStrokeFinalization).toBeNull()
+  })
   it('accepts pointer input while the previous brush remains pending', () => {
     const { engine, enqueue } = createHarness()
     enqueue('brush-1')
