@@ -64,6 +64,7 @@ export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditab
   playback: { stop: () => void };
   syncPendingFrames: () => void;
   status: RotoEditingStatusPort;
+  isMutationLocked?: () => boolean;
 }
 
 export function useRotoFrameEditingController<TEditable extends RotoEditableState>(input: UseRotoFrameEditingControllerInput<TEditable>) {
@@ -89,6 +90,7 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
   }, [input]);
 
   const undo = useCallback(() => {
+    if (input.isMutationLocked?.()) return false;
     input.playback.stop();
     if (!(input.engine as UndoRedoEngine | null)?.undo()) return false;
     if (input.workflowMode === 'roto' && input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame) {
@@ -101,6 +103,7 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
   }, [input]);
 
   const redo = useCallback(() => {
+    if (input.isMutationLocked?.()) return false;
     input.playback.stop();
     if (!(input.engine as UndoRedoEngine | null)?.redo()) return false;
     if (input.workflowMode === 'roto' && input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame) {
@@ -134,7 +137,7 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
   }, [input.playback, markCurrentFrameDirty]);
 
   const clearCurrentFrame = useCallback(() => {
-    if (!input.engine || !input.launchContext || input.workflowMode !== 'roto' || input.currentFrameSelectionKind !== 'real-key') return false;
+    if (input.isMutationLocked?.() || !input.engine || !input.launchContext || input.workflowMode !== 'roto' || input.currentFrameSelectionKind !== 'real-key') return false;
     input.playback.stop();
     input.engine.clear();
     (input.engine as PreviewBackgroundEngine).clearPreviewBaseImage();

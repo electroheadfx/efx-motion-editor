@@ -25,6 +25,7 @@ describe('Physics Paint engine actions', () => {
     expect(text).toContain("input.engine?.setEraseStrength(eraseStrength)");
     expect(text).toContain("engine.startPhysics(mode)");
     expect(text).toContain("engine.stopPhysics()");
+    expect(text).toContain('input.isMutationLocked?.()');
     expect(text).toContain("activePhysicsAction: mode");
     expect(text).toContain("activePhysicsAction: null");
   });

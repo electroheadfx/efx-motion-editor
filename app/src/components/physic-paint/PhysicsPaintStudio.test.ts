@@ -193,6 +193,7 @@ describe('PhysicsPaintStudio extracted utility boundaries', () => {
     expect(studio).toContain('useSignal<PaintHistoryAvailability>({ undo: 0, redo: 0 })');
     expect(studio).toContain('readyEngine.setHistoryAvailabilityListener');
     expect(studio).toContain('undoCount: historyAvailability.value.undo, redoCount: historyAvailability.value.redo');
+    expect(studio).toContain('disabled: !engine || rotoScript.mutationLocked.value');
     expect(studio).toContain('onUndo: undo, onRedo: redo');
     expect(styles).toContain('.physics-paint-history-badge');
   });
@@ -784,7 +785,8 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     expect(text).toContain("currentFrameSelectionKind !== 'generated-interpolation'");
     expect(text).toContain('mutationEngine.copyLiveAlphaCanvas()');
     expect(text).toContain('rotoPersistence.captureLivePixels({');
-    expect(text).toContain('cachedBase');
+    expect(text).toContain('publicationIdentity?.cachedBase');
+    expect(text).toContain('background: publicationIdentity?.background');
     expect(text).not.toContain('onSaveRotoFrame');
     expect(text).not.toContain('onSavePendingRotoFrames');
   });
@@ -807,9 +809,12 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     expect(navigation).toContain('return await runtimePortRef.current.navigateToSyncedFrame(targetFrame)');
   });
 
-  it('keeps Roto input disabled for generated displays and explicit script operation locks only', () => {
+  it('keeps Roto input and every Studio mutation command guarded by the script operation lock', () => {
     const text = studioPresentationSource();
     expect(text).toContain('const rotoInputDisabled = currentFrameIsGeneratedRoto || rotoScript.availability.value.busy');
+    expect(text).toContain('isMutationLocked: () => rotoScript.mutationLocked.peek()');
+    expect(text).toContain('if (rotoScript.mutationLocked.peek() || !engine || !launchContext) return;');
+    expect(text).toContain('if (rotoScript.mutationLocked.peek()) return;');
     expect(text).not.toContain("currentFrameSelectionKind !== 'real-key'");
     expect(text).not.toContain("rotoInputDisabled = workflowMode === 'roto' && applyStatus === 'applying'");
   });

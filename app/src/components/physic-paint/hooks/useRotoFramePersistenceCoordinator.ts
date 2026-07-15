@@ -71,7 +71,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     setApplyMessage: input.setApplyMessage,
   });
 
-  const upsertCachedFrame = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null, interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number, expectedOperationId?: string) => {
+  const upsertCachedFrame = useCallback((renderedFrame: RenderedFramePayload, backgroundOnly: boolean, onionFrame?: RenderedFramePayload | null, interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number, expectedOperationId?: string, background?: PhysicPaintRotoBackgroundMetadata) => {
     const sourceFrame = renderedFrame.sourceFrame ?? renderedFrame.appFrame;
     const normalized = { ...renderedFrame, appFrame: sourceFrame };
     input.setLaunchContext((current) => {
@@ -89,7 +89,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
             displayFrame: frameForCache.displayFrame,
             renderedFrame: frameForCache,
             backgroundOnly,
-            rotoBackground: input.getBackgroundMetadata(),
+            rotoBackground: background ?? input.getBackgroundMetadata(),
             rotoInterpolationSettings: interpolationSettings ?? input.store.getInterpolationSettings(expectedLayerId),
           }, mutationId);
         }
@@ -116,7 +116,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
           sourceFrame,
           displayFrame: nextDisplayFrame,
           renderedFrame: frameForCache,
-          rotoBackground: input.getBackgroundMetadata(),
+          rotoBackground: background ?? input.getBackgroundMetadata(),
           rotoInterpolationSettings: settings,
           ...(backgroundOnly ? { backgroundOnly: true } : {}),
         }, mutationId);
@@ -141,6 +141,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     interpolationSettings?: PhysicPaintRotoInterpolationSettings;
     backgroundOnly?: boolean;
     operationId?: string;
+    background?: PhysicPaintRotoBackgroundMetadata;
   }) => livePixelTransactionsRef.current.capture({
     sourceFrame: inputCapture.sourceFrame,
     mutationId: inputCapture.mutationId,
@@ -148,7 +149,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     produce: () => inputCapture.cachedBase
       ? mergeCachedRotoAlphaFrame(inputCapture.cachedBase, inputCapture.liveAlphaCanvas, inputCapture.sourceFrame, inputCapture.size, inputCapture.mutationId)
       : encodeRotoFrameFromCanvas(inputCapture.liveAlphaCanvas, inputCapture.sourceFrame, inputCapture.size, inputCapture.mutationId),
-    commit: (renderedFrame) => upsertCachedFrame({ ...renderedFrame, displayFrame: inputCapture.displayFrame }, inputCapture.backgroundOnly === true, undefined, inputCapture.interpolationSettings, inputCapture.layerId, inputCapture.mutationId, inputCapture.operationId),
+    commit: (renderedFrame) => upsertCachedFrame({ ...renderedFrame, displayFrame: inputCapture.displayFrame }, inputCapture.backgroundOnly === true, undefined, inputCapture.interpolationSettings, inputCapture.layerId, inputCapture.mutationId, inputCapture.operationId, inputCapture.background),
   }), [upsertCachedFrame]);
 
   const removeCachedFrame = useCallback((frame: number) => {

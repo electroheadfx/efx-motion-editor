@@ -159,6 +159,29 @@ describe('Roto frame editing controller', () => {
     expect(syncPendingFrames).toHaveBeenCalledTimes(2);
   });
 
+  it('blocks Undo, Redo, and Clear engine mutations while a script Apply owns the mutation lock', () => {
+    const undo = vi.fn(() => true);
+    const redo = vi.fn(() => true);
+    const clear = vi.fn();
+    const controller = useRotoFrameEditingController({
+      workflowMode: 'roto', currentFrame: 4, currentFrameSelectionKind: 'real-key', canvasSize: { width: 1000, height: 650 },
+      engine: { undo, redo, clear } as never, launchContext: { layerId: 'layer-1' } as never,
+      editBuffer: { dirtyFramesRef: { current: new Set([4]) }, markDirty: vi.fn(), undoOverlay: vi.fn((): 'unchanged' => 'unchanged'), clearCachedOverlay: vi.fn(), clearFrame: vi.fn(), snapshotFrame: vi.fn(() => false) },
+      session: { markLiveOverlayDirty: vi.fn(), markLiveOverlayEmpty: vi.fn() },
+      reference: { cachedReferenceUrl: null, cachedRepaintBaseFrame: null, clearReference: vi.fn(), resetReference: vi.fn(), setReferenceUrl: vi.fn(), loadReferenceFrame: vi.fn() },
+      clearCachedFrame: vi.fn(), playback: { stop: vi.fn() }, syncPendingFrames: vi.fn(),
+      status: { setApplyStatus: vi.fn(), setApplyMessage: vi.fn() },
+      isMutationLocked: () => true,
+    });
+
+    expect(controller.undo()).toBe(false);
+    expect(controller.redo()).toBe(false);
+    expect(controller.clearCurrentFrame()).toBe(false);
+    expect(undo).not.toHaveBeenCalled();
+    expect(redo).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+  });
+
   it('transitions the cached reference only on the first edit intent for a dirty frame', () => {
     const harness = createHarness();
 

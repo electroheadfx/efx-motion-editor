@@ -282,22 +282,24 @@ describe('Roto script clipboard controller', () => {
     expect(replacement.enqueueRecordedStroke).not.toHaveBeenCalled();
   });
 
-  it('preserves accepted Apply through launch reset and suppresses stale UI publication', async () => {
+  it('drains only accepted Apply work through launch reset on a reused engine and suppresses stale UI publication', async () => {
     const test = harness([stroke(1), stroke(2)]);
     await copyCompletedSource(test, [1, 2]);
     test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const applying = test.controller.applyScript();
 
+    expect(test.controller.mutationLocked.value).toBe(true);
     test.controller.resetForLaunch();
+    expect(test.controller.mutationLocked.value).toBe(true);
     test.controller.observeCompletedMutation(test.engine, completion(100));
     await Promise.resolve();
-    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(2);
-    test.controller.observeCompletedMutation(test.engine, completion(101));
 
-    await expect(applying).resolves.toBe(true);
+    await expect(applying).resolves.toBe(false);
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
     expect(test.controller.status.value).toBeNull();
     expect(test.controller.getAcceptedTarget(test.engine, 100)?.sourceFrame).toBe(8);
-    expect(test.controller.getAcceptedTarget(test.engine, 101)?.sourceFrame).toBe(8);
+    expect(test.controller.getAcceptedTarget(test.engine, 101)).toBeNull();
+    expect(test.controller.mutationLocked.value).toBe(false);
   });
 
   it('keeps Applied terminal status while refreshing a bound-source clipboard', async () => {

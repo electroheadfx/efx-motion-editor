@@ -33,9 +33,27 @@ describe('Physics Paint Undo/Redo shortcuts', () => {
       findCachedPlayFrames: vi.fn(), playPreview: vi.fn(),
     };
     dispatchPhysicsPaintStudioKeyDown({ target: null, preventDefault, metaKey: false, ctrlKey: false, shiftKey: false, ...init } as unknown as KeyboardEvent,
-      { currentFrame: 0, framesToApply: 1, isPlaying: false, savedPlayCacheDirty: false, workflowMode: 'roto' }, actions, []);
+      { currentFrame: 0, framesToApply: 1, isPlaying: false, savedPlayCacheDirty: false, workflowMode: 'roto', mutationLocked: false }, actions, []);
     expect(actions[expected as 'undo' | 'redo']).toHaveBeenCalledOnce();
     expect(actions[expected === 'undo' ? 'redo' : 'undo']).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+  it.each([
+    { metaKey: true, key: 'z' },
+    { metaKey: true, shiftKey: true, key: 'z' },
+    { ctrlKey: true, key: 'y' },
+  ])('consumes $key without dispatching history while Apply owns the mutation lock', (init) => {
+    vi.stubGlobal('HTMLElement', TestHTMLElement);
+    const preventDefault = vi.fn();
+    const actions = {
+      undo: vi.fn(), redo: vi.fn(), stopPreview: vi.fn(), savePlay: vi.fn(), toggleShortcuts: vi.fn(),
+      toggleRotoPlayback: vi.fn(), navigateRotoFrame: vi.fn(), toggleOnion: vi.fn(), adjustOnionCount: vi.fn(),
+      findCachedPlayFrames: vi.fn(), playPreview: vi.fn(),
+    };
+    dispatchPhysicsPaintStudioKeyDown({ target: null, preventDefault, metaKey: false, ctrlKey: false, shiftKey: false, ...init } as unknown as KeyboardEvent,
+      { currentFrame: 0, framesToApply: 1, isPlaying: false, savedPlayCacheDirty: false, workflowMode: 'roto', mutationLocked: true }, actions, []);
+    expect(actions.undo).not.toHaveBeenCalled();
+    expect(actions.redo).not.toHaveBeenCalled();
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 });

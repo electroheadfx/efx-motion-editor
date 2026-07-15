@@ -7,6 +7,7 @@ export function usePhysicsPaintEngineActions(input: {
   engine: EfxPaintEngine | null;
   settings: PhysicsPaintStudioSettings;
   setSettings: Dispatch<StateUpdater<PhysicsPaintStudioSettings>>;
+  isMutationLocked?: () => boolean;
 }) {
   const updateSetting = useCallback(<K extends keyof PhysicsPaintStudioSettings>(key: K, value: PhysicsPaintStudioSettings[K]) => {
     input.setSettings((current) => ({ ...current, [key]: value }));
@@ -77,16 +78,16 @@ export function usePhysicsPaintEngineActions(input: {
   }, [input.engine, updateSetting]);
 
   const startPhysics = useCallback((mode: 'last' | 'all') => {
-    if (!input.engine) return;
+    if (!input.engine || input.isMutationLocked?.()) return;
     input.setSettings((current) => ({ ...current, activePhysicsAction: mode }));
     input.engine.startPhysics(mode);
-  }, [input.engine, input.setSettings]);
+  }, [input.engine, input.isMutationLocked, input.setSettings]);
 
   const stopPhysics = useCallback(() => {
-    if (!input.engine) return;
+    if (!input.engine || input.isMutationLocked?.()) return;
     input.setSettings((current) => ({ ...current, activePhysicsAction: null }));
     input.engine.stopPhysics();
-  }, [input.engine, input.setSettings]);
+  }, [input.engine, input.isMutationLocked, input.setSettings]);
 
   return {
     updateSetting,

@@ -7,6 +7,7 @@ export interface PhysicsPaintStudioKeyboardState {
   isPlaying: boolean;
   savedPlayCacheDirty: boolean;
   workflowMode: PhysicsPaintWorkflowMode;
+  mutationLocked: boolean;
 }
 
 export interface PhysicsPaintStudioKeyboardActions {
@@ -43,16 +44,19 @@ export function dispatchPhysicsPaintStudioKeyDown(
 
   if (meta && event.shiftKey && key === 'z') {
     event.preventDefault();
+    if (state.mutationLocked) return;
     actions.redo();
     return;
   }
   if (event.ctrlKey && key === 'y') {
     event.preventDefault();
+    if (state.mutationLocked) return;
     actions.redo();
     return;
   }
   if (meta && key === 'z') {
     event.preventDefault();
+    if (state.mutationLocked) return;
     actions.undo();
     return;
   }

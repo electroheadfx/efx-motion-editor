@@ -1,6 +1,7 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import { transformRecordedStrokeForHeldPose } from '@efxlab/efx-physic-paint/animation';
+import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import type { RotoSaveRealKeyTransaction } from './rotoKeyTransactions';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
@@ -14,6 +15,8 @@ export interface RotoScriptSourceSnapshot {
 export interface RotoScriptPublicationIdentity {
   operationId: string;
   layerId: string;
+  cachedBase: (PhysicPaintRenderedFrame & { sourceFrame?: number }) | null;
+  background: PhysicPaintRotoBackgroundMetadata;
 }
 
 export interface RotoPaintScript {
@@ -63,6 +66,7 @@ export interface RotoScriptClipboardController {
   clipboard: Signal<RotoPaintScript | null>;
   status: Signal<string | null>;
   availability: ReadonlySignal<RotoScriptActionAvailability>;
+  mutationLocked: ReadonlySignal<boolean>;
   copyScript: () => Promise<boolean>;
   applyScript: () => Promise<boolean>;
   observeCompletedMutation: (engine: RotoScriptEnginePort, mutation: CompletedPaintMutation) => void;
@@ -118,6 +122,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   const clipboard = signal<RotoPaintScript | null>(null);
   const status = signal<string | null>(null);
   const busy = signal(false);
+  const mutationLocked = signal(false);
   const sourceContentRevision = signal(0);
   const completedMutationIds = new WeakMap<RotoScriptEnginePort, Set<number>>();
   const completionWaiters = new WeakMap<RotoScriptEnginePort, Map<number, Set<CompletionWaiter>>>();
@@ -298,6 +303,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function finishApply(operation: ActiveApplyOperation, success: boolean): void {
     if (activeApply !== operation) return;
     activeApply = null;
+    mutationLocked.value = false;
     const applied = success && !operation.cancelled;
     refreshBoundSourceAfterApply(operation, applied ? `Applied ${operation.completed}` : 'Failed');
     operation.resolve(applied);
@@ -307,7 +313,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   function enqueueNextBrush(operation: ActiveApplyOperation): void {
     if (activeApply !== operation) return;
-    if (operation.cancelled || disposalRequested || engineState.peek() !== operation.engine || engineGeneration !== operation.id) {
+    if (operation.cancelled || disposalRequested || launchGeneration !== operation.launchGeneration || engineState.peek() !== operation.engine || engineGeneration !== operation.id) {
       operation.cancelled = true;
       if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
       return;
@@ -328,6 +334,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       }),
       continuations: brush.continuations?.map(cloneStroke),
     };
+    if (activeApply !== operation || operation.cancelled || launchGeneration !== operation.launchGeneration) {
+      operation.cancelled = true;
+      if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
+      return;
+    }
     try {
       const mutationId = operation.engine.enqueueRecordedStroke(transformed);
       if (operation.nextBrushIndex === 0) ports.onFirstAcceptedBrush?.();
@@ -383,6 +394,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         resolve,
       };
       activeApply = operation;
+      mutationLocked.value = true;
       enqueueNextBrush(operation);
     });
   }
@@ -493,7 +505,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function resetForLaunch(): void {
     launchGeneration += 1;
     const operation = activeApply;
-    if (operation) operation.publishUi = false;
+    if (operation) {
+      operation.cancelled = true;
+      operation.publishUi = false;
+      if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
+    }
     clipboard.value = null;
     status.value = null;
     boundSourceFrame = null;
@@ -528,6 +544,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     clipboard,
     status,
     availability,
+    mutationLocked,
     copyScript,
     applyScript,
     observeCompletedMutation,
