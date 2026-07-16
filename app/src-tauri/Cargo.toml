@@ -9,6 +9,10 @@ edition = "2021"
 name = "efx_motion_editor_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+[features]
+default = []
+script-library-test-support = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

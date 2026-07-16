@@ -287,7 +287,7 @@ fn read_json_bounded(path: &Path) -> Result<Value, String> {
     serde_json::from_slice(&bytes).map_err(|error| format!("Could not parse managed script: {error}"))
 }
 
-fn validate_document(value: Value, expected_id: Option<&str>) -> Result<Value, String> {
+pub(crate) fn validate_document(value: Value, expected_id: Option<&str>) -> Result<Value, String> {
     let object = value.as_object().ok_or_else(|| "Script document must be an object".to_string())?;
     if object.get("kind").and_then(Value::as_str) != Some(SCRIPT_KIND) { return Err("Invalid script kind".to_string()); }
     if object.get("schemaVersion").and_then(Value::as_u64) != Some(SCRIPT_VERSION) { return Err("Unsupported script schemaVersion".to_string()); }

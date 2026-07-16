@@ -2,6 +2,9 @@ mod commands;
 mod models;
 mod services;
 
+#[cfg(feature = "script-library-test-support")]
+pub mod script_library_test_support;
+
 use commands::config;
 use commands::export;
 use commands::image;

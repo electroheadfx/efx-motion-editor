@@ -32,6 +32,15 @@ pub struct ThumbnailEncodeResponse {
 #[command]
 pub fn script_library_encode_thumbnail_webp(window: WebviewWindow, request: ThumbnailEncodeRequest) -> Result<ThumbnailEncodeResponse, String> {
     require_main_window(&window)?;
+    encode_thumbnail_webp(request)
+}
+
+pub(crate) fn encode_thumbnail_webp_for_test(operation_id: String, width: u32, height: u32, quality: f32, rgba_base64: String) -> Result<Value, String> {
+    serde_json::to_value(encode_thumbnail_webp(ThumbnailEncodeRequest { operation_id, width, height, quality, rgba_base64 })?)
+        .map_err(|error| format!("Could not serialize encoded thumbnail: {error}"))
+}
+
+fn encode_thumbnail_webp(request: ThumbnailEncodeRequest) -> Result<ThumbnailEncodeResponse, String> {
     if request.operation_id.is_empty() || request.operation_id.len() > 256 || request.operation_id.bytes().any(|byte| !(0x20..=0x7e).contains(&byte)) { return Err("Invalid thumbnail operation ID".to_string()); }
     if request.width == 0 || request.width > 96 || request.height == 0 || request.height > 64 { return Err("Invalid thumbnail dimensions".to_string()); }
     if !request.quality.is_finite() || !(0.75..=0.85).contains(&request.quality) { return Err("Invalid thumbnail quality".to_string()); }
