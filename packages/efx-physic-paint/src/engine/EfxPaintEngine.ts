@@ -1149,9 +1149,10 @@ export class EfxPaintEngine {
     const mutationId = reservedMutationId ?? this.nextMutationId++
     const primary = this.cloneRecordedStroke(primaryInput)
     delete primary.mutationId
-    const points = Object.freeze(primary.points.map((point) => Object.freeze({ ...point }))) as unknown as PenPoint[]
+    const actionPoints = Object.freeze(primary.points.map((point) => Object.freeze({ ...point }))) as unknown as PenPoint[]
+    const pendingPoints = Object.freeze(actionPoints.map((point) => Object.freeze({ ...point }))) as unknown as PenPoint[]
     primary.mutationId = mutationId
-    primary.points = points
+    primary.points = actionPoints
 
     const continuations = continuationInputs.map((continuationInput) => {
       const continuation = this.cloneRecordedStroke(continuationInput)
@@ -1164,7 +1165,7 @@ export class EfxPaintEngine {
 
     const pending: DeferredStrokeFinalization = {
       tool: primary.tool,
-      points,
+      points: pendingPoints,
       color: primary.color,
       opts: { ...primary.params },
       hasPenInput: this.strokeHasPenInput(primary),
