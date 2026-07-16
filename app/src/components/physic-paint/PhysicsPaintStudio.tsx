@@ -41,6 +41,8 @@ import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkf
 import { useRotoInterpolationController } from './hooks/useRotoInterpolationController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
 import { claimRotoSelectedFrame } from './roto/rotoKeyTransactions';
+import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
+import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import './physicsPaintStudio.css';
 const DEFAULT_PLAY_WIGGLE: AnimationWiggleConfig = { strokeDeformation: 0, strokePosition: 0 };
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
@@ -226,6 +228,19 @@ export function PhysicsPaintStudio() {
       : currentFrame,
     displayFrame: currentFrame,
   });
+  const rotoScriptLibrary = useRotoScriptLibraryController({
+    request: async () => { throw new Error('Bridge request adapter is installed by the library hook.'); },
+    captureScript: rotoScript.captureScriptForPersistence,
+    captureThumbnail: async () => {
+      const activeEngine = engineRef.current;
+      if (!activeEngine) throw new Error('Physics Paint engine is unavailable');
+      const scriptAlphaCanvas = activeEngine.copyLiveAlphaCanvas();
+      return createRotoScriptThumbnail({ scriptAlphaCanvas, sourceWidth: projectCanvasWidth, sourceHeight: projectCanvasHeight, background: buildRotoBackgroundMetadata(settings) });
+    },
+    replaceClipboard: rotoScript.replaceClipboardFromPersisted,
+    getLaunchContext: () => launchContext,
+    log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
+  }, bridgeMode);
   usePhysicsPaintCloseFlush(
     () => workflowMode === 'roto' && Boolean(engineRef.current?.getStrokeCount() || rotoPersistence.hasPendingLivePixels()),
     async () => {
@@ -426,6 +441,7 @@ export function PhysicsPaintStudio() {
     resetNavigationForLaunchRef: resetRotoNavigationForLaunchRef,
     resetCachedReference: resetCachedRotoReference,
     loadCachedReferenceFrame: (frame, readyEngine) => { loadCachedRotoReferenceFrame(frame, readyEngine ?? null); },
+    onSettledLaunchContext: () => { void rotoScriptLibrary.updateProjectContext(); },
   });
   const { saveEditableState, loadEditableState, exportDebugProof, convertPlayToRoto, convertRotoToPlay } = usePhysicsPaintWorkflowIntegration({
     session: {
@@ -623,6 +639,7 @@ export function PhysicsPaintStudio() {
         onion, onionDisabled: isPlaying, engineControlsDisabled: mutationLocked, playWiggle: panelMotion, devExportEnabled: isPhysicsPaintDevExportEnabled(import.meta.env), devExportBusy: applyStatus === 'applying', applyStatus, applyMessage, error: lastError,
         onExportDebugProof: exportDebugProof, onColorChange: setBrushColor, onEdgeDetailChange: setEdgeDetail, onPickupChange: setPickup, onSpreadChange: setSpread, onSmoothingChange: setSmoothing, onEraseStrengthChange: setEraseStrength,
         onOnionChange: setOnion, onPlayWiggleChange: updatePanelMotion, onSaveState: saveEditableState, onLoadState: loadEditableState,
+        scripts: { library: rotoScriptLibrary, onSave: () => { void rotoScriptLibrary.saveActiveFrame(); }, onLoad: () => { void rotoScriptLibrary.loadSelected(); }, onRefresh: () => { void rotoScriptLibrary.refresh(); } },
       },
     workflow: {
         mode: workflowMode, currentFrame, startFrame: launchContext?.startFrame ?? 0, frameCount: framesToApply, currentPreviewFrame: localPlayPreviewFrame, maxPlayFrameCount: launchContext?.maxPlayFrameCount, maxPlayFrameCountReason: launchContext?.maxPlayFrameCountReason,

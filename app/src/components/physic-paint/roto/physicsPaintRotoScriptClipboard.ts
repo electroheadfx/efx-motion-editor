@@ -104,6 +104,8 @@ export interface RotoScriptClipboardController {
   availability: ReadonlySignal<RotoScriptActionAvailability>;
   mutationLocked: ReadonlySignal<boolean>;
   copyScript: () => Promise<boolean>;
+  captureScriptForPersistence: () => Promise<RotoPaintScript | null>;
+  replaceClipboardFromPersisted: (script: RotoPaintScript) => boolean;
   applyScript: () => Promise<boolean>;
   discardScript: () => void;
   observeCompletedMutation: (engine: RotoScriptEnginePort, mutation: CompletedPaintMutation) => void;
@@ -376,6 +378,38 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     } finally {
       endOperation(engine);
     }
+  }
+
+  async function captureScriptForPersistence(): Promise<RotoPaintScript | null> {
+    if (disposed || disposalRequested || !availability.value.canCopy) return null;
+    const engine = engineState.peek();
+    if (!engine) return null;
+    const source = sourceState.peek();
+    const acceptedEngineGeneration = engineGeneration;
+    const acceptedLaunchGeneration = launchGeneration;
+    beginOperation(engine);
+    try {
+      await drainAcceptedMutations(engine);
+      await ports.flushSourcePublication?.(source.sourceFrame);
+      if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) return null;
+      const brushes = normalizeLogicalBrushes(engine.getStrokes());
+      if (brushes.length === 0) return null;
+      return deepFreezeScript({ provenance: provenanceFor(source), sourceFrame: source.sourceFrame, sourceDisplayFrame: source.displayFrame, sourceRevision: sourceRevision + 1, brushes });
+    } catch (cause) {
+      error.value = operationError('copy', 'copy-drain-failed', 'Save Script could not finish accepted paint work', cause);
+      return null;
+    } finally { endOperation(engine); }
+  }
+
+  function replaceClipboardFromPersisted(script: RotoPaintScript): boolean {
+    if (disposed || disposalRequested || busy.peek() || !script.brushes.length) return false;
+    clipboard.value = deepFreezeScript({
+      provenance: { ...script.provenance }, sourceFrame: script.sourceFrame, sourceDisplayFrame: script.sourceDisplayFrame,
+      sourceRevision: ++sourceRevision,
+      brushes: script.brushes.map((brush) => ({ primary: cloneStroke(brush.primary), continuations: brush.continuations?.map(cloneStroke) })),
+    });
+    status.value = null; error.value = null;
+    return true;
   }
 
   function publishApplyStatus(operation: ActiveApplyOperation, terminalStatus: string): void {
@@ -690,6 +724,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     availability,
     mutationLocked,
     copyScript,
+    captureScriptForPersistence,
+    replaceClipboardFromPersisted,
     applyScript,
     discardScript,
     observeCompletedMutation,

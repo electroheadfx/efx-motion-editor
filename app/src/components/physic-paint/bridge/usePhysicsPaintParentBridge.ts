@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext } from '../../../types/physicPaint';
-import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT } from '../../../lib/physicPaintBridge';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
+import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 
 export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 
@@ -94,6 +94,22 @@ export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context
     };
     void installLaunchListener();
     return () => { disposed = true; unlisten?.(); };
+  }, []);
+}
+
+export function usePhysicsPaintScriptLibraryResultBridge(handleResult: (result: PhysicPaintScriptLibraryResult) => void): void {
+  const handleRef = useRef(handleResult); handleRef.current = handleResult;
+  useEffect(() => {
+    let disposed = false; let unlisten: (() => void) | undefined;
+    const custom = (event: Event) => { const result = (event as CustomEvent).detail; if (isPhysicPaintScriptLibraryResult(result)) handleRef.current(result); };
+    const message = (event: MessageEvent) => { if (event.origin === window.location.origin && isPhysicPaintScriptLibraryResultMessage(event.data)) handleRef.current(event.data.payload); };
+    window.addEventListener(PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, custom);
+    window.addEventListener('message', message);
+    void import('@tauri-apps/api/event').then(async (eventApi) => {
+      unlisten = await eventApi.listen?.(PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, (event) => { if (isPhysicPaintScriptLibraryResult(event.payload)) handleRef.current(event.payload); });
+      if (disposed) unlisten?.();
+    }).catch(() => undefined);
+    return () => { disposed = true; unlisten?.(); window.removeEventListener(PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, custom); window.removeEventListener('message', message); };
   }, []);
 }
 

@@ -89,6 +89,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
   resetNavigationForLaunchRef: MutableRef<() => void>;
   resetCachedReference: () => void;
   loadCachedReferenceFrame: (frame: number, engine?: PreviewBackgroundEngine) => void;
+  onSettledLaunchContext?: (context: PhysicPaintLaunchContext) => void;
 }) {
   const workflowModeRef = useRef<PhysicsPaintWorkflowMode>(input.workflowMode);
   useEffect(() => { workflowModeRef.current = input.workflowMode; }, [input.workflowMode]);
@@ -128,6 +129,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.state.setLastError(null);
     input.lifecycle.activeOperationIdRef.current = null;
     input.lifecycle.pendingApplyRef.current = null;
+    input.onSettledLaunchContext?.(hydratedContext);
   }, [input, resetRotoSessionForLaunch]);
 
   const prepareReplacementRef = useRef(input.lifecycle.prepareScriptLaunchReplacement);

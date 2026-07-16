@@ -3,6 +3,7 @@ import type { ToolType } from '@efxlab/efx-physic-paint';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
 import { loadFavoriteColors, loadRecentColors, saveFavoriteColors } from '../../../lib/paintPreferences';
 import { clampOnionCount, clampOnionOpacity, type PhysicsPaintApplyStatus, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
+import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
@@ -39,6 +40,7 @@ export interface PhysicsPaintRightPanelProps {
   onExportDebugProof?: () => void;
   onSaveState: () => void;
   onLoadState: (event: Event) => void;
+  scripts: PhysicsPaintScriptsPanelProps;
 }
 
 const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
@@ -135,12 +137,13 @@ export function PhysicsPaintRightPanel({
   onExportDebugProof,
   onSaveState,
   onLoadState,
+  scripts,
 }: PhysicsPaintRightPanelProps) {
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
   const [colorTab, setColorTab] = useState<'brush' | 'log'>('brush');
-  const [optionsTab, setOptionsTab] = useState<'tool' | 'onion' | 'motion'>('tool');
+  const [optionsTab, setOptionsTab] = useState<'tool' | 'onion' | 'motion' | 'scripts'>('tool');
   const previousColorRef = useRef(color);
   const colorBoxRef = useRef<HTMLCanvasElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
@@ -400,6 +403,15 @@ export function PhysicsPaintRightPanel({
           >
             MOTION
           </button>
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-scripts ${optionsTab === 'scripts' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={optionsTab === 'scripts'}
+            onClick={() => { setOptionsTab('scripts'); void scripts.library.enterScripts(); }}
+          >
+            SCRIPTS
+          </button>
         </div>
 
         {optionsTab === 'tool' ? (
@@ -447,11 +459,13 @@ export function PhysicsPaintRightPanel({
               <output>{onionOpacity}%</output>
             </label>
           </div>
-        ) : (
+        ) : optionsTab === 'motion' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-motion" role="tabpanel" aria-label="Motion controls">
             <PanelSlider id="physics-play-deform" label="Deform" min={0} max={100} value={playWiggle.strokeDeformation} onChange={(value) => updatePlayWiggle('strokeDeformation', value)} />
             <PanelSlider id="physics-play-move" label="Move" min={0} max={100} value={playWiggle.strokePosition} onChange={(value) => updatePlayWiggle('strokePosition', value)} />
           </div>
+        ) : (
+          <PhysicsPaintScriptsPanel {...scripts} />
         )}
       </section>
     </aside>
