@@ -59,11 +59,10 @@ export async function downloadPhysicsPaintState(
 ): Promise<PhysicsPaintStateDownloadResult> {
   const filename = makePhysicsPaintStateFilename();
   const contents = serializePhysicsPaintState(state);
-  const resolvedAdapter = adapter ?? await createDefaultPhysicsPaintStateDownloadAdapter();
+  const resolvedAdapter = adapter ?? await createDefaultPhysicsPaintStateDownloadAdapter(contents);
 
   if ('browser' in resolvedAdapter) {
     if (resolvedAdapter.native) {
-      pendingNativeContents = contents;
       const selectedPath = await resolvedAdapter.native.saveDialog({
         defaultPath: filename,
         filters: [{ name: 'Physics paint state', extensions: ['json'] }],
@@ -86,52 +85,53 @@ function makePhysicsPaintStateFilename(): string {
   return `efx-paint-state-${Date.now()}.json`;
 }
 
-async function createDefaultPhysicsPaintStateDownloadAdapter(): Promise<PhysicsPaintStateDownloadAdapter> {
+async function createDefaultPhysicsPaintStateDownloadAdapter(contents: string): Promise<PhysicsPaintStateDownloadAdapter> {
   return {
-    native: await loadTauriNativeSaveAdapter(),
+    native: await loadTauriNativeSaveAdapter(contents),
     browser: browserPhysicsPaintStateDownloadAdapter,
   };
 }
 
-async function loadTauriNativeSaveAdapter(): Promise<PhysicsPaintStateNativeSaveAdapter | null> {
+async function loadTauriNativeSaveAdapter(contents: string): Promise<PhysicsPaintStateNativeSaveAdapter | null> {
   if (!isTauriRuntime()) return null;
+  const operationId = `physics-paint-state-save-${Date.now()}-${crypto.randomUUID()}`;
+  const sentinel = `parent-owned-native-save:${operationId}`;
+  let pendingResult: Promise<PhysicPaintStateSaveResult> | null = null;
+
   return {
     async saveDialog(options) {
-      const operationId = `physics-paint-state-save-${Date.now()}-${crypto.randomUUID()}`;
       const result = new Promise<PhysicPaintStateSaveResult>((resolve, reject) => {
         let unlisten: (() => void) | undefined;
-        void import('@tauri-apps/api/event').then(async ({ listen }) => {
+        void import('@tauri-apps/api/event').then(async ({ listen, emitTo }) => {
           unlisten = await listen(PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT, (event) => {
             const payload = event.payload as PhysicPaintStateSaveResult;
             if (payload?.operationId !== operationId) return;
             unlisten?.();
             resolve(payload);
           });
-          await (await import('@tauri-apps/api/event')).emitTo('main', PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT, {
+          await emitTo('main', PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT, {
             operationId,
             filename: options.defaultPath,
-            contents: pendingNativeContents,
+            contents,
           });
-        }).catch(reject);
+        }).catch((error) => {
+          unlisten?.();
+          reject(error);
+        });
       });
-      pendingNativeResult = result;
+      pendingResult = result;
       const response = await result;
       if (response.status === 'error') throw new Error(response.error ?? SAVE_STATE_UNAVAILABLE_COPY);
-      return response.status === 'cancelled' ? null : NATIVE_SAVE_SENTINEL;
+      return response.status === 'cancelled' ? null : sentinel;
     },
-    async writeTextFile(path, contents) {
-      if (path !== NATIVE_SAVE_SENTINEL || contents !== pendingNativeContents || !pendingNativeResult) throw new Error(SAVE_STATE_UNAVAILABLE_COPY);
-      const response = await pendingNativeResult;
-      pendingNativeResult = null;
-      pendingNativeContents = '';
+    async writeTextFile(path, writeContents) {
+      if (path !== sentinel || writeContents !== contents || !pendingResult) throw new Error(SAVE_STATE_UNAVAILABLE_COPY);
+      const response = await pendingResult;
+      pendingResult = null;
       if (response.status !== 'saved') throw new Error(response.error ?? SAVE_STATE_UNAVAILABLE_COPY);
     },
   };
 }
-
-const NATIVE_SAVE_SENTINEL = 'parent-owned-native-save';
-let pendingNativeContents = '';
-let pendingNativeResult: Promise<PhysicPaintStateSaveResult> | null = null;
 
 function isTauriRuntime(): boolean {
   return typeof window !== 'undefined'
