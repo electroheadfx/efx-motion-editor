@@ -4,11 +4,11 @@ milestone: v0.8.0
 milestone_name: Standalone Physics Paint
 current_phase: 36.14
 current_phase_name: physics-paint-roto-timeline-ui-from-pencil
-status: ready_to_execute
-stopped_at: Quick 260715-kgf native UAT found 3 gaps; Plan 04 diagnosed, validated, and ready to execute
-last_updated: "2026-07-15T18:58:51Z"
-last_activity: 2026-07-15
-last_activity_desc: Diagnosed Copy Script navigation lifetime and selected-empty-frame Apply gaps; validated repair Plan 04
+status: ready_to_plan
+stopped_at: Quick 260715-kgf native UAT approved; Phase 36.14 UI-only integration unblocked
+last_updated: "2026-07-16T07:12:54Z"
+last_activity: 2026-07-16
+last_activity_desc: Completed and native-approved reusable Roto Copy Script / Apply Script prerequisite
 progress:
   total_phases: 17
   completed_phases: 16
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 
 ## Current Position
 
-Phase: Pre-36.14 quick sequence — SCRIPT QUICK UAT REPAIR READY
-Previous phase: 36.13 — Physics Paint Roto Dynamic Interpolation Spacing complete
-Plan: Quick 260715-kgf Plan 04 gap closure ready
-Status: Native UAT found 3 major gaps; diagnosed and plan-checked
-Last activity: 2026-07-15 — Captured UAT failures for empty-frame Apply, clipboard navigation lifetime, and unintended Insert-like key behavior
-Next recommended action: Execute `.planning/quick/260715-kgf-implement-functional-physics-paint-roto-/260715-kgf-04-PLAN.md`, then resume native UAT; keep Phase 36.14 blocked
+Phase: 36.14 — Physics Paint Roto Timeline UI Integration
+Previous phase: Pre-36.14 quick sequence complete
+Plan: Not yet created
+Status: Ready to plan; functional Copy Script / Apply Script contract is native-approved
+Last activity: 2026-07-16 — User approved quick 260715-kgf after reusable clipboard, exact-frame Apply, cache refresh, single-strength replay, and Roto Motion verification
+Next recommended action: Plan Phase 36.14 as the final UI-only v0.8.0 phase using the approved Copy Script / Apply Script controller contract
 
 Progress: [███████████████████░] 92/92 existing plans executed; 16/17 phases complete (94%)
 
@@ -140,7 +140,7 @@ None yet.
 - Phases 36.15 and 37 were removed as obsolete: Signals/controllers remain the accepted state boundary, and the implemented parent bridge/cache integration surpassed the former future-contract scope.
 - Phase 36.14 is the final v0.8.0 UI-only phase: corrected timeline UI, developer-status removal, existing Log routing, application selection guard, and final presentation/wiring of the prerequisite quick's Copy Script / Apply Script controls.
 - Quick 260715-j3q exact 10-level per-brush Undo/Redo and reactive availability badges passed native UAT on 2026-07-15.
-- Quick 260715-kgf functional Roto Copy Script / Apply Script reached automated-ready, but native UAT found three major gaps: clipboard cleared by same-session launch echoes, Apply disabled on empty/free frames as a consequence, and empty Apply showing Insert-like key ownership. Diagnosed gap-closure Plan 04 is validated and ready to execute.
+- Quick 260715-kgf functional Roto Copy Script / Apply Script passed native UAT on 2026-07-16. The approved contract uses an immutable reusable clipboard until Copy/Discard/disposal, exact selected-frame targeting with distant spacing preservation, deterministic Roto Motion, per-brush Undo/Redo, and one final composite cache publication. Phase 36.14 is unblocked.
 
 ### Quick Tasks Completed
 
@@ -154,6 +154,7 @@ None yet.
 | 260714-9es | Fix Clear current Roto frame cache reset | 2026-07-14 | 82ebc620 | [260714-9es-fix-the-clear-current-roto-frame-button-](./quick/260714-9es-fix-the-clear-current-roto-frame-button-/) |
 | 260714-ail | Replace manual Roto save with automatic live pixel caching | 2026-07-14 | f5ad4212 | [260714-ail-replace-manual-save-on-leave-rendering-w](./quick/260714-ail-replace-manual-save-on-leave-rendering-w/) |
 | 260715-j3q | Add exact 10-level Physics Paint per-brush Undo/Redo | 2026-07-15 | cf0a336f | [260715-j3q-add-exact-10-level-physics-paint-per-bru](./quick/260715-j3q-add-exact-10-level-physics-paint-per-bru/) |
+| 260715-kgf | Implement reusable Physics Paint Roto Copy Script / Apply Script | 2026-07-16 | 543780bf | [260715-kgf-implement-functional-physics-paint-roto-](./quick/260715-kgf-implement-functional-physics-paint-roto-/) |
 
 ### Roadmap Evolution
 
@@ -182,6 +183,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T18:58:51Z
-Stopped at: Quick 260715-kgf native UAT gaps diagnosed; Plan 04 validated and ready to execute
-Resume file: Execute `.planning/quick/260715-kgf-implement-functional-physics-paint-roto-/260715-kgf-04-PLAN.md`, then resume `.planning/quick/260715-kgf-implement-functional-physics-paint-roto-/260715-kgf-UAT.md`; Phase 36.14 remains blocked
+Last session: 2026-07-16T07:12:54Z
+Stopped at: Quick 260715-kgf complete and native-approved; Phase 36.14 unblocked
+Resume file: Plan `.planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/` as the final UI-only v0.8.0 phase
