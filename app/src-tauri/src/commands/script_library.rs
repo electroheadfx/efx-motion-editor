@@ -35,6 +35,7 @@ pub fn script_library_encode_thumbnail_webp(window: WebviewWindow, request: Thum
     encode_thumbnail_webp(request)
 }
 
+#[cfg(feature = "script-library-test-support")]
 pub(crate) fn encode_thumbnail_webp_for_test(operation_id: String, width: u32, height: u32, quality: f32, rgba_base64: String) -> Result<Value, String> {
     serde_json::to_value(encode_thumbnail_webp(ThumbnailEncodeRequest { operation_id, width, height, quality, rgba_base64 })?)
         .map_err(|error| format!("Could not serialize encoded thumbnail: {error}"))

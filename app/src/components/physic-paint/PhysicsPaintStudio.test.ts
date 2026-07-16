@@ -128,6 +128,24 @@ const launchContextSource = () => readFileSync(launchContextPath, 'utf8');
 const rotoCanvasFramesSource = () => readFileSync(rotoCanvasFramesPath, 'utf8');
 const studioKeyboardSource = () => readFileSync(studioKeyboardPath, 'utf8');
 
+describe('PhysicsPaintStudio durable script library wiring', () => {
+  it('keeps Save capture, explicit Load, and Apply on their approved single-owner seams', () => {
+    const studio = readFileSync(sourcePath, 'utf8');
+    expect(studio).toContain('captureScriptForPersistence');
+    expect(studio).toContain('replaceClipboardFromPersisted');
+    expect(studio).toContain('applyScript');
+    expect(studio).toContain('createRotoScriptThumbnail');
+    expect(studio).not.toContain('renderFromStrokes');
+  });
+
+  it('routes script diagnostics through existing status and error logging', () => {
+    const studio = readFileSync(sourcePath, 'utf8');
+    expect(studio).toContain('useRotoScriptLibraryController');
+    expect(studio).toContain('setApplyMessage');
+    expect(studio).toContain('setLastError');
+  });
+});
+
 describe('PhysicsPaintStudio refactor regression ownership contract', () => {
   it('keeps manual Roto selection canonical across frame-sync launch echoes', () => {
     expect(studioPresentationSource()).toContain('pendingFrameSyncRef');

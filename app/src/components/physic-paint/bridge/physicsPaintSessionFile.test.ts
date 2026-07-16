@@ -48,12 +48,25 @@ describe('physicsPaintSessionFile', () => {
     expect(LOAD_STATE_INVALID_COPY).toBe('This file is not a valid Physics Paint state JSON. Choose a state file exported from Physics Paint.');
   });
 
-  it('uses direct Tauri save plugin imports instead of dynamic imports that can silently fail', () => {
+  it('routes default Tauri Save State through parent-owned typed authority without direct dialog or filesystem imports', () => {
     const text = source();
 
-    expect(text).toContain("import { save as saveDialog } from '@tauri-apps/plugin-dialog'");
-    expect(text).toContain("import { writeTextFile } from '@tauri-apps/plugin-fs'");
-    expect(text).not.toContain("import(/* @vite-ignore */ dialogModule)");
+    expect(text).toContain('PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT');
+    expect(text).toContain('PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT');
+    expect(text).toContain("emitTo('main'");
+    expect(text).toContain('parent-owned-native-save:${operationId}');
+    expect(text).not.toContain("from '@tauri-apps/plugin-dialog'");
+    expect(text).not.toContain("from '@tauri-apps/plugin-fs'");
+  });
+
+  it('keeps concurrent parent-owned saves operation-local and ignores out-of-order foreign results', () => {
+    const text = source();
+
+    expect(text).toContain('const operationId = `physics-paint-state-save-${Date.now()}-${crypto.randomUUID()}`');
+    expect(text).toContain('if (payload?.operationId !== operationId) return');
+    expect(text).toContain('let pendingResult: Promise<PhysicPaintStateSaveResult> | null = null');
+    expect(text).toContain('if (path !== sentinel || writeContents !== contents || !pendingResult)');
+    expect(text).toContain('unlisten?.()');
   });
 
   it('downloads editable state JSON through an injected adapter without rendered PNG output', async () => {
