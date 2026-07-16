@@ -110,6 +110,7 @@ export interface PhysicsPaintWorkflowStripProps {
   rotoScript?: PhysicsPaintWorkflowRotoScriptState;
   onCopyRotoScript?: () => void;
   onApplyRotoScript?: () => void;
+  onDiscardRotoScript?: () => void;
   onSavePlay: () => void;
   onUpdatePlayOptions?: () => void;
   currentPreviewFrame?: number;
@@ -568,6 +569,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <button type="button" class="physics-paint-roto-key-button destructive" aria-label={`Delete Roto key at frame ${props.currentFrame}`} disabled={!canDeleteRotoKey} {...getRotoKeyButtonPressProps('delete')} onClick={() => runRotoKeyUtilityAction('delete', canDeleteRotoKey, props.onDeleteRotoFrame)}>Delete</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label="Copy Roto paint script" title={scriptAvailability?.copyDisabledReason ?? 'Copy the mounted Roto paint script'} disabled={!scriptAvailability?.canCopy} onClick={props.onCopyRotoScript}>Copy Script</button>
                 <button type="button" class="physics-paint-roto-key-button" aria-label="Apply Roto paint script" title={scriptAvailability?.applyDisabledReason ?? 'Apply the copied Roto paint script'} disabled={!scriptAvailability?.canApply} onClick={props.onApplyRotoScript}>Apply Script</button>
+                <button type="button" class="physics-paint-roto-key-button destructive" aria-label="Discard copied Roto paint script" title="Discard the copied Roto paint script" disabled={!props.rotoScript?.hasCopiedScript.value || Boolean(scriptAvailability?.busy)} onClick={props.onDiscardRotoScript}>Discard Script</button>
               </div>
             </div>
           ) : (

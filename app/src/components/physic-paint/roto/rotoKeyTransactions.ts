@@ -47,7 +47,7 @@ export interface RotoInterpolationToggleTransaction {
 }
 
 export function claimRotoSelectedFrame(input: RotoSelectedFrameClaimInput): RotoSelectedFrameClaim {
-  const selectedFrame = Math.min(PHYSIC_PAINT_MAX_APPLY_FRAMES, Math.max(0, Math.trunc(input.selectedFrame)));
+  const selectedFrame = Math.max(0, Math.trunc(input.selectedFrame));
   return {
     sourceFrame: selectedFrame,
     displayFrame: selectedFrame,

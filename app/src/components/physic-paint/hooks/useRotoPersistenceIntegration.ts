@@ -35,10 +35,12 @@ export interface UseRotoPersistenceIntegrationInput {
   };
   frame: {
     current: number;
+    source: number;
     setLaunchContext: Dispatch<StateUpdater<PhysicPaintLaunchContext | null>>;
   };
   engine: EfxPaintEngine | null;
   launchContext: PhysicPaintLaunchContext | null;
+  flushFramePublication: (sourceFrame: number) => Promise<void>;
   reference: {
     setUrl: (url: string | null) => void;
     loadFrame: (frame: number, engine: PreviewBackgroundEngine | null, refreshedFrame?: PhysicPaintRotoCacheFrame | null) => void;
@@ -64,11 +66,22 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
   const navigateToSyncedFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     input.navigation.playback.stop();
-    input.reference.setUrl(null);
-    if (input.engine && input.launchContext) {
-      (input.engine as PreviewBackgroundEngine).resetBackground();
-      input.engine.clear();
-      input.reference.loadFrame(frame, input.engine as PreviewBackgroundEngine);
+    if (input.launchContext) {
+      const sourceFrame = input.frame.source;
+      input.engine?.flushPendingStrokeFinalizations();
+      try {
+        await input.flushFramePublication(sourceFrame);
+      } catch {
+        input.status.setApplyStatus('error');
+        input.status.setApplyMessage(`Could not save Roto frame ${input.frame.current} before navigation.`);
+        return false;
+      }
+      input.reference.setUrl(null);
+      if (input.engine) {
+        (input.engine as PreviewBackgroundEngine).resetBackground();
+        input.engine.clear();
+        input.reference.loadFrame(frame, input.engine as PreviewBackgroundEngine);
+      }
     }
     input.frame.setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
     input.lifecycle.pendingFrameSyncRef.current = frame;

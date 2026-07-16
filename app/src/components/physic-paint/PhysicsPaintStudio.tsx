@@ -60,7 +60,7 @@ export function PhysicsPaintStudio() {
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
     setLaunchContextState((current) => {
       const next = typeof update === 'function' ? update(current) : update;
-      if (next !== current) latestRotoFramesRef.current = next?.cachedRotoFrames ?? [];
+      if (next?.cachedRotoFrames !== current?.cachedRotoFrames) latestRotoFramesRef.current = next?.cachedRotoFrames ?? [];
       return next;
     });
   }, []);
@@ -109,7 +109,6 @@ export function PhysicsPaintStudio() {
     ),
     setApplyMessage,
   });
-  usePhysicsPaintCloseFlush(rotoPersistence.hasPendingLivePixels, rotoPersistence.flushLivePixels);
   const rotoEditBuffer = rotoPersistence.editBuffer;
   const rotoPreviewFramesRef = { get current() { return rotoEditBuffer.bufferRef.current.previewFrames; }, set current(frames) { rotoEditBuffer.replacePreviewFrames(frames); } };
   const dirtyRotoFramesRef = { get current() { return rotoEditBuffer.bufferRef.current.dirtyFrames; }, set current(frames) { rotoEditBuffer.replaceDirtyFrames(frames); } };
@@ -226,6 +225,14 @@ export function PhysicsPaintStudio() {
       : currentFrame,
     displayFrame: currentFrame,
   });
+  usePhysicsPaintCloseFlush(
+    () => workflowMode === 'roto' && Boolean(engineRef.current?.getStrokeCount() || rotoPersistence.hasPendingLivePixels()),
+    async () => {
+      if (workflowMode !== 'roto') return;
+      engineRef.current?.flushPendingStrokeFinalizations();
+      await rotoPersistence.flushLivePixels(currentFrameOwnerSourceFrame ?? currentFrame);
+    },
+  );
   const mutationLocked = rotoScript.mutationLocked.value;
   const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked;
   const {
@@ -390,9 +397,10 @@ export function PhysicsPaintStudio() {
   }, [engine, rotoScript]);
   useRotoPersistenceIntegration({
     action: { bridgeMode, registerPendingApply, startApplyTimeout },
-    frame: { current: currentFrame, setLaunchContext },
+    frame: { current: currentFrame, source: currentFrameOwnerSourceFrame ?? currentFrame, setLaunchContext },
     engine,
     launchContext,
+    flushFramePublication: rotoPersistence.flushLivePixels,
     reference: { setUrl: setCachedRotoReferenceUrl, loadFrame: loadCachedRotoReferenceFrame },
     cache: { confirmedFramesRef: confirmedCachedRotoFramesRef, latestFramesRef: latestRotoFramesRef, removeFrame: removeCachedRotoFrameFromLaunchContext },
     lifecycle: { activeOperationIdRef, pendingFrameSyncRef, pendingKeyActionMessageRef: pendingRotoKeyActionMessageRef },
@@ -551,15 +559,17 @@ export function PhysicsPaintStudio() {
               && currentFrameSelectionKind !== 'generated-interpolation'
               && Boolean(launchContext);
             if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
-            const saveTransaction = acceptedTarget
-              ? null
-              : currentFrameSelectionKind === 'empty'
-                ? rotoTimelineActions.saveRealKeyAtDisplayFrame(currentFrame)
-                : null;
+            if (acceptedTarget && !acceptedTarget.publishPixels) return;
+            const emptyTarget = !acceptedTarget && currentFrameSelectionKind === 'empty'
+              ? claimRotoSelectedFrame({
+                selectedFrame: currentFrame,
+                currentSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
+              })
+              : null;
             const sourceFrame = acceptedTarget?.sourceFrame
-              ?? saveTransaction?.sourceFrameOverride
+              ?? emptyTarget?.sourceFrame
               ?? resolveRotoSourceFrameForDisplayFrame(currentFrame);
-            const displayFrame = acceptedTarget?.displayFrame ?? saveTransaction?.target.displayFrame ?? currentFrame;
+            const displayFrame = acceptedTarget?.displayFrame ?? emptyTarget?.displayFrame ?? currentFrame;
             const cachedBaseSourceFrame = cachedRotoRepaintBaseFrame
               ? cachedRotoRepaintBaseFrame.sourceFrame ?? cachedRotoRepaintBaseFrame.appFrame
               : null;
@@ -589,7 +599,7 @@ export function PhysicsPaintStudio() {
               background: publicationIdentity?.background,
               size: { width: canvasWidth, height: canvasHeight },
               mutationId,
-              interpolationSettings: acceptedTarget?.interpolationSettings ?? saveTransaction?.interpolationSettings,
+              interpolationSettings: acceptedTarget?.interpolationSettings ?? emptyTarget?.interpolationSettings,
             });
             if (profilePerformance) recordPhysicsPaintPerformance({ stage: 'snapshot-handoff', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAt, timestamp: performance.now(), mutationId, sourceFrame });
             void capture.catch((error) => {
@@ -612,7 +622,7 @@ export function PhysicsPaintStudio() {
         onToggleRotoPlayback: rotoCachedPlayback.toggle, onRotoPlaybackLoopChange: rotoCachedPlayback.setLoop, onRotoPlaybackFpsChange: rotoCachedPlayback.updateFps, rotoInterpolationSettings: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : undefined,
         onRotoInterpolationEnabledChange: (enabled) => updateRotoInterpolationSettings({ enabled }), onRotoInterpolationCountChange: (inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount }),
         onDuplicateRotoKey: duplicateRotoKey, onInsertRotoFrame: insertRotoFrame, onDeleteRotoFrame: deleteRotoFrame, onCopyRotoFrame: copyRotoFrame, onPasteRotoFrame: pasteRotoFrame, hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: { actionAvailability: rotoSession.actionAvailability.value, hasCopiedRotoKey: rotoSession.copiedKey.value !== null },
-        rotoScript, onCopyRotoScript: () => { void rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); }, onApplyRotoScript: () => { void rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
+        rotoScript, onCopyRotoScript: () => { void rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); }, onApplyRotoScript: () => { void rotoScript.applyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); }, onDiscardRotoScript: () => { rotoScript.discardScript(); setLastError(null); },
         playPublicationSummary: applyStatus === 'success' ? applyMessage : null, statusMessage: isPlaying ? `Previewing ${animFrame + 1} / ${animTotal}` : (applyStatus !== 'success' ? applyMessage : null), onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying, missingPlayFramesForConversion,
         onSavePlay: savePlay, onUpdatePlayOptions: updateSelectedPlayOptions, onFrameCountChange: updatePlayFrameCount, onPlayPreview: playPreview, onStopPreview: stopPreview, onPreviewPlayFrame: previewLocalPlayFrame,
         onNavigateToSyncedFrame: (frame) => { void requestRotoFrameNavigation(frame); }, onGoToFirstFrame: goToFirstFrame, onGoToPreviousFrame: goToPreviousFrame, onGoToNextFrame: goToNextFrame, onGoToLastFrame: goToLastFrame, onInspectPlayFrame: previewLocalPlayFrame, onOnionChange: setOnion, onConvertPlayToRoto: convertPlayToRoto, onConvertRotoToPlay: convertRotoToPlay,

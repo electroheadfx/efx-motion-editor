@@ -28,6 +28,7 @@ export function createPhysicsPaintLaunchReplacementCoordinator(input: {
 
   const run = async () => {
     if (running || disposed || !latest) return;
+    const requestedContext = latest;
     running = true;
     try {
       await input.prepareReplacement();
@@ -36,6 +37,7 @@ export function createPhysicsPaintLaunchReplacementCoordinator(input: {
       latest = null;
       if (context) input.applyLatest(context);
     } catch (error) {
+      if (latest === requestedContext) latest = null;
       console.error('[PhysicsPaintStudio] launch replacement handoff failed', error);
     } finally {
       running = false;

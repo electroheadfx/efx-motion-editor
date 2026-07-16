@@ -65,10 +65,12 @@ export function selectRotoTimelineView(input: RotoTimelineSelectorInput): RotoTi
   const occupiedRotoFrames = normalizeFrameNumbers(realKeyDisplayFrames);
   const savedRotoFrames = realKeyDisplayFrames.map((frame) => ({ frame, saved: true, label: `Frame ${frame}` }));
   const cachedRotoFrames = [...(input.cachedRotoFrames ?? [])];
+  const currentRealKey = projection.realKeys.find((frame) => frame.displayFrame === input.currentFrame);
   const currentGeneratedFrame = projection.generatedFrames.find((frame) => frame.displayFrame === input.currentFrame);
   const cachedCurrentGeneratedFrame = cachedRotoFrames.find((frame) => frame.source === 'generated-interpolation' && frame.appFrame === input.currentFrame);
   const currentFrameIsGenerated = Boolean(currentGeneratedFrame || cachedCurrentGeneratedFrame);
-  const currentFrameOwnerSourceFrame = currentGeneratedFrame?.fromSourceFrame
+  const currentFrameOwnerSourceFrame = currentRealKey?.sourceFrame
+    ?? currentGeneratedFrame?.fromSourceFrame
     ?? cachedCurrentGeneratedFrame?.fromSourceFrame
     ?? cachedCurrentGeneratedFrame?.sourceFrame
     ?? null;

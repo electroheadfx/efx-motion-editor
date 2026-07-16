@@ -65,7 +65,9 @@ export interface RecordedStrokeGroup {
 
 export interface RotoScriptEnginePort {
   getStrokes: () => PaintStroke[];
+  getStrokeCount?: () => number;
   enqueueRecordedStroke: (group: Readonly<RecordedStrokeGroup>) => number;
+  flushPendingStrokeFinalizations?: () => void;
   setInputLocked: (locked: boolean) => void;
 }
 
@@ -85,6 +87,7 @@ export interface RotoScriptClipboardControllerPorts {
 export interface RotoScriptAcceptedTarget {
   sourceFrame: number;
   displayFrame: number;
+  publishPixels: boolean;
   interpolationSettings?: RotoSelectedFrameClaim['interpolationSettings'];
   publicationIdentity?: RotoScriptPublicationIdentity;
 }
@@ -102,6 +105,7 @@ export interface RotoScriptClipboardController {
   mutationLocked: ReadonlySignal<boolean>;
   copyScript: () => Promise<boolean>;
   applyScript: () => Promise<boolean>;
+  discardScript: () => void;
   observeCompletedMutation: (engine: RotoScriptEnginePort, mutation: CompletedPaintMutation) => void;
   updateEngine: (engine: RotoScriptEnginePort | null) => void;
   updateSource: (source: RotoScriptSourceSnapshot) => void;
@@ -133,6 +137,7 @@ interface ActiveApplyOperation {
   cancellationReason: 'user' | 'invalidated' | null;
   failure: RotoScriptOperationError | null;
   publishUi: boolean;
+  finishing: boolean;
   settled: Promise<void>;
   settle: () => void;
   resolve: (success: boolean) => void;
@@ -170,7 +175,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   const error = signal<RotoScriptOperationError | null>(null);
   const busy = signal(false);
   const mutationLocked = signal(false);
-  const sourceContentRevision = signal(0);
+  const sourceHasBrushes = signal(false);
   const completedMutationIds = new WeakMap<RotoScriptEnginePort, Set<number>>();
   const completionWaiters = new WeakMap<RotoScriptEnginePort, Map<number, Set<CompletionWaiter>>>();
   const sourceState = signal<RotoScriptSourceSnapshot>(ports.getSource());
@@ -178,7 +183,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   const acceptedTargets = new WeakMap<RotoScriptEnginePort, Map<number, RotoScriptAcceptedTarget>>();
   const lockedEngines = new Set<RotoScriptEnginePort>();
   const sessionId = ports.sessionId ?? `roto-script-session-${nextRotoScriptSessionId++}`;
-  let boundSource: RotoScriptSourceProvenance | null = null;
   let sourceRevision = 0;
   let engineGeneration = 0;
   let launchGeneration = 0;
@@ -190,11 +194,12 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   let resolveDisposal: (() => void) | null = null;
   let disposalPromise: Promise<void> | null = null;
 
+  refreshSourceHasBrushes(engineState.peek());
+
   const availability = computed<RotoScriptActionAvailability>(() => {
     const source = sourceState.value;
     const engine = engineState.value;
-    sourceContentRevision.value;
-    const hasBrushes = Boolean(engine && normalizeLogicalBrushes(engine.getStrokes()).length > 0);
+    const hasBrushes = Boolean(engine && sourceHasBrushes.value);
     const unavailable = disposalRequested || busy.value;
     const copyDisabledReason = unavailable
       ? COPY_REASONS.busy
@@ -217,8 +222,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     return { canCopy: copyDisabledReason === null, canApply: applyDisabledReason === null, copyDisabledReason, applyDisabledReason, busy: busy.value };
   });
 
-  function bumpSourceContentRevision(): void {
-    sourceContentRevision.value += 1;
+  function refreshSourceHasBrushes(engine = engineState.peek()): void {
+    sourceHasBrushes.value = Boolean(engine && (engine.getStrokeCount ? engine.getStrokeCount() > 0 : engine.getStrokes().some((stroke) => stroke.points.length > 0)));
   }
 
   function sourceLayerId(source: RotoScriptSourceSnapshot): string {
@@ -227,13 +232,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   function provenanceFor(source: RotoScriptSourceSnapshot): RotoScriptSourceProvenance {
     return { sessionId, layerId: sourceLayerId(source), sourceFrame: source.sourceFrame };
-  }
-
-  function isBoundSource(source: RotoScriptSourceSnapshot): boolean {
-    return Boolean(boundSource
-      && boundSource.sessionId === sessionId
-      && boundSource.layerId === sourceLayerId(source)
-      && boundSource.sourceFrame === source.sourceFrame);
   }
 
   function errorCause(cause: unknown): string | undefined {
@@ -287,7 +285,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     applyProgressState.value = null;
     status.value = null;
     error.value = null;
-    boundSource = null;
     sourceRevision = 0;
     resolveDisposal?.();
     resolveDisposal = null;
@@ -331,6 +328,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   async function drainAcceptedMutations(engine: Pick<RotoScriptEnginePort, 'getStrokes'> & RotoScriptEnginePort): Promise<void> {
+    engine.flushPendingStrokeFinalizations?.();
     const pendingIds = Array.from(new Set(engine.getStrokes()
       .map((stroke) => stroke.mutationId)
       .filter((mutationId): mutationId is number => Number.isInteger(mutationId))));
@@ -340,15 +338,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function snapshotBoundSource(engine: Pick<RotoScriptEnginePort, 'getStrokes'>, source: RotoScriptSourceSnapshot, publishCopiedStatus = true): boolean {
     const provenance = provenanceFor(source);
     const brushes = normalizeLogicalBrushes(engine.getStrokes());
-    if (brushes.length === 0) {
-      if (isBoundSource(source)) {
-        clipboard.value = null;
-        boundSource = null;
-      }
-      return false;
-    }
+    if (brushes.length === 0) return false;
     sourceRevision += 1;
-    boundSource = provenance;
     clipboard.value = deepFreezeScript({ provenance, sourceFrame: source.sourceFrame, sourceDisplayFrame: source.displayFrame, sourceRevision, brushes });
     if (publishCopiedStatus) status.value = `Copied ${brushes.length}`;
     return true;
@@ -387,40 +378,43 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     }
   }
 
-  function refreshBoundSourceAfterApply(operation: ActiveApplyOperation, terminalStatus: string): void {
-    if (operation.completed > 0 && launchGeneration === operation.launchGeneration) {
-      const source = sourceState.peek();
-      if (engineState.peek() === operation.engine
-        && source.workflowMode === 'roto'
-        && source.selectionKind === 'real-key'
-        && isBoundSource(source)) {
-        snapshotBoundSource(operation.engine, source, false);
-      }
-    }
+  function publishApplyStatus(operation: ActiveApplyOperation, terminalStatus: string): void {
     if (operation.publishUi && launchGeneration === operation.launchGeneration && !disposalRequested) status.value = terminalStatus;
   }
 
   function finishApply(operation: ActiveApplyOperation, success: boolean): void {
-    if (activeApply !== operation) return;
-    activeApply = null;
-    applyProgressState.value = null;
-    const applied = success && !operation.cancelled;
-    refreshBoundSourceAfterApply(operation, applied ? `Applied ${operation.completed}` : 'Failed');
-    if (operation.publishUi && launchGeneration === operation.launchGeneration && !disposalRequested) {
-      if (applied) {
-        error.value = null;
-      } else {
-        error.value = operation.failure ?? (operation.cancellationReason === 'user'
-          ? operationError('apply', 'apply-cancelled', `Apply Script was cancelled after ${operation.completed} of ${operation.script.brushes.length} brushes completed.`)
-          : operation.completed > 0
-            ? operationError('apply', 'apply-partial-failure', `Apply Script stopped after ${operation.completed} of ${operation.script.brushes.length} brushes.`)
-            : operationError('apply', 'apply-invalidated', 'Apply Script could not finish because its mounted target changed.'));
+    if (activeApply !== operation || operation.finishing) return;
+    operation.finishing = true;
+    const complete = async () => {
+      let applied = success && !operation.cancelled;
+      try {
+        if (applied) await ports.flushSourcePublication?.(operation.destinationSourceFrame);
+      } catch (cause) {
+        applied = false;
+        operation.failure = operationError('apply', 'apply-partial-failure', `Apply Script pixels could not be published after ${operation.completed} brushes`, cause);
       }
-    }
-    operation.resolve(applied);
-    operation.settle();
-    endOperation(operation.engine);
-    finalizeDisposalIfReady();
+      applied = applied && !operation.cancelled && launchGeneration === operation.launchGeneration && engineState.peek() === operation.engine;
+      if (activeApply !== operation) return;
+      activeApply = null;
+      applyProgressState.value = null;
+      publishApplyStatus(operation, applied ? `Applied ${operation.completed}` : 'Failed');
+      if (operation.publishUi && launchGeneration === operation.launchGeneration && !disposalRequested) {
+        if (applied) {
+          error.value = null;
+        } else {
+          error.value = operation.failure ?? (operation.cancellationReason === 'user'
+            ? operationError('apply', 'apply-cancelled', `Apply Script was cancelled after ${operation.completed} of ${operation.script.brushes.length} brushes completed.`)
+            : operation.completed > 0
+              ? operationError('apply', 'apply-partial-failure', `Apply Script stopped after ${operation.completed} of ${operation.script.brushes.length} brushes.`)
+              : operationError('apply', 'apply-invalidated', 'Apply Script could not finish because its mounted target changed.'));
+        }
+      }
+      operation.resolve(applied);
+      operation.settle();
+      endOperation(operation.engine);
+      finalizeDisposalIfReady();
+    };
+    void complete();
   }
 
   function enqueueNextBrush(operation: ActiveApplyOperation): void {
@@ -454,8 +448,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       return;
     }
     try {
-      const mutationId = operation.engine.enqueueRecordedStroke(transformed);
       if (operation.nextBrushIndex === 0) ports.onFirstAcceptedBrush?.();
+      const mutationId = operation.engine.enqueueRecordedStroke(transformed);
       operation.nextBrushIndex += 1;
       operation.expectedMutationIds.add(mutationId);
       let targets = acceptedTargets.get(operation.engine);
@@ -466,6 +460,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       targets.set(mutationId, {
         sourceFrame: operation.destinationSourceFrame,
         displayFrame: operation.destinationDisplayFrame,
+        publishPixels: operation.nextBrushIndex === operation.script.brushes.length,
         interpolationSettings: operation.preparedTarget?.interpolationSettings,
         publicationIdentity: operation.publicationIdentity ?? undefined,
       });
@@ -480,6 +475,13 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       );
       finishApply(operation, false);
     }
+  }
+
+  function discardScript(): void {
+    if (disposed || disposalRequested || busy.peek()) return;
+    clipboard.value = null;
+    status.value = null;
+    error.value = null;
   }
 
   function applyScript(): Promise<boolean> {
@@ -536,6 +538,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         cancellationReason: null,
         failure: null,
         publishUi: true,
+        finishing: false,
         settled,
         settle: settleOperation,
         resolve,
@@ -545,17 +548,9 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     });
   }
 
-  function refreshBoundSource(): void {
-    if (disposed || disposalRequested || activeApply || navigationLockHeld) return;
-    const source = sourceState.value;
-    const engine = engineState.peek();
-    if (!engine || source.workflowMode !== 'roto' || source.selectionKind !== 'real-key' || !isBoundSource(source)) return;
-    snapshotBoundSource(engine, source);
-  }
-
   function observeCompletedMutation(engine: RotoScriptEnginePort, mutation: CompletedPaintMutation): void {
     resolveCompletion(engine, mutation.mutationId);
-    if (engineState.peek() === engine) bumpSourceContentRevision();
+    if (engineState.peek() === engine) refreshSourceHasBrushes();
     const operation = activeApply;
     if (operation
       && operation.engine === engine
@@ -570,7 +565,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       queueMicrotask(() => enqueueNextBrush(operation));
       return;
     }
-    if (engineState.peek() === engine) refreshBoundSource();
   }
 
   function updateEngine(engine: RotoScriptEnginePort | null): void {
@@ -578,7 +572,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (previousEngine === engine) return;
     engineGeneration += 1;
     engineState.value = engine;
-    bumpSourceContentRevision();
+    refreshSourceHasBrushes();
     if (engine && busy.peek()) {
       lockedEngines.add(engine);
       engine.setInputLocked(true);
@@ -601,34 +595,17 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   function notifySourceRevision(): void {
-    bumpSourceContentRevision();
-    refreshBoundSource();
+    refreshSourceHasBrushes();
   }
 
   async function prepareNavigation(targetFrame: number): Promise<boolean> {
     if (disposed || disposalRequested || !Number.isInteger(targetFrame) || targetFrame < 0 || activeApply || busy.peek()) return false;
-    const source = sourceState.value;
-    if (!boundSource || !isBoundSource(source) || targetFrame === source.displayFrame) return true;
+    if (targetFrame === sourceState.peek().displayFrame) return true;
     const engine = engineState.peek();
-    if (!engine) return false;
-    const acceptedEngineGeneration = engineGeneration;
-    const acceptedLaunchGeneration = launchGeneration;
+    if (!engine) return true;
     navigationLockHeld = true;
     beginOperation(engine);
-    try {
-      await drainAcceptedMutations(engine);
-      await ports.flushSourcePublication?.(source.sourceFrame);
-      if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) {
-        completeNavigation();
-        return false;
-      }
-      snapshotBoundSource(engine, source);
-      return true;
-    } catch {
-      if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) status.value = 'Failed';
-      completeNavigation();
-      return false;
-    }
+    return true;
   }
 
   function completeNavigation(): void {
@@ -657,18 +634,21 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const operation = activeApply;
     if (operation) {
       await operation.settled;
+      await ports.flushSourcePublication?.(operation.destinationSourceFrame);
       return;
     }
     launchGeneration += 1;
     const engine = engineState.peek();
-    if (engine && engine.getStrokes().length > 0) await drainAcceptedMutations(engine);
+    const source = sourceState.peek();
+    if (engine && (engine.getStrokeCount?.() ?? engine.getStrokes().length) > 0) await drainAcceptedMutations(engine);
+    await ports.flushSourcePublication?.(source.sourceFrame);
   }
 
   function completeLaunchReplacement(): void {
     applyProgressState.value = null;
     status.value = null;
     error.value = null;
-    bumpSourceContentRevision();
+    refreshSourceHasBrushes();
   }
 
   async function prepareEngineDisposal(engine: RotoScriptEnginePort): Promise<void> {
@@ -677,7 +657,9 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       activeApply.cancellationReason = 'invalidated';
       activeApply.publishUi = false;
     }
-    if (engine.getStrokes().length > 0) await drainAcceptedMutations(engine);
+    const source = sourceState.peek();
+    if ((engine.getStrokeCount?.() ?? engine.getStrokes().length) > 0) await drainAcceptedMutations(engine);
+    await ports.flushSourcePublication?.(source.sourceFrame);
   }
 
   function dispose(): Promise<void> {
@@ -709,6 +691,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     mutationLocked,
     copyScript,
     applyScript,
+    discardScript,
     observeCompletedMutation,
     updateEngine,
     updateSource,
