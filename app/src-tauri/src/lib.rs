@@ -6,6 +6,7 @@ use commands::config;
 use commands::export;
 use commands::image;
 use commands::project;
+use commands::script_library;
 use percent_encoding::percent_decode_str;
 use serde_json::Value;
 use std::sync::Mutex;
@@ -55,6 +56,8 @@ struct PhysicsPaintLaunchContext {
     operation_id: String,
     #[serde(rename = "layerId")]
     layer_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project: Option<PhysicsPaintProjectContext>,
     #[serde(rename = "layerName", skip_serializing_if = "Option::is_none")]
     layer_name: Option<String>,
     #[serde(rename = "startFrame")]
@@ -97,6 +100,12 @@ struct PhysicsPaintLaunchContext {
     max_play_frame_count: Option<u32>,
     #[serde(rename = "maxPlayFrameCountReason", skip_serializing_if = "Option::is_none")]
     max_play_frame_count_reason: Option<String>,
+}
+
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct PhysicsPaintProjectContext {
+    name: String,
+    saved: bool,
 }
 
 struct PhysicsPaintLaunchState(Mutex<Option<PhysicsPaintLaunchContext>>);
@@ -233,6 +242,7 @@ use services::tablet;
 pub fn run() {
     tauri::Builder::default()
         .manage(PhysicsPaintLaunchState(Mutex::new(None)))
+        .manage(services::script_library::ScriptLibraryState::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -527,6 +537,14 @@ pub fn run() {
             project::project_open,
             project::project_migrate_temp_images,
             project::path_exists,
+            script_library::script_library_bind_saved_project,
+            script_library::script_library_clear_active_project,
+            script_library::script_library_scan,
+            script_library::script_library_load,
+            script_library::script_library_save,
+            script_library::script_library_rename,
+            script_library::script_library_delete,
+            script_library::script_library_migrate_saved_projects,
             image::image_get_info,
             image::import_images,
             config::config_get_theme,
@@ -569,6 +587,7 @@ mod tests {
         PhysicsPaintLaunchContext {
             operation_id: "op-1".into(),
             layer_id: "layer-1".into(),
+            project: None,
             layer_name: Some("Layer".into()),
             start_frame: 12,
             width: Some(1000),

@@ -1,12 +1,14 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayScriptCacheStatus, PhysicPaintWorkflowMode } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayScriptCacheStatus, PhysicPaintScriptLibraryResult, PhysicPaintWorkflowMode } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryRequest } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
+import { projectStore } from '../stores/projectStore';
+import { scriptLibraryDelete, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 /**
@@ -16,6 +18,8 @@ export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
  */
 export const PHYSIC_PAINT_APPLY_EVENT = 'physic-paint:apply';
 export const PHYSIC_PAINT_APPLY_RESULT_EVENT = 'physic-paint:apply-result';
+export const PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT = 'physic-paint:script-library-request';
+export const PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT = 'physic-paint:script-library-result';
 
 const PHYSIC_PAINT_WINDOW_LABEL = 'efx-physic-paint';
 const PHYSIC_PAINT_FALLBACK_PATH = '/physics-paint';
@@ -121,6 +125,71 @@ export function applyPhysicPaintPayload(payload: unknown): PhysicPaintApplyResul
   } catch (error) {
     return failureResult(payload, `${APPLY_ERROR} ${String(error)}`);
   }
+}
+
+export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Promise<PhysicPaintScriptLibraryResult> {
+  const request = isPhysicPaintScriptLibraryRequest(value) ? value : null;
+  const operationId = request?.operationId ?? 'invalid-operation';
+  const kind = request?.kind ?? 'scan';
+  const failure = (error: string): PhysicPaintScriptLibraryResult => ({ operationId, kind, ok: false, rows: [], skippedInvalidCount: 0, diagnostics: [], error });
+  if (!request) return failure('Invalid script library request');
+  const authority = projectStore.scriptLibraryAuthority.peek();
+  if (!authority || !projectStore.filePath.peek()) return failure('Save the project first.');
+  try {
+    const result = request.kind === 'scan'
+      ? await scriptLibraryScan(authority)
+      : request.kind === 'save'
+        ? await scriptLibrarySave(authority, request.script)
+        : request.kind === 'load'
+          ? await scriptLibraryLoad(authority, request.scriptId)
+          : request.kind === 'rename'
+            ? await scriptLibraryRename(authority, request.scriptId, request.name)
+            : await scriptLibraryDelete(authority, request.scriptId);
+    if (!result.ok) return failure(result.error);
+    const operation = 'scan' in result.data ? result.data : { scan: result.data };
+    return {
+      operationId,
+      kind,
+      ok: true,
+      rows: operation.scan.rows,
+      skippedInvalidCount: operation.scan.skippedInvalidCount,
+      diagnostics: operation.scan.diagnostics,
+      ...('script' in operation && operation.script ? { script: operation.script } : {}),
+    };
+  } catch (error) {
+    return failure(String(error));
+  }
+}
+
+export async function installPhysicPaintScriptLibraryListener(): Promise<() => void> {
+  const emitResult = async (result: PhysicPaintScriptLibraryResult, source?: Pick<Window, 'postMessage'> | null) => {
+    if (isTauriRuntime()) {
+      const eventApi = await import('@tauri-apps/api/event');
+      await eventApi.emit?.(PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, result);
+      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, result);
+    }
+    if (typeof window !== 'undefined') {
+      const message = { type: PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, payload: result };
+      window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, { detail: result }));
+      source?.postMessage?.(message, window.location.origin);
+      window.opener?.postMessage?.(message, window.location.origin);
+    }
+  };
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, async (event) => emitResult(await applyPhysicPaintScriptLibraryRequest(event.payload)));
+    if (unlisten) return unlisten;
+  }
+  if (typeof window === 'undefined') return () => {};
+  const custom = (event: Event) => { void applyPhysicPaintScriptLibraryRequest((event as CustomEvent).detail).then((result) => emitResult(result)); };
+  const message = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || !event.data || event.data.type !== PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT) return;
+    const source = event.source && 'postMessage' in event.source ? event.source as Pick<Window, 'postMessage'> : undefined;
+    void applyPhysicPaintScriptLibraryRequest(event.data.payload).then((result) => emitResult(result, source));
+  };
+  window.addEventListener(PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, custom);
+  window.addEventListener('message', message);
+  return () => { window.removeEventListener(PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
 }
 
 export function handlePhysicPaintFrameSyncMessage(value: unknown): boolean {
@@ -327,6 +396,7 @@ export function createPhysicPaintLaunchContext(
   return {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
     layerId,
+    project: { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()) },
     layerName: layer.name,
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),

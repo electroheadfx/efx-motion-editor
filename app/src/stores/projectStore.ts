@@ -5,7 +5,7 @@ import type {AudioTrack, FadeCurve} from '../types/audio';
 import type {Sequence, KeyPhoto, TransitionType, FadeMode} from '../types/sequence';
 import type {Layer, LayerType, BlendMode, LayerSourceData, EasingType} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
-import {projectCreate, projectSave as ipcProjectSave, projectOpen as ipcProjectOpen, projectMigrateTempImages} from '../lib/ipc';
+import {projectCreate, projectSave as ipcProjectSave, projectOpen as ipcProjectOpen, projectMigrateTempImages, scriptLibraryBindSavedProject, scriptLibraryClearActiveProject, scriptLibraryMigrateSavedProjects} from '../lib/ipc';
 import {imageStore, _setImageMarkDirtyCallback} from './imageStore';
 import {sequenceStore, _setMarkDirtyCallback} from './sequenceStore';
 import {audioStore, _setAudioMarkDirtyCallback} from './audioStore';
@@ -49,6 +49,18 @@ const isDirty = signal(false);
 
 /** True during save operation (prevents concurrent saves) */
 const isSaving = signal(false);
+const scriptLibraryAuthority = signal<string | null>(null);
+
+async function bindScriptLibraryAuthority(savedFilePath: string): Promise<void> {
+  const result = await scriptLibraryBindSavedProject(savedFilePath);
+  if (!result.ok) throw new Error(result.error);
+  scriptLibraryAuthority.value = result.data;
+}
+
+function clearScriptLibraryAuthority(): void {
+  scriptLibraryAuthority.value = null;
+  void scriptLibraryClearActiveProject();
+}
 
 // --- Helpers ---
 
@@ -562,6 +574,7 @@ export const projectStore = {
   dirPath,
   isDirty,
   isSaving,
+  scriptLibraryAuthority,
 
   setName(v: string) {
     name.value = v;
@@ -630,7 +643,7 @@ export const projectStore = {
   },
 
   /** Save the project to its .mce file. If filePath is null, caller should use saveProjectAs. */
-  async saveProject() {
+  async saveProject(options?: { deferScriptAuthority?: boolean }) {
     if (isSaving.value) return; // Prevent concurrent saves
     const currentFilePath = filePath.value;
     if (!currentFilePath) return; // Cannot save without a file path
@@ -664,6 +677,7 @@ export const projectStore = {
       if (!result.ok) {
         throw new Error(result.error);
       }
+      if (!options?.deferScriptAuthority && !scriptLibraryAuthority.peek()) await bindScriptLibraryAuthority(currentFilePath);
       isDirty.value = false;
 
       // Update recent projects
@@ -680,6 +694,9 @@ export const projectStore = {
 
   /** Save project to a specific file path (Save As). Migrates temp images if needed. */
   async saveProjectAs(newFilePath: string) {
+    const previousFilePath = filePath.peek();
+    const previousDirPath = dirPath.peek();
+    const previousAuthority = scriptLibraryAuthority.peek();
     // If saving from temp project, migrate images first
     const tempDir = tempProjectDir.value;
     const currentDir = dirPath.value;
@@ -696,8 +713,23 @@ export const projectStore = {
     const parentDir = newFilePath.substring(0, newFilePath.lastIndexOf('/'));
     dirPath.value = parentDir;
     filePath.value = newFilePath;
+    scriptLibraryAuthority.value = null;
 
-    await projectStore.saveProject();
+    try {
+      await projectStore.saveProject({ deferScriptAuthority: true });
+      if (previousFilePath && previousFilePath !== newFilePath) {
+        const migration = await scriptLibraryMigrateSavedProjects(previousFilePath, newFilePath);
+        if (!migration.ok) throw new Error(migration.error);
+        if (migration.data.diagnostics.length > 0) console.warn('[projectStore] Script library Save As diagnostics', migration.data.diagnostics);
+      }
+      await bindScriptLibraryAuthority(newFilePath);
+    } catch (error) {
+      dirPath.value = previousDirPath;
+      filePath.value = previousFilePath;
+      scriptLibraryAuthority.value = previousAuthority;
+      if (previousFilePath && previousAuthority) await bindScriptLibraryAuthority(previousFilePath).catch(() => undefined);
+      throw error;
+    }
   },
 
   /** Open a project from an .mce file */
@@ -723,6 +755,7 @@ export const projectStore = {
     });
 
     hydrateFromMce(runtimeProject, projectRoot);
+    await bindScriptLibraryAuthority(openFilePath);
 
     // Update recent projects
     await addRecentProject({
@@ -742,6 +775,7 @@ export const projectStore = {
 
   /** Close the current project and reset all stores */
   closeProject() {
+    clearScriptLibraryAuthority();
     // 1. Stop engines and timers FIRST (prevents orphaned operations)
     stopAutoSave();
     playbackEngine.stop();

@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ProjectData, MceProject } from '../types/project';
 import type { ImageInfo, ImportResult } from '../types/image';
+import type { PersistedRotoScriptV1 } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
+import type { PhysicPaintScriptLibraryResult } from '../types/physicPaint';
 
 // Result type mirroring Rust's Result pattern (locked decision)
 export type Result<T, E = string> =
@@ -46,6 +48,39 @@ export async function projectOpen(filePath: string): Promise<Result<MceProject>>
 
 export async function projectMigrateTempImages(tempDir: string, projectDir: string): Promise<Result<string[]>> {
   return safeInvoke<string[]>('project_migrate_temp_images', { tempDir, projectDir });
+}
+
+export interface ScriptLibraryMigrationResult {
+  copied: number;
+  deduplicated: number;
+  remapped: number;
+  skippedInvalid: number;
+  diagnostics: Array<{ code: string; message: string; filename?: string }>;
+}
+
+export function scriptLibraryBindSavedProject(filePath: string): Promise<Result<string>> {
+  return safeInvoke<string>('script_library_bind_saved_project', { filePath });
+}
+export function scriptLibraryClearActiveProject(): Promise<Result<null>> {
+  return safeInvoke<null>('script_library_clear_active_project');
+}
+export function scriptLibraryScan(authority: string): Promise<Result<Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>>> {
+  return safeInvoke('script_library_scan', { authority });
+}
+export function scriptLibraryLoad(authority: string, scriptId: string) {
+  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptV1 }>('script_library_load', { authority, scriptId });
+}
+export function scriptLibrarySave(authority: string, script: PersistedRotoScriptV1) {
+  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptV1 }>('script_library_save', { authority, script });
+}
+export function scriptLibraryRename(authority: string, scriptId: string, name: string) {
+  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptV1 }>('script_library_rename', { authority, scriptId, name });
+}
+export function scriptLibraryDelete(authority: string, scriptId: string) {
+  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script?: PersistedRotoScriptV1 }>('script_library_delete', { authority, scriptId });
+}
+export function scriptLibraryMigrateSavedProjects(sourceFilePath: string, destinationFilePath: string): Promise<Result<ScriptLibraryMigrationResult>> {
+  return safeInvoke('script_library_migrate_saved_projects', { sourceFilePath, destinationFilePath });
 }
 
 // --- Path utilities ---

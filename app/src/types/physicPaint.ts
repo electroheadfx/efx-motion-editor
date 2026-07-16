@@ -1,4 +1,6 @@
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
+import type { PersistedRotoScriptV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
+import { isCanonicalRotoScriptId, isPersistedRotoScriptV1, normalizeRotoScriptName } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 
 export const PHYSIC_PAINT_MAX_APPLY_FRAMES = 600;
 export const PHYSIC_PAINT_DEFAULT_APPLY_FRAMES = 4;
@@ -90,9 +92,15 @@ export interface PhysicPaintWorkflowMetadata {
   rotoBackground?: PhysicPaintRotoBackgroundMetadata;
 }
 
+export interface PhysicPaintProjectContext {
+  name: string;
+  saved: boolean;
+}
+
 export interface PhysicPaintLaunchContext {
   operationId: string;
   layerId: string;
+  project?: PhysicPaintProjectContext;
   startFrame: number;
   layerName?: string;
   width?: number;
@@ -238,6 +246,41 @@ export interface PhysicPaintApplyResultMessage {
   payload: PhysicPaintApplyResult;
 }
 
+export type PhysicPaintScriptLibraryKind = 'scan' | 'save' | 'load' | 'rename' | 'delete';
+export type PhysicPaintScriptLibraryRequest =
+  | { kind: 'scan'; operationId: string }
+  | { kind: 'save'; operationId: string; script: PersistedRotoScriptV1 }
+  | { kind: 'load'; operationId: string; scriptId: string }
+  | { kind: 'rename'; operationId: string; scriptId: string; name: string }
+  | { kind: 'delete'; operationId: string; scriptId: string };
+
+export interface PhysicPaintScriptLibraryDiagnostic {
+  code: string;
+  message: string;
+  filename?: string;
+}
+
+export interface PhysicPaintScriptLibraryResult {
+  operationId: string;
+  kind: PhysicPaintScriptLibraryKind;
+  ok: boolean;
+  rows: RotoScriptLibraryRow[];
+  skippedInvalidCount: number;
+  diagnostics: PhysicPaintScriptLibraryDiagnostic[];
+  script?: PersistedRotoScriptV1;
+  error?: string;
+}
+
+export interface PhysicPaintScriptLibraryRequestMessage {
+  type: 'physic-paint:script-library-request';
+  payload: PhysicPaintScriptLibraryRequest;
+}
+
+export interface PhysicPaintScriptLibraryResultMessage {
+  type: 'physic-paint:script-library-result';
+  payload: PhysicPaintScriptLibraryResult;
+}
+
 export interface PhysicPaintReadinessState {
   ready: boolean;
   engineReady: boolean;
@@ -263,6 +306,7 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
   return (
     isNonEmptyString(value.operationId) &&
     isNonEmptyString(value.layerId) &&
+    optionalProjectContext(value.project) &&
     isNonNegativeInteger(value.startFrame) &&
     optionalNumber(value.width) &&
     optionalNumber(value.height) &&
@@ -490,6 +534,38 @@ export function isPhysicPaintApplyResultMessage(value: unknown): value is Physic
   );
 }
 
+export function isPhysicPaintScriptLibraryRequest(value: unknown): value is PhysicPaintScriptLibraryRequest {
+  if (!isRecord(value) || !isNonEmptyString(value.operationId)) return false;
+  if (value.kind === 'scan') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId');
+  if (value.kind === 'save') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId' || key === 'script') && isPersistedRotoScriptV1(value.script);
+  if (value.kind === 'load' || value.kind === 'delete') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId' || key === 'scriptId') && isCanonicalRotoScriptId(value.scriptId);
+  if (value.kind === 'rename') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId' || key === 'scriptId' || key === 'name') && isCanonicalRotoScriptId(value.scriptId) && normalizeRotoScriptName(value.name) !== null;
+  return false;
+}
+
+export function isPhysicPaintScriptLibraryResult(value: unknown): value is PhysicPaintScriptLibraryResult {
+  if (!isRecord(value) || !isNonEmptyString(value.operationId)) return false;
+  if (value.kind !== 'scan' && value.kind !== 'save' && value.kind !== 'load' && value.kind !== 'rename' && value.kind !== 'delete') return false;
+  if (typeof value.ok !== 'boolean' || !Array.isArray(value.rows) || !isNonNegativeInteger(value.skippedInvalidCount) || !Array.isArray(value.diagnostics)) return false;
+  if (!value.rows.every(isScriptLibraryRow) || !value.diagnostics.every(isScriptLibraryDiagnostic)) return false;
+  if (value.script !== undefined && !isPersistedRotoScriptV1(value.script)) return false;
+  return value.error === undefined || typeof value.error === 'string';
+}
+
+export function isPhysicPaintScriptLibraryResultMessage(value: unknown): value is PhysicPaintScriptLibraryResultMessage {
+  return Boolean(isRecord(value) && value.type === 'physic-paint:script-library-result' && isPhysicPaintScriptLibraryResult(value.payload));
+}
+
+function isScriptLibraryRow(value: unknown): value is RotoScriptLibraryRow {
+  if (!isRecord(value) || !isCanonicalRotoScriptId(value.id) || normalizeRotoScriptName(value.name) === null) return false;
+  if (!isNonEmptyString(value.createdAt) || !isNonEmptyString(value.updatedAt) || !isNonNegativeInteger(value.brushCount)) return false;
+  return isRecord(value.source) && isRecord(value.thumbnail);
+}
+
+function isScriptLibraryDiagnostic(value: unknown): value is PhysicPaintScriptLibraryDiagnostic {
+  return isRecord(value) && isNonEmptyString(value.code) && isNonEmptyString(value.message) && (value.filename === undefined || typeof value.filename === 'string');
+}
+
 function isBaseApplyPayload(value: Record<string, unknown>): value is Record<string, unknown> & {
   kind: PhysicPaintApplyKind;
   operationId: string;
@@ -565,6 +641,10 @@ function optionalNumber(value: unknown): boolean {
 
 function optionalPositiveNumber(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isFinite(value) && value > 0);
+}
+
+function optionalProjectContext(value: unknown): boolean {
+  return value === undefined || (isRecord(value) && isNonEmptyString(value.name) && typeof value.saved === 'boolean' && Object.keys(value).every((key) => key === 'name' || key === 'saved'));
 }
 
 function optionalWorkflowMode(value: unknown): boolean {

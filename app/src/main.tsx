@@ -11,7 +11,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintScriptLibraryListener} from './lib/physicPaintBridge';
 
 const root = document.getElementById('app')!;
 
@@ -29,6 +29,7 @@ if (window.location.pathname === '/physics-paint') {
     startAutoSave();
     mountShortcuts(); // Mount keyboard shortcuts globally
     await installPhysicPaintApplyListener();
+    await installPhysicPaintScriptLibraryListener();
 
     // Listen for undo/redo events emitted by the native macOS menu.
     // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu

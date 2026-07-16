@@ -10,6 +10,7 @@ pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     let videos_dir = base.join("videos");
     let paint_dir = base.join("paint");
     let physic_paint_cache_dir = base.join("cache").join("physic-paint");
+    let scripts_dir = base.join("scripts");
 
     fs::create_dir_all(&thumbs_dir)
         .map_err(|e| format!("Failed to create project directories: {}", e))?;
@@ -22,6 +23,9 @@ pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
 
     fs::create_dir_all(&physic_paint_cache_dir)
         .map_err(|e| format!("Failed to create Physics Paint cache directory: {}", e))?;
+
+    fs::create_dir_all(&scripts_dir)
+        .map_err(|e| format!("Failed to create scripts directory: {}", e))?;
 
     Ok(())
 }
