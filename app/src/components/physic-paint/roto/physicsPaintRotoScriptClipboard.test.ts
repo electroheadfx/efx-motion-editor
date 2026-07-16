@@ -163,6 +163,42 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.clipboard.value).toBe(copied);
   });
 
+  it('captures persistence from the active real frame without replacing the reusable clipboard', async () => {
+    const test = harness([stroke(1)]);
+    await copyCompletedSource(test);
+    const copied = test.controller.clipboard.value;
+    Object.assign(test.engine, { copyLiveAlphaCanvas: vi.fn(() => ({ id: 'alpha' } as unknown as HTMLCanvasElement)) });
+
+    const capture = await test.controller.captureScriptForPersistence();
+
+    expect(capture?.script.sourceFrame).toBe(4);
+    expect(capture?.script.brushes).toHaveLength(1);
+    expect(capture?.scriptAlphaCanvas).toEqual({ id: 'alpha' });
+    expect(test.controller.clipboard.value).toBe(copied);
+    expect(test.controller.availability.value.canApply).toBe(true);
+  });
+
+  it('loads a persisted deep clone without replay and keeps it independent and reusable', async () => {
+    const test = harness([]);
+    const persisted = {
+      provenance: { sessionId: 'persisted', layerId: 'layer-a', sourceFrame: 3 }, sourceFrame: 3, sourceDisplayFrame: 9, sourceRevision: 1,
+      brushes: [{ primary: stroke(7, 44), continuations: [] }],
+    };
+
+    expect(test.controller.replaceClipboardFromPersisted(persisted)).toBe(true);
+    const loaded = test.controller.clipboard.value;
+    persisted.brushes[0].primary.points[0].x = 999;
+    expect(loaded?.brushes[0].primary.points[0].x).toBe(44);
+    expect(Object.isFrozen(loaded?.brushes[0].primary.points[0])).toBe(true);
+    expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
+    const applying = test.controller.applyScript();
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledOnce();
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.clipboard.value).toBe(loaded);
+  });
+
   it('reacts to first paint, Undo, Redo, Clear, engine replacement, and launch reset without a bound clipboard', () => {
     const test = harness([]);
     expect(test.controller.availability.value.canCopy).toBe(false);

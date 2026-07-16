@@ -20,6 +20,13 @@ describe('physicsPaintLaunchContext', () => {
     expect(parsePhysicsPaintLaunchContext(makeLocation('?layer=layer-2&frame=7'))).toBeNull();
   });
 
+  it('preserves parent-owned project and stable layer display metadata without paths', () => {
+    const parsed = parsePhysicsPaintLaunchContext(makeLocation(`?context=${encodeURIComponent(JSON.stringify(makeContext({ project: { name: 'Project', saved: true, contextId: 'opaque-context' }, layerName: 'Ink' })) )}`));
+    expect(parsed).toMatchObject({ project: { name: 'Project', saved: true, contextId: 'opaque-context' }, layerId: 'layer-1', layerName: 'Ink' });
+    expect(JSON.stringify(parsed)).not.toContain('/Users/');
+    expect(JSON.stringify(parsed)).not.toContain('authority');
+  });
+
   it('applies the complete launch-derived state reset contract', () => {
     const setters = {
       setLaunchContext: vi.fn(), setFramesToApply: vi.fn(), setWorkflowMode: vi.fn(),
