@@ -11,6 +11,7 @@ import { projectStore } from '../stores/projectStore';
 import { scriptLibraryDelete, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
+export const PHYSIC_PAINT_PROJECT_CONTEXT_EVENT = 'physic-paint:project-context';
 /**
  * Standalone sends rendered-output-only PhysicPaintApplyPayload here; the app
  * validates/applies it and returns PhysicPaintApplyResult on
@@ -143,8 +144,8 @@ export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Prom
         : request.kind === 'load'
           ? await scriptLibraryLoad(authority, request.scriptId)
           : request.kind === 'rename'
-            ? await scriptLibraryRename(authority, request.scriptId, request.name)
-            : await scriptLibraryDelete(authority, request.scriptId);
+            ? await scriptLibraryRename(authority, request.scriptId, request.expectedRevision, request.name)
+            : await scriptLibraryDelete(authority, request.scriptId, request.expectedRevision);
     if (!result.ok) return failure(result.error);
     const operation = 'scan' in result.data ? result.data : { scan: result.data };
     return {
@@ -158,6 +159,19 @@ export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Prom
     };
   } catch (error) {
     return failure(String(error));
+  }
+}
+
+export async function publishPhysicPaintProjectContext(): Promise<void> {
+  const project = { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()) };
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, project);
+  }
+  if (typeof window !== 'undefined') {
+    const message = { type: PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, payload: project };
+    window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, { detail: project }));
+    window.opener?.postMessage?.(message, window.location.origin);
   }
 }
 

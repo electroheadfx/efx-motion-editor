@@ -42,6 +42,10 @@ export async function projectSave(project: MceProject, filePath: string): Promis
   return safeInvoke<null>('project_save', { project, filePath });
 }
 
+export async function projectSaveAsWithScriptLibrary(project: MceProject, sourceFilePath: string, destinationFilePath: string): Promise<Result<ScriptLibraryMigrationResult>> {
+  return safeInvoke('project_save_as_with_script_library', { project, sourceFilePath, destinationFilePath });
+}
+
 export async function projectOpen(filePath: string): Promise<Result<MceProject>> {
   return safeInvoke<MceProject>('project_open', { filePath });
 }
@@ -73,11 +77,11 @@ export function scriptLibraryLoad(authority: string, scriptId: string) {
 export function scriptLibrarySave(authority: string, script: PersistedRotoScriptV1) {
   return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptV1 }>('script_library_save', { authority, script });
 }
-export function scriptLibraryRename(authority: string, scriptId: string, name: string) {
-  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptV1 }>('script_library_rename', { authority, scriptId, name });
+export function scriptLibraryRename(authority: string, scriptId: string, expectedRevision: string, name: string) {
+  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptV1 }>('script_library_rename', { authority, scriptId, expectedRevision, name });
 }
-export function scriptLibraryDelete(authority: string, scriptId: string) {
-  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script?: PersistedRotoScriptV1 }>('script_library_delete', { authority, scriptId });
+export function scriptLibraryDelete(authority: string, scriptId: string, expectedRevision: string) {
+  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script?: PersistedRotoScriptV1 }>('script_library_delete', { authority, scriptId, expectedRevision });
 }
 export function scriptLibraryMigrateSavedProjects(sourceFilePath: string, destinationFilePath: string): Promise<Result<ScriptLibraryMigrationResult>> {
   return safeInvoke('script_library_migrate_saved_projects', { sourceFilePath, destinationFilePath });

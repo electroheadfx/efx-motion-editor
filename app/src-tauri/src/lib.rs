@@ -534,6 +534,7 @@ pub fn run() {
             project::project_get_default,
             project::project_create,
             project::project_save,
+            project::project_save_as_with_script_library,
             project::project_open,
             project::project_migrate_temp_images,
             project::path_exists,

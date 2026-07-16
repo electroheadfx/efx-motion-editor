@@ -251,8 +251,8 @@ export type PhysicPaintScriptLibraryRequest =
   | { kind: 'scan'; operationId: string }
   | { kind: 'save'; operationId: string; script: PersistedRotoScriptV1 }
   | { kind: 'load'; operationId: string; scriptId: string }
-  | { kind: 'rename'; operationId: string; scriptId: string; name: string }
-  | { kind: 'delete'; operationId: string; scriptId: string };
+  | { kind: 'rename'; operationId: string; scriptId: string; expectedRevision: string; name: string }
+  | { kind: 'delete'; operationId: string; scriptId: string; expectedRevision: string };
 
 export interface PhysicPaintScriptLibraryDiagnostic {
   code: string;
@@ -538,8 +538,9 @@ export function isPhysicPaintScriptLibraryRequest(value: unknown): value is Phys
   if (!isRecord(value) || !isNonEmptyString(value.operationId)) return false;
   if (value.kind === 'scan') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId');
   if (value.kind === 'save') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId' || key === 'script') && isPersistedRotoScriptV1(value.script);
-  if (value.kind === 'load' || value.kind === 'delete') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId' || key === 'scriptId') && isCanonicalRotoScriptId(value.scriptId);
-  if (value.kind === 'rename') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId' || key === 'scriptId' || key === 'name') && isCanonicalRotoScriptId(value.scriptId) && normalizeRotoScriptName(value.name) !== null;
+  if (value.kind === 'load') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId' || key === 'scriptId') && isCanonicalRotoScriptId(value.scriptId);
+  if (value.kind === 'delete') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId' || key === 'scriptId' || key === 'expectedRevision') && isCanonicalRotoScriptId(value.scriptId) && isNonEmptyString(value.expectedRevision);
+  if (value.kind === 'rename') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId' || key === 'scriptId' || key === 'expectedRevision' || key === 'name') && isCanonicalRotoScriptId(value.scriptId) && isNonEmptyString(value.expectedRevision) && normalizeRotoScriptName(value.name) !== null;
   return false;
 }
 
@@ -557,7 +558,7 @@ export function isPhysicPaintScriptLibraryResultMessage(value: unknown): value i
 }
 
 function isScriptLibraryRow(value: unknown): value is RotoScriptLibraryRow {
-  if (!isRecord(value) || !isCanonicalRotoScriptId(value.id) || normalizeRotoScriptName(value.name) === null) return false;
+  if (!isRecord(value) || !isCanonicalRotoScriptId(value.id) || !isNonEmptyString(value.revision) || normalizeRotoScriptName(value.name) === null) return false;
   if (!isNonEmptyString(value.createdAt) || !isNonEmptyString(value.updatedAt) || !isNonNegativeInteger(value.brushCount)) return false;
   return isRecord(value.source) && isRecord(value.thumbnail);
 }

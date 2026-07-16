@@ -1,10 +1,12 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 pub const SCRIPT_KIND: &str = "efx-physics-paint-roto-script";
@@ -33,6 +35,7 @@ struct ActiveProjectAuthority {
 #[serde(rename_all = "camelCase")]
 pub struct ScriptLibraryRow {
     pub id: String,
+    pub revision: String,
     pub name: String,
     pub created_at: String,
     pub updated_at: String,
@@ -94,7 +97,15 @@ impl ScriptLibraryState {
         let active = self.0.lock().map_err(|_| "Script authority lock poisoned".to_string())?;
         let active = active.as_ref().ok_or_else(|| "No active saved project script authority".to_string())?;
         if active.authority != authority { return Err("Stale project script authority".to_string()); }
-        Ok(active.root.clone())
+        canonical_saved_project_root(&active.root)
+    }
+
+    pub fn validate_active_root(&self, root: &Path) -> Result<(), String> {
+        let requested = canonical_saved_project_root(root)?;
+        let active = self.0.lock().map_err(|_| "Script authority lock poisoned".to_string())?;
+        let active = active.as_ref().ok_or_else(|| "No active saved project script authority".to_string())?;
+        let current = canonical_saved_project_root(&active.root)?;
+        if requested == current { Ok(()) } else { Err("Source project is not the active saved project".to_string()) }
     }
 }
 
@@ -118,14 +129,15 @@ pub fn save(state: &ScriptLibraryState, authority: &str, script: Value) -> Resul
     Ok(ScriptLibraryOperation { scan: scan_root(&root)?, script: Some(validated) })
 }
 
-pub fn rename(state: &ScriptLibraryState, authority: &str, script_id: &str, name: &str) -> Result<ScriptLibraryOperation, String> {
+pub fn rename(state: &ScriptLibraryState, authority: &str, script_id: &str, expected_revision: &str, name: &str) -> Result<ScriptLibraryOperation, String> {
     let root = state.resolve(authority)?;
     let normalized = normalize_name(name)?;
     let scan = scan_root(&root)?;
-    if scan.rows.iter().any(|row| row.id != script_id && row.name.normalize_nfc() == normalized.normalize_nfc()) {
+    if scan.rows.iter().any(|row| row.id != script_id && row.name.nfc().collect::<String>() == normalized.nfc().collect::<String>()) {
         return Err("A script with this name already exists".to_string());
     }
     let mut value = read_valid_managed(&root, script_id)?;
+    require_revision(&value, expected_revision)?;
     let object = value.as_object_mut().ok_or_else(|| "Invalid script document".to_string())?;
     object.insert("name".into(), Value::String(normalized));
     object.insert("updatedAt".into(), Value::String(Utc::now().to_rfc3339()));
@@ -134,9 +146,10 @@ pub fn rename(state: &ScriptLibraryState, authority: &str, script_id: &str, name
     Ok(ScriptLibraryOperation { scan: scan_root(&root)?, script: Some(validated) })
 }
 
-pub fn delete(state: &ScriptLibraryState, authority: &str, script_id: &str) -> Result<ScriptLibraryOperation, String> {
+pub fn delete(state: &ScriptLibraryState, authority: &str, script_id: &str, expected_revision: &str) -> Result<ScriptLibraryOperation, String> {
     let root = state.resolve(authority)?;
-    let _ = read_valid_managed(&root, script_id)?;
+    let value = read_valid_managed(&root, script_id)?;
+    require_revision(&value, expected_revision)?;
     let path = managed_path(&root, script_id)?;
     fs::remove_file(&path).map_err(|error| format!("Could not delete managed script: {error}"))?;
     Ok(ScriptLibraryOperation { scan: scan_root(&root)?, script: None })
@@ -261,8 +274,9 @@ fn validate_document(value: Value, expected_id: Option<&str>) -> Result<Value, S
     managed_filename(id)?;
     if expected_id.is_some_and(|expected| expected != id) { return Err("Filename and JSON script ID do not match".to_string()); }
     normalize_name(object.get("name").and_then(Value::as_str).ok_or_else(|| "Missing script name".to_string())?)?;
-    validate_date(object.get("createdAt"), "createdAt")?;
-    validate_date(object.get("updatedAt"), "updatedAt")?;
+    let created_at = validate_date(object.get("createdAt"), "createdAt")?;
+    let updated_at = validate_date(object.get("updatedAt"), "updatedAt")?;
+    if updated_at < created_at { return Err("updatedAt must not precede createdAt".to_string()); }
     validate_source(object.get("source"))?;
     validate_thumbnail(object.get("thumbnail"))?;
     validate_brushes(object.get("brushes"))?;
@@ -278,6 +292,7 @@ fn validate_source(value: Option<&Value>) -> Result<(), String> {
     match background.get("background").and_then(Value::as_str) { Some("transparent" | "white" | "canvas1" | "canvas2" | "canvas3") => {}, _ => return Err("Invalid background mode".to_string()) }
     bounded_text(background.get("paperGrain"), "paperGrain", MAX_METADATA_CHARS)?;
     finite_range(background.get("grainStrength"), "grainStrength", 0.0, 1.0)?;
+    if let Some(color) = background.get("color") { if !color.is_string() { return Err("Invalid background color".to_string()); } }
     Ok(())
 }
 
@@ -290,7 +305,11 @@ fn validate_thumbnail(value: Option<&Value>) -> Result<(), String> {
     let data_url = thumb.get("dataUrl").and_then(Value::as_str).ok_or_else(|| "Missing thumbnail data URL".to_string())?;
     let encoded = data_url.strip_prefix("data:image/webp;base64,").ok_or_else(|| "Thumbnail must be a WebP data URL".to_string())?;
     let bytes = decode_base64(encoded)?;
-    if bytes.len() > MAX_THUMBNAIL_BYTES || bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WEBP" { return Err("Thumbnail is not a valid bounded WebP payload".to_string()); }
+    if bytes.len() > MAX_THUMBNAIL_BYTES { return Err("Thumbnail exceeds the decoded size limit".to_string()); }
+    let (actual_width, actual_height) = parse_webp_dimensions(&bytes)?;
+    let declared_width = thumb.get("width").and_then(Value::as_u64).ok_or_else(|| "Invalid thumbnail width".to_string())?;
+    let declared_height = thumb.get("height").and_then(Value::as_u64).ok_or_else(|| "Invalid thumbnail height".to_string())?;
+    if actual_width != declared_width || actual_height != declared_height { return Err("Thumbnail dimensions do not match the WebP payload".to_string()); }
     Ok(())
 }
 
@@ -320,8 +339,13 @@ fn validate_stroke(value: Option<&Value>, continuation: bool) -> Result<usize, S
     else if stroke.contains_key("diffusionFrames") { return Err("Primary strokes cannot carry diffusionFrames".to_string()); }
     if let Some(color) = stroke.get("color") { if !color.is_null() && !color.as_str().is_some_and(|value| value.len() == 7 && value.starts_with('#') && value[1..].chars().all(|c| c.is_ascii_hexdigit())) { return Err("Invalid stroke color".to_string()); } }
     let params = stroke.get("params").and_then(Value::as_object).ok_or_else(|| "Invalid stroke params".to_string())?;
-    for (key, min, max) in [("size",1.0,80.0),("opacity",10.0,100.0),("pressure",10.0,100.0),("waterAmount",0.0,100.0),("dryAmount",0.0,100.0),("edgeDetail",0.0,100.0),("pickup",0.0,100.0),("eraseStrength",0.0,100.0),("antiAlias",0.0,3.0)] { finite_range(params.get(key), key, min, max)?; }
+    for (key, min, max) in [("size",1.0,80.0),("opacity",10.0,100.0),("pressure",10.0,100.0),("waterAmount",0.0,100.0),("dryAmount",0.0,100.0),("edgeDetail",0.0,100.0),("pickup",0.0,100.0),("eraseStrength",0.0,100.0)] { finite_range(params.get(key), key, min, max)?; }
+    non_negative_integer(params.get("antiAlias"), "antiAlias")?;
+    if params.get("antiAlias").and_then(Value::as_u64).is_none_or(|value| value > 3) { return Err("Invalid antiAlias".to_string()); }
     non_negative_integer(stroke.get("timestamp"), "timestamp")?;
+    if let Some(value) = stroke.get("hasPenInput") { if !value.is_boolean() { return Err("Invalid hasPenInput".to_string()); } }
+    if let Some(value) = stroke.get("playFrame") { non_negative_integer(Some(value), "playFrame")?; }
+    if let Some(value) = stroke.get("physicsMode") { if !value.is_null() && value.as_str() != Some("local") { return Err("Invalid physicsMode".to_string()); } }
     Ok(points.len())
 }
 
@@ -334,7 +358,7 @@ fn validate_point(value: &Value) -> Result<(), String> {
 fn row_from_document(value: &Value) -> Result<ScriptLibraryRow, String> {
     let object = value.as_object().ok_or_else(|| "Invalid script".to_string())?;
     Ok(ScriptLibraryRow {
-        id: object["id"].as_str().unwrap().into(), name: object["name"].as_str().unwrap().into(),
+        id: object["id"].as_str().unwrap().into(), revision: document_revision(value)?, name: object["name"].as_str().unwrap().into(),
         created_at: object["createdAt"].as_str().unwrap().into(), updated_at: object["updatedAt"].as_str().unwrap().into(),
         source: object["source"].clone(), thumbnail: object["thumbnail"].clone(), brush_count: object["brushes"].as_array().map_or(0, Vec::len),
     })
@@ -362,13 +386,33 @@ fn atomic_write_json(path: &Path, value: &Value, replace: bool) -> Result<(), St
 
 fn sync_directory(path: &Path) { if let Ok(directory) = File::open(path) { let _ = directory.sync_all(); } }
 fn reject_symlink(path: &Path, label: &str) -> Result<(), String> { if path.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) { Err(format!("Symlinked {label} is not allowed")) } else { Ok(()) } }
-fn normalize_name(value: &str) -> Result<String, String> { let value = value.trim(); if value.is_empty() || value.chars().count() > MAX_NAME_CHARS || value.chars().any(char::is_control) { Err("Invalid script name".into()) } else { Ok(value.into()) } }
+fn normalize_name(value: &str) -> Result<String, String> { let value = value.nfc().collect::<String>().trim().to_string(); if value.is_empty() || value.chars().count() > MAX_NAME_CHARS || value.chars().any(char::is_control) { Err("Invalid script name".into()) } else { Ok(value) } }
 fn document_id(value: &Value) -> Result<String, String> { value.get("id").and_then(Value::as_str).map(str::to_string).ok_or_else(|| "Missing script ID".into()) }
-fn validate_date(value: Option<&Value>, label: &str) -> Result<(), String> { value.and_then(Value::as_str).and_then(|value| DateTime::parse_from_rfc3339(value).ok()).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
+fn document_revision(value: &Value) -> Result<String, String> { let bytes = serde_json::to_vec(value).map_err(|error| format!("Could not compute script revision: {error}"))?; Ok(format!("{:x}", Sha256::digest(bytes))) }
+fn require_revision(value: &Value, expected: &str) -> Result<(), String> { if document_revision(value)? == expected { Ok(()) } else { Err("Script changed externally; refresh and try again".to_string()) } }
+fn validate_date(value: Option<&Value>, label: &str) -> Result<DateTime<chrono::FixedOffset>, String> { let parsed = value.and_then(Value::as_str).and_then(|value| DateTime::parse_from_rfc3339(value).ok()).ok_or_else(|| format!("Invalid {label}"))?; if parsed.timestamp_millis() < 0 || parsed.timestamp_millis() > 8_640_000_000_000_000 { return Err(format!("Invalid {label}")); } Ok(parsed) }
 fn bounded_text(value: Option<&Value>, label: &str, max: usize) -> Result<(), String> { value.and_then(Value::as_str).filter(|v| !v.trim().is_empty() && v.chars().count() <= max && !v.chars().any(char::is_control)).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
 fn finite_range(value: Option<&Value>, label: &str, min: f64, max: f64) -> Result<(), String> { value.and_then(Value::as_f64).filter(|v| v.is_finite() && *v >= min && *v <= max).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
-fn non_negative_integer(value: Option<&Value>, label: &str) -> Result<(), String> { value.and_then(Value::as_u64).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
-fn positive_integer(value: Option<&Value>, label: &str, max: u64) -> Result<(), String> { value.and_then(Value::as_u64).filter(|v| *v > 0 && *v <= max).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
-fn decode_base64(input: &str) -> Result<Vec<u8>, String> { let mut output=Vec::with_capacity(input.len()*3/4); let mut buffer=0u32; let mut bits=0u8; for byte in input.bytes().take_while(|b| *b!=b'=') { let value=match byte { b'A'..=b'Z'=>byte-b'A', b'a'..=b'z'=>byte-b'a'+26, b'0'..=b'9'=>byte-b'0'+52, b'+'=>62, b'/'=>63, _=>return Err("Invalid thumbnail Base64".into()) } as u32; buffer=(buffer<<6)|value; bits+=6; if bits>=8 { bits-=8; output.push((buffer>>bits) as u8); buffer&=(1<<bits)-1; } } Ok(output) }
-trait NormalizeNfc { fn normalize_nfc(&self) -> String; }
-impl NormalizeNfc for str { fn normalize_nfc(&self) -> String { self.to_string() } }
+fn non_negative_integer(value: Option<&Value>, label: &str) -> Result<(), String> { value.and_then(Value::as_u64).filter(|v| *v <= 9_007_199_254_740_991).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
+fn positive_integer(value: Option<&Value>, label: &str, max: u64) -> Result<(), String> { value.and_then(Value::as_u64).filter(|v| *v > 0 && *v <= max.min(9_007_199_254_740_991)).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
+fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
+    if input.len() % 4 != 0 { return Err("Invalid thumbnail Base64".into()); }
+    let padding = input.bytes().rev().take_while(|byte| *byte == b'=').count();
+    if padding > 2 || input[..input.len().saturating_sub(padding)].bytes().any(|byte| !byte.is_ascii_alphanumeric() && byte != b'+' && byte != b'/') || input[..input.len().saturating_sub(padding)].contains('=') { return Err("Invalid thumbnail Base64".into()); }
+    let mut output=Vec::with_capacity(input.len()*3/4); let mut buffer=0u32; let mut bits=0u8;
+    for byte in input.bytes().take(input.len().saturating_sub(padding)) { let value=match byte { b'A'..=b'Z'=>byte-b'A', b'a'..=b'z'=>byte-b'a'+26, b'0'..=b'9'=>byte-b'0'+52, b'+'=>62, b'/'=>63, _=>return Err("Invalid thumbnail Base64".into()) } as u32; buffer=(buffer<<6)|value; bits+=6; if bits>=8 { bits-=8; output.push((buffer>>bits) as u8); buffer&=(1<<bits)-1; } }
+    if bits > 0 && buffer != 0 { return Err("Non-canonical thumbnail Base64".into()); }
+    let expected_padding = match output.len() % 3 { 1 => 2, 2 => 1, _ => 0 };
+    if padding != expected_padding { return Err("Non-canonical thumbnail Base64".into()); }
+    Ok(output)
+}
+fn parse_webp_dimensions(bytes: &[u8]) -> Result<(u64, u64), String> {
+    if bytes.len() < 30 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WEBP" { return Err("Thumbnail is not a WebP payload".to_string()); }
+    match &bytes[12..16] {
+        b"VP8X" => Ok((1 + read_u24_le(bytes, 24)?, 1 + read_u24_le(bytes, 27)?)),
+        b"VP8L" if bytes[20] == 0x2f => Ok((1 + bytes[21] as u64 + (((bytes[22] & 0x3f) as u64) << 8), 1 + ((bytes[22] as u64 >> 6) | ((bytes[23] as u64) << 2) | (((bytes[24] & 0x0f) as u64) << 10)))),
+        b"VP8 " if bytes[23..26] == [0x9d, 0x01, 0x2a] => Ok(((u16::from_le_bytes([bytes[26], bytes[27]]) & 0x3fff) as u64, (u16::from_le_bytes([bytes[28], bytes[29]]) & 0x3fff) as u64)),
+        _ => Err("Unsupported WebP bitstream".to_string()),
+    }
+}
+fn read_u24_le(bytes: &[u8], offset: usize) -> Result<u64, String> { if bytes.len() < offset + 3 { return Err("Truncated WebP payload".to_string()); } Ok(bytes[offset] as u64 | ((bytes[offset + 1] as u64) << 8) | ((bytes[offset + 2] as u64) << 16)) }

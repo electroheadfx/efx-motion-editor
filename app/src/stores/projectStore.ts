@@ -5,7 +5,7 @@ import type {AudioTrack, FadeCurve} from '../types/audio';
 import type {Sequence, KeyPhoto, TransitionType, FadeMode} from '../types/sequence';
 import type {Layer, LayerType, BlendMode, LayerSourceData, EasingType} from '../types/layer';
 import {createBaseLayer} from '../types/layer';
-import {projectCreate, projectSave as ipcProjectSave, projectOpen as ipcProjectOpen, projectMigrateTempImages, scriptLibraryBindSavedProject, scriptLibraryClearActiveProject, scriptLibraryMigrateSavedProjects} from '../lib/ipc';
+import {projectCreate, projectSave as ipcProjectSave, projectSaveAsWithScriptLibrary, projectOpen as ipcProjectOpen, projectMigrateTempImages, scriptLibraryBindSavedProject, scriptLibraryClearActiveProject} from '../lib/ipc';
 import {imageStore, _setImageMarkDirtyCallback} from './imageStore';
 import {sequenceStore, _setMarkDirtyCallback} from './sequenceStore';
 import {audioStore, _setAudioMarkDirtyCallback} from './audioStore';
@@ -51,15 +51,21 @@ const isDirty = signal(false);
 const isSaving = signal(false);
 const scriptLibraryAuthority = signal<string | null>(null);
 
+async function publishScriptLibraryContext(): Promise<void> {
+  const { publishPhysicPaintProjectContext } = await import('../lib/physicPaintBridge');
+  await publishPhysicPaintProjectContext();
+}
+
 async function bindScriptLibraryAuthority(savedFilePath: string): Promise<void> {
   const result = await scriptLibraryBindSavedProject(savedFilePath);
   if (!result.ok) throw new Error(result.error);
   scriptLibraryAuthority.value = result.data;
+  await publishScriptLibraryContext();
 }
 
 function clearScriptLibraryAuthority(): void {
   scriptLibraryAuthority.value = null;
-  void scriptLibraryClearActiveProject();
+  void scriptLibraryClearActiveProject().finally(() => { void publishScriptLibraryContext(); });
 }
 
 // --- Helpers ---
@@ -709,25 +715,32 @@ export const projectStore = {
       }
     }
 
-    // Derive dirPath from filePath's parent
     const parentDir = newFilePath.substring(0, newFilePath.lastIndexOf('/'));
-    dirPath.value = parentDir;
-    filePath.value = newFilePath;
-    scriptLibraryAuthority.value = null;
-
     try {
-      await projectStore.saveProject({ deferScriptAuthority: true });
+      const project = buildMceProject();
+      const projectForSave: MceProject = {
+        ...project,
+        physic_paint_outputs: await savePhysicPaintData(parentDir, project.physic_paint_outputs),
+      };
       if (previousFilePath && previousFilePath !== newFilePath) {
-        const migration = await scriptLibraryMigrateSavedProjects(previousFilePath, newFilePath);
-        if (!migration.ok) throw new Error(migration.error);
-        if (migration.data.diagnostics.length > 0) console.warn('[projectStore] Script library Save As diagnostics', migration.data.diagnostics);
+        const transaction = await projectSaveAsWithScriptLibrary(projectForSave, previousFilePath, newFilePath);
+        if (!transaction.ok) throw new Error(transaction.error);
+        if (transaction.data.diagnostics.length > 0) console.warn('[projectStore] Script library Save As diagnostics', transaction.data.diagnostics);
+      } else {
+        const result = await ipcProjectSave(projectForSave, newFilePath);
+        if (!result.ok) throw new Error(result.error);
       }
+      batch(() => {
+        dirPath.value = parentDir;
+        filePath.value = newFilePath;
+        scriptLibraryAuthority.value = null;
+        isDirty.value = false;
+      });
       await bindScriptLibraryAuthority(newFilePath);
     } catch (error) {
       dirPath.value = previousDirPath;
       filePath.value = previousFilePath;
       scriptLibraryAuthority.value = previousAuthority;
-      if (previousFilePath && previousAuthority) await bindScriptLibraryAuthority(previousFilePath).catch(() => undefined);
       throw error;
     }
   },
