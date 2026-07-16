@@ -21,7 +21,6 @@ interface PhysicsPaintStudioToolbarProps {
 }
 
 const INVALID_STATE_COPY = 'Could not load physics paint state. Choose a valid saved state JSON file.';
-const SAVE_CANCELLED_COPY = 'Save state cancelled.';
 const SAVE_SUCCESS_COPY = 'Physics paint editable state saved.';
 const SAVE_ERROR_COPY = 'Could not save physics paint state. Choose a writable JSON destination.';
 
@@ -176,25 +175,7 @@ export function PhysicsPaintStudioToolbar({
 
     try {
       if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
-        const dialogModule = '@tauri-apps/plugin-dialog';
-        const fsModule = '@tauri-apps/plugin-fs';
-        const [{ save }, { writeTextFile }] = await Promise.all([
-          import(/* @vite-ignore */ dialogModule) as Promise<{ save: (options: { defaultPath: string; filters: { name: string; extensions: string[] }[] }) => Promise<string | null> }>,
-          import(/* @vite-ignore */ fsModule) as Promise<{ writeTextFile: (path: string, contents: string) => Promise<void> }>,
-        ]);
-        const selectedPath = await save({
-          defaultPath: filename,
-          filters: [{ name: 'Physics paint state', extensions: ['json'] }],
-        });
-        if (!selectedPath) {
-          setSaveFeedback({ type: 'info', message: SAVE_CANCELLED_COPY });
-          onError?.(null);
-          return;
-        }
-        await writeTextFile(selectedPath, serialized);
-        setSaveFeedback({ type: 'success', message: SAVE_SUCCESS_COPY });
-        onError?.(null);
-        return;
+        throw new Error('Native state Save is available only through the parent-owned Physics Paint bridge.');
       }
     } catch (error) {
       console.error('Failed to save physics paint state:', error);

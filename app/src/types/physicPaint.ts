@@ -130,6 +130,18 @@ export interface PhysicPaintFrameSyncMessage {
   frame: number;
 }
 
+export interface PhysicPaintStateSaveRequest {
+  operationId: string;
+  filename: string;
+  contents: string;
+}
+
+export interface PhysicPaintStateSaveResult {
+  operationId: string;
+  status: 'saved' | 'cancelled' | 'error';
+  error?: string;
+}
+
 export interface PhysicPaintRenderedFrame {
   /** Generated sequence-local frame index. For still applies this is 0. */
   frameIndex: number;

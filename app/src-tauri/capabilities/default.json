@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "Capability for the main editor and physics paint windows",
-  "windows": ["main", "efx-physic-paint"],
+  "description": "Capability for the main editor window",
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:default",

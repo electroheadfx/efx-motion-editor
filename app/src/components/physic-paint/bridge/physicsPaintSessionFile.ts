@@ -1,7 +1,7 @@
 import type { SerializedProject } from '@efxlab/efx-physic-paint';
-import { save as saveDialog } from '@tauri-apps/plugin-dialog';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
+import type { PhysicPaintStateSaveResult } from '../../../types/physicPaint';
 import { isSerializedProject } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT, PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 
 export const SAVE_STATE_SUCCESS_COPY = 'Saved editable JSON state.';
 export const SAVE_STATE_CANCELLED_COPY = 'Save state cancelled.';
@@ -63,6 +63,7 @@ export async function downloadPhysicsPaintState(
 
   if ('browser' in resolvedAdapter) {
     if (resolvedAdapter.native) {
+      pendingNativeContents = contents;
       const selectedPath = await resolvedAdapter.native.saveDialog({
         defaultPath: filename,
         filters: [{ name: 'Physics paint state', extensions: ['json'] }],
@@ -94,8 +95,43 @@ async function createDefaultPhysicsPaintStateDownloadAdapter(): Promise<PhysicsP
 
 async function loadTauriNativeSaveAdapter(): Promise<PhysicsPaintStateNativeSaveAdapter | null> {
   if (!isTauriRuntime()) return null;
-  return { saveDialog, writeTextFile };
+  return {
+    async saveDialog(options) {
+      const operationId = `physics-paint-state-save-${Date.now()}-${crypto.randomUUID()}`;
+      const result = new Promise<PhysicPaintStateSaveResult>((resolve, reject) => {
+        let unlisten: (() => void) | undefined;
+        void import('@tauri-apps/api/event').then(async ({ listen }) => {
+          unlisten = await listen(PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT, (event) => {
+            const payload = event.payload as PhysicPaintStateSaveResult;
+            if (payload?.operationId !== operationId) return;
+            unlisten?.();
+            resolve(payload);
+          });
+          await (await import('@tauri-apps/api/event')).emitTo('main', PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT, {
+            operationId,
+            filename: options.defaultPath,
+            contents: pendingNativeContents,
+          });
+        }).catch(reject);
+      });
+      pendingNativeResult = result;
+      const response = await result;
+      if (response.status === 'error') throw new Error(response.error ?? SAVE_STATE_UNAVAILABLE_COPY);
+      return response.status === 'cancelled' ? null : NATIVE_SAVE_SENTINEL;
+    },
+    async writeTextFile(path, contents) {
+      if (path !== NATIVE_SAVE_SENTINEL || contents !== pendingNativeContents || !pendingNativeResult) throw new Error(SAVE_STATE_UNAVAILABLE_COPY);
+      const response = await pendingNativeResult;
+      pendingNativeResult = null;
+      pendingNativeContents = '';
+      if (response.status !== 'saved') throw new Error(response.error ?? SAVE_STATE_UNAVAILABLE_COPY);
+    },
+  };
 }
+
+const NATIVE_SAVE_SENTINEL = 'parent-owned-native-save';
+let pendingNativeContents = '';
+let pendingNativeResult: Promise<PhysicPaintStateSaveResult> | null = null;
 
 function isTauriRuntime(): boolean {
   return typeof window !== 'undefined'
