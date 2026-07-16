@@ -182,7 +182,7 @@ describe('Roto frame editing controller', () => {
     expect(clear).not.toHaveBeenCalled();
   });
 
-  it('transitions the cached reference only on the first edit intent for a dirty frame', () => {
+  it('transitions the cached reference only on the first pointer edit intent for a dirty frame', () => {
     const harness = createHarness();
 
     harness.controller.beginFrameEdit();
@@ -193,5 +193,18 @@ describe('Roto frame editing controller', () => {
     expect(harness.markDirty).toHaveBeenCalledTimes(2);
     expect(harness.markLiveOverlayDirty).toHaveBeenCalledTimes(2);
     expect(harness.syncPendingFrames).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts a replayed script brush without resetting or redrawing the cached base', () => {
+    const harness = createHarness();
+
+    harness.controller.acceptScriptBrush();
+
+    expect(harness.resetBackground).not.toHaveBeenCalled();
+    expect(harness.clearReference).not.toHaveBeenCalled();
+    expect(harness.markDirty).toHaveBeenCalledWith(4);
+    expect(harness.markLiveOverlayDirty).toHaveBeenCalledWith(4);
+    expect(harness.stop).toHaveBeenCalledOnce();
+    expect(harness.syncPendingFrames).toHaveBeenCalledOnce();
   });
 });

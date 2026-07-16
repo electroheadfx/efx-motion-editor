@@ -137,6 +137,14 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     markCurrentFrameDirty();
   }, [input.playback, markCurrentFrameDirty]);
 
+  const acceptScriptBrush = useCallback(() => {
+    if (input.workflowMode !== 'roto' || input.currentFrameSelectionKind === 'generated-interpolation') return;
+    input.editBuffer.markDirty(input.currentFrame);
+    input.session.markLiveOverlayDirty(input.currentFrame);
+    input.playback.stop();
+    input.syncPendingFrames();
+  }, [input]);
+
   const clearCurrentFrame = useCallback(() => {
     if (input.isMutationLocked?.() || !input.engine || !input.launchContext || input.workflowMode !== 'roto' || input.currentFrameSelectionKind !== 'real-key') return false;
     input.playback.stop();
@@ -159,5 +167,5 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     input.reference.loadReferenceFrame(input.currentFrame, input.engine as PreviewBackgroundEngine | null);
   }, [input.currentFrame, input.engine, input.launchContext?.layerId, input.launchContext?.operationId, input.reference.loadReferenceFrame, input.workflowMode]);
 
-  return { undo, redo, beginFrameEdit, clearCurrentFrame, snapshotCurrentFrame };
+  return { undo, redo, beginFrameEdit, acceptScriptBrush, clearCurrentFrame, snapshotCurrentFrame };
 }

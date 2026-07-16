@@ -448,8 +448,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       return;
     }
     try {
-      if (operation.nextBrushIndex === 0) ports.onFirstAcceptedBrush?.();
       const mutationId = operation.engine.enqueueRecordedStroke(transformed);
+      if (operation.nextBrushIndex === 0) ports.onFirstAcceptedBrush?.();
       operation.nextBrushIndex += 1;
       operation.expectedMutationIds.add(mutationId);
       let targets = acceptedTargets.get(operation.engine);

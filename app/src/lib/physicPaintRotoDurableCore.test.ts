@@ -149,6 +149,7 @@ interface TestPaintEngine {
   setPreviewBaseImageUrl: ReturnType<typeof vi.fn<(dataUrl: string) => void>>;
   clearPreviewBaseImage: ReturnType<typeof vi.fn<() => void>>;
   getStrokeCount: () => number;
+  flushPendingStrokeFinalizations: () => void;
   setTool: (...args: unknown[]) => void;
   setPhysicsMode: (...args: unknown[]) => void;
   setColorHex: (...args: unknown[]) => void;
@@ -217,14 +218,15 @@ function makeEngine(initialState: SerializedProject, initialDataUrl: string): Te
   let nextMutationId = 1000;
   let completedMutationListener: ((mutation: { kind: string; isEmpty: boolean; mutationId: number }) => void) | null = null;
   let historyAvailabilityListener: ((availability: { undo: number; redo: number }) => void) | null = null;
-  const engine = {
+  const getStrokes = vi.fn((): PaintStroke[] => []);
+  const engine: TestPaintEngine = {
     save: vi.fn(() => structuredClone(state)),
     load: vi.fn((next: SerializedProject) => { state = structuredClone(next); }),
     clear: vi.fn(() => {
       state = { ...state, strokes: [] };
       completedMutationListener?.({ kind: 'clear', isEmpty: true, mutationId: 0 });
     }),
-    getStrokes: vi.fn(() => []),
+    getStrokes,
     enqueueRecordedStroke: vi.fn(() => nextMutationId++),
     completeMutation: (mutationId: number, history?: { undo: number; redo: number }) => {
       if (history) historyAvailabilityListener?.(history);
@@ -243,6 +245,7 @@ function makeEngine(initialState: SerializedProject, initialDataUrl: string): Te
     setPreviewBaseImageUrl: vi.fn(),
     clearPreviewBaseImage: vi.fn(),
     getStrokeCount: vi.fn(() => state.strokes.length),
+    flushPendingStrokeFinalizations: vi.fn(),
     setTool: vi.fn(),
     setPhysicsMode: vi.fn(),
     setColorHex: vi.fn(),
@@ -1046,7 +1049,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     paintHarness.browserBridgeReadyListeners = [];
   });
 
-  it('keeps multi-brush Apply updates below the Studio root while preserving per-brush publication', async () => {
+  it('keeps multi-brush Apply updates below the Studio root with final-composite publication', async () => {
     const brushes = [scriptStroke(101, 10), scriptStroke(102, 20), scriptStroke(103, 30), scriptStroke(104, 40)];
     const baseFrame: PhysicPaintRotoCacheFrame = { frameIndex: 0, appFrame: 4, sourceFrame: 4, displayFrame: 4, source: 'real-key', dataUrl: pngDataUrl('debug-apply-base'), width: 1000, height: 650 };
     physicPaintStore.upsertRealRotoKeyFrame('phys-layer-1', 4, baseFrame);
@@ -1063,6 +1066,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     };
     paintHarness.storedLaunchContext = launchContext;
     paintHarness.engine!.getStrokes.mockReturnValue(brushes);
+    paintHarness.engine!.getStrokeCount = vi.fn(() => brushes.length);
     const parentPayloads: PhysicPaintApplyPayload[] = [];
     const { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {
       if (message.type === PHYSIC_PAINT_APPLY_EVENT && message.payload) parentPayloads.push(message.payload);
@@ -1074,7 +1078,10 @@ describe('Phase 36.3 durable Roto cache core', () => {
     for (const brush of brushes) paintHarness.engine!.completeMutation(brush.mutationId!);
     const copyButton = findButton(root, 'Copy Roto paint script')!;
     fire(copyButton, 'Click');
-    await act(async () => { await flushPreact(); });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await act(async () => { await flushPreact(); });
+      if (findButton(root, 'Apply Roto paint script')?.getAttribute('disabled') === null) break;
+    }
     const applyButton = findButton(root, 'Apply Roto paint script');
     expect(applyButton?.getAttribute('disabled')).toBeNull();
 
@@ -1114,7 +1121,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
       expect(findButton(root, 'Redo (0 available)')).not.toBeNull();
     }
     await act(async () => { await flushPreact(); });
-    for (let attempt = 0; attempt < 10 && parentPayloads.length - baseline.parentPayloads < brushes.length; attempt += 1) {
+    for (let attempt = 0; attempt < 10 && parentPayloads.length - baseline.parentPayloads < 1; attempt += 1) {
       await act(async () => { await flushPreact(); });
     }
 
@@ -1137,8 +1144,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
       previewBaseLoad: 0,
       previewBaseClear: 0,
       engineReady: 0,
-      liveCopies: 4,
-      parentPayloads: 4,
+      liveCopies: 1,
+      parentPayloads: 1,
     });
     expect(metrics.acceptedToCompletedMs).toHaveLength(4);
     const latestPixels = physicPaintStore.getRotoCacheFrames('phys-layer-1').find((frame) => frame.sourceFrame === 4)?.dataUrl;

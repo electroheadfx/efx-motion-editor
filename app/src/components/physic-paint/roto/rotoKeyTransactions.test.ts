@@ -3,7 +3,7 @@ import { claimRotoSelectedFrame, saveRotoRealKeyTransaction, updateRotoInterpola
 import { createRotoSourceDisplayModel, getRotoDisplayProjection } from './rotoSourceDisplayModel';
 
 describe('rotoKeyTransactions', () => {
-  it('claims the selected absolute frame without changing key or spacing metadata', () => {
+  it('claims the selected absolute frame and preserves its projection spacing', () => {
     const settings = {
       enabled: true,
       inBetweenCount: 2,
@@ -13,15 +13,50 @@ describe('rotoKeyTransactions', () => {
       segmentSpacingOverrides: [{ fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 }],
     };
 
-    const claim = claimRotoSelectedFrame({ selectedFrame: 26, currentSettings: settings });
+    const claim = claimRotoSelectedFrame({
+      model: createRotoSourceDisplayModel({ realSourceFrames: [0, 1, 2, 3, 14], settings }),
+      selectedFrame: 26,
+      currentSettings: settings,
+    });
 
-    expect(claim).toEqual({ sourceFrame: 26, displayFrame: 26, interpolationSettings: settings });
+    expect(claim).toEqual({
+      sourceFrame: 26,
+      displayFrame: 26,
+      interpolationSettings: {
+        ...settings,
+        segmentSpacingOverrides: [
+          { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+          { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+        ],
+      },
+    });
     expect(claim.interpolationSettings).not.toBe(settings);
     expect(claim.interpolationSettings.segmentSpacingOverrides).not.toBe(settings.segmentSpacingOverrides);
     expect(claim).not.toHaveProperty('model');
     expect(claim).not.toHaveProperty('frameMappings');
     expect(claim).not.toHaveProperty('sourceFrameOverride');
     expect(claim).not.toHaveProperty('target');
+  });
+
+  it('keeps an adjacent selected frame on the normal projected display', () => {
+    const settings = {
+      enabled: true,
+      inBetweenCount: 2,
+      mode: 'duplicate' as const,
+      deform: 0,
+      position: 0,
+      segmentSpacingOverrides: [
+        { fromSourceFrame: 3, toSourceFrame: 14, inBetweenCount: 4 },
+        { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
+      ],
+    };
+    const claim = claimRotoSelectedFrame({
+      model: createRotoSourceDisplayModel({ realSourceFrames: [0, 1, 2, 3, 14, 26], settings }),
+      selectedFrame: 27,
+      currentSettings: settings,
+    });
+
+    expect(claim).toEqual({ sourceFrame: 27, displayFrame: 27, interpolationSettings: settings });
   });
 
   it('derives normal Save current source state without a custom override', () => {

@@ -118,7 +118,7 @@ export function PhysicsPaintStudio() {
   const pendingRotoKeyActionMessageRef = useRef<string | null>(null);
   const pendingFrameSyncRef = useRef<number | null>(null);
   const resetRotoNavigationForLaunchRef = useRef<() => void>(() => {});
-  const beginRotoFrameEditRef = useRef<() => void>(() => {});
+  const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
   const syncPendingRotoFrames = useCallback(() => {
     resetRotoKeySessionRef.current({ clearClipboard: false });
   }, []);
@@ -208,11 +208,12 @@ export function PhysicsPaintStudio() {
       background: buildRotoBackgroundMetadata(settings),
     } : null,
     claimEmptyTarget: () => launchContext ? claimRotoSelectedFrame({
+      model: rotoTimelineModel.view.value.model,
       selectedFrame: currentFrame,
       currentSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
     }) : null,
     flushSourcePublication: (sourceFrame) => rotoPersistence.flushLivePixels(sourceFrame),
-    onFirstAcceptedBrush: () => beginRotoFrameEditRef.current(),
+    onFirstAcceptedBrush: () => acceptRotoScriptBrushRef.current(),
     setNavigationLocked: setRotoScriptNavigationLocked,
   });
   rotoScript.updateEngine(engineRef.current);
@@ -336,7 +337,7 @@ export function PhysicsPaintStudio() {
     return changed;
   }, [rotoFrameEditing, rotoScript]);
   const beginRotoFrameEdit = rotoFrameEditing.beginFrameEdit;
-  beginRotoFrameEditRef.current = beginRotoFrameEdit;
+  acceptRotoScriptBrushRef.current = rotoFrameEditing.acceptScriptBrush;
   useRotoBackgroundMetadataSync({ launchContext, workflowMode, settings });
   const getRotoCachedPlaybackFrames = () => rotoSession.playbackFrameNumbers.value.map((appFrame) => ({ appFrame, frame: findCachedRotoDisplayFrame(appFrame) }));
   const missingConditions = selectPhysicsPaintMissingConditions({
@@ -502,6 +503,13 @@ export function PhysicsPaintStudio() {
     playFrames: latestPlayFrames,
   });
   const { goToFirstFrame, goToPreviousFrame, goToNextFrame, goToLastFrame } = rotoNavigationActions;
+  const rotoMotion = launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId) : null;
+  const panelMotion = workflowMode === 'roto' && rotoMotion
+    ? { strokeDeformation: rotoMotion.deform, strokePosition: rotoMotion.position }
+    : playWiggle;
+  const updatePanelMotion = workflowMode === 'roto'
+    ? (motion: AnimationWiggleConfig) => { void updateRotoInterpolationSettings({ deform: motion.strokeDeformation, position: motion.strokePosition }); }
+    : updatePlayWiggle;
   const viewModel = usePhysicsPaintStudioViewModel({
     layout: {
         rightPanelCollapsed,
@@ -562,6 +570,7 @@ export function PhysicsPaintStudio() {
             if (acceptedTarget && !acceptedTarget.publishPixels) return;
             const emptyTarget = !acceptedTarget && currentFrameSelectionKind === 'empty'
               ? claimRotoSelectedFrame({
+                model: rotoTimelineModel.view.value.model,
                 selectedFrame: currentFrame,
                 currentSettings: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId),
               })
@@ -611,9 +620,9 @@ export function PhysicsPaintStudio() {
       },
     rightPanel: {
         activeTool: settings.tool, color: settings.color, opacity: settings.opacity, edgeDetail: settings.edgeDetail, pickup: settings.pickup, spread: settings.spread, smoothing: settings.smoothing, eraseStrength: settings.eraseStrength, physicsMode: settings.physicsMode,
-        onion, onionDisabled: isPlaying, engineControlsDisabled: mutationLocked, playWiggle, devExportEnabled: isPhysicsPaintDevExportEnabled(import.meta.env), devExportBusy: applyStatus === 'applying', applyStatus, applyMessage, error: lastError,
+        onion, onionDisabled: isPlaying, engineControlsDisabled: mutationLocked, playWiggle: panelMotion, devExportEnabled: isPhysicsPaintDevExportEnabled(import.meta.env), devExportBusy: applyStatus === 'applying', applyStatus, applyMessage, error: lastError,
         onExportDebugProof: exportDebugProof, onColorChange: setBrushColor, onEdgeDetailChange: setEdgeDetail, onPickupChange: setPickup, onSpreadChange: setSpread, onSmoothingChange: setSmoothing, onEraseStrengthChange: setEraseStrength,
-        onOnionChange: setOnion, onPlayWiggleChange: updatePlayWiggle, onSaveState: saveEditableState, onLoadState: loadEditableState,
+        onOnionChange: setOnion, onPlayWiggleChange: updatePanelMotion, onSaveState: saveEditableState, onLoadState: loadEditableState,
       },
     workflow: {
         mode: workflowMode, currentFrame, startFrame: launchContext?.startFrame ?? 0, frameCount: framesToApply, currentPreviewFrame: localPlayPreviewFrame, maxPlayFrameCount: launchContext?.maxPlayFrameCount, maxPlayFrameCountReason: launchContext?.maxPlayFrameCountReason,

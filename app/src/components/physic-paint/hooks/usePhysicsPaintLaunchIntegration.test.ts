@@ -84,7 +84,7 @@ describe('Physics Paint launch replacement coordinator', () => {
     const capturedTarget = controller.getAcceptedTarget(engine, 100);
     strokes = [...strokes, stroke(100)];
     controller.observeCompletedMutation(engine, completion(100));
-    await expect(applying).resolves.toBe(false);
+    await expect(applying).resolves.toBe(true);
     await Promise.resolve();
 
     expect(capturedTarget).toMatchObject({

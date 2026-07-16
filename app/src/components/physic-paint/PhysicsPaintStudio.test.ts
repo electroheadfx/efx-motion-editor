@@ -701,6 +701,11 @@ describe('PhysicsPaintStudio local Play preview contract', () => {
     expect(workflowStripBlock).toContain('onRotoInterpolationCountChange: (inBetweenCount) => updateRotoInterpolationSettings({ inBetweenCount })');
     expect(workflowStripBlock).not.toContain('onRotoInterpolationModeChange=');
     expect(workflowStripBlock).not.toContain('onRotoInterpolationMotionChange=');
+    expect(text).toContain("const panelMotion = workflowMode === 'roto' && rotoMotion");
+    expect(text).toContain('strokeDeformation: rotoMotion.deform, strokePosition: rotoMotion.position');
+    expect(text).toContain("const updatePanelMotion = workflowMode === 'roto'");
+    expect(text).toContain('updateRotoInterpolationSettings({ deform: motion.strokeDeformation, position: motion.strokePosition })');
+    expect(text).toContain('onPlayWiggleChange: updatePanelMotion');
   });
 
   it('delegates cached Roto playback state and timer ownership to the focused hook', () => {
@@ -792,6 +797,7 @@ describe('PhysicsPaintStudio automatic Roto pixel cache contract', () => {
     expect(text).toContain('mutationEngine.copyLiveAlphaCanvas()');
     expect(text).toContain('rotoPersistence.captureLivePixels({');
     expect(text).toContain('latestFramesRef: latestRotoFramesRef');
+    expect(text).toContain('next?.cachedRotoFrames !== current?.cachedRotoFrames');
     expect(rotoPersistenceCoordinatorSource()).toContain('latestFramesRef.current = refreshedFrames');
     expect(rotoPersistenceCoordinatorSource()).not.toContain('current.cachedRotoFrames = refreshedFrames');
     expect(text).toContain('claimEmptyTarget: () => launchContext ? claimRotoSelectedFrame({');

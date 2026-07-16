@@ -19,6 +19,7 @@ export interface RotoSaveRealKeyTransaction {
 }
 
 export interface RotoSelectedFrameClaimInput {
+  model: RotoSourceDisplayModel;
   selectedFrame: number;
   currentSettings: PhysicPaintRotoInterpolationSettings;
 }
@@ -48,15 +49,17 @@ export interface RotoInterpolationToggleTransaction {
 
 export function claimRotoSelectedFrame(input: RotoSelectedFrameClaimInput): RotoSelectedFrameClaim {
   const selectedFrame = Math.max(0, Math.trunc(input.selectedFrame));
+  const target = resolveRotoRealKeySaveTarget(input.model, selectedFrame);
+  const model = upsertRotoRealKeySource(input.model, {
+    sourceFrame: selectedFrame,
+    previousSegmentOverride: target.previousSegmentOverride
+      ? { ...target.previousSegmentOverride, toSourceFrame: selectedFrame }
+      : null,
+  });
   return {
     sourceFrame: selectedFrame,
     displayFrame: selectedFrame,
-    interpolationSettings: {
-      ...input.currentSettings,
-      ...(input.currentSettings.segmentSpacingOverrides
-        ? { segmentSpacingOverrides: input.currentSettings.segmentSpacingOverrides.map((override) => ({ ...override })) }
-        : {}),
-    },
+    interpolationSettings: toPhysicPaintRotoInterpolationSettings(model.settings, input.currentSettings),
   };
 }
 
