@@ -77,11 +77,10 @@ pub fn project_save_as_with_script_library(
     if window.label() != "main" { return Err("Save As is owned by the main window".to_string()); }
     let source_root = std::path::Path::new(&source_file_path).parent().ok_or_else(|| "Source project path has no parent".to_string())?;
     let destination_root = std::path::Path::new(&destination_file_path).parent().ok_or_else(|| "Destination project path has no parent".to_string())?;
-    state.validate_active_root(source_root)?;
     let destination_path = std::path::Path::new(&destination_file_path);
     let previous_destination = if destination_path.exists() { Some(std::fs::read(destination_path).map_err(|error| format!("Could not stage existing Save As destination: {error}"))?) } else { None };
     project_io::save_project(&project, &destination_file_path, destination_root.to_string_lossy().as_ref())?;
-    match crate::services::script_library::migrate_saved_projects(source_root, destination_root) {
+    match state.migrate_active(source_root, destination_root) {
         Ok(migration) => Ok(migration),
         Err(error) => {
             let rollback = match previous_destination {

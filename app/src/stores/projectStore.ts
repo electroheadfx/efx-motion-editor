@@ -50,6 +50,11 @@ const isDirty = signal(false);
 /** True during save operation (prevents concurrent saves) */
 const isSaving = signal(false);
 const scriptLibraryAuthority = signal<string | null>(null);
+const projectContextId = signal(crypto.randomUUID());
+
+function rotateProjectContext(): void {
+  projectContextId.value = crypto.randomUUID();
+}
 
 async function publishScriptLibraryContext(): Promise<void> {
   const { publishPhysicPaintProjectContext } = await import('../lib/physicPaintBridge');
@@ -581,6 +586,7 @@ export const projectStore = {
   isDirty,
   isSaving,
   scriptLibraryAuthority,
+  projectContextId,
 
   setName(v: string) {
     name.value = v;
@@ -612,6 +618,7 @@ export const projectStore = {
 
   /** Create a new project. Migrates temp images if any exist. */
   async createProject(projectName: string, projectFps: number, projectDirPath: string) {
+    rotateProjectContext();
     // Close any existing project first (resets all stores, stops engines/timers)
     projectStore.closeProject();
 
@@ -734,6 +741,7 @@ export const projectStore = {
         dirPath.value = parentDir;
         filePath.value = newFilePath;
         scriptLibraryAuthority.value = null;
+        rotateProjectContext();
         isDirty.value = false;
       });
       await bindScriptLibraryAuthority(newFilePath);
@@ -749,6 +757,7 @@ export const projectStore = {
   async openProject(openFilePath: string) {
     // Close any existing project first (resets all stores, stops engines/timers)
     projectStore.closeProject();
+    rotateProjectContext();
 
     const result = await ipcProjectOpen(openFilePath);
     if (!result.ok) {
@@ -788,6 +797,7 @@ export const projectStore = {
 
   /** Close the current project and reset all stores */
   closeProject() {
+    rotateProjectContext();
     clearScriptLibraryAuthority();
     // 1. Stop engines and timers FIRST (prevents orphaned operations)
     stopAutoSave();

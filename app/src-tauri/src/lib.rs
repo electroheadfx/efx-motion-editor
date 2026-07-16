@@ -106,6 +106,8 @@ struct PhysicsPaintLaunchContext {
 struct PhysicsPaintProjectContext {
     name: String,
     saved: bool,
+    #[serde(rename = "contextId")]
+    context_id: String,
 }
 
 struct PhysicsPaintLaunchState(Mutex<Option<PhysicsPaintLaunchContext>>);
@@ -200,6 +202,14 @@ fn physics_paint_url(context: &PhysicsPaintLaunchContext) -> String {
         percent_encoding::utf8_percent_encode(&context.layer_id, percent_encoding::NON_ALPHANUMERIC),
         context.start_frame,
     );
+    if let Some(project) = &context.project {
+        url.push_str("&projectName=");
+        url.push_str(&percent_encoding::utf8_percent_encode(&project.name, percent_encoding::NON_ALPHANUMERIC).to_string());
+        url.push_str("&projectSaved=");
+        url.push_str(if project.saved { "true" } else { "false" });
+        url.push_str("&projectContextId=");
+        url.push_str(&percent_encoding::utf8_percent_encode(&project.context_id, percent_encoding::NON_ALPHANUMERIC).to_string());
+    }
     if let Some(layer_name) = &context.layer_name {
         url.push_str("&layerName=");
         url.push_str(&percent_encoding::utf8_percent_encode(layer_name, percent_encoding::NON_ALPHANUMERIC).to_string());

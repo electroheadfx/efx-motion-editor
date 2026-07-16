@@ -17,6 +17,7 @@ export function PhysicsPaintScriptsPanel({ library, onSave, onLoad, onRefresh }:
   const rename = library.rename.value;
   const confirmation = library.deleteConfirmation.value;
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmationRef = useRef<HTMLDivElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const previousConfirmation = useRef(false);
   const saveReasonId = useId();
@@ -73,8 +74,17 @@ export function PhysicsPaintScriptsPanel({ library, onSave, onLoad, onRefresh }:
       </div>
       <p class="physics-paint-scripts-status" aria-live="polite">{library.status.value}{library.skippedInvalidCount.value ? ` · Skipped ${library.skippedInvalidCount.value} invalid files` : ''}</p>
       {confirmation ? (
-        <div class="physics-paint-script-confirmation" role="dialog" aria-modal="true" aria-label={`Delete ${confirmation.name}`}
-          onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); library.cancelDelete(); } }}>
+        <div ref={confirmationRef} class="physics-paint-script-confirmation" role="dialog" aria-modal="true" aria-label={`Delete ${confirmation.name}`}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') { event.preventDefault(); library.cancelDelete(); return; }
+            if (event.key !== 'Tab') return;
+            const controls = Array.from(confirmationRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [tabindex]:not([tabindex="-1"])') ?? []);
+            if (!controls.length) return;
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+          }}>
           <strong>Delete “{confirmation.name}”?</strong><span>This removes the project script file and cannot be undone.</span>
           <div><button ref={cancelDeleteRef} type="button" onClick={library.cancelDelete}>Cancel</button><button type="button" class="danger" onClick={() => void library.confirmDelete()}>Delete</button></div>
         </div>

@@ -103,8 +103,8 @@ export function usePhysicsPaintProjectContextBridge(handleProject: (project: Phy
     let disposed = false; let unlisten: (() => void) | undefined;
     const accept = (value: unknown) => {
       if (!value || typeof value !== 'object') return;
-      const project = value as { name?: unknown; saved?: unknown };
-      if (typeof project.name === 'string' && typeof project.saved === 'boolean') handleRef.current({ name: project.name, saved: project.saved });
+      const project = value as { name?: unknown; saved?: unknown; contextId?: unknown };
+      if (typeof project.name === 'string' && typeof project.saved === 'boolean' && typeof project.contextId === 'string') handleRef.current({ name: project.name, saved: project.saved, contextId: project.contextId });
     };
     const custom = (event: Event) => accept((event as CustomEvent).detail);
     const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_PROJECT_CONTEXT_EVENT) accept(event.data.payload); };

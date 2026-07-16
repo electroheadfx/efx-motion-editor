@@ -165,7 +165,7 @@ export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Prom
 }
 
 export async function publishPhysicPaintProjectContext(): Promise<void> {
-  const project = { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()) };
+  const project = { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()), contextId: projectStore.projectContextId.peek() };
   if (isTauriRuntime()) {
     const eventApi = await import('@tauri-apps/api/event');
     await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, project);
@@ -455,7 +455,7 @@ export function createPhysicPaintLaunchContext(
   return {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
     layerId,
-    project: { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()) },
+    project: { name: projectStore.name.peek(), saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()), contextId: projectStore.projectContextId.peek() },
     layerName: layer.name,
     ...(isFinitePositiveNumber(canvas?.width) ? { width: canvas.width } : {}),
     ...(isFinitePositiveNumber(canvas?.height) ? { height: canvas.height } : {}),

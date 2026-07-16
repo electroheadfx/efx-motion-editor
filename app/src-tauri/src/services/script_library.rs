@@ -23,7 +23,10 @@ const MAX_TOTAL_POINTS: usize = 250_000;
 const MAX_THUMBNAIL_BYTES: usize = 512 * 1024;
 
 #[derive(Default)]
-pub struct ScriptLibraryState(Mutex<Option<ActiveProjectAuthority>>);
+pub struct ScriptLibraryState {
+    active: Mutex<Option<ActiveProjectAuthority>>,
+    operation: Mutex<()>,
+}
 
 #[derive(Clone)]
 struct ActiveProjectAuthority {
@@ -81,20 +84,22 @@ pub struct ScriptLibraryMigration {
 
 impl ScriptLibraryState {
     pub fn bind(&self, root: &Path) -> Result<String, String> {
+        let _operation = self.operation.lock().map_err(|_| "Script operation lock poisoned".to_string())?;
         let root = canonical_saved_project_root(root)?;
         ensure_scripts_dir(&root)?;
         let authority = Uuid::new_v4().to_string();
-        *self.0.lock().map_err(|_| "Script authority lock poisoned".to_string())? = Some(ActiveProjectAuthority { authority: authority.clone(), root });
+        *self.active.lock().map_err(|_| "Script authority lock poisoned".to_string())? = Some(ActiveProjectAuthority { authority: authority.clone(), root });
         Ok(authority)
     }
 
     pub fn clear(&self) -> Result<(), String> {
-        *self.0.lock().map_err(|_| "Script authority lock poisoned".to_string())? = None;
+        let _operation = self.operation.lock().map_err(|_| "Script operation lock poisoned".to_string())?;
+        *self.active.lock().map_err(|_| "Script authority lock poisoned".to_string())? = None;
         Ok(())
     }
 
     fn resolve(&self, authority: &str) -> Result<PathBuf, String> {
-        let active = self.0.lock().map_err(|_| "Script authority lock poisoned".to_string())?;
+        let active = self.active.lock().map_err(|_| "Script authority lock poisoned".to_string())?;
         let active = active.as_ref().ok_or_else(|| "No active saved project script authority".to_string())?;
         if active.authority != authority { return Err("Stale project script authority".to_string()); }
         canonical_saved_project_root(&active.root)
@@ -102,57 +107,73 @@ impl ScriptLibraryState {
 
     pub fn validate_active_root(&self, root: &Path) -> Result<(), String> {
         let requested = canonical_saved_project_root(root)?;
-        let active = self.0.lock().map_err(|_| "Script authority lock poisoned".to_string())?;
+        let active = self.active.lock().map_err(|_| "Script authority lock poisoned".to_string())?;
         let active = active.as_ref().ok_or_else(|| "No active saved project script authority".to_string())?;
         let current = canonical_saved_project_root(&active.root)?;
         if requested == current { Ok(()) } else { Err("Source project is not the active saved project".to_string()) }
     }
+
+    fn with_active<T>(&self, authority: &str, operation: impl FnOnce(&Path) -> Result<T, String>) -> Result<T, String> {
+        let _operation = self.operation.lock().map_err(|_| "Script operation lock poisoned".to_string())?;
+        let root = self.resolve(authority)?;
+        operation(&root)
+    }
+
+    pub fn migrate_active(&self, source_root: &Path, destination_root: &Path) -> Result<ScriptLibraryMigration, String> {
+        let _operation = self.operation.lock().map_err(|_| "Script operation lock poisoned".to_string())?;
+        self.validate_active_root(source_root)?;
+        migrate_saved_projects(source_root, destination_root)
+    }
 }
 
 pub fn scan(state: &ScriptLibraryState, authority: &str) -> Result<ScriptLibraryScan, String> {
-    scan_root(&state.resolve(authority)?)
+    state.with_active(authority, scan_root)
 }
 
 pub fn load(state: &ScriptLibraryState, authority: &str, script_id: &str) -> Result<ScriptLibraryOperation, String> {
-    let root = state.resolve(authority)?;
-    let value = read_valid_managed(&root, script_id)?;
-    Ok(ScriptLibraryOperation { scan: scan_root(&root)?, script: Some(value) })
+    state.with_active(authority, |root| {
+        let value = read_valid_managed(root, script_id)?;
+        Ok(ScriptLibraryOperation { scan: scan_root(root)?, script: Some(value) })
+    })
 }
 
 pub fn save(state: &ScriptLibraryState, authority: &str, script: Value) -> Result<ScriptLibraryOperation, String> {
-    let root = state.resolve(authority)?;
-    let validated = validate_document(script, None)?;
-    let id = document_id(&validated)?;
-    let path = managed_path(&root, &id)?;
-    if path.exists() { return Err("A script with this ID already exists".to_string()); }
-    atomic_write_json(&path, &validated, false)?;
-    Ok(ScriptLibraryOperation { scan: scan_root(&root)?, script: Some(validated) })
+    state.with_active(authority, |root| {
+        let validated = validate_document(script, None)?;
+        let id = document_id(&validated)?;
+        let path = managed_path(root, &id)?;
+        if path.exists() { return Err("A script with this ID already exists".to_string()); }
+        atomic_write_json(&path, &validated, false)?;
+        Ok(ScriptLibraryOperation { scan: scan_root(root)?, script: Some(validated) })
+    })
 }
 
 pub fn rename(state: &ScriptLibraryState, authority: &str, script_id: &str, expected_revision: &str, name: &str) -> Result<ScriptLibraryOperation, String> {
-    let root = state.resolve(authority)?;
-    let normalized = normalize_name(name)?;
-    let scan = scan_root(&root)?;
-    if scan.rows.iter().any(|row| row.id != script_id && row.name.nfc().collect::<String>() == normalized.nfc().collect::<String>()) {
-        return Err("A script with this name already exists".to_string());
-    }
-    let mut value = read_valid_managed(&root, script_id)?;
-    require_revision(&value, expected_revision)?;
-    let object = value.as_object_mut().ok_or_else(|| "Invalid script document".to_string())?;
-    object.insert("name".into(), Value::String(normalized));
-    object.insert("updatedAt".into(), Value::String(Utc::now().to_rfc3339()));
-    let validated = validate_document(value, Some(script_id))?;
-    atomic_write_json(&managed_path(&root, script_id)?, &validated, true)?;
-    Ok(ScriptLibraryOperation { scan: scan_root(&root)?, script: Some(validated) })
+    state.with_active(authority, |root| {
+        let normalized = normalize_name(name)?;
+        let scan = scan_root(root)?;
+        if scan.rows.iter().any(|row| row.id != script_id && row.name.nfc().collect::<String>() == normalized.nfc().collect::<String>()) {
+            return Err("A script with this name already exists".to_string());
+        }
+        let mut value = read_valid_managed(root, script_id)?;
+        require_revision(&value, expected_revision)?;
+        let object = value.as_object_mut().ok_or_else(|| "Invalid script document".to_string())?;
+        object.insert("name".into(), Value::String(normalized));
+        object.insert("updatedAt".into(), Value::String(Utc::now().to_rfc3339()));
+        let validated = validate_document(value, Some(script_id))?;
+        atomic_write_json(&managed_path(root, script_id)?, &validated, true)?;
+        Ok(ScriptLibraryOperation { scan: scan_root(root)?, script: Some(validated) })
+    })
 }
 
 pub fn delete(state: &ScriptLibraryState, authority: &str, script_id: &str, expected_revision: &str) -> Result<ScriptLibraryOperation, String> {
-    let root = state.resolve(authority)?;
-    let value = read_valid_managed(&root, script_id)?;
-    require_revision(&value, expected_revision)?;
-    let path = managed_path(&root, script_id)?;
-    fs::remove_file(&path).map_err(|error| format!("Could not delete managed script: {error}"))?;
-    Ok(ScriptLibraryOperation { scan: scan_root(&root)?, script: None })
+    state.with_active(authority, |root| {
+        let value = read_valid_managed(root, script_id)?;
+        require_revision(&value, expected_revision)?;
+        let path = managed_path(root, script_id)?;
+        fs::remove_file(&path).map_err(|error| format!("Could not delete managed script: {error}"))?;
+        Ok(ScriptLibraryOperation { scan: scan_root(root)?, script: None })
+    })
 }
 
 pub fn migrate_saved_projects(source_root: &Path, destination_root: &Path) -> Result<ScriptLibraryMigration, String> {
@@ -306,7 +327,7 @@ fn validate_thumbnail(value: Option<&Value>) -> Result<(), String> {
     let encoded = data_url.strip_prefix("data:image/webp;base64,").ok_or_else(|| "Thumbnail must be a WebP data URL".to_string())?;
     let bytes = decode_base64(encoded)?;
     if bytes.len() > MAX_THUMBNAIL_BYTES { return Err("Thumbnail exceeds the decoded size limit".to_string()); }
-    let (actual_width, actual_height) = parse_webp_dimensions(&bytes)?;
+    let (actual_width, actual_height) = validate_webp_payload(&bytes)?;
     let declared_width = thumb.get("width").and_then(Value::as_u64).ok_or_else(|| "Invalid thumbnail width".to_string())?;
     let declared_height = thumb.get("height").and_then(Value::as_u64).ok_or_else(|| "Invalid thumbnail height".to_string())?;
     if actual_width != declared_width || actual_height != declared_height { return Err("Thumbnail dimensions do not match the WebP payload".to_string()); }
@@ -406,13 +427,28 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
     if padding != expected_padding { return Err("Non-canonical thumbnail Base64".into()); }
     Ok(output)
 }
-fn parse_webp_dimensions(bytes: &[u8]) -> Result<(u64, u64), String> {
-    if bytes.len() < 30 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WEBP" { return Err("Thumbnail is not a WebP payload".to_string()); }
-    match &bytes[12..16] {
-        b"VP8X" => Ok((1 + read_u24_le(bytes, 24)?, 1 + read_u24_le(bytes, 27)?)),
-        b"VP8L" if bytes[20] == 0x2f => Ok((1 + bytes[21] as u64 + (((bytes[22] & 0x3f) as u64) << 8), 1 + ((bytes[22] as u64 >> 6) | ((bytes[23] as u64) << 2) | (((bytes[24] & 0x0f) as u64) << 10)))),
-        b"VP8 " if bytes[23..26] == [0x9d, 0x01, 0x2a] => Ok(((u16::from_le_bytes([bytes[26], bytes[27]]) & 0x3fff) as u64, (u16::from_le_bytes([bytes[28], bytes[29]]) & 0x3fff) as u64)),
-        _ => Err("Unsupported WebP bitstream".to_string()),
+fn validate_webp_payload(bytes: &[u8]) -> Result<(u64, u64), String> {
+    if bytes.len() < 20 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WEBP" { return Err("Thumbnail is not a WebP payload".to_string()); }
+    let riff_size = u32::from_le_bytes(bytes[4..8].try_into().map_err(|_| "Truncated WebP RIFF header".to_string())?) as usize;
+    let container_size = riff_size.checked_add(8).ok_or_else(|| "Invalid WebP RIFF size".to_string())?;
+    if container_size != bytes.len() { return Err("WebP RIFF length does not match the payload".to_string()); }
+    let mut offset = 12usize;
+    let mut image_chunks = 0usize;
+    while offset < bytes.len() {
+        if bytes.len() - offset < 8 { return Err("Truncated WebP chunk header".to_string()); }
+        let kind = &bytes[offset..offset + 4];
+        let chunk_size = u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().map_err(|_| "Truncated WebP chunk size".to_string())?) as usize;
+        let data_start = offset + 8;
+        let data_end = data_start.checked_add(chunk_size).ok_or_else(|| "Invalid WebP chunk size".to_string())?;
+        if data_end > bytes.len() { return Err("Truncated WebP chunk".to_string()); }
+        if matches!(kind, b"VP8 " | b"VP8L") { image_chunks += 1; }
+        let padded_end = data_end.checked_add(chunk_size & 1).ok_or_else(|| "Invalid WebP chunk padding".to_string())?;
+        if padded_end > bytes.len() { return Err("Missing WebP chunk padding".to_string()); }
+        if chunk_size & 1 == 1 && bytes[data_end] != 0 { return Err("Invalid WebP chunk padding".to_string()); }
+        offset = padded_end;
     }
+    if offset != bytes.len() || image_chunks != 1 { return Err("WebP must contain exactly one supported image chunk".to_string()); }
+    let reader = image::ImageReader::with_format(std::io::Cursor::new(bytes), image::ImageFormat::WebP);
+    let image = reader.decode().map_err(|error| format!("Thumbnail WebP could not be decoded: {error}"))?;
+    Ok((u64::from(image.width()), u64::from(image.height())))
 }
-fn read_u24_le(bytes: &[u8], offset: usize) -> Result<u64, String> { if bytes.len() < offset + 3 { return Err("Truncated WebP payload".to_string()); } Ok(bytes[offset] as u64 | ((bytes[offset + 1] as u64) << 8) | ((bytes[offset + 2] as u64) << 16)) }

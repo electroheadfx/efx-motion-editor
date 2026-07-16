@@ -69,7 +69,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     canDelete: Boolean(selected.value) && !busy.value,
   }));
 
-  function contextIdentity(context: PhysicPaintLaunchContext | null): string { return context?.project ? `${context.project.saved}:${context.project.name}:${context.layerId}` : 'closed'; }
+  function contextIdentity(context: PhysicPaintLaunchContext | null): string { return context?.project ? `${context.project.contextId}:${context.layerId}` : 'closed'; }
   function operationId(kind: string): string { return `roto-library-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
   function publishResult(result: PhysicPaintScriptLibraryResult, preferredId?: string): void {
     rows.value = [...result.rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));

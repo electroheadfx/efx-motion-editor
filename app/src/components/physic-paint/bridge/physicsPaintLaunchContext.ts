@@ -84,6 +84,7 @@ export function parsePhysicsPaintLaunchContext(location: Location): PhysicPaintL
     project: {
       name: nonEmptyParam(params, 'projectName') ?? 'Untitled Project',
       saved: nonEmptyParam(params, 'projectSaved') === 'true',
+      contextId: nonEmptyParam(params, 'projectContextId') ?? operationId,
     },
     startFrame,
     layerName: nonEmptyParam(params, 'layerName', 'name') ?? undefined,

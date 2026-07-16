@@ -95,6 +95,7 @@ export interface PhysicPaintWorkflowMetadata {
 export interface PhysicPaintProjectContext {
   name: string;
   saved: boolean;
+  contextId: string;
 }
 
 export interface PhysicPaintLaunchContext {
@@ -657,7 +658,7 @@ function optionalPositiveNumber(value: unknown): boolean {
 }
 
 function optionalProjectContext(value: unknown): boolean {
-  return value === undefined || (isRecord(value) && isNonEmptyString(value.name) && typeof value.saved === 'boolean' && Object.keys(value).every((key) => key === 'name' || key === 'saved'));
+  return value === undefined || (isRecord(value) && isNonEmptyString(value.name) && typeof value.saved === 'boolean' && isNonEmptyString(value.contextId) && Object.keys(value).every((key) => key === 'name' || key === 'saved' || key === 'contextId'));
 }
 
 function optionalWorkflowMode(value: unknown): boolean {

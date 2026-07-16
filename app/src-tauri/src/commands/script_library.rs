@@ -52,6 +52,5 @@ pub fn script_library_migrate_saved_projects(window: WebviewWindow, state: State
     require_main_window(&window)?;
     let source = Path::new(&source_file_path).parent().ok_or_else(|| "Source project path has no parent".to_string())?;
     let destination = Path::new(&destination_file_path).parent().ok_or_else(|| "Destination project path has no parent".to_string())?;
-    state.validate_active_root(source)?;
-    script_library::migrate_saved_projects(source, destination)
+    state.migrate_active(source, destination)
 }
