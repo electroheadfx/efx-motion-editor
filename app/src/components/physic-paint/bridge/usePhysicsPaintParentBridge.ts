@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
 
 export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
 
@@ -94,6 +94,27 @@ export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context
     };
     void installLaunchListener();
     return () => { disposed = true; unlisten?.(); };
+  }, []);
+}
+
+export function usePhysicsPaintProjectContextBridge(handleProject: (project: PhysicPaintLaunchContext['project']) => void): void {
+  const handleRef = useRef(handleProject); handleRef.current = handleProject;
+  useEffect(() => {
+    let disposed = false; let unlisten: (() => void) | undefined;
+    const accept = (value: unknown) => {
+      if (!value || typeof value !== 'object') return;
+      const project = value as { name?: unknown; saved?: unknown };
+      if (typeof project.name === 'string' && typeof project.saved === 'boolean') handleRef.current({ name: project.name, saved: project.saved });
+    };
+    const custom = (event: Event) => accept((event as CustomEvent).detail);
+    const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_PROJECT_CONTEXT_EVENT) accept(event.data.payload); };
+    window.addEventListener(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, custom);
+    window.addEventListener('message', message);
+    void import('@tauri-apps/api/event').then(async (eventApi) => {
+      unlisten = await eventApi.listen?.(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, (event) => accept(event.payload));
+      if (disposed) unlisten?.();
+    }).catch(() => undefined);
+    return () => { disposed = true; unlisten?.(); window.removeEventListener(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, custom); window.removeEventListener('message', message); };
   }, []);
 }
 

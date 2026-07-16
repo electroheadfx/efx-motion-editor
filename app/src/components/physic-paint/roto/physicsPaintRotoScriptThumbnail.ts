@@ -1,5 +1,5 @@
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import { getProjectPaperCanvas } from '../../../lib/projectPaperRaster';
+import { getProjectPaperCanvas, subscribeProjectPaperCanvas } from '../../../lib/projectPaperRaster';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 import { ROTO_SCRIPT_LIMITS } from './physicsPaintRotoScriptSchema';
 
@@ -22,8 +22,9 @@ export async function createRotoScriptThumbnail(input: {
     : input.background.color ?? '#ffffff';
   context.fillRect(0, 0, width, height);
   if (input.background.background.startsWith('canvas')) {
-    const paper = getProjectPaperCanvas(input.background.paperGrain || input.background.background, width, height);
-    if (paper) context.drawImage(paper, 0, 0, width, height);
+    const paper = await resolveProjectPaperCanvas(input.background.paperGrain || input.background.background, width, height);
+    if (!paper) throw new Error('Required paper texture is unavailable');
+    context.drawImage(paper, 0, 0, width, height);
   }
   context.drawImage(input.scriptAlphaCanvas, 0, 0, width, height);
   const blob = await canvasToBlob(canvas, 'image/webp', WEBP_QUALITY);
@@ -48,6 +49,28 @@ export async function measureRotoScriptWebpSupport(): Promise<{ supported: boole
   if (!blob) return { supported: false, mimeType: null, size: 0, signature: null };
   const bytes = new Uint8Array(await blob.arrayBuffer());
   return { supported: blob.type === 'image/webp' && hasWebpSignature(bytes), mimeType: blob.type, size: bytes.length, signature: ascii(bytes.slice(0, 12)) };
+}
+
+function resolveProjectPaperCanvas(paperTexture: string, width: number, height: number): Promise<HTMLCanvasElement | null> {
+  const ready = getProjectPaperCanvas(paperTexture, width, height);
+  if (ready) return Promise.resolve(ready);
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsubscribe = () => {};
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      resolve(null);
+    }, 5_000);
+    unsubscribe = subscribeProjectPaperCanvas(paperTexture, width, height, (canvas) => {
+      if (!canvas || settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      unsubscribe();
+      resolve(canvas);
+    });
+  });
 }
 
 function fitThumbnail(width: number, height: number): { width: number; height: number } {

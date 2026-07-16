@@ -66,9 +66,15 @@ export interface RecordedStrokeGroup {
 export interface RotoScriptEnginePort {
   getStrokes: () => PaintStroke[];
   getStrokeCount?: () => number;
+  copyLiveAlphaCanvas?: () => HTMLCanvasElement;
   enqueueRecordedStroke: (group: Readonly<RecordedStrokeGroup>) => number;
   flushPendingStrokeFinalizations?: () => void;
   setInputLocked: (locked: boolean) => void;
+}
+
+export interface RotoScriptPersistenceCapture {
+  script: RotoPaintScript;
+  scriptAlphaCanvas: HTMLCanvasElement;
 }
 
 export interface RotoScriptClipboardControllerPorts {
@@ -104,7 +110,7 @@ export interface RotoScriptClipboardController {
   availability: ReadonlySignal<RotoScriptActionAvailability>;
   mutationLocked: ReadonlySignal<boolean>;
   copyScript: () => Promise<boolean>;
-  captureScriptForPersistence: () => Promise<RotoPaintScript | null>;
+  captureScriptForPersistence: () => Promise<RotoScriptPersistenceCapture | null>;
   replaceClipboardFromPersisted: (script: RotoPaintScript) => boolean;
   applyScript: () => Promise<boolean>;
   discardScript: () => void;
@@ -380,7 +386,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     }
   }
 
-  async function captureScriptForPersistence(): Promise<RotoPaintScript | null> {
+  async function captureScriptForPersistence(): Promise<RotoScriptPersistenceCapture | null> {
     if (disposed || disposalRequested || !availability.value.canCopy) return null;
     const engine = engineState.peek();
     if (!engine) return null;
@@ -393,8 +399,9 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       await ports.flushSourcePublication?.(source.sourceFrame);
       if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) return null;
       const brushes = normalizeLogicalBrushes(engine.getStrokes());
-      if (brushes.length === 0) return null;
-      return deepFreezeScript({ provenance: provenanceFor(source), sourceFrame: source.sourceFrame, sourceDisplayFrame: source.displayFrame, sourceRevision: sourceRevision + 1, brushes });
+      if (brushes.length === 0 || !engine.copyLiveAlphaCanvas) return null;
+      const script = deepFreezeScript({ provenance: provenanceFor(source), sourceFrame: source.sourceFrame, sourceDisplayFrame: source.displayFrame, sourceRevision: sourceRevision + 1, brushes });
+      return { script, scriptAlphaCanvas: engine.copyLiveAlphaCanvas() };
     } catch (cause) {
       error.value = operationError('copy', 'copy-drain-failed', 'Save Script could not finish accepted paint work', cause);
       return null;

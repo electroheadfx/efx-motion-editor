@@ -230,13 +230,8 @@ export function PhysicsPaintStudio() {
   });
   const rotoScriptLibrary = useRotoScriptLibraryController({
     request: async () => { throw new Error('Bridge request adapter is installed by the library hook.'); },
-    captureScript: rotoScript.captureScriptForPersistence,
-    captureThumbnail: async () => {
-      const activeEngine = engineRef.current;
-      if (!activeEngine) throw new Error('Physics Paint engine is unavailable');
-      const scriptAlphaCanvas = activeEngine.copyLiveAlphaCanvas();
-      return createRotoScriptThumbnail({ scriptAlphaCanvas, sourceWidth: projectCanvasWidth, sourceHeight: projectCanvasHeight, background: buildRotoBackgroundMetadata(settings) });
-    },
+    capturePersistence: rotoScript.captureScriptForPersistence,
+    captureThumbnail: (scriptAlphaCanvas) => createRotoScriptThumbnail({ scriptAlphaCanvas, sourceWidth: projectCanvasWidth, sourceHeight: projectCanvasHeight, background: buildRotoBackgroundMetadata(settings) }),
     replaceClipboard: rotoScript.replaceClipboardFromPersisted,
     getLaunchContext: () => launchContext,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },

@@ -1055,6 +1055,13 @@ button.destructive {
   min-width: 0;
 }
 
+.physics-paint-script-disabled-control {
+  display: flex;
+  min-width: 0;
+}
+.physics-paint-script-disabled-control .physics-paint-script-icon-button { width: 100%; }
+.physics-paint-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
 .physics-paint-script-icon-button {
   display: inline-flex;
   align-items: center;
@@ -1094,10 +1101,11 @@ button.destructive {
   text-align: left;
 }
 .physics-paint-script-row.selected { border-color: #7e9cff; background: #454b5a; }
+.physics-paint-script-select { display: flex; width: 48px; height: 48px; padding: 0; border: 0; background: transparent; }
 .physics-paint-script-thumbnail { width: 48px; height: 48px; object-fit: contain; border-radius: 4px; background: #fff; }
 .physics-paint-script-row-copy, .physics-paint-script-rename-wrap { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .physics-paint-script-name, .physics-paint-script-provenance, .physics-paint-script-count { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.physics-paint-script-name { font-size: 12px; }
+.physics-paint-script-name { min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font-size: 12px; font-weight: 700; }
 .physics-paint-script-provenance, .physics-paint-script-count, .physics-paint-scripts-status, .physics-paint-scripts-empty { margin: 0; color: #aeb5be; font-size: 10px; }
 .physics-paint-script-rename-wrap input { min-width: 0; width: 100%; box-sizing: border-box; }
 .physics-paint-script-inline-error { color: #ff8585; font-size: 10px; }
@@ -2221,10 +2229,12 @@ button.destructive {
   }
 
   .physics-paint-right-panel {
-    display: grid;
-    grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
     max-height: 260px;
     overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .physics-paint-right-section,

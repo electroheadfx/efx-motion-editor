@@ -8,7 +8,7 @@ import { applyPhysicsPaintLaunchContext, getLaunchWorkflowMode } from '../bridge
 import { hydrateRotoLaunchContext } from '../roto/rotoLaunchHydration';
 import { applyPlayRenderOptionsSnapshotToSettings, applyRotoBackgroundMetadataToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
-import { usePhysicsPaintLaunchBridge } from '../bridge/usePhysicsPaintParentBridge';
+import { usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
@@ -149,5 +149,13 @@ export function usePhysicsPaintLaunchIntegration(input: {
   }, []);
 
   usePhysicsPaintLaunchBridge(applyIncomingLaunchContext);
+  usePhysicsPaintProjectContextBridge((project) => {
+    input.state.setLaunchContext((current) => {
+      if (!current) return current;
+      const updated = { ...current, project };
+      queueMicrotask(() => input.onSettledLaunchContext?.(updated));
+      return updated;
+    });
+  });
   return { getStrokeMetadata };
 }

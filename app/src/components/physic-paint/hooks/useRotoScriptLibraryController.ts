@@ -24,7 +24,7 @@ export function useRotoScriptLibraryController(ports: RotoScriptLibraryControlle
           resolve({ operationId: request.operationId, kind: request.kind, ok: false, rows: [], skippedInvalidCount: 0, diagnostics: [], error: String(error) });
         });
       }),
-      captureScript: () => portsRef.current.captureScript(), captureThumbnail: () => portsRef.current.captureThumbnail(),
+      capturePersistence: () => portsRef.current.capturePersistence(), captureThumbnail: (canvas) => portsRef.current.captureThumbnail(canvas),
       replaceClipboard: (script) => portsRef.current.replaceClipboard(script), getLaunchContext: () => portsRef.current.getLaunchContext(),
       log: (message, error) => portsRef.current.log(message, error),
     });

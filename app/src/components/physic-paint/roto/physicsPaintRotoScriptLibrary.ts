@@ -1,13 +1,13 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { createPersistedRotoScript, normalizeRotoScriptName, persistedRotoScriptToRuntime, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
-import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
+import type { RotoPaintScript, RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 
 export interface RotoScriptLibraryControllerPorts {
   request: (request: PhysicPaintScriptLibraryRequest) => Promise<PhysicPaintScriptLibraryResult>;
-  captureScript: () => Promise<RotoPaintScript | null>;
-  captureThumbnail: () => Promise<PersistedRotoScriptThumbnailV1>;
+  capturePersistence: () => Promise<RotoScriptPersistenceCapture | null>;
+  captureThumbnail: (scriptAlphaCanvas: HTMLCanvasElement) => Promise<PersistedRotoScriptThumbnailV1>;
   replaceClipboard: (script: RotoPaintScript) => boolean;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   log: (message: string, error?: boolean) => void;
@@ -57,6 +57,9 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   const deleteConfirmation = signal<RotoScriptLibraryRow | null>(null);
   const projectSaved = signal(Boolean(ports.getLaunchContext()?.project?.saved));
   let disposed = false;
+  let contextGeneration = 0;
+  let operationGeneration = 0;
+  let contextKey = contextIdentity(ports.getLaunchContext());
   const selected = computed(() => rows.value.find((row) => row.id === selectedId.value) ?? null);
   const availability = computed<RotoScriptLibraryAvailability>(() => ({
     canSave: projectSaved.value && !busy.value,
@@ -66,6 +69,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     canDelete: Boolean(selected.value) && !busy.value,
   }));
 
+  function contextIdentity(context: PhysicPaintLaunchContext | null): string { return context ? `${context.project.saved}:${context.project.name}:${context.layerId}` : 'closed'; }
   function operationId(kind: string): string { return `roto-library-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
   function publishResult(result: PhysicPaintScriptLibraryResult, preferredId?: string): void {
     rows.value = [...result.rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
@@ -75,31 +79,55 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     for (const diagnostic of result.diagnostics) ports.log(`${diagnostic.filename ? `${diagnostic.filename}: ` : ''}${diagnostic.message}`, true);
   }
   async function execute(request: PhysicPaintScriptLibraryRequest, preferredId?: string): Promise<PhysicPaintScriptLibraryResult> {
+    if (disposed || busy.peek()) return { operationId: request.operationId, kind: request.kind, ok: false, rows: [...rows.peek()], skippedInvalidCount: skippedInvalidCount.peek(), diagnostics: [], error: 'Finish the current script library operation.' };
+    const acceptedContextGeneration = contextGeneration;
+    const acceptedOperationGeneration = ++operationGeneration;
     busy.value = true;
     try {
       const result = await ports.request(request);
+      if (disposed || acceptedContextGeneration !== contextGeneration || acceptedOperationGeneration !== operationGeneration || result.operationId !== request.operationId || result.kind !== request.kind) return result;
       publishResult(result, preferredId);
       if (!result.ok) ports.log(result.error ?? `${request.kind} failed`, true);
       return result;
-    } finally { busy.value = false; }
+    } finally {
+      if (!disposed && acceptedOperationGeneration === operationGeneration) busy.value = false;
+    }
   }
   async function refresh(): Promise<void> {
+    if (disposed) return;
     const context = ports.getLaunchContext();
-    projectSaved.value = Boolean(context?.project?.saved);
-    if (!projectSaved.value) { rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; status.value = null; return; }
+    const nextContextKey = contextIdentity(context);
+    if (nextContextKey !== contextKey) {
+      contextKey = nextContextKey;
+      contextGeneration += 1;
+      operationGeneration += 1;
+      busy.value = false;
+      rows.value = [];
+      selectedId.value = null;
+      rename.value = null;
+      deleteConfirmation.value = null;
+    }
+    const saved = Boolean(context?.project?.saved);
+    projectSaved.value = saved;
+    if (!projectSaved.value) { operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; skippedInvalidCount.value = 0; rename.value = null; deleteConfirmation.value = null; status.value = null; return; }
     const result = await execute({ kind: 'scan', operationId: operationId('scan') });
     status.value = result.ok ? `Found ${result.rows.length} scripts${result.skippedInvalidCount ? ` · Skipped ${result.skippedInvalidCount} invalid files` : ''}` : result.error ?? 'Refresh failed';
   }
   async function saveActiveFrame(): Promise<boolean> {
     const context = ports.getLaunchContext();
     if (!context?.project?.saved) { status.value = 'Save the project first.'; return false; }
-    const captured = await ports.captureScript();
+    if (busy.peek()) return false;
+    const acceptedContextGeneration = contextGeneration;
+    const captured = await ports.capturePersistence();
+    if (disposed || acceptedContextGeneration !== contextGeneration) return false;
     if (!captured) { status.value = 'Paint at least one brush on a real Roto key.'; return false; }
     try {
-      const thumbnail = await ports.captureThumbnail();
+      const thumbnail = await ports.captureThumbnail(captured.scriptAlphaCanvas);
+      if (disposed || acceptedContextGeneration !== contextGeneration) return false;
+      const scriptSnapshot = captured.script;
       const id = crypto.randomUUID();
       const now = new Date().toISOString();
-      const base = `${context.project.name}-${context.layerName ?? context.layerId}-${captured.sourceDisplayFrame}`;
+      const base = `${context.project.name}-${context.layerName ?? context.layerId}-${scriptSnapshot.sourceDisplayFrame}`;
       const existing = new Set(rows.peek().map((row) => row.name));
       let name = base;
       for (let suffix = 2; existing.has(name); suffix += 1) name = `${base}-${suffix}`;
@@ -107,11 +135,11 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
         id, name, createdAt: now, updatedAt: now,
         source: {
           projectName: context.project.name, layerId: context.layerId, layerName: context.layerName ?? context.layerId,
-          sourceFrame: captured.sourceFrame, displayFrame: captured.sourceDisplayFrame,
+          sourceFrame: scriptSnapshot.sourceFrame, displayFrame: scriptSnapshot.sourceDisplayFrame,
           width: context.width ?? 1000, height: context.height ?? 650,
           background: context.rotoBackground ?? { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
         },
-        thumbnail, brushes: captured.brushes,
+        thumbnail, brushes: scriptSnapshot.brushes,
       });
       const result = await execute({ kind: 'save', operationId: operationId('save'), script }, id);
       status.value = result.ok ? `Saved ${name}` : result.error ?? 'Save failed';
@@ -138,13 +166,15 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     const name = normalizeRotoScriptName(edit.draft);
     if (!name) { rename.value = { ...edit, error: 'Enter a valid name.' }; return false; }
     if (rows.peek().some((row) => row.id !== edit.id && row.name.normalize('NFC') === name.normalize('NFC'))) { rename.value = { ...edit, error: 'Name already exists.' }; return false; }
-    const result = await execute({ kind: 'rename', operationId: operationId('rename'), scriptId: edit.id, name }, edit.id);
+    const row = rows.peek().find((candidate) => candidate.id === edit.id);
+    if (!row) return false;
+    const result = await execute({ kind: 'rename', operationId: operationId('rename'), scriptId: edit.id, expectedRevision: row.revision, name }, edit.id);
     if (!result.ok) { rename.value = { ...edit, error: result.error ?? 'Rename failed.' }; return false; }
     rename.value = null; status.value = `Renamed ${name}`; return true;
   }
   async function confirmDelete(): Promise<boolean> {
     const row = deleteConfirmation.peek(); if (!row) return false;
-    const result = await execute({ kind: 'delete', operationId: operationId('delete'), scriptId: row.id });
+    const result = await execute({ kind: 'delete', operationId: operationId('delete'), scriptId: row.id, expectedRevision: row.revision });
     deleteConfirmation.value = null; status.value = result.ok ? `Deleted ${row.name}` : result.error ?? 'Delete failed'; return result.ok;
   }
   return {
@@ -152,6 +182,6 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     updateProjectContext: refresh, enterScripts: refresh, refresh, saveActiveFrame, loadSelected, beginRename, updateRenameDraft, commitRename,
     cancelRename: () => { rename.value = null; }, requestDelete: () => { deleteConfirmation.value = selected.peek(); }, confirmDelete,
     cancelDelete: () => { deleteConfirmation.value = null; }, select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; },
-    dispose: () => { disposed = true; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; void disposed; },
+    dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; },
   };
 }
