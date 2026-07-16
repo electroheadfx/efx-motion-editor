@@ -5,11 +5,16 @@ import { ROTO_SCRIPT_LIMITS } from './physicsPaintRotoScriptSchema';
 
 const WEBP_QUALITY = 0.8;
 
+export interface RotoScriptThumbnailNativeEncoder {
+  encodeWebp(input: { width: number; height: number; quality: number; rgba: Uint8Array }): Promise<{ width: number; height: number; mimeType: 'image/webp'; bytes: Uint8Array }>;
+}
+
 export async function createRotoScriptThumbnail(input: {
   scriptAlphaCanvas: HTMLCanvasElement;
   sourceWidth: number;
   sourceHeight: number;
   background: PhysicPaintRotoBackgroundMetadata;
+  nativeEncoder?: RotoScriptThumbnailNativeEncoder;
 }): Promise<PersistedRotoScriptThumbnailV1> {
   const { width, height } = fitThumbnail(input.sourceWidth, input.sourceHeight);
   const canvas = document.createElement('canvas');
@@ -27,9 +32,19 @@ export async function createRotoScriptThumbnail(input: {
     context.drawImage(paper, 0, 0, width, height);
   }
   context.drawImage(input.scriptAlphaCanvas, 0, 0, width, height);
-  const blob = await canvasToBlob(canvas, 'image/webp', WEBP_QUALITY);
-  if (!blob || blob.type !== 'image/webp') throw new Error('Actual WebP encoding is unavailable in this WKWebView');
-  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bytes: Uint8Array;
+  if (input.nativeEncoder) {
+    const imageData = context.getImageData(0, 0, width, height);
+    const rgba = new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength);
+    if (rgba.byteLength !== width * height * 4) throw new Error('Thumbnail RGBA payload has an invalid size');
+    const encoded = await input.nativeEncoder.encodeWebp({ width, height, quality: WEBP_QUALITY, rgba });
+    if (encoded.mimeType !== 'image/webp' || encoded.width !== width || encoded.height !== height) throw new Error('Native WebP encoder returned invalid metadata');
+    bytes = encoded.bytes;
+  } else {
+    const blob = await canvasToBlob(canvas, 'image/webp', WEBP_QUALITY);
+    if (!blob || blob.type !== 'image/webp') throw new Error('Actual WebP encoding is unavailable in this browser');
+    bytes = new Uint8Array(await blob.arrayBuffer());
+  }
   if (bytes.length > ROTO_SCRIPT_LIMITS.thumbnailBytes || !hasWebpSignature(bytes)) throw new Error('WebP thumbnail validation failed');
   return {
     mimeType: 'image/webp',

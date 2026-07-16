@@ -143,6 +143,24 @@ export interface PhysicPaintStateSaveResult {
   error?: string;
 }
 
+export interface PhysicPaintThumbnailEncodeRequest {
+  operationId: string;
+  width: number;
+  height: number;
+  quality: number;
+  rgbaBase64: string;
+}
+
+export interface PhysicPaintThumbnailEncodeResult {
+  operationId: string;
+  ok: boolean;
+  width: number;
+  height: number;
+  mimeType: 'image/webp';
+  webpBase64?: string;
+  error?: string;
+}
+
 export interface PhysicPaintRenderedFrame {
   /** Generated sequence-local frame index. For still applies this is 0. */
   frameIndex: number;
@@ -547,6 +565,24 @@ export function isPhysicPaintApplyResultMessage(value: unknown): value is Physic
   );
 }
 
+export function isPhysicPaintThumbnailEncodeRequest(value: unknown): value is PhysicPaintThumbnailEncodeRequest {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'width', 'height', 'quality', 'rgbaBase64'])) return false;
+  if (!isBoundedOperationId(value.operationId) || !isBoundedThumbnailDimension(value.width, 96) || !isBoundedThumbnailDimension(value.height, 64)) return false;
+  if (typeof value.quality !== 'number' || !Number.isFinite(value.quality) || value.quality < 0.75 || value.quality > 0.85) return false;
+  if (typeof value.rgbaBase64 !== 'string') return false;
+  const expectedBytes = value.width * value.height * 4;
+  return isCanonicalBase64ForByteLength(value.rgbaBase64, expectedBytes);
+}
+
+export function isPhysicPaintThumbnailEncodeResult(value: unknown): value is PhysicPaintThumbnailEncodeResult {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'width', 'height', 'mimeType', 'webpBase64', 'error'])) return false;
+  if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
+  if (!isBoundedThumbnailDimension(value.width, 96) || !isBoundedThumbnailDimension(value.height, 64) || value.mimeType !== 'image/webp') return false;
+  if (value.error !== undefined && typeof value.error !== 'string') return false;
+  if (!value.ok) return value.webpBase64 === undefined && isNonEmptyString(value.error);
+  return typeof value.webpBase64 === 'string' && isCanonicalBase64WithinLimit(value.webpBase64, 512 * 1024) && value.error === undefined;
+}
+
 export function isPhysicPaintScriptLibraryRequest(value: unknown): value is PhysicPaintScriptLibraryRequest {
   if (!isRecord(value) || !isNonEmptyString(value.operationId)) return false;
   if (value.kind === 'scan') return Object.keys(value).every((key) => key === 'kind' || key === 'operationId');
@@ -643,6 +679,44 @@ function isRenderedPngDataUrl(value: unknown): value is string {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  const keys = new Set(allowed);
+  return Object.keys(value).every((key) => keys.has(key));
+}
+
+function isBoundedOperationId(value: unknown): value is string {
+  return isNonEmptyString(value) && value.length <= 256 && !/[^\x20-\x7e]/.test(value);
+}
+
+function isBoundedThumbnailDimension(value: unknown, max: number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= max;
+}
+
+function isCanonicalBase64ForByteLength(value: string, byteLength: number): boolean {
+  const encodedLength = Math.ceil(byteLength / 3) * 4;
+  if (value.length !== encodedLength || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  if (value.slice(0, -padding || undefined).includes('=')) return false;
+  if (padding !== (3 - (byteLength % 3)) % 3) return false;
+  try {
+    const decoded = atob(value);
+    if (decoded.length !== byteLength) return false;
+    let binary = '';
+    for (let index = 0; index < decoded.length; index += 1) binary += decoded[index];
+    return btoa(binary) === value;
+  } catch {
+    return false;
+  }
+}
+
+function isCanonicalBase64WithinLimit(value: string, maxBytes: number): boolean {
+  if (value.length === 0 || value.length > Math.ceil(maxBytes / 3) * 4 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  if (value.slice(0, -padding || undefined).includes('=')) return false;
+  const byteLength = (value.length / 4) * 3 - padding;
+  return byteLength > 0 && byteLength <= maxBytes && isCanonicalBase64ForByteLength(value, byteLength);
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

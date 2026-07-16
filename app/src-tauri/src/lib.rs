@@ -556,6 +556,7 @@ pub fn run() {
             script_library::script_library_rename,
             script_library::script_library_delete,
             script_library::script_library_migrate_saved_projects,
+            script_library::script_library_encode_thumbnail_webp,
             image::image_get_info,
             image::import_images,
             config::config_get_theme,

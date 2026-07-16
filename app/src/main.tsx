@@ -11,7 +11,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener, installPhysicPaintThumbnailEncodeListener} from './lib/physicPaintBridge';
 
 const root = document.getElementById('app')!;
 
@@ -31,6 +31,7 @@ if (window.location.pathname === '/physics-paint') {
     await installPhysicPaintApplyListener();
     await installPhysicPaintScriptLibraryListener();
     await installPhysicPaintStateSaveListener();
+    await installPhysicPaintThumbnailEncodeListener();
 
     // Listen for undo/redo events emitted by the native macOS menu.
     // On macOS, Cmd+Z and Cmd+Shift+Z are intercepted by the native menu

@@ -1,14 +1,14 @@
 import type { Result } from './ipc';
 import type { Layer } from '../types/layer';
-import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayScriptCacheStatus, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintWorkflowMode } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryRequest } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintPlayScriptCacheStatus, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult, PhysicPaintThumbnailEncodeResult, PhysicPaintWorkflowMode } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryRequest, isPhysicPaintThumbnailEncodeRequest, isPhysicPaintThumbnailEncodeResult } from '../types/physicPaint';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
 import { layerStore } from '../stores/layerStore';
 import { physicPaintStore } from '../stores/physicPaintStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
-import { scriptLibraryDelete, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
+import { scriptLibraryDelete, scriptLibraryEncodeThumbnailWebp, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 export const PHYSIC_PAINT_PROJECT_CONTEXT_EVENT = 'physic-paint:project-context';
@@ -23,6 +23,8 @@ export const PHYSIC_PAINT_SCRIPT_LIBRARY_REQUEST_EVENT = 'physic-paint:script-li
 export const PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT = 'physic-paint:script-library-result';
 export const PHYSIC_PAINT_STATE_SAVE_REQUEST_EVENT = 'physic-paint:state-save-request';
 export const PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT = 'physic-paint:state-save-result';
+export const PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT = 'physic-paint:thumbnail-encode-request';
+export const PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT = 'physic-paint:thumbnail-encode-result';
 
 const PHYSIC_PAINT_WINDOW_LABEL = 'efx-physic-paint';
 const PHYSIC_PAINT_FALLBACK_PATH = '/physics-paint';
@@ -218,6 +220,29 @@ export async function installPhysicPaintStateSaveListener(): Promise<() => void>
   };
   window.addEventListener('message', message);
   return () => window.removeEventListener('message', message);
+}
+
+export async function installPhysicPaintThumbnailEncodeListener(): Promise<() => void> {
+  if (!isTauriRuntime()) return () => {};
+  const eventApi = await import('@tauri-apps/api/event');
+  const unlisten = await eventApi.listen?.(PHYSIC_PAINT_THUMBNAIL_ENCODE_REQUEST_EVENT, async (event) => {
+    const request = isPhysicPaintThumbnailEncodeRequest(event.payload) ? event.payload : null;
+    const operationId = request?.operationId ?? 'invalid-operation';
+    let result: PhysicPaintThumbnailEncodeResult;
+    if (!request) {
+      result = { operationId, ok: false, width: 1, height: 1, mimeType: 'image/webp', error: 'Invalid thumbnail encode request' };
+    } else {
+      const encoded = await scriptLibraryEncodeThumbnailWebp(request);
+      const candidate: PhysicPaintThumbnailEncodeResult = encoded.ok
+        ? { operationId, ok: true, ...encoded.data }
+        : { operationId, ok: false, width: request.width, height: request.height, mimeType: 'image/webp', error: encoded.error };
+      result = isPhysicPaintThumbnailEncodeResult(candidate)
+        ? candidate
+        : { operationId, ok: false, width: request.width, height: request.height, mimeType: 'image/webp', error: 'Native thumbnail encoder returned an invalid result' };
+    }
+    await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_THUMBNAIL_ENCODE_RESULT_EVENT, result);
+  });
+  return unlisten ?? (() => {});
 }
 
 export async function installPhysicPaintScriptLibraryListener(): Promise<() => void> {

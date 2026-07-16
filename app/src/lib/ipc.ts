@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { ProjectData, MceProject } from '../types/project';
 import type { ImageInfo, ImportResult } from '../types/image';
 import type { PersistedRotoScriptV1 } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
-import type { PhysicPaintScriptLibraryResult } from '../types/physicPaint';
+import type { PhysicPaintScriptLibraryResult, PhysicPaintThumbnailEncodeRequest } from '../types/physicPaint';
 
 // Result type mirroring Rust's Result pattern (locked decision)
 export type Result<T, E = string> =
@@ -85,6 +85,10 @@ export function scriptLibraryDelete(authority: string, scriptId: string, expecte
 }
 export function scriptLibraryMigrateSavedProjects(sourceFilePath: string, destinationFilePath: string): Promise<Result<ScriptLibraryMigrationResult>> {
   return safeInvoke('script_library_migrate_saved_projects', { sourceFilePath, destinationFilePath });
+}
+
+export function scriptLibraryEncodeThumbnailWebp(request: PhysicPaintThumbnailEncodeRequest): Promise<Result<{ width: number; height: number; mimeType: 'image/webp'; webpBase64: string }>> {
+  return safeInvoke('script_library_encode_thumbnail_webp', { request });
 }
 
 // --- Path utilities ---

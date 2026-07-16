@@ -31,7 +31,7 @@ import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from
 import { usePlayLimitToast } from './hooks/usePlayLimitToast';
 import { buildPlayRenderOptionsSnapshot, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { getLaunchWorkflowMode, parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
-import { sendPhysicPaintApplyPayload, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
+import { createPhysicPaintThumbnailNativeEncoder, sendPhysicPaintApplyPayload, sendPhysicPaintFrameSyncMessage } from './bridge/physicsPaintBridgeTransport';
 import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanvasFrames';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush, type PhysicsPaintBridgeMode } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
@@ -231,7 +231,16 @@ export function PhysicsPaintStudio() {
   const rotoScriptLibrary = useRotoScriptLibraryController({
     request: async () => { throw new Error('Bridge request adapter is installed by the library hook.'); },
     capturePersistence: rotoScript.captureScriptForPersistence,
-    captureThumbnail: (scriptAlphaCanvas) => createRotoScriptThumbnail({ scriptAlphaCanvas, sourceWidth: projectCanvasWidth, sourceHeight: projectCanvasHeight, background: buildRotoBackgroundMetadata(settings) }),
+    captureThumbnail: async (scriptAlphaCanvas) => {
+      const currentBridgeMode = bridgeMode === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : bridgeMode;
+      return createRotoScriptThumbnail({
+        scriptAlphaCanvas,
+        sourceWidth: projectCanvasWidth,
+        sourceHeight: projectCanvasHeight,
+        background: buildRotoBackgroundMetadata(settings),
+        ...(currentBridgeMode === 'Tauri' ? { nativeEncoder: createPhysicPaintThumbnailNativeEncoder() } : {}),
+      });
+    },
     replaceClipboard: rotoScript.replaceClipboardFromPersisted,
     getLaunchContext: () => launchContext,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },

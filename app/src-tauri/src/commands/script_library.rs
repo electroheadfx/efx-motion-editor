@@ -1,4 +1,5 @@
 use crate::services::script_library::{self, ScriptLibraryMigration, ScriptLibraryOperation, ScriptLibraryScan, ScriptLibraryState};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
 use tauri::{command, State, WebviewWindow};
@@ -7,6 +8,67 @@ const MAIN_WINDOW_LABEL: &str = "main";
 
 fn require_main_window(window: &WebviewWindow) -> Result<(), String> {
     if window.label() == MAIN_WINDOW_LABEL { Ok(()) } else { Err("Script library authority is owned by the main window".to_string()) }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ThumbnailEncodeRequest {
+    operation_id: String,
+    width: u32,
+    height: u32,
+    quality: f32,
+    rgba_base64: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThumbnailEncodeResponse {
+    width: u32,
+    height: u32,
+    mime_type: &'static str,
+    webp_base64: String,
+}
+
+#[command]
+pub fn script_library_encode_thumbnail_webp(window: WebviewWindow, request: ThumbnailEncodeRequest) -> Result<ThumbnailEncodeResponse, String> {
+    require_main_window(&window)?;
+    if request.operation_id.is_empty() || request.operation_id.len() > 256 || request.operation_id.bytes().any(|byte| !(0x20..=0x7e).contains(&byte)) { return Err("Invalid thumbnail operation ID".to_string()); }
+    if request.width == 0 || request.width > 96 || request.height == 0 || request.height > 64 { return Err("Invalid thumbnail dimensions".to_string()); }
+    if !request.quality.is_finite() || !(0.75..=0.85).contains(&request.quality) { return Err("Invalid thumbnail quality".to_string()); }
+    let expected = usize::try_from(request.width).ok()
+        .and_then(|width| usize::try_from(request.height).ok().and_then(|height| width.checked_mul(height)))
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(|| "Invalid thumbnail RGBA dimensions".to_string())?;
+    let expected_base64 = expected.div_ceil(3).checked_mul(4).ok_or_else(|| "Invalid thumbnail Base64 length".to_string())?;
+    if request.rgba_base64.len() != expected_base64 { return Err("Thumbnail Base64 length does not match dimensions".to_string()); }
+    let rgba = script_library::decode_base64(&request.rgba_base64)?;
+    if rgba.len() != expected { return Err("Thumbnail RGBA length does not match dimensions".to_string()); }
+    let encoded = webp::Encoder::from_rgba(&rgba, request.width, request.height).encode(request.quality * 100.0);
+    let bytes: &[u8] = encoded.as_ref();
+    if bytes.len() > 512 * 1024 { return Err("Encoded WebP exceeds the size limit".to_string()); }
+    let (actual_width, actual_height) = script_library::validate_webp_payload(bytes)?;
+    if actual_width != u64::from(request.width) || actual_height != u64::from(request.height) { return Err("Encoded WebP dimensions do not match the request".to_string()); }
+    Ok(ThumbnailEncodeResponse {
+        width: request.width,
+        height: request.height,
+        mime_type: "image/webp",
+        webp_base64: encode_base64(bytes),
+    })
+}
+
+fn encode_base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let value = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        output.push(ALPHABET[((value >> 18) & 63) as usize] as char);
+        output.push(ALPHABET[((value >> 12) & 63) as usize] as char);
+        output.push(if chunk.len() > 1 { ALPHABET[((value >> 6) & 63) as usize] as char } else { '=' });
+        output.push(if chunk.len() > 2 { ALPHABET[(value & 63) as usize] as char } else { '=' });
+    }
+    output
 }
 
 #[command]

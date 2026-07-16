@@ -416,7 +416,7 @@ fn bounded_text(value: Option<&Value>, label: &str, max: usize) -> Result<(), St
 fn finite_range(value: Option<&Value>, label: &str, min: f64, max: f64) -> Result<(), String> { value.and_then(Value::as_f64).filter(|v| v.is_finite() && *v >= min && *v <= max).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
 fn non_negative_integer(value: Option<&Value>, label: &str) -> Result<(), String> { value.and_then(Value::as_u64).filter(|v| *v <= 9_007_199_254_740_991).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
 fn positive_integer(value: Option<&Value>, label: &str, max: u64) -> Result<(), String> { value.and_then(Value::as_u64).filter(|v| *v > 0 && *v <= max.min(9_007_199_254_740_991)).map(|_| ()).ok_or_else(|| format!("Invalid {label}")) }
-fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
     if input.len() % 4 != 0 { return Err("Invalid thumbnail Base64".into()); }
     let padding = input.bytes().rev().take_while(|byte| *byte == b'=').count();
     if padding > 2 || input[..input.len().saturating_sub(padding)].bytes().any(|byte| !byte.is_ascii_alphanumeric() && byte != b'+' && byte != b'/') || input[..input.len().saturating_sub(padding)].contains('=') { return Err("Invalid thumbnail Base64".into()); }
@@ -427,7 +427,7 @@ fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
     if padding != expected_padding { return Err("Non-canonical thumbnail Base64".into()); }
     Ok(output)
 }
-fn validate_webp_payload(bytes: &[u8]) -> Result<(u64, u64), String> {
+pub(crate) fn validate_webp_payload(bytes: &[u8]) -> Result<(u64, u64), String> {
     if bytes.len() < 20 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WEBP" { return Err("Thumbnail is not a WebP payload".to_string()); }
     let riff_size = u32::from_le_bytes(bytes[4..8].try_into().map_err(|_| "Truncated WebP RIFF header".to_string())?) as usize;
     let container_size = riff_size.checked_add(8).ok_or_else(|| "Invalid WebP RIFF size".to_string())?;
