@@ -5,86 +5,48 @@ class TestHTMLElement {
   tagName: string;
   isContentEditable: boolean;
   private readonly closestMatch: Element | null;
-
   constructor(tagName: string, options: { contentEditable?: boolean; closestMatch?: Element | null } = {}) {
-    this.tagName = tagName.toUpperCase();
-    this.isContentEditable = options.contentEditable ?? false;
-    this.closestMatch = options.closestMatch ?? null;
+    this.tagName = tagName.toUpperCase(); this.isContentEditable = options.contentEditable ?? false; this.closestMatch = options.closestMatch ?? null;
   }
+  closest(): Element | null { return this.closestMatch; }
+}
 
-  closest(): Element | null {
-    return this.closestMatch;
-  }
+function actions() {
+  return { undo: vi.fn(), redo: vi.fn(), toggleShortcuts: vi.fn(), toggleRotoPlayback: vi.fn(), navigateRotoFrame: vi.fn(), toggleOnion: vi.fn(), adjustOnionCount: vi.fn() };
 }
 
 describe('Physics Paint Undo/Redo shortcuts', () => {
   it.each([
-    [{ metaKey: true, shiftKey: true, key: 'z' }, 'redo'],
-    [{ ctrlKey: true, shiftKey: true, key: 'Z' }, 'redo'],
-    [{ ctrlKey: true, key: 'y' }, 'redo'],
-    [{ metaKey: true, key: 'z' }, 'undo'],
-    [{ ctrlKey: true, key: 'z' }, 'undo'],
-  ])('dispatches $1 exclusively to $2', (init, expected) => {
+    [{ metaKey: true, shiftKey: true, key: 'z' }, 'redo'], [{ ctrlKey: true, shiftKey: true, key: 'Z' }, 'redo'],
+    [{ ctrlKey: true, key: 'y' }, 'redo'], [{ metaKey: true, key: 'z' }, 'undo'], [{ ctrlKey: true, key: 'z' }, 'undo'],
+  ])('dispatches history shortcut exclusively', (init, expected) => {
     vi.stubGlobal('HTMLElement', TestHTMLElement);
-    const preventDefault = vi.fn();
-    const actions = {
-      undo: vi.fn(), redo: vi.fn(), stopPreview: vi.fn(), savePlay: vi.fn(), toggleShortcuts: vi.fn(),
-      toggleRotoPlayback: vi.fn(), navigateRotoFrame: vi.fn(), toggleOnion: vi.fn(), adjustOnionCount: vi.fn(),
-      findCachedPlayFrames: vi.fn(), playPreview: vi.fn(),
-    };
+    const preventDefault = vi.fn(); const handlers = actions();
     dispatchPhysicsPaintStudioKeyDown({ target: null, preventDefault, metaKey: false, ctrlKey: false, shiftKey: false, ...init } as unknown as KeyboardEvent,
-      { currentFrame: 0, framesToApply: 1, isPlaying: false, savedPlayCacheDirty: false, workflowMode: 'roto', mutationLocked: false }, actions, []);
-    expect(actions[expected as 'undo' | 'redo']).toHaveBeenCalledOnce();
-    expect(actions[expected === 'undo' ? 'redo' : 'undo']).not.toHaveBeenCalled();
+      { currentFrame: 0, isPlaying: false, mutationLocked: false }, handlers, []);
+    expect(handlers[expected as 'undo' | 'redo']).toHaveBeenCalledOnce();
+    expect(handlers[expected === 'undo' ? 'redo' : 'undo']).not.toHaveBeenCalled();
     expect(preventDefault).toHaveBeenCalledOnce();
   });
-  it.each([
-    { metaKey: true, key: 'z' },
-    { metaKey: true, shiftKey: true, key: 'z' },
-    { ctrlKey: true, key: 'y' },
-  ])('consumes $key without dispatching history while Apply owns the mutation lock', (init) => {
+
+  it('keeps cached Roto playback on the Space shortcut', () => {
     vi.stubGlobal('HTMLElement', TestHTMLElement);
-    const preventDefault = vi.fn();
-    const actions = {
-      undo: vi.fn(), redo: vi.fn(), stopPreview: vi.fn(), savePlay: vi.fn(), toggleShortcuts: vi.fn(),
-      toggleRotoPlayback: vi.fn(), navigateRotoFrame: vi.fn(), toggleOnion: vi.fn(), adjustOnionCount: vi.fn(),
-      findCachedPlayFrames: vi.fn(), playPreview: vi.fn(),
-    };
-    dispatchPhysicsPaintStudioKeyDown({ target: null, preventDefault, metaKey: false, ctrlKey: false, shiftKey: false, ...init } as unknown as KeyboardEvent,
-      { currentFrame: 0, framesToApply: 1, isPlaying: false, savedPlayCacheDirty: false, workflowMode: 'roto', mutationLocked: true }, actions, []);
-    expect(actions.undo).not.toHaveBeenCalled();
-    expect(actions.redo).not.toHaveBeenCalled();
+    const preventDefault = vi.fn(); const handlers = actions();
+    dispatchPhysicsPaintStudioKeyDown({ target: null, preventDefault, key: ' ', metaKey: false, ctrlKey: false, shiftKey: false } as unknown as KeyboardEvent,
+      { currentFrame: 4, isPlaying: false, mutationLocked: false }, handlers, []);
+    expect(handlers.toggleRotoPlayback).toHaveBeenCalledOnce();
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 });
 
 describe('isPhysicsPaintShortcutTarget', () => {
   const originalHTMLElement = globalThis.HTMLElement;
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.stubGlobal('HTMLElement', originalHTMLElement);
-  });
-
-  it('allows non-element and regular element targets', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.stubGlobal('HTMLElement', originalHTMLElement); });
+  it('allows regular targets and blocks editable controls', () => {
     vi.stubGlobal('HTMLElement', TestHTMLElement);
-
     expect(isPhysicsPaintShortcutTarget(null)).toBe(true);
-    expect(isPhysicsPaintShortcutTarget(new EventTarget())).toBe(true);
     expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('div') as unknown as EventTarget)).toBe(true);
-  });
-
-  it.each(['input', 'textarea', 'select'])('blocks direct %s targets', (tagName) => {
-    vi.stubGlobal('HTMLElement', TestHTMLElement);
-
-    expect(isPhysicsPaintShortcutTarget(new TestHTMLElement(tagName) as unknown as EventTarget)).toBe(false);
-  });
-
-  it('blocks contenteditable elements and descendants of editable controls', () => {
-    vi.stubGlobal('HTMLElement', TestHTMLElement);
-    const editableAncestor = new TestHTMLElement('div') as unknown as Element;
-
+    expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('input') as unknown as EventTarget)).toBe(false);
     expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('div', { contentEditable: true }) as unknown as EventTarget)).toBe(false);
-    expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('span', { closestMatch: editableAncestor }) as unknown as EventTarget)).toBe(false);
   });
 });

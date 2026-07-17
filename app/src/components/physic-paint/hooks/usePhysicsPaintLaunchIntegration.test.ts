@@ -50,7 +50,7 @@ describe('Physics Paint launch replacement coordinator', () => {
     };
     const controller = createRotoScriptClipboardController({
       getEngine: () => engine,
-      getSource: () => ({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame, displayFrame: sourceFrame }),
+      getSource: () => ({ selectionKind: 'real-key', sourceFrame, displayFrame: sourceFrame }),
       getMotion: () => ({ deformation: 0, position: 0 }),
       getPublicationIdentity: () => ({
         operationId: 'old-operation',
@@ -65,7 +65,7 @@ describe('Physics Paint launch replacement coordinator', () => {
     controller.observeCompletedMutation(engine, completion(1));
     await expect(copying).resolves.toBe(true);
     sourceFrame = 8;
-    controller.updateSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    controller.updateSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const applying = controller.applyScript();
     const events: string[] = [];
     const coordinator = createPhysicsPaintLaunchReplacementCoordinator({
@@ -106,7 +106,7 @@ describe('Physics Paint launch replacement coordinator', () => {
     const controller = createRotoScriptClipboardController({
       sessionId: 'mounted-session',
       getEngine: () => engine,
-      getSource: () => ({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 }),
+      getSource: () => ({ selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 }),
       getMotion: () => ({ deformation: 0, position: 0 }),
       prepareEmptyTarget: () => null,
     });

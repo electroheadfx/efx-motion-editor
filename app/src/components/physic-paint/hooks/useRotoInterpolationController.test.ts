@@ -39,7 +39,7 @@ function createHarness() {
   };
   const script = createRotoScriptClipboardController({
     getEngine: () => engine,
-    getSource: () => ({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 }),
+    getSource: () => ({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 }),
     getMotion: () => ({ deformation: 0, position: 0 }),
     prepareEmptyTarget: () => null,
     onFirstAcceptedBrush: vi.fn(),

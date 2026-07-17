@@ -3,18 +3,11 @@ import { PHYSIC_PAINT_MAX_APPLY_FRAMES, clampPhysicPaintFrameCount } from '../ty
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame } from './physicPaintStore';
 
+
+
 const editableState = {
-  version: 2 as const,
-  width: 1000,
-  height: 650,
-  strokes: [{
-    tool: 'paint',
-    pts: [[1, 2, 0.5, 0, 0, 0, 0] as [number, number, number, number, number, number, number]],
-    color: '#103c65',
-    params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 },
-    time: 123,
-    diffusionFrames: 0,
-  }],
+  version: 2 as const, width: 1000, height: 650,
+  strokes: [{ tool: 'paint', pts: [[1, 2, 0.5, 0, 0, 0, 0] as [number, number, number, number, number, number, number]], color: '#103c65', params: { size: 6, opacity: 100, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 }, time: 123, diffusionFrames: 0 }],
   settings: { bgMode: 'canvas1', paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
 };
 
@@ -33,16 +26,7 @@ const makeAlphaFrame = (frameIndex: number, appFrame: number, alphaSource: strin
   height: 2,
 });
 
-const renderOptions = {
-  tool: 'normal-paint' as const,
-  color: '#103c65',
-  opacity: 100,
-  brushSize: 6,
-  background: 'canvas1' as const,
-  paperGrain: 'canvas1',
-  grainStrength: 0.45,
-  motion: { strokeDeformation: 10, strokePosition: 20 },
-};
+
 
 describe('physicPaintStore', () => {
   beforeEach(() => {
@@ -73,7 +57,6 @@ describe('physicPaintStore', () => {
     expect(result.appliedFrameCount).toBe(1);
     expect(physicPaintStore.getFrame('layer-1', 8)?.dataUrl).toContain('data:image/png');
     expect(physicPaintStore.getFrame('layer-1', 9)).toBeNull();
-    expect(physicPaintStore.getEditableState('layer-1')).toBeNull();
     expect(physicPaintVersion.value).toBe(before + 1);
   });
 
@@ -95,22 +78,6 @@ describe('physicPaintStore', () => {
     }));
   });
 
-  it('recovers missing Roto background metadata from saved editable state on project reopen', () => {
-    physicPaintStore.loadFromMceOutputs([{
-      layer_id: 'layer-1',
-      frames: [makeFrame(0, 8)],
-      editable_state: editableState,
-      roto_cache_metadata: [{ ...makeFrame(0, 8), source: 'real-key' }],
-    }]);
-
-    expect(physicPaintStore.getFrame('layer-1', 8)?.dataUrl).toContain('data:image/png');
-    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1')).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
-    expect(physicPaintStore.toMceOutputs()[0]).toEqual(expect.objectContaining({
-      workflow_mode: 'roto',
-      editable_source: 'roto',
-      roto_background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
-    }));
-  });
 
   it('marks no-stroke paper Roto applies as background-only cache frames', () => {
     const result = physicPaintStore.applyCanvas({
@@ -138,6 +105,7 @@ describe('physicPaintStore', () => {
       startFrame: 1,
       renderedFrame: makeFrame(0, 1),
       editableState,
+      rotoBackground: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
     });
     physicPaintStore.applyCanvas({
       kind: 'apply-canvas',
@@ -155,16 +123,6 @@ describe('physicPaintStore', () => {
     expect(resolveMissingRotoFrameDraw('layer-1', 4, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1') })).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 3 }, materialize: false });
   });
 
-  it('stores sorted non-overlapping Play script ranges and finds only containing frames', () => {
-    physicPaintStore.upsertPlayScriptRange('layer-1', { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached' });
-    physicPaintStore.upsertPlayScriptRange('layer-1', { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' });
-
-    expect(physicPaintStore.getPlayScriptRanges('layer-1').map((range) => range.id)).toEqual(['play-a', 'play-b']);
-    expect(physicPaintStore.findPlayScriptRangeAtFrame('layer-1', 8)?.id).toBe('play-b');
-    expect(physicPaintStore.findPlayScriptRangeAtFrame('layer-1', 5)).toBeNull();
-    expect(physicPaintStore.getMaxPlayFrameCountFromGap('layer-1', 5)).toBe(3);
-    expect(physicPaintStore.getMaxPlayFrameCountFromGap('layer-1', 7)).toBe(1);
-  });
 
   it('removes a durable real Roto key through a delete payload', () => {
     physicPaintStore.applyCanvas({
@@ -189,215 +147,12 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.toMceOutputs()[0]?.frames ?? []).toEqual([]);
   });
 
-  it('does not treat Play output frames as real Roto keys', () => {
-    physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-play-frames',
-      layerId: 'layer-1',
-      startFrame: 4,
-      frameCount: 2,
-      frames: [makeFrame(0, 4), makeFrame(1, 5)],
-      editableState,
-    });
 
-    expect(physicPaintStore.getRealRotoKeyFrames('layer-1')).toEqual([]);
-  });
 
-  it('stores sequence frames starting at the app start frame with Play workflow metadata', () => {
-    const result = physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq',
-      layerId: 'layer-1',
-      startFrame: 10,
-      frameCount: 3,
-      frames: [makeFrame(0, 10), makeFrame(1, 11), makeFrame(2, 12)],
-      editableState,
-    });
 
-    expect(result.ok).toBe(true);
-    expect(physicPaintStore.getFrame('layer-1', 9)).toBeNull();
-    expect(physicPaintStore.getFrame('layer-1', 10)?.frameIndex).toBe(0);
-    expect(physicPaintStore.getFrame('layer-1', 11)?.frameIndex).toBe(1);
-    expect(physicPaintStore.getFrame('layer-1', 12)?.frameIndex).toBe(2);
-    expect(physicPaintStore.getFrame('layer-1', 13)).toBeNull();
-    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({
-      workflowMode: 'play',
-      playStartFrame: 10,
-      playFrameCount: 3,
-      editableSource: 'play',
-    });
-  });
 
-  it('converts play output into persisted roto frames', () => {
-    const result = physicPaintStore.convertPlayToRoto({
-      kind: 'convert-play-to-roto',
-      operationId: 'op-convert-play',
-      layerId: 'layer-1',
-      startFrame: 10,
-      frameCount: 2,
-      frames: [makeFrame(0, 10), makeFrame(1, 11)],
-      editableState,
-    });
 
-    expect(result).toMatchObject({ ok: true, kind: 'convert-play-to-roto', appliedFrameCount: 2 });
-    expect(physicPaintStore.getFrame('layer-1', 10)?.frameIndex).toBe(0);
-    expect(physicPaintStore.getFrame('layer-1', 11)?.frameIndex).toBe(1);
-    expect(physicPaintStore.getEditableState('layer-1')).toBeNull();
-    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({ workflowMode: 'roto', editableSource: 'roto' });
-  });
 
-  it('converts roto frames into play source state by removing rendered frames', () => {
-    physicPaintStore.setFrame('layer-1', 10, makeFrame(0, 10));
-    physicPaintStore.setFrame('layer-1', 11, makeFrame(1, 11));
-    physicPaintStore.setFrame('layer-1', 12, makeFrame(2, 12));
-
-    const result = physicPaintStore.convertRotoToPlay({
-      kind: 'convert-roto-to-play',
-      operationId: 'op-convert-roto',
-      layerId: 'layer-1',
-      startFrame: 10,
-      frameCount: 2,
-      editableState,
-    });
-
-    expect(result).toMatchObject({ ok: true, kind: 'convert-roto-to-play', appliedFrameCount: 2 });
-    expect(physicPaintStore.getFrame('layer-1', 10)).toBeNull();
-    expect(physicPaintStore.getFrame('layer-1', 11)).toBeNull();
-    expect(physicPaintStore.getFrame('layer-1', 12)?.frameIndex).toBe(2);
-    expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
-    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({
-      workflowMode: 'play',
-      playStartFrame: 10,
-      playFrameCount: 2,
-      editableSource: 'play',
-    });
-    expect(physicPaintStore.getPlayScriptRanges('layer-1')).toEqual([
-      expect.objectContaining({ id: 'play-10-2', startFrame: 10, frameCount: 2, cacheStatus: 'stale' }),
-    ]);
-  });
-
-  it('persists Play motion settings and replaces a selected script when duration changes', () => {
-    physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-original',
-      layerId: 'layer-1',
-      startFrame: 6,
-      frameCount: 3,
-      frames: [makeFrame(0, 6), makeFrame(1, 7), makeFrame(2, 8)],
-      editableState,
-      playMotion: { strokeDeformation: 10, strokePosition: 20 },
-    });
-
-    const originalId = physicPaintStore.getPlayScriptRanges('layer-1')[0].id;
-    const result = physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-resized',
-      layerId: 'layer-1',
-      startFrame: 6,
-      frameCount: 4,
-      frames: [makeFrame(0, 6), makeFrame(1, 7), makeFrame(2, 8), makeFrame(3, 9)],
-      editableState,
-      playScriptId: originalId,
-      playMotion: { strokeDeformation: 30, strokePosition: 40 },
-    });
-
-    expect(result.ok).toBe(true);
-    expect(physicPaintStore.getPlayScriptRanges('layer-1')).toEqual([
-      expect.objectContaining({
-        id: originalId,
-        startFrame: 6,
-        frameCount: 4,
-        cacheStatus: 'cached',
-        motion: { strokeDeformation: 30, strokePosition: 40 },
-      }),
-    ]);
-    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({
-      workflowMode: 'play',
-      playStartFrame: 6,
-      playFrameCount: 4,
-      editableSource: 'play',
-      playMotion: { strokeDeformation: 30, strokePosition: 40 },
-    });
-  });
-
-  it('updates one Play script render options and clears only its cached frames when changed', () => {
-    physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-a',
-      layerId: 'layer-1',
-      startFrame: 0,
-      frameCount: 2,
-      frames: [makeFrame(0, 0), makeFrame(1, 1)],
-      editableState,
-      playMotion: renderOptions.motion,
-      renderOptions,
-    });
-    physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-b',
-      layerId: 'layer-1',
-      startFrame: 8,
-      frameCount: 2,
-      frames: [makeFrame(0, 8), makeFrame(1, 9)],
-      editableState,
-      playMotion: renderOptions.motion,
-      renderOptions,
-    });
-    const scriptId = physicPaintStore.getPlayScriptRanges('layer-1')[0].id;
-    const before = physicPaintVersion.value;
-
-    const result = physicPaintStore.updatePlayScriptRenderOptions('layer-1', scriptId, {
-      ...renderOptions,
-      tool: 'physics-paint',
-      brushSize: 3,
-      background: 'canvas3',
-      motion: { strokeDeformation: 30, strokePosition: 40 },
-    }, 'op-update-options');
-
-    expect(result).toMatchObject({ ok: true, operationId: 'op-update-options', kind: 'update-play-render-options', appliedFrameCount: 2 });
-    expect(physicPaintStore.getFrame('layer-1', 0)).toBeNull();
-    expect(physicPaintStore.getFrame('layer-1', 1)).toBeNull();
-    expect(physicPaintStore.getFrame('layer-1', 8)?.frameIndex).toBe(0);
-    expect(physicPaintStore.getPlayScriptRanges('layer-1')[0]).toEqual(expect.objectContaining({
-      id: scriptId,
-      cacheStatus: 'stale',
-      motion: { strokeDeformation: 30, strokePosition: 40 },
-      renderOptions: expect.objectContaining({ tool: 'physics-paint', brushSize: 3, background: 'canvas3' }),
-      editableState: expect.objectContaining({
-        settings: editableState.settings,
-        strokes: [expect.objectContaining({
-          tool: 'paint',
-          color: '#103c65',
-          params: expect.objectContaining({ size: 6, opacity: 100 }),
-        })],
-      }),
-    }));
-    expect(physicPaintVersion.value).toBe(before + 1);
-  });
-
-  it('leaves cached Play frames and version unchanged when render options are identical', () => {
-    physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-identical',
-      layerId: 'layer-1',
-      startFrame: 4,
-      frameCount: 2,
-      frames: [makeFrame(0, 4), makeFrame(1, 5)],
-      editableState,
-      playMotion: renderOptions.motion,
-      renderOptions,
-    });
-    const scriptId = physicPaintStore.getPlayScriptRanges('layer-1')[0].id;
-    const before = physicPaintVersion.value;
-
-    const result = physicPaintStore.updatePlayScriptRenderOptions('layer-1', scriptId, renderOptions, 'op-update-identical');
-
-    expect(result).toMatchObject({ ok: true, operationId: 'op-update-identical', appliedFrameCount: 0 });
-    expect(physicPaintStore.getFrame('layer-1', 4)?.frameIndex).toBe(0);
-    expect(physicPaintStore.getFrame('layer-1', 5)?.frameIndex).toBe(1);
-    expect(physicPaintStore.getPlayScriptRanges('layer-1')[0].cacheStatus).toBe('cached');
-    expect(physicPaintVersion.value).toBe(before);
-  });
 
   it('increments version for each successful mutation and marks dirty', () => {
     let dirtyCount = 0;
@@ -814,8 +569,6 @@ describe('physicPaintStore', () => {
     physicPaintStore.loadFromMceOutputs([{
       layer_id: 'layer-1',
       frames: [realOne, realFour],
-      workflow_mode: 'roto',
-      editable_source: 'roto',
       roto_cache_metadata: [
         { ...realOne, source: 'real-key' },
         { ...realFour, source: 'real-key' },
@@ -844,8 +597,6 @@ describe('physicPaintStore', () => {
     physicPaintStore.loadFromMceOutputs([{
       layer_id: 'layer-1',
       frames: [realZero, realOne, realTwo, realSix],
-      workflow_mode: 'roto',
-      editable_source: 'roto',
       roto_cache_metadata: [
         { ...realZero, source: 'real-key' },
         { ...realOne, source: 'real-key' },
@@ -1051,8 +802,6 @@ describe('physicPaintStore', () => {
     physicPaintStore.loadFromMceOutputs([{
       layer_id: 'layer-1',
       frames: [realCircle, realSquare, realCross],
-      workflow_mode: 'roto',
-      editable_source: 'roto',
       roto_cache_metadata: [
         { ...realCircle, source: 'real-key' },
         { ...realSquare, source: 'real-key' },
@@ -1077,8 +826,6 @@ describe('physicPaintStore', () => {
     physicPaintStore.loadFromMceOutputs([{
       layer_id: 'layer-1',
       frames: [realOne, realFour],
-      workflow_mode: 'roto',
-      editable_source: 'roto',
       roto_cache_metadata: [
         { ...realOne, source: 'real-key' },
         { ...realFour, source: 'real-key' },
@@ -1114,110 +861,8 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-2', 4)?.width).toBe(1000);
   });
 
-  it('rejects overlapping Play sequence applies without mutating the existing saved range', () => {
-    physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-a',
-      layerId: 'layer-1',
-      startFrame: 0,
-      frameCount: 5,
-      frames: [makeFrame(0, 0), makeFrame(1, 1), makeFrame(2, 2), makeFrame(3, 3), makeFrame(4, 4)],
-      editableState,
-    });
 
-    const result = physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-b',
-      layerId: 'layer-1',
-      startFrame: 4,
-      frameCount: 5,
-      frames: [makeFrame(0, 4), makeFrame(1, 5), makeFrame(2, 6), makeFrame(3, 7), makeFrame(4, 8)],
-      editableState,
-    });
 
-    expect(result).toMatchObject({ ok: false, appliedFrameCount: 0 });
-    expect(result.error).toContain('overlap');
-    expect(physicPaintStore.getPlayScriptRanges('layer-1')).toHaveLength(1);
-    expect(physicPaintStore.getFrame('layer-1', 8)).toBeNull();
-  });
-
-  it('round-trips multiple Play script ranges with rendered frames and per-range editable source state', () => {
-    physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-round-trip-a',
-      layerId: 'layer-1',
-      startFrame: 0,
-      frameCount: 2,
-      frames: [makeFrame(0, 0), makeFrame(1, 1)],
-      editableState,
-    });
-    physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-round-trip-b',
-      layerId: 'layer-1',
-      startFrame: 8,
-      frameCount: 2,
-      frames: [makeFrame(0, 8), makeFrame(1, 9)],
-      editableState,
-    });
-
-    const outputs = physicPaintStore.toMceOutputs();
-    expect(outputs[0]).toEqual(expect.objectContaining({
-      play_script_ranges: [
-        expect.objectContaining({ id: expect.any(String), startFrame: 0, frameCount: 2, editableState: expect.objectContaining({ strokes: expect.any(Array) }) }),
-        expect.objectContaining({ id: expect.any(String), startFrame: 8, frameCount: 2, editableState: expect.objectContaining({ strokes: expect.any(Array) }) }),
-      ],
-    }));
-
-    physicPaintStore.reset();
-    physicPaintStore.loadFromMceOutputs(outputs);
-
-    expect(physicPaintStore.getPlayScriptRanges('layer-1').map((range) => [range.startFrame, range.frameCount])).toEqual([[0, 2], [8, 2]]);
-    expect(physicPaintStore.getFrame('layer-1', 9)?.frameIndex).toBe(1);
-  });
-
-  it('round-trips Play workflow metadata with rendered frames and editable source state', () => {
-    physicPaintStore.applySequence({
-      kind: 'apply-play-canvas',
-      operationId: 'op-seq-round-trip',
-      layerId: 'layer-1',
-      startFrame: 24,
-      frameCount: 4,
-      frames: [makeFrame(0, 24), makeFrame(1, 25), makeFrame(2, 26), makeFrame(3, 27)],
-      editableState,
-    });
-
-    const outputs = physicPaintStore.toMceOutputs();
-
-    expect(outputs).toEqual([
-      expect.objectContaining({
-        layer_id: 'layer-1',
-        workflow_mode: 'play',
-        play_start_frame: 24,
-        play_frame_count: 4,
-        editable_source: 'play',
-        editable_state: expect.objectContaining({ strokes: expect.any(Array) }),
-        frames: [
-          expect.objectContaining({ appFrame: 24 }),
-          expect.objectContaining({ appFrame: 25 }),
-          expect.objectContaining({ appFrame: 26 }),
-          expect.objectContaining({ appFrame: 27 }),
-        ],
-      }),
-    ]);
-
-    physicPaintStore.reset();
-    physicPaintStore.loadFromMceOutputs(outputs);
-
-    expect(physicPaintStore.getFrame('layer-1', 27)?.frameIndex).toBe(3);
-    expect(physicPaintStore.getEditableState('layer-1')?.strokes).toHaveLength(1);
-    expect(physicPaintStore.getWorkflowMetadata('layer-1')).toEqual({
-      workflowMode: 'play',
-      playStartFrame: 24,
-      playFrameCount: 4,
-      editableSource: 'play',
-    });
-  });
 
   it('uses typed helpers to clamp invalid frame counts', () => {
     expect(clampPhysicPaintFrameCount(-10)).toBe(1);
@@ -1455,8 +1100,6 @@ describe('physicPaintStore', () => {
   it('D-05/D-06 prunes loaded stale trailing rendered frames outside Roto cache metadata', () => {
     physicPaintStore.loadFromMceOutputs([{
       layer_id: 'layer-1',
-      workflow_mode: 'roto',
-      editable_source: 'roto',
       roto_background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
       frames: [makeFrame(0, 5), makeFrame(0, 7), { ...makeFrame(0, 11), dataUrl: 'data:image/png;base64,c3RhbGUtcGFpbnQ=' }],
       roto_cache_metadata: [

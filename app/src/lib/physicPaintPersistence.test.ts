@@ -36,8 +36,6 @@ function makeOutput(): RuntimePhysicPaintOutput[] {
       width: 100,
       height: 50,
     }],
-    workflow_mode: 'roto',
-    editable_source: 'roto',
   }];
 }
 
@@ -108,8 +106,6 @@ describe('physicPaintPersistence', () => {
         { frameIndex: 0, appFrame: 1, cache_path: 'cache/physic-paint/physic_layer_1/frame-000001-0000.png', width: 100, height: 50 },
         { frameIndex: 0, appFrame: 2, cache_path: 'cache/physic-paint/physic_layer_1/frame-000002-0000.png', width: 100, height: 50 },
       ],
-      workflow_mode: 'roto',
-      editable_source: 'roto',
       roto_cache_metadata: [
         { frameIndex: 0, appFrame: 0, source: 'real-key' },
         { frameIndex: 0, appFrame: 4, source: 'real-key', sourceFrame: 1 },
@@ -142,8 +138,6 @@ describe('physicPaintPersistence', () => {
         { frameIndex: 0, appFrame: 10, cache_path: '../secret.png', width: 100, height: 50, source: 'real-key' },
         { frameIndex: 0, appFrame: 12, cache_path: 'cache/physic-paint/physic_layer_1/frame-000012-0000.png', width: 100, height: 50, source: 'real-key' },
       ],
-      workflow_mode: 'roto',
-      editable_source: 'roto',
     }]);
 
     expect(hydrated?.[0].frames.map((frame) => frame.appFrame)).toEqual([12]);

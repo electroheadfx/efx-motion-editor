@@ -582,11 +582,11 @@ export const physicPaintStore = {
 
   toMceOutputs(): PhysicPaintMceOutput[] {
     if (_cachedSerializationRevision === _serializationRevision) return structuredClone(_cachedMceOutputs);
-    const layerIds = new Set([..._frames.keys(), ..._rotoCacheMetadata.keys(), ..._rotoGeneratedCacheMetadata.keys(), ..._rotoInterpolationSettings.keys(), ..._rotoBackgroundMetadata.keys()]);
+    const layerIds = new Set([..._frames.keys(), ..._rotoCacheMetadata.keys(), ..._rotoInterpolationSettings.keys(), ..._rotoBackgroundMetadata.keys()]);
     const outputs = Array.from(layerIds).map((layerId) => ({
       layer_id: layerId,
       frames: Array.from(_frames.get(layerId)?.values() ?? []).sort((a, b) => a.appFrame - b.appFrame),
-      ...(_rotoCacheMetadata.has(layerId) || _rotoGeneratedCacheMetadata.has(layerId) ? { roto_cache_metadata: _getCombinedRotoMetadata(layerId) } : {}),
+      ...(_rotoCacheMetadata.has(layerId) ? { roto_cache_metadata: Array.from(_rotoCacheMetadata.get(layerId)!.values()).sort((a, b) => a.appFrame - b.appFrame) } : {}),
       ...(_rotoInterpolationSettings.has(layerId) ? { roto_interpolation_settings: _serializeRotoInterpolationSettings(_rotoInterpolationSettings.get(layerId)!) } : {}),
       ...(_rotoBackgroundMetadata.has(layerId) ? { roto_background: { ..._rotoBackgroundMetadata.get(layerId)! } } : {}),
     })).filter((output) => output.frames.length > 0 || output.roto_cache_metadata || output.roto_interpolation_settings || output.roto_background);
@@ -615,8 +615,14 @@ export const physicPaintStore = {
       }
       if (real.size > 0) _rotoCacheMetadata.set(output.layer_id, real);
       if (generated.size > 0) _rotoGeneratedCacheMetadata.set(output.layer_id, generated);
-      if (isPhysicPaintRotoInterpolationSettings(output.roto_interpolation_settings)) _rotoInterpolationSettings.set(output.layer_id, _normalizeRotoInterpolationSettings(output.roto_interpolation_settings, _getRealRotoKeyFrames(output.layer_id)));
+      if (isPhysicPaintRotoInterpolationSettings(output.roto_interpolation_settings)) {
+        const realKeys = _getRealRotoKeyFrames(output.layer_id);
+        const settings = _mergeInferredRotoInterpolationSettings(_normalizeRotoInterpolationSettings(output.roto_interpolation_settings, realKeys), realKeys);
+        _rotoInterpolationSettings.set(output.layer_id, settings);
+        if (settings.enabled) _tryRegenerateGeneratedRotoCache(output.layer_id, settings);
+      }
       if (isPhysicPaintRotoBackgroundMetadata(output.roto_background)) _rotoBackgroundMetadata.set(output.layer_id, { ...output.roto_background });
+      _pruneFramesOutsideRotoCacheMetadata(output.layer_id);
     }
     _invalidateSerializationCache();
     physicPaintVersion.value++;

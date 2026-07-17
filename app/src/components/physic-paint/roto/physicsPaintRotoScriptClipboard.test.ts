@@ -23,7 +23,7 @@ function completion(mutationId: number): CompletedPaintMutation {
 
 function harness(initial: PaintStroke[] = [stroke(1)]) {
   let strokes = initial;
-  let source: RotoScriptSourceSnapshot = { workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 4, displayFrame: 4 };
+  let source: RotoScriptSourceSnapshot = { selectionKind: 'real-key', sourceFrame: 4, displayFrame: 4 };
   let nextMutationId = 100;
   const submitted: RecordedStrokeGroup[] = [];
   const locks: boolean[] = [];
@@ -124,7 +124,7 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.clipboard.value).toBe(copied);
     expect(test.controller.clipboard.value?.brushes[0].primary.points[0].x).toBe(10);
 
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 9, displayFrame: 9 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 9, displayFrame: 9 });
     test.setStrokes([stroke(9, 99)]);
     test.controller.observeCompletedMutation(test.engine, completion(9));
     expect(test.controller.clipboard.value).toBe(copied);
@@ -138,23 +138,23 @@ describe('Roto script clipboard controller', () => {
 
   it('preserves mounted clipboard provenance across launch echoes and foreign same-frame layers', async () => {
     const test = harness([stroke(1, 10)]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 });
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 });
     await copyCompletedSource(test);
     const copied = test.controller.clipboard.value;
     expect(copied?.provenance).toMatchObject({ layerId: 'layer-a', sourceFrame: 4 });
 
-    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', layerId: 'layer-a', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'empty', layerId: 'layer-a', sourceFrame: 8, displayFrame: 8 });
     test.controller.completeLaunchReplacement();
     expect(test.controller.clipboard.value).toBe(copied);
     expect(test.controller.availability.value.canApply).toBe(true);
 
     test.setStrokes([]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-b', sourceFrame: 4, displayFrame: 4 });
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-b', sourceFrame: 4, displayFrame: 4 });
     test.controller.notifySourceRevision();
     expect(test.controller.clipboard.value).toBe(copied);
 
     test.setStrokes([stroke(2, 77)]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 });
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 4, displayFrame: 4 });
     test.controller.notifySourceRevision();
     expect(test.controller.clipboard.value).toBe(copied);
 
@@ -191,7 +191,7 @@ describe('Roto script clipboard controller', () => {
     expect(loaded?.brushes[0].primary.points[0].x).toBe(44);
     expect(Object.isFrozen(loaded?.brushes[0].primary.points[0])).toBe(true);
     expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
-    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
     const applying = test.controller.applyScript();
     expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledOnce();
     test.controller.observeCompletedMutation(test.engine, completion(100));
@@ -241,16 +241,13 @@ describe('Roto script clipboard controller', () => {
       replacementApplyDisabledReason: null,
     });
 
-    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
     expect(test.controller.availability.value.canApplyReplacement).toBe(true);
 
-    test.setSource({ workflowMode: 'play', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
-    expect(test.controller.availability.value.replacementApplyDisabledReason).toBe('Apply Script is available only in Roto mode.');
-
-    test.setSource({ workflowMode: 'roto', selectionKind: 'generated-interpolation', sourceFrame: 8, displayFrame: 9 });
+    test.setSource({ selectionKind: 'generated-interpolation', sourceFrame: 8, displayFrame: 9 });
     expect(test.controller.availability.value.replacementApplyDisabledReason).toBe('Generated frames are render-only and cannot receive a script.');
 
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     expect(await test.controller.prepareNavigation(9)).toBe(true);
     expect(test.controller.availability.value.replacementApplyDisabledReason).toBe('Finish the current script operation before applying another script.');
     test.controller.completeNavigation();
@@ -264,7 +261,7 @@ describe('Roto script clipboard controller', () => {
     };
     let resolveLoad!: (script: typeof persisted) => void;
     const deferredLoad = new Promise<typeof persisted>((resolve) => { resolveLoad = resolve; });
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 8, displayFrame: 8 });
 
     const preparation = test.controller.prepareScriptLoadAndApply();
     expect(preparation).not.toBeNull();
@@ -317,7 +314,7 @@ describe('Roto script clipboard controller', () => {
       provenance: { sessionId: 'persisted', layerId: 'layer-a', sourceFrame: 3 }, sourceFrame: 3, sourceDisplayFrame: 3, sourceRevision: 1,
       brushes: [{ primary: stroke(7, 44), continuations: [] }],
     };
-    changedSource.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 8, displayFrame: 8 });
+    changedSource.setSource({ selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 8, displayFrame: 8 });
     const changedPreparation = changedSource.controller.prepareScriptLoadAndApply();
     expect(changedPreparation).not.toBeNull();
     let resolveLoad!: (script: typeof persisted) => void;
@@ -326,7 +323,7 @@ describe('Roto script clipboard controller', () => {
     const previousStatus = changedSource.controller.status.value;
     const previousError = changedSource.controller.error.value;
     const loaded = deferredLoad.then((script) => changedSource.controller.replaceClipboardFromPersisted(script, changedPreparation!));
-    changedSource.setSource({ workflowMode: 'roto', selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 12, displayFrame: 12 });
+    changedSource.setSource({ selectionKind: 'real-key', layerId: 'layer-a', sourceFrame: 12, displayFrame: 12 });
     expect(changedSource.controller.mutationLocked.value).toBe(false);
     resolveLoad(persisted);
     await expect(loaded).resolves.toBe(RotoScriptClipboardReplacementOutcome.Stale);
@@ -369,7 +366,7 @@ describe('Roto script clipboard controller', () => {
   it('rejects invalid sources and destinations with stable native reasons', async () => {
     const test = harness([]);
     expect(test.controller.availability.value.copyDisabledReason).toMatch(/Paint at least one brush/);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'generated-interpolation', sourceFrame: 4, displayFrame: 5 });
+    test.setSource({ selectionKind: 'generated-interpolation', sourceFrame: 4, displayFrame: 5 });
     expect(test.controller.availability.value.copyDisabledReason).toMatch(/Generated frames/);
     expect(test.controller.availability.value.applyDisabledReason).toMatch(/Generated frames/);
     expect(await test.controller.copyScript()).toBe(false);
@@ -384,7 +381,7 @@ describe('Roto script clipboard controller', () => {
       interpolationSettings: { enabled: true, inBetweenCount: 2, mode: 'duplicate' as const, deform: 0, position: 0 },
     };
     test.setPrepareEmptyTarget(() => claim as never);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', layerId: 'layer-a', sourceFrame: 14, displayFrame: 14 });
+    test.setSource({ selectionKind: 'empty', layerId: 'layer-a', sourceFrame: 14, displayFrame: 14 });
 
     const applying = test.controller.applyScript();
 
@@ -402,7 +399,7 @@ describe('Roto script clipboard controller', () => {
   it('leaves an empty selected frame unclaimed when the first replay brush is rejected', async () => {
     const test = harness([stroke(1)]);
     await copyCompletedSource(test);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', sourceFrame: 14, displayFrame: 14 });
+    test.setSource({ selectionKind: 'empty', sourceFrame: 14, displayFrame: 14 });
     test.engine.enqueueRecordedStroke.mockImplementationOnce(() => { throw new Error('rejected'); });
 
     await expect(test.controller.applyScript()).resolves.toBe(false);
@@ -413,7 +410,7 @@ describe('Roto script clipboard controller', () => {
   it('applies sequentially, ignores unrelated and duplicate completions, and remains reusable', async () => {
     const test = harness([stroke(1), stroke(2)]);
     await copyCompletedSource(test, [1, 2]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const firstApply = test.controller.applyScript();
     expect(test.controller.applying.value).toBe(true);
     expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
@@ -444,7 +441,7 @@ describe('Roto script clipboard controller', () => {
   it('binds a prepared true-empty transaction only to accepted mutations and retains partial failure', async () => {
     const test = harness([stroke(1), stroke(2)]);
     await copyCompletedSource(test, [1, 2]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
     test.engine.enqueueRecordedStroke.mockImplementationOnce((group) => {
       test.submitted.push(group);
       return 100;
@@ -473,7 +470,7 @@ describe('Roto script clipboard controller', () => {
   it('publishes detailed empty-target and enqueue failures through the stable error contract', async () => {
     const emptyTarget = harness([stroke(1)]);
     await copyCompletedSource(emptyTarget, [1]);
-    emptyTarget.setSource({ workflowMode: 'roto', selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
+    emptyTarget.setSource({ selectionKind: 'empty', sourceFrame: 8, displayFrame: 8 });
     emptyTarget.setPrepareEmptyTarget(() => null);
 
     await expect(emptyTarget.controller.applyScript()).resolves.toBe(false);
@@ -613,13 +610,13 @@ describe('Roto script clipboard controller', () => {
   it('blocks session Save and Load through Apply cancellation drain and resumes after accepted completion', async () => {
     const test = harness([stroke(1)]);
     await copyCompletedSource(test, [1]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const save = vi.fn(() => ({ version: 1, strokes: [] }));
     const load = vi.fn();
     const downloadState = vi.fn(async () => ({ status: 'saved' as const, message: 'Saved editable JSON state.' }));
     const reader = { readAsText: vi.fn(), onload: null, onerror: null, result: '' } as unknown as FileReader;
     const session = createPhysicsPaintSessionController({
-      engine: { save, load }, workflowMode: 'roto', framesToApply: 1, canvasSize: { width: 800, height: 520 },
+      engine: { save, load }, framesToApply: 1, canvasSize: { width: 800, height: 520 },
       launchContext: null, currentFrame: 8, previewFps: 24, capturePendingPlayFrameEdits: vi.fn(),
       annotatePlayState: vi.fn((state) => state), restorePlayFrameEdits: vi.fn(), clearLatestPlayFrames: vi.fn(),
       setCachedPlayPreviewUrl: vi.fn(), setSavedPlayCacheDirty: vi.fn(), setLocalPlayPreviewFrame: vi.fn(),
@@ -649,7 +646,7 @@ describe('Roto script clipboard controller', () => {
   it('keeps cancelled Apply navigation-protected until accepted completion and ends Failed', async () => {
     const test = harness([stroke(1), stroke(2)]);
     await copyCompletedSource(test, [1, 2]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const applying = test.controller.applyScript();
     test.controller.cancelApply();
 
@@ -689,10 +686,10 @@ describe('Roto script clipboard controller', () => {
   it('captures accepted destination identity across cancellation and source changes', async () => {
     const test = harness([stroke(1), stroke(2)]);
     await copyCompletedSource(test, [1, 2]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const applying = test.controller.applyScript();
     test.controller.cancelApply();
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 12, displayFrame: 12 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 12, displayFrame: 12 });
 
     test.controller.observeCompletedMutation(test.engine, completion(100));
     await expect(applying).resolves.toBe(false);
@@ -721,7 +718,7 @@ describe('Roto script clipboard controller', () => {
   it('never enqueues remaining Apply brushes on a replacement engine', async () => {
     const test = harness([stroke(1), stroke(2)]);
     await copyCompletedSource(test, [1, 2]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const replacement = { ...test.engine, enqueueRecordedStroke: vi.fn(() => 900) };
     const applying = test.controller.applyScript();
 
@@ -740,7 +737,7 @@ describe('Roto script clipboard controller', () => {
   it('finishes accepted Apply work before same-size launch replacement and preserves publication', async () => {
     const test = harness([stroke(1), stroke(2)]);
     await copyCompletedSource(test, [1, 2]);
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     const copied = test.controller.clipboard.value;
     const applying = test.controller.applyScript();
     const acceptedFirst = test.controller.getAcceptedTarget(test.engine, 100);
@@ -768,7 +765,7 @@ describe('Roto script clipboard controller', () => {
     const test = harness([stroke(1)]);
     await copyCompletedSource(test);
     const copied = test.controller.clipboard.value;
-    test.setSource({ workflowMode: 'roto', selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
+    test.setSource({ selectionKind: 'real-key', sourceFrame: 8, displayFrame: 8 });
     test.setMotion({ deformation: 100, position: 100 });
     const applying = test.controller.applyScript();
 

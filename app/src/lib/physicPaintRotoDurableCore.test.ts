@@ -783,8 +783,6 @@ async function mountDebug07KeyMutationStudio(startFrame: number) {
     layerId: 'phys-layer-1',
     layerName: 'Physic Paint',
     startFrame,
-    workflowMode: 'roto',
-    editableSource: 'roto',
     width: 1000,
     height: 650,
     cachedRotoFrames: physicPaintStore.getRotoCacheFrames('phys-layer-1'),
@@ -1064,8 +1062,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 4,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: [baseFrame],
@@ -1186,8 +1182,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 4,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: [baseFrame],
@@ -1210,8 +1204,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 7,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: [],
@@ -1244,7 +1236,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     mockLayers([physicLayer()]);
     expect(applyPhysicPaintPayload(parentPayloads[0])).toMatchObject({ ok: true, appliedFrameCount: 1 });
 
-    const reopened = createPhysicPaintLaunchContext(physicLayer(), 7, { width: 1000, height: 650 }, null, 'roto');
+    const reopened = createPhysicPaintLaunchContext(physicLayer(), 7, { width: 1000, height: 650 }, null);
     expect(reopened.cachedRotoFrames).toEqual(expect.arrayContaining([
       expect.objectContaining({ appFrame: 7, sourceFrame: 7, source: 'real-key', dataUrl: paintedPixels }),
     ]));
@@ -1257,8 +1249,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 5,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: [],
@@ -1297,8 +1287,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 0,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: [],
@@ -1350,8 +1338,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 0,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: physicPaintStore.getRotoCacheFrames('phys-layer-1'),
@@ -1397,8 +1383,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 0,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: physicPaintStore.getRotoCacheFrames('phys-layer-1'),
@@ -1451,7 +1435,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const hydratedOutputs = await loadPhysicPaintData(projectPath, persistedOutputs);
     physicPaintStore.reset();
     physicPaintStore.loadFromMceOutputs(hydratedOutputs!);
-    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), 0, null, null, 'roto');
+    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), 0, null, null);
     expect(reopenContext.cachedRotoFrames?.find((frame) => frame.source === 'real-key' && (frame.sourceFrame ?? frame.appFrame) === 0)?.dataUrl).not.toBe(oldPaint);
     expect(reopenContext.cachedRotoFrames?.find((frame) => frame.source === 'real-key' && (frame.sourceFrame ?? frame.appFrame) === 3)?.dataUrl).toBe(otherPaint);
     expect(reopenContext.rotoInterpolationSettings).toEqual(normalizedSettings);
@@ -1508,8 +1492,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 8,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: [initialFrame],
@@ -1577,8 +1559,8 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const hydratedFrame = physicPaintStore.getFrame('phys-layer-1', 8);
     if (!hydratedFrame?.dataUrl.startsWith('data:image/png')) failures.push('expected loadPhysicPaintData hydration to restore a runtime data:image/png frame for app frame 8');
 
-    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), 8, null, null, 'roto');
-    if (reopenContext.workflowMode !== 'roto' || reopenContext.startFrame !== 8 || reopenContext.editableSource !== 'roto') failures.push('expected reopen launch context to target Roto frame 8');
+    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), 8, null, null);
+    if (reopenContext.startFrame !== 8) failures.push('expected reopen launch context to target Roto frame 8');
     if (!reopenContext.cachedRotoFrames?.some((frame) => frame.appFrame === 8 && frame.source === 'real-key' && frame.dataUrl === savedDataUrl)) failures.push('expected reopen launch context to expose the saved frame as a real-key cached Roto reference');
     if (reopenContext.editableState) failures.push('expected cached-only Roto reopen not to restore editable stroke state as durable truth');
 
@@ -2038,7 +2020,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 1, 2, 3, targetFrame]);
     expect(physicPaintStore.getFrame('phys-layer-1', targetFrame)?.dataUrl).toBe(sourcePaint);
     expect(physicPaintStore.getFrame('phys-layer-1', targetFrame === 12 ? 4 : 5)).toBeNull();
-    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), targetFrame, null, null, 'roto');
+    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), targetFrame, null, null);
     const reopenedTimeline = selectRotoTimelineView({
       cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
       currentFrame: targetFrame,
@@ -2287,7 +2269,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const insertedHydrated = await loadPhysicPaintData(insertedPath, insertedPersisted);
     physicPaintStore.reset();
     physicPaintStore.loadFromMceOutputs(insertedHydrated!);
-    const insertedReopen = createPhysicPaintLaunchContext(physicLayer(), 20, null, null, 'roto');
+    const insertedReopen = createPhysicPaintLaunchContext(physicLayer(), 20, null, null);
     expect(insertedReopen.rotoInterpolationSettings?.segmentSpacingOverrides).toEqual([{ fromSourceFrame: 3, toSourceFrame: 20, inBetweenCount: 10 }]);
     expect(insertedReopen.cachedRotoFrames?.filter((frame) => frame.source === 'real-key').map((frame) => frame.displayFrame)).toEqual([0, 3, 6, 9, 20, 23]);
     expect(insertedReopen.cachedRotoFrames?.find((frame) => frame.sourceFrame === 20)?.dataUrl).toBe(savedDataUrl);
@@ -2323,7 +2305,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     const deletedHydrated = await loadPhysicPaintData(deletedPath, deletedPersisted);
     physicPaintStore.reset();
     physicPaintStore.loadFromMceOutputs(deletedHydrated!);
-    const deletedReopen = createPhysicPaintLaunchContext(physicLayer(), 20, null, null, 'roto');
+    const deletedReopen = createPhysicPaintLaunchContext(physicLayer(), 20, null, null);
     expect(physicPaintStore.getRealRotoKeyFrames('phys-layer-1')).toEqual([0, 1, 2, 3, 20]);
     expect(physicPaintStore.getFrame('phys-layer-1', 20)?.dataUrl).toBe(originalPaint.get(20));
     expect(deletedReopen.rotoInterpolationSettings?.segmentSpacingOverrides).toEqual([{ fromSourceFrame: 3, toSourceFrame: 20, inBetweenCount: 10 }]);
@@ -2443,8 +2425,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 6,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
     };
@@ -2511,8 +2491,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: physicPaintStore.getRotoCacheFrames('phys-layer-1'),
@@ -2577,8 +2555,6 @@ describe('Phase 36.3 durable Roto cache core', () => {
       layerId: 'phys-layer-1',
       layerName: 'Physic Paint',
       startFrame: 9,
-      workflowMode: 'roto',
-      editableSource: 'roto',
       width: 1000,
       height: 650,
       cachedRotoFrames: physicPaintStore.getRotoCacheFrames('phys-layer-1'),
@@ -2633,7 +2609,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
     physicPaintStore.reset();
     physicPaintStore.loadFromMceOutputs(hydratedOutputs!);
     expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1').segmentSpacingOverrides ?? []).toEqual(expectedOverrides);
-    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), targetFrame, null, null, 'roto');
+    const reopenContext = createPhysicPaintLaunchContext(physicLayer(), targetFrame, null, null);
     const reopenedOn = selectRotoTimelineView({
       cachedRotoFrames: reopenContext.cachedRotoFrames ?? [],
       currentFrame: targetFrame,
@@ -2681,7 +2657,7 @@ describe('Phase 36.3 durable Roto cache core', () => {
           { fromSourceFrame: 14, toSourceFrame: 26, inBetweenCount: 11 },
         ],
       });
-      const launchContext = createPhysicPaintLaunchContext(physicLayer(), startFrame, { width: 1000, height: 650 }, null, 'roto');
+      const launchContext = createPhysicPaintLaunchContext(physicLayer(), startFrame, { width: 1000, height: 650 }, null);
       paintHarness.storedLaunchContext = launchContext;
       const applyPayloads: PhysicPaintApplyPayload[] = [];
       const { root, window } = installDom(encodeURIComponent(JSON.stringify(launchContext)), (message) => {

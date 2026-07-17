@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
@@ -46,16 +43,7 @@ const makeFrame = (frameIndex: number, appFrame: number) => ({
   height: 650,
 });
 
-const renderOptions = {
-  tool: 'normal-paint' as const,
-  color: '#103c65',
-  opacity: 100,
-  brushSize: 6,
-  background: 'canvas1' as const,
-  paperGrain: 'canvas1',
-  grainStrength: 0.45,
-  motion: { strokeDeformation: 10, strokePosition: 20 },
-};
+
 
 function applyCanvasPayload(overrides: Partial<PhysicPaintApplyPayload> = {}): PhysicPaintApplyPayload {
   return {
@@ -69,18 +57,7 @@ function applyCanvasPayload(overrides: Partial<PhysicPaintApplyPayload> = {}): P
   } as PhysicPaintApplyPayload;
 }
 
-function applySequencePayload(overrides: Partial<PhysicPaintApplyPayload> = {}): PhysicPaintApplyPayload {
-  return {
-    kind: 'apply-play-canvas',
-    operationId: 'apply-seq-1',
-    layerId: 'phys-layer-1',
-    startFrame: 10,
-    frameCount: 3,
-    frames: [makeFrame(0, 10), makeFrame(1, 11), makeFrame(2, 12)],
-    editableState,
-    ...overrides,
-  } as PhysicPaintApplyPayload;
-}
+
 
 function mockLayers(layers: Layer[]): void {
   vi.spyOn(layerStore.layers, 'peek').mockReturnValue(layers);
@@ -171,12 +148,11 @@ describe('physicPaintBridge', () => {
       position: 0,
     });
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null, 'roto');
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
     expect(context).toMatchObject({
       workflowMode: 'roto',
       startFrame: 8,
-      editableSource: 'roto',
     });
     expect(context.cachedRotoFrames).toEqual([
       expect.objectContaining({ appFrame: 8, source: 'real-key' }),
@@ -196,11 +172,10 @@ describe('physicPaintBridge', () => {
     const metadata = { background: 'canvas2' as const, paperGrain: 'canvas3', grainStrength: 0.65 };
     physicPaintStore.setRotoBackgroundMetadata('phys-layer-1', metadata);
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null, 'roto');
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
     expect(context).toMatchObject({
       workflowMode: 'roto',
-      editableSource: 'roto',
       rotoBackground: metadata,
     });
     expect(context.rotoBackground).not.toBe(metadata);
@@ -210,7 +185,7 @@ describe('physicPaintBridge', () => {
     physicPaintStore.applyCanvas(applyCanvasPayload({ startFrame: 1, renderedFrame: makeFrame(0, 1) }));
     physicPaintStore.applyCanvas(applyCanvasPayload({ operationId: 'apply-still-2', startFrame: 4, renderedFrame: makeFrame(0, 4) }));
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 1, null, null, 'roto');
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 1, null, null);
 
     expect(context.cachedRotoFrames?.map((frame) => frame.appFrame)).toEqual([1, 4]);
     expect(context.editableState).toBeUndefined();
@@ -220,11 +195,9 @@ describe('physicPaintBridge', () => {
     physicPaintStore.loadFromMceOutputs([{
       layer_id: 'phys-layer-1',
       frames: [makeFrame(0, 8)],
-      workflow_mode: 'roto',
-      editable_source: 'roto',
     }]);
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null, 'roto');
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
     expect(context.cachedRotoFrames).toEqual([
       expect.objectContaining({ appFrame: 8, source: 'real-key', dataUrl: makeFrame(0, 8).dataUrl }),
@@ -246,376 +219,27 @@ describe('physicPaintBridge', () => {
       position: 30,
     });
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 13, null, null, 'roto');
+    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 13, null, null);
 
     expect(context).toMatchObject({
-      requestedWorkflowMode: 'roto',
-      workflowMode: 'roto',
       startFrame: 13,
-      editableSource: 'roto',
     });
     expect(context.editableState).toBeUndefined();
-    expect(context.maxPlayFrameCountReason).toBe('Generated frame 13 is render-only. Use timeline navigation or playback; edit a real Roto key to paint.');
     expect(context.cachedRotoFrames).toEqual(expect.arrayContaining([
       expect.objectContaining({ appFrame: 13, source: 'generated-interpolation', nearestRealKeyFrame: 12 }),
     ]));
   });
 
-  it('opens the saved Play script containing the scrubber frame with relative preview frame', () => {
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-a',
-      startFrame: 0,
-      frameCount: 5,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 8,
-      frameCount: 4,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-      motion: { strokeDeformation: 12, strokePosition: 34 },
-    });
-    physicPaintStore.setFrame('phys-layer-1', 8, makeFrame(0, 8));
-    physicPaintStore.setFrame('phys-layer-1', 9, makeFrame(1, 9));
-    physicPaintStore.setFrame('phys-layer-1', 10, makeFrame(2, 10));
-    physicPaintStore.setFrame('phys-layer-1', 11, makeFrame(3, 11));
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 10);
 
-    expect(context).toMatchObject({
-      layerId: 'phys-layer-1',
-      workflowMode: 'play',
-      startFrame: 8,
-      playStartFrame: 8,
-      playFrameCount: 4,
-      selectedPlayScriptId: 'play-b',
-      playCacheStatus: 'cached',
-      playMotion: { strokeDeformation: 12, strokePosition: 34 },
-      previewFrame: 2,
-      editableSource: 'play',
-      editableState,
-    });
-    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 8), makeFrame(1, 9), makeFrame(2, 10), makeFrame(3, 11)]);
-    expect(context.maxPlayFrameCount).toBeUndefined();
-  });
 
-  it('opens Roto in a gap with a max Play frame count before the next saved script', () => {
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 8,
-      frameCount: 4,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 5, null, null, 'roto');
 
-    expect(context).toMatchObject({
-      layerId: 'phys-layer-1',
-      requestedWorkflowMode: 'roto',
-      workflowMode: 'roto',
-      startFrame: 5,
-      editableSource: 'roto',
-      maxPlayFrameCount: 3,
-    });
-    expect(context.maxPlayFrameCountReason).toBe('Maximum Play duration from this frame: 3 frame(s), until the next saved script.');
-    expect(context.selectedPlayScriptId).toBeUndefined();
-    expect(context.playStartFrame).toBeUndefined();
-    expect(context.playFrameCount).toBeUndefined();
-  });
 
-  it('opens explicit Roto at frame 11 before a saved script without auto-selecting the nearest range', () => {
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 12,
-      frameCount: 4,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 11, null, null, 'roto');
 
-    expect(context).toMatchObject({
-      requestedWorkflowMode: 'roto',
-      workflowMode: 'roto',
-      startFrame: 11,
-      editableSource: 'roto',
-      maxPlayFrameCount: 1,
-      maxPlayFrameCountReason: 'Only frame 11 is available before the next saved script.',
-    });
-    expect(context.selectedPlayScriptId).toBeUndefined();
-    expect(context.playStartFrame).toBeUndefined();
-    expect(context.playFrameCount).toBeUndefined();
-  });
 
-  it('opens explicit Play creation at frame 11 before a saved script with a one-frame limit', () => {
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 12,
-      frameCount: 4,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
 
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 11, null, null, 'play');
-
-    expect(context).toMatchObject({
-      requestedWorkflowMode: 'play',
-      workflowMode: 'play',
-      startFrame: 11,
-      playStartFrame: 11,
-      playFrameCount: 1,
-      editableSource: 'play',
-      previewFrame: 0,
-      maxPlayFrameCount: 1,
-      maxPlayFrameCountReason: 'Only frame 11 is available before the next saved script.',
-    });
-    expect(context.selectedPlayScriptId).toBeUndefined();
-  });
-
-  it('opens explicit Play creation at frame 6 with two available frames between saved ranges', () => {
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-a',
-      startFrame: 0,
-      frameCount: 5,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 8,
-      frameCount: 4,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 6, null, null, 'play');
-
-    expect(context).toMatchObject({
-      requestedWorkflowMode: 'play',
-      workflowMode: 'play',
-      startFrame: 6,
-      playStartFrame: 6,
-      playFrameCount: 2,
-      editableSource: 'play',
-      previewFrame: 0,
-      maxPlayFrameCount: 2,
-      maxPlayFrameCountReason: 'Maximum Play duration from this frame: 2 frame(s), until the next saved script.',
-    });
-    expect(context.selectedPlayScriptId).toBeUndefined();
-  });
-
-  it('opens an empty Roto context outside saved Play ranges without leaking the last editable script', () => {
-    physicPaintStore.applySequence(applySequencePayload({
-      startFrame: 6,
-      frameCount: 4,
-      frames: [makeFrame(0, 6), makeFrame(1, 7), makeFrame(2, 8), makeFrame(3, 9)],
-    }));
-
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 0);
-
-    expect(context).toMatchObject({
-      layerId: 'phys-layer-1',
-      workflowMode: 'roto',
-      startFrame: 0,
-      editableSource: 'roto',
-      maxPlayFrameCount: 6,
-    });
-    expect(context.selectedPlayScriptId).toBeUndefined();
-    expect(context.editableState).toBeUndefined();
-  });
-
-  it('opens explicit Play inside a saved range with the selected script and relative preview frame', () => {
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 8,
-      frameCount: 13,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-    physicPaintStore.setFrame('phys-layer-1', 8, makeFrame(0, 8));
-    physicPaintStore.setFrame('phys-layer-1', 11, makeFrame(3, 11));
-
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 11, null, null, 'play');
-
-    expect(context).toMatchObject({
-      requestedWorkflowMode: 'play',
-      workflowMode: 'play',
-      startFrame: 8,
-      playStartFrame: 8,
-      playFrameCount: 13,
-      selectedPlayScriptId: 'play-b',
-      previewFrame: 3,
-      editableSource: 'play',
-      editableState,
-    });
-    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 8), makeFrame(3, 11)]);
-    expect(context.maxPlayFrameCount).toBeUndefined();
-  });
-
-  it('opens saved Play with a max duration before the next saved script after reopen', () => {
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-a',
-      startFrame: 0,
-      frameCount: 1,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 1,
-      frameCount: 4,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 0, null, null, 'play');
-
-    expect(context).toMatchObject({
-      requestedWorkflowMode: 'play',
-      workflowMode: 'play',
-      startFrame: 0,
-      playStartFrame: 0,
-      playFrameCount: 1,
-      selectedPlayScriptId: 'play-a',
-      maxPlayFrameCount: 1,
-      maxPlayFrameCountReason: 'Only frame 0 is available before the next saved script.',
-    });
-  });
-
-  it('opens saved Play with hydrated cached frames even when persisted range status is stale', () => {
-    physicPaintStore.loadFromMceOutputs([{
-      layer_id: 'phys-layer-1',
-      frames: [makeFrame(0, 18), makeFrame(1, 19), makeFrame(2, 20)],
-      editable_state: editableState,
-      play_script_ranges: [{
-        id: 'play-hydrated-stale',
-        startFrame: 18,
-        frameCount: 3,
-        editableState,
-        source: 'play',
-        cacheStatus: 'stale',
-      }],
-      workflow_mode: 'play',
-      play_start_frame: 18,
-      play_frame_count: 3,
-      editable_source: 'play',
-    }]);
-
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 19, null, null, 'play');
-
-    expect(context).toMatchObject({
-      requestedWorkflowMode: 'play',
-      workflowMode: 'play',
-      startFrame: 18,
-      playStartFrame: 18,
-      playFrameCount: 3,
-      selectedPlayScriptId: 'play-hydrated-stale',
-      playCacheStatus: 'cached',
-      previewFrame: 1,
-      editableSource: 'play',
-      editableState,
-    });
-    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 18), makeFrame(1, 19), makeFrame(2, 20)]);
-  });
-
-  it('keeps saved Play cache status missing when a hydrated range has incomplete frames', () => {
-    physicPaintStore.loadFromMceOutputs([{
-      layer_id: 'phys-layer-1',
-      frames: [makeFrame(0, 18), makeFrame(2, 20)],
-      editable_state: editableState,
-      play_script_ranges: [{
-        id: 'play-hydrated-incomplete',
-        startFrame: 18,
-        frameCount: 3,
-        editableState,
-        source: 'play',
-        cacheStatus: 'cached',
-      }],
-      workflow_mode: 'play',
-      play_start_frame: 18,
-      play_frame_count: 3,
-      editable_source: 'play',
-    }]);
-
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 19, null, null, 'play');
-
-    expect(context).toMatchObject({
-      workflowMode: 'play',
-      selectedPlayScriptId: 'play-hydrated-incomplete',
-      playCacheStatus: 'missing',
-      previewFrame: 1,
-    });
-    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 18), makeFrame(2, 20)]);
-  });
-
-  it('opens explicit Roto inside a saved range without auto-switching to Play', () => {
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 8,
-      frameCount: 13,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 11, null, null, 'roto');
-
-    expect(context).toMatchObject({
-      requestedWorkflowMode: 'roto',
-      workflowMode: 'roto',
-      startFrame: 11,
-      editableSource: 'roto',
-      maxPlayFrameCount: 0,
-    });
-    expect(context.selectedPlayScriptId).toBeUndefined();
-    expect(context.playStartFrame).toBeUndefined();
-    expect(context.playFrameCount).toBeUndefined();
-  });
-
-  it('opens Roto after the last saved range instead of choosing the nearest Play script', () => {
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-a',
-      startFrame: 0,
-      frameCount: 5,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 8,
-      frameCount: 4,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-
-    const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 14);
-
-    expect(context).toMatchObject({
-      workflowMode: 'roto',
-      startFrame: 14,
-      editableSource: 'roto',
-    });
-    expect(context.maxPlayFrameCount).toBeUndefined();
-    expect(context.maxPlayFrameCountReason).toBeUndefined();
-    expect(context.selectedPlayScriptId).toBeUndefined();
-    expect(context.playStartFrame).toBeUndefined();
-    expect(context.playFrameCount).toBeUndefined();
-  });
 
   it('rejects non physics paint layers before opening a window', async () => {
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
@@ -627,21 +251,6 @@ describe('physicPaintBridge', () => {
     open.mockRestore();
   });
 
-  it('PhysicPaintProperties open action passes the current editor frame, project size, and requested mode to the bridge', () => {
-    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../components/sidebar/PhysicPaintProperties.tsx'), 'utf8');
-    const openHandlerSource = source.slice(source.indexOf('const handleOpenCanvas'), source.indexOf('};\n\n  return ('));
-
-    expect(openHandlerSource).toContain('const currentFrame = timelineStore.currentFrame.value');
-    expect(openHandlerSource).toContain('openPhysicPaintCanvas({');
-    expect(openHandlerSource).toContain('frame: currentFrame');
-    expect(openHandlerSource).toContain('width: projectStore.width.value');
-    expect(openHandlerSource).toContain('height: projectStore.height.value');
-    expect(openHandlerSource).toContain('requestedWorkflowMode: mode');
-    const bridgeRequestSource = openHandlerSource.slice(openHandlerSource.indexOf('openPhysicPaintCanvas({'), openHandlerSource.indexOf('});', openHandlerSource.indexOf('openPhysicPaintCanvas({')));
-    expect(bridgeRequestSource).toContain('canvas: {');
-    expect(bridgeRequestSource).not.toContain('playStartFrame');
-    expect(bridgeRequestSource).not.toContain('layer.startFrame');
-  });
 
   it('uses browser fallback with encoded launch context when Tauri APIs are unavailable', async () => {
     const focus = vi.fn();
@@ -662,68 +271,7 @@ describe('physicPaintBridge', () => {
     open.mockRestore();
   });
 
-  it('encodes the selected saved script launch context in the browser fallback URL', async () => {
-    const focus = vi.fn();
-    const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 8,
-      frameCount: 4,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-    physicPaintStore.setFrame('phys-layer-1', 8, makeFrame(0, 8));
 
-    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 10, canvas: { width: 1280, height: 720 }, requestedWorkflowMode: 'play' });
-
-    expect(result.ok).toBe(true);
-    const url = String(open.mock.calls[0][0]);
-    const parsed = new URL(url, 'http://localhost:1420');
-    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
-    expect(context).toMatchObject({
-      requestedWorkflowMode: 'play',
-      workflowMode: 'play',
-      startFrame: 8,
-      playStartFrame: 8,
-      playFrameCount: 4,
-      selectedPlayScriptId: 'play-b',
-      previewFrame: 2,
-      editableSource: 'play',
-    });
-    expect(context.cachedPlayFrames).toEqual([makeFrame(0, 8)]);
-    open.mockRestore();
-  });
-
-  it('encodes gap launch constraints in the browser fallback URL', async () => {
-    const focus = vi.fn();
-    const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
-    physicPaintStore.upsertPlayScriptRange('phys-layer-1', {
-      id: 'play-b',
-      startFrame: 8,
-      frameCount: 4,
-      editableState,
-      source: 'play',
-      cacheStatus: 'cached',
-    });
-
-    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 5, canvas: { width: 1280, height: 720 }, requestedWorkflowMode: 'roto' });
-
-    expect(result.ok).toBe(true);
-    const url = String(open.mock.calls[0][0]);
-    const parsed = new URL(url, 'http://localhost:1420');
-    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
-    expect(context).toMatchObject({
-      requestedWorkflowMode: 'roto',
-      workflowMode: 'roto',
-      startFrame: 5,
-      maxPlayFrameCount: 3,
-      editableSource: 'roto',
-    });
-    expect(context.maxPlayFrameCountReason).toContain('next saved script');
-    expect(context.selectedPlayScriptId).toBeUndefined();
-    open.mockRestore();
-  });
 
   it('rejects invalid launch contexts before opening a window', async () => {
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
@@ -785,7 +333,7 @@ describe('physicPaintBridge', () => {
     vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
 
-    const result = await openCanvas({ layer: physicLayer(), frame: 4, requestedWorkflowMode: 'roto' });
+    const result = await openCanvas({ layer: physicLayer(), frame: 4 });
 
     expect(result.ok).toBe(true);
     expect(invoke).toHaveBeenCalledWith('open_physics_paint_window', {
@@ -836,7 +384,6 @@ describe('physicPaintBridge', () => {
     });
     expect(physicPaintStore.getFrame('phys-layer-1', 8)?.frameIndex).toBe(0);
     expect(physicPaintStore.getFrame('phys-layer-1', 9)).toBeNull();
-    expect(physicPaintStore.getEditableState('phys-layer-1')).toBeNull();
   });
 
   it('applies explicit Roto background metadata from standalone saves into the parent app store', () => {
@@ -1009,77 +556,9 @@ describe('physicPaintBridge', () => {
     ]));
   });
 
-  it('applies a generated sequence beginning at the captured app start frame', () => {
-    mockLayers([physicLayer()]);
 
-    const result = applyPhysicPaintPayload(applySequencePayload());
 
-    expect(result).toMatchObject({
-      ok: true,
-      operationId: 'apply-seq-1',
-      kind: 'apply-play-canvas',
-      layerId: 'phys-layer-1',
-      startFrame: 10,
-      appliedFrameCount: 3,
-    });
-    expect(physicPaintStore.getFrame('phys-layer-1', 10)?.frameIndex).toBe(0);
-    expect(physicPaintStore.getFrame('phys-layer-1', 11)?.frameIndex).toBe(1);
-    expect(physicPaintStore.getFrame('phys-layer-1', 12)?.frameIndex).toBe(2);
-    expect(physicPaintStore.getFrame('phys-layer-1', 13)).toBeNull();
-  });
 
-  it('applies metadata-only Play render option updates without generated frames', () => {
-    mockLayers([physicLayer()]);
-    physicPaintStore.applySequence(applySequencePayload({ renderOptions, playMotion: renderOptions.motion }));
-    const scriptId = physicPaintStore.getPlayScriptRanges('phys-layer-1')[0].id;
-
-    const result = applyPhysicPaintPayload({
-      kind: 'update-play-render-options',
-      operationId: 'update-render-options-1',
-      layerId: 'phys-layer-1',
-      startFrame: 10,
-      playScriptId: scriptId,
-      renderOptions: { ...renderOptions, background: 'canvas2', brushSize: 3 },
-    });
-
-    expect(result).toMatchObject({ ok: true, kind: 'update-play-render-options', operationId: 'update-render-options-1' });
-    expect(physicPaintStore.getFrame('phys-layer-1', 10)).toBeNull();
-    expect(physicPaintStore.getPlayScriptRanges('phys-layer-1')[0]).toEqual(expect.objectContaining({
-      cacheStatus: 'stale',
-      renderOptions: expect.objectContaining({ background: 'canvas2', brushSize: 3 }),
-    }));
-  });
-
-  it('routes apply payloads by physic-paint source id when the rendered layer id differs', () => {
-    mockLayers([physicLayer({ id: 'render-layer-1', source: { type: 'physic-paint', layerId: 'phys-source-1' } })]);
-
-    const result = applyPhysicPaintPayload(applySequencePayload({ operationId: 'apply-source-id-seq', layerId: 'phys-source-1' }));
-
-    expect(result).toMatchObject({ ok: true, layerId: 'phys-source-1', appliedFrameCount: 3 });
-    expect(physicPaintStore.getFrame('phys-source-1', 10)?.frameIndex).toBe(0);
-    expect(physicPaintStore.getEditableState('phys-source-1')?.strokes).toHaveLength(1);
-  });
-
-  it('fails closed for invalid payloads before mutating the rendered store', () => {
-    mockLayers([physicLayer()]);
-    const applyCanvas = vi.spyOn(physicPaintStore, 'applyCanvas');
-    const applySequence = vi.spyOn(physicPaintStore, 'applySequence');
-
-    const result = applyPhysicPaintPayload({
-      kind: 'apply-canvas',
-      operationId: 'bad-op',
-      layerId: 'phys-layer-1',
-      startFrame: 8,
-      renderedFrame: { ...makeFrame(0, 99), appFrame: 99 },
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.operationId).toBe('bad-op');
-    expect(result.appliedFrameCount).toBe(0);
-    expect(physicPaintStore.getFrame('phys-layer-1', 8)).toBeNull();
-    expect(applyCanvas).not.toHaveBeenCalled();
-    expect(applySequence).not.toHaveBeenCalled();
-  });
 
   it('fails closed for unknown and non-physic-paint target layers', () => {
     mockLayers([physicLayer({ id: 'paint-layer', type: 'paint', source: { type: 'paint', layerId: 'paint-layer' } })]);
@@ -1116,21 +595,6 @@ describe('physicPaintBridge', () => {
     expect(physicPaintStore.getFrame('hydrated-runtime-layer', 8)?.dataUrl).toContain('data:image/png');
   });
 
-  it('reuses serialized physics paint outputs until rendered output changes', () => {
-    physicPaintStore.applySequence(applySequencePayload());
-
-    const first = physicPaintStore.toMceOutputs();
-    const second = physicPaintStore.toMceOutputs();
-
-    expect(second).toBe(first);
-    expect(physicPaintStore._debugCachedSerializationRevision()).toBe(physicPaintStore._debugSerializationRevision());
-
-    physicPaintStore.applyCanvas(applyCanvasPayload({ startFrame: 20, renderedFrame: makeFrame(0, 20) }));
-    const third = physicPaintStore.toMceOutputs();
-
-    expect(third).not.toBe(first);
-    expect(third[0].frames).toEqual(expect.arrayContaining([expect.objectContaining({ appFrame: 20 })]));
-  });
 
   it('persists and hydrates physic-paint source layer ids for apply validation', () => {
     const layer = physicLayer({ id: 'hydrated-phys-layer', source: { type: 'physic-paint', layerId: 'hydrated-phys-layer' } });
@@ -1159,9 +623,7 @@ describe('physicPaintBridge', () => {
       expect.objectContaining({
         layer_id: 'hydrated-phys-layer',
         frames: [expect.objectContaining({ appFrame: 12 })],
-        workflow_mode: 'roto',
-        editable_source: 'roto',
-      }),
+          }),
     ]);
 
     projectStore.closeProject();
@@ -1169,7 +631,6 @@ describe('physicPaintBridge', () => {
     const hydratedLayer = sequenceStore.sequences.peek()[0]?.layers[0];
     expect(hydratedLayer?.source).toEqual({ type: 'physic-paint', layerId: 'hydrated-phys-layer' });
     expect(physicPaintStore.getFrame('hydrated-phys-layer', 12)?.dataUrl).toContain('data:image/png');
-    expect(physicPaintStore.getEditableState('hydrated-phys-layer')).toBeNull();
 
     mockLayers([hydratedLayer as Layer]);
     const result = applyPhysicPaintPayload(applyCanvasPayload({ layerId: 'hydrated-phys-layer' }));
@@ -1294,29 +755,6 @@ describe('physicPaintBridge', () => {
     }, 'http://localhost:1420');
   });
 
-  it('includes persisted Play workflow metadata in the encoded browser launch context', async () => {
-    const focus = vi.fn();
-    const open = vi.spyOn(window, 'open').mockReturnValue({ focus } as unknown as Window);
-    physicPaintStore.applySequence(applySequencePayload({
-      startFrame: 18,
-      frameCount: 3,
-      frames: [makeFrame(0, 18), makeFrame(1, 19), makeFrame(2, 20)],
-    }));
-
-    const result = await openPhysicPaintCanvas({ layer: physicLayer(), frame: 19, canvas: { width: 1280, height: 720 }, fps: 30 });
-
-    expect(result.ok).toBe(true);
-    const url = String(open.mock.calls[0][0]);
-    const parsed = new URL(url, 'http://localhost:1420');
-    const context = JSON.parse(decodeURIComponent(parsed.searchParams.get('context') ?? ''));
-    expect(context.fps).toBe(30);
-    expect(context.workflowMode).toBe('play');
-    expect(context.startFrame).toBe(18);
-    expect(context.playStartFrame).toBe(18);
-    expect(context.playFrameCount).toBe(3);
-    expect(context.editableSource).toBe('play');
-    open.mockRestore();
-  });
 
   it('omits invalid fps so the standalone route can use its internal fallback', async () => {
     const focus = vi.fn();

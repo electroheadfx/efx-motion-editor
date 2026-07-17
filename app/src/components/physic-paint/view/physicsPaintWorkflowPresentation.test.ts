@@ -1,20 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
-  clampOnionCount, clampOnionOpacity, getActivePrimaryActionLabel,
-  getPhysicsPaintEngineStatusTone, getPhysicsPaintSourceLabel, getRotoCellFill,
+  clampOnionCount, clampOnionOpacity,
+  getPhysicsPaintEngineStatusTone, getRotoCellFill,
   getRotoCellStateLabel, getRotoCellViewModel, getRotoMissingFrameStatus,
   getRotoReplacementSuccessLabel, getMissingRotoFrameStatusLabel,
-  isPhysicsPaintDevExportEnabled, requiresDestructiveConfirmation,
+  isPhysicsPaintDevExportEnabled,
   type RotoCellBaseMeaning, type RotoCellFill, type RotoCellOverlay,
 } from './physicsPaintWorkflowPresentation';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 
 describe('physicsPaintWorkflowPresentation', () => {
-  it('returns active primary action labels for Roto and Play workflow tabs (D-10, D-11, D-12, D-16)', () => {
-    expect(getActivePrimaryActionLabel('roto')).toBe('Automatic cache');
-    expect(getActivePrimaryActionLabel('play')).toBe('Save play');
-  });
-
 
   it('classifies Roto cells with pixel-only gray and green semantic fills', () => {
     const cachedFrames = [
@@ -114,20 +109,6 @@ describe('physicsPaintWorkflowPresentation', () => {
   });
 
 
-  it('returns numbered source labels for the workflow strip header', () => {
-    expect(getPhysicsPaintSourceLabel('roto')).toBe('Roto #1');
-    expect(getPhysicsPaintSourceLabel('play')).toBe('Play #2');
-  });
-
-
-  it('requires confirmation only for destructive clear and conversion actions (D-34 through D-38)', () => {
-    expect(requiresDestructiveConfirmation('clear-active-source', 'roto')).toBe(false);
-    expect(requiresDestructiveConfirmation('clear-active-source', 'play')).toBe(true);
-    expect(requiresDestructiveConfirmation('convert-play-to-roto', 'roto')).toBe(true);
-    expect(requiresDestructiveConfirmation('convert-play-to-roto', 'play')).toBe(true);
-    expect(requiresDestructiveConfirmation('convert-roto-to-play', 'roto')).toBe(true);
-    expect(requiresDestructiveConfirmation('convert-roto-to-play', 'play')).toBe(true);
-  });
 
 
   it('clamps onion-skin frame count to the Phase 36 preview range (D-29, D-30)', () => {

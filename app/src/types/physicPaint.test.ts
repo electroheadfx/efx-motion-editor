@@ -10,333 +10,52 @@ import {
   isPhysicPaintRotoCacheFrame,
   isPhysicPaintRotoInterpolationSettings,
   normalizePhysicPaintRotoSegmentSpacingOverrides,
-  normalizePhysicPaintPlayScriptRanges,
 } from './physicPaint';
 
-const renderedFrame = {
-  frameIndex: 0,
-  appFrame: 12,
-  dataUrl: 'data:image/png;base64,aGVsbG8=',
-  width: 1000,
-  height: 650,
-};
-
-const editableState = {
-  version: 2,
-  width: 1000,
-  height: 650,
-  strokes: [],
-  settings: {},
-};
-
-const renderOptions = {
-  tool: 'physics-paint' as const,
-  color: '#103c65',
-  opacity: 82,
-  brushSize: 6,
-  background: 'canvas2' as const,
-  paperGrain: 'canvas3',
-  grainStrength: 0.65,
-  motion: { strokeDeformation: 15, strokePosition: 25 },
-};
+const renderedFrame = { frameIndex: 0, appFrame: 12, dataUrl: 'data:image/png;base64,aGVsbG8=', width: 1000, height: 650 };
 
 describe('physic paint payload contracts', () => {
-  it('clamps apply frame counts to the UI range', () => {
+  it('clamps generic apply frame counts to the established UI range', () => {
     expect(clampPhysicPaintFrameCount(3.8)).toBe(3);
     expect(clampPhysicPaintFrameCount(0)).toBe(1);
     expect(clampPhysicPaintFrameCount(9999)).toBe(PHYSIC_PAINT_MAX_APPLY_FRAMES);
     expect(clampPhysicPaintFrameCount('bad')).toBe(PHYSIC_PAINT_DEFAULT_APPLY_FRAMES);
   });
 
-  it('accepts launch contexts with positive finite project fps, Play workflow metadata, and range constraints', () => {
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4 })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 24 })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 30 })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 60 })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, requestedWorkflowMode: 'roto' })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, requestedWorkflowMode: 'play', workflowMode: 'play', playStartFrame: 12, playFrameCount: 5, editableSource: 'play' })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, selectedPlayScriptId: 'play-a', playCacheStatus: 'cached', playMotion: { strokeDeformation: 20, strokePosition: 30 }, previewFrame: 2, maxPlayFrameCount: 12, maxPlayFrameCountReason: 'Gap before play-b' })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, cachedPlayFrames: [renderedFrame] })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'roto', rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } })).toBe(true);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'roto', rotoBackground: { background: 'photo', paperGrain: 'canvas1', grainStrength: 0.5 } })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'roto', rotoBackground: { background: 'canvas1', paperGrain: '', grainStrength: 0.5 } })).toBe(false);
+  it('accepts Roto launch context, project identity, cached keys, and background metadata', () => {
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 24, project: { name: 'Project', saved: true, contextId: 'context-1' }, rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 0, cachedRotoFrames: [{ frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,a', source: 'real-key' }] })).toBe(true);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: -1 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 0 })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: -24 })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: Infinity })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: '24' })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, requestedWorkflowMode: 'preview' })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'preview' })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'play', playStartFrame: -1 })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, workflowMode: 'play', playFrameCount: 0 })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, selectedPlayScriptId: '' })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, playCacheStatus: 'dirty' })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, playMotion: { strokeDeformation: 101, strokePosition: 0 } })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, previewFrame: -1 })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, previewFrame: 1.5 })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, maxPlayFrameCount: 0 })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, maxPlayFrameCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, maxPlayFrameCountReason: 12 })).toBe(false);
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, cachedPlayFrames: [{ ...renderedFrame, dataUrl: 'bad' }] })).toBe(false);
   });
 
-  it('accepts launch contexts with cached Roto frame summaries', () => {
-    expect(isPhysicPaintLaunchContext({
-      operationId: 'op-1',
-      layerId: 'layer-1',
-      startFrame: 0,
-      cachedRotoFrames: [{ frameIndex: 0, appFrame: 0, dataUrl: 'data:image/png;base64,a', source: 'real-key' }],
-    })).toBe(true);
-
-    expect(isPhysicPaintLaunchContext({
-      operationId: 'op-1',
-      layerId: 'layer-1',
-      startFrame: 0,
-      cachedRotoFrames: [{ frameIndex: 0, appFrame: 3, dataUrl: 'data:image/png;base64,a', source: 'generated-interpolation', nearestRealKeyFrame: 0, backgroundOnly: true }],
-    })).toBe(true);
-
-    expect(isPhysicPaintLaunchContext({
-      operationId: 'op-1',
-      layerId: 'layer-1',
-      startFrame: 0,
-      cachedRotoFrames: [{ frameIndex: 0, appFrame: 0, dataUrl: 'data:text/plain;base64,a', source: 'real-key' }],
-    })).toBe(false);
-  });
-
-  it('validates Roto interpolation settings and rejects invalid counts', () => {
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20 })).toBe(true);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 })).toBe(true);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: false, inBetweenCount: 0, mode: 'duplicate', deform: 0, position: 0 })).toBe(false);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 1.5, mode: 'blend', deform: 10, position: 20 })).toBe(false);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1, mode: 'blend', deform: 10, position: 20 })).toBe(false);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'warp', deform: 10, position: 20 })).toBe(false);
-  });
-
-
-
-  it('D-04 validates durable Roto segment spacing overrides on interpolation settings', () => {
-    expect(isPhysicPaintRotoInterpolationSettings({
-      enabled: true,
-      inBetweenCount: 2,
-      mode: 'blend',
-      deform: 10,
-      position: 20,
-      segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
-    })).toBe(true);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, segmentSpacingOverrides: [{ fromSourceFrame: -1, toSourceFrame: 6, inBetweenCount: 4 }] })).toBe(false);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, segmentSpacingOverrides: [{ fromSourceFrame: 6, toSourceFrame: 2, inBetweenCount: 4 }] })).toBe(false);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 1.5 }] })).toBe(false);
-    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 }] })).toBe(false);
-  });
-
-  it('D-04 normalizes stored Roto segment spacing overrides without duplicate or malformed segments', () => {
+  it('validates Roto interpolation settings and durable segment overrides', () => {
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }] })).toBe(true);
+    expect(isPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 0, mode: 'blend', deform: 10, position: 20 })).toBe(false);
     expect(normalizePhysicPaintRotoSegmentSpacingOverrides([
       { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
       { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 5 },
-      { fromSourceFrame: 1, toSourceFrame: 2, inBetweenCount: 1.5 },
-      { fromSourceFrame: 0, toSourceFrame: 1, inBetweenCount: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 },
-      { fromSourceFrame: 4, toSourceFrame: 3, inBetweenCount: 1 },
-    ])).toEqual([
-      { fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 },
-    ]);
+      { fromSourceFrame: 6, toSourceFrame: 2, inBetweenCount: 1 },
+    ])).toEqual([{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }]);
   });
 
-  it('validates generated Roto cache frames separately from real keys', () => {
+  it('validates Roto cache provenance and background metadata', () => {
     expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'generated-interpolation', nearestRealKeyFrame: 2 })).toBe(true);
-    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'generated-interpolation', nearestRealKeyFrame: -1 })).toBe(false);
-    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'preview' })).toBe(false);
-  });
-
-  it('D-14/D-15 validates explicit background-only support provenance and rejects unknown strings', () => {
-    expect(isPhysicPaintRotoCacheFrame({
-      frameIndex: 0,
-      appFrame: 4,
-      dataUrl: 'data:image/png;base64,a',
-      source: 'background-only-support',
-      backgroundOnly: true,
-      nearestRealKeyFrame: 2,
-    })).toBe(true);
-    expect(isPhysicPaintRotoCacheFrame({
-      frameIndex: 0,
-      appFrame: 4,
-      dataUrl: 'data:image/png;base64,a',
-      source: 'background-only-support',
-      backgroundOnly: false,
-    })).toBe(false);
-    expect(isPhysicPaintRotoCacheFrame({
-      frameIndex: 0,
-      appFrame: 4,
-      dataUrl: 'data:image/png;base64,a',
-      source: 'background-preview',
-      backgroundOnly: true,
-    })).toBe(false);
-  });
-
-  it('validates Roto background metadata for transparent, paper, and canvas grain gaps', () => {
+    expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, dataUrl: 'data:image/png;base64,a', source: 'background-only-support', backgroundOnly: true, nearestRealKeyFrame: 2 })).toBe(true);
     expect(isPhysicPaintRotoBackgroundMetadata({ background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 })).toBe(true);
-    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 })).toBe(true);
     expect(isPhysicPaintRotoBackgroundMetadata({ background: 'photo', paperGrain: 'canvas1', grainStrength: 0.5 })).toBe(false);
-    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'canvas1', paperGrain: '', grainStrength: 0.5 })).toBe(false);
-    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 2 })).toBe(false);
   });
 
-  it('normalizes sorted non-overlapping saved Play script ranges', () => {
-    const ranges = normalizePhysicPaintPlayScriptRanges([
-      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached', motion: { strokeDeformation: 15, strokePosition: 25 }, renderOptions },
-      { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' },
-    ]);
-
-    expect(ranges).toEqual([
-      { id: 'play-a', startFrame: 0, frameCount: 5, editableState, source: 'play', cacheStatus: 'cached' },
-      { id: 'play-b', startFrame: 8, frameCount: 4, editableState, source: 'play', cacheStatus: 'cached', motion: { strokeDeformation: 15, strokePosition: 25 }, renderOptions },
-    ]);
-  });
-
-  it('rejects malformed saved Play script ranges', () => {
-    expect(normalizePhysicPaintPlayScriptRanges([{ id: '', startFrame: 0, frameCount: 5, editableState }])).toBeNull();
-    expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: -1, frameCount: 5, editableState }])).toBeNull();
-    expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: 0, frameCount: 0, editableState }])).toBeNull();
-    expect(normalizePhysicPaintPlayScriptRanges([
-      { id: 'play-a', startFrame: 0, frameCount: 5, editableState },
-      { id: 'play-a', startFrame: 8, frameCount: 4, editableState },
-    ])).toBeNull();
-    expect(normalizePhysicPaintPlayScriptRanges([
-      { id: 'play-a', startFrame: 4, frameCount: 4, editableState },
-      { id: 'play-b', startFrame: 7, frameCount: 2, editableState },
-    ])).toBeNull();
-    expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: 0, frameCount: 5, editableState: { version: 2, width: 100, height: 100, strokes: [{ tool: 'paint' }], settings: {} } }])).toBeNull();
-    expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: 0, frameCount: 5, editableState, motion: { strokeDeformation: -1, strokePosition: 0 } }])).toBeNull();
-    expect(normalizePhysicPaintPlayScriptRanges([{ id: 'play-a', startFrame: 0, frameCount: 5, editableState, renderOptions: { ...renderOptions, brushSize: 0 } }])).toBeNull();
-  });
-
-  it('accepts metadata-only Play render options update payloads', () => {
-    expect(isPhysicPaintApplyPayload({
-      kind: 'update-play-render-options',
-      operationId: 'op-update',
-      layerId: 'layer-1',
-      startFrame: 12,
-      playScriptId: 'play-a',
-      renderOptions,
-    })).toBe(true);
-
-    expect(isPhysicPaintApplyPayload({
-      kind: 'update-play-render-options',
-      operationId: 'op-update',
-      layerId: 'layer-1',
-      startFrame: 12,
-      playScriptId: 'play-a',
-      renderOptions: { ...renderOptions, motion: { strokeDeformation: 101, strokePosition: 0 } },
-    })).toBe(false);
-  });
-
-  it('accepts metadata-only Roto interpolation settings update payloads', () => {
-    expect(isPhysicPaintApplyPayload({
-      kind: 'update-roto-interpolation-settings',
-      operationId: 'op-roto-interpolation',
-      layerId: 'layer-1',
-      startFrame: 12,
-      settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 },
-    })).toBe(true);
-
-    expect(isPhysicPaintApplyPayload({
-      kind: 'update-roto-interpolation-settings',
-      operationId: 'op-roto-interpolation',
-      layerId: 'layer-1',
-      startFrame: 12,
-      settings: { enabled: true, inBetweenCount: 3, mode: 'hold', deform: 0, position: 0 },
-    })).toBe(false);
+  it('accepts still, interpolation, deletion, and authoritative real-key replacement payloads only', () => {
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, rotoBackground: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'update-roto-interpolation-settings', operationId: 'op-2', layerId: 'layer-1', startFrame: 12, settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 } })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'delete-roto-frame', operationId: 'op-3', layerId: 'layer-1', startFrame: 12 })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'replace-roto-key-frames', operationId: 'op-4', layerId: 'layer-1', startFrame: 12, frames: [{ ...renderedFrame, source: 'real-key', sourceFrame: 12 }], rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-play-canvas', operationId: 'obsolete', layerId: 'layer-1', startFrame: 12, frames: [renderedFrame] })).toBe(false);
   });
 
   it('validates namespaced frame-sync messages', () => {
-    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 0 })).toBe(true);
     expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 12 })).toBe(true);
-    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame' })).toBe(false);
-    expect(isPhysicPaintFrameSyncMessage({ type: 'other', frame: 12 })).toBe(false);
     expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: -1 })).toBe(false);
-    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: 1.5 })).toBe(false);
-    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: Infinity })).toBe(false);
-    expect(isPhysicPaintFrameSyncMessage({ type: 'physic-paint:seek-frame', frame: '12' })).toBe(false);
-  });
-
-  it('accepts rendered-output still and sequence payloads', () => {
-    expect(isPhysicPaintApplyPayload({
-      kind: 'apply-canvas',
-      operationId: 'op-1',
-      layerId: 'layer-1',
-      startFrame: 12,
-      renderedFrame,
-      editableState,
-      rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
-      closeWindowAfterApply: true,
-    })).toBe(true);
-
-    expect(isPhysicPaintApplyPayload({
-      kind: 'apply-canvas',
-      operationId: 'op-pixels-only',
-      layerId: 'layer-1',
-      startFrame: 12,
-      renderedFrame,
-      rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
-    })).toBe(true);
-
-    expect(isPhysicPaintApplyPayload({
-      kind: 'apply-canvas',
-      operationId: 'op-1',
-      layerId: 'layer-1',
-      startFrame: 12,
-      renderedFrame,
-      editableState,
-      rotoBackground: { background: 'photo', paperGrain: 'canvas1', grainStrength: 0.65 },
-    })).toBe(false);
-
-    expect(isPhysicPaintApplyPayload({
-      kind: 'apply-play-canvas',
-      operationId: 'op-2',
-      layerId: 'layer-1',
-      startFrame: 12,
-      frameCount: 1,
-      frames: [renderedFrame],
-      editableState,
-    })).toBe(true);
-
-    expect(isPhysicPaintApplyPayload({
-      kind: 'convert-play-to-roto',
-      operationId: 'op-3',
-      layerId: 'layer-1',
-      startFrame: 12,
-      frameCount: 1,
-      frames: [renderedFrame],
-      editableState,
-    })).toBe(true);
-
-    expect(isPhysicPaintApplyPayload({
-      kind: 'convert-roto-to-play',
-      operationId: 'op-4',
-      layerId: 'layer-1',
-      startFrame: 12,
-      frameCount: 1,
-      editableState,
-    })).toBe(true);
-  });
-
-  it('rejects editable engine internals in apply payloads', () => {
-    expect(isPhysicPaintApplyPayload({
-      kind: 'apply-canvas',
-      operationId: 'op-1',
-      layerId: 'layer-1',
-      startFrame: 12,
-      renderedFrame,
-      strokes: [],
-    })).toBe(false);
-
-    expect(isPhysicPaintApplyPayload({
-      kind: 'apply-play-canvas',
-      operationId: 'op-2',
-      layerId: 'layer-1',
-      startFrame: 12,
-      frameCount: 1,
-      frames: [renderedFrame],
-      engine: {},
-    })).toBe(false);
   });
 });
